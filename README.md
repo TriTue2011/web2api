@@ -9,6 +9,10 @@ hướng dẫn này tính từ **gốc kho web2api**.
 Tài liệu lớn dần theo từng module: mỗi module có một tiểu mục riêng trong mục «Module», và mục
 «Trạng thái hiện tại» cho biết cái gì đã có, cái gì chưa.
 
+**Giấy phép:** bản quyền thuộc chủ kho (`TriTue2011`), **giữ toàn quyền** (*All rights reserved*, xem tệp
+[LICENSE](LICENSE)). Mã nguồn được xem công khai trên GitHub để minh bạch, nhưng việc dùng, sao chép, sửa,
+phân phối hay triển khai (kể cả ảnh Docker đã đăng) cần có sự cho phép bằng văn bản của chủ kho.
+
 ## Mục lục
 
 1. [web2api là gì](#1-web2api-là-gì)
@@ -677,6 +681,8 @@ và chụp ảnh, ghim đúng phiên bản đã chạy bộ test.
 
 Mới nhất ở trên. Mỗi dòng: ngày — việc.
 
+- 11/10/2026 — Thêm giấy phép: giữ toàn quyền (*All rights reserved*), chủ bản quyền `TriTue2011` (tệp `LICENSE`).
+- 11/10/2026 — Lần CI đầu tiên trên GitHub: ảnh đa kiến trúc lên `ghcr.io/tritue2011/web2api`; sửa gitleaks bắt nhầm tên dự án; thêm `.pre-commit-config.yaml`.
 - 11/10/2026 — `docker-compose.yml` cho người mới: ảnh `ghcr.io/tritue2011/web2api:latest` kèm `build: .`, dữ liệu trong volume có tên `web2api-data` (không phải chown), hướng dẫn compose từng bước, cập nhật, sao lưu.
 - 10/10/2026 — Tách khỏi kho chatgpt2api thành kho riêng `TriTue2011/web2api`: nguồn module mặc định `modules/` của kho mới, `requirements-dev.txt`, `.gitignore`, chép `deploy/cloudflare-gemini-proxy.js` vào kho, test và script không còn phụ thuộc đường dẫn kho cũ.
 - 10/10/2026 — Trang khởi đầu nối sang trang Module (nút «Cài AI đầu tiên», liên kết «Module», chấm báo, tab module); `docker-compose.yml` đặt sẵn nguồn git của dự án; ghi kết quả kiểm Gemini với Google thật; trang Module tải lại thông báo sau khi gỡ.

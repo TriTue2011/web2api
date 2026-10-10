@@ -1,0 +1,20 @@
+Copyright (c) 2026 TriTue2011. All rights reserved.
+
+This software and its associated documentation files (the "Software") are the proprietary property of
+the copyright holder.
+
+The source code is visible on GitHub for transparency. Being able to read it, and the rights that GitHub's
+Terms of Service give every user of the platform (such as viewing the repository and forking it within
+GitHub), do not grant any license to the Software.
+
+Without prior written permission from the copyright holder, you may NOT use, copy, modify, merge, publish,
+distribute, sublicense, sell, or deploy the Software, in whole or in part, including the container image
+published at ghcr.io/tritue2011/web2api, and you may not create derivative works from it.
+
+Third-party components that the Software depends on or contains remain under their own licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.

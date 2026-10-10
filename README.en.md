@@ -59,5 +59,9 @@ already speaks the OpenAI protocol can instead be registered as a *remote module
 
 ## Status
 
-Early stage (`0.1.0-khung`). The Docker image is published to `ghcr.io/tritue2011/web2api` by CI; the package
-is private until the repository owner makes it public. No license has been chosen yet.
+Early stage (`0.1.0-khung`). The multi-arch Docker image (amd64 + arm64) is published to
+`ghcr.io/tritue2011/web2api` by CI on every push to `main`.
+
+License: proprietary, **all rights reserved** by the repository owner (`TriTue2011`), see [LICENSE](LICENSE).
+The source is visible on GitHub for transparency; using, copying, modifying, distributing or deploying it
+(including the published image) requires the owner's written permission.
