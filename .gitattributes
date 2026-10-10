@@ -1,0 +1,9 @@
+* text=auto
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+# Script shell mà dính CRLF thì chạy hỏng trên Linux («bad interpreter: /usr/bin/env bash^M»),
+# nên ép LF bất kể máy người commit là Windows hay Linux.
+*.sh text eol=lf
+# Ảnh chụp màn hình trong docs/anh/: nhị phân, đừng để git thử sửa dòng.
+*.png binary

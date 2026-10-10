@@ -1,0 +1,17 @@
+# Gói cho KIỂM THỬ và script chụp ảnh — không vào ảnh Docker (ảnh chỉ cài requirements.txt).
+# Đúng phiên bản đang chạy bộ test ngày 10/10/2026 (môi trường Python 3.13 của dự án c2a cũ), để
+# kết quả test ở kho mới khớp kết quả đã kiểm.
+#   Tạo môi trường:  uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
+#   hoặc:            python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+pytest==9.1.1
+# Quét bảo mật mã lõi và module: .venv/bin/python -m bandit -r app modules -lll
+bandit==1.9.4
+# Test trang Module điều khiển Chrome qua DevTools bằng websockets.sync.
+websockets==17.1
+# scripts/chup-man-hinh.sh cắt ảnh khổ điện thoại và giảm màu ảnh > 250 KB.
+pillow==12.3.0
+# Ghim gói kéo theo của fastapi/httpx đúng bản đã kiểm: starlette quyết định TestClient và StreamingResponse.
+starlette==1.3.1
+anyio==4.14.2
+httpcore==1.0.9
+h11==0.16.0

@@ -1,0 +1,59 @@
+# web2api — cổng AI chuẩn OpenAI, lõi nhẹ + module cài thêm. MỘT tệp compose cho cả hai kiểu dùng
+# (chạy ở GỐC kho, cạnh tệp này):
+#   Người dùng:        docker compose up -d            # kéo ảnh ghcr.io/tritue2011/web2api:latest
+#   Nhà phát triển:    docker compose up -d --build    # dựng ảnh tại chỗ từ ./Dockerfile
+#   Xem nhật ký:       docker compose logs -f web2api
+#   Cập nhật:          docker compose pull && docker compose up -d
+# Hướng dẫn từng bước: README.md, mục 4.
+services:
+  web2api:
+    image: ghcr.io/tritue2011/web2api:latest
+    # Có cả image lẫn build: `up` kéo ảnh từ GHCR, chỉ dựng tại chỗ khi gõ --build (hoặc khi kéo không được).
+    build: .
+    container_name: web2api
+    restart: unless-stopped
+    ports:
+      - "${WEB2API_PORT:-3031}:8000"
+    environment:
+      WEB2API_DATA: /data
+      # Nguồn module mặc định = git của dự án: module ở modules/<id>/ của kho TriTue2011/web2api (nhánh
+      # main) → web2api báo «có module mới» → quản trị bấm cài trên trang Module. Kho PUBLIC nên đọc
+      # ẨN DANH, không cần token (token chỉ cho kho riêng tư — đặt WEB2API_GIT_TOKEN trong .env).
+      # WEB2API_GIT_REPO dùng «-» (không «:-»): đặt RỖNG trong .env là TẮT nguồn git; «:-» sẽ lặng lẽ
+      # thay chuỗi rỗng bằng mặc định và không tắt được.
+      # Tự cài (tu_dong) KHÔNG bật ở đây — mặc định chỉ báo, quản trị duyệt rồi mới cài.
+      WEB2API_GIT_REPO: ${WEB2API_GIT_REPO-TriTue2011/web2api}
+      WEB2API_GIT_NHANH: ${WEB2API_GIT_NHANH:-main}
+      WEB2API_GIT_THU_MUC: ${WEB2API_GIT_THU_MUC:-modules}
+    # Biến tuỳ chọn đặt trong .env cạnh tệp này (không có .env cũng chạy được). Không viết `VAR: ""` ở
+    # trên: biến RỖNG bị hiểu là «có khai».
+    #   WEB2API_ADMIN_KEY                     khoá quản trị; để trống thì tự sinh vào /data/admin_key
+    #   WEB2API_MAY_RAM_MB, WEB2API_MAY_CPU   số RAM/nhân CỦA MÁY: trong container bị giới hạn không đọc
+    #                                         được số thật (README, mục «Chạy trong LXC/Proxmox»)
+    #   WEB2API_GIT_TOKEN                     token GitHub chỉ-đọc, chỉ cần cho kho riêng tư
+    #   WEB2API_PORT, WEB2API_DATA_DIR        cổng trên máy chủ (mặc định 3031), nơi giữ dữ liệu (dưới)
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # Dữ liệu (khoá quản trị, cấu hình, module cài lúc chạy) nằm NGOÀI ảnh: cập nhật ảnh không mất gì.
+      # Mặc định là volume CÓ TÊN của Docker, không phải thư mục ./data: Docker chép quyền sở hữu
+      # uid 1000 của /data trong ảnh sang volume mới, nên người mới KHÔNG phải mkdir/chown gì. Thư mục
+      # gắn từ máy chủ (bind) mà chưa có thì Docker tạo nó thuộc root → container uid 1000 không ghi
+      # được khoá quản trị và dừng ngay. Muốn dữ liệu ở một thư mục cụ thể: WEB2API_DATA_DIR=./data
+      # (hoặc đường tuyệt đối) trong .env, rồi `mkdir -p data && sudo chown 1000:1000 data` trước.
+      - ${WEB2API_DATA_DIR:-web2api-data}:/data
+    user: "1000:1000"
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    # Healthcheck lấy từ ảnh (HEALTHCHECK trong Dockerfile hỏi /health mỗi 30 giây) — không khai lại ở đây.
+    labels:
+      # Mặc định KHÔNG để Watchtower tự cập nhật: cập nhật là việc chủ động (README, mục «Cập nhật»).
+      # Ai dùng Watchtower và muốn tự cập nhật theo ảnh GHCR thì đổi thành "true".
+      com.centurylinklabs.watchtower.enable: "false"
+
+volumes:
+  web2api-data:
+    # Tên cố định (không thêm tiền tố tên dự án) để lệnh sao lưu trong README gõ đúng tên.
+    name: web2api-data

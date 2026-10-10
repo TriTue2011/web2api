@@ -1,0 +1,69 @@
+name: Báo lỗi
+description: web2api chạy sai, báo lỗi lạ hoặc làm khác điều tài liệu nói
+title: "[Lỗi] "
+labels: ["lỗi"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã báo lỗi. **Kho này công khai** — mọi thứ bạn dán vào đây ai cũng đọc được.
+        Trước khi gửi, hãy xoá khoá API (Google, OpenAI…), khoá quản trị, token GitHub và địa chỉ
+        nội bộ nhạy cảm khỏi mọi đoạn dán. **Lỗ hổng bảo mật thì đừng báo ở đây** — xem `SECURITY.md`.
+  - type: input
+    id: phien-ban
+    attributes:
+      label: Phiên bản web2api
+      description: Mở `http://<máy-chủ>:3031/health` và chép giá trị `phien_ban`, hoặc chép nội dung tệp `VERSION`.
+      placeholder: "0.1.0-khung"
+    validations:
+      required: true
+  - type: dropdown
+    id: cach-chay
+    attributes:
+      label: Cách chạy
+      description: Bạn chạy web2api bằng cách nào?
+      options:
+        - docker compose (docker compose up -d)
+        - docker run
+        - Ảnh từ ghcr.io/tritue2011/web2api
+        - Chạy trực tiếp bằng uvicorn (không Docker)
+        - Khác (mô tả ở phần mô tả lỗi)
+    validations:
+      required: true
+  - type: input
+    id: module
+    attributes:
+      label: Module liên quan
+      description: Id module nếu lỗi chỉ xảy ra với một module. Bỏ trống nếu lỗi ở lõi.
+      placeholder: "gemini-api"
+  - type: textarea
+    id: mo-ta
+    attributes:
+      label: Điều gì đã xảy ra
+      description: Mô tả bạn đã làm gì, thấy gì. Nếu là lỗi khi gọi API, ghi rõ đường gọi (ví dụ `POST /v1/chat/completions`) và mã trả về.
+    validations:
+      required: true
+  - type: textarea
+    id: mong-doi
+    attributes:
+      label: Điều bạn mong đợi
+      description: Lẽ ra phải xảy ra điều gì? Nếu tài liệu (README) có nói khác thực tế, nêu mục nào.
+    validations:
+      required: true
+  - type: textarea
+    id: cach-tai-hien
+    attributes:
+      label: Các bước tái hiện
+      description: Càng ngắn và lặp lại được càng tốt.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: textarea
+    id: nhat-ky
+    attributes:
+      label: Nhật ký (đã xoá khoá API)
+      description: |
+        Lấy bằng `docker compose logs --tail 100 web2api`. **Xoá hết khoá API, khoá quản trị, token trước khi dán.**
+        web2api không ghi khoá vào nhật ký, nhưng đoạn lệnh `curl` bạn tự gõ thì có thể chứa khoá.
+      render: text

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — bắt đầu</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+body{margin:0;background:#F6F5F2}
+button{font:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid #0F766E;outline-offset:2px}
+h1,h2,p,ol,dl,dd,ul{margin:0}
+.luoi{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+.cot{display:flex;flex-direction:column;gap:20px;min-width:0}
+.dong{display:grid;grid-template-columns:minmax(0,11em) minmax(0,1fr);gap:2px 16px;padding:12px 0;border-top:1px solid #E4E2DC}
+.dong:first-child{border-top:0;padding-top:0}
+/* Thanh trên: cùng kiểu với trang Module (Cai-module.dc.html) để hai trang ăn khớp khi chuyển qua lại. */
+.thanh-tab{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.thanh-tab a{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:20px;color:var(--ink);text-decoration:none;white-space:nowrap}
+.thanh-tab a[aria-current=page]{background:var(--accsoft);color:#0B5A53;font-weight:600}
+.cham{width:8px;height:8px;border-radius:4px;background:#B42318;flex:0 0 auto}
+.nut-chinh{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:22px;background:var(--acc);color:#fff;font-weight:500;text-decoration:none}
+.nut-chinh:hover{background:#0B5A53}
+@media (max-width:880px){
+.luoi{grid-template-columns:minmax(0,1fr)}
+main.pg{padding:24px 16px 40px !important;gap:20px !important}
+.tb{padding:0 16px !important}
+.tieu-de{font-size:34px !important}
+}
+@media (max-width:480px){.dong{grid-template-columns:minmax(0,1fr)}}
+</style>
+</helmet>
+<div style="--ink:#181816;--mute:#66645F;--line:#E4E2DC;--bg:#F6F5F2;--card:#FFFFFF;--acc:#0F766E;--accsoft:#E2F0ED;min-height:100vh;min-height:100dvh;overflow-x:hidden;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font-family:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5">
+
+<nav aria-label="Điều hướng chính" class="tb" style="flex:0 0 auto;position:sticky;top:0;z-index:20;box-sizing:border-box;display:flex;align-items:center;gap:12px;height:60px;padding:0 24px;border-bottom:1px solid var(--line);background:#FBFAF8">
+<div style="width:30px;height:30px;border-radius:9px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></div>
+<div style="font-family:Newsreader,Georgia,'Times New Roman',serif;font-size:24px;font-weight:500;letter-spacing:-0.01em">web2api</div>
+<div class="thanh-tab" id="thanh-tab">
+<a href="Khoi-dau.dc.html" aria-current="page">Trang đầu</a>
+<a href="Cai-module.dc.html" id="lien-ket-module">Module<sc-if value="{{coCham}}" hint-placeholder-val="{{false}}"><span class="cham" role="img" aria-label="{{nhanCham}}" title="{{nhanCham}}"></span></sc-if></a>
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="0"><a href="{{t.href}}" data-tab-module="{{t.id}}">{{t.nhan}}</a></sc-for>
+</div>
+<sc-if value="{{coPhienBan}}" hint-placeholder-val="{{true}}"><span style="margin-left:auto;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;height:28px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:14px;background:var(--card);font-size:12px;color:var(--mute)">Bản {{phienBan}}</span></sc-if>
+</nav>
+
+<main class="pg" style="flex:1 1 auto;width:100%;max-width:1040px;box-sizing:border-box;margin:0 auto;padding:40px 32px 56px;display:flex;flex-direction:column;gap:28px">
+
+<header style="display:flex;flex-direction:column;gap:10px">
+<span style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--acc)">Cổng AI tương thích OpenAI</span>
+<h1 class="tieu-de" style="font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:400;font-size:44px;line-height:1.1;letter-spacing:-0.02em;text-wrap:balance">{{tieuDe}}</h1>
+<p style="max-width:62ch;color:var(--mute);font-size:15px;text-wrap:pretty">{{moTa}}</p>
+</header>
+
+<div class="luoi">
+
+<section aria-labelledby="buoc-dau" style="min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="flex:0 0 auto;width:44px;height:44px;border-radius:14px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg></div>
+<div style="display:flex;flex-direction:column;min-width:0">
+<span style="font-size:12px;color:var(--mute)">Bước đầu tiên</span>
+<h2 id="buoc-dau" style="font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2">Cài AI đầu tiên</h2>
+</div>
+</div>
+<p style="text-wrap:pretty">Chọn một nguồn AI — ví dụ Gemini API bằng khoá Google AI Studio — rồi cài ngay trên trang Module. Từ đó web2api trả lời được theo chuẩn OpenAI cho mọi ứng dụng trỏ vào nó.</p>
+<ol style="padding:0;list-style:none;display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{buoc}}" as="b" hint-placeholder-count="4">
+<li style="display:flex;gap:12px;align-items:flex-start"><span aria-hidden="true" style="flex:0 0 auto;width:24px;height:24px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--mute)">{{b.so}}</span><span style="min-width:0;padding-top:1px">{{b.chu}}</span></li>
+</sc-for>
+</ol>
+<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+<a href="Cai-module.dc.html" id="nut-cai-dau" class="nut-chinh" aria-describedby="can-khoa">Cài AI đầu tiên</a>
+<p id="can-khoa" style="font-size:13px;color:var(--mute);text-wrap:pretty">Cần khoá quản trị. Lấy trên máy chủ bằng lệnh <code style="overflow-wrap:anywhere">docker exec web2api cat /data/admin_key</code>.</p>
+</div>
+</section>
+
+<div class="cot">
+
+<section aria-labelledby="may-nay" aria-busy="{{dangTaiMay}}" style="min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column">
+<h2 id="may-nay" style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--mute)">Máy này</h2>
+<span style="font-size:12px;color:var(--mute)">Số đo thật, để biết còn chỗ cho module nào</span>
+</div>
+<sc-if value="{{dangTaiMay}}" hint-placeholder-val="{{false}}"><p role="status" style="color:var(--mute)">Đang đọc thông tin máy…</p></sc-if>
+<sc-if value="{{coLoiMay}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:12px;border:1px solid #F1C4BE;background:#FDECEA;color:#8A1C12">
+<span style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere">Không đọc được thông tin máy: {{mayLoi}}</span>
+<button type="button" onClick="{{taiLaiMay}}" style="flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:20px;border:1px solid #E2A59D;background:#fff;color:#8A1C12;font-weight:500">Thử lại</button>
+</div>
+</sc-if>
+<sc-if value="{{coMay}}" hint-placeholder-val="{{true}}">
+<dl style="display:flex;flex-direction:column">
+<sc-for list="{{may}}" as="r" hint-placeholder-count="6">
+<div class="dong">
+<dt style="color:var(--mute)">{{r.nhan}}</dt>
+<dd style="display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere"><span style="font-weight:500">{{r.giaTri}}</span><sc-if value="{{r.ghiChu}}" hint-placeholder-val="{{true}}"><span style="font-size:12px;color:var(--mute)">{{r.ghiChu}}</span></sc-if></dd>
+</div>
+</sc-for>
+</dl>
+</sc-if>
+</section>
+
+<section aria-labelledby="da-cai" aria-busy="{{dangTaiMod}}" style="min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px 24px;display:flex;flex-direction:column;gap:12px">
+<h2 id="da-cai" style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--mute)">Module đã cài</h2>
+<sc-if value="{{dangTaiMod}}" hint-placeholder-val="{{false}}"><p role="status" style="color:var(--mute)">Đang đọc danh sách module…</p></sc-if>
+<sc-if value="{{coLoiMod}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:12px;border:1px solid #F1C4BE;background:#FDECEA;color:#8A1C12">
+<span style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere">Không đọc được danh sách module: {{modLoi}}</span>
+<button type="button" onClick="{{taiLaiMod}}" style="flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:20px;border:1px solid #E2A59D;background:#fff;color:#8A1C12;font-weight:500">Thử lại</button>
+</div>
+</sc-if>
+<sc-if value="{{coCanhBao}}" hint-placeholder-val="{{false}}"><p role="alert" style="padding:10px 14px;border-radius:12px;border:1px solid #EBD38F;background:#FDF6E3;color:#6B4E00;overflow-wrap:anywhere">{{canhBao}}</p></sc-if>
+<sc-if value="{{rongMod}}" hint-placeholder-val="{{true}}">
+<div style="padding:20px;border:1px dashed #C9C6BE;border-radius:14px;color:var(--mute);text-align:center;text-wrap:pretty">Chưa có gì. Module cài xong sẽ hiện ở đây, kèm một tab riêng trên thanh trên cùng.</div>
+</sc-if>
+<sc-if value="{{coMod}}" hint-placeholder-val="{{false}}">
+<ul style="padding:0;list-style:none;display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{mods}}" as="m" hint-placeholder-count="2">
+<li style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:12px"><span style="flex:1 1 auto;min-width:0;font-weight:500;overflow-wrap:anywhere">{{m.ten}}</span><span style="flex:0 0 auto;font-size:12px;color:var(--mute)">{{m.loai}}</span></li>
+</sc-for>
+</ul>
+</sc-if>
+</section>
+
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  state = { he: null, dangTaiMay: true, mayLoi: '', mods: [], canhBao: '', dangTaiMod: true, modLoi: '', thongBaoSo: 0 };
+
+  // Móc của dc-lite: gọi một lần sau lần dựng đầu — chỗ đúng để đọc API thật.
+  didMount() { this.taiMay(); this.taiMod(); }
+
+  // Đường dẫn tương đối để vẫn đúng khi web2api nằm sau proxy ở một thư mục con.
+  async docJson(url) {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error('máy chủ trả HTTP ' + r.status + ' cho ' + url);
+    return r.json();
+  }
+  taiMay() {
+    this.setState({ dangTaiMay: true, mayLoi: '' });
+    this.docJson('api/he-thong').then((he) => this.setState({ he, dangTaiMay: false }),
+      (e) => this.setState({ mayLoi: e.message || String(e), dangTaiMay: false }));
+  }
+  taiMod() {
+    this.setState({ dangTaiMod: true, modLoi: '' });
+    this.docJson('api/modules').then((j) => this.setState({ mods: j.modules || [], canhBao: j.canh_bao || '',
+      thongBaoSo: j.thong_bao_so || 0, dangTaiMod: false }),
+      (e) => this.setState({ modLoi: e.message || String(e), dangTaiMod: false }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    // Đơn vị nhị phân (1024) cho khớp `docker run --memory 256m` và `free -h`; dấu phẩy thập phân kiểu Việt.
+    const dl = (b) => (b == null ? 'không rõ' : b >= 1024 ** 3
+      ? (b / 1024 ** 3).toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' GB'
+      : Math.round(b / 1024 ** 2).toLocaleString('vi-VN') + ' MB');
+    const he = s.he;
+    let may = [];
+    if (he) {
+      const ram = he.ram || {}, rm = ram.may || {}, rc = ram.container || {}, cpu = he.cpu || {}, dia = he.dia || {};
+      may = [
+        // Số của MÁY: khai bởi người vận hành (WEB2API_MAY_RAM_MB/CPU) hoặc đọc /proc — trong container /proc có
+        // thể là số của máy vật lý hoặc của LXC (lxcfs), không phải phần container được cấp; nói rõ nguồn.
+        { nhan: 'RAM của máy', giaTri: rm.nguon === 'khai_bao' ? dl(rm.tong) + ' tổng' : dl(rm.trong) + ' trống / ' + dl(rm.tong), ghiChu: rm.nguon === 'khai_bao' ? 'Số do người vận hành khai (WEB2API_MAY_RAM_MB)' : 'Đọc từ /proc — trong container có thể là số của máy chủ vật lý hoặc LXC, không phải phần bạn được cấp' },
+        { nhan: 'RAM của container', giaTri: rc.gioi_han != null ? dl(rc.dang_dung) + ' đang dùng / giới hạn ' + dl(rc.gioi_han) : 'Không đặt giới hạn' + (rc.dang_dung != null ? ' · đang dùng ' + dl(rc.dang_dung) : ''), ghiChu: rc.gioi_han != null ? 'Trần thật module chạm tới (cgroup memory.max)' : 'Module dùng chung RAM của cả máy — nên đặt --memory khi chạy container' },
+        { nhan: 'CPU', giaTri: (cpu.so_nhan_may || '?') + ' nhân trên máy', ghiChu: (cpu.gioi_han_container != null ? 'Container được dùng ' + cpu.gioi_han_container.toLocaleString('vi-VN') + ' nhân' : 'Container không bị giới hạn CPU') + (cpu.nguon === 'khai_bao' ? ' · số nhân máy do người vận hành khai' : ' · số nhân máy đọc từ /proc, có thể là của máy chủ vật lý hoặc LXC') },
+        { nhan: 'Đĩa dữ liệu', giaTri: dia.loi ? dia.loi : dl(dia.trong) + ' trống / ' + dl(dia.tong), ghiChu: dia.loi ? '' : 'Thư mục ' + dia.thu_muc + ' — nơi module và model được tải về' },
+        { nhan: 'GPU', giaTri: he.gpu && he.gpu.length ? he.gpu.map((g) => g.ten + ' · ' + dl((g.vram_tong_mb - g.vram_dung_mb) * 1024 ** 2) + ' VRAM trống / ' + dl(g.vram_tong_mb * 1024 ** 2)).join('; ') : 'Không thấy GPU NVIDIA', ghiChu: he.gpu && he.gpu.length ? '' : 'Không có nvidia-smi trong container, hoặc nó báo lỗi — module chạy bằng CPU' },
+        { nhan: 'Phiên bản web2api', giaTri: he.phien_ban, ghiChu: '' }
+      ];
+    }
+    const mods = (s.mods || []).map((m) => ({ ten: (m && (m.ten || m.id)) || '(module không tên)', loai: (m && m.loai) || '' }));
+    // Tab của module đang chạy (máy chủ trả tab_web = {nhan, duong}). {{ }} thoát ký tự HTML nhưng không chặn
+    // href="javascript:…" → chỉ nhận http(s), giống trang Module.
+    const anToan = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null; } catch (e) { return null; } };
+    const tabs = (s.mods || []).filter((m) => m && m.tab_web && typeof m.tab_web === 'object' && typeof m.tab_web.duong === 'string')
+      .map((m) => ({ id: String(m.id || ''), nhan: m.tab_web.nhan || m.ten || m.id, href: anToan(m.tab_web.duong) })).filter((t) => t.href);
+    const soTb = Number(s.thongBaoSo) || 0;
+    return {
+      phienBan: he ? he.phien_ban : '', coPhienBan: !!he,
+      tieuDe: mods.length ? 'Đã cài ' + mods.length + ' module' : 'Chưa cài module nào',
+      moTa: mods.length
+        ? 'Các module đang chạy liệt kê ở khối «Module đã cài». Cài thêm, gỡ, kiểm sức khoẻ hay thử chat ở trang Module.'
+        : 'Container này vừa dựng xong và đang trống: chưa có nguồn AI nào. Mỗi module cài sau này có thể thêm một tab lên thanh trên cùng; gỡ đi thì tab biến mất.',
+      tabs, coCham: soTb > 0, nhanCham: soTb + ' thông báo module mới',
+      buoc: [
+        { so: 1, chu: 'Mở trang Module và dán khoá quản trị.' },
+        { so: 2, chu: 'Chọn nguồn AI, ví dụ Gemini API. Chưa có trên máy thì bấm cài ở mục thông báo module mới từ git.' },
+        { so: 3, chu: 'Dán khoá API (mỗi dòng một khoá) rồi bấm «Kiểm tra và cài».' },
+        { so: 4, chu: 'Thử chat ngay trên trang Module, hoặc trỏ ứng dụng nói chuẩn OpenAI vào địa chỉ /v1.' }
+      ],
+      dangTaiMay: s.dangTaiMay, coLoiMay: !!s.mayLoi, mayLoi: s.mayLoi, coMay: !!he && !s.dangTaiMay, may,
+      taiLaiMay: () => this.taiMay(),
+      dangTaiMod: s.dangTaiMod, coLoiMod: !!s.modLoi, modLoi: s.modLoi, coCanhBao: !!s.canhBao, canhBao: s.canhBao,
+      rongMod: !s.dangTaiMod && !s.modLoi && mods.length === 0, coMod: mods.length > 0, mods,
+      taiLaiMod: () => this.taiMod()
+    };
+  }
+}
+</script>
+</body>
+</html>

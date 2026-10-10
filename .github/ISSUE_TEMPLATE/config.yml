@@ -1,0 +1,7 @@
+# Tắt issue trống: mọi báo cáo phải đi qua một trong ba mẫu để luôn có phiên bản, cách chạy và nhật ký.
+blank_issues_enabled: false
+contact_links:
+  # Lỗ hổng bảo mật không được báo công khai: kho public nên issue ai cũng đọc được ngay lập tức.
+  - name: Báo lỗ hổng bảo mật (riêng tư)
+    url: https://github.com/TriTue2011/web2api/security/advisories/new
+    about: Dùng GitHub Security Advisories, đừng mở issue công khai. Xem SECURITY.md.

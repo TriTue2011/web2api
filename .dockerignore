@@ -1,0 +1,9 @@
+test/
+**/__pycache__/
+**/*.pyc
+*.md
+!README.md
+# Kho tách riêng có môi trường ảo ở gốc: đừng gửi nó (hàng trăm MB) và bí mật vào ngữ cảnh dựng ảnh.
+.venv/
+.env
+/data/

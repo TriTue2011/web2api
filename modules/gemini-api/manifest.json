@@ -1,0 +1,35 @@
+{
+  "id": "gemini-api",
+  "ten": "Gemini API (Google AI Studio)",
+  "mo_ta": "Gọi model Gemini bằng khoá API của Google AI Studio qua endpoint tương thích OpenAI của Google; xoay vòng nhiều khoá, nghỉ khoá khi hết hạn mức.",
+  "phien_ban": "0.1.0",
+  "loai": "ai",
+  "giao_thuc": "openai",
+  "tien_to": "gemini",
+  "yeu_cau_goi": ["httpx"],
+  "truong_cau_hinh": [
+    {
+      "khoa": "api_keys",
+      "nhan": "Khoá API",
+      "kieu": "danh_sach_bi_mat",
+      "bat_buoc": true,
+      "mac_dinh": null,
+      "mo_ta": "Một hoặc nhiều khoá từ https://aistudio.google.com/apikey. Nhiều khoá thì xoay vòng; khoá hết hạn mức (429) được cho nghỉ và dùng khoá kế."
+    },
+    {
+      "khoa": "base_url",
+      "nhan": "Địa chỉ gốc (base_url)",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "mo_ta": "Để trống là gọi thẳng Google. Bị chặn vùng thì nhập gốc proxy (ví dụ Cloudflare Worker); thiếu /v1beta/openai thì tự thêm."
+    }
+  ],
+  "tai_nguyen": {
+    "ram_them_mb": null,
+    "dia_mb": null,
+    "gpu": false,
+    "mang_ra": ["generativelanguage.googleapis.com"],
+    "ghi_chu": "Chưa đo RAM/đĩa thật (null = chưa đo). Ở Việt Nam Google có thể chặn vùng (lỗi «User location is not supported») — khi đó đặt base_url qua proxy, ví dụ deploy/cloudflare-gemini-proxy.js."
+  }
+}

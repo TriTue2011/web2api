@@ -1,0 +1,5 @@
+# Ghim đúng bản repo gốc đang chạy trên Python 3.13 (uv.lock): đã kiểm cùng nhau, tránh lệch hành vi.
+fastapi==0.136.0
+uvicorn==0.44.0
+# Gọi Google/GitHub/module từ xa (bất đồng bộ, stream từng dòng). Bản trong .venv của repo gốc, đo 10/10/2026.
+httpx==0.28.1

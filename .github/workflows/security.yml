@@ -1,0 +1,68 @@
+# Cổng bảo mật: chặn bí mật bị lộ, lỗi SAST mức cao và gói phụ thuộc có lỗ hổng đã biết.
+# Ba việc độc lập nhau nên chạy song song; job nào đỏ thì chỉ rõ đúng loại rủi ro đó.
+# Kho này PUBLIC: mọi thứ đã đẩy lên là ai cũng đọc được, nên cổng bí mật là cổng quan trọng nhất.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 2 * * 1"   # quét sâu định kỳ (thứ Hai 02:00 UTC): gói đang dùng có thể bị công bố lỗ hổng sau khi đã vào main
+
+permissions:
+  contents: read
+
+jobs:
+  # CỔNG BÍ MẬT — quét CẢ LỊCH SỬ git, không chỉ commit mới: khoá đã lỡ commit rồi xoá ở commit sau
+  # vẫn nằm trong lịch sử public, nên phải bị bắt (và phải được thu hồi, không chỉ xoá).
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # gitleaks quét cả lịch sử
+      - name: Gitleaks (secret scanning)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Action cần token để đọc danh sách commit của pull request.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # Nếu TriTue2011 là TỔ CHỨC (không phải tài khoản cá nhân) thì gitleaks-action yêu cầu
+          # thêm bí mật GITLEAKS_LICENSE trong Settings → Secrets; tài khoản cá nhân thì không cần.
+
+  # CỔNG MÃ — bandit chỉ quét mã của chính kho (app/ và modules/); test/ không nằm trong phạm vi.
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Bandit HIGH (hard-fail)
+        run: |
+          pip install bandit
+          # -lll = chỉ mức HIGH (lỗi vận hành nghiêm trọng) thì chặn; mức medium xem ở bước dưới.
+          bandit -r app modules -lll
+      # Báo cáo để thấy mà xử lý có kế hoạch, KHÔNG chặn: cổng đỏ vì báo nhầm thì người ta ngừng đọc nó.
+      - name: Bandit medium report (soft)
+        run: |
+          bandit -r app modules -ll || true
+
+  # CỔNG GÓI — chỉ requirements.txt (thứ ảnh Docker thật sự cài); requirements-dev.txt chỉ phục vụ test.
+  # pip-audit tự dò cả gói kéo theo (starlette, anyio…) vì requirements.txt chỉ ghim gói trực tiếp.
+  deps-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: pip-audit (Python SCA — fail on known vulns)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --progress-spinner off \
+            || { echo "::error::pip-audit found vulnerabilities — nâng gói hoặc ghi rõ lý do nếu chưa vá được"; exit 1; }

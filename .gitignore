@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# Môi trường ảo (uv venv / python -m venv)
+.venv/
+venv/
+# Bí mật và dữ liệu chạy thử: KHÔNG bao giờ đưa lên git (kho public)
+.env
+/data/
+admin_key
+bi_mat/
+*.sqlite
+# Rác soạn thảo / hệ điều hành
+.DS_Store
+*.swp

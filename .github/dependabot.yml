@@ -1,0 +1,37 @@
+# Dependabot: mỗi tuần mở pull request nâng phiên bản, để gói và hành động CI không cũ dần đến lúc có lỗ hổng.
+# Nhãn «phụ thuộc» phải được tạo sẵn trong Issues → Labels của kho; chưa có nhãn thì Dependabot vẫn
+# mở PR nhưng bỏ qua việc gắn nhãn.
+version: 2
+updates:
+  # Gói Python của lõi và của bộ test (requirements.txt, requirements-dev.txt ở gốc kho).
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["phụ thuộc"]
+    groups:
+      # Bản vá và bản nhỏ gom thành MỘT PR để chạy CI một lần; bản lớn (có thể phá tương thích)
+      # tách riêng từng gói để xem xét kỹ.
+      python-cap-nhat-nho:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Phiên bản các action trong .github/workflows (checkout, setup-python, build-push-action…).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["phụ thuộc"]
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Ảnh nền trong Dockerfile (python:3.13-slim ghim theo digest).
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["phụ thuộc"]
+    groups:
+      anh-nen:
+        patterns: ["*"]

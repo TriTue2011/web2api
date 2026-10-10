@@ -1,0 +1,39 @@
+# Gitleaks config — chặn commit lộ bí mật (chạy ở pre-commit trên máy và ở CI, quét cả lịch sử).
+# Kế thừa bộ luật mặc định của Gitleaks rồi chỉ thêm allowlist cho chuỗi GIẢ. Kho này PUBLIC nên
+# không tự thêm luật nới: một cổng đỏ vì báo nhầm thì người ta ngừng đọc nó, còn một cổng bị nới
+# quá tay thì để khoá thật lọt lên Internet — allowlist dưới đây vì thế được giữ HẸP và liệt kê
+# chính xác.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Chuỗi giả dùng trong test — không phải bí mật thật"
+# Mỗi regex được so với phần BÍ MẬT mà luật bắt được (không phải cả dòng) và neo ^…$ để chỉ khớp
+# ĐÚNG chuỗi đó. Cố ý KHÔNG viết dạng rộng như `AIza.*` hay `sk-.*`: dạng đó sẽ che luôn khoá thật.
+# Danh sách lấy bằng grep trong test/ ngày 11/10/2026; thêm test dùng chuỗi giả mới thì thêm vào đây.
+regexes = [
+  # Khoá Google giả (tiền tố AIza) — test/test_web2api_gemini.py, test_web2api_ui_loi_that.py,
+  # test_web2api_kiem_nghiem.py, test_web2api_cai_module_ui.py, test_web2api_xac_thuc_kho.py
+  '''^AIzaSyUI-TOT-0000000000000000000000tot1$''',
+  '''^AIzaSyUI-XAU-0000000000000000000000xau2$''',
+  '''^AIzaSyTOT-mot-000000000000000000000001$''',
+  '''^AIzaSyTOT-hai-000000000000000000000002$''',
+  '''^AIzaSyTOT-ba--000000000000000000000003$''',
+  '''^AIzaSySAI-bon-000000000000000000000004$''',
+  '''^AIzaSyKIEMNGHIEM-000000000000000000009$''',
+  '''^AIzaSy-KHOA-MOT-tot-1111$''',
+  '''^AIzaSy-KHOA-HAI-hong-2222$''',
+  '''^AIzaSyABCDEFGHIJKLmnop$''',
+  # Token GitHub giả — test/test_web2api_cai_module_ui.py
+  '''^ghp_TOKENRIENG1234567890$''',
+  # Khoá dạng OpenAI giả của module từ xa — test/test_web2api_tu_xa.py, test_web2api_cai_module_ui.py
+  '''^sk-lan-0000000000000000000000000000xyzw$''',
+  '''^sk-khoa-tu-xa-RIENG-7777$''',
+]
+paths = [
+  # Test dùng khoá giả để chứng minh khoá không bao giờ lọt ra phản hồi và nhật ký. Chuỗi giả cũng
+  # nằm lại trong lịch sử commit, nên đường dẫn được tha ở đây, còn regex phía trên là lớp thứ hai.
+  '''(^|/)test/''',
+  # Chính tệp này chứa các chuỗi giả ở trên.
+  '''\.gitleaks\.toml$''',
+]

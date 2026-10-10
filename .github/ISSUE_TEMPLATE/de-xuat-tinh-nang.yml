@@ -1,0 +1,55 @@
+name: Đề xuất tính năng
+description: Đề xuất một việc lõi web2api nên làm được mà hiện chưa làm
+title: "[Tính năng] "
+labels: ["tính năng"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Đề xuất này dành cho **lõi** web2api (xác thực, định tuyến, trang quản trị, nguồn git…).
+        Muốn thêm một nguồn AI mới thì dùng mẫu «Đề xuất module». Kho công khai: đừng dán khoá hay dữ liệu thật vào đây.
+  - type: input
+    id: phien-ban
+    attributes:
+      label: Phiên bản web2api
+      description: Mở `http://<máy-chủ>:3031/health` và chép giá trị `phien_ban`, hoặc chép nội dung tệp `VERSION`.
+      placeholder: "0.1.0-khung"
+    validations:
+      required: true
+  - type: dropdown
+    id: cach-chay
+    attributes:
+      label: Cách chạy
+      options:
+        - docker compose (docker compose up -d)
+        - docker run
+        - Ảnh từ ghcr.io/tritue2011/web2api
+        - Chạy trực tiếp bằng uvicorn (không Docker)
+        - Khác
+    validations:
+      required: true
+  - type: textarea
+    id: bai-toan
+    attributes:
+      label: Bạn đang gặp khó khăn gì
+      description: Nêu việc bạn muốn làm và vì sao hiện tại chưa làm được — mô tả bài toán trước, đừng vội mô tả giải pháp.
+    validations:
+      required: true
+  - type: textarea
+    id: de-xuat
+    attributes:
+      label: Bạn đề xuất cách nào
+      description: Hành vi mong muốn, ví dụ một lệnh `curl` hoặc thao tác trên trang Module.
+    validations:
+      required: true
+  - type: textarea
+    id: thay-the
+    attributes:
+      label: Cách khác đã cân nhắc
+      description: Việc bạn đang tạm làm để vượt qua, hoặc phương án khác và vì sao bạn không chọn.
+  - type: textarea
+    id: nhat-ky
+    attributes:
+      label: Nhật ký hoặc ảnh liên quan (đã xoá khoá API)
+      description: Không bắt buộc. **Xoá hết khoá API, khoá quản trị, token trước khi dán.**
+      render: text

@@ -1,0 +1,80 @@
+name: Đề xuất module
+description: Đề xuất một module nguồn AI mới (một dịch vụ nên có trong thư mục modules/)
+title: "[Module] "
+labels: ["module"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Module là một nguồn AI cài thêm lúc chạy từ thư mục `modules/` của kho. Mẫu này giúp chốt
+        trước các điều cần biết; cách tự viết module nằm ở `CONTRIBUTING.md` và `docs/MAU-TIEU-MUC-MODULE.md`.
+        Kho công khai: đừng dán khoá hay dữ liệu thật vào đây.
+  - type: input
+    id: phien-ban
+    attributes:
+      label: Phiên bản web2api
+      description: Mở `http://<máy-chủ>:3031/health` và chép giá trị `phien_ban`, hoặc chép nội dung tệp `VERSION`.
+      placeholder: "0.1.0-khung"
+    validations:
+      required: true
+  - type: dropdown
+    id: cach-chay
+    attributes:
+      label: Cách chạy
+      options:
+        - docker compose (docker compose up -d)
+        - docker run
+        - Ảnh từ ghcr.io/tritue2011/web2api
+        - Chạy trực tiếp bằng uvicorn (không Docker)
+        - Khác
+    validations:
+      required: true
+  - type: input
+    id: dich-vu
+    attributes:
+      label: Dịch vụ AI muốn thêm
+      description: Tên dịch vụ và đường dẫn tài liệu API chính thức.
+      placeholder: "Tên dịch vụ — https://..."
+    validations:
+      required: true
+  - type: dropdown
+    id: giao-thuc
+    attributes:
+      label: Dịch vụ đó có nói chuẩn OpenAI không
+      description: |
+        Nếu dịch vụ đã nói chuẩn OpenAI (`/v1/chat/completions`) thì thường **không cần module mới**:
+        đăng ký bằng «Module từ xa» trên trang Module là chạy được.
+      options:
+        - Có, đã nói chuẩn OpenAI
+        - Không, dùng giao thức riêng
+        - Chưa rõ
+    validations:
+      required: true
+  - type: textarea
+    id: xac-thuc
+    attributes:
+      label: Cách xác thực và lấy khoá
+      description: Dịch vụ cần khoá, tài khoản hay đăng nhập thế nào, lấy ở đâu. Chỉ ghi cách làm — **không dán khoá thật**.
+    validations:
+      required: true
+  - type: textarea
+    id: mang-ra
+    attributes:
+      label: Máy cần kết nối tới
+      description: Tên máy (host) module sẽ gọi ra — web2api ghi danh sách này vào manifest để người cài biết quyền mạng.
+      placeholder: "api.example.com"
+    validations:
+      required: true
+  - type: textarea
+    id: ly-do
+    attributes:
+      label: Vì sao nên có module này
+      description: Nó giải quyết việc gì mà các module hiện có chưa làm được? Bạn có sẵn lòng tự viết hoặc thử bản nháp không?
+    validations:
+      required: true
+  - type: textarea
+    id: nhat-ky
+    attributes:
+      label: Nhật ký hoặc ví dụ gọi thử (đã xoá khoá API)
+      description: Không bắt buộc. **Xoá hết khoá API, khoá quản trị, token trước khi dán.**
+      render: text
