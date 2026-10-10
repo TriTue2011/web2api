@@ -1,0 +1,13 @@
+# Pre-commit hooks — chặn bí mật NGAY tại máy trước khi commit (chạy offline, tức thì).
+# Kho này PUBLIC: khoá đã commit là đã lộ, kể cả khi xoá ở commit sau. Chặn từ trước khi commit rẻ hơn nhiều.
+# Cài: pipx install pre-commit && pre-commit install
+#
+# Bản gitleaks ghim ở đây (v8.30.1) là bản đã chạy sạch trên toàn bộ lịch sử kho ngày 11/10/2026 và
+# trùng với bản mà CI (gitleaks-action) đang dùng. Bản cũ hơn (≤ 8.21) không có luật `generic-api-key`
+# mới nên pre-commit xanh mà CI lại đỏ — đã xảy ra ở lần CI đầu tiên (xem .gitleaks.toml).
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        args: ["--config", ".gitleaks.toml"]
