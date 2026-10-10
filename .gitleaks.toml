@@ -29,6 +29,13 @@ regexes = [
   # Khoá dạng OpenAI giả của module từ xa — test/test_web2api_tu_xa.py, test_web2api_cai_module_ui.py
   '''^sk-lan-0000000000000000000000000000xyzw$''',
   '''^sk-khoa-tu-xa-RIENG-7777$''',
+  # ĐỊNH DANH, không phải bí mật — luật `generic-api-key` của gitleaks ≥ 8.30 bắt nhầm vì tên dự án
+  # «WEB2API» chứa chữ «API», nên mọi dòng dạng `WEB2API_GIT_REPO=...` bị coi là «khoá = giá trị».
+  # Đo ngày 11/10/2026 (CI chạy lần đầu đỏ ở job secret-scan; tái hiện cục bộ bằng gitleaks 8.30.1):
+  # 5 phát hiện, giá trị bị bắt chỉ là hai chuỗi dưới đây (tên kho công khai và tên một biến môi trường).
+  # Neo ^…$ nên chỉ khớp ĐÚNG hai dạng định danh này; một khoá thật không trùng được với chúng.
+  '''^TriTue2011/web2api$''',
+  '''^WEB2API_[A-Z0-9_]+$''',
 ]
 paths = [
   # Test dùng khoá giả để chứng minh khoá không bao giờ lọt ra phản hồi và nhật ký. Chuỗi giả cũng
