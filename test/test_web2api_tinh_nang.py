@@ -12,6 +12,8 @@ cung cấp» trong lõi/khung (tên suy từ manifest của chính các module t
 import ast
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -152,6 +154,91 @@ def test_khong_lo_bi_mat(du_lieu, monkeypatch):
                                                        "base_url": s.url + "/v1", "api_key": "sk-khoa-tu-xa-RIENG-7777"})
         van_ban = c.get("/api/tinh-nang").text
     assert "sk-khoa" not in van_ban and "7777" not in van_ban and "base_url" not in van_ban
+
+
+# ───────────── bảng điều kiện của KHUNG (web/khung.js) trên dữ liệu thật ─────────────
+
+def _khung(tn_: dict, bieu_thuc: str):
+    """Chạy web/khung.js THẬT bằng node trên dữ liệu `/api/tinh-nang` thật; trả giá trị của `bieu_thuc` (JS, có K, tn)."""
+    ma = (
+        "const fs = require('fs'), vm = require('vm');"
+        "const sb = {window: {}, location: {href: 'http://may/', replace() {}}, URL, console};"
+        "vm.createContext(sb);"
+        f"vm.runInContext(fs.readFileSync({json.dumps(str(GOC / 'web' / 'khung.js'))}, 'utf8'), sb);"
+        f"const K = sb.window.Khung, tn = {json.dumps(tn_)};"
+        f"process.stdout.write(JSON.stringify({bieu_thuc}));"
+    )
+    r = subprocess.run(["node", "-e", ma], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+TOM_TAT_KHUNG = """({
+  studio: K.du('studio', tn), che_do: ['studio_chat', 'studio_anh', 'studio_video'].filter((m) => K.du(m, tn)),
+  dung_duoc: ['studio_chat', 'studio_anh', 'studio_video'].filter((m) => K.dungDuoc(m, tn)),
+  ai: K.du('ai', tn), tai_khoan: K.du('tai_khoan', tn), provider: K.du('provider', tn), combo: K.du('combo', tn),
+  nav: K.navChinh(tn, '').map((x) => x.id), trang_dau: K.trangDau(tn)
+})"""
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="cần node")
+def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
+    """Chủ máy 11/10: Studio (tab «chính» theo khả năng) hiện khi module ĐÃ CÀI, không đợi khoá; chỉ GỌI /v1 được
+    khi đã liên kết. Provider vẫn đợi liên kết; Combo không bao giờ (chưa có backend)."""
+    dat(du_lieu, "chat-gia", tep_gia("chat-gia", cung_cap=["chat", "anh"]))          # cài, CHƯA liên kết
+    with TestClient(app) as c:
+        rong = _khung(tn(c) | {"modules": [], "kha_nang_da_cai": {}, "kha_nang_lien_ket": {}},
+                      "({studio: K.du('studio', tn), nav: K.navChinh(tn, '').map((x) => x.id), trang_dau: K.trangDau(tn)})")
+        assert rong["studio"] is False and rong["nav"] == [] and rong["trang_dau"] == "He-thong.dc.html"
+
+        j = tn(c)
+        assert j["kha_nang_lien_ket"] == {}
+        k = _khung(j, "K.du('studio', tn)")
+        assert k is True, "module khai chat đã CÀI (chưa khoá) phải có Studio"
+        k = _khung(j, TOM_TAT_KHUNG)
+        assert k == {"studio": True, "che_do": ["studio_chat", "studio_anh"], "dung_duoc": [], "ai": True,
+                     "tai_khoan": True, "provider": False, "combo": False, "nav": ["studio"],
+                     "trang_dau": "Studio.dc.html"}, k
+        # Câu «cần gì» của Studio nói về CÀI, không về liên kết.
+        assert "cài một module có «chat»" in _khung(j | {"modules": [], "kha_nang_da_cai": {}}, "K.loiThieu('studio', tn)")
+        # Module chưa có khoá cho một chế độ → đi đâu để thêm khoá: module có mã «ai» → Hệ thống → AI → Tài khoản.
+        assert _khung(j, "K.chuaKhoaCho('studio_chat', tn).map((m) => m.id)") == ["chat-gia"]
+        assert _khung(j, "K.noiThemKhoa(tn.modules[0], tn)") == {
+            "tab": "tai_khoan", "href": "He-thong-AI.dc.html#tk-chat-gia", "nhan": "Hệ thống → AI → Tài khoản"}
+        assert _khung(j, "K.trangChinhCua('chat-gia', tn)")["href"] == "Studio.dc.html"
+
+        assert c.post("/api/modules/chat-gia/cai", json={"cau_hinh": {}}, headers=QT).json()["ok"]
+        k = _khung(tn(c), TOM_TAT_KHUNG)
+        assert k["dung_duoc"] == ["studio_chat", "studio_anh"] and k["provider"] is True and k["combo"] is False, k
+        assert _khung(tn(c), "K.chuaKhoaCho('studio_chat', tn)") == []
+
+        # Hai nguồn AI đã liên kết: đủ «≥ 2» nhưng Combo chưa có backend → vẫn không.
+        dat(du_lieu, "chat-hai", tep_gia("chat-hai", cung_cap=["chat"]))
+        assert c.post("/api/modules/nap-lai", headers=QT).status_code == 200
+        assert c.post("/api/modules/chat-hai/cai", json={"cau_hinh": {}}, headers=QT).json()["ok"]
+        assert _khung(tn(c), "K.du('combo', tn)") is False
+
+        # Gỡ hết → trở lại như ca 0.
+        for id_ in ("chat-gia", "chat-hai"):
+            assert c.delete(f"/api/modules/{id_}", headers=QT).status_code == 200
+        k = _khung(tn(c), TOM_TAT_KHUNG)
+        assert k["studio"] is False and k["ai"] is False and k["nav"] == [], k
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="cần node")
+def test_khung_module_loai_la_khong_co_trang_chinh_va_them_khoa_o_trang_module(du_lieu):
+    """Module loại LẠ (`mang`, khả năng `dinh_tuyen`): không ứng tab chính nào → cài xong ở lại trang Module; module
+    không mang mã của tab Tài khoản thì thêm khoá ở bảng chi tiết của chính nó. Không bảng tên nào trong khung."""
+    dat(du_lieu, "mang-gia", tep_gia("mang-gia", loai="mang", cung_cap=["dinh_tuyen"]))
+    dat(du_lieu, "app-chat", tep_gia("app-chat", loai="app", cung_cap=["chat"]))
+    with TestClient(app) as c:
+        j = tn(c)
+        assert _khung(j, "K.trangChinhCua('mang-gia', tn)") is None
+        # Module loại «app» nhưng khai chat: vẫn ứng Studio (theo khả năng, không theo loại) …
+        assert _khung(j, "K.trangChinhCua('app-chat', tn)")["href"] == "Studio.dc.html"
+        # … còn khoá thì thêm ở bảng chi tiết (nó không mang mã của tab Tài khoản).
+        assert _khung(j, "K.noiThemKhoa(tn.modules.find((m) => m.id === 'app-chat'), tn)") == {
+            "tab": "module", "href": "He-thong.dc.html#module-app-chat", "nhan": "Hệ thống → Module"}
 
 
 # ───────────── kiểm mẫu manifest ─────────────

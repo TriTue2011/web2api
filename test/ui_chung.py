@@ -75,7 +75,15 @@ class Trang:
     def cho(self, expr: str, han: float = 8, mo_ta: str = ""):
         cuoi = time.monotonic() + han
         while True:
-            v = self.js(expr)
+            try:
+                v = self.js(expr)
+            except RuntimeError as e:
+                # Trang TỰ điều hướng đúng lúc đang hỏi (vd «Cài» xong chuyển sang Studio): DevTools báo «Inspected target
+                # navigated or closed» thay vì trả giá trị — hỏi lại ở trang mới. Khớp theo chữ vì mã lỗi -32000 của CDP
+                # dùng chung cho mọi lỗi khác; lỗi khác vẫn ném ra.
+                if "navigated or closed" not in str(e):
+                    raise
+                v = None
             if v:
                 return v
             if time.monotonic() > cuoi:

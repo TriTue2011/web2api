@@ -49,7 +49,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
-| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, bảng chi tiết «Cần gì để chạy», Cài → thêm khoá → liên kết), Hệ thống → AI (Tài khoản, Provider), Studio (chat stream, ảnh, video) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
+| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
 | Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
 | Khoá khách, «Địa chỉ truy cập công khai», Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
 | Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
@@ -127,7 +127,7 @@ sequenceDiagram
 Không thuộc module nào → `404 model_not_found`; module đã cài mà chưa liên kết → `404 module_not_configured`;
 module không có khả năng được gọi (ví dụ không có `anh`) → `501 capability_not_supported`.
 
-### Cài → liên kết → tab hiện (không tải lại trang)
+### Cài → vào Studio → thêm khoá (không tải lại trang)
 
 ```mermaid
 sequenceDiagram
@@ -138,16 +138,22 @@ sequenceDiagram
   U->>G: mở địa chỉ gốc khi chưa cài gì
   G->>L: GET /api/tinh-nang
   L-->>G: không module nào → chỉ trang Hệ thống → Module
-  U->>G: dán khoá quản trị, bấm ô «Chưa cài» → «Cài»
+  U->>G: dán khoá quản trị, bấm «Cài» trên ô «Chưa cài» (hoặc trong bảng chi tiết)
   G->>L: POST /api/nguon-git/cai/ID
   L->>H: tải đúng commit đã báo, kiểm băm từng tệp
-  L-->>G: đã cài (mã trên đĩa), chưa liên kết → hiện bước «Thêm tài khoản/khoá API»
-  U->>G: dán khoá → «Kiểm tra và lưu»
+  L-->>G: đã cài (mã trên đĩa), chưa liên kết
+  G->>L: GET /api/tinh-nang (tính lại điều kiện)
+  L-->>G: kha_nang_da_cai có chat → Studio và Hệ thống → AI → Tài khoản mở
+  G-->>U: chuyển sang Studio kèm dải «Đã cài …», Studio ở trạng thái rỗng «Chưa có khoá …»
+  U->>G: bấm «Thêm khoá» → Hệ thống → AI → Tài khoản (đúng thẻ module), dán khoá → «Kiểm tra và lưu»
   G->>L: POST /api/modules/ID/cai (thêm khoá dạng giu/them)
   L-->>G: ok + kết quả từng khoá (dạng che)
   G->>L: GET /api/tinh-nang (tính lại điều kiện)
-  L-->>G: kha_nang_lien_ket có chat → Studio và AI/Provider hiện ngay
+  L-->>G: kha_nang_lien_ket có chat → Provider hiện ngay, Studio hết trạng thái rỗng
 ```
+
+Module không ứng tab chính nào (ví dụ loại «mạng» chỉ khai `dinh_tuyen`) thì cài xong ở lại Hệ thống → Module, bảng
+chi tiết mở ở bước kế tiếp.
 
 ### Cấu hình nào thuộc phần nào
 
@@ -189,10 +195,10 @@ vẫn chạy.
 
 | Trang | Hiện khi | Nội dung |
 |---|---|---|
-| `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module chat đã liên kết → Studio; chưa → Hệ thống → Module |
+| `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
 | `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị, tìm kiếm + chip lọc loại + lọc trạng thái, lưới ô theo loại, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
-| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Tab «Tài khoản» (thêm/bớt khoá), tab «Provider» khi có ≥ 1 module `ai` **đã liên kết** (model thật từ `/v1/models`, sức khoẻ từng khoá kể cả trạng thái ảnh/video) |
-| `Studio.dc.html` — Studio | có ≥ 1 module đã liên kết khai `chat` | Chat (stream), chế độ «Ảnh» khi có module khai `anh`, «Video» khi có module khai `video` |
+| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Tab «Tài khoản» — nơi thêm/bớt khoá; module chưa liên kết đứng đầu, ghi rõ «Chưa có khoá»; neo `#tk-<id>` tới đúng thẻ. Tab «Provider» khi có ≥ 1 module `ai` **đã liên kết** (model thật từ `/v1/models`, sức khoẻ từng khoá kể cả trạng thái ảnh/video) |
+| `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chat (stream), chế độ «Ảnh» khi có module **đã cài** khai `anh`, «Video» khi có module **đã cài** khai `video`. Chế độ chưa có module **đã liên kết** hiện trạng thái rỗng «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module; gửi bị chặn ngay trên trang với cùng lời nhắn, không gọi `/v1` |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
 
 Tab/mục không đạt điều kiện **không có trong DOM**; gõ tay đường dẫn tới đó thì trang chuyển về Hệ thống → Module
@@ -203,7 +209,10 @@ có backend.
 **Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được
 chọn sẵn): biểu tượng, tên, chip loại, mô tả cắt gọn, trạng thái — **Chưa cài** · **Đã cài — chờ khoá** (hoặc «chờ
 liên kết» nếu không có trường bắt buộc) · **Đang chạy** · **Có bản mới** · **Lỗi** — và dải tài nguyên (RAM thêm ·
-đĩa · GPU · dung lượng tải; số chưa khai ghi «chưa đo»). **Bảng chi tiết** (cột phải; tờ trượt trên điện thoại):
+đĩa · GPU · dung lượng tải; số chưa khai ghi «chưa đo»). Chân ô có **một nút hành động** theo trạng thái: **«Cài»**
+(chưa có mã) · **«Cập nhật»** (có bản mới) · **«Thêm khoá»** (đã cài, cần khoá, chưa liên kết — tới Hệ thống → AI →
+Tài khoản nếu module thuộc tab đó, ngược lại mở bảng chi tiết ngay ở bước thêm khoá). Nút này là anh em của nút chọn
+ô, không lồng trong nó: một cú bấm chỉ làm một việc, và bấm liền hai lần chỉ cài một lần. **Bảng chi tiết** (cột phải; tờ trượt trên điện thoại):
 mô tả, khối «Cần gì để chạy» (tài nguyên, gói Python, mạng ra, hướng dẫn bằng chữ từ `tai_nguyen.ghi_chu`, một dòng
 «Máy này đủ chạy / có thể thiếu» khi đọc được `/api/he-thong` và module có khai số), mục của module, nút theo trạng
 thái: **«Cài»** (chưa có mã trên máy) · **«Cập nhật»** (đã cài, có bản mới) · form «Thêm tài khoản/khoá API» · «Gỡ».
@@ -238,11 +247,21 @@ curl -s $W/api/tinh-nang
 ```
 
 **Một hàm đánh giá cho cả khung lẫn module.** Mỗi dòng điều kiện có dạng `{can: [mã…], pham_vi: "lien_ket" |
-"da_cai", toi_thieu: n}`. Bảng của khung (`DIEU_KIEN` trong `web/khung.js`): Module — luôn; AI và Tài khoản —
-`can: ["ai"]`, `da_cai`; Provider — `can: ["ai"]`; Combo — `can: ["ai"]`, `toi_thieu: 2`, chưa có backend; Studio
-và chế độ Chat — `can: ["chat"]`; chế độ Ảnh — `["anh"]`; Video — `["video"]`. Mục `muc` của module dùng đúng hàm
-đó (thêm điều kiện chính module phải đã liên kết). Thêm tính năng mới của khung = thêm một dòng; thêm module mới =
-thả thư mục, không sửa khung.
+"da_cai", toi_thieu: n}`. Bảng của khung (`DIEU_KIEN` trong `web/khung.js`):
+
+| Tab / mục | Điều kiện hiện |
+|---|---|
+| Hệ thống → Module | luôn; trang đầu khi chưa cài gì |
+| Hệ thống → AI, AI → Tài khoản | `can: ["ai"]`, `da_cai` |
+| AI → Provider | `can: ["ai"]` (đã liên kết) |
+| AI → Combo | `can: ["ai"]`, `toi_thieu: 2`, chưa có backend → không bao giờ hiện |
+| Studio (trang chính) và chế độ Chat | `can: ["chat"]`, `da_cai` |
+| Chế độ Ảnh / Video | `can: ["anh"]` / `["video"]`, `da_cai` |
+
+Tab «chính» và chế độ của nó hiện khi module **đã cài**; **gọi được `/v1`** hay chưa là đúng dòng đó xét lại ở phạm
+vi đã liên kết (`dungDuoc` trong `khung.js`, cùng hàm `thieu`) — chưa đủ thì trang hiện trạng thái rỗng chỉ chỗ thêm
+khoá thay vì ẩn. Mục `muc` của module dùng đúng hàm đó (thêm điều kiện chính module phải đã liên kết). Thêm tính
+năng mới của khung = thêm một dòng; thêm module mới = thả thư mục, không sửa khung.
 
 #### Viết một module
 
@@ -659,8 +678,9 @@ trình duyệt đó (`localStorage`). Khoá sai thì trang báo «Khoá sai ho�
 ![Lưới module nhiều loại, nhiều trạng thái](docs/anh/nhieu-o-may-tinh.png)
 
 *Ảnh 3 — Đã dán khoá, chip «Tất cả»: ô xếp theo loại (khu «AI», «App», «Mạng»), mỗi ô có trạng thái và dải tài
-nguyên. «Ghi chú (mẫu)» và «Mạng giả» là module mẫu chỉ để minh hoạ nhiều loại; gemini-api là module thật của kho
-(đang «Chưa cài», trên git).*
+nguyên, chân ô có nút hành động theo trạng thái («Cài» ở gemini-api, «Cập nhật» ở «Ghi chú (mẫu)»). «Ghi chú (mẫu)»
+và «Mạng giả» là module mẫu chỉ để minh hoạ nhiều loại; gemini-api là module thật của kho (đang «Chưa cài», trên
+git).*
 
 ![Lưới module trên điện thoại](docs/anh/nhieu-o-dien-thoai.png)
 
@@ -677,36 +697,55 @@ ra, dung lượng tải đo từ cây git, gói Python, hướng dẫn từ mani
 
 1. **Chọn ô** module (khu đầu tiên — thường là «AI» — được chọn sẵn; chip loại và chip trạng thái để lọc, ô tìm
    kiếm không phân biệt dấu). Module trên git chỉ hiện sau khi dán khoá quản trị.
-2. Đọc **«Cần gì để chạy»**, bấm **«Cài»** — không cần khoá API. Vài giây sau ô thành «Đã cài — chờ khoá», tab «AI»
-   của Hệ thống hiện, và bảng chuyển sang **«Bước tiếp theo · Thêm tài khoản/khoá API»** (form dựng từ manifest).
-3. Dán khoá API (mỗi dòng một khoá); ô «Địa chỉ gốc» để trống trừ khi cần proxy. Bấm **«Kiểm tra và lưu»**:
-   web2api thử từng khoá (không tốn token), hiện kết quả từng khoá ở dạng che, chỉ lưu khoá dùng được.
-4. Liên kết xong, khung **tính lại điều kiện ngay, không tải lại trang**: «Quay lại» trỏ Studio, Hệ thống có thêm
-   «AI → Provider», khối «Kết nối với web2api» ẩn đi. Về sau thêm/bớt từng khoá ở cùng chỗ hoặc ở Hệ thống → AI →
-   Tài khoản; khoá đã lưu chỉ thấy dạng che.
+2. Đọc **«Cần gì để chạy»**, bấm **«Cài»** (trong bảng chi tiết, hoặc nút «Cài» ngay trên ô) — không cần khoá API.
+   Module khai `chat` thì vài giây sau trang **tự chuyển sang Studio** kèm dải «Đã cài … Thêm khoá ở Hệ thống → AI →
+   Tài khoản để dùng.» Studio hiện đủ các chế độ module khai, ở **trạng thái rỗng** «Chưa có khoá cho …» với nút tới
+   đúng thẻ của module; bấm «Gửi» lúc này chỉ hiện lại lời nhắc đó, không gọi `/v1`.
+3. Bấm **«Thêm khoá»** → Hệ thống → AI → **Tài khoản** (module chưa có khoá đứng đầu). Dán khoá API (mỗi dòng một
+   khoá); ô «Địa chỉ gốc» để trống trừ khi cần proxy. Bấm **«Kiểm tra và lưu»**: web2api thử từng khoá (không tốn
+   token), hiện kết quả từng khoá ở dạng che, chỉ lưu khoá dùng được.
+4. Lưu xong, khung **tính lại điều kiện ngay, không tải lại trang**: tab «Provider» hiện, chú thích «Chưa có khoá»
+   mất, có nút «Mở Studio»; về Studio thì hết trạng thái rỗng và chat được. Khối «Kết nối với web2api» ở trang
+   Module ẩn sau liên kết đầu tiên. Về sau thêm/bớt từng khoá ở Tài khoản hoặc trong bảng chi tiết của ô; khoá đã
+   lưu chỉ thấy dạng che. Module không ứng tab chính nào (ví dụ loại «mạng») thì cài xong ở lại trang Module, bảng
+   chi tiết mở ở bước «Thêm tài khoản/khoá API» như cũ.
+
+![Studio ngay sau khi cài, chưa có khoá](docs/anh/sau-cai-may-tinh.png)
+
+*Ảnh 7 — Cài gemini-api xong (chưa khoá): trang tự sang Studio, dải «Đã cài …» ở trên, khung Studio ở trạng thái rỗng
+«Chưa có khoá cho «Gemini API (Google AI Studio)». Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng thẻ;
+danh sách model nói rõ vì sao còn trống.*
+
+![Studio chưa có khoá trên điện thoại](docs/anh/sau-cai-dien-thoai.png)
+
+*Ảnh 8 — Cùng trạng thái trên điện thoại.*
 
 ![Hệ thống → AI → Provider sau khi liên kết nguồn AI đầu tiên](docs/anh/sau-lien-ket-may-tinh.png)
 
-*Ảnh 7 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): nút «Quay lại Studio» (Studio đã mở), Hệ thống có
+*Ảnh 9 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): nút «Quay lại Studio» (Studio đã mở), Hệ thống có
 «Module» và «AI», tab «Tài khoản» và
 «Provider» — model thật từ `/v1/models`, sức khoẻ từng khoá và trạng thái ảnh/video theo khoá. Không có «Combo»
 (chỉ một nguồn AI, và Combo chưa có backend).*
 
 ![Provider trên điện thoại](docs/anh/sau-lien-ket-dien-thoai.png)
 
-*Ảnh 8 — Provider trên điện thoại.*
+*Ảnh 10 — Provider trên điện thoại.*
 
 ### Studio
 
 ![Studio: một lượt chat stream](docs/anh/studio-may-tinh.png)
 
-*Ảnh 9 — Studio: chế độ Chat / Ảnh / Video hiện vì module đã liên kết khai `chat`, `anh`, `video`; model lấy từ
+*Ảnh 11 — Studio: chế độ Chat / Ảnh / Video hiện vì module đã cài khai `chat`, `anh`, `video` (đã có khoá nên gọi
+được); model lấy từ
 `/v1/models` theo tiền tố của module đó; câu trả lời hiện dần theo stream (Google giả trả «MộtHai»).*
 
 ![Studio trên điện thoại](docs/anh/studio-dien-thoai.png)
 
-*Ảnh 10 — Studio trên điện thoại.*
+*Ảnh 12 — Studio trên điện thoại.*
 
+- Studio có ngay khi cài module khai `chat`. Chế độ nào chưa có module **đã liên kết** thì hiện trạng thái rỗng
+  «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module (nhiều module thì mỗi module
+  một nút); gửi bị chặn trên trang với cùng lời nhắn thay vì để `/v1` trả `404 module_not_configured`.
 - **Chat**: hội thoại nhiều lượt qua `POST /v1/chat/completions`, có stream, nút «Dừng» giữ phần đã nhận.
 - **Ảnh** (khi có module khai `anh`): `POST /v1/images/generations`, ảnh hiện tại chỗ và tải về được.
 - **Video** (khi có module khai `video`): `POST /v1/videos` → hỏi `GET /v1/videos/{id}` mỗi 3 giây → tải
@@ -801,9 +840,10 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 | Hiện tượng | Nguyên nhân và cách xử lý |
 |---|---|
 | `401` «Thiếu hoặc sai khoá quản trị» / trang báo «Khoá sai hoặc thiếu» | Thiếu header `Authorization: Bearer <khoá>` hoặc khoá sai; trên trang bấm «Đổi khoá» và dán lại. Lấy lại: `docker exec web2api cat /data/admin_key`. |
-| Gõ địa chỉ Studio / Hệ thống → AI mà bị đưa về trang Module kèm «… chưa mở được» | Tab đó chưa đủ điều kiện (ví dụ chưa có module chat nào đã liên kết). Dòng thông báo nói rõ cần cài/liên kết gì. |
+| Gõ địa chỉ Studio / Hệ thống → AI mà bị đưa về trang Module kèm «… chưa mở được» | Tab đó chưa đủ điều kiện (ví dụ chưa cài module chat nào). Dòng thông báo nói rõ cần cài/liên kết gì. |
+| Studio hiện «Chưa có khoá cho …» và không gửi được | Module đã cài nhưng chưa liên kết. Bấm nút trong khung đó (tới Hệ thống → AI → Tài khoản) để thêm khoá. |
 | `404` «không thuộc module nào» | Tên model thiếu tiền tố hoặc tiền tố chưa liên kết. Xem `/v1/models`. |
-| `404` «đã cài nhưng chưa có khoá» | Module đã cài, chưa liên kết: thêm khoá ở bảng chi tiết của ô module, hoặc `POST /api/modules/<id>/cai`. |
+| `404` «đã cài nhưng chưa có khoá» | Module đã cài, chưa liên kết: thêm khoá ở Hệ thống → AI → Tài khoản (hoặc bảng chi tiết của ô module), hoặc `POST /api/modules/<id>/cai`. |
 | Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 4, gemini-api). |
 | `429` từ nhà cung cấp | Hết hạn mức; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
 | `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được nhà cung cấp cho việc đó — với Gemini thường là khoá hạng miễn phí. Xem tiểu mục module. |
@@ -889,13 +929,16 @@ uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
 - Mọi kiểm thử dùng máy chủ **giả** cục bộ (Google, GitHub, dịch vụ OpenAI); `test/conftest.py` chặn mọi đường ra
   Internet.
 - `test/test_web2api_tinh_nang.py`: `/api/tinh-nang` theo từng ca (0 module · AI đã cài chưa khoá · đã liên kết ·
-  loại/khả năng lạ · module từ xa · gỡ), kiểm mẫu manifest, tóm tắt module trên git, và **lưới chặn đặc thù nhà
+  loại/khả năng lạ · module từ xa · gỡ), bảng điều kiện của khung (`web/khung.js` chạy bằng `node` trên dữ liệu
+  `/api/tinh-nang` thật: Studio khi đã cài, gọi được khi đã liên kết, trang chính và nơi thêm khoá của từng module),
+  kiểm mẫu manifest, tóm tắt module trên git, và **lưới chặn đặc thù nhà
   cung cấp**: chuỗi và định danh trong mã `app/` cùng mọi tệp `web/` không được chứa tên suy từ manifest của các
   module trong kho (tiền tố, id, tên máy trong `mang_ra`; chú thích và docstring không tính; CDN phông chữ được
   trừ).
 - `test/test_web2api_giao_dien.py`: giao diện bằng **Chrome thật** trên **lõi thật** với module giả
-  (`test/ui_mau.py`) — DOM đúng từng ca điều kiện, gõ tay đường dẫn bị chuyển, Cài → thêm khoá → tab hiện không
-  tải lại, `base_url` đã đặt không bị ghi đè, thêm/bớt từng khoá, Provider không Combo, Studio stream/dừng/80 khúc,
+  (`test/ui_mau.py`) — DOM đúng từng ca điều kiện, gõ tay đường dẫn bị chuyển, Cài → tự sang Studio rỗng (chặn gửi,
+  không gọi `/v1`) → thêm khoá ở Hệ thống → AI → Provider hiện không tải lại, nút trên ô chỉ kích hoạt một lần,
+  module loại lạ cài xong ở lại trang Module, `base_url` đã đặt không bị ghi đè, thêm/bớt từng khoá, Provider không Combo, Studio stream/dừng/80 khúc,
   ảnh, video, `403 no_key_permitted`, không chèn HTML thô, ô cao bằng nhau, không tràn ngang ở 390 px.
   `test/test_web2api_ui_loi_that.py` đi trọn luồng với module gemini-api thật (Google, GitHub giả).
   Hạ tầng Chrome dùng chung: `test/ui_chung.py`.

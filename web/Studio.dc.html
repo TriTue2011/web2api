@@ -22,6 +22,7 @@ main.pg{max-width:920px}
 .ket-qua-anh{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));gap:12px}
 .ket-qua-anh figure{margin:0;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--card)}
 .ket-qua-anh img,.video-kq video{width:100%;height:auto;border-radius:10px;background:#EEECE7;display:block}
+.chua-khoa-studio{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--ink)}
 </style>
 </helmet>
 <div class="goc">
@@ -38,6 +39,9 @@ main.pg{max-width:920px}
 <sc-if value="{{tnLoi}}"><p role="alert" class="bao bao-loi">Không đọc được dữ liệu: {{tnLoi}}</p></sc-if>
 
 <sc-if value="{{sanSang}}">
+<sc-if value="{{daCaiChu}}">
+<div role="status" class="bao bao-tot dong-nut" id="da-cai"><span style="flex:1 1 220px;min-width:0">{{daCaiChu}}</span><sc-if value="{{daCaiCanKhoa}}"><a class="nut nut-nho nut-chinh" href="{{daCaiHref}}">Thêm khoá</a></sc-if><button type="button" class="nut nut-nho" id="dong-da-cai" onClick="{{dongDaCai}}">Đóng</button></div>
+</sc-if>
 <header style="display:flex;flex-direction:column;gap:8px">
 <span class="nhan-tren">Studio</span>
 <h1 class="tieu-de">Thử ngay qua /v1</h1>
@@ -56,6 +60,11 @@ main.pg{max-width:920px}
 <div class="chip-ds" role="tablist" aria-label="Chế độ" id="che-do"><sc-for list="{{cheDo}}" as="c"><button type="button" role="tab" class="chip" id="{{c.idTab}}" data-che-do="{{c.ma}}" aria-selected="{{c.on}}" aria-controls="bang-studio" onClick="{{c.chon}}" onKeyDown="{{phimCheDo}}">{{c.nhan}}</button></sc-for></div>
 
 <section class="the" id="bang-studio" role="tabpanel" aria-labelledby="{{idTabChon}}">
+<sc-if value="{{coChuaKhoa}}">
+<div class="rong chua-khoa-studio" id="studio-chua-khoa"><p>{{chuKhoa}}</p>
+<div class="dong-nut" style="justify-content:center"><sc-for list="{{dsChuaKhoa}}" as="x"><a class="nut nut-nho nut-chinh" href="{{x.href}}" data-them-khoa="{{x.id}}">Thêm khoá cho {{x.ten}}</a></sc-for></div>
+</div>
+</sc-if>
 <sc-if value="{{tonTien}}"><p class="bao bao-vang" id="canh-bao-tien">Tạo ảnh/video thường tính tiền theo từng lượt ở nhà cung cấp, và khoá hạng miễn phí của nhiều nhà cung cấp không dùng được tính năng này.</p></sc-if>
 <div class="luoi-form">
 <div class="truong"><label for="chon-model">Model</label>
@@ -65,6 +74,7 @@ main.pg{max-width:920px}
 </div>
 <sc-if value="{{modelsLoi}}"><div role="alert" class="bao bao-loi dong-nut"><span style="flex:1 1 200px;min-width:0">Không đọc được danh sách model: {{modelsLoi}}</span><button type="button" class="nut nut-nho nut-nguy" onClick="{{taiModels}}">Thử lại</button></div></sc-if>
 <sc-if value="{{modelsRong}}"><p class="rong">Chưa có model nào cho chế độ này từ /v1/models.</p></sc-if>
+<sc-if value="{{coChuaKhoa}}"><p class="phu" id="model-chua-khoa">Chưa có model nào vì module của chế độ này chưa có khoá — /v1/models chỉ liệt kê model của module đã có khoá.</p></sc-if>
 
 <sc-if value="{{laChat}}">
 <div class="hoi-thoai" id="hoi-thoai" aria-live="polite" aria-label="Hội thoại">
@@ -95,8 +105,9 @@ main.pg{max-width:920px}
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{}'>
-// Studio: chat (stream) / ảnh / video qua /v1 thật. Chế độ chỉ hiện khi có module ĐÃ LIÊN KẾT khai khả năng đó
-// (DIEU_KIEN.studio_* trong khung.js); model lấy từ /v1/models theo tiền tố của các module đó.
+// Studio: chat (stream) / ảnh / video qua /v1 thật. Trang và từng chế độ hiện khi có module ĐÃ CÀI khai khả năng đó
+// (DIEU_KIEN.studio_* trong khung.js); chế độ chưa có module ĐÃ LIÊN KẾT (chưa khoá) thì hiện trạng thái rỗng chỉ
+// chỗ thêm khoá và chặn gửi ngay ở giao diện. Model lấy từ /v1/models theo tiền tố của module đã liên kết.
 const K = window.Khung;
 const CHE_DO = [['chat', 'studio_chat'], ['anh', 'studio_anh'], ['video', 'studio_video']];
 const HOI_VIDEO_MS = 3000;
@@ -106,7 +117,9 @@ class Component extends DCLogic {
     super(props);
     this.state = { khoa: K.docKhoa(), khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', dangTai: true,
       cheDo: 'chat', models: [], modelsLoi: '', chon: {}, truyen: true, nhap: '', luot: [], dangGui: false,
-      trangThai: '', loi: '', loiCode: '', anh: [], video: null };
+      trangThai: '', loi: '', loiCode: '', anh: [], video: null,
+      // ?da_cai=<id>: trang Module vừa cài module đó (chỉ MÃ qua URL; tên đọc từ /api/tinh-nang).
+      daCai: new URLSearchParams(location.search).get('da_cai') || '' };
     this._ac = null; this._chu = '';
   }
 
@@ -117,10 +130,29 @@ class Component extends DCLogic {
     if (K.chanNeuThieu('studio', tn)) return;
     const dau = CHE_DO.find(([, dk]) => K.du(dk, tn));
     this.setState({ tn, dangTai: false, cheDo: dau ? dau[0] : 'chat' });
+    if (this.state.daCai) history.replaceState(null, '', location.pathname);
+    // Quay về bằng nút Back (trang lấy từ bộ nhớ đệm) sau khi thêm khoá ở trang khác: đọc lại «tính năng đang có».
+    window.addEventListener('pageshow', (e) => { if (e.persisted) this.lamMoi(); });
     this.taiModels();
+  }
+  async lamMoi() {
+    try { this.setState({ tn: await K.taiTinhNang(), tnLoi: '' }); } catch (e) { this.setState({ tnLoi: e.message }); return; }
+    this.taiModels();
+  }
+  // Chế độ chưa có module đã liên kết → {ds: module cần khoá + nơi thêm khoá, chu: lời nhắn}; dùng được → null.
+  chuaKhoa(cheDo) {
+    const tn = this.state.tn;
+    const dk = (CHE_DO.find(([ma]) => ma === cheDo) || [])[1];
+    if (!tn || !dk || K.dungDuoc(dk, tn)) return null;
+    const ds = K.chuaKhoaCho(dk, tn).map((m) => Object.assign({ id: m.id, ten: m.ten || m.id }, K.noiThemKhoa(m, tn)));
+    const noi = [...new Set(ds.map((x) => x.nhan))];
+    return { ds, chu: ds.length ? 'Chưa có khoá cho ' + ds.map((x) => '«' + x.ten + '»').join(', ') + '. Thêm khoá ở ' + noi.join(' hoặc ') + '.'
+      : 'Chưa có module nào đã liên kết cho chế độ này.' };
   }
   async taiModels() {
     if (!this.state.khoa) return;
+    // Chưa chế độ nào gọi được /v1 (chưa khoá) → không hỏi /v1/models: chắc chắn rỗng.
+    if (!CHE_DO.some(([, dk]) => K.dungDuoc(dk, this.state.tn))) { this.setState({ models: [], modelsLoi: '' }); return; }
     try {
       const { j } = await K.goi('v1/models');
       this.setState({ models: ((j && j.data) || []).filter((m) => m && typeof m.id === 'string'), modelsLoi: '' });
@@ -244,6 +276,10 @@ class Component extends DCLogic {
     if (e) e.preventDefault();
     const s = this.state;
     const nd = (s.nhap || '').trim();
+    // Chưa có khoá cho chế độ này: chặn ngay ở giao diện bằng đúng lời nhắn của trạng thái rỗng (không để /v1 trả 404
+    // module_not_configured thô). Đặt ở đây để cả nút Gửi lẫn Ctrl+Enter đều đi qua.
+    const ck = this.chuaKhoa(s.cheDo);
+    if (ck) { this.setState({ loi: ck.chu, loiCode: '', trangThai: '' }); return; }
     const model = this.modelChon();
     if (!model) { this.setState({ loi: 'Chưa có model nào để chọn.' }); return; }
     if (!nd) { this.setState({ loi: s.cheDo === 'chat' ? 'Chưa nhập câu hỏi.' : 'Chưa nhập mô tả.' }); return; }
@@ -262,7 +298,13 @@ class Component extends DCLogic {
       chon: () => this.setState({ cheDo: ma, loi: '', trangThai: '' }) })) : [];
     const models = tn ? this.dsModel(s.cheDo) : [];
     const laChat = s.cheDo === 'chat';
+    const ck = this.chuaKhoa(s.cheDo);
+    const mDaCai = s.daCai && tn ? (tn.modules || []).find((m) => m.id === s.daCai) : null;
+    const noiDaCai = mDaCai ? K.noiThemKhoa(mDaCai, tn) : null;
     return {
+      daCaiChu: mDaCai ? 'Đã cài ' + (mDaCai.ten || mDaCai.id) + (mDaCai.da_lien_ket ? ' — dùng được ngay.' : '. Thêm khoá ở ' + noiDaCai.nhan + ' để dùng.') : '',
+      daCaiCanKhoa: !!mDaCai && !mDaCai.da_lien_ket, daCaiHref: noiDaCai ? noiDaCai.href : '', dongDaCai: () => this.setState({ daCai: '' }),
+      coChuaKhoa: !!ck, chuKhoa: ck ? ck.chu : '', dsChuaKhoa: ck ? ck.ds : [],
       nav: K.navChinh(tn, 'studio'), dangTai: s.dangTai, tnLoi: s.tnLoi, sanSang: !!tn, diaChiV1: K.diaChiV1(),
       khongKhoa: !s.khoa, khoaNhap: s.khoaNhap, khoaLoi: s.khoaLoi, goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
       luuKhoa: () => this.luuKhoa(), phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
@@ -275,7 +317,7 @@ class Component extends DCLogic {
       },
       tonTien: s.cheDo !== 'chat', laChat, laAnh: s.cheDo === 'anh',
       models, model: this.modelChon(), chonModel: (e) => { const v = e.target.value; this.setState((st) => ({ chon: Object.assign({}, st.chon, { [st.cheDo]: v }) })); },
-      modelsLoi: s.modelsLoi, taiModels: () => this.taiModels(), modelsRong: !!s.khoa && !s.modelsLoi && s.models.length > 0 && models.length === 0,
+      modelsLoi: s.modelsLoi, taiModels: () => this.taiModels(), modelsRong: !ck && !!s.khoa && !s.modelsLoi && s.models.length > 0 && models.length === 0,
       truyen: s.truyen, doiTruyen: (e) => this.setState({ truyen: !!e.target.checked }),
       chuaHoi: s.luot.length === 0,
       luot: s.luot.map((l) => ({ vai: l.vai, chu: l.chu || '…', lop: 'loi-nhan ' + (l.vai === 'user' ? 'nguoi' : 'may') })),

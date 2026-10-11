@@ -3,8 +3,9 @@
 test_web2api_giao_dien.py đo khung với module giả; ở đây là module thật của kho để chắc hợp đồng manifest →
 khung (loai_ten, cung_cap, truong_cau_hinh, suc_khoe theo khả năng) đúng với mã thật:
   mở địa chỉ gốc → Hệ thống → Module → dán khoá quản trị → ô gemini-api «Chưa cài» từ git → Cài (không khoá)
-  → bước thêm khoá → Kiểm tra và lưu (Google giả) → Studio hiện ngay → chat stream qua /v1 thật
-  → Hệ thống → AI → Provider: model + sức khoẻ thật → gỡ.
+  → tự sang Studio (trạng thái rỗng + dải «Đã cài …») → bấm tới Hệ thống → AI → Tài khoản → thêm khoá → Kiểm tra
+  và lưu (Google giả) → Provider hiện, không tải lại trang → Quay lại Studio → chat stream qua /v1 thật
+  → Provider: model + sức khoẻ thật → gỡ.
 Nguồn git lấy từ biến môi trường như docker-compose.yml đặt sẵn (không cấu hình tay).
 """
 
@@ -60,25 +61,36 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài")
             assert "generativelanguage.googleapis.com" in trang.chu("#can-gi") and "httpx" in trang.chu("#can-gi")
             trang.bam("document.getElementById('nut-cai')")
-            trang.cho("document.querySelector('#chi-tiet [data-truong=\"api_keys\"] textarea')", han=15, mo_ta="bước thêm khoá")
-            assert trang.chu("#ct-trang-thai") == "Đã cài — chờ khoá"
+            # Cài xong: module khai chat → tự sang Studio (trang chính) kèm dải thông báo; Studio rỗng vì chưa có khoá.
+            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && !!document.getElementById('da-cai')", han=20,
+                      mo_ta="tự sang Studio sau khi cài")
+            assert "Đã cài Gemini" in trang.chu("#da-cai"), trang.chu("#da-cai")
+            assert "Chưa có khoá cho «Gemini" in trang.chu("#studio-chua-khoa")
+            assert trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)") == ["chat", "anh", "video"]
 
-            trang.go("#chi-tiet [data-truong='api_keys'] textarea", f"{K_TOT}\n{K_XAU}")
-            trang.go("#chi-tiet [data-truong='base_url'] input", s_g.url)
-            trang.bam("document.getElementById('nut-luu-cau-hinh')")
-            trang.cho("document.getElementById('kq-ok')", han=15, mo_ta="liên kết xong")
-            dong = trang.js("[...document.querySelectorAll('#chi-tiet .ket-qua-cai li')].map((l) => l.innerText.replace(/\\s+/g, ' '))")
+            # Dải thông báo → Hệ thống → AI → Tài khoản, đúng thẻ gemini-api.
+            trang.bam("document.querySelector('#da-cai a')")
+            tk = "[data-tai-khoan='gemini-api']"
+            trang.cho(f"location.pathname.endsWith('/He-thong-AI.dc.html') && !!document.querySelector({json.dumps(tk + ' textarea')})",
+                      han=15, mo_ta="form khoá ở Hệ thống → AI → Tài khoản")
+            assert "Chưa có khoá" in trang.chu(tk + " .chua-khoa")
+            trang.js("window.__khongTaiLai = 1")
+            trang.go(tk + " [data-truong='api_keys'] textarea", f"{K_TOT}\n{K_XAU}")
+            trang.go(tk + " [data-truong='base_url'] input", s_g.url)
+            trang.bam(f"document.querySelector({json.dumps(tk + ' .nut-luu-cau-hinh')})")
+            trang.cho(f"!!document.querySelector({json.dumps(tk + ' .ket-qua-cai li')})", han=15, mo_ta="liên kết xong")
+            dong = trang.js(f"[...document.querySelectorAll({json.dumps(tk + ' .ket-qua-cai li')})].map((l) => l.innerText.replace(/\\s+/g, ' '))")
             assert f"…{K_TOT[-4:]} · dùng được" in dong[0] and "2 model" in dong[0], dong
             assert f"…{K_XAU[-4:]} · không dùng được" in dong[1] and "HTTP 401" in dong[1], dong
             assert json.loads((tmp_path / "bi_mat" / "gemini-api.json").read_text())["api_keys"] == [K_TOT]
-            trang.cho("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href').endsWith('Studio.dc.html')",
-                      mo_ta="Studio hiện ngay")
+            trang.cho("document.querySelector('[data-tab=\"provider\"]')", han=15, mo_ta="Provider hiện ngay")
             assert trang.js("window.__khongTaiLai") == 1
 
             # Studio: chat stream qua /v1 thật → Google giả; ba chế độ vì manifest khai chat, anh, video.
             trang.bam("document.querySelector('[data-nav=\"quay-lai\"]')")
-            trang.cho("location.pathname.endsWith('/Studio.dc.html') && document.querySelectorAll('#chon-model option').length > 0",
+            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && document.querySelectorAll('#chon-model option').length > 0",
                       han=15, mo_ta="Studio có model")
+            assert not trang.js("!!document.getElementById('studio-chua-khoa')")
             assert trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)") == ["chat", "anh", "video"]
             trang.go("#o-soan", "Chào")
             trang.bam("document.getElementById('nut-gui')")

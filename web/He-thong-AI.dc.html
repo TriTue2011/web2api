@@ -57,8 +57,9 @@
 <sc-if value="{{laTaiKhoan}}">
 <sc-for list="{{taiKhoan}}" as="a">
 <article class="the" data-tai-khoan="{{a.id}}" aria-labelledby="{{a.idTen}}">
-<div class="the-dau"><h3 id="{{a.idTen}}">{{a.ten}}</h3><span class="{{a.lopTT}}">{{a.nhanTT}}</span></div>
+<div class="the-dau"><h3 id="{{a.idTen}}" tabindex="-1">{{a.ten}}</h3><span class="{{a.lopTT}}">{{a.nhanTT}}</span></div>
 <span class="phu"><span class="ma">{{a.id}}</span> · model dạng <span class="ma">{{a.tienTo}}/…</span></span>
+<sc-if value="{{a.chuaKhoa}}"><p class="bao bao-vang chua-khoa">{{a.chuaKhoa}}</p></sc-if>
 <sc-if value="{{a.tuXa}}"><p class="phu">Module từ xa: khoá đặt lúc đăng ký (đang có: <span class="ma">{{a.khoaTuXa}}</span>). Muốn đổi thì gỡ ở Hệ thống → Module rồi đăng ký lại.</p></sc-if>
 <sc-if value="{{a.coForm}}">
 <sc-if value="{{a.f.dangTai}}"><p role="status" class="bao-cho">Đang đọc cấu hình đã lưu…</p></sc-if>
@@ -84,7 +85,7 @@
 </sc-if>
 <sc-if value="{{a.f.coKq}}">
 <div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
-<sc-if value="{{a.f.kqOk}}"><p role="status" class="bao bao-tot">Đã lưu và liên kết {{a.ten}}.</p></sc-if>
+<sc-if value="{{a.f.kqOk}}"><p role="status" class="bao bao-tot dong-nut"><span style="flex:1 1 200px;min-width:0">Đã lưu và liên kết {{a.ten}}.</span><sc-if value="{{a.coTrangChinh}}"><a class="nut nut-nho mo-trang-chinh" href="{{a.trangChinh.href}}">Mở {{a.trangChinh.nhan}}</a></sc-if></p></sc-if>
 <sc-if value="{{a.f.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa lưu được: {{a.f.kqLoi}}</p></sc-if>
 <ul class="ds-kq"><sc-for list="{{a.f.kqDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"><sc-if value="{{k.ok}}">✓</sc-if><sc-if value="{{k.hong}}">×</sc-if></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span></span></li></sc-for></ul>
 </div>
@@ -120,6 +121,8 @@
 <script type="text/x-dc" data-dc-script data-props='{}'>
 // Hệ thống → AI: Tài khoản (module có mã «ai» ĐÃ CÀI) · Provider (ĐÃ LIÊN KẾT). Combo chưa có backend → không có
 // trong DOM (DIEU_KIEN.combo.chua_co). Điều kiện từng tab đọc từ khung.js, không theo tên module.
+// Tài khoản là nơi thêm/bớt khoá: module chưa liên kết đứng đầu, ghi rõ «chưa có khoá»; #tk-<id> đưa tới đúng thẻ
+// (Studio và trang Module trỏ về đây).
 const K = window.Khung;
 const coMa = (m, ma) => m.loai === ma || (m.cung_cap || []).includes(ma);
 
@@ -129,6 +132,17 @@ class Component extends DCLogic {
     const khoa = K.docKhoa();
     this.state = { khoa, khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', mods: [], models: [], dangTai: true,
       tab: location.hash === '#provider' ? 'provider' : 'tai_khoan', sk: {}, cf: {} };
+    this._den = this.neoTk();
+  }
+  neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
+  // Cuộn tới thẻ Tài khoản của module và đặt focus vào tên thẻ (đọc màn hình đọc ngay module nào).
+  denThe(id) {
+    setTimeout(() => {
+      const h = document.querySelector('[data-tai-khoan="' + CSS.escape(id) + '"] h3');
+      if (!h) return;
+      h.scrollIntoView({ block: 'start' });
+      h.focus({ preventScroll: true });
+    }, 30);
   }
 
   async didMount() {
@@ -139,9 +153,12 @@ class Component extends DCLogic {
     this.setState({ tn });
     window.addEventListener('hashchange', () => {
       const tab = location.hash === '#provider' ? 'provider' : 'tai_khoan';
+      const den = this.neoTk();
       if (!K.chanNeuThieu(tab, this.state.tn)) this.chonTab(tab);
+      if (den) this.denThe(den);
     });
     await this.taiLai();
+    if (this._den) this.denThe(this._den);
   }
   async taiLai() {
     const [tn, mods] = await Promise.allSettled([K.taiTinhNang(), K.goi('api/modules', { khoa: '' })]);
@@ -182,10 +199,16 @@ class Component extends DCLogic {
     const tabs = tn ? ['tai_khoan', 'provider', 'combo'].filter((ma) => K.du(ma, tn))
       .map((ma) => ({ id: ma, idTab: 'tab-' + ma, nhan: K.DIEU_KIEN[ma].nhan, on: s.tab === ma, chon: () => this.chonTab(ma) })) : [];
     const modsTheoId = new Map((s.mods || []).filter((m) => m && m.id).map((m) => [m.id, m]));
-    const taiKhoan = tn ? this.dsAi(false).map((m, i) => {
+    // Module CHƯA liên kết lên đầu: đây là việc người dùng cần làm tiếp (sắp xếp ổn định, giữ thứ tự của lõi).
+    const taiKhoan = tn ? this.dsAi(false).slice().sort((a, b) => Number(a.da_lien_ket) - Number(b.da_lien_ket)).map((m, i) => {
       const ttCt = m.da_lien_ket;
       const mod = modsTheoId.get(m.id) || {};
-      return { id: m.id, idTen: 'tk-' + i, ten: m.ten, tienTo: m.tien_to, tuXa: m.tu_xa,
+      const tc = K.trangChinhCua(m.id, tn);
+      return { id: m.id, idTen: 'tk-ten-' + i, ten: m.ten, tienTo: m.tien_to, tuXa: m.tu_xa,
+        chuaKhoa: ttCt ? '' : (mod.can_cau_hinh === false
+          ? 'Chưa liên kết — bấm «Kiểm tra và lưu» bên dưới để liên kết.'
+          : 'Chưa có khoá — ' + (tc ? tc.nhan + ' chưa gọi được module này. ' : '') + 'Dán khoá vào ô bên dưới rồi bấm «Kiểm tra và lưu».'),
+        coTrangChinh: !!tc && ttCt, trangChinh: tc || {},
         khoaTuXa: (mod.cau_hinh_cong_khai && mod.cau_hinh_cong_khai.api_key) || 'không khoá',
         nhanTT: ttCt ? 'Đang chạy' : 'Chờ khoá', lopTT: 'huy ' + (ttCt ? 'huy-xanh' : 'huy-vang'),
         coForm: !!s.khoa && !m.tu_xa, f: !m.tu_xa ? K.cauHinh.vm(this, m.id, 'tk', () => this.taiLai()) : {} };

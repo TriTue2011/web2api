@@ -22,16 +22,20 @@
 .khu-ten .dem{font-family:'Be Vietnam Pro',system-ui,sans-serif;font-size:13px;color:var(--mute);font-weight:500}
 /* Lưới ô đều nhau như bàn cờ: grid-auto-rows:1fr → mọi hàng cao bằng hàng cao nhất. */
 .luoi-o{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(230px,100%),1fr));grid-auto-rows:1fr;gap:12px}
-.o-mod{box-sizing:border-box;min-width:0;width:100%;height:100%;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+/* Ô = khung chứa (div) gồm nút CHỌN Ô (phần thân, bấm mở bảng chi tiết) và — tuỳ trạng thái — một nút hành động
+   ANH EM ở chân ô (Cài / Cập nhật / Thêm khoá). Không lồng nút trong nút: mỗi cú bấm chỉ tới đúng một nút. */
+.o-mod{box-sizing:border-box;min-width:0;width:100%;height:100%;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);padding:0;display:flex;flex-direction:column}
 .o-mod:hover{border-color:#C9C6BE}
-.o-mod[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 2px var(--accsoft)}
+.o-mod.o-dang-chon,.o-mod[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 2px var(--accsoft)}
+.o-chon{flex:1 1 auto;box-sizing:border-box;min-width:0;width:100%;text-align:left;border:0;border-radius:15px;background:transparent;color:inherit;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.o-hd{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 14px}
 .o-dau{display:flex;align-items:center;gap:10px;min-width:0}
 .bieu-tuong{flex:0 0 auto;width:40px;height:40px;border-radius:12px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px}
 .o-ten{font-weight:600;font-size:15px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .o-mo-ta{flex:1 1 auto;font-size:13px;color:var(--mute);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .o-chan{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .o-tn{font-size:12px;color:var(--mute);border-top:1px dashed var(--line);padding-top:8px;overflow-wrap:anywhere}
-.o-them{border-style:dashed;align-items:center;justify-content:center;text-align:center;color:var(--mute);min-height:150px}
+.o-them{border-style:dashed;align-items:center;justify-content:center;text-align:center;color:var(--mute);min-height:150px;padding:14px 16px;gap:8px}
 .o-them .bieu-tuong{background:#EEECE7;color:var(--ink);font-size:22px}
 .chi-tiet{position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto;box-sizing:border-box}
 .chi-tiet-dau{display:flex;align-items:flex-start;gap:10px}
@@ -60,7 +64,7 @@
 <header style="display:flex;flex-direction:column;gap:8px">
 <span class="nhan-tren">Hệ thống</span>
 <h1 class="tieu-de">Module</h1>
-<p class="phu" style="max-width:70ch;font-size:15px">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. Bấm một ô để xem module cần gì để chạy, rồi bấm «Cài» — cài không cần khoá API; khoá thêm ở bước sau. Các tab liên quan (Studio, AI…) tự hiện khi module đã liên kết.</p>
+<p class="phu" style="max-width:70ch;font-size:15px">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. Bấm một ô để xem module cần gì để chạy, rồi bấm «Cài» — cài không cần khoá API. Cài xong, các tab liên quan (Studio, AI…) hiện ngay; khoá thêm sau ở Hệ thống → AI → Tài khoản.</p>
 </header>
 
 <sc-if value="{{thieuChu}}"><p role="alert" class="bao bao-vang" id="thieu">{{thieuChu}}</p></sc-if>
@@ -116,12 +120,16 @@
 <h2 class="khu-ten" id="{{k.idTen}}">{{k.ten}} <span class="dem">{{k.dem}} module</span></h2>
 <div class="luoi-o">
 <sc-for list="{{k.o}}" as="o">
-<button type="button" class="o-mod" data-o="{{o.id}}" data-tt="{{o.tt}}" aria-pressed="{{o.chon}}" aria-label="{{o.aria}}" onClick="{{o.chonO}}">
+<div class="{{o.lop}}" data-o-khung="{{o.id}}">
+<button type="button" class="o-chon" data-o="{{o.id}}" data-tt="{{o.tt}}" aria-pressed="{{o.chon}}" aria-label="{{o.aria}}" onClick="{{o.chonO}}">
 <span class="o-dau"><span class="bieu-tuong" aria-hidden="true">{{o.chuCai}}</span><span class="o-ten">{{o.ten}}</span></span>
 <span class="o-chan"><span class="huy huy-xam">{{o.loaiTen}}</span><span class="{{o.lopTT}}">{{o.nhanTT}}</span></span>
 <span class="o-mo-ta">{{o.moTa}}</span>
 <span class="o-tn">{{o.taiNguyen}}</span>
 </button>
+<sc-if value="{{o.coNut}}"><div class="o-hd"><button type="button" class="{{o.lopNut}}" data-hanh-dong="{{o.hd}}" aria-label="{{o.ariaNut}}" onClick="{{o.lam}}" disabled="{{o.dangLam}}">{{o.nhanNut}}</button></div></sc-if>
+<sc-if value="{{o.coLienKet}}"><div class="o-hd"><a class="nut nut-nho" data-hanh-dong="{{o.hd}}" aria-label="{{o.ariaNut}}" href="{{o.href}}">{{o.nhanNut}}</a></div></sc-if>
+</div>
 </sc-for>
 <sc-if value="{{k.coThem}}"><button type="button" class="o-mod o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></sc-if>
 </div>
@@ -355,10 +363,19 @@ class Component extends DCLogic {
   }
 
   // ---------- chọn ô ----------
-  chonO(id) {
+  // `denForm`: mở thẳng ở bước thêm khoá (nút «Thêm khoá» trên ô) — đợi form đọc xong cấu hình rồi đặt focus vào ô
+  // nhập đầu tiên của nó.
+  chonO(id, denForm) {
     this.setState({ chon: id, hoiGo: null, goTin: '' });
-    if (id !== '+them' && this.state.khoa) K.cauHinh.tai(this, id);
+    const tai = id !== '+them' && this.state.khoa ? K.cauHinh.tai(this, id) : Promise.resolve();
     setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth > 880 }); }, 30);
+    if (denForm) tai.then(() => setTimeout(() => {
+      const f = document.getElementById('lien-ket');
+      const o = f && f.querySelector('textarea, input');
+      if (!f) return;
+      f.scrollIntoView({ block: 'nearest' });
+      if (o) o.focus({ preventScroll: true });
+    }, 30));
   }
   dongChiTiet() {
     const id = this.state.chon;
@@ -368,19 +385,28 @@ class Component extends DCLogic {
   }
 
   // ---------- cài / cập nhật từ git ----------
-  async caiTuGit(id) {
+  // Dùng chung cho nút trên ô và nút trong bảng chi tiết. `laCai`: ô đang «Chưa cài» lúc bấm (không phải «Cập nhật»).
+  // Cài xong module mang lại một trang chính (vd khai chat → Studio) → chuyển thẳng tới đó kèm dải «Đã cài …»
+  // (chủ máy 11/10); không có trang chính nào → ở lại đây, mở bảng chi tiết ở bước kế tiếp.
+  async caiTuGit(id, laCai) {
+    // this.state cập nhật ĐỒNG BỘ trong setState → cú bấm thứ hai trước lần vẽ lại cũng bị chặn ở đây.
+    if ((this.state.caiGit[id] || {}).dang) return;
     this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: true } }) }));
     let j;
     try { ({ j } = await K.goi('api/nguon-git/cai/' + encodeURIComponent(id), { method: 'POST' })); }
     catch (e) {
       this.loiKhoa(e);
       this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, loi: e.message } }) }));
+      if (this.state.chon !== id) this.chonO(id);   // bấm từ ô: mở bảng chi tiết để thấy lý do
       return;
     }
     const viec = j && j.nap_lai && (j.nap_lai.doi || []).includes(id) ? 'Đã cập nhật' : 'Đã cài';
     this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, tin: viec + (j && j.phien_ban ? ' bản ' + j.phien_ban : '') + '.' } }) }));
     await this.taiLai();
-    K.cauHinh.tai(this, id);
+    const tc = laCai ? K.trangChinhCua(id, this.state.tn) : null;
+    if (tc) { location.href = tc.href + '?da_cai=' + encodeURIComponent(id); return; }
+    if (laCai && this.state.chon !== id) this.chonO(id);
+    else K.cauHinh.tai(this, id);
   }
 
   // Liên kết xong: tải lại «tính năng đang có» → khung tính lại điều kiện, tab liên quan hiện NGAY (không tải lại
@@ -552,13 +578,36 @@ class Component extends DCLogic {
       caiCanKhoa: !coKhoa && x.tt !== 'loi', coNutCai,
       nhanCai: cg.dang ? (x.tt === 'ban-moi' ? 'Đang cập nhật…' : 'Đang cài…') : (x.tt === 'ban-moi' ? 'Cập nhật' : 'Cài'),
       goiYCai: x.tt === 'ban-moi' ? 'Thay mã bằng bản mới trên git; cấu hình và khoá giữ nguyên.' : 'Cài không cần khoá API — khoá thêm ở bước sau.',
-      cai: () => this.caiTuGit(x.id), dangCai: !!cg.dang, caiLoi: cg.loi ? 'Chưa ' + (x.tt === 'ban-moi' ? 'cập nhật' : 'cài') + ' được: ' + cg.loi : '',
+      cai: () => this.caiTuGit(x.id, x.tt === 'chua-cai'), dangCai: !!cg.dang, caiLoi: cg.loi ? 'Chưa ' + (x.tt === 'ban-moi' ? 'cập nhật' : 'cài') + ' được: ' + cg.loi : '',
       caiTin: cg.tin ? cg.tin + (x.tt === 'cho-khoa' ? ' Bước tiếp theo: thêm tài khoản/khoá API bên dưới rồi bấm «Kiểm tra và lưu».' : '') : '',
       coForm, tieuDeForm: x.lienKet ? 'Tài khoản / khoá API' : 'Bước tiếp theo · Thêm tài khoản/khoá API', tabMoi,
       coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),
       hoiGo: () => this.setState({ hoiGo: x.id }), dangHoiGo: s.hoiGo === x.id, thoiGo: () => this.setState({ hoiGo: null }),
       go: () => this.go(x.id, x.info.ten || x.id), dangGo: s.dangGo === x.id, goLoi: s.goLoi[x.id] || ''
     };
+  }
+
+  // Nút hành động duy nhất trên ô, theo trạng thái (A0): «Cài» (chưa có mã) · «Cập nhật» (có bản mới) · «Thêm khoá»
+  // (đã cài, cần khoá, chưa liên kết). «Thêm khoá» là LIÊN KẾT tới Hệ thống → AI → Tài khoản khi module thuộc tab đó,
+  // ngược lại là nút mở bảng chi tiết ngay ở bước thêm khoá.
+  nutO(x, coKhoa) {
+    const ten = x.info.ten || x.id;
+    const rong = { coNut: false, coLienKet: false, hd: '', nhanNut: '', ariaNut: '', lopNut: '', lam: null, dangLam: false, href: '' };
+    if (coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi')) {
+      const cg = this.state.caiGit[x.id] || {};
+      const laCai = x.tt === 'chua-cai';
+      const nhan = cg.dang ? (laCai ? 'Đang cài…' : 'Đang cập nhật…') : (laCai ? 'Cài' : 'Cập nhật');
+      return Object.assign(rong, { coNut: true, hd: laCai ? 'cai' : 'cap-nhat', nhanNut: nhan, ariaNut: nhan + ' ' + ten,
+        lopNut: 'nut nut-nho' + (laCai ? ' nut-chinh' : ''), lam: () => this.caiTuGit(x.id, laCai), dangLam: !!cg.dang });
+    }
+    if (x.tt === 'cho-khoa') {
+      const noi = K.noiThemKhoa(x.t || { id: x.id, loai: x.info.loai, cung_cap: x.info.cung_cap }, this.state.tn);
+      const chung = { hd: 'them-khoa', nhanNut: 'Thêm khoá', ariaNut: 'Thêm khoá cho ' + ten };
+      return noi.tab === 'module'
+        ? Object.assign(rong, chung, { coNut: true, lopNut: 'nut nut-nho', lam: () => this.chonO(x.id, true) })
+        : Object.assign(rong, chung, { coLienKet: true, href: noi.href });
+    }
+    return rong;
   }
 
   chuCai(ten) { const m = String(ten || '?').match(/[\p{L}\p{N}]/u); return m ? m[0].toUpperCase() : '?'; }
@@ -588,11 +637,12 @@ class Component extends DCLogic {
       .filter((k) => k.o.length);
     const khu = khuHien.map((k, i) => ({
       ma: k.ma, ten: k.ten, idTen: 'khu-' + i, dem: k.o.length, coThem: i === khuHien.length - 1,
-      o: k.o.map((x) => ({
-        id: x.id, tt: x.tt, chon: s.chon === x.id, ten: x.info.ten || x.id, chuCai: this.chuCai(x.info.ten || x.id),
+      o: k.o.map((x) => Object.assign({
+        id: x.id, tt: x.tt, chon: s.chon === x.id, lop: 'o-mod' + (s.chon === x.id ? ' o-dang-chon' : ''),
+        ten: x.info.ten || x.id, chuCai: this.chuCai(x.info.ten || x.id),
         loaiTen: x.loaiTen, nhanTT: TT[x.tt][0], lopTT: TT[x.tt][1], moTa: x.info.mo_ta || '', taiNguyen: this.taiNguyenO(x),
         aria: (x.info.ten || x.id) + ' — ' + TT[x.tt][0], chonO: () => this.chonO(x.id)
-      }))
+      }, this.nutO(x, coKhoa)))
     }));
     const chipLoai = [{ ma: 'tat-ca', ten: 'Tất cả', dem: String(tatCa.length) }].concat(dsKhu.map((k) => ({ ma: k.ma, ten: k.ten, dem: String(k.o.length) })))
       .map((c) => Object.assign(c, { on: c.ma === locLoai, chon: () => this.setState({ locLoai: c.ma }) }));

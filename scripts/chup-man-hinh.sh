@@ -9,6 +9,8 @@
 #   nhieu-o      — đã dán khoá: lưới ô nhiều loại, nhiều trạng thái (Chưa cài · Có bản mới · Đang chạy; «Ghi chú
 #                  (mẫu)» đặt tay mà cũng có trên git nên là «Có bản mới»)
 #   chi-tiet     — bảng chi tiết «Cần gì để chạy» của gemini-api trước khi cài
+#   sau-cai      — ngay sau khi cài gemini-api (chưa khoá): Studio với dải «Đã cài …» và trạng thái rỗng
+#                  «Chưa có khoá cho …» kèm nút tới Hệ thống → AI → Tài khoản
 #   sau-lien-ket — sau khi liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả): Hệ thống → AI → Provider; nút
 #                  «Quay lại Studio» và mục AI hiện, không có Combo
 #   studio       — Studio: một lượt chat stream qua /v1 thật
@@ -125,14 +127,18 @@ with MayChuThat(gh.app) as s_gh, MayChuThat(g.app) as s_g:
                 t.js("document.getElementById('chi-tiet').scrollIntoView({block: 'start'}); window.scrollBy(0, -70)")
             chup("chi-tiet", chi_tiet)
 
-            # 4. Liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả) → Hệ thống → AI → Provider.
+            # 4. Cài gemini-api (chưa khoá) → trang Module chuyển sang Studio?da_cai=… : dải «Đã cài …» + trạng thái rỗng.
             assert httpx.post(f"{w.url}/api/nguon-git/cai/gemini-api", headers=QT, timeout=30).status_code == 200
+            chup("sau-cai", lambda: mo_trang("/Studio.dc.html?da_cai=gemini-api",
+                                             "!!document.getElementById('da-cai') && !!document.getElementById('studio-chua-khoa')"))
+
+            # 5. Liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả) → Hệ thống → AI → Provider.
             r = httpx.post(f"{w.url}/api/modules/gemini-api/cai", headers=QT, timeout=30,
                            json={"cau_hinh": {"api_keys": [KHOA_GIA], "base_url": s_g.url}})
             assert r.json()["ok"], r.text
             chup("sau-lien-ket", lambda: mo_trang("/He-thong-AI.dc.html#provider", "!!document.querySelector('.suc-khoe')"))
 
-            # 5. Studio: một lượt chat stream.
+            # 6. Studio: một lượt chat stream.
             def studio():
                 mo_trang("/Studio.dc.html", "document.querySelectorAll('#chon-model option').length > 0")
                 t.go("#o-soan", "Chào bạn, bạn là ai?")

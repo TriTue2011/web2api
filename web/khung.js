@@ -9,6 +9,10 @@
  * (lõi đếm mã `loai` + `cung_cap` của module đã cài / đã liên kết). Thêm module mới = thả thư mục module;
  * thêm tính năng mới của khung = thêm MỘT dòng vào DIEU_KIEN bên dưới.
  *
+ * Tab «chính» (Studio…) hiện khi module ĐÃ CÀI (chủ máy 11/10: «chưa khoá cũng ra web chính, người dùng tự thêm
+ * khoá trong Hệ thống → AI»); trong đó, gọi được /v1 hay chưa là CÙNG điều kiện ấy xét ở phạm vi ĐÃ LIÊN KẾT
+ * (`dungDuoc`) — chưa đủ thì trang hiện trạng thái rỗng chỉ chỗ thêm khoá, không ẩn.
+ *
  * Mọi đường dẫn là TƯƠNG ĐỐI: web2api nằm sau proxy ở thư mục con vẫn chạy đúng.
  */
 (() => {
@@ -26,6 +30,8 @@
    *   pham_vi   — 'lien_ket' (mặc định: đếm module ĐÃ LIÊN KẾT) hoặc 'da_cai' (đếm module đã cài)
    *   toi_thieu — số module tối thiểu cho mỗi mã (mặc định 1)
    *   chua_co   — tính năng chưa có backend: KHÔNG BAO GIỜ hiện, kể cả khi đủ điều kiện
+   *   trang     — dòng là một trang «chính» ở thanh trên (đường tương đối tới trang)
+   *   thuoc     — dòng là một phần (chế độ) của trang chính mang mã đó
    */
   const DIEU_KIEN = {
     module: { nhan: 'Module', can: [] },
@@ -33,10 +39,10 @@
     tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai' },
     provider: { nhan: 'Provider', can: [AI] },
     combo: { nhan: 'Combo', can: [AI], toi_thieu: 2, chua_co: 'Combo chưa có backend ở bản này' },
-    studio: { nhan: 'Studio', can: ['chat'] },
-    studio_chat: { nhan: 'Chat', can: ['chat'] },
-    studio_anh: { nhan: 'Ảnh', can: ['anh'] },
-    studio_video: { nhan: 'Video', can: ['video'] }
+    studio: { nhan: 'Studio', can: ['chat'], pham_vi: 'da_cai', trang: 'Studio.dc.html' },
+    studio_chat: { nhan: 'Chat', can: ['chat'], pham_vi: 'da_cai', thuoc: 'studio' },
+    studio_anh: { nhan: 'Ảnh', can: ['anh'], pham_vi: 'da_cai', thuoc: 'studio' },
+    studio_video: { nhan: 'Video', can: ['video'], pham_vi: 'da_cai', thuoc: 'studio' }
   };
 
   const tenMa = (ma, tn) => {
@@ -66,8 +72,45 @@
     return ra;
   }
   const du = (ma, tn) => !!tn && thieu(DIEU_KIEN[ma], tn).length === 0;
+  // Cùng dòng điều kiện, xét ở phạm vi ĐÃ LIÊN KẾT: tab «chính» đã hiện (đã cài) có gọi được /v1 chưa.
+  const dungDuoc = (ma, tn) => !!tn && !!DIEU_KIEN[ma]
+    && thieu(Object.assign({}, DIEU_KIEN[ma], { pham_vi: 'lien_ket' }), tn).length === 0;
   // Mục do module khai: chỉ hiện khi CHÍNH module đó đã liên kết và mọi mã trong `can` có ở module đã liên kết.
   const dkMuc = (muc) => ({ can: Array.isArray(muc.can) ? muc.can : [], module: muc.module });
+
+  // ---------- một module so với một dòng điều kiện ----------
+  const coMa = (m, ma) => !!m && (m.loai === ma || (Array.isArray(m.cung_cap) && m.cung_cap.includes(ma)));
+  // Một module RIÊNG nó có đáp ứng dòng `ma` không (bỏ `toi_thieu`, `chua_co`): dựng «tính năng» chỉ gồm module đó rồi
+  // đánh giá bằng chính `thieu` — không đường kiểm thứ hai, không bảng mã nào ngoài DIEU_KIEN.
+  function moduleDapUng(m, ma) {
+    const dk = DIEU_KIEN[ma];
+    if (!m || !dk) return false;
+    const dem = {};
+    for (const x of [m.loai].concat(Array.isArray(m.cung_cap) ? m.cung_cap : [])) if (x) dem[x] = 1;
+    return thieu({ can: dk.can, pham_vi: 'da_cai' }, { kha_nang_da_cai: dem }).length === 0;
+  }
+  // Trang chính mà module mang lại (đang đủ điều kiện, và module đáp ứng dòng của trang hay một chế độ của nó) —
+  // để «Cài» xong chuyển thẳng tới đó. Không có → null (ở lại trang Module).
+  function trangChinhCua(id, tn) {
+    const m = ((tn && tn.modules) || []).find((x) => x && x.id === id);
+    if (!m) return null;
+    for (const [ma, dk] of Object.entries(DIEU_KIEN)) {
+      if (!dk.trang || !du(ma, tn)) continue;
+      const lienQuan = Object.keys(DIEU_KIEN).filter((k) => k === ma || DIEU_KIEN[k].thuoc === ma);
+      if (lienQuan.some((k) => moduleDapUng(m, k))) return { id: ma, nhan: dk.nhan, href: dk.trang };
+    }
+    return null;
+  }
+  // Nơi thêm khoá cho một module: tab Tài khoản (Hệ thống → AI) nếu module thuộc tab đó, ngược lại bảng chi tiết của
+  // chính nó ở Hệ thống → Module. Neo theo id để tới ĐÚNG module khi có nhiều. `tab`: mã dòng của nơi đến.
+  function noiThemKhoa(m, tn) {
+    const id = encodeURIComponent((m && m.id) || '');
+    return moduleDapUng(m, 'tai_khoan') && du('tai_khoan', tn)
+      ? { tab: 'tai_khoan', href: 'He-thong-AI.dc.html#tk-' + id, nhan: 'Hệ thống → AI → ' + DIEU_KIEN.tai_khoan.nhan }
+      : { tab: 'module', href: 'He-thong.dc.html#module-' + id, nhan: 'Hệ thống → ' + DIEU_KIEN.module.nhan };
+  }
+  // Module đã cài, CHƯA liên kết, đáp ứng dòng `ma` (vd chế độ Chat) — ai cần khoá để chế độ đó gọi được /v1.
+  const chuaKhoaCho = (ma, tn) => ((tn && tn.modules) || []).filter((m) => m && !m.da_lien_ket && moduleDapUng(m, ma));
 
   // ---------- khoá quản trị ----------
   // localStorage: cách trang cũ đã lưu (cùng tên khoá). Có thể bị chặn (ẩn danh, chặn dữ liệu trang) → khoá chỉ sống
@@ -100,10 +143,11 @@
   const taiTinhNang = () => goi('api/tinh-nang', { khoa: '' }).then(({ j }) => j);
 
   // ---------- điều hướng ----------
-  // Thanh trên của trang chính: Studio (nếu đủ điều kiện) + tab riêng của module đã liên kết có `tab_web`.
+  // Thanh trên của trang chính: các dòng `trang` của DIEU_KIEN đủ điều kiện (Studio…) + tab riêng của module đã liên
+  // kết có `tab_web`.
   function navChinh(tn, hienTai) {
     const ra = [];
-    if (du('studio', tn)) ra.push({ id: 'studio', nhan: 'Studio', href: 'Studio.dc.html' });
+    for (const [ma, dk] of Object.entries(DIEU_KIEN)) if (dk.trang && du(ma, tn)) ra.push({ id: ma, nhan: dk.nhan, href: dk.trang });
     for (const t of (tn && tn.tab) || []) {
       const href = lienKetAnToan(t.duong);
       if (href) ra.push({ id: 'm-' + t.module, nhan: t.nhan, href });
@@ -118,9 +162,13 @@
     if (du('ai', tn)) ra.push({ id: 'ai', nhan: 'AI', href: 'He-thong-AI.dc.html' });
     return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false' }));
   }
-  // «Quay lại» của Hệ thống: về trang chính đầu tiên đang có; chưa có trang chính nào (chưa liên kết gì) → null.
+  // «Quay lại» của Hệ thống: về trang chính đầu tiên đang có; chưa có trang chính nào → null.
   function quayLai(tn) { const n = navChinh(tn, ''); return n.length ? n[0] : null; }
-  function trangDau(tn) { return du('studio', tn) ? 'Studio.dc.html' : 'He-thong.dc.html'; }
+  // Địa chỉ gốc: trang chính đầu tiên trong DIEU_KIEN đang đủ điều kiện (đã cài là đủ); chưa có → Hệ thống → Module.
+  function trangDau(tn) {
+    const c = Object.entries(DIEU_KIEN).find(([ma, dk]) => dk.trang && du(ma, tn));
+    return c ? c[1].trang : 'He-thong.dc.html';
+  }
   // Trang/tab gõ tay mà chưa đủ điều kiện → về trang Module kèm mã tính năng (trang Module tự soạn câu giải thích
   // từ DIEU_KIEN — không đưa chữ tuỳ ý qua URL).
   function chanNeuThieu(ma, tn) {
@@ -281,7 +329,7 @@
     }
   };
 
-  window.Khung = { AI, DIEU_KIEN, thieu, du, dkMuc, tenMa, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
+  window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
     navChinh, navHeThong, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, boDau, diaChiV1,
     dongKhoa, cauHinh };
 })();

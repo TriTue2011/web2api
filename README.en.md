@@ -33,10 +33,14 @@ Open `http://<host>:3031/`. With nothing installed it opens **System → Modules
 type, plus a "Connect to web2api" block that disappears after the first link). On first start web2api generates an
 admin key; read it with `docker exec web2api cat /data/admin_key` and paste it on the page. Click the `gemini-api`
 tile: the detail panel shows what it needs to run (resources, Python packages, outbound hosts, instructions from the
-manifest). Click **Install** — no API key needed — then add your Google AI Studio key in the "Add account / API key"
-step (keys can be added or removed one by one later; an empty text field never overwrites a saved value). Once linked,
-the related tabs appear immediately without a page reload: **Studio** (chat with streaming, images, video) and
-**System → AI** (Accounts, Providers with real models and per-key health). Then call the API:
+manifest). Click **Install** (in the panel or directly on the tile) — no API key needed. A module that declares
+`chat` takes you straight to **Studio** with an "Installed …" banner; until a key is added Studio shows a friendly
+empty state ("No key for … yet. Add one in System → AI → Accounts") with a button to that module's card, and sending
+is blocked on the page instead of returning a raw `404`. Add your Google AI Studio key in **System → AI → Accounts**
+(keys can be added or removed one by one later; an empty text field never overwrites a saved value). After saving,
+the **Providers** tab (real models, per-key health) appears without a page reload and Studio is ready to chat. A
+module that maps to no main tab (for example a "network" type) stays on System → Modules after install, with the
+"Add account / API key" step open in its panel. Then call the API:
 
 ```bash
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
