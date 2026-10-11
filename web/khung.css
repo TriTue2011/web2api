@@ -1,0 +1,102 @@
+/* khung.css — kiểu dùng chung của các trang web2api (phong cách bản demo thiết kế: nền #F6F5F2, thẻ trắng viền
+   #E4E2DC bo 14–18px, nhấn #0F766E, Be Vietnam Pro + Newsreader). */
+body{margin:0;background:#F6F5F2}
+button{font:inherit;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid #0F766E;outline-offset:2px}
+h1,h2,h3,p,ol,dl,dd,ul,pre{margin:0}
+.goc{--ink:#181816;--mute:#66645F;--line:#E4E2DC;--bg:#F6F5F2;--card:#FFFFFF;--acc:#0F766E;--accsoft:#E2F0ED;min-height:100vh;min-height:100dvh;overflow-x:hidden;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font-family:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5}
+.an-chu{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- thanh trên ---------- */
+.tb{flex:0 0 auto;position:sticky;top:0;z-index:20;box-sizing:border-box;display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 24px;border-bottom:1px solid var(--line);background:#FBFAF8}
+.logo{width:30px;height:30px;border-radius:9px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ten-web{flex:0 0 auto;font-family:Newsreader,Georgia,'Times New Roman',serif;font-size:24px;font-weight:500;letter-spacing:-0.01em;color:inherit;text-decoration:none}
+.thanh-tab{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.thanh-tab a,.nut-he-thong{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:20px;color:var(--ink);text-decoration:none;white-space:nowrap}
+.thanh-tab a[aria-current=page],.nut-he-thong[aria-current=page]{background:var(--accsoft);color:#0B5A53;font-weight:600}
+.cham{width:8px;height:8px;border-radius:4px;background:#B42318;flex:0 0 auto}
+.nut-he-thong{margin-left:auto;border:1px solid var(--line);background:var(--card)}
+.quay-lai{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 16px 0 12px;box-sizing:border-box;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--ink);font-weight:500;white-space:nowrap;text-decoration:none}
+
+/* ---------- khung trang ---------- */
+main.pg{flex:1 1 auto;width:100%;max-width:1180px;box-sizing:border-box;margin:0 auto;padding:28px 32px 56px;display:flex;flex-direction:column;gap:20px}
+.tieu-de{font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:400;font-size:38px;line-height:1.1;letter-spacing:-0.02em;text-wrap:balance}
+.nhan-tren{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--acc)}
+.the{min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.the-con{min-width:0;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:var(--card)}
+.nhan-muc{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
+.phu{font-size:13px;color:var(--mute);text-wrap:pretty;overflow-wrap:anywhere}
+.ma{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere}
+pre.ma{white-space:pre-wrap;word-break:break-word;background:#1F1E1B;color:#F2F0EA;padding:12px 14px;border-radius:12px;line-height:1.55;max-width:100%;box-sizing:border-box}
+code.ma{background:#EEECE7;padding:1px 5px;border-radius:5px}
+.rong{padding:24px 16px;border:1px dashed #C9C6BE;border-radius:14px;color:var(--mute);text-align:center;text-wrap:pretty}
+
+/* ---------- nút, ô nhập ---------- */
+.nut{box-sizing:border-box;min-height:44px;padding:0 18px;border-radius:22px;border:1px solid #CFCCC4;background:#fff;color:var(--ink);font-weight:500;max-width:100%;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+.nut-chinh{background:var(--acc);border-color:var(--acc);color:#fff}
+.nut-toi{background:var(--ink);border-color:var(--ink);color:#fff}
+.nut-nguy{border-color:#E2A59D;color:#8A1C12}
+.nut-nho{min-height:40px;padding:0 14px;border-radius:20px}
+.nut:disabled{opacity:.55;cursor:not-allowed}
+.dong-nut{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.truong{display:flex;flex-direction:column;gap:6px;min-width:0}
+.truong label{font-weight:500}
+.bb{font-size:12px;font-weight:500;color:#8A1C12}
+.o{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid #CFCCC4;border-radius:10px;background:#fff}
+textarea.o{min-height:88px;resize:vertical}
+textarea.o.ma{font-size:13px}
+.o-va-nut{display:flex;gap:8px;flex-wrap:wrap}
+.o-va-nut .o{flex:1 1 220px;width:auto}
+.chon{display:flex;align-items:center;gap:10px;min-height:40px}
+.chon input{width:20px;height:20px;margin:0;flex:0 0 auto}
+.luoi-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+
+/* ---------- báo, huy hiệu ---------- */
+.bao{padding:10px 14px;border-radius:12px;overflow-wrap:anywhere;text-wrap:pretty}
+.bao-loi{border:1px solid #F1C4BE;background:#FDECEA;color:#8A1C12}
+.bao-tot{border:1px solid #B7DDD5;background:#E2F0ED;color:#0B5A53}
+.bao-vang{border:1px solid #EBD38F;background:#FDF6E3;color:#6B4E00}
+.bao-cho{color:var(--mute)}
+.huy{display:inline-flex;align-items:center;min-height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap}
+.huy-xanh{background:#E2F0ED;color:#0B5A53}
+.huy-xam{background:#EEECE7;color:#55534E}
+.huy-do{background:#FDECEA;color:#8A1C12}
+.huy-vang{background:#FDF6E3;color:#6B4E00}
+.huy-lam{background:#E6EEF8;color:#1D4E89}
+.chip-ds{display:flex;gap:8px;flex-wrap:wrap}
+.chip{min-height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip[aria-pressed=true],.chip[aria-selected=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip .dem{font-size:12px;opacity:.7}
+
+/* ---------- danh sách kết quả kiểm khoá ---------- */
+.ds-kq{list-style:none;padding:0;display:flex;flex-direction:column;gap:6px}
+.ds-kq li{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border:1px solid var(--line);border-radius:10px;min-width:0}
+.dau{flex:0 0 auto;width:22px;height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.dau-tot{background:#E2F0ED;color:#0B5A53}
+.dau-hong{background:#FDECEA;color:#8A1C12}
+.kq-than{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}
+.ds-khoa{list-style:none;padding:0;display:flex;flex-direction:column;gap:6px}
+.ds-khoa li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 6px 6px 12px;border:1px solid var(--line);border-radius:10px}
+.ds-khoa li.khoa-bot{background:#FDECEA;border-color:#F1C4BE}
+.ds-khoa li.khoa-bot .ma{text-decoration:line-through}
+.bang{display:flex;flex-direction:column}
+.bang-dong{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:2px 14px;padding:8px 0;border-top:1px solid var(--line)}
+.bang-dong:first-child{border-top:0;padding-top:0}
+.bang-dong dt{color:var(--mute)}
+.bang-dong dd{min-width:0;overflow-wrap:anywhere}
+.chua-do{color:#6B4E00;font-style:italic}
+
+@media (max-width:880px){
+.tb{padding:6px 12px;gap:8px}
+.ten-web{font-size:20px}
+main.pg{padding:20px 16px 40px;gap:16px}
+.tieu-de{font-size:30px}
+.the{padding:16px 14px}
+}
+@media (max-width:560px){
+.bang-dong{grid-template-columns:minmax(0,1fr)}
+.luoi-form{grid-template-columns:minmax(0,1fr)}
+.ten-web{display:none}
+}
+@media (pointer:coarse){input,select,textarea{font-size:16px}}

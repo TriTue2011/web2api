@@ -37,6 +37,8 @@ import httpx
 from app.chuyen_tiep import ChuyenTiepOpenAI, ds_khoa, tra_loi_json
 
 BASE_MAC_DINH = "https://generativelanguage.googleapis.com/v1beta/openai"
+GOI_Y_HANG_MIEN_PHI = ("Hạng miễn phí của Google không dùng được tính năng này (trang giá ghi «Not available») — "
+                       "cần khoá thuộc dự án đã bật thanh toán (trả phí).")
 GOI_Y_CHAN_VUNG = ("máy chủ bị chặn vùng — đặt base_url qua proxy "
                    "(ví dụ Cloudflare Worker deploy/cloudflare-gemini-proxy.js)")
 #: Tên model đi vào ĐƯỜNG DẪN của API gốc: bắt đầu bằng chữ/số, không «/» «:» «..» — chặn chế đường.
@@ -135,7 +137,8 @@ class Module:
         # Khả năng tốn tiền suc_khoe báo theo từng khoá = mọi mã đã khai ở `cung_cap` trừ chat.
         kn = tuple(x for x in self.manifest.get("cung_cap", []) if x != "chat")
         return ChuyenTiepOpenAI(ten="Gemini", tien_to=self.tien_to, base_url=base, khoa=khoa,
-                                doi_id_model=_bo_models, goi_y_loi=goi_y_loi, kha_nang=kn)
+                                doi_id_model=_bo_models, goi_y_loi=goi_y_loi, kha_nang=kn,
+                                goi_y_tu_choi_kha_nang=GOI_Y_HANG_MIEN_PHI)
 
     def nap(self, cau_hinh: dict) -> None:
         """Nạp cấu hình ĐÃ KIỂM (lúc khởi động/cài xong) — không gọi mạng."""

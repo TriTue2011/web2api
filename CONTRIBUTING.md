@@ -23,7 +23,7 @@ và chụp ảnh. Chạy lõi tại chỗ, thư mục dữ liệu riêng để k
 WEB2API_DATA=/tmp/web2api-dev WEB2API_ADMIN_KEY=khoa-dev-tam .venv/bin/python -m uvicorn app.main:app --port 8000
 ```
 
-Hoặc chạy bằng Docker: `docker compose up -d` (xem README mục 4).
+Hoặc chạy bằng Docker: `docker compose up -d` (xem README mục 5).
 
 ## Chạy kiểm tra
 
@@ -47,8 +47,9 @@ Module là một thư mục `modules/<id>/` trong kho; lõi tự khám phá, kh�
 
 1. **Chọn id và tiền tố.** `id` gồm chữ thường, số, `-`, `_` (2–41 ký tự); `tien_to` là phần đứng trước dấu `/` trong tên model
    (`gemini/gemini-2.5-flash`) và không được trùng module khác. Dịch vụ đã nói chuẩn OpenAI sẵn thì có thể
-   chỉ cần «module từ xa» (README mục 8), không cần viết module.
-2. **Viết `manifest.json`** theo mô tả ở README mục 8, mục «Viết một module». Trường nhập khoá phải khai
+   chỉ cần «module từ xa» (README mục 3), không cần viết module.
+2. **Viết `manifest.json`** theo mô tả ở README mục 3, tiểu mục «Viết một module» (gồm `loai`, `loai_ten`,
+   `loai_thu_tu`, `cung_cap`, `muc` với `can` — giao diện hiện tab/chế độ theo lời khai này, không theo tên module). Trường nhập khoá phải khai
    `kieu` là `bi_mat` hoặc `danh_sach_bi_mat` để lõi tự lưu riêng và che; khai `tai_nguyen.mang_ra` đúng các máy module gọi tới.
 3. **Viết `module.py`** với lớp `Module`. Hợp đồng ghi ở đầu `app/kham_pha.py`; module mẫu thật là
    `modules/gemini-api/`. Nguồn nói chuẩn OpenAI thì dùng lại `ChuyenTiepOpenAI` trong `app/chuyen_tiep.py`
@@ -57,8 +58,9 @@ Module là một thư mục `modules/<id>/` trong kho; lõi tự khám phá, kh�
 4. **Viết test** `test/test_web2api_<id>.py` theo mẫu `test/test_web2api_gemini.py`: dựng máy chủ giả của dịch vụ, kiểm
    đường thành công, khoá sai, hết hạn mức, và **kiểm khoá không lọt ra phản hồi hay nhật ký**. Khoá trong test
    phải là chuỗi giả rõ ràng; chuỗi giả mới cần được thêm vào allowlist của `.gitleaks.toml` — việc này chỉ chủ kho làm, hãy nêu trong pull request.
-5. **Cập nhật README** — chép `docs/MAU-TIEU-MUC-MODULE.md` thành tiểu mục mới ở mục 6, thêm dòng vào bảng «Trạng thái hiện
-   tại» (mục 2, ghi id module), ghi một dòng vào «Nhật ký thay đổi» (mục 14). Làm đủ 5 bước ở README mục 15; test
+5. **Cập nhật README** — chép `docs/MAU-TIEU-MUC-MODULE.md` thành tiểu mục mới ở mục 4 «Module có sẵn», thêm dòng vào bảng
+   «Trạng thái hiện tại» (mục 1, ghi id module). Làm đủ các bước ở README mục 9 «Cách bổ sung README khi thêm module»
+   (README không giữ nhật ký thay đổi — lịch sử nằm trong git); test
    `test/test_web2api_readme.py` báo đỏ nếu còn thiếu tiểu mục, dòng trạng thái, đường API hay biến `WEB2API_*`.
    Nên thêm `modules/<id>/README.md` tóm tắt cạnh mã, như `modules/gemini-api/README.md`.
 6. **Chạy ba lệnh kiểm tra** ở trên.

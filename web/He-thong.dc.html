@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Hệ thống · Module</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+.cong-cu{display:flex;flex-direction:column;gap:10px}
+.tim{position:relative;max-width:420px}
+.bo-cuc{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
+.bo-cuc.co-chi-tiet{grid-template-columns:minmax(0,1fr) minmax(0,380px)}
+.khu{display:flex;flex-direction:column;gap:10px}
+.khu-ten{display:flex;align-items:baseline;gap:8px;font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:500;font-size:22px}
+.khu-ten .dem{font-family:'Be Vietnam Pro',system-ui,sans-serif;font-size:13px;color:var(--mute);font-weight:500}
+/* Lưới ô đều nhau như bàn cờ: grid-auto-rows:1fr → mọi hàng cao bằng hàng cao nhất. */
+.luoi-o{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(230px,100%),1fr));grid-auto-rows:1fr;gap:12px}
+.o-mod{box-sizing:border-box;min-width:0;width:100%;height:100%;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.o-mod:hover{border-color:#C9C6BE}
+.o-mod[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 2px var(--accsoft)}
+.o-dau{display:flex;align-items:center;gap:10px;min-width:0}
+.bieu-tuong{flex:0 0 auto;width:40px;height:40px;border-radius:12px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px}
+.o-ten{font-weight:600;font-size:15px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.o-mo-ta{flex:1 1 auto;font-size:13px;color:var(--mute);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.o-chan{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.o-tn{font-size:12px;color:var(--mute);border-top:1px dashed var(--line);padding-top:8px;overflow-wrap:anywhere}
+.o-them{border-style:dashed;align-items:center;justify-content:center;text-align:center;color:var(--mute);min-height:150px}
+.o-them .bieu-tuong{background:#EEECE7;color:var(--ink);font-size:22px}
+.chi-tiet{position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto;box-sizing:border-box}
+.chi-tiet-dau{display:flex;align-items:flex-start;gap:10px}
+.chi-tiet-dau h2{font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;line-height:1.2;overflow-wrap:anywhere}
+.nut-dong{flex:0 0 auto;width:40px;height:40px;border-radius:20px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;padding:0;margin-left:auto}
+.nen-mo{display:none}
+.ket-noi{border-color:#B7DDD5;background:#F1F7F5}
+@media (max-width:880px){
+.bo-cuc.co-chi-tiet{grid-template-columns:minmax(0,1fr)}
+/* Điện thoại: bảng chi tiết là tờ trượt từ dưới lên. */
+.chi-tiet{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;max-height:86vh;max-height:86dvh;border-radius:18px 18px 0 0;box-shadow:0 -10px 32px rgba(24,24,22,.18)}
+.nen-mo{display:block;position:fixed;inset:0;z-index:39;background:rgba(24,24,22,.32);border:0;padding:0}
+}
+</style>
+</helmet>
+<div class="goc">
+
+<nav aria-label="Điều hướng Hệ thống" class="tb">
+<div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></div>
+<sc-if value="{{coQuayLai}}"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5 M11 6l-6 6 6 6"></path></svg><span>Quay lại {{quayLai.nhan}}</span></a></sc-if>
+<sc-if value="{{khongQuayLai}}"><span class="ten-web">web2api</span></sc-if>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}">{{t.nhan}}<sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-for></div>
+</nav>
+
+<main class="pg">
+<header style="display:flex;flex-direction:column;gap:8px">
+<span class="nhan-tren">Hệ thống</span>
+<h1 class="tieu-de">Module</h1>
+<p class="phu" style="max-width:70ch;font-size:15px">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. Bấm một ô để xem module cần gì để chạy, rồi bấm «Cài» — cài không cần khoá API; khoá thêm ở bước sau. Các tab liên quan (Studio, AI…) tự hiện khi module đã liên kết.</p>
+</header>
+
+<sc-if value="{{thieuChu}}"><p role="alert" class="bao bao-vang" id="thieu">{{thieuChu}}</p></sc-if>
+<sc-if value="{{tnLoi}}"><div role="alert" class="bao bao-loi dong-nut"><span style="flex:1 1 200px;min-width:0">Không đọc được dữ liệu module: {{tnLoi}}</span><button type="button" class="nut nut-nho nut-nguy" onClick="{{taiLai}}">Thử lại</button></div></sc-if>
+
+<sc-if value="{{hienKetNoi}}">
+<section class="the ket-noi" aria-labelledby="h-ket-noi" id="ket-noi">
+<h2 id="h-ket-noi" class="nhan-muc" style="color:#0B5A53">Kết nối với web2api</h2>
+<p class="phu" style="color:var(--ink)">web2api nói chuẩn OpenAI: ứng dụng nào gọi được OpenAI chỉ cần đổi địa chỉ gốc và khoá. Khối này tự ẩn sau khi module đầu tiên được liên kết.</p>
+<dl class="bang">
+<div class="bang-dong"><dt>Địa chỉ gốc (base URL)</dt><dd><span class="ma" id="dia-chi-v1">{{diaChiV1}}</span><span class="phu" style="display:block">Suy từ địa chỉ trình duyệt đang mở trang này. Gọi từ máy khác thì thay bằng IP trong mạng nhà hoặc tên miền của bạn.</span></dd></div>
+<div class="bang-dong"><dt>Khoá API</dt><dd>Chính là khoá quản trị. Lấy trên máy chủ bằng <code class="ma">docker exec web2api cat /data/admin_key</code> (đổi «web2api» thành tên container của bạn, hoặc dùng giá trị biến WEB2API_ADMIN_KEY nếu bạn tự đặt).</dd></div>
+</dl>
+<pre class="ma" id="lenh-mau">{{lenhMau}}</pre>
+</section>
+</sc-if>
+
+<section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri" style="gap:10px">
+<div class="dong-nut" style="justify-content:space-between"><h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2><sc-if value="{{coKhoa}}"><span class="{{lopHuyKhoa}}" data-co-khoa="">{{nhanHuyKhoa}}</span></sc-if><sc-if value="{{khongKhoa}}"><span class="huy huy-vang">Chưa có khoá</span></sc-if></div>
+<sc-if value="{{moOKhoa}}">
+<p class="phu">Cài, gỡ, thêm khoá API và xem module trên git đều cần khoá này. Khoá chỉ lưu trong trình duyệt này.</p>
+<div class="o-va-nut">
+<label for="o-khoa" class="an-chu">Khoá quản trị</label>
+<input id="o-khoa" class="o" type="{{kieuKhoa}}" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}">
+<button type="button" class="nut" id="nut-hien-khoa" onClick="{{doiHienKhoa}}" aria-pressed="{{hienKhoa}}">{{nhanHienKhoa}}</button>
+<button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button>
+</div>
+</sc-if>
+<sc-if value="{{thuGonKhoa}}"><div class="dong-nut"><button type="button" class="nut nut-nho" id="nut-doi-khoa" onClick="{{moDoiKhoa}}">Đổi khoá</button></div></sc-if>
+<sc-if value="{{khoaLoi}}"><p id="khoa-loi" role="alert" class="bao bao-loi">{{khoaLoi}}</p></sc-if>
+<sc-if value="{{khoaTin}}"><p role="status" class="bao bao-tot">{{khoaTin}}</p></sc-if>
+</section>
+
+<sc-if value="{{coLoiKhamPha}}">
+<div role="alert" class="bao bao-vang"><strong>Có module không nạp được:</strong>
+<ul style="margin:6px 0 0;padding-left:18px"><sc-for list="{{loiKhamPha}}" as="l"><li><span class="ma">{{l.thu_muc}}</span> — {{l.ly_do}}</li></sc-for></ul>
+</div>
+</sc-if>
+
+<div class="cong-cu">
+<div class="tim"><label for="tim" class="an-chu">Tìm module</label><input id="tim" class="o" type="search" placeholder="Tìm theo tên, mã hay mô tả…" value="{{tim}}" onInput="{{goTim}}"></div>
+<div class="chip-ds" role="group" aria-label="Lọc theo loại" id="loc-loai"><sc-for list="{{chipLoai}}" as="c"><button type="button" class="chip" data-loc-loai="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}"><span>{{c.ten}}</span><span class="dem">{{c.dem}}</span></button></sc-for></div>
+<div class="chip-ds" role="group" aria-label="Lọc theo trạng thái" id="loc-tt"><sc-for list="{{chipTT}}" as="c"><button type="button" class="chip" data-loc-tt="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
+<sc-if value="{{canKhoaGit}}"><p class="phu" id="goi-y-khoa-git">Module có trên git (chưa cài) chỉ hiện sau khi dán khoá quản trị.{{chuSoTb}}</p></sc-if>
+</div>
+
+<div class="{{lopBoCuc}}">
+<div style="display:flex;flex-direction:column;gap:22px;min-width:0" aria-busy="{{dangTai}}">
+<sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang đọc danh sách module…</p></sc-if>
+<sc-if value="{{khongKhop}}"><p class="rong" id="khong-khop">Không có module nào khớp bộ lọc.</p></sc-if>
+<sc-for list="{{khu}}" as="k">
+<section class="khu" data-khu="{{k.ma}}" aria-labelledby="{{k.idTen}}">
+<h2 class="khu-ten" id="{{k.idTen}}">{{k.ten}} <span class="dem">{{k.dem}} module</span></h2>
+<div class="luoi-o">
+<sc-for list="{{k.o}}" as="o">
+<button type="button" class="o-mod" data-o="{{o.id}}" data-tt="{{o.tt}}" aria-pressed="{{o.chon}}" aria-label="{{o.aria}}" onClick="{{o.chonO}}">
+<span class="o-dau"><span class="bieu-tuong" aria-hidden="true">{{o.chuCai}}</span><span class="o-ten">{{o.ten}}</span></span>
+<span class="o-chan"><span class="huy huy-xam">{{o.loaiTen}}</span><span class="{{o.lopTT}}">{{o.nhanTT}}</span></span>
+<span class="o-mo-ta">{{o.moTa}}</span>
+<span class="o-tn">{{o.taiNguyen}}</span>
+</button>
+</sc-for>
+<sc-if value="{{k.coThem}}"><button type="button" class="o-mod o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></sc-if>
+</div>
+</section>
+</sc-for>
+<sc-if value="{{chiOThem}}"><div class="luoi-o"><button type="button" class="o-mod o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></div></sc-if>
+</div>
+
+<sc-if value="{{coChiTiet}}">
+<button type="button" class="nen-mo" aria-label="Đóng bảng chi tiết" onClick="{{dongChiTiet}}"></button>
+<aside class="the chi-tiet" id="chi-tiet" aria-labelledby="chi-tiet-ten" onKeyDown="{{phimChiTiet}}">
+
+<sc-if value="{{ct.laThem}}">
+<div class="chi-tiet-dau"><h2 id="chi-tiet-ten" tabindex="-1">Thêm module</h2><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
+<sc-if value="{{khongKhoa}}"><p class="rong">Dán khoá quản trị ở khối «Khoá quản trị» để thêm module.</p></sc-if>
+<sc-if value="{{coKhoa}}">
+<section class="the-con" id="nguon-git" aria-labelledby="h-ng">
+<h3 id="h-ng" class="nhan-muc">Từ git</h3>
+<p class="phu">web2api tự kiểm repo theo chu kỳ; module trên git hiện ở lưới với trạng thái «Chưa cài» để bạn bấm «Cài».</p>
+<sc-if value="{{dangTaiNg}}"><p role="status" class="bao-cho">Đang đọc cấu hình nguồn git…</p></sc-if>
+<sc-if value="{{ngLoiTai}}"><p role="alert" class="bao bao-loi">Không đọc được cấu hình nguồn git: {{ngLoiTai}}</p></sc-if>
+<sc-if value="{{coNgTomTat}}"><dl class="bang"><sc-for list="{{ngTomTat}}" as="r"><div class="bang-dong"><dt>{{r.nhan}}</dt><dd>{{r.giaTri}}</dd></div></sc-for></dl></sc-if>
+<form novalidate onSubmit="{{luuNg}}" class="form-ng" style="display:flex;flex-direction:column;gap:12px">
+<div class="truong"><label for="ng-repo">Repo GitHub</label><input id="ng-repo" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="chu-so-huu/ten-repo" value="{{ngForm.repo}}" onInput="{{ngGo.repo}}"></div>
+<div class="luoi-form">
+<div class="truong"><label for="ng-nhanh">Nhánh</label><input id="ng-nhanh" class="o" type="text" autocomplete="off" spellcheck="false" value="{{ngForm.nhanh}}" onInput="{{ngGo.nhanh}}"></div>
+<div class="truong"><label for="ng-thu-muc">Thư mục chứa module</label><input id="ng-thu-muc" class="o" type="text" autocomplete="off" spellcheck="false" value="{{ngForm.thu_muc}}" onInput="{{ngGo.thu_muc}}"></div>
+</div>
+<div class="truong"><label for="ng-chu-ky">Chu kỳ kiểm (giây)</label><input id="ng-chu-ky" class="o" type="number" min="1" max="86400" step="1" inputmode="numeric" value="{{ngForm.chu_ky_giay}}" onInput="{{ngGo.chu_ky_giay}}"></div>
+<label class="chon"><input type="checkbox" id="ng-tu-dong" checked="{{ngForm.tu_dong}}" onChange="{{ngChon.tu_dong}}"><span>Tự động cập nhật module đã cài khi có bản mới</span></label>
+<label class="chon"><input type="checkbox" id="ng-chu-ky-so" checked="{{ngForm.yeu_cau_chu_ky}}" onChange="{{ngChon.yeu_cau_chu_ky}}"><span>Chỉ nhận commit có chữ ký hợp lệ</span></label>
+<div class="truong"><label for="{{ngIdToken}}">Token GitHub (tuỳ chọn)</label><input id="{{ngIdToken}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{ngGoiYToken}}" onInput="{{ngGoToken}}"><span class="phu">Chỉ cần với repo riêng tư hoặc khi hạn mức GitHub không đủ. Để trống thì giữ token cũ.</span></div>
+<sc-if value="{{ngLoi}}"><p role="alert" class="bao bao-loi">{{ngLoi}}</p></sc-if>
+<sc-if value="{{ngTin}}"><p role="status" class="bao bao-tot">{{ngTin}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" disabled="{{dangLuuNg}}">{{nhanLuuNg}}</button></div>
+</form>
+</section>
+<section class="the-con" id="tu-xa" aria-labelledby="h-tx">
+<h3 id="h-tx" class="nhan-muc">Từ xa</h3>
+<p class="phu">Có sẵn một dịch vụ nói chuẩn OpenAI ở máy khác (ví dụ máy có GPU trong mạng nhà)? Đăng ký bằng địa chỉ của nó: web2api chuyển tiếp các model có tiền tố bạn đặt sang đó, không cài mã nào.</p>
+<form novalidate onSubmit="{{themTuXa}}" class="form-tu-xa" style="display:flex;flex-direction:column;gap:12px">
+<div class="luoi-form">
+<div class="truong"><label for="tx-id">Mã (id) <span class="bb">(bắt buộc)</span></label><input id="tx-id" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="vd: may-gpu" value="{{txForm.id}}" onInput="{{txGo.id}}"></div>
+<div class="truong"><label for="tx-ten">Tên hiển thị <span class="bb">(bắt buộc)</span></label><input id="tx-ten" class="o" type="text" autocomplete="off" placeholder="vd: Máy GPU trong nhà" value="{{txForm.ten}}" onInput="{{txGo.ten}}"></div>
+<div class="truong"><label for="tx-tien-to">Tiền tố model <span class="bb">(bắt buộc)</span></label><input id="tx-tien-to" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="vd: gpu (model sẽ là gpu/…)" value="{{txForm.tien_to}}" onInput="{{txGo.tien_to}}"></div>
+<div class="truong"><label for="tx-url">Địa chỉ gốc <span class="bb">(bắt buộc)</span></label><input id="tx-url" class="o" type="url" autocomplete="off" spellcheck="false" placeholder="http://192.168.1.20:8000/v1" value="{{txForm.base_url}}" onInput="{{txGo.base_url}}"></div>
+</div>
+<div class="truong"><label for="{{txIdKhoa}}">Khoá API của dịch vụ đó (tuỳ chọn)</label><input id="{{txIdKhoa}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống nếu dịch vụ không cần khoá" onInput="{{txGoKhoa}}"></div>
+<sc-if value="{{txLoi}}"><p role="alert" class="bao bao-loi">{{txLoi}}</p></sc-if>
+<sc-if value="{{txTin}}"><p role="status" class="{{txLopTin}}">{{txTin}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" disabled="{{dangTx}}">{{nhanTx}}</button></div>
+</form>
+</section>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ct.laModule}}">
+<div class="chi-tiet-dau"><span class="bieu-tuong" aria-hidden="true">{{ct.chuCai}}</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><h2 id="chi-tiet-ten" tabindex="-1">{{ct.ten}}</h2><span class="phu"><span class="ma">{{ct.id}}</span> · {{ct.loaiTen}}<sc-if value="{{ct.phienBan}}"> · bản {{ct.phienBan}}</sc-if><sc-if value="{{ct.tienTo}}"> · model dạng <span class="ma">{{ct.tienTo}}/…</span></sc-if></span></div><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
+<div class="dong-nut"><span class="{{ct.lopTT}}" id="ct-trang-thai">{{ct.nhanTT}}</span><sc-for list="{{ct.cungCap}}" as="c"><span class="huy huy-xam">{{c}}</span></sc-for></div>
+<sc-if value="{{ct.moTa}}"><p style="text-wrap:pretty;overflow-wrap:anywhere">{{ct.moTa}}</p></sc-if>
+<sc-if value="{{ct.loi}}"><p role="alert" class="bao bao-loi" id="ct-loi">{{ct.loi}}</p></sc-if>
+<sc-if value="{{ct.ghiChuGit}}"><p class="bao bao-vang">{{ct.ghiChuGit}}</p></sc-if>
+
+<section class="the-con" id="can-gi" aria-labelledby="h-can-gi">
+<h3 id="h-can-gi" class="nhan-muc">Cần gì để chạy</h3>
+<dl class="bang"><sc-for list="{{ct.taiNguyen}}" as="r"><div class="bang-dong"><dt>{{r.nhan}}</dt><dd><sc-if value="{{r.chuaDo}}"><span class="chua-do">chưa đo</span></sc-if><sc-if value="{{r.coGiaTri}}">{{r.giaTri}}</sc-if></dd></div></sc-for></dl>
+<sc-if value="{{ct.huongDan}}"><p class="phu" id="huong-dan" style="color:var(--ink)"><strong>Hướng dẫn:</strong> {{ct.huongDan}}</p></sc-if>
+<sc-if value="{{ct.mayNay}}"><p class="{{ct.lopMayNay}}" id="may-nay">{{ct.mayNay}}</p></sc-if>
+</section>
+
+<sc-if value="{{ct.coMuc}}">
+<section class="the-con" id="muc-module" aria-labelledby="h-muc">
+<h3 id="h-muc" class="nhan-muc">Mục của module</h3>
+<sc-if value="{{ct.coMucDu}}"><ul style="margin:0;padding-left:18px"><sc-for list="{{ct.mucDu}}" as="u"><li data-muc="{{u.id}}">{{u.nhan}}</li></sc-for></ul></sc-if>
+<sc-for list="{{ct.mucThieu}}" as="u"><p class="phu muc-thieu">«{{u.nhan}}» chưa mở — cần {{u.can}}.</p></sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{ct.caiCanKhoa}}"><p class="rong">Dán khoá quản trị ở khối «Khoá quản trị» để cài hay thêm khoá.</p></sc-if>
+<sc-if value="{{ct.coNutCai}}">
+<div class="dong-nut"><button type="button" class="nut nut-chinh" id="nut-cai" onClick="{{ct.cai}}" disabled="{{ct.dangCai}}">{{ct.nhanCai}}</button><span class="phu">{{ct.goiYCai}}</span></div>
+</sc-if>
+<sc-if value="{{ct.moiNhat}}"><p class="phu" id="moi-nhat">Đã là bản mới nhất trên git.</p></sc-if>
+<sc-if value="{{ct.caiLoi}}"><p role="alert" class="bao bao-loi" id="cai-loi">{{ct.caiLoi}}</p></sc-if>
+<sc-if value="{{ct.caiTin}}"><p role="status" class="bao bao-tot" id="cai-tin">{{ct.caiTin}}</p></sc-if>
+
+<sc-if value="{{ct.coForm}}">
+<section class="the-con" id="lien-ket" aria-labelledby="h-lien-ket">
+<h3 id="h-lien-ket" class="nhan-muc">{{ct.tieuDeForm}}</h3>
+<sc-if value="{{f.dangTai}}"><p role="status" class="bao-cho">Đang đọc cấu hình đã lưu…</p></sc-if>
+<sc-if value="{{f.loiTai}}"><p role="alert" class="bao bao-loi">Không đọc được cấu hình: {{f.loiTai}}</p></sc-if>
+<sc-if value="{{f.coForm}}">
+<form class="form-cau-hinh" novalidate onSubmit="{{f.luu}}" style="display:flex;flex-direction:column;gap:14px">
+<sc-if value="{{f.khongTruong}}"><p class="phu">Module này không cần khoá hay cấu hình gì — bấm «Kiểm tra và lưu» để liên kết.</p></sc-if>
+<sc-for list="{{f.truong}}" as="t">
+<div class="truong" data-truong="{{t.khoa}}">
+<label for="{{t.idO}}">{{t.nhan}} <sc-if value="{{t.batBuoc}}"><span class="bb">(bắt buộc)</span></sc-if></label>
+<sc-if value="{{t.laDs}}">
+<ul class="ds-khoa"><sc-for list="{{t.daLuu}}" as="k"><li class="{{k.lop}}" data-khoa-luu="{{k.i}}"><span class="ma" style="flex:1 1 auto">{{k.che}}</span><span class="phu">{{k.trangThai}}</span><button type="button" class="nut nut-nho" onClick="{{k.doi}}" aria-pressed="{{k.bot}}" aria-label="{{k.aria}}">{{k.nhanNut}}</button></li></sc-for></ul>
+<textarea id="{{t.idO}}" class="o ma" rows="3" autocomplete="off" spellcheck="false" placeholder="Dán khoá mới — mỗi dòng một khoá" onInput="{{t.onInput}}" data-kieu="danh_sach_bi_mat"></textarea>
+<span class="phu">Khoá đã lưu chỉ hiện dạng che. Bấm «Bớt» để bỏ từng khoá; khoá mới được thử trước khi lưu rồi xoá khỏi trang.</span>
+</sc-if>
+<sc-if value="{{t.laBiMat}}"><sc-if value="{{t.biMatLuu}}"><span class="phu">Đang lưu: <span class="ma">{{t.biMatLuu}}</span></span></sc-if><input id="{{t.idO}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống thì giữ giá trị đang lưu" onInput="{{t.onInput}}" data-kieu="bi_mat"></sc-if>
+<sc-if value="{{t.laChuoi}}"><input id="{{t.idO}}" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="{{t.goiY}}" value="{{t.giaTri}}" onInput="{{t.onInput}}" data-kieu="chuoi"><sc-if value="{{t.ghiChuChuoi}}"><span class="phu">{{t.ghiChuChuoi}}</span></sc-if></sc-if>
+<sc-if value="{{t.moTa}}"><span class="phu">{{t.moTa}}</span></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{f.loi}}"><p role="alert" class="bao bao-loi loi-form">{{f.loi}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" id="nut-luu-cau-hinh" disabled="{{f.dang}}">{{f.nhanNut}}</button></div>
+</form>
+</sc-if>
+<sc-if value="{{f.coKq}}">
+<div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
+<sc-if value="{{f.kqOk}}"><p role="status" class="bao bao-tot" id="kq-ok">Đã liên kết {{ct.ten}}. Chỉ khoá dùng được mới được lưu.{{ct.tabMoi}}</p></sc-if>
+<sc-if value="{{f.kqLoi}}"><p role="alert" class="bao bao-loi" id="kq-loi">Chưa lưu được: {{f.kqLoi}}</p></sc-if>
+<sc-if value="{{f.kqGoLai}}"><p class="phu">Khoá đã gửi được xoá khỏi trang vì an toàn — dán lại nếu muốn thử lần nữa.</p></sc-if>
+<ul class="ds-kq"><sc-for list="{{f.kqDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"><sc-if value="{{k.ok}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></sc-if><sc-if value="{{k.hong}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12 M18 6L6 18"></path></svg></sc-if></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span></span></li></sc-for></ul>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{ct.coGo}}">
+<div class="dong-nut"><button type="button" class="nut nut-nho nut-nguy" id="nut-go" onClick="{{ct.hoiGo}}">Gỡ</button></div>
+<sc-if value="{{ct.dangHoiGo}}">
+<div role="alertdialog" aria-label="Xác nhận gỡ" class="bao bao-vang" id="xac-nhan-go" style="display:flex;flex-direction:column;gap:10px">
+<span>Gỡ <strong>{{ct.ten}}</strong>? Mã, cấu hình và khoá đã lưu của module này bị xoá; ứng dụng đang gọi model của nó sẽ nhận lỗi.</span>
+<div class="dong-nut"><button type="button" class="nut nut-nho nut-nguy" id="nut-go-han" onClick="{{ct.go}}" disabled="{{ct.dangGo}}">Gỡ hẳn</button><button type="button" class="nut nut-nho" onClick="{{ct.thoiGo}}">Thôi</button></div>
+</div>
+</sc-if>
+<sc-if value="{{ct.goLoi}}"><p role="alert" class="bao bao-loi">Chưa gỡ được: {{ct.goLoi}}</p></sc-if>
+</sc-if>
+</sc-if>
+
+</aside>
+</sc-if>
+</div>
+<sc-if value="{{goTin}}"><p role="status" class="bao bao-tot" id="go-tin">{{goTin}}</p></sc-if>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{}'>
+// Hệ thống → Module: lưới ô theo loại, bảng chi tiết, luồng Cài → Thêm khoá → Liên kết. Mọi chuỗi động đi qua
+// {{ }} của dc-lite (đã thoát HTML) — kể cả tên module/commit lấy từ git. Không có tên module nào trong mã trang.
+const K = window.Khung;
+const TT = {
+  'chua-cai': ['Chưa cài', 'huy huy-xam'], 'cho-khoa': ['Đã cài — chờ khoá', 'huy huy-vang'],
+  'cho-lien-ket': ['Đã cài — chờ liên kết', 'huy huy-vang'], 'dang-chay': ['Đang chạy', 'huy huy-xanh'],
+  'ban-moi': ['Có bản mới', 'huy huy-lam'], 'loi': ['Lỗi', 'huy huy-do']
+};
+const LOC_TT = [['tat-ca', 'Tất cả'], ['da-cai', 'Đã cài'], ['chua-cai', 'Chưa cài'], ['ban-moi', 'Có bản mới']];
+const MB = 1024 * 1024;
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const khoa = K.docKhoa();
+    const q = new URLSearchParams(location.search);
+    this.state = {
+      khoa, khoaNhap: khoa, hienKhoa: false, suaKhoa: false, khoaLoi: '', khoaTin: '',
+      tn: null, tnLoi: '', cat: [], loiKhamPha: [], mods: [], he: null, tb: null, ng: null,
+      dangTai: true, thieu: q.get('thieu') || '',
+      tim: '', locLoai: null, locTT: 'tat-ca', chon: (location.hash.match(/^#module-(.+)$/) || [])[1] || null,
+      cf: {}, caiGit: {}, hoiGo: null, dangGo: null, goLoi: {}, goTin: '', tabMoi: {},
+      dangTaiNg: false, ngLoiTai: '', ngSua: false,
+      ngForm: { repo: '', nhanh: 'main', thu_muc: 'modules', chu_ky_giay: '300', tu_dong: false, yeu_cau_chu_ky: false },
+      ngToken: '', ngLan: 0, dangLuuNg: false, ngLoi: '', ngTin: '',
+      txForm: { id: '', ten: '', tien_to: '', base_url: '' }, txKhoa: '', txLan: 0, dangTx: false, txLoi: '', txKq: null
+    };
+    if (this.state.chon) this.state.chon = decodeURIComponent(this.state.chon);
+  }
+
+  didMount() {
+    this.taiLai();
+    window.addEventListener('hashchange', () => {
+      const m = location.hash.match(/^#module-(.+)$/);
+      if (m) this.chonO(decodeURIComponent(m[1]));
+    });
+  }
+
+  // ---------- dữ liệu ----------
+  async taiCoBan() {
+    const [tn, cat, mods, he] = await Promise.allSettled([K.taiTinhNang(), K.goi('api/modules/catalog', { khoa: '' }),
+      K.goi('api/modules', { khoa: '' }), K.goi('api/he-thong', { khoa: '' })]);
+    const them = { dangTai: false };
+    if (tn.status === 'fulfilled') { them.tn = tn.value; them.tnLoi = ''; } else them.tnLoi = tn.reason.message;
+    if (cat.status === 'fulfilled') { them.cat = (cat.value.j && cat.value.j.modules) || []; them.loiKhamPha = (cat.value.j && cat.value.j.loi) || []; }
+    if (mods.status === 'fulfilled') { them.mods = (mods.value.j && mods.value.j.modules) || []; them.soTb = (mods.value.j && mods.value.j.thong_bao_so) || 0; }
+    them.he = he.status === 'fulfilled' ? he.value.j : null;
+    this.setState(them);
+  }
+  async taiQuanTri() {
+    if (!this.state.khoa) return;
+    this.setState({ dangTaiNg: true, ngLoiTai: '' });
+    const [tb, ng] = await Promise.allSettled([K.goi('api/modules/thong-bao'), K.goi('api/nguon-git')]);
+    const them = { dangTaiNg: false };
+    if (tb.status === 'fulfilled') them.tb = tb.value.j; else { them.tb = null; this.loiKhoa(tb.reason); }
+    if (ng.status === 'fulfilled') {
+      const j = ng.value.j || {};
+      them.ng = j;
+      const cfg = j.cau_hinh;
+      if (cfg && !this.state.ngSua) {
+        them.ngForm = { repo: cfg.repo || '', nhanh: cfg.nhanh || 'main', thu_muc: cfg.thu_muc || '',
+          chu_ky_giay: cfg.chu_ky_giay != null ? String(cfg.chu_ky_giay) : '300', tu_dong: !!cfg.tu_dong, yeu_cau_chu_ky: !!cfg.yeu_cau_chu_ky };
+      }
+    } else { them.ng = null; them.ngLoiTai = ng.reason.ma === 401 ? '' : ng.reason.message; this.loiKhoa(ng.reason); }
+    this.setState(them);
+  }
+  taiLai() {
+    const p = Promise.all([this.taiCoBan(), this.taiQuanTri()]);
+    const id = this.state.chon;
+    if (id && id !== '+them' && this.state.khoa) K.cauHinh.tai(this, id);
+    return p;
+  }
+  loiKhoa(e) {
+    if (e && e.ma === 401) {
+      this.setState({ khoaLoi: this.state.khoa
+        ? 'Khoá sai hoặc thiếu: máy chủ từ chối khoá quản trị đang lưu (HTTP 401). Dán lại khoá đúng rồi bấm Lưu.'
+        : 'Khoá sai hoặc thiếu: chưa có khoá quản trị.', khoaTin: '', suaKhoa: true });
+    }
+  }
+
+  // ---------- khoá quản trị ----------
+  luuKhoa() {
+    const k = (this.state.khoaNhap || '').trim();
+    if (!k) { this.setState({ khoaLoi: 'Khoá sai hoặc thiếu: ô khoá đang trống.', khoaTin: '' }); return; }
+    const ok = K.luuKhoa(k);
+    this.setState({ khoa: k, khoaNhap: k, khoaLoi: '', suaKhoa: false, hienKhoa: false,
+      khoaTin: ok ? 'Đã lưu khoá trong trình duyệt này.' : 'Trình duyệt chặn lưu trữ: khoá chỉ dùng được đến khi đóng trang.' });
+    setTimeout(() => this.taiLai(), 0);
+  }
+
+  // ---------- chọn ô ----------
+  chonO(id) {
+    this.setState({ chon: id, hoiGo: null, goTin: '' });
+    if (id !== '+them' && this.state.khoa) K.cauHinh.tai(this, id);
+    setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth > 880 }); }, 30);
+  }
+  dongChiTiet() {
+    const id = this.state.chon;
+    this.setState({ chon: null, hoiGo: null });
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    setTimeout(() => { const o = document.querySelector(id === '+them' ? '#o-them' : '[data-o="' + CSS.escape(id || '') + '"]'); if (o) o.focus(); }, 30);
+  }
+
+  // ---------- cài / cập nhật từ git ----------
+  async caiTuGit(id) {
+    this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: true } }) }));
+    let j;
+    try { ({ j } = await K.goi('api/nguon-git/cai/' + encodeURIComponent(id), { method: 'POST' })); }
+    catch (e) {
+      this.loiKhoa(e);
+      this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, loi: e.message } }) }));
+      return;
+    }
+    const viec = j && j.nap_lai && (j.nap_lai.doi || []).includes(id) ? 'Đã cập nhật' : 'Đã cài';
+    this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, tin: viec + (j && j.phien_ban ? ' bản ' + j.phien_ban : '') + '.' } }) }));
+    await this.taiLai();
+    K.cauHinh.tai(this, id);
+  }
+
+  // Liên kết xong: tải lại «tính năng đang có» → khung tính lại điều kiện, tab liên quan hiện NGAY (không tải lại
+  // trang); ghi lại tab nào vừa hiện để nói cho người dùng biết.
+  async daLienKet(id) {
+    const ten = (tn) => K.navChinh(tn, '').map((t) => t.nhan + ' (thanh trên)').concat(K.navHeThong(tn, '').map((t) => t.nhan + ' (Hệ thống)'));
+    const truoc = ten(this.state.tn);
+    await this.taiLai();
+    const moi = ten(this.state.tn).filter((n) => !truoc.includes(n));
+    this.setState((s) => ({ tabMoi: Object.assign({}, s.tabMoi, { [id]: moi }) }));
+  }
+
+  async go(id, ten) {
+    this.setState((s) => ({ dangGo: id, goLoi: Object.assign({}, s.goLoi, { [id]: '' }) }));
+    try {
+      await K.goi('api/modules/' + encodeURIComponent(id), { method: 'DELETE' });
+      this.setState((s) => ({ dangGo: null, hoiGo: null, chon: null, goTin: 'Đã gỡ ' + ten + '. Các tab chỉ do nó mang lại đã biến mất.',
+        cf: Object.assign({}, s.cf, { [id]: undefined }), caiGit: Object.assign({}, s.caiGit, { [id]: undefined }) }));
+      this.taiLai();
+    } catch (e) {
+      this.loiKhoa(e);
+      this.setState((s) => ({ dangGo: null, goLoi: Object.assign({}, s.goLoi, { [id]: e.message }) }));
+    }
+  }
+
+  // ---------- nguồn git / từ xa ----------
+  async luuNg(e) {
+    if (e) e.preventDefault();
+    const f = this.state.ngForm;
+    const chuKy = Number(String(f.chu_ky_giay).trim());
+    if (!String(f.repo || '').trim()) { this.setState({ ngLoi: 'Còn thiếu repo (dạng chu-so-huu/ten-repo).', ngTin: '' }); return; }
+    if (!Number.isInteger(chuKy) || chuKy < 1 || chuKy > 86400) { this.setState({ ngLoi: 'Chu kỳ phải là số nguyên giây từ 1 đến 86400.', ngTin: '' }); return; }
+    // Máy chủ coi "token": "" là XOÁ token đã lưu → chỉ gửi khi người dùng thật sự gõ token mới.
+    const than = { repo: f.repo.trim(), nhanh: String(f.nhanh || '').trim() || 'main', thu_muc: String(f.thu_muc || '').trim(),
+      chu_ky_giay: chuKy, tu_dong: !!f.tu_dong, yeu_cau_chu_ky: !!f.yeu_cau_chu_ky };
+    const token = (this.state.ngToken || '').trim();
+    if (token) than.token = token;
+    this.setState((s) => ({ ngToken: '', ngLan: s.ngLan + 1, dangLuuNg: true, ngLoi: '', ngTin: '' }));
+    try {
+      const { j } = await K.goi('api/nguon-git', { method: 'PUT', json: than });
+      this.setState({ ng: j || {}, dangLuuNg: false, ngSua: false, ngTin: 'Đã lưu. web2api kiểm repo ngay; module trên git sẽ hiện ở lưới.' });
+      setTimeout(() => this.taiQuanTri(), 1500);
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ dangLuuNg: false, ngLoi: 'Chưa lưu được: ' + err.message + (token ? ' Token đã gửi được xoá khỏi trang — dán lại nếu cần.' : '') });
+    }
+  }
+  async themTuXa(e) {
+    if (e) e.preventDefault();
+    const f = this.state.txForm;
+    const thieu = [['id', 'mã'], ['ten', 'tên'], ['tien_to', 'tiền tố'], ['base_url', 'địa chỉ gốc']]
+      .filter(([k]) => !String(f[k] || '').trim()).map(([, n]) => n);
+    if (thieu.length) { this.setState({ txLoi: 'Còn thiếu: ' + thieu.join(', ') + '.', txKq: null }); return; }
+    const than = { id: f.id.trim(), ten: f.ten.trim(), tien_to: f.tien_to.trim(), base_url: f.base_url.trim() };
+    const k = (this.state.txKhoa || '').trim();
+    if (k) than.api_key = k;
+    this.setState((s) => ({ txKhoa: '', txLan: s.txLan + 1, dangTx: true, txLoi: '', txKq: null }));
+    try {
+      const { j } = await K.goi('api/modules/tu-xa', { method: 'POST', json: than });
+      this.setState({ dangTx: false, txKq: j || {}, txForm: { id: '', ten: '', tien_to: '', base_url: '' } });
+      this.taiLai();
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ dangTx: false, txLoi: 'Chưa đăng ký được: ' + err.message + (k ? ' Khoá đã gửi được xoá khỏi trang — dán lại nếu cần.' : '') });
+    }
+  }
+
+  // ---------- dựng ô ----------
+  dungO() {
+    const s = this.state;
+    const tn = s.tn || {};
+    const cat = new Map((s.cat || []).filter((m) => m && m.id).map((m) => [m.id, m]));
+    const mods = new Map((s.mods || []).filter((m) => m && m.id).map((m) => [m.id, m]));
+    const tnMod = new Map((tn.modules || []).map((m) => [m.id, m]));
+    const git = new Map(((s.tb && s.tb.danh_sach) || []).filter((x) => x && x.id).map((x) => [x.id, x]));
+    const loiKP = new Map((s.loiKhamPha || []).map((l) => [String(l.thu_muc || '').split('/').filter(Boolean).pop(), l.ly_do]));
+    const ids = new Set([...cat.keys(), ...[...tnMod.values()].filter((m) => m.tu_xa).map((m) => m.id), ...git.keys(), ...loiKP.keys()]);
+    const loaiTn = new Map((tn.loai || []).map((l) => [l.ma, l]));
+    const ra = [];
+    for (const id of ids) {
+      if (!id) continue;
+      const c = cat.get(id), g = git.get(id), t = tnMod.get(id), m = mods.get(id);
+      const tuXa = !!(t && t.tu_xa);
+      const info = c || (tuXa ? { ten: t.ten, loai: t.loai, cung_cap: t.cung_cap, tien_to: t.tien_to,
+        mo_ta: 'Dịch vụ nói chuẩn OpenAI ở máy khác, đăng ký bằng địa chỉ (module từ xa).' } : null) || g || { ten: id, loai: '' };
+      const daCai = !!c || tuXa;
+      const lienKet = !!(t && t.da_lien_ket);
+      let tt;
+      if (!daCai) tt = (g && g.trang_thai === 'loi_manifest') || (!g && loiKP.has(id)) ? 'loi' : 'chua-cai';
+      else if (g && g.trang_thai === 'co_ban_moi') tt = 'ban-moi';
+      else tt = lienKet ? 'dang-chay' : (m && m.can_cau_hinh === false ? 'cho-lien-ket' : 'cho-khoa');
+      const ma = info.loai || 'khac';
+      const l = loaiTn.get(ma);
+      ra.push({ id, c, g, t, m, info, daCai, lienKet, tuXa, tt, ma,
+        loaiTen: (l && l.ten) || info.loai_ten || ma,
+        thuTu: l && l.thu_tu != null ? l.thu_tu : (info.loai_thu_tu != null ? info.loai_thu_tu : null),
+        loi: (!daCai && g && g.trang_thai === 'loi_manifest' ? g.ly_do : '') || loiKP.get(id) || '' });
+    }
+    return ra;
+  }
+
+  taiNguyenO(x) {
+    const tn = x.info.tai_nguyen;
+    if (!tn) return x.tuXa ? 'Chạy ở máy khác — không tốn tài nguyên máy này' : '';
+    const p = [];
+    p.push(typeof tn.ram_them_mb === 'number' ? 'RAM +' + tn.ram_them_mb.toLocaleString('vi-VN') + ' MB' : 'RAM chưa đo');
+    p.push(typeof tn.dia_mb === 'number' ? 'đĩa ' + tn.dia_mb.toLocaleString('vi-VN') + ' MB' : 'đĩa chưa đo');
+    p.push(tn.gpu === true ? 'cần GPU' : tn.gpu === false ? 'không cần GPU' : 'GPU chưa rõ');
+    if (x.g && typeof x.g.dung_luong === 'number') p.push('tải ' + K.dl(x.g.dung_luong));
+    return p.join(' · ');
+  }
+
+  chiTiet(x) {
+    const s = this.state;
+    const tn = x.info.tai_nguyen || null;
+    const so = (v, dv) => (typeof v === 'number' ? { chuaDo: false, coGiaTri: true, giaTri: v.toLocaleString('vi-VN') + ' ' + dv } : { chuaDo: true, coGiaTri: false, giaTri: '' });
+    const gt = (chu) => ({ chuaDo: false, coGiaTri: true, giaTri: chu });
+    const taiNguyen = [];
+    if (tn) {
+      taiNguyen.push(Object.assign({ nhan: 'RAM thêm' }, so(tn.ram_them_mb, 'MB')));
+      taiNguyen.push(Object.assign({ nhan: 'Đĩa' }, so(tn.dia_mb, 'MB')));
+      taiNguyen.push(Object.assign({ nhan: 'GPU' }, tn.gpu === true ? gt('Cần GPU') : tn.gpu === false ? gt('Không cần') : so(null)));
+      taiNguyen.push(Object.assign({ nhan: 'Mạng ra' }, Array.isArray(tn.mang_ra) ? gt(tn.mang_ra.length ? tn.mang_ra.join(', ') : 'Không gọi ra ngoài') : so(null)));
+    } else if (x.tuXa) taiNguyen.push(Object.assign({ nhan: 'Chạy ở' }, gt('máy khác (module từ xa)')));
+    if (x.g && typeof x.g.dung_luong === 'number') taiNguyen.push(Object.assign({ nhan: 'Dung lượng tải' }, gt(K.dl(x.g.dung_luong) + ' (đo từ cây git)')));
+    const goi = x.info.yeu_cau_goi;
+    if (Array.isArray(goi)) taiNguyen.push(Object.assign({ nhan: 'Gói Python' }, gt(goi.length ? goi.join(', ') : 'Không cần gói thêm')));
+
+    // Một dòng kết luận «Máy này» — chỉ khi đọc được /api/he-thong VÀ module có khai số; không thì không đoán.
+    let mayNay = '', lopMayNay = 'phu';
+    const he = s.he;
+    if (he && tn) {
+      const rm = (he.ram && he.ram.may) || {}, rc = (he.ram && he.ram.container) || {};
+      const ds = [];
+      if (rm.trong != null) ds.push(rm.trong);
+      if (rc.gioi_han != null && rc.dang_dung != null) ds.push(rc.gioi_han - rc.dang_dung);
+      const ramCon = ds.length ? Math.min(...ds) : null;
+      const diaCon = he.dia && he.dia.trong != null ? he.dia.trong : null;
+      const thieuG = [];
+      if (typeof tn.ram_them_mb === 'number' && ramCon != null && tn.ram_them_mb * MB > ramCon) thieuG.push('RAM (cần thêm ' + tn.ram_them_mb.toLocaleString('vi-VN') + ' MB, còn khoảng ' + K.dl(ramCon) + ')');
+      const canDia = typeof tn.dia_mb === 'number' ? tn.dia_mb * MB : (x.g && typeof x.g.dung_luong === 'number' ? x.g.dung_luong : null);
+      if (canDia != null && diaCon != null && canDia > diaCon) thieuG.push('đĩa (cần ' + K.dl(canDia) + ', còn ' + K.dl(diaCon) + ')');
+      if (thieuG.length) { mayNay = 'Máy này có thể thiếu ' + thieuG.join(' và ') + '.'; lopMayNay = 'bao bao-vang'; }
+      else if (typeof tn.ram_them_mb === 'number' && ramCon != null) mayNay = 'Máy này đủ chạy: còn khoảng ' + K.dl(ramCon) + ' RAM' + (diaCon != null ? ', đĩa còn ' + K.dl(diaCon) : '') + '.';
+    }
+
+    const muc = ((s.tn && s.tn.muc) || []).filter((u) => u.module === x.id);
+    const mucDu = [], mucThieu = [];
+    for (const u of muc) {
+      const t = K.thieu(K.dkMuc(u), s.tn);
+      if (t.length) mucThieu.push({ id: u.id, nhan: u.nhan, can: t.join('; ') }); else mucDu.push({ id: u.id, nhan: u.nhan });
+    }
+    const cg = s.caiGit[x.id] || {};
+    const coKhoa = !!s.khoa;
+    const coNutCai = coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi');
+    const coForm = coKhoa && x.daCai && !x.tuXa;
+    const moi = s.tabMoi[x.id] || [];
+    const tabMoi = moi.length ? ' Tab vừa hiện: ' + moi.join(', ') + '.' : '';
+    return {
+      laModule: true, laThem: false, id: x.id, ten: x.info.ten || x.id, chuCai: this.chuCai(x.info.ten || x.id),
+      loaiTen: x.loaiTen, phienBan: (x.c && x.c.phien_ban) || (x.g && x.g.phien_ban_moi) || '', tienTo: x.info.tien_to || '',
+      nhanTT: TT[x.tt][0] + (x.tt === 'ban-moi' && x.g ? ' ' + (x.g.phien_ban_cu || '') + ' → ' + (x.g.phien_ban_moi || '') : ''),
+      // A0: chữ theo trạng thái git suy từ cấu trúc — moi → «Cài», co_ban_moi → «Cập nhật», da_cai_dung → «Đã là bản mới nhất».
+      moiNhat: x.daCai && ((s.tb && s.tb.moi_nhat) || []).includes(x.id),
+      lopTT: TT[x.tt][1], cungCap: Array.isArray(x.info.cung_cap) ? x.info.cung_cap : [],
+      moTa: x.info.mo_ta || '', loi: x.loi ? 'Không dùng được: ' + x.loi : '', ghiChuGit: (x.g && x.g.ghi_chu) || '',
+      taiNguyen, huongDan: (tn && tn.ghi_chu) || '', mayNay, lopMayNay,
+      coMuc: muc.length > 0, coMucDu: mucDu.length > 0, mucDu, mucThieu,
+      caiCanKhoa: !coKhoa && x.tt !== 'loi', coNutCai,
+      nhanCai: cg.dang ? (x.tt === 'ban-moi' ? 'Đang cập nhật…' : 'Đang cài…') : (x.tt === 'ban-moi' ? 'Cập nhật' : 'Cài'),
+      goiYCai: x.tt === 'ban-moi' ? 'Thay mã bằng bản mới trên git; cấu hình và khoá giữ nguyên.' : 'Cài không cần khoá API — khoá thêm ở bước sau.',
+      cai: () => this.caiTuGit(x.id), dangCai: !!cg.dang, caiLoi: cg.loi ? 'Chưa ' + (x.tt === 'ban-moi' ? 'cập nhật' : 'cài') + ' được: ' + cg.loi : '',
+      caiTin: cg.tin ? cg.tin + (x.tt === 'cho-khoa' ? ' Bước tiếp theo: thêm tài khoản/khoá API bên dưới rồi bấm «Kiểm tra và lưu».' : '') : '',
+      coForm, tieuDeForm: x.lienKet ? 'Tài khoản / khoá API' : 'Bước tiếp theo · Thêm tài khoản/khoá API', tabMoi,
+      coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),
+      hoiGo: () => this.setState({ hoiGo: x.id }), dangHoiGo: s.hoiGo === x.id, thoiGo: () => this.setState({ hoiGo: null }),
+      go: () => this.go(x.id, x.info.ten || x.id), dangGo: s.dangGo === x.id, goLoi: s.goLoi[x.id] || ''
+    };
+  }
+
+  chuCai(ten) { const m = String(ten || '?').match(/[\p{L}\p{N}]/u); return m ? m[0].toUpperCase() : '?'; }
+
+  renderVals() {
+    const s = this.state;
+    const tn = s.tn;
+    const coKhoa = !!s.khoa;
+    const tatCa = this.dungO();
+
+    // Khu theo loại có trong dữ liệu, xếp theo loai_thu_tu (khai trong manifest) rồi mã — không danh sách loại nào ở đây.
+    const theoMa = new Map();
+    for (const x of tatCa) {
+      if (!theoMa.has(x.ma)) theoMa.set(x.ma, { ma: x.ma, ten: x.loaiTen, thuTu: x.thuTu, o: [] });
+      const k = theoMa.get(x.ma);
+      if (k.thuTu == null && x.thuTu != null) k.thuTu = x.thuTu;
+      k.o.push(x);
+    }
+    const dsKhu = [...theoMa.values()].sort((a, b) => (a.thuTu == null) - (b.thuTu == null) || (a.thuTu || 0) - (b.thuTu || 0) || a.ma.localeCompare(b.ma));
+    // Mặc định chọn khu ĐẦU (thứ tự nhỏ nhất) — «tab AI đang chọn» khi AI khai thứ tự đầu; không viết cứng mã nào.
+    const locLoai = s.locLoai || (dsKhu.length ? dsKhu[0].ma : 'tat-ca');
+    const q = K.boDau(s.tim.trim());
+    const khop = (x) => (!q || K.boDau([x.info.ten, x.id, x.info.mo_ta].join(' ')).includes(q))
+      && (s.locTT === 'tat-ca' || (s.locTT === 'da-cai' ? x.daCai : s.locTT === 'chua-cai' ? !x.daCai : x.tt === 'ban-moi'));
+    const khuHien = dsKhu.filter((k) => locLoai === 'tat-ca' || k.ma === locLoai)
+      .map((k) => Object.assign({}, k, { o: k.o.filter(khop).sort((a, b) => String(a.info.ten || a.id).localeCompare(String(b.info.ten || b.id), 'vi')) }))
+      .filter((k) => k.o.length);
+    const khu = khuHien.map((k, i) => ({
+      ma: k.ma, ten: k.ten, idTen: 'khu-' + i, dem: k.o.length, coThem: i === khuHien.length - 1,
+      o: k.o.map((x) => ({
+        id: x.id, tt: x.tt, chon: s.chon === x.id, ten: x.info.ten || x.id, chuCai: this.chuCai(x.info.ten || x.id),
+        loaiTen: x.loaiTen, nhanTT: TT[x.tt][0], lopTT: TT[x.tt][1], moTa: x.info.mo_ta || '', taiNguyen: this.taiNguyenO(x),
+        aria: (x.info.ten || x.id) + ' — ' + TT[x.tt][0], chonO: () => this.chonO(x.id)
+      }))
+    }));
+    const chipLoai = [{ ma: 'tat-ca', ten: 'Tất cả', dem: String(tatCa.length) }].concat(dsKhu.map((k) => ({ ma: k.ma, ten: k.ten, dem: String(k.o.length) })))
+      .map((c) => Object.assign(c, { on: c.ma === locLoai, chon: () => this.setState({ locLoai: c.ma }) }));
+    const chipTT = LOC_TT.map(([ma, ten]) => ({ ma, ten, on: s.locTT === ma, chon: () => this.setState({ locTT: ma }) }));
+
+    // Chi tiết
+    const xChon = s.chon && s.chon !== '+them' ? tatCa.find((x) => x.id === s.chon) : null;
+    const ct = s.chon === '+them' ? { laThem: true, laModule: false } : xChon ? this.chiTiet(xChon) : null;
+    const f = xChon && ct && ct.coForm ? K.cauHinh.vm(this, xChon.id, 'ct', (id) => this.daLienKet(id)) : {};
+
+    // Nguồn git (khối Thêm module)
+    const ng = s.ng; const cfg = ng && ng.cau_hinh; const ttNg = (ng && ng.trang_thai) || {};
+    const ngTomTat = [];
+    if (cfg) {
+      ngTomTat.push({ nhan: 'Repo', giaTri: cfg.repo + ' · nhánh ' + (cfg.nhanh || 'main') + ' · thư mục ' + (cfg.thu_muc || '') });
+      ngTomTat.push({ nhan: 'Token', giaTri: cfg.token ? 'đã có ' + cfg.token : 'chưa có' });
+    } else if (ng) ngTomTat.push({ nhan: 'Trạng thái', giaTri: 'Chưa cấu hình nguồn git' });
+    if (cfg && ttNg.kiem_luc) ngTomTat.push({ nhan: 'Kiểm lần cuối', giaTri: K.ngayGio(ttNg.kiem_luc) });
+    if (ttNg.han_muc_con != null) ngTomTat.push({ nhan: 'Hạn mức GitHub', giaTri: 'còn ' + ttNg.han_muc_con + ' lượt' });
+    if (ttNg.loi) ngTomTat.push({ nhan: 'Lỗi gần nhất', giaTri: String(ttNg.loi) });
+    const ngGo = {}, ngChon = {}, txGo = {};
+    for (const k of ['repo', 'nhanh', 'thu_muc', 'chu_ky_giay']) ngGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ ngSua: true, ngForm: Object.assign({}, st.ngForm, { [k]: v }) })); };
+    for (const k of ['tu_dong', 'yeu_cau_chu_ky']) ngChon[k] = (e) => { const v = !!e.target.checked; this.setState((st) => ({ ngSua: true, ngForm: Object.assign({}, st.ngForm, { [k]: v }) })); };
+    for (const k of ['id', 'ten', 'tien_to', 'base_url']) txGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ txForm: Object.assign({}, st.txForm, { [k]: v }) })); };
+    const txSk = s.txKq && s.txKq.suc_khoe;
+
+    const ql = tn ? K.quayLai(tn) : null;
+    const coLienKet = !!tn && (tn.modules || []).some((m) => m.da_lien_ket);
+    const diaChiV1 = K.diaChiV1();
+    return {
+      navHT: K.navHeThong(tn, 'module', s.tb ? s.tb.so_moi : s.soTb), coQuayLai: !!ql, khongQuayLai: !ql, quayLai: ql || {},
+      thieuChu: tn && s.thieu ? K.loiThieu(s.thieu, tn) : '', tnLoi: s.tnLoi, taiLai: () => this.taiLai(),
+      hienKetNoi: !!tn && !coLienKet, diaChiV1,
+      lenhMau: 'curl ' + diaChiV1 + '/models \\\n  -H "Authorization: Bearer <KHOÁ_QUẢN_TRỊ>"',
+      // khoá
+      coKhoa, khongKhoa: !coKhoa, moOKhoa: !coKhoa || s.suaKhoa, thuGonKhoa: coKhoa && !s.suaKhoa,
+      lopHuyKhoa: 'huy ' + (s.khoaLoi ? 'huy-do' : 'huy-xanh'),
+      nhanHuyKhoa: (s.khoaLoi ? 'Khoá bị từ chối ' : 'Đã có khoá ') + (s.khoa ? '…' + s.khoa.slice(-4) : ''),
+      khoaNhap: s.khoaNhap, kieuKhoa: s.hienKhoa ? 'text' : 'password', hienKhoa: s.hienKhoa, nhanHienKhoa: s.hienKhoa ? 'Ẩn' : 'Hiện',
+      goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
+      phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
+      doiHienKhoa: () => this.setState({ hienKhoa: !this.state.hienKhoa }), luuKhoa: () => this.luuKhoa(),
+      moDoiKhoa: () => this.setState({ suaKhoa: true, khoaTin: '' }), khoaLoi: s.khoaLoi, khoaTin: s.khoaTin,
+      coLoiKhamPha: (s.loiKhamPha || []).length > 0, loiKhamPha: s.loiKhamPha || [],
+      // lưới
+      tim: s.tim, goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT,
+      canKhoaGit: !coKhoa, chuSoTb: s.soTb ? ' Đang có ' + s.soTb + ' module mới hoặc có bản mới trên git.' : '', dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
+      khu, chiOThem: !s.dangTai && khu.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
+      lopBoCuc: 'bo-cuc' + (ct ? ' co-chi-tiet' : ''),
+      // chi tiết
+      coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(),
+      phimChiTiet: (e) => { if (e.key === 'Escape') { e.preventDefault(); this.dongChiTiet(); } },
+      goTin: s.goTin,
+      // nguồn git
+      dangTaiNg: s.dangTaiNg, ngLoiTai: s.ngLoiTai, coNgTomTat: ngTomTat.length > 0, ngTomTat,
+      ngForm: s.ngForm, ngGo, ngChon, ngIdToken: 'ng-token-' + s.ngLan,
+      ngGoiYToken: cfg && cfg.token ? 'Đang có ' + cfg.token + ' — nhập để thay' : 'ghp_…',
+      ngGoToken: (e) => this.setState({ ngToken: e.target.value }), luuNg: (e) => this.luuNg(e),
+      ngLoi: s.ngLoi, ngTin: s.ngTin, dangLuuNg: s.dangLuuNg, nhanLuuNg: s.dangLuuNg ? 'Đang lưu…' : 'Lưu nguồn git',
+      // từ xa
+      txForm: s.txForm, txGo, txIdKhoa: 'tx-khoa-' + s.txLan, txGoKhoa: (e) => this.setState({ txKhoa: e.target.value }),
+      themTuXa: (e) => this.themTuXa(e), txLoi: s.txLoi, dangTx: s.dangTx, nhanTx: s.dangTx ? 'Đang kiểm…' : 'Kiểm tra và đăng ký',
+      txTin: s.txKq ? 'Đã đăng ký ' + ((s.txKq.module && s.txKq.module.ten) || '') + (txSk ? (txSk.ok ? ' — dịch vụ trả lời được.' : ' — nhưng chưa gọi được dịch vụ.') : '.') : '',
+      txLopTin: 'bao ' + (txSk && !txSk.ok ? 'bao-vang' : 'bao-tot')
+    };
+  }
+}
+</script>
+</body>
+</html>

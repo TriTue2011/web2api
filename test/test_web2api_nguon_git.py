@@ -99,7 +99,8 @@ def test_thong_bao_moi_cai_roi_ban_moi(gh, du_lieu):
         assert await tra_loi(so) == "echo v1: a"
         nguon = json.loads((du_lieu / "modules" / "echo" / ".nguon.json").read_text())
         assert nguon["sha_commit"] == gh.nhanh["main"] and nguon["repo"] == REPO
-        assert ng.thong_bao() == {"so_moi": 0, "danh_sach": [], "dong_bo": ng.thong_bao()["dong_bo"]}
+        assert ng.thong_bao() == {"so_moi": 0, "danh_sach": [], "moi_nhat": ["echo"],   # đã cài đúng bản → «mới nhất»
+                                  "dong_bo": ng.thong_bao()["dong_bo"]}
         gh.day(tep_kho({"echo": tep_echo("echo v2", "2.0.0")}))
         await ng.mot_lan()
         x = ng.thong_bao()["danh_sach"][0]

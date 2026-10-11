@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+</head>
+<body>
+<!-- Địa chỉ gốc «/»: chọn trang đầu theo «tính năng đang có» — có module chat đã liên kết thì Studio, chưa thì
+     Hệ thống → Module (trang đầu khi chưa cài gì). Đường TƯƠNG ĐỐI: chạy được sau proxy ở thư mục con. -->
+<main class="goc" style="align-items:center;justify-content:center;padding:24px;box-sizing:border-box">
+<p role="status" id="tt">Đang mở web2api… Nếu trang không tự chuyển, mở <a href="He-thong.dc.html">Hệ thống → Module</a>.</p>
+</main>
+<script>
+Khung.taiTinhNang().then((tn) => location.replace(Khung.trangDau(tn)), () => location.replace('He-thong.dc.html'));
+</script>
+</body>
+</html>

@@ -21,14 +21,17 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao          # phải
 curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/gemini-api
 ```
 
-Hoặc bấm «Cài» ở khối thông báo git trên trang Module của web2api. Cài **không cần khoá API**: xong bước
+Hoặc bấm ô gemini-api ở Hệ thống → Module của web2api rồi bấm «Cài» (bảng chi tiết hiện «Cần gì để chạy» trước
+khi cài). Cài **không cần khoá API**: xong bước
 này module đã nằm trên máy nhưng chưa liên kết — chưa có model trong `/v1/models`, gọi chat trả `404`
 «chưa có khoá» — cho tới khi thêm khoá (dưới đây). Module cần gói Python `httpx`
 (khai ở `yeu_cau_goi` trong `manifest.json`); ảnh lõi đã có sẵn gói này.
 
 ## Cấu hình
 
-Nhập ở thẻ Gemini trên trang Module, hoặc bằng `POST /api/modules/gemini-api/cai`:
+Nhập ở bước «Thêm tài khoản/khoá API» của bảng chi tiết (hoặc Hệ thống → AI → Tài khoản), hoặc bằng
+`POST /api/modules/gemini-api/cai`. Liên kết xong, Studio (chat, ảnh, video — vì manifest khai `cung_cap`
+`["chat", "anh", "video"]`) và Hệ thống → AI → Provider hiện ngay:
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
@@ -49,6 +52,10 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 ```
 
 ## Chặn vùng và proxy
+
+Mọi đặc thù của Google (địa chỉ, header `x-goog-api-key`, API gốc Veo, nhận diện chặn vùng, lời giải thích «hạng miễn
+phí không có ảnh/video» — `GOI_Y_HANG_MIEN_PHI` truyền vào bộ chuyển tiếp dùng chung) nằm trong `module.py`; lõi
+không biết chữ «Google».
 
 Ở một số nước (có thể gồm Việt Nam) Google chặn địa chỉ IP với lỗi chứa «User location is not supported».
 Module nhận ra lỗi này (mã 400 hoặc 403 kèm chữ «location») và gợi ý đặt `base_url` qua proxy; lỗi chặn
@@ -108,7 +115,7 @@ sống, ảnh/video qua proxy Cloudflare (Worker `deploy/cloudflare-gemini-proxy
 
 ## Giới hạn đã biết
 
-- **Chưa có** nhúng (embeddings), video bằng Gemini Omni, giao diện tạo ảnh/video trên web.
+- **Chưa có** nhúng (embeddings), video bằng Gemini Omni. Tạo ảnh/video trên web: Studio, chế độ «Ảnh»/«Video».
 - `POST /v1/videos` chỉ nhận JSON: SDK `openai` gửi `videos.create` bằng `multipart/form-data` → `415`.
 - Khoá bị thu hồi **sau** khi cài mà Google trả `400` (không phải 401/403) thì module không tự đổi khoá,
   vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó bằng dạng `{"giu": [...]}` (xem «Cấu hình»).

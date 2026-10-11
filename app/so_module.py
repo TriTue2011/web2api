@@ -68,6 +68,48 @@ class SoModule:
     def tien_to_dang_chay(self) -> list[str]:
         return sorted(f"{self.tien_to_cua(i)}/" for i in self.dang_chay)
 
+    def tinh_nang(self) -> dict:
+        """«Tính năng đang có» cho khung giao diện (GET /api/tinh-nang) — suy từ manifest module ĐÃ CÀI và trạng thái
+        liên kết, không từ danh sách tên: mỗi module góp mã `loai` của nó và các mã `cung_cap` vào tập khả năng
+        (đếm số module, tách đã cài / đã liên kết). Không bí mật, không cấu hình. Đánh giá điều kiện (`can`) là
+        việc của giao diện — một hàm duy nhất cho cả điều kiện của khung lẫn `muc` của module."""
+        modules, loai, da_cai, lien_ket, tab, muc = [], {}, {}, {}, [], []
+
+        def ghi(id_: str, man: dict, tu_xa: bool) -> None:
+            lk = id_ in self.dang_chay
+            cc = list(man.get("cung_cap", []))
+            modules.append({"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
+                            "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk})
+            l = loai.setdefault(man["loai"], {"ma": man["loai"], "ten": None, "thu_tu": None,
+                                              "so_da_cai": 0, "so_da_lien_ket": 0})
+            l["so_da_cai"] += 1
+            l["so_da_lien_ket"] += lk
+            # Hai module khai khác nhau cho cùng một loại: module đứng trước theo id thắng (xác định, không ngẫu nhiên).
+            if l["ten"] is None and man.get("loai_ten"):
+                l["ten"] = man["loai_ten"]
+            if l["thu_tu"] is None and man.get("loai_thu_tu") is not None:
+                l["thu_tu"] = man["loai_thu_tu"]
+            for ma in dict.fromkeys([man["loai"], *cc]):
+                da_cai[ma] = da_cai.get(ma, 0) + 1
+                if lk:
+                    lien_ket[ma] = lien_ket.get(ma, 0) + 1
+
+        for id_, km in sorted(self.catalog.items()):
+            man = km.manifest
+            ghi(id_, man, False)
+            t = man.get("tab_web")
+            if t and id_ in self.dang_chay:
+                # Đường TƯƠNG ĐỐI: web2api sau proxy ở thư mục con vẫn mở đúng.
+                tab.append({"module": id_, "nhan": t["nhan"], "duong": f"m/{id_}/{t['trang'].removeprefix('web/')}"})
+            muc += [{"module": id_, "id": x["id"], "nhan": x["nhan"], "can": list(x["can"])} for x in man.get("muc", [])]
+        for id_ in sorted(self.tu_xa):
+            m = self.dang_chay.get(id_)
+            if m is not None:  # module từ xa: lõi tự dựng manifest (ModuleTuXa) — dịch vụ nói chuẩn OpenAI = chat
+                ghi(id_, m.manifest, True)
+        thu_tu = sorted(loai.values(), key=lambda x: (x["thu_tu"] is None, x["thu_tu"] or 0, x["ma"]))
+        return {"modules": modules, "loai": thu_tu, "kha_nang_da_cai": da_cai, "kha_nang_lien_ket": lien_ket,
+                "tab": tab, "muc": muc}
+
     # ───────────── khởi động / tắt ─────────────
 
     async def khoi_dong(self) -> dict:

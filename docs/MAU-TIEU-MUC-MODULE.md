@@ -1,8 +1,8 @@
 <!--
-Mẫu tiểu mục cho MỘT module trong README.md, mục «6. Module».
+Mẫu tiểu mục cho MỘT module trong README.md, mục «4. Module có sẵn».
 Cách dùng: chép phần dưới đường kẻ vào README (sau tiểu mục module cuối cùng), thay mọi <…>,
 xoá dòng nào không áp dụng. Viết câu hoàn chỉnh, không giả định người đọc biết dự án.
-Xong thì làm đủ 5 bước ở mục «15. Cách bổ sung README khi thêm module».
+Xong thì làm đủ các bước ở mục 9, «Cách bổ sung README khi thêm module».
 -->
 
 ---
@@ -43,6 +43,6 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 **Giới hạn.**
 - <Cái module CHƯA làm được; cái chưa kiểm với dịch vụ thật.>
 
-<!-- Có ảnh giao diện riêng (tab_web) thì thêm trang vào TRANG trong scripts/chup-man-hinh.sh,
+<!-- Có ảnh giao diện riêng (tab_web) thì thêm một bước chụp vào scripts/chup-man-hinh.sh,
 chạy script, rồi nhúng ảnh: ![<mô tả>](docs/anh/<trang>-may-tinh.png) kèm một dòng chú thích nghiêng
 nói ảnh thể hiện bước nào. -->

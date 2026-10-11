@@ -1,108 +1,159 @@
 #!/usr/bin/env bash
 # Chụp ảnh màn hình THẬT của web2api cho README — chạy lại bao nhiêu lần cũng được.
 #
-# Làm gì: dựng một lõi web2api tạm (uvicorn, thư mục dữ liệu tạm, cổng ngẫu nhiên — lõi RỖNG như
-# container mới), chụp từng trang bằng Chrome headless ở hai khổ:
-#   - máy tính 1280×800;
-#   - điện thoại 390×844: Chrome headless=new không cho cửa sổ hẹp hơn 500 px (đo 10/10/2026: đặt
-#     --window-size=390 vẫn ra innerWidth=500, bố cục điện thoại sai), nên trang được đặt trong
-#     iframe rộng đúng 390 px — bên trong iframe innerWidth = 390 và media query chạy như điện thoại
-#     thật — rồi cắt ảnh về 390×844.
-# Lưu PNG vào docs/anh/<trang>-may-tinh.png và <trang>-dien-thoai.png, mỗi ảnh ≤ 250 KB
-# (quá thì giảm màu), rồi tắt lõi tạm và xoá thư mục tạm.
+# Làm gì: trong MỘT tiến trình Python dựng lõi web2api tạm (uvicorn, thư mục dữ liệu tạm, khoá quản trị ngẫu nhiên),
+# GitHub GIẢ (repo có module gemini-api thật của kho + hai module mẫu khác loại) và Google GIẢ (test/gia.py) — không
+# gọi Internet, không có khoá thật nào; rồi điều khiển Chrome headless qua DevTools (test/ui_chung.py) đi đúng luồng
+# người dùng và chụp ở hai khổ: máy tính 1280×800 và điện thoại 390×844 (giả lập thiết bị bằng DevTools):
+#   trong        — lõi rỗng: Hệ thống → Module, khối «Kết nối với web2api»
+#   nhieu-o      — đã dán khoá: lưới ô nhiều loại, nhiều trạng thái (Chưa cài · Có bản mới · Đang chạy; «Ghi chú
+#                  (mẫu)» đặt tay mà cũng có trên git nên là «Có bản mới»)
+#   chi-tiet     — bảng chi tiết «Cần gì để chạy» của gemini-api trước khi cài
+#   sau-lien-ket — sau khi liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả): Hệ thống → AI → Provider; nút
+#                  «Quay lại Studio» và mục AI hiện, không có Combo
+#   studio       — Studio: một lượt chat stream qua /v1 thật
+# Lưu PNG vào docs/anh/<tên>-may-tinh.png và <tên>-dien-thoai.png, mỗi ảnh ≤ 250 KB (quá thì giảm màu).
 #
 # Dùng (từ gốc kho):  scripts/chup-man-hinh.sh
-# Biến tuỳ chọn: CHROME (mặc định /usr/bin/google-chrome), PYTHON (mặc định .venv ở gốc kho, không có thì
-# python3). Python đó cần fastapi, uvicorn, httpx (requirements.txt) và Pillow (requirements-dev.txt).
+# Biến tuỳ chọn: CHROME (mặc định /usr/bin/google-chrome), PYTHON (mặc định .venv ở gốc kho, không có thì python3).
+# Python đó cần requirements.txt + requirements-dev.txt (websockets, Pillow).
 set -euo pipefail
 
 GOC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # gốc kho web2api (tính theo vị trí script)
-RA="$GOC/docs/anh"
-CHROME="${CHROME:-/usr/bin/google-chrome}"
+export WEB2API_CHROME="${CHROME:-/usr/bin/google-chrome}"
 if [[ -z "${PYTHON:-}" ]]; then
   if [[ -x "$GOC/.venv/bin/python" ]]; then PYTHON="$GOC/.venv/bin/python"; else PYTHON=python3; fi
 fi
-# Các trang chụp: "tên-ảnh|đường dẫn".
-TRANG=("khoi-dau|/" "cai-module|/Cai-module.dc.html")
-
 TAM="$(mktemp -d /tmp/web2api-chup.XXXXXX)"
-PID=""
-PID_KHUNG=""
-don_dep() {
-  for p in "$PID" "$PID_KHUNG"; do
-    if [[ -n "$p" ]]; then kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; fi
-  done
-  [[ "$TAM" == /tmp/web2api-chup.* ]] && rm -r -- "$TAM"
-}
+don_dep() { [[ "$TAM" == /tmp/web2api-chup.* ]] && rm -r -- "$TAM"; }
 trap don_dep EXIT
+# Chặn Internet cho cả lõi tạm: mọi yêu cầu không phải 127.0.0.1 vào proxy chết (như test/conftest.py).
+export HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost
+unset WEB2API_GIT_TOKEN WEB2API_ADMIN_KEY
 
-CONG="$("$PYTHON" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
-export WEB2API_DATA="$TAM/data"
-export WEB2API_ADMIN_KEY="chup-man-hinh-$(date +%s%N)"
-# Số của MÁY do người vận hành khai — đúng cách README khuyên (đọc /proc trong container giới hạn là sai).
-export WEB2API_MAY_RAM_MB="${WEB2API_MAY_RAM_MB:-$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)}"
-export WEB2API_MAY_CPU="${WEB2API_MAY_CPU:-$(nproc)}"
-mkdir -p "$WEB2API_DATA" "$RA"
-# Thư mục dữ liệu chỉ có MÃ module gemini-api (đúng trạng thái ngay sau khi bấm «Cài» ở thông báo git):
-# trang Module hiện thẻ Gemini để cấu hình. Không có khoá API, không có cấu hình — không bí mật nào lên ảnh.
-mkdir -p "$WEB2API_DATA/modules"
-cp -R "$GOC/modules/gemini-api" "$WEB2API_DATA/modules/gemini-api"
-# Không thăm dò GitHub thật khi chụp (ảnh phải lặp lại được, không phụ thuộc mạng).
-unset WEB2API_GIT_REPO WEB2API_GIT_TOKEN
+"$PYTHON" - "$GOC" "$TAM" <<'EOF'
+import base64, io, json, os, secrets, subprocess, sys, time, urllib.request
+from pathlib import Path
 
-"$PYTHON" -m uvicorn app.main:app --app-dir "$GOC" --host 127.0.0.1 --port "$CONG" --log-level warning \
-  >"$TAM/uvicorn.log" 2>&1 &
-PID=$!
-for _ in $(seq 1 100); do
-  curl -sf --noproxy '*' "http://127.0.0.1:$CONG/health" >/dev/null && break
-  sleep 0.1
-done
-curl -sf --noproxy '*' "http://127.0.0.1:$CONG/health" >/dev/null || { echo "Lõi tạm không khởi động:"; cat "$TAM/uvicorn.log"; exit 1; }
+goc, tam = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path[:0] = [str(goc / "test"), str(goc)]
+ra = goc / "docs" / "anh"
+ra.mkdir(parents=True, exist_ok=True)
+du_lieu = tam / "data"
+(du_lieu / "modules").mkdir(parents=True)
+khoa_qt = "chup-" + secrets.token_hex(16)
+os.environ.update(WEB2API_DATA=str(du_lieu), WEB2API_ADMIN_KEY=khoa_qt, WEB2API_MAY_RAM_MB="8192", WEB2API_MAY_CPU="4")
 
-# Khung 390 px phải được phục vụ qua http://127.0.0.1 — mở bằng file:// thì Chrome chặn iframe gọi
-# vào 127.0.0.1 (đo: ảnh trắng trơn), vì trang file:// không được coi là cùng mạng riêng.
-mkdir -p "$TAM/khung"
-CONG_KHUNG="$("$PYTHON" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
-"$PYTHON" -m http.server "$CONG_KHUNG" --bind 127.0.0.1 --directory "$TAM/khung" >"$TAM/khung.log" 2>&1 &
-PID_KHUNG=$!
-for _ in $(seq 1 50); do
-  curl -sf --noproxy '*' "http://127.0.0.1:$CONG_KHUNG/" >/dev/null && break
-  sleep 0.1
-done
-
-chup() {  # chup <rộng> <cao> <url> <tệp ra>
-  "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
-    --user-data-dir="$TAM/chrome" --window-size="$1,$2" --virtual-time-budget=6000 \
-    --host-resolver-rules="MAP fonts.googleapis.com ~NOTFOUND, MAP fonts.gstatic.com ~NOTFOUND" \
-    --screenshot="$4" "$3" >/dev/null 2>&1
-}
-
-for muc in "${TRANG[@]}"; do
-  ten="${muc%%|*}"; duong="${muc#*|}"
-  url="http://127.0.0.1:$CONG$duong"
-  chup 1280 800 "$url" "$RA/$ten-may-tinh.png"
-  cat >"$TAM/khung/$ten.html" <<EOF
-<!doctype html><html><body style="margin:0;background:#fff"><iframe src="$url" style="width:390px;height:844px;border:0;display:block"></iframe></body></html>
-EOF
-  chup 500 844 "http://127.0.0.1:$CONG_KHUNG/$ten.html" "$TAM/$ten-dien-thoai.png"
-  "$PYTHON" - "$TAM/$ten-dien-thoai.png" "$RA/$ten-dien-thoai.png" <<'EOF'
-import sys
+import httpx
 from PIL import Image
-Image.open(sys.argv[1]).crop((0, 0, 390, 844)).save(sys.argv[2], optimize=True)
-EOF
-done
+from gia import GitHubGia, GoogleGia, MayChuThat, ghi_thu_muc, tep_kho
+from ui_chung import CDP, CHROME, Trang, _cong_trong
+from ui_mau import module_khong_khoa, module_mang
+
+KHOA_GIA = "AIzaSyUI-TOT-0000000000000000000000tot1"  # chuỗi GIẢ có trong allowlist .gitleaks.toml
+gem_goc = goc / "modules" / "gemini-api"
+gem = {str(p.relative_to(gem_goc)): p.read_bytes() for p in gem_goc.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+ghi_chu = module_khong_khoa("ghi-chu", "Ghi chú (mẫu)", "app", "ghichu", loai_ten="App", loai_thu_tu=20,
+                            mo_ta="Module mẫu loại «App» để minh hoạ lưới nhiều loại.")
+gh = GitHubGia("TriTue2011/web2api")
+gh.day(tep_kho({"gemini-api": gem, "mang-gia": module_mang(), "ghi-chu": ghi_chu}))
+g = GoogleGia()
+g.hanh_vi[KHOA_GIA] = {"kieu": "tot"}
+
+from app import so_module
+so_module.THU_MUC_ANH = du_lieu / "anh-rong"
+from app.main import app
+
+anh = []
+
+with MayChuThat(gh.app) as s_gh, MayChuThat(g.app) as s_g:
+    os.environ.update(WEB2API_GITHUB_API=s_gh.url, WEB2API_GIT_REPO="TriTue2011/web2api")
+    with MayChuThat(app, lifespan="on") as w:
+        QT = {"Authorization": f"Bearer {khoa_qt}"}
+        cong = _cong_trong()
+        p = subprocess.Popen([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-proxy-server", "--hide-scrollbars",
+                              f"--remote-debugging-port={cong}", f"--user-data-dir={tam / 'chrome'}", "--no-first-run",
+                              "--host-resolver-rules=MAP fonts.googleapis.com ~NOTFOUND, MAP fonts.gstatic.com ~NOTFOUND",
+                              "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        mo = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        for _ in range(200):
+            try:
+                ws = json.loads(mo.open(f"http://127.0.0.1:{cong}/json/version", timeout=1).read())["webSocketDebuggerUrl"]
+                break
+            except OSError:
+                time.sleep(0.05)
+        cdp = CDP(ws)
+        try:
+            tid = cdp.goi("Target.createTarget", {"url": "about:blank"})["targetId"]
+            t = Trang(cdp, cdp.goi("Target.attachToTarget", {"targetId": tid, "flatten": True})["sessionId"])
+
+            def chup(ten: str, chuan_bi):
+                for hau_to, rong, cao, dt in (("may-tinh", 1280, 800, False), ("dien-thoai", 390, 844, True)):
+                    t.khung(rong, cao, dt)
+                    chuan_bi()
+                    time.sleep(0.4)
+                    r = cdp.goi("Page.captureScreenshot", {"format": "png"}, t.s)
+                    tep = ra / f"{ten}-{hau_to}.png"
+                    tep.write_bytes(base64.b64decode(r["data"]))
+                    anh.append(tep)
+
+            def mo_trang(duong: str, cho: str = "true"):
+                t.cdp.goi("Page.navigate", {"url": w.url + duong}, t.s)
+                t.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && (" + cho + ")", han=20, mo_ta=duong)
+
+            # 1. Lõi rỗng.
+            chup("trong", lambda: mo_trang("/", "location.pathname.endsWith('He-thong.dc.html') && !!document.getElementById('ket-noi')"))
+            # 2. Nhiều ô nhiều loại: «Mạng (mẫu)» cài + liên kết, «Ghi chú (mẫu)» cài chưa liên kết, gemini-api chỉ trên git.
+            han = time.monotonic() + 20
+            while time.monotonic() < han and len(httpx.get(f"{w.url}/api/modules/thong-bao", headers=QT).json()["danh_sach"]) < 3:
+                time.sleep(0.2)
+            assert httpx.post(f"{w.url}/api/nguon-git/cai/mang-gia", headers=QT, timeout=30).status_code == 200
+            ghi_thu_muc(du_lieu / "modules" / "ghi-chu", ghi_chu)  # đặt tay (không .nguon.json) → «Có bản mới»
+            httpx.post(f"{w.url}/api/modules/nap-lai", headers=QT, timeout=30).raise_for_status()
+            t.js(f"localStorage.setItem('web2api_khoa', {json.dumps(khoa_qt)})")
+
+            def nhieu_o():
+                mo_trang("/He-thong.dc.html", "document.querySelectorAll('[data-loc-loai]').length >= 4")
+                t.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
+                t.cho("document.querySelectorAll('[data-o]').length >= 3", mo_ta="ba ô")
+                t.js("document.getElementById('loc-loai').scrollIntoView({block: 'start'}); window.scrollBy(0, -70)")
+            chup("nhieu-o", nhieu_o)
+
+            # 3. Bảng chi tiết «Cần gì để chạy» của gemini-api (trước khi cài).
+            def chi_tiet():
+                mo_trang("/He-thong.dc.html?c=1#module-gemini-api", "!!document.getElementById('can-gi')")
+                t.js("document.getElementById('chi-tiet').scrollIntoView({block: 'start'}); window.scrollBy(0, -70)")
+            chup("chi-tiet", chi_tiet)
+
+            # 4. Liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả) → Hệ thống → AI → Provider.
+            assert httpx.post(f"{w.url}/api/nguon-git/cai/gemini-api", headers=QT, timeout=30).status_code == 200
+            r = httpx.post(f"{w.url}/api/modules/gemini-api/cai", headers=QT, timeout=30,
+                           json={"cau_hinh": {"api_keys": [KHOA_GIA], "base_url": s_g.url}})
+            assert r.json()["ok"], r.text
+            chup("sau-lien-ket", lambda: mo_trang("/He-thong-AI.dc.html#provider", "!!document.querySelector('.suc-khoe')"))
+
+            # 5. Studio: một lượt chat stream.
+            def studio():
+                mo_trang("/Studio.dc.html", "document.querySelectorAll('#chon-model option').length > 0")
+                t.go("#o-soan", "Chào bạn, bạn là ai?")
+                t.bam("document.getElementById('nut-gui')")
+                t.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=20, mo_ta="chat xong")
+                t.js("document.activeElement.blur()")
+            chup("studio", studio)
+        finally:
+            cdp.dong()
+            p.kill()
+            p.wait(10)
 
 # Trần 250 KB/ảnh: quá thì giảm về bảng 256 màu (chữ vẫn nét, nền phẳng nén tốt).
-"$PYTHON" - "$RA" <<'EOF'
-import sys
-from pathlib import Path
-from PIL import Image
 TRAN = 250 * 1024
-for p in sorted(Path(sys.argv[1]).glob("*.png")):
-    if p.stat().st_size > TRAN:
-        Image.open(p).convert("RGB").quantize(256).save(p, optimize=True)
-    co = p.stat().st_size
-    print(f"{p.name}: {Image.open(p).size[0]}x{Image.open(p).size[1]}, {co // 1024} KB" + ("  << VƯỢT 250 KB" if co > TRAN else ""))
-    if co > TRAN:
-        sys.exit(1)
+hong = False
+for tep in anh:
+    if tep.stat().st_size > TRAN:
+        Image.open(tep).convert("RGB").quantize(256).save(tep, optimize=True)
+    co = tep.stat().st_size
+    rong, cao = Image.open(tep).size
+    print(f"{tep.name}: {rong}x{cao}, {co // 1024} KB" + ("  << VƯỢT 250 KB" if co > TRAN else ""))
+    hong |= co > TRAN
+sys.exit(1 if hong else 0)
 EOF

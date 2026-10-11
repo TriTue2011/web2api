@@ -63,8 +63,6 @@ NGHI_429_MAC_DINH = 60.0
 NGHI_429_TRAN = 600.0
 NGHI_KHOA_HONG = 3600.0
 NGHI_KHA_NANG = 24 * 3600.0
-GOI_Y_HANG_MIEN_PHI = ("Hạng miễn phí của Google không dùng được tính năng này (trang giá ghi «Not available») — "
-                       "cần khoá thuộc dự án đã bật thanh toán (trả phí).")
 
 KetQuaChat = tuple[int, dict, "bytes | AsyncIterator[bytes]"]
 
@@ -126,6 +124,7 @@ class ChuyenTiepOpenAI:
         doi_id_model: Callable[[str], str] = lambda x: x,
         goi_y_loi: Callable[[int, str], str | None] = lambda ma, tin: None,
         kha_nang: tuple[str, ...] = (),
+        goi_y_tu_choi_kha_nang: str = "",
     ):
         self.ten = ten
         self.tien_to = tien_to
@@ -137,8 +136,11 @@ class ChuyenTiepOpenAI:
         self._vi_tri = 0
         self._nghi: dict[str, float] = {}
         # Khả năng tốn tiền (ảnh, video…) mà suc_khoe báo theo từng khoá; trạng thái theo (khoá, khả năng):
-        # {"trang_thai": "dung_duoc"|"bi_tu_choi", "ma": mã Google, "den": hết nghỉ (epoch, 0 = không nghỉ)}.
+        # {"dung_duoc": bool, "ma": mã HTTP nhà cung cấp trả, "den": hết nghỉ (epoch, 0 = không nghỉ)}.
         self.kha_nang = tuple(kha_nang)
+        # Lời giải thích khi khoá bị từ chối một khả năng (vd «hạng miễn phí không có») — riêng của nhà cung cấp,
+        # nên MODULE truyền vào; lõi không biết nhà cung cấp nào.
+        self._goi_y_tu_choi_kn = goi_y_tu_choi_kha_nang.strip()
         self._kn: dict[tuple[str, str], dict] = {}
         self._dem_models: list[dict] | None = None
         self._dem_luc = 0.0
@@ -294,19 +296,20 @@ class ChuyenTiepOpenAI:
     def trang_thai_kha_nang(self, khoa: str, kha_nang: str, bay_gio: float) -> dict:
         tt = self._kn.get((khoa, kha_nang))
         if tt is not None and tt["den"] > bay_gio:
-            return {"trang_thai": "bi_tu_choi", "ma_google": tt["ma"], "thu_lai_luc": iso(tt["den"])}
+            return {"trang_thai": "bi_tu_choi", "ma": tt["ma"], "thu_lai_luc": iso(tt["den"])}
         return {"trang_thai": "dung_duoc" if tt is not None and tt["dung_duoc"] else "chua_ro"}
 
     def _loi_het_khoa(self, kha_nang: str, viec: str, bay_gio: float) -> KetQuaChat:
-        """Mọi khoá đang bị từ chối khả năng này: nêu mã Google từng khoá (dạng che). Chỉ khi mọi khoá là khoá ĐÃ
+        """Mọi khoá đang bị từ chối khả năng này: nêu mã nhà cung cấp trả cho từng khoá (dạng che). Chỉ khi mọi khoá là khoá ĐÃ
         dùng được và chỉ hết hạn mức (429) → 429 kèm Retry-After như chat; còn lại → 403."""
         cho = [(k, self._kn[(k, kha_nang)]) for k in self.khoa
                if self._kn.get((k, kha_nang), {}).get("den", 0.0) > bay_gio]
         chi_tiet = "; ".join(f"{self.nhan_khoa(k)}: HTTP {tt['ma']}, thử lại lúc {iso(tt['den'])}" for k, tt in cho)
         chi_429 = bool(cho) and all(tt["ma"] == 429 and tt["dung_duoc"] for _, tt in cho)
         ma = 429 if chi_429 else 403
-        tin = (f"Không khoá nào của {self.ten} ({len(self.khoa)} khoá) được Google cho {viec} — {chi_tiet}. "
-               f"{GOI_Y_HANG_MIEN_PHI} Khoá bị từ chối được thử lại sau 24 giờ hoặc khi lưu lại cấu hình module; "
+        goi_y = f"{self._goi_y_tu_choi_kn} " if self._goi_y_tu_choi_kn else ""
+        tin = (f"Không khoá nào trong {len(self.khoa)} khoá của {self.ten} được phép {viec} — {chi_tiet}. "
+               f"{goi_y}Khoá bị từ chối được thử lại sau 24 giờ hoặc khi lưu lại cấu hình module; "
                "khoá từng dùng được mà hết hạn mức (429) thì thử lại theo Retry-After.")
         hd = {"retry-after": str(max(1, int(min(tt["den"] for _, tt in cho) - bay_gio + 0.999)))} if chi_429 else {}
         return tra_loi_json(ma, {"error": {"message": tin, "type": loai_theo_ma(ma),
@@ -380,8 +383,9 @@ class ChuyenTiepOpenAI:
         if loi_cuoi[0] >= 500:
             return None, loi_cuoi
         if loi_400 is not None:
-            loi_400["error"]["message"] += (f" — Google trả 400 cho mọi khoá đã thử ({len(nghi_ngo)}): nếu yêu cầu "
-                                            f"đúng thì có thể các khoá đều thuộc hạng miễn phí. {GOI_Y_HANG_MIEN_PHI}")
+            loi_400["error"]["message"] += (f" — {self.ten} trả 400 cho mọi khoá đã thử ({len(nghi_ngo)}): nếu yêu "
+                                            "cầu đúng thì có thể không khoá nào được dùng tính năng này."
+                                            + (f" {self._goi_y_tu_choi_kn}" if self._goi_y_tu_choi_kn else ""))
             return None, tra_loi_json(400, loi_400)
         return None, self._loi_het_khoa(kha_nang, viec, bay_gio)
 

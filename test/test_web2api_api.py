@@ -132,17 +132,21 @@ def test_modules_hong_tra_rong_va_ghi_log(client, tmp_path, caplog, noi_dung):
     assert any(r.levelno == logging.WARNING and "modules.json" in r.getMessage() for r in caplog.records)
 
 
-def test_goc_tra_trang_khoi_dau(client):
+def test_goc_tra_trang_chon_trang_dau(client):
     r = client.get("/")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
-    assert "<x-dc>" in r.text and "Chưa cài module nào" in r.text
+    # index.html: đọc /api/tinh-nang rồi chuyển sang Studio hoặc Hệ thống → Module (đường tương đối).
+    assert 'src="./khung.js"' in r.text and "trangDau" in r.text and "He-thong.dc.html" in r.text
 
 
 def test_phuc_vu_support_js_va_trang_dc(client):
     r = client.get("/support.js")
     assert r.status_code == 200 and "DCLogic" in r.text
-    assert client.get("/Khoi-dau.dc.html").status_code == 200
+    for trang in ("/He-thong.dc.html", "/He-thong-AI.dc.html", "/Studio.dc.html", "/khung.js", "/khung.css"):
+        assert client.get(trang).status_code == 200, trang
+    for cu in ("/Khoi-dau.dc.html", "/Cai-module.dc.html"):  # trang cũ đã thay
+        assert client.get(cu).status_code == 404, cu
 
 
 @pytest.mark.parametrize(

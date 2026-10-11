@@ -219,7 +219,7 @@ def test_khoa_mien_phi_bi_tu_choi_thu_khoa_ke_nho_24h_khong_anh_huong_chat(clien
         assert r.status_code == 200, r.text
         assert [x["khoa"] for x in lan(google, "anh")] == [K1, K2]
         kn = suc_khoe_kn(client, K1, "anh")
-        assert kn["trang_thai"] == "bi_tu_choi" and kn["ma_google"] == 403
+        assert kn["trang_thai"] == "bi_tu_choi" and kn["ma"] == 403
         assert kn["thu_lai_luc"].startswith("1970-01-02")  # 1000 s + 24 giờ
         assert suc_khoe_kn(client, K2, "anh") == {"trang_thai": "dung_duoc"}
         # Lượt sau không gọi K1 cho ảnh nữa…
@@ -303,7 +303,7 @@ def test_400_cua_mot_khoa_ma_khoa_sau_duoc_thi_danh_dau_khoa_truoc(client, googl
     google.anh[K1] = {"kieu": "tu_choi", "ma": 400}
     assert client.post("/v1/images/generations", json=anh(), headers=QT).status_code == 200
     kn = suc_khoe_kn(client, K1, "anh")
-    assert kn["trang_thai"] == "bi_tu_choi" and kn["ma_google"] == 400
+    assert kn["trang_thai"] == "bi_tu_choi" and kn["ma"] == 400
 
 
 def test_400_cho_moi_khoa_la_loi_yeu_cau_khong_danh_dau(client, google):

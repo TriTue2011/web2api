@@ -1,337 +1,355 @@
-# web2api — hướng dẫn cài đặt và sử dụng
+# web2api — tài liệu kỹ thuật
 
-Tài liệu này viết cho người **chưa biết gì về dự án**. Đọc từ trên xuống là cài được, dùng được.
+Cổng AI nói chuẩn OpenAI, lõi nhỏ, nguồn AI cài thêm lúc chạy dưới dạng **module**. Tài liệu viết cho người
+**chưa biết gì về dự án**, đi theo thứ tự: tổng quan → kiến trúc → thành phần → triển khai → vận hành → lưu ý.
+Mọi lệnh và đường dẫn tính từ **gốc kho**. Lịch sử thay đổi xem bằng `git log` — README không giữ nhật ký.
 
-Kho của dự án: **https://github.com/TriTue2011/web2api** (public). web2api được **tách khỏi kho
-chatgpt2api** ngày 10/10/2026; hệ thống c2a cũ trong kho đó chỉ còn là **hệ thống tham chiếu** (nơi đã đo
-các bài học như chữ ký suy nghĩ của Gemini 3), web2api không cần nó để chạy. Mọi lệnh và đường dẫn trong
-hướng dẫn này tính từ **gốc kho web2api**.
-Tài liệu lớn dần theo từng module: mỗi module có một tiểu mục riêng trong mục «Module», và mục
-«Trạng thái hiện tại» cho biết cái gì đã có, cái gì chưa.
+Kho: **https://github.com/TriTue2011/web2api** (public). web2api tách khỏi kho chatgpt2api ngày 10/10/2026;
+hệ thống c2a cũ chỉ còn là hệ thống tham chiếu (nơi đã đo các bài học như chữ ký suy nghĩ của Gemini 3).
 
-**Giấy phép:** bản quyền thuộc chủ kho (`TriTue2011`), **giữ toàn quyền** (*All rights reserved*, xem tệp
-[LICENSE](LICENSE)). Mã nguồn được xem công khai trên GitHub để minh bạch, nhưng việc dùng, sao chép, sửa,
-phân phối hay triển khai (kể cả ảnh Docker đã đăng) cần có sự cho phép bằng văn bản của chủ kho.
+**Giấy phép:** bản quyền thuộc chủ kho (`TriTue2011`), **giữ toàn quyền** (*All rights reserved*, xem
+[LICENSE](LICENSE)). Mã được xem công khai để minh bạch; dùng, sao chép, sửa, phân phối hay triển khai (kể cả
+ảnh Docker đã đăng) cần sự cho phép bằng văn bản của chủ kho.
 
 ## Mục lục
 
-1. [web2api là gì](#1-web2api-là-gì)
-2. [Trạng thái hiện tại](#2-trạng-thái-hiện-tại)
-3. [Cần gì để chạy](#3-cần-gì-để-chạy)
-4. [Cài đặt từng bước](#4-cài-đặt-từng-bước)
-5. [Lần đầu mở trang và khoá quản trị](#5-lần-đầu-mở-trang-và-khoá-quản-trị)
-6. [Module](#6-module)
-7. [Dùng ngay từ ứng dụng khác](#7-dùng-ngay-từ-ứng-dụng-khác)
-8. [Thêm module mới không cần dựng lại ảnh](#8-thêm-module-mới-không-cần-dựng-lại-ảnh)
-9. [Bảo mật](#9-bảo-mật)
-10. [Xử lý sự cố thường gặp](#10-xử-lý-sự-cố-thường-gặp)
-11. [Gỡ module và nâng cấp lõi](#11-gỡ-module-và-nâng-cấp-lõi)
-12. [Tra cứu: toàn bộ API và biến môi trường](#12-tra-cứu-toàn-bộ-api-và-biến-môi-trường)
-13. [Dành cho người phát triển](#13-dành-cho-người-phát-triển)
-14. [Nhật ký thay đổi](#14-nhật-ký-thay-đổi)
-15. [Cách bổ sung README khi thêm module](#15-cách-bổ-sung-readme-khi-thêm-module)
+1. [Tổng quan](#1-tổng-quan)
+2. [Kiến trúc](#2-kiến-trúc)
+3. [Thành phần](#3-thành-phần)
+4. [Module có sẵn](#4-module-có-sẵn)
+5. [Triển khai](#5-triển-khai)
+6. [Vận hành](#6-vận-hành)
+7. [Lưu ý: bảo mật, sự cố, giới hạn](#7-lưu-ý-bảo-mật-sự-cố-giới-hạn)
+8. [Tra cứu: API và biến môi trường](#8-tra-cứu-api-và-biến-môi-trường)
+9. [Phát triển](#9-phát-triển)
 
-## 1. web2api là gì
+## 1. Tổng quan
 
-web2api là một **cổng AI nói chuẩn OpenAI** chạy trong một container Docker nhỏ trong mạng nhà.
-Mọi ứng dụng biết gọi OpenAI (thư viện `openai` của Python, Home Assistant, ứng dụng chat…) chỉ cần
-đổi «địa chỉ gốc» (base URL) sang web2api và dùng khoá quản trị làm «API key» là dùng được các
-nguồn AI mà web2api đã cài.
+web2api là một **cổng AI nói chuẩn OpenAI** chạy trong một container Docker nhỏ trong mạng nhà. Ứng dụng nào
+biết gọi OpenAI (thư viện `openai` của Python, Home Assistant, ứng dụng chat…) chỉ cần đổi «địa chỉ gốc» (base
+URL) sang web2api và dùng khoá quản trị làm «API key».
 
-Lõi web2api **không chứa sẵn nguồn AI nào**. Mỗi nguồn AI là một **module** cài thêm lúc chạy:
-module được đặt trong kho git của dự án; web2api tự thấy module mới, báo cho bạn, và khi bạn bấm
-cài thì tải về dùng ngay — không phải dựng lại ảnh Docker, không phải khởi động lại container.
+**Lõi chỉ là phiên dịch viên.** Lõi không chứa nguồn AI nào và không biết tên nhà cung cấp nào: nó nhận yêu cầu
+chuẩn OpenAI, tách **tiền tố** của tên model (`<tiền tố>/<tên>`) để chọn module, rồi chuyển cho module. Mọi thứ
+riêng của một nhà cung cấp — địa chỉ máy chủ, cách xác thực, cách đổi tên model, dạng lỗi, gợi ý «hạng miễn phí»,
+API gốc khác chuẩn (ví dụ video Veo) — nằm **trong module của nhà cung cấp đó**; module tự có bộ chuyển đổi để nói
+chuẩn của lõi. Giao diện cũng vậy: tab và chế độ nào hiện là do **lời khai** của module (`loai`, `cung_cap`,
+`muc`), không có tên module nào viết trong giao diện hay lõi. Thêm nguồn AI mới = thả một thư mục module, không
+sửa lõi, không dựng lại ảnh, không khởi động lại.
 
-Luồng một yêu cầu:
-
-```
-Ứng dụng của bạn (openai, Home Assistant, curl…)
-        │  POST /v1/chat/completions   model = "gemini/gemini-2.5-flash"
-        │  Authorization: Bearer <khoá quản trị>
-        ▼
-┌──────────────────────── web2api (lõi) ────────────────────────┐
-│ 1. Kiểm khoá quản trị                                         │
-│ 2. Tách tiền tố "gemini" → tìm module có tiền tố đó           │
-│ 3. Module chuyển tiếp yêu cầu, giữ nguyên mọi trường           │
-└───────────────────────────────┬───────────────────────────────┘
-                                ▼
-      Google Gemini API  (hoặc dịch vụ AI khác trong mạng nhà)
-                                │
-                                ▼
-      Câu trả lời đi ngược lại, từng dòng nếu là stream
-```
-
-## 2. Trạng thái hiện tại
+### Trạng thái hiện tại
 
 | Tính năng hoặc module | Trạng thái | Từ phiên bản / ngày |
 |---|---|---|
-| Lõi: trang khởi đầu, trang «Máy này» (`/api/he-thong`) | Có | 0.1.0-khung · 10/10/2026 |
-| Khoá quản trị cho mọi API đổi trạng thái và `/v1` | Có | 0.1.0-khung · 10/10/2026 |
+| Lõi: `/health`, thông tin máy `/api/he-thong`, khoá quản trị cho mọi API đổi trạng thái và `/v1` | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/models`, `/v1/chat/completions` chuẩn OpenAI (có stream) | Có | 0.1.0-khung · 10/10/2026 |
-| `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố model; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
-| Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; tạo ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 (ảnh/video 11/10/2026) |
-| Nguồn module từ git: thông báo module mới, cài, tự cài có điều kiện | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10/10/2026 |
-| Nạp lại module nóng, không khởi động lại | Có | 0.1.0-khung · 10/10/2026 |
-| Module từ xa (dịch vụ OpenAI trong mạng nhà, ví dụ máy GPU) | Có | 0.1.0-khung · 10/10/2026 |
-| Tab giao diện riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
-| Cài module KHÔNG cần khoá API; khoá liên kết thêm sau (thêm/bớt từng khoá, `GET /api/modules/{id}/cau-hinh`) | Có (lõi + API; giao diện mới cho bước thêm khoá: giai đoạn sau) | 0.1.0-khung · 11/10/2026 |
-| Lần đầu thêm nguồn git: cập nhật một lần các module đang có mà git có bản khác | Có | 0.1.0-khung · 11/10/2026 |
-| Trang «Module» (`/Cai-module.dc.html`): khoá quản trị, cài/gỡ, thông báo git, sức khoẻ, thử chat, module từ xa | Có | 0.1.0-khung · 10/10/2026 |
-| Thanh trên: liên kết «Module», chấm báo module mới, tab của module đã cài | Có | 0.1.0-khung · 10/10/2026 |
-| Nguồn git đặt sẵn trong `docker-compose.yml` (kho dự án, đọc ẩn danh) | Có | 0.1.0-khung · 10/10/2026 |
-| `docker-compose.yml` cho người mới (ảnh GHCR, volume có tên, cập nhật, sao lưu) | Có (chưa thử kéo ảnh GHCR thật) | 0.1.0-khung · 11/10/2026 |
-| Gemini: nhúng (embeddings), video bằng Gemini Omni, giao diện tạo ảnh/video trên web | Chưa có | — |
+| `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
+| Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
+| Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
+| Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
+| Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
+| «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
+| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, bảng chi tiết «Cần gì để chạy», Cài → thêm khoá → liên kết), Hệ thống → AI (Tài khoản, Provider), Studio (chat stream, ảnh, video) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
+| Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
+| Khoá khách, «Địa chỉ truy cập công khai», Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
+| Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
+| Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký trên web | Chưa có (chờ module thật đứng sau) | — |
+| Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
 | Chữ ký số cho module | Chưa có (chỉ kiểm chữ ký commit của GitHub, tuỳ chọn) | — |
-| Các trang demo khác (Main, Hệ thống, AI, Nhà, Đời sống…) | Chưa đưa vào `web/` | — |
 
-## 3. Cần gì để chạy
+## 2. Kiến trúc
 
-- **Docker** có `docker compose` 2.24 trở lên (cách cài: mục 4, bước 1). Không cần Python trên máy chủ.
-- **RAM**: lõi rỗng chạy ổn định khoảng **32 MB**, gần như không tốn CPU lúc rảnh (đo thật 0,14%
-  ngày 10/10/2026). Đặt giới hạn **256 MB** là đủ cho lõi và module Gemini API (module này chỉ chuyển
-  tiếp, không chạy model tại chỗ).
-- **Đĩa**: ảnh lõi nặng **198 MB** (đo thật ngày 10/10/2026, trước khi thêm gói `httpx`; `httpx` kéo
-  thêm khoảng 1,8 MB gói — đo trong môi trường Python của dự án, ảnh mới chưa đo lại), cộng vài MB dữ liệu.
-- **Mạng ra Internet** nếu dùng module Gemini API (tới `generativelanguage.googleapis.com`) và nếu
-  muốn nhận module từ git (tới `api.github.com`).
+### Các thành phần và cách liên kết
 
-## 4. Cài đặt từng bước
+```mermaid
+flowchart LR
+  subgraph KHACH["Phía người dùng"]
+    APP["Ứng dụng nói chuẩn OpenAI<br/>openai SDK · Home Assistant · curl"]
+    WEB["Trình duyệt<br/>Studio · Hệ thống → Module / AI"]
+  end
+  subgraph LOI["Lõi web2api — phiên dịch viên (container)"]
+    V1["/v1 chuẩn OpenAI<br/>định tuyến theo tiền tố model"]
+    API["/api: modules · tinh-nang · nguon-git"]
+    SO["Sổ module<br/>khám phá · nạp nóng · trạng thái liên kết"]
+    NG["Nguồn git<br/>thăm dò · tải · kiểm băm"]
+    KHO[("Thư mục dữ liệu /data<br/>admin_key · modules.json · bi_mat/ · modules/")]
+  end
+  subgraph MOD["Module — đặc thù nhà cung cấp"]
+    M1["modules/&lt;id&gt;/<br/>manifest.json + module.py<br/>(bộ chuyển đổi riêng)"]
+    TX["Module từ xa<br/>chỉ là một URL OpenAI"]
+  end
+  NCC["Nhà cung cấp AI<br/>dịch vụ đám mây · máy GPU trong LAN"]
+  GH["GitHub<br/>kho chứa module"]
 
-Cách chính là **docker compose** với tệp `docker-compose.yml` ở gốc kho. Ảnh lõi tên
-`ghcr.io/tritue2011/web2api:latest`; ảnh chỉ chứa lõi (`app/` và `web/`) — module KHÔNG nằm trong ảnh
-mà được cài lúc chạy từ thư mục `modules/` của kho git, vào chỗ giữ dữ liệu bên ngoài ảnh.
+  APP -- "Bearer khoá quản trị" --> V1
+  WEB -- "đọc/ghi qua API" --> API
+  WEB -- "Studio gọi /v1" --> V1
+  V1 --> SO
+  API --> SO
+  API --> NG
+  NG -- "đọc ẩn danh" --> GH
+  NG -- "cài vào modules/" --> KHO
+  SO <--> KHO
+  SO --> M1
+  SO --> TX
+  M1 -- "API riêng của nhà cung cấp" --> NCC
+  TX -- "chuẩn OpenAI" --> NCC
+```
 
-### Bước 1 — Cài Docker
+- **Lõi** (`app/`) nói chuẩn OpenAI ở `/v1`, giữ sổ module và lưu cấu hình. Lõi cấp cho module một bộ công cụ dùng
+  chung (`app/chuyen_tiep.py`: chuyển tiếp nguyên văn, stream từng dòng, xoay khoá, che khoá trong lỗi) — bộ công
+  cụ nhận mọi điểm riêng (tên, gợi ý lỗi, lời giải thích khi khoá bị từ chối) làm **tham số do module truyền vào**.
+- **Module** quyết mọi chi tiết của nhà cung cấp và tự khai mình là gì: loại (`loai`), khả năng (`cung_cap`), mục
+  con (`muc`), trường cấu hình (`truong_cau_hinh`), tài nguyên cần (`tai_nguyen`).
+- **Giao diện** (`web/`) chỉ đọc dữ liệu từ API (`/api/tinh-nang`, `/api/modules`, `/v1/models`…) và dựng màn
+  hình theo đó.
 
-Cần Docker Engine có lệnh `docker compose` (bản 2.24 trở lên, vì tệp compose dùng `env_file` tuỳ chọn).
-Trên Debian/Ubuntu làm theo https://docs.docker.com/engine/install/ — hoặc dùng script chính thức:
+### Một yêu cầu `/v1` đi qua các phần thế nào
+
+```mermaid
+sequenceDiagram
+  participant A as Ứng dụng
+  participant L as Lõi (/v1)
+  participant S as Sổ module
+  participant M as Module có tiền tố gemini
+  participant P as Nhà cung cấp
+  A->>L: POST /v1/chat/completions<br/>model gemini/gemini-2.5-flash, Bearer khoá quản trị
+  L->>L: kiểm khoá quản trị
+  L->>S: tiền tố gemini thuộc module nào, đã liên kết chưa?
+  S-->>L: thể hiện của module gemini-api
+  L->>M: chat(thân nguyên văn, stream)
+  M->>P: gọi API của nhà cung cấp bằng khoá đã liên kết (xoay vòng)
+  P-->>M: trả lời (stream từng khúc)
+  M-->>L: (mã, header, nội dung) chuẩn OpenAI
+  L-->>A: chuyển từng dòng SSE ngay khi tới
+```
+
+Không thuộc module nào → `404 model_not_found`; module đã cài mà chưa liên kết → `404 module_not_configured`;
+module không có khả năng được gọi (ví dụ không có `anh`) → `501 capability_not_supported`.
+
+### Cài → liên kết → tab hiện (không tải lại trang)
+
+```mermaid
+sequenceDiagram
+  participant U as Người dùng (trình duyệt)
+  participant G as Giao diện (khung.js)
+  participant L as Lõi (/api)
+  participant H as GitHub
+  U->>G: mở địa chỉ gốc khi chưa cài gì
+  G->>L: GET /api/tinh-nang
+  L-->>G: không module nào → chỉ trang Hệ thống → Module
+  U->>G: dán khoá quản trị, bấm ô «Chưa cài» → «Cài»
+  G->>L: POST /api/nguon-git/cai/ID
+  L->>H: tải đúng commit đã báo, kiểm băm từng tệp
+  L-->>G: đã cài (mã trên đĩa), chưa liên kết → hiện bước «Thêm tài khoản/khoá API»
+  U->>G: dán khoá → «Kiểm tra và lưu»
+  G->>L: POST /api/modules/ID/cai (thêm khoá dạng giu/them)
+  L-->>G: ok + kết quả từng khoá (dạng che)
+  G->>L: GET /api/tinh-nang (tính lại điều kiện)
+  L-->>G: kha_nang_lien_ket có chat → Studio và AI/Provider hiện ngay
+```
+
+### Cấu hình nào thuộc phần nào
+
+| Cấu hình | Thuộc phần | Ở đâu | Ai đặt |
+|---|---|---|---|
+| Cổng, giới hạn RAM/CPU, volume, nhãn Watchtower | Triển khai | `docker-compose.yml`, `.env` | Người vận hành |
+| `WEB2API_DATA`, `WEB2API_ADMIN_KEY`, `WEB2API_MAY_*` | Lõi | Biến môi trường | Người vận hành |
+| Khoá quản trị | Lõi | `/data/admin_key` (0600) hoặc `WEB2API_ADMIN_KEY` | Lõi tự sinh lần đầu |
+| Nguồn git (`repo`, `nhanh`, `thu_muc`, `chu_ky_giay`, `tu_dong`, `yeu_cau_chu_ky`, `token`) | Lõi — nguồn git | `/data/nguon_git.json` (token ở `bi_mat/`), hoặc `WEB2API_GIT_*` khi chưa lưu | Quản trị (Hệ thống → Module → «＋ Thêm module» → Từ git) |
+| Mã module | Module | `/data/modules/<id>/` | Cài từ git, hoặc chép tay |
+| `loai`, `loai_ten`, `loai_thu_tu`, `cung_cap`, `muc`, `tab_web`, `tai_nguyen`, `yeu_cau_goi`, `truong_cau_hinh` | Module (lời khai) | `modules/<id>/manifest.json` | Người viết module |
+| Giá trị thường của module (ví dụ `base_url`) | Module — lõi chỉ lưu hộ | `/data/modules.json` (`cau_hinh_cong_khai`) | Quản trị (form dựng từ `truong_cau_hinh`) |
+| Bí mật của module (khoá API của nhà cung cấp) | Module — lõi chỉ lưu hộ | `/data/bi_mat/<id>.json` (0600), không API nào trả lại | Quản trị |
+| Module từ xa (`id`, `tien_to`, `base_url`, `api_key`) | Lõi — module từ xa | `/data/tu_xa.json` (+ `bi_mat/`) | Quản trị |
+| Bảng điều kiện hiện tab của khung (Module, AI, Tài khoản, Provider, Combo, Studio, chế độ Studio) | Giao diện | `DIEU_KIEN` trong `web/khung.js` | Người phát triển giao diện |
+| Khoá quản trị để trang gọi API | Trình duyệt | `localStorage` (`web2api_khoa`) của trình duyệt đó | Người dùng dán trên trang |
+
+## 3. Thành phần
+
+### Lõi (`app/`)
+
+| Tệp | Việc |
+|---|---|
+| `main.py` | Khởi động FastAPI, `GET /` (trang chọn trang đầu), `/health`, `/api/he-thong`, phục vụ `web/` |
+| `tuyen.py` | Các đường `/v1`, `/api/modules`, `/api/tinh-nang`, `/api/nguon-git`, `/m/<id>/` |
+| `kham_pha.py` | Khám phá module từ cấu trúc thư mục, kiểm mẫu manifest; **hợp đồng lớp `Module` ghi ở đầu tệp** |
+| `so_module.py` | Sổ module: nạp nóng, cài/gỡ cấu hình, định tuyến theo tiền tố, tính «tính năng đang có» |
+| `nguon_git.py` | Thăm dò GitHub, báo module mới/bản mới (kèm `loai`, `cung_cap`, dung lượng tải đo từ cây git), cài theo commit |
+| `tu_xa.py` | Module từ xa (chỉ URL), chặn SSRF lúc đăng ký |
+| `chuyen_tiep.py` | Bộ chuyển tiếp OpenAI dùng chung cho module; mọi điểm riêng của nhà cung cấp là tham số |
+| `kho.py`, `xac_thuc.py`, `he_thong.py` | Lưu trữ trên đĩa (bí mật 0600), khoá quản trị, đọc tài nguyên máy |
+
+### Giao diện (`web/`)
+
+Trang `.dc.html` chạy trên **dc-lite** (`web/support.js`, runtime mã nguồn mở đọc nguyên văn các trang của bản
+demo thiết kế). Phần dùng chung nằm ở `web/khung.js` (gọi API, khoá quản trị, bảng điều kiện và **một** hàm đánh
+giá điều kiện duy nhất) và `web/khung.css`. Mọi đường dẫn là tương đối, nên web2api nằm sau proxy ở thư mục con
+vẫn chạy.
+
+| Trang | Hiện khi | Nội dung |
+|---|---|---|
+| `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module chat đã liên kết → Studio; chưa → Hệ thống → Module |
+| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị, tìm kiếm + chip lọc loại + lọc trạng thái, lưới ô theo loại, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
+| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Tab «Tài khoản» (thêm/bớt khoá), tab «Provider» khi có ≥ 1 module `ai` **đã liên kết** (model thật từ `/v1/models`, sức khoẻ từng khoá kể cả trạng thái ảnh/video) |
+| `Studio.dc.html` — Studio | có ≥ 1 module đã liên kết khai `chat` | Chat (stream), chế độ «Ảnh» khi có module khai `anh`, «Video» khi có module khai `video` |
+| Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
+
+Tab/mục không đạt điều kiện **không có trong DOM**; gõ tay đường dẫn tới đó thì trang chuyển về Hệ thống → Module
+kèm một dòng «… chưa mở được: cần …». Hệ thống là trang riêng có nút «Quay lại» (về trang chính đầu tiên đang có;
+chưa có trang chính nào thì không có nút). Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện vì chưa
+có backend.
+
+**Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được
+chọn sẵn): biểu tượng, tên, chip loại, mô tả cắt gọn, trạng thái — **Chưa cài** · **Đã cài — chờ khoá** (hoặc «chờ
+liên kết» nếu không có trường bắt buộc) · **Đang chạy** · **Có bản mới** · **Lỗi** — và dải tài nguyên (RAM thêm ·
+đĩa · GPU · dung lượng tải; số chưa khai ghi «chưa đo»). **Bảng chi tiết** (cột phải; tờ trượt trên điện thoại):
+mô tả, khối «Cần gì để chạy» (tài nguyên, gói Python, mạng ra, hướng dẫn bằng chữ từ `tai_nguyen.ghi_chu`, một dòng
+«Máy này đủ chạy / có thể thiếu» khi đọc được `/api/he-thong` và module có khai số), mục của module, nút theo trạng
+thái: **«Cài»** (chưa có mã trên máy) · **«Cập nhật»** (đã cài, có bản mới) · form «Thêm tài khoản/khoá API» · «Gỡ».
+
+**Form khoá** dựng từ `truong_cau_hinh`: khoá đã lưu chỉ hiện dạng che, nút «Bớt» cho từng khoá, ô thêm khoá mới
+(mỗi dòng một khoá); ô chuỗi để trống hay không sửa thì **không gửi** — giá trị đã lưu (ví dụ `base_url` qua proxy)
+được giữ. Gửi đi là xoá bí mật khỏi trang.
+
+### Module
+
+Mỗi module có **id** (ví dụ `gemini-api`) và **tiền tố model** (ví dụ `gemini`); model gọi dạng
+`<tiền tố>/<tên model>`. Ba trạng thái, lõi suy từ đĩa chứ không từ danh sách gõ tay:
+
+- **có trên git** — chưa có mã trên máy; việc làm với nó là **«Cài»**.
+- **đã cài** — mã nằm trong `/data/modules/<id>/` (hoặc đi kèm ảnh): có trong `GET /api/modules`, gỡ được. Mọi
+  thay đổi bản từ đây là **«Cập nhật»**.
+- **đã liên kết** — có cấu hình hợp lệ (khoá…) và đang phục vụ `/v1` (`"da_cau_hinh": true`). Module khai trường
+  `bat_buoc` mà chưa có khoá thì không được nạp, không có trong `/v1/models`, và `/v1/chat/completions` trả `404`
+  nêu rõ «chưa có khoá». Module không có trường bắt buộc thì cài từ git xong là liên kết luôn.
+
+**«Tính năng đang có»** — `GET /api/tinh-nang` (mở, không bí mật): mỗi module đã cài góp mã `loai` và các mã
+`cung_cap` của nó; lõi đếm số module theo từng mã, tách **đã cài** (`kha_nang_da_cai`) và **đã liên kết**
+(`kha_nang_lien_ket`), kèm thống kê theo loại (`loai`: `ma`, `ten`, `thu_tu`, `so_da_cai`, `so_da_lien_ket`), tab
+riêng của module đã liên kết (`tab`, đường tương đối) và mục con module khai (`muc`, kèm `can`). Module từ xa được
+tính là `loai: "ai"`, `cung_cap: ["chat"]` — đó chính là hợp đồng của nó (dịch vụ chat chuẩn OpenAI).
 
 ```bash
-curl -fsSL https://get.docker.com | sudo sh
-docker compose version      # phải in ra phiên bản, ví dụ «Docker Compose version v2.x»
+curl -s $W/api/tinh-nang
+# {"modules": [{"id": "gemini-api", "loai": "ai", "cung_cap": ["chat", "anh", "video"], "da_lien_ket": true, ...}],
+#  "loai": [{"ma": "ai", "ten": "AI", "thu_tu": 10, "so_da_cai": 1, "so_da_lien_ket": 1}],
+#  "kha_nang_da_cai": {"ai": 1, "chat": 1, "anh": 1, "video": 1}, "kha_nang_lien_ket": {...}, "tab": [], "muc": []}
 ```
 
-### Bước 2 — Lấy mã về
+**Một hàm đánh giá cho cả khung lẫn module.** Mỗi dòng điều kiện có dạng `{can: [mã…], pham_vi: "lien_ket" |
+"da_cai", toi_thieu: n}`. Bảng của khung (`DIEU_KIEN` trong `web/khung.js`): Module — luôn; AI và Tài khoản —
+`can: ["ai"]`, `da_cai`; Provider — `can: ["ai"]`; Combo — `can: ["ai"]`, `toi_thieu: 2`, chưa có backend; Studio
+và chế độ Chat — `can: ["chat"]`; chế độ Ảnh — `["anh"]`; Video — `["video"]`. Mục `muc` của module dùng đúng hàm
+đó (thêm điều kiện chính module phải đã liên kết). Thêm tính năng mới của khung = thêm một dòng; thêm module mới =
+thả thư mục, không sửa khung.
+
+#### Viết một module
+
+Thư mục `modules/<id>/` gồm:
+
+- `manifest.json`:
+  - bắt buộc: `id` (chữ thường, số, `-`, `_`; 2–41 ký tự), `ten`, `mo_ta`, `loai`, `giao_thuc` (`openai`),
+    `tien_to`, `truong_cau_hinh` (danh sách `{khoa, nhan, kieu, bat_buoc, mac_dinh, mo_ta}`; `kieu` là `chuoi`,
+    `bi_mat` hoặc `danh_sach_bi_mat` — trường bí mật tự được lưu riêng và che), `tai_nguyen` (`ram_them_mb`,
+    `dia_mb`, `gpu`, `mang_ra`, `ghi_chu` — `ghi_chu` hiện thành «Hướng dẫn» ở bảng chi tiết;
+    số chưa đo để `null`);
+  - `loai`: mã loại, **tập mở** (chữ thường, số, `_`; ví dụ `ai`, `app`, `nha`, `mang`). Lõi chỉ kiểm dạng mã,
+    không giữ danh sách loại hợp lệ: thêm Home Assistant hay MikroTik là một thư mục module với `loai` riêng;
+  - tuỳ chọn cho giao diện: `loai_ten` (tên hiển thị của loại, ví dụ `"AI"`; thiếu thì hiện chính mã),
+    `loai_thu_tu` (số nguyên, nhỏ đứng trước — khu đầu tiên được chọn sẵn ở trang Module);
+  - tuỳ chọn `cung_cap`: danh sách mã khả năng, **tập mở** (ví dụ `["chat", "anh", "video"]`). Giao diện dùng lời
+    khai này để quyết tab/chế độ; định tuyến `/v1` vẫn dựa vào phương thức có thật trên lớp `Module`;
+  - tuỳ chọn `muc`: tab con/mục của module, mỗi mục `{"id", "nhan", "can": [mã…]}` — mục hiện khi module đã liên
+    kết **và** mọi mã trong `can` có ở ít nhất một module đã liên kết (`[]` = luôn hiện khi đã liên kết); trang
+    Module nói rõ mục nào chưa mở và «cần thêm» gì. Ví dụ module nhà thông minh: `{"id": "hoc-hoi", "nhan": "Học
+    hỏi", "can": []}` và `{"id": "dieu-khien", "nhan": "Điều khiển", "can": ["ai"]}`;
+  - tuỳ chọn `phien_ban`, `yeu_cau_goi` (gói Python module cần import), `tab_web`
+    (`{"nhan": "...", "trang": "web/<tệp>"}`).
+- `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`,
+  `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Tuỳ chọn: `async anh(body)`
+  (mở `/v1/images/generations`) và bộ ba `async video_tao(body)`, `async video_trang_thai(ma)`,
+  `async video_noi_dung(ma)` (mở `/v1/videos`); không có thì lõi trả `501`. Model nào chỉ dùng cho một khả năng
+  thì module gắn `"kha_nang": [mã]` vào mục của nó trong `models()` (Studio lọc model theo đó). Hợp đồng chi tiết ở
+  đầu tệp `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`. **Bộ chuyển đổi của module**: module tự đổi
+  yêu cầu/trả lời giữa chuẩn OpenAI của lõi và API của nhà cung cấp; dùng lại `app.chuyen_tiep.ChuyenTiepOpenAI`
+  khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `doi_id_model`, `goi_y_loi`,
+  `kha_nang`, `goi_y_tu_choi_kha_nang`).
+- Tuỳ chọn `web/`: giao diện riêng, phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết); thanh trên
+  có tab của nó khi module đã liên kết.
+
+Module cần gói Python mà ảnh lõi không có thì bị **từ chối nạp** với thông báo nêu tên gói — lõi không tự cài gói
+lúc chạy; khi đó làm **module từ xa**. Một module hỏng chỉ báo lỗi của riêng nó; cài đè một bản mới hỏng thì
+web2api **hoàn về bản cũ**. Sửa tay tệp trong `/data/modules/` thì nạp lại không cần khởi động:
 
 ```bash
-git clone https://github.com/TriTue2011/web2api.git
-cd web2api                  # mọi lệnh sau chạy ở thư mục này (gốc kho)
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/nap-lai    # {"them": [], "doi": [], "go": [], "loi": []}
 ```
 
-### Bước 3 — Chạy
+Module đã cài nhưng chưa có cấu hình thì liên kết bằng `POST /api/modules/<id>/cai` với thân
+`{"cau_hinh": {...}}` (module không cần cấu hình: `{"cau_hinh": {}}`). Cấu hình đã lưu mà thiếu trường `bat_buoc`
+(ví dụ tệp bí mật bị mất) thì lõi không nạp module — coi như chưa liên kết.
+
+### Nguồn module từ git
+
+1. Người viết module đặt module vào kho git của dự án, thư mục `modules/<id>/`, đẩy lên nhánh `main`.
+2. web2api thăm dò git (mặc định mỗi 300 giây; mỗi lần bình thường là **1 yêu cầu** có điều kiện, trả 304 khi không
+   đổi) và báo **«có module mới»** / **«có bản mới»**: `GET /api/modules/thong-bao` (quản trị) trả danh sách kèm
+   `loai`, `cung_cap`, `tai_nguyen`, `yeu_cau_goi` và `dung_luong` (byte, cộng từ cây git); `GET /api/modules` (mở)
+   có số `thong_bao_so` để mục «Module» hiện chấm đỏ.
+3. Quản trị bấm «Cài» ở ô của module (hoặc `POST /api/nguon-git/cai/<id>`) — **không cần khoá API**. web2api tải
+   đúng phiên bản đã báo, kiểm toàn vẹn từng tệp, đặt vào `/data/modules/<id>/` và nạp nóng.
+
+**Lần đầu thêm nguồn git thì cập nhật luôn module đang có**: ở lần đồng bộ thành công đầu tiên của một nguồn,
+web2api **cập nhật** một lần mọi module đã có mã trên máy mà git có bản khác — dù `tu_dong` tắt. Module **mới**
+trên git không tự cài. Giữ mọi chốt: bản mới xin thêm quyền (gói Python, mạng ra) hoặc commit chưa ký khi bật
+`yeu_cau_chu_ky` thì không cập nhật và ghi lý do vào `ghi_chu`; bản vừa gỡ không cài lại; cập nhật hỏng thì giữ
+bản cũ. Dấu «đã đồng bộ» là commit lưu trong `nguon_git_trang_thai.json`.
+
+Kho `TriTue2011/web2api` đang **public** nên web2api đọc **ẩn danh**. `docker-compose.yml` đặt sẵn kho này; các
+biến môi trường chỉ được dùng khi **chưa** lưu cấu hình qua trang hoặc API. Sửa ở Hệ thống → Module → «＋ Thêm
+module» → «Từ git», hoặc:
 
 ```bash
-docker compose up -d        # kéo ảnh từ GHCR rồi chạy nền
+curl -s -X PUT -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"repo": "TriTue2011/web2api", "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 300, "tu_dong": false, "yeu_cau_chu_ky": false}' \
+  $W/api/nguon-git
+curl -s -H "Authorization: Bearer $K" $W/api/nguon-git      # cấu hình + trạng thái đồng bộ
 ```
 
-Ảnh trên GHCR do quy trình phát hành của kho dựng. Nếu lệnh trên báo không tìm thấy ảnh (chưa phát
-hành), hoặc bạn là nhà phát triển muốn chạy đúng mã đang có trên máy, thì dựng ảnh tại chỗ:
+| Trường | Mặc định | Ý nghĩa |
+|---|---|---|
+| `repo` | — | Kho dạng `chủ/kho`. Chỉ đọc qua `https://api.github.com`. |
+| `nhanh` | `main` | Nhánh theo dõi. |
+| `thu_muc` | `modules` | Thư mục chứa module trong kho. |
+| `chu_ky_giay` | `300` | Khoảng thăm dò. 300 giây/lần chỉ tốn 12 yêu cầu/giờ. |
+| `token` | không có | Chỉ cho kho riêng tư hoặc nâng hạn mức; lưu 0600, không trả lại; gửi `""` để xoá. |
+| `tu_dong` | `false` | Bật thì web2api tự cài module mới/bản mới. |
+| `yeu_cau_chu_ky` | `false` | Bật thì chỉ **tự** cài khi commit được GitHub xác minh chữ ký. |
+
+Gửi lại `PUT /api/nguon-git` (thân `{}`) để thăm dò **ngay**. Hạn mức GitHub ẩn danh là 60 yêu cầu/giờ/IP;
+web2api đọc số còn lại sau mỗi phản hồi, còn dưới 10 thì giãn nhịp tới giờ đặt lại (`han_muc_con`, `reset_luc`).
+**Tự cài** (`tu_dong: true`) không chạy khi commit chưa ký (nếu bật `yeu_cau_chu_ky`) hoặc khi bản mới xin thêm
+quyền (`yeu_cau_goi`, `tai_nguyen.mang_ra`) — các trường hợp này hiện trong `ghi_chu` để quản trị xem và cài tay.
+
+### Module từ xa
+
+Dịch vụ đã nói chuẩn OpenAI (ví dụ máy GPU trong mạng nhà) đăng ký bằng URL; web2api không nạp mã nào, chỉ chuyển
+tiếp `/v1`. Trên giao diện: «＋ Thêm module» → «Từ xa». Bằng `curl`:
 
 ```bash
-docker compose up -d --build
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"id": "gpu-lan", "ten": "Model trên máy GPU", "tien_to": "lan", "base_url": "http://192.168.1.220:8000/v1", "api_key": "tuỳ chọn"}' \
+  $W/api/modules/tu-xa
 ```
 
-Không cần tạo thư mục hay đổi quyền gì: dữ liệu (khoá quản trị, cấu hình, module đã cài) nằm trong
-**volume có tên `web2api-data`** của Docker. Chọn volume có tên chứ không chọn thư mục `./data` vì nó ít
-bước nhất — Docker tự cho volume mới quyền của người dùng trong ảnh (uid 1000); còn thư mục gắn từ máy
-chủ mà chưa có thì Docker tạo nó thuộc `root`, container không ghi được khoá quản trị và dừng ngay.
+`base_url` được phép là địa chỉ mạng nhà (192.168.x.x, 10.x.x.x, 172.16–31.x.x) và `http://`. Bị chặn: địa chỉ của
+chính container (127.0.0.1, localhost), dải 169.254.0.0/16 (metadata đám mây), địa chỉ không định tuyến.
 
-### Bước 4 — Mở trang
+## 4. Module có sẵn
 
-Mở `http://<IP-máy-chủ>:3031/` trong trình duyệt, rồi làm tiếp mục 5 (lấy khoá quản trị, cài Gemini).
-
-Tệp `docker-compose.yml` đặt sẵn: tên container `web2api`; cổng `3031 → 8000`; giới hạn 256 MB RAM,
-0,5 nhân CPU, 100 tiến trình; chạy bằng uid 1000 (không phải root); tự khởi động lại trừ khi bạn dừng;
-kiểm sức khoẻ lấy từ ảnh (`/health` mỗi 30 giây, xem bằng `docker ps`); nguồn module git (dưới đây);
-nhãn không cho Watchtower tự cập nhật (mục «Cập nhật»).
-
-### Tuỳ chỉnh bằng tệp `.env` (không bắt buộc)
-
-Tạo tệp `.env` cạnh `docker-compose.yml` (tệp này nằm trong `.gitignore`, không lên git) — ví dụ:
-
-```
-WEB2API_PORT=3031
-WEB2API_MAY_RAM_MB=12288
-WEB2API_MAY_CPU=8
-```
-
-- `WEB2API_PORT`: cổng trên máy chủ (mặc định 3031).
-- `WEB2API_DATA_DIR`: muốn giữ dữ liệu ở một thư mục cụ thể thay cho volume `web2api-data`, ví dụ
-  `WEB2API_DATA_DIR=./data`. Khi đó phải tạo và trao quyền thư mục **trước**:
-  `mkdir -p data && sudo chown 1000:1000 data`.
-- `WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`: số của **máy** (xem «Chạy trong LXC/Proxmox» dưới đây). Lấy
-  bằng `awk '/MemTotal/{print int($2/1024)}' /proc/meminfo` và `nproc` chạy trên máy chủ.
-- Các biến khác của web2api: mục 12.
-
-Sau khi sửa `.env`, chạy lại `docker compose up -d` để áp dụng.
-
-**Nguồn module đã đặt sẵn**: `docker-compose.yml` truyền `WEB2API_GIT_REPO=TriTue2011/web2api`,
-`WEB2API_GIT_NHANH=main`, `WEB2API_GIT_THU_MUC=modules`. Kho đang public nên web2api đọc ẩn danh,
-không cần token; vừa chạy lên là web2api tự kiểm git và báo module có thể cài (ví dụ Gemini API) — không
-phải cấu hình tay. Muốn đổi thì ghi biến cùng tên vào `.env`; muốn **tắt** nguồn git thì ghi
-`WEB2API_GIT_REPO=` (rỗng). Tự cài **không** bật sẵn: web2api chỉ báo, bạn bấm cài.
-
-### Vận hành hằng ngày
-
-```bash
-docker compose logs -f web2api      # xem nhật ký (Ctrl+C để thoát)
-docker compose ps                   # trạng thái, có cột sức khoẻ (healthy)
-docker compose restart              # khởi động lại
-docker compose down                 # dừng và xoá container — dữ liệu trong volume VẪN CÒN
-docker volume rm web2api-data       # xoá HẲN dữ liệu (khoá, cấu hình, module) — không lấy lại được
-```
-
-**Cập nhật**:
-
-```bash
-git pull                            # lấy tệp compose/README mới
-docker compose pull                 # kéo ảnh lõi mới nhất từ GHCR
-docker compose up -d                # tạo lại container với ảnh mới; dữ liệu giữ nguyên
-```
-
-Dựng tại chỗ thì thay hai dòng cuối bằng `docker compose up -d --build`. Module **không** cập nhật theo
-ảnh: bản mới của module được báo trên trang Module và cài bằng một nút bấm (mục 8). Nếu bạn dùng
-Watchtower và muốn lõi tự cập nhật theo ảnh GHCR, đổi nhãn `com.centurylinklabs.watchtower.enable` trong
-`docker-compose.yml` thành `"true"` — mặc định để `"false"` vì cập nhật tự động có thể khởi động lại
-web2api lúc bạn không ngờ.
-
-**Sao lưu** thư mục dữ liệu (container đang chạy), rồi khôi phục khi cần:
-
-```bash
-docker compose exec -T web2api tar czf - -C /data . > sao-luu-web2api.tgz     # sao lưu
-docker compose exec -T web2api tar xzf - -C /data < sao-luu-web2api.tgz       # khôi phục, rồi: docker compose restart
-```
-
-Dùng `tar` chạy **bên trong** container (bằng chính người dùng uid 1000) để quyền tệp giữ nguyên: khoá
-nằm trong tệp quyền 0600, chép bằng cách khác dễ làm tệp đổi chủ thành root và web2api không đọc được nữa.
-
-Bản sao lưu chứa khoá quản trị và khoá API — cất ở nơi an toàn, đừng đưa lên git.
-
-### Không dùng compose: docker build và docker run
-
-Chạy từ gốc kho:
-
-```bash
-docker build -t web2api:latest .
-docker run -d --name web2api \
-  --memory 256m \
-  -p 3031:8000 \
-  -v web2api-data:/data \
-  -e WEB2API_GIT_REPO=TriTue2011/web2api \
-  -e WEB2API_MAY_RAM_MB=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo) \
-  -e WEB2API_MAY_CPU=$(nproc) \
-  --label com.centurylinklabs.watchtower.enable=false \
-  --restart unless-stopped \
-  web2api:latest
-```
-
-- `--memory 256m`: giới hạn RAM của container. Trang «Máy này» đọc giới hạn này từ cgroup nên luôn đúng.
-- `-v web2api-data:/data`: volume riêng cho dữ liệu, như compose.
-- `WEB2API_GIT_REPO`: nơi web2api tìm module mới (mục 8); thư mục module mặc định là `modules`, nhánh
-  `main`. Bỏ đi nếu không muốn nhận module từ git.
-- `WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`: số RAM và số nhân của **máy**, tính lúc bạn gõ lệnh.
-
-### Chạy trong LXC/Proxmox: số RAM và CPU của «Máy này»
-
-Từ bên trong một container bị giới hạn, **không có cách đáng tin nào đọc được RAM/CPU của cả máy**.
-Đo thật ngày 10/10/2026 trên máy chủ LXC: tệp `/proc/meminfo` trong container do lxcfs cung cấp và
-tính theo giới hạn của chính tiến trình đọc, nên container `--memory 256m` thấy «máy» chỉ khoảng
-0,2 GB. Gắn `-v /proc/meminfo:/proc/meminfo:ro` **không** sửa được điều này.
-
-Vì vậy hãy **khai** số của máy bằng hai biến `WEB2API_MAY_RAM_MB` và `WEB2API_MAY_CPU` như lệnh ở trên.
-Khi có khai, trang «Máy này» ghi rõ «Số do người vận hành khai»; khi không khai, trang ghi «Đọc từ
-/proc — trong container có thể là số của máy chủ vật lý hoặc LXC, không phải phần bạn được cấp».
-Số RAM mà **container** được cấp (giới hạn `--memory`) luôn đúng vì đọc từ cgroup.
-
-## 5. Lần đầu mở trang và khoá quản trị
-
-![Trang khởi đầu trên máy tính, lõi vừa cài, chưa có module nào](docs/anh/khoi-dau-may-tinh.png)
-
-*Ảnh 1 — Trang khởi đầu ngay sau bước 4 (máy tính, 1280×800): chưa cài module nào; bên phải là
-«Máy này» với số RAM/CPU do người vận hành khai. Ảnh chụp bằng `scripts/chup-man-hinh.sh` với
-lõi chạy ngoài container trên máy phát triển, nên ô «RAM của container» hiện «Không đặt giới hạn»; chạy
-bằng `--memory 256m` thì ô này hiện giới hạn 256 MB.*
-
-![Trang khởi đầu trên điện thoại](docs/anh/khoi-dau-dien-thoai.png)
-
-*Ảnh 2 — Cùng trang đó trên điện thoại (khổ 390×844).*
-
-Bấm **«Cài AI đầu tiên»** hoặc liên kết **«Module»** trên thanh trên cùng để sang trang Module — nơi cài,
-gỡ và thử module. Khi có module mới trên git, cạnh chữ «Module» hiện một chấm đỏ.
-
-### Lấy khoá quản trị
-
-Lần chạy đầu tiên, web2api tự sinh một khoá quản trị ngẫu nhiên và lưu ở `/data/admin_key` trong
-container (quyền chỉ chủ tệp đọc được). Khoá này không bao giờ được in ra nhật ký. Lấy nó bằng:
-
-```bash
-docker exec web2api cat /data/admin_key
-```
-
-Muốn tự đặt khoá thì truyền biến `WEB2API_ADMIN_KEY` khi chạy container (khi đó tệp `/data/admin_key`
-không được dùng). Dán khoá vào ô «Khoá quản trị» (Bước 1) của trang Module rồi bấm «Lưu»: khoá chỉ được
-lưu trong trình duyệt đó. Ứng dụng gọi `/v1` và các lệnh `curl` gửi khoá trong header
-`Authorization: Bearer <khoá>`.
-
-### Cài module AI đầu tiên trên trang Module (Gemini API)
-
-![Trang Module trên máy tính: ô khoá quản trị, thẻ Gemini API đã cài chưa có khoá, khối thông báo git](docs/anh/cai-module-may-tinh.png)
-
-*Ảnh 3 — Trang Module (máy tính, 1280×800) lúc chưa dán khoá quản trị. Thư mục dữ liệu chỉ có mã module
-gemini-api — đúng trạng thái ngay sau khi bấm «Cài» ở khối thông báo git, chưa có khoá API nào. Ảnh chụp
-10/10/2026, trước khi đổi chữ trên trang theo luồng «cài không cần khoá» (ví dụ «Module có thể cài» nay là
-«Thêm khoá cho module đã cài», nút «Kiểm tra và cài» nay là «Kiểm tra và lưu»); ảnh mới chụp khi làm lại
-giao diện trang Module.*
-
-![Trang Module trên điện thoại](docs/anh/cai-module-dien-thoai.png)
-
-*Ảnh 4 — Cùng trang đó trên điện thoại (khổ 390×844).*
-
-1. **Dán khoá quản trị** vào ô ở Bước 1, bấm «Lưu». Huy hiệu «Chưa có khoá» đổi thành đã có khoá; nếu
-   khoá sai, trang báo «Khoá sai hoặc thiếu» ngay tại đó.
-2. **Cài module** (chỉ lần đầu): ở khối «Thông báo module mới từ git», mục «Gemini API» có nhãn
-   «Mới» — bấm «Cài». Cài **không cần khoá API**: vài giây sau module đã nằm trên máy, hiện ở «Module đã
-   cài» với nhãn «chưa có khoá», có tab trên thanh trên cùng, và thẻ của nó mở sẵn form thêm khoá. Lúc này
-   module chưa phục vụ `/v1` (chưa liên kết). Không thấy thông báo thì xem mục 10.
-3. **Dán khoá API của Google** vào ô «Khoá API», **mỗi dòng một khoá** (có thể nhiều khoá). Ô «Địa chỉ
-   gốc (base_url)» để trống, trừ khi bị chặn vùng (xem tiểu mục gemini-api).
-4. Bấm **«Kiểm tra và lưu»**. web2api thử từng khoá (không tốn token) và hiện từng dòng: khoá (chỉ 4 ký
-   tự cuối) · dùng được hay không · độ trễ · số model, hoặc lý do hỏng. Chỉ khoá dùng được mới được lưu;
-   khoá vừa dán bị xoá khỏi trang ngay sau khi gửi.
-5. Bấm **«Thử chat»**: chọn model (ví dụ `gemini/gemini-2.5-flash`), gõ câu hỏi, bấm «Gửi». Có ô chọn
-   stream (chữ hiện dần). Khối «Dùng ngay» ở thẻ module ghi sẵn base URL và lệnh `curl` mẫu cho ứng dụng
-   khác (mục 7).
-
-Trên trang còn có: «Module đã cài» (kiểm sức khoẻ từng khoá, gỡ module), «Nguồn git» (xem/sửa kho,
-token, tự cài) và «Module từ xa» (mục 8). Mọi việc trên đều làm được bằng `curl` như dưới đây.
-
-Để các lệnh `curl` gọn, đặt sẵn hai biến trong cửa sổ dòng lệnh:
-
-```bash
-W=http://<IP-máy-chủ>:3031
-K=$(docker exec web2api cat /data/admin_key)
-curl -s $W/health                                      # {"ok": true, ...} — lõi đang chạy
-curl -s -H "Authorization: Bearer $K" $W/v1/models     # danh sách model, lúc đầu rỗng
-```
-
-## 6. Module
-
-Mỗi module có một **id** (ví dụ `gemini-api`) và một **tiền tố model** (ví dụ `gemini`). Khi gọi
-`/v1/chat/completions`, bạn ghi tên model dạng `<tiền tố>/<tên model>`, ví dụ `gemini/gemini-2.5-flash`;
-web2api dựa vào tiền tố để chọn module.
-
-Xem module đang có trên máy (mở, không cần khoá): `curl -s $W/api/modules/catalog` (mọi module khám
-phá được, kèm lỗi của thư mục hỏng) và `curl -s $W/api/modules` (module đã cài).
-
-Ba trạng thái của một module, lõi suy từ đĩa chứ không từ danh sách gõ tay:
-
-- **có trên git** — chưa có mã trên máy (thông báo «Mới»); việc làm với nó là **«Cài»**.
-- **đã cài** — mã nằm trong `/data/modules/<id>/` (hoặc đi kèm ảnh): có trong `GET /api/modules`, có tab
-  (`tab_web`), gỡ được. Mọi thay đổi bản từ đây là **«Cập nhật»**.
-- **đã liên kết** — đã có cấu hình hợp lệ (khoá…) và đang phục vụ `/v1` (`"da_cau_hinh": true`). Module
-  khai trường `bat_buoc` (`"can_cau_hinh": true`) mà chưa có khoá thì **không** được nạp, không có trong
-  `/v1/models`, và `/v1/chat/completions` trả `404` nêu rõ «chưa có khoá». Module không có trường bắt buộc
-  thì cài xong là liên kết luôn.
+Mỗi module có một tiểu mục dưới đây (mẫu: `docs/MAU-TIEU-MUC-MODULE.md`) và một dòng ở bảng «Trạng thái hiện tại»
+(mục 1).
 
 ### Module gemini-api — Gemini API (Google AI Studio)
 
@@ -340,15 +358,17 @@ thẳng tới endpoint tương thích OpenAI chính thức của Google
 (`https://generativelanguage.googleapis.com/v1beta/openai`), giữ nguyên mọi trường của yêu cầu — kể cả
 chữ ký suy nghĩ của Gemini 3 khi gọi công cụ nhiều bước. Module thêm vào: xoay vòng nhiều khoá, cho khoá
 nghỉ khi hết hạn mức, đổi địa chỉ gốc để vượt chặn vùng, chuẩn hoá lỗi, danh sách model, kiểm sức khoẻ.
-Mã nguồn: `modules/gemini-api/`. Tiền tố model: `gemini`.
+Mã nguồn: `modules/gemini-api/`. Tiền tố model: `gemini`. Mọi đặc thù của Google (địa chỉ, header `x-goog-api-key`
+và API gốc Veo cho video, nhận diện chặn vùng, lời giải thích «hạng miễn phí không có ảnh/video») nằm trong module;
+lõi chỉ cấp bộ chuyển tiếp dùng chung.
 
 **Cần gì.**
 - Một hoặc nhiều khoá API lấy ở https://aistudio.google.com/apikey (đăng nhập tài khoản Google,
   bấm «Create API key»). Khoá có dạng bắt đầu bằng `AIza`.
 - Container ra được Internet tới `generativelanguage.googleapis.com`.
-- Nguồn git đã cấu hình (mục 8) để tải module về.
+- Nguồn git đã cấu hình (mục 3, «Nguồn module từ git») để tải module về.
 
-**Cách cài.** Trên giao diện: làm theo mục 5, «Cài module AI đầu tiên trên trang Module». Bằng `curl`:
+**Cách cài.** Trên giao diện: mục 6, «Cài nguồn AI đầu tiên». Bằng `curl`:
 
 1. Xem thông báo module mới (vòng thăm dò chạy ngay lúc khởi động, sau đó mỗi 300 giây):
 
@@ -485,11 +505,11 @@ và vẫn được thử tạo video bình thường):
 
 `GET /api/modules/gemini-api/suc-khoe` báo thêm cho từng khoá: `"kha_nang": {"anh": {...}, "video": {...}}` với
 `trang_thai` là `chua_ro` (chưa dùng thật lần nào — web2api **không** thử bằng lời gọi tốn tiền),
-`dung_duoc`, hoặc `bi_tu_choi` (kèm `ma_google`, `thu_lai_luc`). Trạng thái này nằm trong bộ nhớ: lưu lại cấu
+`dung_duoc`, hoặc `bi_tu_choi` (kèm `ma` — mã HTTP Google trả — và `thu_lai_luc`). Trạng thái này nằm trong bộ nhớ: lưu lại cấu
 hình module hay khởi động lại thì về `chua_ro`.
 
 **Chưa đo với Google thật** (chưa có khoá trả phí để thử): dạng lỗi Google trả cho khoá miễn phí (giả định
-400/403/429 — đọc mã thật trong `ma_google` ở sức khoẻ hoặc trong thông báo lỗi), đường tạo/hỏi/tải Veo, tên
+400/403/429 — đọc mã thật trong `ma` ở sức khoẻ hoặc trong thông báo lỗi), đường tạo/hỏi/tải Veo, tên
 model nào còn sống, `base_url` qua proxy Cloudflare cho ảnh/video, máy đích khi Google chuyển hướng tải video.
 Qua proxy `deploy/cloudflare-gemini-proxy.js`: Worker chuyển mọi đường `/v1beta/...` và mọi header (kể cả
 `x-goog-api-key`) nên về nguyên tắc video đi được, nhưng Worker gọi `fetch(..., redirect: "follow")` — nếu Google
@@ -524,7 +544,7 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 (429) thật của Google.
 
 **Giới hạn.**
-- Chưa có nhúng (embeddings) và video bằng Gemini Omni; chưa có giao diện tạo ảnh/video trên web (chỉ API).
+- Chưa có nhúng (embeddings) và video bằng Gemini Omni. Tạo ảnh/video trên web: Studio (chế độ «Ảnh», «Video»).
 - Tạo ảnh/video cần khoá trả phí và chưa đo với Google thật (xem trên).
 - Khoá bị thu hồi SAU khi cài mà Google trả `400` (không phải 401/403) thì web2api không tự đổi khoá,
   vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó (dạng `{"giu": [...]}` ở bước 4) hoặc lưu lại cấu hình
@@ -535,246 +555,306 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 - Proxy Cloudflare có đặt `PROXY_TOKEN` (header `X-Proxy-Token`) chưa dùng được: `base_url` không mang
   thêm header.
 
-## 7. Dùng ngay từ ứng dụng khác
+## 5. Triển khai
 
-Mọi ứng dụng nói chuẩn OpenAI chỉ cần hai thông tin:
+### Cần gì để chạy
 
-- **Base URL**: `http://<IP-máy-chủ>:3031/v1`
-- **API key**: khoá quản trị (mục 5)
-- **Model**: `<tiền tố>/<tên>`, ví dụ `gemini/gemini-2.5-flash` — lấy danh sách bằng `/v1/models`.
+- **Docker** có `docker compose` 2.24 trở lên. Không cần Python trên máy chủ.
+- **RAM**: lõi rỗng chạy ổn định khoảng **32 MB**, gần như không tốn CPU lúc rảnh (đo thật 0,14% ngày
+  10/10/2026). Giới hạn **256 MB** là đủ cho lõi và module Gemini API (module chỉ chuyển tiếp).
+- **Đĩa**: ảnh lõi **198 MB** (đo 10/10/2026, trước khi thêm gói `httpx` — khoảng 1,8 MB nữa; ảnh mới chưa đo
+  lại), cộng vài MB dữ liệu.
+- **Mạng ra Internet** tới nhà cung cấp mà module gọi (ví dụ `generativelanguage.googleapis.com`) và tới
+  `api.github.com` nếu nhận module từ git.
 
-### curl
+### Cài bằng docker compose
+
+Ảnh lõi `ghcr.io/tritue2011/web2api:latest` chỉ chứa lõi (`app/` và `web/`) — module **không** nằm trong ảnh mà
+được cài lúc chạy từ thư mục `modules/` của kho git, vào thư mục dữ liệu ngoài ảnh.
 
 ```bash
-curl -s -H "Authorization: Bearer $K" $W/v1/models
+curl -fsSL https://get.docker.com | sudo sh    # Debian/Ubuntu; hoặc theo https://docs.docker.com/engine/install/
+docker compose version                         # phải in ra phiên bản v2.x
+git clone https://github.com/TriTue2011/web2api.git
+cd web2api                                     # mọi lệnh sau chạy ở gốc kho
+docker compose up -d                           # kéo ảnh từ GHCR rồi chạy nền
+```
 
-# Không stream: trả một lần cả câu
+Chưa có ảnh trên GHCR, hoặc muốn chạy đúng mã đang có trên máy, thì dựng tại chỗ: `docker compose up -d --build`.
+Dữ liệu (khoá quản trị, cấu hình, module đã cài) nằm trong **volume có tên `web2api-data`**: Docker tự cho volume
+mới quyền của người dùng trong ảnh (uid 1000), không phải tạo thư mục hay đổi quyền. Mở `http://<IP-máy-chủ>:3031/`
+rồi làm tiếp mục 6.
+
+`docker-compose.yml` đặt sẵn: tên container `web2api`; cổng `3031 → 8000`; giới hạn 256 MB RAM, 0,5 nhân CPU, 100
+tiến trình; chạy bằng uid 1000; tự khởi động lại trừ khi bạn dừng; kiểm sức khoẻ `/health` mỗi 30 giây; nguồn
+module git của dự án (`WEB2API_GIT_REPO=TriTue2011/web2api`, `WEB2API_GIT_NHANH=main`, `WEB2API_GIT_THU_MUC=modules`
+— đọc ẩn danh, chỉ báo, không tự cài); nhãn không cho Watchtower tự cập nhật.
+
+### Tuỳ chỉnh bằng `.env`
+
+Tạo `.env` cạnh `docker-compose.yml` (nằm trong `.gitignore`), rồi chạy lại `docker compose up -d`:
+
+```
+WEB2API_PORT=3031
+WEB2API_MAY_RAM_MB=12288
+WEB2API_MAY_CPU=8
+```
+
+- `WEB2API_PORT`: cổng trên máy chủ (mặc định 3031).
+- `WEB2API_DATA_DIR`: giữ dữ liệu ở thư mục cụ thể thay cho volume, ví dụ `./data` — phải tạo và trao quyền
+  **trước**: `mkdir -p data && sudo chown 1000:1000 data`.
+- `WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`: số của **máy** (xem «LXC/Proxmox» dưới đây).
+- Đổi nguồn git: ghi biến cùng tên vào `.env`; tắt hẳn: `WEB2API_GIT_REPO=` (rỗng). Các biến khác: mục 8.
+
+### Không dùng compose
+
+```bash
+docker build -t web2api:latest .
+docker run -d --name web2api \
+  --memory 256m \
+  -p 3031:8000 \
+  -v web2api-data:/data \
+  -e WEB2API_GIT_REPO=TriTue2011/web2api \
+  -e WEB2API_MAY_RAM_MB=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo) \
+  -e WEB2API_MAY_CPU=$(nproc) \
+  --label com.centurylinklabs.watchtower.enable=false \
+  --restart unless-stopped \
+  web2api:latest
+```
+
+### Chạy trong LXC/Proxmox: số RAM và CPU của máy
+
+Từ trong container bị giới hạn **không có cách đáng tin nào đọc RAM/CPU của cả máy**: đo 10/10/2026 trên máy chủ
+LXC, `/proc/meminfo` do lxcfs cung cấp tính theo giới hạn của chính tiến trình đọc (container `--memory 256m` thấy
+«máy» khoảng 0,2 GB; gắn `-v /proc/meminfo:/proc/meminfo:ro` không sửa được). Hãy **khai** `WEB2API_MAY_RAM_MB`,
+`WEB2API_MAY_CPU`. RAM container được cấp (giới hạn `--memory`) luôn đúng vì đọc từ cgroup. Các số này dùng cho
+dòng «Máy này đủ chạy / có thể thiếu» ở bảng chi tiết module.
+
+## 6. Vận hành
+
+### Lần đầu mở trang
+
+![Hệ thống → Module lúc lõi vừa chạy, chưa cài gì](docs/anh/trong-may-tinh.png)
+
+*Ảnh 1 — Địa chỉ gốc mở thẳng Hệ thống → Module khi chưa cài gì (máy tính, 1280×800): khối «Kết nối với web2api»
+(địa chỉ gốc suy từ trình duyệt, cách lấy khoá quản trị, lệnh mẫu) và ô khoá quản trị. Chưa có Studio, chưa có AI.
+Ảnh chụp bằng `scripts/chup-man-hinh.sh` trên lõi tạm không có khoá thật.*
+
+![Cùng trang trên điện thoại](docs/anh/trong-dien-thoai.png)
+
+*Ảnh 2 — Cùng trang trên điện thoại (390×844).*
+
+**Lấy khoá quản trị.** Lần chạy đầu web2api tự sinh khoá ngẫu nhiên, lưu ở `/data/admin_key` (chỉ chủ tệp đọc
+được, không in ra nhật ký):
+
+```bash
+docker exec web2api cat /data/admin_key
+```
+
+Muốn tự đặt khoá thì truyền `WEB2API_ADMIN_KEY`. Dán khoá vào ô «Khoá quản trị» rồi bấm «Lưu» — khoá chỉ lưu trong
+trình duyệt đó (`localStorage`). Khoá sai thì trang báo «Khoá sai hoặc thiếu (HTTP 401)» ngay tại đó.
+
+### Cài nguồn AI đầu tiên
+
+![Lưới module nhiều loại, nhiều trạng thái](docs/anh/nhieu-o-may-tinh.png)
+
+*Ảnh 3 — Đã dán khoá, chip «Tất cả»: ô xếp theo loại (khu «AI», «App», «Mạng»), mỗi ô có trạng thái và dải tài
+nguyên. «Ghi chú (mẫu)» và «Mạng giả» là module mẫu chỉ để minh hoạ nhiều loại; gemini-api là module thật của kho
+(đang «Chưa cài», trên git).*
+
+![Lưới module trên điện thoại](docs/anh/nhieu-o-dien-thoai.png)
+
+*Ảnh 4 — Lưới module trên điện thoại (một cột).*
+
+![Bảng chi tiết «Cần gì để chạy» của gemini-api](docs/anh/chi-tiet-may-tinh.png)
+
+*Ảnh 5 — Bấm ô gemini-api: bảng chi tiết ở cột phải với «Cần gì để chạy» (RAM/đĩa «chưa đo», không cần GPU, mạng
+ra, dung lượng tải đo từ cây git, gói Python, hướng dẫn từ manifest, dòng «Máy này») và nút «Cài».*
+
+![Bảng chi tiết trên điện thoại là tờ trượt](docs/anh/chi-tiet-dien-thoai.png)
+
+*Ảnh 6 — Trên điện thoại bảng chi tiết là tờ trượt từ dưới lên.*
+
+1. **Chọn ô** module (khu đầu tiên — thường là «AI» — được chọn sẵn; chip loại và chip trạng thái để lọc, ô tìm
+   kiếm không phân biệt dấu). Module trên git chỉ hiện sau khi dán khoá quản trị.
+2. Đọc **«Cần gì để chạy»**, bấm **«Cài»** — không cần khoá API. Vài giây sau ô thành «Đã cài — chờ khoá», tab «AI»
+   của Hệ thống hiện, và bảng chuyển sang **«Bước tiếp theo · Thêm tài khoản/khoá API»** (form dựng từ manifest).
+3. Dán khoá API (mỗi dòng một khoá); ô «Địa chỉ gốc» để trống trừ khi cần proxy. Bấm **«Kiểm tra và lưu»**:
+   web2api thử từng khoá (không tốn token), hiện kết quả từng khoá ở dạng che, chỉ lưu khoá dùng được.
+4. Liên kết xong, khung **tính lại điều kiện ngay, không tải lại trang**: «Quay lại» trỏ Studio, Hệ thống có thêm
+   «AI → Provider», khối «Kết nối với web2api» ẩn đi. Về sau thêm/bớt từng khoá ở cùng chỗ hoặc ở Hệ thống → AI →
+   Tài khoản; khoá đã lưu chỉ thấy dạng che.
+
+![Hệ thống → AI → Provider sau khi liên kết nguồn AI đầu tiên](docs/anh/sau-lien-ket-may-tinh.png)
+
+*Ảnh 7 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): nút «Quay lại Studio» (Studio đã mở), Hệ thống có
+«Module» và «AI», tab «Tài khoản» và
+«Provider» — model thật từ `/v1/models`, sức khoẻ từng khoá và trạng thái ảnh/video theo khoá. Không có «Combo»
+(chỉ một nguồn AI, và Combo chưa có backend).*
+
+![Provider trên điện thoại](docs/anh/sau-lien-ket-dien-thoai.png)
+
+*Ảnh 8 — Provider trên điện thoại.*
+
+### Studio
+
+![Studio: một lượt chat stream](docs/anh/studio-may-tinh.png)
+
+*Ảnh 9 — Studio: chế độ Chat / Ảnh / Video hiện vì module đã liên kết khai `chat`, `anh`, `video`; model lấy từ
+`/v1/models` theo tiền tố của module đó; câu trả lời hiện dần theo stream (Google giả trả «MộtHai»).*
+
+![Studio trên điện thoại](docs/anh/studio-dien-thoai.png)
+
+*Ảnh 10 — Studio trên điện thoại.*
+
+- **Chat**: hội thoại nhiều lượt qua `POST /v1/chat/completions`, có stream, nút «Dừng» giữ phần đã nhận.
+- **Ảnh** (khi có module khai `anh`): `POST /v1/images/generations`, ảnh hiện tại chỗ và tải về được.
+- **Video** (khi có module khai `video`): `POST /v1/videos` → hỏi `GET /v1/videos/{id}` mỗi 3 giây → tải
+  `…/content` thành tệp, xem tại chỗ và tải về.
+- Ảnh/video thường tính tiền theo lượt và khoá hạng miễn phí của nhiều nhà cung cấp không dùng được; lỗi
+  `403 no_key_permitted` hiện lời giải thích kèm nguyên văn lời nhắn của máy chủ.
+
+### Dùng từ ứng dụng khác
+
+Ba thông tin: **Base URL** `http://<IP-máy-chủ>:3031/v1`; **API key** là khoá quản trị; **Model**
+`<tiền tố>/<tên>` (lấy bằng `/v1/models`). Đặt sẵn hai biến cho các lệnh `curl` trong tài liệu này:
+
+```bash
+W=http://<IP-máy-chủ>:3031
+K=$(docker exec web2api cat /data/admin_key)
+curl -s $W/health                                      # {"ok": true, ...}
+curl -s -H "Authorization: Bearer $K" $W/v1/models     # danh sách model
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"model": "gemini/gemini-2.5-flash", "messages": [{"role": "user", "content": "Kể một câu chuyện ngắn"}]}' \
   $W/v1/chat/completions
-
-# Stream: chữ về từng dòng "data: {...}" ngay khi Google gửi, kết thúc bằng "data: [DONE]"
 curl -sN -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"model": "gemini/gemini-2.5-flash", "stream": true, "messages": [{"role": "user", "content": "Đếm từ 1 đến 5"}]}' \
-  $W/v1/chat/completions
+  $W/v1/chat/completions                               # stream: từng dòng "data: {...}", hết bằng "data: [DONE]"
 ```
-
-### Python với thư viện `openai`
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(base_url="http://<IP-máy-chủ>:3031/v1", api_key="<khoá quản trị>")
-tra_loi = client.chat.completions.create(
-    model="gemini/gemini-2.5-flash",
-    messages=[{"role": "user", "content": "Xin chào"}],
-)
+tra_loi = client.chat.completions.create(model="gemini/gemini-2.5-flash",
+                                         messages=[{"role": "user", "content": "Xin chào"}])
 print(tra_loi.choices[0].message.content)
-
-for khuc in client.chat.completions.create(model="gemini/gemini-2.5-flash", stream=True,
-                                           messages=[{"role": "user", "content": "Đếm từ 1 đến 5"}]):
-    print(khuc.choices[0].delta.content or "", end="", flush=True)
 ```
 
-### Home Assistant và ứng dụng khác
+Home Assistant: dùng tích hợp **cho nhập base URL** kiểu OpenAI (tích hợp «OpenAI Conversation» gốc không cho đổi
+địa chỉ; các tích hợp «OpenAI tương thích» trên HACS thì có). Chưa thử cụ thể trên Home Assistant của nhà.
 
-Dùng bất kỳ tích hợp hoặc ứng dụng nào **cho nhập base URL** kiểu OpenAI, rồi điền base URL, API key
-và model như trên. Tích hợp «OpenAI Conversation» gốc của Home Assistant không cho đổi địa chỉ, nên cần
-một tích hợp có ô base URL (ví dụ các tích hợp «OpenAI tương thích» trên HACS). Chưa thử cụ thể trên
-Home Assistant của nhà.
-
-## 8. Thêm module mới không cần dựng lại ảnh
-
-### Cách hoạt động
-
-1. Người viết module đặt module vào **git của dự án** (kho `TriTue2011/web2api`), thư mục
-   `modules/<id>/`, rồi đẩy lên nhánh `main`. Không cần dựng lại ảnh nào.
-2. web2api thăm dò git (mặc định mỗi 300 giây) và **báo «có module mới»** hoặc **«có bản mới»**:
-   `GET /api/modules/thong-bao` (quản trị) trả danh sách; `GET /api/modules` (mở) có số `thong_bao_so`
-   để thanh trên cùng hiện chấm báo.
-3. Quản trị bấm «Cài» trong khối «Thông báo module mới từ git» của trang Module (hoặc gọi
-   `POST /api/nguon-git/cai/<id>`) — **không cần khoá API**. web2api tải đúng phiên bản đã báo, kiểm
-   toàn vẹn từng tệp, đặt vào `/data/modules/<id>/` và **nạp nóng**. Module không có trường bắt buộc thì
-   dùng được ngay; module cần khoá thì đã cài nhưng chưa liên kết cho tới khi thêm khoá (mục 6).
-
-**Lần đầu thêm nguồn git thì cập nhật luôn module đang có.** Ở lần đồng bộ thành công **đầu tiên** của một
-nguồn (lưu cấu hình qua trang Module hoặc `PUT /api/nguon-git`, hay nguồn từ biến `WEB2API_GIT_REPO`, hoặc
-khi đổi sang repo/nhánh/thư mục khác), web2api cập nhật **một lần** mọi module đã có mã trên máy mà git có
-bản khác (trạng thái «có bản mới») — kể cả module chép tay vào `/data/modules/` — dù `tu_dong` đang tắt.
-Module **mới** trên git thì không tự cài (việc đó bạn bấm «Cài»). Vẫn giữ mọi chốt: bản mới xin thêm quyền
-(gói Python, mạng ra) hoặc commit chưa ký khi bật `yeu_cau_chu_ky` thì không cập nhật và ghi lý do vào
-`ghi_chu`; bản vừa gỡ không cài lại; cập nhật hỏng thì giữ bản cũ. Dấu «đã đồng bộ» chính là commit lưu
-trong `nguon_git_trang_thai.json`: khởi động lại hay nâng cấp lõi trên máy đã đồng bộ từ trước thì không
-tính là lần đầu.
-
-### Cấu hình nguồn git
-
-Kho `TriTue2011/web2api` đang **public** nên web2api đọc **ẩn danh**, không cần token.
-`docker-compose.yml` đã đặt sẵn kho này (mục 4); chạy bằng `docker run` thì truyền `WEB2API_GIT_REPO`.
-Các biến môi trường chỉ được dùng khi **chưa** lưu cấu hình qua trang Module hoặc API; đã lưu thì cấu hình
-đã lưu thắng. Sửa trên trang Module (khối «Nguồn git», nút «Sửa») hoặc qua API:
+### Vận hành hằng ngày
 
 ```bash
-curl -s -X PUT -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
-  -d '{"repo": "TriTue2011/web2api", "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 300, "tu_dong": false, "yeu_cau_chu_ky": false}' \
-  $W/api/nguon-git
-curl -s -H "Authorization: Bearer $K" $W/api/nguon-git      # xem cấu hình + trạng thái đồng bộ
+docker compose logs -f web2api      # nhật ký (Ctrl+C để thoát)
+docker compose ps                   # trạng thái, cột sức khoẻ (healthy)
+docker compose restart              # khởi động lại
+docker compose down                 # dừng và xoá container — dữ liệu trong volume VẪN CÒN
+docker volume rm web2api-data       # xoá HẲN dữ liệu — không lấy lại được
 ```
 
-| Trường | Mặc định | Ý nghĩa |
-|---|---|---|
-| `repo` | — | Kho dạng `chủ/kho`. Chỉ đọc qua `https://api.github.com`, không nhận địa chỉ tuỳ ý. |
-| `nhanh` | `main` | Nhánh theo dõi. |
-| `thu_muc` | `modules` | Thư mục chứa module trong kho. |
-| `chu_ky_giay` | `300` | Khoảng thăm dò. Mỗi lần thăm dò bình thường tốn đúng **1 yêu cầu** có điều kiện (trả 304 khi không đổi). Tài liệu GitHub nói 304 không bị trừ hạn mức — chưa kiểm cho truy cập ẩn danh; dù có bị trừ, 300 giây/lần chỉ tốn 12 yêu cầu/giờ. |
-| `token` | không có | Chỉ cần cho kho riêng tư hoặc để nâng hạn mức. Lưu ở thư mục bí mật quyền 0600, không bao giờ trả lại; gửi `""` để xoá. |
-| `tu_dong` | `false` | Bật thì web2api tự cài module mới/bản mới. |
-| `yeu_cau_chu_ky` | `false` | Bật thì chỉ **tự** cài khi commit được GitHub xác minh chữ ký (`verified`). |
+**Cập nhật lõi**: `git pull`, `docker compose pull`, `docker compose up -d` (dựng tại chỗ: `docker compose up -d
+--build`). Dữ liệu và module nằm trong volume nên giữ nguyên. Module **không** cập nhật theo ảnh: bản mới được báo
+ở ô module («Có bản mới») và cập nhật bằng nút «Cập nhật». Muốn lõi tự cập nhật theo ảnh GHCR bằng Watchtower thì
+đổi nhãn `com.centurylinklabs.watchtower.enable` trong `docker-compose.yml` thành `"true"`.
 
-Gửi lại `PUT /api/nguon-git` (thân `{}` giữ nguyên cấu hình) để web2api thăm dò **ngay** thay vì đợi chu kỳ.
-
-**Hạn mức GitHub ẩn danh**: 60 yêu cầu/giờ cho mỗi địa chỉ IP. web2api đọc số còn lại sau mỗi phản hồi;
-còn dưới 10 thì giãn nhịp tới giờ GitHub đặt lại hạn mức, hết hạn mức thì chờ tới giờ đó — trạng thái
-ghi rõ `han_muc_con`, `reset_luc`.
-
-**Tự cài** (`tu_dong: true`) có hai chốt an toàn: (a) nếu bật `yeu_cau_chu_ky`, commit chưa được xác minh
-chữ ký thì không tự cài; (b) bản mới **xin thêm quyền** (thêm gói Python trong `yeu_cau_goi` hoặc thêm
-máy trong `tai_nguyen.mang_ra`) thì không tự cài. Hai trường hợp này hiện trong thông báo (trường
-`ghi_chu`) để quản trị xem và cài tay.
-
-### Viết một module
-
-Thư mục `modules/<id>/` gồm:
-
-- `manifest.json`: `id` (chữ thường, số, `-`, `_`; 2–41 ký tự), `ten`, `mo_ta`, `phien_ban`, `loai`
-  (`ai`), `giao_thuc` (`openai`), `tien_to`, `truong_cau_hinh` (danh sách `{khoa, nhan, kieu, bat_buoc,
-  mac_dinh, mo_ta}`, `kieu` là `chuoi`, `bi_mat` hoặc `danh_sach_bi_mat` — trường bí mật tự được lưu
-  riêng và che), `tai_nguyen` (`ram_them_mb`, `dia_mb`, `gpu`, `mang_ra`, `ghi_chu`), tuỳ chọn
-  `yeu_cau_goi` (gói Python module cần import), `tab_web` (`{"nhan": "...", "trang": "web/<tệp>.dc.html"}`) và
-  `cung_cap` (danh sách mã khả năng để hiển thị, ví dụ `["chat", "anh", "video"]`; lõi chỉ kiểm dạng mã — chữ
-  thường, số, `_` — không giữ danh sách mã hợp lệ).
-- `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`,
-  `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Tuỳ chọn: `async anh(body)`
-  (mở `/v1/images/generations`) và bộ ba `async video_tao(body)`, `async video_trang_thai(ma)`,
-  `async video_noi_dung(ma)` (mở `/v1/videos`); không có thì lõi trả `501`. Hợp đồng chi tiết ghi ở đầu tệp
-  `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`.
-- Tuỳ chọn `web/`: giao diện riêng, được phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết),
-  và `GET /api/modules` trả `tab_web` (`{"nhan", "duong"}`) để thanh trên cùng thêm tab. Module không khai
-  `tab_web` vẫn có tab: `duong` trỏ tới thẻ thêm khoá của nó trên trang Module.
-
-Module cần gói Python mà ảnh lõi không có thì bị **từ chối nạp** với thông báo nêu tên gói — lõi không
-tự cài gói lúc chạy. Khi đó hãy làm **module từ xa** (dưới đây). Một module hỏng (lỗi cú pháp, thiếu
-lớp `Module`, lỗi khi khởi tạo) chỉ báo lỗi của riêng nó; lõi và module khác chạy tiếp. Cài đè một bản
-mới bị hỏng thì web2api **hoàn về bản cũ** và báo lỗi.
-
-Đã sửa tay tệp trong `/data/modules/` thì nạp lại không cần khởi động:
+**Sao lưu / khôi phục** (container đang chạy; `tar` chạy bên trong container để giữ quyền 0600 của tệp khoá):
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/nap-lai    # {"them": [], "doi": [], "go": [], "loi": []}
+docker compose exec -T web2api tar czf - -C /data . > sao-luu-web2api.tgz     # sao lưu
+docker compose exec -T web2api tar xzf - -C /data < sao-luu-web2api.tgz       # khôi phục, rồi: docker compose restart
 ```
 
-Module đã cài nhưng chưa có cấu hình (ví dụ chép tay vào `/data/modules/`) thì liên kết bằng
-`POST /api/modules/<id>/cai` với thân `{"cau_hinh": {...}}` (module không cần cấu hình: `{"cau_hinh": {}}`).
-Module cài từ git mà không có trường bắt buộc thì được liên kết ngay khi cài. Cấu hình đã lưu mà thiếu
-trường `bat_buoc` (ví dụ tệp bí mật bị mất) thì lõi không nạp module — coi như chưa liên kết.
+Bản sao lưu chứa khoá quản trị và khoá API — cất nơi an toàn, đừng đưa lên git.
 
-### Module từ xa (dịch vụ nặng, máy GPU, máy khác)
-
-Một dịch vụ đã nói chuẩn OpenAI (ví dụ chạy trên máy GPU trong mạng nhà) đăng ký bằng URL, web2api không
-nạp mã nào của nó, chỉ chuyển tiếp `/v1`:
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
-  -d '{"id": "gpu-lan", "ten": "Model trên máy GPU", "tien_to": "lan", "base_url": "http://192.168.1.220:8000/v1", "api_key": "tuỳ chọn"}' \
-  $W/api/modules/tu-xa
-```
-
-`base_url` được phép là địa chỉ mạng nhà (192.168.x.x, 10.x.x.x, 172.16–31.x.x) và `http://`. Bị chặn:
-địa chỉ của chính container (127.0.0.1, localhost), dải 169.254.0.0/16 (metadata đám mây), địa chỉ
-không định tuyến.
-
-## 9. Bảo mật
-
-- **Khoá quản trị** mở được mọi thứ: gọi model (tiêu hạn mức của bạn), cài và gỡ module. Giữ kín như mật
-  khẩu. Đổi khoá: `docker exec web2api rm /data/admin_key` — lần gọi kế tiếp web2api tự sinh khoá mới
-  (đọc lại bằng `docker exec web2api cat /data/admin_key`); hoặc đặt `WEB2API_ADMIN_KEY`.
-- **Đừng mở cổng web2api ra Internet** khi chưa có HTTPS và proxy ngược đứng trước: khoá đi trong header,
-  không mã hoá trên `http://`.
-- **Module chạy trong tiến trình lõi**, quyền như lõi: ai đẩy được lên nhánh git được theo dõi thì chạy
-  được mã trong web2api. Chỉ theo dõi kho tin cậy; để `tu_dong` tắt (mặc định) hoặc bật kèm
-  `yeu_cau_chu_ky`; nếu dùng token thì dùng token **chỉ đọc**. Chưa có chữ ký số riêng cho module.
-- **Kho đang public**: mọi người đọc được mã module và toàn bộ lịch sử commit. **Không bao giờ** đưa
-  khoá, mật khẩu, địa chỉ nội bộ nhạy cảm vào module — bí mật nhập lúc cài (trường `bi_mat`), lưu trong
-  `/data/bi_mat/` quyền 0600.
-- Khoá API, token không xuất hiện trong phản hồi API, nhật ký hay thông báo lỗi; chỉ hiện dạng che `…abcd`.
-- Các GET mở (`/api/modules`, `/api/modules/catalog`) không chứa bí mật và không lộ tên kho git.
-
-## 10. Xử lý sự cố thường gặp
-
-| Hiện tượng | Nguyên nhân và cách xử lý |
-|---|---|
-| `401` «Thiếu hoặc sai khoá quản trị» / trang Module báo «Khoá sai hoặc thiếu» | Thiếu header `Authorization: Bearer <khoá>` hoặc khoá sai; trên trang Module dán lại khoá ở Bước 1. Lấy lại khoá: `docker exec web2api cat /data/admin_key`. |
-| `404` «không thuộc module nào» | Tên model thiếu tiền tố hoặc tiền tố chưa cài. Xem `/v1/models`. |
-| `404` «đã cài nhưng chưa có khoá» | Module đã cài nhưng chưa liên kết: thêm khoá ở thẻ của module trên trang Module, hoặc `POST /api/modules/<id>/cai`. |
-| Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 6, module gemini-api). |
-| `429` từ Gemini | Hết hạn mức Google; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
-| `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được Google cho việc đó — thường là khoá hạng miễn phí (ảnh/video chỉ có ở hạng trả phí). Xem tiểu mục gemini-api. |
-| `501` `capability_not_supported` | Module của tiền tố đó không có tạo ảnh/video (ví dụ module từ xa). |
-| `415` khi `POST /v1/videos` | Thân phải là JSON; web2api chưa đọc `multipart/form-data`. |
-| Module không hiện trong `/api/modules/catalog` | Xem trường `loi` của chính API đó: mỗi thư mục hỏng có lý do (manifest sai, trùng id/tiền tố, thiếu gói…). Sửa xong gọi `POST /api/modules/nap-lai`. |
-| Thông báo module mới không đến | Xem khối «Nguồn git» trên trang Module (hoặc `GET /api/nguon-git`, trường `trang_thai.loi`). Kiểm `repo`/`nhanh`/`thu_muc`; module phải có `manifest.json` ở gốc thư mục và đã đẩy lên đúng nhánh. Gửi `PUT /api/nguon-git` thân `{}` để thăm dò ngay. |
-| Trạng thái báo hết hạn mức GitHub | Ẩn danh chỉ 60 yêu cầu/giờ/IP (chung cho mọi máy cùng IP ra Internet). web2api tự chờ tới `reset_luc`. Muốn nâng: thêm `token` chỉ đọc. |
-| Gỡ module rồi mà nó tự quay lại | Đang bật `tu_dong` và trên git có bản MỚI hơn bản vừa gỡ. Tắt `tu_dong` hoặc xoá module khỏi git. |
-| Container dừng ngay lần đầu, nhật ký báo không ghi được `/data/...` | Bạn đặt `WEB2API_DATA_DIR` là thư mục trên máy chủ mà thư mục đó chưa thuộc uid 1000: `sudo chown 1000:1000 <thư mục>` (mục 4, tệp `.env`). Dùng volume mặc định thì không gặp. |
-| `docker compose up -d` báo không kéo được ảnh `ghcr.io/tritue2011/web2api` | Ảnh chưa được phát hành hoặc máy không ra được GHCR: dựng tại chỗ bằng `docker compose up -d --build`. |
-| Cài module báo «hoàn về bản cũ» | Bản mới trên git bị lỗi khi nạp; bản cũ vẫn chạy. Sửa module trên git rồi cài lại. |
-| Số RAM «Máy này» sai | Khai `WEB2API_MAY_RAM_MB` và `WEB2API_MAY_CPU` (mục 4, LXC/Proxmox). |
-
-## 11. Gỡ module và nâng cấp lõi
-
-**Gỡ module**:
+**Gỡ module**: nút «Gỡ» ở bảng chi tiết, hoặc:
 
 ```bash
 curl -s -X DELETE -H "Authorization: Bearer $K" $W/api/modules/gemini-api
 ```
 
-Lệnh này dừng module, xoá cấu hình và khoá của nó, và xoá thư mục `/data/modules/<id>/` — module chưa
-liên kết (chưa có khoá) cũng gỡ được như vậy. Module còn trên
-git sẽ lại hiện trạng thái «mới» trong thông báo (cài lại được bất cứ lúc nào). Khi đang bật tự cài
-(`tu_dong`), web2api nhớ bản vừa gỡ và **không** tự cài lại đúng bản đó; khi trên git có bản mới hơn thì
-bản mới vẫn được tự cài như thường — muốn ngừng hẳn thì tắt `tu_dong` hoặc xoá module khỏi git. Module từ xa gỡ cùng cách.
-Module đi kèm ảnh (hiện không có) chỉ gỡ được cấu hình, không xoá được mã.
+Lệnh dừng module, xoá cấu hình và khoá của nó và xoá `/data/modules/<id>/` (module chưa liên kết cũng gỡ được);
+mọi tab chỉ do nó mang lại biến mất. Module còn trên git lại thành «Chưa cài». Khi bật `tu_dong`, web2api nhớ bản
+vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cùng cách; module đi kèm ảnh chỉ gỡ được cấu hình.
 
-**Nâng cấp lõi**: làm theo «Cập nhật» ở mục 4 (`git pull`, `docker compose pull`, `docker compose up -d`).
-Dữ liệu và module nằm trong volume nên giữ nguyên.
+## 7. Lưu ý: bảo mật, sự cố, giới hạn
 
-Nâng cấp **module** thì không cần làm gì với ảnh: đẩy bản mới lên git, web2api báo «có bản mới», cài.
+### Bảo mật
 
-## 12. Tra cứu: toàn bộ API và biến môi trường
+- **Khoá quản trị** mở được mọi thứ (gọi model, cài/gỡ module). Đổi khoá: `docker exec web2api rm /data/admin_key`
+  — lần gọi kế tiếp web2api tự sinh khoá mới; hoặc đặt `WEB2API_ADMIN_KEY`.
+- **Đừng mở cổng web2api ra Internet** khi chưa có HTTPS và proxy ngược đứng trước: khoá đi trong header, không mã
+  hoá trên `http://`.
+- **Module chạy trong tiến trình lõi**, quyền như lõi: ai đẩy được lên nhánh git được theo dõi thì chạy được mã
+  trong web2api. Chỉ theo dõi kho tin cậy; để `tu_dong` tắt (mặc định) hoặc bật kèm `yeu_cau_chu_ky`; token GitHub
+  nếu dùng thì **chỉ đọc**.
+- **Kho public**: mọi người đọc được mã module và toàn bộ lịch sử commit — không đưa khoá, mật khẩu, địa chỉ nội
+  bộ vào module; bí mật nhập lúc liên kết (trường `bi_mat`), lưu ở `/data/bi_mat/` quyền 0600.
+- Khoá API, token không xuất hiện trong phản hồi API, nhật ký hay thông báo lỗi; chỉ hiện dạng che `…abcd`. Các GET
+  mở (`/api/modules`, `/api/modules/catalog`, `/api/tinh-nang`) không chứa bí mật và không lộ tên kho git.
+- Trang web chỉ gửi khoá quản trị trong header (không bao giờ trong URL); khoá API dán vào form bị xoá khỏi trang
+  ngay khi gửi.
+
+### Xử lý sự cố thường gặp
+
+| Hiện tượng | Nguyên nhân và cách xử lý |
+|---|---|
+| `401` «Thiếu hoặc sai khoá quản trị» / trang báo «Khoá sai hoặc thiếu» | Thiếu header `Authorization: Bearer <khoá>` hoặc khoá sai; trên trang bấm «Đổi khoá» và dán lại. Lấy lại: `docker exec web2api cat /data/admin_key`. |
+| Gõ địa chỉ Studio / Hệ thống → AI mà bị đưa về trang Module kèm «… chưa mở được» | Tab đó chưa đủ điều kiện (ví dụ chưa có module chat nào đã liên kết). Dòng thông báo nói rõ cần cài/liên kết gì. |
+| `404` «không thuộc module nào» | Tên model thiếu tiền tố hoặc tiền tố chưa liên kết. Xem `/v1/models`. |
+| `404` «đã cài nhưng chưa có khoá» | Module đã cài, chưa liên kết: thêm khoá ở bảng chi tiết của ô module, hoặc `POST /api/modules/<id>/cai`. |
+| Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 4, gemini-api). |
+| `429` từ nhà cung cấp | Hết hạn mức; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
+| `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được nhà cung cấp cho việc đó — với Gemini thường là khoá hạng miễn phí. Xem tiểu mục module. |
+| `501` `capability_not_supported` | Module của tiền tố đó không có tạo ảnh/video (ví dụ module từ xa). |
+| `415` khi `POST /v1/videos` | Thân phải là JSON; web2api chưa đọc `multipart/form-data`. |
+| Ô module ở trạng thái «Lỗi» / có khối «Có module không nạp được» | Lý do ghi ngay đó (và ở trường `loi` của `GET /api/modules/catalog`): manifest sai, trùng id/tiền tố, thiếu gói… Sửa xong gọi `POST /api/modules/nap-lai`. |
+| Không thấy module trên git | Chưa dán khoá quản trị, hoặc nguồn git lỗi: xem «＋ Thêm module» → «Từ git» (hoặc `GET /api/nguon-git`, `trang_thai.loi`). Gửi `PUT /api/nguon-git` thân `{}` để thăm dò ngay. |
+| Trạng thái báo hết hạn mức GitHub | Ẩn danh 60 yêu cầu/giờ/IP; web2api tự chờ tới `reset_luc`. Muốn nâng: thêm `token` chỉ đọc. |
+| Gỡ module rồi mà nó tự quay lại | Đang bật `tu_dong` và trên git có bản mới hơn bản vừa gỡ. Tắt `tu_dong` hoặc xoá module khỏi git. |
+| Container dừng ngay lần đầu, nhật ký báo không ghi được `/data/...` | `WEB2API_DATA_DIR` trỏ thư mục chưa thuộc uid 1000: `sudo chown 1000:1000 <thư mục>`. |
+| `docker compose up -d` không kéo được ảnh | Ảnh chưa phát hành hoặc không ra được GHCR: `docker compose up -d --build`. |
+| Cài/cập nhật module báo «hoàn về bản cũ» | Bản mới trên git lỗi khi nạp; bản cũ vẫn chạy. Sửa module trên git rồi cập nhật lại. |
+| Dòng «Máy này» sai hoặc không có | Khai `WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`; dòng chỉ hiện khi module có khai `ram_them_mb`/`dia_mb` hoặc có dung lượng tải. |
+
+### Giới hạn và việc chưa làm
+
+- **Combo** chưa có backend: tab không hiện kể cả khi có ≥ 2 nguồn AI đã liên kết.
+- Chưa có khoá khách, ô «Địa chỉ truy cập công khai» (địa chỉ ở khối Kết nối chỉ suy từ trình duyệt), trang Bảo mật
+  & người dùng.
+- «Cần gì để chạy» mới là **hướng dẫn bằng chữ** từ manifest: chưa có checklist ✔/✖ từng yêu cầu, chưa tự cài gói
+  Python; trần dung lượng tải module (50 MB tổng, 5 MB/tệp, 200 tệp) vẫn còn.
+- Chưa có màn Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký — sẽ vào khi có module thật đứng sau.
+- Tab riêng của module do lõi phục vụ ở `/m/<id>/`; trường `tab_web.duong` của `GET /api/modules` vẫn là đường
+  tuyệt đối (`/m/…`) — giao diện mới dùng đường tương đối từ `GET /api/tinh-nang`.
+
+## 8. Tra cứu: API và biến môi trường
 
 Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>` không.
 
 | Phương thức và đường | Khoá | Việc |
 |---|---|---|
-| `GET /` | Không | Trang khởi đầu |
+| `GET /` | Không | Trang nhỏ chọn trang đầu (Studio hoặc Hệ thống → Module) theo `/api/tinh-nang` |
 | `GET /health` | Không | `{"ok": true, "phien_ban": ...}` |
 | `GET /api/he-thong` | Không | RAM, CPU, đĩa, GPU của máy và container |
-| `GET /api/modules` | Không | Module đã cài — có mã trên máy (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so` |
-| `GET /api/modules/catalog` | Không | Mọi module khám phá được (`nguon`, `da_cau_hinh`, `truong_cau_hinh`) và `loi` của từng thư mục hỏng |
-| `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git |
+| `GET /api/tinh-nang` | Không | «Tính năng đang có»: module đã cài (`loai`, `cung_cap`, `da_lien_ket`, `tu_xa`), thống kê theo loại, số module theo mã khả năng (đã cài / đã liên kết), `tab`, `muc` |
+| `GET /api/modules` | Không | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so` |
+| `GET /api/modules/catalog` | Không | Mọi module khám phá được (kèm `loai_ten`, `loai_thu_tu`, `cung_cap`, `muc`, `truong_cau_hinh`, `tai_nguyen`) và `loi` của từng thư mục hỏng |
+| `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git, kèm tóm tắt manifest và `dung_luong`; `moi_nhat` = id các module đã cài đúng bản trên git («Đã là bản mới nhất») |
 | `POST /api/modules/nap-lai` | Có | Quét lại thư mục module, nạp nóng |
 | `POST /api/modules/tu-xa` | Có | Đăng ký module từ xa |
 | `POST /api/modules/{id}/cai` | Có | Kiểm và lưu cấu hình module (thân `{"cau_hinh": {...}}`; trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận `{"giu": [...], "them": [...]}`) |
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module |
-| `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá) |
+| `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
-| `POST /api/nguon-git/cai/{id}` | Có | Cài module từ git theo đúng commit đã báo |
-| `GET /v1/models` | Có | Model của mọi module đã cài |
+| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo |
+| `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
-| `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI (`model` dạng `<tiền tố>/<tên>`); `501` nếu module không có |
-| `POST /v1/videos` | Có | Tạo video (không đồng bộ, thân JSON) → đối tượng video có `id` dạng `<tiền tố>:<mã>` |
+| `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
+| `POST /v1/videos` | Có | Tạo video (không đồng bộ, thân JSON) → `id` dạng `<tiền tố>:<mã>` |
 | `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
 | `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
@@ -788,14 +868,16 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |
-| `WEB2API_GIT_TOKEN` | không | Token GitHub (chỉ cho kho riêng tư hoặc nâng hạn mức) |
-| `WEB2API_GITHUB_API` | `https://api.github.com` | **Chỉ dùng cho kiểm thử** (trỏ GitHub giả); đặt khác mặc định thì nhật ký có cảnh báo |
-| `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ dùng cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
-| `WEB2API_DEMO_DIR` | không | Chỉ dùng cho test giao diện dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |
+| `WEB2API_GIT_TOKEN` | không | Token GitHub (kho riêng tư hoặc nâng hạn mức) |
+| `WEB2API_GITHUB_API` | `https://api.github.com` | **Chỉ cho kiểm thử** (trỏ GitHub giả); khác mặc định thì nhật ký có cảnh báo |
+| `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
+| `WEB2API_DEMO_DIR` | không | Chỉ cho test dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |
+| `WEB2API_CHROME` | `/usr/bin/google-chrome` | Chỉ cho test giao diện và `scripts/chup-man-hinh.sh`: đường tới Chrome |
+| `WEB2API_PORT`, `WEB2API_DATA_DIR` | `3031`, volume | Chỉ đọc bởi `docker-compose.yml` (mục 5) |
 
-## 13. Dành cho người phát triển
+## 9. Phát triển
 
-Tạo môi trường Python riêng của kho (Python 3.13; một lần), rồi chạy toàn bộ kiểm thử — tất cả từ gốc kho:
+Môi trường Python 3.13 của kho (một lần), rồi chạy kiểm thử — từ gốc kho:
 
 ```bash
 uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
@@ -804,48 +886,33 @@ uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m bandit -r app modules -lll          # quét bảo mật mã lõi và module
 ```
 
-`requirements.txt` là gói của lõi (cũng là thứ ảnh Docker cài); `requirements-dev.txt` thêm gói kiểm thử
-và chụp ảnh, ghim đúng phiên bản đã chạy bộ test.
+- Mọi kiểm thử dùng máy chủ **giả** cục bộ (Google, GitHub, dịch vụ OpenAI); `test/conftest.py` chặn mọi đường ra
+  Internet.
+- `test/test_web2api_tinh_nang.py`: `/api/tinh-nang` theo từng ca (0 module · AI đã cài chưa khoá · đã liên kết ·
+  loại/khả năng lạ · module từ xa · gỡ), kiểm mẫu manifest, tóm tắt module trên git, và **lưới chặn đặc thù nhà
+  cung cấp**: chuỗi và định danh trong mã `app/` cùng mọi tệp `web/` không được chứa tên suy từ manifest của các
+  module trong kho (tiền tố, id, tên máy trong `mang_ra`; chú thích và docstring không tính; CDN phông chữ được
+  trừ).
+- `test/test_web2api_giao_dien.py`: giao diện bằng **Chrome thật** trên **lõi thật** với module giả
+  (`test/ui_mau.py`) — DOM đúng từng ca điều kiện, gõ tay đường dẫn bị chuyển, Cài → thêm khoá → tab hiện không
+  tải lại, `base_url` đã đặt không bị ghi đè, thêm/bớt từng khoá, Provider không Combo, Studio stream/dừng/80 khúc,
+  ảnh, video, `403 no_key_permitted`, không chèn HTML thô, ô cao bằng nhau, không tràn ngang ở 390 px.
+  `test/test_web2api_ui_loi_that.py` đi trọn luồng với module gemini-api thật (Google, GitHub giả).
+  Hạ tầng Chrome dùng chung: `test/ui_chung.py`.
+- `test/test_web2api_kiem_nghiem.py` chạy lõi bằng tiến trình uvicorn thật, thêm/đổi/gỡ module qua git giả.
+- Test giao diện cần `/usr/bin/google-chrome` (đổi bằng `WEB2API_CHROME`) và `node`; thiếu thì bỏ qua. Phần so
+  các trang demo thiết kế chỉ chạy khi đặt `WEB2API_DEMO_DIR`.
+- Chụp lại ảnh README: `scripts/chup-man-hinh.sh` (lõi tạm + GitHub/Google giả, Chrome qua DevTools, khổ 1280×800
+  và 390×844, lưu `docs/anh/`, mỗi ảnh ≤ 250 KB).
+- `test/test_web2api_readme.py` kiểm README không lệch mã: ảnh nhúng có thật và có chú thích, mọi module có tiểu
+  mục và dòng trạng thái, mọi đường API và biến `WEB2API_*` trong mã có trong README, đường dẫn trong lệnh mẫu tồn
+  tại.
 
-- Mọi kiểm thử dùng máy chủ **giả** chạy cục bộ (Google, GitHub, dịch vụ OpenAI), không gọi Internet;
-  `test/conftest.py` chặn mọi đường ra ngoài.
-- `test/test_web2api_kiem_nghiem.py` chạy lõi bằng một tiến trình uvicorn thật, thêm/đổi/gỡ module qua
-  git giả và kiểm tiến trình không khởi động lại.
-- `test/test_web2api_cai_module_ui.py` kiểm trang Module bằng Chrome thật với API giả (ép được 401, lỗi,
-  luồng stream nhỏ giọt); `test/test_web2api_ui_loi_that.py` đi trọn đường chủ máy sẽ đi trên **lõi thật**
-  (thông báo git → cài → dán khoá → kiểm tra và cài → thử chat → sức khoẻ → gỡ) để xác nhận hợp đồng.
-- `test/test_web2api_readme.py` kiểm README không lệch mã: mọi ảnh nhúng có thật, mọi module có tiểu mục
-  và dòng trạng thái, mọi đường API và mọi biến `WEB2API_*` trong mã đều có trong README, mọi đường dẫn
-  tệp trong lệnh mẫu tồn tại.
-- Test giao diện cần `/usr/bin/google-chrome` (đổi bằng `WEB2API_CHROME`) và `node`; thiếu thì bỏ qua.
-  Phần so các trang demo thiết kế chỉ chạy khi đặt `WEB2API_DEMO_DIR` trỏ tới thư mục demo (nằm ngoài kho);
-  không đặt thì bỏ qua.
-- Chụp lại ảnh màn hình cho README: `scripts/chup-man-hinh.sh` (dựng lõi tạm, chụp khổ máy tính
-  1280×800 và điện thoại 390×844, lưu vào `docs/anh/`).
+### Cách bổ sung README khi thêm module
 
-## 14. Nhật ký thay đổi
-
-Mới nhất ở trên. Mỗi dòng: ngày — việc.
-
-- 11/10/2026 — Tạo ảnh và video: lõi thêm `POST /v1/images/generations`, `POST /v1/videos`, `GET /v1/videos/{id}`, `GET /v1/videos/{id}/content` (định tuyến theo tiền tố, `501` khi module không có khả năng, video tải theo stream); manifest có trường mở `cung_cap`; module `gemini-api` 0.2.0 tạo ảnh (endpoint tương thích OpenAI) và video Veo (API gốc), chỉ khoá trả phí — khoá bị từ chối được nhớ theo (khoá, việc) và không ảnh hưởng chat, sức khoẻ báo `kha_nang` từng khoá. Chưa đo với Google thật.
-- 11/10/2026 — Cài module không cần khoá API: «đã cài» (mã trên máy) tách khỏi «đã liên kết» (có khoá, phục vụ `/v1`); `GET /api/modules` liệt kê mọi module đã cài kèm `da_cau_hinh`/`can_cau_hinh`/`tab_web`; thêm/bớt từng khoá (`GET /api/modules/{id}/cau-hinh`, dạng sửa `giu`/`them`); `/catalog` đổi `da_cai` thành `da_cau_hinh`; lõi không nạp module thiếu trường bắt buộc; lần đầu thêm nguồn git thì cập nhật một lần module đang có; quy tắc chữ «Cài» (chưa có mã) / «Cập nhật» (đã cài).
-
-- 11/10/2026 — Thêm giấy phép: giữ toàn quyền (*All rights reserved*), chủ bản quyền `TriTue2011` (tệp `LICENSE`).
-- 11/10/2026 — Lần CI đầu tiên trên GitHub: ảnh đa kiến trúc lên `ghcr.io/tritue2011/web2api`; sửa gitleaks bắt nhầm tên dự án; thêm `.pre-commit-config.yaml`.
-- 11/10/2026 — `docker-compose.yml` cho người mới: ảnh `ghcr.io/tritue2011/web2api:latest` kèm `build: .`, dữ liệu trong volume có tên `web2api-data` (không phải chown), hướng dẫn compose từng bước, cập nhật, sao lưu.
-- 10/10/2026 — Tách khỏi kho chatgpt2api thành kho riêng `TriTue2011/web2api`: nguồn module mặc định `modules/` của kho mới, `requirements-dev.txt`, `.gitignore`, chép `deploy/cloudflare-gemini-proxy.js` vào kho, test và script không còn phụ thuộc đường dẫn kho cũ.
-- 10/10/2026 — Trang khởi đầu nối sang trang Module (nút «Cài AI đầu tiên», liên kết «Module», chấm báo, tab module); `docker-compose.yml` đặt sẵn nguồn git của dự án; ghi kết quả kiểm Gemini với Google thật; trang Module tải lại thông báo sau khi gỡ.
-- 10/10/2026 — Trang «Module» (`Cai-module.dc.html`): khoá quản trị, cài/gỡ, thông báo git, sức khoẻ, thử chat, module từ xa.
-- 10/10/2026 — «Máy này» cho người vận hành khai RAM/CPU của máy (`WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`) và ghi rõ nguồn số.
-- 10/10/2026 — Nguồn module từ git: thăm dò có điều kiện, thông báo module mới/bản mới, cài chốt theo commit, kiểm băm từng tệp, tự cài có điều kiện; hướng dẫn này viết lại cho người mới.
-- 10/10/2026 — Khám phá module từ hai nguồn, nạp lại nóng, module từ xa, tab giao diện `/m/<id>/`, `yeu_cau_goi`.
-- 10/10/2026 — Khoá quản trị, `/v1` chuẩn OpenAI, module `gemini-api`.
-- 10/10/2026 — Khung lõi rỗng `0.1.0-khung`: trang khởi đầu, `/api/he-thong`, `/api/modules`.
-
-## 15. Cách bổ sung README khi thêm module
-
-1. Chép `docs/MAU-TIEU-MUC-MODULE.md` thành một tiểu mục mới trong mục 6, tiêu đề có id module.
-2. Thêm một dòng cho module vào bảng ở mục 2 «Trạng thái hiện tại» (ghi id module).
-3. Chụp lại ảnh nếu giao diện đổi: `scripts/chup-man-hinh.sh` (thêm trang mới vào danh sách `TRANG` trong script).
-4. Ghi một dòng vào mục 14 «Nhật ký thay đổi» (ngày — việc).
-5. Chạy test README: `.venv/bin/python -m pytest test/test_web2api_readme.py -q -p no:cacheprovider` — đỏ là còn thiếu tài liệu.
+1. Chép `docs/MAU-TIEU-MUC-MODULE.md` thành tiểu mục mới trong mục 4 «Module có sẵn», tiêu đề có id module.
+2. Thêm một dòng vào bảng «Trạng thái hiện tại» (mục 1), ghi id module.
+3. Thêm đường API hay biến `WEB2API_*` mới thì ghi vào mục 8; giao diện đổi thì chụp lại ảnh bằng
+   `scripts/chup-man-hinh.sh`.
+4. Chạy test README: `.venv/bin/python -m pytest test/test_web2api_readme.py -q -p no:cacheprovider` — đỏ là còn
+   thiếu tài liệu.

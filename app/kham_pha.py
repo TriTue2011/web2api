@@ -29,8 +29,13 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
     phải kiểm nó trước khi dùng để gọi dịch vụ kèm khoá.
 
 Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]. Lõi chỉ
-kiểm MẪU (MA_KHA_NANG), không giữ danh sách mã hợp lệ; trường để hiển thị (catalog). Định tuyến /v1 dựa vào
-phương thức CÓ THẬT trên thể hiện, không dựa vào lời khai.
+kiểm MẪU (MA_KHA_NANG), không giữ danh sách mã hợp lệ. Định tuyến /v1 dựa vào phương thức CÓ THẬT trên thể
+hiện, không dựa vào lời khai; lời khai dùng cho giao diện (tab/chế độ nào hiện — GET /api/tinh-nang).
+
+`loai` cũng là mã MỞ cùng mẫu MA_KHA_NANG (mục `can` trộn hai loại mã: "ai" là loại, "chat" là khả năng).
+Tuỳ chọn cho giao diện: `loai_ten` (tên hiển thị của loại, vd "AI"), `loai_thu_tu` (số nguyên, nhỏ đứng
+trước), `muc` — tab con/mục của module, mỗi mục {"id", "nhan", "can": [mã…]}: mục chỉ hiện khi module đã
+liên kết VÀ mọi mã trong `can` có ở ít nhất một module đã liên kết (rỗng = luôn hiện khi đã liên kết).
 
 Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep)
 và gói có sẵn trong ảnh; gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
@@ -58,8 +63,11 @@ KIEU_TRUONG = {"chuoi", "bi_mat", "danh_sach_bi_mat"}
 TRUONG_CHUOI_BAT_BUOC = ("id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to")
 PHUONG_THUC = ("nap", "cai", "chat", "models", "suc_khoe", "dung")
 _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-#: Mẫu mã khả năng trong `cung_cap` — kiểm dạng, KHÔNG liệt kê mã hợp lệ (mã mới không phải sửa lõi).
+#: Mẫu mã khả năng trong `cung_cap`, mã loại `loai` và mã trong `can` — kiểm dạng, KHÔNG liệt kê mã hợp lệ
+#: (loại/khả năng mới không phải sửa lõi).
 MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
+#: Id của một mục (tab con) trong `muc` — đi vào id phần tử/đường dẫn của giao diện.
+ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 
 
 class LoiNap(Exception):
@@ -93,12 +101,12 @@ class ModuleKhamPha:
 
     def duong_tab(self) -> dict:
         """Tab của module trên thanh trên. Manifest khai `tab_web` thì dùng giao diện riêng ở /m/<id>/;
-        không khai thì trỏ tới thẻ của module trên trang Module — nơi form dựng từ `truong_cau_hinh` để
-        thêm khoá. Module nào đã cài cũng có tab, không cần bảng tên module nào. Đường tương đối: chạy
+        không khai thì trỏ tới ô của module trên trang Hệ thống → Module — nơi form dựng từ `truong_cau_hinh`
+        để thêm khoá. Module nào đã cài cũng có tab, không cần bảng tên module nào. Đường tương đối: chạy
         được cả khi web2api nằm sau proxy ở một thư mục con."""
         tab = self.manifest.get("tab_web")
         if not tab:
-            return {"nhan": self.manifest["ten"], "duong": f"Cai-module.dc.html#the-{self.id}"}
+            return {"nhan": self.manifest["ten"], "duong": f"He-thong.dc.html#module-{self.id}"}
         return {"nhan": tab["nhan"], "duong": f"/m/{self.id}/{tab['trang'].removeprefix('web/')}"}
 
 
@@ -112,6 +120,12 @@ def kiem_manifest(m) -> str | None:
             return f"thiếu hoặc sai trường «{k}» (cần chuỗi khác rỗng)"
     if not ID_HOP_LE.match(m["id"]) or m["id"] in ID_DANH_RIENG:
         return f"id {m['id']!r} không hợp lệ (cần ^[a-z0-9][a-z0-9_-]{{1,40}}$, không trùng tên tuyến)"
+    if not MA_KHA_NANG.match(m["loai"]):
+        return f"loai {m['loai']!r} không hợp lệ (mã: chữ thường, số, _; ví dụ \"ai\", \"app\", \"nha\")"
+    if "loai_ten" in m and (not isinstance(m["loai_ten"], str) or not m["loai_ten"].strip()):
+        return "loai_ten phải là chuỗi khác rỗng (tên hiển thị của loại)"
+    if "loai_thu_tu" in m and (type(m["loai_thu_tu"]) is not int):
+        return "loai_thu_tu phải là số nguyên (nhỏ đứng trước)"
     if not TIEN_TO_HOP_LE.match(m["tien_to"]):
         return f"tien_to {m['tien_to']!r} không hợp lệ (chữ, số, . _ -; không có «/»)"
     truong = m.get("truong_cau_hinh")
@@ -140,6 +154,19 @@ def kiem_manifest(m) -> str | None:
     if (not isinstance(cung_cap, list) or not all(isinstance(x, str) and MA_KHA_NANG.match(x) for x in cung_cap)
             or len(set(cung_cap)) != len(cung_cap)):
         return 'cung_cap phải là danh sách mã khả năng không trùng (chữ thường, số, _; ví dụ ["chat", "anh"])'
+    muc = m.get("muc", [])
+    if not isinstance(muc, list):
+        return 'muc phải là danh sách [{"id", "nhan", "can": [mã…]}]'
+    id_muc = set()
+    for i, x in enumerate(muc):
+        if (not isinstance(x, dict) or not isinstance(x.get("id"), str) or not ID_MUC.match(x["id"])
+                or not isinstance(x.get("nhan"), str) or not x["nhan"].strip() or not isinstance(x.get("can"), list)
+                or not all(isinstance(c, str) and MA_KHA_NANG.match(c) for c in x["can"])):
+            return (f'muc[{i}] cần {{"id": mã (chữ thường, số, - _), "nhan": chuỗi, "can": [mã khả năng/loại…]}} '
+                    '(can rỗng = luôn hiện khi module đã liên kết)')
+        if x["id"] in id_muc:
+            return f"muc trùng id {x['id']!r}"
+        id_muc.add(x["id"])
     tab = m.get("tab_web")
     if tab is not None:
         trang = tab.get("trang") if isinstance(tab, dict) else None

@@ -1,6 +1,6 @@
-"""Các tuyến API của lõi: /v1 (chuẩn OpenAI), /api/modules, /api/nguon-git, /m/<id>/ (giao diện của module).
+"""Các tuyến API của lõi: /v1 (chuẩn OpenAI), /api/modules, /api/tinh-nang, /api/nguon-git, /m/<id>/.
 
-Quyền: MỞ cho GET /api/modules và /api/modules/catalog (không chứa bí mật, không lộ repo);
+Quyền: MỞ cho GET /api/modules, /api/modules/catalog và /api/tinh-nang (không chứa bí mật, không lộ repo);
 mọi tuyến khác ở đây đòi khoá quản trị (xác thực theo từng tuyến bằng `dependencies`).
 """
 
@@ -24,6 +24,7 @@ QT = [Depends(can_quan_tri)]
 
 v1 = APIRouter(prefix="/v1", dependencies=QT)
 modules = APIRouter(prefix="/api/modules")
+tinh_nang = APIRouter()
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
 tep_module = APIRouter()
 
@@ -71,9 +72,9 @@ async def v1_models(request: Request):
 def _module_dang_chay(so: SoModule, id_: str, tien_to: str):
     m = so.dang_chay.get(id_)
     if m is None:  # tìm thấy tiền tố mà không chạy → mã đã cài (catalog), chưa liên kết; module từ xa luôn chạy
-        raise LoiOpenAI(404, f"Module {id_!r} (tiền tố {tien_to}/) đã cài nhưng chưa có khoá/cấu hình — mở tab "
-                             f"«{so.catalog[id_].duong_tab()['nhan']}» trên trang web2api để thêm khoá "
-                             f"(hoặc POST /api/modules/{id_}/cai)", code="module_not_configured")
+        raise LoiOpenAI(404, f"Module {id_!r} (tiền tố {tien_to}/) đã cài nhưng chưa có khoá/cấu hình — mở "
+                             f"Hệ thống → tab Module → ô «{so.catalog[id_].manifest['ten']}» trên trang web2api để "
+                             f"thêm khoá (hoặc POST /api/modules/{id_}/cai)", code="module_not_configured")
     return m
 
 
@@ -81,7 +82,7 @@ def _module_theo_model(so: SoModule, than: dict):
     """(id, thể hiện) của module có tiền tố ghi trong `model` — 404 rõ ràng nếu không thuộc ai/chưa liên kết."""
     model = than.get("model")
     if not isinstance(model, str) or not model:
-        raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>, ví dụ gemini/gemini-2.5-flash)",
+        raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>; danh sách ở GET /v1/models)",
                         code="missing_model")
     tien_to, co_gach, _ = model.partition("/")
     id_ = so.tim_theo_tien_to(tien_to) if co_gach else None
@@ -213,7 +214,8 @@ async def catalog(request: Request):
     for km in so.catalog.values():
         m = km.manifest
         ds.append({k: m.get(k) for k in ("id", "ten", "mo_ta", "phien_ban", "loai", "giao_thuc", "tien_to",
-                                         "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web", "cung_cap")}
+                                         "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web", "cung_cap",
+                                         "loai_ten", "loai_thu_tu", "muc")}
                   | {"nguon": km.nguon, "da_cau_hinh": km.id in so.dang_chay})
     return {"modules": ds, "loi": so.loi}
 
@@ -281,6 +283,15 @@ async def cau_hinh(id_: str, request: Request):
     muc = so.muc_da_luu(id_) or {}
     return {"id": id_, "ten": km.manifest["ten"], "truong_cau_hinh": km.truong_cau_hinh,
             "gia_tri": muc.get("cau_hinh_cong_khai") or {}, "da_cau_hinh": id_ in so.dang_chay}
+
+
+# ───────────── /api/tinh-nang ─────────────
+
+@tinh_nang.get("/api/tinh-nang")
+async def xem_tinh_nang(request: Request):
+    """MỞ (như GET /api/modules): khung giao diện cần nó TRƯỚC khi người dùng dán khoá quản trị — trang đầu
+    là trang Module khi chưa cài gì. Không bí mật, không cấu hình, không tên repo."""
+    return _so(request).tinh_nang()
 
 
 # ───────────── /api/nguon-git ─────────────

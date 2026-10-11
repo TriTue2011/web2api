@@ -74,8 +74,10 @@ class ModuleTuXa:
     """Thể hiện phục vụ /v1 cho một bản ghi tu_xa.json (cùng giao diện với lớp Module có mã)."""
 
     def __init__(self, ban_ghi: dict, api_key: str | None):
+        # Hợp đồng của module từ xa CHÍNH LÀ chuẩn OpenAI chat (chỉ chuyển tiếp chat + models) → khai như một
+        # manifest: loại "ai", cung cấp "chat". Giao diện đọc lời khai này qua /api/tinh-nang như mọi module.
         self.manifest = {"id": ban_ghi["id"], "ten": ban_ghi["ten"], "tien_to": ban_ghi["tien_to"],
-                         "loai": "ai", "giao_thuc": "openai"}
+                         "loai": "ai", "giao_thuc": "openai", "cung_cap": ["chat"]}
         self.tien_to = ban_ghi["tien_to"]
         self._ct = ChuyenTiepOpenAI(ten=ban_ghi["ten"], tien_to=ban_ghi["tien_to"], base_url=ban_ghi["base_url"],
                                     khoa=[api_key] if api_key else [])

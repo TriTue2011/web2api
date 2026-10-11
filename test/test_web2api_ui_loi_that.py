@@ -1,10 +1,10 @@
-"""Trang «Module» (web/Cai-module.dc.html) chạy với LÕI THẬT — xác nhận hợp đồng giữa giao diện và mã lõi.
+"""Giao diện mới chạy với LÕI THẬT và module gemini-api THẬT (Google giả, GitHub giả) — trọn đường chủ máy đi.
 
-test_web2api_cai_module_ui.py đo trang với API GIẢ (gia_api_ui.py) chép theo mã lõi; tự nó không chứng
-minh trang chạy với lõi thật. Ở đây đi trọn đường chủ máy sẽ đi, trên lõi thật (uvicorn, lifespan,
-vòng nền git) + GitHub giả + Google giả:
-  dán khoá quản trị → thấy thông báo gemini-api từ git → bấm cài → form cấu hình mở sẵn → dán khoá
-  API (mỗi dòng một khoá) → Kiểm tra và lưu → kết quả từng khoá → Thử chat (stream) → sức khoẻ → gỡ.
+test_web2api_giao_dien.py đo khung với module giả; ở đây là module thật của kho để chắc hợp đồng manifest →
+khung (loai_ten, cung_cap, truong_cau_hinh, suc_khoe theo khả năng) đúng với mã thật:
+  mở địa chỉ gốc → Hệ thống → Module → dán khoá quản trị → ô gemini-api «Chưa cài» từ git → Cài (không khoá)
+  → bước thêm khoá → Kiểm tra và lưu (Google giả) → Studio hiện ngay → chat stream qua /v1 thật
+  → Hệ thống → AI → Provider: model + sức khoẻ thật → gỡ.
 Nguồn git lấy từ biến môi trường như docker-compose.yml đặt sẵn (không cấu hình tay).
 """
 
@@ -16,7 +16,7 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import GitHubGia, GoogleGia, MayChuThat, tep_kho
-from test_web2api_cai_module_ui import _DONG_KQ, CHROME, _o, _the_module, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
 
 GOC_GEMINI = Path(__file__).resolve().parents[1] / "modules" / "gemini-api"
 KHOA_QT = "khoa-quan-tri-ui-that-0123456789abcd"
@@ -24,7 +24,7 @@ K_TOT = "AIzaSyUI-TOT-0000000000000000000000tot1"
 K_XAU = "AIzaSyUI-XAU-0000000000000000000000xau2"
 REPO = "TriTue2011/web2api"
 
-pytestmark = pytest.mark.skipif(not Path(CHROME).exists(), reason="cần Chrome")
+pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 
 
 def _tep_gemini():
@@ -44,71 +44,65 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
         monkeypatch.setenv("WEB2API_GIT_REPO", REPO)  # như docker-compose.yml: không cấu hình tay
         monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
         with MayChuThat(app, lifespan="on") as w:
-            trang.di(w.url + "/Cai-module.dc.html")
+            trang.cdp.goi("Page.navigate", {"url": w.url + "/"}, trang.s)
+            trang.cho("location.pathname.endsWith('/He-thong.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'",
+                      mo_ta="địa chỉ gốc → Hệ thống → Module")
             trang.go("#o-khoa", KHOA_QT)
             trang.bam("document.getElementById('nut-luu-khoa')")
-            trang.cho("document.querySelector('#khoa-quan-tri [data-co-khoa]')", mo_ta="khoá quản trị đã lưu")
+            o = "document.querySelector('[data-o=\"gemini-api\"]')"
+            trang.cho(o, han=15, mo_ta="ô gemini-api từ git")
+            assert trang.js(o + ".dataset.tt") == "chua-cai"
+            assert trang.js(o + ".closest('[data-khu]').dataset.khu") == "ai"
+            assert trang.chu("[data-khu='ai'] .khu-ten").startswith("AI")   # loai_ten từ manifest thật
+            trang.js("window.__khongTaiLai = 1")
 
-            # Nguồn git đến từ biến môi trường; thông báo có gemini-api «mới», thanh trên có chấm báo.
-            trang.cho("document.querySelector('[data-thong-bao=\"gemini-api\"]')", han=15, mo_ta="thông báo gemini-api")
-            assert trang.chu("#so-thong-bao") == "1"
-            assert trang.js("!!document.querySelector('#thanh-tab .cham')")
-            assert REPO in trang.chu("#nguon-git")
-            assert "Mới" in trang.chu("[data-thong-bao='gemini-api']")
+            trang.bam(o)
+            trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài")
+            assert "generativelanguage.googleapis.com" in trang.chu("#can-gi") and "httpx" in trang.chu("#can-gi")
+            trang.bam("document.getElementById('nut-cai')")
+            trang.cho("document.querySelector('#chi-tiet [data-truong=\"api_keys\"] textarea')", han=15, mo_ta="bước thêm khoá")
+            assert trang.chu("#ct-trang-thai") == "Đã cài — chờ khoá"
 
-            trang.bam("document.querySelector('[data-thong-bao=\"gemini-api\"] .nut-cai-git')")
-            # Module cần khoá → cài (mã về máy) KHÔNG cần khoá, chưa liên kết; trang mở sẵn form thêm khoá.
-            trang.cho(_the_module("gemini-api") + "?.querySelector('form.form-cai')", han=15, mo_ta="form cấu hình mở sẵn")
-            assert "không cần khoá API" in trang.chu("#thong-bao .tin-cai-git")
-            assert "chưa có khoá" in trang.chu("[data-da-cai='gemini-api']")  # đã cài, hiện ngay ở «Module đã cài»
-
-            trang.go(_o("gemini-api", "api_keys"), f"{K_TOT}\n{K_XAU}")
-            trang.go(_o("gemini-api", "base_url"), s_g.url)
-            trang.bam(_the_module("gemini-api") + ".querySelector('.nut-cai')", "Kiểm tra và lưu")
-            trang.cho(_the_module("gemini-api") + "?.querySelector('.dung-ngay')", han=15, mo_ta="khối Dùng ngay")
-            dong = trang.js(_DONG_KQ.format('[data-module="gemini-api"] .ket-qua-cai li'))
-            assert [d[0] for d in dong] == ["tot", "hong"], dong
-            assert f"…{K_TOT[-4:]} · dùng được" in dong[0][1] and "2 model" in dong[0][1], dong
-            assert f"…{K_XAU[-4:]} · không dùng được" in dong[1][1] and "HTTP 401" in dong[1][1], dong
+            trang.go("#chi-tiet [data-truong='api_keys'] textarea", f"{K_TOT}\n{K_XAU}")
+            trang.go("#chi-tiet [data-truong='base_url'] input", s_g.url)
+            trang.bam("document.getElementById('nut-luu-cau-hinh')")
+            trang.cho("document.getElementById('kq-ok')", han=15, mo_ta="liên kết xong")
+            dong = trang.js("[...document.querySelectorAll('#chi-tiet .ket-qua-cai li')].map((l) => l.innerText.replace(/\\s+/g, ' '))")
+            assert f"…{K_TOT[-4:]} · dùng được" in dong[0] and "2 model" in dong[0], dong
+            assert f"…{K_XAU[-4:]} · không dùng được" in dong[1] and "HTTP 401" in dong[1], dong
             assert json.loads((tmp_path / "bi_mat" / "gemini-api.json").read_text())["api_keys"] == [K_TOT]
+            trang.cho("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href').endsWith('Studio.dc.html')",
+                      mo_ta="Studio hiện ngay")
+            assert trang.js("window.__khongTaiLai") == 1
 
-            # Thử chat (stream) qua /v1 thật → Google giả.
-            trang.bam(_the_module("gemini-api") + ".querySelector('.nut-thu-chat')")
-            trang.cho("document.getElementById('chat-model')?.value.startsWith('gemini/')", mo_ta="model gemini chọn sẵn")
-            trang.js("document.getElementById('chat-model').value = 'gemini/gemini-2.5-flash';"
-                     "document.getElementById('chat-model').dispatchEvent(new Event('change', {bubbles: true}))")
-            trang.go("#chat-nhap", "Chào")
+            # Studio: chat stream qua /v1 thật → Google giả; ba chế độ vì manifest khai chat, anh, video.
+            trang.bam("document.querySelector('[data-nav=\"quay-lai\"]')")
+            trang.cho("location.pathname.endsWith('/Studio.dc.html') && document.querySelectorAll('#chon-model option').length > 0",
+                      han=15, mo_ta="Studio có model")
+            assert trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)") == ["chat", "anh", "video"]
+            trang.go("#o-soan", "Chào")
             trang.bam("document.getElementById('nut-gui')")
-            trang.cho("(document.getElementById('chat-tt')?.innerText || '').startsWith('Xong')", han=15, mo_ta="chat xong")
-            assert trang.chu("#tra-loi") == "MộtHai"
+            trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=15, mo_ta="chat xong")
+            assert trang.chu("[data-vai='assistant']") == "MộtHai"
             gui = [x for x in g.nhat_ky if x["duong"] == "chat"][-1]
-            assert gui["khoa"] == K_TOT and gui["than"]["model"] == "gemini-2.5-flash" and gui["than"]["stream"] is True
+            assert gui["khoa"] == K_TOT and gui["than"]["stream"] is True
 
-            # Sức khoẻ từ lõi thật: {ok, base_url, khoa: [... dang_nghi_den]} hiện đúng.
-            the = "document.querySelector('[data-da-cai=\"gemini-api\"]')"
-            trang.cho(the, mo_ta="gemini-api ở «Module đã cài»")
-            trang.bam(the + ".querySelector('.nut-suc-khoe')")
-            trang.cho(the + ".querySelector('.suc-khoe li')", mo_ta="kết quả sức khoẻ")
-            sk = trang.js(_DONG_KQ.format('[data-da-cai="gemini-api"] .suc-khoe li'))
-            assert len(sk) == 1 and sk[0][0] == "tot" and f"…{K_TOT[-4:]}" in sk[0][1], sk
-            assert not any(x["duong"] == "chat" for x in g.nhat_ky[-1:])  # sức khoẻ không gọi chat
+            # Hệ thống → AI → Provider: model thật + sức khoẻ thật, kể cả trạng thái ảnh/video theo khoá.
+            trang.di(w.url + "/He-thong-AI.dc.html#provider")
+            trang.cho("document.querySelector('[data-provider=\"gemini-api\"] .suc-khoe')", han=15, mo_ta="sức khoẻ")
+            the = trang.chu("[data-provider='gemini-api']")
+            assert "gemini/gemini-2.5-flash" in the and f"…{K_TOT[-4:]}" in the and "anh: chưa rõ" in the, the
 
-            # Không còn khoá API nào trên trang.
             html = trang.js("document.documentElement.outerHTML")
             assert K_TOT not in html and K_XAU not in html
             assert not any(K_TOT in s or K_XAU in s for s in trang.state_thanh_phan())
 
-            # Gỡ → biến khỏi «đã cài»; module còn trên git nên lại thành thông báo «mới».
-            trang.bam(the + ".querySelector('.nut-go')")
-            trang.cho(the + ".querySelector('.xac-nhan-go')", mo_ta="xác nhận gỡ")
-            trang.bam(the + ".querySelector('.nut-go-han')")
-            trang.cho("!document.querySelector('[data-da-cai=\"gemini-api\"]')", mo_ta="đã gỡ")
-            # Module còn trên git → máy chủ coi lại là «mới»; trang tải lại thông báo sau khi gỡ (đã sửa:
-            # trước đó trang giữ danh sách cũ nên chấm báo không hiện lại).
-            trang.cho("!!document.querySelector('#thanh-tab .cham')", mo_ta="chấm báo hiện lại sau khi gỡ")
-            trang.cho("document.querySelector('[data-thong-bao=\"gemini-api\"]')", mo_ta="thông báo gemini-api lại hiện")
-            tb = json.loads(trang.js(f"fetch('api/modules/thong-bao', {{headers: {{Authorization: 'Bearer {KHOA_QT}'}}}})"
-                                     ".then((r) => r.text())"))
-            assert [(x["id"], x["trang_thai"]) for x in tb["danh_sach"]] == [("gemini-api", "moi")]
+            # Gỡ: module còn trên git → lại «Chưa cài»; bí mật bị xoá.
+            trang.di(w.url + "/He-thong.dc.html#module-gemini-api")
+            trang.cho("document.getElementById('nut-go')", mo_ta="nút Gỡ")
+            trang.bam("document.getElementById('nut-go')")
+            trang.bam("document.getElementById('nut-go-han')")
+            trang.cho(o + "?.dataset.tt === 'chua-cai'", han=15, mo_ta="lại «Chưa cài»")
+            assert not trang.js("!!document.querySelector('[data-nav=\"quay-lai\"]')")
             assert not (tmp_path / "bi_mat" / "gemini-api.json").exists()
     assert all(x["auth"] is None for x in gh.nhat_ky)  # kho public: đọc ẩn danh

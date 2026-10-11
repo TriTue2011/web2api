@@ -319,15 +319,23 @@ class NguonGit:
         manifest = {e["path"][len(tien):-len("/manifest.json")]: e["sha"] for e in cay
                     if e.get("type") == "blob" and e["path"].startswith(tien) and e["path"].endswith("/manifest.json")}
         cu_theo_id = {m["id"]: m for m in cu if isinstance(m, dict)}
+        # Dung lượng tải = cộng `size` mọi blob trong thư mục module của CÂY đã đọc (số thật của git, không tải gì thêm).
+        dung_luong: dict[str, int] = {}
+        for e in cay:
+            if e.get("type") == "blob" and e["path"].startswith(tien) and "/" in e["path"][len(tien):]:
+                ten_tm = e["path"][len(tien):].split("/", 1)[0]
+                dung_luong[ten_tm] = dung_luong.get(ten_tm, 0) + int(e.get("size") or 0)
         ra = []
         for ten, sha_tm in sorted(thu_muc_con.items()):
             if ten not in manifest:
                 continue  # thư mục con không có manifest.json ở gốc thì không phải module
             truoc = cu_theo_id.get(ten)
-            if truoc and truoc.get("tree_sha") == sha_tm:
-                ra.append(truoc)  # thư mục không đổi → khỏi tải lại manifest (tiết kiệm hạn mức)
+            # Thư mục không đổi → khỏi tải lại manifest (tiết kiệm hạn mức). Bản tóm tắt do lõi CŨ ghi (chưa có
+            # `loai`) thì đọc lại một lần: thiếu `loai` thì trang Module không xếp được ô «Chưa cài» vào khu nào.
+            if truoc and truoc.get("tree_sha") == sha_tm and (truoc.get("loi") or "loai" in truoc):
+                ra.append({**truoc, "dung_luong": dung_luong.get(ten, 0)})
                 continue
-            muc = {"id": ten, "tree_sha": sha_tm, "loi": None}
+            muc = {"id": ten, "tree_sha": sha_tm, "loi": None, "dung_luong": dung_luong.get(ten, 0)}
             try:
                 m = json.loads(await self._doc_blob(repo, manifest[ten]))
                 ly_do = kiem_manifest(m)
@@ -342,7 +350,8 @@ class NguonGit:
             else:
                 muc.update(ten=m["ten"], mo_ta=m["mo_ta"], phien_ban=m.get("phien_ban"),
                            yeu_cau_goi=m.get("yeu_cau_goi", []), mang_ra=m["tai_nguyen"].get("mang_ra", []),
-                           tai_nguyen=m["tai_nguyen"])
+                           tai_nguyen=m["tai_nguyen"], loai=m["loai"], loai_ten=m.get("loai_ten"),
+                           loai_thu_tu=m.get("loai_thu_tu"), cung_cap=m.get("cung_cap", []))
             ra.append(muc)
         return ra
 
@@ -382,6 +391,9 @@ class NguonGit:
                 "id": m["id"], "ten": m.get("ten"), "trang_thai": tt,
                 "phien_ban_cu": km.manifest.get("phien_ban") if km else None,
                 "phien_ban_moi": m.get("phien_ban"),
+                # Tóm tắt manifest trên git: trang Module xếp ô «Chưa cài» vào khu theo `loai` và hiện «Cần gì để chạy».
+                **{k: m.get(k) for k in ("mo_ta", "loai", "loai_ten", "loai_thu_tu", "cung_cap", "tai_nguyen",
+                                         "yeu_cau_goi", "dung_luong")},
                 "commit": {k: commit.get(k) for k in ("sha", "tac_gia", "thong_diep")},
                 "ly_do": ly_do,
                 "ghi_chu": ghi_chu[1] if ghi_chu and ghi_chu[0] == m["tree_sha"] else None,
@@ -389,9 +401,13 @@ class NguonGit:
         return ra
 
     def thong_bao(self) -> dict:
-        ds = [x for x in self.danh_sach() if x["trang_thai"] != "da_cai_dung"]
+        tat_ca = self.danh_sach()
+        ds = [x for x in tat_ca if x["trang_thai"] != "da_cai_dung"]
         tt = self.trang_thai
+        # `moi_nhat`: module đã cài ĐÚNG bản trên git — giao diện ghi «Đã là bản mới nhất» (không suy từ chỗ vắng mặt:
+        # vắng mặt còn có thể là module không có trên git).
         return {"so_moi": sum(x["trang_thai"] in ("moi", "co_ban_moi") for x in ds), "danh_sach": ds,
+                "moi_nhat": [x["id"] for x in tat_ca if x["trang_thai"] == "da_cai_dung"],
                 "dong_bo": {k: tt.get(k) for k in ("kiem_luc", "loi", "canh_bao", "han_muc_con", "reset_luc")}}
 
     def so_thong_bao(self) -> int:

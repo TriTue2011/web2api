@@ -11,7 +11,10 @@ web2api runs in one small Docker container (about 32 MB of RAM idle) and exposes
 library, Home Assistant integrations with a configurable base URL, chat apps — only needs a new base URL
 and the admin key as the API key.
 
-The core ships **no AI source at all**. Each source is a *module* under `modules/<id>/` of this repository.
+The core ships **no AI source at all** — it is only a *translator*: it speaks the OpenAI protocol, picks a module
+by the model prefix and hands the request over. Everything specific to a provider (endpoints, auth headers, error
+shapes, free-tier hints, non-OpenAI native APIs) lives **inside that provider's module**, which carries its own
+converter. Each source is a *module* under `modules/<id>/` of this repository.
 Today there is one: `gemini-api` (Google Gemini through an AI Studio key). Models are addressed as
 `<prefix>/<name>`, for example `gemini/gemini-2.5-flash`.
 
@@ -26,9 +29,14 @@ sudo mkdir -p /opt/c2a-moi/data && sudo chown 1000:1000 /opt/c2a-moi/data   # da
 docker compose up -d                                                         # builds the image on first run
 ```
 
-Open `http://<host>:3031/`. On first start web2api generates an admin key; read it with
-`docker exec web2api cat /data/admin_key`. Paste it into the **Module** page and install `gemini-api` — installing needs no
-API key. Then add your Google AI Studio key on the web (keys can be added or removed one by one later), and call the API:
+Open `http://<host>:3031/`. With nothing installed it opens **System → Modules** (a grid of tiles grouped by module
+type, plus a "Connect to web2api" block that disappears after the first link). On first start web2api generates an
+admin key; read it with `docker exec web2api cat /data/admin_key` and paste it on the page. Click the `gemini-api`
+tile: the detail panel shows what it needs to run (resources, Python packages, outbound hosts, instructions from the
+manifest). Click **Install** — no API key needed — then add your Google AI Studio key in the "Add account / API key"
+step (keys can be added or removed one by one later; an empty text field never overwrites a saved value). Once linked,
+the related tabs appear immediately without a page reload: **Studio** (chat with streaming, images, video) and
+**System → AI** (Accounts, Providers with real models and per-key health). Then call the API:
 
 ```bash
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
@@ -68,8 +76,15 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 Put a module in `modules/<id>/` (a `manifest.json` and a `module.py`) and push it to the watched branch.
 web2api polls git (every 300 s by default), shows a "new module" notice, and an admin installs it with one
 click or one `curl` — no image rebuild, no restart. Auto-install is **off** by default. A service that
-already speaks the OpenAI protocol can instead be registered as a *remote module* by URL. See
-[CONTRIBUTING.md](CONTRIBUTING.md) (Vietnamese) and README sections 8 and 15.
+already speaks the OpenAI protocol can instead be registered as a *remote module* by URL.
+
+The web UI shows tabs by **what modules declare**, never by module name: the open endpoint `GET /api/tinh-nang`
+counts, per code, the installed and the linked modules, where a module contributes its `loai` (type, an open code
+such as `ai`, `app`, `nha`) and its `cung_cap` codes (capabilities such as `chat`, `anh`, `video`). Optional manifest
+fields: `loai_ten` (display name of the type), `loai_thu_tu` (sort order), and `muc` — sub-tabs `{id, nhan, can}`
+shown only when every code in `can` is provided by a linked module. Combo (ordering several AI sources) has no
+backend yet and is never shown. See [CONTRIBUTING.md](CONTRIBUTING.md) (Vietnamese) and README sections 2–3 (architecture
+diagrams, components, writing a module) and 9.
 
 ## Security notes
 

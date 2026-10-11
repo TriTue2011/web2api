@@ -11,9 +11,9 @@ Kho: `TriTue2011/web2api`, **PUBLIC**. README.md là tài liệu cho người d�
 
 | Đường | Nội dung |
 |---|---|
-| `app/` | Lõi FastAPI. `main.py` khởi động; `tuyen.py` các đường API; `kham_pha.py` khám phá module (hợp đồng module ghi ở đầu file); `so_module.py` sổ module đang chạy; `nguon_git.py` nguồn module từ git; `tu_xa.py` module từ xa; `xac_thuc.py` khoá quản trị; `kho.py` kho dữ liệu trên đĩa; `chuyen_tiep.py` bộ chuyển tiếp OpenAI dùng chung; `he_thong.py` trang «Máy này» |
+| `app/` | Lõi FastAPI. `main.py` khởi động; `tuyen.py` các đường API (kể cả `/api/tinh-nang`); `kham_pha.py` khám phá module (hợp đồng module ghi ở đầu file); `so_module.py` sổ module đang chạy; `nguon_git.py` nguồn module từ git; `tu_xa.py` module từ xa; `xac_thuc.py` khoá quản trị; `kho.py` kho dữ liệu trên đĩa; `chuyen_tiep.py` bộ chuyển tiếp OpenAI dùng chung; `he_thong.py` trang «Máy này» |
 | `modules/<id>/` | Một module: `manifest.json` + `module.py` (+ `web/` tuỳ chọn). Hiện có `gemini-api` |
-| `web/` | Trang tĩnh của lõi (`Khoi-dau`, `Cai-module`) |
+| `web/` | Giao diện tĩnh: `index.html` (chọn trang đầu), `He-thong.dc.html` (Hệ thống → Module), `He-thong-AI.dc.html`, `Studio.dc.html`; logic chung + bảng điều kiện hiện tab ở `khung.js` (không tên module nào) |
 | `test/` | pytest; máy chủ Google/GitHub/OpenAI đều là **giả** cục bộ, `conftest.py` chặn mọi đường ra Internet |
 | `scripts/` | `chup-man-hinh.sh` chụp lại ảnh README vào `docs/anh/` |
 | `docs/` | `MAU-TIEU-MUC-MODULE.md` (mẫu tiểu mục README cho module mới), `anh/` |
@@ -28,7 +28,7 @@ Môi trường: Python 3.13 (`.python-version`). Lần đầu: `uv venv && uv pi
 .venv/bin/python -m pytest test -q -p no:cacheprovider    # test; xét MÃ THOÁT, không xét cảm giác
 bandit -r app modules -lll                                # mức HIGH phải sạch (CI chặn)
 docker build -t web2api:latest .                          # ảnh phải dựng được
-docker compose up -d                                      # chạy thật ở cổng 3031 (xem README mục 4)
+docker compose up -d                                      # chạy thật ở cổng 3031 (xem README mục 5)
 ```
 
 Một lệnh hỏng là **DỪNG**: không cam kết, không đẩy. Test giao diện cần `/usr/bin/google-chrome` và `node`
@@ -48,9 +48,9 @@ Một lệnh hỏng là **DỪNG**: không cam kết, không đẩy. Test giao d
   Đừng nới mặc định để cho tiện.
 - **Đo trên chạy thật trước khi tin bản sửa.** Test chỉ chứng minh mã chạy đúng như mình nghĩ, không chứng
   minh mình nghĩ đúng. Chưa kiểm được thì nói «chưa kiểm», đừng tuyên bố xong.
-- **Mỗi module mới PHẢI có** tiểu mục ở README mục 6 **và** dòng ở bảng «Trạng thái hiện tại» (mục 2); thêm
+- **Mỗi module mới PHẢI có** tiểu mục ở README mục 4 **và** dòng ở bảng «Trạng thái hiện tại» (mục 1); thêm
   đường API hay biến `WEB2API_*` cũng phải có trong README. `test/test_web2api_readme.py` bắt lệch và báo đỏ.
-  Làm đủ 5 bước ở README mục 15.
+  Làm đủ các bước ở README mục 9 (README không giữ nhật ký thay đổi — lịch sử nằm trong git).
 - Việc dùng một lần không cần helper; không refactor ngoài yêu cầu.
 
 ## Quy trình cam kết

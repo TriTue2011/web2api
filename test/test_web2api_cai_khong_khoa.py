@@ -125,7 +125,7 @@ def test_cai_tu_git_khong_khoa_hien_trong_danh_sach_nhung_chua_phuc_vu(du_lieu, 
         assert m is not None, "module đã cài (mã trên đĩa) phải có trong GET /api/modules"
         assert m["da_cau_hinh"] is False and m["can_cau_hinh"] is True and m["nguon"] == "du_lieu"
         # Gemini không khai tab riêng → tab trỏ tới thẻ cấu hình của nó trên trang Module (đường tương đối).
-        assert m["tab_web"] == {"nhan": m["ten"], "duong": "Cai-module.dc.html#the-gemini-api"}
+        assert m["tab_web"] == {"nhan": m["ten"], "duong": "He-thong.dc.html#module-gemini-api"}
         mo = c.get("/api/modules").text + c.get("/api/modules/catalog").text
         assert REPO not in mo
         cat = next(x for x in c.get("/api/modules/catalog").json()["modules"] if x["id"] == "gemini-api")

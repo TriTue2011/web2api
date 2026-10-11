@@ -5,7 +5,7 @@ của dự án) và nạp nóng; module từ xa đăng ký bằng URL. Thêm mod
 hay khởi động lại tiến trình.
 
 Xác thực: /v1/* và mọi API đổi trạng thái/lộ cấu hình đòi khoá quản trị (app/xac_thuc.py);
-/health, /api/he-thong, GET /api/modules(/catalog) và tệp tĩnh để mở (không chứa bí mật).
+/health, /api/he-thong, GET /api/modules(/catalog), GET /api/tinh-nang và tệp tĩnh để mở (không chứa bí mật).
 """
 
 import logging
@@ -66,13 +66,15 @@ def api_he_thong():
 
 app.include_router(tuyen.v1)
 app.include_router(tuyen.modules)
+app.include_router(tuyen.tinh_nang)
 app.include_router(tuyen.nguon_git)
 app.include_router(tuyen.tep_module)
 
 
 @app.get("/")
 def trang_khoi_dau():
-    return FileResponse(WEB / "Khoi-dau.dc.html", media_type="text/html; charset=utf-8")
+    # Trang nhỏ tự chọn trang đầu (Studio khi đã có module chat liên kết, không thì Hệ thống → Module).
+    return FileResponse(WEB / "index.html", media_type="text/html; charset=utf-8")
 
 
 # Mount ở gốc PHẢI đứng sau mọi route: Starlette khớp theo thứ tự đăng ký, mount "/"

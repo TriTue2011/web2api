@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Studio</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+main.pg{max-width:920px}
+.hoi-thoai{display:flex;flex-direction:column;gap:10px;min-height:120px}
+.loi-nhan{max-width:85%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.loi-nhan.nguoi{align-self:flex-end;background:var(--ink);color:#fff;border-bottom-right-radius:4px}
+.loi-nhan.may{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+.soan{display:flex;flex-direction:column;gap:10px}
+.ket-qua-anh{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));gap:12px}
+.ket-qua-anh figure{margin:0;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--card)}
+.ket-qua-anh img,.video-kq video{width:100%;height:auto;border-radius:10px;background:#EEECE7;display:block}
+</style>
+</helmet>
+<div class="goc">
+
+<nav aria-label="Điều hướng chính" class="tb">
+<div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></div>
+<span class="ten-web">web2api</span>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{nav}}" as="t"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}">{{t.nhan}}</a></sc-for></div>
+<a class="nut-he-thong" href="He-thong.dc.html" data-nav="he-thong">Hệ thống</a>
+</nav>
+
+<main class="pg">
+<sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang tải…</p></sc-if>
+<sc-if value="{{tnLoi}}"><p role="alert" class="bao bao-loi">Không đọc được dữ liệu: {{tnLoi}}</p></sc-if>
+
+<sc-if value="{{sanSang}}">
+<header style="display:flex;flex-direction:column;gap:8px">
+<span class="nhan-tren">Studio</span>
+<h1 class="tieu-de">Thử ngay qua /v1</h1>
+<p class="phu" style="max-width:70ch;font-size:15px">Mọi lời gọi ở đây đi qua chính địa chỉ <span class="ma">{{diaChiV1}}</span> bằng khoá quản trị — y như ứng dụng của bạn sẽ gọi.</p>
+</header>
+
+<sc-if value="{{khongKhoa}}">
+<section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri" style="gap:10px">
+<h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2>
+<p class="phu">Studio gọi /v1 bằng khoá quản trị. Lấy trên máy chủ bằng <code class="ma">docker exec web2api cat /data/admin_key</code>. Khoá chỉ lưu trong trình duyệt này.</p>
+<div class="o-va-nut"><label for="o-khoa" class="an-chu">Khoá quản trị</label><input id="o-khoa" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}"><button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button></div>
+</section>
+</sc-if>
+<sc-if value="{{khoaLoi}}"><p role="alert" class="bao bao-loi" id="khoa-loi">{{khoaLoi}}</p></sc-if>
+
+<div class="chip-ds" role="tablist" aria-label="Chế độ" id="che-do"><sc-for list="{{cheDo}}" as="c"><button type="button" role="tab" class="chip" id="{{c.idTab}}" data-che-do="{{c.ma}}" aria-selected="{{c.on}}" aria-controls="bang-studio" onClick="{{c.chon}}" onKeyDown="{{phimCheDo}}">{{c.nhan}}</button></sc-for></div>
+
+<section class="the" id="bang-studio" role="tabpanel" aria-labelledby="{{idTabChon}}">
+<sc-if value="{{tonTien}}"><p class="bao bao-vang" id="canh-bao-tien">Tạo ảnh/video thường tính tiền theo từng lượt ở nhà cung cấp, và khoá hạng miễn phí của nhiều nhà cung cấp không dùng được tính năng này.</p></sc-if>
+<div class="luoi-form">
+<div class="truong"><label for="chon-model">Model</label>
+<select id="chon-model" class="o" value="{{model}}" onChange="{{chonModel}}"><sc-for list="{{models}}" as="x"><option value="{{x}}">{{x}}</option></sc-for></select>
+</div>
+<sc-if value="{{laChat}}"><div class="truong" style="justify-content:flex-end"><label class="chon"><input type="checkbox" id="chat-truyen" checked="{{truyen}}" onChange="{{doiTruyen}}"><span>Truyền từng chữ (stream)</span></label></div></sc-if>
+</div>
+<sc-if value="{{modelsLoi}}"><div role="alert" class="bao bao-loi dong-nut"><span style="flex:1 1 200px;min-width:0">Không đọc được danh sách model: {{modelsLoi}}</span><button type="button" class="nut nut-nho nut-nguy" onClick="{{taiModels}}">Thử lại</button></div></sc-if>
+<sc-if value="{{modelsRong}}"><p class="rong">Chưa có model nào cho chế độ này từ /v1/models.</p></sc-if>
+
+<sc-if value="{{laChat}}">
+<div class="hoi-thoai" id="hoi-thoai" aria-live="polite" aria-label="Hội thoại">
+<sc-if value="{{chuaHoi}}"><p class="phu">Hỏi một câu để thử. Câu trả lời hiện dần theo từng khúc stream.</p></sc-if>
+<sc-for list="{{luot}}" as="l"><div class="{{l.lop}}" data-vai="{{l.vai}}">{{l.chu}}</div></sc-for>
+</div>
+</sc-if>
+
+<form class="soan" novalidate onSubmit="{{gui}}">
+<div class="truong"><label for="o-soan">{{nhanSoan}}</label><textarea id="o-soan" class="o" rows="3" placeholder="{{goiYSoan}}" value="{{nhap}}" onInput="{{goNhap}}" onKeyDown="{{phimSoan}}"></textarea></div>
+<div class="dong-nut">
+<button type="submit" class="nut nut-chinh" id="nut-gui" disabled="{{khongGui}}">{{nhanGui}}</button>
+<sc-if value="{{laChat}}"><button type="button" class="nut nut-nguy" id="nut-dung" onClick="{{dung}}" disabled="{{khongDung}}">Dừng</button><button type="button" class="nut" id="nut-xoa" onClick="{{xoaHoiThoai}}" disabled="{{dangGui}}">Cuộc mới</button></sc-if>
+<sc-if value="{{trangThai}}"><span role="status" class="phu" id="trang-thai">{{trangThai}}</span></sc-if>
+</div>
+</form>
+<sc-if value="{{loi}}"><div role="alert" class="bao bao-loi" id="loi-studio"><sc-if value="{{loiThanThien}}"><strong style="display:block">{{loiThanThien}}</strong></sc-if><span>{{loi}}</span></div></sc-if>
+
+<sc-if value="{{laAnh}}">
+<div class="ket-qua-anh" id="ket-qua-anh"><sc-for list="{{anh}}" as="a"><figure><img src="{{a.src}}" alt="{{a.alt}}"><a class="nut nut-nho" href="{{a.src}}" download="{{a.ten}}">Tải về</a></figure></sc-for></div>
+</sc-if>
+<sc-if value="{{coVideo}}">
+<div class="video-kq" id="video-kq" style="display:flex;flex-direction:column;gap:8px"><video controls src="{{video.src}}" aria-label="Video vừa tạo"></video><a class="nut nut-nho" style="align-self:flex-start" id="tai-video" href="{{video.src}}" download="{{video.ten}}">Tải video về</a></div>
+</sc-if>
+</section>
+</sc-if>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{}'>
+// Studio: chat (stream) / ảnh / video qua /v1 thật. Chế độ chỉ hiện khi có module ĐÃ LIÊN KẾT khai khả năng đó
+// (DIEU_KIEN.studio_* trong khung.js); model lấy từ /v1/models theo tiền tố của các module đó.
+const K = window.Khung;
+const CHE_DO = [['chat', 'studio_chat'], ['anh', 'studio_anh'], ['video', 'studio_video']];
+const HOI_VIDEO_MS = 3000;
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { khoa: K.docKhoa(), khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', dangTai: true,
+      cheDo: 'chat', models: [], modelsLoi: '', chon: {}, truyen: true, nhap: '', luot: [], dangGui: false,
+      trangThai: '', loi: '', loiCode: '', anh: [], video: null };
+    this._ac = null; this._chu = '';
+  }
+
+  async didMount() {
+    let tn;
+    try { tn = await K.taiTinhNang(); } catch (e) { this.setState({ tnLoi: e.message, dangTai: false }); return; }
+    // Gõ tay /Studio.dc.html khi chưa có module chat đã liên kết → về trang Module kèm lời giải thích.
+    if (K.chanNeuThieu('studio', tn)) return;
+    const dau = CHE_DO.find(([, dk]) => K.du(dk, tn));
+    this.setState({ tn, dangTai: false, cheDo: dau ? dau[0] : 'chat' });
+    this.taiModels();
+  }
+  async taiModels() {
+    if (!this.state.khoa) return;
+    try {
+      const { j } = await K.goi('v1/models');
+      this.setState({ models: ((j && j.data) || []).filter((m) => m && typeof m.id === 'string'), modelsLoi: '' });
+    } catch (e) { this.bao401(e); this.setState({ models: [], modelsLoi: e.message }); }
+  }
+  bao401(e) { if (e && e.ma === 401) this.setState({ khoaLoi: 'Khoá quản trị sai hoặc thiếu (HTTP 401). Dán lại khoá đúng.', khoa: '' }); }
+  luuKhoa() {
+    const k = (this.state.khoaNhap || '').trim();
+    if (!k) return;
+    K.luuKhoa(k);
+    this.setState({ khoa: k, khoaNhap: '', khoaLoi: '' });
+    setTimeout(() => this.taiModels(), 0);
+  }
+
+  // Model của một chế độ: tiền tố của module đã liên kết khai mã đó. Model nào có trường `kha_nang` (module tự khai
+  // theo dữ liệu thật của nhà cung cấp) mà chứa mã chế độ thì chỉ những model đó; không model nào khai thì mọi model
+  // KHÔNG mang `kha_nang` (model khai khả năng khác — vd chỉ video — không lọt vào chat).
+  dsModel(ma) {
+    const tn = this.state.tn || {};
+    const tienTo = (tn.modules || []).filter((m) => m.da_lien_ket && (m.loai === ma || (m.cung_cap || []).includes(ma))).map((m) => m.tien_to + '/');
+    const ung = this.state.models.filter((m) => tienTo.some((t) => m.id.startsWith(t)));
+    const khai = ung.filter((m) => Array.isArray(m.kha_nang) && m.kha_nang.includes(ma));
+    return (khai.length ? khai : ung.filter((m) => !Array.isArray(m.kha_nang))).map((m) => m.id);
+  }
+  modelChon() { const ds = this.dsModel(this.state.cheDo); const c = this.state.chon[this.state.cheDo]; return ds.includes(c) ? c : (ds[0] || ''); }
+
+  async goiV1(duong, than, signal) {
+    const hd = { 'Content-Type': 'application/json' };
+    if (this.state.khoa) hd.Authorization = 'Bearer ' + this.state.khoa;
+    const r = await fetch(duong, { method: 'POST', headers: hd, body: JSON.stringify(than), cache: 'no-store', signal });
+    if (!r.ok) {
+      let j = null; try { j = await r.json(); } catch (e) { j = null; }
+      const e = K.taoLoi(r.status === 401 ? 'Khoá quản trị sai hoặc thiếu (HTTP 401).' : K.thongDiep(j, r.status), r.status, j && j.error && j.error.code);
+      this.bao401(e);
+      throw e;
+    }
+    return r;
+  }
+  baoLoi(e) { this.setState({ loi: (e && e.message) || String(e), loiCode: (e && e.code) || '', trangThai: '' }); }
+
+  // ---------- chat ----------
+  async docSSE(r) {
+    const doc = r.body.getReader(); const td = new TextDecoder(); let dem = '';
+    for (;;) {
+      const { value, done } = await doc.read();
+      if (done) return;
+      dem += td.decode(value, { stream: true });
+      let i;
+      while ((i = dem.indexOf('\n')) >= 0) {
+        const dong = dem.slice(0, i).replace(/\r$/, ''); dem = dem.slice(i + 1);
+        if (!dong.startsWith('data:')) continue;
+        const du = dong.slice(5).trim();
+        if (du === '[DONE]') { doc.cancel().catch(() => {}); return; }
+        let j; try { j = JSON.parse(du); } catch (e) { continue; }
+        if (j && j.error) throw new Error(j.error.message || 'dịch vụ báo lỗi giữa chừng');
+        const c = j && j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+        if (typeof c === 'string' && c) { this._chu += c; this.capNhatCuoi(this._chu); }
+      }
+    }
+  }
+  capNhatCuoi(chu) { this.setState((s) => ({ luot: s.luot.slice(0, -1).concat([{ vai: 'assistant', chu }]) })); }
+  async guiChat(nd, model) {
+    const ac = new AbortController(); this._ac = ac; this._chu = '';
+    const lichSu = this.state.luot.concat([{ vai: 'user', chu: nd }]);
+    this.setState({ luot: lichSu.concat([{ vai: 'assistant', chu: '' }]), nhap: '', trangThai: 'Đang chờ trả lời…' });
+    try {
+      const r = await this.goiV1('v1/chat/completions', { model, stream: !!this.state.truyen,
+        messages: lichSu.filter((l) => l.chu).map((l) => ({ role: l.vai, content: l.chu })) }, ac.signal);
+      if (this.state.truyen) await this.docSSE(r);
+      else { const j = await r.json(); this._chu = (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''; this.capNhatCuoi(this._chu); }
+      this.setState({ trangThai: this._chu ? 'Xong.' : 'Xong — model không trả chữ nào.' });
+    } catch (e) {
+      if (e && e.name === 'AbortError') this.setState({ trangThai: 'Đã dừng theo yêu cầu.' });
+      else this.baoLoi(e);
+      if (!this._chu) this.setState((s) => ({ luot: s.luot.slice(0, -1) }));
+    } finally { this._ac = null; }
+  }
+
+  // ---------- ảnh ----------
+  async guiAnh(nd, model) {
+    this.setState({ trangThai: 'Đang tạo ảnh…', anh: [] });
+    try {
+      const r = await this.goiV1('v1/images/generations', { model, prompt: nd, n: 1, response_format: 'b64_json' });
+      const j = await r.json();
+      const anh = ((j && j.data) || []).map((x, i) => {
+        const src = x && typeof x.b64_json === 'string' ? 'data:image/png;base64,' + x.b64_json : K.lienKetAnToan(x && x.url);
+        return src ? { src, ten: 'anh-' + (i + 1) + '.png', alt: 'Ảnh ' + (i + 1) + ': ' + nd } : null;
+      }).filter(Boolean);
+      this.setState({ anh, trangThai: anh.length ? 'Xong — ' + anh.length + ' ảnh.' : 'Xong — không có ảnh nào.' });
+    } catch (e) { this.baoLoi(e); }
+  }
+
+  // ---------- video: tạo → hỏi tới khi xong → tải nội dung (cần khoá) thành blob ----------
+  async guiVideo(nd, model) {
+    if (this.state.video) URL.revokeObjectURL(this.state.video.src);
+    this.setState({ trangThai: 'Đang gửi yêu cầu tạo video…', video: null });
+    try {
+      const r = await this.goiV1('v1/videos', { model, prompt: nd });
+      let v = await r.json();
+      const ma = v && v.id;
+      if (!ma) throw new Error('máy chủ không trả mã video');
+      for (let lan = 0; v.status !== 'completed'; lan++) {
+        if (v.status === 'failed') throw K.taoLoi('Tạo video thất bại: ' + ((v.error && v.error.message) || 'không rõ lý do'), 0, v.error && v.error.code);
+        this.setState({ trangThai: 'Video đang được tạo (' + (v.status || '…') + (v.progress != null ? ', ' + v.progress + '%' : '') + ')… hỏi lại sau mỗi ' + (HOI_VIDEO_MS / 1000) + ' giây.' });
+        await new Promise((ok) => setTimeout(ok, lan ? HOI_VIDEO_MS : 1000));
+        const rr = await fetch('v1/videos/' + encodeURIComponent(ma), { headers: { Authorization: 'Bearer ' + this.state.khoa }, cache: 'no-store' });
+        let j = null; try { j = await rr.json(); } catch (e) { j = null; }
+        if (!rr.ok) throw K.taoLoi(K.thongDiep(j, rr.status), rr.status, j && j.error && j.error.code);
+        v = j || {};
+      }
+      this.setState({ trangThai: 'Đang tải video về…' });
+      const rc = await fetch('v1/videos/' + encodeURIComponent(ma) + '/content', { headers: { Authorization: 'Bearer ' + this.state.khoa }, cache: 'no-store' });
+      if (!rc.ok) { let j = null; try { j = await rc.json(); } catch (e) { j = null; } throw K.taoLoi(K.thongDiep(j, rc.status), rc.status); }
+      const b = await rc.blob();
+      this.setState({ video: { src: URL.createObjectURL(b), ten: 'video-' + ma.replace(/[^\w.-]+/g, '_') + '.mp4', co: b.size },
+        trangThai: 'Xong — video ' + K.dl(b.size) + '.' });
+    } catch (e) { this.baoLoi(e); }
+  }
+
+  async gui(e) {
+    if (e) e.preventDefault();
+    const s = this.state;
+    const nd = (s.nhap || '').trim();
+    const model = this.modelChon();
+    if (!model) { this.setState({ loi: 'Chưa có model nào để chọn.' }); return; }
+    if (!nd) { this.setState({ loi: s.cheDo === 'chat' ? 'Chưa nhập câu hỏi.' : 'Chưa nhập mô tả.' }); return; }
+    this.setState({ dangGui: true, loi: '', loiCode: '' });
+    try {
+      if (s.cheDo === 'chat') await this.guiChat(nd, model);
+      else if (s.cheDo === 'anh') await this.guiAnh(nd, model);
+      else await this.guiVideo(nd, model);
+    } finally { this.setState({ dangGui: false }); }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const tn = s.tn;
+    const cheDo = tn ? CHE_DO.filter(([, dk]) => K.du(dk, tn)).map(([ma, dk]) => ({ ma, idTab: 'cd-' + ma, nhan: K.DIEU_KIEN[dk].nhan, on: s.cheDo === ma,
+      chon: () => this.setState({ cheDo: ma, loi: '', trangThai: '' }) })) : [];
+    const models = tn ? this.dsModel(s.cheDo) : [];
+    const laChat = s.cheDo === 'chat';
+    return {
+      nav: K.navChinh(tn, 'studio'), dangTai: s.dangTai, tnLoi: s.tnLoi, sanSang: !!tn, diaChiV1: K.diaChiV1(),
+      khongKhoa: !s.khoa, khoaNhap: s.khoaNhap, khoaLoi: s.khoaLoi, goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
+      luuKhoa: () => this.luuKhoa(), phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
+      cheDo, idTabChon: 'cd-' + s.cheDo,
+      phimCheDo: (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const i = cheDo.findIndex((c) => c.on);
+        const c = cheDo[(i + (e.key === 'ArrowRight' ? 1 : cheDo.length - 1)) % cheDo.length];
+        if (c) { c.chon(); setTimeout(() => { const b = document.getElementById(c.idTab); if (b) b.focus(); }, 20); }
+      },
+      tonTien: s.cheDo !== 'chat', laChat, laAnh: s.cheDo === 'anh',
+      models, model: this.modelChon(), chonModel: (e) => { const v = e.target.value; this.setState((st) => ({ chon: Object.assign({}, st.chon, { [st.cheDo]: v }) })); },
+      modelsLoi: s.modelsLoi, taiModels: () => this.taiModels(), modelsRong: !!s.khoa && !s.modelsLoi && s.models.length > 0 && models.length === 0,
+      truyen: s.truyen, doiTruyen: (e) => this.setState({ truyen: !!e.target.checked }),
+      chuaHoi: s.luot.length === 0,
+      luot: s.luot.map((l) => ({ vai: l.vai, chu: l.chu || '…', lop: 'loi-nhan ' + (l.vai === 'user' ? 'nguoi' : 'may') })),
+      nhanSoan: laChat ? 'Câu hỏi' : 'Mô tả', goiYSoan: laChat ? 'Ví dụ: Chào bạn, bạn là model nào?' : (s.cheDo === 'anh' ? 'Ví dụ: một chú mèo ngủ trên bậu cửa sổ, màu nước' : 'Ví dụ: sóng vỗ vào bờ đá lúc hoàng hôn, quay chậm'),
+      nhap: s.nhap, goNhap: (e) => this.setState({ nhap: e.target.value }),
+      phimSoan: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.gui(); } },
+      gui: (e) => this.gui(e), khongGui: s.dangGui || !s.khoa, dangGui: s.dangGui,
+      nhanGui: s.dangGui ? 'Đang chạy…' : (laChat ? 'Gửi' : s.cheDo === 'anh' ? 'Tạo ảnh' : 'Tạo video'),
+      dung: () => { if (this._ac) this._ac.abort(); }, khongDung: !s.dangGui,
+      xoaHoiThoai: () => this.setState({ luot: [], trangThai: '', loi: '' }),
+      trangThai: s.trangThai, loi: s.loi,
+      // 403 no_key_permitted: khoá hiện có không được phép (thường là hạng miễn phí). Nhận theo MÃ lỗi, giữ nguyên lời nhắn.
+      loiThanThien: s.loiCode === 'no_key_permitted' ? 'Khoá hiện có không được phép dùng tính năng này — thường vì khoá thuộc hạng miễn phí. Thêm khoá trả phí ở Hệ thống → AI → Tài khoản. Lời nhắn nguyên văn:' : '',
+      anh: s.anh, coVideo: s.cheDo === 'video' && !!s.video, video: s.video || {}
+    };
+  }
+}
+</script>
+</body>
+</html>

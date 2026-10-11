@@ -120,8 +120,6 @@ class _XuLy(SimpleHTTPRequestHandler):
             return str(WEB / "support.js")
         if p == "/tham_chieu_dung_trang.js":
             return str(THU_MUC_TEST / ten)
-        if ten == "Khoi-dau.dc.html":
-            return str(WEB / ten)
         return str(DEMO / ten) if DEMO is not None else "/khong-co"
 
 
@@ -410,30 +408,23 @@ def may_chu_web2api(tmp_path_factory):
 
 
 @CAN_CHROME
-def test_trang_khoi_dau_doc_api_that(may_chu_web2api):
+def test_dia_chi_goc_mo_trang_module_voi_api_that(may_chu_web2api):
+    # Lõi rỗng: «/» (index.html) chọn trang đầu theo /api/tinh-nang → Hệ thống → Module, đã dựng bằng dc-lite.
     dom = dump_dom(may_chu_web2api + "/")
     cay = phan_tich(dom)
     assert tim(cay, "x-dc")["attrs"].get("data-dc") == "san-sang", dom[-800:]
     # Bỏ <script>/<style> trước khi lấy chữ: mã nguồn trang cũng chứa các câu này, so trên đó là đạt suông.
     chu = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b.*?</\1>", " ", dom, flags=re.S)))
-    assert "Chưa cài module nào" in chu
-    # Nút «Cài AI đầu tiên» nay là liên kết sang trang Module (không còn bị tắt), thanh trên có «Module».
-    assert "Cài AI đầu tiên" in chu and "Sẽ có ở bước sau" not in chu
-    assert re.search(r'<a[^>]*href="Cai-module\.dc\.html"[^>]*id="nut-cai-dau"', dom), dom[:3000]
-    assert re.search(r'<a[^>]*href="Cai-module\.dc\.html"[^>]*id="lien-ket-module"', dom)
-    assert "disabled" not in re.search(r'<a[^>]*id="nut-cai-dau"[^>]*>', dom).group(0)
+    assert "Kết nối với web2api" in chu and "Chưa có khoá" in chu
+    assert re.findall(r'data-nav="([^"]+)"', dom) == ["module"]   # chưa cài gì: không Studio, không AI
+    assert "Đang đọc danh sách module" not in chu
     assert 'class="cham"' not in dom  # chưa có thông báo module mới → không có chấm báo
-    # Số đo thật đã về qua fetch trong didMount: có đơn vị, không còn chữ "đang đọc".
-    assert re.search(r"RAM của máy [\d,.]+ (GB|MB) trống / [\d,.]+ (GB|MB)", chu), chu[:1500]
-    assert "Đang đọc thông tin máy" not in chu and "Đang đọc danh sách module" not in chu
-    assert "Chưa có gì." in chu
-    assert "0.1.0-khung" in chu
     assert 'id="dc-loi"' not in dom
 
 
 @CAN_CHROME
-def test_trang_khoi_dau_cham_bao_module_moi_va_tab(tmp_path, monkeypatch):
-    # Trạng thái đồng bộ git có một module «mới» chưa cài → /api/modules trả thong_bao_so=1 → thanh trên có chấm báo.
+def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch):
+    # Trạng thái đồng bộ git có một module «mới» chưa cài → /api/modules trả thong_bao_so=1 → mục Module có chấm báo.
     import json as _json
 
     from gia import MayChuThat, ghi_thu_muc, tep_echo
@@ -446,12 +437,11 @@ def test_trang_khoi_dau_cham_bao_module_moi_va_tab(tmp_path, monkeypatch):
     (tmp_path / "nguon_git_trang_thai.json").write_text(_json.dumps({
         "commit": {"sha": "a" * 40, "tac_gia": "x", "thong_diep": "y", "cay": "b" * 40},
         "modules": [{"id": "dich", "ten": "Dịch", "tree_sha": "c" * 40, "loi": None}]}))
-    # Một module đang chạy có tab_web → tab hiện trên thanh trên.
+    # Một module ĐÃ LIÊN KẾT có tab_web → là trang chính duy nhất → «Quay lại» của Hệ thống trỏ tab đó.
     ghi_thu_muc(tmp_path / "modules" / "echo", tep_echo())
     (tmp_path / "modules.json").write_text(_json.dumps({"modules": [{"id": "echo", "cau_hinh_cong_khai": {}}]}))
     with MayChuThat(app, lifespan="on") as w:
-        dom = dump_dom(w.url + "/")
-    assert re.search(r'<span class="cham" role="img" aria-label="1 thông báo module mới"', dom), dom[:3000]
-    assert re.search(r'<a href="http://127\.0\.0\.1:\d+/m/echo/echo\.dc\.html" data-tab-module="echo">Echo</a>', dom)
-    chu = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b.*?</\1>", " ", dom, flags=re.S)))
-    assert "Đã cài 1 module" in chu and "Chưa cài module nào" not in chu
+        dom = dump_dom(w.url + "/He-thong.dc.html")
+    assert re.search(r'<span class="cham" role="img" aria-label="1 module mới hoặc có bản mới trên git"', dom), dom[:3000]
+    assert re.search(r'<a class="quay-lai" data-nav="quay-lai" href="http://127\.0\.0\.1:\d+/m/echo/echo\.dc\.html"', dom), dom[:3000]
+    assert 'data-o="echo"' in dom and 'data-tt="dang-chay"' in dom
