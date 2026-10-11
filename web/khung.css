@@ -164,7 +164,8 @@ textarea.o.ma{font-size:13px}
 .md th{border-top:0;background:#FBFAF8;font-weight:600;white-space:nowrap}
 .md td + td,.md th + th{border-left:1px solid var(--line)}
 
-@media (max-width:880px){
+/* Mốc điện thoại của demo (1023px) — cùng mốc với thanh trên/thanh dưới, không để khoảng 881–1023 lệch nhau. */
+@media (max-width:1023px){
 main.pg{padding:20px 16px 40px;gap:16px}
 .tieu-de{font-size:30px}
 .the{padding:16px 14px}

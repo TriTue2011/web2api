@@ -220,7 +220,8 @@ TOM_TAT_KHUNG = """({
 @pytest.mark.skipif(not shutil.which("node"), reason="cần node")
 def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
     """Chủ máy 11/10: Studio (tab «chính» theo khả năng) hiện khi module ĐÃ CÀI, không đợi khoá; chỉ GỌI /v1 được
-    khi đã liên kết. Provider vẫn đợi liên kết; Combo không bao giờ (chưa có backend)."""
+    khi đã liên kết. Provider cũng hiện từ lúc cài (tab rỗng chỉ chỗ thêm khoá — chủ máy: «cài AI rồi phải thấy có
+    tài khoản, có provider»); Combo không bao giờ (chưa có backend)."""
     dat(du_lieu, "chat-gia", tep_gia("chat-gia", cung_cap=["chat", "anh"]))          # cài, CHƯA liên kết
     with TestClient(app) as c:
         rong = _khung(tn(c) | {"modules": [], "kha_nang_da_cai": {}, "kha_nang_lien_ket": {}},
@@ -233,7 +234,7 @@ def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
         assert k is True, "module khai chat đã CÀI (chưa khoá) phải có Studio"
         k = _khung(j, TOM_TAT_KHUNG)
         assert k == {"studio": True, "che_do": ["studio_chat", "studio_anh"], "dung_duoc": [], "ai": True,
-                     "tai_khoan": True, "provider": False, "combo": False, "nav": ["studio"],
+                     "tai_khoan": True, "provider": True, "combo": False, "nav": ["studio"],
                      "trang_dau": "Studio.dc.html"}, k
         # Câu «cần gì» của Studio nói về CÀI, không về liên kết.
         assert "cài một module có «chat»" in _khung(j | {"modules": [], "kha_nang_da_cai": {}}, "K.loiThieu('studio', tn)")

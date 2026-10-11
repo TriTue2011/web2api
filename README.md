@@ -146,13 +146,13 @@ sequenceDiagram
   L->>H: tải đúng commit đã báo, kiểm băm từng tệp
   L-->>G: đã cài (mã trên đĩa), chưa liên kết
   G->>L: GET /api/tinh-nang (tính lại điều kiện)
-  L-->>G: kha_nang_da_cai có chat → Studio và Hệ thống → AI → Tài khoản mở
+  L-->>G: kha_nang_da_cai có chat → Studio và Hệ thống → AI (Tài khoản «API 0», Provider rỗng) mở
   G-->>U: chuyển sang Studio, ô soạn bị khoá, một dòng «Chưa có khoá cho … — Thêm khoá»
-  U->>G: bấm «Thêm khoá» → Hệ thống → AI → Tài khoản (đúng thẻ module), dán khoá → «Kiểm tra và lưu»
+  U->>G: bấm «Thêm khoá» → Hệ thống → AI → Tài khoản (biểu mẫu «Thêm API» của đúng module), dán khoá → «Thêm API»
   G->>L: POST /api/modules/ID/cai (thêm khoá dạng giu/them)
   L-->>G: ok + kết quả từng khoá (dạng che)
   G->>L: GET /api/tinh-nang (tính lại điều kiện)
-  L-->>G: kha_nang_lien_ket có chat → Provider hiện ngay, Studio hết trạng thái rỗng
+  L-->>G: kha_nang_lien_ket có chat → dòng tài khoản, model ở Provider hiện ngay, Studio hết trạng thái rỗng
 ```
 
 Module không ứng tab chính nào (ví dụ loại «mạng» chỉ khai `dinh_tuyen`) thì cài xong ở lại Hệ thống → Module, bảng
@@ -200,8 +200,8 @@ vẫn chạy.
 | Trang | Hiện khi | Nội dung |
 |---|---|---|
 | `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
-| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm + chip lọc loại + lọc trạng thái trên một hàng, lưới ô theo loại, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
-| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Tab «Tài khoản» — nơi thêm/bớt khoá; module chưa liên kết đứng đầu, ghi rõ «Chưa có khoá»; neo `#tk-<id>` tới đúng thẻ. Tab «Provider» khi có ≥ 1 module `ai` **đã liên kết** (model thật từ `/v1/models`, sức khoẻ từng khoá kể cả trạng thái ảnh/video) |
+| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Lưới ô bàn cờ theo loại, trình bày theo trang Tiện ích của demo: khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm có kính lúp + chip lọc loại + lọc trạng thái, lưới ô, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
+| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng (tên nguồn, «khoá …abcd», nhãn sức khoẻ «Dùng được» / «Nghỉ đến …» / «Lỗi»); mở dòng để «Thay khoá» hay «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n»; Model = `/v1/models` theo tiền tố, chia nhóm theo `kha_nang` mà module khai (Trò chuyện / Tạo ảnh / Tạo video — nhãn «hiểu ảnh» của demo bỏ vì không dữ liệu nào nói model hiểu ảnh), nút «Làm mới danh sách»; Tài khoản = sức khoẻ từng khoá (độ trễ, số model, nghỉ đến, ảnh/video theo khoá). Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Phần demo chưa có backend (TOTP, «Xem» khoá, hàng đợi, hạn mức, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
 | `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chép bố cục `Main.dc.html` của bản demo (một trang cho máy tính và điện thoại): viên trạng thái góc phải, tiêu đề «Bạn muốn làm gì hôm nay?», ô soạn lớn dính đáy với «Vẽ ảnh» / «Tạo video» (khi có module **đã cài** khai `anh` / `video`), chip model (bảng «Model trả lời» với model thật từ `/v1/models`) và nút gửi tròn; dưới ô soạn «Trò chuyện» · «＋ Tạo mới» · «Lịch sử». Gửi rồi thì các lượt hội thoại hiện bên trên (chat stream, markdown an toàn; ảnh; video kèm thanh tiến độ), có hai nút nhảy lên lượt đầu / xuống lượt mới nhất. «Tạo mới» lưu cuộc đang nói vào Lịch sử rồi về màn đầu; «Lịch sử» mở bảng tìm và chọn một cuộc để nói tiếp — lưu ở localStorage của **trình duyệt này** (khoá `web2api_lich_su_tro_chuyen`, tối đa 50 cuộc và 1 triệu ký tự, chỉ lượt chữ; không có khoá nào hay tin giờ), cuộc đang mở được mở lại khi quay lại trang; trình duyệt chặn lưu trữ thì không có nút này. Chế độ chưa có module **đã liên kết** khoá ô soạn và hiện một dòng «Chưa có khoá cho … — Thêm khoá» tới đúng thẻ ở Hệ thống → AI → Tài khoản — không gọi `/v1`. Phần demo chưa có chức năng thật (đính kèm, loa, micro, Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, ô tài khoản) không được vẽ |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
 
@@ -215,15 +215,18 @@ chưa có trang chính nào thì là logo), rồi «AI ▾» (bảng xổ các t
 có backend.
 
 **Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được
-chọn sẵn): biểu tượng, tên, chip loại, mô tả cắt gọn, trạng thái — **Chưa cài** · **Đã cài — chờ khoá** (hoặc «chờ
-liên kết» nếu không có trường bắt buộc) · **Đang chạy** · **Có bản mới** · **Lỗi** — và dải tài nguyên (RAM thêm ·
-đĩa · GPU · dung lượng tải; số chưa khai ghi «chưa đo»). Chân ô có **một nút hành động** theo trạng thái: **«Cài»**
-(chưa có mã) · **«Cập nhật»** (có bản mới) · **«Thêm khoá»** (đã cài, cần khoá, chưa liên kết — tới Hệ thống → AI →
-Tài khoản nếu module thuộc tab đó, ngược lại mở bảng chi tiết ngay ở bước thêm khoá). Nút này là anh em của nút chọn
-ô, không lồng trong nó: một cú bấm chỉ làm một việc, và bấm liền hai lần chỉ cài một lần. **Bảng chi tiết** (cột phải; tờ trượt trên điện thoại):
-mô tả, khối «Cần gì để chạy» (tài nguyên, gói Python, mạng ra, hướng dẫn bằng chữ từ `tai_nguyen.ghi_chu`, một dòng
-«Máy này đủ chạy / có thể thiếu» khi đọc được `/api/he-thong` và module có khai số), mục của module, nút theo trạng
-thái: **«Cài»** (chưa có mã trên máy) · **«Cập nhật»** (đã cài, có bản mới) · form «Thêm tài khoản/khoá API» · «Gỡ».
+chọn sẵn; thẻ trắng viền mảnh bo góc như dòng Tiện ích của demo, ô đang chọn viền xanh 2px): ô biểu tượng, tên, viên
+loại, viên trạng thái — **Chưa cài** · **Đã cài — chờ khoá** (hoặc «chờ liên kết» nếu không có trường bắt buộc) ·
+**Đang chạy** · **Có bản mới** · **Lỗi** —, mô tả cắt gọn và dải tài nguyên (RAM thêm · đĩa · GPU · dung lượng tải;
+số chưa khai ghi «chưa đo»). Chân ô dùng nút biểu tượng của demo: **tải về** nền đen = «Cài» (chưa có mã), trong
+suốt = «Cập nhật» (có bản mới); nút chữ **«Thêm khoá»** (đã cài, cần khoá, chưa liên kết — tới Hệ thống → AI →
+Tài khoản nếu module thuộc tab đó, ngược lại mở bảng chi tiết ngay ở bước thêm khoá); biểu tượng **xoá** = gỡ, bấm
+hai lần (lần đầu nền đỏ nhạt và dải báo «bấm lần nữa»). Các nút là anh em của nút chọn ô, không lồng trong nó: một
+cú bấm chỉ làm một việc, và bấm liền hai lần chỉ cài một lần. Công tắc bật/tắt của demo không vẽ (chưa có backend).
+**Bảng chi tiết** (cột phải; trên điện thoại nằm dưới lưới như demo ở 390px): ô biểu tượng, tên chữ có chân,
+«phiên bản · loại», trạng thái, mô tả, «Cho AI dùng được» (mã `cung_cap`), «Cần gì để chạy» (tài nguyên, gói Python,
+mạng ra, hướng dẫn bằng chữ từ `tai_nguyen.ghi_chu`, một dòng «Máy này đủ chạy / có thể thiếu» khi đọc được
+`/api/he-thong` và module có khai số), mục của module, nút **«Cài»** / **«Cập nhật»**, «Cấu hình» (form khoá) và «Gỡ».
 
 **Form khoá** dựng từ `truong_cau_hinh`: khoá đã lưu chỉ hiện dạng che, nút «Bớt» cho từng khoá, ô thêm khoá mới
 (mỗi dòng một khoá); ô chuỗi để trống hay không sửa thì **không gửi** — giá trị đã lưu (ví dụ `base_url` qua proxy)
@@ -263,7 +266,7 @@ curl -s $W/api/tinh-nang
 |---|---|
 | Hệ thống → Module | luôn; trang đầu khi chưa cài gì |
 | Hệ thống → AI, AI → Tài khoản | `can: ["ai"]`, `da_cai` |
-| AI → Provider | `can: ["ai"]` (đã liên kết) |
+| AI → Provider | `can: ["ai"]`, `da_cai` (chưa khoá thì tab rỗng chỉ chỗ thêm khoá) |
 | AI → Combo | `can: ["ai"]`, `toi_thieu: 2`, chưa có backend → không bao giờ hiện |
 | Studio (trang chính) và chế độ Chat | `can: ["chat"]`, `da_cai` |
 | Chế độ Ảnh / Video | `can: ["anh"]` / `["video"]`, `da_cai` |
@@ -717,24 +720,26 @@ git).*
 *Ảnh 5 — Bấm ô gemini-api: bảng chi tiết ở cột phải với «Cần gì để chạy» (RAM/đĩa «chưa đo», không cần GPU, mạng
 ra, dung lượng tải đo từ cây git, gói Python, hướng dẫn từ manifest, dòng «Máy này») và nút «Cài».*
 
-![Bảng chi tiết trên điện thoại là tờ trượt](docs/anh/chi-tiet-dien-thoai.png)
+![Bảng chi tiết trên điện thoại nằm dưới lưới](docs/anh/chi-tiet-dien-thoai.png)
 
-*Ảnh 6 — Trên điện thoại bảng chi tiết là tờ trượt từ dưới lên.*
+*Ảnh 6 — Trên điện thoại bảng chi tiết nằm dưới lưới (như trang Tiện ích của demo ở 390px); chọn ô thì trang cuộn tới.*
 
 1. **Chọn ô** module (khu đầu tiên — thường là «AI» — được chọn sẵn; chip loại và chip trạng thái để lọc, ô tìm
    kiếm không phân biệt dấu). Module trên git chỉ hiện sau khi dán khoá quản trị.
-2. Đọc **«Cần gì để chạy»**, bấm **«Cài»** (trong bảng chi tiết, hoặc nút «Cài» ngay trên ô) — không cần khoá API.
+2. Đọc **«Cần gì để chạy»**, bấm **«Cài»** (trong bảng chi tiết, hoặc biểu tượng tải về nền đen ngay trên ô) — không cần khoá API.
    Module khai `chat` thì vài giây sau trang **tự chuyển sang Studio** kèm dải «Đã cài … Thêm khoá ở Hệ thống → AI →
    Tài khoản để dùng.» Studio hiện đủ các chế độ module khai, ở **trạng thái rỗng** «Chưa có khoá cho …» với nút tới
    đúng thẻ của module; ô soạn bị khoá tới khi có khoá, không gọi `/v1`.
-3. Bấm **«Thêm khoá»** → Hệ thống → AI → **Tài khoản** (module chưa có khoá đứng đầu). Dán khoá API (mỗi dòng một
-   khoá); ô «Địa chỉ gốc» để trống trừ khi cần proxy. Bấm **«Kiểm tra và lưu»**: web2api thử từng khoá (không tốn
-   token), hiện kết quả từng khoá ở dạng che, chỉ lưu khoá dùng được.
-4. Lưu xong, khung **tính lại điều kiện ngay, không tải lại trang**: tab «Provider» hiện, chú thích «Chưa có khoá»
-   mất, có nút «Mở Studio»; về Studio thì hết trạng thái rỗng và chat được. Khối «Kết nối với web2api» ở trang
-   Module ẩn sau liên kết đầu tiên. Về sau thêm/bớt từng khoá ở Tài khoản hoặc trong bảng chi tiết của ô; khoá đã
-   lưu chỉ thấy dạng che. Module không ứng tab chính nào (ví dụ loại «mạng») thì cài xong ở lại trang Module, bảng
-   chi tiết mở ở bước «Thêm tài khoản/khoá API» như cũ.
+3. Bấm **«Thêm khoá»** → Hệ thống → AI → **Tài khoản** với biểu mẫu «Thêm API» của đúng module đã mở sẵn (nhóm
+   «API 0», khung «Chưa có tài khoản API nào»). Dán một khoá API; ô «Địa chỉ gốc» để trống trừ khi cần proxy. Bấm
+   **«Thêm API»**: web2api thử mọi khoá của nguồn đó (không tốn token), dải báo nói kết quả từng khoá ở dạng che, chỉ
+   lưu khoá dùng được.
+4. Lưu xong, khung **tính lại ngay, không tải lại trang**: khoá thành một dòng tài khoản («khoá …abcd», nhãn «Dùng
+   được»), nhóm thành «API 1»; tab «Provider» (có từ lúc cài, khi ấy rỗng kèm «Mở tab Tài khoản») hiện model thật và
+   sức khoẻ từng khoá; về Studio thì hết trạng thái rỗng và chat được. Khối «Kết nối với web2api» ở trang Module ẩn
+   sau liên kết đầu tiên. Về sau thêm khoá bằng «＋ Thêm API», thay hay xoá từng khoá trong dòng tài khoản (hoặc ở
+   bảng chi tiết của ô); khoá đã lưu chỉ thấy dạng che. Module không ứng tab chính nào (ví dụ loại «mạng») thì cài
+   xong ở lại trang Module, bảng chi tiết mở ở mục «Cấu hình».
 
 ![Studio ngay sau khi cài, chưa có khoá](docs/anh/sau-cai-may-tinh.png)
 
@@ -746,28 +751,46 @@ bị khoá, chip model ghi «Chưa có model» (bảng chọn model nói rõ vì
 
 *Ảnh 8 — Cùng trạng thái trên điện thoại.*
 
+![Hệ thống → AI → Tài khoản ngay sau khi cài, chưa có khoá](docs/anh/ai-sau-cai-may-tinh.png)
+
+*Ảnh 9 — Bấm «Thêm khoá» từ Studio: Hệ thống → AI → Tài khoản (chép trang AI của demo) với nhóm «API 0», nút «Đóng»
+thay «＋ Thêm API» vì biểu mẫu «Thêm API» của gemini-api đang mở (ô «Khoá API» và «Địa chỉ gốc» dựng từ manifest),
+khung «Chưa có tài khoản API nào» và ghi chú khoá lưu ở đâu.*
+
+![Tài khoản ngay sau khi cài trên điện thoại](docs/anh/ai-sau-cai-dien-thoai.png)
+
+*Ảnh 10 — Cùng trạng thái trên điện thoại.*
+
+![Hệ thống → AI → Provider ngay sau khi cài, chưa có khoá](docs/anh/provider-rong-may-tinh.png)
+
+*Ảnh 11 — Provider có ngay từ lúc cài: bảng xổ «● Gemini API (Google AI Studio) 0», «Model 0 | Tài khoản 0» và khung
+rỗng của demo kèm nút «Mở tab Tài khoản».*
+
+![Provider rỗng trên điện thoại](docs/anh/provider-rong-dien-thoai.png)
+
+*Ảnh 12 — Cùng trạng thái trên điện thoại.*
+
 ![Hệ thống → AI → Provider sau khi liên kết nguồn AI đầu tiên](docs/anh/sau-lien-ket-may-tinh.png)
 
-*Ảnh 9 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): nút «Quay lại Studio» (Studio đã mở), Hệ thống có
-«Module» và «AI», tab «Tài khoản» và
-«Provider» — model thật từ `/v1/models`, sức khoẻ từng khoá và trạng thái ảnh/video theo khoá. Không có «Combo»
-(chỉ một nguồn AI, và Combo chưa có backend).*
+*Ảnh 13 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): Provider › Model với model thật từ `/v1/models`
+chia nhóm theo khả năng module khai, nút «Làm mới danh sách»; sức khoẻ từng khoá ở «Tài khoản». Không có «Combo»,
+bật/tắt hay «Đặt mặc định» model (chưa có backend).*
 
 ![Provider trên điện thoại](docs/anh/sau-lien-ket-dien-thoai.png)
 
-*Ảnh 10 — Provider trên điện thoại.*
+*Ảnh 14 — Provider trên điện thoại.*
 
 ### Studio
 
 ![Studio: một lượt chat stream](docs/anh/studio-may-tinh.png)
 
-*Ảnh 11 — Studio sau một lượt chat: bong bóng câu hỏi bên phải, câu trả lời hiện dần theo stream và hiển thị dạng
+*Ảnh 15 — Studio sau một lượt chat: bong bóng câu hỏi bên phải, câu trả lời hiện dần theo stream và hiển thị dạng
 markdown (Google giả trả một câu có in đậm, danh sách, mã), ô soạn dính đáy. «Vẽ ảnh», «Tạo video» nằm trong ô soạn, «Trò chuyện» / «Tạo mới» bên dưới — hiện vì module
 đã cài khai `chat`, `anh`, `video`; chip model là model thật từ `/v1/models` theo tiền tố của module đó.*
 
 ![Studio trên điện thoại](docs/anh/studio-dien-thoai.png)
 
-*Ảnh 12 — Studio trên điện thoại: chip chế độ dưới ô soạn, thanh điều hướng dưới đáy (chỉ các mục đang có).*
+*Ảnh 16 — Studio trên điện thoại: chip chế độ dưới ô soạn, thanh điều hướng dưới đáy (chỉ các mục đang có).*
 
 - Studio có ngay khi cài module khai `chat`. Chế độ nào chưa có module **đã liên kết** thì hiện dải
   «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module (nhiều module thì mỗi module

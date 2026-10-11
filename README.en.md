@@ -40,9 +40,20 @@ New · History). Until a key is added the composer stays disabled and one small 
 linking to that module's card in System → AI → Accounts, instead of returning a raw `404`. **New** saves the current
 conversation to **History** (stored in this browser's localStorage: text turns only, at most 50 conversations, no keys);
 History lets you search and reopen one to continue. Demo parts with no real feature behind them yet (attachments,
-voice, translate/subtitles/dubbing, other main tabs, the account avatar) are not drawn. Add your Google AI Studio key in **System → AI → Accounts**
-(keys can be added or removed one by one later; an empty text field never overwrites a saved value). After saving,
-the **Providers** tab (real models, per-key health) appears without a page reload and Studio is ready to chat. Studio
+voice, translate/subtitles/dubbing, other main tabs, the account avatar) are not drawn. System → AI is a copy of the demo's AI page
+(`Bo-nao.dc.html`) wired to real data; pick Accounts or Provider from the "AI ▾" menu, as in the demo. Right after
+install it already shows the module: **Accounts** has an "API 0" group chip, a black "＋ Add API" button and the demo's
+empty box; **Provider** lists every installed AI module (dropdown with its key count) with empty Model / Accounts tabs
+and an "Open Accounts tab" button. Add your Google AI Studio key in the "Add API" form (fields come from the
+manifest's `truong_cau_hinh`; an empty text field never overwrites a saved value). Each saved key then becomes one
+account row ("key …abcd" plus a health label: usable / resting until … / error), which you can replace or delete
+(two clicks; the last key of a required field has no delete button because the core needs at least one). Provider
+shows the real models from `/v1/models` grouped by the capability each model declares, a "Refresh list" button, and
+per-key health (latency, model count, resting, image/video status per key). Demo controls with no backend yet (TOTP,
+revealing keys, queue priority, quotas, model on/off and "Set default", "Save changes", Combo) are not drawn. The
+System → Modules page keeps its chessboard grid of tiles by type, styled after the demo's Utilities page (search box,
+black selected chips, download/trash icon buttons — trash asks twice —, detail panel on the right, below the grid on
+phones). Studio is ready to chat as soon as a key is saved, without a page reload. Studio
 renders replies as safe markdown (bold, lists, code, http/https links, tables that scroll inside the bubble; raw HTML
 shows as text) and attaches the current date and time to each chat call (one `system` message right before the last
 user message, never shown or stored in the conversation). The time zone is the server's standard `TZ` variable (an IANA

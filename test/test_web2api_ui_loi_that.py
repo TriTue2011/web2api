@@ -54,7 +54,7 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             trang.cho(o, han=15, mo_ta="ô gemini-api từ git")
             assert trang.js(o + ".dataset.tt") == "chua-cai"
             assert trang.js(o + ".closest('[data-khu]').dataset.khu") == "ai"
-            assert trang.chu("[data-khu='ai'] .khu-ten").startswith("AI")   # loai_ten từ manifest thật
+            assert trang.js("document.querySelector(\"[data-khu='ai'] .khu-ten\").textContent").startswith("AI")   # loai_ten từ manifest thật
             trang.js("window.__khongTaiLai = 1")
 
             trang.bam(o)
@@ -67,22 +67,23 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             assert "Chưa có khoá cho «Gemini" in trang.chu("#studio-chua-khoa")
             assert sorted(trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)")) == ["anh", "chat", "video"]
 
-            # «Thêm khoá» → Hệ thống → AI → Tài khoản, đúng thẻ gemini-api.
+            # «Thêm khoá» → Hệ thống → AI → Tài khoản: biểu mẫu «Thêm API» của gemini-api (trường từ manifest thật).
             trang.bam("document.querySelector('#studio-chua-khoa a[data-them-khoa=\"gemini-api\"]')")
-            tk = "[data-tai-khoan='gemini-api']"
-            trang.cho(f"location.pathname.endsWith('/He-thong-AI.dc.html') && !!document.querySelector({json.dumps(tk + ' textarea')})",
-                      han=15, mo_ta="form khoá ở Hệ thống → AI → Tài khoản")
-            assert "Chưa có khoá" in trang.chu(tk + " .chua-khoa")
+            trang.cho("location.pathname.endsWith('/He-thong-AI.dc.html') && document.querySelector('#form-them')?.dataset.module === 'gemini-api'"
+                      " && !!document.querySelector(\"#form-them [data-truong='api_keys'] input\")", han=15, mo_ta="biểu mẫu Thêm API")
+            assert "Chưa có tài khoản API nào" in trang.chu("#tk-trong")
             trang.js("window.__khongTaiLai = 1")
-            trang.go(tk + " [data-truong='api_keys'] textarea", f"{K_TOT}\n{K_XAU}")
-            trang.go(tk + " [data-truong='base_url'] input", s_g.url)
-            trang.bam(f"document.querySelector({json.dumps(tk + ' .nut-luu-cau-hinh')})")
-            trang.cho(f"!!document.querySelector({json.dumps(tk + ' .ket-qua-cai li')})", han=15, mo_ta="liên kết xong")
-            dong = trang.js(f"[...document.querySelectorAll({json.dumps(tk + ' .ket-qua-cai li')})].map((l) => l.innerText.replace(/\\s+/g, ' '))")
-            assert f"…{K_TOT[-4:]} · dùng được" in dong[0] and "2 model" in dong[0], dong
-            assert f"…{K_XAU[-4:]} · không dùng được" in dong[1] and "HTTP 401" in dong[1], dong
+            trang.go("#form-them [data-truong='api_keys'] input", K_XAU)
+            trang.go("#form-them [data-truong='base_url'] input", s_g.url)
+            trang.bam("document.getElementById('nut-them-luu')")
+            trang.cho("document.getElementById('tin-ai')?.getAttribute('role') === 'alert'", han=15, mo_ta="khoá xấu bị từ chối")
+            assert f"…{K_XAU[-4:]} không dùng được" in trang.chu("#tin-ai") and "HTTP 401" in trang.chu("#tin-ai")
+            trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
+            trang.bam("document.getElementById('nut-them-luu')")
+            trang.cho("document.querySelectorAll('[data-tai-khoan=\"gemini-api\"]').length === 1", han=15, mo_ta="liên kết xong")
+            tin = trang.chu("#tin-ai")
+            assert f"…{K_TOT[-4:]} dùng được" in tin and "2 model" in tin, tin
             assert json.loads((tmp_path / "bi_mat" / "gemini-api.json").read_text())["api_keys"] == [K_TOT]
-            trang.cho("document.querySelector('[data-tab=\"provider\"]')", han=15, mo_ta="Provider hiện ngay")
             assert trang.js("window.__khongTaiLai") == 1
 
             # Studio: chat stream qua /v1 thật → Google giả; ba chế độ vì manifest khai chat, anh, video.
@@ -98,11 +99,16 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             gui = [x for x in g.nhat_ky if x["duong"] == "chat"][-1]
             assert gui["khoa"] == K_TOT and gui["than"]["stream"] is True
 
-            # Hệ thống → AI → Provider: model thật + sức khoẻ thật, kể cả trạng thái ảnh/video theo khoá.
+            # Hệ thống → AI → Provider: model thật (/v1/models qua Google giả) + sức khoẻ thật, kể cả ảnh/video theo khoá.
             trang.di(w.url + "/He-thong-AI.dc.html#provider")
-            trang.cho("document.querySelector('[data-provider=\"gemini-api\"] .suc-khoe')", han=15, mo_ta="sức khoẻ")
-            the = trang.chu("[data-provider='gemini-api']")
-            assert "gemini/gemini-2.5-flash" in the and f"…{K_TOT[-4:]}" in the and "anh: chưa rõ" in the, the
+            trang.cho("document.querySelector('[data-provider=\"gemini-api\"] [data-model]')", han=15, mo_ta="model thật")
+            assert "gemini/gemini-2.5-flash" in trang.chu("[data-provider='gemini-api']")
+            trang.bam("document.querySelector('[data-pv-tab=tk]')")
+            trang.cho("document.querySelector('[data-khoa-pv]')?.innerText.includes('Đã kết nối')", han=15, mo_ta="sức khoẻ")
+            assert f"…{K_TOT[-4:]}" in trang.chu("[data-khoa-pv='0']")
+            trang.bam("document.querySelector('[data-khoa-pv=\"0\"] button')")
+            trang.cho("!!document.querySelector('[data-kv=kn-anh]')", mo_ta="chi tiết khoá")
+            assert trang.chu("[data-kv=kn-anh]").startswith("chưa rõ"), trang.chu("[data-khoa-pv='0']")
 
             html = trang.js("document.documentElement.outerHTML")
             assert K_TOT not in html and K_XAU not in html

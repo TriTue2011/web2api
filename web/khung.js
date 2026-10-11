@@ -39,7 +39,9 @@
     module: { nhan: 'Module', can: [] },
     ai: { nhan: 'AI', can: [AI], pham_vi: 'da_cai' },
     tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'tai-khoan', bieu_tuong: 'tai_khoan' },
-    provider: { nhan: 'Provider', can: [AI], thuoc: 'ai', neo: 'provider', bieu_tuong: 'provider' },
+    // Provider hiện từ lúc CÀI (chủ máy 11/10: «cài AI rồi phải thấy có tài khoản, có provider như demo») — chưa có khoá
+    // thì trang hiện provider với tab Model / Tài khoản rỗng, chỉ chỗ thêm khoá.
+    provider: { nhan: 'Provider', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'provider', bieu_tuong: 'provider' },
     combo: { nhan: 'Combo', can: [AI], toi_thieu: 2, chua_co: 'Combo chưa có backend ở bản này', thuoc: 'ai', neo: 'combo', bieu_tuong: 'combo' },
     studio: { nhan: 'Studio', can: ['chat'], pham_vi: 'da_cai', trang: 'Studio.dc.html', bieu_tuong: 'chat' },
     studio_chat: { nhan: 'Chat', can: ['chat'], pham_vi: 'da_cai', thuoc: 'studio' },

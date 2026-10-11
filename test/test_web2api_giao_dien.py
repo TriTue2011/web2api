@@ -96,6 +96,11 @@ def bam_chuot(trang, expr: str, mo_ta: str = ""):
     time.sleep(0.05)
 
 
+def nhom_tk(trang) -> list[list[str]]:
+    """Chip nhóm tài khoản ở Hệ thống → AI → Tài khoản: [[tên, số đếm], …] (như «Gmail 3 · API 4» của demo)."""
+    return trang.js("[...document.querySelectorAll('[data-nhom]')].map((b) => [...b.querySelectorAll('span')].map((x) => x.textContent))")
+
+
 def khong_tran(trang) -> bool:
     return trang.js("document.documentElement.scrollWidth <= window.innerWidth")
 
@@ -155,7 +160,7 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         assert not trang.js("!!" + o("mang-gia"))
         trang.bam("document.querySelector('[data-loc-loai=\"mang\"]')")
         trang.cho(o("mang-gia"), mo_ta="ô mang-gia dưới chip Mạng")
-        assert trang.chu("[data-khu='mang'] .khu-ten").startswith("Mạng")
+        assert trang.js("document.querySelector(\"[data-khu='mang'] .khu-ten\").textContent").startswith("Mạng")
         trang.bam("document.querySelector('[data-loc-loai=\"ai\"]')")
 
         # Bảng chi tiết: «Cần gì để chạy» TRƯỚC khi cài.
@@ -169,8 +174,10 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
         trang.cho("!document.getElementById('chi-tiet')", mo_ta="đóng bảng chi tiết")
 
-        # Nút «Cài» NGAY TRÊN Ô: không lồng trong nút chọn ô; bấm hai lần liền → MỘT lần cài, không mở bảng chi tiết.
-        assert trang.chu("[data-o-khung='ai-gia'] [data-hanh-dong]") == "Cài"
+        # Nút «Cài» NGAY TRÊN Ô (biểu tượng tải về nền đen như ô chưa cài của demo Tiện ích): không lồng trong nút chọn ô;
+        # bấm hai lần liền → MỘT lần cài, không mở bảng chi tiết.
+        assert trang.js(nut_o("ai-gia") + ".getAttribute('aria-label')") == "Cài AI giả"
+        assert "den" in trang.js(nut_o("ai-gia") + ".className")
         assert trang.js(nut_o("ai-gia") + ".dataset.hanhDong") == "cai"
         assert trang.js(nut_o("ai-gia") + ".closest('button[data-o]') === null && " + o("ai-gia") + ".querySelector('button, a') === null")
         trang.js(DEM_CAI)
@@ -217,23 +224,26 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         assert khong_tran(trang)
         trang.khung(1280, 800)
 
-        # Bấm tới Hệ thống → AI → Tài khoản, ĐÚNG thẻ của module.
+        # Bấm tới Hệ thống → AI → Tài khoản: biểu mẫu «Thêm API» của ĐÚNG module, focus vào ô khoá.
         trang.bam("document.querySelector('#studio-chua-khoa a[data-them-khoa=\"ai-gia\"]')")
-        trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/He-thong-AI.dc.html') && !!document.querySelector('[data-tai-khoan=\"ai-gia\"] form')",
-                  han=15, mo_ta="Hệ thống → AI → Tài khoản")
-        assert trang.js("[...document.querySelectorAll('[data-tab]')].map((b) => b.dataset.tab)") == ["tai_khoan"]
-        assert "Chưa có khoá" in trang.chu("[data-tai-khoan='ai-gia'] .chua-khoa")
-        trang.cho("document.activeElement?.closest('[data-tai-khoan]')?.dataset.taiKhoan === 'ai-gia'", mo_ta="focus vào thẻ module")
+        trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/He-thong-AI.dc.html')"
+                  " && document.querySelector('#form-them')?.dataset.module === 'ai-gia'", han=15, mo_ta="Hệ thống → AI → Tài khoản › Thêm API")
+        assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
+        assert nhom_tk(trang) == [["API", "0"]]
+        assert "Chưa có tài khoản API nào" in trang.chu("#tk-trong")
+        trang.cho("document.activeElement?.closest('#form-them') && document.activeElement.type === 'password'", mo_ta="focus vào ô khoá")
         trang.js("window.__khongTaiLai = 1")
-        trang.go("[data-tai-khoan='ai-gia'] [data-truong='api_keys'] textarea", K_TOT)
-        trang.bam("document.querySelector('[data-tai-khoan=\"ai-gia\"] .nut-luu-cau-hinh')")
-        # Lưu khoá xong: Provider hiện, chú thích «chưa có khoá» mất — không tải lại trang.
-        trang.cho("document.querySelector('[data-tab=\"provider\"]')", han=15, mo_ta="Provider hiện sau khi lưu khoá")
-        trang.cho("!document.querySelector('[data-tai-khoan=\"ai-gia\"] .chua-khoa')", mo_ta="hết «chưa có khoá»")
+        trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
+        trang.bam("document.getElementById('nut-them-luu')")
+        # Lưu khoá xong: một dòng tài khoản (dạng che), nhóm «API 1», dải báo từng khoá — không tải lại trang.
+        trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-gia\"]').length === 1", han=15, mo_ta="dòng tài khoản sau khi lưu khoá")
+        assert "Đã thêm khoá vào «AI giả»" in trang.chu("#tin-ai") and "…1111 dùng được" in trang.chu("#tin-ai")
+        assert nhom_tk(trang) == [["API", "1"]]
+        assert not trang.js("!!document.getElementById('form-them')")
         assert trang.js("window.__khongTaiLai") == 1
         assert "Combo" not in trang.js("document.body.innerText")
         assert K_TOT not in trang.js("document.documentElement.outerHTML")
-        assert trang.js("document.querySelector('[data-tai-khoan=\"ai-gia\"] a.mo-trang-chinh').getAttribute('href')").endswith("Studio.dc.html")
+        assert not any(K_TOT in x for x in trang.state_thanh_phan())
 
         # Quay lại Studio: hết trạng thái rỗng, chat stream như cũ.
         trang.bam("document.querySelector('[data-nav=\"quay-lai\"]')")
@@ -275,7 +285,7 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
         assert trang.chu("#ct-trang-thai") == "Đã cài — chờ khoá"
         assert trang.chu("#moi-nhat") == "Đã là bản mới nhất trên git."   # A0: da_cai_dung
         assert not trang.js("!!document.getElementById('nut-cai')")         # đã cài: không còn «Cài»
-        assert "Bước tiếp theo" in trang.js("document.getElementById('h-lien-ket').textContent")
+        assert trang.chu("#h-lien-ket") == "CẤU HÌNH" and "Bước tiếp theo" in trang.chu("#buoc-tiep")
         # CŨ: «AI hiện, Studio chưa (chưa liên kết)». MỚI: đã cài module khai chat → Studio có ngay («Quay lại Studio»).
         assert "ai" in nav(trang)
         assert trang.js("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href')").endswith("Studio.dc.html")
@@ -354,64 +364,175 @@ def test_them_khoa_tren_o_module_khong_co_tab_tai_khoan_mo_bang_chi_tiet(trang, 
         assert trang.js("document.querySelectorAll('#chi-tiet').length") == 1
 
 
-# ───────────── Hệ thống → AI ─────────────
+# ───────────── Hệ thống → AI (chép Bo-nao.dc.html của demo: Tài khoản · Provider) ─────────────
 
-def test_ai_da_cai_chua_khoa_chi_co_tai_khoan(trang, tmp_path, monkeypatch):
-    mods = {"ai-gia": module_ai(), "ai-hai": module_ai("ai-hai", "AI thứ hai", "hai", ("chat",))}
-    with loi_that(tmp_path, monkeypatch, modules=mods) as w:
-        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
-        trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
-        trang.cho("document.querySelector('[data-nav=\"ai\"]')", mo_ta="tab AI")
-        # CŨ: «chưa liên kết → chưa có Studio». MỚI (chủ máy 11/10): đã cài module khai chat → Studio có.
-        assert trang.js("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href')").endswith("Studio.dc.html")
-        trang.di(w.url + "/He-thong-AI.dc.html")
-        trang.cho("document.querySelector('[data-tab=\"tai_khoan\"]')", mo_ta="tab Tài khoản")
-        tabs = trang.js("[...document.querySelectorAll('[data-tab]')].map((b) => b.dataset.tab)")
-        assert tabs == ["tai_khoan", "provider"], tabs        # KHÔNG Combo
-        trang.cho("document.querySelector('[data-tai-khoan=\"ai-gia\"] form')", mo_ta="form thêm khoá")
-        # Module CHƯA liên kết đứng ĐẦU tab, có chú thích «chưa có khoá»; module đã liên kết thì không.
-        assert trang.js("[...document.querySelectorAll('[data-tai-khoan]')].map((a) => a.dataset.taiKhoan)") == ["ai-gia", "ai-hai"]
-        assert "Chưa có khoá" in trang.chu("[data-tai-khoan='ai-gia'] .chua-khoa")
-        assert not trang.js("!!document.querySelector('[data-tai-khoan=\"ai-hai\"] .chua-khoa')")
+def con_ai(trang) -> list[str]:
+    """Mục con của «AI ▾» trên thanh Hệ thống (mở bảng xổ rồi đóng lại) — trang AI không có hàng tab riêng, như demo."""
+    trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+    trang.cho("document.querySelectorAll('[data-nav-con]').length > 0", mo_ta="bảng xổ AI")
+    ds = trang.js("[...document.querySelectorAll('[data-nav-con]')].map((a) => a.dataset.navCon)")
+    trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+    return ds
 
 
-def test_ai_chi_cai_chua_khoa_khong_provider(trang, tmp_path, monkeypatch):
+# Điều khiển của demo CHƯA có backend — không được có trong DOM (ẩn, không vẽ nút chết).
+KHONG_CO = ["Lưu thay đổi", "Đặt mặc định", "Mặc định", "đang bật", "Combo", "TOTP", "Bản mẫu minh hoạ", "«:text»",
+            "ưu tiên", "hàng đợi", "Xem mã", "Thêm Gmail"]
+
+
+def khong_dieu_khien_chet(trang):
+    chu = trang.js("document.body.innerText")
+    assert not [x for x in KHONG_CO if x in chu], [x for x in KHONG_CO if x in chu]
+    assert trang.js("document.querySelectorAll('[role=switch], #tab-ai, [data-tab]').length") == 0
+
+
+def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypatch):
+    """Lỗi chủ máy bắt (11/10): cài AI rồi mà không thấy «tài khoản, provider» như demo. Vừa cài, chưa khoá: Tài khoản
+    có nhóm «API 0» + nút «＋ Thêm API» + khung rỗng của demo; Provider có ngay nhà cung cấp đã cài với tab Model / Tài
+    khoản rỗng chỉ chỗ thêm khoá — không gọi …/suc-khoe (404 khi chưa liên kết). Thêm khoá → dòng tài khoản + model."""
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         trang.di(w.url + "/He-thong.dc.html")
         luu_khoa(trang)
         trang.di(w.url + "/He-thong-AI.dc.html")
-        trang.cho("document.querySelector('[data-tai-khoan=\"ai-gia\"] form')", mo_ta="form thêm khoá")
-        tabs = trang.js("[...document.querySelectorAll('[data-tab]')].map((b) => b.dataset.tab)")
-        assert tabs == ["tai_khoan"], tabs                   # KHÔNG Provider, KHÔNG Combo
-        # Gõ tay tab Provider khi chưa đủ → về Module kèm lời giải thích.
-        trang.js("window.__trangCu = 1")
-        trang.cdp.goi("Page.navigate", {"url": w.url + "/He-thong-AI.dc.html#provider"}, trang.s)
-        trang.cho("!window.__trangCu && document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/He-thong.dc.html') && !!document.getElementById('thieu')",
-                  mo_ta="chuyển")
-        assert "Provider" in trang.chu("#thieu")
+        trang.cho("!!document.getElementById('bang-ai')", mo_ta="trang AI")
+        assert con_ai(trang) == ["tai_khoan", "provider"]           # Provider có từ lúc CÀI; không Combo
+        assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
+        assert nhom_tk(trang) == [["API", "0"]]
+        assert trang.chu("#nut-them") == "＋ Thêm API"
+        assert trang.js("getComputedStyle(document.getElementById('nut-them')).backgroundColor") == "rgb(24, 24, 22)"  # nút đen nổi bật
+        assert trang.chu("#tk-trong") == "Chưa có tài khoản API nào — bấm « ＋ » ở trên để thêm."
+        assert trang.js("document.querySelectorAll('[data-tai-khoan]').length") == 0
+        khong_dieu_khien_chet(trang)
+
+        # Provider: «AI giả 0» với Model 0 | Tài khoản 0, khung rỗng + «Mở tab Tài khoản»; không gọi …/suc-khoe.
+        trang.js("window.__sk = 0; const f = window.fetch; window.fetch = (u, o) => { if (String(u).includes('/suc-khoe')) window.__sk++; return f(u, o); }")
+        trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+        bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "Provider trong bảng xổ AI")
+        trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'provider' && !!document.getElementById('pv-trong')", mo_ta="Provider rỗng")
+        assert trang.js("document.querySelector('[data-provider]').dataset.provider") == "ai-gia"
+        assert trang.js("[...document.getElementById('chon-pv').querySelectorAll('span')].map((x) => x.textContent)") == ["AI giả", "0"]
+        assert trang.js("[...document.querySelectorAll('[data-pv-tab]')].map((b) => [b.dataset.pvTab, b.innerText.replace(/\\s+/g, ' ')])") \
+            == [["model", "Model 0"], ["tk", "Tài khoản 0"]]
+        assert "Chưa có khoá nào nên chưa có model của «AI giả»" in trang.chu("#pv-trong")
+        trang.bam("document.querySelector('[data-pv-tab=tk]')")
+        trang.cho("(document.getElementById('pv-trong')?.innerText || '').includes('Chưa có khoá nào cho «AI giả»')", mo_ta="tab Tài khoản rỗng")
+        khong_dieu_khien_chet(trang)
+        assert trang.js("window.__sk") == 0
+        # «Mở tab Tài khoản» → biểu mẫu thêm khoá của đúng module.
+        trang.bam("document.getElementById('nut-mo-tk')")
+        trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'tai_khoan' && document.querySelector('#form-them')?.dataset.module === 'ai-gia'",
+                  mo_ta="Tài khoản › Thêm API")
+        assert trang.js("[...document.querySelectorAll('[data-chon-module]')].map((b) => [b.dataset.chonModule, b.getAttribute('aria-pressed')])") \
+            == [["ai-gia", "true"]]
+        # Khoá hỏng → không lưu, dải báo lỗi nói rõ từng khoá; khoá rời trang ngay khi gửi.
+        trang.go("#form-them [data-truong='api_keys'] input", K_HONG)
+        trang.bam("document.getElementById('nut-them-luu')")
+        trang.cho("document.getElementById('tin-ai')?.getAttribute('role') === 'alert'", han=15, mo_ta="báo khoá hỏng")
+        assert "Chưa lưu được «AI giả»" in trang.chu("#tin-ai") and "…2222 không dùng được" in trang.chu("#tin-ai")
+        assert trang.js("document.querySelector(\"#form-them [data-truong='api_keys'] input\").value") == ""
+        trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
+        trang.bam("document.getElementById('nut-them-luu')")
+        trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-gia\"]').length === 1", han=15, mo_ta="dòng tài khoản")
+        assert nhom_tk(trang) == [["API", "1"]]
+        dong = trang.chu("[data-tai-khoan='ai-gia']")
+        assert "AI giả" in dong and "khoá …1111" in dong, dong
+        trang.cho("document.querySelector('[data-tai-khoan=\"ai-gia\"] [data-chip-tk]')?.innerText === 'Dùng được'", han=15, mo_ta="nhãn sức khoẻ")
+        # Provider có model thật ngay, không tải lại trang.
+        trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+        bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "Provider")
+        trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'provider'", mo_ta="Provider")
+        trang.bam("document.querySelector('[data-pv-tab=model]')")   # tab con giữ lựa chọn cũ (Tài khoản) như demo
+        trang.cho("document.querySelectorAll('[data-model]').length === 3", han=15, mo_ta="model của provider")
+        assert trang.chu("[data-pv-tab='model']").replace("\n", " ") == "Model 3"
+        html = trang.js("document.documentElement.outerHTML")
+        assert K_TOT not in html and K_HONG not in html
+        assert not any(K_TOT in x or K_HONG in x for x in trang.state_thanh_phan())
 
 
-def test_provider_model_that_suc_khoe_va_khong_combo(trang, tmp_path, monkeypatch):
+def test_ai_tai_khoan_hai_nguon_thay_va_xoa_khoa(trang, tmp_path, monkeypatch):
+    mods = {"ai-gia": module_ai(), "ai-hai": module_ai("ai-hai", "AI thứ hai", "hai", ("chat",))}
+    k3 = "AIzaSyTOT-ba--000000000000000000000003"
+    with loi_that(tmp_path, monkeypatch, modules=mods) as w:
+        lien_ket(w, "ai-hai", {"api_keys": [K_TOT, k3]})
+        trang.di(w.url + "/He-thong.dc.html")
+        luu_khoa(trang)
+        trang.di(w.url + "/He-thong-AI.dc.html")
+        trang.cho("document.querySelectorAll('[data-tai-khoan]').length === 2", mo_ta="hai dòng tài khoản")
+        # Mỗi khoá đã lưu là một «tài khoản» (như dòng API của demo: tên nhà cung cấp, «khoá …abcd»); nguồn chưa khoá không có dòng.
+        assert trang.js("[...document.querySelectorAll('[data-tai-khoan]')].map((d) => [d.dataset.taiKhoan, d.dataset.khoaSo])") \
+            == [["ai-hai", "0"], ["ai-hai", "1"]]
+        assert nhom_tk(trang) == [["API", "2"]]
+        trang.bam("document.getElementById('nut-them')")
+        assert trang.js("[...document.querySelectorAll('[data-chon-module]')].map((b) => [b.dataset.chonModule, b.getAttribute('aria-pressed')])") \
+            == [["ai-gia", "false"], ["ai-hai", "false"]]
+        assert "Chọn một nguồn AI đã cài." in trang.chu("#form-them")
+        trang.bam("document.getElementById('nut-them')")
+        # Mở dòng đầu: nhà cung cấp, địa chỉ gốc (Chép), khoá dạng che — không có «Xem» khoá; xoá hai bước.
+        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"][data-khoa-so=\"0\"] button')")
+        mo = "[data-tai-khoan='ai-hai'][data-khoa-so='0']"
+        trang.cho(f"!!document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})", mo_ta="dòng mở")
+        chu = trang.chu(mo)
+        assert "Nhà cung cấp" in chu and "https://gia.example/v1" in chu and "…1111" in chu and "Xem" not in chu, chu
+        trang.bam(f"document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})")
+        assert trang.chu(mo + " [data-hd=xoa]") == "Bấm lần nữa để xoá"
+        trang.bam(f"document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})")
+        trang.cho("document.querySelectorAll('[data-tai-khoan]').length === 1", han=15, mo_ta="còn một khoá")
+        assert json.loads((tmp_path / "bi_mat" / "ai-hai.json").read_text())["api_keys"] == [k3]
+        assert "Đã xoá khoá …1111 khỏi «AI thứ hai»" in trang.chu("#tin-ai")
+        # Khoá cuối của trường bắt buộc: không có «Xoá» (lõi từ chối), chỉ «Thay khoá».
+        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"] button')")
+        trang.cho("!!document.querySelector('[data-tai-khoan=\"ai-hai\"] [data-hd=thay]')", mo_ta="nút Thay khoá")
+        assert not trang.js("!!document.querySelector('[data-tai-khoan=\"ai-hai\"] [data-hd=xoa]')")
+        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"] [data-hd=thay]')")
+        trang.go("[data-tai-khoan='ai-hai'] form[data-sua] input", K_TOT)
+        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"] form[data-sua] button[type=submit]')")
+        trang.cho("(document.getElementById('tin-ai')?.innerText || '').startsWith('Đã thay khoá …0003')", han=15, mo_ta="đã thay khoá")
+        assert json.loads((tmp_path / "bi_mat" / "ai-hai.json").read_text())["api_keys"] == [K_TOT]
+        assert "khoá …1111" in trang.chu("[data-tai-khoan='ai-hai']")
+        assert K_TOT not in trang.js("document.documentElement.outerHTML")
+        assert not any(K_TOT in x for x in trang.state_thanh_phan())
+        khong_dieu_khien_chet(trang)
+
+
+def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypatch):
     mods = {"ai-gia": module_ai(), "ai-hai": module_ai("ai-hai", "AI thứ hai", "hai", ("chat",))}
     with loi_that(tmp_path, monkeypatch, modules=mods) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
         trang.di(w.url + "/He-thong.dc.html")
         luu_khoa(trang)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.cho("document.querySelector('[data-provider=\"ai-gia\"] .suc-khoe')", han=15, mo_ta="sức khoẻ ai-gia")
-        tabs = trang.js("[...document.querySelectorAll('[data-tab]')].map((b) => b.dataset.tab)")
-        assert tabs == ["tai_khoan", "provider"], tabs
-        the = trang.chu("[data-provider='ai-gia']")
-        assert "gia/nhanh" in the and "gia/phim-1" in the and "video" in the
-        assert "anh: bị từ chối (HTTP 403)" in the and "video: chưa rõ" in the, the
-        assert not trang.js("window.__xss")                 # id model chứa HTML hiện như chữ
-        # Liên kết nguồn AI thứ hai: đủ «≥ 2 AI» nhưng Combo chưa có backend → vẫn KHÔNG có trong DOM.
-        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
-        trang.di(w.url + "/He-thong-AI.dc.html?lan=2#provider")  # đổi query để trình duyệt tải lại thật
-        trang.cho("document.querySelector('[data-provider=\"ai-hai\"]')", han=15, mo_ta="provider thứ hai")
-        assert "Combo" not in trang.js("document.body.innerText")
-        assert trang.js("document.querySelectorAll('[data-tab=\"combo\"]').length") == 0
+        trang.cho("document.querySelectorAll('[data-model]').length === 3", han=15, mo_ta="model của ai-gia")
+        assert trang.js("document.querySelector('[data-provider]').dataset.provider") == "ai-gia"
+        # Nhóm model theo khả năng module khai (`kha_nang`): gia/phim-1 khai video → «Tạo video»; còn lại → trò chuyện.
+        assert trang.js("[...document.querySelectorAll('[data-nhom-md]')].map((g) => [g.dataset.nhomMd, [...g.querySelectorAll('[data-model]')].map((m) => m.innerText)])") \
+            == [["chat", ["gia/nhanh", "gia/<img src=x onerror=window.__xss=5>"]], ["video", ["gia/phim-1"]]]
+        # Nhãn chỉ giữ phần suy ra được từ dữ liệu («hiểu ảnh» của demo không có trường nào chứng minh).
+        assert trang.chu("[data-nhom-md='chat']").startswith("TRÒ CHUYỆN\n") and "HIỂU ẢNH" not in trang.chu("[data-nhom-md='chat']")
+        assert not trang.js("window.__xss")
+        assert "AI giả · model" in trang.chu("#bang-ai")
+        khong_dieu_khien_chet(trang)
+        # «Làm mới danh sách» gọi lại /v1/models thật.
+        trang.js("window.__md = 0; const f = window.fetch; window.fetch = (u, o) => { if (/v1\\/models/.test(String(u))) window.__md++; return f(u, o); }")
+        trang.bam("document.getElementById('nut-lam-moi-md')")
+        trang.cho("(document.getElementById('tin-ai')?.innerText || '').includes('3 model')", mo_ta="đã làm mới")
+        assert trang.js("window.__md") == 1
+        # Tab Tài khoản: sức khoẻ từng khoá, kể cả trạng thái ảnh/video theo khoá.
+        trang.bam("document.querySelector('[data-pv-tab=tk]')")
+        trang.cho("document.querySelector('[data-khoa-pv]')?.innerText.includes('Đã kết nối')", han=15, mo_ta="sức khoẻ khoá")
+        trang.bam("document.querySelector('[data-khoa-pv=\"0\"] button')")
+        trang.cho("!!document.querySelector('[data-kv=kn-anh]')", mo_ta="chi tiết khoá")
+        assert trang.chu("[data-kv=kn-anh]").startswith("bị từ chối (HTTP 403)")
+        assert trang.chu("[data-kv=kn-video]") == "chưa rõ (chưa dùng thật lần nào)"
+        assert trang.chu("[data-kv=do-tre]").startswith("5 ms") and trang.chu("[data-kv=goc]") == "https://gia.example/v1"
+        # Chọn nhà cung cấp thứ hai qua bảng xổ (chấm màu + tên + số khoá): đã cài, chưa khoá → tab rỗng.
+        trang.bam("document.getElementById('chon-pv')")
+        trang.cho("document.querySelectorAll('[data-pv]').length === 2", mo_ta="bảng xổ provider")
+        assert trang.js("[...document.querySelectorAll('[data-pv]')].map((b) => [b.dataset.pv, b.innerText.replace(/\\s+/g, ' ').trim()])") \
+            == [["ai-gia", "AI giả 1"], ["ai-hai", "AI thứ hai 0"]]
+        trang.bam("document.querySelector('[data-pv=\"ai-hai\"]')")
+        trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-hai' && !!document.getElementById('pv-trong')", mo_ta="provider thứ hai")
+        assert not trang.js("!!document.querySelector('[role=listbox]')")
+        assert trang.js("document.querySelector('[data-pv-tab=model]').getAttribute('aria-selected')") == "true"
 
 
 # ───────────── Studio ─────────────
@@ -933,7 +1054,7 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
         assert trang.js("[...document.querySelectorAll('[data-nav-con]')].map((a) => a.dataset.navCon)") == ["tai_khoan", "provider"]
         bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "mục Provider trong bảng xổ AI")
         trang.cho("location.pathname.endsWith('/He-thong-AI.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'"
-                  " && document.querySelector('[data-tab=\"provider\"]')?.getAttribute('aria-selected') === 'true'", han=10,
+                  " && document.getElementById('bang-ai')?.dataset.muc === 'provider'", han=10,
                   mo_ta="tới tab Provider")
         trang.khung(390, 844, True)
         trang.cho("getComputedStyle(document.querySelector('nav.bn')).display !== 'none'", mo_ta="thanh dưới Hệ thống")
@@ -943,7 +1064,7 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
         trang.cho("document.querySelectorAll('[data-nav-con-duoi]').length === 2", mo_ta="tờ AI ở thanh dưới")
         assert trang.js("[...document.querySelectorAll('[data-nav-con-duoi]')].map((a) => a.dataset.navConDuoi)") == ["tai_khoan", "provider"]
         bam_chuot(trang, "document.querySelector('[data-nav-con-duoi=\"tai_khoan\"]')", "mục Tài khoản trên tờ ở thanh dưới")
-        trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && document.querySelector('[data-tab=\"tai_khoan\"]')?.getAttribute('aria-selected') === 'true'",
+        trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && document.getElementById('bang-ai')?.dataset.muc === 'tai_khoan'",
                   han=10, mo_ta="tới tab Tài khoản từ thanh dưới")
         assert khong_tran(trang)
 
@@ -1019,16 +1140,55 @@ def test_khong_tran_ngang_va_o_cao_bang_nhau(trang, tmp_path, monkeypatch, rong,
         trang.bam(o("ai-gia"))
         trang.cho("document.getElementById('chi-tiet')", mo_ta="chi tiết")
         assert khong_tran(trang)
-        if dt:  # tờ trượt từ dưới lên
-            assert trang.js("getComputedStyle(document.getElementById('chi-tiet')).position") == "fixed"
+        if dt:  # như demo Tiện ích ở 390px: bảng chi tiết nằm DƯỚI lưới (không phải tờ nổi), cuộn tới khi chọn ô
+            assert trang.js("getComputedStyle(document.getElementById('chi-tiet')).position") == "static"
+            assert trang.js("document.getElementById('chi-tiet').getBoundingClientRect().top + scrollY"
+                            " >= Math.max(...[...document.querySelectorAll('.o-mod')].map((e) => e.getBoundingClientRect().bottom + scrollY))")
         for duong in ("/He-thong-AI.dc.html", "/Studio.dc.html"):
             trang.di(w.url + duong)
             assert khong_tran(trang), duong
         # Nút đủ lớn để bấm bằng ngón tay (≥ 40 px) ở các nút chính.
         trang.di(w.url + "/He-thong.dc.html")
-        thap = trang.js("[...document.querySelectorAll('button.nut, button.chip')].filter((b) => b.offsetParent)"
+        thap = trang.js("[...document.querySelectorAll('button.nut, button.chip, button.nut-chu, button.nut-bt, a.nut-chu')].filter((b) => b.offsetParent)"
                         ".map((b) => b.getBoundingClientRect().height).filter((h) => h < 40)")
         assert not thap, thap
+
+
+@pytest.mark.parametrize("rong,dien_thoai", [(1000, True), (1100, False)])
+def test_moc_1023_thanh_dieu_huong_va_noi_dung_cung_moc(trang, tmp_path, monkeypatch, rong, dien_thoai):
+    """Mốc điện thoại của demo là 1023px cho CẢ thanh điều hướng lẫn nội dung: ở 881–1023px thanh dưới hiện thì nội dung
+    cũng theo bố cục điện thoại (lề 16px như demo) — trước đây nội dung đổi ở 880px nên khoảng ấy lệch nhau."""
+    with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
+        lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
+        trang.khung(rong, 800)
+        for duong in ("/He-thong.dc.html", "/He-thong-AI.dc.html"):
+            trang.di(w.url + duong)
+            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang'", mo_ta=duong)
+            bn = trang.js("getComputedStyle(document.querySelector('nav.bn')).display") != "none"
+            tab = trang.js("getComputedStyle(document.getElementById('thanh-tab')).display") != "none"
+            le = trang.js("parseFloat(getComputedStyle(document.querySelector('main.pg')).paddingLeft)")
+            assert (bn, tab, le) == ((True, False, 16) if dien_thoai else (False, True, 32)), (duong, bn, tab, le)
+            assert khong_tran(trang), duong
+
+
+def test_go_tren_o_bam_hai_lan(trang, tmp_path, monkeypatch):
+    """Biểu tượng xoá trên ô (như dòng Tiện ích của demo): lần đầu chỉ đổi nền đỏ nhạt và báo «bấm lần nữa», lần hai mới gỡ."""
+    with loi_that(tmp_path, monkeypatch, modules={"mang-gia": module_mang()}) as w:
+        lien_ket(w, "mang-gia")
+        trang.di(w.url + "/He-thong.dc.html")
+        luu_khoa(trang)
+        trang.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
+        xoa = "document.querySelector('[data-go-o=\"mang-gia\"]')"
+        trang.cho(xoa, han=15, mo_ta="biểu tượng xoá trên ô")
+        assert trang.js(xoa + ".getAttribute('aria-label')") == "Gỡ Mạng giả"
+        assert not trang.js(xoa + ".hasAttribute('data-hanh-dong')")       # nút hành động chính vẫn là [data-hanh-dong]
+        trang.bam(xoa)
+        trang.cho("(document.getElementById('tin-module')?.innerText || '').includes('Bấm biểu tượng xoá lần nữa')", mo_ta="hỏi lại")
+        assert " do" in trang.js(xoa + ".className") and trang.js(o("mang-gia") + ".dataset.tt") == "dang-chay"
+        trang.bam(xoa)
+        trang.cho("!document.querySelector('[data-o=\"mang-gia\"]')", han=15, mo_ta="đã gỡ")
+        assert "Đã gỡ «Mạng giả»" in trang.chu("#tin-module")
+        assert not (tmp_path / "modules" / "mang-gia").exists()
 
 
 # ───────────── «Cập nhật» (A0) và «＋ Thêm module» ─────────────
