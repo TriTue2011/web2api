@@ -13,7 +13,7 @@
 #                  «Chưa có khoá cho …» kèm nút tới Hệ thống → AI → Tài khoản
 #   sau-lien-ket — sau khi liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả): Hệ thống → AI → Provider; nút
 #                  «Quay lại Studio» và mục AI hiện, không có Combo
-#   studio       — Studio: một lượt chat stream qua /v1 thật
+#   studio       — Studio: một lượt chat stream qua /v1 thật, câu trả lời markdown (in đậm, danh sách, mã)
 # Lưu PNG vào docs/anh/<tên>-may-tinh.png và <tên>-dien-thoai.png, mỗi ảnh ≤ 250 KB (quá thì giảm màu).
 #
 # Dùng (từ gốc kho):  scripts/chup-man-hinh.sh
@@ -61,6 +61,10 @@ gh = GitHubGia("TriTue2011/web2api")
 gh.day(tep_kho({"gemini-api": gem, "mang-gia": module_mang(), "ghi-chu": ghi_chu}))
 g = GoogleGia()
 g.hanh_vi[KHOA_GIA] = {"kieu": "tot"}
+# Câu trả lời stream của Google giả có in đậm, danh sách, mã — ảnh Studio cho thấy markdown được dựng thành định dạng.
+g.khuc_chat = ["Chào bạn! Tôi là **trợ lý AI** ", "trả lời qua web2api.\n\n", "Tôi có thể giúp bạn:\n\n",
+               "- **Tóm tắt** một đoạn văn dài\n", "- Soạn thư trả lời khách hàng\n",
+               "- Giải thích khái niệm kèm ví dụ, như `GET /v1/models`\n\n", "Bạn muốn bắt đầu từ việc nào?"]
 
 from app import so_module
 so_module.THU_MUC_ANH = du_lieu / "anh-rong"

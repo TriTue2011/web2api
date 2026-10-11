@@ -80,7 +80,8 @@ main.st{flex:1 1 0;min-height:0;min-width:0;display:flex;flex-direction:column;o
 .luot-dap{display:flex;gap:12px;align-items:flex-start}
 .ava{flex:0 0 32px;width:32px;height:32px;border-radius:10px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center}
 .dap-than{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
-.chu-dap{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;text-wrap:pretty}
+/* Câu trả lời: <md-chu> (khung.js) dựng markdown an toàn; kiểu của .md ở khung.css. Tin người dùng vẫn là chữ thô. */
+.chu-dap{display:block;min-width:0;overflow-wrap:anywhere;line-height:1.6;text-wrap:pretty}
 .dap-tieu{font-weight:500}
 .dang-viet{display:flex;gap:4px;align-items:center;height:24px}
 .dang-viet span{width:7px;height:7px;border-radius:50%;background:#B9B6AE;animation:nhay 1.2s infinite ease-in-out}
@@ -152,7 +153,7 @@ main.st{flex:1 1 0;min-height:0;min-width:0;display:flex;flex-direction:column;o
 <div class="luot-dap">
 <div class="ava" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{hinh.logo}}"></path></svg></div>
 <div class="dap-than">
-<sc-if value="{{t.coChu}}"><div class="chu-dap" data-vai="assistant">{{t.tra}}</div></sc-if>
+<sc-if value="{{t.coChu}}"><md-chu class="chu-dap md" data-vai="assistant" chu="{{t.tra}}"></md-chu></sc-if>
 <sc-if value="{{t.choChu}}"><div class="dang-viet" role="img" aria-label="Đang viết"><span></span><span></span><span></span></div></sc-if>
 <sc-if value="{{t.tieu}}"><div class="dap-tieu">{{t.tieu}}</div></sc-if>
 <sc-if value="{{t.choAnh}}"><div class="o-cho o-cho-anh" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{hinh.anh}}"></path></svg></div></sc-if>
@@ -230,6 +231,8 @@ main.st{flex:1 1 0;min-height:0;min-width:0;display:flex;flex-direction:column;o
 // module ĐÃ LIÊN KẾT (chưa khoá) thì hiện dải «Chưa có khoá …» chỉ chỗ thêm khoá và khoá ô soạn. Model lấy từ
 // /v1/models theo tiền tố của module đã liên kết. Không có bảng chọn tỉ lệ/thời lượng: /v1/models chưa khai model nào
 // nhận tỉ lệ/thời lượng nào, và trang chỉ gửi đúng hợp đồng cũ ({model, prompt, n, response_format} / {model, prompt}).
+// Câu trả lời chat hiện bằng <md-chu> (markdown an toàn, khung.js); mỗi lời gọi chat mang thêm tin giờ của trình duyệt
+// (tinGio) ngay trước tin người dùng cuối — không hiện, không vào lịch sử.
 const K = window.Khung;
 // Chế độ của Studio: [mã, dòng DIEU_KIEN, nhãn trên nút, hình, chữ gợi ý trong ô soạn, câu mẫu trên màn đầu].
 // Câu mẫu là chữ giao diện chung chung, không nhắc nhà cung cấp nào.
@@ -369,6 +372,17 @@ class Component extends DCLogic {
       }
     }
   }
+  // Giờ hiện tại theo múi giờ của CHÍNH trình duyệt — model không có đồng hồ, không được cho biết thì đoán (từng trả
+  // «thứ Năm 11/07/2024» khi hôm nay là 11/10/2026). Ghép từ formatToParts để định dạng cố định: HH:MM, thứ, dd/mm/yyyy.
+  tinGio() {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const p = {};
+    for (const x of new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset' }).formatToParts(new Date())) p[x.type] = x.value;
+    return { role: 'system', content: 'Giờ hiện tại theo múi giờ của người dùng (' + tz + ', ' + p.timeZoneName + '): ' + p.hour + ':'
+      + p.minute + ', ' + p.weekday + ' ngày ' + p.day + '/' + p.month + '/' + p.year
+      + '. Hỏi giờ, ngày, thứ thì dùng đúng giá trị này — không tự đoán, không tự tính sang múi giờ khác.' };
+  }
   async guiChat(nd, model) {
     // Lịch sử gửi đi: các lượt TRÒ CHUYỆN trước đó (lượt ảnh/video không phải tin nhắn chat).
     const lichSu = [];
@@ -377,7 +391,10 @@ class Component extends DCLogic {
       lichSu.push({ role: 'user', content: t.hoi });
       if (t.tra) lichSu.push({ role: 'assistant', content: t.tra });
     }
-    lichSu.push({ role: 'user', content: nd });
+    // Tin giờ đặt NGAY TRƯỚC tin người dùng cuối, không ở đầu (như c2a): dòng này đổi mỗi phút, đặt đầu là phá bộ nhớ
+    // đệm tiền tố lời dặn ở nhà cung cấp. Chỉ đi trong yêu cầu — không vào this.state.luot (không hiện, không thành
+    // lịch sử), nên lượt sau tính lại giờ mới và không dồn tin giờ cũ.
+    lichSu.push(this.tinGio(), { role: 'user', content: nd });
     const ac = new AbortController(); this._ac = ac; this._chu = '';
     const id = this.themLuot('chat', nd, model);
     this.setState({ trangThai: 'Đang chờ trả lời…' });

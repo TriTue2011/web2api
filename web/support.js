@@ -39,6 +39,10 @@
  *    nhiều setState trong một lần bấm chỉ dựng một lần, và setState gọi từ chính
  *    renderVals không gây đệ quy. Quá 50 lần dựng liền trong cùng một lượt sự
  *    kiện thì coi là vòng lặp và báo lỗi thay vì treo trang.
+ * 6. Custom element ĐÃ ĐĂNG KÝ (customElements.define — vd <md-chu> của khung.js dựng markdown) tự dựng con
+ *    của nó từ thuộc tính: khi vá, dc-lite chỉ đặt lại thuộc tính (chỉ khi đổi → attributeChangedCallback),
+ *    KHÔNG vá con. Không có ngoại lệ này, mỗi lần dựng lại (gõ một phím) sẽ xoá sạch con mà phần tử tự tạo,
+ *    vì khuôn mẫu không có con nào. Trang demo không đăng ký custom element nào nên không bị ảnh hưởng.
  */
 (() => {
   'use strict';
@@ -188,7 +192,8 @@
     }
     for (const a of Array.from(l.attributes)) if (!f.hasAttribute(a.name)) l.removeAttribute(a.name);
     ganSuKien(l, on);
-    if (l.nodeName !== 'TEXTAREA') vaCon(l, f, ctx);
+    // Custom element đã đăng ký tự dựng con của nó (ý 6 ở đầu tệp) — chỉ vá thuộc tính.
+    if (l.nodeName !== 'TEXTAREA' && !customElements.get(l.localName)) vaCon(l, f, ctx);
     dieuKhien(l);
   }
   // Phần tử mới chèn: chuyển data-dc-on-* thành bộ nghe, đặt value/checked thật.

@@ -122,6 +122,34 @@ textarea.o.ma{font-size:13px}
 .bang-dong dd{min-width:0;overflow-wrap:anywhere}
 .chua-do{color:#6B4E00;font-style:italic}
 
+/* ---------- markdown của câu trả lời model (<md-chu class="md">, dựng bởi Khung.markdownRaDom) ---------- */
+.md{white-space:normal}
+.md > * + *,.md li > * + *,.md blockquote > * + *{margin-top:10px}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{font-weight:600;line-height:1.3;letter-spacing:-0.005em;text-wrap:balance}
+.md h1{font-size:20px}
+.md h2{font-size:18px}
+.md h3{font-size:16px}
+.md h4,.md h5,.md h6{font-size:15px}
+.md > h1:not(:first-child),.md > h2:not(:first-child),.md > h3:not(:first-child),.md > h4:not(:first-child){margin-top:18px}
+.md ul,.md ol{padding-left:1.5em}
+.md li + li{margin-top:4px}
+.md li::marker{color:var(--mute)}
+.md strong{font-weight:600}
+.md a{color:var(--acc);text-decoration:underline;text-underline-offset:2px}
+.md code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;background:#EEECE7;padding:1px 5px;border-radius:5px}
+.md pre{position:relative;background:#F3F1EC;border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow-x:auto;line-height:1.55;font-size:13px;white-space:pre;overflow-wrap:normal}
+.md pre[data-ngon-ngu]{padding-top:30px}
+.md pre[data-ngon-ngu]::before{content:attr(data-ngon-ngu);position:absolute;top:8px;left:14px;font-family:'Be Vietnam Pro',system-ui,sans-serif;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
+.md pre code{background:transparent;padding:0;border-radius:0;font-size:inherit}
+.md blockquote{margin:0;padding:2px 0 2px 14px;border-left:3px solid #CFCCC4;color:var(--mute)}
+.md hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+/* Bảng rộng cuộn ngang trong khung bọc (không banh bong bóng trên điện thoại); ô không bẻ giữa chữ. */
+.md-bang{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.md table{border-collapse:collapse;min-width:100%;font-size:13.5px;line-height:1.45}
+.md th,.md td{padding:8px 12px;border-top:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:normal;word-break:normal;min-width:5em}
+.md th{border-top:0;background:#FBFAF8;font-weight:600;white-space:nowrap}
+.md td + td,.md th + th{border-left:1px solid var(--line)}
+
 @media (max-width:880px){
 .tb{min-height:52px;padding:6px 14px;gap:10px}
 .tb .thanh-tab,.tb .nut-he-thong{display:none}

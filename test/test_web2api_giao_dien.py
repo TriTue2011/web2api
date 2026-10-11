@@ -14,13 +14,14 @@ from __future__ import annotations
 import json
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import httpx
 import pytest
 
 from app import so_module
 from app.main import app
-from gia import GitHubGia, MayChuThat, ghi_thu_muc, tep_kho
+from gia import GitHubGia, GoogleGia, MayChuThat, ghi_thu_muc, tep_kho
 from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
 from gia import OpenAIGia
 from ui_mau import XSS_TEN, module_ai, module_khong_khoa, module_mang
@@ -527,6 +528,163 @@ def test_studio_man_dau_hoi_thoai_tao_moi_va_thanh_duoi(trang, tmp_path, monkeyp
         assert trang.js("getComputedStyle(document.getElementById('thanh-tab')).display") == "none"
         assert trang.js("document.querySelector('[data-nav-duoi=\"studio\"]').getAttribute('aria-current')") == "page"
         assert khong_tran(trang)
+
+
+# ───────────── Studio: markdown an toàn + giờ thật trong lời gọi ─────────────
+
+MD = "[data-vai='assistant']"
+# Bắt lỗi JS chưa ai bắt (kể cả lỗi trong attributeChangedCallback của <md-chu> — trình duyệt báo qua sự kiện error).
+BAT_LOI_JS = "window.__loiJs = []; window.addEventListener('error', (e) => window.__loiJs.push(String(e.message)))"
+CAU_MD = [
+    "## Kết quả\n", "Đây là **đậm** và *nghiêng*, mã `x = 1`.\n\n",
+    "- một\n- hai\n  - con lồng\n\n", "1. bước một\n2. bước hai\n\n",
+    "```py\nprint(\"xin chào\")\n```\n\n",
+    "| Tên | Giá |\n|---|---:|\n| táo | 5 |\n\n", "Xem [tài liệu](https://vd.example/tai-lieu).",
+]
+
+
+def _gui(trang, chu: str, so_tra_loi: int):
+    trang.go("#o-soan", chu)
+    trang.bam("document.getElementById('nut-gui')")
+    trang.cho(f"document.querySelectorAll({json.dumps(MD)}).length === {so_tra_loi} && document.getElementById('trang-thai')?.innerText === 'Xong.'",
+              han=15, mo_ta=f"trả lời lượt {so_tra_loi}")
+
+
+def test_studio_markdown_an_toan_va_stream_do(trang, tmp_path, monkeypatch):
+    with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
+        lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        trang.js(BAT_LOI_JS)
+
+        # (1) Markdown thành phần tử thật; không còn «**» hiển thị.
+        monkeypatch.setenv("GIA_KHUC", json.dumps(CAU_MD))
+        _gui(trang, "Cho tôi một ví dụ", 1)
+        q = f"document.querySelector({json.dumps(MD)})"
+        dem = trang.js(f"""(() => {{ const m = {q}; const n = (s) => m.querySelectorAll(s).length;
+            return {{ h2: n('h2'), strong: n('strong'), em: n('em'), code: n('p code'), li: n('li'), long: n('ul ul > li'),
+                      ol: n('ol > li'), pre: n('pre > code'), th: n('table th'), td: n('table td'), bang: n('.md-bang > table') }}; }})()""")
+        assert dem == {"h2": 1, "strong": 1, "em": 1, "code": 1, "li": 5, "long": 1, "ol": 2, "pre": 1, "th": 2, "td": 2, "bang": 1}, dem
+        assert trang.js(f"{q}.querySelector('pre').dataset.ngonNgu") == "py"
+        assert trang.js(f"{q}.querySelector('pre code').textContent") == 'print("xin chào")'
+        assert trang.js(f"getComputedStyle({q}.querySelector('td + td')).textAlign") == "right"
+        a = trang.js(f"(() => {{ const a = {q}.querySelector('a'); return [a.href, a.target, a.rel, a.innerText]; }})()")
+        assert a == ["https://vd.example/tai-lieu", "_blank", "noopener noreferrer", "tài liệu"]
+        chu = trang.chu(MD)
+        assert "**" not in chu and "##" not in chu and "```" not in chu and "|---" not in chu, chu
+        # dc-lite dựng lại cả trang mỗi phím gõ: câu trả lời đã dựng KHÔNG được mất (custom element tự giữ con).
+        trang.go("#o-soan", "gõ dở")
+        trang.cho("document.getElementById('o-soan').value === 'gõ dở'", mo_ta="ô soạn nhận chữ")
+        assert trang.js(f"{q}.querySelectorAll('strong, table, pre').length") == 3
+        trang.js("const o = document.getElementById('o-soan'); o.value = ''; o.dispatchEvent(new Event('input', {bubbles: true}))")
+        # Tin người dùng vẫn là chữ thô.
+        monkeypatch.setenv("GIA_KHUC", json.dumps(["Ổn."]))
+        _gui(trang, "**không đậm**", 2)
+        assert trang.chu("[data-vai='user']") == "Cho tôi một ví dụ"
+        assert trang.js("document.querySelectorAll('[data-vai=\"user\"]')[1].innerText") == "**không đậm**"
+        assert trang.js("document.querySelectorAll('[data-vai=\"user\"] strong').length") == 0
+        assert trang.js(f"{q}.querySelectorAll('strong, table, pre').length") == 3   # lượt cũ vẫn nguyên sau lượt mới
+
+        # Bảng rộng trên điện thoại: cuộn ngang TRONG khung bọc, trang không tràn ngang.
+        trang.khung(390, 844, True)
+        monkeypatch.setenv("GIA_KHUC", json.dumps(["| Thiết bị | Phòng | Trạng thái | Lần bật gần nhất | Ghi chú |\n|---|---|---|---|---|\n",
+                                                   "| Đèn trần | Phòng khách | đang bật | 19:42 hôm qua | điều khiển bằng công tắc |\n"]))
+        _gui(trang, "Bảng rộng", 3)
+        bang = f"document.querySelectorAll({json.dumps(MD)})[2].querySelector('.md-bang')"
+        assert trang.js(f"{bang}.scrollWidth > {bang}.clientWidth + 40"), "bảng rộng phải cuộn trong khung bọc"
+        assert khong_tran(trang)
+        trang.js(f"{bang}.scrollIntoView({{block: 'center'}})")
+        trang.chup("studio-bang-rong-dien-thoai")
+        trang.khung(1280, 800)
+
+        # (2) HTML/URL độc trong câu trả lời: hiện thành chữ, không tạo phần tử nguy hiểm, không chạy.
+        trang.bam("document.getElementById('nut-xoa')")
+        monkeypatch.setenv("GIA_KHUC", json.dumps([
+            "<script>window.__xss=1</script> ", '<img src=x onerror="window.__xss=2"> ',
+            "[x](javascript:window.__xss=3) ", "[y](JavaScript:window.__xss=4) ", "[z](data:text/html,<b>5</b>) ",
+            "![a](https://vd.example/a.png) <iframe src=\"javascript:window.__xss=6\"></iframe>"]))
+        _gui(trang, "Thử", 1)
+        assert trang.js(f"{q}.querySelectorAll('script, img, iframe, a, b, [onerror]').length") == 0
+        chu = trang.chu(MD)
+        for nguyen_van in ("<script>window.__xss=1</script>", "<img src=x onerror=", "[x](javascript:window.__xss=3)",
+                           "[y](JavaScript:", "[z](data:text/html,<b>5</b>)", "![a](https://vd.example/a.png)", "<iframe"):
+            assert nguyen_van in chu, (nguyen_van, chu)
+        time.sleep(0.3)
+        assert trang.js("window.__xss === undefined")
+
+        # (6) Stream dở: «**» chưa đóng là chữ thường, khối ``` chưa đóng là khối mã đang mở — không văng lỗi JS.
+        trang.bam("document.getElementById('nut-xoa')")
+        monkeypatch.setenv("GIA_TRE", "0.5")
+        monkeypatch.setenv("GIA_KHUC", json.dumps(["Đang **dở", " dang** rồi.\n\n```js\nlet a", " = 1\n```\nXong **hẳn**."]))
+        trang.go("#o-soan", "Stream dở")
+        trang.bam("document.getElementById('nut-gui')")
+        trang.cho(f"({q}?.innerText || '') === 'Đang **dở'", mo_ta="khúc 1: ** chưa đóng")
+        assert trang.js(f"{q}.querySelectorAll('strong').length") == 0
+        trang.cho(f"!!{q}.querySelector('pre[data-dang-mo] code')", mo_ta="khúc 2: khối mã đang mở")
+        assert trang.js(f"{q}.querySelector('pre code').textContent") == "let a"
+        assert trang.js(f"{q}.querySelectorAll('strong').length") == 1
+        trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=10, mo_ta="stream dở xong")
+        assert trang.js(f"{q}.querySelector('pre code').textContent") == "let a = 1"
+        assert not trang.js(f"{q}.querySelector('pre').hasAttribute('data-dang-mo')")
+        assert trang.js(f"{q}.querySelectorAll('strong').length") == 2
+        assert trang.js("window.__loiJs") == []
+        assert not trang.js("!!document.getElementById('dc-loi')")
+
+
+def _tep_gemini() -> dict:
+    goc = Path(__file__).resolve().parents[1] / "modules" / "gemini-api"
+    return {str(p.relative_to(goc)): p.read_bytes() for p in goc.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+
+
+def test_studio_gan_gio_that_ngay_truoc_tin_cuoi(trang, tmp_path, monkeypatch):
+    """Model không có đồng hồ: Studio gắn giờ của TRÌNH DUYỆT (múi giờ của nó, không viết chết Việt Nam) vào một tin
+    system ngay trước tin người dùng cuối; đo ở thân yêu cầu mà Google giả NHẬN qua lõi + module gemini-api thật."""
+    g = GoogleGia()
+    g.hanh_vi[K_TOT] = {"kieu": "tot"}
+    g.khuc_chat = ["Trả lời **một**."]
+    with MayChuThat(g.app) as s_g, loi_that(tmp_path, monkeypatch, modules={"gemini-api": _tep_gemini()}) as w:
+        lien_ket(w, "gemini-api", {"api_keys": [K_TOT], "base_url": s_g.url})
+        trang.cdp.goi("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"}, trang.s)
+        _mo_studio(trang, w)
+        nam = trang.js("String(new Date().getFullYear())")
+        _gui(trang, "Hôm nay thứ mấy?", 1)
+        tin = [x for x in g.nhat_ky if x["duong"] == "chat"][-1]["than"]["messages"]
+        assert [m["role"] for m in tin] == ["system", "user"] and tin[1]["content"] == "Hôm nay thứ mấy?", tin
+        gio = tin[0]["content"]
+        assert "America/New_York" in gio and nam in gio and "Việt Nam" not in gio, gio
+        # Không hiện trong khung hội thoại, không nằm trong state (lịch sử) của trang.
+        assert "Giờ hiện tại" not in trang.js("document.body.innerText")
+        assert not any("Giờ hiện tại" in s for s in trang.state_thanh_phan())
+        assert trang.chu(MD) == "Trả lời một." and trang.js(f"document.querySelectorAll({json.dumps(MD + ' strong')}).length") == 1
+
+        # Lượt hai tính lại giờ (đồng hồ trình duyệt giả sang 02/01/2031 14:30 UTC = 09:30 ở New York), không dồn tin cũ.
+        trang.js("(() => { const D = Date; const T = D.UTC(2031, 0, 2, 14, 30); window.Date = class extends D {"
+                 " constructor(...a) { if (a.length) super(...a); else super(T); } static now() { return T; } }; })()")
+        _gui(trang, "Còn bây giờ?", 2)
+        tin2 = [x for x in g.nhat_ky if x["duong"] == "chat"][-1]["than"]["messages"]
+        assert [m["role"] for m in tin2] == ["user", "assistant", "system", "user"], tin2
+        assert [m["content"] for m in tin2 if m["role"] != "system"] == ["Hôm nay thứ mấy?", "Trả lời **một**.", "Còn bây giờ?"]
+        assert "09:30" in tin2[2]["content"] and "02/01/2031" in tin2[2]["content"] and gio != tin2[2]["content"], tin2[2]
+        assert "Giờ hiện tại" not in trang.js("document.body.innerText")
+
+
+def test_studio_anh_video_khong_gan_tin_gio(trang, tmp_path, monkeypatch):
+    with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
+        lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        trang.js("(() => { window.__than = []; const f = window.fetch; window.fetch = (u, o) => {"
+                 " if (o && o.method === 'POST' && /(^|\\/)v1\\//.test(String(u))) window.__than.push([String(u), o.body]); return f(u, o); }; })()")
+        trang.bam("document.querySelector('[data-che-do=\"anh\"]')")
+        trang.go("#o-soan", "một chú mèo")
+        trang.bam("document.getElementById('nut-gui')")
+        trang.cho("document.querySelector('#ket-qua-anh img')", han=10, mo_ta="ảnh")
+        trang.bam("document.querySelector('[data-che-do=\"video\"]')")
+        trang.go("#o-soan", "sóng biển")
+        trang.bam("document.getElementById('nut-gui')")
+        trang.cho("document.querySelector('#video-kq video')", han=20, mo_ta="video")
+        than = {u: json.loads(b) for u, b in trang.js("window.__than")}
+        assert set(than) == {"v1/images/generations", "v1/videos"}, than
+        assert than["v1/images/generations"]["prompt"] == "một chú mèo" and than["v1/videos"] == {"model": "gia/phim-1", "prompt": "sóng biển"}
+        assert not any("messages" in b or "Giờ hiện tại" in json.dumps(b, ensure_ascii=False) for b in than.values())
 
 
 def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):

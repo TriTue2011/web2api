@@ -39,7 +39,10 @@ composer with a model chip, mode chips for chat / image / video) with an "Instal
 strip above the composer says "No key for … yet. Add one in System → AI → Accounts" with a button to that module's
 card, and the composer stays disabled instead of returning a raw `404`. Add your Google AI Studio key in **System → AI → Accounts**
 (keys can be added or removed one by one later; an empty text field never overwrites a saved value). After saving,
-the **Providers** tab (real models, per-key health) appears without a page reload and Studio is ready to chat. A
+the **Providers** tab (real models, per-key health) appears without a page reload and Studio is ready to chat. Studio
+renders replies as safe markdown (bold, lists, code, http/https links, tables that scroll inside the bubble; raw HTML
+shows as text) and attaches the current date and time in the browser's time zone to each chat call (one `system`
+message right before the last user message, never shown or stored in the conversation). A
 module that maps to no main tab (for example a "network" type) stays on System → Modules after install, with the
 "Add account / API key" step open in its panel. Then call the API:
 

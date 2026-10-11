@@ -383,7 +383,310 @@
     }
   };
 
+  /*
+   * Markdown của câu trả lời model (Studio) — bộ dựng nhỏ, không thư viện ngoài, KHÔNG có nhánh theo nhà cung cấp:
+   * đây là phần hiển thị của ứng dụng khách, như giao diện chat của c2a (react-markdown + remark-gfm).
+   *
+   * Hai tầng tách bạch:
+   *   phanTichMarkdown(chu) — hàm THUẦN: chữ → danh sách khối (đoạn, tiêu đề, khối mã, danh sách, trích dẫn, đường kẻ,
+   *                           bảng), mỗi khối chứa đoạn trong dòng (chữ, đậm, nghiêng, gạch, mã, liên kết, xuống dòng).
+   *                           Không đụng DOM — chạy được bằng node (test/test_web2api_markdown.py).
+   *   markdownRaDom(chu)    — dựng DocumentFragment từ cây trên CHỈ bằng createElement/textContent/setAttribute:
+   *                           không innerHTML, nên HTML thô trong câu trả lời (<script>, <img onerror>…) là CHỮ.
+   * Liên kết chỉ nhận URL tuyệt đối http/https/mailto (mdLienKet); ảnh ![..](..) và lược đồ khác hiện nguyên văn.
+   *
+   * Stream từng khúc: dấu mở (**, *, `, ~~) chỉ thành định dạng khi đã có dấu đóng — chưa có thì là chữ thường;
+   * khối ``` chưa đóng là khối mã đang mở tới hết chữ; bảng chỉ thành bảng khi dòng kẻ |---| đã tới.
+   * Độ lồng (trích dẫn, danh sách, đậm trong nghiêng…) có trần MD_SAU: vượt trần là chữ thường, không đệ quy vô hạn.
+   */
+  const MD_SAU = 6;
+  const RE_RAO = /^( {0,3})(`{3,}|~{3,})[ \t]*([^\s`]*)(.*)$/;
+  const RE_TIEU_DE = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+  const RE_KE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+  const RE_TRICH = /^ {0,3}> ?(.*)$/;
+  const RE_DS = /^( *)([-*+]|(\d{1,9})[.)])(?:[ \t]+(.*))?$/;
+  const RE_PHAN_CACH = /^ *\|? *:?-+:? *(\| *:?-+:? *)*\|? *$/;
+  const DAU_CAU = /[!-/:-@[-`{-~]/;          // dấu câu ASCII — thoát được bằng «\»
+  const CHU_SO = /[\p{L}\p{N}]/u;
+
+  // Lược đồ an toàn cho liên kết trong câu trả lời: chỉ URL TUYỆT ĐỐI http/https/mailto (javascript:, data:… → null).
+  function mdLienKet(u) {
+    try { const x = new URL(String(u).trim()); return ['http:', 'https:', 'mailto:'].includes(x.protocol) ? x.href : null; }
+    catch (e) { return null; }
+  }
+  const thutDau = (d) => d.length - d.trimStart().length;
+  function laRao(d) {
+    const m = RE_RAO.exec(d);
+    // Rào ``` không được có ` trong phần sau (vd «```a```» trên một dòng là mã trong dòng, không phải khối).
+    return m && !(m[2][0] === '`' && m[4].includes('`')) ? m : null;
+  }
+  const laBangDau = (dong, i) => dong[i].includes('|') && i + 1 < dong.length && dong[i + 1].includes('|')
+    && RE_PHAN_CACH.test(dong[i + 1]) && tachO(dong[i]).length === tachO(dong[i + 1]).length;
+  // Dòng này có mở một khối khác không (thì đoạn văn đang gom dừng lại). Danh sách đánh số chỉ cắt đoạn khi bắt đầu
+  // từ 1 (như CommonMark) — «2024. Năm ấy…» đầu dòng giữa đoạn vẫn là chữ.
+  function batDauKhoi(dong, i) {
+    const d = dong[i];
+    const m = RE_DS.exec(d);
+    return !!(laRao(d) || RE_TIEU_DE.test(d) || RE_KE.test(d) || RE_TRICH.test(d) || laBangDau(dong, i)
+      || (m && m[4] && (m[3] == null || m[3] === '1')));
+  }
+  // Ô của một dòng bảng GFM: bỏ | đầu/cuối, tách theo | chưa thoát; «\|» là chữ |.
+  function tachO(d) {
+    let s = d.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+    const ra = []; let o = '';
+    for (let k = 0; k < s.length; k++) {
+      if (s[k] === '\\' && s[k + 1] === '|') { o += '|'; k++; continue; }
+      if (s[k] === '|') { ra.push(o.trim()); o = ''; continue; }
+      o += s[k];
+    }
+    ra.push(o.trim());
+    return ra;
+  }
+
+  function phanKhoi(dong, sau) {
+    const ra = []; let i = 0; let m;
+    while (i < dong.length) {
+      const d = dong[i];
+      if (!d.trim()) { i++; continue; }
+      if ((m = laRao(d))) {
+        const thut = m[1].length, rao = m[2]; const ma = []; let dong_ = false; i++;
+        for (; i < dong.length; i++) {
+          const t = dong[i].trim();
+          if (thutDau(dong[i]) < 4 && t.length >= rao.length && t[0] === rao[0] && /^(`+|~+)$/.test(t)) { dong_ = true; i++; break; }
+          ma.push(dong[i].slice(Math.min(thut, thutDau(dong[i]))));
+        }
+        ra.push({ t: 'ma', ngon_ngu: /^[\w+#.-]{1,24}$/.test(m[3]) ? m[3] : '', chu: ma.join('\n'), mo: !dong_ });
+        continue;
+      }
+      if ((m = RE_TIEU_DE.exec(d))) { ra.push({ t: 'tieu_de', cap: m[1].length, con: dongTrong(m[2] || '', sau) }); i++; continue; }
+      if (RE_KE.test(d)) { ra.push({ t: 'ke' }); i++; continue; }
+      if (RE_TRICH.test(d)) {
+        const con = [];
+        while (i < dong.length && dong[i].trim() && (m = RE_TRICH.exec(dong[i]))) { con.push(m[1]); i++; }
+        ra.push(sau < MD_SAU ? { t: 'trich', con: phanKhoi(con, sau + 1) } : { t: 'doan', con: dongTrong(con.join('\n'), sau) });
+        continue;
+      }
+      if (laBangDau(dong, i)) {
+        const canh = tachO(dong[i + 1]).map((c) => (c.endsWith(':') ? (c.startsWith(':') ? 'center' : 'right') : c.startsWith(':') ? 'left' : ''));
+        const dau = tachO(dong[i]); const n = dau.length; const hang = [];
+        for (i += 2; i < dong.length && dong[i].trim() && dong[i].includes('|'); i++) {
+          const o = tachO(dong[i]).slice(0, n);
+          while (o.length < n) o.push('');
+          hang.push(o.map((x) => dongTrong(x, sau)));
+        }
+        ra.push({ t: 'bang', canh, dau: dau.map((x) => dongTrong(x, sau)), hang });
+        continue;
+      }
+      if ((m = RE_DS.exec(d))) {
+        // Mục cùng cấp: dòng mang dấu mục cùng kiểu (gạch / số) thụt ≤ thut0+1. Dòng thụt sâu hơn (kể cả sau dòng
+        // trống) thuộc mục đang mở — gồm danh sách lồng; bỏ phần thụt rồi phân tích lại như một văn bản con.
+        const thut0 = m[1].length, coSo = m[3] != null; const muc = [];
+        let cur = null;
+        while (i < dong.length) {
+          const x = dong[i]; const mm = RE_DS.exec(x);
+          if (mm && mm[1].length <= thut0 + 1 && (mm[3] != null) === coSo && !RE_KE.test(x)) {
+            cur = { dong: [mm[4] || ''], ci: x.length - (mm[4] || '').length }; muc.push(cur); i++; continue;
+          }
+          if (!x.trim()) {
+            let j = i + 1; while (j < dong.length && !dong[j].trim()) j++;
+            if (j < dong.length && thutDau(dong[j]) > thut0 + 1) { cur.dong.push(''); i++; continue; }
+            const mj = j < dong.length ? RE_DS.exec(dong[j]) : null;
+            if (mj && mj[1].length <= thut0 + 1 && (mj[3] != null) === coSo) { i = j; continue; }
+            break;
+          }
+          if (thutDau(x) > thut0 + 1) { cur.dong.push(x.slice(Math.min(cur.ci, thutDau(x)))); i++; continue; }
+          break;
+        }
+        ra.push({ t: 'ds', so: coSo, bat_dau: coSo ? parseInt(m[3], 10) : 1,
+          muc: muc.map((x) => (sau < MD_SAU ? phanKhoi(x.dong, sau + 1) : [{ t: 'doan', con: dongTrong(x.dong.join('\n'), sau) }])) });
+        continue;
+      }
+      const doan = [d]; i++;
+      while (i < dong.length && dong[i].trim() && !batDauKhoi(dong, i)) { doan.push(dong[i]); i++; }
+      ra.push({ t: 'doan', con: dongTrong(doan.map((x) => x.replace(/^ {0,3}/, '')).join('\n'), sau) });
+    }
+    return ra;
+  }
+
+  // [chữ](url "tiêu đề") bắt đầu ở s[i] === '[' → {chu, url, het} hoặc null. Dò tối đa TRAN_LK ký tự mỗi phần để
+  // chuỗi «[[[[…» dài không thành O(n²).
+  const TRAN_LK = 2000;
+  function docLienKet(s, i) {
+    let sau = 0, j = i;
+    for (; j < s.length && j - i < TRAN_LK; j++) {
+      if (s[j] === '\\') { j++; continue; }
+      if (s[j] === '[') sau++;
+      else if (s[j] === ']' && --sau === 0) break;
+    }
+    if (s[j] !== ']' || s[j + 1] !== '(') return null;
+    const chu = s.slice(i + 1, j);
+    let k = j + 2; while (s[k] === ' ') k++;
+    let url = '';
+    if (s[k] === '<') {
+      const e = s.indexOf('>', k); if (e < 0 || e - k > TRAN_LK) return null;
+      url = s.slice(k + 1, e); k = e + 1;
+    } else {
+      let ngoac = 0; const bd = k;
+      for (; k < s.length && k - bd < TRAN_LK; k++) {
+        const c = s[k];
+        if (c === '\\') { k++; continue; }
+        if (/\s/.test(c)) break;
+        if (c === '(') ngoac++;
+        else if (c === ')') { if (!ngoac) break; ngoac--; }
+      }
+      url = s.slice(bd, k);
+    }
+    while (s[k] === ' ') k++;
+    const mo = s[k];
+    if (mo === '"' || mo === "'" || mo === '(') {
+      const e = s.indexOf(mo === '(' ? ')' : mo, k + 1); if (e < 0) return null;
+      k = e + 1; while (s[k] === ' ') k++;
+    }
+    return s[k] === ')' ? { chu, url, het: k + 1 } : null;
+  }
+
+  function dongTrong(s, sau, trongLk) {
+    const ra = []; let chu = '';
+    const day = () => { if (chu) { ra.push({ t: 'chu', v: chu }); chu = ''; } };
+    const khongCo = {};   // dấu đóng → vị trí mà từ đó trở đi chắc chắn không còn dấu đóng hợp lệ (tránh dò lại O(n²))
+    const cuoiLk = s.lastIndexOf('](');   // sau chỗ này không thể còn liên kết: «[» chỉ là chữ, khỏi dò
+    // Dấu đóng của nhấn mạnh: đúng `dau` (không dính thêm ký tự cùng loại), sát chữ bên trái; với «_» bên phải không
+    // là chữ/số (snake_case giữ nguyên).
+    function timDong(tu, dau) {
+      if (khongCo[dau] != null && tu >= khongCo[dau]) return -1;
+      const c = dau[0], n = dau.length;
+      for (let j = s.indexOf(dau, tu); j >= 0; j = s.indexOf(dau, j + 1)) {
+        if (j > tu && !/\s/.test(s[j - 1]) && s[j - 1] !== c && s[j + n] !== c && !(c === '_' && CHU_SO.test(s[j + n] || ''))) return j;
+      }
+      khongCo[dau] = tu;
+      return -1;
+    }
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === '\\' && i + 1 < s.length && DAU_CAU.test(s[i + 1])) { chu += s[i + 1]; i += 2; continue; }
+      if (c === '\n') { day(); ra.push({ t: 'xuong' }); i++; continue; }
+      if (c === '`') {
+        let n = 1; while (s[i + n] === '`') n++;
+        let j = i + n, dong_ = -1;
+        while ((j = s.indexOf('`'.repeat(n), j)) >= 0) {
+          let k = j; while (s[k] === '`') k++;
+          if (k - j === n) { dong_ = j; break; }
+          j = k;
+        }
+        if (dong_ < 0) { chu += '`'.repeat(n); i += n; continue; }
+        let v = s.slice(i + n, dong_).replace(/\n/g, ' ');
+        if (v.length > 2 && v[0] === ' ' && v[v.length - 1] === ' ' && v.trim()) v = v.slice(1, -1);
+        day(); ra.push({ t: 'ma', v }); i = dong_ + n; continue;
+      }
+      if ((c === '[' || (c === '!' && s[i + 1] === '[')) && i < cuoiLk) {
+        const lk = docLienKet(s, c === '!' ? i + 1 : i);
+        if (lk) {
+          const href = c === '[' && !trongLk && sau < MD_SAU ? mdLienKet(lk.url) : null;
+          if (href) { day(); ra.push({ t: 'lien_ket', href, con: dongTrong(lk.chu, sau + 1, true) }); }
+          else chu += s.slice(i, lk.het);   // ảnh, lược đồ không an toàn, liên kết lồng: hiện nguyên văn như chữ
+          i = lk.het; continue;
+        }
+      }
+      if (c === '*' || c === '_' || c === '~') {
+        let n = 1; while (s[i + n] === c) n++;
+        const ke = s[i + n] || ' ';
+        const hop = c === '~' ? n === 2 : n <= 3 && (c === '*' || !CHU_SO.test(s[i - 1] || ''));
+        if (hop && sau < MD_SAU && !/\s/.test(ke)) {
+          const j = timDong(i + n, c.repeat(n));
+          if (j >= 0) {
+            const trong = dongTrong(s.slice(i + n, j), sau + 1, trongLk);
+            day();
+            ra.push(c === '~' ? { t: 'gach', con: trong } : n === 1 ? { t: 'nghieng', con: trong }
+              : n === 2 ? { t: 'dam', con: trong } : { t: 'dam', con: [{ t: 'nghieng', con: trong }] });
+            i = j + n; continue;
+          }
+        }
+        chu += c.repeat(n); i += n; continue;
+      }
+      // Địa chỉ trần http(s)://… (như GFM autolink): bỏ dấu câu dính cuối và «)» thừa.
+      if ((c === 'h' || c === 'H') && !trongLk && !CHU_SO.test(s[i - 1] || '') && /^https?:\/\//i.test(s.slice(i, i + 8))) {
+        let u = /^[^\s<>]+/.exec(s.slice(i, i + TRAN_LK))[0];
+        for (;;) {
+          if (/[.,:;!?'"*_~]$/.test(u)) u = u.slice(0, -1);
+          else if (u.endsWith(')') && (u.match(/\(/g) || []).length < (u.match(/\)/g) || []).length) u = u.slice(0, -1);
+          else break;
+        }
+        const href = mdLienKet(u);
+        if (href) { day(); ra.push({ t: 'lien_ket', href, con: [{ t: 'chu', v: u }] }); i += u.length; continue; }
+      }
+      chu += c; i++;
+    }
+    day();
+    return ra;
+  }
+  const phanTichMarkdown = (chu) => phanKhoi(String(chu == null ? '' : chu).replace(/\r\n?/g, '\n')
+    .split('\n').map((d) => d.replace(/^\t+/, (t) => '    '.repeat(t.length))), 0);
+
+  function markdownRaDom(chu) {
+    const tao = (tag) => document.createElement(tag);
+    function trongDong(ds, cha) {
+      for (const x of ds) {
+        if (x.t === 'chu') { cha.appendChild(document.createTextNode(x.v)); continue; }
+        if (x.t === 'xuong') { cha.appendChild(tao('br')); continue; }
+        if (x.t === 'ma') { const e = tao('code'); e.textContent = x.v; cha.appendChild(e); continue; }
+        const e = tao({ dam: 'strong', nghieng: 'em', gach: 'del', lien_ket: 'a' }[x.t]);
+        if (x.t === 'lien_ket') {
+          e.setAttribute('href', x.href); e.setAttribute('target', '_blank'); e.setAttribute('rel', 'noopener noreferrer');
+        }
+        trongDong(x.con, e);
+        cha.appendChild(e);
+      }
+      return cha;
+    }
+    function khoi(ds, cha) {
+      for (const k of ds) {
+        let e;
+        if (k.t === 'doan') e = trongDong(k.con, tao('p'));
+        else if (k.t === 'tieu_de') e = trongDong(k.con, tao('h' + k.cap));
+        else if (k.t === 'ke') e = tao('hr');
+        else if (k.t === 'trich') e = khoi(k.con, tao('blockquote'));
+        else if (k.t === 'ma') {
+          e = tao('pre');
+          if (k.ngon_ngu) e.setAttribute('data-ngon-ngu', k.ngon_ngu);
+          if (k.mo) e.setAttribute('data-dang-mo', '');
+          const c = tao('code'); c.textContent = k.chu; e.appendChild(c);
+        } else if (k.t === 'ds') {
+          e = tao(k.so ? 'ol' : 'ul');
+          if (k.so && k.bat_dau !== 1) e.setAttribute('start', String(k.bat_dau));
+          for (const m of k.muc) e.appendChild(khoi(m, tao('li')));
+        } else if (k.t === 'bang') {
+          // Bảng rộng cuộn ngang TRONG khung bọc, không banh bong bóng (điện thoại).
+          e = tao('div'); e.className = 'md-bang';
+          const b = tao('table'); const th = tao('thead'); const tb = tao('tbody'); const r = tao('tr');
+          k.dau.forEach((o, j) => { const c = trongDong(o, tao('th')); if (k.canh[j]) c.style.textAlign = k.canh[j]; r.appendChild(c); });
+          th.appendChild(r);
+          for (const h of k.hang) {
+            const rr = tao('tr');
+            h.forEach((o, j) => { const c = trongDong(o, tao('td')); if (k.canh[j]) c.style.textAlign = k.canh[j]; rr.appendChild(c); });
+            tb.appendChild(rr);
+          }
+          b.append(th, tb); e.appendChild(b);
+        }
+        cha.appendChild(e);
+      }
+      return cha;
+    }
+    return khoi(phanTichMarkdown(chu), document.createDocumentFragment());
+  }
+  // <md-chu chu="…">: phần tử tự dựng con từ thuộc tính `chu` bằng markdownRaDom. Dùng trong khuôn mẫu dc-lite như
+  // <md-chu chu="{{t.tra}}">: dc-lite chỉ đặt lại thuộc tính khi chữ đổi (mỗi khúc stream) và KHÔNG vá con của
+  // custom element đã đăng ký (support.js, ý 6) — nên câu trả lời không bị xoá khi trang dựng lại vì gõ phím.
+  if (typeof customElements !== 'undefined' && !customElements.get('md-chu')) {
+    customElements.define('md-chu', class extends HTMLElement {
+      static get observedAttributes() { return ['chu']; }
+      attributeChangedCallback() { this.replaceChildren(markdownRaDom(this.getAttribute('chu') || '')); }
+    });
+  }
+
   window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
     BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, boDau, diaChiV1,
-    dongKhoa, cauHinh };
+    dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom };
 })();
