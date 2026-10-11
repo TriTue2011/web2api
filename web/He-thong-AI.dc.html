@@ -13,31 +13,49 @@
 <helmet>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
-.ds-the{display:flex;flex-direction:column;gap:12px}
-.the-dau{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
-.the-dau h3{flex:1 1 200px;min-width:0;font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:500;font-size:21px;line-height:1.25;overflow-wrap:anywhere}
-.ds-model{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px}
-.ds-model li{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;background:#FBFAF8;max-width:100%}
+/* Hệ thống → AI theo phần AI (Tài khoản / Provider) của He-thong.dc.html trong bản demo: hàng chip đầu trang, đoạn
+   mô tả nhạt, thẻ trắng bo 14px cho từng tài khoản, bảng dạng thẻ cho model và sức khoẻ khoá. */
+main.pg{gap:16px}
+.the-tk{min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.the-tk h3{font-size:15px;font-weight:500;line-height:1.35;overflow-wrap:anywhere}
+.the-tk h3:focus{outline:none}
+.the-tk .phu-dong{font-size:13px;color:var(--mute);overflow-wrap:anywhere}
+.the-tk .dong-huy{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.the-tk .chua-khoa{margin-top:6px;font-size:13px}
+.the-tk .form-cau-hinh{margin-top:10px;padding-top:14px;border-top:1px solid var(--line)}
+.the-tk .ket-qua-cai{margin-top:6px}
+.ds-tk{display:flex;flex-direction:column;gap:8px}
+.pv{display:flex;flex-direction:column;gap:12px;min-width:0}
+.pv + .pv{margin-top:12px}
+.pv-dau{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.pv-dau h3{flex:1 1 220px;min-width:0;font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.pv-dau .tien-to{font-weight:400;color:var(--mute)}
+.ds-kq.trong-bang{gap:0}
+.ds-kq.trong-bang li{border:0;border-top:1px solid var(--line);border-radius:0;padding:10px 16px}
+.ds-kq.trong-bang li:first-child{border-top:0}
 </style>
 </helmet>
 <div class="goc">
 
-<nav aria-label="Điều hướng Hệ thống" class="tb">
-<div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></div>
-<sc-if value="{{coQuayLai}}"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5 M11 6l-6 6 6 6"></path></svg><span>Quay lại {{quayLai.nhan}}</span></a></sc-if>
-<sc-if value="{{khongQuayLai}}"><span class="ten-web">web2api</span></sc-if>
-<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}">{{t.nhan}}<sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-for></div>
+<nav aria-label="Điều hướng Hệ thống" class="tb tb-ht" onKeyDown="{{phimNav}}">
+<sc-if value="{{coQuayLai}}"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.quay_lai}}"></path></svg><span>Quay lại {{quayLai.nhan}}</span></a></sc-if>
+<sc-if value="{{khongQuayLai}}"><div class="thuong-hieu"><div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div><span class="ten-web">web2api</span></div></sc-if>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><div class="muc-nav">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}">{{t.nhan}}<sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}">{{t.nhan}}<svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}">{{c.nhan}}</a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
 </nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
 
 <main class="pg">
-<header style="display:flex;flex-direction:column;gap:8px">
-<span class="nhan-tren">Hệ thống</span>
-<h1 class="tieu-de">AI</h1>
-<p class="phu" style="max-width:70ch;font-size:15px">Tài khoản và khoá của các nguồn AI đã cài, cùng tình trạng từng provider đã liên kết: model thật từ /v1/models và sức khoẻ từng khoá.</p>
-</header>
-
+<h1 class="an-chu">Hệ thống — AI</h1>
 <sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang đọc…</p></sc-if>
 <sc-if value="{{tnLoi}}"><p role="alert" class="bao bao-loi">Không đọc được dữ liệu: {{tnLoi}}</p></sc-if>
+
+<sc-if value="{{coTab}}">
+<div class="hang-chip" role="tablist" aria-label="Mục AI" id="tab-ai"><sc-for list="{{tabs}}" as="t"><button type="button" role="tab" class="chip" id="{{t.idTab}}" data-tab="{{t.id}}" aria-selected="{{t.on}}" aria-controls="bang-ai" onClick="{{t.chon}}" onKeyDown="{{phimTab}}">{{t.nhan}}<span class="dem">{{t.dem}}</span></button></sc-for></div>
+</sc-if>
 
 <sc-if value="{{khongKhoa}}">
 <section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri" style="gap:10px">
@@ -48,17 +66,16 @@
 </sc-if>
 <sc-if value="{{khoaLoi}}"><p role="alert" class="bao bao-loi" id="khoa-loi">{{khoaLoi}}</p></sc-if>
 
-<sc-if value="{{coTab}}">
-<div class="chip-ds" role="tablist" aria-label="Mục AI" id="tab-ai"><sc-for list="{{tabs}}" as="t"><button type="button" role="tab" class="chip" id="{{t.idTab}}" data-tab="{{t.id}}" aria-selected="{{t.on}}" aria-controls="bang-ai" onClick="{{t.chon}}" onKeyDown="{{phimTab}}">{{t.nhan}}</button></sc-for></div>
-</sc-if>
-
-<section id="bang-ai" role="tabpanel" aria-labelledby="{{idTabChon}}" class="ds-the">
+<section id="bang-ai" role="tabpanel" aria-labelledby="{{idTabChon}}" style="display:flex;flex-direction:column;gap:12px;min-width:0">
 
 <sc-if value="{{laTaiKhoan}}">
+<p class="mo-ta-trang">Khoá API của từng nguồn AI đã cài. Khoá đã lưu chỉ hiện dạng che; khoá mới được thử bằng một lời gọi thật trước khi lưu, rồi xoá khỏi trang. Model và sức khoẻ từng khoá nằm ở tab Provider.</p>
+<div class="ds-tk">
 <sc-for list="{{taiKhoan}}" as="a">
-<article class="the" data-tai-khoan="{{a.id}}" aria-labelledby="{{a.idTen}}">
-<div class="the-dau"><h3 id="{{a.idTen}}" tabindex="-1">{{a.ten}}</h3><span class="{{a.lopTT}}">{{a.nhanTT}}</span></div>
-<span class="phu"><span class="ma">{{a.id}}</span> · model dạng <span class="ma">{{a.tienTo}}/…</span></span>
+<article class="the-tk" data-tai-khoan="{{a.id}}" aria-labelledby="{{a.idTen}}">
+<h3 id="{{a.idTen}}" tabindex="-1">{{a.ten}}</h3>
+<span class="phu-dong"><span class="ma">{{a.id}}</span> · model dạng <span class="ma">{{a.tienTo}}/…</span></span>
+<div class="dong-huy"><span class="{{a.lopTT}}">{{a.nhanTT}}</span><sc-if value="{{a.soKhoa}}"><span class="huy huy-xam">{{a.soKhoa}}</span></sc-if></div>
 <sc-if value="{{a.chuaKhoa}}"><p class="bao bao-vang chua-khoa">{{a.chuaKhoa}}</p></sc-if>
 <sc-if value="{{a.tuXa}}"><p class="phu">Module từ xa: khoá đặt lúc đăng ký (đang có: <span class="ma">{{a.khoaTuXa}}</span>). Muốn đổi thì gỡ ở Hệ thống → Module rồi đăng ký lại.</p></sc-if>
 <sc-if value="{{a.coForm}}">
@@ -93,45 +110,53 @@
 </sc-if>
 </article>
 </sc-for>
+</div>
 </sc-if>
 
 <sc-if value="{{laProvider}}">
+<p class="mo-ta-trang">Nguồn AI đã liên kết: model thật lấy từ /v1/models và sức khoẻ từng khoá, kiểm bằng lời gọi thật tới nhà cung cấp.</p>
 <sc-for list="{{provider}}" as="p">
-<article class="the" data-provider="{{p.id}}" aria-labelledby="{{p.idTen}}">
-<div class="the-dau"><h3 id="{{p.idTen}}">{{p.ten}}</h3><span class="{{p.lopSk}}">{{p.nhanSk}}</span><button type="button" class="nut nut-nho nut-kiem-lai" onClick="{{p.kiem}}" disabled="{{p.dangSk}}">{{p.nhanKiem}}</button></div>
-<span class="phu"><span class="ma">{{p.tienTo}}/…</span><sc-if value="{{p.baseUrl}}"> · gọi tới <span class="ma">{{p.baseUrl}}</span></sc-if></span>
-<div style="display:flex;flex-direction:column;gap:6px"><span class="nhan-muc">Model ({{p.soModel}})</span>
-<sc-if value="{{p.khongModel}}"><p class="phu">Chưa có model nào từ /v1/models cho tiền tố này.</p></sc-if>
-<ul class="ds-model"><sc-for list="{{p.models}}" as="m"><li><span class="ma">{{m.id}}</span><sc-for list="{{m.kn}}" as="c"><span class="huy huy-xam">{{c}}</span></sc-for></li></sc-for></ul>
+<section class="pv" data-provider="{{p.id}}" aria-labelledby="{{p.idTen}}">
+<div class="pv-dau"><h3 id="{{p.idTen}}">{{p.ten}} <span class="tien-to">· <span class="ma">{{p.tienTo}}/…</span></span></h3><span class="{{p.lopSk}}">{{p.nhanSk}}</span><button type="button" class="nut nut-nho nut-kiem-lai" onClick="{{p.kiem}}" disabled="{{p.dangSk}}">{{p.nhanKiem}}</button></div>
+<sc-if value="{{p.baseUrl}}"><span class="phu">Gọi tới <span class="ma">{{p.baseUrl}}</span></span></sc-if>
+<div class="bang-tb"><div class="bang-tb-dau"><span>Model</span><span class="dem-phai">{{p.soModel}} model</span></div>
+<sc-if value="{{p.khongModel}}"><p class="bang-tb-rong">Chưa có model nào từ /v1/models cho tiền tố này.</p></sc-if>
+<ul class="bang-tb-ds"><sc-for list="{{p.models}}" as="m"><li class="bang-tb-dong"><span class="ma" style="flex:1 1 200px;min-width:0">{{m.id}}</span><sc-for list="{{m.kn}}" as="c"><span class="huy huy-xam">{{c}}</span></sc-for></li></sc-for></ul>
 </div>
 <sc-if value="{{p.skLoi}}"><p role="alert" class="bao bao-loi">Không kiểm được sức khoẻ: {{p.skLoi}}</p></sc-if>
 <sc-if value="{{p.coSk}}">
-<div style="display:flex;flex-direction:column;gap:6px" class="suc-khoe"><span class="nhan-muc">Sức khoẻ từng khoá</span>
-<ul class="ds-kq"><sc-for list="{{p.skDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"><sc-if value="{{k.ok}}">✓</sc-if><sc-if value="{{k.hong}}">×</sc-if></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span><sc-if value="{{k.coKn}}"><span class="dong-nut"><sc-for list="{{k.kn}}" as="c"><span class="{{c.lop}}" data-kha-nang="{{c.ma}}">{{c.ma}}: {{c.chu}}</span></sc-for></span></sc-if></span></li></sc-for></ul>
+<div class="bang-tb suc-khoe"><div class="bang-tb-dau"><span>Sức khoẻ từng khoá</span><span class="dem-phai">{{p.soKhoaSk}} khoá</span></div>
+<ul class="ds-kq trong-bang"><sc-for list="{{p.skDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"><sc-if value="{{k.ok}}">✓</sc-if><sc-if value="{{k.hong}}">×</sc-if></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span><sc-if value="{{k.coKn}}"><span class="dong-nut"><sc-for list="{{k.kn}}" as="c"><span class="{{c.lop}}" data-kha-nang="{{c.ma}}">{{c.ma}}: {{c.chu}}</span></sc-for></span></sc-if></span></li></sc-for></ul>
 </div>
 </sc-if>
-</article>
+</section>
 </sc-for>
 </sc-if>
 
 </section>
 </main>
+
+<nav aria-label="Điều hướng Hệ thống (điện thoại)" class="bn"><sc-for list="{{navHT}}" as="t"><a href="{{t.href}}" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></a></sc-for></nav>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{}'>
 // Hệ thống → AI: Tài khoản (module có mã «ai» ĐÃ CÀI) · Provider (ĐÃ LIÊN KẾT). Combo chưa có backend → không có
-// trong DOM (DIEU_KIEN.combo.chua_co). Điều kiện từng tab đọc từ khung.js, không theo tên module.
+// trong DOM (DIEU_KIEN.combo.chua_co). Tab con = các dòng DIEU_KIEN `thuoc: 'ai'` đang đủ điều kiện (cùng danh sách với
+// bảng xổ «AI» trên thanh Hệ thống), mở bằng neo `#<neo>` của dòng đó. Không theo tên module.
 // Tài khoản là nơi thêm/bớt khoá: module chưa liên kết đứng đầu, ghi rõ «chưa có khoá»; #tk-<id> đưa tới đúng thẻ
 // (Studio và trang Module trỏ về đây).
 const K = window.Khung;
 const coMa = (m, ma) => m.loai === ma || (m.cung_cap || []).includes(ma);
+const TAB = Object.keys(K.DIEU_KIEN).filter((ma) => K.DIEU_KIEN[ma].thuoc === 'ai');
+// Tab theo neo của trang: #<neo> của một dòng → dòng đó; #tk-<id> (thẻ của một module) hay không neo → dòng đầu.
+const tabTheoNeo = () => TAB.find((ma) => K.DIEU_KIEN[ma].neo && location.hash === '#' + K.DIEU_KIEN[ma].neo) || TAB[0];
 
 class Component extends DCLogic {
   constructor(props) {
     super(props);
     const khoa = K.docKhoa();
     this.state = { khoa, khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', mods: [], models: [], dangTai: true,
-      tab: location.hash === '#provider' ? 'provider' : 'tai_khoan', sk: {}, cf: {} };
+      tab: tabTheoNeo(), sk: {}, cf: {}, menuMo: null };
     this._den = this.neoTk();
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
@@ -152,8 +177,9 @@ class Component extends DCLogic {
     if (K.chanNeuThieu('ai', tn) || K.chanNeuThieu(this.state.tab, tn)) return;
     this.setState({ tn });
     window.addEventListener('hashchange', () => {
-      const tab = location.hash === '#provider' ? 'provider' : 'tai_khoan';
+      const tab = tabTheoNeo();
       const den = this.neoTk();
+      this.setState({ menuMo: null });
       if (!K.chanNeuThieu(tab, this.state.tn)) this.chonTab(tab);
       if (den) this.denThe(den);
     });
@@ -182,7 +208,7 @@ class Component extends DCLogic {
   }
   chonTab(id) {
     this.setState({ tab: id });
-    history.replaceState(null, '', id === 'provider' ? '#provider' : location.pathname);
+    history.replaceState(null, '', id === TAB[0] ? location.pathname : '#' + K.DIEU_KIEN[id].neo);
     if (id === 'provider' && this.state.khoa) for (const m of this.dsAi(true)) if (!this.state.sk[m.id]) this.kiem(m.id);
   }
   luuKhoa() {
@@ -196,14 +222,19 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const tn = s.tn;
-    const tabs = tn ? ['tai_khoan', 'provider', 'combo'].filter((ma) => K.du(ma, tn))
-      .map((ma) => ({ id: ma, idTab: 'tab-' + ma, nhan: K.DIEU_KIEN[ma].nhan, on: s.tab === ma, chon: () => this.chonTab(ma) })) : [];
+    // Số đếm trên chip (như «Gmail 3» của demo): Tài khoản = module AI đã cài, Provider = module AI đã liên kết.
+    const dem = { tai_khoan: this.dsAi(false).length, provider: this.dsAi(true).length };
+    const tabs = tn ? TAB.filter((ma) => K.du(ma, tn))
+      .map((ma) => ({ id: ma, idTab: 'tab-' + ma, nhan: K.DIEU_KIEN[ma].nhan, dem: dem[ma] != null ? String(dem[ma]) : '', on: s.tab === ma, chon: () => this.chonTab(ma) })) : [];
     const modsTheoId = new Map((s.mods || []).filter((m) => m && m.id).map((m) => [m.id, m]));
     // Module CHƯA liên kết lên đầu: đây là việc người dùng cần làm tiếp (sắp xếp ổn định, giữ thứ tự của lõi).
     const taiKhoan = tn ? this.dsAi(false).slice().sort((a, b) => Number(a.da_lien_ket) - Number(b.da_lien_ket)).map((m, i) => {
       const ttCt = m.da_lien_ket;
       const mod = modsTheoId.get(m.id) || {};
       const tc = K.trangChinhCua(m.id, tn);
+      const f = !m.tu_xa ? K.cauHinh.vm(this, m.id, 'tk', () => this.taiLai()) : {};
+      // Số khoá đã lưu (đọc từ cấu hình dạng che): ô danh sách bí mật + ô bí mật đơn đang có giá trị.
+      const so = (f.truong || []).reduce((n, t) => n + (t.laDs ? t.daLuu.length : t.biMatLuu ? 1 : 0), 0);
       return { id: m.id, idTen: 'tk-ten-' + i, ten: m.ten, tienTo: m.tien_to, tuXa: m.tu_xa,
         chuaKhoa: ttCt ? '' : (mod.can_cau_hinh === false
           ? 'Chưa liên kết — bấm «Kiểm tra và lưu» bên dưới để liên kết.'
@@ -211,7 +242,7 @@ class Component extends DCLogic {
         coTrangChinh: !!tc && ttCt, trangChinh: tc || {},
         khoaTuXa: (mod.cau_hinh_cong_khai && mod.cau_hinh_cong_khai.api_key) || 'không khoá',
         nhanTT: ttCt ? 'Đang chạy' : 'Chờ khoá', lopTT: 'huy ' + (ttCt ? 'huy-xanh' : 'huy-vang'),
-        coForm: !!s.khoa && !m.tu_xa, f: !m.tu_xa ? K.cauHinh.vm(this, m.id, 'tk', () => this.taiLai()) : {} };
+        soKhoa: f.coForm && so ? so + ' khoá đã lưu' : '', coForm: !!s.khoa && !m.tu_xa, f };
     }) : [];
     const provider = tn ? this.dsAi(true).map((m, i) => {
       const sk = s.sk[m.id] || {};
@@ -223,11 +254,13 @@ class Component extends DCLogic {
         kiem: () => this.kiem(m.id), dangSk: !!sk.dang, nhanKiem: sk.dang ? 'Đang kiểm…' : 'Kiểm tra lại',
         nhanSk: !kq ? (sk.dang ? 'Đang kiểm' : 'Chưa kiểm') : kq.ok ? 'Dùng được' : 'Không khoá nào dùng được',
         lopSk: 'huy ' + (!kq ? 'huy-xam' : kq.ok ? 'huy-xanh' : 'huy-do'),
-        skLoi: sk.loi || '', coSk: !!kq, skDs: kq ? (kq.khoa || []).map(K.dongKhoa) : [] };
+        skLoi: sk.loi || '', coSk: !!kq, skDs: kq ? (kq.khoa || []).map(K.dongKhoa) : [], soKhoaSk: String(kq ? (kq.khoa || []).length : 0) };
     }) : [];
     const ql = tn ? K.quayLai(tn) : null;
     return {
-      navHT: K.navHeThong(tn, 'ai', s.soTb), coQuayLai: !!ql, khongQuayLai: !ql, quayLai: ql || {},
+      hinh: K.BIEU_TUONG, navHT: K.menuNav(this, K.navHeThong(tn, 'ai', s.soTb), s.tab), menuMo: !!s.menuMo,
+      dongMenu: () => this.setState({ menuMo: null }), phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
+      coQuayLai: !!ql, khongQuayLai: !ql, quayLai: ql || {},
       dangTai: s.dangTai, tnLoi: s.tnLoi, khongKhoa: !s.khoa, khoaNhap: s.khoaNhap, khoaLoi: s.khoaLoi,
       goKhoa: (e) => this.setState({ khoaNhap: e.target.value }), luuKhoa: () => this.luuKhoa(),
       phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },

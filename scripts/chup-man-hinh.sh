@@ -140,7 +140,7 @@ with MayChuThat(gh.app) as s_gh, MayChuThat(g.app) as s_g:
 
             # 6. Studio: một lượt chat stream.
             def studio():
-                mo_trang("/Studio.dc.html", "document.querySelectorAll('#chon-model option').length > 0")
+                mo_trang("/Studio.dc.html", "document.querySelectorAll('[data-model-chon]').length > 0")
                 t.go("#o-soan", "Chào bạn, bạn là ai?")
                 t.bam("document.getElementById('nut-gui')")
                 t.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=20, mo_ta="chat xong")

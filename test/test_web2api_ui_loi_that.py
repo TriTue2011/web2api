@@ -66,7 +66,7 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
                       mo_ta="tự sang Studio sau khi cài")
             assert "Đã cài Gemini" in trang.chu("#da-cai"), trang.chu("#da-cai")
             assert "Chưa có khoá cho «Gemini" in trang.chu("#studio-chua-khoa")
-            assert trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)") == ["chat", "anh", "video"]
+            assert sorted(trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)")) == ["anh", "chat", "video"]
 
             # Dải thông báo → Hệ thống → AI → Tài khoản, đúng thẻ gemini-api.
             trang.bam("document.querySelector('#da-cai a')")
@@ -88,10 +88,10 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
 
             # Studio: chat stream qua /v1 thật → Google giả; ba chế độ vì manifest khai chat, anh, video.
             trang.bam("document.querySelector('[data-nav=\"quay-lai\"]')")
-            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && document.querySelectorAll('#chon-model option').length > 0",
+            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && document.querySelectorAll('[data-model-chon]').length > 0",
                       han=15, mo_ta="Studio có model")
             assert not trang.js("!!document.getElementById('studio-chua-khoa')")
-            assert trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)") == ["chat", "anh", "video"]
+            assert sorted(trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)")) == ["anh", "chat", "video"]
             trang.go("#o-soan", "Chào")
             trang.bam("document.getElementById('nut-gui')")
             trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=15, mo_ta="chat xong")

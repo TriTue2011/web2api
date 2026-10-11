@@ -31,15 +31,17 @@
    *   toi_thieu — số module tối thiểu cho mỗi mã (mặc định 1)
    *   chua_co   — tính năng chưa có backend: KHÔNG BAO GIỜ hiện, kể cả khi đủ điều kiện
    *   trang     — dòng là một trang «chính» ở thanh trên (đường tương đối tới trang)
-   *   thuoc     — dòng là một phần (chế độ) của trang chính mang mã đó
+   *   thuoc     — dòng là một phần (chế độ / tab con) của trang mang mã đó
+   *   neo       — tab con mở bằng neo #<neo> của trang (không có: tab mặc định của trang)
+   *   bieu_tuong — tên hình trong BIEU_TUONG (thanh trên / thanh dưới điện thoại); thiếu thì hình chung
    */
   const DIEU_KIEN = {
     module: { nhan: 'Module', can: [] },
     ai: { nhan: 'AI', can: [AI], pham_vi: 'da_cai' },
-    tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai' },
-    provider: { nhan: 'Provider', can: [AI] },
-    combo: { nhan: 'Combo', can: [AI], toi_thieu: 2, chua_co: 'Combo chưa có backend ở bản này' },
-    studio: { nhan: 'Studio', can: ['chat'], pham_vi: 'da_cai', trang: 'Studio.dc.html' },
+    tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'tai-khoan' },
+    provider: { nhan: 'Provider', can: [AI], thuoc: 'ai', neo: 'provider' },
+    combo: { nhan: 'Combo', can: [AI], toi_thieu: 2, chua_co: 'Combo chưa có backend ở bản này', thuoc: 'ai', neo: 'combo' },
+    studio: { nhan: 'Studio', can: ['chat'], pham_vi: 'da_cai', trang: 'Studio.dc.html', bieu_tuong: 'chat' },
     studio_chat: { nhan: 'Chat', can: ['chat'], pham_vi: 'da_cai', thuoc: 'studio' },
     studio_anh: { nhan: 'Ảnh', can: ['anh'], pham_vi: 'da_cai', thuoc: 'studio' },
     studio_video: { nhan: 'Video', can: ['video'], pham_vi: 'da_cai', thuoc: 'studio' }
@@ -143,24 +145,76 @@
   const taiTinhNang = () => goi('api/tinh-nang', { khoa: '' }).then(({ j }) => j);
 
   // ---------- điều hướng ----------
+  // Hình nét (path SVG 24×24, nét 1.6) của thanh điều hướng — chép từ bản demo. Đây là HÌNH của khung, không phải
+  // danh sách module: dòng DIEU_KIEN chọn hình bằng `bieu_tuong`, tab riêng của module dùng hình chung `module`.
+  const BIEU_TUONG = {
+    logo: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z',
+    chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',
+    anh: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4 M9 9.5h.01',
+    video: 'M3 6h12v12H3z M15 10l6-3v10l-6-3',
+    he_thong: 'M4 7h10 M18 7h2 M4 17h2 M10 17h10 M16 5v4 M8 15v4',
+    module: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+    ai: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z',
+    quay_lai: 'M19 12H5 M11 6l-6 6 6 6',
+    xuong: 'M6 9l6 6 6-6'
+  };
   // Thanh trên của trang chính: các dòng `trang` của DIEU_KIEN đủ điều kiện (Studio…) + tab riêng của module đã liên
-  // kết có `tab_web`.
+  // kết có `tab_web`. Mỗi mục: {id, nhan, href, d (hình), ac (aria-current)}.
   function navChinh(tn, hienTai) {
     const ra = [];
-    for (const [ma, dk] of Object.entries(DIEU_KIEN)) if (dk.trang && du(ma, tn)) ra.push({ id: ma, nhan: dk.nhan, href: dk.trang });
+    for (const [ma, dk] of Object.entries(DIEU_KIEN)) {
+      if (dk.trang && du(ma, tn)) ra.push({ id: ma, nhan: dk.nhan, href: dk.trang, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module });
+    }
     for (const t of (tn && tn.tab) || []) {
       const href = lienKetAnToan(t.duong);
-      if (href) ra.push({ id: 'm-' + t.module, nhan: t.nhan, href });
+      if (href) ra.push({ id: 'm-' + t.module, nhan: t.nhan, href, d: BIEU_TUONG.module });
     }
     return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false' }));
   }
+  // Thanh dưới của trang chính trên điện thoại (như Studio-dien-thoai của demo): cùng các mục của thanh trên + «Hệ thống».
+  function navDuoi(tn, hienTai) {
+    return navChinh(tn, hienTai).concat([{ id: 'he-thong', nhan: 'Hệ thống', href: 'He-thong.dc.html', d: BIEU_TUONG.he_thong, ac: 'false' }]);
+  }
   // Mục con của trang Hệ thống (thanh trên khi đang ở Hệ thống, như bản demo).
   // `soTb`: số module mới/có bản mới trên git (GET /api/modules → thong_bao_so) → chấm đỏ ở mục Module.
+  // Mục AI có danh sách con (Tài khoản, Provider, Combo…) — chỉ các dòng DIEU_KIEN `thuoc: 'ai'` ĐANG đủ điều kiện;
+  // dòng `chua_co` (Combo) không bao giờ vào.
   function navHeThong(tn, hienTai, soTb) {
     const n = Number(soTb) || 0;
-    const ra = [{ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git' }];
-    if (du('ai', tn)) ra.push({ id: 'ai', nhan: 'AI', href: 'He-thong-AI.dc.html' });
-    return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false' }));
+    const ra = [{ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.module, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] }];
+    if (du('ai', tn)) {
+      const con = Object.entries(DIEU_KIEN).filter(([ma, dk]) => dk.thuoc === 'ai' && du(ma, tn))
+        .map(([ma, dk]) => ({ id: ma, nhan: dk.nhan, href: 'He-thong-AI.dc.html' + (dk.neo ? '#' + dk.neo : '') }));
+      ra.push({ id: 'ai', nhan: 'AI', href: 'He-thong-AI.dc.html', d: BIEU_TUONG.ai, cham: false, nhanCham: '', con });
+    }
+    return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false', coCon: x.con.length > 0 }));
+  }
+  // Mục có danh sách con (AI) mở bảng xổ khi bấm, như demo. Trạng thái mở nằm ở comp.state.menuMo (mã mục).
+  // `conHienTai`: mã tab con đang xem (đánh dấu aria-current trong bảng xổ).
+  function menuNav(comp, ds, conHienTai) {
+    const mo = comp.state.menuMo || null;
+    const dong = () => comp.setState({ menuMo: null });
+    return ds.map((x) => Object.assign({}, x, {
+      mo: mo === x.id, moChu: mo === x.id ? 'true' : 'false', khongCon: !x.coCon,
+      bat: () => comp.setState({ menuMo: mo === x.id ? null : x.id }),
+      phim: (e) => { if (e.key === 'Escape') dong(); },
+      con: x.con.map((c) => Object.assign({}, c, { ac: c.id === conHienTai ? 'page' : 'false', dong }))
+    }));
+  }
+  // Chấm trạng thái chung ở thanh trên (demo: «Mọi dịch vụ ổn» / «Ổn») — suy từ dữ liệu THẬT, không viết cứng màu xanh:
+  // đỏ khi không đọc được /api/tinh-nang; vàng khi có module đã cài mà chưa liên kết (chưa khoá) — bấm tới nơi thêm khoá;
+  // xanh khi mọi module đã cài đều đã liên kết (khoá đã được thử bằng lời gọi thật lúc lưu).
+  // `ma` (tuỳ chọn): dòng DIEU_KIEN của trang đang xem — chỉ xét module mang lại trang đó hay một phần của nó (Studio
+  // không vàng vì một module loại khác chưa liên kết).
+  function trangThaiChung(tn, loi, ma) {
+    if (loi) return { lop: 'tt-chung tt-do', chu: 'Không đọc được trạng thái', ngan: 'Lỗi', href: '' };
+    if (!tn) return { lop: 'tt-chung tt-xam', chu: 'Đang đọc…', ngan: '…', href: '' };
+    const dong = ma ? Object.keys(DIEU_KIEN).filter((k) => k === ma || DIEU_KIEN[k].thuoc === ma) : null;
+    const cho = (tn.modules || []).filter((m) => m && !m.da_lien_ket && (!dong || dong.some((k) => moduleDapUng(m, k))));
+    if (cho.length) {
+      return { lop: 'tt-chung tt-vang', chu: cho.length + ' module chờ khoá', ngan: 'Chờ khoá', href: noiThemKhoa(cho[0], tn).href };
+    }
+    return { lop: 'tt-chung tt-xanh', chu: 'Mọi dịch vụ ổn', ngan: 'Ổn', href: '' };
   }
   // «Quay lại» của Hệ thống: về trang chính đầu tiên đang có; chưa có trang chính nào → null.
   function quayLai(tn) { const n = navChinh(tn, ''); return n.length ? n[0] : null; }
@@ -330,6 +384,6 @@
   };
 
   window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
-    navChinh, navHeThong, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, boDau, diaChiV1,
+    BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, boDau, diaChiV1,
     dongKhoa, cauHinh };
 })();

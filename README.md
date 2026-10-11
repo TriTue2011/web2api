@@ -196,13 +196,16 @@ vẫn chạy.
 | Trang | Hiện khi | Nội dung |
 |---|---|---|
 | `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
-| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị, tìm kiếm + chip lọc loại + lọc trạng thái, lưới ô theo loại, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
+| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm + chip lọc loại + lọc trạng thái trên một hàng, lưới ô theo loại, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
 | `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Tab «Tài khoản» — nơi thêm/bớt khoá; module chưa liên kết đứng đầu, ghi rõ «Chưa có khoá»; neo `#tk-<id>` tới đúng thẻ. Tab «Provider» khi có ≥ 1 module `ai` **đã liên kết** (model thật từ `/v1/models`, sức khoẻ từng khoá kể cả trạng thái ảnh/video) |
-| `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chat (stream), chế độ «Ảnh» khi có module **đã cài** khai `anh`, «Video» khi có module **đã cài** khai `video`. Chế độ chưa có module **đã liên kết** hiện trạng thái rỗng «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module; gửi bị chặn ngay trên trang với cùng lời nhắn, không gọi `/v1` |
+| `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Bố cục như bản demo: màn đầu «Bạn muốn làm gì hôm nay?» + một ô soạn lớn (chip model mở bảng chọn model thật từ `/v1/models`, nút gửi tròn) + gợi ý; gửi rồi thì các lượt hội thoại hiện bên trên, ô soạn dính đáy, «Tạo mới» xoá hội thoại. Chế độ «Trò chuyện» (stream), «Vẽ ảnh» khi có module **đã cài** khai `anh`, «Tạo video» khi có module **đã cài** khai `video`. Chế độ chưa có module **đã liên kết** hiện dải «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module và khoá ô soạn — không gọi `/v1` |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
 
 Tab/mục không đạt điều kiện **không có trong DOM**; gõ tay đường dẫn tới đó thì trang chuyển về Hệ thống → Module
-kèm một dòng «… chưa mở được: cần …». Hệ thống là trang riêng có nút «Quay lại» (về trang chính đầu tiên đang có;
+kèm một dòng «… chưa mở được: cần …». Thanh trên giống nhau ở mọi trang chính (logo, tab đang có, «Hệ thống», chấm
+trạng thái suy từ `/api/tinh-nang`: xanh khi mọi module của trang đã liên kết, vàng khi có module chờ khoá); trên
+điện thoại (≤ 880 px) các tab chuyển xuống thanh dưới đáy. Ở Hệ thống, mục «AI» mở bảng xổ các tab con đang có
+(Tài khoản, Provider). Hệ thống là trang riêng có nút «Quay lại» (về trang chính đầu tiên đang có;
 chưa có trang chính nào thì không có nút). Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện vì chưa
 có backend.
 
@@ -700,7 +703,7 @@ ra, dung lượng tải đo từ cây git, gói Python, hướng dẫn từ mani
 2. Đọc **«Cần gì để chạy»**, bấm **«Cài»** (trong bảng chi tiết, hoặc nút «Cài» ngay trên ô) — không cần khoá API.
    Module khai `chat` thì vài giây sau trang **tự chuyển sang Studio** kèm dải «Đã cài … Thêm khoá ở Hệ thống → AI →
    Tài khoản để dùng.» Studio hiện đủ các chế độ module khai, ở **trạng thái rỗng** «Chưa có khoá cho …» với nút tới
-   đúng thẻ của module; bấm «Gửi» lúc này chỉ hiện lại lời nhắc đó, không gọi `/v1`.
+   đúng thẻ của module; ô soạn bị khoá tới khi có khoá, không gọi `/v1`.
 3. Bấm **«Thêm khoá»** → Hệ thống → AI → **Tài khoản** (module chưa có khoá đứng đầu). Dán khoá API (mỗi dòng một
    khoá); ô «Địa chỉ gốc» để trống trừ khi cần proxy. Bấm **«Kiểm tra và lưu»**: web2api thử từng khoá (không tốn
    token), hiện kết quả từng khoá ở dạng che, chỉ lưu khoá dùng được.
@@ -712,9 +715,9 @@ ra, dung lượng tải đo từ cây git, gói Python, hướng dẫn từ mani
 
 ![Studio ngay sau khi cài, chưa có khoá](docs/anh/sau-cai-may-tinh.png)
 
-*Ảnh 7 — Cài gemini-api xong (chưa khoá): trang tự sang Studio, dải «Đã cài …» ở trên, khung Studio ở trạng thái rỗng
-«Chưa có khoá cho «Gemini API (Google AI Studio)». Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng thẻ;
-danh sách model nói rõ vì sao còn trống.*
+*Ảnh 7 — Cài gemini-api xong (chưa khoá): trang tự sang Studio, dòng «Đã cài …» ở trên, dải «Chưa có khoá cho
+«Gemini API (Google AI Studio)». Thêm khoá ở Hệ thống → AI → Tài khoản» ngay trên ô soạn kèm nút tới đúng thẻ; ô soạn
+bị khoá, chip model ghi «Chưa có model» (bảng chọn model nói rõ vì sao còn trống).*
 
 ![Studio chưa có khoá trên điện thoại](docs/anh/sau-cai-dien-thoai.png)
 
@@ -735,21 +738,25 @@ danh sách model nói rõ vì sao còn trống.*
 
 ![Studio: một lượt chat stream](docs/anh/studio-may-tinh.png)
 
-*Ảnh 11 — Studio: chế độ Chat / Ảnh / Video hiện vì module đã cài khai `chat`, `anh`, `video` (đã có khoá nên gọi
-được); model lấy từ
-`/v1/models` theo tiền tố của module đó; câu trả lời hiện dần theo stream (Google giả trả «MộtHai»).*
+*Ảnh 11 — Studio sau một lượt chat: bong bóng câu hỏi bên phải, câu trả lời hiện dần theo stream (Google giả trả
+«MộtHai»), ô soạn dính đáy. «Vẽ ảnh», «Tạo video» nằm trong ô soạn, «Trò chuyện» / «Tạo mới» bên dưới — hiện vì module
+đã cài khai `chat`, `anh`, `video`; chip model là model thật từ `/v1/models` theo tiền tố của module đó.*
 
 ![Studio trên điện thoại](docs/anh/studio-dien-thoai.png)
 
-*Ảnh 12 — Studio trên điện thoại.*
+*Ảnh 12 — Studio trên điện thoại: chip chế độ dưới ô soạn, thanh điều hướng dưới đáy (chỉ các mục đang có).*
 
-- Studio có ngay khi cài module khai `chat`. Chế độ nào chưa có module **đã liên kết** thì hiện trạng thái rỗng
+- Studio có ngay khi cài module khai `chat`. Chế độ nào chưa có module **đã liên kết** thì hiện dải
   «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module (nhiều module thì mỗi module
-  một nút); gửi bị chặn trên trang với cùng lời nhắn thay vì để `/v1` trả `404 module_not_configured`.
-- **Chat**: hội thoại nhiều lượt qua `POST /v1/chat/completions`, có stream, nút «Dừng» giữ phần đã nhận.
-- **Ảnh** (khi có module khai `anh`): `POST /v1/images/generations`, ảnh hiện tại chỗ và tải về được.
-- **Video** (khi có module khai `video`): `POST /v1/videos` → hỏi `GET /v1/videos/{id}` mỗi 3 giây → tải
-  `…/content` thành tệp, xem tại chỗ và tải về.
+  một nút) và khoá ô soạn, thay vì để `/v1` trả `404 module_not_configured`.
+- Màn đầu có vài câu gợi ý theo chế độ (bấm để điền vào ô soạn). Enter gửi, Shift+Enter xuống dòng (điện thoại:
+  Enter xuống dòng, bấm nút gửi); Ctrl/⌘+Enter luôn gửi. Hội thoại chỉ sống trong trang — «Tạo mới» xoá.
+- **Trò chuyện**: hội thoại nhiều lượt qua `POST /v1/chat/completions`, có stream, nút «Dừng» giữ phần đã nhận.
+- **Vẽ ảnh** (khi có module khai `anh`): `POST /v1/images/generations`, ảnh hiện ngay trong lượt và tải về được.
+- **Tạo video** (khi có module khai `video`): `POST /v1/videos` → hỏi `GET /v1/videos/{id}` mỗi 3 giây (thanh tiến
+  độ trong lượt) → tải `…/content` thành tệp, xem tại chỗ và tải về.
+- Chưa có bảng chọn tỉ lệ/thời lượng: `/v1/models` chưa khai model nào nhận tỉ lệ/thời lượng nào, nên trang chỉ gửi
+  `model` + `prompt`.
 - Ảnh/video thường tính tiền theo lượt và khoá hạng miễn phí của nhiều nhà cung cấp không dùng được; lỗi
   `403 no_key_permitted` hiện lời giải thích kèm nguyên văn lời nhắn của máy chủ.
 
