@@ -1,9 +1,10 @@
 """Sổ module đang sống trong lõi: khám phá hai nguồn, nạp lại nóng, cài/gỡ, định tuyến theo tiền tố.
 
 Ba loại "đã biết":
-  catalog    — module CÓ MÃ khám phá được trên đĩa (ảnh + volume), chưa chắc đã cài cấu hình;
+  catalog    — module ĐÃ CÀI: có mã trên đĩa (ảnh + volume), có tab trên web, gỡ được — chưa chắc đã
+               liên kết (có khoá/cấu hình);
   tu_xa      — module TỪ XA: chỉ URL nói chuẩn OpenAI, không nạp mã (module nặng/GPU/máy khác);
-  dang_chay  — thể hiện đang phục vụ /v1 (module có mã đã cài cấu hình + mọi module từ xa).
+  dang_chay  — ĐÃ LIÊN KẾT: thể hiện đang phục vụ /v1 (module có mã đã có cấu hình hợp lệ + mọi module từ xa).
 
 Nguyên tắc cô lập: một module hỏng (manifest sai, lỗi cú pháp, thiếu gói, lỗi __init__/nap)
 chỉ làm hỏng CHÍNH nó — ghi vào danh sách lỗi kèm thư mục và lý do; lõi và module khác
@@ -159,10 +160,14 @@ class SoModule:
                         sys.modules.pop(ten, None)
                         moi[id_] = truoc
                         continue
+                    cu_chay = self.dang_chay[id_]
                     if the_moi is not None:
-                        cu_chay = self.dang_chay[id_]
                         self.dang_chay[id_] = the_moi
-                        await self._dung_an_toan(id_, cu_chay)
+                    else:
+                        # Bản mới cần trường bắt buộc mà cấu hình đã lưu không có: ĐÃ CÀI, CHƯA LIÊN KẾT —
+                        # không để mã cũ phục vụ tiếp dưới phiên bản mới.
+                        del self.dang_chay[id_]
+                    await self._dung_an_toan(id_, cu_chay)
                 moi[id_] = km
                 (doi if truoc else them).append(id_)
                 if truoc and truoc.ten_ma != km.ten_ma:
@@ -181,14 +186,25 @@ class SoModule:
             log.warning("Nạp lại module: thêm %s, đổi %s, gỡ %s", them, doi, go)
         return {"them": them, "doi": doi, "go": go, "loi": loi}
 
+    @staticmethod
+    def muc_da_luu(id_: str) -> dict | None:
+        """Mục của module trong modules.json (cấu hình công khai, bí mật đã che) — None nếu chưa có."""
+        return next((m for m in kho.doc_modules()[0] if isinstance(m, dict) and m.get("id") == id_), None)
+
     def _tao_tu_kho(self, km: ModuleKhamPha):
-        """Thể hiện đã `nap` cấu hình đã lưu; None nếu module chưa được cài cấu hình."""
-        ds, _ = kho.doc_modules()
-        muc = next((m for m in ds if isinstance(m, dict) and m.get("id") == km.id), None)
+        """Thể hiện đã `nap` cấu hình đã lưu; None nếu module chưa có cấu hình, hoặc cấu hình đã lưu thiếu
+        trường `bat_buoc` (vd tệp bí mật bị mất). Chặn ở LÕI theo manifest, không trông vào mã module tự
+        vỡ: Gemini `nap({})` không vỡ mà dựng thể hiện với 0 khoá rồi hỏng lúc gọi."""
+        muc = self.muc_da_luu(km.id)
         if muc is None:
             return None
+        cau_hinh = kho.doc_cau_hinh(km.id, km.truong_cau_hinh, muc)
+        thieu = [t["khoa"] for t in km.truong_cau_hinh if t.get("bat_buoc") and not cau_hinh.get(t["khoa"])]
+        if thieu:
+            log.warning("Module %s: cấu hình đã lưu thiếu trường bắt buộc %s — coi như chưa liên kết", km.id, thieu)
+            return None
         the = km.tao()
-        the.nap(kho.doc_cau_hinh(km.id, km.truong_cau_hinh, muc))
+        the.nap(cau_hinh)
         return the
 
     async def _kich_hoat_da_cai(self) -> list[dict]:
@@ -215,11 +231,21 @@ class SoModule:
     # ───────────── cài cấu hình / gỡ ─────────────
 
     async def cai(self, id_: str, cau_hinh: dict) -> dict:
+        """Kiểm rồi lưu cấu hình. Trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận dạng sửa
+        {"giu", "them"} (kho.ghep_cau_hinh) — đọc-ghép-lưu trong khoá sổ để hai lời gọi không đè nhau."""
         km = self.catalog.get(id_)
         if km is None:
             raise LoiSo(404, f"Không có module {id_!r} (xem GET /api/modules/catalog)")
         async with self.khoa:
-            return await self._cai(km, cau_hinh)
+            muc = self.muc_da_luu(id_)
+            try:
+                da_luu = kho.doc_cau_hinh(id_, km.truong_cau_hinh, muc) if muc else {}
+                day_du = kho.ghep_cau_hinh(km.truong_cau_hinh, da_luu, cau_hinh)
+            except kho.KhoHong as e:
+                raise LoiSo(500, f"Không đọc được cấu hình đã lưu: {e}") from None
+            except ValueError as e:
+                raise LoiSo(400, str(e)) from None
+            return await self._cai(km, day_du)
 
     async def _cai(self, km: ModuleKhamPha, cau_hinh: dict) -> dict:
         moi = km.tao()
@@ -256,9 +282,8 @@ class SoModule:
             km = self.catalog.get(id_)
             if km is None:
                 raise LoiSo(404, f"Không có module {id_!r}")
-            da_cai = id_ in self.dang_chay or any(
-                isinstance(m, dict) and m.get("id") == id_ for m in kho.doc_modules()[0])
-            if km.nguon == "anh" and not da_cai:
+            co_cau_hinh = id_ in self.dang_chay or self.muc_da_luu(id_) is not None
+            if km.nguon == "anh" and not co_cau_hinh:
                 raise LoiSo(400, f"Module {id_!r} đi kèm ảnh: mã nằm trong ảnh nên không xoá được, "
                                  "và hiện chưa cài cấu hình nào để gỡ")
             m = self.dang_chay.pop(id_, None)
@@ -315,7 +340,8 @@ class SoModule:
         co_khoa = bool(kho.doc_bi_mat(id_).get("api_key"))
         return {"id": id_, "ten": b["ten"], "loai": "tu_xa", "tien_to": b["tien_to"], "cai_luc": b["cai_luc"],
                 "cau_hinh_cong_khai": {"base_url": b["base_url"],
-                                       "api_key": kho.che(kho.doc_bi_mat(id_)["api_key"]) if co_khoa else None}}
+                                       "api_key": kho.che(kho.doc_bi_mat(id_)["api_key"]) if co_khoa else None},
+                "da_cau_hinh": True}  # module từ xa không có bước liên kết: đăng ký xong là phục vụ
 
     # ───────────── cài thư mục mã (dùng bởi nguồn git) ─────────────
 
@@ -329,7 +355,7 @@ class SoModule:
             km_cu = self.catalog.get(id_)
             dich = kho.thu_muc_modules() / id_
             if km_cu is not None and km_cu.nguon == "anh":
-                raise LoiSo(409, f"Module {id_!r} đã đi kèm ảnh — không cài đè từ nguồn ngoài")
+                raise LoiSo(409, f"Module {id_!r} đã đi kèm ảnh — không cập nhật đè từ nguồn ngoài")
             if km_cu is not None and km_cu.thu_muc != dich:
                 raise LoiSo(409, f"Id {id_!r} đã có ở {km_cu.thu_muc} — gỡ bản đó trước")
             if id_ in self.tu_xa:

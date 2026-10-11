@@ -106,9 +106,9 @@ def test_tha_thu_muc_moi_nap_lai_khong_khoi_dong(du_lieu):
         ghi_thu_muc(vol(du_lieu, "echo"), tep_echo())
         kq = c.post("/api/modules/nap-lai", headers=QT).json()
         assert kq == {"them": ["echo"], "doi": [], "go": [], "loi": []}
-        # Khám phá xong nhưng chưa cài cấu hình → chưa phục vụ, và /m/ chưa mở.
+        # Khám phá xong = đã cài nhưng chưa cài cấu hình → chưa phục vụ /v1; tab riêng /m/ thì mở ngay.
         assert c.get("/v1/models", headers=QT).json()["data"] == []
-        assert c.get("/m/echo/echo.dc.html").status_code == 404
+        assert c.get("/m/echo/echo.dc.html").status_code == 200
         r = c.post("/api/modules/echo/cai", json={"cau_hinh": {}}, headers=QT)
         assert r.status_code == 200 and r.json()["ok"]
         assert [x["id"] for x in c.get("/v1/models", headers=QT).json()["data"]] == ["echo/lap-lai"]

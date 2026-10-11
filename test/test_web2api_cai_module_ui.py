@@ -230,7 +230,7 @@ def _dien_va_cai(trang, khoa_api=(KHOA_1, KHOA_2), bi_mat=BI_MAT_PHU):
     trang.go(_o("gemini-gia", "api_keys"), "\n".join(khoa_api))
     if bi_mat:
         trang.go(_o("gemini-gia", "ma_phu"), bi_mat)
-    trang.bam(_the_module("gemini-gia") + ".querySelector('.nut-cai')", "nút Kiểm tra và cài")
+    trang.bam(_the_module("gemini-gia") + ".querySelector('.nut-cai')", "nút Kiểm tra và lưu")
 
 
 # ───────────────────────────── test ─────────────────────────────
@@ -254,7 +254,8 @@ def test_nhap_khoa_hien_catalog_va_form_sinh_tu_manifest(trang, gia):
     assert all(x["auth"] == f"Bearer {KHOA_QT}" for x in gia.api.goi_toi("GET", "/api/modules/thong-bao"))
 
     the = trang.chu("[data-module='gemini-gia']")
-    assert "Gemini giả" in the and "Chưa cài" in the
+    # Thẻ ở Bước 2 là module ĐÃ CÀI (mã trên máy) chưa liên kết: nhãn nói «chưa có khoá», không nói «chưa cài».
+    assert "Gemini giả" in the and "Chưa có khoá" in the and "Chưa cài" not in the
     # Bảng tài nguyên: null → «chưa đo», không bịa số; số thật thì hiện đúng.
     bang = trang.js("[...document.querySelectorAll('[data-module=\"gemini-gia\"] .bang-dong')].map((d) => d.innerText.replace(/\\s+/g, ' ').trim())")
     assert bang == ["RAM thêm chưa đo", "Đĩa 12 MB", "GPU Không cần", "Mạng ra gia.example"], bang
@@ -301,7 +302,7 @@ def test_cai_thanh_cong_hien_tung_khoa_va_khoa_bien_mat(trang, gia):
     assert len(dong) == 2, dong
     assert dong[0][0] == "tot" and "…1111 · dùng được" in dong[0][1] and "123 ms · 42 model" in dong[0][1], dong
     assert dong[1][0] == "hong" and "…2222 · không dùng được" in dong[1][1] and "Lý do: HTTP 400: API key not valid" in dong[1][1], dong
-    assert "Đã cài Gemini giả" in trang.chu("[data-module='gemini-gia'] .ket-qua-cai")
+    assert "Đã liên kết Gemini giả" in trang.chu("[data-module='gemini-gia'] .ket-qua-cai")
 
     # Thân gửi đi: đủ ba trường; base_url để trống → lấy mặc định của manifest.
     goi = gia.api.goi_toi("POST", "/api/modules/gemini-gia/cai")
@@ -333,7 +334,7 @@ def test_cai_thanh_cong_hien_tung_khoa_va_khoa_bien_mat(trang, gia):
     assert "Bearer <KHOÁ_QUẢN_TRỊ>" in curl and KHOA_QT not in curl and gia.url + "/v1/chat/completions" in curl, curl
     # Sau khi cài, danh sách «đã cài» và catalog được tải lại.
     trang.cho("document.querySelector('[data-da-cai=\"gemini-gia\"]')", mo_ta="module vừa cài xuất hiện ở «Module đã cài»")
-    trang.cho(_the_module("gemini-gia") + ".querySelector('.trang-thai').innerText === 'Đã cài'", mo_ta="trạng thái Đã cài")
+    trang.cho(_the_module("gemini-gia") + ".querySelector('.trang-thai').innerText === 'Đã liên kết'", mo_ta="trạng thái Đã liên kết")
     trang.chup("1280-cai-xong")
 
     trang.bam(_the_module("gemini-gia") + ".querySelector('.nut-thu-chat')")
@@ -345,7 +346,7 @@ def test_cai_that_bai_hien_loi(trang, gia):
     _mo_trang(trang, gia)
     _dien_va_cai(trang, khoa_api=(KHOA_1,))
     kq = trang.cho(_the_module("gemini-gia") + "?.querySelector('.ket-qua-cai')?.innerText", mo_ta="kết quả cài hỏng")
-    assert "Chưa cài được: Không khoá nào gọi được" in kq, kq
+    assert "Chưa lưu được: Không khoá nào gọi được" in kq, kq
     assert "…1111 · không dùng được" in kq and "API key not valid" in kq, kq
     assert [d[0] for d in trang.js(_DONG_KQ.format("[data-module=\"gemini-gia\"] .ket-qua-cai li"))] == ["hong"]
     assert "dán lại" in kq
@@ -411,7 +412,7 @@ def test_thong_bao_git_va_cai(trang, gia):
               mo_ta="mục rời danh sách thông báo, module vào catalog")
     time.sleep(0.3)
     tin = trang.chu("#thong-bao .tin-cai-git")
-    assert tin and "Đã tải Dịch giả bản 0.2.0 về máy" in tin and "cần cấu hình" in tin, tin
+    assert tin and "Đã cài Dịch giả bản 0.2.0 (không cần khoá API)" in tin and "chưa có khoá" in tin, tin
     assert trang.js("document.querySelector('#thong-bao .tin-cai-git a').getAttribute('href')") == "#the-dich-gia"
     assert trang.js("!!document.getElementById('the-dich-gia')?.querySelector('form.form-cai')"), "form cấu hình chưa mở sẵn"
     assert trang.chu("#so-thong-bao") == "1"
@@ -536,7 +537,10 @@ def test_tab_web_va_khong_chen_html_tho(trang, gia):
     trang.cho("document.querySelector('[data-thong-bao=\"gemini-gia\"]') && document.getElementById('chat-model')")
     tab = trang.js("[...document.querySelectorAll('#thanh-tab a[data-tab-module]')].map((a) => [a.dataset.tabModule, a.innerText.trim(), a.href])")
     # Tab hợp lệ hiện; tab javascript: bị lọc bỏ.
-    assert tab == [["tien-ich", "Tab giả", gia.url + "/m/tien-ich/index.html"]], tab
+    # Mọi module đã cài có tab (kể cả chưa liên kết: tab trỏ thẻ thêm khoá của nó); tab javascript: bị lọc.
+    assert tab == [["gemini-gia", "Gemini giả", gia.url + "/Cai-module.dc.html#the-gemini-gia"],
+                   ["xss-mod", XSS_TEN, gia.url + "/Cai-module.dc.html#the-xss-mod"],
+                   ["tien-ich", "Tab giả", gia.url + "/m/tien-ich/index.html"]], tab
     assert trang.js("[...document.querySelectorAll('a')].every((a) => !/^\\s*javascript:/i.test(a.getAttribute('href') || ''))")
     # Chuỗi HTML độc hiện thành CHỮ ở tên module, tên đã cài, lời commit, model.
     assert trang.chu("[data-module='xss-mod'] .ten-module") == XSS_TEN

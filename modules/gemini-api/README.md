@@ -20,7 +20,9 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao          # phải
 curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/gemini-api
 ```
 
-Hoặc bấm «Cài» ở khối thông báo git trên trang Module của web2api. Module cần gói Python `httpx`
+Hoặc bấm «Cài» ở khối thông báo git trên trang Module của web2api. Cài **không cần khoá API**: xong bước
+này module đã nằm trên máy nhưng chưa liên kết — chưa có model trong `/v1/models`, gọi chat trả `404`
+«chưa có khoá» — cho tới khi thêm khoá (dưới đây). Module cần gói Python `httpx`
 (khai ở `yeu_cau_goi` trong `manifest.json`); ảnh lõi đã có sẵn gói này.
 
 ## Cấu hình
@@ -32,8 +34,12 @@ Nhập ở thẻ Gemini trên trang Module, hoặc bằng `POST /api/modules/gem
 | `api_keys` | Có | Một hoặc nhiều khoá lấy ở https://aistudio.google.com/apikey (mỗi dòng một khoá; hoặc một chuỗi cách nhau bằng dấu phẩy). Lưu riêng ở `<thư mục dữ liệu>/bi_mat/gemini-api.json` quyền 0600, không API nào trả lại khoá. |
 | `base_url` | Không | Mặc định gọi thẳng Google. Đặt địa chỉ proxy khi bị chặn vùng; thiếu `/v1beta/openai` thì module tự thêm. Phải bắt đầu bằng `http://` hoặc `https://` và có tên máy. |
 
-Lúc cài, module gọi thử `GET /models` với **từng** khoá (không tốn token) và chỉ lưu những khoá dùng
+Lúc lưu, module gọi thử `GET /models` với **từng** khoá (không tốn token) và chỉ lưu những khoá dùng
 được. Không khoá nào dùng được thì cấu hình không được lưu và API trả mã 400.
+
+Thêm/bớt từng khoá về sau: `GET /api/modules/gemini-api/cau-hinh` trả khoá đã lưu ở dạng che theo thứ tự;
+gửi `{"cau_hinh": {"api_keys": {"them": ["AIza..."]}}}` để thêm (giữ khoá cũ), `{"cau_hinh": {"api_keys":
+{"giu": [0, 2]}}}` để chỉ giữ các khoá chỉ số 0 và 2. Trường vắng mặt (ví dụ `base_url`) giữ giá trị đã lưu.
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
@@ -68,7 +74,7 @@ header `X-Proxy-Token`.
 
 - Chỉ có chat và danh sách model. **Chưa có** nhúng (embeddings), tạo ảnh, video của Gemini.
 - Khoá bị thu hồi **sau** khi cài mà Google trả `400` (không phải 401/403) thì module không tự đổi khoá,
-  vì `400` được coi là lỗi của yêu cầu. Cài lại để loại khoá đó.
+  vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó bằng dạng `{"giu": [...]}` (xem «Cấu hình»).
 - Proxy Cloudflare có đặt `PROXY_TOKEN` chưa dùng được (xem trên).
 - Chưa đo RAM và đĩa thật của module: `ram_them_mb` và `dia_mb` trong `manifest.json` để `null`.
 - Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá bị thu hồi sau khi cài, hết hạn mức

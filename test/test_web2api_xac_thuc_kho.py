@@ -28,6 +28,7 @@ CAN_QUAN_TRI = [
     ("POST", "/api/modules/gemini-api/cai"),
     ("DELETE", "/api/modules/gemini-api"),
     ("GET", "/api/modules/gemini-api/suc-khoe"),
+    ("GET", "/api/modules/gemini-api/cau-hinh"),
     ("POST", "/api/modules/nap-lai"),
     ("POST", "/api/modules/tu-xa"),
     ("GET", "/api/modules/thong-bao"),

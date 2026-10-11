@@ -27,8 +27,8 @@ docker compose up -d                                                         # b
 ```
 
 Open `http://<host>:3031/`. On first start web2api generates an admin key; read it with
-`docker exec web2api cat /data/admin_key`. Paste it into the **Module** page, install `gemini-api`, add your
-Google AI Studio key, then call the API:
+`docker exec web2api cat /data/admin_key`. Paste it into the **Module** page and install `gemini-api` — installing needs no
+API key. Then add your Google AI Studio key on the web (keys can be added or removed one by one later), and call the API:
 
 ```bash
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \

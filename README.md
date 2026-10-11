@@ -73,6 +73,8 @@ Luồng một yêu cầu:
 | Nạp lại module nóng, không khởi động lại | Có | 0.1.0-khung · 10/10/2026 |
 | Module từ xa (dịch vụ OpenAI trong mạng nhà, ví dụ máy GPU) | Có | 0.1.0-khung · 10/10/2026 |
 | Tab giao diện riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
+| Cài module KHÔNG cần khoá API; khoá liên kết thêm sau (thêm/bớt từng khoá, `GET /api/modules/{id}/cau-hinh`) | Có (lõi + API; giao diện mới cho bước thêm khoá: giai đoạn sau) | 0.1.0-khung · 11/10/2026 |
+| Lần đầu thêm nguồn git: cập nhật một lần các module đang có mà git có bản khác | Có | 0.1.0-khung · 11/10/2026 |
 | Trang «Module» (`/Cai-module.dc.html`): khoá quản trị, cài/gỡ, thông báo git, sức khoẻ, thử chat, module từ xa | Có | 0.1.0-khung · 10/10/2026 |
 | Thanh trên: liên kết «Module», chấm báo module mới, tab của module đã cài | Có | 0.1.0-khung · 10/10/2026 |
 | Nguồn git đặt sẵn trong `docker-compose.yml` (kho dự án, đọc ẩn danh) | Có | 0.1.0-khung · 10/10/2026 |
@@ -272,10 +274,13 @@ lưu trong trình duyệt đó. Ứng dụng gọi `/v1` và các lệnh `curl` 
 
 ### Cài module AI đầu tiên trên trang Module (Gemini API)
 
-![Trang Module trên máy tính: ô khoá quản trị, thẻ Gemini API chưa cài, khối thông báo git](docs/anh/cai-module-may-tinh.png)
+![Trang Module trên máy tính: ô khoá quản trị, thẻ Gemini API đã cài chưa có khoá, khối thông báo git](docs/anh/cai-module-may-tinh.png)
 
 *Ảnh 3 — Trang Module (máy tính, 1280×800) lúc chưa dán khoá quản trị. Thư mục dữ liệu chỉ có mã module
-gemini-api — đúng trạng thái ngay sau khi bấm «Cài» ở khối thông báo git, chưa có khoá API nào.*
+gemini-api — đúng trạng thái ngay sau khi bấm «Cài» ở khối thông báo git, chưa có khoá API nào. Ảnh chụp
+10/10/2026, trước khi đổi chữ trên trang theo luồng «cài không cần khoá» (ví dụ «Module có thể cài» nay là
+«Thêm khoá cho module đã cài», nút «Kiểm tra và cài» nay là «Kiểm tra và lưu»); ảnh mới chụp khi làm lại
+giao diện trang Module.*
 
 ![Trang Module trên điện thoại](docs/anh/cai-module-dien-thoai.png)
 
@@ -283,12 +288,13 @@ gemini-api — đúng trạng thái ngay sau khi bấm «Cài» ở khối thôn
 
 1. **Dán khoá quản trị** vào ô ở Bước 1, bấm «Lưu». Huy hiệu «Chưa có khoá» đổi thành đã có khoá; nếu
    khoá sai, trang báo «Khoá sai hoặc thiếu» ngay tại đó.
-2. **Lấy module về máy** (chỉ lần đầu): ở khối «Thông báo module mới từ git», mục «Gemini API» có nhãn
-   «Mới» — bấm «Cài». Vài giây sau, thẻ Gemini API xuất hiện ở khối «Module có thể cài» với form cấu
-   hình mở sẵn. Không thấy thông báo thì xem mục 10.
+2. **Cài module** (chỉ lần đầu): ở khối «Thông báo module mới từ git», mục «Gemini API» có nhãn
+   «Mới» — bấm «Cài». Cài **không cần khoá API**: vài giây sau module đã nằm trên máy, hiện ở «Module đã
+   cài» với nhãn «chưa có khoá», có tab trên thanh trên cùng, và thẻ của nó mở sẵn form thêm khoá. Lúc này
+   module chưa phục vụ `/v1` (chưa liên kết). Không thấy thông báo thì xem mục 10.
 3. **Dán khoá API của Google** vào ô «Khoá API», **mỗi dòng một khoá** (có thể nhiều khoá). Ô «Địa chỉ
    gốc (base_url)» để trống, trừ khi bị chặn vùng (xem tiểu mục gemini-api).
-4. Bấm **«Kiểm tra và cài»**. web2api thử từng khoá (không tốn token) và hiện từng dòng: khoá (chỉ 4 ký
+4. Bấm **«Kiểm tra và lưu»**. web2api thử từng khoá (không tốn token) và hiện từng dòng: khoá (chỉ 4 ký
    tự cuối) · dùng được hay không · độ trễ · số model, hoặc lý do hỏng. Chỉ khoá dùng được mới được lưu;
    khoá vừa dán bị xoá khỏi trang ngay sau khi gửi.
 5. Bấm **«Thử chat»**: chọn model (ví dụ `gemini/gemini-2.5-flash`), gõ câu hỏi, bấm «Gửi». Có ô chọn
@@ -314,7 +320,17 @@ Mỗi module có một **id** (ví dụ `gemini-api`) và một **tiền tố mo
 web2api dựa vào tiền tố để chọn module.
 
 Xem module đang có trên máy (mở, không cần khoá): `curl -s $W/api/modules/catalog` (mọi module khám
-phá được) và `curl -s $W/api/modules` (module đã cài).
+phá được, kèm lỗi của thư mục hỏng) và `curl -s $W/api/modules` (module đã cài).
+
+Ba trạng thái của một module, lõi suy từ đĩa chứ không từ danh sách gõ tay:
+
+- **có trên git** — chưa có mã trên máy (thông báo «Mới»); việc làm với nó là **«Cài»**.
+- **đã cài** — mã nằm trong `/data/modules/<id>/` (hoặc đi kèm ảnh): có trong `GET /api/modules`, có tab
+  (`tab_web`), gỡ được. Mọi thay đổi bản từ đây là **«Cập nhật»**.
+- **đã liên kết** — đã có cấu hình hợp lệ (khoá…) và đang phục vụ `/v1` (`"da_cau_hinh": true`). Module
+  khai trường `bat_buoc` (`"can_cau_hinh": true`) mà chưa có khoá thì **không** được nạp, không có trong
+  `/v1/models`, và `/v1/chat/completions` trả `404` nêu rõ «chưa có khoá». Module không có trường bắt buộc
+  thì cài xong là liên kết luôn.
 
 ### Module gemini-api — Gemini API (Google AI Studio)
 
@@ -340,7 +356,8 @@ Mã nguồn: `modules/gemini-api/`. Tiền tố model: `gemini`.
    ```
 
    Trong `danh_sach` phải có `"id": "gemini-api"` với `"trang_thai": "moi"`.
-2. Tải module về và nạp (không khởi động lại):
+2. Cài module — **không cần khoá API** (tải về và nạp, không khởi động lại). Xong bước này module đã cài
+   nhưng chưa liên kết (`"da_cau_hinh": false` trong `GET /api/modules`):
 
    ```bash
    curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/gemini-api
@@ -357,6 +374,25 @@ Mã nguồn: `modules/gemini-api/`. Tiền tố model: `gemini`.
 
    Thành công thì trả `{"ok": true, "ket_qua_tung_khoa": [...]}`. Không khoá nào dùng được thì trả mã
    400 với `"ok": false` và lý do — cấu hình **không** được lưu.
+
+4. Thêm hoặc bớt **từng khoá** sau này, không phải dán lại cả danh sách và không ai được xem lại khoá thật.
+   Xem khoá đã lưu (chỉ dạng che, theo thứ tự — thứ tự đó là **chỉ số** dùng ở dưới):
+
+   ```bash
+   curl -s -H "Authorization: Bearer $K" $W/api/modules/gemini-api/cau-hinh
+   # {"gia_tri": {"api_keys": ["…abcd", "…wxyz"], "base_url": "..."}, "da_cau_hinh": true, ...}
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"api_keys": {"them": ["AIza...khoá-mới"]}}}' \
+     $W/api/modules/gemini-api/cai                                  # thêm một khoá, giữ hết khoá cũ
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"api_keys": {"giu": [1]}}}' \
+     $W/api/modules/gemini-api/cai                                  # chỉ giữ khoá chỉ số 1 (bớt khoá 0)
+   ```
+
+   Quy tắc của `POST /api/modules/{id}/cai`: trường **vắng mặt** trong `cau_hinh` thì giữ giá trị đã lưu
+   (thêm khoá không làm mất `base_url` đã đặt); trường có mặt thì thay — một **danh sách** thường vẫn là
+   thay cả danh sách; trường kiểu `danh_sach_bi_mat` còn nhận dạng sửa `{"giu": [chỉ số], "them": [khoá]}`
+   (vắng `giu` là giữ hết). Mỗi lần lưu, web2api kiểm lại mọi khoá và chỉ giữ khoá dùng được.
 
 **Cấu hình.**
 
@@ -410,7 +446,10 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 **Giới hạn.**
 - Chưa có nhúng (embeddings), tạo ảnh, video của Gemini — chỉ có chat và danh sách model.
 - Khoá bị thu hồi SAU khi cài mà Google trả `400` (không phải 401/403) thì web2api không tự đổi khoá,
-  vì `400` được coi là lỗi của yêu cầu. Cài lại để loại khoá đó.
+  vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó (dạng `{"giu": [...]}` ở bước 4) hoặc lưu lại cấu hình
+  để kiểm lại mọi khoá.
+- Không bớt được khoá cuối cùng: `api_keys` là trường bắt buộc nên module từ chối cấu hình rỗng — muốn bỏ
+  hẳn thì gỡ module.
 - Chưa đo RAM/đĩa thật của module (trường `ram_them_mb`, `dia_mb` trong manifest đang để trống).
 - Proxy Cloudflare có đặt `PROXY_TOKEN` (header `X-Proxy-Token`) chưa dùng được: `base_url` không mang
   thêm header.
@@ -473,8 +512,19 @@ Home Assistant của nhà.
    `GET /api/modules/thong-bao` (quản trị) trả danh sách; `GET /api/modules` (mở) có số `thong_bao_so`
    để thanh trên cùng hiện chấm báo.
 3. Quản trị bấm «Cài» trong khối «Thông báo module mới từ git» của trang Module (hoặc gọi
-   `POST /api/nguon-git/cai/<id>`). web2api tải đúng phiên bản đã báo, kiểm
-   toàn vẹn từng tệp, đặt vào `/data/modules/<id>/` và **nạp nóng** — dùng được ngay.
+   `POST /api/nguon-git/cai/<id>`) — **không cần khoá API**. web2api tải đúng phiên bản đã báo, kiểm
+   toàn vẹn từng tệp, đặt vào `/data/modules/<id>/` và **nạp nóng**. Module không có trường bắt buộc thì
+   dùng được ngay; module cần khoá thì đã cài nhưng chưa liên kết cho tới khi thêm khoá (mục 6).
+
+**Lần đầu thêm nguồn git thì cập nhật luôn module đang có.** Ở lần đồng bộ thành công **đầu tiên** của một
+nguồn (lưu cấu hình qua trang Module hoặc `PUT /api/nguon-git`, hay nguồn từ biến `WEB2API_GIT_REPO`, hoặc
+khi đổi sang repo/nhánh/thư mục khác), web2api cập nhật **một lần** mọi module đã có mã trên máy mà git có
+bản khác (trạng thái «có bản mới») — kể cả module chép tay vào `/data/modules/` — dù `tu_dong` đang tắt.
+Module **mới** trên git thì không tự cài (việc đó bạn bấm «Cài»). Vẫn giữ mọi chốt: bản mới xin thêm quyền
+(gói Python, mạng ra) hoặc commit chưa ký khi bật `yeu_cau_chu_ky` thì không cập nhật và ghi lý do vào
+`ghi_chu`; bản vừa gỡ không cài lại; cập nhật hỏng thì giữ bản cũ. Dấu «đã đồng bộ» chính là commit lưu
+trong `nguon_git_trang_thai.json`: khởi động lại hay nâng cấp lõi trên máy đã đồng bộ từ trước thì không
+tính là lần đầu.
 
 ### Cấu hình nguồn git
 
@@ -523,8 +573,9 @@ Thư mục `modules/<id>/` gồm:
 - `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`,
   `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Hợp đồng chi tiết
   ghi ở đầu tệp `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`.
-- Tuỳ chọn `web/`: giao diện riêng, được phục vụ ở `/m/<id>/` khi module đã cài, và `GET /api/modules`
-  trả `tab_web` (`{"nhan", "duong"}`) để thanh trên cùng thêm tab.
+- Tuỳ chọn `web/`: giao diện riêng, được phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết),
+  và `GET /api/modules` trả `tab_web` (`{"nhan", "duong"}`) để thanh trên cùng thêm tab. Module không khai
+  `tab_web` vẫn có tab: `duong` trỏ tới thẻ thêm khoá của nó trên trang Module.
 
 Module cần gói Python mà ảnh lõi không có thì bị **từ chối nạp** với thông báo nêu tên gói — lõi không
 tự cài gói lúc chạy. Khi đó hãy làm **module từ xa** (dưới đây). Một module hỏng (lỗi cú pháp, thiếu
@@ -537,9 +588,10 @@ mới bị hỏng thì web2api **hoàn về bản cũ** và báo lỗi.
 curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/nap-lai    # {"them": [], "doi": [], "go": [], "loi": []}
 ```
 
-Module tìm thấy nhưng chưa cài cấu hình (ví dụ chép tay vào `/data/modules/`) thì cài bằng
+Module đã cài nhưng chưa có cấu hình (ví dụ chép tay vào `/data/modules/`) thì liên kết bằng
 `POST /api/modules/<id>/cai` với thân `{"cau_hinh": {...}}` (module không cần cấu hình: `{"cau_hinh": {}}`).
-Module cài từ git mà không có trường bắt buộc thì được kích hoạt ngay khi cài.
+Module cài từ git mà không có trường bắt buộc thì được liên kết ngay khi cài. Cấu hình đã lưu mà thiếu
+trường `bat_buoc` (ví dụ tệp bí mật bị mất) thì lõi không nạp module — coi như chưa liên kết.
 
 ### Module từ xa (dịch vụ nặng, máy GPU, máy khác)
 
@@ -578,7 +630,7 @@ không định tuyến.
 |---|---|
 | `401` «Thiếu hoặc sai khoá quản trị» / trang Module báo «Khoá sai hoặc thiếu» | Thiếu header `Authorization: Bearer <khoá>` hoặc khoá sai; trên trang Module dán lại khoá ở Bước 1. Lấy lại khoá: `docker exec web2api cat /data/admin_key`. |
 | `404` «không thuộc module nào» | Tên model thiếu tiền tố hoặc tiền tố chưa cài. Xem `/v1/models`. |
-| `404` «chưa cài» | Module đã tải về nhưng chưa cài cấu hình: `POST /api/modules/<id>/cai`. |
+| `404` «đã cài nhưng chưa có khoá» | Module đã cài nhưng chưa liên kết: thêm khoá ở thẻ của module trên trang Module, hoặc `POST /api/modules/<id>/cai`. |
 | Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 6, module gemini-api). |
 | `429` từ Gemini | Hết hạn mức Google; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
 | Module không hiện trong `/api/modules/catalog` | Xem trường `loi` của chính API đó: mỗi thư mục hỏng có lý do (manifest sai, trùng id/tiền tố, thiếu gói…). Sửa xong gọi `POST /api/modules/nap-lai`. |
@@ -598,7 +650,8 @@ không định tuyến.
 curl -s -X DELETE -H "Authorization: Bearer $K" $W/api/modules/gemini-api
 ```
 
-Lệnh này dừng module, xoá cấu hình và khoá của nó, và xoá thư mục `/data/modules/<id>/`. Module còn trên
+Lệnh này dừng module, xoá cấu hình và khoá của nó, và xoá thư mục `/data/modules/<id>/` — module chưa
+liên kết (chưa có khoá) cũng gỡ được như vậy. Module còn trên
 git sẽ lại hiện trạng thái «mới» trong thông báo (cài lại được bất cứ lúc nào). Khi đang bật tự cài
 (`tu_dong`), web2api nhớ bản vừa gỡ và **không** tự cài lại đúng bản đó; khi trên git có bản mới hơn thì
 bản mới vẫn được tự cài như thường — muốn ngừng hẳn thì tắt `tu_dong` hoặc xoá module khỏi git. Module từ xa gỡ cùng cách.
@@ -618,12 +671,13 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /` | Không | Trang khởi đầu |
 | `GET /health` | Không | `{"ok": true, "phien_ban": ...}` |
 | `GET /api/he-thong` | Không | RAM, CPU, đĩa, GPU của máy và container |
-| `GET /api/modules` | Không | Module đã cài (kèm `tab_web`), module từ xa, `thong_bao_so` |
-| `GET /api/modules/catalog` | Không | Mọi module khám phá được (`nguon`, `da_cai`) và `loi` của từng thư mục hỏng |
+| `GET /api/modules` | Không | Module đã cài — có mã trên máy (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so` |
+| `GET /api/modules/catalog` | Không | Mọi module khám phá được (`nguon`, `da_cau_hinh`, `truong_cau_hinh`) và `loi` của từng thư mục hỏng |
 | `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git |
 | `POST /api/modules/nap-lai` | Có | Quét lại thư mục module, nạp nóng |
 | `POST /api/modules/tu-xa` | Có | Đăng ký module từ xa |
-| `POST /api/modules/{id}/cai` | Có | Kiểm và lưu cấu hình module (thân `{"cau_hinh": {...}}`) |
+| `POST /api/modules/{id}/cai` | Có | Kiểm và lưu cấu hình module (thân `{"cau_hinh": {...}}`; trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận `{"giu": [...], "them": [...]}`) |
+| `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module |
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
@@ -631,7 +685,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/nguon-git/cai/{id}` | Có | Cài module từ git theo đúng commit đã báo |
 | `GET /v1/models` | Có | Model của mọi module đã cài |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
-| `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài |
+| `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -680,6 +734,8 @@ và chụp ảnh, ghim đúng phiên bản đã chạy bộ test.
 ## 14. Nhật ký thay đổi
 
 Mới nhất ở trên. Mỗi dòng: ngày — việc.
+
+- 11/10/2026 — Cài module không cần khoá API: «đã cài» (mã trên máy) tách khỏi «đã liên kết» (có khoá, phục vụ `/v1`); `GET /api/modules` liệt kê mọi module đã cài kèm `da_cau_hinh`/`can_cau_hinh`/`tab_web`; thêm/bớt từng khoá (`GET /api/modules/{id}/cau-hinh`, dạng sửa `giu`/`them`); `/catalog` đổi `da_cai` thành `da_cau_hinh`; lõi không nạp module thiếu trường bắt buộc; lần đầu thêm nguồn git thì cập nhật một lần module đang có; quy tắc chữ «Cài» (chưa có mã) / «Cập nhật» (đã cài).
 
 - 11/10/2026 — Thêm giấy phép: giữ toàn quyền (*All rights reserved*), chủ bản quyền `TriTue2011` (tệp `LICENSE`).
 - 11/10/2026 — Lần CI đầu tiên trên GitHub: ảnh đa kiến trúc lên `ghcr.io/tritue2011/web2api`; sửa gitleaks bắt nhầm tên dự án; thêm `.pre-commit-config.yaml`.

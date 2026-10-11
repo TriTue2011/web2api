@@ -57,23 +57,31 @@ CATALOG = [
         ],
         "tai_nguyen": {"ram_them_mb": None, "dia_mb": 12, "gpu": False, "mang_ra": ["gia.example"],
                        "ghi_chu": "RAM chưa đo."},
-        "yeu_cau_goi": ["httpx"], "tab_web": None, "nguon": "anh", "da_cai": False,
+        "yeu_cau_goi": ["httpx"], "tab_web": None, "nguon": "anh", "da_cau_hinh": False,
     },
     {
         "id": "xss-mod", "ten": XSS_TEN, "mo_ta": "<b>mô tả</b><script>window.__xss=6</script>",
         "phien_ban": "9.9.9", "loai": "ai", "giao_thuc": "openai", "tien_to": "xss",
         "truong_cau_hinh": [],
         "tai_nguyen": {"ram_them_mb": 999999, "dia_mb": None, "gpu": None, "mang_ra": None, "ghi_chu": None},
-        "yeu_cau_goi": [], "tab_web": None, "nguon": "du_lieu", "da_cai": False,
+        "yeu_cau_goi": [], "tab_web": None, "nguon": "du_lieu", "da_cau_hinh": False,
     },
 ]
 
+# Như lõi thật (app/tuyen.py ds_modules): mọi module CÓ MÃ trên máy đều có mặt (kể cả chưa liên kết),
+# kèm da_cau_hinh / can_cau_hinh / nguon / tab_web; module không khai tab riêng có tab trỏ thẻ của nó ở trang Module.
 MODS = [
+    {"id": "gemini-gia", "ten": "Gemini giả", "loai": "ai", "tien_to": "gemini", "phien_ban": "0.1.0", "nguon": "anh",
+     "can_cau_hinh": True, "da_cau_hinh": False,
+     "tab_web": {"nhan": "Gemini giả", "duong": "Cai-module.dc.html#the-gemini-gia"}},
+    {"id": "xss-mod", "ten": XSS_TEN, "loai": "ai", "tien_to": "xss", "phien_ban": "9.9.9", "nguon": "du_lieu",
+     "can_cau_hinh": False, "da_cau_hinh": False,
+     "tab_web": {"nhan": XSS_TEN, "duong": "Cai-module.dc.html#the-xss-mod"}},
     {"id": "tien-ich", "ten": "Tiện ích có tab", "cai_luc": "2026-10-10T08:00:00+00:00",
      "cau_hinh_cong_khai": {"api_keys": ["…wxyz"], "base_url": "https://gia.example/v1"},
-     "tab_web": {"nhan": "Tab giả", "duong": "/m/tien-ich/index.html"}},
+     "da_cau_hinh": True, "tab_web": {"nhan": "Tab giả", "duong": "/m/tien-ich/index.html"}},
     {"id": "xau", "ten": XSS_TEN_2, "cai_luc": "2026-10-10T08:00:00+00:00", "cau_hinh_cong_khai": {},
-     "tab_web": {"nhan": "Tab độc", "duong": "javascript:window.__xss=3"}},
+     "da_cau_hinh": True, "tab_web": {"nhan": "Tab độc", "duong": "javascript:window.__xss=3"}},
     {"id": None, "hong": "'chuoi-hong'"},
 ]
 
@@ -276,8 +284,8 @@ def _xu_ly(api: GiaApi):
 
         def _cai_git(self, id_: str):
             """Như lõi thật (app/nguon_git.py): cài xong thì mục thành «da_cai_dung» và RỜI danh sách
-            thông báo; module có trường bắt buộc chỉ được tải mã về — vào catalog với da_cai=false,
-            `cai` = None — chờ người dùng điền cấu hình."""
+            thông báo; module có trường bắt buộc được cài (mã về máy) nhưng chưa liên kết — vào catalog và
+            /api/modules với da_cau_hinh=false, `cai` = None — chờ người dùng thêm khoá."""
             muc = next((x for x in api.thong_bao["danh_sach"] if x["id"] == id_), None)
             if muc is None:
                 return self._loi(404, f"module {id_!r} không có trong lần đồng bộ gần nhất")
@@ -290,7 +298,11 @@ def _xu_ly(api: GiaApi):
                     "truong_cau_hinh": [{"khoa": "api_key", "nhan": "Khoá dịch vụ", "kieu": "bi_mat", "bat_buoc": True,
                                          "mac_dinh": None, "mo_ta": None}],
                     "tai_nguyen": {"ram_them_mb": 64, "dia_mb": 3, "gpu": False, "mang_ra": [], "ghi_chu": None},
-                    "yeu_cau_goi": [], "tab_web": None, "nguon": "du_lieu", "da_cai": False})
+                    "yeu_cau_goi": [], "tab_web": None, "nguon": "du_lieu", "da_cau_hinh": False})
+                api.mods.insert(0, {"id": id_, "ten": muc["ten"], "loai": "ai", "tien_to": id_.split("-")[0],
+                                    "phien_ban": muc["phien_ban_moi"], "nguon": "du_lieu", "can_cau_hinh": True,
+                                    "da_cau_hinh": False,
+                                    "tab_web": {"nhan": muc["ten"], "duong": f"Cai-module.dc.html#the-{id_}"}})
             return self._json(200, {"ok": True, "id": id_, "phien_ban": muc["phien_ban_moi"], "sha_commit": "abcdef1234",
                                     "nap_lai": {"them": [id_], "doi": [], "go": [], "loi": []}, "cai": None})
 
@@ -308,11 +320,15 @@ def _xu_ly(api: GiaApi):
             if not ok:
                 return self._json(400, {"ok": False, "ket_qua_tung_khoa": ds,
                                         "loi": "Không khoá nào gọi được https://gia.example/v1beta/openai/models."})
+            cu = {}
             for c in api.catalog:
                 if c["id"] == id_:
-                    c["da_cai"] = True
+                    c["da_cau_hinh"] = True
+            for x in api.mods:
+                if x.get("id") == id_:
+                    cu = x
             api.mods = [x for x in api.mods if x.get("id") != id_] + [
-                {"id": id_, "cai_luc": "2026-10-10T08:00:00+00:00",
+                {**cu, "id": id_, "cai_luc": "2026-10-10T08:00:00+00:00", "da_cau_hinh": True,
                  "cau_hinh_cong_khai": {"api_keys": [x["khoa"] for x in ds if x["ok"]], "ma_phu": "…"}}]
             return self._json(200, {"ok": True, "ket_qua_tung_khoa": ds, "loi": None})
 

@@ -66,7 +66,7 @@ main.pg{padding:24px 16px 40px !important;gap:20px !important}
 <h2 id="buoc-dau" style="font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2">Cài AI đầu tiên</h2>
 </div>
 </div>
-<p style="text-wrap:pretty">Chọn một nguồn AI — ví dụ Gemini API bằng khoá Google AI Studio — rồi cài ngay trên trang Module. Từ đó web2api trả lời được theo chuẩn OpenAI cho mọi ứng dụng trỏ vào nó.</p>
+<p style="text-wrap:pretty">Chọn một nguồn AI — ví dụ Gemini API — rồi cài ngay trên trang Module. Cài không cần khoá API; khoá thêm sau, trên web. Từ đó web2api trả lời được theo chuẩn OpenAI cho mọi ứng dụng trỏ vào nó.</p>
 <ol style="padding:0;list-style:none;display:flex;flex-direction:column;gap:10px">
 <sc-for list="{{buoc}}" as="b" hint-placeholder-count="4">
 <li style="display:flex;gap:12px;align-items:flex-start"><span aria-hidden="true" style="flex:0 0 auto;width:24px;height:24px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--mute)">{{b.so}}</span><span style="min-width:0;padding-top:1px">{{b.chu}}</span></li>
@@ -177,7 +177,9 @@ class Component extends DCLogic {
         { nhan: 'Phiên bản web2api', giaTri: he.phien_ban, ghiChu: '' }
       ];
     }
-    const mods = (s.mods || []).map((m) => ({ ten: (m && (m.ten || m.id)) || '(module không tên)', loai: (m && m.loai) || '' }));
+    // Nhãn bên phải: trạng thái lõi báo (`da_cau_hinh`) — đã cài mà chưa có khoá thì nói thẳng ra.
+    const mods = (s.mods || []).map((m) => ({ ten: (m && (m.ten || m.id)) || '(module không tên)',
+      loai: !m ? '' : m.loai === 'tu_xa' ? 'từ xa' : m.da_cau_hinh === false ? 'Chưa có khoá' : m.da_cau_hinh ? 'Đã liên kết' : (m.loai || '') }));
     // Tab của module đang chạy (máy chủ trả tab_web = {nhan, duong}). {{ }} thoát ký tự HTML nhưng không chặn
     // href="javascript:…" → chỉ nhận http(s), giống trang Module.
     const anToan = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : null; } catch (e) { return null; } };
@@ -188,13 +190,13 @@ class Component extends DCLogic {
       phienBan: he ? he.phien_ban : '', coPhienBan: !!he,
       tieuDe: mods.length ? 'Đã cài ' + mods.length + ' module' : 'Chưa cài module nào',
       moTa: mods.length
-        ? 'Các module đang chạy liệt kê ở khối «Module đã cài». Cài thêm, gỡ, kiểm sức khoẻ hay thử chat ở trang Module.'
+        ? 'Các module đã cài liệt kê ở khối «Module đã cài». Thêm khoá, cài thêm, gỡ, kiểm sức khoẻ hay thử chat ở trang Module.'
         : 'Container này vừa dựng xong và đang trống: chưa có nguồn AI nào. Mỗi module cài sau này có thể thêm một tab lên thanh trên cùng; gỡ đi thì tab biến mất.',
       tabs, coCham: soTb > 0, nhanCham: soTb + ' thông báo module mới',
       buoc: [
         { so: 1, chu: 'Mở trang Module và dán khoá quản trị.' },
-        { so: 2, chu: 'Chọn nguồn AI, ví dụ Gemini API. Chưa có trên máy thì bấm cài ở mục thông báo module mới từ git.' },
-        { so: 3, chu: 'Dán khoá API (mỗi dòng một khoá) rồi bấm «Kiểm tra và cài».' },
+        { so: 2, chu: 'Chọn nguồn AI ở mục thông báo module mới từ git, ví dụ Gemini API, và bấm «Cài» — không cần khoá API.' },
+        { so: 3, chu: 'Mở tab của module vừa cài để thêm khoá API (thêm sau lúc nào cũng được).' },
         { so: 4, chu: 'Thử chat ngay trên trang Module, hoặc trỏ ứng dụng nói chuẩn OpenAI vào địa chỉ /v1.' }
       ],
       dangTaiMay: s.dangTaiMay, coLoiMay: !!s.mayLoi, mayLoi: s.mayLoi, coMay: !!he && !s.dangTaiMay, may,

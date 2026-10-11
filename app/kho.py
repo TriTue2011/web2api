@@ -139,7 +139,7 @@ def doc_modules() -> tuple[list[dict], str | None]:
         if not isinstance(ds, list):
             raise KhoHong(f'{p} hỏng: cần dạng {{"modules": [...]}}')
     except KhoHong as e:
-        return [], f"{e}; coi như chưa cài module nào"
+        return [], f"{e}; coi như chưa có cấu hình module nào"
     return ds, None
 
 
@@ -187,6 +187,38 @@ def luu_cai_dat(id_: str, truong: list[dict], cau_hinh: dict) -> dict:
         ds = [m for m in ds if not (isinstance(m, dict) and m.get("id") == id_)] + [muc]
         _ghi_json(_p_modules(), {"modules": ds})
     return muc
+
+
+def ghep_cau_hinh(truong: list[dict], da_luu: dict, moi: dict) -> dict:
+    """Cấu hình gửi lên + cấu hình đã lưu → cấu hình đầy đủ để module kiểm lại rồi lưu.
+
+    - Trường VẮNG MẶT trong `moi`: giữ giá trị đã lưu — thêm khoá thì không phải dán lại khoá cũ,
+      cũng không mất `base_url` đã đặt.
+    - Trường có mặt: thay (danh sách thường vẫn là thay cả danh sách).
+    - Trường kiểu `danh_sach_bi_mat` nhận thêm dạng sửa `{"giu": [chỉ số], "them": [khoá mới]}`:
+      chỉ số trỏ vào danh sách đã lưu theo đúng thứ tự dạng che mà GET /api/modules/{id}/cau-hinh trả
+      — thêm/bớt từng khoá mà không ai phải gửi lại (hay được thấy) khoá thật. Vắng «giu» = giữ hết.
+      Chỉ số chứ không phải dạng che: hai khoá trùng 4 ký tự cuối, hay khoá ngắn (che thành «…»),
+      thì dạng che không phân biệt được.
+    Đầu vào sai → ValueError (lời nhắn không chứa giá trị khoá).
+    """
+    ra = dict(da_luu)
+    kieu = {t["khoa"]: t["kieu"] for t in truong}
+    for k, v in moi.items():
+        if kieu.get(k) == "danh_sach_bi_mat" and isinstance(v, dict):
+            thua = set(v) - {"giu", "them"}
+            if thua:
+                raise ValueError(f"«{k}» dạng sửa chỉ nhận «giu» và «them», thừa: {sorted(thua)}")
+            cu = da_luu.get(k) if isinstance(da_luu.get(k), list) else []
+            giu = v.get("giu", list(range(len(cu))))
+            them = v.get("them", [])
+            if not isinstance(giu, list) or not all(type(i) is int and 0 <= i < len(cu) for i in giu):
+                raise ValueError(f"«{k}.giu» phải là danh sách chỉ số của khoá đã lưu (0..{len(cu) - 1})")
+            if not isinstance(them, list) or not all(isinstance(x, str) for x in them):
+                raise ValueError(f"«{k}.them» phải là danh sách chuỗi")
+            v = list(dict.fromkeys([cu[i] for i in giu] + them))
+        ra[k] = v
+    return ra
 
 
 def doc_cau_hinh(id_: str, truong: list[dict], muc: dict) -> dict:

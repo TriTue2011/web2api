@@ -386,10 +386,11 @@ def test_model_khong_thuoc_module_nao_404(client, google):
         assert model in loi["message"] and "gemini/" in loi["message"]
 
 
-def test_module_chua_cai_404_ro(client):
+def test_module_chua_lien_ket_404_ro(client):
+    # Mã đã nằm trong thư mục dữ liệu = ĐÃ CÀI; chưa có khoá = chưa liên kết (KE-HOACH-CAI-MODULE.md 3.1).
     r = client.post("/v1/chat/completions", json=tin(), headers=QT)
     assert r.status_code == 404
-    assert "chưa cài" in r.json()["error"]["message"] and "gemini-api" in r.json()["error"]["message"]
+    assert "chưa có khoá" in r.json()["error"]["message"] and "gemini-api" in r.json()["error"]["message"]
 
 
 def test_v1_models_la_json_khong_roi_vao_tep_tinh(client):

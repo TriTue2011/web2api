@@ -80,13 +80,14 @@ async def v1_chat(request: Request):
     tien_to, co_gach, _ = model.partition("/")
     id_ = so.tim_theo_tien_to(tien_to) if co_gach else None
     if id_ is None:
-        cai = ", ".join(so.tien_to_dang_chay()) or "(chưa cài module nào)"
+        cai = ", ".join(so.tien_to_dang_chay()) or "(chưa có module nào đã liên kết)"
         raise LoiOpenAI(404, f"Model {model!r} không thuộc module nào. Model phải có dạng <tiền tố>/<tên>; "
                              f"tiền tố đang dùng được: {cai}. Xem GET /v1/models.", code="model_not_found")
     m = so.dang_chay.get(id_)
-    if m is None:
-        raise LoiOpenAI(404, f"Module {id_!r} (tiền tố {tien_to}/) chưa cài — cài bằng POST /api/modules/{id_}/cai",
-                        code="module_not_installed")
+    if m is None:  # tìm thấy tiền tố mà không chạy → mã đã cài (catalog), chưa liên kết; module từ xa luôn chạy
+        raise LoiOpenAI(404, f"Module {id_!r} (tiền tố {tien_to}/) đã cài nhưng chưa có khoá/cấu hình — mở tab "
+                             f"«{so.catalog[id_].duong_tab()['nhan']}» trên trang web2api để thêm khoá "
+                             f"(hoặc POST /api/modules/{id_}/cai)", code="module_not_configured")
     ma, headers, noi_dung = await m.chat(than, bool(than.get("stream")))
     headers = dict(headers)
     kieu = headers.pop("content-type", None)
@@ -99,20 +100,27 @@ async def v1_chat(request: Request):
 
 @modules.get("")
 async def ds_modules(request: Request):
-    """Module đã cài (đọc modules.json, tương thích bản khung) + module từ xa. Không bí mật, không tên repo."""
+    """Module ĐÃ CÀI = có mã trên đĩa (catalog), kèm cấu hình công khai đã lưu (bí mật đã che) nếu có;
+    rồi mục modules.json không còn mã/hỏng; rồi module từ xa. Không bí mật, không tên repo.
+
+    `da_cau_hinh`: đã liên kết (đang phục vụ /v1). `can_cau_hinh`: manifest có trường bắt buộc.
+    Mọi module đã cài đều có `tab_web` — tab riêng của module hoặc tab chung dựng từ truong_cau_hinh."""
     so = _so(request)
     ds, canh_bao = kho.doc_modules()
     if canh_bao:
         log.warning("%s", canh_bao)
+    da_luu = {m["id"]: m for m in ds if isinstance(m, dict) and isinstance(m.get("id"), str)}
     ra = []
-    for muc in ds:
-        muc = dict(muc) if isinstance(muc, dict) else {"id": None, "hong": repr(muc)}
-        km = so.catalog.get(muc.get("id"))
-        if km is not None:
-            muc.setdefault("ten", km.manifest["ten"])
-            if muc["id"] in so.dang_chay and km.duong_tab():
-                muc["tab_web"] = km.duong_tab()
+    for id_, km in so.catalog.items():
+        muc = dict(da_luu.get(id_) or {"id": id_})
+        muc.setdefault("ten", km.manifest["ten"])
+        muc.update(loai=km.manifest["loai"], tien_to=km.tien_to, phien_ban=km.manifest.get("phien_ban"),
+                   nguon=km.nguon, can_cau_hinh=km.can_cau_hinh, da_cau_hinh=id_ in so.dang_chay,
+                   tab_web=km.duong_tab())
         ra.append(muc)
+    # Mục cấu hình mà mã đã mất (xoá tay) hoặc hỏng: vẫn hiện, không giấu — để quản trị thấy.
+    ra += [dict(m) if isinstance(m, dict) else {"id": None, "hong": repr(m)} for m in ds
+           if not (isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"] in so.catalog)]
     ra += [so.cong_khai_tu_xa(i) for i in so.tu_xa]
     return {"modules": ra, "canh_bao": canh_bao, "thong_bao_so": _ng(request).so_thong_bao()}
 
@@ -125,7 +133,7 @@ async def catalog(request: Request):
         m = km.manifest
         ds.append({k: m.get(k) for k in ("id", "ten", "mo_ta", "phien_ban", "loai", "giao_thuc", "tien_to",
                                          "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web")}
-                  | {"nguon": km.nguon, "da_cai": km.id in so.dang_chay})
+                  | {"nguon": km.nguon, "da_cau_hinh": km.id in so.dang_chay})
     return {"modules": ds, "loi": so.loi}
 
 
@@ -172,10 +180,26 @@ async def go(id_: str, request: Request):
 
 @modules.get("/{id_}/suc-khoe", dependencies=QT)
 async def suc_khoe(id_: str, request: Request):
-    m = _so(request).dang_chay.get(id_)
+    so = _so(request)
+    m = so.dang_chay.get(id_)
     if m is None:
-        raise LoiOpenAI(404, f"Module {id_!r} chưa cài hoặc không tồn tại")
+        raise LoiOpenAI(404, f"Module {id_!r} đã cài nhưng chưa có khoá/cấu hình — chưa có gì để kiểm"
+                        if id_ in so.catalog else f"Không có module {id_!r}")
     return await m.suc_khoe()
+
+
+@modules.get("/{id_}/cau-hinh", dependencies=QT)
+async def cau_hinh(id_: str, request: Request):
+    """Hợp đồng của form cấu hình trên web: trường của manifest + giá trị ĐÃ LƯU, bí mật chỉ ở dạng che
+    (đọc phần công khai của modules.json — không mở tệp bí mật). Thứ tự dạng che của `danh_sach_bi_mat`
+    chính là chỉ số dùng trong dạng sửa {"giu", "them"} của POST …/cai."""
+    so = _so(request)
+    km = so.catalog.get(id_)
+    if km is None:
+        raise LoiOpenAI(404, f"Không có module {id_!r}")
+    muc = so.muc_da_luu(id_) or {}
+    return {"id": id_, "ten": km.manifest["ten"], "truong_cau_hinh": km.truong_cau_hinh,
+            "gia_tri": muc.get("cau_hinh_cong_khai") or {}, "da_cau_hinh": id_ in so.dang_chay}
 
 
 # ───────────── /api/nguon-git ─────────────
@@ -207,7 +231,9 @@ async def cai_tu_git(id_: str, request: Request):
 async def tep_cua_module(id_: str, duong: str, request: Request):
     so = _so(request)
     km = so.catalog.get(id_)
-    if km is None or id_ not in so.dang_chay or not km.manifest.get("tab_web"):
+    # Mở khi module ĐÃ CÀI (mã trên đĩa) và khai tab riêng — kể cả lúc chưa liên kết: tệp tĩnh của module,
+    # không chứa bí mật, và có khi chính là nơi người dùng thêm khoá.
+    if km is None or not km.manifest.get("tab_web"):
         raise HTTPException(404)
     goc = (km.thu_muc / "web").resolve()
     p = (goc / duong).resolve()

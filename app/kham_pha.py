@@ -74,10 +74,14 @@ class ModuleKhamPha:
     def tao(self):
         return self.lop(self.manifest)
 
-    def duong_tab(self) -> dict | None:
+    def duong_tab(self) -> dict:
+        """Tab của module trên thanh trên. Manifest khai `tab_web` thì dùng giao diện riêng ở /m/<id>/;
+        không khai thì trỏ tới thẻ của module trên trang Module — nơi form dựng từ `truong_cau_hinh` để
+        thêm khoá. Module nào đã cài cũng có tab, không cần bảng tên module nào. Đường tương đối: chạy
+        được cả khi web2api nằm sau proxy ở một thư mục con."""
         tab = self.manifest.get("tab_web")
         if not tab:
-            return None
+            return {"nhan": self.manifest["ten"], "duong": f"Cai-module.dc.html#the-{self.id}"}
         return {"nhan": tab["nhan"], "duong": f"/m/{self.id}/{tab['trang'].removeprefix('web/')}"}
 
 

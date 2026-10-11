@@ -103,7 +103,7 @@ main.pg{padding:24px 16px 40px !important;gap:20px !important}
 <header style="display:flex;flex-direction:column;gap:10px">
 <span style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--acc)">Cài và dùng module</span>
 <h1 class="tieu-de" style="font-family:Newsreader,Georgia,'Times New Roman',serif;font-weight:400;font-size:44px;line-height:1.1;letter-spacing:-0.02em;text-wrap:balance">Module</h1>
-<p style="max-width:66ch;color:var(--mute);font-size:15px;text-wrap:pretty">Mỗi module thêm một nguồn AI hay một tiện ích cho web2api. Ba bước: dán khoá quản trị, chọn module rồi điền cấu hình, bấm «Kiểm tra và cài». web2api thử từng khoá trước khi lưu, nên khoá hỏng không lọt vào.</p>
+<p style="max-width:66ch;color:var(--mute);font-size:15px;text-wrap:pretty">Mỗi module thêm một nguồn AI hay một tiện ích cho web2api. Ba bước: dán khoá quản trị; bấm «Cài» ở khối thông báo git — cài KHÔNG cần khoá API; rồi thêm khoá ở thẻ của module và bấm «Kiểm tra và lưu». web2api thử từng khoá trước khi lưu, nên khoá hỏng không lọt vào.</p>
 </header>
 
 <section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri">
@@ -124,7 +124,7 @@ main.pg{padding:24px 16px 40px !important;gap:20px !important}
 
 <section class="the" aria-labelledby="h-catalog" aria-busy="{{dangTaiCat}}" id="catalog">
 <div style="display:flex;flex-direction:column">
-<h2 id="h-catalog" class="nhan-muc">Bước 2 · Module có thể cài</h2>
+<h2 id="h-catalog" class="nhan-muc">Bước 2 · Thêm khoá cho module đã cài</h2>
 <span class="phu">Bảng tài nguyên lấy từ chính module; ô «chưa đo» nghĩa là tác giả chưa đo, không phải bằng không.</span>
 </div>
 <sc-if value="{{dangTaiCat}}"><p role="status" class="bao-cho">Đang đọc danh sách module…</p></sc-if>
@@ -136,7 +136,7 @@ main.pg{padding:24px 16px 40px !important;gap:20px !important}
 <ul style="margin:6px 0 0;padding-left:18px"><sc-for list="{{loiKhamPha}}" as="l"><li><span class="ma">{{l.thu_muc}}</span> — {{l.ly_do}}</li></sc-for></ul>
 </div>
 </sc-if>
-<sc-if value="{{rongCat}}"><div class="rong">Chưa có module nào để cài. Module mới sẽ xuất hiện ở đây khi có trong ảnh hoặc khi cài từ nguồn git (khối «Thông báo» bên cạnh).</div></sc-if>
+<sc-if value="{{rongCat}}"><div class="rong">Chưa cài module nào. Bấm «Cài» ở khối «Thông báo module mới từ git» bên cạnh — không cần khoá API; module cài xong hiện ở đây để thêm khoá.</div></sc-if>
 <sc-for list="{{catalog}}" as="m">
 <article class="the-con" id="{{m.idThe}}" data-module="{{m.id}}" aria-labelledby="{{m.idTen}}">
 <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
@@ -176,14 +176,14 @@ main.pg{padding:24px 16px 40px !important;gap:20px !important}
 <sc-if value="{{m.loiForm}}"><p role="alert" class="bao bao-loi loi-form">{{m.loiForm}}</p></sc-if>
 <div class="dong-nut">
 <button type="submit" class="nut nut-chinh nut-cai" disabled="{{m.dangCai}}">{{m.nhanNutCai}}</button>
-<span class="phu">Mỗi khoá được thử bằng một lệnh liệt kê model — không tốn lượt chat.</span>
+<span class="phu">Mỗi khoá được thử bằng một lệnh liệt kê model — không tốn lượt chat. Gửi lại để thay cả danh sách khoá.</span>
 </div>
 </form>
 </sc-if>
 <sc-if value="{{m.coKq}}">
 <div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
-<sc-if value="{{m.kqOk}}"><p role="status" class="bao bao-tot">Đã cài {{m.ten}}. Khoá hỏng (nếu có) bị bỏ, chỉ khoá dùng được được lưu.</p></sc-if>
-<sc-if value="{{m.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa cài được: {{m.kqLoi}}</p></sc-if>
+<sc-if value="{{m.kqOk}}"><p role="status" class="bao bao-tot">Đã liên kết {{m.ten}}. Khoá hỏng (nếu có) bị bỏ, chỉ khoá dùng được được lưu.</p></sc-if>
+<sc-if value="{{m.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa lưu được: {{m.kqLoi}}</p></sc-if>
 <sc-if value="{{m.kqGoLai}}"><p class="phu">Khoá đã gửi được xoá khỏi trang vì an toàn — dán lại nếu muốn thử lần nữa.</p></sc-if>
 <ul class="ds-kq">
 <sc-for list="{{m.kqDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"><sc-if value="{{k.ok}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></sc-if><sc-if value="{{k.hong}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12 M18 6L6 18"></path></svg></sc-if></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span></span></li></sc-for>
@@ -229,9 +229,10 @@ main.pg{padding:24px 16px 40px !important;gap:20px !important}
 <sc-if value="{{m.coCauHinh}}">
 <dl class="bang"><sc-for list="{{m.cauHinh}}" as="c"><div class="bang-dong"><dt class="ma">{{c.khoa}}</dt><dd class="ma">{{c.giaTri}}</dd></div></sc-for></dl>
 </sc-if>
+<sc-if value="{{m.chuaLienKet}}"><p class="bao bao-vang chua-lien-ket">Đã cài, chưa có khoá — thêm khoá ở thẻ của module trong Bước 2.</p></sc-if>
 <sc-if value="{{m.coNut}}">
 <div class="dong-nut">
-<button type="button" class="nut nut-nho nut-suc-khoe" onClick="{{m.onSucKhoe}}" disabled="{{m.dangSk}}">{{m.nhanSk}}</button>
+<sc-if value="{{m.coSkNut}}"><button type="button" class="nut nut-nho nut-suc-khoe" onClick="{{m.onSucKhoe}}" disabled="{{m.dangSk}}">{{m.nhanSk}}</button></sc-if>
 <button type="button" class="nut nut-nho nut-nguy nut-go" onClick="{{m.onHoiGo}}">Gỡ</button>
 </div>
 </sc-if>
@@ -582,7 +583,8 @@ class Component extends DCLogic {
   // Tin thành công đặt ở mức KHỐI, không ở mục: cài xong thì máy chủ coi mục là «đã cài đúng» và
   // bỏ nó khỏi danh sách thông báo — tin gắn vào mục sẽ biến mất cùng mục. Tin lỗi vẫn ở mục
   // vì cài hỏng thì mục còn đó.
-  async caiTuGit(id, ten) {
+  // Chữ theo quy tắc của lõi (nguon_git.viec): chưa có mã trên máy là «cài», đã cài rồi là «cập nhật».
+  async caiTuGit(id, ten, trangThai) {
     this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: true } }), caiGitTin: null }));
     let j;
     try {
@@ -594,15 +596,16 @@ class Component extends DCLogic {
     this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: null }) }));
     this.taiMods(); this.taiTb(); this.taiModels();
     await this.taiCat();
-    // Mã đã về nhưng module có trường bắt buộc thì máy chủ KHÔNG tự chạy nó (cai = null):
-    // nói rõ bước tiếp theo và mở sẵn form cấu hình, đừng báo «đã cài» khi chưa dùng được.
+    // Mã đã về (= đã cài) nhưng module có trường bắt buộc thì máy chủ chưa liên kết nó (da_cau_hinh = false):
+    // nói rõ bước tiếp theo và mở sẵn form thêm khoá, đừng báo «đang chạy» khi chưa dùng được.
     const m = (this.state.catalog || []).find((x) => x && x.id === id);
-    const canCauHinh = !!m && !m.da_cai;
+    const canCauHinh = !!m && !m.da_cau_hinh;
     const pb = j && j.phien_ban ? ' bản ' + j.phien_ban : '';
+    const viec = trangThai === 'co_ban_moi' ? 'Đã cập nhật ' : 'Đã cài ';
     this.setState((s) => ({
       caiGitTin: { id, canCauHinh, chu: canCauHinh
-        ? 'Đã tải ' + ten + pb + ' về máy. Module này cần cấu hình trước khi dùng: điền ở thẻ của nó trong «Module có thể cài» rồi bấm «Kiểm tra và cài».'
-        : 'Đã cài ' + ten + pb + ' và module đang chạy.' },
+        ? viec + ten + pb + ' (không cần khoá API). Module chưa có khoá: thêm ở thẻ của nó trong Bước 2 rồi bấm «Kiểm tra và lưu».'
+        : viec + ten + pb + ' và module đang chạy.' },
       formMo: canCauHinh ? Object.assign({}, s.formMo, { [id]: true }) : s.formMo
     }));
   }
@@ -769,17 +772,17 @@ class Component extends DCLogic {
         onInput: (e) => { const v = e.target.value; this.setState((st) => ({ form: Object.assign({}, st.form, { [id]: Object.assign({}, st.form[id] || {}, { [t.khoa]: v }) }) })); }
       }));
       const kq = s.ketQua[id];
-      const daCai = !!m.da_cai;
+      const daCai = !!m.da_cau_hinh;  // mọi thẻ ở đây đều ĐÃ CÀI (mã trên máy); cờ này là «đã liên kết»
       const tienTo = m.tien_to || '';
       const vd = viDuModel(tienTo);
       return {
         id, idThe: 'the-' + id, idTen: 'ten-' + i, ten: m.ten || id || '(module không tên)', moTa: m.mo_ta || '', tienTo, phienBan: m.phien_ban || '',
-        nhanTrangThai: daCai ? 'Đã cài' : 'Chưa cài', lopTrangThai: 'huy ' + (daCai ? 'huy-xanh' : 'huy-xam') + ' trang-thai',
+        nhanTrangThai: daCai ? 'Đã liên kết' : 'Chưa có khoá', lopTrangThai: 'huy ' + (daCai ? 'huy-xanh' : 'huy-vang') + ' trang-thai',
         taiNguyen, ghiChuTN: tn.ghi_chu || '', canhBaoRam,
-        moForm: !!s.formMo[id], nhanMoForm: s.formMo[id] ? 'Đóng form' : (daCai ? 'Cài lại / đổi cấu hình' : 'Cài module này'),
+        moForm: !!s.formMo[id], nhanMoForm: s.formMo[id] ? 'Đóng form' : (daCai ? 'Đổi khoá / cấu hình' : 'Thêm khoá'),
         onMoForm: () => this.setState((st) => ({ formMo: Object.assign({}, st.formMo, { [id]: !st.formMo[id] }) })),
         truong, khongTruong: truong.length === 0,
-        onCai: (e) => this.cai(m, e), dangCai: s.dangCai === id, nhanNutCai: s.dangCai === id ? 'Đang kiểm từng khoá…' : 'Kiểm tra và cài',
+        onCai: (e) => this.cai(m, e), dangCai: s.dangCai === id, nhanNutCai: s.dangCai === id ? 'Đang kiểm từng khoá…' : 'Kiểm tra và lưu',
         loiForm: s.formLoi[id] || '',
         coKq: !!kq, kqOk: !!(kq && kq.ok), kqLoi: kq && !kq.ok ? kq.loi || 'không rõ lý do' : '', kqGoLai: !!(kq && kq.goLai),
         kqDs: kq ? (kq.ds || []).map((k) => this.dongKhoa(k)) : [],
@@ -814,6 +817,8 @@ class Component extends DCLogic {
       return {
         id, ten, laTuXa: m.loai === 'tu_xa', caiLuc: ngayGio(m.cai_luc), hong: m.hong || '',
         coCauHinh: cauHinh.length > 0, cauHinh, coNut: true,
+        // Lõi báo `da_cau_hinh`; mục không có cờ này (mục modules.json mồ côi) thì vẫn cho bấm kiểm.
+        chuaLienKet: m.da_cau_hinh === false, coSkNut: m.da_cau_hinh !== false,
         onSucKhoe: () => this.kiemSucKhoe(id), dangSk: !!(sk && sk.dang), nhanSk: sk && sk.dang ? 'Đang kiểm…' : 'Kiểm tra sức khoẻ',
         skLoi: (sk && sk.loi) || '', coSk: !!skKq,
         skTong: skKq ? (skKq.ok ? 'Dùng được' : 'Không khoá nào dùng được') + (skKq.base_url ? ' — ' + skKq.base_url : '') : '',
@@ -823,7 +828,7 @@ class Component extends DCLogic {
       };
     });
 
-    // Tab của module: chỉ module đang chạy có tab_web; máy chủ thật trả {nhan, duong}.
+    // Tab của module: mọi module đã cài có tab_web {nhan, duong} (tab riêng, hoặc thẻ của nó ở trang này).
     const tabs = (s.mods || []).filter((m) => m && m.tab_web && typeof m.tab_web === 'object').map((m) => {
       const t = m.tab_web;
       return { id: String(m.id || ''), nhan: t.nhan || m.ten || m.id, href: lienKetAnToan(t.duong || t.url || t.trang) };
@@ -850,7 +855,7 @@ class Component extends DCLogic {
         lyDo: n.ly_do || '', ghiChu: n.ghi_chu || '',
         khongCai: n.trang_thai === 'loi_manifest' || !!cg.dang,
         nhanCai: cg.dang ? 'Đang cài…' : (n.trang_thai === 'co_ban_moi' ? 'Cập nhật' : 'Cài'),
-        onCai: () => this.caiTuGit(id, n.ten || id), caiLoi: cg.loi || ''
+        onCai: () => this.caiTuGit(id, n.ten || id, n.trang_thai), caiLoi: cg.loi || ''
       };
     });
     const dongBo = (tb && tb.dong_bo) || {};

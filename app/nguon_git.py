@@ -110,6 +110,7 @@ class NguonGit:
         self._lan_loi = 0
         self._ghi_chu: dict[str, tuple[str, str]] = {}
         self._tu_dong_hong: dict[str, str] = {}
+        self._lan_dau = False  # lần đồng bộ vừa xong là lần ĐẦU của nguồn này → _tu_dong cập nhật module đang có
         if api_github() != API_MAC_DINH:
             log.warning("WEB2API_GITHUB_API=%s khác mặc định %s — chỉ dùng cho test", api_github(), API_MAC_DINH)
 
@@ -285,6 +286,10 @@ class NguonGit:
         if tt.get("dinh_danh") != [repo, nhanh, thu_muc]:
             tt.clear()
             tt["dinh_danh"] = [repo, nhanh, thu_muc]
+        # «Lần đầu» = trạng thái chưa từng có commit của ĐÚNG nguồn này (đổi repo/nhánh/thư mục thì tt vừa bị
+        # xoá ở trên). Dấu chính là commit đã lưu trong nguon_git_trang_thai.json: máy đã đồng bộ từ bản cũ
+        # thì có sẵn commit → nâng cấp lõi KHÔNG tự cập nhật module lúc không ai bấm; khởi động lại cũng vậy.
+        lan_dau = not tt.get("commit")
         r = await self._goi(f"/repos/{repo}/commits/{quote(nhanh, safe='/')}", etag=tt.get("etag"))
         tt["kiem_luc"] = kho.bay_gio_iso()
         if r.status_code == 304:
@@ -305,6 +310,7 @@ class NguonGit:
         modules = await self._doc_modules(repo, cay, thu_muc, tt.get("modules") or [])
         # ETag chỉ lưu khi đã đọc xong: hỏng giữa chừng thì lần sau không bị 304 che mất commit này.
         tt.update(etag=r.headers.get("etag"), commit=commit, modules=modules, loi=None)
+        self._lan_dau = lan_dau
 
     async def _doc_modules(self, repo: str, cay: list[dict], thu_muc: str, cu: list[dict]) -> list[dict]:
         tien = thu_muc + "/"
@@ -393,6 +399,11 @@ class NguonGit:
 
     # ───────────── cài từ git ─────────────
 
+    def viec(self, id_: str) -> str:
+        """Quy tắc từ ngữ, suy từ ĐĨA chứ không từ danh sách: module chưa có mã trên máy thì là «cài»;
+        đã cài rồi (có trong catalog, kể cả chưa liên kết hay đặt tay) thì mọi thay đổi bản là «cập nhật»."""
+        return "cập nhật" if id_ in self.so.catalog else "cài"
+
     async def cai(self, id_: str) -> dict:
         async with self._khoa:
             return await self._cai(id_)
@@ -436,6 +447,7 @@ class NguonGit:
             nguon = {"repo": repo, "nhanh": cfg["nhanh"], "sha_commit": commit["sha"], "tree_sha": m["tree_sha"],
                      "phien_ban": manifest.get("phien_ban"), "cai_luc": kho.bay_gio_iso()}
             (tam / ".nguon.json").write_text(json.dumps(nguon, ensure_ascii=False, indent=2), encoding="utf-8")
+            viec = self.viec(id_)  # đọc TRƯỚC khi cài: cài xong thì module đã nằm trong catalog
             kq = await self.so.cai_thu_muc(id_, tam)
         except BaseException:
             if tam.exists():
@@ -444,7 +456,7 @@ class NguonGit:
         self._ghi_chu.pop(id_, None)
         self._tu_dong_hong.pop(id_, None)
         (self.trang_thai.get("da_go") or {}).pop(id_, None)
-        log.warning("Đã cài module %s phiên bản %s từ git (commit %s)", id_, manifest.get("phien_ban"),
+        log.warning("Đã %s module %s phiên bản %s từ git (commit %s)", viec, id_, manifest.get("phien_ban"),
                     str(commit["sha"])[:12])
         return {"ok": True, "id": id_, "phien_ban": manifest.get("phien_ban"), "sha_commit": commit["sha"], **kq}
 
@@ -502,24 +514,35 @@ class NguonGit:
     # ───────────── tự cài ─────────────
 
     async def _tu_dong(self) -> None:
+        """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, xin thêm quyền,
+        bản vừa gỡ, bản đã tự cài hỏng):
+          - `tu_dong` bật: module mới và bản mới;
+          - lần đồng bộ ĐẦU của nguồn git (`_lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, cập nhật module
+            đã có mã mà git có bản khác (`co_ban_moi`, kể cả module đặt tay không có .nguon.json) dù
+            `tu_dong` tắt — không cài module mới, việc đó chủ máy bấm."""
         cfg = self.cau_hinh()
-        if not cfg or not cfg.get("tu_dong"):
+        lan_dau, self._lan_dau = self._lan_dau, False
+        if not cfg:
+            return
+        duoc = {"moi", "co_ban_moi"} if cfg.get("tu_dong") else {"co_ban_moi"} if lan_dau else set()
+        if not duoc:
             return
         commit = self.trang_thai.get("commit") or {}
         snap = {m["id"]: m for m in self.trang_thai.get("modules") or []}
         for x in self.danh_sach():
-            if x["trang_thai"] not in ("moi", "co_ban_moi"):
+            if x["trang_thai"] not in duoc:
                 continue
             m = snap[x["id"]]
+            viec = self.viec(x["id"])
             if self._tu_dong_hong.get(x["id"]) == m["tree_sha"]:
                 continue  # bản này đã tự cài hỏng một lần — chờ bản mới hoặc quản trị
             if (self.trang_thai.get("da_go") or {}).get(x["id"]) == m["tree_sha"]:
-                self._ghi_chu[x["id"]] = (m["tree_sha"], "quản trị đã gỡ bản này — không tự cài lại; "
-                                                          "bản mới trên git hoặc cài tay thì cài")
+                self._ghi_chu[x["id"]] = (m["tree_sha"], f"quản trị đã gỡ bản này — không tự {viec} lại; "
+                                                          f"bản mới trên git hoặc {viec} tay thì {viec}")
                 continue
             ly_do = None
             if cfg.get("yeu_cau_chu_ky") and not commit.get("da_xac_minh"):
-                ly_do = "commit chưa được GitHub xác minh chữ ký (yeu_cau_chu_ky bật) — không tự cài, cần quản trị cài tay"
+                ly_do = f"commit chưa được GitHub xác minh chữ ký (yeu_cau_chu_ky bật) — không tự {viec}, cần quản trị {viec} tay"
             elif x["trang_thai"] == "co_ban_moi":
                 km = self.so.catalog.get(x["id"])
                 goi = sorted(set(m.get("yeu_cau_goi") or []) - set(km.manifest.get("yeu_cau_goi", [])))
@@ -527,7 +550,7 @@ class NguonGit:
                 if goi or mang:
                     ly_do = ("bản mới XIN THÊM QUYỀN (" + "; ".join(
                         ([f"gói: {', '.join(goi)}"] if goi else []) + ([f"mạng ra: {', '.join(mang)}"] if mang else []))
-                        + ") — không tự cài, cần quản trị duyệt và cài tay")
+                        + f") — không tự {viec}, cần quản trị duyệt và {viec} tay")
             if ly_do:
                 self._ghi_chu[x["id"]] = (m["tree_sha"], ly_do)
                 continue
@@ -535,8 +558,8 @@ class NguonGit:
                 await self._cai(x["id"])
             except (LoiGit, LoiSo) as e:
                 self._tu_dong_hong[x["id"]] = m["tree_sha"]
-                self._ghi_chu[x["id"]] = (m["tree_sha"], f"tự cài hỏng: {e}")
-                log.warning("Tự cài module %s hỏng: %s", x["id"], e)
+                self._ghi_chu[x["id"]] = (m["tree_sha"], f"tự {viec} hỏng: {e}")
+                log.warning("Tự %s module %s hỏng: %s", viec, x["id"], e)
 
     # ───────────── vòng nền ─────────────
 

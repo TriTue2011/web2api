@@ -4,7 +4,7 @@ test_web2api_cai_module_ui.py đo trang với API GIẢ (gia_api_ui.py) chép th
 minh trang chạy với lõi thật. Ở đây đi trọn đường chủ máy sẽ đi, trên lõi thật (uvicorn, lifespan,
 vòng nền git) + GitHub giả + Google giả:
   dán khoá quản trị → thấy thông báo gemini-api từ git → bấm cài → form cấu hình mở sẵn → dán khoá
-  API (mỗi dòng một khoá) → Kiểm tra và cài → kết quả từng khoá → Thử chat (stream) → sức khoẻ → gỡ.
+  API (mỗi dòng một khoá) → Kiểm tra và lưu → kết quả từng khoá → Thử chat (stream) → sức khoẻ → gỡ.
 Nguồn git lấy từ biến môi trường như docker-compose.yml đặt sẵn (không cấu hình tay).
 """
 
@@ -57,13 +57,14 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             assert "Mới" in trang.chu("[data-thong-bao='gemini-api']")
 
             trang.bam("document.querySelector('[data-thong-bao=\"gemini-api\"] .nut-cai-git')")
-            # Module cần khoá → máy chủ tải mã về nhưng chưa chạy; trang mở sẵn form cấu hình.
+            # Module cần khoá → cài (mã về máy) KHÔNG cần khoá, chưa liên kết; trang mở sẵn form thêm khoá.
             trang.cho(_the_module("gemini-api") + "?.querySelector('form.form-cai')", han=15, mo_ta="form cấu hình mở sẵn")
-            assert "cần cấu hình" in trang.chu("#thong-bao .tin-cai-git")
+            assert "không cần khoá API" in trang.chu("#thong-bao .tin-cai-git")
+            assert "chưa có khoá" in trang.chu("[data-da-cai='gemini-api']")  # đã cài, hiện ngay ở «Module đã cài»
 
             trang.go(_o("gemini-api", "api_keys"), f"{K_TOT}\n{K_XAU}")
             trang.go(_o("gemini-api", "base_url"), s_g.url)
-            trang.bam(_the_module("gemini-api") + ".querySelector('.nut-cai')", "Kiểm tra và cài")
+            trang.bam(_the_module("gemini-api") + ".querySelector('.nut-cai')", "Kiểm tra và lưu")
             trang.cho(_the_module("gemini-api") + "?.querySelector('.dung-ngay')", han=15, mo_ta="khối Dùng ngay")
             dong = trang.js(_DONG_KQ.format('[data-module="gemini-api"] .ket-qua-cai li'))
             assert [d[0] for d in dong] == ["tot", "hong"], dong
