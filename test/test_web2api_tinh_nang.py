@@ -74,7 +74,43 @@ def tn(c) -> dict:
 def test_ca_0_module(du_lieu):
     with TestClient(app) as c:
         j = tn(c)
-    assert j == {"modules": [], "loai": [], "kha_nang_da_cai": {}, "kha_nang_lien_ket": {}, "tab": [], "muc": []}
+    assert j == {"modules": [], "loai": [], "kha_nang_da_cai": {}, "kha_nang_lien_ket": {}, "tab": [], "muc": [],
+                 "mui_gio": None}
+
+
+# ───────────── múi giờ của nhà: biến TZ → `mui_gio` ─────────────
+
+@pytest.mark.parametrize("tz, mong", [("Asia/Ho_Chi_Minh", "Asia/Ho_Chi_Minh"), (":Asia/Ho_Chi_Minh", "Asia/Ho_Chi_Minh"),
+                                      (" America/New_York ", "America/New_York"), ("UTC", "UTC")])
+def test_mui_gio_doc_tu_tz(du_lieu, monkeypatch, caplog, tz, mong):
+    """Studio báo giờ theo múi giờ người vận hành khai bằng biến chuẩn TZ, không theo trình duyệt đang mở ở đâu."""
+    monkeypatch.setenv("TZ", tz)
+    with TestClient(app) as c:
+        assert tn(c)["mui_gio"] == mong
+    assert not [r for r in caplog.records if "TZ" in r.getMessage()]
+
+
+@pytest.mark.parametrize("tz", ["Không/Có", "../etc", "Europe", "/etc/localtime", "ICT-7", "Asia/Ho_Chi_Minh\nGIA", "x" * 300])
+def test_mui_gio_sai_thanh_null_loi_van_chay(du_lieu, monkeypatch, caplog, tz):
+    """TZ sai (tên lạ, thoát thư mục, thư mục, đường tuyệt đối, dạng POSIX) → null + MỘT cảnh báo không chép lại giá
+    trị; lõi vẫn khởi động và phục vụ bình thường."""
+    monkeypatch.setenv("TZ", tz)
+    with TestClient(app) as c:
+        assert c.get("/health").json()["ok"] is True
+        j = tn(c)
+        tn(c)  # gọi lại: không cảnh báo theo từng yêu cầu
+    assert j["mui_gio"] is None and j["modules"] == []
+    canh_bao = [r.getMessage() for r in caplog.records if "TZ" in r.getMessage()]
+    assert len(canh_bao) == 1 and tz.strip() not in canh_bao[0], canh_bao
+
+
+@pytest.mark.parametrize("tz", [None, "", "   "])
+def test_mui_gio_chua_dat_la_null_khong_canh_bao(du_lieu, monkeypatch, caplog, tz):
+    if tz is not None:
+        monkeypatch.setenv("TZ", tz)
+    with TestClient(app) as c:
+        assert tn(c)["mui_gio"] is None
+    assert not [r for r in caplog.records if "TZ" in r.getMessage()]
 
 
 def test_ai_da_cai_chua_khoa_roi_lien_ket_roi_go(du_lieu):

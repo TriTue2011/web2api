@@ -22,6 +22,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger("web2api.he_thong")
 
@@ -118,6 +119,21 @@ def _so_khai_bao(ten: str) -> int | None:
         log.warning("%s=%r không phải số nguyên dương — bỏ qua, đọc từ /proc", ten, gia_tri)
         return None
     return int(gia_tri)
+
+
+def mui_gio() -> str | None:
+    """Múi giờ của nhà do người vận hành khai bằng biến chuẩn `TZ` (tên IANA, vd Asia/Ho_Chi_Minh) — giao diện dùng
+    nó để báo «giờ hiện tại» cho model, không phụ thuộc trình duyệt đang mở ở đâu. Hợp lệ là khi zoneinfo nạp được
+    (glibc cho phép tiền tố «:»); rỗng → None; sai (dạng POSIX «ICT-7», thư mục, tên lạ) → None + một cảnh báo không
+    chép lại giá trị. Chỉ gọi lúc dựng sổ module (một lần mỗi lần khởi động), không gọi theo từng yêu cầu."""
+    gia_tri = os.environ.get("TZ", "").strip().removeprefix(":")
+    if not gia_tri:
+        return None
+    try:
+        return ZoneInfo(gia_tri).key
+    except (ValueError, KeyError, OSError):  # ZoneInfoNotFoundError là KeyError; thư mục/không đọc được là OSError
+        log.warning("Biến TZ không phải tên múi giờ IANA (vd Asia/Ho_Chi_Minh) — bỏ qua, Studio dùng múi giờ trình duyệt")
+        return None
 
 
 def ram_may() -> dict:

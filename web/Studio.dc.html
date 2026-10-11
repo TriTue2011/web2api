@@ -231,8 +231,8 @@ main.st{flex:1 1 0;min-height:0;min-width:0;display:flex;flex-direction:column;o
 // module ĐÃ LIÊN KẾT (chưa khoá) thì hiện dải «Chưa có khoá …» chỉ chỗ thêm khoá và khoá ô soạn. Model lấy từ
 // /v1/models theo tiền tố của module đã liên kết. Không có bảng chọn tỉ lệ/thời lượng: /v1/models chưa khai model nào
 // nhận tỉ lệ/thời lượng nào, và trang chỉ gửi đúng hợp đồng cũ ({model, prompt, n, response_format} / {model, prompt}).
-// Câu trả lời chat hiện bằng <md-chu> (markdown an toàn, khung.js); mỗi lời gọi chat mang thêm tin giờ của trình duyệt
-// (tinGio) ngay trước tin người dùng cuối — không hiện, không vào lịch sử.
+// Câu trả lời chat hiện bằng <md-chu> (markdown an toàn, khung.js); mỗi lời gọi chat mang thêm tin giờ hiện tại (tinGio:
+// múi giờ máy chủ khai bằng TZ, chưa khai thì của trình duyệt) ngay trước tin người dùng cuối — không hiện, không vào lịch sử.
 const K = window.Khung;
 // Chế độ của Studio: [mã, dòng DIEU_KIEN, nhãn trên nút, hình, chữ gợi ý trong ô soạn, câu mẫu trên màn đầu].
 // Câu mẫu là chữ giao diện chung chung, không nhắc nhà cung cấp nào.
@@ -372,13 +372,21 @@ class Component extends DCLogic {
       }
     }
   }
-  // Giờ hiện tại theo múi giờ của CHÍNH trình duyệt — model không có đồng hồ, không được cho biết thì đoán (từng trả
-  // «thứ Năm 11/07/2024» khi hôm nay là 11/10/2026). Ghép từ formatToParts để định dạng cố định: HH:MM, thứ, dd/mm/yyyy.
+  // Giờ hiện tại — model không có đồng hồ, không được cho biết thì đoán (từng trả «thứ Năm 11/07/2024» khi hôm nay là
+  // 11/10/2026). Múi giờ: `mui_gio` của /api/tinh-nang (người vận hành khai bằng biến TZ của máy chủ) để giờ không đổi
+  // theo nơi đặt trình duyệt; chưa khai, hoặc Intl không nhận tên đó (RangeError) → múi giờ của trình duyệt. Nhãn múi
+  // giờ và giờ lấy từ CÙNG một bộ định dạng. Ghép từ formatToParts để định dạng cố định: HH:MM, thứ, dd/mm/yyyy.
   tinGio() {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const tn = this.state.tn;
+    const chon = { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      hourCycle: 'h23', timeZoneName: 'longOffset' };
+    let dd, tz;
+    try { tz = (tn && tn.mui_gio) || undefined; dd = new Intl.DateTimeFormat('vi-VN', Object.assign({ timeZone: tz }, chon)); }
+    catch (e) { tz = undefined; dd = new Intl.DateTimeFormat('vi-VN', chon); }
+    // Tên đã khai giữ nguyên (Intl có bản đổi Asia/Ho_Chi_Minh thành Asia/Saigon); không khai thì tên của trình duyệt.
+    if (typeof tz !== 'string') tz = dd.resolvedOptions().timeZone || 'UTC';
     const p = {};
-    for (const x of new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset' }).formatToParts(new Date())) p[x.type] = x.value;
+    for (const x of dd.formatToParts(new Date())) p[x.type] = x.value;
     return { role: 'system', content: 'Giờ hiện tại theo múi giờ của người dùng (' + tz + ', ' + p.timeZoneName + '): ' + p.hour + ':'
       + p.minute + ', ' + p.weekday + ' ngày ' + p.day + '/' + p.month + '/' + p.year
       + '. Hỏi giờ, ngày, thứ thì dùng đúng giá trị này — không tự đoán, không tự tính sang múi giờ khác.' };

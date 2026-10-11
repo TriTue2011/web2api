@@ -37,5 +37,6 @@ def chan_mang_that(monkeypatch):
     for k in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
         monkeypatch.delenv(k, raising=False)
     for k in ("WEB2API_GIT_REPO", "WEB2API_GIT_NHANH", "WEB2API_GIT_THU_MUC", "WEB2API_GIT_TOKEN",
-              "WEB2API_ADMIN_KEY", "WEB2API_TEST_CHO_PHEP_LOOPBACK", "WEB2API_MAY_RAM_MB", "WEB2API_MAY_CPU"):
+              "WEB2API_ADMIN_KEY", "WEB2API_TEST_CHO_PHEP_LOOPBACK", "WEB2API_MAY_RAM_MB", "WEB2API_MAY_CPU",
+              "TZ"):  # TZ của máy chạy test không được đổi kết quả: test cần múi giờ thì tự đặt
         monkeypatch.delenv(k, raising=False)

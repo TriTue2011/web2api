@@ -667,6 +667,52 @@ def test_studio_gan_gio_that_ngay_truoc_tin_cuoi(trang, tmp_path, monkeypatch):
         assert "Giờ hiện tại" not in trang.js("document.body.innerText")
 
 
+# Đồng hồ trình duyệt giả: 02/01/2031 14:30 UTC (thứ Năm) = 21:30 ở Việt Nam (+07:00) = 09:30 ở New York.
+DONG_HO_2031 = ("(() => { const D = Date; const T = D.UTC(2031, 0, 2, 14, 30); window.Date = class extends D {"
+                " constructor(...a) { if (a.length) super(...a); else super(T); } static now() { return T; } }; })()")
+
+
+def test_studio_gio_theo_tz_cua_may_chu_khong_theo_trinh_duyet(trang, tmp_path, monkeypatch):
+    """Chủ máy: «giờ hiện tại theo env». Lõi khai TZ=Asia/Ho_Chi_Minh, trình duyệt đặt ở New York → tin giờ mà Google
+    giả NHẬN mang tên + độ lệch của Việt Nam và giờ Việt Nam (21:30), không phải giờ New York (09:30)."""
+    g = GoogleGia()
+    g.hanh_vi[K_TOT] = {"kieu": "tot"}
+    g.khuc_chat = ["Được."]
+    monkeypatch.setenv("TZ", "Asia/Ho_Chi_Minh")  # lõi đọc TZ lúc khởi động: đặt TRƯỚC loi_that
+    with MayChuThat(g.app) as s_g, loi_that(tmp_path, monkeypatch, modules={"gemini-api": _tep_gemini()}) as w:
+        lien_ket(w, "gemini-api", {"api_keys": [K_TOT], "base_url": s_g.url})
+        trang.cdp.goi("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"}, trang.s)
+        _mo_studio(trang, w)
+        trang.js(DONG_HO_2031)
+        _gui(trang, "Mấy giờ rồi?", 1)
+        tin = [x for x in g.nhat_ky if x["duong"] == "chat"][-1]["than"]["messages"]
+        assert [m["role"] for m in tin] == ["system", "user"], tin
+        gio = tin[0]["content"]
+        assert "Asia/Ho_Chi_Minh" in gio and "+07:00" in gio and "21:30" in gio and "Thứ Năm" in gio and "02/01/2031" in gio, gio
+        assert "America/New_York" not in gio and "09:30" not in gio, gio
+
+
+@pytest.mark.parametrize("mui_gio", ["Không/Có", "localtime"])
+def test_studio_mui_gio_intl_khong_nhan_thi_lui_ve_trinh_duyet(trang, tmp_path, monkeypatch, mui_gio):
+    """`mui_gio` tới trình duyệt mà Intl không nhận (tên lạ; «localtime» zoneinfo nhận nhưng Intl thì không) → lùi về
+    múi giờ của trình duyệt, không lỗi JS, lượt chat vẫn đi. Ghi đè thẳng trên sổ để vượt bộ kiểm của lõi."""
+    g = GoogleGia()
+    g.hanh_vi[K_TOT] = {"kieu": "tot"}
+    g.khuc_chat = ["Được."]
+    with MayChuThat(g.app) as s_g, loi_that(tmp_path, monkeypatch, modules={"gemini-api": _tep_gemini()}) as w:
+        app.state.so.mui_gio = mui_gio
+        lien_ket(w, "gemini-api", {"api_keys": [K_TOT], "base_url": s_g.url})
+        trang.cdp.goi("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"}, trang.s)
+        _mo_studio(trang, w)
+        assert trang.js("window.Khung.taiTinhNang().then((j) => j.mui_gio)") == mui_gio
+        trang.js(BAT_LOI_JS)
+        trang.js(DONG_HO_2031)
+        _gui(trang, "Mấy giờ rồi?", 1)
+        gio = [x for x in g.nhat_ky if x["duong"] == "chat"][-1]["than"]["messages"][0]["content"]
+        assert "America/New_York" in gio and "09:30" in gio and "02/01/2031" in gio and mui_gio not in gio, gio
+        assert trang.js("window.__loiJs") == []  # BAT_LOI_JS (khai ở trên, dùng chung với ca markdown)
+
+
 def test_studio_anh_video_khong_gan_tin_gio(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})

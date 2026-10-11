@@ -41,8 +41,10 @@ card, and the composer stays disabled instead of returning a raw `404`. Add your
 (keys can be added or removed one by one later; an empty text field never overwrites a saved value). After saving,
 the **Providers** tab (real models, per-key health) appears without a page reload and Studio is ready to chat. Studio
 renders replies as safe markdown (bold, lists, code, http/https links, tables that scroll inside the bubble; raw HTML
-shows as text) and attaches the current date and time in the browser's time zone to each chat call (one `system`
-message right before the last user message, never shown or stored in the conversation). A
+shows as text) and attaches the current date and time to each chat call (one `system` message right before the last
+user message, never shown or stored in the conversation). The time zone is the server's standard `TZ` variable (an IANA
+name such as `Asia/Ho_Chi_Minh`, exposed as `mui_gio` in `GET /api/tinh-nang`), so the time is your home time wherever
+the browser is; without `TZ`, or with an invalid one, Studio falls back to the browser's time zone. A
 module that maps to no main tab (for example a "network" type) stays on System → Modules after install, with the
 "Add account / API key" step open in its panel. Then call the API:
 
@@ -52,7 +54,8 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   http://<host>:3031/v1/chat/completions
 ```
 
-Copy `.env.example` to `.env` to change the port, data directory or other settings.
+Copy `.env.example` to `.env` to change the port, data directory or other settings — for example
+`TZ=Asia/Ho_Chi_Minh` for the time zone Studio reports to the model.
 
 ## Images and video (paid keys only)
 

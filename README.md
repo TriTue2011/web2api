@@ -160,7 +160,7 @@ chi tiết mở ở bước kế tiếp.
 | Cấu hình | Thuộc phần | Ở đâu | Ai đặt |
 |---|---|---|---|
 | Cổng, giới hạn RAM/CPU, volume, nhãn Watchtower | Triển khai | `docker-compose.yml`, `.env` | Người vận hành |
-| `WEB2API_DATA`, `WEB2API_ADMIN_KEY`, `WEB2API_MAY_*` | Lõi | Biến môi trường | Người vận hành |
+| `WEB2API_DATA`, `WEB2API_ADMIN_KEY`, `WEB2API_MAY_*`, `TZ` (múi giờ của nhà) | Lõi | Biến môi trường | Người vận hành |
 | Khoá quản trị | Lõi | `/data/admin_key` (0600) hoặc `WEB2API_ADMIN_KEY` | Lõi tự sinh lần đầu |
 | Nguồn git (`repo`, `nhanh`, `thu_muc`, `chu_ky_giay`, `tu_dong`, `yeu_cau_chu_ky`, `token`) | Lõi — nguồn git | `/data/nguon_git.json` (token ở `bi_mat/`), hoặc `WEB2API_GIT_*` khi chưa lưu | Quản trị (Hệ thống → Module → «＋ Thêm module» → Từ git) |
 | Mã module | Module | `/data/modules/<id>/` | Cài từ git, hoặc chép tay |
@@ -240,13 +240,15 @@ Mỗi module có **id** (ví dụ `gemini-api`) và **tiền tố model** (ví d
 `cung_cap` của nó; lõi đếm số module theo từng mã, tách **đã cài** (`kha_nang_da_cai`) và **đã liên kết**
 (`kha_nang_lien_ket`), kèm thống kê theo loại (`loai`: `ma`, `ten`, `thu_tu`, `so_da_cai`, `so_da_lien_ket`), tab
 riêng của module đã liên kết (`tab`, đường tương đối) và mục con module khai (`muc`, kèm `can`). Module từ xa được
-tính là `loai: "ai"`, `cung_cap: ["chat"]` — đó chính là hợp đồng của nó (dịch vụ chat chuẩn OpenAI).
+tính là `loai: "ai"`, `cung_cap: ["chat"]` — đó chính là hợp đồng của nó (dịch vụ chat chuẩn OpenAI). Kèm
+`mui_gio`: múi giờ khai bằng biến `TZ` (tên IANA đã kiểm, hoặc `null`) để Studio báo giờ hiện tại theo giờ nhà.
 
 ```bash
 curl -s $W/api/tinh-nang
 # {"modules": [{"id": "gemini-api", "loai": "ai", "cung_cap": ["chat", "anh", "video"], "da_lien_ket": true, ...}],
 #  "loai": [{"ma": "ai", "ten": "AI", "thu_tu": 10, "so_da_cai": 1, "so_da_lien_ket": 1}],
-#  "kha_nang_da_cai": {"ai": 1, "chat": 1, "anh": 1, "video": 1}, "kha_nang_lien_ket": {...}, "tab": [], "muc": []}
+#  "kha_nang_da_cai": {"ai": 1, "chat": 1, "anh": 1, "video": 1}, "kha_nang_lien_ket": {...}, "tab": [], "muc": [],
+#  "mui_gio": "Asia/Ho_Chi_Minh"}
 ```
 
 **Một hàm đánh giá cho cả khung lẫn module.** Mỗi dòng điều kiện có dạng `{can: [mã…], pham_vi: "lien_ket" |
@@ -644,6 +646,8 @@ docker run -d --name web2api \
   -e WEB2API_GIT_REPO=TriTue2011/web2api \
   -e WEB2API_MAY_RAM_MB=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo) \
   -e WEB2API_MAY_CPU=$(nproc) \
+- `TZ=Asia/Ho_Chi_Minh` (biến chuẩn, tên múi giờ IANA): múi giờ của nhà — Studio báo giờ hiện tại cho model theo
+  múi giờ này thay vì múi giờ của trình duyệt đang mở (mục 8).
   --label com.centurylinklabs.watchtower.enable=false \
   --restart unless-stopped \
   web2api:latest
@@ -759,8 +763,10 @@ markdown (Google giả trả một câu có in đậm, danh sách, mã), ô so�
 - **Trò chuyện**: hội thoại nhiều lượt qua `POST /v1/chat/completions`, có stream, nút «Dừng» giữ phần đã nhận.
   Câu trả lời hiển thị dạng markdown an toàn (in đậm, nghiêng, tiêu đề, danh sách, trích dẫn, mã, liên kết
   http/https, bảng cuộn ngang trong bong bóng; HTML thô hiện thành chữ). Mỗi lượt gửi, Studio tự gắn giờ hiện tại
-  theo múi giờ của trình duyệt vào lời gọi (một tin `system` ngay trước tin người dùng cuối, không hiện và không lưu
-  vào hội thoại) — model không có đồng hồ nên không được cho biết thì đoán ngày sai.
+  vào lời gọi (một tin `system` ngay trước tin người dùng cuối, không hiện và không lưu vào hội thoại) — model không
+  có đồng hồ nên không được cho biết thì đoán ngày sai. Múi giờ là biến `TZ` của máy chủ (vd `Asia/Ho_Chi_Minh`,
+  mục 5), nên mở trang ở đâu giờ cũng là giờ nhà; chưa đặt `TZ` thì dùng múi giờ của trình duyệt. Lõi không tự chèn
+  giờ vào lời gọi `/v1` của ứng dụng khác.
 - **Vẽ ảnh** (khi có module khai `anh`): `POST /v1/images/generations`, ảnh hiện ngay trong lượt và tải về được.
 - **Tạo video** (khi có module khai `video`): `POST /v1/videos` → hỏi `GET /v1/videos/{id}` mỗi 3 giây (thanh tiến
   độ trong lượt) → tải `…/content` thành tệp, xem tại chỗ và tải về.
@@ -949,6 +955,8 @@ uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
   `/api/tinh-nang` thật: Studio khi đã cài, gọi được khi đã liên kết, trang chính và nơi thêm khoá của từng module),
   kiểm mẫu manifest, tóm tắt module trên git, và **lưới chặn đặc thù nhà
   cung cấp**: chuỗi và định danh trong mã `app/` cùng mọi tệp `web/` không được chứa tên suy từ manifest của các
+| `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
+| `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
   module trong kho (tiền tố, id, tên máy trong `mang_ra`; chú thích và docstring không tính; CDN phông chữ được
   trừ).
 - `test/test_web2api_giao_dien.py`: giao diện bằng **Chrome thật** trên **lõi thật** với module giả
@@ -957,7 +965,8 @@ uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
   module loại lạ cài xong ở lại trang Module, `base_url` đã đặt không bị ghi đè, thêm/bớt từng khoá, Provider không Combo, Studio stream/dừng/80 khúc,
   ảnh, video, `403 no_key_permitted`, không chèn HTML thô, ô cao bằng nhau, không tràn ngang ở 390 px; câu trả lời
   markdown (phần tử thật, HTML/URL độc thành chữ, stream dở không văng lỗi, bảng rộng cuộn trong bong bóng) và tin
-  giờ của trình duyệt ngay trước tin người dùng cuối (đo ở thân yêu cầu Google giả nhận, múi giờ giả lập khác Việt Nam).
+  giờ ngay trước tin người dùng cuối (đo ở thân yêu cầu Google giả nhận: lõi đặt `TZ=Asia/Ho_Chi_Minh` mà trình
+  duyệt giả lập New York → giờ Việt Nam; chưa đặt `TZ`, hoặc tên Intl không nhận → giờ của trình duyệt, không lỗi JS).
   `test/test_web2api_markdown.py` kiểm bộ phân tích markdown của `web/khung.js` bằng node (lồng, bảng, dấu chưa đóng,
   chuỗi bệnh lý).
   `test/test_web2api_ui_loi_that.py` đi trọn luồng với module gemini-api thật (Google, GitHub giả).

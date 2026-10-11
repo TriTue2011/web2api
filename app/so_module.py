@@ -21,7 +21,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from app import kho
+from app import he_thong, kho
 from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, nap_ma, quet, van_tay)
 
 log = logging.getLogger("web2api.so_module")
@@ -46,6 +46,8 @@ class SoModule:
         self.loi: list[dict] = []  # lỗi của lần quét/nạp gần nhất: [{thu_muc, ly_do}]
         # Tạo trong vòng sự kiện của lifespan (asyncio.Lock gắn vòng lặp ở lần chờ đầu).
         self.khoa = asyncio.Lock()
+        # Múi giờ khai bằng TZ: đọc MỘT lần mỗi lần khởi động (sai thì cảnh báo một lần, không theo từng yêu cầu).
+        self.mui_gio = he_thong.mui_gio()
 
     # ───────────── tra cứu ─────────────
 
@@ -71,7 +73,8 @@ class SoModule:
     def tinh_nang(self) -> dict:
         """«Tính năng đang có» cho khung giao diện (GET /api/tinh-nang) — suy từ manifest module ĐÃ CÀI và trạng thái
         liên kết, không từ danh sách tên: mỗi module góp mã `loai` của nó và các mã `cung_cap` vào tập khả năng
-        (đếm số module, tách đã cài / đã liên kết). Không bí mật, không cấu hình. Đánh giá điều kiện (`can`) là
+        (đếm số module, tách đã cài / đã liên kết), kèm `mui_gio` (tên IANA khai bằng TZ, hoặc null) để Studio báo giờ
+        theo múi giờ của nhà. Không bí mật, không cấu hình module. Đánh giá điều kiện (`can`) là
         việc của giao diện — một hàm duy nhất cho cả điều kiện của khung lẫn `muc` của module."""
         modules, loai, da_cai, lien_ket, tab, muc = [], {}, {}, {}, [], []
 
@@ -108,7 +111,7 @@ class SoModule:
                 ghi(id_, m.manifest, True)
         thu_tu = sorted(loai.values(), key=lambda x: (x["thu_tu"] is None, x["thu_tu"] or 0, x["ma"]))
         return {"modules": modules, "loai": thu_tu, "kha_nang_da_cai": da_cai, "kha_nang_lien_ket": lien_ket,
-                "tab": tab, "muc": muc}
+                "tab": tab, "muc": muc, "mui_gio": self.mui_gio}
 
     # ───────────── khởi động / tắt ─────────────
 
