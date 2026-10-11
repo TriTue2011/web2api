@@ -60,8 +60,10 @@ Copy `.env.example` to `.env` to change the port, data directory or other settin
 ## Images and video (paid keys only)
 
 The core also exposes `POST /v1/images/generations` and the asynchronous video API `POST /v1/videos`,
-`GET /v1/videos/{id}`, `GET /v1/videos/{id}/content` (JSON body only; the file is streamed). They are routed by the
+`GET /v1/videos/{id}`, `GET /v1/videos/{id}/content` (the file is streamed). They are routed by the
 model prefix like chat; a module without that capability answers `501`. Video IDs look like `<prefix>:<id>`.
+`POST /v1/videos` accepts a JSON body or a `multipart/form-data` body with text fields only (the openai SDK sends
+`videos.create` as multipart); file parts such as `input_reference` are rejected with `415`.
 
 `gemini-api` 0.2.0 implements both: images through Google's OpenAI-compatible endpoint, video through the native
 Veo API (`:predictLongRunning`). According to Google's pricing page on 11/10/2026, **no image or video model is
@@ -81,6 +83,15 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"model": "gemini/gemini-3.1-flash-lite-image", "prompt": "A cat in a straw hat", "response_format": "b64_json"}' \
   http://<host>:3031/v1/images/generations
 ```
+
+## Speech, transcription and image edits
+
+The core also opens `POST /v1/audio/speech` (JSON in, binary audio out, streamable), `POST /v1/audio/transcriptions`
+and `POST /v1/images/edits` (both `multipart/form-data`). The core parses the multipart body itself — total size cap
+`WEB2API_TEP_TOI_DA_MB` (default 25 MB, `413` above it, counted on the bytes actually received), temporary files closed
+before the module runs — and hands the module a `YeuCauDaPhan` (text fields + files). Modules opt in with the optional
+methods `noi`, `nghe`, `anh_sua` (contract at the top of `app/kham_pha.py`); no bundled module implements them yet, so
+these routes answer `501` today. Verified with the real openai SDK 3.28 against a fake module in the test suite.
 
 ## Adding modules via git
 

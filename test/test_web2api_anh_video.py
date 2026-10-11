@@ -184,12 +184,21 @@ def test_module_khong_co_kha_nang_501(du_lieu):
         assert c.get("/v1/videos/echo:abc.12345678/content", headers=QT).status_code == 501
 
 
-def test_multipart_video_tra_415_ro_rang(client, google):
+def test_multipart_video_co_tep_415_khong_tep_nhu_json(client, google):
+    # SDK openai gửi videos.create bằng multipart: trường chữ đi như thân JSON; phần tệp chưa có hợp đồng → 415.
     cai(client, google, [K1])
     r = client.post("/v1/videos", headers=QT, data={"model": "gemini/veo-3.1-generate-preview", "prompt": "x"},
                     files={"input_reference": ("a.png", b"\x89PNG", "image/png")})
-    assert r.status_code == 415 and "JSON" in r.json()["error"]["message"]
+    assert r.status_code == 415 and "tệp tham chiếu" in r.json()["error"]["message"]
     assert lan(google, "video_tao") == []
+    ranh = "ranh-gioi-0123"
+    body = b"".join(f'--{ranh}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+                    for k, v in vid(seconds="8", size="720x1280").items()) + f"--{ranh}--\r\n".encode()
+    r = client.post("/v1/videos", headers={**QT, "content-type": f"multipart/form-data; boundary={ranh}"}, content=body)
+    assert r.status_code == 200 and r.json()["id"].startswith("gemini:"), r.text
+    assert lan(google, "video_tao")[-1]["than"] == {
+        "instances": [{"prompt": "thác nước quay bằng flycam"}],
+        "parameters": {"durationSeconds": 8, "aspectRatio": "9:16"}}
 
 
 # ───────────── ảnh ─────────────

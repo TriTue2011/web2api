@@ -27,8 +27,32 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
                                               GET /v1/videos/{id}/content — tệp lớn thì trả iterator (stream)
     Module có video phải có đủ cả ba phương thức video_*. Mã do khách gửi là ĐẦU VÀO KHÔNG TIN ĐƯỢC: module
     phải kiểm nó trước khi dùng để gọi dịch vụ kèm khoá.
+    POST /v1/videos nhận cả multipart/form-data (SDK openai gửi videos.create như vậy): lõi đổi các trường chữ
+    thành thân JSON cho video_tao (giá trị vẫn là CHUỖI, module tự ép kiểu); có phần TỆP (vd input_reference) thì
+    lõi trả 415 — chưa có hợp đồng đưa tệp cho video_tao.
+    async noi(body: dict)                  -> (mã, headers, bytes | async-iterator[bytes])
+                                              POST /v1/audio/speech — thân JSON OpenAI (model, input, voice,
+                                              response_format, speed, stream…); trả âm thanh nhị phân, module đặt
+                                              content-type; iterator thì lõi stream từng khúc, không gom
+    async nghe(yc: YeuCauDaPhan)           -> (mã, headers, bytes)   POST /v1/audio/transcriptions (multipart);
+                                              lõi bảo đảm có đúng MỘT tệp "file"
+    async anh_sua(yc: YeuCauDaPhan)        -> (mã, headers, bytes)   POST /v1/images/edits (multipart); lõi bảo
+                                              đảm có ≥ 1 tệp "image" (khách gửi "image" hay "image[]" đều thành
+                                              "image"), ≤ 1 tệp "mask", "prompt" là chuỗi khác rỗng
+    YeuCauDaPhan (app/yeu_cau_da_phan.py) do lõi đọc từ multipart — module KHÔNG tự phân tích thân:
+      .truong: dict[str, str | list[str]]  trường chữ, tên bỏ hậu tố «[]»; gửi một lần và không có «[]» → str,
+                                           có «[]» hoặc lặp → list[str] theo thứ tự gửi (đúng hình thân JSON
+                                           của cùng tham số). "model" vẫn giữ "<tien_to>/<tên>" như chat.
+      .tep: list[TepTai]                   TepTai(ten_truong, ten_tep, content_type, noi_dung: bytes);
+      .tep_ten(ten) -> list[TepTai]        các tệp của một trường.
+    Trần TỔNG thân multipart: WEB2API_TEP_TOI_DA_MB (mặc định 25) — vượt là 413, module không được gọi. Tệp tạm
+    lõi đã đóng trước khi gọi module. Mọi thứ trong YeuCauDaPhan (kể cả ten_tep, content_type) là KHÁCH KHAI,
+    KHÔNG TIN ĐƯỢC: không dùng ten_tep làm đường dẫn, tự kiểm định dạng trước khi gửi đi kèm khoá.
+    Header trả về do module chọn và lõi chuyển nguyên (riêng content-length của thân bytes thì lõi tự tính):
+    đừng chép nguyên header của nhà cung cấp — content-encoding/content-length sai khi httpx đã giải nén.
 
-Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]. Lõi chỉ
+Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]; quy ước
+cho các phương thức trên: "noi", "nghe", "anh_sua" (cùng tên phương thức). Lõi chỉ
 kiểm MẪU (MA_KHA_NANG), không giữ danh sách mã hợp lệ. Định tuyến /v1 dựa vào phương thức CÓ THẬT trên thể
 hiện, không dựa vào lời khai; lời khai dùng cho giao diện (tab/chế độ nào hiện — GET /api/tinh-nang).
 

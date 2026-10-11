@@ -125,7 +125,10 @@ sequenceDiagram
 ```
 
 Không thuộc module nào → `404 model_not_found`; module đã cài mà chưa liên kết → `404 module_not_configured`;
-module không có khả năng được gọi (ví dụ không có `anh`) → `501 capability_not_supported`.
+module không có khả năng được gọi (ví dụ không có `anh`) → `501 capability_not_supported`. Đường nhận tệp
+(`/v1/audio/transcriptions`, `/v1/images/edits`, `/v1/videos` dạng multipart) đi cùng lối, thêm một bước ở lõi trước
+khi hỏi sổ: đọc `multipart/form-data` thành `YeuCauDaPhan` (vượt trần → `413`, không phải multipart → `415`), lấy
+`model` từ trường chữ để định tuyến.
 
 ### Cài → vào Studio → thêm khoá (không tải lại trang)
 
@@ -184,6 +187,7 @@ chi tiết mở ở bước kế tiếp.
 | `nguon_git.py` | Thăm dò GitHub, báo module mới/bản mới (kèm `loai`, `cung_cap`, dung lượng tải đo từ cây git), cài theo commit |
 | `tu_xa.py` | Module từ xa (chỉ URL), chặn SSRF lúc đăng ký |
 | `chuyen_tiep.py` | Bộ chuyển tiếp OpenAI dùng chung cho module; mọi điểm riêng của nhà cung cấp là tham số |
+| `yeu_cau_da_phan.py` | Đọc `multipart/form-data` cho các đường `/v1` nhận tệp: trần tổng thân, đếm byte thật, dọn tệp tạm, dựng `YeuCauDaPhan` cho module |
 | `kho.py`, `xac_thuc.py`, `he_thong.py` | Lưu trữ trên đĩa (bí mật 0600), khoá quản trị, đọc tài nguyên máy |
 
 ### Giao diện (`web/`)
@@ -293,7 +297,14 @@ Thư mục `modules/<id>/` gồm:
 - `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`,
   `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Tuỳ chọn: `async anh(body)`
   (mở `/v1/images/generations`) và bộ ba `async video_tao(body)`, `async video_trang_thai(ma)`,
-  `async video_noi_dung(ma)` (mở `/v1/videos`); không có thì lõi trả `501`. Model nào chỉ dùng cho một khả năng
+  `async video_noi_dung(ma)` (mở `/v1/videos`); `async noi(body)` (mở `/v1/audio/speech`, trả âm thanh nhị phân
+  hoặc iterator để stream), `async nghe(yc)` (mở `/v1/audio/transcriptions`) và `async anh_sua(yc)` (mở
+  `/v1/images/edits`); không có thì lõi trả `501`. Mã khả năng quy ước cho ba phương thức này trong `cung_cap`:
+  `noi`, `nghe`, `anh_sua`. Hai đường nhận tệp đi bằng `multipart/form-data`: **lõi** đọc thân (trần
+  `WEB2API_TEP_TOI_DA_MB`, dọn tệp tạm) và đưa module một `YeuCauDaPhan` — `.truong` (trường chữ; gửi một lần là
+  chuỗi, có `[]` hoặc lặp là danh sách — đúng hình thân JSON), `.tep` (danh sách `TepTai(ten_truong, ten_tep,
+  content_type, noi_dung)`, `image[]` thành `image`), `.tep_ten(ten)`; lõi đã kiểm phần bắt buộc của chuẩn
+  (`file`; `image` và `prompt`). Tên tệp và kiểu khách khai là đầu vào không tin được. Model nào chỉ dùng cho một khả năng
   thì module gắn `"kha_nang": [mã]` vào mục của nó trong `models()` (Studio lọc model theo đó). Hợp đồng chi tiết ở
   đầu tệp `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`. **Bộ chuyển đổi của module**: module tự đổi
   yêu cầu/trả lời giữa chuẩn OpenAI của lõi và API của nhà cung cấp; dùng lại `app.chuyen_tiep.ChuyenTiepOpenAI`
@@ -498,7 +509,9 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 
 Tạo video — không đồng bộ, như `/v1/videos` của OpenAI: tạo → hỏi trạng thái tới `completed` → tải. Module đi
 API gốc Veo (`:predictLongRunning`) vì trang tương thích OpenAI của Google không ghi cách tải tệp video. Thân là
-**JSON** (gửi `multipart/form-data` — như SDK `openai` làm với `videos.create` — bị trả `415`):
+**JSON**, hoặc `multipart/form-data` chỉ có trường chữ (như SDK `openai` gửi `videos.create`; `seconds` dạng chuỗi
+module tự đổi số). Ảnh đầu vào đi trong trường `image` (base64 hoặc data URL) của thân JSON — phần tệp
+`input_reference` bị trả `415`:
 
 ```bash
 ID=$(curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
@@ -633,6 +646,8 @@ WEB2API_MAY_CPU=8
 - `WEB2API_DATA_DIR`: giữ dữ liệu ở thư mục cụ thể thay cho volume, ví dụ `./data` — phải tạo và trao quyền
   **trước**: `mkdir -p data && sudo chown 1000:1000 data`.
 - `WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`: số của **máy** (xem «LXC/Proxmox» dưới đây).
+- `TZ=Asia/Ho_Chi_Minh` (biến chuẩn, tên múi giờ IANA): múi giờ của nhà — Studio báo giờ hiện tại cho model theo
+  múi giờ này thay vì múi giờ của trình duyệt đang mở (mục 8).
 - Đổi nguồn git: ghi biến cùng tên vào `.env`; tắt hẳn: `WEB2API_GIT_REPO=` (rỗng). Các biến khác: mục 8.
 
 ### Không dùng compose
@@ -646,8 +661,6 @@ docker run -d --name web2api \
   -e WEB2API_GIT_REPO=TriTue2011/web2api \
   -e WEB2API_MAY_RAM_MB=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo) \
   -e WEB2API_MAY_CPU=$(nproc) \
-- `TZ=Asia/Ho_Chi_Minh` (biến chuẩn, tên múi giờ IANA): múi giờ của nhà — Studio báo giờ hiện tại cho model theo
-  múi giờ này thay vì múi giờ của trình duyệt đang mở (mục 8).
   --label com.centurylinklabs.watchtower.enable=false \
   --restart unless-stopped \
   web2api:latest
@@ -802,6 +815,17 @@ tra_loi = client.chat.completions.create(model="gemini/gemini-2.5-flash",
 print(tra_loi.choices[0].message.content)
 ```
 
+Giọng nói và sửa ảnh dùng đúng các hàm của SDK (`audio.speech.create`, `audio.transcriptions.create`,
+`images.edit`, cả `videos.create` — SDK gửi nó bằng multipart). Lõi đã mở các đường này (kiểm bằng SDK openai 3.28
+với module giả trong `test/test_web2api_da_phuong_thuc.py`); chúng trả lời thật khi có module khai `noi`/`nghe`/
+`anh_sua` — module có sẵn hiện chưa có, gọi là nhận `501`:
+
+```python
+with open("ghi-am.wav", "rb") as f:
+    van_ban = client.audio.transcriptions.create(model="<tiền tố>/<model nghe>", file=f, language="vi").text
+client.audio.speech.create(model="<tiền tố>/<model đọc>", voice="<giọng>", input=van_ban).write_to_file("doc.mp3")
+```
+
 Home Assistant: dùng tích hợp **cho nhập base URL** kiểu OpenAI (tích hợp «OpenAI Conversation» gốc không cho đổi
 địa chỉ; các tích hợp «OpenAI tương thích» trên HACS thì có). Chưa thử cụ thể trên Home Assistant của nhà.
 
@@ -869,8 +893,9 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 | Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 4, gemini-api). |
 | `429` từ nhà cung cấp | Hết hạn mức; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
 | `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được nhà cung cấp cho việc đó — với Gemini thường là khoá hạng miễn phí. Xem tiểu mục module. |
-| `501` `capability_not_supported` | Module của tiền tố đó không có tạo ảnh/video (ví dụ module từ xa). |
-| `415` khi `POST /v1/videos` | Thân phải là JSON; web2api chưa đọc `multipart/form-data`. |
+| `501` `capability_not_supported` | Module của tiền tố đó không có khả năng được gọi — tạo ảnh/video, sửa ảnh, đọc hay nghe giọng nói (ví dụ module từ xa). |
+| `415` khi gửi tệp | `/v1/audio/transcriptions` và `/v1/images/edits` chỉ nhận `multipart/form-data`. `POST /v1/videos` nhận JSON hoặc multipart **chỉ có trường chữ**; tệp tham chiếu (`input_reference`) chưa hỗ trợ — gửi ảnh đầu vào theo tài liệu của module. |
+| `413` `request_too_large` | Thân multipart vượt trần (mặc định 25 MB, tính cả mọi tệp và trường). Người vận hành nâng bằng `WEB2API_TEP_TOI_DA_MB` trong `.env`; nhớ container mặc định chỉ có 256 MB RAM. |
 | Ô module ở trạng thái «Lỗi» / có khối «Có module không nạp được» | Lý do ghi ngay đó (và ở trường `loi` của `GET /api/modules/catalog`): manifest sai, trùng id/tiền tố, thiếu gói… Sửa xong gọi `POST /api/modules/nap-lai`. |
 | Không thấy module trên git | Chưa dán khoá quản trị, hoặc nguồn git lỗi: xem «＋ Thêm module» → «Từ git» (hoặc `GET /api/nguon-git`, `trang_thai.loi`). Gửi `PUT /api/nguon-git` thân `{}` để thăm dò ngay. |
 | Trạng thái báo hết hạn mức GitHub | Ẩn danh 60 yêu cầu/giờ/IP; web2api tự chờ tới `reset_luc`. Muốn nâng: thêm `token` chỉ đọc. |
@@ -916,7 +941,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
-| `POST /v1/videos` | Có | Tạo video (không đồng bộ, thân JSON) → `id` dạng `<tiền tố>:<mã>` |
+| `POST /v1/images/edits` | Có | Sửa ảnh chuẩn OpenAI (`multipart/form-data`: `image` hoặc `image[]`, `mask`, `prompt`…); `501` nếu module không có |
+| `POST /v1/audio/speech` | Có | Đọc văn bản thành giọng nói (thân JSON chuẩn OpenAI) → âm thanh nhị phân, có thể stream; `501` nếu module không có |
+| `POST /v1/audio/transcriptions` | Có | Nhận dạng giọng nói (`multipart/form-data`: `file`, `model`, `language`…); `501` nếu module không có |
+| `POST /v1/videos` | Có | Tạo video (không đồng bộ; thân JSON, hoặc multipart chỉ có trường chữ như SDK openai gửi) → `id` dạng `<tiền tố>:<mã>` |
 | `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
 | `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
@@ -927,6 +955,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_ADMIN_KEY` | tự sinh | Khoá quản trị; không đặt thì sinh và lưu `<WEB2API_DATA>/admin_key` |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
+| `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
+| `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |
@@ -955,8 +985,6 @@ uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
   `/api/tinh-nang` thật: Studio khi đã cài, gọi được khi đã liên kết, trang chính và nơi thêm khoá của từng module),
   kiểm mẫu manifest, tóm tắt module trên git, và **lưới chặn đặc thù nhà
   cung cấp**: chuỗi và định danh trong mã `app/` cùng mọi tệp `web/` không được chứa tên suy từ manifest của các
-| `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
-| `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
   module trong kho (tiền tố, id, tên máy trong `mang_ra`; chú thích và docstring không tính; CDN phông chữ được
   trừ).
 - `test/test_web2api_giao_dien.py`: giao diện bằng **Chrome thật** trên **lõi thật** với module giả

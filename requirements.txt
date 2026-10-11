@@ -3,3 +3,6 @@ fastapi==0.142.4
 uvicorn==0.54.0
 # Gọi Google/GitHub/module từ xa (bất đồng bộ, stream từng dòng). Bản trong .venv của repo gốc, đo 10/10/2026.
 httpx==0.28.1
+# Đọc multipart/form-data cho /v1/audio/transcriptions, /v1/images/edits, /v1/videos (Starlette cần nó để phân tích
+# form; thuần Python, không gói kéo theo). Đúng bản trong uv.lock của repo gốc, đo 11/10/2026.
+python-multipart==0.0.32

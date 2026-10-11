@@ -18,6 +18,7 @@ from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
 from app.xac_thuc import can_quan_tri
+from app.yeu_cau_da_phan import YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
 QT = [Depends(can_quan_tri)]
@@ -111,10 +112,23 @@ def _can_phuong_thuc(m, id_: str, viec: str, *ten: str) -> None:
                         code="capability_not_supported")
 
 
+def _can_tep(yc: YeuCauDaPhan, ten: str, toi_thieu: int = 1, toi_da: int | None = None) -> None:
+    """Phần tệp bắt buộc theo CHUẨN OpenAI của đường (không theo nhà cung cấp nào) — lõi dựng YeuCauDaPhan nên
+    lõi bảo đảm hình của nó; module nhận được là có đủ tệp."""
+    so = len(yc.tep_ten(ten))
+    if so < toi_thieu:
+        raise LoiOpenAI(400, f"Thiếu tệp «{ten}» (phần multipart có filename, không phải trường chữ)",
+                        code="missing_file")
+    if toi_da is not None and so > toi_da:
+        raise LoiOpenAI(400, f"Chỉ nhận tối đa {toi_da} tệp «{ten}», nhận {so}", code="too_many_files")
+
+
 def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
     headers = dict(headers)
     kieu = headers.pop("content-type", None)
     if isinstance(noi_dung, (bytes, str)):
+        # Thân đã có trọn: Starlette tự tính content-length đúng; số của module (có thể lệch) bị bỏ.
+        headers = {k: v for k, v in headers.items() if k.lower() != "content-length"}
         return Response(noi_dung, status_code=ma, headers=headers, media_type=kieu)
     return StreamingResponse(noi_dung, status_code=ma, headers=headers, media_type=kieu)
 
@@ -146,20 +160,54 @@ async def v1_anh(request: Request):
     return _tra_ve(*await m.anh(than))
 
 
+@v1.post("/images/edits")
+async def v1_anh_sua(request: Request):
+    yc = await doc_multipart(request)
+    id_, m = _module_theo_model(_so(request), yc.truong)
+    _can_phuong_thuc(m, id_, "sửa ảnh", "anh_sua")
+    _can_tep(yc, "image")
+    _can_tep(yc, "mask", toi_thieu=0, toi_da=1)
+    prompt = yc.truong.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise LoiOpenAI(400, "Thiếu trường «prompt» (mô tả cần sửa gì)", code="missing_prompt")
+    return _tra_ve(*await m.anh_sua(yc))
+
+
+@v1.post("/audio/speech")
+async def v1_noi(request: Request):
+    than = await _than_json(request)
+    id_, m = _module_theo_model(_so(request), than)
+    _can_phuong_thuc(m, id_, "đọc văn bản thành giọng nói", "noi")
+    return _tra_ve(*await m.noi(than))
+
+
+@v1.post("/audio/transcriptions")
+async def v1_nghe(request: Request):
+    yc = await doc_multipart(request)
+    id_, m = _module_theo_model(_so(request), yc.truong)
+    _can_phuong_thuc(m, id_, "nhận dạng giọng nói", "nghe")
+    _can_tep(yc, "file", toi_da=1)
+    return _tra_ve(*await m.nghe(yc))
+
+
 _VIDEO = ("video_tao", "video_trang_thai", "video_noi_dung")
 
 
 @v1.post("/videos")
 async def v1_video_tao(request: Request):
-    if request.headers.get("content-type", "").lower().startswith("multipart/"):
-        # SDK openai gửi videos.create bằng multipart/form-data; lõi không có gói đọc form (python-multipart).
-        raise LoiOpenAI(415, "web2api chỉ nhận thân JSON cho POST /v1/videos (Content-Type: application/json); "
-                             "ảnh đầu vào gửi trong trường «image» dạng base64 hoặc data URL.",
-                        code="unsupported_media_type")
-    than = await _than_json(request)
+    # SDK openai gửi videos.create bằng multipart/form-data: trường chữ thành thân JSON (giá trị vẫn là chuỗi —
+    # module tự ép kiểu, như với thân JSON do khách gõ).
+    yc = await doc_multipart(request) if la_multipart(request) else None
+    than = dict(yc.truong) if yc else await _than_json(request)
     so = _so(request)
     id_, m = _module_theo_model(so, than)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
+    if yc and yc.tep:
+        # video_tao nhận thân JSON; chưa có hợp đồng đưa tệp cho nó — từ chối rõ ràng thay vì lặng lẽ bỏ tệp.
+        raise LoiOpenAI(415, f"POST /v1/videos chưa nhận phần tệp (trường: "
+                             f"{', '.join(sorted({t.ten_truong for t in yc.tep}))}) — tệp tham chiếu chưa hỗ trợ. "
+                             "Gửi multipart chỉ có trường chữ, hoặc thân JSON với ảnh đầu vào dạng base64/data URL "
+                             "theo tài liệu của module.", code="unsupported_media_type")
     return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_tao(than))
 
 
