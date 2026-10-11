@@ -34,8 +34,19 @@ def _mau_goi(path: str) -> re.Pattern:
     return re.compile(ra)
 
 
-def _cac_route():
-    return [r for r in app.routes if not isinstance(r, Mount) and getattr(r, "path", None)]
+def _cac_duong(routes=None, tien_to: str = "") -> list[str]:
+    """Mọi đường của app (trừ Mount). FastAPI ≥ 0.140 không còn gộp phẳng route của router con vào
+    `app.routes` mà bọc chúng trong một mục có `original_router` — phải đi vào trong mới thấy."""
+    ra = []
+    for r in app.routes if routes is None else routes:
+        if isinstance(r, Mount):
+            continue
+        if getattr(r, "path", None):
+            ra.append(tien_to + r.path)
+        elif hasattr(r, "original_router"):
+            ra += _cac_duong(r.original_router.routes, tien_to + r.include_context.prefix)
+    assert ra, "không lấy được đường nào từ app.routes"
+    return ra
 
 
 def test_anh_nhung_ton_tai_trong_docs_anh():
@@ -63,7 +74,7 @@ def test_moi_module_co_tieu_muc_va_dong_trang_thai():
 
 
 def test_moi_duong_api_co_trong_readme():
-    thieu = [r.path for r in _cac_route() if not _mau_duong(r.path).search(README)]
+    thieu = [d for d in _cac_duong() if not _mau_duong(d).search(README)]
     assert not thieu, f"README chưa nhắc các đường: {thieu}"
 
 
@@ -77,7 +88,7 @@ def test_moi_bien_moi_truong_co_trong_readme():
 
 
 def test_lenh_mau_khong_tro_toi_tep_hay_duong_khong_co():
-    mau = [_mau_goi(r.path) for r in _cac_route()]
+    mau = [_mau_goi(d) for d in _cac_duong()]
     khoi = _khoi_ma("bash")
     assert khoi
     for noi_dung in khoi:
