@@ -3,7 +3,7 @@
 test_web2api_giao_dien.py đo khung với module giả; ở đây là module thật của kho để chắc hợp đồng manifest →
 khung (loai_ten, cung_cap, truong_cau_hinh, suc_khoe theo khả năng) đúng với mã thật:
   mở địa chỉ gốc → Hệ thống → Module → dán khoá quản trị → ô gemini-api «Chưa cài» từ git → Cài (không khoá)
-  → tự sang Studio (trạng thái rỗng + dải «Đã cài …») → bấm tới Hệ thống → AI → Tài khoản → thêm khoá → Kiểm tra
+  → tự sang Studio (trạng thái rỗng: dòng «Chưa có khoá … — Thêm khoá») → bấm tới Hệ thống → AI → Tài khoản → thêm khoá → Kiểm tra
   và lưu (Google giả) → Provider hiện, không tải lại trang → Quay lại Studio → chat stream qua /v1 thật
   → Provider: model + sức khoẻ thật → gỡ.
 Nguồn git lấy từ biến môi trường như docker-compose.yml đặt sẵn (không cấu hình tay).
@@ -61,15 +61,14 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài")
             assert "generativelanguage.googleapis.com" in trang.chu("#can-gi") and "httpx" in trang.chu("#can-gi")
             trang.bam("document.getElementById('nut-cai')")
-            # Cài xong: module khai chat → tự sang Studio (trang chính) kèm dải thông báo; Studio rỗng vì chưa có khoá.
-            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && !!document.getElementById('da-cai')", han=20,
+            # Cài xong: module khai chat → tự sang Studio (trang chính); chưa có khoá → MỘT dòng «Chưa có khoá cho … — Thêm khoá».
+            trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && !!document.getElementById('studio-chua-khoa')", han=20,
                       mo_ta="tự sang Studio sau khi cài")
-            assert "Đã cài Gemini" in trang.chu("#da-cai"), trang.chu("#da-cai")
             assert "Chưa có khoá cho «Gemini" in trang.chu("#studio-chua-khoa")
             assert sorted(trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)")) == ["anh", "chat", "video"]
 
-            # Dải thông báo → Hệ thống → AI → Tài khoản, đúng thẻ gemini-api.
-            trang.bam("document.querySelector('#da-cai a')")
+            # «Thêm khoá» → Hệ thống → AI → Tài khoản, đúng thẻ gemini-api.
+            trang.bam("document.querySelector('#studio-chua-khoa a[data-them-khoa=\"gemini-api\"]')")
             tk = "[data-tai-khoan='gemini-api']"
             trang.cho(f"location.pathname.endsWith('/He-thong-AI.dc.html') && !!document.querySelector({json.dumps(tk + ' textarea')})",
                       han=15, mo_ta="form khoá ở Hệ thống → AI → Tài khoản")

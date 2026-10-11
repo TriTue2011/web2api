@@ -12,6 +12,7 @@ He-thong.dc.html (Hệ thống → Module), He-thong-AI.dc.html (Hệ thống �
 from __future__ import annotations
 
 import json
+import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -80,6 +81,19 @@ def che_do(trang) -> list[str]:
     """Mã các nút chế độ Studio. Máy tính: «Vẽ ảnh/Tạo video» nằm trong ô soạn, «Trò chuyện» dưới ô (như demo) — thứ tự
     trong DOM khác điện thoại nên so tập, không so thứ tự."""
     return trang.js("[...document.querySelectorAll('[data-che-do]')].map((b) => b.dataset.cheDo)")
+
+
+def bam_chuot(trang, expr: str, mo_ta: str = ""):
+    """Bấm CHUỘT THẬT vào tâm phần tử (Input.dispatchMouseEvent): đi qua kiểm tra điểm bấm của trình duyệt, nên lớp
+    nào đè lên phần tử (lớp nền trong suốt, bảng khác…) sẽ nhận cú bấm thay — element.click() thì không thấy."""
+    toa = trang.js(f"(() => {{ const e = {expr}; if (!e) return null; e.scrollIntoView({{block: 'nearest'}}); const r = e.getBoundingClientRect();"
+                   " const x = r.left + r.width / 2, y = r.top + r.height / 2; const tren = document.elementFromPoint(x, y);"
+                   " return [x, y, !!tren && (tren === e || e.contains(tren))]; })()")
+    assert toa, f"không thấy phần tử để bấm: {mo_ta or expr}"
+    assert toa[2], f"phần tử bị lớp khác đè, cú bấm thật không tới: {mo_ta or expr}"
+    for kieu in ("mousePressed", "mouseReleased"):
+        trang.cdp.goi("Input.dispatchMouseEvent", {"type": kieu, "x": toa[0], "y": toa[1], "button": "left", "clickCount": 1}, trang.s)
+    time.sleep(0.05)
 
 
 def khong_tran(trang) -> bool:
@@ -164,18 +178,22 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         assert not trang.js("!!document.getElementById('chi-tiet')")
         assert trang.js(o("ai-gia") + ".getAttribute('aria-pressed')") == "false"
 
-        # Cài xong (module khai chat) → tự sang Studio, kèm dải thông báo dẫn tới chỗ thêm khoá.
+        # Cài xong (module khai chat) → tự sang Studio; MỘT dòng nhỏ «Chưa có khoá cho … — Thêm khoá» dẫn tới chỗ thêm
+        # khoá (không dải «Đã cài …» — bản demo không có), viên trạng thái của demo chuyển vàng «Chờ khoá».
         trang.cho("location.pathname.endsWith('/Studio.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'"
-                  " && !!document.getElementById('da-cai')", han=20, mo_ta="tự sang Studio sau khi cài")
+                  " && !!document.getElementById('studio-chua-khoa')", han=20, mo_ta="tự sang Studio sau khi cài")
         assert trang.js("sessionStorage.demCai") == "1"
-        assert "da_cai" not in trang.js("location.search")          # tải lại trang không hiện lại dải thông báo
-        bao = trang.chu("#da-cai")
-        assert "Đã cài AI giả" in bao and "Hệ thống → AI" in bao, bao
-        assert trang.js("document.querySelector('#da-cai a').getAttribute('href')").endswith("He-thong-AI.dc.html#tk-ai-gia")
+        assert "da_cai" not in trang.js("location.search")          # tham số chỉ dùng một lần, bỏ khỏi địa chỉ
+        assert not trang.js("!!document.getElementById('da-cai')")
+        assert trang.chu("#trang-thai-chung") == "Chờ khoá"
+        assert trang.js("document.getElementById('trang-thai-chung').getAttribute('href')").endswith("He-thong-AI.dc.html#tk-ai-gia")
 
         # Studio ở trạng thái rỗng thân thiện — KHÔNG ẩn: chế độ theo khả năng module đã cài khai.
         rong = trang.chu("#studio-chua-khoa")
-        assert "Chưa có khoá cho «AI giả»" in rong and "Hệ thống → AI → Tài khoản" in rong, rong
+        assert "Chưa có khoá cho «AI giả»" in rong and "Thêm khoá" in rong, rong
+        them = "document.querySelector('#studio-chua-khoa a[data-them-khoa=\"ai-gia\"]')"
+        assert trang.js(them + ".getAttribute('href')").endswith("He-thong-AI.dc.html#tk-ai-gia")
+        assert "Hệ thống → AI → Tài khoản" in trang.js(them + ".getAttribute('aria-label')")
         assert sorted(che_do(trang)) == ["anh", "chat", "video"]
         assert "studio" in nav(trang)
         assert trang.js("document.querySelectorAll('[data-model-chon]').length") == 0
@@ -192,7 +210,7 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.js(CTRL_ENTER)
         trang.js("document.querySelector('form.soan').requestSubmit()")
         trang.cho("document.getElementById('loi-studio')", mo_ta="gửi cưỡng bức vẫn bị chặn bằng lời nhắn")
-        assert "Chưa có khoá cho «AI giả»" in trang.chu("#loi-studio")
+        assert "Chưa có khoá cho «AI giả»" in trang.chu("#loi-studio") and "Hệ thống → AI → Tài khoản" in trang.chu("#loi-studio")
         assert trang.js("window.__v1") == []
         # Điện thoại 390px: không tràn ngang ở trạng thái rỗng.
         trang.khung(390, 844, True)
@@ -221,7 +239,8 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.bam("document.querySelector('[data-nav=\"quay-lai\"]')")
         trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && document.querySelectorAll('[data-model-chon]').length > 0",
                   han=15, mo_ta="Studio có model")
-        assert not trang.js("!!document.getElementById('studio-chua-khoa') || !!document.getElementById('da-cai')")
+        assert not trang.js("!!document.getElementById('studio-chua-khoa')")
+        assert trang.chu("#trang-thai-chung") == "Mọi dịch vụ ổn"
         trang.go("#o-soan", "Chào")
         trang.bam("document.getElementById('nut-gui')")
         trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=10, mo_ta="chat xong")
@@ -481,31 +500,46 @@ def test_studio_chi_hien_che_do_module_khai(trang, tmp_path, monkeypatch):
 
 
 def test_studio_man_dau_hoi_thoai_tao_moi_va_thanh_duoi(trang, tmp_path, monkeypatch):
-    """Studio theo bản demo: màn đầu (tiêu đề + ô soạn + chip model + gợi ý), gửi → lượt hội thoại thay màn đầu,
-    «Tạo mới» xoá; trên điện thoại thanh điều hướng dưới đáy chỉ có mục đang có thật."""
+    """Studio theo Main.dc.html của bản demo: màn đầu (viên trạng thái + tiêu đề + ô soạn + chip model, KHÔNG gợi ý),
+    gửi → lượt hội thoại thay màn đầu, «Tạo mới» về màn đầu; trên điện thoại thanh dưới đáy chỉ có mục đang có thật."""
     with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
         lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
         _mo_studio(trang, w)
-        # Màn đầu: tiêu đề, ô soạn, chip model mang model THẬT đang chọn (từ /v1/models), gợi ý điền vào ô soạn.
+        # Màn đầu: viên «Mọi dịch vụ ổn», tiêu đề, ô soạn, chip model mang model THẬT đang chọn (từ /v1/models).
+        assert trang.chu("#trang-thai-chung") == "Mọi dịch vụ ổn"
         assert trang.chu(".st-tieu-de") == "Bạn muốn làm gì hôm nay?"
-        assert trang.js("document.getElementById('o-soan').placeholder").startswith("Hỏi bất kỳ điều gì")
+        assert trang.js("document.getElementById('o-soan').placeholder") == "Hỏi bất kỳ điều gì, hoặc giao một việc cần làm…"
         assert trang.js("document.getElementById('chon-model').dataset.model") == "hai/nhanh"
         assert "hai/nhanh" in trang.chu("#chon-model")
-        goi_y = trang.js("document.querySelector('.y-tuong button').innerText")
-        trang.bam("document.querySelector('.y-tuong button')")
-        trang.cho(f"document.getElementById('o-soan').value === {json.dumps(goi_y)}", mo_ta="gợi ý điền vào ô soạn")
-        # Chỉ chế độ module khai (chỉ chat): không «Vẽ ảnh»/«Tạo video»; không nút của tính năng chưa có module nào.
+        # Demo hiện hành KHÔNG có gợi ý ở màn đầu.
+        assert not trang.js("!!document.querySelector('.y-tuong, [aria-label=\"Gợi ý\"]')")
+        # Hàng việc dưới ô soạn đúng thứ tự demo, chỉ mục có chức năng thật: Trò chuyện · Tạo mới · Lịch sử.
+        assert trang.js("[...document.querySelectorAll('[role=toolbar] button')].map((b) => b.innerText.trim())") == ["Trò chuyện", "Tạo mới", "Lịch sử"]
+        # Chỉ chế độ module khai (chỉ chat): không «Vẽ ảnh»/«Tạo video»; phần demo chưa có chức năng thật không được vẽ
+        # (Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Đời sống, đính kèm, loa, micro, avatar).
         chu = trang.js("document.body.innerText")
-        for x in ("Vẽ ảnh", "Tạo video", "Lịch sử", "Vietsub", "Lồng tiếng", "Tác phẩm", "Đời sống"):
+        for x in ("Vẽ ảnh", "Tạo video", "Dịch", "Vietsub", "Lồng tiếng", "Tác phẩm", "Đời sống"):
             assert x not in chu, x
-        assert not trang.js("!!document.querySelector('[aria-label=\"Đính kèm tệp\"], [aria-label=\"Nói để nhập chữ\"]')")
+        assert not trang.js("!!document.querySelector('[aria-label=\"Đính kèm tệp\"], [aria-label=\"Nói để nhập chữ\"], "
+                            "[aria-label^=\"Chọn giọng đọc\"], [aria-label=\"Tài khoản\"]')")
         # Bảng chọn model mở/đóng như popover của demo; chọn một model → chip đổi theo.
         assert trang.js("document.getElementById('bang-model').hidden")
         trang.bam("document.getElementById('chon-model')")
         trang.cho("!document.getElementById('bang-model').hidden", mo_ta="mở bảng model")
         assert trang.js("document.querySelector('[data-model-chon=\"hai/nhanh\"]').getAttribute('aria-pressed')") == "true"
-        trang.bam("document.querySelector('[data-model-chon=\"hai/nhanh\"]')")
+        # Chọn bằng CHUỘT THẬT dòng thứ hai (nằm đè lên ô soạn): không lớp nào được che dòng model.
+        bam_chuot(trang, "document.querySelectorAll('[data-model-chon]')[1]", "dòng model thứ hai (1280)")
         trang.cho("document.getElementById('bang-model').hidden", mo_ta="chọn xong thì đóng")
+        assert trang.js("document.getElementById('chon-model').dataset.model") != "hai/nhanh"
+        trang.khung(390, 844, True)
+        bam_chuot(trang, "document.getElementById('chon-model')", "chip model (390)")
+        trang.cho("!document.getElementById('bang-model').hidden", mo_ta="mở bảng model ở 390")
+        bam_chuot(trang, "document.querySelector('[data-model-chon=\"hai/nhanh\"]')", "dòng model (390)")
+        trang.cho("document.getElementById('bang-model').hidden && document.getElementById('chon-model').dataset.model === 'hai/nhanh'",
+                  mo_ta="chọn lại hai/nhanh ở 390")
+        r = trang.js("(() => { const b = document.getElementById('bang-model'); b.hidden = false; const r = b.getBoundingClientRect(); b.hidden = true; return [r.left, r.right]; })()")
+        assert r[0] >= 0 and r[1] <= 390, r          # không bị cắt mép như bản demo ở khổ hẹp
+        trang.khung(1280, 800)
 
         # Gửi: màn đầu nhường chỗ cho lượt hội thoại (bong bóng người hỏi + câu trả lời), ô soạn trống lại.
         trang.js("const o = document.getElementById('o-soan'); o.value = ''; o.dispatchEvent(new Event('input', {bubbles: true}))")
@@ -528,6 +562,159 @@ def test_studio_man_dau_hoi_thoai_tao_moi_va_thanh_duoi(trang, tmp_path, monkeyp
         assert trang.js("getComputedStyle(document.getElementById('thanh-tab')).display") == "none"
         assert trang.js("document.querySelector('[data-nav-duoi=\"studio\"]').getAttribute('aria-current')") == "page"
         assert khong_tran(trang)
+
+
+# ───────────── Studio: Lịch sử trò chuyện (nút «Lịch sử» của demo) ─────────────
+
+LS = "web2api_lich_su_tro_chuyen"
+DONG_CUOC = "[...document.querySelectorAll('[data-cuoc]')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())"
+BAT_THAN_CHAT = ("(() => { window.__chat = []; const f = window.fetch; window.fetch = (u, o) => {"
+                 " if (String(u).endsWith('v1/chat/completions')) window.__chat.push(JSON.parse(o.body)); return f(u, o); }; })()")
+
+
+def _mo_lich_su(trang):
+    trang.bam("document.getElementById('nut-lich-su')")
+    trang.cho("!!document.getElementById('bang-lich-su')", mo_ta="bảng Lịch sử")
+
+
+def _dong_lich_su(trang):
+    # Như demo: bấm ra ngoài (lớp nền trong suốt phía sau bảng) thì đóng.
+    trang.bam("document.getElementById('bang-lich-su').previousElementSibling")
+    trang.cho("!document.getElementById('bang-lich-su')", mo_ta="đóng bảng Lịch sử")
+
+
+def test_studio_lich_su_tao_moi_luu_nap_tim(trang, tmp_path, monkeypatch):
+    """Tạo mới lưu cuộc cũ vào Lịch sử (localStorage của trình duyệt); bảng Lịch sử như demo: tiêu đề = tin đầu tiên,
+    dòng phụ «Hôm nay · HH:MM · N lượt», «Đang mở», tìm theo chữ; chọn một cuộc → các lượt chữ trở lại và lượt sau gửi
+    kèm chúng; tải lại trang vẫn mở cuộc đang nói (như demo). Không khoá quản trị, không tin giờ trong dữ liệu lưu."""
+    with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
+        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        _mo_lich_su(trang)
+        assert trang.chu("#bang-lich-su").replace("\n", " ").startswith("Lịch sử trò chuyện chọn một cuộc để nói tiếp")
+        assert "Chưa có cuộc trò chuyện nào." in trang.chu("#bang-lich-su")
+        assert trang.js("document.getElementById('nut-lich-su').getAttribute('aria-expanded')") == "true"
+        _dong_lich_su(trang)
+
+        _gui(trang, "Giá xăng hôm nay", 1)
+        _gui(trang, "Còn dầu thì sao?", 2)
+        trang.bam("document.getElementById('nut-xoa')")
+        trang.cho("!!document.querySelector('.st-tieu-de') && !document.querySelector('[data-vai]')", mo_ta="Tạo mới về màn đầu")
+        _gui(trang, "Soạn thư   trả lời khách", 1)   # tiêu đề gộp khoảng trắng thành một dòng
+
+        _mo_lich_su(trang)
+        dong = trang.js(DONG_CUOC)
+        assert len(dong) == 2, dong
+        assert re.fullmatch(r"Soạn thư trả lời khách Hôm nay · \d\d:\d\d · 1 lượt Đang mở", dong[0]), dong
+        assert re.fullmatch(r"Giá xăng hôm nay Hôm nay · \d\d:\d\d · 2 lượt", dong[1]), dong
+        # Tìm: lọc theo tiêu đề, không phân biệt hoa thường (như demo).
+        trang.go("#tim-lich-su", "XĂNG")
+        trang.cho("document.querySelectorAll('[data-cuoc]').length === 1", mo_ta="lọc còn một cuộc")
+        trang.go("#tim-lich-su", "zzz")
+        trang.cho("document.querySelectorAll('[data-cuoc]').length === 0", mo_ta="không cuộc nào khớp")
+        assert "Không có cuộc nào khớp." in trang.chu("#bang-lich-su")
+        trang.js("const o = document.getElementById('tim-lich-su'); o.value = ''; o.dispatchEvent(new Event('input', {bubbles: true}))")
+        trang.cho("document.querySelectorAll('[data-cuoc]').length === 2", mo_ta="bỏ lọc")
+
+        # Chọn cuộc cũ: bảng đóng, các lượt chữ trở lại; lượt tiếp theo gửi kèm lịch sử của cuộc đó.
+        bam_chuot(trang, "[...document.querySelectorAll('[data-cuoc]')].find((b) => b.innerText.includes('Giá xăng'))", "dòng Lịch sử")
+        trang.cho("!document.getElementById('bang-lich-su') && document.querySelectorAll('[data-vai=\"user\"]').length === 2", mo_ta="nạp cuộc cũ")
+        assert trang.js("[...document.querySelectorAll('[data-vai=\"user\"]')].map((x) => x.innerText)") == ["Giá xăng hôm nay", "Còn dầu thì sao?"]
+        assert trang.js("document.querySelectorAll('[data-vai=\"assistant\"]').length") == 2
+        trang.js(BAT_THAN_CHAT)
+        _gui(trang, "Cảm ơn", 3)
+        tin = trang.js("window.__chat")[-1]["messages"]
+        assert [m["role"] for m in tin] == ["user", "assistant", "user", "assistant", "system", "user"], tin
+        assert [m["content"] for m in tin if m["role"] == "user"] == ["Giá xăng hôm nay", "Còn dầu thì sao?", "Cảm ơn"]
+
+        # Dữ liệu lưu: chỉ lượt chữ; không khoá quản trị, không tin giờ.
+        luu = trang.js(f"localStorage.getItem({json.dumps(LS)})")
+        assert KHOA_QT not in luu and "Giờ hiện tại" not in luu and "system" not in luu
+        ds = json.loads(luu)
+        assert [c["ten"] for c in ds] == ["Giá xăng hôm nay", "Soạn thư trả lời khách"]
+        assert [len(c["luot"]) for c in ds] == [3, 1]
+
+        # Tải lại trang: cuộc đang nói được mở lại (demo nhớ cuộc đang mở trong trình duyệt).
+        trang.di(w.url + "/Studio.dc.html")
+        trang.cho("document.querySelectorAll('[data-vai=\"user\"]').length === 3", mo_ta="mở lại cuộc đang nói")
+        # Tạo mới thì tải lại là màn đầu.
+        trang.bam("document.getElementById('nut-xoa')")
+        trang.di(w.url + "/Studio.dc.html")
+        trang.cho("document.querySelectorAll('[data-model-chon]').length > 0", han=15, mo_ta="Studio")
+        assert trang.js("!!document.querySelector('.st-tieu-de') && !document.querySelector('[data-vai]')")
+
+
+def test_studio_lich_su_tran_so_cuoc_va_dung_luong(trang, tmp_path, monkeypatch):
+    with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
+        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        # 60 cuộc cũ có sẵn + dữ liệu hỏng (bị bỏ qua) → lưu thêm một cuộc: còn đúng 50 cuộc, cuộc mới đứng đầu.
+        trang.js(f"""localStorage.setItem({json.dumps(LS)}, JSON.stringify([{{id: 1, ten: 'hỏng'}}, 'rác'].concat(
+            Array.from({{length: 60}}, (_, i) => ({{id: 'cu' + i, ten: 'Cuộc cũ ' + i, luc: 1000 + i,
+              luot: [{{hoi: 'hỏi ' + i, tra: 'đáp', model: 'hai/nhanh'}}]}})))))""")
+        _gui(trang, "Cuộc mới nhất", 1)
+        ds = json.loads(trang.js(f"localStorage.getItem({json.dumps(LS)})"))
+        assert len(ds) == 50 and ds[0]["ten"] == "Cuộc mới nhất" and ds[-1]["id"] == "cu11", (len(ds), ds[-1])
+        # Dung lượng: hai cuộc cũ ~600 nghìn ký tự mỗi cuộc → vượt trần 1 triệu ký tự: bỏ cuộc cũ nhất, giữ cuộc mới.
+        trang.bam("document.getElementById('nut-xoa')")
+        trang.js(f"""localStorage.setItem({json.dumps(LS)}, JSON.stringify([1, 2].map((i) => ({{id: 'to' + i, ten: 'To ' + i,
+            luc: 1000 + i, luot: [{{hoi: 'x', tra: 'a'.repeat(600000), model: 'hai/nhanh'}}]}}))))""")
+        _gui(trang, "Sau cuộc to", 1)
+        luu = trang.js(f"localStorage.getItem({json.dumps(LS)})")
+        assert len(luu) <= 1_000_000
+        assert [c["id"] for c in json.loads(luu)][1:] == ["to2"] and json.loads(luu)[0]["ten"] == "Sau cuộc to"
+        _mo_lich_su(trang)
+        assert len(trang.js(DONG_CUOC)) == 2
+        _dong_lich_su(trang)
+
+        # Nhãn thời điểm đủ bốn dạng của demo: Hôm nay / Hôm qua / thứ trong tuần / dd/mm (mốc giữa trưa, tránh nửa đêm).
+        trang.js(f"""(() => {{ const luc = (n) => {{ const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime(); }};
+            localStorage.setItem({json.dumps(LS)}, JSON.stringify([0, 1, 3, 10].map((n) => ({{id: 'n' + n, ten: 'Cách ' + n + ' ngày',
+              luc: luc(n), luot: [{{hoi: 'h', tra: 'đ', model: 'hai/nhanh'}}]}})))); }})()""")
+        _mo_lich_su(trang)
+        dong = trang.js(DONG_CUOC)
+        assert re.fullmatch(r"Cách 0 ngày Hôm nay · 12:00 · 1 lượt", dong[0]), dong
+        assert re.fullmatch(r"Cách 1 ngày Hôm qua · 12:00 · 1 lượt", dong[1]), dong
+        assert re.fullmatch(r"Cách 3 ngày (Thứ (Hai|Ba|Tư|Năm|Sáu|Bảy)|Chủ Nhật) · 12:00 · 1 lượt", dong[2]), dong
+        assert re.fullmatch(r"Cách 10 ngày \d\d/\d\d · 12:00 · 1 lượt", dong[3]), dong
+
+
+def test_studio_tao_moi_khi_video_dang_chay_khong_ghi_vao_cuoc_moi(trang, tmp_path, monkeypatch):
+    """«Tạo mới» khi video còn đang tạo (máy chủ không huỷ được): màn mới gửi được ngay, và kết quả/lỗi/trạng thái
+    của việc cũ không hiện vào cuộc mới."""
+    with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
+        lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        trang.bam("document.querySelector('[data-che-do=\"video\"]')")
+        trang.go("#o-soan", "sóng biển")
+        trang.bam("document.getElementById('nut-gui')")
+        trang.cho("document.querySelector('[role=progressbar]')", mo_ta="video đang tạo")
+        trang.bam("document.getElementById('nut-xoa')")
+        trang.cho("!!document.querySelector('.st-tieu-de') && !document.querySelector('[data-vai]')", mo_ta="Tạo mới")
+        trang.go("#o-soan", "mô tả mới")
+        trang.cho("!document.getElementById('nut-gui').disabled", mo_ta="nút gửi bật lại ngay")
+        time.sleep(5.5)   # video giả xong sau ~4 giây (1 giây + một lần hỏi 3 giây)
+        assert trang.js("!document.querySelector('[data-vai]') && !document.getElementById('loi-studio') && !document.getElementById('trang-thai') && !document.getElementById('video-kq')")
+        assert not trang.js("document.getElementById('nut-gui').disabled")
+
+
+def test_studio_trinh_duyet_chan_luu_tru_thi_an_lich_su(trang, tmp_path, monkeypatch):
+    """localStorage bị chặn (ẩn danh / chặn dữ liệu trang): không có nút «Lịch sử» (không để nút chết); chat và
+    «Tạo mới» vẫn chạy, khoá quản trị chỉ sống trong trang."""
+    trang.cdp.goi("Page.enable", {}, trang.s)   # cần bật miền Page thì script mới chạy ở trang mới
+    trang.cdp.goi("Page.addScriptToEvaluateOnNewDocument", {"source": "for (const k of ['getItem', 'setItem', 'removeItem', 'clear'])"
+                  " Storage.prototype[k] = () => { throw new DOMException('bị chặn', 'SecurityError'); };"}, trang.s)
+    with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
+        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        trang.js(BAT_LOI_JS)
+        assert trang.js("(() => { try { localStorage.setItem('a', '1'); return false; } catch (e) { return true; } })()")
+        assert not trang.js("!!document.getElementById('nut-lich-su')")
+        assert trang.js("[...document.querySelectorAll('[role=toolbar] button')].map((b) => b.innerText.trim())") == ["Trò chuyện", "Tạo mới"]
+        _gui(trang, "Chào", 1)
+        trang.bam("document.getElementById('nut-xoa')")
+        trang.cho("!!document.querySelector('.st-tieu-de') && !document.querySelector('[data-vai]')", mo_ta="Tạo mới")
+        assert not trang.js("!!document.getElementById('dc-loi')") and trang.js("window.__loiJs") == []
 
 
 # ───────────── Studio: markdown an toàn + giờ thật trong lời gọi ─────────────
@@ -744,13 +931,20 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
         trang.bam("document.querySelector('[data-nav=\"ai\"]')")
         trang.cho("document.querySelectorAll('[data-nav-con]').length > 0", mo_ta="bảng xổ AI")
         assert trang.js("[...document.querySelectorAll('[data-nav-con]')].map((a) => a.dataset.navCon)") == ["tai_khoan", "provider"]
-        trang.bam("document.querySelector('[data-nav-con=\"provider\"]')")
+        bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "mục Provider trong bảng xổ AI")
         trang.cho("location.pathname.endsWith('/He-thong-AI.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'"
                   " && document.querySelector('[data-tab=\"provider\"]')?.getAttribute('aria-selected') === 'true'", han=10,
                   mo_ta="tới tab Provider")
         trang.khung(390, 844, True)
         trang.cho("getComputedStyle(document.querySelector('nav.bn')).display !== 'none'", mo_ta="thanh dưới Hệ thống")
-        assert trang.js("[...document.querySelectorAll('[data-nav-duoi]')].map((a) => a.dataset.navDuoi)") == ["module", "ai"]
+        # Thứ tự thanh Hệ thống của demo: «AI» (nút mở tờ Tài khoản / Provider) rồi «Module» ở chỗ ô «Tiện ích» của demo.
+        assert trang.js("[...document.querySelectorAll('[data-nav-duoi]')].map((a) => a.dataset.navDuoi)") == ["ai", "module"]
+        trang.bam("document.querySelector('[data-nav-duoi=\"ai\"]')")
+        trang.cho("document.querySelectorAll('[data-nav-con-duoi]').length === 2", mo_ta="tờ AI ở thanh dưới")
+        assert trang.js("[...document.querySelectorAll('[data-nav-con-duoi]')].map((a) => a.dataset.navConDuoi)") == ["tai_khoan", "provider"]
+        bam_chuot(trang, "document.querySelector('[data-nav-con-duoi=\"tai_khoan\"]')", "mục Tài khoản trên tờ ở thanh dưới")
+        trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && document.querySelector('[data-tab=\"tai_khoan\"]')?.getAttribute('aria-selected') === 'true'",
+                  han=10, mo_ta="tới tab Tài khoản từ thanh dưới")
         assert khong_tran(trang)
 
 

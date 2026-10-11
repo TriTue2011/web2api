@@ -49,7 +49,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
-| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
+| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
 | Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
 | Khoá khách, «Địa chỉ truy cập công khai», Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
 | Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
@@ -147,7 +147,7 @@ sequenceDiagram
   L-->>G: đã cài (mã trên đĩa), chưa liên kết
   G->>L: GET /api/tinh-nang (tính lại điều kiện)
   L-->>G: kha_nang_da_cai có chat → Studio và Hệ thống → AI → Tài khoản mở
-  G-->>U: chuyển sang Studio kèm dải «Đã cài …», Studio ở trạng thái rỗng «Chưa có khoá …»
+  G-->>U: chuyển sang Studio, ô soạn bị khoá, một dòng «Chưa có khoá cho … — Thêm khoá»
   U->>G: bấm «Thêm khoá» → Hệ thống → AI → Tài khoản (đúng thẻ module), dán khoá → «Kiểm tra và lưu»
   G->>L: POST /api/modules/ID/cai (thêm khoá dạng giu/them)
   L-->>G: ok + kết quả từng khoá (dạng che)
@@ -202,15 +202,16 @@ vẫn chạy.
 | `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
 | `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm + chip lọc loại + lọc trạng thái trên một hàng, lưới ô theo loại, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
 | `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Tab «Tài khoản» — nơi thêm/bớt khoá; module chưa liên kết đứng đầu, ghi rõ «Chưa có khoá»; neo `#tk-<id>` tới đúng thẻ. Tab «Provider» khi có ≥ 1 module `ai` **đã liên kết** (model thật từ `/v1/models`, sức khoẻ từng khoá kể cả trạng thái ảnh/video) |
-| `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Bố cục như bản demo: màn đầu «Bạn muốn làm gì hôm nay?» + một ô soạn lớn (chip model mở bảng chọn model thật từ `/v1/models`, nút gửi tròn) + gợi ý; gửi rồi thì các lượt hội thoại hiện bên trên, ô soạn dính đáy, «Tạo mới» xoá hội thoại. Chế độ «Trò chuyện» (stream), «Vẽ ảnh» khi có module **đã cài** khai `anh`, «Tạo video» khi có module **đã cài** khai `video`. Chế độ chưa có module **đã liên kết** hiện dải «Chưa có khoá cho … Thêm khoá ở Hệ thống → AI → Tài khoản» kèm nút tới đúng module và khoá ô soạn — không gọi `/v1` |
+| `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chép bố cục `Main.dc.html` của bản demo (một trang cho máy tính và điện thoại): viên trạng thái góc phải, tiêu đề «Bạn muốn làm gì hôm nay?», ô soạn lớn dính đáy với «Vẽ ảnh» / «Tạo video» (khi có module **đã cài** khai `anh` / `video`), chip model (bảng «Model trả lời» với model thật từ `/v1/models`) và nút gửi tròn; dưới ô soạn «Trò chuyện» · «＋ Tạo mới» · «Lịch sử». Gửi rồi thì các lượt hội thoại hiện bên trên (chat stream, markdown an toàn; ảnh; video kèm thanh tiến độ), có hai nút nhảy lên lượt đầu / xuống lượt mới nhất. «Tạo mới» lưu cuộc đang nói vào Lịch sử rồi về màn đầu; «Lịch sử» mở bảng tìm và chọn một cuộc để nói tiếp — lưu ở localStorage của **trình duyệt này** (khoá `web2api_lich_su_tro_chuyen`, tối đa 50 cuộc và 1 triệu ký tự, chỉ lượt chữ; không có khoá nào hay tin giờ), cuộc đang mở được mở lại khi quay lại trang; trình duyệt chặn lưu trữ thì không có nút này. Chế độ chưa có module **đã liên kết** khoá ô soạn và hiện một dòng «Chưa có khoá cho … — Thêm khoá» tới đúng thẻ ở Hệ thống → AI → Tài khoản — không gọi `/v1`. Phần demo chưa có chức năng thật (đính kèm, loa, micro, Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, ô tài khoản) không được vẽ |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
 
 Tab/mục không đạt điều kiện **không có trong DOM**; gõ tay đường dẫn tới đó thì trang chuyển về Hệ thống → Module
-kèm một dòng «… chưa mở được: cần …». Thanh trên giống nhau ở mọi trang chính (logo, tab đang có, «Hệ thống», chấm
-trạng thái suy từ `/api/tinh-nang`: xanh khi mọi module của trang đã liên kết, vàng khi có module chờ khoá); trên
-điện thoại (≤ 880 px) các tab chuyển xuống thanh dưới đáy. Ở Hệ thống, mục «AI» mở bảng xổ các tab con đang có
-(Tài khoản, Provider). Hệ thống là trang riêng có nút «Quay lại» (về trang chính đầu tiên đang có;
-chưa có trang chính nào thì không có nút). Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện vì chưa
+kèm một dòng «… chưa mở được: cần …». Thanh trên của trang chính chép từ demo (logo, tab đang có, «Hệ thống» bên phải);
+viên trạng thái trong trang suy từ `/api/tinh-nang`: xanh «Mọi dịch vụ ổn» khi mọi module của trang đã liên kết, vàng
+«Chờ khoá» (bấm tới chỗ thêm khoá) khi có module chờ khoá, đỏ khi không đọc được. Trên điện thoại (≤ 1023 px, mốc
+của demo) các tab chuyển xuống thanh dưới đáy. Thanh Hệ thống theo demo: «Quay lại» (về trang chính đầu tiên đang có;
+chưa có trang chính nào thì là logo), rồi «AI ▾» (bảng xổ các tab con đang có: Tài khoản, Provider) và «Module» ở chỗ
+ô «Tiện ích» của demo; trên điện thoại «AI» mở tờ nhỏ phía trên thanh dưới. Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện vì chưa
 có backend.
 
 **Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được

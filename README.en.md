@@ -34,10 +34,13 @@ type, plus a "Connect to web2api" block that disappears after the first link). O
 admin key; read it with `docker exec web2api cat /data/admin_key` and paste it on the page. Click the `gemini-api`
 tile: the detail panel shows what it needs to run (resources, Python packages, outbound hosts, instructions from the
 manifest). Click **Install** (in the panel or directly on the tile) — no API key needed. A module that declares
-`chat` takes you straight to **Studio** (laid out like the design demo: "What would you like to do today?", one large
-composer with a model chip, mode chips for chat / image / video) with an "Installed …" note; until a key is added a
-strip above the composer says "No key for … yet. Add one in System → AI → Accounts" with a button to that module's
-card, and the composer stays disabled instead of returning a raw `404`. Add your Google AI Studio key in **System → AI → Accounts**
+`chat` takes you straight to **Studio** (a copy of the design demo's `Main.dc.html`: status pill, "What would you like
+to do today?", one large composer with Draw image / Make video, a model chip and a round send button; below it Chat ·
+New · History). Until a key is added the composer stays disabled and one small line says "No key for … — Add key",
+linking to that module's card in System → AI → Accounts, instead of returning a raw `404`. **New** saves the current
+conversation to **History** (stored in this browser's localStorage: text turns only, at most 50 conversations, no keys);
+History lets you search and reopen one to continue. Demo parts with no real feature behind them yet (attachments,
+voice, translate/subtitles/dubbing, other main tabs, the account avatar) are not drawn. Add your Google AI Studio key in **System → AI → Accounts**
 (keys can be added or removed one by one later; an empty text field never overwrites a saved value). After saving,
 the **Providers** tab (real models, per-key health) appears without a page reload and Studio is ready to chat. Studio
 renders replies as safe markdown (bold, lists, code, http/https links, tables that scroll inside the bubble; raw HTML

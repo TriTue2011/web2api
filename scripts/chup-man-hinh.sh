@@ -9,10 +9,10 @@
 #   nhieu-o      — đã dán khoá: lưới ô nhiều loại, nhiều trạng thái (Chưa cài · Có bản mới · Đang chạy; «Ghi chú
 #                  (mẫu)» đặt tay mà cũng có trên git nên là «Có bản mới»)
 #   chi-tiet     — bảng chi tiết «Cần gì để chạy» của gemini-api trước khi cài
-#   sau-cai      — ngay sau khi cài gemini-api (chưa khoá): Studio với dải «Đã cài …» và trạng thái rỗng
-#                  «Chưa có khoá cho …» kèm nút tới Hệ thống → AI → Tài khoản
+#   sau-cai      — ngay sau khi cài gemini-api (chưa khoá): Studio với ô soạn bị khoá và một dòng «Chưa có khoá
+#                  cho … — Thêm khoá» tới Hệ thống → AI → Tài khoản
 #   sau-lien-ket — sau khi liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả): Hệ thống → AI → Provider; nút
-#                  «Quay lại Studio» và mục AI hiện, không có Combo
+#                  «Quay lại» (về Studio) và mục AI hiện, không có Combo
 #   studio       — Studio: một lượt chat stream qua /v1 thật, câu trả lời markdown (in đậm, danh sách, mã)
 # Lưu PNG vào docs/anh/<tên>-may-tinh.png và <tên>-dien-thoai.png, mỗi ảnh ≤ 250 KB (quá thì giảm màu).
 #
@@ -131,10 +131,9 @@ with MayChuThat(gh.app) as s_gh, MayChuThat(g.app) as s_g:
                 t.js("document.getElementById('chi-tiet').scrollIntoView({block: 'start'}); window.scrollBy(0, -70)")
             chup("chi-tiet", chi_tiet)
 
-            # 4. Cài gemini-api (chưa khoá) → trang Module chuyển sang Studio?da_cai=… : dải «Đã cài …» + trạng thái rỗng.
+            # 4. Cài gemini-api (chưa khoá) → trang Module chuyển sang Studio?da_cai=… : trạng thái rỗng «Chưa có khoá …».
             assert httpx.post(f"{w.url}/api/nguon-git/cai/gemini-api", headers=QT, timeout=30).status_code == 200
-            chup("sau-cai", lambda: mo_trang("/Studio.dc.html?da_cai=gemini-api",
-                                             "!!document.getElementById('da-cai') && !!document.getElementById('studio-chua-khoa')"))
+            chup("sau-cai", lambda: mo_trang("/Studio.dc.html?da_cai=gemini-api", "!!document.getElementById('studio-chua-khoa')"))
 
             # 5. Liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả) → Hệ thống → AI → Provider.
             r = httpx.post(f"{w.url}/api/modules/gemini-api/cai", headers=QT, timeout=30,
