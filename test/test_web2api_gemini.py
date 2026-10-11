@@ -255,14 +255,111 @@ def test_retry_after_co_tran_10_phut(client, google):
     assert m._ct._nghi[K1] == 600.0
 
 
-def test_400_tra_ngay_khong_doi_khoa(client, google):
+def thu_tu_chat(google):
+    return [x["khoa"] for x in google.nhat_ky if x["duong"] == "chat"]
+
+
+# 400: Google trả 400 cả cho khoá sai/bị thu hồi → phân xử bằng so sánh giữa các khoá (xem đầu app/chuyen_tiep.py).
+
+def test_400_khoa_sai_doi_khoa_ke_va_danh_dau_khong_lo_khoa(client, google, caplog):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
+    assert cai(client, google, [K1, K2]).status_code == 200  # /models không tính là «đã phục vụ chat»
+    ct = mod(client)._ct
+    ct._dong_ho = lambda: 0.0
+    google.hanh_vi[K1] = {"kieu": "400_khoa"}
+    with caplog.at_level(logging.DEBUG):
+        r = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r.status_code == 200, r.text
+    assert thu_tu_chat(google) == [K1, K2]
+    assert ct._nghi == {K1: 3600.0}
+    assert "…" + K1[-4:] in caplog.text
+    khong_ro_khoa(r.text, caplog.text)
+    # Nhiều lượt sau (xoay vòng lẽ ra rơi vào K1 ở lượt thứ hai): khoá hỏng không bị gọi lại.
+    for _ in range(3):
+        assert client.post("/v1/chat/completions", json=tin(), headers=QT).status_code == 200
+    assert so_lan_chat(google, K1) == 1 and so_lan_chat(google, K2) == 4
+
+
+def test_400_mot_khoa_hong_tra_nguyen_van_da_che(client, google):
+    google.hanh_vi[K1] = {"kieu": "tot"}
+    cai(client, google, [K1])
+    google.hanh_vi[K1] = {"kieu": "400_khoa"}
+    r = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r.status_code == 400
+    loi = r.json()["error"]
+    assert loi["message"] == f"API key not valid. Please pass a valid API key. (…{K1[-4:]})"
+    assert loi["code"] == "INVALID_ARGUMENT" and loi["type"] == "invalid_request_error"
+    khong_ro_khoa(r.text)
+    assert so_lan_chat(google) == 1 and mod(client)._ct._nghi == {}  # một khoá: không có gì để so → không đánh dấu
+
+
+def test_400_moi_khoa_nhu_nhau_la_loi_yeu_cau_khong_danh_dau(client, google):
     google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
     cai(client, google, [K1, K2])
-    r = client.post("/v1/chat/completions", json=tin("gemini/loi-400"), headers=QT)
+    r = client.post("/v1/chat/completions", json=tin("gemini/loi-400-mang"), headers=QT)
     assert r.status_code == 400
-    assert so_lan_chat(google) == 1
-    assert r.json()["error"]["type"] == "invalid_request_error"
+    assert r.json()["error"]["message"] == "Request contains an invalid argument."  # nguyên văn, không thêm chữ
+    assert sorted(thu_tu_chat(google)) == sorted([K1, K2])  # mỗi khoá đúng một lần
     assert mod(client)._ct._nghi == {}
+    # Yêu cầu đúng thì cả hai khoá vẫn phục vụ.
+    assert client.post("/v1/chat/completions", json=tin(), headers=QT).status_code == 200
+    assert client.post("/v1/chat/completions", json=tin(), headers=QT).status_code == 200
+    assert thu_tu_chat(google)[-2:] in ([K1, K2], [K2, K1])
+
+
+def test_400_khoa_da_chay_tot_tra_ngay_roi_ve_chua_ro(client, google):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
+    cai(client, google, [K1, K2])
+    ct = mod(client)._ct
+    ct._dong_ho = lambda: 0.0
+    for _ in range(2):  # K1 rồi K2 phục vụ thành công
+        assert client.post("/v1/chat/completions", json=tin(), headers=QT).status_code == 200
+    assert ct._chat_duoc == {K1, K2}
+    ct._vi_tri = 0
+    n = so_lan_chat(google)
+    r = client.post("/v1/chat/completions", json=tin("gemini/loi-400"), headers=QT)
+    assert r.status_code == 400 and r.json()["error"]["type"] == "invalid_request_error"
+    assert thu_tu_chat(google)[n:] == [K1]  # trả ngay, không đổi khoá
+    assert ct._nghi == {}
+    # K1 về «chưa rõ»: nếu nó bị thu hồi SAU khi đã chạy tốt thì lần 400 kế được phân xử, không kẹt mãi.
+    google.hanh_vi[K1] = {"kieu": "400_khoa"}
+    ct._vi_tri = 0
+    assert client.post("/v1/chat/completions", json=tin(), headers=QT).status_code == 200
+    assert thu_tu_chat(google)[n + 1:] == [K1, K2]
+    assert ct._nghi == {K1: 3600.0}
+
+
+def test_stream_400_khoa_sai_doi_khoa_truoc_byte_dau(client, google):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
+    cai(client, google, [K1, K2])
+    mod(client)._ct._dong_ho = lambda: 0.0
+    google.hanh_vi[K1] = {"kieu": "400_khoa"}
+    r = client.post("/v1/chat/completions", json=tin(stream=True), headers=QT)
+    assert r.status_code == 200
+    assert "data: [DONE]" in r.text
+    khong_ro_khoa(r.text)
+    assert thu_tu_chat(google) == [K1, K2]
+    assert mod(client)._ct._nghi == {K1: 3600.0}
+
+
+def test_400_nghi_ngo_khong_tieu_luot_thu_them_cua_5xx(client, google):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}, K3: {"kieu": "tot"}})
+    cai(client, google, [K1, K2, K3])
+    mod(client)._ct._dong_ho = lambda: 0.0
+    google.hanh_vi.update({K1: {"kieu": "400_khoa"}, K2: {"kieu": "500"}})
+    r = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r.status_code == 200
+    assert thu_tu_chat(google) == [K1, K2, K3]
+    assert mod(client)._ct._nghi == {K1: 3600.0}  # 5xx không phải lỗi của khoá
+
+
+def test_chan_vung_400_trong_chat_tra_ngay_khong_danh_dau(client, google):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
+    cai(client, google, [K1, K2])
+    google.hanh_vi.update({K1: {"kieu": "400_vung"}, K2: {"kieu": "400_vung"}})
+    r = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r.status_code == 400 and "chặn vùng" in r.json()["error"]["message"]
+    assert so_lan_chat(google) == 1 and mod(client)._ct._nghi == {}
 
 
 def test_loi_dang_mang_duoc_chuan_hoa(client, google):

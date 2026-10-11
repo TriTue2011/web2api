@@ -546,6 +546,10 @@ Tự đo bằng khoá của bạn: gọi lệnh tạo ảnh ở trên **một l�
 - `429` «Mọi khoá… đang nghỉ»: mọi khoá hết hạn mức. Khoá gặp 429 nghỉ theo `Retry-After` của Google
   (mặc định 60 giây, tối đa 10 phút) rồi tự dùng lại. Thêm khoá để chịu tải tốt hơn.
 - `401`/`403` ở một khoá: khoá đó bị đánh dấu hỏng và nghỉ 1 giờ, web2api tự chuyển sang khoá kế.
+- `400` khi chat: Google trả `400` cả cho khoá sai/bị thu hồi, nên web2api so giữa các khoá. Khoá chưa từng
+  chat thành công (từ lần lưu cấu hình/khởi động gần nhất) mà trả `400` → thử khoá kế; khoá kế trả lời được thì
+  khoá trước bị đánh dấu hỏng, nghỉ 1 giờ. **Mọi** khoá đều `400` → trả `400` của Google nguyên văn (đã che khoá),
+  không đánh dấu khoá nào — đó là lỗi của yêu cầu. Khoá đã từng chat được mà gặp `400` → trả ngay, không đổi khoá.
 - `403` hoặc `400` có «chặn vùng»: đặt `base_url` qua proxy như trên. Lỗi chặn vùng không làm khoá bị
   đánh dấu hỏng (mọi khoá đều sẽ bị như nhau).
 - `504`: Google không trả lời trong 120 giây (stream: 60 giây giữa hai khúc).
@@ -568,9 +572,10 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 **Giới hạn.**
 - Chưa có nhúng (embeddings) và video bằng Gemini Omni. Tạo ảnh/video trên web: Studio (chế độ «Ảnh», «Video»).
 - Tạo ảnh/video cần khoá trả phí và chưa đo với Google thật (xem trên).
-- Khoá bị thu hồi SAU khi cài mà Google trả `400` (không phải 401/403) thì web2api không tự đổi khoá,
-  vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó (dạng `{"giu": [...]}` ở bước 4) hoặc lưu lại cấu hình
-  để kiểm lại mọi khoá.
+- Khoá bị thu hồi SAU khi đã chat được: lượt đầu tiên nó trả `400` vẫn rơi lỗi tới khách (chưa phân biệt được
+  với yêu cầu sai); từ lượt `400` kế của khoá đó web2api mới so với khoá khác và đánh dấu hỏng. Danh sách model
+  (`/v1/models`) lấy bằng một khoá: khoá đầu tiên đang dùng được mà hỏng thì danh sách rỗng hoặc là bản đệm cũ
+  cho tới khi chat đánh dấu khoá đó. Bớt khoá hỏng (dạng `{"giu": [...]}` ở bước 4) để dứt hẳn.
 - Không bớt được khoá cuối cùng: `api_keys` là trường bắt buộc nên module từ chối cấu hình rỗng — muốn bỏ
   hẳn thì gỡ module.
 - Chưa đo RAM/đĩa thật của module (trường `ram_them_mb`, `dia_mb` trong manifest đang để trống).

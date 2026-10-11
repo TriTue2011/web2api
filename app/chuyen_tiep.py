@@ -21,7 +21,25 @@ Phân loại lỗi (quyết định đổi khoá hay trả ngay):
   401/403        → khoá hỏng (nghỉ 1 giờ), thử khoá kế — TRỪ khi module nhận ra lỗi không
                    thuộc khoá (vd chặn vùng: mọi khoá đều sẽ hỏng y hệt) → trả ngay, không đánh dấu.
   5xx/lỗi mạng   → thử thêm ĐÚNG MỘT khoá nữa (sự cố phía máy chủ, nã hết khoá chỉ tốn hạn mức).
-  400/404/khác   → lỗi của yêu cầu → trả ngay, không đổi khoá.
+  400            → Google trả 400 cả cho KHOÁ SAI/bị thu hồi (đo 11/10/2026: đường tương thích OpenAI trả MẢNG
+                   [{"error": {"code": 400, "status": "INVALID_ARGUMENT", …}}], không có `reason`), nên mã 400 một
+                   mình không nói được lỗi của khoá hay của yêu cầu. Phân xử bằng SO SÁNH GIỮA CÁC KHOÁ, không dò chữ:
+                   - khoá ĐÃ từng phục vụ chat thành công → lỗi của yêu cầu, trả ngay, không đổi khoá, không đánh
+                     dấu; nhưng khoá về «chưa rõ» (khoá bị thu hồi sau khi đã chạy tốt thì lần 400 sau được phân xử);
+                   - khoá chưa rõ → thử khoá kế (mỗi khoá một lần, không tốn lượt thử thêm của 5xx); khoá sau trả 200
+                     thì mọi khoá chưa rõ đã 400 trước nó bị đánh dấu hỏng (nghỉ 1 giờ như 401/403);
+                   - MỌI khoá đã thử đều 400 → lỗi của yêu cầu: trả 400 của nhà cung cấp nguyên văn (đã che khoá),
+                     KHÔNG đánh dấu khoá nào — một yêu cầu sai không được khoá cả pool.
+                   Chặn vùng (`goi_y_loi`) trả ngay như 401/403. Trần số lần gọi vẫn là số khoá đang dùng được.
+                   Giá phải trả: khách gửi đi gửi lại cùng một thân sai thì dần mọi khoá về «chưa rõ», mỗi lượt sai
+                   tốn tới N lần gọi thay vì 1 (vẫn trong trần). Chưa đo: nếu Google trả 400 (không phải 404) cho
+                   model mà chỉ hạng của khoá khác dùng được, khoá kia bị nghỉ chat 1 giờ.
+                   Ảnh/video theo cùng quy tắc so giữa các khoá (mục «400» dưới), trạng thái nhớ riêng theo (khoá,
+                   khả năng) — KHÁC một chỗ: khoá đã dùng được gặp 400 KHÔNG về «chưa rõ», vì ở đó `dung_duoc` còn
+                   quyết thời gian nghỉ khi 429 (xoá nó là đổi luôn cách nghỉ 429). Vì khác biệt ấy và vì kho trạng
+                   thái khác nhau (`_nghi` theo khoá với `_kn` theo (khoá, khả năng)) nên hai vòng xoay giữ riêng.
+  404/khác       → lỗi của yêu cầu → trả ngay, không đổi khoá.
+Trạng thái «đã phục vụ thành công» nằm trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi động lại thì về «chưa rõ».
 
 KHẢ NĂNG TỐN TIỀN (ảnh, video — `goi_kha_nang`): cùng một khoá có thể chat được mà không được tạo ảnh/video
 (hạng miễn phí của Google: «Not available»). Nên trạng thái nhớ theo (khoá, khả năng), TÁCH khỏi `_nghi` của
@@ -135,6 +153,8 @@ class ChuyenTiepOpenAI:
         self._goi_y_loi = goi_y_loi
         self._vi_tri = 0
         self._nghi: dict[str, float] = {}
+        # Khoá đã trả 200 cho chat trong thể hiện này — căn cứ phân xử 400 (xem «Phân loại lỗi» ở đầu tệp).
+        self._chat_duoc: set[str] = set()
         # Khả năng tốn tiền (ảnh, video…) mà suc_khoe báo theo từng khoá; trạng thái theo (khoá, khả năng):
         # {"dung_duoc": bool, "ma": mã HTTP nhà cung cấp trả, "den": hết nghỉ (epoch, 0 = không nghỉ)}.
         self.kha_nang = tuple(kha_nang)
@@ -222,6 +242,8 @@ class ChuyenTiepOpenAI:
         url = f"{self.base_url}/chat/completions"
         may = urlsplit(url).netloc
         loi_cuoi: KetQuaChat | None = None
+        loi_400: KetQuaChat | None = None
+        nghi_ngo: list[str] = []  # khoá chưa rõ trả 400 — hỏng nếu một khoá sau trả 200 cho CÙNG thân yêu cầu
         da_thu_lai = False
         for khoa in ung_vien:
             khach = self._client()
@@ -236,6 +258,13 @@ class ChuyenTiepOpenAI:
                                                         "type": "api_error", "code": "upstream_unreachable"}})
             else:
                 if r.status_code == 200:
+                    # Mã 200 đã tới, chưa byte nào gửi khách: đủ để kết luận về khoá, kể cả khi stream.
+                    self._chat_duoc.add(khoa)
+                    for k in nghi_ngo:
+                        self._nghi[k] = bay_gio + NGHI_KHOA_HONG
+                        # Chỉ dạng che của khoá — không ghi thân lỗi.
+                        self.log.warning("%s: khoá %s bị coi là hỏng (400 trong khi khoá khác trả 200), nghỉ %.0f s",
+                                         self.ten, self.nhan_khoa(k), NGHI_KHOA_HONG)
                     # Chỉ chuyển content-type: httpx đã giải nén gzip, chuyển nguyên content-encoding/
                     # content-length là khách giải nén lần hai và hỏng.
                     ct = r.headers.get("content-type", "application/json")
@@ -261,9 +290,17 @@ class ChuyenTiepOpenAI:
                     continue
                 if ma in (401, 403) and not self._goi_y_loi(ma, tin):
                     self._nghi[khoa] = bay_gio + NGHI_KHOA_HONG
+                    self._chat_duoc.discard(khoa)
                     self.log.warning("%s: khoá %s bị từ chối (%s), nghỉ %.0f s: %s",
                                      self.ten, self.nhan_khoa(khoa), ma, NGHI_KHOA_HONG, tin[:200])
                     continue
+                if ma == 400 and not self._goi_y_loi(ma, tin):
+                    if khoa not in self._chat_duoc:
+                        nghi_ngo.append(khoa)
+                        loi_400 = loi_cuoi
+                        continue
+                    # Khoá từng chạy tốt → lỗi của yêu cầu; về «chưa rõ» để lần 400 sau được phân xử.
+                    self._chat_duoc.discard(khoa)
                 if ma < 500:
                     return loi_cuoi
             # 5xx hoặc lỗi mạng: thử thêm đúng một khoá.
@@ -271,6 +308,8 @@ class ChuyenTiepOpenAI:
                 break
             da_thu_lai = True
         assert loi_cuoi is not None
+        if loi_cuoi[0] < 500 and loi_400 is not None:
+            return loi_400  # mọi khoá đã thử đều 400 (hoặc khoá còn lại bị từ chối/hết hạn mức): không đánh dấu ai
         if loi_cuoi[0] == 429:
             loi_cuoi = (429, {**loi_cuoi[1], "retry-after": str(self._con_nghi(bay_gio))}, loi_cuoi[2])
         return loi_cuoi

@@ -83,8 +83,10 @@ class GoogleGia:
     models, images/generations) và phần API GỐC module dùng cho video (/v1beta/models, :predictLongRunning,
     hỏi thao tác, tải tệp).
 
-    Hành vi theo KHOÁ (Bearer hoặc x-goog-api-key) đặt trong `hanh_vi`: {"kieu": "tot"|"429"|"401"|"403_vung"|
-    "400_vung"|"500"|"cham", ...}. Khoá lạ → 401. Lỗi 401/500 cố ý NHẮC LẠI khoá trong thân để kiểm việc che khoá.
+    Hành vi theo KHOÁ (Bearer hoặc x-goog-api-key) đặt trong `hanh_vi`: {"kieu": "tot"|"429"|"401"|"400_khoa"|
+    "403_vung"|"400_vung"|"500"|"cham", ...}. Khoá lạ → 401. Lỗi 401/400_khoa/500 cố ý NHẮC LẠI khoá trong thân để
+    kiểm việc che khoá. «400_khoa» = khoá sai/bị thu hồi như Google thật trả qua đường tương thích OpenAI (đo
+    11/10/2026): HTTP 400, MẢNG, status INVALID_ARGUMENT, không có `reason` — riêng việc nhắc lại khoá là của bản giả.
 
     Ảnh/video theo khoá ở `anh` / `video`: {"kieu": "tot"} (mặc định) hoặc {"kieu": "tu_choi", "ma": 403|429|400}.
     GIẢ ĐỊNH, CHƯA ĐO: Google từ chối khoá hạng miễn phí bằng 400/403/429 — chưa có khoá thật để đo dạng lỗi thật;
@@ -97,6 +99,9 @@ class GoogleGia:
         self.models_loi = False
         self.cho_khuc_2 = threading.Event()
         self.qua_han_cho = False
+        # Các khúc của câu trả lời stream (thân yêu cầu chat ghi ở nhat_ky[...]["than"]). Test markdown/ảnh README
+        # đặt câu trả lời có in đậm, danh sách…; `cho_khuc_2` chặn giữa khúc đầu và phần còn lại.
+        self.khuc_chat: list[str] = ["Một", "Hai"]
         self.url = ""
         self.dat_lai_anh_video()
         self.app = Starlette(
@@ -158,6 +163,11 @@ class GoogleGia:
             return JSONResponse(
                 {"error": {"code": 401, "message": f"API key not valid: {khoa}", "status": "UNAUTHENTICATED"}},
                 status_code=401)
+        if k == "400_khoa":
+            return JSONResponse(
+                [{"error": {"code": 400, "message": f"API key not valid. Please pass a valid API key. ({khoa})",
+                            "status": "INVALID_ARGUMENT"}}],
+                status_code=400)
         if k in ("403_vung", "400_vung"):
             ma = 403 if k == "403_vung" else 400
             return JSONResponse(
@@ -194,15 +204,22 @@ class GoogleGia:
                                             "status": "INVALID_ARGUMENT"}}], status_code=400)
         if than.get("stream"):
             cho = self.hanh_vi.get(khoa, {}).get("cho_khuc_2", False)
+            khuc = list(self.khuc_chat)
+
+            def dong(c: str) -> str:
+                # Gọn, không dấu cách (test_web2api_gemini so đúng từng byte dòng SSE).
+                return "data: " + json.dumps({"choices": [{"index": 0, "delta": {"content": c}}]}, ensure_ascii=False,
+                                             separators=(",", ":")) + "\n\n"
 
             async def phat():
-                yield 'data: {"choices":[{"index":0,"delta":{"content":"Một"}}]}\n\n'
+                yield dong(khuc[0])
                 if cho:
                     # Chỉ nhả khúc 2 khi test đã NHẬN khúc 1 qua web2api — gom bộ đệm ở đâu là kẹt ở đây.
                     ok = await asyncio.to_thread(self.cho_khuc_2.wait, 5)
                     if not ok:
                         self.qua_han_cho = True
-                yield 'data: {"choices":[{"index":0,"delta":{"content":"Hai"}}]}\n\n'
+                for c in khuc[1:]:
+                    yield dong(c)
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(phat(), media_type="text/event-stream")
