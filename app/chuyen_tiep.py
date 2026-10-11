@@ -22,6 +22,25 @@ Phân loại lỗi (quyết định đổi khoá hay trả ngay):
                    thuộc khoá (vd chặn vùng: mọi khoá đều sẽ hỏng y hệt) → trả ngay, không đánh dấu.
   5xx/lỗi mạng   → thử thêm ĐÚNG MỘT khoá nữa (sự cố phía máy chủ, nã hết khoá chỉ tốn hạn mức).
   400/404/khác   → lỗi của yêu cầu → trả ngay, không đổi khoá.
+
+KHẢ NĂNG TỐN TIỀN (ảnh, video — `goi_kha_nang`): cùng một khoá có thể chat được mà không được tạo ảnh/video
+(hạng miễn phí của Google: «Not available»). Nên trạng thái nhớ theo (khoá, khả năng), TÁCH khỏi `_nghi` của
+chat — khoá bị từ chối tạo ảnh vẫn chat bình thường. Phân loại theo MÃ TRẠNG THÁI và so sánh giữa các khoá,
+không theo chữ trong thông điệp (dạng lỗi thật của khoá miễn phí CHƯA ĐO):
+  401/403        → khoá bị từ chối khả năng đó, nghỉ 24 giờ (hết giờ thì thử lại: khoá nâng lên trả phí tự dùng
+                   được), thử khoá kế — TRỪ chặn vùng (`goi_y_loi`): lỗi của máy chủ → trả ngay, không đánh dấu.
+  429            → khoá ĐÃ từng dùng được khả năng này → hết hạn mức thật, nghỉ theo Retry-After; CHƯA từng →
+                   nghỉ 24 giờ như bị từ chối (Google hay báo «hạn mức = 0» của hạng miễn phí bằng 429 — chưa đo;
+                   nghỉ theo Retry-After thì khoá miễn phí bị nã lại mỗi phút và khách tưởng chỉ quá tải). Giá phải
+                   trả: khoá trả phí MỚI gặp 429 ngay lần đầu cũng nghỉ việc đó 24 giờ (khoá khác vẫn phục vụ; lưu
+                   lại cấu hình là xoá). Thử khoá kế.
+  400            → khoá ĐÃ từng dùng được khả năng này → lỗi của yêu cầu, trả ngay. Chưa rõ → thử khoá kế; khoá
+                   sau thành công thì khoá trước bị từ chối (24 giờ); MỌI khoá đều 400 → coi là lỗi yêu cầu, trả
+                   400 của Google kèm gợi ý hạng miễn phí, KHÔNG đánh dấu (một yêu cầu sai không được khoá cả nhà
+                   khỏi ảnh/video suốt một ngày).
+  5xx/lỗi mạng, 404/khác → như chat.
+Không bao giờ dò khoá bằng lời gọi tốn tiền: trạng thái là «chua_ro» cho tới khi dùng thật. Trạng thái nằm
+trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi động lại thì về «chua_ro».
 """
 
 from __future__ import annotations
@@ -43,6 +62,9 @@ from app.loi_openai import loai_theo_ma
 NGHI_429_MAC_DINH = 60.0
 NGHI_429_TRAN = 600.0
 NGHI_KHOA_HONG = 3600.0
+NGHI_KHA_NANG = 24 * 3600.0
+GOI_Y_HANG_MIEN_PHI = ("Hạng miễn phí của Google không dùng được tính năng này (trang giá ghi «Not available») — "
+                       "cần khoá thuộc dự án đã bật thanh toán (trả phí).")
 
 KetQuaChat = tuple[int, dict, "bytes | AsyncIterator[bytes]"]
 
@@ -103,6 +125,7 @@ class ChuyenTiepOpenAI:
         khoa: list[str],
         doi_id_model: Callable[[str], str] = lambda x: x,
         goi_y_loi: Callable[[int, str], str | None] = lambda ma, tin: None,
+        kha_nang: tuple[str, ...] = (),
     ):
         self.ten = ten
         self.tien_to = tien_to
@@ -113,6 +136,10 @@ class ChuyenTiepOpenAI:
         self._goi_y_loi = goi_y_loi
         self._vi_tri = 0
         self._nghi: dict[str, float] = {}
+        # Khả năng tốn tiền (ảnh, video…) mà suc_khoe báo theo từng khoá; trạng thái theo (khoá, khả năng):
+        # {"trang_thai": "dung_duoc"|"bi_tu_choi", "ma": mã Google, "den": hết nghỉ (epoch, 0 = không nghỉ)}.
+        self.kha_nang = tuple(kha_nang)
+        self._kn: dict[tuple[str, str], dict] = {}
         self._dem_models: list[dict] | None = None
         self._dem_luc = 0.0
         self._khach: httpx.AsyncClient | None = None
@@ -259,6 +286,105 @@ class ChuyenTiepOpenAI:
         finally:
             await r.aclose()
 
+    # ── khả năng tốn tiền (ảnh, video…) — xem «KHẢ NĂNG TỐN TIỀN» ở đầu tệp ──
+
+    def _ghi_kn(self, khoa: str, kha_nang: str, **gia_tri) -> None:
+        self._kn.setdefault((khoa, kha_nang), {"dung_duoc": False, "ma": None, "den": 0.0}).update(gia_tri)
+
+    def trang_thai_kha_nang(self, khoa: str, kha_nang: str, bay_gio: float) -> dict:
+        tt = self._kn.get((khoa, kha_nang))
+        if tt is not None and tt["den"] > bay_gio:
+            return {"trang_thai": "bi_tu_choi", "ma_google": tt["ma"], "thu_lai_luc": iso(tt["den"])}
+        return {"trang_thai": "dung_duoc" if tt is not None and tt["dung_duoc"] else "chua_ro"}
+
+    def _loi_het_khoa(self, kha_nang: str, viec: str, bay_gio: float) -> KetQuaChat:
+        """Mọi khoá đang bị từ chối khả năng này: nêu mã Google từng khoá (dạng che). Chỉ khi mọi khoá là khoá ĐÃ
+        dùng được và chỉ hết hạn mức (429) → 429 kèm Retry-After như chat; còn lại → 403."""
+        cho = [(k, self._kn[(k, kha_nang)]) for k in self.khoa
+               if self._kn.get((k, kha_nang), {}).get("den", 0.0) > bay_gio]
+        chi_tiet = "; ".join(f"{self.nhan_khoa(k)}: HTTP {tt['ma']}, thử lại lúc {iso(tt['den'])}" for k, tt in cho)
+        chi_429 = bool(cho) and all(tt["ma"] == 429 and tt["dung_duoc"] for _, tt in cho)
+        ma = 429 if chi_429 else 403
+        tin = (f"Không khoá nào của {self.ten} ({len(self.khoa)} khoá) được Google cho {viec} — {chi_tiet}. "
+               f"{GOI_Y_HANG_MIEN_PHI} Khoá bị từ chối được thử lại sau 24 giờ hoặc khi lưu lại cấu hình module; "
+               "khoá từng dùng được mà hết hạn mức (429) thì thử lại theo Retry-After.")
+        hd = {"retry-after": str(max(1, int(min(tt["den"] for _, tt in cho) - bay_gio + 0.999)))} if chi_429 else {}
+        return tra_loi_json(ma, {"error": {"message": tin, "type": loai_theo_ma(ma),
+                                           "code": "rate_limit_exceeded" if chi_429 else "no_key_permitted"}}, hd)
+
+    async def goi_kha_nang(self, kha_nang: str, viec: str, phuong_thuc: str, url: str, *, json_than,
+                           tieu_de: Callable[[str], dict]) -> tuple[str | None, KetQuaChat]:
+        """Gọi một khả năng tốn tiền, xoay khoá theo (khoá, khả năng). Trả (khoá đã thành công, kết quả đã đọc hết)
+        hoặc (None, lỗi chuẩn OpenAI đã che khoá). `tieu_de(khoa)` dựng header mang khoá — khoá không vào URL."""
+        bay_gio = self._dong_ho()
+        n = len(self.khoa)
+        dau = self._vi_tri % n
+        self._vi_tri = (dau + 1) % n
+        ung_vien = [self.khoa[(dau + i) % n] for i in range(n)]
+        ung_vien = [k for k in ung_vien if self._kn.get((k, kha_nang), {}).get("den", 0.0) <= bay_gio]
+        if not ung_vien:
+            return None, self._loi_het_khoa(kha_nang, viec, bay_gio)
+        timeout = httpx.Timeout(self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI)
+        may = urlsplit(url).netloc
+        loi_cuoi: KetQuaChat | None = None
+        loi_400: dict | None = None
+        nghi_ngo: list[str] = []  # khoá chưa rõ trả 400 — bị từ chối nếu một khoá sau thành công
+        da_thu_lai = False
+        for khoa in ung_vien:
+            try:
+                r = await self._client().request(phuong_thuc, url, json=json_than, headers=tieu_de(khoa),
+                                                 timeout=timeout)
+            except httpx.TimeoutException as e:
+                loi_cuoi = tra_loi_json(504, {"error": {"message": f"{self.ten} ({may}) không trả lời kịp: {type(e).__name__}",
+                                                        "type": "api_error", "code": "timeout"}})
+            except httpx.HTTPError as e:
+                loi_cuoi = tra_loi_json(502, {"error": {"message": f"Không kết nối được {self.ten} ({may}): {type(e).__name__}",
+                                                        "type": "api_error", "code": "upstream_unreachable"}})
+            else:
+                ma = r.status_code
+                if 200 <= ma < 300:
+                    self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
+                    for k in nghi_ngo:  # cùng thân yêu cầu, khoá này được còn khoá kia 400 → lỗi của khoá kia
+                        self._ghi_kn(k, kha_nang, dung_duoc=False, ma=400, den=bay_gio + NGHI_KHA_NANG)
+                        self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
+                                         self.ten, self.nhan_khoa(k), viec, NGHI_KHA_NANG)
+                    return khoa, (ma, {"content-type": r.headers.get("content-type", "application/json")}, r.content)
+                loi = self.chuan_hoa_loi(ma, r.content)
+                loi_cuoi = tra_loi_json(ma, loi)
+                tin = loi["error"]["message"]
+                if self._goi_y_loi(ma, tin):  # chặn vùng: lỗi của máy chủ, mọi khoá sẽ hỏng y hệt
+                    return None, loi_cuoi
+                if ma in (401, 403):
+                    self._ghi_kn(khoa, kha_nang, dung_duoc=False, ma=ma, den=bay_gio + NGHI_KHA_NANG)
+                    self.log.warning("%s: khoá %s bị từ chối %s (%s), nghỉ %.0f s cho riêng việc này: %s",
+                                     self.ten, self.nhan_khoa(khoa), viec, ma, NGHI_KHA_NANG, tin[:200])
+                    continue
+                if ma == 429:
+                    da_duoc = self._kn.get((khoa, kha_nang), {}).get("dung_duoc", False)
+                    nghi = doc_retry_after(r.headers.get("retry-after"), bay_gio) if da_duoc else NGHI_KHA_NANG
+                    self._ghi_kn(khoa, kha_nang, ma=429, den=bay_gio + nghi)
+                    self.log.warning("%s: khoá %s hết hạn mức %s (429), nghỉ %.0f s", self.ten,
+                                     self.nhan_khoa(khoa), viec, nghi)
+                    continue
+                if ma == 400 and not self._kn.get((khoa, kha_nang), {}).get("dung_duoc"):
+                    nghi_ngo.append(khoa)
+                    loi_400 = loi
+                    continue
+                if ma < 500:
+                    return None, loi_cuoi
+            # 5xx hoặc lỗi mạng: thử thêm đúng một khoá.
+            if da_thu_lai:
+                break
+            da_thu_lai = True
+        assert loi_cuoi is not None
+        if loi_cuoi[0] >= 500:
+            return None, loi_cuoi
+        if loi_400 is not None:
+            loi_400["error"]["message"] += (f" — Google trả 400 cho mọi khoá đã thử ({len(nghi_ngo)}): nếu yêu cầu "
+                                            f"đúng thì có thể các khoá đều thuộc hạng miễn phí. {GOI_Y_HANG_MIEN_PHI}")
+            return None, tra_loi_json(400, loi_400)
+        return None, self._loi_het_khoa(kha_nang, viec, bay_gio)
+
     # ── models / kiểm khoá ──
 
     async def kiem_khoa(self, khoa: str) -> dict:
@@ -323,6 +449,8 @@ class ChuyenTiepOpenAI:
         for k, muc in zip(self.khoa, ket_qua):
             den = self._nghi.get(k, 0.0)
             muc["dang_nghi_den"] = iso(den) if den > bay_gio else None
+            if self.kha_nang:
+                muc["kha_nang"] = {kn: self.trang_thai_kha_nang(k, kn, bay_gio) for kn in self.kha_nang}
         return {"ok": any(m["ok"] for m in ket_qua), "base_url": self.base_url, "khoa": list(ket_qua)}
 
     async def dung(self) -> None:

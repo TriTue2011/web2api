@@ -7,6 +7,7 @@ mọi tuyến khác ở đây đòi khoá quản trị (xác thực theo từng 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -67,33 +68,113 @@ async def v1_models(request: Request):
     return {"object": "list", "data": data}
 
 
-@v1.post("/chat/completions")
-async def v1_chat(request: Request):
-    # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
-    # như extra_content.google.thought_signature.
-    than = await _than_json(request)
+def _module_dang_chay(so: SoModule, id_: str, tien_to: str):
+    m = so.dang_chay.get(id_)
+    if m is None:  # tìm thấy tiền tố mà không chạy → mã đã cài (catalog), chưa liên kết; module từ xa luôn chạy
+        raise LoiOpenAI(404, f"Module {id_!r} (tiền tố {tien_to}/) đã cài nhưng chưa có khoá/cấu hình — mở tab "
+                             f"«{so.catalog[id_].duong_tab()['nhan']}» trên trang web2api để thêm khoá "
+                             f"(hoặc POST /api/modules/{id_}/cai)", code="module_not_configured")
+    return m
+
+
+def _module_theo_model(so: SoModule, than: dict):
+    """(id, thể hiện) của module có tiền tố ghi trong `model` — 404 rõ ràng nếu không thuộc ai/chưa liên kết."""
     model = than.get("model")
     if not isinstance(model, str) or not model:
         raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>, ví dụ gemini/gemini-2.5-flash)",
                         code="missing_model")
-    so = _so(request)
     tien_to, co_gach, _ = model.partition("/")
     id_ = so.tim_theo_tien_to(tien_to) if co_gach else None
     if id_ is None:
         cai = ", ".join(so.tien_to_dang_chay()) or "(chưa có module nào đã liên kết)"
         raise LoiOpenAI(404, f"Model {model!r} không thuộc module nào. Model phải có dạng <tiền tố>/<tên>; "
                              f"tiền tố đang dùng được: {cai}. Xem GET /v1/models.", code="model_not_found")
-    m = so.dang_chay.get(id_)
-    if m is None:  # tìm thấy tiền tố mà không chạy → mã đã cài (catalog), chưa liên kết; module từ xa luôn chạy
-        raise LoiOpenAI(404, f"Module {id_!r} (tiền tố {tien_to}/) đã cài nhưng chưa có khoá/cấu hình — mở tab "
-                             f"«{so.catalog[id_].duong_tab()['nhan']}» trên trang web2api để thêm khoá "
-                             f"(hoặc POST /api/modules/{id_}/cai)", code="module_not_configured")
-    ma, headers, noi_dung = await m.chat(than, bool(than.get("stream")))
+    return id_, _module_dang_chay(so, id_, tien_to)
+
+
+def _module_theo_ma_video(so: SoModule, ma: str):
+    """Mã video ra ngoài là "<tien_to>:<mã của module>"; tiền tố không chứa «:» (TIEN_TO_HOP_LE) nên tách ở
+    dấu «:» đầu tiên là đủ — không cần bảng mã → module."""
+    tien_to, co_cham, trong = ma.partition(":")
+    id_ = so.tim_theo_tien_to(tien_to) if co_cham and trong else None
+    if id_ is None:
+        raise LoiOpenAI(404, f"Không có video {ma!r} (mã dạng <tiền tố>:<mã>, lấy từ POST /v1/videos)",
+                        code="video_not_found")
+    return id_, _module_dang_chay(so, id_, tien_to), trong
+
+
+def _can_phuong_thuc(m, id_: str, viec: str, *ten: str) -> None:
+    """Khả năng tuỳ chọn: xét theo phương thức CÓ THẬT trên thể hiện (module từ xa, module cũ không có → 501)."""
+    if not all(callable(getattr(m, t, None)) for t in ten):
+        raise LoiOpenAI(501, f"Module {id_!r} không hỗ trợ {viec} (không có phương thức {', '.join(ten)}).",
+                        code="capability_not_supported")
+
+
+def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
     headers = dict(headers)
     kieu = headers.pop("content-type", None)
     if isinstance(noi_dung, (bytes, str)):
         return Response(noi_dung, status_code=ma, headers=headers, media_type=kieu)
     return StreamingResponse(noi_dung, status_code=ma, headers=headers, media_type=kieu)
+
+
+def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Response:
+    """Đối tượng video thành công: "id" của module → "<tien_to>:<id>" (khách gửi lại đúng mã này)."""
+    if ma == 200 and isinstance(noi_dung, bytes):
+        j = json.loads(noi_dung)
+        if isinstance(j, dict) and isinstance(j.get("id"), str):
+            j["id"] = f"{tien_to}:{j['id']}"
+            noi_dung = json.dumps(j, ensure_ascii=False).encode()
+    return _tra_ve(ma, headers, noi_dung)
+
+
+@v1.post("/chat/completions")
+async def v1_chat(request: Request):
+    # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
+    # như extra_content.google.thought_signature.
+    than = await _than_json(request)
+    _, m = _module_theo_model(_so(request), than)
+    return _tra_ve(*await m.chat(than, bool(than.get("stream"))))
+
+
+@v1.post("/images/generations")
+async def v1_anh(request: Request):
+    than = await _than_json(request)
+    id_, m = _module_theo_model(_so(request), than)
+    _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
+    return _tra_ve(*await m.anh(than))
+
+
+_VIDEO = ("video_tao", "video_trang_thai", "video_noi_dung")
+
+
+@v1.post("/videos")
+async def v1_video_tao(request: Request):
+    if request.headers.get("content-type", "").lower().startswith("multipart/"):
+        # SDK openai gửi videos.create bằng multipart/form-data; lõi không có gói đọc form (python-multipart).
+        raise LoiOpenAI(415, "web2api chỉ nhận thân JSON cho POST /v1/videos (Content-Type: application/json); "
+                             "ảnh đầu vào gửi trong trường «image» dạng base64 hoặc data URL.",
+                        code="unsupported_media_type")
+    than = await _than_json(request)
+    so = _so(request)
+    id_, m = _module_theo_model(so, than)
+    _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
+    return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_tao(than))
+
+
+@v1.get("/videos/{ma}")
+async def v1_video_trang_thai(ma: str, request: Request):
+    so = _so(request)
+    id_, m, trong = _module_theo_ma_video(so, ma)
+    _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
+    return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_trang_thai(trong))
+
+
+@v1.get("/videos/{ma}/content")
+async def v1_video_noi_dung(ma: str, request: Request):
+    id_, m, trong = _module_theo_ma_video(_so(request), ma)
+    _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
+    return _tra_ve(*await m.video_noi_dung(trong))
 
 
 # ───────────── /api/modules ─────────────
@@ -132,7 +213,7 @@ async def catalog(request: Request):
     for km in so.catalog.values():
         m = km.manifest
         ds.append({k: m.get(k) for k in ("id", "ten", "mo_ta", "phien_ban", "loai", "giao_thuc", "tien_to",
-                                         "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web")}
+                                         "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web", "cung_cap")}
                   | {"nguon": km.nguon, "da_cau_hinh": km.id in so.dang_chay})
     return {"modules": ds, "loi": so.loi}
 

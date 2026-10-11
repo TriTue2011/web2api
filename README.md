@@ -68,7 +68,8 @@ Luồng một yêu cầu:
 | Lõi: trang khởi đầu, trang «Máy này» (`/api/he-thong`) | Có | 0.1.0-khung · 10/10/2026 |
 | Khoá quản trị cho mọi API đổi trạng thái và `/v1` | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/models`, `/v1/chat/completions` chuẩn OpenAI (có stream) | Có | 0.1.0-khung · 10/10/2026 |
-| Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — đã kiểm với Google thật 10/10/2026 | 0.1.0-khung · 10/10/2026 |
+| `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố model; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
+| Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; tạo ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 (ảnh/video 11/10/2026) |
 | Nguồn module từ git: thông báo module mới, cài, tự cài có điều kiện | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10/10/2026 |
 | Nạp lại module nóng, không khởi động lại | Có | 0.1.0-khung · 10/10/2026 |
 | Module từ xa (dịch vụ OpenAI trong mạng nhà, ví dụ máy GPU) | Có | 0.1.0-khung · 10/10/2026 |
@@ -79,7 +80,7 @@ Luồng một yêu cầu:
 | Thanh trên: liên kết «Module», chấm báo module mới, tab của module đã cài | Có | 0.1.0-khung · 10/10/2026 |
 | Nguồn git đặt sẵn trong `docker-compose.yml` (kho dự án, đọc ẩn danh) | Có | 0.1.0-khung · 10/10/2026 |
 | `docker-compose.yml` cho người mới (ảnh GHCR, volume có tên, cập nhật, sao lưu) | Có (chưa thử kéo ảnh GHCR thật) | 0.1.0-khung · 11/10/2026 |
-| Gemini: nhúng (embeddings), tạo ảnh, video | Chưa có | — |
+| Gemini: nhúng (embeddings), video bằng Gemini Omni, giao diện tạo ảnh/video trên web | Chưa có | — |
 | Chữ ký số cho module | Chưa có (chỉ kiểm chữ ký commit của GitHub, tuỳ chọn) | — |
 | Các trang demo khác (Main, Hệ thống, AI, Nhà, Đời sống…) | Chưa đưa vào `web/` | — |
 
@@ -420,7 +421,86 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 curl -s -H "Authorization: Bearer $K" $W/api/modules/gemini-api/suc-khoe   # sức khoẻ từng khoá
 ```
 
+**Tạo ảnh và video — chỉ khoá TRẢ PHÍ (module 0.2.0).** Theo **trang giá Google ngày 11/10/2026**
+(https://ai.google.dev/gemini-api/docs/pricing, trang ghi cập nhật 09/10/2026), mọi model tạo ảnh và tạo video
+đều ghi **«Not available»** ở hạng miễn phí. Khoá miễn phí vẫn chat được nhưng **không** tạo được ảnh/video; cần
+khoá thuộc dự án Google Cloud đã bật thanh toán. **Mỗi lần tạo là tốn tiền thật** (giá dưới đây, chưa tính thuế):
+
+| Loại | Model (mã gọi qua web2api: `gemini/<mã>`) | Giá hạng trả phí (bản thường) |
+|---|---|---|
+| Ảnh | `gemini-3.1-flash-image` (Nano Banana 2) | khoảng 0,067 USD/ảnh 1K; 0,151 USD/ảnh 4K |
+| Ảnh | `gemini-3.1-flash-lite-image` (Nano Banana 2 Lite) | khoảng 0,034 USD/ảnh 1K |
+| Ảnh | `gemini-3-pro-image` (Nano Banana Pro) | khoảng 0,134 USD/ảnh 1K–2K; 0,24 USD/ảnh 4K |
+| Ảnh | `gemini-nano-banana-2.1` | khoảng 0,034 USD/ảnh 1K; 0,113 USD/ảnh 4K |
+| Ảnh | `gemini-2.5-flash-image` | 0,039 USD/ảnh — Google ghi **tắt ngày 02/10/2026**, đừng dùng |
+| Video | `veo-3.1-generate-preview` | 0,40 USD/giây (720p, 1080p); 0,60 USD/giây (4K) — video 8 giây 720p ≈ 3,2 USD |
+| Video | `veo-3.1-fast-generate-preview` | 0,10 USD/giây (720p); 0,12 (1080p); 0,30 (4K) |
+| Video | `veo-3.1-lite-generate-preview` | 0,05 USD/giây (720p); 0,08 (1080p); không có 4K |
+
+Imagen không còn trên trang giá; Veo 3.0 đã lỗi thời. Gemini Omni (`gemini-omni-1.1-flash`, trang video của
+Google khuyên làm mặc định) dùng API khác (Interactions) nên **chưa** hỗ trợ ở bản này. Tên model đổi theo Google:
+web2api không giữ bảng tên model, bạn gọi đúng mã Google đang có (xem `GET /v1/models`; model video được đánh
+dấu `"kha_nang": ["video"]` theo trường `supportedGenerationMethods` của Google. Model ảnh không đánh dấu được vì
+Google ghi chúng là `generateContent` giống model chat).
+
+Tạo ảnh — đi endpoint tương thích OpenAI của Google (`…/v1beta/openai/images/generations`), thân đi nguyên văn
+(chỉ bỏ tiền tố `gemini/`), nên dùng được cả trường riêng của Google như `aspect_ratio`, `generation_config`:
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini/gemini-3.1-flash-image", "prompt": "Con mèo đội nón lá", "response_format": "b64_json", "n": 1, "aspect_ratio": "16:9"}' \
+  $W/v1/images/generations | jq -r '.data[0].b64_json' | base64 -d > anh.png
+```
+
+Tạo video — không đồng bộ, như `/v1/videos` của OpenAI: tạo → hỏi trạng thái tới `completed` → tải. Module đi
+API gốc Veo (`:predictLongRunning`) vì trang tương thích OpenAI của Google không ghi cách tải tệp video. Thân là
+**JSON** (gửi `multipart/form-data` — như SDK `openai` làm với `videos.create` — bị trả `415`):
+
+```bash
+ID=$(curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini/veo-3.1-fast-generate-preview", "prompt": "Flycam bay qua ruộng bậc thang", "seconds": 8, "aspect_ratio": "16:9", "resolution": "720p"}' \
+  $W/v1/videos | jq -r .id)                                           # vd "gemini:bW9kZWxz….1a2b3c4d", status "queued"
+curl -s -H "Authorization: Bearer $K" $W/v1/videos/$ID             # hỏi mỗi ~10 giây: in_progress → completed | failed
+curl -s -H "Authorization: Bearer $K" -o video.mp4 $W/v1/videos/$ID/content   # tải (stream, không nạp cả tệp vào RAM)
+```
+
+- Tham số video: `prompt` (bắt buộc), `seconds` hoặc `duration_seconds` (4, 6, 8), `aspect_ratio` (`16:9`,
+  `9:16`) hoặc `size` kiểu OpenAI (`1280x720` → 16:9), `resolution` (`720p`, `1080p`, `4k` — 1080p/4k chỉ với 8
+  giây), `image` (ảnh đầu: base64 hoặc data URL), `last_frame`, và các tham số khác của Veo viết kiểu
+  `snake_case` (vd `negative_prompt`, `person_generation`, `seed`) — web2api đổi sang `camelCase` của Veo.
+- Mã video có dạng `gemini:<mã>`: phần trước dấu `:` là tiền tố module. Video thuộc dự án của **khoá đã tạo nó**:
+  bớt khoá đó thì không hỏi/tải được nữa. Google giữ video **2 ngày**.
+- Khoá chỉ đi bằng header (không bao giờ vào URL hay nhật ký) và chỉ gửi tới máy của `base_url`: Google
+  chuyển hướng tải tệp sang máy khác thì web2api bỏ khoá ở bước đó.
+
+Khoá bị từ chối khi tạo ảnh/video (nhớ riêng cho từng khoá **và** từng việc — khoá bị từ chối tạo ảnh vẫn chat
+và vẫn được thử tạo video bình thường):
+
+| Google trả | web2api làm |
+|---|---|
+| `401` / `403` (không phải chặn vùng) | Khoá bị từ chối việc đó **24 giờ** (hết hạn thì thử lại — khoá được nâng lên trả phí sẽ tự dùng được), thử khoá kế |
+| `429` | Khoá **từng** làm được việc đó → hết hạn mức thật, nghỉ theo `Retry-After` (mặc định 60 giây). Khoá **chưa từng** làm được → coi như bị từ chối, nghỉ 24 giờ (Google hay báo «hạn mức = 0» của hạng miễn phí bằng `429` — chưa đo). Cái giá: khoá trả phí **mới** gặp `429` ngay lần đầu cũng nghỉ việc đó 24 giờ; khoá khác vẫn phục vụ, lưu lại cấu hình là xoá. Cả hai trường hợp đều thử khoá kế |
+| `400` | Khoá từng làm được việc đó → lỗi của yêu cầu, trả ngay. Chưa rõ → thử khoá kế; khoá sau làm được thì khoá trước bị từ chối 24 giờ; **mọi** khoá đều `400` → trả `400` của Google kèm gợi ý «có thể mọi khoá là hạng miễn phí», không đánh dấu khoá nào (một yêu cầu sai không được khoá cả nhà khỏi ảnh/video) |
+| Mọi khoá đang bị từ chối | `403` mã `no_key_permitted`, nêu từng khoá (dạng che), mã Google đã gặp, giờ thử lại, và câu «hạng miễn phí không dùng được — cần khoá trả phí». Chỉ khi mọi khoá đều từng làm được và chỉ đang hết hạn mức (`429`) thì trả `429` kèm `Retry-After` |
+
+`GET /api/modules/gemini-api/suc-khoe` báo thêm cho từng khoá: `"kha_nang": {"anh": {...}, "video": {...}}` với
+`trang_thai` là `chua_ro` (chưa dùng thật lần nào — web2api **không** thử bằng lời gọi tốn tiền),
+`dung_duoc`, hoặc `bi_tu_choi` (kèm `ma_google`, `thu_lai_luc`). Trạng thái này nằm trong bộ nhớ: lưu lại cấu
+hình module hay khởi động lại thì về `chua_ro`.
+
+**Chưa đo với Google thật** (chưa có khoá trả phí để thử): dạng lỗi Google trả cho khoá miễn phí (giả định
+400/403/429 — đọc mã thật trong `ma_google` ở sức khoẻ hoặc trong thông báo lỗi), đường tạo/hỏi/tải Veo, tên
+model nào còn sống, `base_url` qua proxy Cloudflare cho ảnh/video, máy đích khi Google chuyển hướng tải video.
+Qua proxy `deploy/cloudflare-gemini-proxy.js`: Worker chuyển mọi đường `/v1beta/...` và mọi header (kể cả
+`x-goog-api-key`) nên về nguyên tắc video đi được, nhưng Worker gọi `fetch(..., redirect: "follow")` — nếu Google
+chuyển hướng lúc tải video thì chính Worker đi theo và có thể mang khoá sang máy đích (web2api không chặn được
+bước đó; chưa đo, Worker chưa sửa).
+Tự đo bằng khoá của bạn: gọi lệnh tạo ảnh ở trên **một lần** với model Lite (rẻ nhất), rồi xem
+`GET /api/modules/gemini-api/suc-khoe`.
+
 **Sự cố thường gặp.**
+- `403` `no_key_permitted` khi tạo ảnh/video: không khoá nào được Google cho việc đó — thường là khoá hạng
+  miễn phí. Thêm khoá thuộc dự án đã bật thanh toán (bước 4).
 - `429` «Mọi khoá… đang nghỉ»: mọi khoá hết hạn mức. Khoá gặp 429 nghỉ theo `Retry-After` của Google
   (mặc định 60 giây, tối đa 10 phút) rồi tự dùng lại. Thêm khoá để chịu tải tốt hơn.
 - `401`/`403` ở một khoá: khoá đó bị đánh dấu hỏng và nghỉ 1 giờ, web2api tự chuyển sang khoá kế.
@@ -444,7 +524,8 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 (429) thật của Google.
 
 **Giới hạn.**
-- Chưa có nhúng (embeddings), tạo ảnh, video của Gemini — chỉ có chat và danh sách model.
+- Chưa có nhúng (embeddings) và video bằng Gemini Omni; chưa có giao diện tạo ảnh/video trên web (chỉ API).
+- Tạo ảnh/video cần khoá trả phí và chưa đo với Google thật (xem trên).
 - Khoá bị thu hồi SAU khi cài mà Google trả `400` (không phải 401/403) thì web2api không tự đổi khoá,
   vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó (dạng `{"giu": [...]}` ở bước 4) hoặc lưu lại cấu hình
   để kiểm lại mọi khoá.
@@ -569,10 +650,14 @@ Thư mục `modules/<id>/` gồm:
   (`ai`), `giao_thuc` (`openai`), `tien_to`, `truong_cau_hinh` (danh sách `{khoa, nhan, kieu, bat_buoc,
   mac_dinh, mo_ta}`, `kieu` là `chuoi`, `bi_mat` hoặc `danh_sach_bi_mat` — trường bí mật tự được lưu
   riêng và che), `tai_nguyen` (`ram_them_mb`, `dia_mb`, `gpu`, `mang_ra`, `ghi_chu`), tuỳ chọn
-  `yeu_cau_goi` (gói Python module cần import) và `tab_web` (`{"nhan": "...", "trang": "web/<tệp>.dc.html"}`).
+  `yeu_cau_goi` (gói Python module cần import), `tab_web` (`{"nhan": "...", "trang": "web/<tệp>.dc.html"}`) và
+  `cung_cap` (danh sách mã khả năng để hiển thị, ví dụ `["chat", "anh", "video"]`; lõi chỉ kiểm dạng mã — chữ
+  thường, số, `_` — không giữ danh sách mã hợp lệ).
 - `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`,
-  `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Hợp đồng chi tiết
-  ghi ở đầu tệp `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`.
+  `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Tuỳ chọn: `async anh(body)`
+  (mở `/v1/images/generations`) và bộ ba `async video_tao(body)`, `async video_trang_thai(ma)`,
+  `async video_noi_dung(ma)` (mở `/v1/videos`); không có thì lõi trả `501`. Hợp đồng chi tiết ghi ở đầu tệp
+  `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`.
 - Tuỳ chọn `web/`: giao diện riêng, được phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết),
   và `GET /api/modules` trả `tab_web` (`{"nhan", "duong"}`) để thanh trên cùng thêm tab. Module không khai
   `tab_web` vẫn có tab: `duong` trỏ tới thẻ thêm khoá của nó trên trang Module.
@@ -633,6 +718,9 @@ không định tuyến.
 | `404` «đã cài nhưng chưa có khoá» | Module đã cài nhưng chưa liên kết: thêm khoá ở thẻ của module trên trang Module, hoặc `POST /api/modules/<id>/cai`. |
 | Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 6, module gemini-api). |
 | `429` từ Gemini | Hết hạn mức Google; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
+| `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được Google cho việc đó — thường là khoá hạng miễn phí (ảnh/video chỉ có ở hạng trả phí). Xem tiểu mục gemini-api. |
+| `501` `capability_not_supported` | Module của tiền tố đó không có tạo ảnh/video (ví dụ module từ xa). |
+| `415` khi `POST /v1/videos` | Thân phải là JSON; web2api chưa đọc `multipart/form-data`. |
 | Module không hiện trong `/api/modules/catalog` | Xem trường `loi` của chính API đó: mỗi thư mục hỏng có lý do (manifest sai, trùng id/tiền tố, thiếu gói…). Sửa xong gọi `POST /api/modules/nap-lai`. |
 | Thông báo module mới không đến | Xem khối «Nguồn git» trên trang Module (hoặc `GET /api/nguon-git`, trường `trang_thai.loi`). Kiểm `repo`/`nhanh`/`thu_muc`; module phải có `manifest.json` ở gốc thư mục và đã đẩy lên đúng nhánh. Gửi `PUT /api/nguon-git` thân `{}` để thăm dò ngay. |
 | Trạng thái báo hết hạn mức GitHub | Ẩn danh chỉ 60 yêu cầu/giờ/IP (chung cho mọi máy cùng IP ra Internet). web2api tự chờ tới `reset_luc`. Muốn nâng: thêm `token` chỉ đọc. |
@@ -685,6 +773,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/nguon-git/cai/{id}` | Có | Cài module từ git theo đúng commit đã báo |
 | `GET /v1/models` | Có | Model của mọi module đã cài |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
+| `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI (`model` dạng `<tiền tố>/<tên>`); `501` nếu module không có |
+| `POST /v1/videos` | Có | Tạo video (không đồng bộ, thân JSON) → đối tượng video có `id` dạng `<tiền tố>:<mã>` |
+| `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
+| `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
 
 | Biến môi trường | Mặc định | Ý nghĩa |
@@ -735,6 +827,7 @@ và chụp ảnh, ghim đúng phiên bản đã chạy bộ test.
 
 Mới nhất ở trên. Mỗi dòng: ngày — việc.
 
+- 11/10/2026 — Tạo ảnh và video: lõi thêm `POST /v1/images/generations`, `POST /v1/videos`, `GET /v1/videos/{id}`, `GET /v1/videos/{id}/content` (định tuyến theo tiền tố, `501` khi module không có khả năng, video tải theo stream); manifest có trường mở `cung_cap`; module `gemini-api` 0.2.0 tạo ảnh (endpoint tương thích OpenAI) và video Veo (API gốc), chỉ khoá trả phí — khoá bị từ chối được nhớ theo (khoá, việc) và không ảnh hưởng chat, sức khoẻ báo `kha_nang` từng khoá. Chưa đo với Google thật.
 - 11/10/2026 — Cài module không cần khoá API: «đã cài» (mã trên máy) tách khỏi «đã liên kết» (có khoá, phục vụ `/v1`); `GET /api/modules` liệt kê mọi module đã cài kèm `da_cau_hinh`/`can_cau_hinh`/`tab_web`; thêm/bớt từng khoá (`GET /api/modules/{id}/cau-hinh`, dạng sửa `giu`/`them`); `/catalog` đổi `da_cai` thành `da_cau_hinh`; lõi không nạp module thiếu trường bắt buộc; lần đầu thêm nguồn git thì cập nhật một lần module đang có; quy tắc chữ «Cài» (chưa có mã) / «Cập nhật» (đã cài).
 
 - 11/10/2026 — Thêm giấy phép: giữ toàn quyền (*All rights reserved*), chủ bản quyền `TriTue2011` (tệp `LICENSE`).

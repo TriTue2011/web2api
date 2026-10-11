@@ -38,6 +38,31 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 
 Copy `.env.example` to `.env` to change the port, data directory or other settings.
 
+## Images and video (paid keys only)
+
+The core also exposes `POST /v1/images/generations` and the asynchronous video API `POST /v1/videos`,
+`GET /v1/videos/{id}`, `GET /v1/videos/{id}/content` (JSON body only; the file is streamed). They are routed by the
+model prefix like chat; a module without that capability answers `501`. Video IDs look like `<prefix>:<id>`.
+
+`gemini-api` 0.2.0 implements both: images through Google's OpenAI-compatible endpoint, video through the native
+Veo API (`:predictLongRunning`). According to Google's pricing page on 11/10/2026, **no image or video model is
+available on the free tier** — a free key still chats but cannot generate images or video, and every generation
+on a paid key costs real money (for example Veo 3.1 Fast about USD 0.10 per second at 720p). When Google refuses a
+key for images or video (HTTP 401/403, or 400 while another key succeeds) web2api remembers it for 24 hours **per
+key and per capability** (chat with that key keeps working), tries the next key, and, if every key is refused,
+returns `403 no_key_permitted` saying a paid key is needed. HTTP 429 pauses the key per `Retry-After` if it has
+worked for that capability before, otherwise it is treated as refused for 24 hours (a zero free-tier quota is
+likely reported as 429). The
+module health endpoint reports `chua_ro` (unknown, never probed with a paid call) / `dung_duoc` (works) /
+`bi_tu_choi` (refused) per key and capability. **Not yet tested against real Google**: the actual error shape for
+free keys, the Veo flow, and which model IDs are still live.
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini/gemini-3.1-flash-lite-image", "prompt": "A cat in a straw hat", "response_format": "b64_json"}' \
+  http://<host>:3031/v1/images/generations
+```
+
 ## Adding modules via git
 
 Put a module in `modules/<id>/` (a `manifest.json` and a `module.py`) and push it to the watched branch.

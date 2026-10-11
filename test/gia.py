@@ -61,11 +61,34 @@ MODELS_GOOGLE = [
 ]
 
 
-class GoogleGia:
-    """Mô phỏng https://generativelanguage.googleapis.com/v1beta/openai.
+#: Danh sách model ở API GỐC (/v1beta/models): có `supportedGenerationMethods`. Mặc định chỉ hai model chat
+#: (generateContent) — test video tự thêm model predictLongRunning.
+MODELS_GOC_MAC_DINH = [
+    {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent", "countTokens"]},
+    {"name": "models/gemini-3-flash-preview", "supportedGenerationMethods": ["generateContent", "countTokens"]},
+]
+GOOGLE_THAT = "https://generativelanguage.googleapis.com"
+TRANG_THAI_GOOGLE = {400: "INVALID_ARGUMENT", 401: "UNAUTHENTICATED", 403: "PERMISSION_DENIED",
+                     404: "NOT_FOUND", 429: "RESOURCE_EXHAUSTED"}
 
-    Hành vi theo KHOÁ (Bearer) đặt trong `hanh_vi`: {"kieu": "tot"|"429"|"401"|"403_vung"|"400_vung"|"500"|"cham", ...}.
-    Khoá lạ → 401. Lỗi 401/500 cố ý NHẮC LẠI khoá trong thân để kiểm việc che khoá có răng.
+
+def du_lieu_video(op: str, co: int) -> bytes:
+    """Nội dung video giả xác định theo mã thao tác — test so băm sau khi tải qua web2api."""
+    mau = f"VIDEO-GIA-{op}-".encode()
+    return (mau * (co // len(mau) + 1))[:co]
+
+
+class GoogleGia:
+    """Mô phỏng https://generativelanguage.googleapis.com: đường tương thích OpenAI (/v1beta/openai — chat,
+    models, images/generations) và phần API GỐC module dùng cho video (/v1beta/models, :predictLongRunning,
+    hỏi thao tác, tải tệp).
+
+    Hành vi theo KHOÁ (Bearer hoặc x-goog-api-key) đặt trong `hanh_vi`: {"kieu": "tot"|"429"|"401"|"403_vung"|
+    "400_vung"|"500"|"cham", ...}. Khoá lạ → 401. Lỗi 401/500 cố ý NHẮC LẠI khoá trong thân để kiểm việc che khoá.
+
+    Ảnh/video theo khoá ở `anh` / `video`: {"kieu": "tot"} (mặc định) hoặc {"kieu": "tu_choi", "ma": 403|429|400}.
+    GIẢ ĐỊNH, CHƯA ĐO: Google từ chối khoá hạng miễn phí bằng 400/403/429 — chưa có khoá thật để đo dạng lỗi thật;
+    thân lỗi giả cũng nhắc lại khoá để kiểm việc che khoá.
     """
 
     def __init__(self):
@@ -74,16 +97,48 @@ class GoogleGia:
         self.models_loi = False
         self.cho_khuc_2 = threading.Event()
         self.qua_han_cho = False
+        self.url = ""
+        self.dat_lai_anh_video()
         self.app = Starlette(
             routes=[
                 Route("/v1beta/openai/models", self.models),
                 Route("/v1beta/openai/chat/completions", self.chat, methods=["POST"]),
+                Route("/v1beta/openai/images/generations", self.tao_anh, methods=["POST"]),
+                Route("/v1beta/models", self.models_goc),
+                Route("/v1beta/models/{con:path}", self.models_con, methods=["GET", "POST"]),
+                Route("/v1beta/files/{ten}", self.tai_tep),
             ]
         )
 
+    def dat_lai_anh_video(self):
+        self.anh: dict[str, dict] = {}
+        self.video: dict[str, dict] = {}
+        self.models_goc_ds: list[dict] = list(MODELS_GOC_MAC_DINH)
+        self.models_goc_loi = False
+        self.thao_tac: dict[str, dict] = {}  # mã thao tác → {khoa, model, con_lai, ket_qua}
+        self.so_lan_hoi = 2                    # số lần hỏi còn «chưa xong» trước khi xong
+        self.ket_qua_video = "tot"             # "tot" | "loi" | "loc" (bị lọc an toàn, không có mẫu)
+        self.co_video = 3 * 1024 * 1024
+        self.goc_uri = GOOGLE_THAT             # máy ghi trong URI video Google trả về
+        self.chuyen_huong_toi: str | None = None  # gốc máy chủ tệp khác để chuyển hướng tải (khác máy)
+        self.cho_khuc_video = threading.Event()
+        self.video_cho = False
+        self.video_qua_han_cho = False
+
     @staticmethod
     def _khoa(req: Request) -> str:
-        return req.headers.get("authorization", "").removeprefix("Bearer ")
+        return req.headers.get("x-goog-api-key") or req.headers.get("authorization", "").removeprefix("Bearer ")
+
+    def _ghi(self, req: Request, duong: str, **them) -> str:
+        khoa = self._khoa(req)
+        self.nhat_ky.append({"duong": duong, "khoa": khoa, "url": str(req.url),
+                             "kieu_khoa": "x-goog-api-key" if req.headers.get("x-goog-api-key") else "bearer", **them})
+        return khoa
+
+    @staticmethod
+    def _tu_choi(ma: int, khoa: str, viec: str) -> Response:
+        return JSONResponse({"error": {"code": ma, "message": f"{viec} bị từ chối cho khoá {khoa} (giả định)",
+                                       "status": TRANG_THAI_GOOGLE.get(ma, "UNKNOWN")}}, status_code=ma)
 
     async def _loi_theo_khoa(self, khoa: str) -> Response | None:
         hv = self.hanh_vi.get(khoa, {"kieu": "401"})
@@ -116,8 +171,7 @@ class GoogleGia:
         raise AssertionError(k)
 
     async def models(self, req: Request):
-        khoa = self._khoa(req)
-        self.nhat_ky.append({"duong": "models", "khoa": khoa})
+        khoa = self._ghi(req, "models")
         loi = await self._loi_theo_khoa(khoa)
         if loi is not None:
             return loi
@@ -126,9 +180,8 @@ class GoogleGia:
         return JSONResponse({"object": "list", "data": MODELS_GOOGLE})
 
     async def chat(self, req: Request):
-        khoa = self._khoa(req)
         than = await req.json()
-        self.nhat_ky.append({"duong": "chat", "khoa": khoa, "than": than})
+        khoa = self._ghi(req, "chat", than=than)
         loi = await self._loi_theo_khoa(khoa)
         if loi is not None:
             return loi
@@ -162,6 +215,130 @@ class GoogleGia:
         # Google thật nén gzip; httpx tự giải nén nên chuyển tiếp nguyên header content-encoding là hỏng khách.
         return Response(gzip.compress(noi_dung), headers={"content-encoding": "gzip",
                                                           "content-type": "application/json"})
+
+    # ── ảnh (đường tương thích OpenAI) ──
+
+    async def tao_anh(self, req: Request):
+        than = await req.json()
+        khoa = self._ghi(req, "anh", than=than)
+        loi = await self._loi_theo_khoa(khoa)
+        if loi is not None:
+            return loi
+        hv = self.anh.get(khoa, {"kieu": "tot"})
+        if hv["kieu"] == "tu_choi":
+            hd = {"retry-after": hv["retry_after"]} if "retry_after" in hv else {}
+            r = self._tu_choi(hv["ma"], khoa, "Tạo ảnh")
+            r.headers.update(hd)
+            return r
+        if than.get("model") == "loi-400":
+            return JSONResponse({"error": {"code": 400, "message": "Invalid aspect ratio", "status": "INVALID_ARGUMENT"}},
+                                status_code=400)
+        anh = [{"b64_json": base64.b64encode(f"PNG-GIA-{than.get('model')}-{i}".encode()).decode()}
+               for i in range(int(than.get("n") or 1))]
+        return JSONResponse({"created": 1760000000, "data": anh})
+
+    # ── API gốc: danh sách model, Veo predictLongRunning, hỏi thao tác, tải tệp ──
+
+    async def models_goc(self, req: Request):
+        self._ghi(req, "models_goc", trang=req.query_params.get("pageToken"))
+        if self.models_goc_loi:
+            return JSONResponse({"error": {"code": 500, "message": "lỗi", "status": "INTERNAL"}}, status_code=500)
+        # Phân trang thật như Google: mỗi trang 1 model nếu pageSize=1, để test thấy module đi hết các trang.
+        co = int(req.query_params.get("pageSize") or 50)
+        bat_dau = int(req.query_params.get("pageToken") or 0)
+        trang = self.models_goc_ds[bat_dau:bat_dau + co]
+        ra = {"models": trang}
+        if bat_dau + co < len(self.models_goc_ds):
+            ra["nextPageToken"] = str(bat_dau + co)
+        return JSONResponse(ra)
+
+    async def models_con(self, req: Request):
+        con = req.path_params["con"]
+        if req.method == "POST" and con.endswith(":predictLongRunning"):
+            return await self._tao_video(req, con.removesuffix(":predictLongRunning"))
+        model, _, op = con.partition("/operations/")
+        if req.method == "GET" and op:
+            return self._hoi_thao_tac(req, model, op)
+        return JSONResponse({"error": {"code": 404, "message": "không có", "status": "NOT_FOUND"}}, status_code=404)
+
+    async def _tao_video(self, req: Request, model: str):
+        than = await req.json()
+        khoa = self._ghi(req, "video_tao", than=than, model=model)
+        loi = await self._loi_theo_khoa(khoa)
+        if loi is not None:
+            return loi
+        hv = self.video.get(khoa, {"kieu": "tot"})
+        if hv["kieu"] == "tu_choi":
+            return self._tu_choi(hv["ma"], khoa, "Tạo video")
+        op = f"op{len(self.thao_tac) + 1}"
+        self.thao_tac[op] = {"khoa": khoa, "model": model, "con_lai": self.so_lan_hoi, "ket_qua": self.ket_qua_video}
+        return JSONResponse({"name": f"models/{model}/operations/{op}"})
+
+    def _hoi_thao_tac(self, req: Request, model: str, op: str):
+        khoa = self._ghi(req, "video_hoi", op=op)
+        tt = self.thao_tac.get(op)
+        # Thao tác thuộc dự án của khoá đã tạo: khoá khác không thấy (giả định, như tài nguyên theo dự án).
+        if tt is None or tt["khoa"] != khoa or tt["model"] != model:
+            return JSONResponse({"error": {"code": 404, "message": f"Operation not found: {op}", "status": "NOT_FOUND"}},
+                                status_code=404)
+        ten = f"models/{model}/operations/{op}"
+        if tt["con_lai"] > 0:
+            tt["con_lai"] -= 1
+            return JSONResponse({"name": ten, "done": False})
+        if tt["ket_qua"] == "loi":
+            return JSONResponse({"name": ten, "done": True,
+                                 "error": {"code": 3, "message": f"Video bị lỗi khi tạo (khoá {khoa})"}})
+        if tt["ket_qua"] == "loc":
+            return JSONResponse({"name": ten, "done": True, "response": {"generateVideoResponse": {
+                "raiMediaFilteredCount": 1, "raiMediaFilteredReasons": ["Bị bộ lọc an toàn chặn (giả)"]}}})
+        return JSONResponse({"name": ten, "done": True, "response": {"generateVideoResponse": {"generatedSamples": [
+            {"video": {"uri": f"{self.goc_uri}/v1beta/files/{op}:download?alt=media"}}]}}})
+
+    async def tai_tep(self, req: Request):
+        ten = req.path_params["ten"]
+        khoa = self._ghi(req, "tai_tep", ten=ten)
+        op = ten.removesuffix(":download")
+        tt = self.thao_tac.get(op)
+        if tt is None or tt["khoa"] != khoa:
+            return JSONResponse({"error": {"code": 403, "message": "không có quyền với tệp", "status": "PERMISSION_DENIED"}},
+                                status_code=403)
+        if self.chuyen_huong_toi:
+            return Response(status_code=302, headers={"location": f"{self.chuyen_huong_toi}/tai-ve/{op}?chu_ky=gia"})
+        return self.phat_video(op)
+
+    def phat_video(self, op: str) -> StreamingResponse:
+        du_lieu = du_lieu_video(op, self.co_video)
+        cho = self.video_cho
+
+        async def phat():
+            khuc = 64 * 1024
+            yield du_lieu[:khuc]
+            if cho:
+                # Chỉ nhả phần còn lại khi test đã NHẬN khúc đầu qua web2api — gom cả tệp ở đâu là kẹt ở đây.
+                if not await asyncio.to_thread(self.cho_khuc_video.wait, 5):
+                    self.video_qua_han_cho = True
+            for i in range(khuc, len(du_lieu), khuc):
+                yield du_lieu[i:i + khuc]
+
+        return StreamingResponse(phat(), media_type="video/mp4")
+
+
+class MayTepGia:
+    """Máy chủ tệp KHÁC máy (đích chuyển hướng khi tải video): ghi lại header để chứng minh khoá không bị
+    mang sang máy khác."""
+
+    def __init__(self, google: GoogleGia):
+        self.google = google
+        self.nhat_ky: list[dict] = []
+        self.app = Starlette(routes=[Route("/{duong:path}", self.bat_ky)])
+
+    async def bat_ky(self, req: Request):
+        self.nhat_ky.append({"x_goog_api_key": req.headers.get("x-goog-api-key"),
+                             "authorization": req.headers.get("authorization"), "url": str(req.url)})
+        duong = req.path_params["duong"]
+        if duong.startswith("tai-ve/"):
+            return self.google.phat_video(duong.removeprefix("tai-ve/"))
+        return JSONResponse({"error": {"code": 404, "message": "không có"}}, status_code=404)
 
 
 # ───────────────────────────── OpenAI từ xa giả ─────────────────────────────

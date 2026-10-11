@@ -17,6 +17,21 @@ HỢP ĐỒNG lớp `Module` trong module.py:
     async suc_khoe() -> dict               — không tốn token, không lộ khoá
     async dung() -> None                   — đóng kết nối
 
+PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng; không có thì lõi trả 501 (không vỡ):
+    async anh(body: dict)                  -> (mã, headers, bytes)   POST /v1/images/generations (thân OpenAI)
+    async video_tao(body: dict)            -> (mã, headers, bytes)   POST /v1/videos — JSON video OpenAI, "id" là
+                                              mã CỦA MODULE (chỉ [A-Za-z0-9._-], không «:» «/»); lõi trả ra ngoài
+                                              dạng "<tien_to>:<mã>" để biết module nào xử lý lượt hỏi sau
+    async video_trang_thai(ma: str)        -> (mã, headers, bytes)   GET /v1/videos/{id} (lõi đã bỏ "<tien_to>:")
+    async video_noi_dung(ma: str)          -> (mã, headers, bytes | async-iterator[bytes])
+                                              GET /v1/videos/{id}/content — tệp lớn thì trả iterator (stream)
+    Module có video phải có đủ cả ba phương thức video_*. Mã do khách gửi là ĐẦU VÀO KHÔNG TIN ĐƯỢC: module
+    phải kiểm nó trước khi dùng để gọi dịch vụ kèm khoá.
+
+Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]. Lõi chỉ
+kiểm MẪU (MA_KHA_NANG), không giữ danh sách mã hợp lệ; trường để hiển thị (catalog). Định tuyến /v1 dựa vào
+phương thức CÓ THẬT trên thể hiện, không dựa vào lời khai.
+
 Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep)
 và gói có sẵn trong ảnh; gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
 """
@@ -43,6 +58,8 @@ KIEU_TRUONG = {"chuoi", "bi_mat", "danh_sach_bi_mat"}
 TRUONG_CHUOI_BAT_BUOC = ("id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to")
 PHUONG_THUC = ("nap", "cai", "chat", "models", "suc_khoe", "dung")
 _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: Mẫu mã khả năng trong `cung_cap` — kiểm dạng, KHÔNG liệt kê mã hợp lệ (mã mới không phải sửa lõi).
+MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 
 
 class LoiNap(Exception):
@@ -119,6 +136,10 @@ def kiem_manifest(m) -> str | None:
     goi = m.get("yeu_cau_goi", [])
     if not isinstance(goi, list) or not all(isinstance(x, str) and _TEN_GOI.match(x) for x in goi):
         return "yeu_cau_goi phải là danh sách tên gói Python (chữ, số, _; không chấm)"
+    cung_cap = m.get("cung_cap", [])
+    if (not isinstance(cung_cap, list) or not all(isinstance(x, str) and MA_KHA_NANG.match(x) for x in cung_cap)
+            or len(set(cung_cap)) != len(cung_cap)):
+        return 'cung_cap phải là danh sách mã khả năng không trùng (chữ thường, số, _; ví dụ ["chat", "anh"])'
     tab = m.get("tab_web")
     if tab is not None:
         trang = tab.get("trang") if isinstance(tab, dict) else None

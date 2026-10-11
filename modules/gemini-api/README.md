@@ -5,7 +5,8 @@ tới endpoint tương thích OpenAI chính thức của Google
 (`https://generativelanguage.googleapis.com/v1beta/openai`) và giữ nguyên mọi trường của yêu cầu, nên
 chữ ký suy nghĩ của Gemini 3 (trường `extra_content` của lệnh gọi công cụ) đi theo mà không cần dịch.
 Phần module thêm vào: xoay vòng nhiều khoá, cho khoá nghỉ khi lỗi, đổi địa chỉ gốc để vượt chặn vùng,
-chuẩn hoá lỗi, danh sách model và kiểm sức khoẻ. Tiền tố model: `gemini`; phiên bản `0.1.0`.
+chuẩn hoá lỗi, danh sách model và kiểm sức khoẻ. Từ `0.2.0` có thêm **tạo ảnh** và **tạo video Veo** — chỉ
+với khoá **trả phí** (xem «Tạo ảnh và video»). Tiền tố model: `gemini`; phiên bản `0.2.0`.
 
 Tài liệu đầy đủ (cài từng bước, ảnh giao diện, bảng đã kiểm với Google thật) nằm ở mục «Module
 gemini-api» trong `README.md` ở gốc kho. File này là bản tóm tắt đặt ngay cạnh mã.
@@ -70,13 +71,49 @@ header `X-Proxy-Token`.
   token và không lộ khoá — chỉ 4 ký tự cuối.
 - **Mạng ra**: `generativelanguage.googleapis.com` (hoặc máy của `base_url`).
 
+## Tạo ảnh và video (chỉ khoá trả phí)
+
+Theo trang giá Google ngày 11/10/2026 (https://ai.google.dev/gemini-api/docs/pricing), mọi model tạo ảnh
+(`gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`, `gemini-nano-banana-2.1`;
+`gemini-2.5-flash-image` tắt 02/10/2026) và tạo video (`veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview`,
+`veo-3.1-lite-generate-preview`) ghi **«Not available»** ở hạng miễn phí. Mỗi lần tạo trên khoá trả phí là
+**tốn tiền thật** — ví dụ ảnh Nano Banana 2 Lite khoảng 0,034 USD/ảnh 1K, video Veo 3.1 Fast 0,10 USD/giây
+720p, Veo 3.1 Standard 0,40 USD/giây. Bảng giá đầy đủ ở mục «Module gemini-api» của `README.md` gốc kho.
+
+- **Ảnh**: `POST /v1/images/generations` của web2api → endpoint tương thích OpenAI của Google
+  (`{base_url}/images/generations`), thân đi nguyên văn, chỉ bỏ tiền tố `gemini/`.
+- **Video**: `POST /v1/videos` (thân JSON) → API gốc Veo `{gốc}/v1beta/models/<model>:predictLongRunning`;
+  `GET /v1/videos/{id}` hỏi thao tác tới `completed`; `GET /v1/videos/{id}/content` tải tệp theo stream. Không
+  dùng `/v1beta/openai/videos` vì trang tương thích của Google không ghi cách tải tệp. Gemini Omni (Interactions
+  API) chưa hỗ trợ.
+- Khoá chỉ đi bằng header (`Authorization: Bearer` hoặc `x-goog-api-key`), không vào URL hay nhật ký, và chỉ gửi
+  tới máy của `base_url`; chuyển hướng tải video sang máy khác thì bỏ khoá.
+- **Khoá bị từ chối** (401/403 → 24 giờ; 429 → theo `Retry-After` nếu khoá từng làm được việc đó, chưa từng thì
+  24 giờ; 400 → chỉ khi một khoá khác làm được cùng yêu cầu) được nhớ theo **(khoá, việc)**: khoá miễn phí bị từ chối tạo ảnh vẫn chat bình thường. Mọi khoá bị từ
+  chối → `403 no_key_permitted` nói rõ cần khoá trả phí. Sức khoẻ báo `kha_nang` từng khoá: `chua_ro` /
+  `dung_duoc` / `bi_tu_choi` — không thử bằng lời gọi tốn tiền.
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini/gemini-3.1-flash-lite-image", "prompt": "Con mèo đội nón lá", "response_format": "b64_json"}' \
+  $W/v1/images/generations
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini/veo-3.1-lite-generate-preview", "prompt": "Sóng biển lúc bình minh", "seconds": 4}' \
+  $W/v1/videos                                   # → {"id": "gemini:…", "status": "queued", ...}
+```
+
+**Chưa đo với Google thật**: dạng lỗi thật cho khoá miễn phí (giả định 400/403/429), luồng Veo, model nào còn
+sống, ảnh/video qua proxy Cloudflare (Worker `deploy/cloudflare-gemini-proxy.js` đi chuyển hướng bằng
+`redirect: "follow"` nên có thể mang khoá sang máy đích khi tải video — chưa đo).
+
 ## Giới hạn đã biết
 
-- Chỉ có chat và danh sách model. **Chưa có** nhúng (embeddings), tạo ảnh, video của Gemini.
+- **Chưa có** nhúng (embeddings), video bằng Gemini Omni, giao diện tạo ảnh/video trên web.
+- `POST /v1/videos` chỉ nhận JSON: SDK `openai` gửi `videos.create` bằng `multipart/form-data` → `415`.
 - Khoá bị thu hồi **sau** khi cài mà Google trả `400` (không phải 401/403) thì module không tự đổi khoá,
   vì `400` được coi là lỗi của yêu cầu. Bớt khoá đó bằng dạng `{"giu": [...]}` (xem «Cấu hình»).
 - Proxy Cloudflare có đặt `PROXY_TOKEN` chưa dùng được (xem trên).
 - Chưa đo RAM và đĩa thật của module: `ram_them_mb` và `dia_mb` trong `manifest.json` để `null`.
 - Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá bị thu hồi sau khi cài, hết hạn mức
-  (`429`) thật của Google.
+  (`429`) thật của Google, toàn bộ phần tạo ảnh và video.
 - Module chạy **trong tiến trình lõi**, có quyền như lõi: chỉ cài từ kho git tin cậy.
