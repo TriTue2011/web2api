@@ -6,6 +6,10 @@ Thêm module = có một thư mục `<id>/` chứa `manifest.json` + `module.py`
 Không sửa dòng nào của lõi. Bảng khai riêng cho từng module là "thêm một danh sách nữa" —
 hỏng đúng kiểu `_PREFETCH_MAP` của c2a (biết 3/109 công cụ).
 
+MODULE NHIỀU TỆP: lõi nạp `module.py` như MỘT GÓI (tên gói duy nhất theo id + vân tay). Tệp anh em trong thư mục module
+import bằng IMPORT TƯƠNG ĐỐI — `from .client import X` — KHÔNG `from modules.<id>.client import X` (đường đó chỉ có khi chạy
+trong kho, lúc chạy thật module nằm ở <WEB2API_DATA>/modules/<id>/ nên vỡ «No module named 'modules'»).
+
 HỢP ĐỒNG lớp `Module` trong module.py:
     Module(manifest: dict)                 — KHÔNG mở kết nối, không đọc mạng (được tạo thử khi nạp)
     nap(cau_hinh: dict) -> None            — nạp cấu hình ĐÃ KIỂM (khởi động/cài xong), không gọi mạng
@@ -352,6 +356,12 @@ def ten_ma(id_: str, vt: str) -> str:
     return f"web2api_module_{id_.replace('-', '_')}_{vt[:16]}"
 
 
+def go_ma(ten: str) -> None:
+    """Gỡ mô-đun module khỏi bộ nhớ cùng MỌI tệp anh em đã import (ten.<tệp>): không giữ mã cũ."""
+    for k in [k for k in sys.modules if k == ten or k.startswith(ten + ".")]:
+        sys.modules.pop(k, None)
+
+
 def nap_ma(thu_muc: Path, manifest: dict, vt: str) -> tuple[type, str]:
     """Thực thi module.py dưới tên mô-đun DUY NHẤT theo (id + vân tay) → (lớp Module, tên mô-đun).
 
@@ -365,7 +375,9 @@ def nap_ma(thu_muc: Path, manifest: dict, vt: str) -> tuple[type, str]:
                      "hãy dùng module dạng từ xa (container riêng có đủ gói, đăng ký bằng /api/modules/tu-xa)")
     tep = thu_muc / "module.py"
     ten = ten_ma(manifest["id"], vt)
-    spec = importlib.util.spec_from_file_location(ten, tep)
+    # Nạp như một GÓI: các tệp anh em trong thư mục module import được bằng `from .tên import …` (tên gói duy nhất theo
+    # id + vân tay nên hai module cùng có `client.py` không đụng nhau).
+    spec = importlib.util.spec_from_file_location(ten, tep, submodule_search_locations=[str(thu_muc)])
     mod = importlib.util.module_from_spec(spec)
     sys.modules[ten] = mod
     try:
@@ -379,13 +391,13 @@ def nap_ma(thu_muc: Path, manifest: dict, vt: str) -> tuple[type, str]:
             raise LoiNap(f"lớp Module thiếu phương thức: {', '.join(thieu_pt)}")
         lop(manifest)  # tạo thử: lỗi trong __init__ lộ NGAY lúc nạp, không đợi lúc cài/khởi động
     except LoiNap:
-        sys.modules.pop(ten, None)
+        go_ma(ten)
         raise
     except FileNotFoundError:
-        sys.modules.pop(ten, None)
+        go_ma(ten)
         raise LoiNap("thiếu module.py") from None
     except BaseException as e:  # mã bên thứ ba: mọi lỗi (kể cả SystemExit) chỉ hỏng module này
-        sys.modules.pop(ten, None)
+        go_ma(ten)
         if isinstance(e, (KeyboardInterrupt,)):
             raise
         raise LoiNap(f"lỗi khi nạp module.py: {type(e).__name__}: {e}") from e

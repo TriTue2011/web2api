@@ -15,8 +15,8 @@ The core ships **no AI source at all** — it is only a *translator*: it speaks 
 by the model prefix and hands the request over. Everything specific to a provider (endpoints, auth headers, error
 shapes, free-tier hints, non-OpenAI native APIs) lives **inside that provider's module**, which carries its own
 converter. Each source is a *module* under `modules/<id>/` of this repository.
-Today there is one: `gemini-api` (Google Gemini through an AI Studio key). Models are addressed as
-`<prefix>/<name>`, for example `gemini/gemini-2.5-flash`.
+Available modules: `gemini-api` (Google Gemini through an AI Studio key), `muse` (experimental Meta AI VM assistant over Noise XX WebSocket). Models are addressed as
+`<prefix>/<name>`, for example `gemini/gemini-2.5-flash` or `muse/meta-llama/Llama-3.3-70B-Instruct`.
 
 ## Quick start
 

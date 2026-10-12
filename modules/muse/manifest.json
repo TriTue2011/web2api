@@ -1,0 +1,56 @@
+{
+  "id": "muse",
+  "ten": "Muse (Meta)",
+  "mo_ta": "Trợ lý Muse qua giao thức Noise XX WebSocket tới máy ảo Meta AI VM (thử nghiệm — chưa kiểm với dịch vụ thật)",
+  "phien_ban": "0.1.0",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 20,
+  "giao_thuc": "noise",
+  "tien_to": "muse",
+  "yeu_cau_goi": ["cryptography"],
+  "cung_cap": ["chat"],
+  "muc": [
+    {
+      "id": "chat",
+      "nhan": "Trò chuyện",
+      "can": ["chat"]
+    }
+  ],
+  "truong_cau_hinh": [
+    {
+      "khoa": "device_key",
+      "nhan": "Khoá khôi phục thiết bị (32 bytes)",
+      "kieu": "bi_mat",
+      "bat_buoc": true,
+      "mac_dinh": null,
+      "mo_ta": "Khoá bí mật 32 bytes của thiết bị (dạng hex hoặc base32) dùng để dẫn xuất khoá tĩnh X25519 cho kênh Noise XX."
+    },
+    {
+      "khoa": "delegation_token",
+      "nhan": "Token uỷ quyền (Delegation Token)",
+      "kieu": "bi_mat",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Token uỷ quyền đã ký đi kèm thông điệp bắt tay (Message 3) nếu máy ảo yêu cầu."
+    },
+    {
+      "khoa": "ws_url",
+      "nhan": "Địa chỉ máy ảo WebSocket",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "",
+      "mo_ta": "Địa chỉ wss://<vm>.metaaivm.com/v1/noise. Để trống sẽ dùng cổng mặc định hoặc máy chủ giả trong môi trường kiểm thử."
+    }
+  ],
+  "tai_nguyen": {
+    "ram_them_mb": null,
+    "dia_mb": null,
+    "gpu": false,
+    "mang_ra": [
+      "hatch.metaaivm.com",
+      "*.metaaivm.com"
+    ],
+    "ghi_chu": "Thử nghiệm — chưa kiểm với dịch vụ thật. Cần khoá thiết bị và delegation token được cấp sau khi đăng ký OTP."
+  }
+}
