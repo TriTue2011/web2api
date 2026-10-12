@@ -6,3 +6,6 @@ httpx==0.28.1
 # Đọc multipart/form-data cho /v1/audio/transcriptions, /v1/images/edits, /v1/videos (Starlette cần nó để phân tích
 # form; thuần Python, không gói kéo theo). Đúng bản trong uv.lock của repo gốc, đo 11/10/2026.
 python-multipart==0.0.32
+# Mật mã (X25519, AES-GCM) cho module cần bắt tay/mã hoá riêng — hiện module `muse` (Noise XX). Có sẵn bánh xe manylinux cho
+# python:3.13-slim (không biên dịch lúc dựng). Bản đã chạy test module muse, đo 12/10/2026.
+cryptography==50.0.2
