@@ -60,7 +60,7 @@ Một lệnh hỏng là **DỪNG**: không cam kết, không đẩy. Test giao d
 - **Chuyển tài khoản/provider:** phân loại lỗi bằng CẤU TRÚC (mã trạng thái, so sánh giữa các khoá), không dò chữ; 400 «khoá sai» và 404 «model không có» là thuộc tính của (khoá) hoặc (khoá, model) → thử khoá kế, khoá sau thành công thì ghi sổ có hạn, mọi khoá cùng lỗi thì trả nguyên văn và KHÔNG đánh dấu ai; chỉ đổi khoá/nguồn TRƯỚC byte đầu của stream; không bao giờ chặn lựa chọn cuối cùng; không bịa hạn mức mà nhà cung cấp không cho hỏi.
 - **Giao diện giống y hệt demo hiện hành** (Studio = `Main.dc.html`, AI = `Bo-nao.dc.html`; `Studio-dien-thoai` là bản cũ), chỉ nối code, chưa có chức năng thì ẨN; danh sách model luôn thu gọn, ba nhóm Trò chuyện / Tạo ảnh / Video; trang Module dạng lưới ô «bàn cờ».
 - **Tìm kiếm/lọc dữ liệu:** kết hợp nhiều sơ đồ (lọc nhiều mặt, công tắc, cây phân cấp, toàn văn FTS5/BM25, embedding + vector lai), chọn cái tốt nhất tại thời điểm làm; phần nặng là module có khai báo tài nguyên; nội dung tìm được là đầu vào không tin được.
-- **Quy trình:** giao việc viết mã cho subagent, KHÔNG tin báo cáo của agent — tự chạy lại test (việc có giao diện phải chạy với Chrome); sau mỗi việc gộp vào `main` dựng lại ảnh và thử thật bằng `curl` trước khi báo; chỉ push khi chủ kho nói; mỗi commit trả lời ba câu như trên.
+- **Quy trình:** giao việc viết mã cho subagent, KHÔNG tin báo cáo của agent — tự chạy lại test (việc có giao diện phải chạy với Chrome); sau mỗi việc gộp vào `main` dựng lại ảnh và thử thật bằng `curl` trước khi báo; sau khi pytest + bandit + dựng lại và smoke đạt thì push `main` luôn (chủ kho 12/10: «lần sau sau kiểm tra đạt thì cứ push»), kiểm hỏng thì dừng, không `--force`; mỗi commit trả lời ba câu như trên.
 
 ## Quy trình cam kết
 

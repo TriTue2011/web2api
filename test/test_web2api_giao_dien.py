@@ -376,14 +376,14 @@ def con_ai(trang) -> list[str]:
 
 
 # Điều khiển của demo CHƯA có backend — không được có trong DOM (ẩn, không vẽ nút chết).
-KHONG_CO = ["Lưu thay đổi", "Đặt mặc định", "Mặc định", "đang bật", "Combo", "TOTP", "Bản mẫu minh hoạ", "«:text»",
+KHONG_CO = ["Combo", "TOTP", "Bản mẫu minh hoạ", "«:text»",
             "ưu tiên", "hàng đợi", "Xem mã", "Thêm Gmail"]
 
 
 def khong_dieu_khien_chet(trang):
     chu = trang.js("document.body.innerText")
     assert not [x for x in KHONG_CO if x in chu], [x for x in KHONG_CO if x in chu]
-    assert trang.js("document.querySelectorAll('[role=switch], #tab-ai, [data-tab]').length") == 0
+    assert trang.js("document.querySelectorAll('#tab-ai, [data-tab]').length") == 0
 
 
 def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypatch):
@@ -524,7 +524,7 @@ def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypa
         trang.cho("document.querySelectorAll('[data-nhom-md=\"chat\"] [data-model]').length === 2", mo_ta="mở nhóm trò chuyện")
         trang.bam("document.querySelector('[data-mo-nhom=\"video\"]')")
         trang.cho("document.querySelectorAll('[data-nhom-md=\"video\"] [data-model]').length === 1", mo_ta="mở nhóm video")
-        assert trang.js("[...document.querySelectorAll('[data-nhom-md]')].map((g) => [g.dataset.nhomMd, [...g.querySelectorAll('[data-model]')].map((m) => m.innerText)])") \
+        assert trang.js("[...document.querySelectorAll('[data-nhom-md]')].map((g) => [g.dataset.nhomMd, [...g.querySelectorAll('[data-model]')].map((m) => m.innerText.split('\\n')[0])])") \
             == [["chat", ["gia/nhanh", "gia/<img src=x onerror=window.__xss=5>"]], ["video", ["gia/phim-1"]]]
         # Nhãn chỉ giữ phần suy ra được từ dữ liệu («hiểu ảnh» của demo không có trường nào chứng minh).
         assert trang.chu("[data-nhom-md='chat']").startswith("TRÒ CHUYỆN\n") and "HIỂU ẢNH" not in trang.chu("[data-nhom-md='chat']")
@@ -699,7 +699,7 @@ def test_model_anh_nhom_tao_anh_va_studio_ve_anh(trang, tmp_path, monkeypatch):
         assert trang.chu("[data-nhom-md='anh']").startswith("TẠO ẢNH")
         trang.bam("document.querySelector('[data-mo-nhom=\"anh\"]')")
         trang.cho("document.querySelectorAll('[data-nhom-md=\"anh\"] [data-model]').length === 1", mo_ta="mở nhóm Tạo ảnh")
-        assert trang.js("document.querySelector('[data-nhom-md=\"anh\"] [data-model]').innerText") == "gia/ve-1"
+        assert trang.js("document.querySelector('[data-nhom-md=\"anh\"] [data-model]').innerText.split('\\n')[0]") == "gia/ve-1"
         khong_dieu_khien_chet(trang)
 
         trang.di(w.url + "/Studio.dc.html")  # khoá quản trị đã lưu ở trên

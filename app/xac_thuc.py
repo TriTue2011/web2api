@@ -8,6 +8,14 @@ Quy tắc:
 - Khách chỉ được thu hẹp phạm vi (X-Web2api-Scope hoặc X-Scope), không được mở rộng (403),
   không thể sửa khoá hay tạo khoá khác. Tắt/thu hồi → 401 ngay.
 - Sổ thao tác: ghi nhận kênh nhật ký `quan_tri` cho các lần 401/403 ở đường quản trị, KHÔNG ghi khoá.
+
+Vì sao bắt buộc ngay từ module đầu tiên: /v1/* tiêu hạn mức của nhà cung cấp AI (và mọi dịch vụ
+khác) của chủ máy; mở trần trên LAN thì bất kỳ máy nào trong nhà — kể cả thiết bị IoT
+bị chiếm — dùng không giới hạn.
+
+Nguồn khoá: biến `WEB2API_ADMIN_KEY`; không đặt thì sinh một lần (secrets.token_urlsafe(32),
+256 bit) và lưu `<WEB2API_DATA>/admin_key` quyền 0600. KHÔNG BAO GIỜ in khoá ra log —
+log chỉ nêu đường dẫn tệp để người vận hành `docker exec … cat` lấy.
 """
 
 from __future__ import annotations

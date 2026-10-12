@@ -321,9 +321,26 @@ Thư mục `modules/<id>/` gồm:
   `bi_tu_choi`, `chua_ro`);
   module mẫu thật: `modules/gemini-api/`. Module ghi kênh nhật ký riêng bằng `from app import nhat_ky; nhat_ky.ghi(kenh, muc, tom_tat, ms=None, **them)` (kênh là mã mở dạng `[a-z][a-z0-9_]*`, không cần khai trước; hàm không bao giờ ném lỗi, tự che chuỗi dạng khoá). Module cần địa chỉ gọi lại (OAuth/webhook) gọi `app.dia_chi.dia_chi_hien_tai(request)`: trả về URL gốc công khai (ưu tiên giá trị đã đặt, biến `WEB2API_PUBLIC_URL`, hoặc suy ra từ Host). Địa chỉ suy ra là do KHÁCH gửi (Host): module gửi địa chỉ gọi lại cho bên thứ ba (OAuth) thì dùng `app.dia_chi.lay_thong_tin_dia_chi(request)` và từ chối khi `dang_doan` là `true`. **Bộ chuyển đổi của module**: module tự đổi
   yêu cầu/trả lời giữa chuẩn OpenAI của lõi và API của nhà cung cấp; dùng lại `app.chuyen_tiep.ChuyenTiepOpenAI`
-  khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `doi_id_model`, `goi_y_loi`,
-  `kha_nang`, `goi_y_tu_choi_kha_nang`) — bộ chuyển tiếp tự điền các trường bộ đếm trên từ bộ đếm trong bộ nhớ (kể từ
+  khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `tien_to`, `base_url`, `khoa`, `doi_id_model`,
+  `phan_loai_loi`, `kha_nang`) — bộ chuyển tiếp tự điền các trường bộ đếm trên từ bộ đếm trong bộ nhớ (kể từ
   lần khởi động hoặc lưu cấu hình gần nhất), `toi_da` luôn `null` vì API kiểu OpenAI không cho hỏi hạn mức còn lại.
+
+  **Chuẩn phân loại lỗi của lõi (LÕI ĐẶT CHUẨN, MODULE ĐỔI THEO)**: module có thể cài hook tuỳ chọn
+  `phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None`. `loi` là từ điển lỗi đã che khoá
+  `{"error": {"message", "type", "code"}}` (module có thể bổ sung gợi ý vào thông điệp); `boi_canh` chứa
+  `{"viec", "khoa", "model"?, "kha_nang"?, "su_kien"?}`. Nếu hook trả `None` hoặc module không cài hook, lõi tự
+  phân loại mặc định theo mã HTTP (429 → `het_han_muc`, 401/403 → `khoa_hong`, 5xx → `may_chu_loi`, còn lại →
+  `khong_ro`). Mã lạ hoặc hook ném ngoại lệ đều được coi là `khong_ro` (không vỡ tiến trình).
+
+  | Loại lỗi chuẩn | Ý nghĩa | Hành vi của lõi |
+  |---|---|---|
+  | `khoa_hong` | Khoá sai, hết hạn, bị thu hồi (401/403) | Cho khoá nghỉ 1 giờ (3600s), xoay sang khoá kế tiếp. Nếu là khả năng tốn tiền (ảnh/video): nghỉ 24 giờ cho riêng việc đó. |
+  | `het_han_muc` | Hết hạn mức / rate limit (429) | Nghỉ theo `Retry-After` (mặc định 60s, trần 10 phút), xoay khoá kế. Khả năng tốn tiền chưa từng thành công: nghỉ 24 giờ. |
+  | `khong_co_o_khoa` | Model hoặc tính năng không được cấp cho khoá | Chat: ghi sổ cặp (khoá, model) nghỉ 6 giờ, xoay khoá kế (khoá vẫn phục vụ model khác). Khả năng: nghỉ 24 giờ. |
+  | `yeu_cau_sai` | Yêu cầu của khách không hợp lệ | Trả ngay lỗi cho khách, không đổi khoá, không phạt khoá. |
+  | `may_chu_loi` | Máy chủ nhà cung cấp lỗi (5xx) hoặc đứt mạng | Thử thêm đúng một khoá dự phòng. |
+  | `chan_vung` | Máy chủ bị chặn vùng địa lý | Lỗi hạ tầng máy chủ: trả ngay cho khách, không đổi khoá, không phạt khoá. |
+  | `khong_ro` | Chưa rõ do khoá hay do yêu cầu | Lõi dùng thuật toán so sánh giữa các khoá để phân xử (400 và 404). |
 - Tuỳ chọn `web/`: giao diện riêng, phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết); thanh trên
   có tab của nó khi module đã liên kết.
 
@@ -585,23 +602,15 @@ bước đó; chưa đo, Worker chưa sửa).
 Tự đo bằng khoá của bạn: gọi lệnh tạo ảnh ở trên **một lần** với model Lite (rẻ nhất), rồi xem
 `GET /api/modules/gemini-api/suc-khoe`.
 
-**Sự cố thường gặp.**
-- `403` `no_key_permitted` khi tạo ảnh/video: không khoá nào được Google cho việc đó — thường là khoá hạng
-  miễn phí. Thêm khoá thuộc dự án đã bật thanh toán (bước 4).
-- `429` «Mọi khoá… đang nghỉ»: mọi khoá hết hạn mức. Khoá gặp 429 nghỉ theo `Retry-After` của Google
-  (mặc định 60 giây, tối đa 10 phút) rồi tự dùng lại. Thêm khoá để chịu tải tốt hơn.
-- `401`/`403` ở một khoá: khoá đó bị đánh dấu hỏng và nghỉ 1 giờ, web2api tự chuyển sang khoá kế.
-- `400` khi chat: Google trả `400` cả cho khoá sai/bị thu hồi, nên web2api so giữa các khoá. Khoá chưa từng
-  chat thành công (từ lần lưu cấu hình/khởi động gần nhất) mà trả `400` → thử khoá kế; khoá kế trả lời được thì
-  khoá trước bị đánh dấu hỏng, nghỉ 1 giờ. **Mọi** khoá đều `400` → trả `400` của Google nguyên văn (đã che khoá),
-  không đánh dấu khoá nào — đó là lỗi của yêu cầu. Khoá đã từng chat được mà gặp `400` → trả ngay, không đổi khoá.
-- `404` «model … is no longer available to new users» khi chat: khoá thuộc dự án mới không được dùng model cũ trong
-  khi khoá khác vẫn được. Khoá chưa từng chat thành công model đó mà trả `404` → thử khoá kế; khoá kế trả lời được
-  thì khoá trước bị bỏ qua **riêng cho model đó** trong 6 giờ (vẫn chat model khác, không bị đánh dấu hỏng).
-  **Mọi** khoá đều `404` → trả `404` của Google nguyên văn (đã che khoá), không ghi nhớ gì — model không có thật.
-- `403` hoặc `400` có «chặn vùng»: đặt `base_url` qua proxy như trên. Lỗi chặn vùng không làm khoá bị
-  đánh dấu hỏng (mọi khoá đều sẽ bị như nhau).
-- `504`: Google không trả lời trong 120 giây (stream: 60 giây giữa hai khúc).
+**Phân loại lỗi và sự cố thường gặp (hook `phan_loai_loi` của module).** Module `gemini-api` cài đặt hook `phan_loai_loi` để gom toàn bộ đặc thù của Google về chuẩn trung lập của lõi:
+- Chặn vùng: Google trả `400` hoặc `403` kèm chữ `location` («User location is not supported»). Hook trả về `chan_vung` kèm gợi ý đặt proxy. Lỗi chặn vùng là lỗi hạ tầng máy chủ, lõi trả ngay cho khách, không phạt khoá (mọi khoá đều sẽ bị như nhau).
+- Gợi ý hạng miễn phí: khi hết khoá dùng được cho ảnh/video (`het_khoa`) hoặc mọi khoá đều trả 400 (`moi_khoa_400`), hook tự động gắn thêm gợi ý «Hạng miễn phí của Google không dùng được tính năng này...» vào thông điệp lỗi.
+- `400` khi chat: Google trả `400` cả cho khoá sai/bị thu hồi. Hook trả `None` (`khong_ro`) để lõi so sánh giữa các khoá: khoá chưa từng chat thành công mà trả `400` → thử khoá kế; khoá kế trả lời được thì khoá trước bị đánh dấu hỏng (`khoa_hong`), nghỉ 1 giờ. **Mọi** khoá đều `400` → trả `400` của Google nguyên văn (đã che khoá), không đánh dấu khoá nào — đó là lỗi của yêu cầu. Khoá đã từng chat được mà gặp `400` → trả ngay, không đổi khoá.
+- `404` «model … is no longer available to new users» khi chat: khoá thuộc dự án mới không được dùng model cũ trong khi khoá khác vẫn được. Hook trả `None` (`khong_ro`) để lõi so sánh: khoá chưa từng chat thành công model đó mà trả `404` → thử khoá kế; khoá kế trả lời được thì khoá trước bị bỏ qua riêng cho model đó trong 6 giờ (`khong_co_o_khoa`). **Mọi** khoá đều `404` → trả `404` của Google nguyên văn (đã che khoá), không ghi nhớ gì — model không có thật.
+- `403` `no_key_permitted` khi tạo ảnh/video: không khoá nào được Google cho việc đó — thường là khoá hạng miễn phí. Thêm khoá thuộc dự án đã bật thanh toán (bước 4).
+- `429` «Mọi khoá… đang nghỉ»: mọi khoá hết hạn mức (`het_han_muc`). Khoá gặp 429 nghỉ theo `Retry-After` của Google (mặc định 60 giây, tối đa 10 phút) rồi tự dùng lại. Thêm khoá để chịu tải tốt hơn.
+- `401`/`403` ở một khoá: khoá đó bị đánh dấu hỏng (`khoa_hong`) và nghỉ 1 giờ, web2api tự chuyển sang khoá kế.
+- `504`: Google không trả lời trong 120 giây (stream: 60 giây giữa hai khúc) — lỗi máy chủ thượng nguồn (`may_chu_loi`).
 
 **Đã kiểm với dịch vụ thật ngày 10/10/2026** (lõi mới + Google thật, khoá của c2a):
 
@@ -1152,6 +1161,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module |
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |
+| `GET /api/modules/{id}/model` | Có | Danh mục model của module (id, nhóm, bật/tắt, mặc định, số đếm) |
+| `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
 | `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo |

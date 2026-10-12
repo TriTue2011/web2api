@@ -24,7 +24,7 @@ from app.main import PHIEN_BAN, app
 GOC = Path(__file__).resolve().parents[1]
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
-TRAN_HIEN_TAI = 17
+TRAN_HIEN_TAI = 0
 
 
 @pytest.fixture
@@ -58,8 +58,8 @@ def _kiem_tra_dong_khop(dong: str, ten_ncc: list[str]) -> list[str]:
     khop = []
     for t in ten_ncc:
         if t == "meta":
-            # Thẻ HTML <meta>, thuộc tính phím metaKey, biến .meta, và metadata mạng đám mây không phải nhà cung cấp AI
-            if "<meta" in dong_low or "metakey" in dong_low or ".meta" in dong_low or "metadata" in dong_low:
+            # Thẻ HTML <meta>, thuộc tính phím metaKey, biến .meta, meta:, và metadata mạng đám mây không phải nhà cung cấp AI
+            if "<meta" in dong_low or "metakey" in dong_low or ".meta" in dong_low or "metadata" in dong_low or "meta:" in dong_low:
                 continue
             if re.search(r"\bmeta\b", dong_low):
                 khop.append(t)

@@ -247,7 +247,7 @@ class SoModule:
     def _tao_tu_kho(self, km: ModuleKhamPha):
         """Thể hiện đã `nap` cấu hình đã lưu; None nếu module chưa có cấu hình, hoặc cấu hình đã lưu thiếu
         trường `bat_buoc` (vd tệp bí mật bị mất). Chặn ở LÕI theo manifest, không trông vào mã module tự
-        vỡ: Gemini `nap({})` không vỡ mà dựng thể hiện với 0 khoá rồi hỏng lúc gọi."""
+        vỡ: module `nap({})` có thể không vỡ mà dựng thể hiện với 0 khoá rồi hỏng lúc gọi."""
         muc = self.muc_da_luu(km.id)
         if muc is None:
             return None
@@ -330,6 +330,7 @@ class SoModule:
             if id_ in self.tu_xa:
                 m = self.dang_chay.pop(id_, None)
                 kho.xoa_tu_xa(id_)
+                kho.xoa_cai_dat_model_module(id_)
                 del self.tu_xa[id_]
                 if m is not None:
                     await self._dung_an_toan(id_, m)
@@ -346,6 +347,7 @@ class SoModule:
                 await self._dung_an_toan(id_, m)
             try:
                 kho.xoa_cai_dat(id_)
+                kho.xoa_cai_dat_model_module(id_)
             except kho.KhoHong as e:
                 raise LoiSo(500, str(e)) from e
             if km.nguon == "anh":

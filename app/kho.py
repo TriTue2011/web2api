@@ -316,3 +316,70 @@ def xoa_dia_chi_da_dat() -> bool:
         except FileNotFoundError:
             return False
 
+
+# ───────────── model.json (bật/tắt và mặc định model của từng module) ─────────────
+
+def _p_model() -> Path:
+    return thu_muc_du_lieu() / "model.json"
+
+
+def doc_cai_dat_model() -> dict:
+    """Đọc cấu hình model từ <WEB2API_DATA>/model.json.
+    Dạng: {<id module>: {"tat": [id…], "mac_dinh": {<nhóm>: id}}}.
+    Chưa có tệp = rỗng. Tệp hỏng → KhoHong.
+    """
+    du_lieu = doc_json(_p_model())
+    if du_lieu is None:
+        return {}
+    if not isinstance(du_lieu, dict):
+        raise KhoHong(f"{_p_model()} hỏng: cần dạng đối tượng JSON")
+    return du_lieu
+
+
+def doc_cai_dat_model_module(id_: str) -> dict:
+    """Lấy {"tat": [id…], "mac_dinh": {<nhóm>: id}} của một module."""
+    tat_ca = doc_cai_dat_model()
+    muc = tat_ca.get(id_)
+    if not isinstance(muc, dict):
+        return {"tat": [], "mac_dinh": {}}
+    tat = muc.get("tat")
+    if not isinstance(tat, list):
+        tat = []
+    mac_dinh = muc.get("mac_dinh")
+    if not isinstance(mac_dinh, dict):
+        mac_dinh = {}
+    return {
+        "tat": [x for x in tat if isinstance(x, str)],
+        "mac_dinh": {k: v for k, v in mac_dinh.items() if isinstance(k, str) and isinstance(v, str)},
+    }
+
+
+def luu_cai_dat_model_module(id_: str, tat: list[str], mac_dinh: dict[str, str]) -> dict:
+    """Lưu cấu hình model của module vào model.json (ghi nguyên tử, khoá luồng)."""
+    with _KHOA:
+        try:
+            tat_ca = doc_cai_dat_model()
+        except KhoHong:
+            tat_ca = {}
+        muc = {
+            "tat": list(dict.fromkeys(tat)),
+            "mac_dinh": dict(mac_dinh),
+        }
+        tat_ca[id_] = muc
+        _ghi_json(_p_model(), tat_ca)
+        return muc
+
+
+def xoa_cai_dat_model_module(id_: str) -> bool:
+    """Xoá cấu hình model của module khi gỡ."""
+    with _KHOA:
+        try:
+            tat_ca = doc_cai_dat_model()
+        except KhoHong:
+            return False
+        if id_ in tat_ca:
+            del tat_ca[id_]
+            _ghi_json(_p_model(), tat_ca)
+            return True
+        return False
+

@@ -69,11 +69,25 @@ def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
 
 # ───────────── /v1 ─────────────
 
+def _nhom_cua_model(item: dict) -> str:
+    kn = item.get("kha_nang")
+    if isinstance(kn, list) and kn:
+        dau = kn[0]
+        return str(dau).strip() if dau else "chat"
+    if isinstance(kn, str) and kn.strip():
+        return kn.strip()
+    return "chat"
+
+
 @v1.get("/models")
 async def v1_models(request: Request):
     so = _so(request)
     cac = list(so.dang_chay.items())
     ket_qua = await asyncio.gather(*(m.models() for _, m in cac), return_exceptions=True)
+    try:
+        cai_dat_tat_ca = kho.doc_cai_dat_model()
+    except kho.KhoHong:
+        cai_dat_tat_ca = {}
     data = []
     for (id_, _), kq in zip(cac, ket_qua):
         if isinstance(kq, Exception):
@@ -81,7 +95,17 @@ async def v1_models(request: Request):
             continue
         if isinstance(kq, BaseException):
             raise kq
-        data.extend(kq)
+        cai_dat = cai_dat_tat_ca.get(id_, {})
+        tat_set = set(cai_dat.get("tat", []))
+        mac_dinh_ids = set(cai_dat.get("mac_dinh", {}).values())
+        for item in kq:
+            m_id = item.get("id")
+            if not isinstance(m_id, str) or m_id in tat_set:
+                continue
+            muc = dict(item)
+            if m_id in mac_dinh_ids:
+                muc["mac_dinh"] = True
+            data.append(muc)
     danh_tinh = getattr(request.state, "danh_tinh", None)
     if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
         pham_vi = danh_tinh.get("pham_vi", [])
@@ -125,6 +149,13 @@ def _module_theo_model(request: Request, than: dict):
         raise LoiOpenAI(404, f"Model {model!r} không thuộc module nào. Model phải có dạng <tiền tố>/<tên>; "
                              f"tiền tố đang dùng được: {cai}. Xem GET /v1/models.", code="model_not_found")
     m = _module_dang_chay(so, id_, tien_to)
+    try:
+        tat_set = set(kho.doc_cai_dat_model_module(id_).get("tat", []))
+    except kho.KhoHong:
+        tat_set = set()
+    if model in tat_set:
+        raise LoiOpenAI(404, f"Model {model!r} đã tắt trong Hệ thống → AI (xem GET /v1/models).",
+                        code="model_not_found")
     _ghi_nhan_module(request, so, id_)
     return id_, m
 
@@ -185,7 +216,7 @@ def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Res
 async def v1_chat(request: Request):
     kiem_tra_pham_vi(request, "chat")
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
-    # như extra_content.google.thought_signature.
+    # như chữ ký suy nghĩ hay trường riêng của nhà cung cấp.
     than = await _than_json(request)
     _, m = _module_theo_model(request, than)
     return _tra_ve(*await m.chat(than, bool(than.get("stream"))))
@@ -409,6 +440,101 @@ async def cau_hinh(id_: str, request: Request):
     muc = so.muc_da_luu(id_) or {}
     return {"id": id_, "ten": km.manifest["ten"], "truong_cau_hinh": km.truong_cau_hinh,
             "gia_tri": muc.get("cau_hinh_cong_khai") or {}, "da_cau_hinh": id_ in so.dang_chay}
+
+
+async def _model_cua_module(id_: str, request: Request) -> list[dict]:
+    """Danh sách model gốc của module đang chạy (404 nếu không có / chưa liên kết, 502 nếu module lỗi)."""
+    so = _so(request)
+    if id_ not in so.catalog and id_ not in so.tu_xa:
+        raise LoiOpenAI(404, f"Không có module {id_!r}")
+    m = so.dang_chay.get(id_)
+    if m is None:
+        raise LoiOpenAI(404, f"Module {id_!r} chưa liên kết", code="module_not_configured")
+    try:
+        return await m.models()
+    except Exception as e:
+        log.warning("Module %s lỗi khi lấy danh sách model: %s", id_, e)
+        raise LoiOpenAI(502, f"Không đọc được danh sách model từ module: {e}", code="upstream_error") from None
+
+
+def _tom_tat_model(raw_models: list[dict], tat: set[str], mac_dinh: dict[str, str]) -> dict:
+    """Danh mục model kèm bật/tắt/mặc định theo cài đặt đã cho; dùng chung cho GET và PUT."""
+    models = []
+    for item in raw_models:
+        mid = item.get("id")
+        if not isinstance(mid, str) or not mid:
+            continue
+        nhom = _nhom_cua_model(item)
+        bat = mid not in tat
+        muc = {"id": mid, "nhom": nhom, "bat": bat, "mac_dinh": bool(bat and mac_dinh.get(nhom) == mid)}
+        if "kha_nang" in item:
+            muc["kha_nang"] = item["kha_nang"]
+        models.append(muc)
+    return {"models": models, "tat": [x["id"] for x in models if not x["bat"]],
+            "mac_dinh": {nh: mid for nh, mid in mac_dinh.items() if any(x["id"] == mid and x["bat"] for x in models)},
+            "tong_so": len(models), "dang_bat": sum(1 for x in models if x["bat"])}
+
+
+def _doc_cai_dat_model(id_: str) -> dict:
+    try:
+        return kho.doc_cai_dat_model_module(id_)
+    except kho.KhoHong:
+        return {"tat": [], "mac_dinh": {}}
+
+
+@modules.get("/{id_}/model", dependencies=QT)
+async def lay_model_module(id_: str, request: Request):
+    """Danh mục model của một module (id, nhóm, bật/tắt, mặc định, số đếm)."""
+    raw = await _model_cua_module(id_, request)
+    cai_dat = _doc_cai_dat_model(id_)
+    return {"id": id_, **_tom_tat_model(raw, set(cai_dat["tat"]), cai_dat["mac_dinh"])}
+
+
+@modules.put("/{id_}/model", dependencies=QT)
+async def cap_nhat_model_module(id_: str, request: Request):
+    """Cập nhật bật/tắt và mặc định model của một module.
+    Thân: {"tat": [id…], "mac_dinh": {<nhóm>: id}}; trường vắng = giữ nguyên. Id lạ bỏ qua và nêu trong `bo_qua`.
+    Mặc định phải là model đang bật: tắt model mặc định → bỏ mặc định; đặt mặc định cho model tắt → 400.
+    """
+    than = await _than_json(request)
+    tat_in, mac_dinh_in = than.get("tat"), than.get("mac_dinh")
+    if tat_in is not None and not isinstance(tat_in, list):
+        raise LoiOpenAI(400, "«tat» phải là danh sách id model", code="invalid_request")
+    if mac_dinh_in is not None and not isinstance(mac_dinh_in, dict):
+        raise LoiOpenAI(400, "«mac_dinh» phải là đối tượng {nhóm: id}", code="invalid_request")
+    raw = await _model_cua_module(id_, request)
+    hop_le = {item["id"] for item in raw if isinstance(item.get("id"), str)}
+    cu = _doc_cai_dat_model(id_)
+    bo_qua: set[str] = set()
+
+    if tat_in is None:
+        tat_moi = set(cu["tat"])
+    else:
+        ds = [x for x in tat_in if isinstance(x, str)]
+        bo_qua.update(x for x in ds if x not in hop_le)
+        tat_moi = {x for x in ds if x in hop_le}
+
+    if mac_dinh_in is None:
+        mac_dinh_moi = dict(cu["mac_dinh"])
+    else:
+        mac_dinh_moi = {}
+        for nhom, mid in mac_dinh_in.items():
+            if not isinstance(nhom, str) or not isinstance(mid, str):
+                continue
+            if mid not in hop_le:
+                bo_qua.add(mid)
+            elif mid in tat_moi:
+                raise LoiOpenAI(400, f"Không thể đặt model đã tắt {mid!r} làm mặc định cho nhóm {nhom!r}",
+                                code="model_disabled")
+            else:
+                mac_dinh_moi[nhom] = mid
+    mac_dinh_moi = {nh: mid for nh, mid in mac_dinh_moi.items() if mid in hop_le and mid not in tat_moi}
+
+    try:
+        kho.luu_cai_dat_model_module(id_, sorted(tat_moi & hop_le), mac_dinh_moi)
+    except kho.KhoHong as e:
+        raise LoiOpenAI(500, f"Không lưu được cài đặt model: {e}") from e
+    return {"ok": True, "bo_qua": sorted(bo_qua), **_tom_tat_model(raw, tat_moi, mac_dinh_moi)}
 
 
 # ───────────── /api/tinh-nang ─────────────
