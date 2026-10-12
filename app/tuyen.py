@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-from app import kho
+from app import dia_chi as dia_chi_mod, kho
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
@@ -33,6 +33,7 @@ v1_khong_co = APIRouter(prefix="/v1", dependencies=QT)
 modules = APIRouter(prefix="/api/modules")
 tinh_nang = APIRouter()
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
+dia_chi = APIRouter(prefix="/api", dependencies=QT)
 tep_module = APIRouter()
 
 
@@ -408,3 +409,32 @@ async def tep_cua_module(id_: str, duong: str, request: Request):
     if not p.is_relative_to(goc) or not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)
+
+
+# ───────────── /api/dia-chi, /api/ket-noi ─────────────
+
+@dia_chi.get("/dia-chi")
+async def xem_dia_chi(request: Request):
+    return dia_chi_mod.lay_thong_tin_dia_chi(request)
+
+
+@dia_chi.put("/dia-chi")
+async def dat_dia_chi(request: Request):
+    than = await _than_json(request)
+    if "url" not in than:
+        raise LoiOpenAI(400, "Thân yêu cầu phải có trường «url» (chuỗi hoặc null)", loai="invalid_request_error")
+    url = than["url"]
+    if url is None:
+        kho.xoa_dia_chi_da_dat()
+    elif isinstance(url, str):
+        url_chuan = dia_chi_mod.kiem_tra_va_chuan_hoa_url(url)
+        kho.luu_dia_chi_da_dat(url_chuan)
+    else:
+        raise LoiOpenAI(400, "Trường «url» phải là chuỗi hoặc null", loai="invalid_request_error")
+    return dia_chi_mod.lay_thong_tin_dia_chi(request)
+
+
+@dia_chi.get("/ket-noi")
+async def huong_dan_ket_noi(request: Request):
+    return dia_chi_mod.soan_huong_dan_ket_noi(request)
+

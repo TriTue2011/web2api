@@ -71,6 +71,7 @@ app.include_router(tuyen.v1_khong_co)  # NGAY sau v1: /v1 lạ → 404 unknown_e
 app.include_router(tuyen.modules)
 app.include_router(tuyen.tinh_nang)
 app.include_router(tuyen.nguon_git)
+app.include_router(tuyen.dia_chi)
 app.include_router(tuyen.tep_module)
 
 

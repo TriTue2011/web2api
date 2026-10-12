@@ -35,6 +35,9 @@ CAN_QUAN_TRI = [
     ("GET", "/api/nguon-git"),
     ("PUT", "/api/nguon-git"),
     ("POST", "/api/nguon-git/cai/echo"),
+    ("GET", "/api/dia-chi"),
+    ("PUT", "/api/dia-chi"),
+    ("GET", "/api/ket-noi"),
 ]
 
 
