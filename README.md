@@ -344,6 +344,22 @@ Thư mục `modules/<id>/` gồm:
 - Tuỳ chọn `web/`: giao diện riêng, phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết); thanh trên
   có tab của nó khi module đã liên kết.
 
+#### Chuẩn thiết bị và ứng dụng (`thiet_bi`)
+
+Chuẩn `thiet_bi` hợp nhất việc điều khiển thực thể (đèn, công tắc, cảm biến, camera, máy chủ, cổng mạng…) từ nhiều module khác nhau vào một giao thức duy nhất. Lõi không chứa tên phần cứng hay dịch vụ cụ thể nào; quy chuẩn chi tiết cho người viết module được quy định tại [docs/CHUAN-MODULE.md](docs/CHUAN-MODULE.md).
+
+Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
+
+```mermaid
+flowchart LR
+  TC["Thực thể<br/>(id, loai, rui_ro)"] --> HD["Hành động<br/>(tinh_nang)"]
+  HD -->|rui_ro: doc / ghi| TH["Thực hiện ngay"]
+  HD -->|rui_ro: nguy_hiem + khách| HC["Hàng chờ phê duyệt<br/>(/api/phe-duyet)"]
+  HC -->|Quản trị duyệt| TH
+  HC -->|Quản trị từ chối| HUY["Huỷ bỏ"]
+```
+
+
 Module cần gói Python mà ảnh lõi không có thì bị **từ chối nạp** với thông báo nêu tên gói — lõi không tự cài gói
 lúc chạy; khi đó làm **module từ xa**. Một module hỏng chỉ báo lỗi của riêng nó; cài đè một bản mới hỏng thì
 web2api **hoàn về bản cũ**. Sửa tay tệp trong `/data/modules/` thì nạp lại không cần khởi động:
@@ -1176,6 +1192,15 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; trả về khoá thô một lần duy nhất) |
 | `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt, nhãn, phạm vi) |
 | `DELETE /api/khoa-khach/{id}` | Có | Thu hồi khoá khách (xoá ngay, các lượt gọi sau bị `401`) |
+| `GET /api/thiet-bi` | Có | Danh sách thực thể thiết bị/ứng dụng từ các module, kèm trạng thái và rủi ro hiệu lực (hỗ trợ lọc `q`, `loai`, `khu`, `module`, `rui_ro`) |
+| `GET /api/thiet-bi/su-kien` | Có | Nhận luồng sự kiện thiết bị theo thời gian thực (SSE) |
+| `POST /api/thiet-bi/su-kien` | Có | Phát sự kiện thiết bị mới |
+| `GET /api/thiet-bi/{id}` | Có | Chi tiết và trạng thái của một thực thể thiết bị |
+| `PUT /api/thiet-bi/{id}/rui-ro` | Có | Quản trị đặt ghi đè mức rủi ro hiệu lực (`doc`, `ghi`, `nguy_hiem`) cho thực thể |
+| `POST /api/thiet-bi/{id}/hanh-dong` | Có | Thực hiện hành động trên thực thể (rủi ro nguy hiểm yêu cầu xác nhận hoặc đưa vào hàng chờ) |
+| `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
+| `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
+| `POST /api/phe-duyet/{id}/tu-choi` | Có | Quản trị từ chối và huỷ bỏ yêu cầu trong hàng chờ |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
@@ -1200,6 +1225,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
 | `WEB2API_KHACH_DONG_THOI` | không | Trần số yêu cầu đồng thời tối đa cho mỗi khoá khách; vượt trần trả `429` kèm tiêu đề `Retry-After` (không làm hỏng trạng thái module) |
+| `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |

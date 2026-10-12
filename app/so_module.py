@@ -187,6 +187,10 @@ class SoModule:
                 truoc = cu.get(id_)
                 if truoc and truoc.van_tay == vt and truoc.thu_muc == thu_muc:
                     moi[id_] = truoc  # không đổi → không chạy lại mã
+                    if truoc.chuan_loi:
+                        for kn, thieu in truoc.chuan_loi.items():
+                            loi.append({"thu_muc": str(thu_muc),
+                                        "ly_do": f"không đúng chuẩn: khả năng «{kn}» thiếu phương thức: {', '.join(thieu)}"})
                     continue
                 try:
                     lop, ten = nap_ma(thu_muc, manifest, vt)
@@ -197,6 +201,13 @@ class SoModule:
                     continue
                 km = ModuleKhamPha(id=id_, nguon=nguon, thu_muc=thu_muc, manifest=manifest, lop=lop,
                                    van_tay=vt, ten_ma=ten)
+                if km.chuan_loi:
+                    for kn, thieu in km.chuan_loi.items():
+                        thong_diep = f"không đúng chuẩn: khả năng «{kn}» thiếu phương thức: {', '.join(thieu)}"
+                        log.warning("Module %s %s", id_, thong_diep)
+                        loi.append({"thu_muc": str(thu_muc), "ly_do": thong_diep})
+                        nhat_ky.ghi("he_thong", "canh_bao", f"Module {id_} {thong_diep}",
+                                    module=id_, kha_nang=kn, thieu=thieu)
                 if truoc and id_ in self.dang_chay:
                     # Đổi mã của module đang phục vụ: dựng thể hiện MỚI với cấu hình đã lưu trước,
                     # hỏng thì giữ nguyên bản cũ; xong mới dừng bản cũ.

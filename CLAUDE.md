@@ -16,7 +16,7 @@ Kho: `TriTue2011/web2api`, **PUBLIC**. README.md là tài liệu cho người d�
 | `web/` | Giao diện tĩnh: `index.html` (chọn trang đầu), `He-thong.dc.html` (Hệ thống → Module), `He-thong-AI.dc.html`, `Studio.dc.html`; logic chung + bảng điều kiện hiện tab ở `khung.js` (không tên module nào) |
 | `test/` | pytest; máy chủ Google/GitHub/OpenAI đều là **giả** cục bộ, `conftest.py` chặn mọi đường ra Internet |
 | `scripts/` | `chup-man-hinh.sh` chụp lại ảnh README vào `docs/anh/` |
-| `docs/` | `MAU-TIEU-MUC-MODULE.md` (mẫu tiểu mục README cho module mới), `anh/` |
+| `docs/` | `MAU-TIEU-MUC-MODULE.md` (mẫu tiểu mục README cho module mới), `CHUAN-MODULE.md` (chuẩn hợp đồng module), `anh/` |
 | `deploy/` | Tệp triển khai phụ (Cloudflare Worker làm proxy vượt chặn vùng của Gemini) |
 
 ## Cách kiểm — chạy ĐỦ trước khi cam kết
