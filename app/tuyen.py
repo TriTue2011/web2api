@@ -13,7 +13,7 @@ from http import HTTPMethod
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.routing import Match
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from app import kho
 from app.loi_openai import LoiOpenAI
@@ -46,9 +46,13 @@ def _ng(request: Request) -> NguonGit:
 
 async def _than_json(request: Request) -> dict:
     # Không dùng request.json(): nó nạp trọn thân không giới hạn (và giữ thêm một bản trong request suốt lượt gọi).
+    # Thân đọc ngay trong lời gọi json.loads, KHÔNG gán biến: json.loads giải mã bytearray thành str rồi bỏ nó, bộ nhớ
+    # đỉnh 2× thân thay vì 3× (test_bo_nho_dinh_than_json_vua_tran). Bước đọc chỉ ném LoiOpenAI (413/400 có mã riêng),
+    # nên except dưới đây chỉ bắt lỗi giải mã: ValueError (cả UnicodeDecodeError) và RecursionError (mảng/đối tượng
+    # lồng quá sâu — vẫn là thân hỏng của khách, không phải lỗi nội bộ).
     try:
         than = json.loads(await doc_het(request, THAN_JSON))
-    except ValueError:  # gồm cả UnicodeDecodeError
+    except (ValueError, RecursionError):
         raise LoiOpenAI(400, "Thân yêu cầu không phải JSON hợp lệ") from None
     if not isinstance(than, dict):
         raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
@@ -240,8 +244,20 @@ async def duong_v1_khong_co(request: Request):
 
     Suy từ CHÍNH router `v1` (route nào khớp đường mà không khớp phương thức — Match.PARTIAL của Starlette), không từ
     bảng tay: thêm đường mới vào `v1` là tự đúng. Nêu lại đường khách gọi nhưng chỉ phần path (query có thể mang
-    khoá, vd ?key=…), đã cắt ngắn và bỏ ký tự điều khiển — không phản chiếu chuỗi dài/độc."""
+    khoá, vd ?key=…), đã cắt ngắn và bỏ ký tự điều khiển — không phản chiếu chuỗi dài/độc.
+
+    Đường có «/» cuối mà bỏ «/» thì KHỚP TRỌN một route của `v1` (cả phương thức) → 307 sang đường không «/» cuối,
+    giữ query, không đổi phương thức — như redirect_slashes của Starlette (cơ chế đó không bao giờ chạy ở đây vì mount
+    StaticFiles ở gốc khớp mọi đường). Chỉ bỏ «/» có thật trong đường THÔ khách gửi (raw_path, còn nguyên %xx) và
+    dựng Location từ đó: «%2F» cuối không phải dấu «/» của đường nên không bị bỏ — không thể chuyển hướng vòng."""
     scope = dict(request.scope)
+    tho = scope["raw_path"].rstrip(b"/")
+    so_gach = len(scope["raw_path"]) - len(tho)
+    if so_gach and tho:
+        bo_gach = {**scope, "path": scope["path"][:-so_gach]}
+        if any(r.matches(bo_gach)[0] is Match.FULL for r in v1.routes):
+            dich = tho + (b"?" + scope["query_string"] if scope["query_string"] else b"")
+            return RedirectResponse(dich.decode("latin-1"), status_code=307)
     cho_phep = sorted({pt for r in v1.routes if r.matches(scope)[0] is Match.PARTIAL for pt in r.methods})
     duong = "".join(k for k in request.url.path if k.isprintable())
     duong = duong if len(duong) <= 120 else duong[:120] + "…"
