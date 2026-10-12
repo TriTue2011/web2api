@@ -1,12 +1,13 @@
-"""Khoá quản trị — cổng duy nhất cho /v1/* và mọi API đổi trạng thái hay lộ cấu hình.
+"""Xác thực hai lớp của web2api: khoá quản trị và khoá khách có phạm vi (Việc E).
 
-Vì sao bắt buộc ngay từ module đầu tiên: /v1/* tiêu hạn mức Gemini (và mọi dịch vụ
-khác) của chủ máy; mở trần trên LAN thì bất kỳ máy nào trong nhà — kể cả thiết bị IoT
-bị chiếm — dùng không giới hạn.
-
-Nguồn khoá: biến `WEB2API_ADMIN_KEY`; không đặt thì sinh một lần (secrets.token_urlsafe(32),
-256 bit) và lưu `<WEB2API_DATA>/admin_key` quyền 0600. KHÔNG BAO GIỜ in khoá ra log —
-log chỉ nêu đường dẫn tệp để người vận hành `docker exec … cat` lấy.
+Quy tắc:
+- MỘT hàm `nguoi_goi(request)` trả {loai: "quan_tri" | "khach", id: str, pham_vi: list[str]}.
+- Đường /api/* và quản trị: chỉ quan_tri (khách gọi → 403, không lộ tồn tại).
+- Đường /v1/*: mở cho cả quan_tri và khach; khach bị kiểm soát phạm vi và trần đồng thời
+  WEB2API_KHACH_DONG_THOI → 429 + Retry-After (không tính là lỗi provider).
+- Khách chỉ được thu hẹp phạm vi (X-Web2api-Scope hoặc X-Scope), không được mở rộng (403),
+  không thể sửa khoá hay tạo khoá khác. Tắt/thu hồi → 401 ngay.
+- Sổ thao tác: ghi nhận kênh nhật ký `quan_tri` cho các lần 401/403 ở đường quản trị, KHÔNG ghi khoá.
 """
 
 from __future__ import annotations
@@ -15,22 +16,20 @@ import hmac
 import logging
 import os
 import secrets
+from typing import Any
 
 from fastapi import Request
 
-from app import kho
+from app import kho, khoa_khach, nhat_ky
 from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.xac_thuc")
 
-
-#: Khoá đọc từ tệp, nhớ theo danh tính tệp: {(đường, thiết bị, inode, kích thước, mtime_ns): khoá}. che_chuoi gọi
-#: khoa_quan_tri() cho TỪNG chuỗi ghi vào nhật ký (mỗi lượt /v1 vài chuỗi) — một stat thay cho mở-đọc-đóng tệp.
-#: Sửa tại chỗ hay thay tệp đổi danh tính nên khoá mới có hiệu lực ngay ở lần gọi sau.
 _KHOA_TU_TEP: dict[tuple, str] = {}
 
 
 def khoa_quan_tri() -> str:
+    """Khoá quản trị từ biến WEB2API_ADMIN_KEY hoặc tệp <WEB2API_DATA>/admin_key (0600)."""
     tu_bien = os.environ.get("WEB2API_ADMIN_KEY", "").strip()
     if tu_bien:
         return tu_bien
@@ -48,35 +47,174 @@ def khoa_quan_tri() -> str:
         p.parent.mkdir(parents=True, exist_ok=True)
         khoa = secrets.token_urlsafe(32)
         try:
-            # O_EXCL: hai tiến trình/luồng cùng khởi động thì chỉ một bên sinh, bên kia đọc lại.
             fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
             return khoa_quan_tri()
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(khoa + "\n")
-        log.warning("Đã sinh khoá quản trị lần đầu, lưu ở %s (quyền 0600). Đọc bằng: docker exec <tên> cat %s",
-                    p, p)
+        log.warning(
+            "Đã sinh khoá quản trị lần đầu, lưu ở %s (quyền 0600). Đọc bằng: docker exec <tên> cat %s",
+            p,
+            p,
+        )
         return khoa
     if not khoa:
-        # Khoá rỗng mà vẫn chạy thì "Bearer " rỗng cũng khớp → mở toang. Dừng to còn hơn.
         raise RuntimeError(f"{p} rỗng — xoá tệp này để web2api sinh khoá mới, hoặc đặt WEB2API_ADMIN_KEY")
     return khoa
 
 
-async def can_quan_tri(request: Request) -> None:
-    """Phụ thuộc FastAPI: yêu cầu `Authorization: Bearer <khoá quản trị>`; sai/thiếu → 401 kiểu OpenAI."""
-    loai, _, gia_tri = request.headers.get("authorization", "").partition(" ")
+async def nguoi_goi(request: Request) -> dict[str, Any]:
+    """Hàm xác thực duy nhất: phân tích header Authorization, trả về thông tin danh tính.
+
+    Kết quả:
+      {"loai": "quan_tri", "id": "quan_tri", "pham_vi": ["*"]}
+      hoặc
+      {"loai": "khach", "id": "<id>", "pham_vi": ["*"] | [mã khả năng]}
+    Sai/thiếu khoá → LoiOpenAI(401).
+    Khoá khách bị tắt/thu hồi → LoiOpenAI(401).
+    Khách yêu cầu mở rộng phạm vi → LoiOpenAI(403 insufficient_scope).
+    """
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    if isinstance(danh_tinh, dict):
+        return danh_tinh
+
+    loai_auth, _, gia_tri = request.headers.get("authorization", "").partition(" ")
     gia_tri = gia_tri.strip()
-    # compare_digest: thời gian so không phụ thuộc vị trí ký tự sai đầu tiên → không dò khoá theo độ trễ.
-    if loai.lower() != "bearer" or not gia_tri or not hmac.compare_digest(
-        gia_tri.encode("utf-8"), khoa_quan_tri().encode("utf-8")
-    ):
+
+    if loai_auth.lower() != "bearer" or not gia_tri:
         raise LoiOpenAI(
             401,
-            "Thiếu hoặc sai khoá quản trị. Gửi header «Authorization: Bearer <khoá>»; "
-            "khoá nằm ở biến WEB2API_ADMIN_KEY hoặc tệp <WEB2API_DATA>/admin_key.",
+            "Thiếu hoặc sai khoá xác thực. Gửi header «Authorization: Bearer <khoá>».",
             loai="invalid_request_error",
             code="invalid_api_key",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    request.state.nguoi_goi = "quan_tri"  # nhật ký `cuoc_goi` (app/nhat_ky.py): ai đã gọi lượt này
+
+    # 1. So khớp khoá quản trị
+    if hmac.compare_digest(gia_tri.encode("utf-8"), khoa_quan_tri().encode("utf-8")):
+        request.state.nguoi_goi = "quan_tri"
+        danh_tinh = {"loai": "quan_tri", "id": "quan_tri", "pham_vi": ["*"]}
+        request.state.danh_tinh = danh_tinh
+        return danh_tinh
+
+    # 2. So khớp khoá khách
+    khach = khoa_khach.tim_theo_khoa_tho(gia_tri)
+    if khach is not None:
+        if not khach.get("bat", True):
+            raise LoiOpenAI(
+                401,
+                "Khoá khách đã bị tắt hoặc thu hồi.",
+                loai="invalid_request_error",
+                code="invalid_api_key",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        id_khach = str(khach.get("id"))
+        khoa_khach.ghi_nhan_su_dung(id_khach)
+
+        pham_vi_goc = list(khach.get("pham_vi", ["*"]))
+        pham_vi_hieu_luc = pham_vi_goc
+
+        # Khách có thể tự thu hẹp phạm vi thông qua header X-Web2api-Scope hoặc X-Scope
+        thu_hep = request.headers.get("x-web2api-scope") or request.headers.get("x-scope")
+        if thu_hep:
+            cac_yeu_cau = [s.strip() for s in thu_hep.split(",") if s.strip()]
+            if cac_yeu_cau:
+                if "*" not in pham_vi_goc:
+                    for s in cac_yeu_cau:
+                        if s not in pham_vi_goc:
+                            raise LoiOpenAI(
+                                403,
+                                f"Không thể mở rộng phạm vi vượt quá phạm vi của khoá (thiếu «{s}»).",
+                                loai="insufficient_scope",
+                                code="insufficient_scope",
+                            )
+                pham_vi_hieu_luc = cac_yeu_cau
+
+        request.state.nguoi_goi = f"khach:{id_khach}"
+        danh_tinh = {"loai": "khach", "id": id_khach, "pham_vi": pham_vi_hieu_luc}
+        request.state.danh_tinh = danh_tinh
+        return danh_tinh
+
+    raise LoiOpenAI(
+        401,
+        "Thiếu hoặc sai khoá xác thực. Gửi header «Authorization: Bearer <khoá>».",
+        loai="invalid_request_error",
+        code="invalid_api_key",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def can_quan_tri(request: Request) -> dict[str, Any]:
+    """Phụ thuộc FastAPI cho các đường quản trị (/api/*): chỉ cho phép quan_tri.
+
+    Khách gọi → 403 (không lộ dữ liệu). Lỗi 401/403 được ghi vào kênh nhật ký `quan_tri`.
+    """
+    try:
+        nguoi = await nguoi_goi(request)
+    except LoiOpenAI as e:
+        if e.ma == 401:
+            nhat_ky.ghi(
+                "quan_tri",
+                "canh_bao",
+                f"Từ chối 401 trên đường quản trị: {request.method} {request.url.path}",
+                duong=request.url.path,
+                phuong_thuc=request.method,
+            )
+        raise
+
+    if nguoi.get("loai") != "quan_tri":
+        id_k = nguoi.get("id", "khach")
+        nhat_ky.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Từ chối 403 trên đường quản trị: khoá khách ({id_k}) gọi {request.method} {request.url.path}",
+            duong=request.url.path,
+            phuong_thuc=request.method,
+            nguoi_goi=f"khach:{id_k}",
+        )
+        raise LoiOpenAI(
+            403,
+            "Không có quyền truy cập.",
+            loai="permission_error",
+            code="forbidden",
+        )
+    return nguoi
+
+
+async def xac_thuc_v1(request: Request) -> dict[str, Any]:
+    """Phụ thuộc FastAPI cho /v1/*: nhận cả quan_tri và khach.
+
+    Khách bị kiểm soát trần đồng thời WEB2API_KHACH_DONG_THOI.
+    """
+    nguoi = await nguoi_goi(request)
+    if nguoi.get("loai") == "khach":
+        id_khach = nguoi.get("id")
+        if id_khach and not getattr(request.state, "khach_id", None):
+            khoa_khach.vao_dong_thoi(id_khach)
+            request.state.khach_id = id_khach
+    return nguoi
+
+
+def kiem_tra_pham_vi(request: Request, *cac_kha_nang: str) -> None:
+    """Kiểm tra phạm vi quyền hạn cho đường gọi /v1/*.
+
+    Khách thiếu phạm vi → LoiOpenAI(403 insufficient_scope).
+    """
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    if not isinstance(danh_tinh, dict):
+        return
+    if danh_tinh.get("loai") == "quan_tri":
+        return
+    pham_vi = danh_tinh.get("pham_vi", [])
+    if "*" in pham_vi:
+        return
+    if any(kn in pham_vi for kn in cac_kha_nang):
+        return
+    can_kn = cac_kha_nang[0] if cac_kha_nang else "chuc_nang"
+    raise LoiOpenAI(
+        403,
+        f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can_kn}»).",
+        loai="insufficient_scope",
+        code="insufficient_scope",
+    )

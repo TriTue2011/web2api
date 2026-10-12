@@ -53,7 +53,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
 | Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
 | «Địa chỉ truy cập công khai» (`GET`/`PUT /api/dia-chi`, `GET /api/ket-noi`, proxy ngược) | Có | 0.1.0-khung · 12/10/2026 |
-| Khoá khách, Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
+| Khoá khách có phạm vi, sổ thao tác quản trị, Bảo mật & người dùng | Có | 0.1.0-khung · 12/10/2026 |
 | Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
 | Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký trên web | Chưa có (chờ module thật đứng sau) | — |
 | Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
@@ -1034,11 +1034,19 @@ curl -s -H "Authorization: Bearer <KHOÁ>" https://<tên-miền>/v1/models
 - **Đạt:** trả về danh sách model `{"object": "list", "data": [...]}`.
 - **Không đạt:** mã HTTP `401` nếu thiếu hoặc sai khoá quản trị.
 
-#### f. Khoá quản trị và khoá khách
+#### f. Người dùng và bảo mật: khoá quản trị và khoá khách
 
-- Khoá quản trị (`WEB2API_ADMIN_KEY` hoặc `/data/admin_key`) có **toàn quyền trên hệ thống**: gọi mọi model, cài đặt, gỡ bỏ và xem cấu hình module.
-- Khoá này chỉ dành cho chủ máy quản trị; không nên chia sẻ khoá quản trị cho người ngoài.
-- Để cấp quyền cho người khác hoặc ứng dụng bên ngoài dùng thử mà không có quyền quản trị, tính năng **khoá khách** (giới hạn model, hạn mức) sẽ được cung cấp ở giai đoạn tiếp theo.
+- **Khoá quản trị** (`WEB2API_ADMIN_KEY` hoặc `/data/admin_key`): có **toàn quyền trên hệ thống** (gọi mọi API `/v1/*`, cài đặt, gỡ bỏ, xem cấu hình module và quản lý khoá khách). Chỉ dành riêng cho chủ máy quản trị; không chia sẻ cho người ngoài.
+- **Khoá khách (Client API Key)**: cấp quyền cho ứng dụng khách hoặc người dùng khác trong nhà để gọi các dịch vụ AI chuẩn OpenAI (`/v1/*`), tách biệt hoàn toàn với quyền quản trị:
+  - Khách gọi đường quản trị (`/api/*`, trang cấu hình) sẽ nhận mã `403` (không để lộ sự tồn tại của dữ liệu quản trị).
+  - Khoá khách có **phạm vi quyền hạn (scope)** cụ thể: tất cả (`*`) hoặc từng mã khả năng mở như `chat`, `anh`, `video`, `noi`, `nghe`, `anh_sua`. Gọi vượt quá phạm vi được cấp sẽ nhận lỗi `403 insufficient_scope` theo chuẩn OpenAI.
+  - Danh mục `GET /v1/models` tự động lọc, chỉ hiển thị các model thuộc phạm vi mà khoá khách được phép dùng.
+  - Khách chỉ được **thu hẹp phạm vi** cho từng lượt gọi thông qua tiêu đề `X-Web2api-Scope` (hoặc `X-Scope`), không thể mở rộng và không thể sửa đổi phạm vi đã lưu hay tạo khoá khác.
+  - **Lưu trữ an toàn:** Khoá thô (tiền tố `w2a_`) chỉ hiển thị **đúng một lần** khi tạo qua giao diện hoặc `POST /api/khoa-khach`. Tệp cấu hình `<WEB2API_DATA>/khoa_khach.json` (quyền 0600) chỉ lưu bản băm SHA-256; so khớp bằng so sánh thời gian hằng (`hmac.compare_digest`). Khoá không bao giờ được ghi vào nhật ký hay phản hồi sau khi tạo.
+  - Khi khoá bị tắt (`bat: false`) hoặc thu hồi (xoá), mọi yêu cầu tiếp theo lập tức bị từ chối với mã `401`.
+  - **Kiểm soát đồng thời:** Biến `WEB2API_KHACH_DONG_THOI` đặt trần số yêu cầu đồng thời tối đa cho mỗi khoá khách. Vượt trần sẽ nhận mã `429` kèm tiêu đề `Retry-After` (không tính là lỗi của nhà cung cấp).
+  - **Sổ thao tác quản trị:** Kênh nhật ký `quan_tri` ghi nhận mọi thao tác tạo, sửa, thu hồi khoá khách và các lần yêu cầu bị từ chối `401`/`403` ở các đường quản trị (tuyệt đối không ghi nội dung khoá).
+  - **Giao diện:** tab «Bảo mật & người dùng» (`He-thong-Bao-mat.dc.html`) cho phép xem danh sách khoá khách (nhãn, chip phạm vi, lần dùng cuối, số lượt), bật/tắt, thu hồi và tạo khoá mới.
 
 ### Vận hành hằng ngày
 
@@ -1119,8 +1127,6 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 ### Giới hạn và việc chưa làm
 
 - **Combo** chưa có backend: tab không hiện kể cả khi có ≥ 2 nguồn AI đã liên kết.
-- Chưa có khoá khách, ô «Địa chỉ truy cập công khai» (địa chỉ ở khối Kết nối chỉ suy từ trình duyệt), trang Bảo mật
-  & người dùng.
 - «Cần gì để chạy» mới là **hướng dẫn bằng chữ** từ manifest: chưa có checklist ✔/✖ từng yêu cầu, chưa tự cài gói
   Python; trần dung lượng tải module (50 MB tổng, 5 MB/tệp, 200 tệp) vẫn còn.
 - Chưa có màn Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký — sẽ vào khi có module thật đứng sau.
@@ -1155,6 +1161,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/nhat-ky` | Có | Xem nhật ký hệ thống (mới nhất trước; lọc theo `kenh`, `muc`, `q`, phân trang `truoc` = `luc` của dòng cuối trang trước, `gioi_han` ≤ 500). Kênh của lõi: `cuoc_goi` — mỗi lượt `/v1` đúng một dòng (người gọi, đường, model, module, mã HTTP, ms, `usage` nếu có, `request_id`; `dut: true` khi luồng đứt giữa chừng; KHÔNG nội dung lời nhắn/trả lời hay khoá), phản hồi `/v1` mang tiêu đề `x-request-id` (khớp `request_id` trong dòng) và `X-Web2api-Module` (tiền tố module đã phục vụ); `he_thong` — khởi động, nạp/đổi/gỡ module, cấu hình hỏng |
 | `GET /api/nhat-ky/kenh` | Có | Danh sách kênh nhật ký đang có bản ghi (`kenh`, `so_dong`, `lan_cuoi`) |
 | `DELETE /api/nhat-ky` | Có | Xoá bản ghi nhật ký cũ hơn N ngày (`truoc_ngay=N`, 0 ≤ N ≤ 36500; thiếu → `400`, không xoá gì) |
+| `GET /api/khoa-khach` | Có | Danh sách khoá khách (không băm, không khoá thô) |
+| `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; trả về khoá thô một lần duy nhất) |
+| `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt, nhãn, phạm vi) |
+| `DELETE /api/khoa-khach/{id}` | Có | Thu hồi khoá khách (xoá ngay, các lượt gọi sau bị `401`) |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
@@ -1178,6 +1188,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
+| `WEB2API_KHACH_DONG_THOI` | không | Trần số yêu cầu đồng thời tối đa cho mỗi khoá khách; vượt trần trả `429` kèm tiêu đề `Retry-After` (không làm hỏng trạng thái module) |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |

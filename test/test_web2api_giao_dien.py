@@ -113,7 +113,7 @@ def test_ca_0_module_chi_co_module_va_go_tay_bi_chuyen(trang, tmp_path, monkeypa
         trang.cho("location.pathname.endsWith('/He-thong.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'",
                   mo_ta="địa chỉ gốc dẫn tới Hệ thống → Module")
         trang.cho("document.getElementById('ket-noi')", mo_ta="khối Kết nối với web2api")
-        assert nav(trang) == ["module"]                    # không Studio, không AI, không Quay lại
+        assert nav(trang) == ["module", "bao_mat"]        # không Studio, không AI, không Quay lại; «Bảo mật» là tab của lõi
         assert "/v1" in trang.chu("#dia-chi-v1")
         assert trang.js("document.querySelectorAll('[data-o]').length") == 0
         assert trang.js("!!document.getElementById('o-them')")
@@ -1250,7 +1250,7 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
         trang.khung(390, 844, True)
         trang.cho("getComputedStyle(document.querySelector('nav.bn')).display !== 'none'", mo_ta="thanh dưới Hệ thống")
         # Thứ tự thanh Hệ thống của demo: «AI» (nút mở tờ Tài khoản / Provider) rồi «Module» ở chỗ ô «Tiện ích» của demo.
-        assert trang.js("[...document.querySelectorAll('[data-nav-duoi]')].map((a) => a.dataset.navDuoi)") == ["ai", "module"]
+        assert trang.js("[...document.querySelectorAll('[data-nav-duoi]')].map((a) => a.dataset.navDuoi)") == ["ai", "module", "bao_mat"]
         trang.bam("document.querySelector('[data-nav-duoi=\"ai\"]')")
         trang.cho("document.querySelectorAll('[data-nav-con-duoi]').length === 2", mo_ta="tờ AI ở thanh dưới")
         assert trang.js("[...document.querySelectorAll('[data-nav-con-duoi]')].map((a) => a.dataset.navConDuoi)") == ["tai_khoan", "provider"]

@@ -498,6 +498,9 @@ class MiddlewareNhatKyCuocGoi:
             loi = True
             raise
         finally:
+            if trang_thai.get("khach_id"):
+                from app.khoa_khach import ra_dong_thoi
+                ra_dong_thoi(trang_thai.get("khach_id"))
             ms_chay = round((time.perf_counter() - bat_dau) * 1000, 1)
             dut = ma_http is not None and not xong  # đã gửi đầu phản hồi mà luồng không trọn
             ma = ma_http if ma_http is not None else (500 if loi else 499)

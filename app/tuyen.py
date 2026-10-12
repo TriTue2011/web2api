@@ -15,26 +15,28 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from app import dia_chi as dia_chi_mod, kho
+from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, doc_het
-from app.xac_thuc import can_quan_tri
+from app.xac_thuc import can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
 from app.yeu_cau_da_phan import YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
 QT = [Depends(can_quan_tri)]
+V1_AUTH = [Depends(xac_thuc_v1)]
 
-v1 = APIRouter(prefix="/v1", dependencies=QT)
+v1 = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 #: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
 #: trước nó). Thiếu nó thì mount StaticFiles ở gốc nuốt mất và trả 405 {"detail"} cho mọi POST lạ.
-v1_khong_co = APIRouter(prefix="/v1", dependencies=QT)
+v1_khong_co = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 modules = APIRouter(prefix="/api/modules")
 tinh_nang = APIRouter()
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
 dia_chi = APIRouter(prefix="/api", dependencies=QT)
 nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
+khoa_khach = APIRouter(prefix="/api/khoa-khach", dependencies=QT)
 tep_module = APIRouter()
 
 
@@ -80,6 +82,14 @@ async def v1_models(request: Request):
         if isinstance(kq, BaseException):
             raise kq
         data.extend(kq)
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
+        pham_vi = danh_tinh.get("pham_vi", [])
+        if "*" not in pham_vi:
+            data = [
+                m for m in data
+                if any(kn in pham_vi for kn in (m.get("kha_nang") or ["chat"]))
+            ]
     return {"object": "list", "data": data}
 
 
@@ -173,6 +183,7 @@ def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Res
 
 @v1.post("/chat/completions")
 async def v1_chat(request: Request):
+    kiem_tra_pham_vi(request, "chat")
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
     # như extra_content.google.thought_signature.
     than = await _than_json(request)
@@ -182,6 +193,7 @@ async def v1_chat(request: Request):
 
 @v1.post("/images/generations")
 async def v1_anh(request: Request):
+    kiem_tra_pham_vi(request, "anh")
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
@@ -190,6 +202,7 @@ async def v1_anh(request: Request):
 
 @v1.post("/images/edits")
 async def v1_anh_sua(request: Request):
+    kiem_tra_pham_vi(request, "anh_sua")
     yc = await doc_multipart(request)
     id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "sửa ảnh", "anh_sua")
@@ -203,6 +216,7 @@ async def v1_anh_sua(request: Request):
 
 @v1.post("/audio/speech")
 async def v1_noi(request: Request):
+    kiem_tra_pham_vi(request, "noi")
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "đọc văn bản thành giọng nói", "noi")
@@ -211,6 +225,7 @@ async def v1_noi(request: Request):
 
 @v1.post("/audio/transcriptions")
 async def v1_nghe(request: Request):
+    kiem_tra_pham_vi(request, "nghe")
     yc = await doc_multipart(request)
     id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "nhận dạng giọng nói", "nghe")
@@ -223,6 +238,7 @@ _VIDEO = ("video_tao", "video_trang_thai", "video_noi_dung")
 
 @v1.post("/videos")
 async def v1_video_tao(request: Request):
+    kiem_tra_pham_vi(request, "video", "video_tao")
     # SDK openai gửi videos.create bằng multipart/form-data: trường chữ thành thân JSON (giá trị vẫn là chuỗi —
     # module tự ép kiểu, như với thân JSON do khách gõ).
     yc = await doc_multipart(request) if la_multipart(request) else None
@@ -241,6 +257,7 @@ async def v1_video_tao(request: Request):
 
 @v1.get("/videos/{ma}")
 async def v1_video_trang_thai(ma: str, request: Request):
+    kiem_tra_pham_vi(request, "video", "video_trang_thai")
     so = _so(request)
     id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
@@ -249,6 +266,7 @@ async def v1_video_trang_thai(ma: str, request: Request):
 
 @v1.get("/videos/{ma}/content")
 async def v1_video_noi_dung(ma: str, request: Request):
+    kiem_tra_pham_vi(request, "video", "video_noi_dung")
     id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _tra_ve(*await m.video_noi_dung(trong))
@@ -502,3 +520,53 @@ def xoa_nhat_ky(truoc_ngay: float | None = None):
         raise LoiOpenAI(400, f"Tham số «truoc_ngay» phải trong khoảng 0…{TRAN_TRUOC_NGAY}")
     from app import nhat_ky as kho_nhat_ky
     return {"ok": True, "da_xoa": kho_nhat_ky.xoa_cu(truoc_ngay)}
+
+
+# ───────────── /api/khoa-khach — quản lý khoá khách (chỉ quản trị) ─────────────
+
+@khoa_khach.get("")
+def ds_khoa_khach():
+    return {"ok": True, "khoa": khoa_khach_mod.danh_sach_khoa()}
+
+
+@khoa_khach.post("")
+async def tao_khoa_khach(request: Request):
+    than = await _than_json(request)
+    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
+        nhan=than.get("nhan", ""),
+        pham_vi=than.get("pham_vi"),
+    )
+    return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
+
+
+@khoa_khach.patch("/{id_}")
+async def sua_khoa_khach(id_: str, request: Request):
+    than = await _than_json(request)
+    kq = khoa_khach_mod.sua_khoa(
+        id_khoa=id_,
+        bat=than.get("bat"),
+        nhan=than.get("nhan"),
+        pham_vi=than.get("pham_vi"),
+    )
+    return {"ok": True, "khoa": kq}
+
+
+@khoa_khach.patch("")
+async def sua_khoa_khach_khong_path(request: Request):
+    than = await _than_json(request)
+    id_ = than.get("id")
+    if not id_:
+        raise LoiOpenAI(400, "Thiếu trường «id» trong thân yêu cầu.")
+    kq = khoa_khach_mod.sua_khoa(
+        id_khoa=id_,
+        bat=than.get("bat"),
+        nhan=than.get("nhan"),
+        pham_vi=than.get("pham_vi"),
+    )
+    return {"ok": True, "khoa": kq}
+
+
+@khoa_khach.delete("/{id_}")
+def xoa_khoa_khach(id_: str):
+    da_xoa = khoa_khach_mod.xoa_khoa(id_khoa=id_)
+    return {"ok": True, "da_xoa": da_xoa}
