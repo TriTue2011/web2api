@@ -15,7 +15,7 @@ flowchart LR
 |---|---|---|
 | `gemini-api` | Gemini API (Google AI Studio): streaming chat, images, Veo video | Available |
 | `muse` | Muse (Meta AI VM): Noise XX protocol; needs a device key, so **not usable yet** | Experimental, not tested against the real service |
-| `muse2api` | Muse Spark via the official Meta Model API (`api.meta.ai/v1`): chat, images | Available |
+| `muse2api` | Muse (muse.ai) via the direct protocol: free chat with cookies, no API key needed | Available |
 | `antigravity` | Chat through the Antigravity CLI (`agy`) on the host, needs a bridge | Skeleton, not tested with real `agy` |
 
 ## Quick Start with Docker Compose

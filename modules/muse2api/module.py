@@ -1,174 +1,43 @@
-"""Module muse2api — Muse Spark qua Meta Model API chính thức.
+"""Module muse2api — Muse (muse.ai) qua giao thức trực tiếp.
 
-Gọi https://api.meta.ai/v1 (tương thích OpenAI). Hai cách lấy key:
+Xác thực bằng cookie của tab muse.ai đã đăng nhập — miễn phí, không cần
+API key, không browser. Luồng: cookie → access_token → hatch token →
+WebSocket Noise XX tới máy ảo → POST /chat/stream + poll /chat/history.
 
-1. **API key tĩnh**: dán key từ Meta for Developers Console → Model API
-   dashboard vào trường `api_keys`.
-2. **OAuth device flow** (không cần dashboard): để trống `api_keys`, bấm
-   Cài đặt → mở URL hiện ra, nhập mã, phê duyệt trên trình duyệt của bạn →
-   bấm Cài đặt lại để đúc key. Key tự đúc lại mỗi ngày bằng identity token
-   đã lưu (không cần bạn làm gì thêm).
+Thay thế bản Model API trả phí trước đây (giữ lại ở branch `model-api`
+của repo TriTue2011/muse2api).
 
-Không mật khẩu, không cookie phiên web, không scrape.
-
-Khả năng: chat (stream / không stream), anh (tạo ảnh).
-Video: official API không có endpoint nên không khai.
+Khả năng: chat (stream / không stream). Giao thức nội bộ của web app đã
+được reverse-engineer, không chính thức — Meta đổi web có thể làm module
+ngừng hoạt động.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import queue
+import secrets
+import threading
 import time
-from pathlib import Path
-from typing import Any
+import uuid
+from typing import AsyncIterator
 
-import httpx
-
-from app.chuyen_tiep import ChuyenTiepOpenAI, ds_khoa
+from .chat import ChatSession, build_prompt
+from .protocol import AuthError, Gateway, GatewayError, fetch_access_token, fetch_session_info
 
 log = logging.getLogger("web2api.module.muse2api")
 
-BASE_URL_MAC_DINH = "https://api.meta.ai/v1"
-
-# ── OAuth device flow (RFC 8628) — hằng số đã xác minh từ tooling chính chủ
-# của Meta (Muse Code CLI / pi-meta-oauth). Endpoint đúc key chưa nằm trong
-# docs public dev.meta.ai.
-_OAUTH_AUTHORIZE_URL = "https://auth.meta.com/oidc/device/authorization/"
-_OAUTH_TOKEN_URL = "https://auth.meta.com/oidc/device/token/"
-_MINT_URL = "https://api.meta.ai/muse-code/key"
-_CLIENT_ID = "1031625952748946"
-_API_VERSION = "1.0.0"
-_DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
-_KEY_TTL = 24 * 3600  # key đúc lại mỗi ngày
-_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
-
-
-class OAuthDenied(Exception):
-    """Người dùng từ chối phê duyệt."""
-
-
-class OAuthExpired(Exception):
-    """Mã thiết bị hết hạn."""
-
-
-class OAuthError(Exception):
-    """Lỗi khác của luồng OAuth."""
-
-
-def _oauth_file() -> Path:
-    # Lõi tạo instance Module MỚI cho mỗi lần cai() nên trạng thái device flow
-    # phải nằm trên đĩa, cạnh module (thư mục cài lúc chạy, ghi được).
-    return Path(__file__).resolve().parent / ".oauth.json"
-
-
-def _doc_oauth() -> dict:
-    try:
-        data = json.loads(_oauth_file().read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def _ghi_oauth(data: dict) -> None:
-    p = _oauth_file()
-    p.write_text(json.dumps(data), encoding="utf-8")
-    try:
-        p.chmod(0o600)
-    except OSError:
-        pass
-
-
-def _xoa_oauth() -> None:
-    try:
-        _oauth_file().unlink()
-    except OSError:
-        pass
-
-
-async def _oauth_bat_dau(client: httpx.AsyncClient) -> dict:
-    """Bắt đầu device flow. Trả về {device_code, user_code, verification_uri, expires_at}."""
-    try:
-        r = await client.post(_OAUTH_AUTHORIZE_URL, data={"client_id": _CLIENT_ID},
-                              timeout=_TIMEOUT)
-    except httpx.HTTPError as e:
-        raise OAuthError(f"không gọi được {_OAUTH_AUTHORIZE_URL}: {e}") from e
-    try:
-        body = r.json()
-    except ValueError:
-        body = {}
-    if r.status_code >= 400 or not body.get("device_code") or not body.get("user_code"):
-        raise OAuthError(f"Meta từ chối khởi tạo OAuth (HTTP {r.status_code})")
-    uri = body.get("verification_uri_complete") or body.get("verification_uri") or ""
-    if not uri.startswith("http"):
-        raise OAuthError("Meta trả verification_uri không hợp lệ")
-    try:
-        expires_in = max(60.0, float(body.get("expires_in", 900)))
-    except (TypeError, ValueError):
-        expires_in = 900.0
-    return {"device_code": str(body["device_code"]), "user_code": str(body["user_code"]),
-            "verification_uri": uri, "expires_at": time.time() + expires_in}
-
-
-async def _oauth_poll(client: httpx.AsyncClient, device_code: str) -> str | None:
-    """Hỏi một lần: trả về identity token, None nếu người dùng chưa duyệt."""
-    try:
-        r = await client.post(_OAUTH_TOKEN_URL,
-                              data={"grant_type": _DEVICE_GRANT,
-                                    "device_code": device_code,
-                                    "client_id": _CLIENT_ID},
-                              timeout=_TIMEOUT)
-    except httpx.HTTPError as e:
-        raise OAuthError(f"không hỏi được trạng thái OAuth: {e}") from e
-    try:
-        body = r.json()
-    except ValueError:
-        body = {}
-    if r.status_code < 400 and body.get("access_token"):
-        return str(body["access_token"])
-    err = str(body.get("error", ""))
-    if err == "authorization_pending":
-        return None
-    if err == "slow_down":
-        return None
-    if err == "access_denied":
-        raise OAuthDenied("bạn đã từ chối phê duyệt trên trình duyệt")
-    if err == "expired_token":
-        raise OAuthExpired("mã thiết bị đã hết hạn, bấm Cài đặt để lấy mã mới")
-    raise OAuthError(f"OAuth thất bại: {err or r.status_code}")
-
-
-async def _oauth_mint(client: httpx.AsyncClient, identity_token: str) -> str:
-    """Đổi identity token lấy Model API key."""
-    try:
-        r = await client.post(
-            _MINT_URL,
-            headers={"Accept": "application/json",
-                     "Authorization": f"Bearer {identity_token}",
-                     "Content-Type": "application/json",
-                     "x-api-version": _API_VERSION},
-            content=b"{}",
-            timeout=_TIMEOUT)
-    except httpx.HTTPError as e:
-        raise OAuthError(f"không đúc được key: {e}") from e
-    try:
-        body = r.json()
-    except ValueError:
-        body = {}
-    if r.status_code >= 400:
-        raise OAuthError(f"Meta không cấp key (HTTP {r.status_code})")
-    key = (body.get("api_key") or "").strip()
-    if not key:
-        raise OAuthError("Meta không trả về api_key")
-    return key
+MODEL_ID = "muse"
 
 
 def phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None:
-    """Phân loại lỗi Meta Model API về mã trung lập của lõi."""
+    """Phân loại lỗi module về mã trung lập của lõi."""
     if ma in (401, 403):
-        return "khoa_hong"  # key sai / hết hạn / bị thu hồi
+        return "khoa_hong"  # cookie sai / hết hạn
     if ma == 429:
-        return "het_han_muc"  # rate limit tính theo team
+        return "het_han_muc"
     if ma == 400:
         return "yeu_cau_sai"
     if ma is not None and ma >= 500:
@@ -176,158 +45,288 @@ def phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None:
     return None
 
 
-def chuan_hoa_base_url(gia_tri: Any) -> str:
-    base = (gia_tri or "").strip() or BASE_URL_MAC_DINH
-    return base.rstrip("/")
+def _ds_cookie(gia_tri) -> list[str]:
+    # Cookie header chứa dấu cách sau ';' nên KHÔNG dùng ds_khoa
+    # (nó tách theo khoảng trắng và làm vỡ cookie).
+    if isinstance(gia_tri, str):
+        gia_tri = [gia_tri]
+    if not isinstance(gia_tri, list):
+        return []
+    return [c.strip() for c in gia_tri if isinstance(c, str) and c.strip()]
+
+
+def _che(cookie: str) -> str:
+    dau = cookie.split(";")[0].strip()
+    if "=" in dau:
+        k, v = dau.split("=", 1)
+        v = v.strip()
+        return f"{k}={v[:4]}…{v[-4:]}" if len(v) > 8 else f"{k}=…"
+    return (cookie[:8] + "…") if len(cookie) > 8 else "…"
+
+
+def _sse(obj: dict) -> bytes:
+    return ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode()
+
+
+class _LoiModule(Exception):
+    """Lỗi đã map sẵn thành tuple kết quả chuẩn (status, headers, body)."""
+
+    def __init__(self, status: int, message: str, type_: str):
+        super().__init__(message)
+        self.status = status
+        self.payload = {"error": {"message": message, "type": type_}}
+
+    def ket_qua(self):
+        return self.status, {"content-type": "application/json"}, \
+            json.dumps(self.payload, ensure_ascii=False).encode()
+
+
+class _TaiKhoan:
+    """Một bộ cookie + kết nối Gateway duy trì. Khóa theo tài khoản vì
+    lịch sử chat dùng chung và Noise decrypt không chịu được đọc xen kẽ."""
+
+    def __init__(self, ten: str, cookies: str):
+        self.ten = ten
+        self.cookies = cookies
+        self.khoa = threading.Lock()
+        self.node_id = secrets.token_hex(8)
+        self._gw: Gateway | None = None
+        self.khoe = True
+
+    def dam_bao(self) -> Gateway:
+        if self._gw is None:
+            self._gw = Gateway(self.cookies)
+        return self._gw
+
+    def bo(self):
+        gw, self._gw = self._gw, None
+        if gw is not None:
+            try:
+                gw.close()
+            except Exception:  # noqa: BLE001 - best effort
+                pass
 
 
 class Module:
     def __init__(self, manifest: dict):
         self.manifest = manifest
         self.tien_to = manifest["tien_to"]
-        self._ct: ChuyenTiepOpenAI | None = None
-        self._base = BASE_URL_MAC_DINH
+        self._accs: list[_TaiKhoan] = []
+        self._vi_tri = 0
+        self._khoa_chon = threading.Lock()
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
         return phan_loai_loi(ma, loi, boi_canh)
-
-    def _tao(self, khoa: list[str], base: str) -> ChuyenTiepOpenAI:
-        # Khả năng tốn tiền suc_khoe báo theo từng khoá = mọi mã đã khai ở `cung_cap` trừ chat.
-        kn = tuple(x for x in self.manifest.get("cung_cap", []) if x != "chat")
-        return ChuyenTiepOpenAI(ten="Meta", tien_to=self.tien_to, base_url=base,
-                                khoa=khoa, phan_loai_loi=self.phan_loai_loi,
-                                kha_nang=kn)
 
     # ── Vòng đời ────────────────────────────────────────────────────────
 
     def nap(self, cau_hinh: dict) -> None:
         """Nạp cấu hình ĐÃ KIỂM (lúc khởi động/cài xong) — không gọi mạng."""
-        self._base = chuan_hoa_base_url(cau_hinh.get("base_url"))
-        khoa = ds_khoa(cau_hinh.get("api_keys"))
-        oauth = _doc_oauth()
-        # Người dùng đổi key tay (key trong kho khác key OAuth đã đúc) → bỏ trạng thái OAuth cũ.
-        if oauth.get("api_key") and khoa and oauth["api_key"] not in khoa:
-            _xoa_oauth()
-            oauth = {}
-        khoa_dung = [oauth["api_key"]] if oauth.get("api_key") else khoa
-        self._ct = self._tao(khoa_dung or khoa, self._base)
+        cookies = _ds_cookie(cau_hinh.get("cookies"))
+        self._accs = [_TaiKhoan(f"acc{i + 1}", c) for i, c in enumerate(cookies)]
+        self._vi_tri = 0
 
     async def cai(self, cau_hinh: dict) -> dict:
-        """Kiểm cấu hình. Hai đường:
-
-        - Có `api_keys`: kiểm từng khoá bằng GET /models (không tốn token).
-        - Trống `api_keys`: OAuth device flow 2 pha (pha 1 trả mã + URL,
-          pha 2 — sau khi bạn phê duyệt — đúc key và lưu).
-        """
-        khoa = ds_khoa(cau_hinh.get("api_keys"))
-        base = chuan_hoa_base_url(cau_hinh.get("base_url"))
-        if khoa:
-            return await self._cai_khoa_tinh(khoa, base)
-        return await self._cai_oauth(base)
-
-    async def _cai_khoa_tinh(self, khoa: list[str], base: str) -> dict:
-        ct = self._tao(khoa, base)
-        try:
-            ds = (await ct.suc_khoe())["khoa"]
-        finally:
-            await ct.dung()
-        tot = [k for k, muc in zip(khoa, ds) if muc["ok"]]
+        """Kiểm từng bộ cookie bằng HTTPS bootstrap (auth/check + session):
+        không tốn tiền, không cần chat thật."""
+        cookies = _ds_cookie(cau_hinh.get("cookies"))
+        if not cookies:
+            return {"ok": False, "ket_qua_tung_khoa": [],
+                    "loi": "Chưa nhập cookie nào (trường cookies). Lấy từ tab muse.ai "
+                           "đã đăng nhập: DevTools (F12) → Application → Cookies."}
+        kqs = await asyncio.gather(
+            *[asyncio.to_thread(self._kiem_cookie, c) for c in cookies])
+        ds, tot = [], []
+        for c, (ok, loi) in zip(cookies, kqs):
+            ds.append({"khoa": _che(c), "ok": ok, "loi": loi})
+            if ok:
+                tot.append(c)
         if not tot:
             return {"ok": False, "ket_qua_tung_khoa": ds,
-                    "loi": f"Không khoá nào gọi được {base}/models."}
-        _xoa_oauth()  # dùng key tay → không cần trạng thái OAuth nữa
+                    "loi": "Không cookie nào đăng nhập được muse.ai — đăng nhập lại "
+                           "trên trình duyệt rồi export lại cookie."}
         return {"ok": True, "ket_qua_tung_khoa": ds, "loi": None,
-                "cau_hinh_luu": {"api_keys": tot, "base_url": base}}
+                "cau_hinh_luu": {"cookies": tot}}
 
-    async def _cai_oauth(self, base: str) -> dict:
-        khong = {"ok": False, "ket_qua_tung_khoa": []}
-        async with httpx.AsyncClient() as client:
-            oauth = _doc_oauth()
-            bay_gio = time.time()
-            if oauth.get("device_code") and oauth.get("expires_at", 0) > bay_gio:
-                # Pha 2: hỏi xem bạn đã phê duyệt chưa.
-                try:
-                    identity = await _oauth_poll(client, oauth["device_code"])
-                except (OAuthDenied, OAuthExpired) as e:
-                    _xoa_oauth()
-                    return {**khong, "loi": f"OAuth: {e}."}
-                except OAuthError as e:
-                    return {**khong, "loi": f"OAuth: {e}."}
-                if identity is None:
-                    return {**khong, "loi": (
-                        f"Chưa thấy bạn phê duyệt. Mở {oauth['verification_uri']}, "
-                        f"nhập mã {oauth['user_code']}, rồi bấm Cài đặt lại.")}
-                try:
-                    api_key = await _oauth_mint(client, identity)
-                except OAuthError as e:
-                    _xoa_oauth()
-                    return {**khong, "loi": f"Đúc key thất bại: {e}."}
-                _ghi_oauth({"identity_token": identity, "api_key": api_key,
-                            "key_expires_at": bay_gio + _KEY_TTL})
-                ct = self._tao([api_key], base)
-                try:
-                    ds = (await ct.suc_khoe())["khoa"]
-                finally:
-                    await ct.dung()
-                if not ds or not ds[0]["ok"]:
-                    return {"ok": False, "ket_qua_tung_khoa": ds,
-                            "loi": "Key vừa đúc không gọi được /v1/models."}
-                return {"ok": True, "ket_qua_tung_khoa": ds, "loi": None,
-                        "cau_hinh_luu": {"api_keys": [api_key], "base_url": base}}
-            # Pha 1 (hoặc mã cũ hết hạn): xin mã mới.
-            if oauth.get("device_code"):
-                _xoa_oauth()
-            try:
-                yc = await _oauth_bat_dau(client)
-            except OAuthError as e:
-                return {**khong, "loi": f"Không khởi động được OAuth: {e}."}
-            _ghi_oauth({"device_code": yc["device_code"], "user_code": yc["user_code"],
-                        "verification_uri": yc["verification_uri"],
-                        "expires_at": yc["expires_at"]})
-            return {**khong, "loi": (
-                f"Mở {yc['verification_uri']} trên trình duyệt, nhập mã "
-                f"{yc['user_code']}, phê duyệt cho Meta, rồi bấm Cài đặt lại.")}
-
-    # ── Đúc lại key OAuth khi sắp hết hạn (trong suốt, không cần bạn) ──────
-
-    async def _khoa_tuoi(self) -> None:
-        oauth = _doc_oauth()
-        ident = oauth.get("identity_token")
-        if not ident:
-            return
-        if oauth.get("key_expires_at", 0) > time.time() + 300:
-            return
+    @staticmethod
+    def _kiem_cookie(cookies: str) -> tuple[bool, str | None]:
         try:
-            async with httpx.AsyncClient() as client:
-                key = await _oauth_mint(client, ident)
-        except Exception as e:  # noqa: BLE001 — lỗi đúc lại không được làm sập yêu cầu
-            log.warning("muse2api: đúc lại key OAuth thất bại: %s", e)
-            return
-        oauth.update({"api_key": key, "key_expires_at": time.time() + _KEY_TTL})
-        _ghi_oauth(oauth)
-        self._ct = self._tao([key], self._base)
-        log.info("muse2api: đã tự đúc lại key OAuth")
-
-    # ── Khả năng ─────────────────────────────────────────────────────────
-
-    async def chat(self, body: dict, stream: bool):
-        await self._khoa_tuoi()
-        return await self._ct.chat(body, stream)
-
-    async def anh(self, body: dict):
-        await self._khoa_tuoi()
-        _, kq = await self._ct.goi_kha_nang(
-            "anh", "tạo ảnh", "POST", f"{self._ct.base_url}/images/generations",
-            json_than=self._ct.doi_model(body), tieu_de=self._ct._tieu_de)
-        return kq
+            fetch_access_token(cookies)
+            fetch_session_info(cookies)
+            return True, None
+        except AuthError as e:
+            return False, f"cookie không hợp lệ/hết hạn: {e}"
+        except Exception as e:  # noqa: BLE001
+            return False, f"{type(e).__name__}: {e}"
 
     async def models(self) -> list[dict]:
-        return await self._ct.models()
+        return [{"id": f"{self.tien_to}/{MODEL_ID}", "object": "model",
+                 "owned_by": "muse2api", "kha_nang": ["chat"]}]
 
     async def suc_khoe(self) -> dict:
-        await self._khoa_tuoi()
-        return await self._ct.suc_khoe()
+        async def _kiem(acc: _TaiKhoan):
+            ok, loi = await asyncio.to_thread(self._kiem_cookie, acc.cookies)
+            return {"khoa": _che(acc.cookies), "ok": ok, "loi": loi,
+                    "dang_dung": acc._gw is not None}
+        ds = await asyncio.gather(*[_kiem(a) for a in self._accs]) if self._accs else []
+        return {"ok": any(d["ok"] for d in ds), "khoa": ds}
 
     async def dung(self) -> None:
-        if self._ct is not None:
-            await self._ct.dung()
+        for acc in self._accs:
+            acc.bo()
+
+    # ── Khả năng chat ────────────────────────────────────────────────────
+
+    async def chat(self, body: dict, stream: bool):
+        msgs = body.get("messages")
+        if not isinstance(msgs, list) or not msgs:
+            return _LoiModule(400, "'messages' phải là mảng không rỗng",
+                              "yeu_cau_sai").ket_qua()
+        prompt = build_prompt(msgs)
+        if not prompt.strip():
+            return _LoiModule(400, "prompt rỗng", "yeu_cau_sai").ket_qua()
+        if not self._accs:
+            return _LoiModule(401, "Module chưa được cấu hình cookie",
+                              "khoa_hong").ket_qua()
+        model = f"{self.tien_to}/{MODEL_ID}"
+        if stream:
+            return 200, {"content-type": "text/event-stream",
+                         "cache-control": "no-cache",
+                         "x-accel-buffering": "no"}, self._chay_stream(prompt, model)
+        try:
+            text = await asyncio.to_thread(self._chat_blocking, prompt)
+        except _LoiModule as e:
+            return e.ket_qua()
+        return 200, {"content-type": "application/json"}, json.dumps({
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion", "created": int(time.time()),
+            "model": model,
+            "choices": [{"index": 0,
+                         "message": {"role": "assistant", "content": text},
+                         "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+                      "total_tokens": 0}}, ensure_ascii=False).encode()
+
+    # ── nội bộ (chạy trong worker thread) ────────────────────────────────
+
+    def _chon(self) -> _TaiKhoan:
+        with self._khoa_chon:
+            khoe = [a for a in self._accs if a.khoe] or self._accs
+            if not khoe:
+                raise _LoiModule(401, "Chưa có tài khoản nào", "khoa_hong")
+            acc = khoe[self._vi_tri % len(khoe)]
+            self._vi_tri += 1
+            return acc
+
+    def _ket_noi(self, acc: _TaiKhoan) -> Gateway:
+        """Kết nối; thử lại 1 lần nếu lỗi mạng (không thử lại khi lỗi auth)."""
+        try:
+            return acc.dam_bao()
+        except AuthError:
+            acc.khoe = False
+            acc.bo()
+            raise
+        except Exception as e1:  # noqa: BLE001
+            acc.bo()
+            try:
+                return acc.dam_bao()
+            except AuthError:
+                acc.khoe = False
+                acc.bo()
+                raise
+            except Exception as e2:  # noqa: BLE001
+                acc.bo()
+                raise GatewayError(-1, f"{e1}; {e2}") from e2
+
+    def _chat_blocking(self, prompt: str) -> str:
+        acc = self._chon()
+        acc.khoa.acquire()
+        try:
+            try:
+                gw = self._ket_noi(acc)
+            except AuthError as e:
+                raise _LoiModule(401, f"Cookie không hợp lệ/hết hạn: {e}",
+                                 "khoa_hong") from e
+            except Exception as e:  # noqa: BLE001
+                raise _LoiModule(502, f"Không kết nối được muse.ai: {e}",
+                                 "may_chu_loi") from e
+            sess = ChatSession(gw, acc.node_id)
+            try:
+                return sess.run_collect(prompt)
+            except AuthError as e:
+                acc.khoe = False
+                acc.bo()
+                raise _LoiModule(401, f"Cookie hết hạn giữa chừng: {e}",
+                                 "khoa_hong") from e
+            except TimeoutError as e:
+                acc.bo()
+                raise _LoiModule(504, str(e), "timeout_error") from e
+            except Exception as e:  # noqa: BLE001
+                acc.bo()
+                raise _LoiModule(502, f"Lỗi khi chat: {e}",
+                                 "may_chu_loi") from e
+        finally:
+            acc.khoa.release()
+
+    async def _chay_stream(self, prompt: str, model: str) -> AsyncIterator[bytes]:
+        q: queue.Queue = queue.Queue()
+        chat_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+
+        def _worker():
+            try:
+                acc = self._chon()
+            except _LoiModule as e:
+                q.put(("error", e))
+                return
+            acc.khoa.acquire()
+            try:
+                try:
+                    gw = self._ket_noi(acc)
+                except AuthError as e:
+                    q.put(("error", _LoiModule(
+                        401, f"Cookie không hợp lệ/hết hạn: {e}", "khoa_hong")))
+                    return
+                except Exception as e:  # noqa: BLE001
+                    q.put(("error", _LoiModule(
+                        502, f"Không kết nối được muse.ai: {e}", "may_chu_loi")))
+                    return
+                sess = ChatSession(gw, acc.node_id)
+                try:
+                    for delta in sess.run(prompt):
+                        q.put(("delta", delta))
+                    q.put(("done", None))
+                except AuthError as e:
+                    acc.khoe = False
+                    acc.bo()
+                    q.put(("error", _LoiModule(
+                        401, f"Cookie hết hạn giữa chừng: {e}", "khoa_hong")))
+                except Exception as e:  # noqa: BLE001
+                    acc.bo()
+                    q.put(("error", _LoiModule(
+                        502, f"Lỗi khi chat: {e}", "may_chu_loi")))
+            finally:
+                acc.khoa.release()
+
+        threading.Thread(target=_worker, daemon=True).start()
+        first = True
+        while True:
+            kind, _payload = await asyncio.to_thread(q.get)
+            if kind == "delta":
+                delta = {"role": "assistant", "content": _payload} if first \
+                    else {"content": _payload}
+                first = False
+                yield _sse({"id": chat_id, "object": "chat.completion.chunk",
+                            "created": created, "model": model,
+                            "choices": [{"index": 0, "delta": delta,
+                                         "finish_reason": None}]})
+            elif kind == "done":
+                yield _sse({"id": chat_id, "object": "chat.completion.chunk",
+                            "created": created, "model": model,
+                            "choices": [{"index": 0, "delta": {},
+                                         "finish_reason": "stop"}]})
+                yield b"data: [DONE]\n\n"
+                return
+            else:
+                # Lỗi giữa stream: dòng trạng thái đã là 200, chỉ kết thúc stream.
+                return
