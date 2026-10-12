@@ -101,3 +101,8 @@ def test_giao_dien_bao_mat_dien_thoai_390(trang, tmp_path, monkeypatch):
 
         # Thanh điều hướng dưới có mặt
         assert trang.cho("document.querySelector('nav.bn') !== null")
+        # Thanh dưới liệt kê ĐỦ các mục Hệ thống (lỗi chủ máy bắt 12/10: chỉ hiện «AI» vì trang quên bọc menuNav, còn trang
+        # Module thì đủ — test cũ chỉ kiểm sự có mặt của thanh, không kiểm nội dung)
+        trang.cho("(document.querySelector('nav.bn')?.innerText || '').includes('Module')", mo_ta="thanh dưới có «Module»")
+        chu_thanh = trang.js("document.querySelector('nav.bn').innerText")
+        assert "Module" in chu_thanh and "Bảo mật" in chu_thanh, chu_thanh  # «AI» chỉ hiện khi đã cài module AI (lõi trống thì không có)
