@@ -45,6 +45,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/models`, `/v1/chat/completions` chuẩn OpenAI (có stream) | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
+| Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -600,6 +601,51 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 - Chưa đo RAM/đĩa thật của module (trường `ram_them_mb`, `dia_mb` trong manifest đang để trống).
 - Proxy Cloudflare có đặt `PROXY_TOKEN` (header `X-Proxy-Token`) chưa dùng được: `base_url` không mang
   thêm header.
+
+### Module muse — Muse (Meta)
+
+**Mô tả.** Trợ lý Muse qua giao thức WebSocket mã hoá Noise XX (`Noise_XX_25519_AESGCM_SHA256`) bọc khung Protobuf HTTP gửi tới dịch vụ `daemon` trên máy ảo Meta AI VM. Mã nguồn: `modules/muse/`. Tiền tố model: `muse`. Mọi đặc thù của Meta AI VM (bắt tay Noise XX, phân mảnh khung `NoiseTransportFrame`, đóng gói `ServiceRequest`/`ServiceFrame`, chuyển đổi SSE) nằm trong module; lõi chỉ định tuyến.
+
+**Cần gì.**
+- Khoá khôi phục thiết bị (`device_key`, 32 bytes) và token uỷ quyền (`delegation_token`) sau khi đăng ký OTP với Meta.
+- Mạng ra tới `hatch.metaaivm.com` và `*.metaaivm.com`.
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "muse"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/muse`
+3. Cài đặt cấu hình:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"device_key": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"}}' \
+     $W/api/modules/muse/cai
+   ```
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `device_key` | Có | Khoá khôi phục thiết bị 32 bytes (hex hoặc base64), lưu riêng trong kho bí mật |
+| `delegation_token` | Không | Token uỷ quyền đã ký cho phiên kết nối |
+| `ws_url` | Không | Địa chỉ máy ảo WebSocket (để trống dùng mặc định hoặc trỏ máy chủ giả) |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "muse/meta-llama/Llama-3.3-70B-Instruct", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+**Sự cố thường gặp.**
+- `400` / `404` «Chưa có khoá thiết bị»: Muse chưa hỗ trợ đăng ký OTP tự động từ Meta — cần nhập `device_key` đã có.
+- `502` «Lỗi kết nối tới Muse»: máy ảo không phản hồi hoặc bắt tay Noise XX thất bại.
+
+**Giới hạn.**
+- Thử nghiệm — chưa kiểm với dịch vụ thật: chưa có luồng đăng ký thiết bị bằng OTP từ Meta.
+- Chưa hỗ trợ tạo ảnh/video độc lập do dịch vụ daemon của máy ảo chỉ hỗ trợ luồng chat.
 
 ## 5. Triển khai
 
