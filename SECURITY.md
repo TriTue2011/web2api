@@ -29,7 +29,7 @@ git đã cấu hình.
 
 Ngoài phạm vi:
 
-- **Mã của module bạn tự cài từ kho git khác.** Module chạy trong tiến trình lõi với quyền như lõi (README
+- **Mã của module bạn tự cài từ kho git khác.** Module chạy trong tiến trình lõi với quyền như lõi (docs/THAM-CHIEU.md
   mục 7 nói rõ) — ai đẩy được lên nhánh git được theo dõi thì chạy được mã trong web2api. Đó là hợp đồng
   thiết kế, không phải lỗ hổng; đừng theo dõi kho bạn không tin.
 - Lỗi của dịch vụ bên thứ ba (Google, GitHub, Cloudflare).
@@ -49,4 +49,4 @@ Ngoài phạm vi:
 ## Phiên bản được hỗ trợ
 
 Dự án còn ở giai đoạn khung (`0.1.0-khung`): **chỉ bản mới nhất trên nhánh `main` và ảnh `latest` được hỗ trợ**.
-Bản vá không được chuyển ngược về các phiên bản cũ; hãy nâng cấp theo README mục 6 («Cập nhật lõi»).
+Bản vá không được chuyển ngược về các phiên bản cũ; hãy nâng cấp theo docs/THAM-CHIEU.md mục 6 («Cập nhật lõi»).

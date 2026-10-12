@@ -2,7 +2,7 @@
 
 Module này kết nối tới tiến trình **cầu nối Antigravity** (`dich-vu/antigravity-cau-noi/`) chạy trên máy chủ để sử dụng ứng dụng chính thức `agy` (Antigravity CLI) ở chế độ không tương tác. Không gọi API Google trực tiếp, không giả danh ứng dụng, không đọc/in token. Tiền tố model: `antigravity`; phiên bản `0.1.0`.
 
-Tài liệu chi tiết xem tại `README.md` ở gốc kho (mục 4) và `dich-vu/antigravity-cau-noi/README.md`.
+Tài liệu chi tiết xem tại `docs/THAM-CHIEU.md` ở gốc kho (mục 4) và `dich-vu/antigravity-cau-noi/README.md`.
 
 ## Cần gì để chạy
 

@@ -9,7 +9,7 @@ chuẩn hoá lỗi, danh sách model và kiểm sức khoẻ. Từ `0.2.0` có t
 với khoá **trả phí** (xem «Tạo ảnh và video»). Tiền tố model: `gemini`; phiên bản `0.2.0`.
 
 Tài liệu đầy đủ (cài từng bước, ảnh giao diện, bảng đã kiểm với Google thật) nằm ở mục «Module
-gemini-api» trong `README.md` ở gốc kho. File này là bản tóm tắt đặt ngay cạnh mã.
+gemini-api» trong `docs/THAM-CHIEU.md` ở gốc kho. File này là bản tóm tắt đặt ngay cạnh mã.
 
 ## Cài
 
@@ -85,7 +85,7 @@ Theo trang giá Google ngày 11/10/2026 (https://ai.google.dev/gemini-api/docs/p
 `gemini-2.5-flash-image` tắt 02/10/2026) và tạo video (`veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview`,
 `veo-3.1-lite-generate-preview`) ghi **«Not available»** ở hạng miễn phí. Mỗi lần tạo trên khoá trả phí là
 **tốn tiền thật** — ví dụ ảnh Nano Banana 2 Lite khoảng 0,034 USD/ảnh 1K, video Veo 3.1 Fast 0,10 USD/giây
-720p, Veo 3.1 Standard 0,40 USD/giây. Bảng giá đầy đủ ở mục «Module gemini-api» của `README.md` gốc kho.
+720p, Veo 3.1 Standard 0,40 USD/giây. Bảng giá đầy đủ ở mục «Module gemini-api» của `docs/THAM-CHIEU.md` gốc kho.
 
 - **Ảnh**: `POST /v1/images/generations` của web2api → endpoint tương thích OpenAI của Google
   (`{base_url}/images/generations`), thân đi nguyên văn, chỉ bỏ tiền tố `gemini/`. Trang tương thích của Google (đọc

@@ -16,7 +16,7 @@ Kho: `TriTue2011/web2api`, **PUBLIC**. README.md là tài liệu cho người d�
 | `web/` | Giao diện tĩnh: `index.html` (chọn trang đầu), `He-thong.dc.html` (Hệ thống → Module), `He-thong-AI.dc.html`, `Studio.dc.html`; logic chung + bảng điều kiện hiện tab ở `khung.js` (không tên module nào) |
 | `test/` | pytest; máy chủ Google/GitHub/OpenAI đều là **giả** cục bộ, `conftest.py` chặn mọi đường ra Internet |
 | `scripts/` | `chup-man-hinh.sh` chụp lại ảnh README vào `docs/anh/` |
-| `docs/` | `MAU-TIEU-MUC-MODULE.md` (mẫu tiểu mục README cho module mới), `CHUAN-MODULE.md` (chuẩn hợp đồng module), `anh/` |
+| `docs/` | `THAM-CHIEU.md` (tài liệu tham chiếu kỹ thuật chi tiết), `MAU-TIEU-MUC-MODULE.md` (mẫu tiểu mục module mới), `CHUAN-MODULE.md` (chuẩn hợp đồng module), `anh/` |
 | `deploy/` | Tệp triển khai phụ (Cloudflare Worker làm proxy vượt chặn vùng của Gemini) |
 
 ## Cách kiểm — chạy ĐỦ trước khi cam kết
@@ -28,7 +28,7 @@ Môi trường: Python 3.13 (`.python-version`). Lần đầu: `uv venv && uv pi
 .venv/bin/python -m pytest test -q -p no:cacheprovider    # test; xét MÃ THOÁT, không xét cảm giác
 bandit -r app modules -lll                                # mức HIGH phải sạch (CI chặn)
 docker build -t web2api:latest .                          # ảnh phải dựng được
-docker compose up -d                                      # chạy thật ở cổng 3031 (xem README mục 5)
+docker compose up -d                                      # chạy thật ở cổng 3031 (xem README hoặc docs/THAM-CHIEU.md mục 5)
 ```
 
 Một lệnh hỏng là **DỪNG**: không cam kết, không đẩy. Test giao diện cần `/usr/bin/google-chrome` và `node`
@@ -48,9 +48,10 @@ Một lệnh hỏng là **DỪNG**: không cam kết, không đẩy. Test giao d
   Đừng nới mặc định để cho tiện.
 - **Đo trên chạy thật trước khi tin bản sửa.** Test chỉ chứng minh mã chạy đúng như mình nghĩ, không chứng
   minh mình nghĩ đúng. Chưa kiểm được thì nói «chưa kiểm», đừng tuyên bố xong.
-- **Mỗi module mới PHẢI có** tiểu mục ở README mục 4 **và** dòng ở bảng «Trạng thái hiện tại» (mục 1); thêm
-  đường API hay biến `WEB2API_*` cũng phải có trong README. `test/test_web2api_readme.py` bắt lệch và báo đỏ.
-  Làm đủ các bước ở README mục 9 (README không giữ nhật ký thay đổi — lịch sử nằm trong git).
+- **Mỗi module mới PHẢI có** tiểu mục ở `docs/THAM-CHIEU.md` mục 4 **và** dòng ở bảng «Module có sẵn» của `README.md`
+  (và bảng «Trạng thái hiện tại» mục 1 của `docs/THAM-CHIEU.md`); thêm đường API hay biến `WEB2API_*` cũng phải có trong
+  `docs/THAM-CHIEU.md`. `test/test_web2api_readme.py` bắt lệch và báo đỏ.
+  Làm đủ các bước ở `docs/THAM-CHIEU.md` mục 9 (tài liệu không giữ nhật ký thay đổi — lịch sử nằm trong git).
 - Việc dùng một lần không cần helper; không refactor ngoài yêu cầu.
 
 ## Quy tắc chủ kho đã chốt (tóm tắt — bộ đầy đủ ở `/opt/claude-c2a/web2api-thiet-ke/QUY-TAC-CHU-MAY.md`, ngoài kho vì có dữ liệu nhà)
@@ -78,7 +79,7 @@ Cấm tuyệt đối: `git push --force`, `git reset --hard`, `--no-verify` đ�
 Mọi người đọc được cả lịch sử commit; khoá đã commit là đã lộ dù xoá ở commit sau (phải thu hồi). Không
 đưa vào mã, ảnh chụp, test hay nhật ký: khoá API, khoá quản trị, token GitHub, địa chỉ IP nội bộ, tên
 thiết bị hay dữ liệu thật của nhà chủ kho. Test dùng chuỗi **giả** rõ ràng (dạng `AIzaSy…-000…`); chuỗi
-giả mới phải thêm vào allowlist của `.gitleaks.toml` (chỉ chủ kho được sửa — xem dưới). Ảnh README chụp
+giả mới phải thêm vào allowlist của `.gitleaks.toml` (chỉ chủ kho được sửa — xem dưới). Ảnh tài liệu chụp
 bằng `scripts/chup-man-hinh.sh` trên lõi tạm không có khoá.
 
 ## Phát hành

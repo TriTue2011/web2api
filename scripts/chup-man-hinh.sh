@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chụp ảnh màn hình THẬT của web2api cho README — chạy lại bao nhiêu lần cũng được.
+# Chụp ảnh màn hình THẬT của web2api cho tài liệu (docs/THAM-CHIEU.md) — chạy lại bao nhiêu lần cũng được.
 #
 # Làm gì: trong MỘT tiến trình Python dựng lõi web2api tạm (uvicorn, thư mục dữ liệu tạm, khoá quản trị ngẫu nhiên),
 # GitHub GIẢ (repo có module gemini-api thật của kho + hai module mẫu khác loại) và Google GIẢ (test/gia.py) — không
