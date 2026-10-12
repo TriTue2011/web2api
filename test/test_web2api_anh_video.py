@@ -551,6 +551,104 @@ def test_models_gemini_di_het_cac_trang(client, google):
     assert len(lan(google, "models_goc")) == 3
 
 
+CHAT = ["generateContent", "countTokens"]
+NANO_BANANA = ["generateContent", "countTokens", "batchGenerateContent"]  # model ảnh Gemini: GIỐNG hệt model chat
+
+
+def _models_tuoi(client):
+    """/v1/models không dùng bản đệm (đường tương thích lẫn danh sách gốc) → {id: mục}."""
+    ct(client).DEM_MODELS_GIAY = 0
+    client.app.state.so.dang_chay["gemini-api"].DEM_MODELS_GIAY = 0
+    r = client.get("/v1/models", headers=QT)
+    assert r.status_code == 200, r.text
+    ids = [x["id"] for x in r.json()["data"]]
+    assert len(ids) == len(set(ids)), "model có ở cả hai danh sách bị liệt kê hai lần"
+    return {x["id"]: x for x in r.json()["data"]}
+
+
+def test_models_gan_anh_theo_predict_hoac_doan_ten_image(client, google):
+    """Nhóm «Tạo ảnh»: `predict` (Imagen) theo CẤU TRÚC; model chỉ generateContent thì theo tên Google đặt — id có
+    một ĐOẠN đúng bằng «image», hoặc hai đoạn liền nhau «nano» «banana». displayName/description không được dùng
+    (model chat nhắc «image» là đầu vào)."""
+    google.models_them = [{"id": "models/gemini-3.1-flash-image", "object": "model", "owned_by": "google"},
+                          {"id": "models/nano-banana-pro-preview", "object": "model", "owned_by": "google"}]
+    google.models_goc_ds = [
+        {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": CHAT,
+         "description": "Multimodal model: understands text, image, audio and video input."},
+        {"name": "models/gemini-3-flash-preview", "supportedGenerationMethods": CHAT},
+        # Có trong danh sách tương thích → chỉ gắn nhãn, không thêm lần hai.
+        {"name": "models/gemini-3.1-flash-image", "supportedGenerationMethods": NANO_BANANA},
+        # Chỉ có ở danh sách gốc → thêm vào (như model video).
+        {"name": "models/gemini-3-pro-image-preview", "supportedGenerationMethods": NANO_BANANA},
+        {"name": "models/thu_nghiem.image", "supportedGenerationMethods": NANO_BANANA},     # tách cả «_» «.»
+        {"name": "models/imagen-4.0-generate-001", "supportedGenerationMethods": ["predict"]},
+        {"name": "models/veo-3.1-generate-preview", "supportedGenerationMethods": ["predictLongRunning"]},
+        # Không phải ảnh: «imagery» là chuỗi con, không phải đoạn; «image» chỉ ở description/displayName.
+        {"name": "models/gemini-imagery-1", "supportedGenerationMethods": CHAT},
+        {"name": "models/gemini-hieu-anh", "supportedGenerationMethods": CHAT,
+         "displayName": "Image understanding", "description": "Reads an image and answers."},
+        # Nano Banana: không có đoạn «image» → nhận theo hai đoạn «nano» «banana» của id (không theo description).
+        {"name": "models/nano-banana-pro-preview", "supportedGenerationMethods": NANO_BANANA,
+         "displayName": "Nano Banana Pro", "description": "Gemini 3 Pro Image Preview"},
+        {"name": "models/gemini-nano-banana-2.1", "supportedGenerationMethods": NANO_BANANA,
+         "displayName": "Nano Banana 2.1", "description": "Gemini Nano Banana 2.1."},
+        # Không phải ảnh: chỉ «nano», đảo thứ tự, dính liền — khớp ĐOẠN liền nhau, không chuỗi con.
+        {"name": "models/gemini-nano-2", "supportedGenerationMethods": CHAT},
+        {"name": "models/banana-nano-1", "supportedGenerationMethods": CHAT},
+        {"name": "models/nanobanana-x", "supportedGenerationMethods": CHAT},
+        # Có đoạn «image» nhưng không sinh nội dung (nhúng) → không phải model tạo ảnh.
+        {"name": "models/multimodal-image-embedding-001", "supportedGenerationMethods": ["embedContent"]},
+        # Mục dị dạng không làm hỏng danh sách.
+        {"name": 5, "supportedGenerationMethods": ["predict"]},
+        {"name": "models/x-image"},
+        {"name": "models/y-image", "supportedGenerationMethods": "generateContent"},
+        "khong-phai-dict",
+    ]
+    cai(client, google, [K1])
+    kn = {i: m.get("kha_nang") for i, m in _models_tuoi(client).items()}
+    assert kn == {
+        "gemini/gemini-2.5-flash": None, "gemini/gemini-3-flash-preview": None,
+        "gemini/gemini-3.1-flash-image": ["anh"], "gemini/nano-banana-pro-preview": ["anh"],
+        "gemini/gemini-nano-banana-2.1": ["anh"],
+        "gemini/gemini-3-pro-image-preview": ["anh"], "gemini/thu_nghiem.image": ["anh"],
+        "gemini/imagen-4.0-generate-001": ["anh"], "gemini/veo-3.1-generate-preview": ["video"],
+    }
+    # Danh sách gốc hỏng → vẫn trả danh sách chat của đường tương thích (không nhãn), không lỗi.
+    google.models_goc_loi = True
+    ds = _models_tuoi(client)
+    assert set(ds) == {"gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "gemini/gemini-3.1-flash-image",
+                       "gemini/nano-banana-pro-preview"}
+    assert not any("kha_nang" in m for m in ds.values())
+
+
+#: 46 id model THẬT của Google (12/10/2026). Danh sách này không mang
+#: `supportedGenerationMethods`: test gán generateContent cho mọi model trừ Imagen (`predict`) — trường hợp KHÓ nhất
+#: cho quy tắc tên, vì khi đó chỉ còn id để phân biệt.
+ID_THAT_12_10 = """antigravity-preview-05-2026 antigravity-preview-09-2026 antigravity-preview-latest
+deep-research-max-preview-04-2026 deep-research-preview-04-2026 deep-research-pro-preview-12-2025
+gemini-2.5-computer-use-preview-10-2025 gemini-2.5-flash gemini-2.5-flash-image gemini-2.5-flash-lite
+gemini-2.5-flash-preview-tts gemini-2.5-pro gemini-2.5-pro-preview-tts gemini-3-flash-preview gemini-3-pro-image
+gemini-3-pro-image-preview gemini-3.1-flash-image gemini-3.1-flash-image-preview gemini-3.1-flash-lite
+gemini-3.1-flash-lite-image gemini-3.1-flash-lite-preview gemini-3.1-flash-tts-preview gemini-3.1-pro-preview
+gemini-3.1-pro-preview-customtools gemini-3.5-flash gemini-3.5-flash-lite gemini-3.5-transcribe gemini-3.6-flash
+gemini-3.7-flash gemini-3.8-flash gemini-3.8-flash-lite-tts gemini-3.8-flash-tts gemini-flash-latest
+gemini-flash-lite-latest gemini-nano-banana-2.1 gemini-omni-1.1-flash gemini-omni-flash-preview gemini-pro-latest
+gemini-robotics-er-2-preview gemma-4-26b-a4b-it gemma-4-31b-it imagen-3.0-generate-001 lyria-3-clip-preview
+lyria-3-pro-preview lyria-3.5 nano-banana-pro-preview""".split()
+
+
+def test_models_quy_tac_anh_tren_id_that(client, google):
+    assert len(ID_THAT_12_10) == 46
+    google.models_goc_ds = [{"name": f"models/{i}", "supportedGenerationMethods":
+                             ["predict"] if i.startswith("imagen-") else NANO_BANANA} for i in ID_THAT_12_10]
+    cai(client, google, [K1])
+    anh = sorted(i for i, m in _models_tuoi(client).items() if "anh" in (m.get("kha_nang") or []))
+    assert anh == ["gemini/gemini-2.5-flash-image", "gemini/gemini-3-pro-image", "gemini/gemini-3-pro-image-preview",
+                   "gemini/gemini-3.1-flash-image", "gemini/gemini-3.1-flash-image-preview",
+                   "gemini/gemini-3.1-flash-lite-image", "gemini/gemini-nano-banana-2.1", "gemini/imagen-3.0-generate-001",
+                   "gemini/nano-banana-pro-preview"]
+
+
 def test_suc_khoe_khong_goi_anh_video(client, google):
     # Nguyên tắc: không dò khoá bằng lời gọi tốn tiền — «chua_ro» cho tới khi dùng thật.
     cai(client, google, [K1])

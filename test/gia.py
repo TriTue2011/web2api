@@ -121,6 +121,7 @@ class GoogleGia:
         self.anh: dict[str, dict] = {}
         self.video: dict[str, dict] = {}
         self.models_goc_ds: list[dict] = list(MODELS_GOC_MAC_DINH)
+        self.models_them: list[dict] = []      # model THÊM vào danh sách của đường tương thích (sau MODELS_GOOGLE)
         self.models_goc_loi = False
         self.thao_tac: dict[str, dict] = {}  # mã thao tác → {khoa, model, con_lai, ket_qua}
         self.so_lan_hoi = 2                    # số lần hỏi còn «chưa xong» trước khi xong
@@ -191,7 +192,7 @@ class GoogleGia:
             return loi
         if self.models_loi:
             return JSONResponse({"error": {"message": "backend lỗi", "status": "INTERNAL"}}, status_code=500)
-        return JSONResponse({"object": "list", "data": MODELS_GOOGLE})
+        return JSONResponse({"object": "list", "data": MODELS_GOOGLE + self.models_them})
 
     async def chat(self, req: Request):
         than = await req.json()

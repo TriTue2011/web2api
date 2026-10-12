@@ -683,6 +683,33 @@ def test_studio_anh_video_va_khoa_mien_phi(trang, tmp_path, monkeypatch):
         assert trang.js("document.getElementById('tai-video').getAttribute('download')").endswith(".mp4")
 
 
+def test_model_anh_nhom_tao_anh_va_studio_ve_anh(trang, tmp_path, monkeypatch):
+    """Module khai `kha_nang: ["anh"]` cho một model → Provider có nhóm «Tạo ảnh» (thu gọn, giữa Trò chuyện và Video);
+    Studio «Vẽ ảnh» chỉ liệt kê model đó, «Trò chuyện» không lẫn nó. Giao diện chỉ đọc `kha_nang`, không đọc tên."""
+    monkeypatch.setenv("GIA_MODEL_ANH", "1")
+    with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
+        lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
+        trang.di(w.url + "/He-thong.dc.html")
+        luu_khoa(trang)
+        trang.di(w.url + "/He-thong-AI.dc.html#provider")
+        trang.cho("document.querySelectorAll('[data-nhom-md]').length === 3", han=15, mo_ta="ba nhóm model")
+        assert trang.js("document.querySelectorAll('[data-model]').length") == 0
+        assert trang.js("[...document.querySelectorAll('[data-mo-nhom]')].map((b) => [b.dataset.moNhom, b.getAttribute('aria-expanded')])") \
+            == [["chat", "false"], ["anh", "false"], ["video", "false"]]
+        assert trang.chu("[data-nhom-md='anh']").startswith("TẠO ẢNH")
+        trang.bam("document.querySelector('[data-mo-nhom=\"anh\"]')")
+        trang.cho("document.querySelectorAll('[data-nhom-md=\"anh\"] [data-model]').length === 1", mo_ta="mở nhóm Tạo ảnh")
+        assert trang.js("document.querySelector('[data-nhom-md=\"anh\"] [data-model]').innerText") == "gia/ve-1"
+        khong_dieu_khien_chet(trang)
+
+        trang.di(w.url + "/Studio.dc.html")  # khoá quản trị đã lưu ở trên
+        trang.cho("document.querySelectorAll('[data-model-chon]').length > 0", han=15, mo_ta="danh sách model")
+        chon = "[...document.querySelectorAll('[data-model-chon]')].map((x) => x.dataset.modelChon)"
+        assert "gia/nhanh" in trang.js(chon) and "gia/ve-1" not in trang.js(chon)
+        trang.bam("document.querySelector('[data-che-do=\"anh\"]')")
+        trang.cho(f"JSON.stringify({chon}) === JSON.stringify(['gia/ve-1'])", mo_ta="Vẽ ảnh chỉ liệt kê model ảnh")
+
+
 def test_studio_chi_hien_che_do_module_khai(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
         lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
