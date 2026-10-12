@@ -107,6 +107,12 @@ before the module runs — and hands the module a `YeuCauDaPhan` (text fields + 
 methods `noi`, `nghe`, `anh_sua` (contract at the top of `app/kham_pha.py`); no bundled module implements them yet, so
 these routes answer `501` today. Verified with the real openai SDK 3.28 against a fake module in the test suite.
 
+JSON body routes (`/v1/chat/completions`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/videos`) are also
+size-capped: `WEB2API_THAN_TOI_DA_MB` (default 25 MB), counted on bytes actually received. All `/v1` errors
+follow the OpenAI `{"error": {"message", "type", "code"}}` shape so the openai SDK can parse them. Unknown
+`/v1` paths return `404` `unknown_endpoint`; wrong method returns `405` with an `Allow` header inferred from
+the router. Uncaught errors return `500` with an opaque trace code (no internal details or keys leaked).
+
 ## Adding modules via git
 
 Put a module in `modules/<id>/` (a `manifest.json` and a `module.py`) and push it to the watched branch.

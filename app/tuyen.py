@@ -9,14 +9,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from http import HTTPMethod
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from app import kho
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
+from app.than_co_tran import THAN_JSON, doc_het
 from app.xac_thuc import can_quan_tri
 from app.yeu_cau_da_phan import YeuCauDaPhan, doc_multipart, la_multipart
 
@@ -24,6 +27,9 @@ log = logging.getLogger("web2api.tuyen")
 QT = [Depends(can_quan_tri)]
 
 v1 = APIRouter(prefix="/v1", dependencies=QT)
+#: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
+#: trước nó). Thiếu nó thì mount StaticFiles ở gốc nuốt mất và trả 405 {"detail"} cho mọi POST lạ.
+v1_khong_co = APIRouter(prefix="/v1", dependencies=QT)
 modules = APIRouter(prefix="/api/modules")
 tinh_nang = APIRouter()
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
@@ -39,9 +45,10 @@ def _ng(request: Request) -> NguonGit:
 
 
 async def _than_json(request: Request) -> dict:
+    # Không dùng request.json(): nó nạp trọn thân không giới hạn (và giữ thêm một bản trong request suốt lượt gọi).
     try:
-        than = await request.json()
-    except ValueError:
+        than = json.loads(await doc_het(request, THAN_JSON))
+    except ValueError:  # gồm cả UnicodeDecodeError
         raise LoiOpenAI(400, "Thân yêu cầu không phải JSON hợp lệ") from None
     if not isinstance(than, dict):
         raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
@@ -224,6 +231,26 @@ async def v1_video_noi_dung(ma: str, request: Request):
     id_, m, trong = _module_theo_ma_video(_so(request), ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _tra_ve(*await m.video_noi_dung(trong))
+
+
+@v1_khong_co.api_route("", methods=list(HTTPMethod), include_in_schema=False)
+@v1_khong_co.api_route("/{duong:path}", methods=list(HTTPMethod), include_in_schema=False)
+async def duong_v1_khong_co(request: Request):
+    """Đường có trong router `v1` nhưng sai phương thức → 405 + Allow; không có hẳn → 404 `unknown_endpoint`.
+
+    Suy từ CHÍNH router `v1` (route nào khớp đường mà không khớp phương thức — Match.PARTIAL của Starlette), không từ
+    bảng tay: thêm đường mới vào `v1` là tự đúng. Nêu lại đường khách gọi nhưng chỉ phần path (query có thể mang
+    khoá, vd ?key=…), đã cắt ngắn và bỏ ký tự điều khiển — không phản chiếu chuỗi dài/độc."""
+    scope = dict(request.scope)
+    cho_phep = sorted({pt for r in v1.routes if r.matches(scope)[0] is Match.PARTIAL for pt in r.methods})
+    duong = "".join(k for k in request.url.path if k.isprintable())
+    duong = duong if len(duong) <= 120 else duong[:120] + "…"
+    goi = f"{request.method} {duong}"
+    if cho_phep:
+        raise LoiOpenAI(405, f"{goi}: đường này chỉ nhận {', '.join(cho_phep)}", code="method_not_allowed",
+                        headers={"Allow": ", ".join(cho_phep)})
+    raise LoiOpenAI(404, f"web2api không có đường {goi} (chưa hỗ trợ). Các đường /v1 đang có: xem README mục 8; "
+                         "danh sách model: GET /v1/models.", loai="invalid_request_error", code="unknown_endpoint")
 
 
 # ───────────── /api/modules ─────────────
