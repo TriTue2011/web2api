@@ -35,6 +35,9 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 | `nghe` | `nghe` | — | `yc: YeuCauDaPhan` | `(mã, headers, bytes)` | 400 (thiếu tệp audio), 501, 502 |
 | `anh_sua` | `anh_sua` | — | `yc: YeuCauDaPhan` | `(mã, headers, bytes)` | 400 (thiếu ảnh/prompt), 501, 502 |
 | `thiet_bi` | `thuc_the`<br>`trang_thai`<br>`thuc_hien` | `su_kien` | `loc: dict \| None` (thực thể)<br>`ids: list[str]` (trạng thái)<br>`id, hanh_dong, tham_so` (thực hiện) | `list[dict]` (thực thể)<br>`dict[str, dict]` (trạng thái)<br>`dict` `{ok, trang_thai_moi?, loi?}` (thực hiện)<br>`async iterator[dict]` (sự kiện) | 400 (hành động không hỗ trợ), 404 (không thấy thực thể), 409 (cần xác nhận), 202 (vào hàng chờ), 502 |
+| `nhung` | `nhung` | — | `body: dict` | `(mã, headers, bytes)` | 400 (thiếu input/model), 404 (model), 501, 502 |
+| `xep_hang` | `xep_hang` | — | `body: dict` | `(mã, headers, bytes)` | 400 (sai hình dạng documents/query/top_n), 404 (model), 501, 502 |
+| `tim_kiem` | `tim_kiem` | — | `yc: dict` | `dict` `{muc: [...], tong?}` | 400, 502 |
 | *(Mã lạ)* | Không bắt buộc | Tự do | Tuỳ ý | Tuỳ ý | — |
 
 ---
@@ -83,3 +86,25 @@ Nhận danh sách `ids: list[str]` và trả về từ điển:
 ### 3.4. Sự kiện thời gian thực (`su_kien`)
 - Tuỳ chọn cho module có khả năng đẩy sự kiện thời gian thực (Server-Sent Events).
 - Trả về async iterator sinh các đối tượng `{id, loai, gia_tri, luc}`.
+
+---
+
+## 4. Chi tiết chuẩn `tri_thuc` (nhung, xep_hang, tim_kiem)
+
+### 4.1. Nhúng vector (`nhung`)
+- Phương thức: `async nhung(body: dict) -> (mã, headers, bytes)` phục vụ `POST /v1/embeddings`.
+- Nhận `body`: `{"model": "<tien_to>/<tên>", "input": "chuỗi" | ["chuỗi 1", "chuỗi 2"]}`.
+- Trả về phản hồi chuẩn: `(200, {"content-type": "application/json"}, bytes_json)` với `data: [{"object": "embedding", "embedding": [...], "index": 0}]`.
+
+### 4.2. Xếp hạng lại (`xep_hang`)
+- Phương thức: `async xep_hang(body: dict) -> (mã, headers, bytes)` phục vụ `POST /v1/rerank`.
+- Nhận `body`: `{"model": "<tien_to>/<tên>", "query": "chuỗi tìm", "documents": ["đoạn 1", "đoạn 2"] | [{"text": "..."}, ...], "top_n": 5}`.
+- Lõi kiểm hình dạng trước khi chuyển tới module: `documents` phải là danh sách, `query` là chuỗi, `top_n` là số nguyên dương ≤ số tài liệu.
+- Trả về phản hồi chuẩn: `(200, {"content-type": "application/json"}, bytes_json)` với `results: [{"index": 0, "relevance_score": 0.95}, ...]`.
+
+### 4.3. Tìm kiếm (`tim_kiem`)
+- Phương thức: `async tim_kiem(yc: dict) -> dict` phục vụ `GET /api/tim-kiem/nguon` và `POST /api/tim-kiem`.
+- Đầu vào `yc`: `{chuoi?, loc?, bat_tat?, cay?, so_luong, ngu_canh?}` (mọi trường là mã mở).
+- Đầu ra: `{muc: [{id, diem, doan, tai_lieu?, vi_tri?, truong?: dict}], tong?}`.
+- **An toàn nội dung**: Nội dung tìm kiếm là đầu vào không tin cậy. Kết quả mỗi mục do lõi trả ra luôn gắn `nguon` (id module) và `nguon_ngoai: true`. Lõi không tự động chuyển nội dung này thành chỉ thị hệ thống.
+

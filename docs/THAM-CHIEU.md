@@ -126,6 +126,24 @@ module không có khả năng được gọi (ví dụ không có `anh`) → `50
 khi hỏi sổ: đọc `multipart/form-data` thành `YeuCauDaPhan` (vượt trần → `413`, không phải multipart → `415`), lấy
 `model` từ trường chữ để định tuyến.
 
+### Chuẩn tri thức (`tri_thuc`) và quy trình nối tầng
+
+Chuẩn tri thức kết nối linh hoạt nhiều nguồn thông tin qua quy trình phễu (`quy_trinh`):
+
+```mermaid
+flowchart LR
+  N1["Nguồn A<br/>tim_kiem"] --> GOP["Gộp kết quả<br/>(RRF k=60)"]
+  N2["Nguồn B<br/>tim_kiem"] --> GOP
+  GOP --> LOC["Lọc dữ liệu<br/>(trường / cây phân cấp)"]
+  LOC --> XEP["Xếp hạng lại<br/>(xep_hang)"]
+  XEP --> CAT["Cắt danh sách<br/>(top n / độ dài đoạn)"]
+```
+
+- Các khả năng chuẩn: `nhung` (`POST /v1/embeddings`), `xep_hang` (`POST /v1/rerank`), và `tim_kiem` (`GET /api/tim-kiem/nguon`, `POST /api/tim-kiem`).
+- Quy trình phễu (`quy_trinh`): chuỗi các tầng nối tiếp nhau, tầng sau nhận dữ liệu tầng trước, đo lường chi tiết vào/ra/ms/lỗi; dừng ngay khi gặp lỗi và báo đúng tầng; trần 8 tầng và trần thời gian `WEB2API_QUY_TRINH_GIAY`.
+- Toán tử dữ liệu thuần: `gop` (RRF k=60), `loc` (lọc trường), `cay` (tiền tố và độ sâu phân cấp), `cat` (top n), `gop_ngu_canh` (trần tổng ký tự đoạn văn bản).
+- An toàn nội dung: kết quả luôn đánh dấu `nguon_ngoai: true`, đầu vào không tin cậy, không tự đưa vào chỉ thị hệ thống; kênh nhật ký `tri_thuc` không ghi nội dung tài liệu.
+
 ### Cài → vào Studio → thêm khoá (không tải lại trang)
 
 ```mermaid
@@ -1254,8 +1272,12 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
 | `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
 | `POST /api/phe-duyet/{id}/tu-choi` | Có | Quản trị từ chối và huỷ bỏ yêu cầu trong hàng chờ |
+| `GET /api/tim-kiem/nguon` | Có | Liệt kê các module nguồn tri thức khai khả năng tìm kiếm và trạng thái |
+| `POST /api/tim-kiem` | Có | Tìm kiếm tri thức kết hợp nhiều nguồn, lọc nhiều chiều, cây phân cấp và quy trình phễu |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
+| `POST /v1/embeddings` | Có | Tạo vector nhúng chuẩn OpenAI (thân `{"model": "...", "input": "..."}`); `501` nếu module không có |
+| `POST /v1/rerank` | Có | Xếp hạng lại danh sách tài liệu (`model`, `query`, `documents`, `top_n`); `501` nếu module không có |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
 | `POST /v1/images/edits` | Có | Sửa ảnh chuẩn OpenAI (`multipart/form-data`: `image` hoặc `image[]`, `mask`, `prompt`…); `501` nếu module không có |
 | `POST /v1/audio/speech` | Có | Đọc văn bản thành giọng nói (thân JSON chuẩn OpenAI) → âm thanh nhị phân, có thể stream; `501` nếu module không có |
@@ -1281,6 +1303,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
+| `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |

@@ -144,7 +144,7 @@ def chat(**them):
 # ───────────── (a) đường /v1 lạ, sai phương thức ─────────────
 
 @pytest.mark.parametrize("phuong_thuc,duong", [
-    ("POST", "/v1/responses"), ("POST", "/v1/messages"), ("POST", "/v1/embeddings"), ("GET", "/v1/khong-co"),
+    ("POST", "/v1/responses"), ("POST", "/v1/messages"), ("POST", "/v1/batches"), ("GET", "/v1/khong-co"),
     ("GET", "/v1/a/b/c"), ("DELETE", "/v1/"), ("GET", "/v1"), ("POST", "/v1"), ("PATCH", "/v1/models/x"),
 ])
 def test_duong_v1_khong_co_la_404_unknown_endpoint(client, phuong_thuc, duong):

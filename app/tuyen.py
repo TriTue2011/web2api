@@ -15,9 +15,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod, phien as phien_mod
-
-from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod, nhat_ky as nhat_ky_mod, thiet_bi as thiet_bi_mod
+from app import (
+    dia_chi as dia_chi_mod,
+    kho,
+    khoa_khach as khoa_khach_mod,
+    nhat_ky as nhat_ky_mod,
+    phien as phien_mod,
+    thiet_bi as thiet_bi_mod,
+    tri_thuc as tri_thuc_mod,
+)
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
@@ -43,6 +49,7 @@ phien = APIRouter(prefix="/api/phien", dependencies=QT)
 
 thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
 phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
+tim_kiem = APIRouter(prefix="/api/tim-kiem")
 tep_module = APIRouter()
 
 
@@ -307,6 +314,53 @@ async def v1_video_noi_dung(ma: str, request: Request):
     id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _tra_ve(*await m.video_noi_dung(trong))
+
+
+@v1.post("/embeddings")
+async def v1_embeddings(request: Request):
+    kiem_tra_pham_vi(request, "nhung")
+    than = await _than_json(request)
+    id_, m = _module_theo_model(request, than)
+    so = _so(request)
+    km = so.catalog.get(id_)
+    if km and "nhung" in getattr(km, "chuan_loi", {}):
+        raise LoiOpenAI(501, f"Khả năng «nhung» của module {id_!r} không đúng chuẩn", code="capability_not_supported")
+    _can_phuong_thuc(m, id_, "nhúng vector", "nhung")
+    inp = than.get("input")
+    if inp is None or not isinstance(inp, (str, list)):
+        raise LoiOpenAI(400, "Thiếu hoặc sai trường «input» (chuỗi hoặc danh sách)", code="invalid_input")
+    return _tra_ve(*await m.nhung(than))
+
+
+@v1.post("/rerank")
+async def v1_rerank(request: Request):
+    kiem_tra_pham_vi(request, "xep_hang")
+    than = await _than_json(request)
+    id_, m = _module_theo_model(request, than)
+    so = _so(request)
+    km = so.catalog.get(id_)
+    if km and "xep_hang" in getattr(km, "chuan_loi", {}):
+        raise LoiOpenAI(501, f"Khả năng «xep_hang» của module {id_!r} không đúng chuẩn", code="capability_not_supported")
+    _can_phuong_thuc(m, id_, "xếp hạng", "xep_hang")
+
+    query = than.get("query")
+    if not isinstance(query, str):
+        raise LoiOpenAI(400, "Trường «query» phải là chuỗi", code="invalid_query")
+
+    docs = than.get("documents")
+    if not isinstance(docs, list):
+        raise LoiOpenAI(400, "Trường «documents» phải là danh sách", code="invalid_documents")
+    for doc in docs:
+        if not (isinstance(doc, str) or (isinstance(doc, dict) and "text" in doc)):
+            raise LoiOpenAI(400, "Mỗi phần tử trong «documents» phải là chuỗi hoặc đối tượng có trường «text»", code="invalid_documents")
+
+    top_n = than.get("top_n")
+    if top_n is not None:
+        if isinstance(top_n, bool) or not isinstance(top_n, int) or top_n <= 0 or top_n > len(docs):
+            raise LoiOpenAI(400, f"Trường «top_n» phải là số nguyên dương ≤ số tài liệu ({len(docs)})", code="invalid_top_n")
+
+    return _tra_ve(*await m.xep_hang(than))
+
 
 
 @v1_khong_co.api_route("", methods=list(HTTPMethod), include_in_schema=False)
@@ -966,4 +1020,21 @@ async def xu_ly_duyet(pd_id: str, request: Request):
 def xu_ly_tu_choi(pd_id: str, request: Request):
     nguoi_tu_choi = getattr(request.state, "nguoi_goi", "quan_tri")
     return thiet_bi_mod.tu_choi_phe_duyet(pd_id, nguoi_tu_choi=nguoi_tu_choi)
+
+
+# ───────────── Tìm kiếm và nguồn tri thức (/api/tim-kiem) ─────────────
+
+@tim_kiem.get("/nguon", dependencies=QT)
+async def lay_nguon_tim_kiem(request: Request):
+    so = _so(request)
+    return {"nguon": await tri_thuc_mod.lay_danh_sach_nguon(so)}
+
+
+@tim_kiem.post("", dependencies=V1_AUTH)
+async def goi_tim_kiem(request: Request):
+    kiem_tra_pham_vi(request, "tim_kiem")
+    than = await _than_json(request)
+    so = _so(request)
+    return await tri_thuc_mod.thuc_hien_tim_kiem(than, so)
+
 

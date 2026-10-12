@@ -74,6 +74,18 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
       async su_kien() -> async iterator[dict] (tuỳ chọn):
         mỗi sự kiện {id: str, loai: "trang_thai" | …(mã mở), gia_tri, luc: str}
       Định tuyến: id thực thể bắt đầu bằng "<tien_to>." → module có tiền tố đó.
+    Phương thức cho khả năng "nhung":
+      async nhung(body: dict) -> (mã, headers, bytes)   POST /v1/embeddings — thân OpenAI (model, input chuỗi
+                                                        hoặc list) → data[].embedding; kiểm phạm vi "nhung".
+    Phương thức cho khả năng "xep_hang":
+      async xep_hang(body: dict) -> (mã, headers, bytes) POST /v1/rerank — thân chuẩn xếp hạng (model, query,
+                                                        documents list chuỗi hoặc {text}, top_n) → results[];
+                                                        kiểm phạm vi "xep_hang".
+    Phương thức cho khả năng "tim_kiem":
+      async tim_kiem(yc: dict) -> dict                  GET /api/tim-kiem/nguon và POST /api/tim-kiem;
+                                                        yc = {chuoi?, loc?, bat_tat?, cay?, so_luong, ngu_canh?};
+                                                        kết quả {muc: [{id, diem, doan, tai_lieu?, vi_tri?, truong?}], tong?};
+                                                        mọi trường là mã mở; kiểm phạm vi "tim_kiem".
     YeuCauDaPhan (app/yeu_cau_da_phan.py) do lõi đọc từ multipart — module KHÔNG tự phân tích thân:
       .truong: dict[str, str | list[str]]  trường chữ, tên bỏ hậu tố «[]»; gửi một lần và không có «[]» → str,
                                            có «[]» hoặc lặp → list[str] theo thứ tự gửi (đúng hình thân JSON
@@ -177,6 +189,9 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
     "nghe": ("nghe",),
     "anh_sua": ("anh_sua",),
     "thiet_bi": ("thuc_the", "trang_thai", "thuc_hien"),
+    "nhung": ("nhung",),
+    "xep_hang": ("xep_hang",),
+    "tim_kiem": ("tim_kiem",),
 }
 
 

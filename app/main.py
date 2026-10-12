@@ -100,7 +100,8 @@ class MiddlewareChanKhoaKhachQuanTri:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             path = scope.get("path", "")
-            if ((path.startswith("/api/") and not path.startswith("/api/thiet-bi")) or path.endswith(".dc.html")):
+            la_duong_tim_kiem = path in ("/api/tim-kiem", "/api/tim-kiem/")
+            if ((path.startswith("/api/") and not path.startswith("/api/thiet-bi") and not la_duong_tim_kiem) or path.endswith(".dc.html")):
                 for k, v in scope.get("headers", []):
                     if k.lower() == b"authorization":
                         gia_tri = v.decode("latin-1").strip()
@@ -168,6 +169,7 @@ app.include_router(tuyen.phien)
 
 app.include_router(tuyen.thiet_bi)
 app.include_router(tuyen.phe_duyet)
+app.include_router(tuyen.tim_kiem)
 app.include_router(tuyen.tep_module)
 
 
