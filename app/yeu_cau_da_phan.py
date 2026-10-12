@@ -2,7 +2,7 @@
 
 Trần: TỔNG thân yêu cầu (tệp + trường chữ + phần bao của multipart) ≤ WEB2API_TEP_TOI_DA_MB (mặc định 25 — trần tệp
 của chuẩn OpenAI cho nhận dạng giọng nói). Kiểm Content-Length TRƯỚC khi đọc (413 ngay, không tốn đĩa) rồi ĐẾM từng
-byte thật khi đọc: header có thể nói dối, hoặc vắng hẳn khi khách gửi chunked.
+byte thật khi đọc — cùng bộ đếm với thân JSON (app/than_co_tran.py), một đường đếm duy nhất.
 
 Không dùng `request.form()` của Starlette: trần `max_part_size` của nó chỉ áp cho trường CHỮ (phần tệp không giới
 hạn), và lỗi của nó ra dạng {"detail": …} chứ không phải dạng lỗi OpenAI mà khách đọc được.
@@ -15,18 +15,14 @@ không cộng thêm bản trong tệp tạm.
 
 from __future__ import annotations
 
-import logging
-import os
 from dataclasses import dataclass
 
 from fastapi import Request
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 from app.loi_openai import LoiOpenAI
+from app.than_co_tran import THAN_MULTIPART, luong_dem
 
-log = logging.getLogger("web2api.yeu_cau_da_phan")
-
-TEP_TOI_DA_MB_MAC_DINH = 25.0
 #: Sửa ảnh của chuẩn OpenAI nhận tới 16 ảnh + 1 mặt nạ; dư ra một chút, vẫn chặn kiểu gửi hàng nghìn phần nhỏ.
 SO_TEP_TOI_DA = 20
 SO_TRUONG_TOI_DA = 100
@@ -57,52 +53,17 @@ def la_multipart(request: Request) -> bool:
     return request.headers.get("content-type", "").partition(";")[0].strip().lower() == "multipart/form-data"
 
 
-def tran_byte() -> int:
-    """Trần tổng thân multipart, đọc MỖI lượt (đổi biến môi trường không cần khởi động lại; test đặt trần nhỏ)."""
-    gia_tri = os.environ.get("WEB2API_TEP_TOI_DA_MB", "").strip()
-    mb = TEP_TOI_DA_MB_MAC_DINH
-    if gia_tri:
-        try:
-            mb = float(gia_tri)
-            if not 0 < mb < 1024 * 1024:  # bắt cả nan, inf
-                raise ValueError
-        except ValueError:
-            log.warning("WEB2API_TEP_TOI_DA_MB=%r không hợp lệ (cần số MB > 0, hữu hạn), dùng mặc định %s",
-                        gia_tri[:40], TEP_TOI_DA_MB_MAC_DINH)
-            mb = TEP_TOI_DA_MB_MAC_DINH
-    return int(mb * 1024 * 1024)
-
-
-def _qua_tran(tran: int) -> LoiOpenAI:
-    return LoiOpenAI(413, f"Thân yêu cầu vượt trần {tran / 1024 / 1024:g} MB (tổng mọi tệp và trường; "
-                          "người vận hành đổi bằng WEB2API_TEP_TOI_DA_MB)", code="request_too_large")
-
-
 async def doc_multipart(request: Request) -> YeuCauDaPhan:
     if not la_multipart(request):
         kieu = request.headers.get("content-type", "").partition(";")[0].strip()[:80] or "không có Content-Type"
         raise LoiOpenAI(415, f"{request.url.path} cần thân multipart/form-data (như SDK openai gửi), nhận: {kieu}",
                         code="unsupported_media_type")
-    tran = tran_byte()
-    dai = request.headers.get("content-length")
-    if dai is not None:
-        if not dai.strip().isdigit():
-            raise LoiOpenAI(400, "Header Content-Length không hợp lệ", code="invalid_content_length")
-        if int(dai) > tran:
-            raise _qua_tran(tran)
-
-    async def dem():
-        da_doc = 0
-        async for khuc in request.stream():
-            da_doc += len(khuc)
-            if da_doc > tran:  # MultiPartParser đóng mọi tệp tạm đã mở rồi ném tiếp lỗi này nguyên dạng
-                raise _qua_tran(tran)
-            yield khuc
-
+    # Vượt trần giữa luồng: MultiPartParser đóng mọi tệp tạm đã mở rồi ném tiếp lỗi 413 nguyên dạng.
+    luong = luong_dem(request, THAN_MULTIPART)
     form = None
     try:
         try:
-            form = await MultiPartParser(request.headers, dem(), max_files=SO_TEP_TOI_DA, max_fields=SO_TRUONG_TOI_DA,
+            form = await MultiPartParser(request.headers, luong, max_files=SO_TEP_TOI_DA, max_fields=SO_TRUONG_TOI_DA,
                                          max_part_size=TRUONG_TOI_DA_BYTE).parse()
         except MultiPartException as e:
             raise LoiOpenAI(400, f"Thân multipart không hợp lệ: {e.message}", code="invalid_multipart") from None

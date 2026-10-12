@@ -87,6 +87,8 @@ class GoogleGia:
     "403_vung"|"400_vung"|"500"|"cham", ...}. Khoá lạ → 401. Lỗi 401/400_khoa/500 cố ý NHẮC LẠI khoá trong thân để
     kiểm việc che khoá. «400_khoa» = khoá sai/bị thu hồi như Google thật trả qua đường tương thích OpenAI (đo
     11/10/2026): HTTP 400, MẢNG, status INVALID_ARGUMENT, không có `reason` — riêng việc nhắc lại khoá là của bản giả.
+    «404_model» (kèm "models": [tên model không tiền tố], tuỳ chọn "nhac_khoa": True) = khoá thuộc dự án mới bị Google
+    trả 404 «no longer available to new users» cho các model đó (đo 12/10/2026), model khác vẫn 200.
 
     Ảnh/video theo khoá ở `anh` / `video`: {"kieu": "tot"} (mặc định) hoặc {"kieu": "tu_choi", "ma": 403|429|400}.
     GIẢ ĐỊNH, CHƯA ĐO: Google từ chối khoá hạng miễn phí bằng 400/403/429 — chưa có khoá thật để đo dạng lỗi thật;
@@ -150,6 +152,8 @@ class GoogleGia:
         k = hv["kieu"]
         if k == "tot":
             return None
+        if k == "404_model":
+            return None  # khoá dùng được; chỉ chat với model đặt trước mới 404 (xem `chat`)
         if k == "cham":
             await asyncio.sleep(hv.get("giay", 1.5))
             return None
@@ -196,6 +200,15 @@ class GoogleGia:
         if loi is not None:
             return loi
         model = than.get("model")
+        hv = self.hanh_vi.get(khoa, {})
+        if hv.get("kieu") == "404_model" and model in hv["models"]:
+            # Như Google thật trả (đo 12/10/2026, khoá thuộc dự án mới với gemini-2.5-flash). `nhac_khoa` chỉ để
+            # test việc che khoá — thân thật không nhắc khoá.
+            tin = (f"This model models/{model} is no longer available to new users. Please update your code to use a "
+                   "newer model for the latest features and improvements.")
+            if hv.get("nhac_khoa"):
+                tin += f" ({khoa})"
+            return JSONResponse({"error": {"code": 404, "message": tin, "status": "NOT_FOUND"}}, status_code=404)
         if model == "loi-400":
             return JSONResponse({"error": {"code": 400, "message": "* GenerateContentRequest.model: unexpected model",
                                            "status": "INVALID_ARGUMENT"}}, status_code=400)

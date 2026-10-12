@@ -46,6 +46,19 @@ textarea:focus{outline:none}
 main.st{padding:12px 16px 0}
 /* Bảng chọn model: demo neo ở mép chip nên bị cắt mép phải ở khổ hẹp — neo vào mép trái ô soạn. */
 .chon-model-goc{position:static !important}
+/* ĐÃ CÓ HỘI THOẠI trên điện thoại (main.co-luot; màn đầu giữ y demo). Bố cục demo để vùng hội thoại còn ≈1/3 màn hình
+   và hai nút nổi ↑↓ sát mép chữ (cách 4px, bóng đổ phủ lên chữ) — chủ máy báo «che hết nội dung phản hồi». Nguyên tắc:
+   hộp cuộn là phần CO GIÃN duy nhất, mọi thứ quanh nó gọn lại (dòng trạng thái, lề cột, ô nhập 2 dòng, hàng việc một
+   hàng — nút vẫn cao 44 để bấm bằng ngón tay); nút nổi đứng trong cột lề phải RIÊNG của hộp cuộn (lề 54 = nút 44 + cách 10). */
+main.st.co-luot .st-dau{padding:0 0 4px !important}
+main.st.co-luot .st-cot{padding:4px 0 12px !important;gap:12px !important}
+main.st.co-luot .cuon{padding-right:54px !important}
+main.st.co-luot .nut-noi{right:0 !important;bottom:0 !important}
+main.st.co-luot .nut-noi > a{box-sizing:border-box;width:44px !important;height:44px !important;box-shadow:0 2px 6px rgba(24,24,22,0.10) !important}
+main.st.co-luot #o-soan{box-sizing:border-box;height:68px;padding:12px 16px 8px !important}
+main.st.co-luot .soan-duoi{padding:2px 10px 8px !important}
+main.st.co-luot .hang-viec{gap:6px !important}
+main.st.co-luot .hang-viec > button{padding:0 12px !important}
 }
 @media (pointer:coarse){textarea{font-size:16px}}
 </style>
@@ -63,13 +76,13 @@ main.st{padding:12px 16px 0}
 <div class="acc-cho" aria-hidden="true"></div>
 </nav>
 
-<main class="st" style="flex:1 1 0;min-width:0;min-height:0;overflow-x:hidden;display:flex;flex-direction:column">
-<div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:16px 28px">
+<main class="st{{lopLuot}}" style="flex:1 1 0;min-width:0;min-height:0;overflow-x:hidden;display:flex;flex-direction:column">
+<div class="st-dau" style="display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:16px 28px">
 <sc-if value="{{tt.coLink}}"><a class="{{tt.lop}}" id="trang-thai-chung" href="{{tt.href}}" title="{{tt.tieu}}">{{tt.chu}}</a></sc-if>
 <sc-if value="{{tt.khongLink}}"><div class="{{tt.lop}}" id="trang-thai-chung" role="status">{{tt.chu}}</div></sc-if>
 </div>
 
-<div style="flex:1 1 0;min-height:0;overflow-y:auto;width:100%;max-width:880px;box-sizing:border-box;margin:0 auto;padding:24px 24px 24px;display:flex;flex-direction:column;align-items:center;gap:24px">
+<div class="st-cot" style="flex:1 1 0;min-height:0;overflow-y:auto;width:100%;max-width:880px;box-sizing:border-box;margin:0 auto;padding:24px 24px 24px;display:flex;flex-direction:column;align-items:center;gap:24px">
 
 <sc-if value="{{noTurns}}">
 <h1 class="st-tieu-de" style="margin:12px 0 4px;font-family:Newsreader,Georgia,serif;font-weight:400;font-size:46px;line-height:1.1;letter-spacing:-0.02em;text-align:center;text-wrap:balance">Bạn muốn làm gì hôm nay?</h1>
@@ -81,14 +94,14 @@ main.st{padding:12px 16px 0}
 <div class="cuon" id="cuon-luot" style="flex:1 1 0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:28px;padding:0 60px 0 0" aria-live="polite" aria-label="Hội thoại">
 <div id="cu-nhat" class="day-xuong" style="height:1px;flex:0 0 1px"></div>
 <sc-for list="{{turns}}" as="t">
-<div style="display:flex;flex-direction:column;gap:16px">
+<div class="luot" style="display:flex;flex-direction:column;gap:16px">
 
 <div style="align-self:flex-end;max-width:85%;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
 <div data-vai="user" style="padding:12px 16px;border-radius:18px 18px 4px 18px;background:var(--ink);color:#fff;text-wrap:pretty;white-space:pre-wrap;overflow-wrap:anywhere">{{t.userLine}}</div>
 <div style="font-size:12px;color:var(--mute);overflow-wrap:anywhere">{{t.meta}}</div>
 </div>
 
-<div style="display:flex;gap:12px;align-items:flex-start">
+<div class="luot-tra" style="display:flex;gap:12px;align-items:flex-start">
 <div style="flex:0 0 32px;width:32px;height:32px;border-radius:10px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg>
 </div>
@@ -131,7 +144,7 @@ main.st{padding:12px 16px 0}
 </sc-for>
 <div id="moi-nhat" style="height:1px;flex:0 0 1px"></div>
 </div>
-<div style="position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:8px">
+<div class="nut-noi" style="position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:8px">
 <a href="#cu-nhat" aria-label="Lên yêu cầu đầu tiên" onClick="{{lenDau}}" style="width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:0 4px 12px rgba(24,24,22,0.12);display:flex;align-items:center;justify-content:center">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11l6-6 6 6 M6 19l6-6 6 6"></path></svg>
 </a>
@@ -160,7 +173,7 @@ main.st{padding:12px 16px 0}
 <label for="o-soan" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Lời nhắn</label>
 <textarea id="o-soan" rows="3" placeholder="{{placeholder}}" value="{{draft}}" onInput="{{onDraft}}" onKeyDown="{{phimSoan}}" disabled="{{khoaSoan}}" style="border:0;resize:none;background:transparent;color:var(--ink);padding:18px 20px 6px;font-size:16px;line-height:1.5;border-radius:20px 20px 0 0"></textarea>
 
-<div style="display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding:8px 14px 14px">
+<div class="soan-duoi" style="display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding:8px 14px 14px">
 <sc-for list="{{tog}}" as="g">
 <button type="button" data-che-do="{{g.ma}}" aria-label="{{g.label}}" aria-pressed="{{g.on}}" onClick="{{g.pick}}" style="{{g.style}}">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{g.d}}"></path></svg>
@@ -197,7 +210,7 @@ main.st{padding:12px 16px 0}
 </div>
 </form>
 
-<div role="toolbar" aria-label="Chọn việc cần làm" style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px">
+<div role="toolbar" aria-label="Chọn việc cần làm" class="hang-viec" style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px">
 <button type="button" data-che-do="chat" aria-pressed="{{chatFam}}" onClick="{{chonChat}}" style="{{chatStyle}}">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.chat}}"></path></svg>
 Trò chuyện
@@ -388,11 +401,27 @@ class Component extends DCLogic {
     return t.id;
   }
   suaLuot(id, phan) { this.setState((s) => ({ luot: s.luot.map((t) => (t.id === id ? Object.assign({}, t, phan) : t)) })); }
-  // Cuộn xuống lượt mới nhất (sau khi dc-lite vá DOM); đang đọc ở trên thì không kéo xuống, trừ khi vừa gửi.
+  // Cuộn theo lượt mới nhất (sau khi dc-lite vá DOM). Vừa gửi (luon) → xuống đáy. Đang nhận: người đọc ở gần đáy thì
+  // theo đáy; đang đọc ở trên thì không kéo. Riêng điện thoại (mốc 1023 của khung, vùng hội thoại thấp): khi trang TỰ
+  // theo (vị trí cuộn còn đúng chỗ trang đặt lần trước) thì dừng lại ở ĐẦU câu trả lời mới nhất — đầu câu trả lời nằm
+  // trong một phần ba trên của vùng nhìn, trả lời dài thì đọc từ đầu chứ không bị kéo tới đuôi. Người đọc tự cuộn xuống
+  // gần đáy thì lại theo đáy như máy tính. Không bao giờ kéo ngược lên.
   cuon(luon) {
     requestAnimationFrame(() => {
       const c = document.getElementById('cuon-luot');
-      if (c && (luon || c.scrollHeight - c.scrollTop - c.clientHeight < 160)) c.scrollTop = c.scrollHeight;
+      if (!c) return;
+      const day = c.scrollHeight - c.clientHeight;
+      let dich = null;
+      if (luon) dich = day;
+      else if (Math.abs(c.scrollTop - this._viTri) < 1 && window.matchMedia('(max-width: 1023px)').matches) {
+        const ds = c.querySelectorAll('.luot'); const l = ds[ds.length - 1]; const tra = l && l.querySelector('.luot-tra');
+        const goc = c.getBoundingClientRect().top - c.scrollTop;   // toạ độ trong nội dung hộp cuộn
+        dich = tra ? Math.min(day, Math.max(l.getBoundingClientRect().top - goc, tra.getBoundingClientRect().top - goc - c.clientHeight / 3)) : day;
+        dich = Math.max(c.scrollTop, dich);
+      } else if (day - c.scrollTop < 160) dich = day;
+      if (dich === null) return;
+      c.scrollTop = dich;
+      this._viTri = c.scrollTop;
     });
   }
 
@@ -650,7 +679,7 @@ class Component extends DCLogic {
       luuKhoa: () => this.luuKhoa(), phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
       coChuaKhoa: !!ck, chuKhoa: ck ? ck.chu : '', dsChuaKhoa: ck ? ck.ds : [],
       tonTien: !!tn && !laChat,
-      noTurns: s.luot.length === 0, hasTurns: s.luot.length > 0, turns,
+      noTurns: s.luot.length === 0, hasTurns: s.luot.length > 0, turns, lopLuot: s.luot.length ? ' co-luot' : '',
       lenDau: cuonToi('cu-nhat'), xuongCuoi: cuonToi('moi-nhat'),
       placeholder: s.luot.length ? 'Nhắn tiếp, hoặc đổi chế độ bên dưới…' : cd[4],
       draft: s.nhap, onDraft: (e) => this.setState({ nhap: e.target.value }), khoaSoan: !!ck,

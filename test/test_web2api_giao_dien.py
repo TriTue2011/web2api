@@ -755,6 +755,100 @@ def test_studio_man_dau_hoi_thoai_tao_moi_va_thanh_duoi(trang, tmp_path, monkeyp
         assert khong_tran(trang)
 
 
+# Câu trả lời DÀI (nhiều đoạn, danh sách, khối mã, chữ dài không dấu cách) — dài hơn mọi vùng hội thoại trên điện thoại.
+TRA_DAI = ([f"Đoạn {i}: câu trả lời dài để đo vùng hội thoại trên điện thoại, chữ phải đọc được tới tận mép phải. \n\n"
+            for i in range(1, 9)]
+           + ["- mục một của danh sách khá dài để xuống dòng\n", "- mục hai\n\n", "```\nmot_dong_ma_rat_dai = 'khong_xuong_dong'\n```\n\n",
+              "Chuoi_dai_khong_dau_cach_" * 6 + "\n\n", "Đoạn cuối."])
+# Số đo Studio: chiều cao vùng hội thoại so với khung nhìn; số hình chữ nhật CHỮ (từng dòng của từng nút chữ, cùng khối
+# bong bóng / đoạn trả lời) giao với hình chữ nhật của hai nút nổi ↑↓ NỚI RA 8px mỗi phía — không giao thôi chưa đủ:
+# bản demo đặt nút cách mép chữ 4px, bóng đổ 12px phủ lên chữ (đo trên bố cục cũ: «giao» trần = 0 mà vẫn che);
+# đỉnh câu trả lời cuối so với vùng hội thoại.
+DO_STUDIO = """(() => {
+  const c = document.getElementById('cuon-luot'); const rc = c.getBoundingClientRect();
+  const nut = [...document.querySelectorAll('a[href="#cu-nhat"], a[href="#moi-nhat"]')].map((a) => a.getBoundingClientRect());
+  const CACH = 8; const giao = (a, b) => a.left < b.right + CACH && b.left - CACH < a.right && a.top < b.bottom + CACH && b.top - CACH < a.bottom;
+  const hop = []; const w = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+  for (let n; (n = w.nextNode());) { if (!n.textContent.trim()) continue; const r = document.createRange(); r.selectNodeContents(n); hop.push(...r.getClientRects()); }
+  c.querySelectorAll('[data-vai], .md > *').forEach((e) => hop.push(e.getBoundingClientRect()));
+  const tra = [...c.querySelectorAll('[data-vai="assistant"]')].pop();
+  return { cao: rc.height, khung: innerHeight, so_nut: nut.length, so_hop: hop.length,
+           giao: hop.filter((r) => r.width && r.height && nut.some((b) => giao(r, b))).length,
+           dinh_tra: tra ? tra.getBoundingClientRect().top - rc.top : null };
+})()"""
+# Kiểu tính được của các phần bố cục Studio (để chốt: màn đầu và máy tính giữ y hệt demo).
+KIEU_STUDIO = """(() => { const g = (e, k) => e ? getComputedStyle(e)[k] : null; const q = (s) => document.querySelector(s);
+  const c = q('#cuon-luot'); const n = q('a[href="#moi-nhat"]');
+  return { o_soan: q('#o-soan').getBoundingClientRect().height, nut_viec: q('#nut-xoa').getBoundingClientRect().height,
+           dong_tt: g(q('#trang-thai-chung').parentElement, 'padding'), cuon_phai: g(c, 'paddingRight'),
+           nut_noi: n ? n.getBoundingClientRect().width : null }; })()"""
+
+
+def test_studio_dien_thoai_hoi_thoai_dai_khong_bi_che(trang, tmp_path, monkeypatch):
+    """Chủ máy báo «Che hết nội dung phản hồi»: trên điện thoại sau khi gửi, vùng hội thoại chỉ còn ≈190 px và hai nút
+    nổi ↑↓ đè lên chữ. Khi ĐÃ có hội thoại ở khổ ≤1023: vùng hội thoại chiếm phần còn lại (≥45% khung nhìn 390×844),
+    nút nổi có cột lề riêng (không giao chữ ở mọi vị trí cuộn), Tạo mới / Lịch sử vẫn bấm được bằng chuột thật, trả lời
+    dài thì đầu câu trả lời còn trong vùng nhìn. Màn đầu và máy tính 1280 giữ nguyên bố cục demo."""
+    with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
+        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+        man_dau_may_tinh = trang.js(KIEU_STUDIO)
+        assert man_dau_may_tinh == {"o_soan": 96, "nut_viec": 44, "dong_tt": "16px 28px", "cuon_phai": None, "nut_noi": None}, man_dau_may_tinh
+        trang.khung(390, 844, True)
+        time.sleep(0.2)
+        assert trang.js(KIEU_STUDIO) == man_dau_may_tinh   # màn đầu điện thoại: y hệt demo (chỉ đổi khi đã có hội thoại)
+        trang.chup("studio-dai-dien-thoai-man-dau")
+
+        monkeypatch.setenv("GIA_KHUC", json.dumps(TRA_DAI))
+        monkeypatch.setenv("GIA_TRE", "0.03")
+        trang.go("#o-soan", "Kể dài cho tôi nghe")
+        trang.bam("document.getElementById('nut-gui')")
+        trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=20, mo_ta="trả lời dài xong")
+        time.sleep(0.2)
+        trang.js("document.activeElement.blur()")
+        do = trang.js(DO_STUDIO)
+        trang.chup("studio-dai-dien-thoai")
+        # (a) vùng hội thoại chiếm phần còn lại của màn hình.
+        assert do["so_nut"] == 2 and do["so_hop"] > 20, do
+        assert do["cao"] >= 0.45 * do["khung"], do
+        # Hàng «Trò chuyện / Tạo mới / Lịch sử» gọn thành MỘT hàng, nút vẫn cao 44 (bấm bằng ngón tay); ô nhập 2 dòng.
+        assert len(set(trang.js("[...document.querySelectorAll('[role=toolbar] button')].map((b) => Math.round(b.getBoundingClientRect().top))"))) == 1
+        kieu = trang.js(KIEU_STUDIO)
+        assert kieu["nut_viec"] == 44 and kieu["o_soan"] == 68, kieu
+        # (c) trả lời dài hơn vùng nhìn: tự cuộn theo nhưng DỪNG ở đầu câu trả lời (đầu câu trả lời còn trong vùng nhìn).
+        assert trang.js("(() => { const c = document.getElementById('cuon-luot'); return c.scrollHeight - c.clientHeight - c.scrollTop > 100; })()"), \
+            "câu trả lời phải dài hơn vùng nhìn để đo được việc dừng ở đầu"
+        assert 0 <= do["dinh_tra"] < do["cao"] / 2, do
+        # (b) nút nổi không giao chữ ở đầu, giữa và cuối hội thoại.
+        for phan in (0, 0.5, 1):
+            trang.js(f"(() => {{ const c = document.getElementById('cuon-luot'); c.scrollTop = (c.scrollHeight - c.clientHeight) * {phan}; }})()")
+            time.sleep(0.05)
+            d = trang.js(DO_STUDIO)
+            assert d["giao"] == 0, (phan, d)
+        # Nút nổi vẫn làm đúng việc: ↑ lên yêu cầu đầu, ↓ xuống cuối.
+        bam_chuot(trang, "document.querySelector('a[href=\"#cu-nhat\"]')", "nút lên đầu")
+        trang.cho("document.getElementById('cuon-luot').scrollTop === 0", mo_ta="lên đầu")
+        bam_chuot(trang, "document.querySelector('a[href=\"#moi-nhat\"]')", "nút xuống cuối")
+        trang.cho("(() => { const c = document.getElementById('cuon-luot'); return c.scrollHeight - c.clientHeight - c.scrollTop < 2; })()", mo_ta="xuống cuối")
+        assert khong_tran(trang)
+
+        # Lịch sử và Tạo mới vẫn bấm được bằng CHUỘT THẬT (không lớp nào đè).
+        bam_chuot(trang, "document.getElementById('nut-lich-su')", "Lịch sử (390, đã có hội thoại)")
+        trang.cho("!!document.getElementById('bang-lich-su') && document.querySelectorAll('[data-cuoc]').length === 1", mo_ta="bảng Lịch sử")
+        _dong_lich_su(trang)
+        bam_chuot(trang, "document.getElementById('nut-xoa')", "Tạo mới (390, đã có hội thoại)")
+        trang.cho("!!document.querySelector('.st-tieu-de') && !document.querySelector('[data-vai]')", mo_ta="Tạo mới về màn đầu")
+        assert trang.js(KIEU_STUDIO) == man_dau_may_tinh   # về màn đầu: bố cục demo trở lại
+
+        # Máy tính 1280 khi đã có hội thoại: giữ nguyên bố cục demo (ô soạn 3 dòng, nút 44, cột lề 60 của nút nổi).
+        trang.khung(1280, 800)
+        monkeypatch.setenv("GIA_KHUC", json.dumps(["Ngắn."]))
+        trang.go("#o-soan", "Chào")
+        trang.bam("document.getElementById('nut-gui')")
+        trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=10, mo_ta="chat xong ở 1280")
+        assert trang.js(KIEU_STUDIO) == {"o_soan": 96, "nut_viec": 44, "dong_tt": "16px 28px", "cuon_phai": "60px", "nut_noi": 46}
+
+
 # ───────────── Studio: Lịch sử trò chuyện (nút «Lịch sử» của demo) ─────────────
 
 LS = "web2api_lich_su_tro_chuyen"
