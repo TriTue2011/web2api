@@ -707,6 +707,59 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 
 ---
 
+### Module muse2api — Muse API (Meta Model API)
+
+**Mô tả.** Gọi các model Muse Spark của Meta qua **Meta Model API chính thức**
+(`https://api.meta.ai/v1`, tương thích OpenAI) bằng API key — khác với module
+`muse` (giao thức Noise XX tới máy ảo, cần khoá thiết bị). Mã nguồn:
+`modules/muse2api/`. Tiền tố model: `muse2api`. Module dùng bộ chuyển tiếp
+OpenAI dùng chung của lõi (`app/chuyen_tiep.py`); mọi đặc thù của Meta (địa chỉ,
+Bearer auth, phân loại lỗi 401/429/5xx) nằm trong module.
+
+**Cần gì.**
+- Một hoặc nhiều API key lấy ở Meta for Developers Console → Model API dashboard
+  (theo `dev.meta.ai/docs/authentication`, lưu vào biến `MODEL_API_KEY`).
+- Mạng ra tới `api.meta.ai`.
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H \"Authorization: Bearer $K\" $W/api/modules/thong-bao` — có `\"id\": \"muse2api\"`.
+2. Tải về: `curl -s -X POST -H \"Authorization: Bearer $K\" $W/api/nguon-git/cai/muse2api`
+3. Cài đặt cấu hình:
+
+   ```bash
+   curl -s -X POST -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
+     -d '{\"cau_hinh\": {\"api_keys\": [\"<META_API_KEY>\"]}}' \
+     $W/api/modules/muse2api/cai
+   ```
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `api_keys` | Có | Danh sách key Meta (xoay vòng; khoá 429 được cho nghỉ), lưu riêng trong kho bí mật |
+| `base_url` | Không | Mặc định `https://api.meta.ai/v1` |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
+  -d '{\"model\": \"muse2api/muse-spark-1.3\", \"messages\": [{\"role\": \"user\", \"content\": \"Xin chào\"}]}' \\
+  $W/v1/chat/completions
+```
+
+**Sự cố thường gặp.**
+- `401` «khoá hỏng»: key sai/hết hạn — kiểm tra lại ở Model API dashboard.
+- `429` «hết hạn mức»: rate limit tính theo team (Standard 3.000 RPM) — lõi tự cho khoá nghỉ và thử khoá kế.
+
+**Giới hạn.**
+- Module gọi Model API (Muse Spark), không phải app Muse (muse.ai) — Meta không công bố public API cho threads/VM/connectors của Muse agent.
+- Không khai video: official API không có endpoint video.
+- Giá theo docs Meta: Standard $1.25/$4.25, Contributor $0.10/$0.20 mỗi 1M token (input/output).
+
+---
+
 ### Module antigravity — Antigravity (Google AGY CLI)
 
 **Mô tả.** Dùng chính ứng dụng chính thức `agy` (Antigravity CLI) ở chế độ không tương tác qua cầu nối nhỏ chạy trên máy chủ (`dich-vu/antigravity-cau-noi/`). Không gọi API Google trực tiếp, không giả danh ứng dụng, không đọc hay in token. Module chuyển tiếp tới cầu nối qua chuẩn OpenAI, tận dụng bể nhiều tài khoản xoay vòng theo hạn mức còn lại. Mã nguồn: `modules/antigravity/`. Tiền tố model: `antigravity`.
