@@ -15,7 +15,7 @@ flowchart LR
 |---|---|---|
 | `gemini-api` | Gemini API (Google AI Studio): chat stream, tạo ảnh, video Veo | Có sẵn |
 | `muse` | Muse (Meta AI VM): giao thức Noise XX; cần khoá thiết bị nên **chưa dùng được** | Thử nghiệm, chưa kiểm với dịch vụ thật |
-| `muse2api` | Muse Spark qua Meta Model API chính thức (`api.meta.ai/v1`): chat, tạo ảnh | Có sẵn |
+| `muse2api` | Muse (muse.ai) qua giao thức trực tiếp: chat miễn phí bằng cookie, không cần API key | Có sẵn |
 | `antigravity` | Chat qua Antigravity CLI (`agy`) chạy trên máy chủ, cần cầu nối | Có khung, chưa kiểm với `agy` thật |
 
 ## Cài nhanh với Docker Compose

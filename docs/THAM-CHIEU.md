@@ -725,62 +725,60 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 
 ---
 
-### Module muse2api — Muse API (Meta Model API)
+### Module muse2api — Muse Web (muse.ai, direct protocol)
 
-**Mô tả.** Gọi các model Muse Spark của Meta qua **Meta Model API chính thức**
-(`https://api.meta.ai/v1`, tương thích OpenAI) bằng API key — khác với module
-`muse` (giao thức Noise XX tới máy ảo, cần khoá thiết bị). Mã nguồn:
-`modules/muse2api/`. Tiền tố model: `muse2api`. Module dùng bộ chuyển tiếp
-OpenAI dùng chung của lõi (`app/chuyen_tiep.py`); mọi đặc thù của Meta (địa chỉ,
-Bearer auth, phân loại lỗi 401/429/5xx) nằm trong module.
+**Mô tả.** Trò chuyện với Muse qua **giao thức trực tiếp** của web app muse.ai
+(WebSocket + Noise XX tới máy ảo), xác thực bằng cookie — **miễn phí, không cần
+API key, không browser**. Khác với module `muse` (cần `device_key` đăng ký OTP,
+chưa dùng được). Mã nguồn: `modules/muse2api/`. Tiền tố model: `muse2api`
+(model duy nhất `muse2api/muse`). Luồng: cookie → `POST /api/auth/check` →
+`POST /api/hatch/token` → handshake Noise XX → `POST /chat/stream` + poll
+`/chat/history`. Mọi đặc thù protocol nằm trong module; lõi chỉ định tuyến.
 
 **Cần gì.**
-- Một trong hai: (a) API key lấy ở Meta for Developers Console → Model API
-  dashboard (theo `dev.meta.ai/docs/authentication`); hoặc (b) tài khoản Meta
-  để phê duyệt OAuth trên trình duyệt (không cần dashboard).
-- Mạng ra tới `api.meta.ai` và `auth.meta.com` (nếu dùng OAuth).
-- RAM/đĩa thêm: chưa đo.
+- Một hoặc nhiều bộ cookie từ tab muse.ai đã đăng nhập (DevTools F12 →
+  Application → Cookies), dạng `k1=v1; k2=v2`.
+- Mạng ra tới `muse.ai` và `hatch.metaaivm.com`.
+- RAM/đĩa thêm: chưa đo (nhẹ hơn browser automation hàng chục lần).
 
 **Cách cài.**
 
 1. Xem thông báo: `curl -s -H \"Authorization: Bearer $K\" $W/api/modules/thong-bao` — có `\"id\": \"muse2api\"`.
 2. Tải về: `curl -s -X POST -H \"Authorization: Bearer $K\" $W/api/nguon-git/cai/muse2api`
-3. Cài đặt cấu hình — **không cần key** (OAuth device flow):
+3. Cài đặt cấu hình:
 
    ```bash
    curl -s -X POST -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
-     -d '{"cau_hinh": {}}' \
+     -d '{\"cau_hinh\": {\"cookies\": [\"hatch_sess=...; hatch_gw=...; datr=...\"]}}' \
      $W/api/modules/muse2api/cai
-   # → {"ok": false, "loi": "Mở https://... nhập mã XXXX-YYYY ... bấm Cài đặt lại."}
    ```
 
-   Mở URL, nhập mã, phê duyệt trên trình duyệt của bạn, rồi gọi lại lệnh trên —
-   module đúc key, kiểm tra và lưu. Key tự đúc lại mỗi ngày.
-   Hoặc dùng key tĩnh: `-d '{"cau_hinh": {"api_keys": ["<META_API_KEY>"]}}'`.
+   Lúc cài, module kiểm từng bộ cookie bằng HTTPS bootstrap (không tốn tiền).
 
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `api_keys` | Có | Danh sách key Meta (xoay vòng; khoá 429 được cho nghỉ), lưu riêng trong kho bí mật |
-| `base_url` | Không | Mặc định `https://api.meta.ai/v1` |
+| `cookies` | Có | Danh sách bộ cookie (xoay vòng), lưu riêng trong kho bí mật |
 
 **Ví dụ dùng.**
 
 ```bash
 curl -s -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
-  -d '{\"model\": \"muse2api/muse-spark-1.3\", \"messages\": [{\"role\": \"user\", \"content\": \"Xin chào\"}]}' \\
+  -d '{\"model\": \"muse2api/muse\", \"messages\": [{\"role\": \"user\", \"content\": \"Xin chào\"}]}' \\
   $W/v1/chat/completions
 ```
 
 **Sự cố thường gặp.**
-- `401` «khoá hỏng»: key sai/hết hạn — kiểm tra lại ở Model API dashboard.
-- `429` «hết hạn mức»: rate limit tính theo team (Standard 3.000 RPM) — lõi tự cho khoá nghỉ và thử khoá kế.
+- `401` «Cookie không hợp lệ/hết hạn»: đăng nhập lại muse.ai trên trình duyệt rồi export lại cookie.
+- `502` «Không kết nối được muse.ai»: máy ảo chưa sẵn sàng — đợi chút rồi thử lại.
 
 **Giới hạn.**
-- Module gọi Model API (Muse Spark), không phải app Muse (muse.ai) — Meta không công bố public API cho threads/VM/connectors của Muse agent.
-- Không khai video: official API không có endpoint video.
-- Giá theo docs Meta: Standard $1.25/$4.25, Contributor $0.10/$0.20 mỗi 1M token (input/output).
+- Giao thức nội bộ đã reverse-engineer, không chính thức — Meta đổi web app có thể làm module ngừng hoạt động.
+- Stream là poll lịch sử mỗi ~2s (không phải token-by-token).
+- Các request trên cùng một bộ cookie xếp hàng tuần tự, dùng chung main chat.
+- Điều khoản của Muse cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.
+- Cookie chính là tài khoản của bạn: không commit, không chia sẻ.
 
 ---
 
