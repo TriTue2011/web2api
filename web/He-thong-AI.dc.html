@@ -107,15 +107,29 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <div data-provider="{{pv.id}}" style="display:flex;flex-direction:column;gap:12px;min-width:0">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex:0 0 auto"><div style="position:relative;flex:0 0 auto"><button type="button" id="chon-pv" aria-haspopup="listbox" aria-expanded="{{pvHang.open}}" aria-label="Provider: {{pvHang.cur}}" onClick="{{pvHang.toggle}}" style="{{pvHang.btn}}"><i style="{{pvHang.curDot}}"></i><span>{{pvHang.cur}}</span><span style="font-size:12px;opacity:.7">{{pvHang.curDem}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{pvHang.chev}}"><path d="M6 9l6 6 6-6"></path></svg></button><sc-if value="{{pvHang.open}}"><div aria-hidden="true" onClick="{{pvHang.dong}}" style="position:fixed;inset:0;z-index:14"></div><div role="listbox" aria-label="Danh sách provider" style="position:absolute;top:calc(100% + 6px);left:0;z-index:15;min-width:240px;max-width:calc(100vw - 32px);box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(24,24,22,0.14);padding:6px;display:flex;flex-direction:column;gap:2px"><sc-for list="{{pvHang.items}}" as="u"><button type="button" role="option" data-pv="{{u.id}}" aria-selected="{{u.on}}" onClick="{{u.pick}}" style="{{u.st}}"><i style="{{u.dot}}"></i><span style="flex:1 1 auto;text-align:left">{{u.nhan}}</span><span style="font-size:12px;color:var(--mute)">{{u.dem}}</span></button></sc-for></div></sc-if></div><span aria-hidden="true" style="flex:0 0 auto;width:1px;height:28px;background:#CFCCC3"></span><div role="tablist" aria-label="Mục trong provider" style="display:flex;gap:8px;flex:0 0 auto"><sc-for list="{{c3}}" as="c"><button type="button" role="tab" data-pv-tab="{{c.id}}" aria-selected="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}"><span>{{c.nhan}}</span><span style="font-size:12px;opacity:.7">{{c.dem}}</span></button></sc-for></div></div>
 
-<sc-if value="{{coMdDau}}"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap"><span style="font-weight:600">{{pv.ten}} · model</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-lam-moi-md" onClick="{{md.moi}}" disabled="{{md.dang}}" style="{{md.moiSt}}">{{md.moiNhan}}</button></div></div></sc-if>
+<sc-if value="{{coMdDau}}"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap"><span style="font-weight:600">{{pv.ten}} · model</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-luu-md" onClick="{{md.luu}}" disabled="{{md.khongSua}}" style="{{md.luuSt}}">{{md.luuNhan}}</button><button type="button" id="nut-lam-moi-md" onClick="{{md.moi}}" disabled="{{md.dang}}" style="{{md.moiSt}}">{{md.moiNhan}}</button></div></div></sc-if>
 <sc-if value="{{coMd}}">
 <sc-for list="{{md.nhom}}" as="g">
 <section data-nhom-md="{{g.ma}}" aria-label="{{g.ten}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden">
-<button type="button" data-mo-nhom="{{g.ma}}" aria-expanded="{{g.mo}}" aria-label="{{g.ten}}: {{g.dem}}" onClick="{{g.bat}}" style="{{g.dauSt}}"><span style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)">{{g.ten}}</span><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)"><span>{{g.dem}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{g.chev}}"><path d="M9 6l6 6-6 6"></path></svg></span></button>
+<div style="width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;min-height:44px;background:#FBFAF8;border-bottom:{{g.vienDuoi}}">
+<button type="button" data-mo-nhom="{{g.ma}}" aria-expanded="{{g.mo}}" aria-label="{{g.ten}}: {{g.dem}}" onClick="{{g.bat}}" style="flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer;padding:4px 0">
+<span style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)">{{g.ten}}</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)"><span data-nhom-dem="{{g.ma}}">{{g.dem}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{g.chev}}"><path d="M9 6l6 6-6 6"></path></svg></span>
+</button>
+<div style="display:flex;align-items:center;gap:6px;flex:0 0 auto">
+<button type="button" data-chon-tat-ca="{{g.ma}}" onClick="{{g.chonTatCa}}" style="border:0;background:transparent;color:var(--acc);font-size:12px;font-weight:500;cursor:pointer;padding:4px">Chọn tất cả</button>
+<button type="button" data-bo-chon-tat-ca="{{g.ma}}" onClick="{{g.boChonTatCa}}" style="border:0;background:transparent;color:var(--mute);font-size:12px;cursor:pointer;padding:4px">Bỏ chọn tất cả</button>
+</div>
+</div>
 <sc-if value="{{g.mo}}">
 <sc-for list="{{g.rows}}" as="m">
-<div data-model="" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:6px 14px 6px 16px;min-height:52px;border-top:1px solid #F0EEE9">
-<span style="flex:1 1 220px;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere" title="{{m.id}}">{{m.id}}</span>
+<div data-model="{{m.id}}" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:6px 14px 6px 16px;min-height:52px;border-top:1px solid #F0EEE9">
+<span style="flex:1 1 220px;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere;color:{{m.idColor}}" title="{{m.id}}">{{m.id}}</span>
+<div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+<sc-if value="{{m.laMacDinh}}"><span data-mac-dinh="{{m.id}}" style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#E2F0ED;color:#0B5A53">Mặc định</span></sc-if>
+<sc-if value="{{m.coTheDatMacDinh}}"><button type="button" data-dat-mac-dinh="{{m.id}}" onClick="{{m.datMacDinh}}" style="box-sizing:border-box;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);padding:2px 10px;font-size:12px;cursor:pointer">Đặt mặc định</button></sc-if>
+<button type="button" role="switch" data-cong-tac="{{m.id}}" aria-checked="{{m.batChu}}" aria-label="Bật tắt model {{m.id}}" onClick="{{m.doiBat}}" style="{{m.switchSt}}"><span style="{{m.knobSt}}"></span></button>
+</div>
 </div>
 </sc-for>
 </sc-if>
@@ -255,7 +269,8 @@ class Component extends DCLogic {
     this.state = { khoa, khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', cat: [], mods: [], models: [], dangTai: true,
       tab: den ? 'tai_khoan' : tabTheoNeo(), sk: {}, menuMo: null, ghi: '', ghiLoi: false,
       tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
-      pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {} };
+      pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
+      mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false };
     this._den = den;
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
@@ -293,7 +308,10 @@ class Component extends DCLogic {
       mods: mods.status === 'fulfilled' ? ((mods.value.j && mods.value.j.modules) || []) : this.state.mods,
       soTb: mods.status === 'fulfilled' ? (mods.value.j.thong_bao_so || 0) : 0, dangTai: false });
     if (!this.state.khoa) return;
-    for (const m of this.dsAi()) if (m.da_lien_ket) this.kiem(m.id);   // chưa liên kết: …/suc-khoe trả 404, không gọi
+    for (const m of this.dsAi()) if (m.da_lien_ket) {
+      this.kiem(m.id);
+      this.taiModelModule(m.id);
+    }
     await this.taiModel();
   }
   async taiModel() {
@@ -302,6 +320,95 @@ class Component extends DCLogic {
       this.setState({ models: ((j && j.data) || []).filter((m) => m && typeof m.id === 'string') });
       return true;
     } catch (e) { this.loi(e); return false; }
+  }
+  async taiModelModule(id) {
+    if (!this.state.khoa || !id) return;
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/model');
+      if (j && (j.models || j.danh_muc)) {
+        const tat = (j.tat || []).slice();
+        const mac_dinh = Object.assign({}, j.mac_dinh || {});
+        this.setState((st) => {
+          const curId = st.pvSel || (this.dsAi()[0] || {}).id;
+          const laCur = curId === id;
+          return {
+            mdData: Object.assign({}, st.mdData, { [id]: j }),
+            mdTat: laCur ? tat : st.mdTat,
+            mdMacDinh: laCur ? mac_dinh : st.mdMacDinh,
+            mdGocTat: laCur ? tat : st.mdGocTat,
+            mdGocMacDinh: laCur ? mac_dinh : st.mdGocMacDinh,
+          };
+        });
+      }
+    } catch (e) {
+      this.loi(e);
+    }
+  }
+  doiBatModel(pvId, mid, nhom) {
+    const tat = new Set(this.state.mdTat || []);
+    const md = Object.assign({}, this.state.mdMacDinh || {});
+    if (tat.has(mid)) {
+      tat.delete(mid);
+    } else {
+      tat.add(mid);
+      if (md[nhom] === mid) delete md[nhom];
+    }
+    this.setState({ mdTat: [...tat], mdMacDinh: md });
+  }
+  datMacDinhModel(pvId, mid, nhom) {
+    const tat = new Set(this.state.mdTat || []);
+    if (tat.has(mid)) return;
+    const md = Object.assign({}, this.state.mdMacDinh || {}, { [nhom]: mid });
+    this.setState({ mdMacDinh: md });
+  }
+  chonTatCaNhom(pvId, nhom, ids) {
+    const tat = new Set(this.state.mdTat || []);
+    for (const mid of ids) tat.delete(mid);
+    this.setState({ mdTat: [...tat] });
+  }
+  boChonTatCaNhom(pvId, nhom, ids) {
+    const tat = new Set(this.state.mdTat || []);
+    const md = Object.assign({}, this.state.mdMacDinh || {});
+    for (const mid of ids) {
+      tat.add(mid);
+      if (md[nhom] === mid) delete md[nhom];
+    }
+    this.setState({ mdTat: [...tat], mdMacDinh: md });
+  }
+  async luuThayDoiModel(pvId) {
+    if (!pvId || this.state.dangLuuMd) return;
+    this.setState({ dangLuuMd: true });
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(pvId) + '/model', {
+        method: 'PUT',
+        json: {
+          tat: this.state.mdTat || [],
+          mac_dinh: this.state.mdMacDinh || {}
+        }
+      });
+      if (j && j.ok) {
+        const tat = (j.tat || []).slice();
+        const mac_dinh = Object.assign({}, j.mac_dinh || {});
+        this.setState((st) => ({
+          dangLuuMd: false,
+          mdData: Object.assign({}, st.mdData, { [pvId]: j }),
+          mdTat: tat,
+          mdMacDinh: mac_dinh,
+          mdGocTat: tat,
+          mdGocMacDinh: mac_dinh
+        }));
+        const pvTen = (this.dsAi().find((m) => m.id === pvId) || {}).ten || pvId;
+        this.msg('Đã lưu thay đổi model của «' + pvTen + '».');
+        await this.taiModel();
+      } else {
+        this.setState({ dangLuuMd: false });
+        this.msg('Chưa lưu được thay đổi model: ' + ((j && j.error && j.error.message) || (j && j.loi) || 'lỗi'), true);
+      }
+    } catch (e) {
+      this.loi(e);
+      this.setState({ dangLuuMd: false });
+      this.msg('Lỗi lưu thay đổi: ' + e.message, true);
+    }
   }
   loi(e) { if (e && e.ma === 401) this.setState({ khoaLoi: 'Khoá quản trị sai hoặc thiếu (HTTP 401). Dán lại khoá đúng ở trang Hệ thống → Module.' }); }
   dsAi() { return ((this.state.tn && this.state.tn.modules) || []).filter((m) => K.coMa(m, K.AI)); }
@@ -474,11 +581,30 @@ class Component extends DCLogic {
     // ===== Provider =====
     const pvCur = ai.find((m) => m.id === s.pvSel) || ai[0] || null;
     const pvTab = s.pvTab === 'tk' ? 'tk' : 'model';
-    const mdCur = pvCur ? s.models.filter((x) => x.id.startsWith(pvCur.tien_to + '/')) : [];
+    const curPvData = pvCur && s.mdData && s.mdData[pvCur.id];
+    const mdCur = (curPvData && (curPvData.models || curPvData.danh_muc)) || (pvCur ? s.models.filter((x) => x.id.startsWith(pvCur.tien_to + '/')) : []);
     const tkCur = pvCur ? khoa.get(pvCur.id) : [];
+
+    const tatSet = new Set(s.mdTat != null ? s.mdTat : ((curPvData && curPvData.tat) || []));
+    const macDinhMap = s.mdMacDinh != null ? s.mdMacDinh : ((curPvData && curPvData.mac_dinh) || {});
+    const gocTatSet = new Set(s.mdGocTat != null ? s.mdGocTat : ((curPvData && curPvData.tat) || []));
+    const gocMacDinhMap = s.mdGocMacDinh != null ? s.mdGocMacDinh : ((curPvData && curPvData.mac_dinh) || {});
+
+    const tatKhac = tatSet.size !== gocTatSet.size || [...tatSet].some((x) => !gocTatSet.has(x));
+    const mdKeys = new Set([...Object.keys(macDinhMap), ...Object.keys(gocMacDinhMap)]);
+    const mdKhac = [...mdKeys].some((k) => macDinhMap[k] !== gocMacDinhMap[k]);
+    const coThayDoi = tatKhac || mdKhac;
+
     const items = ai.map((m) => ({ id: m.id, nhan: m.ten, dem: String(khoa.get(m.id).length), on: !!pvCur && pvCur.id === m.id, dot: CHAM + ';flex:0 0 auto',
       st: 'display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border:0;border-radius:10px;font:inherit;font-size:14px;cursor:pointer;color:#181816;background:' + (pvCur && pvCur.id === m.id ? '#EFEDE8' : 'transparent'),
-      pick: () => this.setState({ pvSel: m.id, pvDd: false, pvMo: null, pvTab: 'model', mdMo: {} }) }));
+      pick: () => {
+        const d = this.state.mdData && this.state.mdData[m.id];
+        const tat = d ? (d.tat || []).slice() : null;
+        const md = d ? Object.assign({}, d.mac_dinh || {}) : null;
+        this.setState({ pvSel: m.id, pvDd: false, pvMo: null, pvTab: 'model', mdMo: {},
+          mdTat: tat, mdMacDinh: md, mdGocTat: tat, mdGocMacDinh: md });
+        this.taiModelModule(m.id);
+      } }));
     const pvHang = { open: !!s.pvDd, toggle: () => this.setState({ pvDd: !s.pvDd }), dong: () => this.setState({ pvDd: false }),
       cur: pvCur ? pvCur.ten : '', curDem: String(tkCur.length), curDot: CHAM + ';flex:0 0 auto',
       btn: chipSt(true) + 'gap:8px;', chev: 'flex:0 0 auto;transition:transform .15s;transform:rotate(' + (s.pvDd ? 180 : 0) + 'deg)', items };
@@ -489,24 +615,55 @@ class Component extends DCLogic {
     // không lưu localStorage hay neo, đổi provider là gọn lại.
     const nhomMd = new Map();
     for (const x of mdCur) {
-      for (const kn of (Array.isArray(x.kha_nang) && x.kha_nang.length ? x.kha_nang : ['chat'])) {
+      const knList = x.nhom ? [x.nhom] : (Array.isArray(x.kha_nang) && x.kha_nang.length ? x.kha_nang : ['chat']);
+      for (const kn of knList) {
         if (!nhomMd.has(kn)) nhomMd.set(kn, []);
-        nhomMd.get(kn).push({ id: x.id });
+        const isBat = !tatSet.has(x.id);
+        const isMacDinh = macDinhMap[kn] === x.id;
+        nhomMd.get(kn).push({
+          id: x.id,
+          nhom: kn,
+          bat: isBat,
+          laMacDinh: isMacDinh,
+          coTheDatMacDinh: !isMacDinh && isBat,
+          batChu: isBat ? 'true' : 'false',
+          switchSt: 'box-sizing:border-box;width:38px;height:22px;border-radius:11px;border:0;padding:2px;display:inline-flex;align-items:center;cursor:pointer;position:relative;background:' + (isBat ? '#0F766E' : '#CFCCC3') + ';transition:background .15s;',
+          knobSt: 'display:block;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.2);transform:translateX(' + (isBat ? '16px' : '0') + ');transition:transform .15s;',
+          idColor: isBat ? 'var(--ink)' : 'var(--mute)',
+          doiBat: () => this.doiBatModel(pvCur ? pvCur.id : null, x.id, kn),
+          datMacDinh: () => this.datMacDinhModel(pvCur ? pvCur.id : null, x.id, kn),
+        });
       }
     }
     const thuTu = ['chat'].concat((pvCur && pvCur.cung_cap) || []);
     const nhomDs = [...nhomMd.entries()].sort((a, b) => (thuTu.indexOf(a[0]) + 1 || 99) - (thuTu.indexOf(b[0]) + 1 || 99))
       .map(([ma, rows]) => {
         const mo = !!(s.mdMo || {})[ma];
-        return { ma, ten: tenViec(ma), dem: rows.length + ' model', rows, mo,
+        const soTong = rows.length;
+        const soBat = rows.filter((r) => r.bat).length;
+        return { ma, ten: tenViec(ma), dem: soBat + '/' + soTong + ' đang bật', rows, mo,
+          vienDuoi: mo ? '1px solid var(--line)' : '0',
           bat: () => this.setState((st) => ({ mdMo: Object.assign({}, st.mdMo, { [ma]: !mo }) })),
+          chonTatCa: (e) => { if (e) e.stopPropagation(); this.chonTatCaNhom(pvCur ? pvCur.id : null, ma, rows.map((r) => r.id)); },
+          boChonTatCa: (e) => { if (e) e.stopPropagation(); this.boChonTatCaNhom(pvCur ? pvCur.id : null, ma, rows.map((r) => r.id)); },
           dauSt: 'width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;min-height:44px;border:0;background:#FBFAF8;color:var(--ink);font:inherit;text-align:left;cursor:pointer;' + (mo ? 'border-bottom:1px solid var(--line)' : ''),
           chev: 'flex:0 0 auto;transition:transform .15s;transform:rotate(' + (mo ? 90 : 0) + 'deg)' };
       });
     const lienKet = !!pvCur && pvCur.da_lien_ket;
     const md = { nhom: nhomDs, dang: s.dangMd, moiNhan: s.dangMd ? 'Đang lấy…' : 'Làm mới danh sách', moiSt: btnSt(),
-      moi: async () => { this.setState({ dangMd: true }); const ok = await this.taiModel(); this.setState({ dangMd: false });
-        if (ok) this.msg('Đã lấy lại danh sách model của ' + pvCur.ten + ': ' + this.state.models.filter((x) => x.id.startsWith(pvCur.tien_to + '/')).length + ' model.'); } };
+      khongSua: !coThayDoi || s.dangLuuMd,
+      luuNhan: s.dangLuuMd ? 'Đang lưu…' : 'Lưu thay đổi',
+      luuSt: coThayDoi
+        ? 'box-sizing:border-box;min-height:36px;padding:0 16px;border-radius:18px;border:1px solid #181816;background:#181816;color:#fff;font-weight:500;cursor:pointer;'
+        : 'box-sizing:border-box;min-height:36px;padding:0 16px;border-radius:18px;border:1px solid #E4E2DC;background:#EFEDE8;color:#8C887B;font-weight:500;cursor:not-allowed;opacity:.6;',
+      luu: () => this.luuThayDoiModel(pvCur ? pvCur.id : null),
+      moi: async () => {
+        this.setState({ dangMd: true });
+        if (pvCur) await this.taiModelModule(pvCur.id);
+        const ok = await this.taiModel();
+        this.setState({ dangMd: false });
+        if (ok && pvCur) this.msg('Đã lấy lại danh sách model của «' + pvCur.ten + '»: ' + mdCur.length + ' model.');
+      } };
     const moTk = () => { this.chonTab('tai_khoan'); this.setState({ tkThem: true, chonMod: pvCur ? pvCur.id : null, f: {} }); this.denForm(); };
     const pvRows = pvCur && pvTab === 'tk' ? tkCur.map((r) => {
       const sk = this.skCua(r, tkCur.length); const k = sk.k; const open = s.pvMo === r.key;

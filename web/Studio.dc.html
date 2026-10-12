@@ -376,7 +376,14 @@ class Component extends DCLogic {
     const khai = ung.filter((m) => Array.isArray(m.kha_nang) && m.kha_nang.includes(ma));
     return khai.length ? khai : ung.filter((m) => !Array.isArray(m.kha_nang));
   }
-  modelChon() { const ds = this.dsModel(this.state.cheDo).map((m) => m.id); const c = this.state.chon[this.state.cheDo]; return ds.includes(c) ? c : (ds[0] || ''); }
+  modelChon() {
+    const dsObj = this.dsModel(this.state.cheDo);
+    const ds = dsObj.map((m) => m.id);
+    const c = this.state.chon[this.state.cheDo];
+    if (c && ds.includes(c)) return c;
+    const def = dsObj.find((m) => m.mac_dinh);
+    return def ? def.id : (ds[0] || '');
+  }
 
   async goiV1(duong, than, signal) {
     const hd = { 'Content-Type': 'application/json' };
