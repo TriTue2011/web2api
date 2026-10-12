@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import he_thong, kho, tuyen, xac_thuc
+from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, xu_ly_loi_openai
 from app.nguon_git import NguonGit
 from app.so_module import SoModule
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="web2api", version=PHIEN_BAN, docs_url=None, redoc_url=None, openapi_url=None,
               lifespan=lifespan)
 app.add_exception_handler(LoiOpenAI, xu_ly_loi_openai)
+cai_bien_loi(app)  # /v1: mọi lỗi khác cũng ra khuôn OpenAI; lỗi chưa bắt không lộ chi tiết/khoá
 
 
 def thu_muc_du_lieu() -> str:
@@ -65,6 +67,7 @@ def api_he_thong():
 
 
 app.include_router(tuyen.v1)
+app.include_router(tuyen.v1_khong_co)  # NGAY sau v1: /v1 lạ → 404 unknown_endpoint, sai phương thức → 405
 app.include_router(tuyen.modules)
 app.include_router(tuyen.tinh_nang)
 app.include_router(tuyen.nguon_git)
