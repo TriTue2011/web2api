@@ -16,6 +16,8 @@ from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod, phien as phien_mod
+
+from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod, nhat_ky as nhat_ky_mod, thiet_bi as thiet_bi_mod
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
@@ -38,6 +40,9 @@ dia_chi = APIRouter(prefix="/api", dependencies=QT)
 nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
 khoa_khach = APIRouter(prefix="/api/khoa-khach", dependencies=QT)
 phien = APIRouter(prefix="/api/phien", dependencies=QT)
+
+thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
+phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
 tep_module = APIRouter()
 
 
@@ -727,4 +732,238 @@ async def kiem_phien(module: str, tai_khoan: str, request: Request):
     except KeyError:
         raise LoiOpenAI(404, "Không tìm thấy phiên") from None
     return {"ok": True, **kq}
+
+
+# ───────────── Tuyến THIẾT BỊ / ỨNG DỤNG (/api/thiet-bi) ─────────────
+
+@thiet_bi.get("")
+async def lay_thiet_bi(
+    request: Request,
+    q: str | None = None,
+    loai: str | None = None,
+    khu: str | None = None,
+    module: str | None = None,
+    rui_ro: str | None = None,
+):
+    kiem_tra_pham_vi(request, "thiet_bi:doc", "thiet_bi:ghi")
+    so = _so(request)
+    ds, loi = await thiet_bi_mod.lay_danh_sach_thuc_the(
+        so, loc_q=q, loc_loai=loai, loc_khu=khu, loc_module=module, loc_rui_ro=rui_ro
+    )
+    loai_set = sorted(set(e.get("loai") for e in ds if e.get("loai")))
+    khu_set = sorted(set(e.get("khu") for e in ds if e.get("khu")))
+    module_set = sorted(set(e.get("module") for e in ds if e.get("module")))
+    return {
+        "thuc_the": ds,
+        "loi_module": loi,
+        "loai": loai_set,
+        "khu": khu_set,
+        "module": module_set,
+        "rui_ro": sorted(thiet_bi_mod.RUI_RO_HOP_LE),
+    }
+
+
+@thiet_bi.get("/su-kien")
+async def sse_su_kien_thiet_bi(request: Request):
+    kiem_tra_pham_vi(request, "thiet_bi:su_kien")
+    q = await thiet_bi_mod.BO_PHAT.dang_ky()
+
+    async def phat_dong():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    su_kien = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {json.dumps(su_kien, ensure_ascii=False)}\n\n".encode("utf-8")
+                except asyncio.TimeoutError:
+                    yield b": giu_ket_noi\n\n"
+        finally:
+            await thiet_bi_mod.BO_PHAT.huy(q)
+
+    return StreamingResponse(
+        phat_dong(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@thiet_bi.post("/su-kien")
+async def bao_su_kien_thiet_bi(request: Request):
+    kiem_tra_pham_vi(request, "thiet_bi:su_kien")
+    than = await _than_json(request)
+    e_id = than.get("id") or than.get("thuc_the")
+    if not isinstance(e_id, str) or not e_id.strip():
+        raise LoiOpenAI(400, "Thiếu hoặc sai trường «id»")
+    sk = {
+        "id": e_id.strip(),
+        "thuc_the": e_id.strip(),
+        "loai": str(than.get("loai") or "trang_thai"),
+        "gia_tri": than.get("gia_tri"),
+        "luc": kho.bay_gio_iso(),
+    }
+    await thiet_bi_mod.BO_PHAT.phat(sk)
+    return {"ok": True}
+
+
+@thiet_bi.get("/{id_thuc_the}")
+async def lay_chi_tiet_thiet_bi(id_thuc_the: str, request: Request):
+    kiem_tra_pham_vi(request, "thiet_bi:doc", "thiet_bi:ghi")
+    so = _so(request)
+    item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
+    if not item:
+        raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
+    return {"thuc_the": item, "trang_thai": item.get("trang_thai")}
+
+
+@thiet_bi.put("/{id_thuc_the}/rui-ro", dependencies=QT)
+async def dat_rui_ro_thiet_bi(id_thuc_the: str, request: Request):
+    than = await _than_json(request)
+    rui_ro = than.get("rui_ro")
+    if rui_ro not in thiet_bi_mod.RUI_RO_HOP_LE:
+        raise LoiOpenAI(400, f"Mức rủi ro không hợp lệ (chỉ nhận: {sorted(thiet_bi_mod.RUI_RO_HOP_LE)})", code="invalid_request")
+    thiet_bi_mod.luu_ghi_de_rui_ro(id_thuc_the, rui_ro)
+    nhat_ky_mod.ghi(
+        "thiet_bi",
+        "thong_tin",
+        f"Đặt rủi ro «{rui_ro}» cho thực thể «{id_thuc_the}»",
+        thuc_the=id_thuc_the,
+        rui_ro=rui_ro,
+        nguoi_goi=getattr(request.state, "nguoi_goi", "quan_tri"),
+    )
+    return {"ok": True, "id": id_thuc_the, "rui_ro": rui_ro}
+
+
+@thiet_bi.post("/{id_thuc_the}/hanh-dong")
+async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
+    kiem_tra_pham_vi(request, "thiet_bi:ghi")
+    than = await _than_json(request)
+    hanh_dong = than.get("hanh_dong")
+    if not isinstance(hanh_dong, str) or not hanh_dong.strip():
+        raise LoiOpenAI(400, "Thiếu trường «hanh_dong»")
+    hanh_dong = hanh_dong.strip()
+    tham_so = than.get("tham_so") or {}
+    if not isinstance(tham_so, dict):
+        raise LoiOpenAI(400, "«tham_so» phải là đối tượng")
+    xac_nhan = bool(than.get("xac_nhan", False))
+    ly_do = str(than.get("ly_do") or "")
+
+    so = _so(request)
+    item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
+    if not item:
+        raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
+
+    if hanh_dong not in item.get("tinh_nang", []):
+        raise LoiOpenAI(
+            400,
+            f"Hành động «{hanh_dong}» không nằm trong tính năng hỗ trợ của thực thể {id_thuc_the!r} (hỗ trợ: {item.get('tinh_nang', [])})",
+            code="invalid_action",
+        )
+
+    nguoi_goi = getattr(request.state, "nguoi_goi", "khach")
+    danh_tinh = getattr(request.state, "danh_tinh", {})
+    la_quan_tri = isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "quan_tri"
+
+    # Xử lý mức rủi ro nguy_hiem
+    if item.get("rui_ro") == "nguy_hiem":
+        if la_quan_tri:
+            if not xac_nhan:
+                nhat_ky_mod.ghi(
+                    "thiet_bi",
+                    "canh_bao",
+                    f"Từ chối 409: hành động nguy hiểm «{hanh_dong}» trên «{id_thuc_the}» cần quản trị xác nhận",
+                    thuc_the=id_thuc_the,
+                    hanh_dong=hanh_dong,
+                    nguoi_goi=nguoi_goi,
+                )
+                raise LoiOpenAI(
+                    409,
+                    f"Hành động «{hanh_dong}» trên thực thể «{id_thuc_the}» có mức rủi ro nguy hiểm, cần gửi kèm «xac_nhan: true».",
+                    code="can_xac_nhan",
+                )
+        else:
+            # Khoá khách: KHÔNG thực hiện, tạo mục HÀNG CHỜ PHÊ DUYỆT và trả 202
+            pd = thiet_bi_mod.them_hang_cho_phe_duyet(
+                ai_de_xuat=nguoi_goi,
+                thuc_the=id_thuc_the,
+                hanh_dong=hanh_dong,
+                tham_so=tham_so,
+                ly_do=ly_do,
+            )
+            nhat_ky_mod.ghi(
+                "thiet_bi",
+                "thong_tin",
+                f"Tạo yêu cầu phê duyệt {pd['id']}: «{nguoi_goi}» yêu cầu «{hanh_dong}» trên «{id_thuc_the}» (nguy hiểm)",
+                phe_duyet_id=pd["id"],
+                thuc_the=id_thuc_the,
+                hanh_dong=hanh_dong,
+                nguoi_goi=nguoi_goi,
+                ly_do=ly_do,
+            )
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "phe_duyet_id": pd["id"],
+                    "trang_thai": "cho_phe_duyet",
+                    "cho_phe_duyet": True,
+                },
+                status_code=202,
+            )
+
+    # Thực hiện hành động
+    tien_to, _, _ = id_thuc_the.partition(".")
+    mod_id = so.tim_theo_tien_to(tien_to)
+    m = so.dang_chay.get(mod_id)
+    if not m or not callable(getattr(m, "thuc_hien", None)):
+        raise LoiOpenAI(502, f"Module cho thực thể {id_thuc_the!r} không sẵn sàng hoặc không hỗ trợ thuc_hien.", code="upstream_error")
+
+    try:
+        kq = await m.thuc_hien(id_thuc_the, hanh_dong, tham_so)
+    except Exception as e:
+        log.exception("Module %s lỗi khi thực hiện hành động %s trên %s", mod_id, hanh_dong, id_thuc_the)
+        nhat_ky_mod.ghi(
+            "thiet_bi",
+            "loi",
+            f"Module lỗi khi thực hiện «{hanh_dong}» trên «{id_thuc_the}»: {e}",
+            thuc_the=id_thuc_the,
+            hanh_dong=hanh_dong,
+            nguoi_goi=nguoi_goi,
+            loi=str(e),
+        )
+        raise LoiOpenAI(502, f"Module lỗi khi thực hiện hành động: {type(e).__name__}", code="upstream_error") from e
+
+    nhat_ky_mod.ghi(
+        "thiet_bi",
+        "thong_tin",
+        f"Thực hiện thành công hành động «{hanh_dong}» trên «{id_thuc_the}»",
+        thuc_the=id_thuc_the,
+        hanh_dong=hanh_dong,
+        nguoi_goi=nguoi_goi,
+        tham_so=thiet_bi_mod.lam_sach_tham_so(tham_so),
+    )
+    return kq
+
+
+# ───────────── Hàng chờ phê duyệt (/api/phe-duyet) ─────────────
+
+@phe_duyet.get("")
+def danh_sach_phe_duyet():
+    return {"hang_cho": thiet_bi_mod.doc_hang_cho_phe_duyet()}
+
+
+@phe_duyet.post("/{pd_id}/duyet")
+async def xu_ly_duyet(pd_id: str, request: Request):
+    so = _so(request)
+    nguoi_duyet = getattr(request.state, "nguoi_goi", "quan_tri")
+    return await thiet_bi_mod.duyet_phe_duyet(pd_id, so, nguoi_duyet=nguoi_duyet)
+
+
+@phe_duyet.post("/{pd_id}/tu-choi")
+def xu_ly_tu_choi(pd_id: str, request: Request):
+    nguoi_tu_choi = getattr(request.state, "nguoi_goi", "quan_tri")
+    return thiet_bi_mod.tu_choi_phe_duyet(pd_id, nguoi_tu_choi=nguoi_tu_choi)
 

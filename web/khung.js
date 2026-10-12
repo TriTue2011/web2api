@@ -38,6 +38,7 @@
   const DIEU_KIEN = {
     module: { nhan: 'Module', can: [] },
     bao_mat: { nhan: 'Bảo mật & người dùng', can: [] },
+    thiet_bi: { nhan: 'Thiết bị', can: ['thiet_bi'], pham_vi: 'da_cai' },
     ai: { nhan: 'AI', can: [AI], pham_vi: 'da_cai' },
     tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'tai-khoan', bieu_tuong: 'tai_khoan' },
     // Provider hiện từ lúc CÀI (chủ máy 11/10: «cài AI rồi phải thấy có tài khoản, có provider như demo») — chưa có khoá
@@ -166,6 +167,7 @@
     provider: 'M7 18a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.7 1.2A3.4 3.4 0 0 1 17 18z',
     combo: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
     bao_mat: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+    thiet_bi: 'M5 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z M12 3v4',
     quay_lai: 'M19 12H5 M11 6l-6 6 6 6',
     xuong: 'M6 9l6 6 6-6'
   };
@@ -198,6 +200,9 @@
       const con = Object.entries(DIEU_KIEN).filter(([ma, dk]) => dk.thuoc === 'ai' && du(ma, tn))
         .map(([ma, dk]) => ({ id: ma, nhan: dk.nhan, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module, href: 'He-thong-AI.dc.html' + (dk.neo ? '#' + dk.neo : '') }));
       ra.push({ id: 'ai', nhan: 'AI', href: 'He-thong-AI.dc.html', d: BIEU_TUONG.ai, cham: false, nhanCham: '', con });
+    }
+    if (du('thiet_bi', tn)) {
+      ra.push({ id: 'thiet_bi', nhan: 'Thiết bị', href: 'He-thong-Thiet-bi.dc.html', d: BIEU_TUONG.thiet_bi, cham: false, nhanCham: '', con: [] });
     }
     ra.push({ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.phich, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] });
     if (du('bao_mat', tn)) {

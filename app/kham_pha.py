@@ -60,6 +60,20 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
     async anh_sua(yc: YeuCauDaPhan)        -> (mã, headers, bytes)   POST /v1/images/edits (multipart); lõi bảo
                                               đảm có ≥ 1 tệp "image" (khách gửi "image" hay "image[]" đều thành
                                               "image"), ≤ 1 tệp "mask", "prompt" là chuỗi khác rỗng
+    Phương thức cho khả năng "thiet_bi":
+      async thuc_the(loc: dict | None) -> list[dict]
+        mỗi thực thể: {id: "<tien_to>.<tên>", ten: str, loai: str (mã MỞ: den, cong_tac, cam_bien, camera, may_chu,
+        cong_mang… mã lạ hiện nguyên mã), khu: str (tuỳ chọn), thuoc_tinh: dict (tự do), tinh_nang: list[str] (list mã
+        hành động hỗ trợ, vd ["bat","tat","do_sang"]), rui_ro_mac_dinh: "doc" | "ghi" | "nguy_hiem"}.
+        Lõi kiểm hình dạng: id sai tiền tố / trùng → bỏ thực thể đó và ghi log (không vỡ cả danh sách).
+      async trang_thai(ids: list[str]) -> dict[str, dict]
+        {id: {gia_tri, don_vi?, luc (ISO), hop_le: bool}}
+      async thuc_hien(id: str, hanh_dong: str, tham_so: dict) -> dict
+        {ok: bool, trang_thai_moi?, loi?}; hanh_dong phải nằm trong tinh_nang của thực thể (lõi kiểm trước khi gọi
+        module → 400 nếu không).
+      async su_kien() -> async iterator[dict] (tuỳ chọn):
+        mỗi sự kiện {id: str, loai: "trang_thai" | …(mã mở), gia_tri, luc: str}
+      Định tuyến: id thực thể bắt đầu bằng "<tien_to>." → module có tiền tố đó.
     YeuCauDaPhan (app/yeu_cau_da_phan.py) do lõi đọc từ multipart — module KHÔNG tự phân tích thân:
       .truong: dict[str, str | list[str]]  trường chữ, tên bỏ hậu tố «[]»; gửi một lần và không có «[]» → str,
                                            có «[]» hoặc lặp → list[str] theo thứ tự gửi (đúng hình thân JSON
@@ -154,6 +168,34 @@ LOAI_LOI_CHUAN = {
     "khong_ro",
 }
 
+#: Bảng hợp đồng chuẩn cho từng khả năng đã biết (mã mở: khả năng lạ không nằm trong bảng không bị chặn):
+HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
+    "chat": ("chat",),
+    "anh": ("anh",),
+    "video": ("video_tao", "video_trang_thai", "video_noi_dung"),
+    "noi": ("noi",),
+    "nghe": ("nghe",),
+    "anh_sua": ("anh_sua",),
+    "thiet_bi": ("thuc_the", "trang_thai", "thuc_hien"),
+}
+
+
+def kiem_chuan_module(cung_cap: list[str], lop: type) -> dict[str, list[str]]:
+    """Kiểm tra các khả năng đã khai trong cung_cap so với bảng HOP_DONG_KHA_NANG.
+
+    Trả về từ điển các khả năng bị lỗi chuẩn: {khả_năng: [phương_thức_còn_thiếu]}.
+    Khả năng lạ không có trong HOP_DONG_KHA_NANG: coi là hợp lệ (mã mở).
+    """
+    loi = {}
+    for kn in cung_cap:
+        bat_buoc = HOP_DONG_KHA_NANG.get(kn)
+        if not bat_buoc:
+            continue
+        thieu = [pt for pt in bat_buoc if not callable(getattr(lop, pt, None))]
+        if thieu:
+            loi[kn] = thieu
+    return loi
+
 
 def phan_loai_loi_mac_dinh(ma: int) -> str:
     """Phân loại lỗi mặc định theo mã trạng thái HTTP chuẩn khi module không tự phân loại."""
@@ -179,10 +221,21 @@ class ModuleKhamPha:
     lop: type
     van_tay: str
     ten_ma: str
+    chuan_loi: dict[str, list[str]] = field(default_factory=dict)
     tien_to: str = field(init=False)
 
     def __post_init__(self):
         self.tien_to = self.manifest["tien_to"]
+        if not self.chuan_loi and self.lop:
+            self.chuan_loi = kiem_chuan_module(self.manifest.get("cung_cap", []), self.lop)
+
+    @property
+    def dung_chuan(self) -> bool:
+        return len(self.chuan_loi) == 0
+
+    @property
+    def kha_nang_chuan(self) -> list[str]:
+        return [k for k in self.manifest.get("cung_cap", []) if k not in self.chuan_loi]
 
     @property
     def truong_cau_hinh(self) -> list[dict]:

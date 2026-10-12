@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Hệ thống · Thiết bị</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+main.pg{padding:32px 32px 48px;gap:20px}
+.cong-cu{display:flex;flex-direction:column;gap:10px}
+.hang-cc{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.tim{flex:1 1 240px;max-width:340px;height:44px;box-sizing:content-box;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;gap:8px;color:var(--mute)}
+.tim input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:var(--ink);font-size:14px}
+.tim input:focus{outline:none}
+.loc{display:flex;flex-wrap:wrap;gap:6px}
+.loc .chip{min-height:36px;padding:0 12px;border-radius:18px;border:1px solid #E4E2DC;background:#fff;color:#66645F;font-size:13px;font-weight:400;cursor:pointer}
+.loc .chip[aria-pressed=true]{border-color:#181816;background:#181816;color:#fff;font-weight:500}
+.the-pd{border-color:#F59E0B;background:#FFFDF7}
+.pd-hang{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 16px;border-top:1px solid var(--line)}
+.pd-hang:first-child{border-top:0}
+.pd-thong-tin{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.pd-tac-vu{flex:0 0 auto;display:flex;align-items:center;gap:8px}
+.khu-nhom{display:flex;flex-direction:column;gap:16px;margin-top:12px}
+.khu-tieu-de{font-family:Newsreader,Georgia,serif;font-size:22px;font-weight:500;margin:0;color:var(--ink)}
+.loai-nhom{display:flex;flex-direction:column;gap:10px;padding-left:4px}
+.loai-tieu-de{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin:0}
+.luoi-thiet-bi{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:12px}
+.the-tb{border:1px solid #E4E2DC;border-radius:14px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:12px}
+.tb-dau{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.tb-ten{font-weight:600;font-size:15px;line-height:1.3;margin:0;overflow-wrap:anywhere}
+.tb-id{font-size:12px;color:var(--mute);font-family:monospace}
+.tb-trang-thai{font-size:13px;padding:8px 12px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:space-between}
+.tb-hanh-dong{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:auto}
+.tb-rui-ro{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)}
+@media (max-width:1023px){
+main.pg{padding:12px 16px 24px}
+.pd-tac-vu{width:100%;justify-content:flex-end}
+}
+</style>
+</helmet>
+<div class="goc">
+
+<nav aria-label="Điều hướng Hệ thống" class="tb tb-ht" onKeyDown="{{phimNav}}">
+<sc-if value="{{coQuayLai}}"><div style="display:flex;align-items:center;gap:12px;flex:0 0 auto"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}" title="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.quay_lai}}"></path></svg><span>Quay lại</span></a></div></sc-if>
+<sc-if value="{{khongQuayLai}}"><div class="thuong-hieu"><div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div><span class="ten-web">web2api</span></div></sc-if>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><div class="muc-nav">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
+<div class="acc-cho" aria-hidden="true"></div>
+</nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
+
+<main class="pg">
+<h1 class="an-chu">Hệ thống — Thiết bị</h1>
+
+<sc-if value="{{khongKhoa}}">
+<section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri">
+<div class="dong-nut" style="justify-content:space-between"><h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2><span class="huy huy-vang">Chưa có khoá</span></div>
+<p class="phu">Cần khoá quản trị để quản lý thiết bị và phê duyệt hành động. Dán khoá quản trị để tiếp tục.</p>
+<div class="o-va-nut">
+<label for="o-khoa" class="an-chu">Khoá quản trị</label>
+<input id="o-khoa" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}">
+<button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button>
+</div>
+<sc-if value="{{khoaLoi}}"><p role="alert" class="bao bao-loi">{{khoaLoi}}</p></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{coKhoa}}">
+
+<div class="cong-cu">
+<div class="hang-cc">
+<label class="tim" for="tim"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4-4"></path></svg><span class="an-chu">Tìm thiết bị</span><input id="tim" type="search" placeholder="Tìm tên hoặc id…" value="{{tim}}" onInput="{{goTim}}"></label>
+<sc-if value="{{coKhu}}"><div class="loc" role="group" aria-label="Lọc theo khu"><sc-for list="{{chipKhu}}" as="c"><button type="button" class="chip" aria-pressed="{{c.on}}" onClick="{{c.chon}}"><span>{{c.ten}}</span></button></sc-for></div></sc-if>
+<sc-if value="{{coLoai}}"><div class="loc" role="group" aria-label="Lọc theo loại"><sc-for list="{{chipLoai}}" as="c"><button type="button" class="chip" aria-pressed="{{c.on}}" onClick="{{c.chon}}"><span>{{c.ten}}</span></button></sc-for></div></sc-if>
+<div class="loc" role="group" aria-label="Lọc theo rủi ro"><sc-for list="{{chipRuiRo}}" as="c"><button type="button" class="chip" aria-pressed="{{c.on}}" onClick="{{c.chon}}"><span>{{c.ten}}</span></button></sc-for></div>
+</div>
+</div>
+
+<sc-if value="{{tinNhan}}"><div role="status" class="tin"><span>{{tinNhan}}</span><button type="button" onClick="{{dongTinNhan}}">×</button></div></sc-if>
+<sc-if value="{{loiNhan}}"><p role="alert" class="bao bao-loi">{{loiNhan}}</p></sc-if>
+
+<sc-if value="{{coHangCho}}">
+<section class="the the-pd" aria-labelledby="h-pd" id="hang-cho-phe-duyet">
+<div class="dong-nut" style="justify-content:space-between">
+<h2 id="h-pd" class="nhan-muc" style="color:#B45309">Chờ duyệt ({{soHangCho}})</h2>
+</div>
+<ul class="bang-tb-ds">
+<sc-for list="{{hangCho}}" as="pd">
+<li class="pd-hang">
+<div class="pd-thong-tin">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<strong>{{pd.thuc_the}}</strong>
+<span class="huy huy-vang">{{pd.hanh_dong}}</span>
+<span class="phu">bởi {{pd.ai_de_xuat}}</span>
+</div>
+<sc-if value="{{pd.ly_do}}"><span class="phu">Lý do: {{pd.ly_do}}</span></sc-if>
+<span class="phu">Hết hạn lúc: {{pd.het_han}}</span>
+</div>
+<div class="pd-tac-vu">
+<button type="button" class="nut nut-chinh nut-nho" onClick="{{pd.duyet}}" disabled="{{pd.dangXuLy}}">Duyệt</button>
+<button type="button" class="nut nut-nguy nut-nho" onClick="{{pd.tuChoi}}" disabled="{{pd.dangXuLy}}">Từ chối</button>
+</div>
+</li>
+</sc-for>
+</ul>
+</section>
+</sc-if>
+
+<sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang đọc danh sách thiết bị…</p></sc-if>
+<sc-if value="{{khongCoThietBi}}"><div class="bang-tb-rong">Không có thiết bị nào khớp bộ lọc.</div></sc-if>
+
+<sc-for list="{{danhSachKhu}}" as="k">
+<section class="khu-nhom" data-khu="{{k.ten}}">
+<h2 class="khu-tieu-de">{{k.ten}} <span class="phu" style="font-size:14px">({{k.tongSo}})</span></h2>
+<sc-for list="{{k.cacLoai}}" as="l">
+<div class="loai-nhom">
+<h3 class="loai-tieu-de">{{l.ten}}</h3>
+<div class="luoi-thiet-bi">
+<sc-for list="{{l.cacThietBi}}" as="tb">
+<div class="the-tb" data-tb-id="{{tb.id}}">
+<div class="tb-dau">
+<div>
+<h4 class="tb-ten">{{tb.ten}}</h4>
+<span class="tb-id">{{tb.id}}</span>
+</div>
+<span class="{{tb.lopRuiRo}}">{{tb.nhanRuiRo}}</span>
+</div>
+
+<div class="tb-trang-thai">
+<span>Trạng thái</span>
+<strong>{{tb.hienTrangThai}}</strong>
+</div>
+
+<div class="tb-rui-ro">
+<span>Đặt rủi ro:</span>
+<button type="button" class="nut nut-nho" aria-pressed="{{tb.laDoc}}" onClick="{{tb.datDoc}}">Đọc</button>
+<button type="button" class="nut nut-nho" aria-pressed="{{tb.laGhi}}" onClick="{{tb.datGhi}}">Ghi</button>
+<button type="button" class="nut nut-nho nut-nguy" aria-pressed="{{tb.laNguyHiem}}" onClick="{{tb.datNguyHiem}}">Nguy hiểm</button>
+</div>
+
+<sc-if value="{{tb.coTinhNang}}">
+<div class="tb-hanh-dong">
+<sc-for list="{{tb.cacTinhNang}}" as="tn">
+<button type="button" class="nut nut-nho" onClick="{{tn.chay}}" disabled="{{tb.dangChay}}">{{tn.ma}}</button>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</section>
+</sc-for>
+
+</sc-if>
+
+</main>
+
+<nav aria-label="Điều hướng Hệ thống (điện thoại)" class="bn"><sc-for list="{{navHT}}" as="t">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" aria-hidden="true"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" aria-label="{{t.nhan}}" onClick="{{t.bat}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></button>
+<sc-if value="{{t.mo}}"><div class="bn-mui" aria-hidden="true" style="{{t.viTriMui}}"></div><div class="bn-menu" role="menu" aria-label="Mục trong {{t.nhan}}" style="{{t.viTri}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con-duoi="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</sc-for></nav>
+
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{}'>
+const K = window.Khung;
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const khoa = K.docKhoa();
+    this.state = {
+      khoa,
+      khoaNhap: khoa,
+      khoaLoi: '',
+      tn: null,
+      menuMo: null,
+      soTb: 0,
+      tim: '',
+      locKhu: null,
+      locLoai: null,
+      locRuiRo: null,
+      dangTai: false,
+      thietBi: [],
+      hangCho: [],
+      tinNhan: '',
+      loiNhan: '',
+      dangXuLyPd: null,
+      dangChayTb: null,
+    };
+    this.sseAbort = null;
+  }
+
+  async didMount() {
+    await this.taiLai();
+    this.batDauSSE();
+  }
+
+  willUnmount() {
+    if (this.sseAbort) {
+      this.sseAbort.abort();
+      this.sseAbort = null;
+    }
+  }
+
+  async taiLai() {
+    const khoa = this.state.khoa;
+    try {
+      const tn = await K.taiTinhNang();
+      this.setState({ tn });
+    } catch (e) {}
+
+    if (khoa) {
+      await Promise.allSettled([this.taiThietBi(), this.taiHangCho()]);
+    }
+  }
+
+  async taiThietBi() {
+    this.setState({ dangTai: true, loiNhan: '' });
+    try {
+      const { j } = await K.goi('api/thiet-bi');
+      this.setState({ thietBi: (j && j.thuc_the) || [], dangTai: false });
+    } catch (e) {
+      this.setState({ dangTai: false, loiNhan: 'Lỗi tải thiết bị: ' + e.message });
+    }
+  }
+
+  async taiHangCho() {
+    try {
+      const { j } = await K.goi('api/phe-duyet');
+      this.setState({ hangCho: (j && j.hang_cho) || [] });
+    } catch (e) {}
+  }
+
+  batDauSSE() {
+    if (this.sseAbort) {
+      this.sseAbort.abort();
+    }
+    const abort = new AbortController();
+    this.sseAbort = abort;
+
+    const kn = async () => {
+      if (abort.signal.aborted) return;
+      const khoa = K.docKhoa();
+      if (!khoa) {
+        setTimeout(kn, 3000);
+        return;
+      }
+      try {
+        const res = await fetch('api/thiet-bi/su-kien', {
+          headers: { Authorization: 'Bearer ' + khoa },
+          signal: abort.signal,
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!abort.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+          for (const part of parts) {
+            const line = part.trim();
+            if (line.startsWith('data:')) {
+              try {
+                const data = JSON.parse(line.slice(5).trim());
+                this.xuLySuKien(data);
+              } catch (err) {}
+            }
+          }
+        }
+      } catch (err) {
+        if (!abort.signal.aborted) {
+          setTimeout(kn, 3000);
+        }
+      }
+    };
+    kn();
+  }
+
+  xuLySuKien(data) {
+    if (!data) return;
+    if (data.loai === 'phe_duyet_moi' || data.loai === 'phe_duyet_xong' || data.loai === 'phe_duyet_tu-choi') {
+      this.taiHangCho();
+    }
+    this.taiThietBi();
+  }
+
+  luuKhoa() {
+    const k = (this.state.khoaNhap || '').trim();
+    if (!k) {
+      this.setState({ khoaLoi: 'Hãy dán khoá quản trị.' });
+      return;
+    }
+    K.luuKhoa(k);
+    this.setState({ khoa: k, khoaLoi: '' });
+    this.taiLai();
+    this.batDauSSE();
+  }
+
+  async hanhDong(id, maHanhDong, ruiRo) {
+    let xacNhan = false;
+    if (ruiRo === 'nguy_hiem') {
+      if (!confirm('Hành động «' + maHanhDong + '» trên thực thể «' + id + '» có mức độ NGUY HIỂM. Bạn có chắc chắn muốn thực hiện?')) {
+        return;
+      }
+      xacNhan = true;
+    }
+    this.setState({ dangChayTb: id, loiNhan: '', tinNhan: '' });
+    try {
+      const { j } = await K.goi('api/thiet-bi/' + encodeURIComponent(id) + '/hanh-dong', {
+        method: 'POST',
+        json: { hanh_dong: maHanhDong, xac_nhan: xacNhan },
+      });
+      this.setState({ dangChayTb: null, tinNhan: 'Đã thực hiện «' + maHanhDong + '» trên «' + id + '»' });
+      await this.taiThietBi();
+    } catch (e) {
+      this.setState({ dangChayTb: null, loiNhan: 'Lỗi thực hiện: ' + e.message });
+    }
+  }
+
+  async datRuiRo(id, mucRuiRo) {
+    this.setState({ loiNhan: '', tinNhan: '' });
+    try {
+      await K.goi('api/thiet-bi/' + encodeURIComponent(id) + '/rui-ro', {
+        method: 'PUT',
+        json: { rui_ro: mucRuiRo },
+      });
+      this.setState({ tinNhan: 'Đã đổi rủi ro «' + id + '» thành ' + mucRuiRo });
+      await this.taiThietBi();
+    } catch (e) {
+      this.setState({ loiNhan: 'Lỗi đổi rủi ro: ' + e.message });
+    }
+  }
+
+  async duyetPd(pdId) {
+    this.setState({ dangXuLyPd: pdId, loiNhan: '', tinNhan: '' });
+    try {
+      await K.goi('api/phe-duyet/' + encodeURIComponent(pdId) + '/duyet', { method: 'POST' });
+      this.setState({ dangXuLyPd: null, tinNhan: 'Đã phê duyệt yêu cầu ' + pdId });
+      await this.taiHangCho();
+      await this.taiThietBi();
+    } catch (e) {
+      this.setState({ dangXuLyPd: null, loiNhan: 'Lỗi duyệt: ' + e.message });
+    }
+  }
+
+  async tuChoiPd(pdId) {
+    this.setState({ dangXuLyPd: pdId, loiNhan: '', tinNhan: '' });
+    try {
+      await K.goi('api/phe-duyet/' + encodeURIComponent(pdId) + '/tu-choi', { method: 'POST' });
+      this.setState({ dangXuLyPd: null, tinNhan: 'Đã từ chối yêu cầu ' + pdId });
+      await this.taiHangCho();
+    } catch (e) {
+      this.setState({ dangXuLyPd: null, loiNhan: 'Lỗi từ chối: ' + e.message });
+    }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const tn = s.tn;
+    const navHT = K.menuNav(this, K.navHeThong(tn, 'thiet_bi', s.soTb), null);
+
+    const dsKhu = Array.from(new Set(s.thietBi.map((x) => x.khu).filter(Boolean))).sort();
+    const dsLoai = Array.from(new Set(s.thietBi.map((x) => x.loai).filter(Boolean))).sort();
+
+    const chipKhu = [{ ten: 'Mọi khu', on: s.locKhu === null, chon: () => this.setState({ locKhu: null }) }]
+      .concat(dsKhu.map((k) => ({ ten: k, on: s.locKhu === k, chon: () => this.setState({ locKhu: s.locKhu === k ? null : k }) })));
+
+    const chipLoai = [{ ten: 'Mọi loại', on: s.locLoai === null, chon: () => this.setState({ locLoai: null }) }]
+      .concat(dsLoai.map((l) => ({ ten: l, on: s.locLoai === l, chon: () => this.setState({ locLoai: s.locLoai === l ? null : l }) })));
+
+    const chipRuiRo = [
+      { ten: 'Mọi rủi ro', on: s.locRuiRo === null, chon: () => this.setState({ locRuiRo: null }) },
+      { ten: 'Đọc', on: s.locRuiRo === 'doc', chon: () => this.setState({ locRuiRo: s.locRuiRo === 'doc' ? null : 'doc' }) },
+      { ten: 'Ghi', on: s.locRuiRo === 'ghi', chon: () => this.setState({ locRuiRo: s.locRuiRo === 'ghi' ? null : 'ghi' }) },
+      { ten: 'Nguy hiểm', on: s.locRuiRo === 'nguy_hiem', chon: () => this.setState({ locRuiRo: s.locRuiRo === 'nguy_hiem' ? null : 'nguy_hiem' }) },
+    ];
+
+    // Lọc thiết bị
+    const qTim = (s.tim || '').trim().toLowerCase();
+    const loc = s.thietBi.filter((item) => {
+      if (qTim) {
+        const t = (item.ten || '').toLowerCase();
+        const id = (item.id || '').toLowerCase();
+        if (!t.includes(qTim) && !id.includes(qTim)) return false;
+      }
+      if (s.locKhu && item.khu !== s.locKhu) return false;
+      if (s.locLoai && item.loai !== s.locLoai) return false;
+      if (s.locRuiRo && item.rui_ro !== s.locRuiRo) return false;
+      return true;
+    });
+
+    // Nhóm theo Khu → Loại
+    const khuMap = new Map();
+    for (const item of loc) {
+      const tenKhu = item.khu || 'Chưa phân khu';
+      if (!khuMap.has(tenKhu)) khuMap.set(tenKhu, new Map());
+      const loaiMap = khuMap.get(tenKhu);
+      const tenLoai = item.loai || 'Khác';
+      if (!loaiMap.has(tenLoai)) loaiMap.set(tenLoai, []);
+      loaiMap.get(tenLoai).push(item);
+    }
+
+    const danhSachKhu = Array.from(khuMap.entries()).map(([tenKhu, loaiMap]) => {
+      let tongKhu = 0;
+      const cacLoai = Array.from(loaiMap.entries()).map(([tenLoai, items]) => {
+        tongKhu += items.length;
+        const cacThietBi = items.map((tb) => {
+          let lopRuiRo = 'huy huy-lam';
+          let nhanRuiRo = 'Đọc';
+          if (tb.rui_ro === 'ghi') { lopRuiRo = 'huy huy-xanh'; nhanRuiRo = 'Ghi'; }
+          else if (tb.rui_ro === 'nguy_hiem') { lopRuiRo = 'huy huy-do'; nhanRuiRo = 'Nguy hiểm'; }
+
+          let hienTrangThai = '—';
+          if (tb.trang_thai && tb.trang_thai.gia_tri !== undefined) {
+            hienTrangThai = String(tb.trang_thai.gia_tri) + (tb.trang_thai.don_vi ? ' ' + tb.trang_thai.don_vi : '');
+          }
+
+          const cacTinhNang = (tb.tinh_nang || []).map((ma) => ({
+            ma,
+            chay: () => this.hanhDong(tb.id, ma, tb.rui_ro),
+          }));
+
+          return {
+            id: tb.id,
+            ten: tb.ten,
+            lopRuiRo,
+            nhanRuiRo,
+            hienTrangThai,
+            laDoc: tb.rui_ro === 'doc',
+            laGhi: tb.rui_ro === 'ghi',
+            laNguyHiem: tb.rui_ro === 'nguy_hiem',
+            datDoc: () => this.datRuiRo(tb.id, 'doc'),
+            datGhi: () => this.datRuiRo(tb.id, 'ghi'),
+            datNguyHiem: () => this.datRuiRo(tb.id, 'nguy_hiem'),
+            coTinhNang: cacTinhNang.length > 0,
+            cacTinhNang,
+            dangChay: s.dangChayTb === tb.id,
+          };
+        });
+        return { ten: tenLoai, cacThietBi };
+      });
+      return { ten: tenKhu, tongSo: tongKhu, cacLoai };
+    });
+
+    const hangChoView = s.hangCho.map((pd) => ({
+      id: pd.id,
+      ai_de_xuat: pd.ai_de_xuat,
+      thuc_the: pd.thuc_the,
+      hanh_dong: pd.hanh_dong,
+      ly_do: pd.ly_do,
+      het_han: pd.het_han ? pd.het_han.replace('T', ' ').slice(0, 19) : '',
+      dangXuLy: s.dangXuLyPd === pd.id,
+      duyet: () => this.duyetPd(pd.id),
+      tuChoi: () => this.tuChoiPd(pd.id),
+    }));
+
+    return {
+      hinh: K.BIEU_TUONG,
+      navHT,
+      coQuayLai: false,
+      khongQuayLai: true,
+      quayLai: K.quayLai(tn),
+      menuMo: !!s.menuMo,
+      dongMenu: () => this.setState({ menuMo: null }),
+      phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
+
+      coKhoa: !!s.khoa,
+      khongKhoa: !s.khoa,
+      khoaNhap: s.khoaNhap,
+      khoaLoi: s.khoaLoi,
+      goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
+      phimKhoa: (e) => { if (e.key === 'Enter') this.luuKhoa(); },
+      luuKhoa: () => this.luuKhoa(),
+
+      tim: s.tim,
+      goTim: (e) => this.setState({ tim: e.target.value }),
+      coKhu: dsKhu.length > 0,
+      chipKhu,
+      coLoai: dsLoai.length > 0,
+      chipLoai,
+      chipRuiRo,
+
+      tinNhan: s.tinNhan,
+      dongTinNhan: () => this.setState({ tinNhan: '' }),
+      loiNhan: s.loiNhan,
+
+      coHangCho: hangChoView.length > 0,
+      soHangCho: hangChoView.length,
+      hangCho: hangChoView,
+
+      dangTai: s.dangTai,
+      khongCoThietBi: danhSachKhu.length === 0 && !s.dangTai,
+      danhSachKhu,
+    };
+  }
+}
+</script>
+</body>
+</html>
