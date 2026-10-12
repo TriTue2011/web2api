@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from app import kho
+from app import dia_chi as dia_chi_mod, kho
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
@@ -33,6 +33,8 @@ v1_khong_co = APIRouter(prefix="/v1", dependencies=QT)
 modules = APIRouter(prefix="/api/modules")
 tinh_nang = APIRouter()
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
+dia_chi = APIRouter(prefix="/api", dependencies=QT)
+nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
 tep_module = APIRouter()
 
 
@@ -90,9 +92,19 @@ def _module_dang_chay(so: SoModule, id_: str, tien_to: str):
     return m
 
 
-def _module_theo_model(so: SoModule, than: dict):
+def _ghi_nhan_module(request: Request, so: SoModule, id_: str) -> None:
+    """Module đã nhận phục vụ lượt này: ghi vào request.state cho nhật ký `cuoc_goi` và tiêu đề X-Web2api-Module
+    (app/nhat_ky.py) — lõi biết chắc module nào, không suy từ chuỗi khách gửi."""
+    request.state.module = id_
+    request.state.tien_to_module = so.tien_to_cua(id_)
+
+
+def _module_theo_model(request: Request, than: dict):
     """(id, thể hiện) của module có tiền tố ghi trong `model` — 404 rõ ràng nếu không thuộc ai/chưa liên kết."""
+    so = _so(request)
     model = than.get("model")
+    if isinstance(model, str):
+        request.state.model_khach = model  # ghi TRƯỚC mọi lỗi: lượt 404 model_not_found vẫn có model trong nhật ký
     if not isinstance(model, str) or not model:
         raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>; danh sách ở GET /v1/models)",
                         code="missing_model")
@@ -102,18 +114,23 @@ def _module_theo_model(so: SoModule, than: dict):
         cai = ", ".join(so.tien_to_dang_chay()) or "(chưa có module nào đã liên kết)"
         raise LoiOpenAI(404, f"Model {model!r} không thuộc module nào. Model phải có dạng <tiền tố>/<tên>; "
                              f"tiền tố đang dùng được: {cai}. Xem GET /v1/models.", code="model_not_found")
-    return id_, _module_dang_chay(so, id_, tien_to)
+    m = _module_dang_chay(so, id_, tien_to)
+    _ghi_nhan_module(request, so, id_)
+    return id_, m
 
 
-def _module_theo_ma_video(so: SoModule, ma: str):
+def _module_theo_ma_video(request: Request, ma: str):
     """Mã video ra ngoài là "<tien_to>:<mã của module>"; tiền tố không chứa «:» (TIEN_TO_HOP_LE) nên tách ở
     dấu «:» đầu tiên là đủ — không cần bảng mã → module."""
+    so = _so(request)
     tien_to, co_cham, trong = ma.partition(":")
     id_ = so.tim_theo_tien_to(tien_to) if co_cham and trong else None
     if id_ is None:
         raise LoiOpenAI(404, f"Không có video {ma!r} (mã dạng <tiền tố>:<mã>, lấy từ POST /v1/videos)",
                         code="video_not_found")
-    return id_, _module_dang_chay(so, id_, tien_to), trong
+    m = _module_dang_chay(so, id_, tien_to)
+    _ghi_nhan_module(request, so, id_)
+    return id_, m, trong
 
 
 def _can_phuong_thuc(m, id_: str, viec: str, *ten: str) -> None:
@@ -159,14 +176,14 @@ async def v1_chat(request: Request):
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
     # như extra_content.google.thought_signature.
     than = await _than_json(request)
-    _, m = _module_theo_model(_so(request), than)
+    _, m = _module_theo_model(request, than)
     return _tra_ve(*await m.chat(than, bool(than.get("stream"))))
 
 
 @v1.post("/images/generations")
 async def v1_anh(request: Request):
     than = await _than_json(request)
-    id_, m = _module_theo_model(_so(request), than)
+    id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
     return _tra_ve(*await m.anh(than))
 
@@ -174,7 +191,7 @@ async def v1_anh(request: Request):
 @v1.post("/images/edits")
 async def v1_anh_sua(request: Request):
     yc = await doc_multipart(request)
-    id_, m = _module_theo_model(_so(request), yc.truong)
+    id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "sửa ảnh", "anh_sua")
     _can_tep(yc, "image")
     _can_tep(yc, "mask", toi_thieu=0, toi_da=1)
@@ -187,7 +204,7 @@ async def v1_anh_sua(request: Request):
 @v1.post("/audio/speech")
 async def v1_noi(request: Request):
     than = await _than_json(request)
-    id_, m = _module_theo_model(_so(request), than)
+    id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "đọc văn bản thành giọng nói", "noi")
     return _tra_ve(*await m.noi(than))
 
@@ -195,7 +212,7 @@ async def v1_noi(request: Request):
 @v1.post("/audio/transcriptions")
 async def v1_nghe(request: Request):
     yc = await doc_multipart(request)
-    id_, m = _module_theo_model(_so(request), yc.truong)
+    id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "nhận dạng giọng nói", "nghe")
     _can_tep(yc, "file", toi_da=1)
     return _tra_ve(*await m.nghe(yc))
@@ -211,7 +228,7 @@ async def v1_video_tao(request: Request):
     yc = await doc_multipart(request) if la_multipart(request) else None
     than = dict(yc.truong) if yc else await _than_json(request)
     so = _so(request)
-    id_, m = _module_theo_model(so, than)
+    id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     if yc and yc.tep:
         # video_tao nhận thân JSON; chưa có hợp đồng đưa tệp cho nó — từ chối rõ ràng thay vì lặng lẽ bỏ tệp.
@@ -225,14 +242,14 @@ async def v1_video_tao(request: Request):
 @v1.get("/videos/{ma}")
 async def v1_video_trang_thai(ma: str, request: Request):
     so = _so(request)
-    id_, m, trong = _module_theo_ma_video(so, ma)
+    id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_trang_thai(trong))
 
 
 @v1.get("/videos/{ma}/content")
 async def v1_video_noi_dung(ma: str, request: Request):
-    id_, m, trong = _module_theo_ma_video(_so(request), ma)
+    id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _tra_ve(*await m.video_noi_dung(trong))
 
@@ -424,3 +441,64 @@ async def tep_cua_module(id_: str, duong: str, request: Request):
     if not p.is_relative_to(goc) or not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)
+
+
+# ───────────── /api/dia-chi, /api/ket-noi ─────────────
+
+@dia_chi.get("/dia-chi")
+async def xem_dia_chi(request: Request):
+    return dia_chi_mod.lay_thong_tin_dia_chi(request)
+
+
+@dia_chi.put("/dia-chi")
+async def dat_dia_chi(request: Request):
+    than = await _than_json(request)
+    if "url" not in than:
+        raise LoiOpenAI(400, "Thân yêu cầu phải có trường «url» (chuỗi hoặc null)", loai="invalid_request_error")
+    url = than["url"]
+    if url is None:
+        kho.xoa_dia_chi_da_dat()
+    elif isinstance(url, str):
+        url_chuan = dia_chi_mod.kiem_tra_va_chuan_hoa_url(url)
+        kho.luu_dia_chi_da_dat(url_chuan)
+    else:
+        raise LoiOpenAI(400, "Trường «url» phải là chuỗi hoặc null", loai="invalid_request_error")
+    return dia_chi_mod.lay_thong_tin_dia_chi(request)
+
+
+@dia_chi.get("/ket-noi")
+async def huong_dan_ket_noi(request: Request):
+    return dia_chi_mod.soan_huong_dan_ket_noi(request)
+
+# ───────────── /api/nhat-ky — nhật ký hệ thống theo kênh ─────────────
+
+@nhat_ky.get("")
+def xem_nhat_ky(kenh: str | None = None, muc: str | None = None, q: str | None = None, truoc: str | None = None,
+                gioi_han: int = 50):
+    # `def` (không async): FastAPI chạy trong luồng phụ — quét tới 20 MB không chặn vòng lặp sự kiện.
+    from app import nhat_ky as kho_nhat_ky
+    try:
+        return kho_nhat_ky.doc(kenh=kenh, muc=muc, q=q, truoc=truoc, gioi_han=gioi_han)
+    except ValueError:
+        raise LoiOpenAI(400, "Tham số «truoc» phải là thời điểm ISO 8601 — lấy nguyên `luc` của dòng cuối trang "
+                             "trước") from None
+
+
+@nhat_ky.get("/kenh")
+def cac_kenh_nhat_ky():
+    from app import nhat_ky as kho_nhat_ky
+    return kho_nhat_ky.danh_sach_kenh()
+
+
+#: Trần của `truoc_ngay` (100 năm): số lớn hơn không mang nghĩa gì và làm phép trừ ngày tràn.
+TRAN_TRUOC_NGAY = 36500
+
+
+@nhat_ky.delete("")
+def xoa_nhat_ky(truoc_ngay: float | None = None):
+    if truoc_ngay is None:
+        raise LoiOpenAI(400, "Thiếu tham số «truoc_ngay» (số ngày; 0 = xoá mọi bản ghi tới hiện tại)")
+    if not 0 <= truoc_ngay <= TRAN_TRUOC_NGAY:  # NaN cũng trượt phép so này
+        raise LoiOpenAI(400, f"Tham số «truoc_ngay» phải trong khoảng 0…{TRAN_TRUOC_NGAY}")
+    from app import nhat_ky as kho_nhat_ky
+    return {"ok": True, "da_xoa": kho_nhat_ky.xoa_cu(truoc_ngay)}

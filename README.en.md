@@ -154,6 +154,21 @@ shown only when every code in `can` is provided by a linked module. Combo (order
 backend yet and is never shown. See [CONTRIBUTING.md](CONTRIBUTING.md) (Vietnamese) and README sections 2–3 (architecture
 diagrams, components, writing a module) and 9.
 
+## Access from LAN and the Internet
+
+web2api listens on port 3031 by default. Two recommended ways to connect:
+
+1. **Inside home (LAN):** Use `http://<host>:3031/v1` as the base URL. No encryption needed inside a trusted home network.
+2. **From the Internet via Cloudflare Tunnel (`cloudflared`):**
+   - Run `cloudflared` on the host to create an outbound tunnel; the ingress `service` is `http://localhost:3031` (cloudflared on the host) or `http://<container-name>:8000` (cloudflared in the same Docker network — the port inside the container is 8000).
+   - `cloudflared tunnel route dns <tunnel> <domain>` then `cloudflared tunnel run <tunnel>`; Cloudflare serves HTTPS at `https://<domain>`.
+   - Pin the public URL: `WEB2API_PUBLIC_URL=https://<domain>` or `PUT /api/dia-chi` (the API value wins). Otherwise web2api guesses it from the request: cloudflared forwards the public `Host` (unless `httpHostHeader` is set) and Cloudflare adds `X-Forwarded-Proto: https`; `X-Forwarded-Proto`/`X-Forwarded-Host` are read only with **`WEB2API_TIN_PROXY=1`** — enable it only when every path to web2api goes through the proxy. Headers with conflicting values, odd characters or excessive length are dropped.
+   - Protect web management routes with **Cloudflare Access** (Zero Trust OTP/SSO) while optionally allowing `/v1/*` through with the API key.
+   - **Do NOT port-forward port 3031 directly**: plain HTTP sends API keys in cleartext, and exposing ports attracts internet scanners.
+   - Test connectivity with `curl -s http://<host>:3031/health` or `curl -s https://<domain>/health`.
+   - Pre-formatted connection guides with curl and OpenAI Python SDK snippets can be fetched via `GET /api/ket-noi` (and public URL info via `GET /api/dia-chi`).
+   - Module contract: modules needing OAuth/webhook callback URLs call `app.dia_chi.dia_chi_hien_tai(request)`; a guessed address comes from the client's `Host`, so modules sending it to a third party use `app.dia_chi.lay_thong_tin_dia_chi(request)` and refuse while `dang_doan` is `true`.
+
 ## Security notes
 
 - The admin key opens everything (model calls, installing and removing modules). Keep it secret and do **not**

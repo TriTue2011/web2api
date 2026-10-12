@@ -45,13 +45,15 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/models`, `/v1/chat/completions` chuẩn OpenAI (có stream) | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
+| Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
 | Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
 | Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
-| Khoá khách, «Địa chỉ truy cập công khai», Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
+| «Địa chỉ truy cập công khai» (`GET`/`PUT /api/dia-chi`, `GET /api/ket-noi`, proxy ngược) | Có | 0.1.0-khung · 12/10/2026 |
+| Khoá khách, Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
 | Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
 | Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký trên web | Chưa có (chờ module thật đứng sau) | — |
 | Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
@@ -317,7 +319,7 @@ Thư mục `modules/<id>/` gồm:
   cấp báo trần thật, và khi ấy `da_dung` là mức đã dùng cùng kỳ với trần đó — giao diện vẽ thanh «còn lại / trần», không
   có trần thì chỉ hiện chữ «đã dùng N lượt» + trạng thái; trạng thái phân loại bằng mã HTTP: `dung_duoc`, `het_han_muc`,
   `bi_tu_choi`, `chua_ro`);
-  module mẫu thật: `modules/gemini-api/`. **Bộ chuyển đổi của module**: module tự đổi
+  module mẫu thật: `modules/gemini-api/`. Module ghi kênh nhật ký riêng bằng `from app import nhat_ky; nhat_ky.ghi(kenh, muc, tom_tat, ms=None, **them)` (kênh là mã mở dạng `[a-z][a-z0-9_]*`, không cần khai trước; hàm không bao giờ ném lỗi, tự che chuỗi dạng khoá). Module cần địa chỉ gọi lại (OAuth/webhook) gọi `app.dia_chi.dia_chi_hien_tai(request)`: trả về URL gốc công khai (ưu tiên giá trị đã đặt, biến `WEB2API_PUBLIC_URL`, hoặc suy ra từ Host). Địa chỉ suy ra là do KHÁCH gửi (Host): module gửi địa chỉ gọi lại cho bên thứ ba (OAuth) thì dùng `app.dia_chi.lay_thong_tin_dia_chi(request)` và từ chối khi `dang_doan` là `true`. **Bộ chuyển đổi của module**: module tự đổi
   yêu cầu/trả lời giữa chuẩn OpenAI của lõi và API của nhà cung cấp; dùng lại `app.chuyen_tiep.ChuyenTiepOpenAI`
   khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `doi_id_model`, `goi_y_loi`,
   `kha_nang`, `goi_y_tu_choi_kha_nang`) — bộ chuyển tiếp tự điền các trường bộ đếm trên từ bộ đếm trong bộ nhớ (kể từ
@@ -629,6 +631,59 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 - Proxy Cloudflare có đặt `PROXY_TOKEN` (header `X-Proxy-Token`) chưa dùng được: `base_url` không mang
   thêm header.
 
+---
+
+### Module antigravity — Antigravity (Google AGY CLI)
+
+**Mô tả.** Dùng chính ứng dụng chính thức `agy` (Antigravity CLI) ở chế độ không tương tác qua cầu nối nhỏ chạy trên máy chủ (`dich-vu/antigravity-cau-noi/`). Không gọi API Google trực tiếp, không giả danh ứng dụng, không đọc hay in token. Module chuyển tiếp tới cầu nối qua chuẩn OpenAI, tận dụng bể nhiều tài khoản xoay vòng theo hạn mức còn lại. Mã nguồn: `modules/antigravity/`. Tiền tố model: `antigravity`.
+
+**Cần gì.**
+- Tiến trình cầu nối `dich-vu/antigravity-cau-noi/` chạy trên máy chủ (chạy ngoài container web2api do dung lượng `agy` khoảng 214 MB). Cách chạy, biến môi trường và rủi ro: `dich-vu/antigravity-cau-noi/README.md`.
+- Một hoặc nhiều thư mục HOME đã đăng nhập `agy`, cấu hình `toolPermission: "proceed-in-sandbox"` và `enableTerminalSandbox: true`.
+- Mạng ra: chỉ tới cầu nối. web2api chạy trong Docker thì `127.0.0.1` là chính container — cho cầu nối nghe ở IP cổng nối Docker của máy chủ (`AGY_CAU_NOI_HOST`) và điền địa chỉ đó (chưa kiểm trên máy chủ thật).
+- RAM/đĩa/GPU thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "antigravity"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/antigravity`
+3. Cài cấu hình liên kết:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"dia_chi_cau_noi": "http://<IP cổng nối>:8300", "khoa_cau_noi": "khoa-bi-mat"}}' \
+     $W/api/modules/antigravity/cai
+   ```
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `dia_chi_cau_noi` | Có | Địa chỉ URL của cầu nối trên máy chủ (mặc định `http://127.0.0.1:8300` — chỉ đúng khi web2api không chạy trong container). Liên kết thì web2api gọi `/health` và `/v1/models` của cầu nối. |
+| `khoa_cau_noi` | Có | Khoá bí mật khớp với `AGY_CAU_NOI_KHOA` của cầu nối. Lưu riêng tại `<thư mục dữ liệu>/bi_mat/antigravity.json` quyền 0600, không bao giờ trả lại. |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "antigravity/gemini-3.8-flash-high", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+**Sự cố thường gặp.**
+- Liên kết báo «Không kết nối được cầu nối» — cầu nối chưa chạy, hoặc web2api trong container đang gọi `127.0.0.1` của chính nó (xem «Cần gì»).
+- `502 upstream_error` — `agy` thoát với mã khác 0, trả JSON hỏng hoặc `status` khác `SUCCESS` — xem nhật ký cầu nối (chỉ ghi số thứ tự tài khoản `accN`).
+- `502 agent_wanted_tool` — `agy` dừng lượt vì muốn dùng công cụ bị từ chối — kiểm `toolPermission: "proceed-in-sandbox"` trong HOME của tài khoản; hỏi lại theo hướng chỉ cần trả lời bằng chữ.
+- `504 timeout` — một lượt `agy` quá `AGY_HAN_GIO_S` (mặc định 90 s); cầu nối đã giết cả nhóm tiến trình.
+- `503 accounts_busy` — mọi tài khoản còn hạn mức đều đang chạy một lượt khác (mỗi tài khoản một lượt cùng lúc) — thử lại sau `Retry-After`.
+- `429 rate_limit_exceeded` — mọi tài khoản đã cạn hạn mức cho họ model này; `Retry-After` là mốc reset của cửa sổ đang cạn (web2api nghỉ khoá cầu nối tối đa 10 phút rồi thử lại).
+- `400 context_length_exceeded` — hội thoại ghép vượt 120 KiB (giới hạn một tham số dòng lệnh của Linux).
+
+**Giới hạn.**
+- Chỉ hỗ trợ chat văn bản (chưa hỗ trợ ảnh, âm thanh, video hay gọi công cụ).
+- Tiêu tốn hạn mức token cao (tối thiểu ≈12.500 token/lượt) do khung agent của `agy` nạp ngữ cảnh hệ thống.
+- Chưa đo trên `agy` thật để tránh tiêu tốn hạn mức tài khoản của chủ máy.
+
 ## 5. Triển khai
 
 ### Cần gì để chạy
@@ -881,6 +936,110 @@ client.audio.speech.create(model="<tiền tố>/<model đọc>", voice="<giọng
 Home Assistant: dùng tích hợp **cho nhập base URL** kiểu OpenAI (tích hợp «OpenAI Conversation» gốc không cho đổi
 địa chỉ; các tích hợp «OpenAI tương thích» trên HACS thì có). Chưa thử cụ thể trên Home Assistant của nhà.
 
+### Truy cập từ máy khác và từ Internet
+
+Mặc định khi chạy Docker, web2api lắng nghe cổng 3031 trên máy chủ. Để ứng dụng khác (máy tính khác, điện thoại,
+Home Assistant) hoặc người dùng bên ngoài Internet gọi được cổng AI, cần xác định phương thức kết nối phù hợp:
+
+```mermaid
+flowchart TD
+  subgraph LAN["1. Trong nhà (mạng nội bộ LAN)"]
+    KH_LAN["Thiết bị trong nhà<br/>(PC · Điện thoại · Home Assistant)"]
+    MAY["Máy chủ chạy web2api<br/>(Docker lắng nghe cổng 3031)"]
+    KH_LAN -- "http://&lt;IP-máy-chủ&gt;:3031/v1<br/>(Bearer khoá quản trị)" --> MAY
+  end
+
+  subgraph INTERNET["2. Ra ngoài Internet (Cloudflare Tunnel)"]
+    KH_NGOAI["Khách từ Internet<br/>(Bên ngoài nhà)"]
+    CF["Cloudflare Edge (HTTPS)<br/>tự thêm X-Forwarded-*"]
+    TUN["cloudflared (Tunnel)<br/>đường hầm ra Cloudflare, không mở port"]
+    KH_NGOAI -- "https://&lt;tên-miền&gt;/v1<br/>(HTTPS đã mã hoá)" --> CF
+    CF --> TUN
+    TUN -- "http://localhost:3031<br/>(hoặc http://&lt;tên-container&gt;:8000 trong mạng Docker)" --> MAY
+  end
+```
+
+#### a. Chỉ dùng trong nhà (mạng LAN)
+
+Khi chỉ dùng cho các thiết bị trong gia đình hoặc cùng mạng Wi-Fi:
+- **Địa chỉ kết nối:** `http://<IP-máy-chủ>:3031` (Base URL cho các ứng dụng OpenAI là `http://<IP-máy-chủ>:3031/v1`).
+- Thay `<IP-máy-chủ>` bằng địa chỉ IP nội bộ của máy chủ (ví dụ trong dải `192.168.x.x` hoặc `10.x.x.x`).
+- Kết nối trực tiếp qua giao thức HTTP không mã hoá trong mạng riêng, an toàn trước sự dòm ngó từ Internet bên ngoài.
+
+#### b. Ra ngoài bằng Cloudflare Tunnel (`cloudflared`)
+
+Muốn gọi web2api khi ra khỏi nhà hoặc tích hợp dịch vụ bên ngoài, giải pháp an toàn nhất là dùng **Cloudflare Tunnel**:
+1. **Cài đặt `cloudflared`:** cài `cloudflared` trên máy chủ hoặc chạy container `cloudflare/cloudflared`.
+2. **Tạo đường hầm:** đăng nhập tài khoản Cloudflare và tạo tunnel:
+   ```bash
+   cloudflared tunnel login
+   cloudflared tunnel create <tên-tunnel>
+   ```
+3. **Trỏ dịch vụ:** trong tệp cấu hình của tunnel (`~/.cloudflared/config.yml`), trỏ tên miền tới web2api:
+   ```yaml
+   tunnel: <tên-tunnel>
+   credentials-file: /root/.cloudflared/<mã-tunnel>.json
+   ingress:
+     - hostname: <tên-miền>
+       service: http://localhost:3031        # cloudflared chạy trên máy chủ: cổng đã mở của Docker
+       # service: http://<tên-container>:8000  # cloudflared chạy trong cùng mạng Docker: cổng TRONG container là 8000
+     - service: http_status:404
+   ```
+4. **Gắn tên miền và bật HTTPS:** `cloudflared tunnel route dns <tên-tunnel> <tên-miền>` (tạo bản ghi DNS trỏ vào
+   tunnel), rồi `cloudflared tunnel run <tên-tunnel>` (hoặc cài thành dịch vụ: `cloudflared service install`).
+   Cloudflare tự cấp chứng chỉ và phục vụ HTTPS ở `https://<tên-miền>`; đoạn từ cloudflared tới web2api là HTTP trong
+   máy/mạng Docker, không đi qua Internet.
+5. **Cho web2api biết địa chỉ công khai:** cách chắc nhất là **đặt cố định** — biến `WEB2API_PUBLIC_URL=https://<tên-miền>`
+   hoặc `PUT /api/dia-chi` (giá trị đặt qua API được ưu tiên hơn biến). Khi chưa đặt, web2api **đoán** từ yêu cầu đang
+   tới: cloudflared chuyển nguyên `Host` là tên miền công khai (trừ khi đặt `httpHostHeader` trong cấu hình) và
+   Cloudflare gắn `X-Forwarded-Proto: https`; web2api chỉ đọc `X-Forwarded-Proto` / `X-Forwarded-Host` khi đặt
+   **`WEB2API_TIN_PROXY=1`** — chỉ bật khi MỌI đường vào web2api đều qua proxy, vì ai gọi thẳng cổng 3031 cũng tự gửi
+   được hai header này. Header có nhiều giá trị khác nhau, ký tự lạ hay quá dài bị bỏ. Riêng uvicorn (máy chủ web bên
+   trong ảnh) mặc định tự tin `X-Forwarded-Proto` từ kết nối đến từ chính `127.0.0.1` của container, kể cả khi
+   `WEB2API_TIN_PROXY` tắt — không ảnh hưởng khách đi qua cổng Docker (đến từ địa chỉ khác).
+
+#### c. Khuyến nghị Cloudflare Access cho trang quản trị (tuỳ chọn)
+
+Trang giao diện web (`/`) và các API quản trị (`/api/*`) nên được bảo vệ thêm bằng lớp xác thực **Cloudflare Zero Trust / Access**:
+- Thiết lập quy tắc Access chỉ cho phép email của bạn đăng nhập bằng mã OTP một lần hoặc tài khoản Google/GitHub.
+- Có thể tạo chính sách Bypass (bỏ qua Access) riêng cho đường dẫn `/v1/*` để các ứng dụng OpenAI khách bên ngoài vẫn gọi được API trực tiếp thông qua Bearer token, hoặc dùng Service Tokens của Cloudflare Access.
+
+#### d. Vì sao KHÔNG mở thẳng cổng ra Internet
+
+Tuyệt đối **không mở cổng 3031 (Port Forwarding / NAT)** trên router mạng nhà ra Internet:
+- **Nguy cơ nghe lén:** web2api chạy HTTP thuần. Mở cổng thẳng khiến mọi dữ liệu, bao gồm cả khoá quản trị và nội dung hội thoại, truyền dạng văn bản rõ (clear text) trên Internet, dễ bị kẻ xấu bắt gói tin và đánh cắp.
+- **Nguy cơ bị tấn công trực diện:** mở cổng để lộ địa chỉ IP thật của nhà, thu hút các botnet quét cổng, tấn công dò mật khẩu và tấn công từ chối dịch vụ (DDoS).
+- **Lợi ích của Cloudflare Tunnel:** không cần mở cổng router (cloudflared tự gọi RA Cloudflare), giấu địa chỉ IP nhà, khách ngoài chỉ nói HTTPS với Cloudflare; đoạn Cloudflare ↔ cloudflared cũng mã hoá.
+
+#### e. Kiểm bằng `curl` đạt / không đạt
+
+Kiểm tra kết nối trong mạng LAN:
+```bash
+curl -s http://<IP-máy-chủ>:3031/health
+```
+- **Đạt:** trả về `{"ok": true, "phien_ban": "..."}`.
+- **Không đạt:** `Connection refused` (container chưa chạy hoặc sai cổng) hoặc `No route to host` (sai IP máy chủ, bị tường lửa chặn).
+
+Kiểm tra kết nối qua Cloudflare Tunnel:
+```bash
+curl -s https://<tên-miền>/health
+```
+- **Đạt:** trả về `{"ok": true, "phien_ban": "..."}`.
+- **Không đạt:** lỗi SSL hoặc mã HTTP `502 Bad Gateway` / `530` từ Cloudflare (tunnel chưa kết nối được tới cổng 3031 của web2api).
+
+Kiểm tra gọi API bằng khoá quản trị:
+```bash
+curl -s -H "Authorization: Bearer <KHOÁ>" https://<tên-miền>/v1/models
+```
+- **Đạt:** trả về danh sách model `{"object": "list", "data": [...]}`.
+- **Không đạt:** mã HTTP `401` nếu thiếu hoặc sai khoá quản trị.
+
+#### f. Khoá quản trị và khoá khách
+
+- Khoá quản trị (`WEB2API_ADMIN_KEY` hoặc `/data/admin_key`) có **toàn quyền trên hệ thống**: gọi mọi model, cài đặt, gỡ bỏ và xem cấu hình module.
+- Khoá này chỉ dành cho chủ máy quản trị; không nên chia sẻ khoá quản trị cho người ngoài.
+- Để cấp quyền cho người khác hoặc ứng dụng bên ngoài dùng thử mà không có quyền quản trị, tính năng **khoá khách** (giới hạn model, hạn mức) sẽ được cung cấp ở giai đoạn tiếp theo.
+
 ### Vận hành hằng ngày
 
 ```bash
@@ -990,6 +1149,12 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
 | `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo |
+| `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
+| `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
+| `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |
+| `GET /api/nhat-ky` | Có | Xem nhật ký hệ thống (mới nhất trước; lọc theo `kenh`, `muc`, `q`, phân trang `truoc` = `luc` của dòng cuối trang trước, `gioi_han` ≤ 500). Kênh của lõi: `cuoc_goi` — mỗi lượt `/v1` đúng một dòng (người gọi, đường, model, module, mã HTTP, ms, `usage` nếu có, `request_id`; `dut: true` khi luồng đứt giữa chừng; KHÔNG nội dung lời nhắn/trả lời hay khoá), phản hồi `/v1` mang tiêu đề `x-request-id` (khớp `request_id` trong dòng) và `X-Web2api-Module` (tiền tố module đã phục vụ); `he_thong` — khởi động, nạp/đổi/gỡ module, cấu hình hỏng |
+| `GET /api/nhat-ky/kenh` | Có | Danh sách kênh nhật ký đang có bản ghi (`kenh`, `so_dong`, `lan_cuoi`) |
+| `DELETE /api/nhat-ky` | Có | Xoá bản ghi nhật ký cũ hơn N ngày (`truoc_ngay=N`, 0 ≤ N ≤ 36500; thiếu → `400`, không xoá gì) |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
@@ -1006,11 +1171,14 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 |---|---|---|
 | `WEB2API_DATA` | `/data` | Thư mục dữ liệu (khoá, cấu hình, module cài thêm) |
 | `WEB2API_ADMIN_KEY` | tự sinh | Khoá quản trị; không đặt thì sinh và lưu `<WEB2API_DATA>/admin_key` |
+| `WEB2API_PUBLIC_URL` | không | Địa chỉ URL công khai chính thức (ví dụ `https://<tên-miền>`), ưu tiên sau giá trị đã đặt qua API |
+| `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai; chỉ bật khi mọi đường vào đều qua proxy |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
+| `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |

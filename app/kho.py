@@ -282,3 +282,37 @@ def xoa_tu_xa(id_: str) -> bool:
 def ghi_json_cong_khai(ten_tep: str, du_lieu: Any) -> None:
     """Ghi một tệp JSON công khai ở gốc thư mục dữ liệu (nguon_git.json, trạng thái…)."""
     _ghi_json(thu_muc_du_lieu() / ten_tep, du_lieu)
+
+
+# ───────────── dia_chi.json (địa chỉ truy cập công khai đã đặt) ─────────────
+
+def _p_dia_chi() -> Path:
+    return thu_muc_du_lieu() / "dia_chi.json"
+
+
+def doc_dia_chi_da_dat() -> str | None:
+    """Đọc URL đã đặt từ <WEB2API_DATA>/dia_chi.json. None nếu chưa đặt; tệp hỏng → KhoHong (bên gọi báo cảnh báo)."""
+    du_lieu = doc_json(_p_dia_chi())
+    if du_lieu is None:
+        return None
+    url = du_lieu.get("url") if isinstance(du_lieu, dict) else None
+    if not isinstance(url, str):
+        raise KhoHong(f"{_p_dia_chi()} hỏng: thiếu trường «url» dạng chuỗi")
+    return url.strip() or None
+
+
+def luu_dia_chi_da_dat(url: str) -> None:
+    """Lưu URL công khai đã đặt vào dia_chi.json (ghi nguyên tử)."""
+    with _KHOA:
+        _ghi_json(_p_dia_chi(), {"url": url})
+
+
+def xoa_dia_chi_da_dat() -> bool:
+    """Xoá tệp dia_chi.json."""
+    with _KHOA:
+        try:
+            _p_dia_chi().unlink()
+            return True
+        except FileNotFoundError:
+            return False
+
