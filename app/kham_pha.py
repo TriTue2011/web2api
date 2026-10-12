@@ -83,9 +83,14 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
                                                         kiểm phạm vi "xep_hang".
     Phương thức cho khả năng "tim_kiem":
       async tim_kiem(yc: dict) -> dict                  GET /api/tim-kiem/nguon và POST /api/tim-kiem;
-                                                        yc = {chuoi?, loc?, bat_tat?, cay?, so_luong, ngu_canh?};
+                                                        yc = {chuoi?, loc?, bat_tat?, cay?, muc_luc?, chi_muc?, so_luong, ngu_canh?};
                                                         kết quả {muc: [{id, diem, doan, tai_lieu?, vi_tri?, truong?}], tong?};
                                                         mọi trường là mã mở; kiểm phạm vi "tim_kiem".
+      async muc_luc(yc: dict) -> dict                   POST /api/tim-kiem/muc-luc (tuỳ chọn);
+                                                        yc = {tai_lieu, do_sau?};
+                                                        kết quả {tai_lieu, tieu_de?, muc: [{id, tieu_de, cap, vi_tri?, con: [...]}]};
+                                                        cây đề mục: chương → mục → tiểu mục; trần độ sâu 6, trần số nút 2000;
+                                                        bỏ nút sai không vỡ cây; kiểm phạm vi "tim_kiem".
     YeuCauDaPhan (app/yeu_cau_da_phan.py) do lõi đọc từ multipart — module KHÔNG tự phân tích thân:
       .truong: dict[str, str | list[str]]  trường chữ, tên bỏ hậu tố «[]»; gửi một lần và không có «[]» → str,
                                            có «[]» hoặc lặp → list[str] theo thứ tự gửi (đúng hình thân JSON

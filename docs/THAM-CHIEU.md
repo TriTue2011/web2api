@@ -128,20 +128,26 @@ khi hỏi sổ: đọc `multipart/form-data` thành `YeuCauDaPhan` (vượt tr�
 
 ### Chuẩn tri thức (`tri_thuc`) và quy trình nối tầng
 
-Chuẩn tri thức kết nối linh hoạt nhiều nguồn thông tin qua quy trình phễu (`quy_trinh`):
+Chuẩn tri thức kết nối linh hoạt nhiều nguồn thông tin qua bốn sơ đồ tìm kiếm:
 
 ```mermaid
 flowchart LR
   N1["Nguồn A<br/>tim_kiem"] --> GOP["Gộp kết quả<br/>(RRF k=60)"]
   N2["Nguồn B<br/>tim_kiem"] --> GOP
-  GOP --> LOC["Lọc dữ liệu<br/>(trường / cây phân cấp)"]
-  LOC --> XEP["Xếp hạng lại<br/>(xep_hang)"]
-  XEP --> CAT["Cắt danh sách<br/>(top n / độ dài đoạn)"]
+  GOP --> LOC["Lọc nhiều mặt<br/>(đơn/list/khoảng/khác)"]
+  LOC --> CAY["Cây phân cấp<br/>(tiền tố/độ sâu/đếm nút)"]
+  CAY --> CAT["Cắt danh sách<br/>(top n / độ dài đoạn)"]
 ```
 
+- **Bốn sơ đồ tìm kiếm của lõi**:
+  - **Phễu (`pheu`)**: Phễu mặc định gồm 5 tầng nối tiếp: `truy_hoi` (theo nguồn/công tắc) → `gop` (RRF k=60) → `loc` → `cay` → `cat`. Báo cáo `bao_cao` đo lường chi tiết mọi tầng (`ten, vao, ra, ms`, và `bo_qua` nếu có); dừng ngay khi gặp lỗi và báo đúng tầng; trần 8 tầng và trần thời gian `WEB2API_QUY_TRINH_GIAY`. Khách có thể gửi danh sách tầng tuỳ biến trong `pheu`.
+  - **Công tắc (`bat_tat`)**:
+    - `bat_tat.nguon = {<id module>: bool}`: Lõi loại bỏ nguồn bị tắt (`false`) khỏi tầng truy hồi (kết hợp với danh sách chọn `nguon: [...]` nếu có); nguồn không tồn tại hoặc bị tắt ghi vào `bao_cao` là bỏ qua, không gây lỗi.
+    - `bat_tat.so_do = {<mã sơ đồ>: bool}`: Lõi chuyển nguyên vào `yc` của module (mã mở, ví dụ `toan_van`, `ngu_nghia`); module khai báo trong manifest trường `so_do_tim_kiem: [mã...]` để `GET /api/tim-kiem/nguon` liệt kê vẽ công tắc; sơ đồ lạ module bỏ qua, phản hồi ghi `so_do_bo_qua` theo nguồn (không lỗi).
+  - **Lọc nhiều mặt (`loc`)**: Hỗ trợ giá trị đơn (bằng), danh sách (thuộc một trong), khoảng `{tu, den}` cho số và chuỗi ISO ngày giờ, loại trừ `{khac: ...}`, và trường lồng bằng đường chấm (`truong.kenh`). Kiểu dữ liệu không khớp thì mục không qua lọc (không lỗi). Hỗ trợ đếm theo mặt: thân `mat: ["truong.kenh", ...]` → phản hồi `mat: {"truong.kenh": {"<giá trị>": số mục}}` tính trên kết quả trước khi cắt `so_luong`.
+  - **Cây phân cấp (`cay`)**: Lọc `{truong, goc, do_sau?}` theo tiền tố đường dẫn phân cấp (phân tách «/») và độ sâu tính từ `goc`. Nếu `cay.dem: true` → phản hồi `cay_nut: [{duong, so_muc}]` các nút con trực tiếp dưới `goc` kèm số mục tính trước khi cắt `so_luong`.
 - Các khả năng chuẩn: `nhung` (`POST /v1/embeddings`), `xep_hang` (`POST /v1/rerank`), và `tim_kiem` (`GET /api/tim-kiem/nguon`, `POST /api/tim-kiem`).
-- Quy trình phễu (`quy_trinh`): chuỗi các tầng nối tiếp nhau, tầng sau nhận dữ liệu tầng trước, đo lường chi tiết vào/ra/ms/lỗi; dừng ngay khi gặp lỗi và báo đúng tầng; trần 8 tầng và trần thời gian `WEB2API_QUY_TRINH_GIAY`.
-- Toán tử dữ liệu thuần: `gop` (RRF k=60), `loc` (lọc trường), `cay` (tiền tố và độ sâu phân cấp), `cat` (top n), `gop_ngu_canh` (trần tổng ký tự đoạn văn bản).
+- Toán tử dữ liệu thuần: `gop` (RRF k=60), `loc` (lọc nhiều mặt), `cay` (tiền tố, độ sâu, duyệt cây), `cat` (top n), `gop_ngu_canh` (trần tổng ký tự đoạn văn bản).
 - An toàn nội dung: kết quả luôn đánh dấu `nguon_ngoai: true`, đầu vào không tin cậy, không tự đưa vào chỉ thị hệ thống; kênh nhật ký `tri_thuc` không ghi nội dung tài liệu.
 
 ### Cài → vào Studio → thêm khoá (không tải lại trang)
@@ -1331,8 +1337,9 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
 | `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
 | `POST /api/phe-duyet/{id}/tu-choi` | Có | Quản trị từ chối và huỷ bỏ yêu cầu trong hàng chờ |
-| `GET /api/tim-kiem/nguon` | Có | Liệt kê các module nguồn tri thức khai khả năng tìm kiếm và trạng thái |
-| `POST /api/tim-kiem` | Có | Tìm kiếm tri thức kết hợp nhiều nguồn, lọc nhiều chiều, cây phân cấp và quy trình phễu |
+| `GET /api/tim-kiem/nguon` | Có | Liệt kê các module nguồn tri thức khai khả năng tìm kiếm, trạng thái và danh mục sơ đồ hỗ trợ (`so_do_tim_kiem`) |
+| `POST /api/tim-kiem` | Có | Tìm kiếm tri thức kết hợp 5 sơ đồ: công tắc (nguồn/sơ đồ), lọc nhiều mặt (+ đếm mặt), cây phân cấp (+ duyệt nút con), mục lục (nhảy tới đề mục, chỉ mục A–Z) và phễu nối tầng |
+| `POST /api/tim-kiem/muc-luc` | Có | Lấy cây mục lục phân cấp của tài liệu (chương → mục → tiểu mục); trần độ sâu 6, trần số nút 2000 |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/embeddings` | Có | Tạo vector nhúng chuẩn OpenAI (thân `{"model": "...", "input": "..."}`); `501` nếu module không có |
@@ -1363,6 +1370,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
+| `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
+| `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |

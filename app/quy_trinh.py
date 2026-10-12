@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import time
+import unicodedata
 from typing import Any
 
 from app.loi_openai import LoiOpenAI
@@ -108,8 +109,114 @@ def toan_tu_gop(du_lieu_vao: dict, k: int = 60) -> dict:
     return {**du_lieu_vao, "muc": ket_qua_muc}
 
 
+_KHONG_CO = object()
+
+
+def _tra_cuu_duong_dan(goc: Any, cac_khoa: list[str]) -> Any:
+    hien_tai = goc
+    for k in cac_khoa:
+        if isinstance(hien_tai, dict) and k in hien_tai:
+            hien_tai = hien_tai[k]
+        else:
+            return _KHONG_CO
+    return hien_tai
+
+
+def _lay_gia_tri_truong(item: dict, duong_dan: str) -> Any:
+    """Lấy giá trị trường, hỗ trợ trường lồng bằng đường chấm ('truong.kenh' hoặc 'kenh.ten')."""
+    if not isinstance(item, dict) or not duong_dan:
+        return _KHONG_CO
+
+    parts = [p for p in str(duong_dan).strip().split(".") if p]
+    if not parts:
+        return _KHONG_CO
+
+    # 1. Nếu đường dẫn bắt đầu bằng "truong." và item có "truong"
+    if parts[0] == "truong" and len(parts) > 1 and isinstance(item.get("truong"), dict):
+        val = _tra_cuu_duong_dan(item["truong"], parts[1:])
+        if val is not _KHONG_CO:
+            return val
+
+    # 2. Tìm trong item["truong"] trước
+    if isinstance(item.get("truong"), dict):
+        val = _tra_cuu_duong_dan(item["truong"], parts)
+        if val is not _KHONG_CO:
+            return val
+        if duong_dan in item["truong"]:
+            return item["truong"][duong_dan]
+
+    # 3. Tìm từ cấp gốc của item
+    val = _tra_cuu_duong_dan(item, parts)
+    if val is not _KHONG_CO:
+        return val
+    if duong_dan in item:
+        return item[duong_dan]
+
+    return _KHONG_CO
+
+
+def _khop_dieu_kien(gia_tri_that: Any, v: Any) -> bool:
+    """Kiểm tra giá trị thật có khớp điều kiện lọc hay không.
+
+    Hỗ trợ: giá trị đơn (bằng), danh sách (thuộc một trong), khoảng {tu, den}, loại trừ {khac: ...}.
+    Kiểu không khớp -> trả về False (không lỗi).
+    """
+    if gia_tri_that is _KHONG_CO:
+        return False
+
+    if isinstance(v, dict):
+        # 1. Loại trừ: {khac: ...}
+        if "khac" in v:
+            v_khac = v["khac"]
+            if isinstance(v_khac, list):
+                try:
+                    if gia_tri_that in v_khac:
+                        return False
+                except (TypeError, ValueError):
+                    pass
+            else:
+                if gia_tri_that == v_khac:
+                    return False
+
+        # 2. Khoảng: {tu, den} cho số hoặc chuỗi ISO ngày giờ
+        if "tu" in v or "den" in v:
+            if gia_tri_that is None:
+                return False
+            tu = v.get("tu")
+            den = v.get("den")
+            if tu is not None:
+                try:
+                    if not (gia_tri_that >= tu):
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            if den is not None:
+                try:
+                    if not (gia_tri_that <= den):
+                        return False
+                except (TypeError, ValueError):
+                    return False
+
+        # 3. Từ điển so sánh bằng nếu không phải khac và khoảng
+        if "khac" not in v and "tu" not in v and "den" not in v:
+            if gia_tri_that != v:
+                return False
+
+        return True
+
+    # Danh sách: thuộc một trong các phần tử
+    if isinstance(v, list):
+        try:
+            return gia_tri_that in v
+        except (TypeError, ValueError):
+            return False
+
+    # Giá trị đơn
+    return gia_tri_that == v
+
+
 def toan_tu_loc(du_lieu_vao: dict, dieu_kien: dict) -> dict:
-    """Lọc các mục theo từ điển trường=giá trị trên trường 'truong' của từng mục."""
+    """Lọc các mục theo từ điển trường=giá trị trên trường 'truong' hoặc cấp ngoài."""
     if not isinstance(du_lieu_vao, dict):
         return {"muc": []}
     muc_in = du_lieu_vao.get("muc")
@@ -122,34 +229,26 @@ def toan_tu_loc(du_lieu_vao: dict, dieu_kien: dict) -> dict:
     for item in muc_in:
         if not isinstance(item, dict):
             continue
-        truong_item = item.get("truong") or {}
-        if not isinstance(truong_item, dict):
-            truong_item = {}
         khop = True
         for k, v in dieu_kien.items():
-            gia_tri_that = truong_item.get(k)
-            if isinstance(v, list):
-                if gia_tri_that not in v:
-                    khop = False
-                    break
-            else:
-                if gia_tri_that != v:
-                    khop = False
-                    break
+            gia_tri_that = _lay_gia_tri_truong(item, k)
+            if not _khop_dieu_kien(gia_tri_that, v):
+                khop = False
+                break
         if khop:
             ket_qua.append(item)
     return {**du_lieu_vao, "muc": ket_qua}
 
 
 def toan_tu_cat(du_lieu_vao: dict, so_luong: int) -> dict:
-    """Lấy top N mục đầu tiên từ danh sách kết quả."""
+    """Lấy top N mục đầu tiên từ danh sách kết quả, lưu muc_truoc_cat để đếm mặt."""
     if not isinstance(du_lieu_vao, dict):
         return {"muc": []}
     muc_in = du_lieu_vao.get("muc")
     if not isinstance(muc_in, list):
         return {**du_lieu_vao, "muc": []}
     n = max(0, int(so_luong))
-    return {**du_lieu_vao, "muc": muc_in[:n]}
+    return {**du_lieu_vao, "muc_truoc_cat": muc_in, "muc": muc_in[:n]}
 
 
 def toan_tu_gop_ngu_canh(du_lieu_vao: dict, tran_ky_tu: int) -> dict:
@@ -174,6 +273,67 @@ def toan_tu_gop_ngu_canh(du_lieu_vao: dict, tran_ky_tu: int) -> dict:
         else:
             break
     return {**du_lieu_vao, "muc": ket_qua}
+
+
+def dem_cay_nut(muc_ds: list[dict], cay_cfg: dict) -> list[dict]:
+    """Đếm số mục các nút con trực tiếp dưới gốc phục vụ duyệt cây trên giao diện."""
+    if not isinstance(cay_cfg, dict):
+        return []
+    truong_ten = str(cay_cfg.get("truong") or "duong_dan")
+    goc_tho = str(cay_cfg.get("goc") or "").strip()
+    goc = goc_tho.strip("/")
+
+    cac_nut: dict[str, int] = {}
+    for item in muc_ds:
+        if not isinstance(item, dict):
+            continue
+        val = _lay_gia_tri_truong(item, truong_ten)
+        if val is _KHONG_CO or val is None:
+            continue
+        path = str(val).strip().strip("/")
+        if not path:
+            continue
+
+        if goc:
+            if path.startswith(f"{goc}/"):
+                con = path[len(goc) + 1:].strip("/")
+                if con:
+                    nhanh_truc_tiep = con.split("/")[0]
+                    duong_nut = f"{goc}/{nhanh_truc_tiep}"
+                    cac_nut[duong_nut] = cac_nut.get(duong_nut, 0) + 1
+        else:
+            nhanh_truc_tiep = path.split("/")[0]
+            cac_nut[nhanh_truc_tiep] = cac_nut.get(nhanh_truc_tiep, 0) + 1
+
+    return [{"duong": k, "so_muc": v} for k, v in sorted(cac_nut.items())]
+
+
+def dem_mat(muc_ds: list[dict], danh_sach_mat: list[str]) -> dict[str, dict[str, int]]:
+    """Đếm số mục theo từng giá trị của mỗi mặt (facet) trước khi cắt số lượng."""
+    if not isinstance(danh_sach_mat, list):
+        return {}
+    ket_qua: dict[str, dict[str, int]] = {}
+    for mat_ten in danh_sach_mat:
+        if not isinstance(mat_ten, str) or not mat_ten.strip():
+            continue
+        ten_mat = mat_ten.strip()
+        dem_gia_tri: dict[str, int] = {}
+        for item in muc_ds:
+            if not isinstance(item, dict):
+                continue
+            val = _lay_gia_tri_truong(item, ten_mat)
+            if val is _KHONG_CO or val is None:
+                continue
+            if isinstance(val, list):
+                for x in val:
+                    if x is not None:
+                        k_str = str(x)
+                        dem_gia_tri[k_str] = dem_gia_tri.get(k_str, 0) + 1
+            elif isinstance(val, (str, int, float, bool)):
+                k_str = str(val)
+                dem_gia_tri[k_str] = dem_gia_tri.get(k_str, 0) + 1
+        ket_qua[ten_mat] = dem_gia_tri
+    return ket_qua
 
 
 def toan_tu_cay(du_lieu_vao: dict, cay_cfg: dict) -> dict:
@@ -201,19 +361,21 @@ def toan_tu_cay(du_lieu_vao: dict, cay_cfg: dict) -> dict:
             ket_qua.append(item)
             continue
 
-        truong_item = item.get("truong") or {}
-        if not isinstance(truong_item, dict):
+        val = _lay_gia_tri_truong(item, truong_ten)
+        if val is _KHONG_CO or val is None:
             continue
-        path_tho = str(truong_item.get(truong_ten) or "").strip()
-        path = path_tho.strip("/")
+        path = str(val).strip().strip("/")
 
         # Kiểm tra tiền tố gốc
         if goc:
             if path != goc and not path.startswith(f"{goc}/"):
                 continue
             if do_sau_int is not None:
-                con = path[len(goc):].strip("/")
-                phan_doan = [p for p in con.split("/") if p]
+                if path == goc:
+                    phan_doan = []
+                else:
+                    con = path[len(goc) + 1:].strip("/")
+                    phan_doan = [p for p in con.split("/") if p]
                 if len(phan_doan) > do_sau_int:
                     continue
         else:
@@ -224,6 +386,163 @@ def toan_tu_cay(du_lieu_vao: dict, cay_cfg: dict) -> dict:
 
         ket_qua.append(item)
 
+    tra_ve = {**du_lieu_vao, "muc": ket_qua}
+    if cay_cfg.get("dem") is True:
+        tra_ve["cay_nut"] = dem_cay_nut(ket_qua, cay_cfg)
+    return tra_ve
+
+
+def chuan_hoa_chu_cai_dau(s: Any) -> str:
+    """Lấy chữ cái đầu và chuẩn hoá về A-Z (bỏ dấu tiếng Việt, Đ xếp cùng D), còn lại '#'."""
+    if s is None:
+        return "#"
+    chuoi = str(s).strip()
+    if not chuoi:
+        return "#"
+    first_char = chuoi[0]
+    if first_char in ("Đ", "đ"):
+        return "D"
+    nfd = unicodedata.normalize("NFD", first_char)
+    khong_dau = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    if not khong_dau:
+        return "#"
+    c = khong_dau[0].upper()
+    if "A" <= c <= "Z":
+        return c
+    return "#"
+
+
+def dem_chi_muc(muc_ds: list[dict], chi_muc_cfg: dict) -> dict[str, int]:
+    """Đếm số mục theo chữ cái đầu (bỏ dấu tiếng Việt, Đ xếp cùng D) trước khi cắt."""
+    if not isinstance(chi_muc_cfg, dict):
+        return {}
+    truong_ten = str(chi_muc_cfg.get("truong") or "tieu_de").strip()
+    dem: dict[str, int] = {}
+    for item in muc_ds:
+        if not isinstance(item, dict):
+            continue
+        val = _lay_gia_tri_truong(item, truong_ten)
+        if val is _KHONG_CO or val is None:
+            val = item.get("tieu_de") or item.get("doan") or item.get("ten") or ""
+        chu = chuan_hoa_chu_cai_dau(val)
+        dem[chu] = dem.get(chu, 0) + 1
+
+    keys_az = sorted([k for k in dem.keys() if k != "#"])
+    if "#" in dem:
+        keys_az.append("#")
+    return {k: dem[k] for k in keys_az}
+
+
+def toan_tu_chi_muc(du_lieu_vao: dict, chi_muc_cfg: dict) -> dict:
+    """Toán tử chỉ mục A-Z: tính đếm chi_muc trước khi cắt; nếu có chi_muc.chon thì lọc giữ mục bắt đầu bằng chữ đó."""
+    if not isinstance(du_lieu_vao, dict):
+        return {"muc": []}
+    muc_in = du_lieu_vao.get("muc")
+    if not isinstance(muc_in, list):
+        return {**du_lieu_vao, "muc": []}
+    if not isinstance(chi_muc_cfg, dict) or not chi_muc_cfg:
+        return du_lieu_vao
+
+    dem = dem_chi_muc(muc_in, chi_muc_cfg)
+    truong_ten = str(chi_muc_cfg.get("truong") or "tieu_de").strip()
+    chon = chi_muc_cfg.get("chon")
+    if chon is not None and str(chon).strip():
+        chon_chuan = chuan_hoa_chu_cai_dau(str(chon).strip())
+        ket_qua = []
+        for item in muc_in:
+            if not isinstance(item, dict):
+                continue
+            val = _lay_gia_tri_truong(item, truong_ten)
+            if val is _KHONG_CO or val is None:
+                val = item.get("tieu_de") or item.get("doan") or item.get("ten") or ""
+            chu = chuan_hoa_chu_cai_dau(val)
+            if chu == chon_chuan:
+                ket_qua.append(item)
+        return {**du_lieu_vao, "muc": ket_qua, "chi_muc": dem}
+
+    return {**du_lieu_vao, "chi_muc": dem}
+
+
+def _item_khop_muc_luc(item: dict, tai_lieu: str | None, muc_id: str) -> bool:
+    """Kiểm tra một mục có khớp tai_lieu và muc_id của đề mục hay không."""
+    if not isinstance(item, dict):
+        return False
+    if tai_lieu:
+        tl_item = item.get("tai_lieu")
+        if tl_item is None and isinstance(item.get("truong"), dict):
+            tl_item = item["truong"].get("tai_lieu")
+        if tl_item is not None and str(tl_item) != str(tai_lieu):
+            return False
+
+    m_id_item = item.get("muc_id")
+    if m_id_item is None and isinstance(item.get("truong"), dict):
+        m_id_item = item["truong"].get("muc_id")
+    if m_id_item is not None and str(m_id_item) == str(muc_id):
+        return True
+
+    vi_tri = item.get("vi_tri")
+    if vi_tri is not None:
+        if str(vi_tri) == str(muc_id):
+            return True
+        if isinstance(vi_tri, dict) and str(vi_tri.get("muc_id") or "") == str(muc_id):
+            return True
+
+    return False
+
+
+def _item_co_thong_tin_muc(item: dict) -> bool:
+    """Kiểm tra mục có trường vi_tri hoặc truong.muc_id hay không."""
+    if not isinstance(item, dict):
+        return False
+    if item.get("muc_id") is not None:
+        return True
+    if isinstance(item.get("truong"), dict) and item["truong"].get("muc_id") is not None:
+        return True
+    if item.get("vi_tri") is not None:
+        return True
+    return False
+
+
+def toan_tu_muc_luc(du_lieu_vao: dict, muc_luc_cfg: dict) -> dict:
+    """Toán tử nhảy tới đề mục: lọc theo vi_tri/truong.muc_id nếu module chưa tự áp dụng, không có thì ghi so_do_bo_qua."""
+    if not isinstance(du_lieu_vao, dict):
+        return {"muc": []}
+    muc_in = du_lieu_vao.get("muc")
+    if not isinstance(muc_in, list):
+        return {**du_lieu_vao, "muc": []}
+    if not isinstance(muc_luc_cfg, dict) or not muc_luc_cfg:
+        return du_lieu_vao
+
+    tai_lieu = muc_luc_cfg.get("tai_lieu")
+    muc_id = muc_luc_cfg.get("muc_id")
+    if not muc_id:
+        return du_lieu_vao
+
+    da_ap_dung = any(isinstance(x, dict) and x.get("muc_luc_da_ap") is True for x in muc_in)
+    if da_ap_dung:
+        return du_lieu_vao
+
+    co_it_nhat_mot_muc_thong_tin = any(_item_co_thong_tin_muc(x) for x in muc_in)
+    if not co_it_nhat_mot_muc_thong_tin:
+        so_do_bo_qua = dict(du_lieu_vao.get("so_do_bo_qua") or {})
+        nguon_ds = {x.get("nguon") for x in muc_in if isinstance(x, dict) and x.get("nguon")}
+        if not nguon_ds and du_lieu_vao.get("nguon"):
+            ng = du_lieu_vao["nguon"]
+            nguon_ds = {ng} if isinstance(ng, str) else set(ng)
+        for ng in nguon_ds:
+            if ng:
+                cur = list(so_do_bo_qua.get(ng) or [])
+                if "muc_luc" not in cur:
+                    cur.append("muc_luc")
+                so_do_bo_qua[ng] = cur
+        return {**du_lieu_vao, "so_do_bo_qua": so_do_bo_qua}
+
+    ket_qua = []
+    for item in muc_in:
+        if not isinstance(item, dict):
+            continue
+        if _item_khop_muc_luc(item, tai_lieu, str(muc_id)):
+            ket_qua.append(item)
     return {**du_lieu_vao, "muc": ket_qua}
 
 
@@ -265,9 +584,23 @@ async def _thuc_hien_mot_tang(
         cay_cfg = tham_so if ("truong" in tham_so or "goc" in tham_so) else du_lieu_vao.get("cay", {})
         return toan_tu_cay(du_lieu_vao, cay_cfg)
 
-    # 6. Khả năng tìm kiếm (tim_kiem)
+    # 6. Toán tử đề mục (muc_luc)
+    if kha_nang == "muc_luc":
+        muc_luc_cfg = tham_so if ("muc_id" in tham_so or "tai_lieu" in tham_so) else du_lieu_vao.get("muc_luc", {})
+        return toan_tu_muc_luc(du_lieu_vao, muc_luc_cfg)
+
+    # 7. Toán tử chỉ mục A-Z (chi_muc)
+    if kha_nang == "chi_muc":
+        chi_muc_cfg = tham_so if ("truong" in tham_so or "kieu" in tham_so or "chon" in tham_so) else du_lieu_vao.get("chi_muc", {})
+        return toan_tu_chi_muc(du_lieu_vao, chi_muc_cfg)
+
+    # 8. Khả năng tìm kiếm (tim_kiem)
     if kha_nang == "tim_kiem":
         yc = {**du_lieu_vao, **tham_so}
+        bat_tat = yc.get("bat_tat") if isinstance(yc.get("bat_tat"), dict) else {}
+        bat_tat_nguon = bat_tat.get("nguon") if isinstance(bat_tat.get("nguon"), dict) else {}
+        bat_tat_so_do = bat_tat.get("so_do") if isinstance(bat_tat.get("so_do"), dict) else {}
+
         if nguon:
             m = so.dang_chay.get(nguon)
             km = so.catalog.get(nguon)
@@ -283,46 +616,163 @@ async def _thuc_hien_mot_tang(
                 if isinstance(x, dict):
                     x["nguon"] = nguon
                     x["nguon_ngoai"] = True
-            return {**du_lieu_vao, **kq, "muc": muc}
 
-        # Gọi mọi module có khai tim_kiem song song
-        ds_m = []
+            so_do_bo_qua_m: list[str] = []
+            if isinstance(kq.get("so_do_bo_qua"), list):
+                so_do_bo_qua_m.extend(kq["so_do_bo_qua"])
+            elif isinstance(kq.get("so_do_bo_qua"), dict) and nguon in kq["so_do_bo_qua"]:
+                so_do_bo_qua_m.extend(kq["so_do_bo_qua"][nguon])
+
+            so_do_ho_tro = km.manifest.get("so_do_tim_kiem") if km else None
+            if isinstance(so_do_ho_tro, list):
+                for sd in bat_tat_so_do.keys():
+                    if sd not in so_do_ho_tro and sd not in so_do_bo_qua_m:
+                        so_do_bo_qua_m.append(sd)
+
+            # Xử lý nhảy tới đề mục (muc_luc)
+            if yc.get("muc_luc") and isinstance(yc["muc_luc"], dict):
+                ml_cfg = yc["muc_luc"]
+                mod_da_ho_tro = bool(
+                    kq.get("muc_luc_da_ap") is True
+                    or (so_do_ho_tro and "muc_luc" in so_do_ho_tro and "muc_luc" not in so_do_bo_qua_m)
+                )
+                if not mod_da_ho_tro:
+                    co_thong_tin = any(_item_co_thong_tin_muc(x) for x in muc if isinstance(x, dict))
+                    if co_thong_tin:
+                        muc_loc = [
+                            x for x in muc
+                            if isinstance(x, dict) and _item_khop_muc_luc(x, ml_cfg.get("tai_lieu"), str(ml_cfg.get("muc_id") or ""))
+                        ]
+                        for x in muc_loc:
+                            x["muc_luc_da_ap"] = True
+                        muc = muc_loc
+                    else:
+                        if "muc_luc" not in so_do_bo_qua_m:
+                            so_do_bo_qua_m.append("muc_luc")
+
+            so_do_bo_qua_dict = {nguon: so_do_bo_qua_m} if so_do_bo_qua_m else {}
+            return {**du_lieu_vao, **kq, "muc": muc, "so_do_bo_qua": so_do_bo_qua_dict}
+
+        # Tập hợp các module khai tim_kiem sẵn sàng
+        ds_san_sang: dict[str, tuple[Any, Any]] = {}
         for mid, m in list(so.dang_chay.items()):
             km = so.catalog.get(mid)
             if km and "tim_kiem" in km.manifest.get("cung_cap", []) and "tim_kiem" not in getattr(km, "chuan_loi", {}):
                 if callable(getattr(m, "tim_kiem", None)):
-                    ds_m.append((mid, m))
+                    ds_san_sang[mid] = (m, km)
 
         loc_nguon = du_lieu_vao.get("nguon")
         if isinstance(loc_nguon, str) and loc_nguon:
             loc_nguon = [loc_nguon]
+
+        nguon_bo_qua: list[str] = []
+
+        # 1. Nếu có loc_nguon (danh sách chọn)
         if isinstance(loc_nguon, list):
-            ds_m = [(mid, m) for mid, m in ds_m if mid in loc_nguon]
+            ds_chon: list[str] = []
+            for nid in loc_nguon:
+                if nid in ds_san_sang:
+                    if nid not in ds_chon:
+                        ds_chon.append(nid)
+                else:
+                    if nid not in nguon_bo_qua:
+                        nguon_bo_qua.append(nid)
+        else:
+            ds_chon = list(ds_san_sang.keys())
+
+        # 2. Xử lý bat_tat.nguon (công tắc tắt/bật nguồn)
+        for nid, bat in bat_tat_nguon.items():
+            if nid not in ds_san_sang and nid not in nguon_bo_qua:
+                nguon_bo_qua.append(nid)
+
+        ds_cuoi: list[str] = []
+        for nid in ds_chon:
+            if bat_tat_nguon.get(nid) is False:
+                if nid not in nguon_bo_qua:
+                    nguon_bo_qua.append(nid)
+            else:
+                ds_cuoi.append(nid)
+
+        ds_m = [(nid, ds_san_sang[nid][0], ds_san_sang[nid][1]) for nid in ds_cuoi if nid in ds_san_sang]
 
         if not ds_m:
-            return {**du_lieu_vao, "muc": [], "tong": 0}
+            return {
+                **du_lieu_vao,
+                "danh_sach": [],
+                "muc": [],
+                "tong": 0,
+                "nguon_bo_qua": nguon_bo_qua,
+                "so_do_bo_qua": {},
+            }
 
-        cac_task = [m.tim_kiem(yc) for _, m in ds_m]
+        cac_task = [m.tim_kiem(yc) for _, m, _ in ds_m]
         cac_kq = await asyncio.gather(*cac_task, return_exceptions=True)
 
         danh_sach_cac_nguon = []
         tat_ca_muc = []
-        for (mid, _), res in zip(ds_m, cac_kq):
+        so_do_bo_qua_tong: dict[str, list[str]] = {}
+
+        for (mid, _, km), res in zip(ds_m, cac_kq):
             if isinstance(res, Exception):
                 log.warning("Module %s lỗi khi gọi tim_kiem: %s", mid, res)
                 continue
-            if isinstance(res, dict) and isinstance(res.get("muc"), list):
-                sub_list = []
-                for item in res["muc"]:
-                    if isinstance(item, dict):
-                        item_moi = dict(item)
-                        item_moi["nguon"] = mid
-                        item_moi["nguon_ngoai"] = True
-                        sub_list.append(item_moi)
-                        tat_ca_muc.append(item_moi)
-                danh_sach_cac_nguon.append(sub_list)
+            if isinstance(res, dict):
+                # Xử lý so_do_bo_qua
+                bo_qua_cua_m = []
+                if isinstance(res.get("so_do_bo_qua"), list):
+                    bo_qua_cua_m.extend(res["so_do_bo_qua"])
+                elif isinstance(res.get("so_do_bo_qua"), dict) and mid in res["so_do_bo_qua"]:
+                    bo_qua_cua_m.extend(res["so_do_bo_qua"][mid])
 
-        return {**du_lieu_vao, "danh_sach": danh_sach_cac_nguon, "muc": tat_ca_muc}
+                so_do_ho_tro = km.manifest.get("so_do_tim_kiem")
+                if isinstance(so_do_ho_tro, list):
+                    for sd in bat_tat_so_do.keys():
+                        if sd not in so_do_ho_tro and sd not in bo_qua_cua_m:
+                            bo_qua_cua_m.append(sd)
+
+                # Xử lý nhảy tới đề mục (muc_luc)
+                if yc.get("muc_luc") and isinstance(yc["muc_luc"], dict):
+                    ml_cfg = yc["muc_luc"]
+                    mod_da_ho_tro = bool(
+                        res.get("muc_luc_da_ap") is True
+                        or (so_do_ho_tro and "muc_luc" in so_do_ho_tro and "muc_luc" not in bo_qua_cua_m)
+                    )
+                    if not mod_da_ho_tro:
+                        items_raw = res.get("muc") if isinstance(res.get("muc"), list) else []
+                        co_thong_tin = any(_item_co_thong_tin_muc(x) for x in items_raw if isinstance(x, dict))
+                        if co_thong_tin:
+                            muc_loc = [
+                                x for x in items_raw
+                                if isinstance(x, dict) and _item_khop_muc_luc(x, ml_cfg.get("tai_lieu"), str(ml_cfg.get("muc_id") or ""))
+                            ]
+                            for x in muc_loc:
+                                x["muc_luc_da_ap"] = True
+                            res["muc"] = muc_loc
+                        else:
+                            if "muc_luc" not in bo_qua_cua_m:
+                                bo_qua_cua_m.append("muc_luc")
+
+                if bo_qua_cua_m:
+                    so_do_bo_qua_tong[mid] = bo_qua_cua_m
+
+                if isinstance(res.get("muc"), list):
+                    sub_list = []
+                    for item in res["muc"]:
+                        if isinstance(item, dict):
+                            item_moi = dict(item)
+                            item_moi["nguon"] = mid
+                            item_moi["nguon_ngoai"] = True
+                            sub_list.append(item_moi)
+                            tat_ca_muc.append(item_moi)
+                    danh_sach_cac_nguon.append(sub_list)
+
+        return {
+            **du_lieu_vao,
+            "danh_sach": danh_sach_cac_nguon,
+            "muc": tat_ca_muc,
+            "nguon_bo_qua": nguon_bo_qua,
+            "so_do_bo_qua": so_do_bo_qua_tong,
+        }
 
     # 7. Khả năng xếp hạng lại (xep_hang)
     if kha_nang == "xep_hang":
@@ -494,7 +944,11 @@ async def chay(tang: list, du_lieu_vao: dict, so: SoModule) -> dict:
         else:
             ra = vao
 
-        bao_cao.append({"ten": ten, "vao": vao, "ra": ra, "ms": ms})
+        muc_bc: dict[str, Any] = {"ten": ten, "vao": vao, "ra": ra, "ms": ms}
+        if isinstance(du_lieu_moi, dict) and "nguon_bo_qua" in du_lieu_moi and du_lieu_moi["nguon_bo_qua"]:
+            muc_bc["bo_qua"] = list(du_lieu_moi["nguon_bo_qua"])
+            muc_bc["nguon_bo_qua"] = list(du_lieu_moi["nguon_bo_qua"])
+        bao_cao.append(muc_bc)
         du_lieu_hien_tai = du_lieu_moi
 
     return {"ket_qua": du_lieu_hien_tai, "bao_cao": bao_cao}

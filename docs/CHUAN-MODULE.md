@@ -104,7 +104,22 @@ Nhận danh sách `ids: list[str]` và trả về từ điển:
 
 ### 4.3. Tìm kiếm (`tim_kiem`)
 - Phương thức: `async tim_kiem(yc: dict) -> dict` phục vụ `GET /api/tim-kiem/nguon` và `POST /api/tim-kiem`.
-- Đầu vào `yc`: `{chuoi?, loc?, bat_tat?, cay?, so_luong, ngu_canh?}` (mọi trường là mã mở).
-- Đầu ra: `{muc: [{id, diem, doan, tai_lieu?, vi_tri?, truong?: dict}], tong?}`.
+- Trường manifest `so_do_tim_kiem` (mở, tuỳ chọn): danh sách mã sơ đồ module hỗ trợ (ví dụ `["toan_van", "ngu_nghia"]`). `GET /api/tim-kiem/nguon` liệt kê danh sách này theo từng nguồn để giao diện hiển thị các công tắc tương ứng.
+- Đầu vào `yc`: `{chuoi?, loc?, bat_tat?, cay?, mat?, muc_luc?, chi_muc?, so_luong?, ngu_canh?}` (mọi trường là mã mở):
+  - **Công tắc (`bat_tat`)**:
+    - `bat_tat.nguon = {<id module>: bool}`: lõi tự động loại trừ nguồn bị tắt (`false`) khỏi tầng truy hồi; nguồn không tồn tại hoặc tắt được ghi nhận vào `bao_cao` là bỏ qua, không gây lỗi.
+    - `bat_tat.so_do = {<mã sơ đồ>: bool}`: lõi chuyển nguyên vào `yc` của module. Sơ đồ lạ module bỏ qua, phản hồi ghi nhận `so_do_bo_qua` theo nguồn (không lỗi).
+  - **Lọc nhiều mặt (`loc`)**: hỗ trợ giá trị đơn (bằng), danh sách (thuộc một trong), khoảng `{tu, den}` cho số và chuỗi ISO ngày giờ, loại trừ `{khac: ...}`, và trường lồng bằng đường chấm (`truong.kenh`). Kiểu dữ liệu không khớp thì mục không qua lọc (không lỗi).
+  - **Đếm theo mặt (`mat`)**: `mat: ["truong.kenh", ...]`, phản hồi trả về `mat: {"truong.kenh": {"<giá trị>": số mục}}` được tính trên kết quả trước khi cắt `so_luong`.
+  - **Cây phân cấp (`cay`)**: `{truong, goc, do_sau?}` lọc theo tiền tố đường dẫn phân cấp (phân tách «/»), độ sâu tính từ `goc`. Nếu `cay.dem: true`, phản hồi trả về `cay_nut: [{duong, so_muc}]` các nút con trực tiếp dưới `goc` kèm số mục tính trước khi cắt `so_luong`.
+  - **Nhảy tới đề mục (`muc_luc`)**: `{tai_lieu, muc_id}` giới hạn tìm kiếm trong một đề mục cụ thể. Module không hỗ trợ thì lõi tự lọc theo `vi_tri`/`truong.muc_id` của mục nếu có; nếu không có thì ghi `so_do_bo_qua`.
+  - **Chỉ mục A–Z (`chi_muc`)**: `{truong, kieu: "chu_cai", chon?}`. Phản hồi trả về `chi_muc: {"A": n, "B": n, …, "#": n}` đếm theo chữ cái đầu (bỏ dấu tiếng Việt khi xếp: «Đ» xếp cùng «D» nhưng giữ nguyên chữ ở mục) tính trước `cat`. Nếu có `chon` (ví dụ `"B"`), kết quả chỉ giữ các mục bắt đầu bằng chữ đó.
+- Đầu ra: `{muc: [{id, diem, doan, tai_lieu?, vi_tri?, truong?: dict}], tong?, so_do_bo_qua?: dict, mat?: dict, cay_nut?: list, chi_muc?: dict}`.
 - **An toàn nội dung**: Nội dung tìm kiếm là đầu vào không tin cậy. Kết quả mỗi mục do lõi trả ra luôn gắn `nguon` (id module) và `nguon_ngoai: true`. Lõi không tự động chuyển nội dung này thành chỉ thị hệ thống.
+
+### 4.4. Mục lục tài liệu (`muc_luc` — tuỳ chọn)
+- Phương thức: `async muc_luc(yc: dict) -> dict` phục vụ `POST /api/tim-kiem/muc-luc`.
+- Đầu vào `yc`: `{"tai_lieu": str, "do_sau": int (tuỳ chọn)}`.
+- Đầu ra: `{"tai_lieu": str, "tieu_de": str (tuỳ chọn), "muc": [{"id": str, "tieu_de": str, "cap": int, "vi_tri": any, "con": [...]}]}`.
+- Lõi kiểm hình dạng: bỏ nút sai không vỡ cây, áp trần độ sâu (mặc định 6, cấu hình qua `WEB2API_MUC_LUC_TRAN_DO_SAU`) và trần số nút (mặc định 2000, cấu hình qua `WEB2API_MUC_LUC_TRAN_SO_NUT`). Module không có phương thức → lõi trả mã `501` rõ ràng. Yêu cầu quyền/phạm vi `tim_kiem`.
 
