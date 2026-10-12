@@ -100,6 +100,22 @@ with `toi_da: null` as Google does not provide a remaining quota ceiling), and c
 with a paid call) / `dung_duoc` (works) / `bi_tu_choi` (refused). **Not yet tested against real Google**: the actual error shape for
 free keys, the Veo flow, and which model IDs are still live.
 
+In `GET /v1/models` the module tags video models `"kha_nang": ["video"]` (method `predictLongRunning`) and image
+models `"kha_nang": ["anh"]`, which feed the «Tạo ảnh» (image) group in Provider and the model list of Studio's image
+mode (chat mode does not list them). Image models are recognised by `predict` (Imagen) or, for Gemini image models
+whose `supportedGenerationMethods` are identical to chat models (`generateContent`), by Google's own naming
+convention: the id has a **segment** (split on `-` `_` `.` `/`) equal to `image` (`gemini-3.1-flash-image`; not
+`imagery`), or two consecutive segments `nano` `banana` — Google's brand name for its Gemini image models, needed
+because `gemini-nano-banana-2.1` (recommended by Google for new projects) is the one image model without an `image`
+suffix (the same rule catches `nano-banana-pro-preview`). These are the module's only text-based classifications and
+they live in the module, not the core; measured on 46 real model ids (12/10/2026) they match exactly the 8 Gemini
+image models, no false positives. `displayName`/`description` are not used because chat models mention images as
+input. Known limitation: a new image model named outside both conventions is not in the image group (web2api still
+forwards a request for it by name). Google's OpenAI-compatibility page (read 12/10/2026) documents `images.generate`
+with `gemini-2.5-flash-image` / `gemini-3-pro-image-preview`, so the `/images/generations` route rests on the docs —
+**not yet tried** with a paid key. Imagen is no longer mentioned there, so Imagen through this route is undocumented
+and unmeasured.
+
 ```bash
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"model": "gemini/gemini-3.1-flash-lite-image", "prompt": "A cat in a straw hat", "response_format": "b64_json"}' \

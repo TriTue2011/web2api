@@ -8,6 +8,7 @@ module chạy TRONG tiến trình lõi nên đọc được biến môi trườn
   GIA_TRE    giây giữa hai khúc                                (mặc định 0.05)
   GIA_DON    "1" → mọi khúc trong MỘT lần ghi
   GIA_ANH    "403" → tạo ảnh trả 403 no_key_permitted như khoá hạng miễn phí
+  GIA_MODEL_ANH "1" → models() có thêm model ảnh `<tiền tố>/ve-1` (`kha_nang: ["anh"]`); mặc định không có
   GIA_SK     "cu"  → suc_khoe dạng TỐI THIỂU của hợp đồng (không thu_tu / dang_dung / han_muc / kha_nang)
              "het" → khoá đầu đang nghỉ chat vì hết hạn mức (429), không có trần (`toi_da` null)
 Khoá giả: chuỗi chứa «hong» bị coi là khoá hỏng.
@@ -99,8 +100,11 @@ class Module:
 
     async def models(self):
         t = self.tien_to
-        return [{"id": t + "/nhanh", "object": "model"}, {"id": t + "/" + XSS_MODEL_ID, "object": "model"},
-                {"id": t + "/phim-1", "object": "model", "kha_nang": ["video"]}]
+        ds = [{"id": t + "/nhanh", "object": "model"}, {"id": t + "/" + XSS_MODEL_ID, "object": "model"},
+              {"id": t + "/phim-1", "object": "model", "kha_nang": ["video"]}]
+        if os.environ.get("GIA_MODEL_ANH") == "1":
+            ds.append({"id": t + "/ve-1", "object": "model", "kha_nang": ["anh"]})
+        return ds
 
     async def suc_khoe(self):
         sk = os.environ.get("GIA_SK")
