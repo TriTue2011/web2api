@@ -154,7 +154,7 @@ class GoogleGia:
             await asyncio.sleep(hv.get("giay", 1.5))
             return None
         if k == "429":
-            hd = {"retry-after": hv["retry_after"]} if "retry_after" in hv else {}
+            hd = {"retry-after": str(hv["retry_after"])} if "retry_after" in hv else {}
             return JSONResponse(
                 [{"error": {"code": 429, "message": "Resource has been exhausted (e.g. check quota).",
                             "status": "RESOURCE_EXHAUSTED"}}],

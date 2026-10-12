@@ -59,6 +59,17 @@ không theo chữ trong thông điệp (dạng lỗi thật của khoá miễn p
   5xx/lỗi mạng, 404/khác → như chat.
 Không bao giờ dò khoá bằng lời gọi tốn tiền: trạng thái là «chua_ro» cho tới khi dùng thật. Trạng thái nằm
 trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi động lại thì về «chua_ro».
+
+BỘ ĐẾM DÙNG TỪNG KHOÁ (`_ghi_dung` — chỗ ghi DUY NHẤT, gọi ở 4 điểm: chat 200, chat 429, khả năng 2xx, khả năng 429):
+số lượt phục vụ thành công theo việc ("chat" / mã khả năng), số lần 429, lần dùng cuối, lần 429 cuối, và khoá phục vụ
+yêu cầu GẦN NHẤT («đang dùng»). Không ghi thân yêu cầu; kiểm khoá (GET /models), danh sách model, hỏi trạng thái hay tải
+video KHÔNG tính — bấm «Làm mới» sức khoẻ không được đổi «đang dùng». Cùng vòng đời với `_chat_duoc`/`_kn`: trong bộ nhớ của
+thể hiện, nên về 0 khi khởi động lại hoặc lưu lại cấu hình (module tạo bộ chuyển tiếp mới ở `nap`). `suc_khoe` báo theo
+từng khoá: `thu_tu` (vị trí trong danh sách đã lưu, từ 1 — KHÔNG phải «ưu tiên»: vẫn xoay vòng), `dang_dung`,
+`dung_cuoi`, `so_429`, `lan_429_cuoi` và `han_muc` (hợp đồng ở app/kham_pha.py) với `toi_da` LUÔN None: API kiểu OpenAI
+không cho hỏi hạn mức còn lại, còn «trần cấu hình − số lượt đếm từ lúc khởi động» là con số bịa (trần nhà cung cấp hồi
+theo lịch của họ, bộ đếm này về 0 theo lịch của mình). Module nào đọc được trần + đã dùng THẬT từ nhà cung cấp thì tự
+điền `han_muc` trong `suc_khoe` của nó.
 """
 
 from __future__ import annotations
@@ -162,6 +173,11 @@ class ChuyenTiepOpenAI:
         # nên MODULE truyền vào; lõi không biết nhà cung cấp nào.
         self._goi_y_tu_choi_kn = goi_y_tu_choi_kha_nang.strip()
         self._kn: dict[tuple[str, str], dict] = {}
+        # Mã HTTP khiến khoá nghỉ chat (429 = hết hạn mức; 401/403/400 = bị từ chối) — `_nghi` chỉ giữ giờ hết nghỉ.
+        self._nghi_ma: dict[str, int] = {}
+        # Bộ đếm dùng từng khoá (xem «BỘ ĐẾM DÙNG TỪNG KHOÁ» ở đầu tệp).
+        self._dem: dict[str, dict] = {}
+        self._dang_dung: str | None = None
         self._dem_models: list[dict] | None = None
         self._dem_luc = 0.0
         self._khach: httpx.AsyncClient | None = None
@@ -221,6 +237,41 @@ class ChuyenTiepOpenAI:
             than["model"] = model[len(self.tien_to) + 1:]
         return than
 
+    def _ghi_dung(self, khoa: str, viec: str, ma: int) -> None:
+        """Chỗ ghi DUY NHẤT của bộ đếm dùng từng khoá: `viec` = "chat" hoặc mã khả năng, `ma` = mã HTTP nhà cung cấp trả."""
+        d = self._dem.setdefault(khoa, {"luot": {}, "so_429": 0, "dung_cuoi": None, "lan_429_cuoi": None})
+        bay_gio = self._dong_ho()
+        if 200 <= ma < 300:
+            d["luot"][viec] = d["luot"].get(viec, 0) + 1
+            d["dung_cuoi"] = bay_gio
+            self._dang_dung = khoa
+        elif ma == 429:
+            d["so_429"] += 1
+            d["lan_429_cuoi"] = bay_gio
+
+    def _han_muc(self, khoa: str, bay_gio: float) -> list[dict]:
+        """Hạn mức theo việc của MỘT khoá (hợp đồng `han_muc` ở app/kham_pha.py), dựng từ dữ liệu đã có — không dò chữ.
+        Trạng thái: «het_han_muc» = đang nghỉ vì 429 sau khi đã dùng được; «bi_tu_choi» = 401/403/400 bị đánh dấu, hoặc
+        429 với khả năng CHƯA từng dùng được (cách `goi_kha_nang` đã phân loại); «dung_duoc»; «chua_ro» = chưa dùng thật."""
+        luot = self._dem.get(khoa, {}).get("luot", {})
+        ra = []
+        den = self._nghi.get(khoa, 0.0)
+        if den > bay_gio:
+            ma = self._nghi_ma.get(khoa)
+            tt = {"trang_thai": "het_han_muc" if ma == 429 else "bi_tu_choi", "ma": ma, "hoi_luc": iso(den)}
+        else:
+            tt = {"trang_thai": "dung_duoc" if luot.get("chat") else "chua_ro", "ma": None, "hoi_luc": None}
+        ra.append({"ten": "chat", "da_dung": luot.get("chat", 0), "toi_da": None, **tt})
+        for kn in self.kha_nang:
+            k = self._kn.get((khoa, kn))
+            if k is not None and k["den"] > bay_gio:
+                het = k["ma"] == 429 and k["dung_duoc"]
+                tt = {"trang_thai": "het_han_muc" if het else "bi_tu_choi", "ma": k["ma"], "hoi_luc": iso(k["den"])}
+            else:
+                tt = {"trang_thai": "dung_duoc" if k is not None and k["dung_duoc"] else "chua_ro", "ma": None, "hoi_luc": None}
+            ra.append({"ten": kn, "da_dung": luot.get(kn, 0), "toi_da": None, **tt})
+        return ra
+
     def _con_nghi(self, bay_gio: float) -> int:
         return max(1, int(min(self._nghi.values()) - bay_gio + 0.999)) if self._nghi else int(NGHI_429_MAC_DINH)
 
@@ -260,8 +311,10 @@ class ChuyenTiepOpenAI:
                 if r.status_code == 200:
                     # Mã 200 đã tới, chưa byte nào gửi khách: đủ để kết luận về khoá, kể cả khi stream.
                     self._chat_duoc.add(khoa)
+                    self._ghi_dung(khoa, "chat", 200)
                     for k in nghi_ngo:
                         self._nghi[k] = bay_gio + NGHI_KHOA_HONG
+                        self._nghi_ma[k] = 400
                         # Chỉ dạng che của khoá — không ghi thân lỗi.
                         self.log.warning("%s: khoá %s bị coi là hỏng (400 trong khi khoá khác trả 200), nghỉ %.0f s",
                                          self.ten, self.nhan_khoa(k), NGHI_KHOA_HONG)
@@ -286,10 +339,13 @@ class ChuyenTiepOpenAI:
                 if ma == 429:
                     nghi = doc_retry_after(r.headers.get("retry-after"), bay_gio)
                     self._nghi[khoa] = bay_gio + nghi
+                    self._nghi_ma[khoa] = 429
+                    self._ghi_dung(khoa, "chat", 429)
                     self.log.warning("%s: khoá %s hết hạn mức (429), nghỉ %.0f s", self.ten, self.nhan_khoa(khoa), nghi)
                     continue
                 if ma in (401, 403) and not self._goi_y_loi(ma, tin):
                     self._nghi[khoa] = bay_gio + NGHI_KHOA_HONG
+                    self._nghi_ma[khoa] = ma
                     self._chat_duoc.discard(khoa)
                     self.log.warning("%s: khoá %s bị từ chối (%s), nghỉ %.0f s: %s",
                                      self.ten, self.nhan_khoa(khoa), ma, NGHI_KHOA_HONG, tin[:200])
@@ -386,6 +442,7 @@ class ChuyenTiepOpenAI:
                 ma = r.status_code
                 if 200 <= ma < 300:
                     self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
+                    self._ghi_dung(khoa, kha_nang, ma)
                     for k in nghi_ngo:  # cùng thân yêu cầu, khoá này được còn khoá kia 400 → lỗi của khoá kia
                         self._ghi_kn(k, kha_nang, dung_duoc=False, ma=400, den=bay_gio + NGHI_KHA_NANG)
                         self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
@@ -405,6 +462,7 @@ class ChuyenTiepOpenAI:
                     da_duoc = self._kn.get((khoa, kha_nang), {}).get("dung_duoc", False)
                     nghi = doc_retry_after(r.headers.get("retry-after"), bay_gio) if da_duoc else NGHI_KHA_NANG
                     self._ghi_kn(khoa, kha_nang, ma=429, den=bay_gio + nghi)
+                    self._ghi_dung(khoa, kha_nang, 429)
                     self.log.warning("%s: khoá %s hết hạn mức %s (429), nghỉ %.0f s", self.ten,
                                      self.nhan_khoa(khoa), viec, nghi)
                     continue
@@ -489,11 +547,19 @@ class ChuyenTiepOpenAI:
     async def suc_khoe(self) -> dict:
         bay_gio = self._dong_ho()
         ket_qua = await asyncio.gather(*(self.kiem_khoa(k) for k in self.khoa))
-        for k, muc in zip(self.khoa, ket_qua):
+        for i, (k, muc) in enumerate(zip(self.khoa, ket_qua)):
             den = self._nghi.get(k, 0.0)
             muc["dang_nghi_den"] = iso(den) if den > bay_gio else None
             if self.kha_nang:
                 muc["kha_nang"] = {kn: self.trang_thai_kha_nang(k, kn, bay_gio) for kn in self.kha_nang}
+            # Bộ đếm dùng (kể từ lần khởi động / lưu cấu hình gần nhất) — chỉ số và giờ, không khoá.
+            d = self._dem.get(k, {})
+            muc["thu_tu"] = i + 1
+            muc["dang_dung"] = self._dang_dung is not None and k == self._dang_dung
+            muc["dung_cuoi"] = iso(d["dung_cuoi"]) if d.get("dung_cuoi") is not None else None
+            muc["so_429"] = d.get("so_429", 0)
+            muc["lan_429_cuoi"] = iso(d["lan_429_cuoi"]) if d.get("lan_429_cuoi") is not None else None
+            muc["han_muc"] = self._han_muc(k, bay_gio)
         return {"ok": any(m["ok"] for m in ket_qua), "base_url": self.base_url, "khoa": list(ket_qua)}
 
     async def dung(self) -> None:

@@ -45,12 +45,18 @@ voice, translate/subtitles/dubbing, other main tabs, the account avatar) are not
 install it already shows the module: **Accounts** has an "API 0" group chip, a black "＋ Add API" button and the demo's
 empty box; **Provider** lists every installed AI module (dropdown with its key count) with empty Model / Accounts tabs
 and an "Open Accounts tab" button. Add your Google AI Studio key in the "Add API" form (fields come from the
-manifest's `truong_cau_hinh`; an empty text field never overwrites a saved value). Each saved key then becomes one
-account row ("key …abcd" plus a health label: usable / resting until … / error), which you can replace or delete
-(two clicks; the last key of a required field has no delete button because the core needs at least one). Provider
-shows the real models from `/v1/models` grouped by the capability each model declares, a "Refresh list" button, and
-per-key health (latency, model count, resting, image/video status per key). Demo controls with no backend yet (TOTP,
-revealing keys, queue priority, quotas, model on/off and "Set default", "Save changes", Combo) are not drawn. The
+manifest's `truong_cau_hinh`; an empty text field never overwrites a saved value). Each saved key becomes one
+account row with its position `#n` in the saved key list (round-robin rotation), a prominent "In use" badge on the key that
+served the most recent request, usage counters and relative last used timestamp since startup or last configuration save,
+health label (usable / rate limited, resets at … / refused / error), and quota status per capability with progress bars
+only when the provider reports a real maximum (`toi_da`). You can replace or delete each key (two clicks; the last key
+of a required field has no delete button because the core needs at least one). In Provider, models are grouped into three
+collapsible sections (Chat, Image, Video) which are always collapsed by default (clicking a group header expands it;
+switching provider resets groups to collapsed); a group with no model is not shown — `gemini-api` can only mark video
+models, so it has no Image group yet. The Provider's Accounts tab displays key order `#n`, "In use" badge,
+latency, model count (without repeating the model list), and per-capability quota status. There is no "Set #1" button
+because web2api uses round-robin rotation (errors fail over to the next key, rather than a fixed priority queue). Demo
+controls with no backend yet (TOTP, revealing keys, model on/off and "Set default", "Save changes", Combo) are not drawn. The
 System → Modules page keeps its chessboard grid of tiles by type, styled after the demo's Utilities page (search box,
 black selected chips, download/trash icon buttons — trash asks twice —, detail panel on the right, below the grid on
 phones). Studio is ready to chat as soon as a key is saved, without a page reload. Studio
@@ -88,8 +94,10 @@ key and per capability** (chat with that key keeps working), tries the next key,
 returns `403 no_key_permitted` saying a paid key is needed. HTTP 429 pauses the key per `Retry-After` if it has
 worked for that capability before, otherwise it is treated as refused for 24 hours (a zero free-tier quota is
 likely reported as 429). The
-module health endpoint reports `chua_ro` (unknown, never probed with a paid call) / `dung_duoc` (works) /
-`bi_tu_choi` (refused) per key and capability. **Not yet tested against real Google**: the actual error shape for
+module health endpoint reports per-key order `thu_tu` (#n in the saved key list), `dang_dung` (whether this key served the
+most recent request), `dung_cuoi` (last used, ISO time), `so_429` (429 count since startup), `han_muc` (quota status per capability,
+with `toi_da: null` as Google does not provide a remaining quota ceiling), and capabilities as `chua_ro` (unknown, never probed
+with a paid call) / `dung_duoc` (works) / `bi_tu_choi` (refused). **Not yet tested against real Google**: the actual error shape for
 free keys, the Veo flow, and which model IDs are still live.
 
 ```bash

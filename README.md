@@ -201,7 +201,7 @@ vẫn chạy.
 |---|---|---|
 | `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
 | `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Lưới ô bàn cờ theo loại, trình bày theo trang Tiện ích của demo: khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm có kính lúp + chip lọc loại + lọc trạng thái, lưới ô, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
-| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng (tên nguồn, «khoá …abcd», nhãn sức khoẻ «Dùng được» / «Nghỉ đến …» / «Lỗi»); mở dòng để «Thay khoá» hay «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n»; Model = `/v1/models` theo tiền tố, chia nhóm theo `kha_nang` mà module khai (Trò chuyện / Tạo ảnh / Tạo video — nhãn «hiểu ảnh» của demo bỏ vì không dữ liệu nào nói model hiểu ảnh), nút «Làm mới danh sách»; Tài khoản = sức khoẻ từng khoá (độ trễ, số model, nghỉ đến, ảnh/video theo khoá). Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Phần demo chưa có backend (TOTP, «Xem» khoá, hàng đợi, hạn mức, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
+| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng: thứ tự «#n» trong danh sách đã lưu (xoay vòng), nhãn nổi bật «Đang dùng» ở khoá vừa phục vụ yêu cầu gần nhất, số lượt đã dùng, lần dùng cuối tương đối, nhãn sức khoẻ («Dùng được» / «Hết hạn mức, hồi lúc …» / «Bị từ chối, thử lại lúc …» / «Lỗi»); mở dòng xem chi tiết: địa chỉ gốc (Chép), khoá dạng che …abcd, bộ đếm số lượt thành công và số lần 429 kể từ lần khởi động hoặc lưu khoá gần nhất, trạng thái hạn mức từng việc, thanh hạn mức chỉ khi module báo trần thật (`toi_da`); nút «Thay khoá» và «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n». Model: `/v1/models` theo tiền tố, chia BA nhóm tách bạch «Trò chuyện», «Tạo ảnh», «Video» (suy từ `kha_nang` mà module khai cho từng model; mã lạ hiện nguyên mã; nhóm chưa có model nào thì không hiện — `gemini-api` chỉ đánh dấu được model video nên chưa có nhóm «Tạo ảnh»); danh sách model luôn thu gọn (ẩn) khi vào trang (bấm tiêu đề nhóm để mở, đổi provider thì thu gọn lại, không nhớ trạng thái mở giữa các lần vào trang); nút «Làm mới danh sách». Tài khoản: tình trạng từng khoá theo thứ tự «#n», nhãn «Đang dùng» cho khoá phục vụ gần nhất, số lượt dùng, lần dùng cuối, độ trễ ms, số model (dòng tài khoản mở ra không liệt kê danh sách model), trạng thái hạn mức từng việc và thanh hạn mức khi có trần thật. Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Không có nút «Đặt #1» vì web2api giữ chiến lược xoay vòng khoá (lỗi → khoá kế, không dùng hàng đợi ưu tiên cố định). Phần demo chưa có backend (TOTP, «Xem» khoá, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
 | `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chép bố cục `Main.dc.html` của bản demo (một trang cho máy tính và điện thoại): viên trạng thái góc phải, tiêu đề «Bạn muốn làm gì hôm nay?», ô soạn lớn dính đáy với «Vẽ ảnh» / «Tạo video» (khi có module **đã cài** khai `anh` / `video`), chip model (bảng «Model trả lời» với model thật từ `/v1/models`) và nút gửi tròn; dưới ô soạn «Trò chuyện» · «＋ Tạo mới» · «Lịch sử». Gửi rồi thì các lượt hội thoại hiện bên trên (chat stream, markdown an toàn; ảnh; video kèm thanh tiến độ), có hai nút nhảy lên lượt đầu / xuống lượt mới nhất. «Tạo mới» lưu cuộc đang nói vào Lịch sử rồi về màn đầu; «Lịch sử» mở bảng tìm và chọn một cuộc để nói tiếp — lưu ở localStorage của **trình duyệt này** (khoá `web2api_lich_su_tro_chuyen`, tối đa 50 cuộc và 1 triệu ký tự, chỉ lượt chữ; không có khoá nào hay tin giờ), cuộc đang mở được mở lại khi quay lại trang; trình duyệt chặn lưu trữ thì không có nút này. Chế độ chưa có module **đã liên kết** khoá ô soạn và hiện một dòng «Chưa có khoá cho … — Thêm khoá» tới đúng thẻ ở Hệ thống → AI → Tài khoản — không gọi `/v1`. Phần demo chưa có chức năng thật (đính kèm, loa, micro, Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, ô tài khoản) không được vẽ |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
 
@@ -310,10 +310,18 @@ Thư mục `modules/<id>/` gồm:
   content_type, noi_dung)`, `image[]` thành `image`), `.tep_ten(ten)`; lõi đã kiểm phần bắt buộc của chuẩn
   (`file`; `image` và `prompt`). Tên tệp và kiểu khách khai là đầu vào không tin được. Model nào chỉ dùng cho một khả năng
   thì module gắn `"kha_nang": [mã]` vào mục của nó trong `models()` (Studio lọc model theo đó). Hợp đồng chi tiết ở
-  đầu tệp `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`. **Bộ chuyển đổi của module**: module tự đổi
+  đầu tệp `app/kham_pha.py` (trong đó `suc_khoe()` trả `{ok, base_url?, khoa: [...]}` theo thứ tự đã lưu; mỗi khoá gồm
+  `khoa` dạng che, `ok`, `do_tre_ms`, `so_model`, `loi`, `dang_nghi_den` và các trường tuỳ chọn: thứ tự `thu_tu` từ 1,
+  `dang_dung` là khoá phục vụ yêu cầu gần nhất, lần dùng cuối `dung_cuoi`, số lần 429 `so_429`, `lan_429_cuoi`, và
+  `han_muc`: danh sách `[{"ten", "da_dung", "toi_da", "hoi_luc", "trang_thai", "ma"}]`; `toi_da` chỉ điền khi nhà cung
+  cấp báo trần thật, và khi ấy `da_dung` là mức đã dùng cùng kỳ với trần đó — giao diện vẽ thanh «còn lại / trần», không
+  có trần thì chỉ hiện chữ «đã dùng N lượt» + trạng thái; trạng thái phân loại bằng mã HTTP: `dung_duoc`, `het_han_muc`,
+  `bi_tu_choi`, `chua_ro`);
+  module mẫu thật: `modules/gemini-api/`. **Bộ chuyển đổi của module**: module tự đổi
   yêu cầu/trả lời giữa chuẩn OpenAI của lõi và API của nhà cung cấp; dùng lại `app.chuyen_tiep.ChuyenTiepOpenAI`
   khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `doi_id_model`, `goi_y_loi`,
-  `kha_nang`, `goi_y_tu_choi_kha_nang`).
+  `kha_nang`, `goi_y_tu_choi_kha_nang`) — bộ chuyển tiếp tự điền các trường bộ đếm trên từ bộ đếm trong bộ nhớ (kể từ
+  lần khởi động hoặc lưu cấu hình gần nhất), `toi_da` luôn `null` vì API kiểu OpenAI không cho hỏi hạn mức còn lại.
 - Tuỳ chọn `web/`: giao diện riêng, phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết); thanh trên
   có tab của nó khi module đã liên kết.
 
@@ -544,10 +552,12 @@ và vẫn được thử tạo video bình thường):
 | `400` | Khoá từng làm được việc đó → lỗi của yêu cầu, trả ngay. Chưa rõ → thử khoá kế; khoá sau làm được thì khoá trước bị từ chối 24 giờ; **mọi** khoá đều `400` → trả `400` của Google kèm gợi ý «có thể mọi khoá là hạng miễn phí», không đánh dấu khoá nào (một yêu cầu sai không được khoá cả nhà khỏi ảnh/video) |
 | Mọi khoá đang bị từ chối | `403` mã `no_key_permitted`, nêu từng khoá (dạng che), mã Google đã gặp, giờ thử lại, và câu «hạng miễn phí không dùng được — cần khoá trả phí». Chỉ khi mọi khoá đều từng làm được và chỉ đang hết hạn mức (`429`) thì trả `429` kèm `Retry-After` |
 
-`GET /api/modules/gemini-api/suc-khoe` báo thêm cho từng khoá: `"kha_nang": {"anh": {...}, "video": {...}}` với
-`trang_thai` là `chua_ro` (chưa dùng thật lần nào — web2api **không** thử bằng lời gọi tốn tiền),
-`dung_duoc`, hoặc `bi_tu_choi` (kèm `ma` — mã HTTP Google trả — và `thu_lai_luc`). Trạng thái này nằm trong bộ nhớ: lưu lại cấu
-hình module hay khởi động lại thì về `chua_ro`.
+`GET /api/modules/gemini-api/suc-khoe` báo thêm cho từng khoá: thứ tự `thu_tu` (#n trong danh sách đã lưu), nhãn
+`dang_dung` (`true` ở khoá vừa phục vụ yêu cầu gần nhất), lần dùng cuối `dung_cuoi`, số lần 429 `so_429`, lần 429 cuối
+`lan_429_cuoi`, danh sách hạn mức `han_muc` (với `toi_da: null` vì Google không cho truy vấn trần còn lại), và
+`"kha_nang": {"anh": {...}, "video": {...}}` với `trang_thai` là `chua_ro` (chưa dùng thật lần nào — web2api **không** thử
+bằng lời gọi tốn tiền), `dung_duoc`, hoặc `bi_tu_choi` (kèm `ma` — mã HTTP Google trả — và `thu_lai_luc`). Trạng thái
+và bộ đếm này nằm trong bộ nhớ của thể hiện: lưu lại cấu hình module hay khởi động lại thì về ban đầu (`chua_ro`, 0 lượt).
 
 **Chưa đo với Google thật** (chưa có khoá trả phí để thử): dạng lỗi Google trả cho khoá miễn phí (giả định
 400/403/429 — đọc mã thật trong `ma` ở sức khoẻ hoặc trong thông báo lỗi), đường tạo/hỏi/tải Veo, tên
@@ -773,7 +783,7 @@ rỗng của demo kèm nút «Mở tab Tài khoản».*
 ![Hệ thống → AI → Provider sau khi liên kết nguồn AI đầu tiên](docs/anh/sau-lien-ket-may-tinh.png)
 
 *Ảnh 13 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): Provider › Model với model thật từ `/v1/models`
-chia nhóm theo khả năng module khai, nút «Làm mới danh sách»; sức khoẻ từng khoá ở «Tài khoản». Không có «Combo»,
+chia nhóm theo khả năng module khai, nhóm thu gọn sẵn (bấm tiêu đề nhóm để xem model), nút «Làm mới danh sách»; sức khoẻ từng khoá ở «Tài khoản». Không có «Combo»,
 bật/tắt hay «Đặt mặc định» model (chưa có backend).*
 
 ![Provider trên điện thoại](docs/anh/sau-lien-ket-dien-thoai.png)

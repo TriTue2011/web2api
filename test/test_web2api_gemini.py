@@ -471,6 +471,154 @@ def test_suc_khoe_khong_goi_chat_va_che_khoa(client, google):
     khong_ro_khoa(r.text)
 
 
+def test_bo_dem_dung_va_dang_dung_va_thu_tu_tung_khoa(client, google, caplog):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
+    cai(client, google, [K1, K2])
+
+    # Ban đầu: cả 2 khoá chưa dùng, dang_dung là False, thứ tự #1 và #2
+    r0 = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+    assert r0.status_code == 200
+    j0 = r0.json()
+    assert [x["thu_tu"] for x in j0["khoa"]] == [1, 2]
+    assert all(x["dang_dung"] is False for x in j0["khoa"])
+    assert all(x["dung_cuoi"] is None and x["so_429"] == 0 for x in j0["khoa"])
+    hm1_0 = next(h for h in j0["khoa"][0]["han_muc"] if h["ten"] == "chat")
+    assert hm1_0["da_dung"] == 0 and hm1_0["trang_thai"] == "chua_ro"
+
+    # Lượt 1: chat thành công qua K1
+    with caplog.at_level(logging.INFO):
+        r_chat1 = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r_chat1.status_code == 200
+
+    r1 = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+    assert r1.status_code == 200
+    j1 = r1.json()
+    k1_info = j1["khoa"][0]
+    k2_info = j1["khoa"][1]
+    assert k1_info["thu_tu"] == 1 and k2_info["thu_tu"] == 2
+    # K1 là khoá vừa phục vụ gần nhất ("đang dùng")
+    assert k1_info["dang_dung"] is True and k2_info["dang_dung"] is False
+    assert k1_info["dung_cuoi"] is not None and k2_info["dung_cuoi"] is None
+    hm_chat1 = next(h for h in k1_info["han_muc"] if h["ten"] == "chat")
+    assert hm_chat1["da_dung"] == 1 and hm_chat1["trang_thai"] == "dung_duoc"
+
+    # Kiểm khoá (GET /models) và làm mới sức khoẻ KHÔNG đổi "đang dùng"
+    client.get("/v1/models", headers=QT)
+    r1b = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+    assert r1b.json()["khoa"][0]["dang_dung"] is True
+
+    # Lượt 2: chat tiếp xoay sang K2
+    r_chat2 = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r_chat2.status_code == 200
+
+    r2 = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+    j2 = r2.json()
+    # K2 giờ là "đang dùng", K1 không còn
+    assert j2["khoa"][0]["dang_dung"] is False and j2["khoa"][1]["dang_dung"] is True
+    hm_k1_2 = next(h for h in j2["khoa"][0]["han_muc"] if h["ten"] == "chat")
+    hm_k2_2 = next(h for h in j2["khoa"][1]["han_muc"] if h["ten"] == "chat")
+    assert hm_k1_2["da_dung"] == 1 and hm_k2_2["da_dung"] == 1
+    assert j2["khoa"][1]["dung_cuoi"] is not None
+
+    # Khoá không lộ trong phản hồi hay nhật ký
+    khong_ro_khoa(r2.text)
+    for k in MOI_KHOA:
+        assert k not in caplog.text
+
+
+def test_bo_dem_ghi_nhan_429_va_trang_thai_het_han_muc(client, google):
+    google.hanh_vi.update({K1: {"kieu": "tot"}, K2: {"kieu": "tot"}})
+    cai(client, google, [K1, K2])
+
+    # K1 sau đó gặp 429 trong lúc chat
+    google.hanh_vi[K1] = {"kieu": "429", "retry_after": 60}
+    r = client.post("/v1/chat/completions", json=tin(), headers=QT)
+    assert r.status_code == 200  # K1 gặp 429, xoay sang K2 thành công
+
+    r_sk = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+    assert r_sk.status_code == 200
+    j = r_sk.json()
+    k1_info = j["khoa"][0]
+    k2_info = j["khoa"][1]
+
+    # K1 ghi nhận số lần 429 và lần 429 cuối
+    assert k1_info["so_429"] == 1
+    assert k1_info["lan_429_cuoi"] is not None
+    assert k1_info["dang_nghi_den"] is not None
+    hm_k1_chat = next(h for h in k1_info["han_muc"] if h["ten"] == "chat")
+    assert hm_k1_chat["trang_thai"] == "het_han_muc"
+    assert hm_k1_chat["ma"] == 429
+    assert hm_k1_chat["hoi_luc"] == k1_info["dang_nghi_den"]
+
+    # K2 phục vụ thành công -> đang dùng
+    assert k2_info["dang_dung"] is True
+    assert k2_info["so_429"] == 0
+    hm_k2_chat = next(h for h in k2_info["han_muc"] if h["ten"] == "chat")
+    assert hm_k2_chat["da_dung"] == 1 and hm_k2_chat["trang_thai"] == "dung_duoc"
+
+
+def test_han_muc_co_truong_toi_da_nhung_khong_bia_tran(client, google):
+    google.hanh_vi[K1] = {"kieu": "tot"}
+    cai(client, google, [K1])
+
+    # Mặc định Google không có trần: toi_da là None
+    r = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+    assert r.status_code == 200
+    j = r.json()
+    hm = j["khoa"][0]["han_muc"]
+    assert all("toi_da" in h for h in hm)
+    assert all(h["toi_da"] is None for h in hm)
+
+    # Dùng thật rồi vẫn KHÔNG có trần: bộ đếm từ lúc khởi động không phải hạn mức của nhà cung cấp — không bịa con số.
+    assert client.post("/v1/chat/completions", json=tin(), headers=QT).status_code == 200
+    hm2 = {h["ten"]: h for h in client.get("/api/modules/gemini-api/suc-khoe", headers=QT).json()["khoa"][0]["han_muc"]}
+    assert list(hm2) == ["chat", "anh", "video"]
+    assert hm2["chat"]["da_dung"] == 1 and all(h["toi_da"] is None for h in hm2.values())
+
+
+def test_suc_khoe_module_tu_xa_va_chua_lien_ket(du_lieu, monkeypatch):
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    from gia import OpenAIGia
+    from test_web2api_tu_xa import KHOA_XA
+
+    # 1. Module chưa liên kết: trả 404 có lý do rõ, không lỗi 500
+    with TestClient(app) as c:
+        r_cl = c.get("/api/modules/gemini-api/suc-khoe", headers=QT)
+        assert r_cl.status_code == 404
+        assert "chưa có khoá/cấu hình" in r_cl.json()["error"]["message"]
+
+    # 2. Module từ xa: có sức khoẻ với đầy đủ bộ đếm và thứ tự #1
+    g_xa = OpenAIGia(khoa=KHOA_XA)
+    with MayChuThat(g_xa.app) as s_xa, TestClient(app) as c:
+        r_dk = c.post("/api/modules/tu-xa", json={
+            "id": "gpu-lan", "ten": "Model GPU trong LAN", "tien_to": "lan",
+            "base_url": s_xa.url + "/v1", "api_key": KHOA_XA,
+        }, headers=QT)
+        assert r_dk.status_code == 200
+
+        r_sk = c.get("/api/modules/gpu-lan/suc-khoe", headers=QT)
+        assert r_sk.status_code == 200
+        j_sk = r_sk.json()
+        assert j_sk["ok"] is True
+        khoa_entry = j_sk["khoa"][0]
+        assert khoa_entry["thu_tu"] == 1
+        assert khoa_entry["dang_dung"] is False
+        assert khoa_entry["so_429"] == 0
+        assert "han_muc" in khoa_entry
+        assert khoa_entry["han_muc"][0]["ten"] == "chat"
+        assert khoa_entry["han_muc"][0]["toi_da"] is None
+
+        # Chat thử qua module từ xa -> lượt dùng và đang dùng cập nhật
+        r_chat = c.post("/v1/chat/completions", json={
+            "model": "lan/qwen-3b", "messages": [{"role": "user", "content": "hi"}]
+        }, headers=QT)
+        assert r_chat.status_code == 200
+
+        r_sk2 = c.get("/api/modules/gpu-lan/suc-khoe", headers=QT)
+        assert r_sk2.json()["khoa"][0]["dang_dung"] is True
+        assert r_sk2.json()["khoa"][0]["han_muc"][0]["da_dung"] == 1
+
+
 # ───────────── định tuyến, gỡ, khởi động lại ─────────────
 
 def test_model_khong_thuoc_module_nao_404(client, google):

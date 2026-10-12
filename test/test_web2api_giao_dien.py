@@ -436,14 +436,19 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         assert nhom_tk(trang) == [["API", "1"]]
         dong = trang.chu("[data-tai-khoan='ai-gia']")
         assert "AI giả" in dong and "khoá …1111" in dong, dong
-        trang.cho("document.querySelector('[data-tai-khoan=\"ai-gia\"] [data-chip-tk]')?.innerText === 'Dùng được'", han=15, mo_ta="nhãn sức khoẻ")
+        trang.cho("document.querySelector('[data-tai-khoan=\"ai-gia\"] [data-chip-tk=\"suc-khoe\"]')?.innerText === 'Dùng được'", han=15, mo_ta="nhãn sức khoẻ")
         # Provider có model thật ngay, không tải lại trang.
         trang.bam("document.querySelector('[data-nav=\"ai\"]')")
         bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "Provider")
         trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'provider'", mo_ta="Provider")
         trang.bam("document.querySelector('[data-pv-tab=model]')")   # tab con giữ lựa chọn cũ (Tài khoản) như demo
-        trang.cho("document.querySelectorAll('[data-model]').length === 3", han=15, mo_ta="model của provider")
+        trang.cho("document.querySelectorAll('[data-mo-nhom]').length === 2", han=15, mo_ta="nhóm model của provider")
         assert trang.chu("[data-pv-tab='model']").replace("\n", " ") == "Model 3"
+        # Nhóm thu gọn sẵn; mở cả hai thì đủ 3 model thật.
+        assert trang.js("document.querySelectorAll('[data-model]').length") == 0
+        for ma in ("chat", "video"):
+            trang.bam(f"document.querySelector('[data-mo-nhom=\"{ma}\"]')")
+        trang.cho("document.querySelectorAll('[data-model]').length === 3", mo_ta="model của provider")
         html = trang.js("document.documentElement.outerHTML")
         assert K_TOT not in html and K_HONG not in html
         assert not any(K_TOT in x or K_HONG in x for x in trang.state_thanh_phan())
@@ -471,6 +476,13 @@ def test_ai_tai_khoan_hai_nguon_thay_va_xoa_khoa(trang, tmp_path, monkeypatch):
         trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"][data-khoa-so=\"0\"] button')")
         mo = "[data-tai-khoan='ai-hai'][data-khoa-so='0']"
         trang.cho(f"!!document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})", mo_ta="dòng mở")
+        assert trang.chu(mo + " [data-chip-tk='vt']") == "#1"
+        assert trang.chu(mo + " [data-chip-tk='dang-dung']") == "Đang dùng"
+        assert "Đã dùng 12 lượt" in trang.chu(mo + " [data-chip-tk='luot']")
+        assert "Lần dùng cuối" in trang.chu(mo + " [data-chip-tk='dung-cuoi']")
+        assert trang.js(f"!!document.querySelector({json.dumps(mo + ' [data-thanh-hm=\"chat\"]')})")
+        assert not trang.js(f"[...document.querySelectorAll({json.dumps(mo + ' button')})].some((b) => b.innerText.includes('Đặt #1'))")
+        khong_dieu_khien_chet(trang)  # dòng mở có «Thứ tự khoá» — xoay vòng, không phải «hàng đợi ưu tiên» của demo
         chu = trang.chu(mo)
         assert "Nhà cung cấp" in chu and "https://gia.example/v1" in chu and "…1111" in chu and "Xem" not in chu, chu
         trang.bam(f"document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})")
@@ -501,9 +513,17 @@ def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypa
         trang.di(w.url + "/He-thong.dc.html")
         luu_khoa(trang)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.cho("document.querySelectorAll('[data-model]').length === 3", han=15, mo_ta="model của ai-gia")
+        trang.cho("document.querySelectorAll('[data-nhom-md]').length === 2", han=15, mo_ta="nhóm model của ai-gia")
         assert trang.js("document.querySelector('[data-provider]').dataset.provider") == "ai-gia"
-        # Nhóm model theo khả năng module khai (`kha_nang`): gia/phim-1 khai video → «Tạo video»; còn lại → trò chuyện.
+        # Danh sách model LUÔN THU GỌN khi vào trang (chủ máy: «danh sách model thì luôn ẩn»): chưa mở nhóm nào thì không có [data-model].
+        assert trang.js("document.querySelectorAll('[data-model]').length") == 0
+        assert trang.js("[...document.querySelectorAll('[data-mo-nhom]')].map((b) => [b.dataset.moNhom, b.getAttribute('aria-expanded')])") \
+            == [["chat", "false"], ["video", "false"]]
+        # Bấm mở nhóm «Trò chuyện» → model hiện ra; mở «Video» → model video hiện ra.
+        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
+        trang.cho("document.querySelectorAll('[data-nhom-md=\"chat\"] [data-model]').length === 2", mo_ta="mở nhóm trò chuyện")
+        trang.bam("document.querySelector('[data-mo-nhom=\"video\"]')")
+        trang.cho("document.querySelectorAll('[data-nhom-md=\"video\"] [data-model]').length === 1", mo_ta="mở nhóm video")
         assert trang.js("[...document.querySelectorAll('[data-nhom-md]')].map((g) => [g.dataset.nhomMd, [...g.querySelectorAll('[data-model]')].map((m) => m.innerText)])") \
             == [["chat", ["gia/nhanh", "gia/<img src=x onerror=window.__xss=5>"]], ["video", ["gia/phim-1"]]]
         # Nhãn chỉ giữ phần suy ra được từ dữ liệu («hiểu ảnh» của demo không có trường nào chứng minh).
@@ -516,14 +536,21 @@ def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypa
         trang.bam("document.getElementById('nut-lam-moi-md')")
         trang.cho("(document.getElementById('tin-ai')?.innerText || '').includes('3 model')", mo_ta="đã làm mới")
         assert trang.js("window.__md") == 1
-        # Tab Tài khoản: sức khoẻ từng khoá, kể cả trạng thái ảnh/video theo khoá.
+        # Tab Tài khoản: sức khoẻ từng khoá, thứ tự #1, Đang dùng, thanh hạn mức khi có trần, không liệt kê danh sách model.
         trang.bam("document.querySelector('[data-pv-tab=tk]')")
         trang.cho("document.querySelector('[data-khoa-pv]')?.innerText.includes('Đã kết nối')", han=15, mo_ta="sức khoẻ khoá")
+        assert trang.chu("[data-khoa-pv='0'] [data-vt]") == "#1"
+        assert trang.chu("[data-khoa-pv='0'] [data-dang-dung]") == "Đang dùng"
         trang.bam("document.querySelector('[data-khoa-pv=\"0\"] button')")
         trang.cho("!!document.querySelector('[data-kv=kn-anh]')", mo_ta="chi tiết khoá")
         assert trang.chu("[data-kv=kn-anh]").startswith("bị từ chối (HTTP 403)")
         assert trang.chu("[data-kv=kn-video]") == "chưa rõ (chưa dùng thật lần nào)"
         assert trang.chu("[data-kv=do-tre]").startswith("5 ms") and trang.chu("[data-kv=goc]") == "https://gia.example/v1"
+        assert trang.chu("[data-kv=so-model]") == "3"
+        # Dòng tài khoản mở ra KHÔNG liệt kê model (chỉ có số model ở trên, không có [data-model] bên trong dòng tài khoản)
+        assert trang.js("document.querySelectorAll('[data-khoa-pv] [data-model]').length") == 0
+        # Thanh hạn mức vẽ khi có toi_da
+        assert trang.js("!!document.querySelector('[data-khoa-pv=\"0\"] [data-thanh-hm=\"chat\"]')")
         # Chọn nhà cung cấp thứ hai qua bảng xổ (chấm màu + tên + số khoá): đã cài, chưa khoá → tab rỗng.
         trang.bam("document.getElementById('chon-pv')")
         trang.cho("document.querySelectorAll('[data-pv]').length === 2", mo_ta="bảng xổ provider")
@@ -533,6 +560,49 @@ def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypa
         trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-hai' && !!document.getElementById('pv-trong')", mo_ta="provider thứ hai")
         assert not trang.js("!!document.querySelector('[role=listbox]')")
         assert trang.js("document.querySelector('[data-pv-tab=model]').getAttribute('aria-selected')") == "true"
+        # Đổi lại sang ai-gia: danh sách model lại THU GỌN (không nhớ trạng thái mở cũ)
+        trang.bam("document.getElementById('chon-pv')")
+        trang.cho("document.querySelectorAll('[data-pv]').length === 2", mo_ta="bảng xổ provider")
+        trang.bam("document.querySelector('[data-pv=\"ai-gia\"]')")
+        trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-gia'", mo_ta="quay lại ai-gia")
+        assert trang.js("document.querySelectorAll('[data-model]').length") == 0
+
+
+def test_tai_khoan_suc_khoe_toi_thieu_va_het_han_muc(trang, tmp_path, monkeypatch):
+    """Trường bộ đếm là TUỲ CHỌN của hợp đồng `suc_khoe`: module chỉ báo phần tối thiểu thì trang ẩn «#n», «Đang dùng»,
+    số lượt, thanh hạn mức mà không vỡ; module báo hết hạn mức nhưng không có trần thì nói rõ lý do nghỉ, không vẽ thanh."""
+    k2 = "AIzaSyTOT-hai-000000000000000000000002"
+    monkeypatch.setenv("GIA_SK", "cu")
+    with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
+        lien_ket(w, "ai-gia", {"api_keys": [K_TOT, k2]})
+        trang.di(w.url + "/He-thong.dc.html")
+        luu_khoa(trang)
+        trang.di(w.url + "/He-thong-AI.dc.html")
+        mo = "[data-tai-khoan='ai-gia'][data-khoa-so='0']"
+        trang.cho(f"document.querySelector({json.dumps(mo + ' [data-chip-tk=suc-khoe]')})?.innerText === 'Dùng được'", han=15, mo_ta="sức khoẻ tối thiểu")
+        assert trang.js(f"[...document.querySelectorAll({json.dumps(mo + ' [data-chip-tk]')})].map((c) => c.dataset.chipTk)") == ["suc-khoe"]
+        trang.bam(f"document.querySelector({json.dumps(mo + ' button')})")
+        trang.cho(f"!!document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})", mo_ta="dòng mở")
+        assert trang.js(f"document.querySelectorAll({json.dumps(mo + ' [data-thanh-hm], ' + mo + ' [data-kv-tk=thu-tu], ' + mo + ' [data-kv-tk=da-dung]')}).length") == 0
+        assert "Số khoá" in trang.chu(mo)
+        trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+        bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "Provider")
+        trang.bam("document.querySelector('[data-pv-tab=tk]')")
+        trang.cho("document.querySelectorAll('[data-khoa-pv]').length === 2 && document.querySelector('[data-khoa-pv]').innerText.includes('Đã kết nối')", han=15, mo_ta="Provider › Tài khoản")
+        assert not trang.js("!!document.querySelector('[data-khoa-pv] [data-vt], [data-khoa-pv] [data-dang-dung], [data-khoa-pv] [data-thanh-hm]')")
+
+        # Module đổi sang báo hết hạn mức (không trần): «Làm mới» → nhãn nói lý do nghỉ, «#n» + «Đang dùng» đúng khoá, không thanh.
+        monkeypatch.setenv("GIA_SK", "het")
+        trang.bam("document.querySelector('[data-khoa-pv=\"0\"] button')")
+        trang.cho("!!document.querySelector('[data-khoa-pv=\"0\"] [data-hd=lam-moi]')", mo_ta="nút Làm mới")
+        trang.bam("document.querySelector('[data-khoa-pv=\"0\"] [data-hd=lam-moi]')")
+        trang.cho("(document.querySelector('[data-khoa-pv=\"0\"]')?.innerText || '').includes('Hết hạn mức, hồi lúc')", han=15, mo_ta="nhãn hết hạn mức")
+        assert trang.js("[...document.querySelectorAll('[data-khoa-pv] [data-vt]')].map((x) => x.innerText)") == ["#1", "#2"]
+        assert trang.js("[...document.querySelectorAll('[data-khoa-pv]')].map((r) => !!r.querySelector('[data-dang-dung]'))") == [False, True]
+        assert trang.chu("[data-kv=kn-chat]").startswith("hết hạn mức, hồi lúc")
+        assert not trang.js("!!document.querySelector('[data-thanh-hm]')")
+        assert not trang.js("!!document.querySelector('[data-kv=nghi]')")  # lý do + giờ hồi đã nằm ở dòng «Trò chuyện»
+        khong_dieu_khien_chet(trang)
 
 
 # ───────────── Studio ─────────────
