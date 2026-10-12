@@ -38,8 +38,21 @@ Phân loại lỗi (quyết định đổi khoá hay trả ngay):
                    khả năng) — KHÁC một chỗ: khoá đã dùng được gặp 400 KHÔNG về «chưa rõ», vì ở đó `dung_duoc` còn
                    quyết thời gian nghỉ khi 429 (xoá nó là đổi luôn cách nghỉ 429). Vì khác biệt ấy và vì kho trạng
                    thái khác nhau (`_nghi` theo khoá với `_kn` theo (khoá, khả năng)) nên hai vòng xoay giữ riêng.
-  404/khác       → lỗi của yêu cầu → trả ngay, không đổi khoá.
-Trạng thái «đã phục vụ thành công» nằm trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi động lại thì về «chưa rõ».
+  404            → «model không có» có thể là thuộc tính của (KHOÁ, MODEL), không của yêu cầu (đo 12/10/2026: khoá thuộc
+                   dự án mới bị nhà cung cấp trả 404 «no longer available to new users» cho một model cũ trong khi khoá
+                   khác cùng pool trả 200 — xoay vòng làm ~1/3 lượt chat model đó lỗi). Cùng nguyên tắc với 400 nhưng
+                   nhớ theo (khoá, model) và KHÔNG đánh dấu khoá hỏng (khoá vẫn phục vụ model khác):
+                   - (khoá, model) ĐÃ từng phục vụ thành công → lỗi của yêu cầu, trả ngay; cặp về «chưa rõ»;
+                   - chưa rõ → thử khoá kế (mỗi khoá một lần, không tốn lượt thử thêm của 5xx); khoá sau trả 200 thì
+                     mọi khoá đã 404 trước nó được ghi vào sổ «model không có ở khoá này» NGHI_MODEL_KHONG_CO (6 giờ;
+                     hết hạn thì thử lại); lượt sau cặp trong sổ bị bỏ qua như khoá đang nghỉ, CHỈ cho model đó —
+                     trừ khi mọi khoá dùng được đều trong sổ cho model đó: khi ấy vẫn thử chúng, kết quả quyết như trên;
+                   - MỌI khoá đã thử đều 404 → trả 404 của nhà cung cấp nguyên văn (đã che khoá), KHÔNG ghi sổ cặp nào
+                     (model thật sự không tồn tại thì không được khoá cả pool).
+                   Giá phải trả: model gõ sai tốn tới N lần gọi thay vì 1 (vẫn trong trần số khoá).
+  khác (4xx)     → lỗi của yêu cầu → trả ngay, không đổi khoá.
+Trạng thái «đã phục vụ thành công» và sổ «model không có» nằm trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi
+động lại thì về «chưa rõ».
 
 KHẢ NĂNG TỐN TIỀN (ảnh, video — `goi_kha_nang`): cùng một khoá có thể chat được mà không được tạo ảnh/video
 (hạng miễn phí của Google: «Not available»). Nên trạng thái nhớ theo (khoá, khả năng), TÁCH khỏi `_nghi` của
@@ -56,7 +69,9 @@ không theo chữ trong thông điệp (dạng lỗi thật của khoá miễn p
                    sau thành công thì khoá trước bị từ chối (24 giờ); MỌI khoá đều 400 → coi là lỗi yêu cầu, trả
                    400 của Google kèm gợi ý hạng miễn phí, KHÔNG đánh dấu (một yêu cầu sai không được khoá cả nhà
                    khỏi ảnh/video suốt một ngày).
-  5xx/lỗi mạng, 404/khác → như chat.
+  5xx/lỗi mạng   → như chat.
+  404/khác       → lỗi của yêu cầu → trả ngay (CHƯA so giữa các khoá như chat — chưa đo nhà cung cấp trả 404
+                   theo khoá ở đây).
 Không bao giờ dò khoá bằng lời gọi tốn tiền: trạng thái là «chua_ro» cho tới khi dùng thật. Trạng thái nằm
 trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi động lại thì về «chua_ro».
 """
@@ -81,6 +96,7 @@ NGHI_429_MAC_DINH = 60.0
 NGHI_429_TRAN = 600.0
 NGHI_KHOA_HONG = 3600.0
 NGHI_KHA_NANG = 24 * 3600.0
+NGHI_MODEL_KHONG_CO = 6 * 3600.0  # (khoá, model) bị 404 trong khi khoá khác phục vụ được model đó
 
 KetQuaChat = tuple[int, dict, "bytes | AsyncIterator[bytes]"]
 
@@ -155,6 +171,10 @@ class ChuyenTiepOpenAI:
         self._nghi: dict[str, float] = {}
         # Khoá đã trả 200 cho chat trong thể hiện này — căn cứ phân xử 400 (xem «Phân loại lỗi» ở đầu tệp).
         self._chat_duoc: set[str] = set()
+        # Căn cứ phân xử 404 (cùng chỗ): cặp (khoá, model) đã trả 200 cho chat, và sổ «model không có ở khoá này»
+        # {(khoá, model): hết hạn (epoch)}.
+        self._model_duoc: set[tuple[str, str]] = set()
+        self._khong_co: dict[tuple[str, str], float] = {}
         # Khả năng tốn tiền (ảnh, video…) mà suc_khoe báo theo từng khoá; trạng thái theo (khoá, khả năng):
         # {"dung_duoc": bool, "ma": mã HTTP nhà cung cấp trả, "den": hết nghỉ (epoch, 0 = không nghỉ)}.
         self.kha_nang = tuple(kha_nang)
@@ -238,12 +258,18 @@ class ChuyenTiepOpenAI:
                 "message": f"Mọi khoá của {self.ten} ({n}) đang nghỉ vì hết hạn mức; khoá sớm nhất dùng lại sau {con} s.",
                 "type": "rate_limit_error", "code": "rate_limit_exceeded"}}, {"retry-after": str(con)})
 
+        model = str(than.get("model"))
+        # Cặp (khoá, model) trong sổ «model không có» bị bỏ qua — trừ khi chỉ còn chúng (đừng chết cứng).
+        ung_vien = [k for k in ung_vien if self._khong_co.get((k, model), 0.0) <= bay_gio] or ung_vien
+
         timeout = httpx.Timeout(self.TIMEOUT_DOC_STREAM if stream else self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI)
         url = f"{self.base_url}/chat/completions"
         may = urlsplit(url).netloc
         loi_cuoi: KetQuaChat | None = None
-        loi_400: KetQuaChat | None = None
-        nghi_ngo: list[str] = []  # khoá chưa rõ trả 400 — hỏng nếu một khoá sau trả 200 cho CÙNG thân yêu cầu
+        loi_so_sanh: KetQuaChat | None = None  # lỗi 400/404 gần nhất của khoá chưa rõ
+        # Khoá chưa rõ trả 400 (hỏng nếu một khoá sau trả 200 cho CÙNG thân yêu cầu) / trả 404 (model không có ở nó).
+        nghi_ngo: list[str] = []
+        khong_co: list[str] = []
         da_thu_lai = False
         for khoa in ung_vien:
             khach = self._client()
@@ -260,11 +286,18 @@ class ChuyenTiepOpenAI:
                 if r.status_code == 200:
                     # Mã 200 đã tới, chưa byte nào gửi khách: đủ để kết luận về khoá, kể cả khi stream.
                     self._chat_duoc.add(khoa)
+                    self._model_duoc.add((khoa, model))
+                    self._khong_co.pop((khoa, model), None)
                     for k in nghi_ngo:
                         self._nghi[k] = bay_gio + NGHI_KHOA_HONG
                         # Chỉ dạng che của khoá — không ghi thân lỗi.
                         self.log.warning("%s: khoá %s bị coi là hỏng (400 trong khi khoá khác trả 200), nghỉ %.0f s",
                                          self.ten, self.nhan_khoa(k), NGHI_KHOA_HONG)
+                    for k in khong_co:
+                        self._khong_co[(k, model)] = bay_gio + NGHI_MODEL_KHONG_CO
+                        self.log.warning("%s: khoá %s không có model %s (404 trong khi khoá khác trả 200), bỏ qua "
+                                         "khoá này cho model đó %.0f s", self.ten, self.nhan_khoa(k), model,
+                                         NGHI_MODEL_KHONG_CO)
                     # Chỉ chuyển content-type: httpx đã giải nén gzip, chuyển nguyên content-encoding/
                     # content-length là khách giải nén lần hai và hỏng.
                     ct = r.headers.get("content-type", "application/json")
@@ -297,10 +330,17 @@ class ChuyenTiepOpenAI:
                 if ma == 400 and not self._goi_y_loi(ma, tin):
                     if khoa not in self._chat_duoc:
                         nghi_ngo.append(khoa)
-                        loi_400 = loi_cuoi
+                        loi_so_sanh = loi_cuoi
                         continue
                     # Khoá từng chạy tốt → lỗi của yêu cầu; về «chưa rõ» để lần 400 sau được phân xử.
                     self._chat_duoc.discard(khoa)
+                if ma == 404 and not self._goi_y_loi(ma, tin):
+                    if (khoa, model) not in self._model_duoc:
+                        khong_co.append(khoa)
+                        loi_so_sanh = loi_cuoi
+                        continue
+                    # Cặp từng chạy tốt → lỗi của yêu cầu; về «chưa rõ» để lần 404 sau được phân xử.
+                    self._model_duoc.discard((khoa, model))
                 if ma < 500:
                     return loi_cuoi
             # 5xx hoặc lỗi mạng: thử thêm đúng một khoá.
@@ -308,8 +348,9 @@ class ChuyenTiepOpenAI:
                 break
             da_thu_lai = True
         assert loi_cuoi is not None
-        if loi_cuoi[0] < 500 and loi_400 is not None:
-            return loi_400  # mọi khoá đã thử đều 400 (hoặc khoá còn lại bị từ chối/hết hạn mức): không đánh dấu ai
+        if loi_cuoi[0] < 500 and loi_so_sanh is not None:
+            # Mọi khoá đã thử đều 400/404 (hoặc khoá còn lại bị từ chối/hết hạn mức): không đánh dấu, không ghi sổ.
+            return loi_so_sanh
         if loi_cuoi[0] == 429:
             loi_cuoi = (429, {**loi_cuoi[1], "retry-after": str(self._con_nghi(bay_gio))}, loi_cuoi[2])
         return loi_cuoi

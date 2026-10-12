@@ -569,6 +569,10 @@ Tự đo bằng khoá của bạn: gọi lệnh tạo ảnh ở trên **một l�
   chat thành công (từ lần lưu cấu hình/khởi động gần nhất) mà trả `400` → thử khoá kế; khoá kế trả lời được thì
   khoá trước bị đánh dấu hỏng, nghỉ 1 giờ. **Mọi** khoá đều `400` → trả `400` của Google nguyên văn (đã che khoá),
   không đánh dấu khoá nào — đó là lỗi của yêu cầu. Khoá đã từng chat được mà gặp `400` → trả ngay, không đổi khoá.
+- `404` «model … is no longer available to new users» khi chat: khoá thuộc dự án mới không được dùng model cũ trong
+  khi khoá khác vẫn được. Khoá chưa từng chat thành công model đó mà trả `404` → thử khoá kế; khoá kế trả lời được
+  thì khoá trước bị bỏ qua **riêng cho model đó** trong 6 giờ (vẫn chat model khác, không bị đánh dấu hỏng).
+  **Mọi** khoá đều `404` → trả `404` của Google nguyên văn (đã che khoá), không ghi nhớ gì — model không có thật.
 - `403` hoặc `400` có «chặn vùng»: đặt `base_url` qua proxy như trên. Lỗi chặn vùng không làm khoá bị
   đánh dấu hỏng (mọi khoá đều sẽ bị như nhau).
 - `504`: Google không trả lời trong 120 giây (stream: 60 giây giữa hai khúc).
