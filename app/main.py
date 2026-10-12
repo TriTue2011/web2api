@@ -8,17 +8,22 @@ Xác thực: /v1/* và mọi API đổi trạng thái/lộ cấu hình đòi kho
 /health, /api/he-thong, GET /api/modules(/catalog), GET /api/tinh-nang và tệp tĩnh để mở (không chứa bí mật).
 """
 
+import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import he_thong, kho, tuyen, xac_thuc
-from app.loi_openai import LoiOpenAI, xu_ly_loi_openai
+from app import he_thong, kho, khoa_khach, nhat_ky, tuyen, xac_thuc
+from app.bien_loi import cai_bien_loi
+from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
+from app.nhat_ky import MiddlewareNhatKyCuocGoi
 from app.so_module import SoModule
 
 GOC = Path(__file__).resolve().parent.parent
@@ -26,6 +31,17 @@ WEB = GOC / "web"
 PHIEN_BAN = (GOC / "VERSION").read_text().strip()
 
 log = logging.getLogger("web2api")
+
+
+async def _vong_dong_bo_khoa():
+    while True:
+        try:
+            await asyncio.sleep(5)
+            khoa_khach.dong_bo_dia()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
 
 
 @asynccontextmanager
@@ -38,9 +54,13 @@ async def lifespan(app: FastAPI):
     ng = NguonGit(so)
     app.state.nguon_git = ng
     ng.bat_dau()
+    task_dong_bo = asyncio.create_task(_vong_dong_bo_khoa())
+    nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
     try:
         yield
     finally:
+        task_dong_bo.cancel()
+        khoa_khach.dong_bo_dia()
         await ng.dung()
         await so.dung_het()
 
@@ -48,6 +68,59 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="web2api", version=PHIEN_BAN, docs_url=None, redoc_url=None, openapi_url=None,
               lifespan=lifespan)
 app.add_exception_handler(LoiOpenAI, xu_ly_loi_openai)
+cai_bien_loi(app)  # /v1: mọi lỗi khác cũng ra khuôn OpenAI; lỗi chưa bắt không lộ chi tiết/khoá
+app.add_middleware(MiddlewareNhatKyCuocGoi)  # /v1: ghi đúng một dòng cuoc_goi, thêm x-request-id và X-Web2api-Module
+
+
+class MiddlewareChanKhoaKhachQuanTri:
+    """Chặn khoá khách gọi các đường quản trị (/api/*) và trang quản trị (.dc.html) → 403."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path.startswith("/api/") or path.endswith(".dc.html"):
+                for k, v in scope.get("headers", []):
+                    if k.lower() == b"authorization":
+                        gia_tri = v.decode("latin-1").strip()
+                        loai_auth, _, token = gia_tri.partition(" ")
+                        if loai_auth.lower() == "bearer" and token.strip():
+                            khach = khoa_khach.tim_theo_khoa_tho(token.strip())
+                            if khach is not None:
+                                id_k = str(khach.get("id", "khach"))
+                                nhat_ky.ghi(
+                                    "quan_tri",
+                                    "canh_bao",
+                                    f"Từ chối 403 trên đường quản trị: khoá khách ({id_k}) gọi {scope.get('method', '')} {path}",
+                                    duong=path,
+                                    phuong_thuc=scope.get("method", ""),
+                                    nguoi_goi=f"khach:{id_k}",
+                                )
+                                noi_dung = json.dumps(
+                                    than_loi(403, "Không có quyền truy cập.", "permission_error", "forbidden"),
+                                    ensure_ascii=False,
+                                ).encode("utf-8")
+                                await send({
+                                    "type": "http.response.start",
+                                    "status": 403,
+                                    "headers": [
+                                        (b"content-type", b"application/json"),
+                                        (b"content-length", str(len(noi_dung)).encode("ascii")),
+                                    ],
+                                })
+                                await send({
+                                    "type": "http.response.body",
+                                    "body": noi_dung,
+                                    "more_body": False,
+                                })
+                                return
+                        break
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(MiddlewareChanKhoaKhachQuanTri)
 
 
 def thu_muc_du_lieu() -> str:
@@ -65,9 +138,13 @@ def api_he_thong():
 
 
 app.include_router(tuyen.v1)
+app.include_router(tuyen.v1_khong_co)  # NGAY sau v1: /v1 lạ → 404 unknown_endpoint, sai phương thức → 405
 app.include_router(tuyen.modules)
 app.include_router(tuyen.tinh_nang)
 app.include_router(tuyen.nguon_git)
+app.include_router(tuyen.dia_chi)
+app.include_router(tuyen.nhat_ky)
+app.include_router(tuyen.khoa_khach)
 app.include_router(tuyen.tep_module)
 
 

@@ -1,8 +1,8 @@
 """Module TỪ XA: một dịch vụ nói chuẩn OpenAI đăng ký bằng URL — lõi không nạp mã nào của nó.
 
 Dành cho module nặng/GPU/cần gói lõi không có (vd `fw-tach-am`, `vn-translate-gpu` trên .220):
-chạy ở container/máy riêng, web2api chỉ chuyển tiếp /v1 bằng CÙNG bộ chuyển tiếp với
-module Gemini (đổi tên model bỏ tiền tố, giữ trường lạ, stream từng dòng, chuẩn hoá lỗi).
+chạy ở container/máy riêng, web2api chỉ chuyển tiếp /v1 bằng CÙNG bộ chuyển tiếp của
+lõi (đổi tên model bỏ tiền tố, giữ trường lạ, stream từng dòng, chuẩn hoá lỗi).
 
 Chặn SSRF khi đăng ký: lõi sẽ gửi yêu cầu (kèm khoá) tới URL này theo lệnh của quản trị, nên
 không được trỏ vào chính container (loopback — cổng quản trị nội bộ, admin_key…), link-local

@@ -14,7 +14,7 @@
 #   ai-sau-cai   — cùng lúc ấy, Hệ thống → AI → Tài khoản (neo #tk-gemini-api): nhóm «API 0», biểu mẫu «Thêm API»
 #   provider-rong — Hệ thống → AI → Provider khi chưa có khoá: «Model 0 | Tài khoản 0», khung rỗng + «Mở tab Tài khoản»
 #   sau-lien-ket — sau khi liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả): Hệ thống → AI → Provider › Model (model
-#                  thật theo nhóm khả năng); nút «Quay lại» (về Studio), không có Combo
+#                  thật theo nhóm khả năng, nhóm thu gọn sẵn); nút «Quay lại» (về Studio), không có Combo
 #   studio       — Studio: một lượt chat stream qua /v1 thật, câu trả lời markdown (in đậm, danh sách, mã)
 # Lưu PNG vào docs/anh/<tên>-may-tinh.png và <tên>-dien-thoai.png, mỗi ảnh ≤ 250 KB (quá thì giảm màu).
 #
@@ -147,7 +147,7 @@ with MayChuThat(gh.app) as s_gh, MayChuThat(g.app) as s_g:
             r = httpx.post(f"{w.url}/api/modules/gemini-api/cai", headers=QT, timeout=30,
                            json={"cau_hinh": {"api_keys": [KHOA_GIA], "base_url": s_g.url}})
             assert r.json()["ok"], r.text
-            chup("sau-lien-ket", lambda: mo_trang("/He-thong-AI.dc.html?a=3#provider", "document.querySelectorAll('[data-model]').length > 0"))
+            chup("sau-lien-ket", lambda: mo_trang("/He-thong-AI.dc.html?a=3#provider", "document.querySelectorAll('[data-mo-nhom]').length > 0"))
 
             # 6. Studio: một lượt chat stream.
             def studio():

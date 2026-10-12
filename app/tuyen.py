@@ -9,24 +9,34 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from http import HTTPMethod
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.routing import Match
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from app import kho
+from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
-from app.xac_thuc import can_quan_tri
+from app.than_co_tran import THAN_JSON, doc_het
+from app.xac_thuc import can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
 from app.yeu_cau_da_phan import YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
 QT = [Depends(can_quan_tri)]
+V1_AUTH = [Depends(xac_thuc_v1)]
 
-v1 = APIRouter(prefix="/v1", dependencies=QT)
+v1 = APIRouter(prefix="/v1", dependencies=V1_AUTH)
+#: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
+#: trước nó). Thiếu nó thì mount StaticFiles ở gốc nuốt mất và trả 405 {"detail"} cho mọi POST lạ.
+v1_khong_co = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 modules = APIRouter(prefix="/api/modules")
 tinh_nang = APIRouter()
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
+dia_chi = APIRouter(prefix="/api", dependencies=QT)
+nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
+khoa_khach = APIRouter(prefix="/api/khoa-khach", dependencies=QT)
 tep_module = APIRouter()
 
 
@@ -39,9 +49,14 @@ def _ng(request: Request) -> NguonGit:
 
 
 async def _than_json(request: Request) -> dict:
+    # Không dùng request.json(): nó nạp trọn thân không giới hạn (và giữ thêm một bản trong request suốt lượt gọi).
+    # Thân đọc ngay trong lời gọi json.loads, KHÔNG gán biến: json.loads giải mã bytearray thành str rồi bỏ nó, bộ nhớ
+    # đỉnh 2× thân thay vì 3× (test_bo_nho_dinh_than_json_vua_tran). Bước đọc chỉ ném LoiOpenAI (413/400 có mã riêng),
+    # nên except dưới đây chỉ bắt lỗi giải mã: ValueError (cả UnicodeDecodeError) và RecursionError (mảng/đối tượng
+    # lồng quá sâu — vẫn là thân hỏng của khách, không phải lỗi nội bộ).
     try:
-        than = await request.json()
-    except ValueError:
+        than = json.loads(await doc_het(request, THAN_JSON))
+    except (ValueError, RecursionError):
         raise LoiOpenAI(400, "Thân yêu cầu không phải JSON hợp lệ") from None
     if not isinstance(than, dict):
         raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
@@ -54,11 +69,25 @@ def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
 
 # ───────────── /v1 ─────────────
 
+def _nhom_cua_model(item: dict) -> str:
+    kn = item.get("kha_nang")
+    if isinstance(kn, list) and kn:
+        dau = kn[0]
+        return str(dau).strip() if dau else "chat"
+    if isinstance(kn, str) and kn.strip():
+        return kn.strip()
+    return "chat"
+
+
 @v1.get("/models")
 async def v1_models(request: Request):
     so = _so(request)
     cac = list(so.dang_chay.items())
     ket_qua = await asyncio.gather(*(m.models() for _, m in cac), return_exceptions=True)
+    try:
+        cai_dat_tat_ca = kho.doc_cai_dat_model()
+    except kho.KhoHong:
+        cai_dat_tat_ca = {}
     data = []
     for (id_, _), kq in zip(cac, ket_qua):
         if isinstance(kq, Exception):
@@ -66,7 +95,25 @@ async def v1_models(request: Request):
             continue
         if isinstance(kq, BaseException):
             raise kq
-        data.extend(kq)
+        cai_dat = cai_dat_tat_ca.get(id_, {})
+        tat_set = set(cai_dat.get("tat", []))
+        mac_dinh_ids = set(cai_dat.get("mac_dinh", {}).values())
+        for item in kq:
+            m_id = item.get("id")
+            if not isinstance(m_id, str) or m_id in tat_set:
+                continue
+            muc = dict(item)
+            if m_id in mac_dinh_ids:
+                muc["mac_dinh"] = True
+            data.append(muc)
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
+        pham_vi = danh_tinh.get("pham_vi", [])
+        if "*" not in pham_vi:
+            data = [
+                m for m in data
+                if any(kn in pham_vi for kn in (m.get("kha_nang") or ["chat"]))
+            ]
     return {"object": "list", "data": data}
 
 
@@ -79,9 +126,19 @@ def _module_dang_chay(so: SoModule, id_: str, tien_to: str):
     return m
 
 
-def _module_theo_model(so: SoModule, than: dict):
+def _ghi_nhan_module(request: Request, so: SoModule, id_: str) -> None:
+    """Module đã nhận phục vụ lượt này: ghi vào request.state cho nhật ký `cuoc_goi` và tiêu đề X-Web2api-Module
+    (app/nhat_ky.py) — lõi biết chắc module nào, không suy từ chuỗi khách gửi."""
+    request.state.module = id_
+    request.state.tien_to_module = so.tien_to_cua(id_)
+
+
+def _module_theo_model(request: Request, than: dict):
     """(id, thể hiện) của module có tiền tố ghi trong `model` — 404 rõ ràng nếu không thuộc ai/chưa liên kết."""
+    so = _so(request)
     model = than.get("model")
+    if isinstance(model, str):
+        request.state.model_khach = model  # ghi TRƯỚC mọi lỗi: lượt 404 model_not_found vẫn có model trong nhật ký
     if not isinstance(model, str) or not model:
         raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>; danh sách ở GET /v1/models)",
                         code="missing_model")
@@ -91,18 +148,30 @@ def _module_theo_model(so: SoModule, than: dict):
         cai = ", ".join(so.tien_to_dang_chay()) or "(chưa có module nào đã liên kết)"
         raise LoiOpenAI(404, f"Model {model!r} không thuộc module nào. Model phải có dạng <tiền tố>/<tên>; "
                              f"tiền tố đang dùng được: {cai}. Xem GET /v1/models.", code="model_not_found")
-    return id_, _module_dang_chay(so, id_, tien_to)
+    m = _module_dang_chay(so, id_, tien_to)
+    try:
+        tat_set = set(kho.doc_cai_dat_model_module(id_).get("tat", []))
+    except kho.KhoHong:
+        tat_set = set()
+    if model in tat_set:
+        raise LoiOpenAI(404, f"Model {model!r} đã tắt trong Hệ thống → AI (xem GET /v1/models).",
+                        code="model_not_found")
+    _ghi_nhan_module(request, so, id_)
+    return id_, m
 
 
-def _module_theo_ma_video(so: SoModule, ma: str):
+def _module_theo_ma_video(request: Request, ma: str):
     """Mã video ra ngoài là "<tien_to>:<mã của module>"; tiền tố không chứa «:» (TIEN_TO_HOP_LE) nên tách ở
     dấu «:» đầu tiên là đủ — không cần bảng mã → module."""
+    so = _so(request)
     tien_to, co_cham, trong = ma.partition(":")
     id_ = so.tim_theo_tien_to(tien_to) if co_cham and trong else None
     if id_ is None:
         raise LoiOpenAI(404, f"Không có video {ma!r} (mã dạng <tiền tố>:<mã>, lấy từ POST /v1/videos)",
                         code="video_not_found")
-    return id_, _module_dang_chay(so, id_, tien_to), trong
+    m = _module_dang_chay(so, id_, tien_to)
+    _ghi_nhan_module(request, so, id_)
+    return id_, m, trong
 
 
 def _can_phuong_thuc(m, id_: str, viec: str, *ten: str) -> None:
@@ -145,25 +214,28 @@ def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Res
 
 @v1.post("/chat/completions")
 async def v1_chat(request: Request):
+    kiem_tra_pham_vi(request, "chat")
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
-    # như extra_content.google.thought_signature.
+    # như chữ ký suy nghĩ hay trường riêng của nhà cung cấp.
     than = await _than_json(request)
-    _, m = _module_theo_model(_so(request), than)
+    _, m = _module_theo_model(request, than)
     return _tra_ve(*await m.chat(than, bool(than.get("stream"))))
 
 
 @v1.post("/images/generations")
 async def v1_anh(request: Request):
+    kiem_tra_pham_vi(request, "anh")
     than = await _than_json(request)
-    id_, m = _module_theo_model(_so(request), than)
+    id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
     return _tra_ve(*await m.anh(than))
 
 
 @v1.post("/images/edits")
 async def v1_anh_sua(request: Request):
+    kiem_tra_pham_vi(request, "anh_sua")
     yc = await doc_multipart(request)
-    id_, m = _module_theo_model(_so(request), yc.truong)
+    id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "sửa ảnh", "anh_sua")
     _can_tep(yc, "image")
     _can_tep(yc, "mask", toi_thieu=0, toi_da=1)
@@ -175,16 +247,18 @@ async def v1_anh_sua(request: Request):
 
 @v1.post("/audio/speech")
 async def v1_noi(request: Request):
+    kiem_tra_pham_vi(request, "noi")
     than = await _than_json(request)
-    id_, m = _module_theo_model(_so(request), than)
+    id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "đọc văn bản thành giọng nói", "noi")
     return _tra_ve(*await m.noi(than))
 
 
 @v1.post("/audio/transcriptions")
 async def v1_nghe(request: Request):
+    kiem_tra_pham_vi(request, "nghe")
     yc = await doc_multipart(request)
-    id_, m = _module_theo_model(_so(request), yc.truong)
+    id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "nhận dạng giọng nói", "nghe")
     _can_tep(yc, "file", toi_da=1)
     return _tra_ve(*await m.nghe(yc))
@@ -195,12 +269,13 @@ _VIDEO = ("video_tao", "video_trang_thai", "video_noi_dung")
 
 @v1.post("/videos")
 async def v1_video_tao(request: Request):
+    kiem_tra_pham_vi(request, "video", "video_tao")
     # SDK openai gửi videos.create bằng multipart/form-data: trường chữ thành thân JSON (giá trị vẫn là chuỗi —
     # module tự ép kiểu, như với thân JSON do khách gõ).
     yc = await doc_multipart(request) if la_multipart(request) else None
     than = dict(yc.truong) if yc else await _than_json(request)
     so = _so(request)
-    id_, m = _module_theo_model(so, than)
+    id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     if yc and yc.tep:
         # video_tao nhận thân JSON; chưa có hợp đồng đưa tệp cho nó — từ chối rõ ràng thay vì lặng lẽ bỏ tệp.
@@ -213,17 +288,51 @@ async def v1_video_tao(request: Request):
 
 @v1.get("/videos/{ma}")
 async def v1_video_trang_thai(ma: str, request: Request):
+    kiem_tra_pham_vi(request, "video", "video_trang_thai")
     so = _so(request)
-    id_, m, trong = _module_theo_ma_video(so, ma)
+    id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_trang_thai(trong))
 
 
 @v1.get("/videos/{ma}/content")
 async def v1_video_noi_dung(ma: str, request: Request):
-    id_, m, trong = _module_theo_ma_video(_so(request), ma)
+    kiem_tra_pham_vi(request, "video", "video_noi_dung")
+    id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _tra_ve(*await m.video_noi_dung(trong))
+
+
+@v1_khong_co.api_route("", methods=list(HTTPMethod), include_in_schema=False)
+@v1_khong_co.api_route("/{duong:path}", methods=list(HTTPMethod), include_in_schema=False)
+async def duong_v1_khong_co(request: Request):
+    """Đường có trong router `v1` nhưng sai phương thức → 405 + Allow; không có hẳn → 404 `unknown_endpoint`.
+
+    Suy từ CHÍNH router `v1` (route nào khớp đường mà không khớp phương thức — Match.PARTIAL của Starlette), không từ
+    bảng tay: thêm đường mới vào `v1` là tự đúng. Nêu lại đường khách gọi nhưng chỉ phần path (query có thể mang
+    khoá, vd ?key=…), đã cắt ngắn và bỏ ký tự điều khiển — không phản chiếu chuỗi dài/độc.
+
+    Đường có «/» cuối mà bỏ «/» thì KHỚP TRỌN một route của `v1` (cả phương thức) → 307 sang đường không «/» cuối,
+    giữ query, không đổi phương thức — như redirect_slashes của Starlette (cơ chế đó không bao giờ chạy ở đây vì mount
+    StaticFiles ở gốc khớp mọi đường). Chỉ bỏ «/» có thật trong đường THÔ khách gửi (raw_path, còn nguyên %xx) và
+    dựng Location từ đó: «%2F» cuối không phải dấu «/» của đường nên không bị bỏ — không thể chuyển hướng vòng."""
+    scope = dict(request.scope)
+    tho = scope["raw_path"].rstrip(b"/")
+    so_gach = len(scope["raw_path"]) - len(tho)
+    if so_gach and tho:
+        bo_gach = {**scope, "path": scope["path"][:-so_gach]}
+        if any(r.matches(bo_gach)[0] is Match.FULL for r in v1.routes):
+            dich = tho + (b"?" + scope["query_string"] if scope["query_string"] else b"")
+            return RedirectResponse(dich.decode("latin-1"), status_code=307)
+    cho_phep = sorted({pt for r in v1.routes if r.matches(scope)[0] is Match.PARTIAL for pt in r.methods})
+    duong = "".join(k for k in request.url.path if k.isprintable())
+    duong = duong if len(duong) <= 120 else duong[:120] + "…"
+    goi = f"{request.method} {duong}"
+    if cho_phep:
+        raise LoiOpenAI(405, f"{goi}: đường này chỉ nhận {', '.join(cho_phep)}", code="method_not_allowed",
+                        headers={"Allow": ", ".join(cho_phep)})
+    raise LoiOpenAI(404, f"web2api không có đường {goi} (chưa hỗ trợ). Các đường /v1 đang có: xem README mục 8; "
+                         "danh sách model: GET /v1/models.", loai="invalid_request_error", code="unknown_endpoint")
 
 
 # ───────────── /api/modules ─────────────
@@ -333,6 +442,101 @@ async def cau_hinh(id_: str, request: Request):
             "gia_tri": muc.get("cau_hinh_cong_khai") or {}, "da_cau_hinh": id_ in so.dang_chay}
 
 
+async def _model_cua_module(id_: str, request: Request) -> list[dict]:
+    """Danh sách model gốc của module đang chạy (404 nếu không có / chưa liên kết, 502 nếu module lỗi)."""
+    so = _so(request)
+    if id_ not in so.catalog and id_ not in so.tu_xa:
+        raise LoiOpenAI(404, f"Không có module {id_!r}")
+    m = so.dang_chay.get(id_)
+    if m is None:
+        raise LoiOpenAI(404, f"Module {id_!r} chưa liên kết", code="module_not_configured")
+    try:
+        return await m.models()
+    except Exception as e:
+        log.warning("Module %s lỗi khi lấy danh sách model: %s", id_, e)
+        raise LoiOpenAI(502, f"Không đọc được danh sách model từ module: {e}", code="upstream_error") from None
+
+
+def _tom_tat_model(raw_models: list[dict], tat: set[str], mac_dinh: dict[str, str]) -> dict:
+    """Danh mục model kèm bật/tắt/mặc định theo cài đặt đã cho; dùng chung cho GET và PUT."""
+    models = []
+    for item in raw_models:
+        mid = item.get("id")
+        if not isinstance(mid, str) or not mid:
+            continue
+        nhom = _nhom_cua_model(item)
+        bat = mid not in tat
+        muc = {"id": mid, "nhom": nhom, "bat": bat, "mac_dinh": bool(bat and mac_dinh.get(nhom) == mid)}
+        if "kha_nang" in item:
+            muc["kha_nang"] = item["kha_nang"]
+        models.append(muc)
+    return {"models": models, "tat": [x["id"] for x in models if not x["bat"]],
+            "mac_dinh": {nh: mid for nh, mid in mac_dinh.items() if any(x["id"] == mid and x["bat"] for x in models)},
+            "tong_so": len(models), "dang_bat": sum(1 for x in models if x["bat"])}
+
+
+def _doc_cai_dat_model(id_: str) -> dict:
+    try:
+        return kho.doc_cai_dat_model_module(id_)
+    except kho.KhoHong:
+        return {"tat": [], "mac_dinh": {}}
+
+
+@modules.get("/{id_}/model", dependencies=QT)
+async def lay_model_module(id_: str, request: Request):
+    """Danh mục model của một module (id, nhóm, bật/tắt, mặc định, số đếm)."""
+    raw = await _model_cua_module(id_, request)
+    cai_dat = _doc_cai_dat_model(id_)
+    return {"id": id_, **_tom_tat_model(raw, set(cai_dat["tat"]), cai_dat["mac_dinh"])}
+
+
+@modules.put("/{id_}/model", dependencies=QT)
+async def cap_nhat_model_module(id_: str, request: Request):
+    """Cập nhật bật/tắt và mặc định model của một module.
+    Thân: {"tat": [id…], "mac_dinh": {<nhóm>: id}}; trường vắng = giữ nguyên. Id lạ bỏ qua và nêu trong `bo_qua`.
+    Mặc định phải là model đang bật: tắt model mặc định → bỏ mặc định; đặt mặc định cho model tắt → 400.
+    """
+    than = await _than_json(request)
+    tat_in, mac_dinh_in = than.get("tat"), than.get("mac_dinh")
+    if tat_in is not None and not isinstance(tat_in, list):
+        raise LoiOpenAI(400, "«tat» phải là danh sách id model", code="invalid_request")
+    if mac_dinh_in is not None and not isinstance(mac_dinh_in, dict):
+        raise LoiOpenAI(400, "«mac_dinh» phải là đối tượng {nhóm: id}", code="invalid_request")
+    raw = await _model_cua_module(id_, request)
+    hop_le = {item["id"] for item in raw if isinstance(item.get("id"), str)}
+    cu = _doc_cai_dat_model(id_)
+    bo_qua: set[str] = set()
+
+    if tat_in is None:
+        tat_moi = set(cu["tat"])
+    else:
+        ds = [x for x in tat_in if isinstance(x, str)]
+        bo_qua.update(x for x in ds if x not in hop_le)
+        tat_moi = {x for x in ds if x in hop_le}
+
+    if mac_dinh_in is None:
+        mac_dinh_moi = dict(cu["mac_dinh"])
+    else:
+        mac_dinh_moi = {}
+        for nhom, mid in mac_dinh_in.items():
+            if not isinstance(nhom, str) or not isinstance(mid, str):
+                continue
+            if mid not in hop_le:
+                bo_qua.add(mid)
+            elif mid in tat_moi:
+                raise LoiOpenAI(400, f"Không thể đặt model đã tắt {mid!r} làm mặc định cho nhóm {nhom!r}",
+                                code="model_disabled")
+            else:
+                mac_dinh_moi[nhom] = mid
+    mac_dinh_moi = {nh: mid for nh, mid in mac_dinh_moi.items() if mid in hop_le and mid not in tat_moi}
+
+    try:
+        kho.luu_cai_dat_model_module(id_, sorted(tat_moi & hop_le), mac_dinh_moi)
+    except kho.KhoHong as e:
+        raise LoiOpenAI(500, f"Không lưu được cài đặt model: {e}") from e
+    return {"ok": True, "bo_qua": sorted(bo_qua), **_tom_tat_model(raw, tat_moi, mac_dinh_moi)}
+
+
 # ───────────── /api/tinh-nang ─────────────
 
 @tinh_nang.get("/api/tinh-nang")
@@ -381,3 +585,114 @@ async def tep_cua_module(id_: str, duong: str, request: Request):
     if not p.is_relative_to(goc) or not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)
+
+
+# ───────────── /api/dia-chi, /api/ket-noi ─────────────
+
+@dia_chi.get("/dia-chi")
+async def xem_dia_chi(request: Request):
+    return dia_chi_mod.lay_thong_tin_dia_chi(request)
+
+
+@dia_chi.put("/dia-chi")
+async def dat_dia_chi(request: Request):
+    than = await _than_json(request)
+    if "url" not in than:
+        raise LoiOpenAI(400, "Thân yêu cầu phải có trường «url» (chuỗi hoặc null)", loai="invalid_request_error")
+    url = than["url"]
+    if url is None:
+        kho.xoa_dia_chi_da_dat()
+    elif isinstance(url, str):
+        url_chuan = dia_chi_mod.kiem_tra_va_chuan_hoa_url(url)
+        kho.luu_dia_chi_da_dat(url_chuan)
+    else:
+        raise LoiOpenAI(400, "Trường «url» phải là chuỗi hoặc null", loai="invalid_request_error")
+    return dia_chi_mod.lay_thong_tin_dia_chi(request)
+
+
+@dia_chi.get("/ket-noi")
+async def huong_dan_ket_noi(request: Request):
+    return dia_chi_mod.soan_huong_dan_ket_noi(request)
+
+# ───────────── /api/nhat-ky — nhật ký hệ thống theo kênh ─────────────
+
+@nhat_ky.get("")
+def xem_nhat_ky(kenh: str | None = None, muc: str | None = None, q: str | None = None, truoc: str | None = None,
+                gioi_han: int = 50):
+    # `def` (không async): FastAPI chạy trong luồng phụ — quét tới 20 MB không chặn vòng lặp sự kiện.
+    from app import nhat_ky as kho_nhat_ky
+    try:
+        return kho_nhat_ky.doc(kenh=kenh, muc=muc, q=q, truoc=truoc, gioi_han=gioi_han)
+    except ValueError:
+        raise LoiOpenAI(400, "Tham số «truoc» phải là thời điểm ISO 8601 — lấy nguyên `luc` của dòng cuối trang "
+                             "trước") from None
+
+
+@nhat_ky.get("/kenh")
+def cac_kenh_nhat_ky():
+    from app import nhat_ky as kho_nhat_ky
+    return kho_nhat_ky.danh_sach_kenh()
+
+
+#: Trần của `truoc_ngay` (100 năm): số lớn hơn không mang nghĩa gì và làm phép trừ ngày tràn.
+TRAN_TRUOC_NGAY = 36500
+
+
+@nhat_ky.delete("")
+def xoa_nhat_ky(truoc_ngay: float | None = None):
+    if truoc_ngay is None:
+        raise LoiOpenAI(400, "Thiếu tham số «truoc_ngay» (số ngày; 0 = xoá mọi bản ghi tới hiện tại)")
+    if not 0 <= truoc_ngay <= TRAN_TRUOC_NGAY:  # NaN cũng trượt phép so này
+        raise LoiOpenAI(400, f"Tham số «truoc_ngay» phải trong khoảng 0…{TRAN_TRUOC_NGAY}")
+    from app import nhat_ky as kho_nhat_ky
+    return {"ok": True, "da_xoa": kho_nhat_ky.xoa_cu(truoc_ngay)}
+
+
+# ───────────── /api/khoa-khach — quản lý khoá khách (chỉ quản trị) ─────────────
+
+@khoa_khach.get("")
+def ds_khoa_khach():
+    return {"ok": True, "khoa": khoa_khach_mod.danh_sach_khoa()}
+
+
+@khoa_khach.post("")
+async def tao_khoa_khach(request: Request):
+    than = await _than_json(request)
+    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
+        nhan=than.get("nhan", ""),
+        pham_vi=than.get("pham_vi"),
+    )
+    return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
+
+
+@khoa_khach.patch("/{id_}")
+async def sua_khoa_khach(id_: str, request: Request):
+    than = await _than_json(request)
+    kq = khoa_khach_mod.sua_khoa(
+        id_khoa=id_,
+        bat=than.get("bat"),
+        nhan=than.get("nhan"),
+        pham_vi=than.get("pham_vi"),
+    )
+    return {"ok": True, "khoa": kq}
+
+
+@khoa_khach.patch("")
+async def sua_khoa_khach_khong_path(request: Request):
+    than = await _than_json(request)
+    id_ = than.get("id")
+    if not id_:
+        raise LoiOpenAI(400, "Thiếu trường «id» trong thân yêu cầu.")
+    kq = khoa_khach_mod.sua_khoa(
+        id_khoa=id_,
+        bat=than.get("bat"),
+        nhan=than.get("nhan"),
+        pham_vi=than.get("pham_vi"),
+    )
+    return {"ok": True, "khoa": kq}
+
+
+@khoa_khach.delete("/{id_}")
+def xoa_khoa_khach(id_: str):
+    da_xoa = khoa_khach_mod.xoa_khoa(id_khoa=id_)
+    return {"ok": True, "da_xoa": da_xoa}

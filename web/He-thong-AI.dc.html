@@ -14,8 +14,10 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
 /* Hệ thống → AI CHÉP từ Bo-nao.dc.html của bản demo (trang AI: Tài khoản · Provider): markup, kích thước, chữ giữ
-   nguyên; chỉ nối dữ liệu thật. Phần demo chưa có chức năng thật (Combo, TOTP, «Xem» khoá, hàng đợi, hạn mức, bật/tắt
-   và «Đặt mặc định» model, «Lưu thay đổi», dải «:text», dòng «Bản mẫu minh hoạ») KHÔNG được vẽ.
+   nguyên; chỉ nối dữ liệu thật. Thứ tự «#n», «Đang dùng», số lượt, lần dùng cuối, trạng thái hạn mức lấy từ …/suc-khoe;
+   thanh hạn mức chỉ khi module báo trần (`toi_da`). Phần demo chưa có chức năng thật (Combo, TOTP, «Xem» khoá, «Đặt ưu
+   tiên #1» — vô nghĩa khi xoay vòng, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», dải «:text», dòng «Bản mẫu minh
+   hoạ») KHÔNG được vẽ. Nhóm model thu gọn sẵn (chủ máy: «danh sách model thì luôn ẩn»).
    Khung trang như demo: main 20px 32px 0 + vùng cuộn có lề phải 8px, đáy 24px; điện thoại (≤ 1023px) 12px 16px 0. */
 main.pg{padding:20px 40px 24px 32px;gap:12px}
 @media (max-width:1023px){main.pg{padding:12px 24px 24px 16px;gap:12px}}
@@ -76,15 +78,19 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <div data-tai-khoan="{{r.id}}" data-khoa-so="{{r.so}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden">
 <button type="button" aria-expanded="{{r.open}}" aria-label="Xem thông tin đăng nhập: {{r.ten}} {{r.sub}}" onClick="{{r.pick}}" style="width:100%;box-sizing:border-box;min-height:60px;border:0;background:transparent;color:var(--ink);text-align:left;padding:10px 16px;display:flex;flex-direction:column;gap:6px;cursor:pointer;font:inherit">
 <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:500;overflow-wrap:anywhere">{{r.ten}}</span><span style="font-size:12px;color:var(--mute);overflow-wrap:anywhere">{{r.sub}}</span></span>
-<span style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{r.chips}}" as="c"><span data-chip-tk="" style="{{c.st}}">{{c.t}}</span></sc-for></span>
+<span style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{r.chips}}" as="c"><span data-chip-tk="{{c.ma}}" title="{{c.tip}}" style="{{c.st}}">{{c.t}}</span></sc-for></span>
 </button>
 <sc-if value="{{r.open}}">
 <div style="border-top:1px solid var(--line);background:#FBFAF8;padding:12px 16px;display:flex;flex-direction:column;gap:12px">
 <sc-for list="{{r.kv}}" as="x">
-<div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--mute)">{{x.k}}</span>
+<div data-kv-tk="{{x.ma}}" style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--mute)">{{x.k}}</span>
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px"><span style="{{x.vSt}}">{{x.v}}</span>
 <sc-if value="{{x.coActs}}"><span style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{x.acts}}" as="a"><button type="button" aria-label="{{a.al}}" onClick="{{a.pick}}" style="{{a.st}}">{{a.nhan}}</button></sc-for></span></sc-if></div></div>
 </sc-for>
+<sc-if value="{{r.coBars}}"><div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{r.bars}}" as="p">
+<div data-thanh-hm="{{p.ma}}" style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--mute)"><span>{{p.ten}}</span><span>{{p.reset}}</span></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="flex:1 1 0;height:6px;border-radius:4px;background:#EFEDE8;overflow:hidden"><span style="{{p.fill}}"></span></div><span style="font-size:12px;font-weight:600;min-width:64px;text-align:right">{{p.txt}}</span></div></div>
+</sc-for></div></sc-if>
 <sc-if value="{{r.sua.co}}"><form novalidate data-sua="{{r.so}}" onSubmit="{{r.sua.luu}}" style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
 <div style="display:flex;flex-wrap:wrap;gap:10px"><label style="flex:1 1 240px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{r.sua.nhan}}<input id="{{r.sua.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="Dán khoá mới" onInput="{{r.sua.onIn}}" style="min-height:40px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;padding:0 12px"></label></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" disabled="{{r.sua.dang}}" style="{{r.sua.luuSt}}">{{r.sua.luuNhan}}</button><button type="button" onClick="{{r.sua.huy}}" style="{{r.sua.huySt}}">Huỷ</button></div></form></sc-if>
@@ -101,16 +107,32 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <div data-provider="{{pv.id}}" style="display:flex;flex-direction:column;gap:12px;min-width:0">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex:0 0 auto"><div style="position:relative;flex:0 0 auto"><button type="button" id="chon-pv" aria-haspopup="listbox" aria-expanded="{{pvHang.open}}" aria-label="Provider: {{pvHang.cur}}" onClick="{{pvHang.toggle}}" style="{{pvHang.btn}}"><i style="{{pvHang.curDot}}"></i><span>{{pvHang.cur}}</span><span style="font-size:12px;opacity:.7">{{pvHang.curDem}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{pvHang.chev}}"><path d="M6 9l6 6 6-6"></path></svg></button><sc-if value="{{pvHang.open}}"><div aria-hidden="true" onClick="{{pvHang.dong}}" style="position:fixed;inset:0;z-index:14"></div><div role="listbox" aria-label="Danh sách provider" style="position:absolute;top:calc(100% + 6px);left:0;z-index:15;min-width:240px;max-width:calc(100vw - 32px);box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(24,24,22,0.14);padding:6px;display:flex;flex-direction:column;gap:2px"><sc-for list="{{pvHang.items}}" as="u"><button type="button" role="option" data-pv="{{u.id}}" aria-selected="{{u.on}}" onClick="{{u.pick}}" style="{{u.st}}"><i style="{{u.dot}}"></i><span style="flex:1 1 auto;text-align:left">{{u.nhan}}</span><span style="font-size:12px;color:var(--mute)">{{u.dem}}</span></button></sc-for></div></sc-if></div><span aria-hidden="true" style="flex:0 0 auto;width:1px;height:28px;background:#CFCCC3"></span><div role="tablist" aria-label="Mục trong provider" style="display:flex;gap:8px;flex:0 0 auto"><sc-for list="{{c3}}" as="c"><button type="button" role="tab" data-pv-tab="{{c.id}}" aria-selected="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}"><span>{{c.nhan}}</span><span style="font-size:12px;opacity:.7">{{c.dem}}</span></button></sc-for></div></div>
 
-<sc-if value="{{coMdDau}}"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap"><span style="font-weight:600">{{pv.ten}} · model</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-lam-moi-md" onClick="{{md.moi}}" disabled="{{md.dang}}" style="{{md.moiSt}}">{{md.moiNhan}}</button></div></div></sc-if>
+<sc-if value="{{coMdDau}}"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap"><span style="font-weight:600">{{pv.ten}} · model</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-luu-md" onClick="{{md.luu}}" disabled="{{md.khongSua}}" style="{{md.luuSt}}">{{md.luuNhan}}</button><button type="button" id="nut-lam-moi-md" onClick="{{md.moi}}" disabled="{{md.dang}}" style="{{md.moiSt}}">{{md.moiNhan}}</button></div></div></sc-if>
 <sc-if value="{{coMd}}">
 <sc-for list="{{md.nhom}}" as="g">
 <section data-nhom-md="{{g.ma}}" aria-label="{{g.ten}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;background:#FBFAF8;border-bottom:1px solid var(--line)"><span style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)">{{g.ten}}</span><span style="font-size:12px;color:var(--mute)">{{g.dem}}</span></div>
+<div style="width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;min-height:44px;background:#FBFAF8;border-bottom:{{g.vienDuoi}}">
+<button type="button" data-mo-nhom="{{g.ma}}" aria-expanded="{{g.mo}}" aria-label="{{g.ten}}: {{g.dem}}" onClick="{{g.bat}}" style="flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer;padding:4px 0">
+<span style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)">{{g.ten}}</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)"><span data-nhom-dem="{{g.ma}}">{{g.dem}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{g.chev}}"><path d="M9 6l6 6-6 6"></path></svg></span>
+</button>
+<div style="display:flex;align-items:center;gap:6px;flex:0 0 auto">
+<button type="button" data-chon-tat-ca="{{g.ma}}" onClick="{{g.chonTatCa}}" style="border:0;background:transparent;color:var(--acc);font-size:12px;font-weight:500;cursor:pointer;padding:4px">Chọn tất cả</button>
+<button type="button" data-bo-chon-tat-ca="{{g.ma}}" onClick="{{g.boChonTatCa}}" style="border:0;background:transparent;color:var(--mute);font-size:12px;cursor:pointer;padding:4px">Bỏ chọn tất cả</button>
+</div>
+</div>
+<sc-if value="{{g.mo}}">
 <sc-for list="{{g.rows}}" as="m">
-<div data-model="" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:6px 14px 6px 16px;min-height:52px;border-top:1px solid #F0EEE9">
-<span style="flex:1 1 220px;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere" title="{{m.id}}">{{m.id}}</span>
+<div data-model="{{m.id}}" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:6px 14px 6px 16px;min-height:52px;border-top:1px solid #F0EEE9">
+<span style="flex:1 1 220px;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere;color:{{m.idColor}}" title="{{m.id}}">{{m.id}}</span>
+<div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+<sc-if value="{{m.laMacDinh}}"><span data-mac-dinh="{{m.id}}" style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#E2F0ED;color:#0B5A53">Mặc định</span></sc-if>
+<sc-if value="{{m.coTheDatMacDinh}}"><button type="button" data-dat-mac-dinh="{{m.id}}" onClick="{{m.datMacDinh}}" style="box-sizing:border-box;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);padding:2px 10px;font-size:12px;cursor:pointer">Đặt mặc định</button></sc-if>
+<button type="button" role="switch" data-cong-tac="{{m.id}}" aria-checked="{{m.batChu}}" aria-label="Bật tắt model {{m.id}}" onClick="{{m.doiBat}}" style="{{m.switchSt}}"><span style="{{m.knobSt}}"></span></button>
+</div>
 </div>
 </sc-for>
+</sc-if>
 </section>
 </sc-for>
 </sc-if>
@@ -124,14 +146,20 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.ten}}</span>
 <span style="font-size:12px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.sub}}</span>
 </button>
+<sc-if value="{{r.coVt}}"><span data-vt="" title="Thứ tự trong danh sách khoá (xoay vòng)" style="{{r.vtSt}}">{{r.vt}}</span></sc-if>
+<sc-if value="{{r.dangDung}}"><span data-dang-dung="" title="Khoá vừa phục vụ yêu cầu gần nhất" style="{{r.ddSt}}">Đang dùng</span></sc-if>
 <span style="{{r.pillSt}}">{{r.pill}}</span>
 </div>
 <sc-if value="{{r.open}}">
 <div style="border-top:1px solid var(--line);background:#FBFAF8;padding:12px 16px;display:flex;flex-direction:column;gap:10px">
 <div style="border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
-<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:600">{{r.b.ten}}</span><span style="{{r.pillSt}}">{{r.pill}}</span></div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:600">{{r.b.ten}}</span><span style="{{r.pillSt}}">{{r.pill}}</span><sc-if value="{{r.coVt}}"><span style="{{r.vtSt}}">{{r.vt}}</span></sc-if><sc-if value="{{r.dangDung}}"><span style="{{r.ddSt}}">Đang dùng</span></sc-if></div>
 <sc-if value="{{r.b.coErr}}"><div role="alert" style="padding:8px 12px;border-radius:10px;background:#FBE4E1;color:#8A1C12;font-size:13px;text-wrap:pretty">{{r.b.err}}</div></sc-if>
 <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;font-size:13px"><sc-for list="{{r.b.kv}}" as="x"><span style="color:var(--mute)">{{x.k}}</span><span data-kv="{{x.ma}}" style="min-width:0;overflow-wrap:anywhere">{{x.v}}</span></sc-for></div>
+<sc-if value="{{r.coBars}}"><div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{r.bars}}" as="p">
+<div data-thanh-hm="{{p.ma}}" style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--mute)"><span>{{p.ten}}</span><span>{{p.reset}}</span></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="flex:1 1 0;height:6px;border-radius:4px;background:#EFEDE8;overflow:hidden"><span style="{{p.fill}}"></span></div><span style="font-size:12px;font-weight:600;min-width:64px;text-align:right">{{p.txt}}</span></div></div>
+</sc-for></div></sc-if>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{r.b.acts}}" as="a"><button type="button" data-hd="{{a.hd}}" onClick="{{a.pick}}" disabled="{{a.dang}}" style="{{a.st}}">{{a.nhan}}</button></sc-for></div>
 </div>
 </div>
@@ -161,7 +189,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 //   Tài khoản = mỗi khoá đã lưu của một nguồn AI đã cài (GET /api/modules: cau_hinh_cong_khai dạng che, thứ tự = chỉ số
 //   dùng cho dạng sửa {"giu","them"} của POST …/cai) — thêm / thay / xoá từng khoá; nhãn nhỏ = sức khoẻ thật (…/suc-khoe).
 //   Provider = mỗi nguồn AI ĐÃ CÀI (chưa khoá vẫn hiện, tab rỗng chỉ chỗ thêm khoá); Model = /v1/models theo tiền tố,
-//   Tài khoản = sức khoẻ từng khoá. Combo chưa có backend → không có trong DOM (DIEU_KIEN.combo.chua_co).
+//   chia nhóm thu gọn; Tài khoản = sức khoẻ + bộ đếm dùng từng khoá (trường tuỳ chọn — thiếu thì ẩn). Combo chưa có backend → không có trong DOM (DIEU_KIEN.combo.chua_co).
 // Tab chọn bằng bảng xổ «AI ▾» (như demo — trang không có hàng tab riêng) và neo #<neo> của dòng DIEU_KIEN; #tk-<id>
 // (Studio, trang Module trỏ về) mở Tài khoản với biểu mẫu thêm khoá của đúng module. Không tên module nào ở đây.
 const K = window.Khung;
@@ -179,10 +207,57 @@ const CHAM = 'display:inline-block;width:9px;height:9px;border-radius:50%;backgr
 // Nhóm tài khoản: demo có Gmail / ChatGPT / Grok / API theo LOẠI thông tin đăng nhập. web2api chỉ lưu một loại — trường
 // bí mật (`bi_mat`, `danh_sach_bi_mat`) của manifest, tức khoá API — nên chỉ có nhóm «API». Loại mới thì thêm dòng.
 const NHOM = [['api', 'API']];
-// Nhãn nhóm model của demo theo mã khả năng (chat / anh / video — cùng bộ mã `cung_cap` của module); mã khác hiện
-// nguyên mã nên module mới không phải sửa trang. Demo ghi «Trò chuyện và hiểu ảnh», nhưng không trường nào của manifest
-// hay /v1/models nói model hiểu ảnh → chỉ giữ phần suy ra được: «Trò chuyện».
-const TEN_NHOM_MD = { chat: 'Trò chuyện', anh: 'Tạo ảnh', video: 'Tạo video' };
+// Nhãn nhóm model theo mã khả năng (chat / anh / video — cùng bộ mã `cung_cap` của module), đúng ba nhóm chủ máy nêu
+// («Trò chuyện», «Tạo ảnh», «Video»); mã khác hiện nguyên mã nên module mới không phải sửa trang. Demo ghi «Trò chuyện và
+// hiểu ảnh», nhưng không trường nào của manifest hay /v1/models nói model hiểu ảnh → chỉ giữ phần suy ra được.
+// Nhóm chỉ có khi có model mang mã đó (như demo lọc nhóm rỗng): module khai `anh` mà không đánh dấu model nào thì không
+// có nhóm «Tạo ảnh» — chưa có dữ liệu thì ẩn, không dựng khung rỗng.
+const TEN_NHOM_MD = { chat: 'Trò chuyện', anh: 'Tạo ảnh', video: 'Video' };
+// Chip «#n» (màu chip vị trí của demo) và «Đang dùng» (chip đen nổi bật, như chip đang chọn của demo); chip phụ của demo.
+const VT_ST = 'flex:0 0 auto;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#FBEFD5;color:#7A4B00;white-space:nowrap';
+const DD_ST = 'flex:0 0 auto;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#181816;color:#fff;white-space:nowrap';
+const PHU_ST = 'flex:0 0 auto;font-size:12px;color:var(--mute);padding:3px 10px;border-radius:12px;background:var(--bg);border:1px solid var(--line);white-space:nowrap';
+// Trạng thái hạn mức theo việc (`han_muc[].trang_thai` của …/suc-khoe — hợp đồng ở app/kham_pha.py) → chữ + màu demo.
+const TT_HM = { dung_duoc: ['còn dùng được', 'ok'], het_han_muc: ['hết hạn mức', 'warn'], bi_tu_choi: ['bị từ chối', 'bad'],
+  chua_ro: ['chưa rõ (chưa dùng thật lần nào)', 'mute'] };
+const tenViec = (ma) => TEN_NHOM_MD[ma] || ma;
+function chuHm(h) {
+  const [chu, tone] = TT_HM[h.trang_thai] || [String(h.trang_thai || 'không rõ'), 'mute'];
+  let c = chu + (h.trang_thai === 'bi_tu_choi' && h.ma != null ? ' (HTTP ' + h.ma + ')' : '');
+  if (h.hoi_luc) c += (h.trang_thai === 'het_han_muc' ? ', hồi lúc ' : ', thử lại lúc ') + K.ngayGio(h.hoi_luc);
+  return { chu: c, tone, ngan: chu };
+}
+// Bộ đếm dùng của MỘT khoá (trường TUỲ CHỌN của …/suc-khoe; module không báo thì null → giao diện ẩn phần đó).
+function suDung(k, soKhoa) {
+  if (!k) return null;
+  const hm = Array.isArray(k.han_muc) ? k.han_muc.filter((h) => h && typeof h.ten === 'string') : [];
+  const vt = Number.isInteger(k.thu_tu) && k.thu_tu > 0 ? k.thu_tu : null;
+  if (!hm.length && !vt && k.dang_dung == null) return null;
+  const luot = hm.reduce((t, h) => t + (Number(h.da_dung) || 0), 0);
+  // Thanh hạn mức CHỈ khi module báo trần thật (`toi_da`); vẽ phần CÒN LẠI và màu như demo.
+  const bars = hm.filter((h) => typeof h.toi_da === 'number' && h.toi_da > 0).map((h) => {
+    const con = Math.max(0, h.toi_da - (Number(h.da_dung) || 0)); const pct = Math.round(con / h.toi_da * 100);
+    const mau = pct > 70 ? '#10B981' : pct > 30 ? '#F59E0B' : '#E11D48';
+    return { ma: h.ten, ten: tenViec(h.ten), txt: con + ' / ' + h.toi_da, reset: h.hoi_luc ? 'hồi lúc ' + K.ngayGio(h.hoi_luc) : '',
+      fill: 'display:block;height:100%;border-radius:4px;width:' + pct + '%;background:' + mau };
+  });
+  const kv = [];
+  if (vt) kv.push({ ma: 'thu-tu', k: 'Thứ tự khoá', v: '#' + vt + ' / ' + soKhoa + ' — xoay vòng: mỗi yêu cầu bắt đầu ở khoá kế tiếp, lỗi hoặc hết hạn mức thì chuyển khoá sau' });
+  if (hm.length) kv.push({ ma: 'da-dung', k: 'Đã dùng', v: luot + ' lượt thành công' + (k.so_429 ? ' · ' + k.so_429 + ' lần hết hạn mức (429)' : '') + ' (từ lần khởi động / lưu khoá gần nhất)' });
+  if (hm.length) kv.push({ ma: 'dung-cuoi', k: 'Lần dùng cuối', v: k.dung_cuoi ? K.tuongDoi(k.dung_cuoi) + ' (' + K.ngayGio(k.dung_cuoi) + ')' : 'chưa dùng' });
+  for (const h of hm) { const c = chuHm(h); kv.push({ ma: 'kn-' + h.ten, k: tenViec(h.ten), v: (Number(h.da_dung) > 0 ? 'đã dùng ' + h.da_dung + ' lượt · ' : '') + c.chu }); }
+  const chat = hm.find((h) => h.ten === 'chat');
+  return { vt, dang: k.dang_dung === true, coLuot: hm.length > 0, luot, cuoi: k.dung_cuoi || null, hm, chat, bars, kv,
+    // Việc khác chat đang hết hạn mức / bị từ chối → chip cảnh báo ở dòng thu gọn (chat đã nói ở nhãn sức khoẻ).
+    canh: hm.filter((h) => h.ten !== 'chat' && (h.trang_thai === 'het_han_muc' || h.trang_thai === 'bi_tu_choi')).map((h) => { const c = chuHm(h); return { ma: 'hm-' + h.ten, t: tenViec(h.ten) + ': ' + c.ngan, tip: c.chu, st: pillSt(c.tone) }; }) };
+}
+// Nhãn sức khoẻ của một khoá: đang nghỉ chat thì nói rõ VÌ SAO khi module báo `han_muc` (hết hạn mức / bị từ chối).
+function nhanNghi(k, sd) {
+  const t = K.ngayGio(k.dang_nghi_den);
+  if (sd && sd.chat && sd.chat.trang_thai === 'het_han_muc') return ['Hết hạn mức, hồi lúc ' + t, 'warn'];
+  if (sd && sd.chat && sd.chat.trang_thai === 'bi_tu_choi') return ['Bị từ chối, thử lại lúc ' + t, 'bad'];
+  return ['Nghỉ đến ' + t, 'warn'];
+}
 const laBiMat = (t) => !!t && (t.kieu === 'bi_mat' || t.kieu === 'danh_sach_bi_mat');
 const chuThuong = (s) => String(s || '').charAt(0).toLowerCase() + String(s || '').slice(1);
 
@@ -194,7 +269,8 @@ class Component extends DCLogic {
     this.state = { khoa, khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', cat: [], mods: [], models: [], dangTai: true,
       tab: den ? 'tai_khoan' : tabTheoNeo(), sk: {}, menuMo: null, ghi: '', ghiLoi: false,
       tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
-      pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false };
+      pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
+      mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false };
     this._den = den;
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
@@ -232,7 +308,10 @@ class Component extends DCLogic {
       mods: mods.status === 'fulfilled' ? ((mods.value.j && mods.value.j.modules) || []) : this.state.mods,
       soTb: mods.status === 'fulfilled' ? (mods.value.j.thong_bao_so || 0) : 0, dangTai: false });
     if (!this.state.khoa) return;
-    for (const m of this.dsAi()) if (m.da_lien_ket) this.kiem(m.id);   // chưa liên kết: …/suc-khoe trả 404, không gọi
+    for (const m of this.dsAi()) if (m.da_lien_ket) {
+      this.kiem(m.id);
+      this.taiModelModule(m.id);
+    }
     await this.taiModel();
   }
   async taiModel() {
@@ -241,6 +320,95 @@ class Component extends DCLogic {
       this.setState({ models: ((j && j.data) || []).filter((m) => m && typeof m.id === 'string') });
       return true;
     } catch (e) { this.loi(e); return false; }
+  }
+  async taiModelModule(id) {
+    if (!this.state.khoa || !id) return;
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/model');
+      if (j && (j.models || j.danh_muc)) {
+        const tat = (j.tat || []).slice();
+        const mac_dinh = Object.assign({}, j.mac_dinh || {});
+        this.setState((st) => {
+          const curId = st.pvSel || (this.dsAi()[0] || {}).id;
+          const laCur = curId === id;
+          return {
+            mdData: Object.assign({}, st.mdData, { [id]: j }),
+            mdTat: laCur ? tat : st.mdTat,
+            mdMacDinh: laCur ? mac_dinh : st.mdMacDinh,
+            mdGocTat: laCur ? tat : st.mdGocTat,
+            mdGocMacDinh: laCur ? mac_dinh : st.mdGocMacDinh,
+          };
+        });
+      }
+    } catch (e) {
+      this.loi(e);
+    }
+  }
+  doiBatModel(pvId, mid, nhom) {
+    const tat = new Set(this.state.mdTat || []);
+    const md = Object.assign({}, this.state.mdMacDinh || {});
+    if (tat.has(mid)) {
+      tat.delete(mid);
+    } else {
+      tat.add(mid);
+      if (md[nhom] === mid) delete md[nhom];
+    }
+    this.setState({ mdTat: [...tat], mdMacDinh: md });
+  }
+  datMacDinhModel(pvId, mid, nhom) {
+    const tat = new Set(this.state.mdTat || []);
+    if (tat.has(mid)) return;
+    const md = Object.assign({}, this.state.mdMacDinh || {}, { [nhom]: mid });
+    this.setState({ mdMacDinh: md });
+  }
+  chonTatCaNhom(pvId, nhom, ids) {
+    const tat = new Set(this.state.mdTat || []);
+    for (const mid of ids) tat.delete(mid);
+    this.setState({ mdTat: [...tat] });
+  }
+  boChonTatCaNhom(pvId, nhom, ids) {
+    const tat = new Set(this.state.mdTat || []);
+    const md = Object.assign({}, this.state.mdMacDinh || {});
+    for (const mid of ids) {
+      tat.add(mid);
+      if (md[nhom] === mid) delete md[nhom];
+    }
+    this.setState({ mdTat: [...tat], mdMacDinh: md });
+  }
+  async luuThayDoiModel(pvId) {
+    if (!pvId || this.state.dangLuuMd) return;
+    this.setState({ dangLuuMd: true });
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(pvId) + '/model', {
+        method: 'PUT',
+        json: {
+          tat: this.state.mdTat || [],
+          mac_dinh: this.state.mdMacDinh || {}
+        }
+      });
+      if (j && j.ok) {
+        const tat = (j.tat || []).slice();
+        const mac_dinh = Object.assign({}, j.mac_dinh || {});
+        this.setState((st) => ({
+          dangLuuMd: false,
+          mdData: Object.assign({}, st.mdData, { [pvId]: j }),
+          mdTat: tat,
+          mdMacDinh: mac_dinh,
+          mdGocTat: tat,
+          mdGocMacDinh: mac_dinh
+        }));
+        const pvTen = (this.dsAi().find((m) => m.id === pvId) || {}).ten || pvId;
+        this.msg('Đã lưu thay đổi model của «' + pvTen + '».');
+        await this.taiModel();
+      } else {
+        this.setState({ dangLuuMd: false });
+        this.msg('Chưa lưu được thay đổi model: ' + ((j && j.error && j.error.message) || (j && j.loi) || 'lỗi'), true);
+      }
+    } catch (e) {
+      this.loi(e);
+      this.setState({ dangLuuMd: false });
+      this.msg('Lỗi lưu thay đổi: ' + e.message, true);
+    }
   }
   loi(e) { if (e && e.ma === 401) this.setState({ khoaLoi: 'Khoá quản trị sai hoặc thiếu (HTTP 401). Dán lại khoá đúng ở trang Hệ thống → Module.' }); }
   dsAi() { return ((this.state.tn && this.state.tn.modules) || []).filter((m) => K.coMa(m, K.AI)); }
@@ -375,14 +543,24 @@ class Component extends DCLogic {
       const ds = khoa.get(r.m.id);
       const sk = this.skCua(r, ds.length);
       const open = s.tkMo === r.key; const xo = s.xoa === r.key; const sua = s.tkSua === r.key;
+      const sd = suDung(sk.k, ds.length);
       const chip = !r.che && !r.t && !r.m.tu_xa ? ['Không cần khoá', 'mute']
-        : sk.k ? (!sk.k.ok ? ['Lỗi', 'bad'] : sk.k.dang_nghi_den ? ['Nghỉ đến ' + K.ngayGio(sk.k.dang_nghi_den), 'warn'] : ['Dùng được', 'ok'])
+        : sk.k ? (!sk.k.ok ? ['Lỗi', 'bad'] : sk.k.dang_nghi_den ? nhanNghi(sk.k, sd) : ['Dùng được', 'ok'])
           : sk.dang ? ['Đang kiểm', 'mute'] : r.che ? ['Có khoá', 'ok'] : ['Không khoá', 'mute'];
+      // Hàng chip như dòng Provider của demo: «#n», «Đang dùng», sức khoẻ, «Đã dùng N lượt», «Lần dùng cuối …», cảnh báo hạn mức.
+      const chips = [];
+      if (sd && sd.vt) chips.push({ ma: 'vt', t: '#' + sd.vt, tip: 'Thứ tự trong danh sách khoá (xoay vòng)', st: VT_ST });
+      if (sd && sd.dang) chips.push({ ma: 'dang-dung', t: 'Đang dùng', tip: 'Khoá vừa phục vụ yêu cầu gần nhất', st: DD_ST });
+      chips.push({ ma: 'suc-khoe', t: chip[0], tip: '', st: pillSt(chip[1]) });
+      if (sd && sd.coLuot) chips.push({ ma: 'luot', t: 'Đã dùng ' + sd.luot + ' lượt', tip: 'Kể từ lần khởi động hoặc lưu khoá gần nhất', st: PHU_ST });
+      if (sd && sd.cuoi) chips.push({ ma: 'dung-cuoi', t: 'Lần dùng cuối ' + K.tuongDoi(sd.cuoi), tip: K.ngayGio(sd.cuoi), st: PHU_ST });
+      if (sd) chips.push(...sd.canh);
       const goc = (sk.k && this.state.sk[r.m.id].kq.base_url) || r.ck.base_url || '';
       const kv = [{ k: 'Nhà cung cấp', v: r.m.ten }];
       if (goc) kv.push({ k: 'Địa chỉ gốc', v: goc, mono: true, acts: [{ nhan: 'Chép', al: 'Chép địa chỉ gốc', st: btnSt(), pick: () => { try { navigator.clipboard.writeText(goc); } catch (e) { /* trình duyệt chặn */ } this.msg('Đã chép địa chỉ gốc.'); } }] });
       kv.push(r.che ? { k: r.t ? (r.t.nhan || 'Khoá API') : 'Khoá API', v: r.che, mono: true } : { k: 'Khoá API', v: r.m.tu_xa ? 'Không khoá' : 'Không cần khoá', mute: true });
       kv.push({ k: 'Số khoá', v: r.m.tu_xa ? 'Đặt lúc đăng ký module từ xa — muốn đổi thì gỡ ở Hệ thống → Module rồi đăng ký lại' : ds.length + ' khoá của nguồn này' });
+      if (sd) kv.push(...sd.kv);
       const coSua = !!r.t && coKhoaQt;
       // Bớt khoá cuối cùng của trường bắt buộc thì lõi từ chối (module cần ít nhất một khoá) → không vẽ «Xoá».
       const coXoa = !!r.t && coKhoaQt && r.t.kieu === 'danh_sach_bi_mat' && !(r.t.bat_buoc && r.chiSo.length <= 1);
@@ -391,8 +569,8 @@ class Component extends DCLogic {
       if (coXoa) acts.push({ hd: 'xoa', nhan: s.dangXoa === r.key ? 'Đang xoá…' : xo ? 'Bấm lần nữa để xoá' : 'Xoá tài khoản', st: btnSt({ bad: xo }), dang: s.dangXoa === r.key,
         pick: () => { if (!xo) return this.setState({ xoa: r.key }); this.xoaKhoa(r); } });
       return { id: r.m.id, so: String(r.i), ten: r.m.ten, sub: r.che ? 'khoá ' + r.che : (r.m.tu_xa ? 'không khoá' : 'không cần khoá'),
-        chips: [{ t: chip[0], st: pillSt(chip[1]) }], open,
-        kv: kv.map((x) => Object.assign({ mono: false, mute: false, acts: [] }, x)).map((x) => Object.assign(x, { vSt: vSt(x), coActs: x.acts.length > 0 })),
+        chips, open, bars: sd ? sd.bars : [], coBars: !!sd && sd.bars.length > 0,
+        kv: kv.map((x) => Object.assign({ ma: '', mono: false, mute: false, acts: [] }, x)).map((x) => Object.assign(x, { vSt: vSt(x), coActs: x.acts.length > 0 })),
         acts, coActs: acts.length > 0,
         sua: { co: sua, nhan: (r.t && r.t.nhan ? r.t.nhan : 'Khoá API') + ' mới', idO: 'sua-' + r.key.replace(/[^\w-]/g, '_') + '-' + s.lan, dang: s.dangSua,
           onIn: (e) => this.setState({ fSua: e.target.value }), luu: (e) => this.thayKhoa(e, r),
@@ -403,41 +581,105 @@ class Component extends DCLogic {
     // ===== Provider =====
     const pvCur = ai.find((m) => m.id === s.pvSel) || ai[0] || null;
     const pvTab = s.pvTab === 'tk' ? 'tk' : 'model';
-    const mdCur = pvCur ? s.models.filter((x) => x.id.startsWith(pvCur.tien_to + '/')) : [];
+    const curPvData = pvCur && s.mdData && s.mdData[pvCur.id];
+    const mdCur = (curPvData && (curPvData.models || curPvData.danh_muc)) || (pvCur ? s.models.filter((x) => x.id.startsWith(pvCur.tien_to + '/')) : []);
     const tkCur = pvCur ? khoa.get(pvCur.id) : [];
+
+    const tatSet = new Set(s.mdTat != null ? s.mdTat : ((curPvData && curPvData.tat) || []));
+    const macDinhMap = s.mdMacDinh != null ? s.mdMacDinh : ((curPvData && curPvData.mac_dinh) || {});
+    const gocTatSet = new Set(s.mdGocTat != null ? s.mdGocTat : ((curPvData && curPvData.tat) || []));
+    const gocMacDinhMap = s.mdGocMacDinh != null ? s.mdGocMacDinh : ((curPvData && curPvData.mac_dinh) || {});
+
+    const tatKhac = tatSet.size !== gocTatSet.size || [...tatSet].some((x) => !gocTatSet.has(x));
+    const mdKeys = new Set([...Object.keys(macDinhMap), ...Object.keys(gocMacDinhMap)]);
+    const mdKhac = [...mdKeys].some((k) => macDinhMap[k] !== gocMacDinhMap[k]);
+    const coThayDoi = tatKhac || mdKhac;
+
     const items = ai.map((m) => ({ id: m.id, nhan: m.ten, dem: String(khoa.get(m.id).length), on: !!pvCur && pvCur.id === m.id, dot: CHAM + ';flex:0 0 auto',
       st: 'display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border:0;border-radius:10px;font:inherit;font-size:14px;cursor:pointer;color:#181816;background:' + (pvCur && pvCur.id === m.id ? '#EFEDE8' : 'transparent'),
-      pick: () => this.setState({ pvSel: m.id, pvDd: false, pvMo: null, pvTab: 'model' }) }));
+      pick: () => {
+        const d = this.state.mdData && this.state.mdData[m.id];
+        const tat = d ? (d.tat || []).slice() : null;
+        const md = d ? Object.assign({}, d.mac_dinh || {}) : null;
+        this.setState({ pvSel: m.id, pvDd: false, pvMo: null, pvTab: 'model', mdMo: {},
+          mdTat: tat, mdMacDinh: md, mdGocTat: tat, mdGocMacDinh: md });
+        this.taiModelModule(m.id);
+      } }));
     const pvHang = { open: !!s.pvDd, toggle: () => this.setState({ pvDd: !s.pvDd }), dong: () => this.setState({ pvDd: false }),
       cur: pvCur ? pvCur.ten : '', curDem: String(tkCur.length), curDot: CHAM + ';flex:0 0 auto',
       btn: chipSt(true) + 'gap:8px;', chev: 'flex:0 0 auto;transition:transform .15s;transform:rotate(' + (s.pvDd ? 180 : 0) + 'deg)', items };
     const c3 = pvCur ? [{ id: 'model', nhan: 'Model', dem: String(mdCur.length), on: pvTab === 'model', st: chipSt(pvTab === 'model'), pick: () => this.setState({ pvTab: 'model' }) },
       { id: 'tk', nhan: 'Tài khoản', dem: String(tkCur.length), on: pvTab === 'tk', st: chipSt(pvTab === 'tk'), pick: () => this.setState({ pvTab: 'tk', pvMo: null }) }] : [];
     // Nhóm model theo khả năng mà module khai cho từng model (`kha_nang`); model không khai thuộc nhóm trò chuyện.
+    // Nhóm LUÔN THU GỌN khi vào trang (chủ máy: «danh sách model thì luôn ẩn») — trạng thái mở chỉ sống trong thành phần,
+    // không lưu localStorage hay neo, đổi provider là gọn lại.
     const nhomMd = new Map();
     for (const x of mdCur) {
-      for (const kn of (Array.isArray(x.kha_nang) && x.kha_nang.length ? x.kha_nang : ['chat'])) {
+      const knList = x.nhom ? [x.nhom] : (Array.isArray(x.kha_nang) && x.kha_nang.length ? x.kha_nang : ['chat']);
+      for (const kn of knList) {
         if (!nhomMd.has(kn)) nhomMd.set(kn, []);
-        nhomMd.get(kn).push({ id: x.id });
+        const isBat = !tatSet.has(x.id);
+        const isMacDinh = macDinhMap[kn] === x.id;
+        nhomMd.get(kn).push({
+          id: x.id,
+          nhom: kn,
+          bat: isBat,
+          laMacDinh: isMacDinh,
+          coTheDatMacDinh: !isMacDinh && isBat,
+          batChu: isBat ? 'true' : 'false',
+          switchSt: 'box-sizing:border-box;width:38px;height:22px;border-radius:11px;border:0;padding:2px;display:inline-flex;align-items:center;cursor:pointer;position:relative;background:' + (isBat ? '#0F766E' : '#CFCCC3') + ';transition:background .15s;',
+          knobSt: 'display:block;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.2);transform:translateX(' + (isBat ? '16px' : '0') + ');transition:transform .15s;',
+          idColor: isBat ? 'var(--ink)' : 'var(--mute)',
+          doiBat: () => this.doiBatModel(pvCur ? pvCur.id : null, x.id, kn),
+          datMacDinh: () => this.datMacDinhModel(pvCur ? pvCur.id : null, x.id, kn),
+        });
       }
     }
     const thuTu = ['chat'].concat((pvCur && pvCur.cung_cap) || []);
     const nhomDs = [...nhomMd.entries()].sort((a, b) => (thuTu.indexOf(a[0]) + 1 || 99) - (thuTu.indexOf(b[0]) + 1 || 99))
-      .map(([ma, rows]) => ({ ma, ten: TEN_NHOM_MD[ma] || ma, dem: rows.length + ' model', rows }));
+      .map(([ma, rows]) => {
+        const mo = !!(s.mdMo || {})[ma];
+        const soTong = rows.length;
+        const soBat = rows.filter((r) => r.bat).length;
+        return { ma, ten: tenViec(ma), dem: soBat + '/' + soTong + ' đang bật', rows, mo,
+          vienDuoi: mo ? '1px solid var(--line)' : '0',
+          bat: () => this.setState((st) => ({ mdMo: Object.assign({}, st.mdMo, { [ma]: !mo }) })),
+          chonTatCa: (e) => { if (e) e.stopPropagation(); this.chonTatCaNhom(pvCur ? pvCur.id : null, ma, rows.map((r) => r.id)); },
+          boChonTatCa: (e) => { if (e) e.stopPropagation(); this.boChonTatCaNhom(pvCur ? pvCur.id : null, ma, rows.map((r) => r.id)); },
+          dauSt: 'width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;min-height:44px;border:0;background:#FBFAF8;color:var(--ink);font:inherit;text-align:left;cursor:pointer;' + (mo ? 'border-bottom:1px solid var(--line)' : ''),
+          chev: 'flex:0 0 auto;transition:transform .15s;transform:rotate(' + (mo ? 90 : 0) + 'deg)' };
+      });
     const lienKet = !!pvCur && pvCur.da_lien_ket;
     const md = { nhom: nhomDs, dang: s.dangMd, moiNhan: s.dangMd ? 'Đang lấy…' : 'Làm mới danh sách', moiSt: btnSt(),
-      moi: async () => { this.setState({ dangMd: true }); const ok = await this.taiModel(); this.setState({ dangMd: false });
-        if (ok) this.msg('Đã lấy lại danh sách model của ' + pvCur.ten + ': ' + this.state.models.filter((x) => x.id.startsWith(pvCur.tien_to + '/')).length + ' model.'); } };
+      khongSua: !coThayDoi || s.dangLuuMd,
+      luuNhan: s.dangLuuMd ? 'Đang lưu…' : 'Lưu thay đổi',
+      luuSt: coThayDoi
+        ? 'box-sizing:border-box;min-height:36px;padding:0 16px;border-radius:18px;border:1px solid #181816;background:#181816;color:#fff;font-weight:500;cursor:pointer;'
+        : 'box-sizing:border-box;min-height:36px;padding:0 16px;border-radius:18px;border:1px solid #E4E2DC;background:#EFEDE8;color:#8C887B;font-weight:500;cursor:not-allowed;opacity:.6;',
+      luu: () => this.luuThayDoiModel(pvCur ? pvCur.id : null),
+      moi: async () => {
+        this.setState({ dangMd: true });
+        if (pvCur) await this.taiModelModule(pvCur.id);
+        const ok = await this.taiModel();
+        this.setState({ dangMd: false });
+        if (ok && pvCur) this.msg('Đã lấy lại danh sách model của «' + pvCur.ten + '»: ' + mdCur.length + ' model.');
+      } };
     const moTk = () => { this.chonTab('tai_khoan'); this.setState({ tkThem: true, chonMod: pvCur ? pvCur.id : null, f: {} }); this.denForm(); };
     const pvRows = pvCur && pvTab === 'tk' ? tkCur.map((r) => {
       const sk = this.skCua(r, tkCur.length); const k = sk.k; const open = s.pvMo === r.key;
-      const [pill, tone] = k ? (!k.ok ? ['Lỗi', 'bad'] : k.dang_nghi_den ? ['Nghỉ đến ' + K.ngayGio(k.dang_nghi_den), 'warn'] : ['Đã kết nối', 'ok']) : sk.dang ? ['Đang kiểm', 'mute'] : ['Chưa kiểm', 'mute'];
+      const sd = suDung(k, tkCur.length);
+      const [pill, tone] = k ? (!k.ok ? ['Lỗi', 'bad'] : k.dang_nghi_den ? nhanNghi(k, sd) : ['Đã kết nối', 'ok']) : sk.dang ? ['Đang kiểm', 'mute'] : ['Chưa kiểm', 'mute'];
       const kv = [{ ma: 'khoa', k: 'Khoá', v: r.che || (r.m.tu_xa ? 'không khoá' : 'không cần khoá') }];
+      // Như khối tài khoản của demo: thứ tự, đã dùng, lần dùng cuối; rồi sức khoẻ; rồi hạn mức từng việc.
+      if (sd) kv.push(...sd.kv.filter((x) => !x.ma.startsWith('kn-')));
       if (k) {
         if (k.do_tre_ms != null) kv.push({ ma: 'do-tre', k: 'Độ trễ', v: k.do_tre_ms + ' ms (kiểm bằng GET /models)' });
         if (k.ok && k.so_model != null) kv.push({ ma: 'so-model', k: 'Số model', v: String(k.so_model) });
-        if (k.dang_nghi_den) kv.push({ ma: 'nghi', k: 'Nghỉ đến', v: K.ngayGio(k.dang_nghi_den) + ' — trong lúc nghỉ dùng khoá khác' });
-        for (const kn of K.dongKhoa(k).kn) kv.push({ ma: 'kn-' + kn.ma, k: TEN_NHOM_MD[kn.ma] || kn.ma, v: kn.chu });
+        // Có `han_muc` chat thì dòng «Trò chuyện» đã nói giờ hồi kèm lý do — không lặp «Nghỉ đến».
+        if (k.dang_nghi_den && !(sd && sd.chat)) kv.push({ ma: 'nghi', k: 'Nghỉ đến', v: K.ngayGio(k.dang_nghi_den) + ' — trong lúc nghỉ dùng khoá khác' });
+        // Module báo `han_muc` → mỗi việc một dòng (đã dùng + trạng thái); không báo → trạng thái ảnh/video cũ (`kha_nang`).
+        if (sd && sd.hm.length) kv.push(...sd.kv.filter((x) => x.ma.startsWith('kn-')));
+        else for (const kn of K.dongKhoa(k).kn) kv.push({ ma: 'kn-' + kn.ma, k: tenViec(kn.ma), v: kn.chu });
       }
       const goc = (this.state.sk[r.m.id] && this.state.sk[r.m.id].kq && this.state.sk[r.m.id].kq.base_url) || r.ck.base_url || '';
       if (goc) kv.push({ ma: 'goc', k: 'Địa chỉ gốc', v: goc });
@@ -445,7 +687,11 @@ class Component extends DCLogic {
       if (k && !k.ok && r.t) acts.push({ hd: 'nhap-moi', nhan: 'Nhập khoá mới', st: btnSt({ pri: true }), dang: false,
         pick: () => { this.chonTab('tai_khoan'); this.setState({ tkMo: r.key, tkSua: r.key, fSua: '' }); } });
       if (coKhoaQt) acts.push({ hd: 'lam-moi', nhan: sk.dang ? 'Đang kiểm…' : 'Làm mới', st: btnSt(), dang: sk.dang, pick: () => this.kiem(r.m.id) });
-      return { so: String(r.i), ten: r.m.ten, sub: (r.che ? 'Khoá API · ' + r.che : 'Khoá API · không cần') + (k && k.do_tre_ms != null ? ' · ' + k.do_tre_ms + ' ms' : ''),
+      return { so: String(r.i), ten: r.m.ten,
+        sub: (r.che ? 'Khoá API · ' + r.che : 'Khoá API · không cần') + (sd && sd.coLuot ? ' · đã dùng ' + sd.luot + ' lượt' : '')
+          + (sd && sd.cuoi ? ' · dùng cuối ' + K.tuongDoi(sd.cuoi) : '') + (k && k.do_tre_ms != null ? ' · ' + k.do_tre_ms + ' ms' : ''),
+        coVt: !!(sd && sd.vt), vt: sd && sd.vt ? '#' + sd.vt : '', vtSt: VT_ST, dangDung: !!(sd && sd.dang), ddSt: DD_ST,
+        bars: sd ? sd.bars : [], coBars: !!sd && sd.bars.length > 0,
         pill, pillSt: pillSt(tone), open, pick: () => this.setState({ pvMo: open ? null : r.key }),
         b: { ten: r.m.ten, coErr: !!(k && !k.ok), err: k && !k.ok ? 'Không dùng được — ' + (k.loi || 'không rõ lý do') : '', kv, acts } };
     }) : [];
@@ -472,7 +718,7 @@ class Component extends DCLogic {
       coBang: !!tn && !s.dangTai, tab: s.tab, tieuMuc,
       laTk, nhom, them, tkRows, coTkRows: tkRows.length > 0, tkTrong: tkRows.length === 0,
       tkTrongGhi: 'Chưa có tài khoản API nào — bấm « ＋ » ở trên để thêm.',
-      tkGhiChu: 'Nơi lưu khoá API của từng nguồn AI đã cài. Khoá nằm trên máy chủ (tệp chỉ chủ tiến trình đọc được) và chỉ hiện dạng che …abcd — không có nút xem lại; khoá mới được thử bằng một lời gọi thật trước khi lưu. Độ trễ, số model và tình trạng từng khoá nằm ở tab Provider › Tài khoản.',
+      tkGhiChu: 'Nơi lưu khoá API của từng nguồn AI đã cài. Khoá nằm trên máy chủ (tệp chỉ chủ tiến trình đọc được) và chỉ hiện dạng che …abcd — không có nút xem lại; khoá mới được thử bằng một lời gọi thật trước khi lưu. «#n» là thứ tự khoá (xoay vòng); «Đang dùng» là khoá vừa phục vụ yêu cầu gần nhất; số lượt đếm từ lần khởi động hoặc lưu khoá gần nhất.',
       laPv: !!tn && s.tab === 'provider' && !!pvCur, pv: { id: pvCur ? pvCur.id : '', ten: pvCur ? pvCur.ten : '' }, pvHang, c3,
       coMdDau: pvTab === 'model' && lienKet, coMd: pvTab === 'model' && lienKet && nhomDs.length > 0, md,
       pvRows, coPvRows: pvRows.length > 0, pvTrong

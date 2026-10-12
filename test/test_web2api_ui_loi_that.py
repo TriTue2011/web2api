@@ -101,7 +101,11 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
 
             # Hệ thống → AI → Provider: model thật (/v1/models qua Google giả) + sức khoẻ thật, kể cả ảnh/video theo khoá.
             trang.di(w.url + "/He-thong-AI.dc.html#provider")
-            trang.cho("document.querySelector('[data-provider=\"gemini-api\"] [data-model]')", han=15, mo_ta="model thật")
+            # Danh sách model thu gọn sẵn: mở nhóm «Trò chuyện» mới thấy model thật.
+            trang.cho("!!document.querySelector('[data-provider=\"gemini-api\"] [data-mo-nhom=\"chat\"]')", han=15, mo_ta="nhóm model thật")
+            assert not trang.js("!!document.querySelector('[data-provider=\"gemini-api\"] [data-model]')")
+            trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
+            trang.cho("document.querySelector('[data-provider=\"gemini-api\"] [data-model]')", mo_ta="model thật")
             assert "gemini/gemini-2.5-flash" in trang.chu("[data-provider='gemini-api']")
             trang.bam("document.querySelector('[data-pv-tab=tk]')")
             trang.cho("document.querySelector('[data-khoa-pv]')?.innerText.includes('Đã kết nối')", han=15, mo_ta="sức khoẻ")

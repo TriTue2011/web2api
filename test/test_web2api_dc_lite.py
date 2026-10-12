@@ -416,7 +416,7 @@ def test_dia_chi_goc_mo_trang_module_voi_api_that(may_chu_web2api):
     # Bỏ <script>/<style> trước khi lấy chữ: mã nguồn trang cũng chứa các câu này, so trên đó là đạt suông.
     chu = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b.*?</\1>", " ", dom, flags=re.S)))
     assert "Kết nối với web2api" in chu and "Chưa có khoá" in chu
-    assert re.findall(r'data-nav="([^"]+)"', dom) == ["module"]   # chưa cài gì: không Studio, không AI
+    assert re.findall(r'data-nav="([^"]+)"', dom) == ["module", "bao_mat"]   # chưa cài gì: không Studio, không AI; «Bảo mật» là tab của lõi nên luôn có
     assert "Đang đọc danh sách module" not in chu
     assert 'class="cham"' not in dom  # chưa có thông báo module mới → không có chấm báo
     assert 'id="dc-loi"' not in dom

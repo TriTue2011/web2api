@@ -45,12 +45,18 @@ voice, translate/subtitles/dubbing, other main tabs, the account avatar) are not
 install it already shows the module: **Accounts** has an "API 0" group chip, a black "＋ Add API" button and the demo's
 empty box; **Provider** lists every installed AI module (dropdown with its key count) with empty Model / Accounts tabs
 and an "Open Accounts tab" button. Add your Google AI Studio key in the "Add API" form (fields come from the
-manifest's `truong_cau_hinh`; an empty text field never overwrites a saved value). Each saved key then becomes one
-account row ("key …abcd" plus a health label: usable / resting until … / error), which you can replace or delete
-(two clicks; the last key of a required field has no delete button because the core needs at least one). Provider
-shows the real models from `/v1/models` grouped by the capability each model declares, a "Refresh list" button, and
-per-key health (latency, model count, resting, image/video status per key). Demo controls with no backend yet (TOTP,
-revealing keys, queue priority, quotas, model on/off and "Set default", "Save changes", Combo) are not drawn. The
+manifest's `truong_cau_hinh`; an empty text field never overwrites a saved value). Each saved key becomes one
+account row with its position `#n` in the saved key list (round-robin rotation), a prominent "In use" badge on the key that
+served the most recent request, usage counters and relative last used timestamp since startup or last configuration save,
+health label (usable / rate limited, resets at … / refused / error), and quota status per capability with progress bars
+only when the provider reports a real maximum (`toi_da`). You can replace or delete each key (two clicks; the last key
+of a required field has no delete button because the core needs at least one). In Provider, models are grouped into three
+collapsible sections (Chat, Image, Video) which are always collapsed by default (clicking a group header expands it;
+switching provider resets groups to collapsed); a group with no model is not shown — `gemini-api` can only mark video
+models, so it has no Image group yet. The Provider's Accounts tab displays key order `#n`, "In use" badge,
+latency, model count (without repeating the model list), and per-capability quota status. There is no "Set #1" button
+because web2api uses round-robin rotation (errors fail over to the next key, rather than a fixed priority queue). Demo
+controls with no backend yet (TOTP, revealing keys, model on/off and "Set default", "Save changes", Combo) are not drawn. The
 System → Modules page keeps its chessboard grid of tiles by type, styled after the demo's Utilities page (search box,
 black selected chips, download/trash icon buttons — trash asks twice —, detail panel on the right, below the grid on
 phones). Studio is ready to chat as soon as a key is saved, without a page reload. Studio
@@ -88,9 +94,27 @@ key and per capability** (chat with that key keeps working), tries the next key,
 returns `403 no_key_permitted` saying a paid key is needed. HTTP 429 pauses the key per `Retry-After` if it has
 worked for that capability before, otherwise it is treated as refused for 24 hours (a zero free-tier quota is
 likely reported as 429). The
-module health endpoint reports `chua_ro` (unknown, never probed with a paid call) / `dung_duoc` (works) /
-`bi_tu_choi` (refused) per key and capability. **Not yet tested against real Google**: the actual error shape for
+module health endpoint reports per-key order `thu_tu` (#n in the saved key list), `dang_dung` (whether this key served the
+most recent request), `dung_cuoi` (last used, ISO time), `so_429` (429 count since startup), `han_muc` (quota status per capability,
+with `toi_da: null` as Google does not provide a remaining quota ceiling), and capabilities as `chua_ro` (unknown, never probed
+with a paid call) / `dung_duoc` (works) / `bi_tu_choi` (refused). **Not yet tested against real Google**: the actual error shape for
 free keys, the Veo flow, and which model IDs are still live.
+
+In `GET /v1/models` the module tags video models `"kha_nang": ["video"]` (method `predictLongRunning`) and image
+models `"kha_nang": ["anh"]`, which feed the «Tạo ảnh» (image) group in Provider and the model list of Studio's image
+mode (chat mode does not list them). Image models are recognised by `predict` (Imagen) or, for Gemini image models
+whose `supportedGenerationMethods` are identical to chat models (`generateContent`), by Google's own naming
+convention: the id has a **segment** (split on `-` `_` `.` `/`) equal to `image` (`gemini-3.1-flash-image`; not
+`imagery`), or two consecutive segments `nano` `banana` — Google's brand name for its Gemini image models, needed
+because `gemini-nano-banana-2.1` (recommended by Google for new projects) is the one image model without an `image`
+suffix (the same rule catches `nano-banana-pro-preview`). These are the module's only text-based classifications and
+they live in the module, not the core; measured on 46 real model ids (12/10/2026) they match exactly the 8 Gemini
+image models, no false positives. `displayName`/`description` are not used because chat models mention images as
+input. Known limitation: a new image model named outside both conventions is not in the image group (web2api still
+forwards a request for it by name). Google's OpenAI-compatibility page (read 12/10/2026) documents `images.generate`
+with `gemini-2.5-flash-image` / `gemini-3-pro-image-preview`, so the `/images/generations` route rests on the docs —
+**not yet tried** with a paid key. Imagen is no longer mentioned there, so Imagen through this route is undocumented
+and unmeasured.
 
 ```bash
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
@@ -107,6 +131,14 @@ before the module runs — and hands the module a `YeuCauDaPhan` (text fields + 
 methods `noi`, `nghe`, `anh_sua` (contract at the top of `app/kham_pha.py`); no bundled module implements them yet, so
 these routes answer `501` today. Verified with the real openai SDK 3.28 against a fake module in the test suite.
 
+JSON body routes (`/v1/chat/completions`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/videos`, and the
+`POST`/`PUT` routes under `/api/*`) are also size-capped: `WEB2API_THAN_TOI_DA_MB` (default 25 MB), counted on
+bytes actually received. All `/v1` errors follow the OpenAI `{"error": {"message", "type", "code"}}` shape so the
+openai SDK can parse them. Unknown `/v1` paths return `404` `unknown_endpoint`; wrong method returns `405` with an
+`Allow` header inferred from the router; a trailing `/` whose removal matches an existing route (method included)
+returns `307` to it, query kept. Uncaught errors return `500` with an opaque trace code (no internal details or keys
+leaked).
+
 ## Adding modules via git
 
 Put a module in `modules/<id>/` (a `manifest.json` and a `module.py`) and push it to the watched branch.
@@ -121,6 +153,21 @@ fields: `loai_ten` (display name of the type), `loai_thu_tu` (sort order), and `
 shown only when every code in `can` is provided by a linked module. Combo (ordering several AI sources) has no
 backend yet and is never shown. See [CONTRIBUTING.md](CONTRIBUTING.md) (Vietnamese) and README sections 2–3 (architecture
 diagrams, components, writing a module) and 9.
+
+## Access from LAN and the Internet
+
+web2api listens on port 3031 by default. Two recommended ways to connect:
+
+1. **Inside home (LAN):** Use `http://<host>:3031/v1` as the base URL. No encryption needed inside a trusted home network.
+2. **From the Internet via Cloudflare Tunnel (`cloudflared`):**
+   - Run `cloudflared` on the host to create an outbound tunnel; the ingress `service` is `http://localhost:3031` (cloudflared on the host) or `http://<container-name>:8000` (cloudflared in the same Docker network — the port inside the container is 8000).
+   - `cloudflared tunnel route dns <tunnel> <domain>` then `cloudflared tunnel run <tunnel>`; Cloudflare serves HTTPS at `https://<domain>`.
+   - Pin the public URL: `WEB2API_PUBLIC_URL=https://<domain>` or `PUT /api/dia-chi` (the API value wins). Otherwise web2api guesses it from the request: cloudflared forwards the public `Host` (unless `httpHostHeader` is set) and Cloudflare adds `X-Forwarded-Proto: https`; `X-Forwarded-Proto`/`X-Forwarded-Host` are read only with **`WEB2API_TIN_PROXY=1`** — enable it only when every path to web2api goes through the proxy. Headers with conflicting values, odd characters or excessive length are dropped.
+   - Protect web management routes with **Cloudflare Access** (Zero Trust OTP/SSO) while optionally allowing `/v1/*` through with the API key.
+   - **Do NOT port-forward port 3031 directly**: plain HTTP sends API keys in cleartext, and exposing ports attracts internet scanners.
+   - Test connectivity with `curl -s http://<host>:3031/health` or `curl -s https://<domain>/health`.
+   - Pre-formatted connection guides with curl and OpenAI Python SDK snippets can be fetched via `GET /api/ket-noi` (and public URL info via `GET /api/dia-chi`).
+   - Module contract: modules needing OAuth/webhook callback URLs call `app.dia_chi.dia_chi_hien_tai(request)`; a guessed address comes from the client's `Host`, so modules sending it to a third party use `app.dia_chi.lay_thong_tin_dia_chi(request)` and refuse while `dang_doan` is `true`.
 
 ## Security notes
 

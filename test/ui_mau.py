@@ -8,6 +8,9 @@ module chạy TRONG tiến trình lõi nên đọc được biến môi trườn
   GIA_TRE    giây giữa hai khúc                                (mặc định 0.05)
   GIA_DON    "1" → mọi khúc trong MỘT lần ghi
   GIA_ANH    "403" → tạo ảnh trả 403 no_key_permitted như khoá hạng miễn phí
+  GIA_MODEL_ANH "1" → models() có thêm model ảnh `<tiền tố>/ve-1` (`kha_nang: ["anh"]`); mặc định không có
+  GIA_SK     "cu"  → suc_khoe dạng TỐI THIỂU của hợp đồng (không thu_tu / dang_dung / han_muc / kha_nang)
+             "het" → khoá đầu đang nghỉ chat vì hết hạn mức (429), không có trần (`toi_da` null)
 Khoá giả: chuỗi chứa «hong» bị coi là khoá hỏng.
 """
 
@@ -97,14 +100,34 @@ class Module:
 
     async def models(self):
         t = self.tien_to
-        return [{"id": t + "/nhanh", "object": "model"}, {"id": t + "/" + XSS_MODEL_ID, "object": "model"},
-                {"id": t + "/phim-1", "object": "model", "kha_nang": ["video"]}]
+        ds = [{"id": t + "/nhanh", "object": "model"}, {"id": t + "/" + XSS_MODEL_ID, "object": "model"},
+              {"id": t + "/phim-1", "object": "model", "kha_nang": ["video"]}]
+        if os.environ.get("GIA_MODEL_ANH") == "1":
+            ds.append({"id": t + "/ve-1", "object": "model", "kha_nang": ["anh"]})
+        return ds
 
     async def suc_khoe(self):
+        sk = os.environ.get("GIA_SK")
+        if sk == "cu":
+            return {"ok": True, "khoa": [{"khoa": "…" + k[-4:], "ok": True, "do_tre_ms": 5, "so_model": 3, "loi": None,
+                                          "dang_nghi_den": None} for k in self.khoa]}
+        if sk == "het":
+            return {"ok": True, "khoa": [
+                {"khoa": "…" + k[-4:], "ok": True, "do_tre_ms": 5, "so_model": 3, "loi": None,
+                 "dang_nghi_den": "2099-01-01T00:00:00+00:00" if i == 0 else None, "thu_tu": i + 1, "dang_dung": i == 1,
+                 "dung_cuoi": None, "so_429": 2 if i == 0 else 0, "lan_429_cuoi": None,
+                 "han_muc": [{"ten": "chat", "da_dung": 0, "toi_da": None, "ma": 429 if i == 0 else None,
+                              "hoi_luc": "2099-01-01T00:00:00+00:00" if i == 0 else None,
+                              "trang_thai": "het_han_muc" if i == 0 else "chua_ro"}]} for i, k in enumerate(self.khoa)]}
         return {"ok": True, "base_url": self.base or "https://gia.example/v1", "khoa": [
             {"khoa": "…" + k[-4:], "ok": True, "do_tre_ms": 5, "so_model": 3, "loi": None, "dang_nghi_den": None,
+             "thu_tu": i + 1, "dang_dung": i == 0, "dung_cuoi": "2026-10-12T07:55:00+00:00",
+             "so_429": 0, "lan_429_cuoi": None,
+             "han_muc": [{"ten": "chat", "da_dung": 12, "toi_da": 100, "hoi_luc": None, "trang_thai": "dung_duoc", "ma": None},
+                         {"ten": "anh", "da_dung": 0, "toi_da": None, "hoi_luc": "2026-10-12T08:00:00+00:00", "trang_thai": "bi_tu_choi", "ma": 403},
+                         {"ten": "video", "da_dung": 0, "toi_da": None, "hoi_luc": None, "trang_thai": "chua_ro", "ma": None}],
              "kha_nang": {"anh": {"trang_thai": "bi_tu_choi", "ma": 403, "thu_lai_luc": "2026-10-12T08:00:00+00:00"},
-                          "video": {"trang_thai": "chua_ro"}}} for k in self.khoa]}
+                          "video": {"trang_thai": "chua_ro"}}} for i, k in enumerate(self.khoa)]}
 
     async def dung(self):
         pass

@@ -14,7 +14,24 @@ HỢP ĐỒNG lớp `Module` trong module.py:
                                              `cau_hinh_luu` là cấu hình sạch để lưu — lõi KHÔNG trả nó ra API
     async chat(body: dict, stream: bool)   -> (mã HTTP, headers, bytes | async-iterator[bytes])
     async models() -> list[dict]           — id dạng "<tien_to>/<tên>"
-    async suc_khoe() -> dict               — không tốn token, không lộ khoá
+    async suc_khoe() -> dict               — không tốn token, không lộ khoá; không được đổi bộ đếm dùng
+                                             {ok, base_url?, khoa: [mục mỗi khoá, THEO THỨ TỰ ĐÃ LƯU]}; mục mỗi khoá:
+                                             khoa (dạng che …abcd), ok, do_tre_ms, so_model, loi, dang_nghi_den, và
+                                             TUỲ CHỌN (thiếu thì giao diện ẩn phần đó, không lỗi):
+                                               kha_nang  {mã: {trang_thai, ma?, thu_lai_luc?}}
+                                               thu_tu    số thứ tự trong danh sách khoá (từ 1)
+                                               dang_dung true ở khoá phục vụ yêu cầu GẦN NHẤT
+                                               dung_cuoi / lan_429_cuoi  ISO hoặc null; so_429 số lần 429
+                                               han_muc   [{ten: mã việc ("chat", "anh"…), da_dung: số lượt thành công,
+                                                           toi_da: số hoặc null, hoi_luc: ISO hoặc null,
+                                                           trang_thai: "dung_duoc" | "het_han_muc" | "bi_tu_choi" |
+                                                                       "chua_ro", ma: mã HTTP hoặc null}]
+                                             `toi_da` CHỈ điền khi nhà cung cấp cho biết trần thật, và khi ấy `da_dung` phải
+                                             là mức đã dùng CÙNG KỲ với trần đó (cũng do nhà cung cấp báo) — giao diện vẽ thanh
+                                             «còn toi_da − da_dung» khi có nó, không có thì chỉ hiện «đã dùng N lượt» + trạng
+                                             thái; không bịa trần. Bộ chuyển tiếp dùng chung (app/chuyen_tiep.py) điền sẵn mọi
+                                             trường này từ bộ đếm trong bộ nhớ (kể từ lần khởi động / lưu cấu hình gần nhất),
+                                             `toi_da` luôn null.
     async dung() -> None                   — đóng kết nối
 
 PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng; không có thì lõi trả 501 (không vỡ):
@@ -50,6 +67,26 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
     KHÔNG TIN ĐƯỢC: không dùng ten_tep làm đường dẫn, tự kiểm định dạng trước khi gửi đi kèm khoá.
     Header trả về do module chọn và lõi chuyển nguyên (riêng content-length của thân bytes thì lõi tự tính):
     đừng chép nguyên header của nhà cung cấp — content-encoding/content-length sai khi httpx đã giải nén.
+    phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None
+        — phân loại lỗi từ nhà cung cấp thượng nguồn về một trong các chuẩn loại lỗi trung lập (mã mở):
+            "khoa_hong"        — khoá sai, hết hạn, bị thu hồi; lõi cho khoá nghỉ (1 giờ) và thử khoá kế.
+            "het_han_muc"      — hết hạn mức / rate limit; lõi cho khoá nghỉ theo Retry-After và thử khoá kế.
+            "khong_co_o_khoa"  — model hoặc khả năng không được cấp cho khoá này; chat: ghi sổ 6 giờ cho
+                                 (khoá, model) và thử khoá kế; khả năng: nghỉ 24 giờ và thử khoá kế.
+            "yeu_cau_sai"      — yêu cầu của khách không hợp lệ; lõi trả ngay, không đổi khoá, không phạt khoá.
+            "may_chu_loi"      — lỗi phía máy chủ nhà cung cấp hoặc mạng (5xx); lõi thử thêm đúng một khoá.
+            "chan_vung"        — máy chủ bị chặn vùng địa lý; lỗi của hạ tầng, lõi trả ngay, không phạt khoá.
+            "khong_ro"         — chưa rõ lỗi do khoá hay do yêu cầu; lõi dùng so sánh giữa các khoá để phân xử.
+        Mặc định khi module không cài hook hoặc trả về None:
+            429           -> "het_han_muc"
+            401, 403      -> "khoa_hong"
+            500..599      -> "may_chu_loi"
+            còn lại       -> "khong_ro"
+        Mã lạ hoặc hook ném ngoại lệ -> coi là "khong_ro", không vỡ tiến trình.
+        `loi` là từ điển lỗi chuẩn hoá {"error": {"message": ..., "type": ..., "code": ...}}; module được phép
+        bổ sung gợi ý vào loi["error"]["message"] (lõi gọi hook ngay khi chuẩn hoá lỗi, trước khi trả cho khách).
+        `boi_canh` chứa {"viec", "khoa", ...}. Lời giải thích khi khoá bị từ chối một khả năng tốn tiền thì module
+        truyền cho bộ chuyển tiếp bằng tham số `goi_y_tu_choi_kha_nang` (một chuỗi), không qua hook.
 
 Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]; quy ước
 cho các phương thức trên: "noi", "nghe", "anh_sua" (cùng tên phương thức). Lõi chỉ
@@ -61,8 +98,12 @@ Tuỳ chọn cho giao diện: `loai_ten` (tên hiển thị của loại, vd "AI
 trước), `muc` — tab con/mục của module, mỗi mục {"id", "nhan", "can": [mã…]}: mục chỉ hiện khi module đã
 liên kết VÀ mọi mã trong `can` có ở ít nhất một module đã liên kết (rỗng = luôn hiện khi đã liên kết).
 
-Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep)
-và gói có sẵn trong ảnh; gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
+Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep,
+app.dia_chi, app.nhat_ky để ghi kênh riêng qua `nhat_ky.ghi(kenh, muc, tom_tat, ...)`) và gói có sẵn trong ảnh;
+gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
+Module cần địa chỉ gọi lại (OAuth/webhook) gọi `app.dia_chi.dia_chi_hien_tai(request)`: trả về URL gốc
+công khai (ưu tiên địa chỉ đã đặt, biến WEB2API_PUBLIC_URL, hoặc suy ra từ Host). Địa chỉ suy ra do KHÁCH gửi:
+gửi cho bên thứ ba thì dùng `lay_thong_tin_dia_chi(request)` và từ chối khi `dang_doan` là true.
 """
 
 from __future__ import annotations
@@ -92,6 +133,28 @@ _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 #: Id của một mục (tab con) trong `muc` — đi vào id phần tử/đường dẫn của giao diện.
 ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+
+#: Chuẩn phân loại lỗi trung lập cho module (mã mở):
+LOAI_LOI_CHUAN = {
+    "khoa_hong",
+    "het_han_muc",
+    "khong_co_o_khoa",
+    "yeu_cau_sai",
+    "may_chu_loi",
+    "chan_vung",
+    "khong_ro",
+}
+
+
+def phan_loai_loi_mac_dinh(ma: int) -> str:
+    """Phân loại lỗi mặc định theo mã trạng thái HTTP chuẩn khi module không tự phân loại."""
+    if ma == 429:
+        return "het_han_muc"
+    if ma in (401, 403):
+        return "khoa_hong"
+    if 500 <= ma < 600:
+        return "may_chu_loi"
+    return "khong_ro"
 
 
 class LoiNap(Exception):

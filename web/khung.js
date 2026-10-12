@@ -37,6 +37,7 @@
    */
   const DIEU_KIEN = {
     module: { nhan: 'Module', can: [] },
+    bao_mat: { nhan: 'Bảo mật & người dùng', can: [] },
     ai: { nhan: 'AI', can: [AI], pham_vi: 'da_cai' },
     tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'tai-khoan', bieu_tuong: 'tai_khoan' },
     // Provider hiện từ lúc CÀI (chủ máy 11/10: «cài AI rồi phải thấy có tài khoản, có provider như demo») — chưa có khoá
@@ -164,6 +165,7 @@
     tai_khoan: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M2.5 20a6.5 6.5 0 0 1 13 0 M16 4.5a3.5 3.5 0 0 1 0 6.5 M18 14a6.5 6.5 0 0 1 3.5 6',
     provider: 'M7 18a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.7 1.2A3.4 3.4 0 0 1 17 18z',
     combo: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
+    bao_mat: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
     quay_lai: 'M19 12H5 M11 6l-6 6 6 6',
     xuong: 'M6 9l6 6 6-6'
   };
@@ -198,6 +200,9 @@
       ra.push({ id: 'ai', nhan: 'AI', href: 'He-thong-AI.dc.html', d: BIEU_TUONG.ai, cham: false, nhanCham: '', con });
     }
     ra.push({ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.phich, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] });
+    if (du('bao_mat', tn)) {
+      ra.push({ id: 'bao_mat', nhan: 'Bảo mật & người dùng', href: 'He-thong-Bao-mat.dc.html', d: BIEU_TUONG.bao_mat, cham: false, nhanCham: '', con: [] });
+    }
     return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false', coCon: x.con.length > 0 }));
   }
   // Mục có danh sách con (AI) mở bảng xổ khi bấm, như demo: thanh trên → bảng xổ dưới nút; thanh dưới điện thoại → tờ
@@ -272,6 +277,17 @@
     if (!s) return '';
     const d = new Date(s);
     return isNaN(d) ? String(s) : d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  // «3 phút trước» như dòng «lần dùng cuối» của c2a. Giờ máy chủ nhanh hơn trình duyệt (âm) → «vừa xong».
+  function tuongDoi(s) {
+    if (!s) return '';
+    const d = new Date(s);
+    if (isNaN(d)) return String(s);
+    const giay = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (giay < 60) return 'vừa xong';
+    if (giay < 3600) return Math.floor(giay / 60) + ' phút trước';
+    if (giay < 86400) return Math.floor(giay / 3600) + ' giờ trước';
+    return Math.floor(giay / 86400) + ' ngày trước';
   }
   // So khớp tìm kiếm không phân biệt dấu tiếng Việt ("gia" khớp "giả").
   const boDau = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
@@ -704,6 +720,6 @@
   }
 
   window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
-    BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, boDau, diaChiV1,
+    BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, tuongDoi, boDau, diaChiV1,
     dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom };
 })();

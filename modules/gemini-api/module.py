@@ -13,6 +13,10 @@ VIDEO đi API GỐC (`:predictLongRunning`), không đi `/v1beta/openai/videos` 
 ghi đủ cả vòng (tạo → hỏi thao tác tới `done` → URI tải bằng khoá ở header). Module dịch sang/từ dạng video
 OpenAI (`queued`/`in_progress`/`completed`/`failed`). Gemini Omni (Interactions API) CHƯA hỗ trợ.
 
+ẢNH đi `/images/generations` của đường tương thích: trang tương thích (đọc 12/10/2026) ghi «Generate an image using
+gemini-2.5-flash-image or gemini-3-pro-image-preview» — tức chính model ảnh dạng Gemini; trang không còn nhắc Imagen,
+nên Imagen qua đường này là CHƯA ghi trong tài liệu, chưa đo. Nhóm model ảnh trong `models()`: xem `_kha_nang`.
+
 Ảnh/video KHÔNG có ở hạng miễn phí của Google («Not available» trên trang giá, đọc 11/10/2026): khoá bị từ chối
 được nhớ theo (khoá, khả năng) và không ảnh hưởng chat — xem `goi_kha_nang` trong app/chuyen_tiep.py.
 
@@ -67,21 +71,60 @@ def chuan_hoa_base_url(gia_tri) -> str:
     return s + "/v1beta/openai"
 
 
-def goi_y_loi(ma: int, thong_diep: str) -> str | None:
-    """Chặn vùng là lỗi của MÁY CHỦ, không của khoá: mọi khoá sẽ hỏng y hệt. Google trả nó bằng
-    400 (đo qua proxy c2a) hoặc 403 kèm «User location is not supported».
+def phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None:
+    """Hook phân loại lỗi của Gemini:
+    - Chặn vùng là lỗi của MÁY CHỦ, không của khoá: mọi khoá sẽ hỏng y hệt. Google trả nó bằng
+      400 (đo qua proxy c2a) hoặc 403 kèm «User location is not supported».
+      Khoá theo chữ «location», không theo «not supported» đơn lẻ: «not supported» còn xuất hiện
+      trong 400 bình thường (model không hỗ trợ tính năng) — gợi ý proxy ở đó là chỉ sai đường.
+      Bổ sung gợi ý proxy và trả 'chan_vung'.
+    - Còn lại: trả None để lõi dùng phân loại mặc định (429->het_han_muc, 401/403->khoa_hong, 5xx->may_chu_loi, còn lại->khong_ro).
+    """
+    msg = ""
+    if isinstance(loi, dict) and isinstance(loi.get("error"), dict):
+        msg = str(loi["error"].get("message") or "")
 
-    Khoá theo chữ «location», không theo «not supported» đơn lẻ: «not supported» còn xuất hiện
-    trong 400 bình thường (model không hỗ trợ tính năng) — gợi ý proxy ở đó là chỉ sai đường."""
-    t = thong_diep.lower()
-    if ma in (400, 403) and "location" in t:
-        return GOI_Y_CHAN_VUNG
+    if ma in (400, 403) and "location" in msg.lower():
+        if GOI_Y_CHAN_VUNG not in msg and isinstance(loi, dict) and "error" in loi:
+            loi["error"]["message"] = f"{msg} — {GOI_Y_CHAN_VUNG}".strip()
+        return "chan_vung"
+
     return None
 
 
 def _bo_models(id_model: str) -> str:
     # Google trả id dạng "models/gemini-2.5-flash"; khách gọi bằng "gemini/gemini-2.5-flash".
     return id_model.removeprefix("models/")
+
+
+def _kha_nang(ten: str, phuong_thuc: list) -> list[str]:
+    """Khả năng của một model trong danh sách API gốc → nhãn `kha_nang` ([] = model chat, không gắn).
+
+    - "video": có `predictLongRunning` (Veo) — dấu hiệu CẤU TRÚC.
+    - "anh":   có `predict` (Imagen) — dấu hiệu CẤU TRÚC; HOẶC có `generateContent` và id (tách thành ĐOẠN theo
+               «-» «_» «.» «/») mang tên của Google cho model ảnh:
+                 (1) một đoạn đúng bằng «image» (gemini-3.1-flash-image, gemini-3-pro-image-preview…);
+                 (2) hai đoạn liền nhau «nano» «banana» — tên thương hiệu Google đặt cho dòng model ảnh Gemini
+                     (gemini-nano-banana-2.1 — model ảnh Google khuyên cho dự án mới —, nano-banana-pro-preview).
+
+    (1) và (2) là hai chỗ DUY NHẤT của module phân loại theo chữ, và là cố ý: model ảnh dạng Gemini có
+    `supportedGenerationMethods` GIỐNG HỆT model chat (generateContent, countTokens, batchGenerateContent — đo
+    12/10/2026 trên 62 model thật), và cả models.list lẫn trang tạo ảnh của Google đều không nêu trường nào cho biết
+    kiểu đầu ra, nên không nguyên tắc cấu trúc nào phân biệt được. Còn lại tên do chính Google đặt. Nó nằm TRONG
+    module vì là đặc thù nhà cung cấp; lõi chỉ đọc `kha_nang`. (2) có vì trang tạo ảnh ghi mọi model ảnh mang hậu tố
+    «image» TRỪ gemini-nano-banana-2.1 — thiếu (2) thì model được khuyên dùng không có trong «Vẽ ảnh». Đo trên 46 id
+    thật (12/10/2026): (1) bắt đúng 6 model ảnh, (2) bắt đúng 2 model Nano Banana, không dương tính giả.
+    Khớp ĐOẠN nguyên, không chuỗi con («imagery», «nanobanana» không tính), và KHÔNG đọc displayName/description:
+    model chat ghi «image» trong mô tả như một loại ĐẦU VÀO → dương tính giả, và không có dữ liệu thật để đo.
+    Model ảnh mới mang tên khác cả hai quy ước sẽ KHÔNG được gắn (yêu cầu gọi nó theo tên vẫn được chuyển đi)."""
+    kn = []
+    doan = re.split(r"[-_./]", ten.lower())
+    ten_anh = "image" in doan or any(doan[i:i + 2] == ["nano", "banana"] for i in range(len(doan) - 1))
+    if "predict" in phuong_thuc or ("generateContent" in phuong_thuc and ten_anh):
+        kn.append("anh")
+    if "predictLongRunning" in phuong_thuc:
+        kn.append("video")
+    return kn
 
 
 def _goc(url: str) -> tuple[str, str]:
@@ -133,11 +176,14 @@ class Module:
         self._dem_goc: list[dict] | None = None
         self._dem_goc_luc = 0.0
 
+    def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
+        return phan_loai_loi(ma, loi, boi_canh)
+
     def _tao(self, khoa: list[str], base: str) -> ChuyenTiepOpenAI:
         # Khả năng tốn tiền suc_khoe báo theo từng khoá = mọi mã đã khai ở `cung_cap` trừ chat.
         kn = tuple(x for x in self.manifest.get("cung_cap", []) if x != "chat")
         return ChuyenTiepOpenAI(ten="Gemini", tien_to=self.tien_to, base_url=base, khoa=khoa,
-                                doi_id_model=_bo_models, goi_y_loi=goi_y_loi, kha_nang=kn,
+                                doi_id_model=_bo_models, phan_loai_loi=self.phan_loai_loi, kha_nang=kn,
                                 goi_y_tu_choi_kha_nang=GOI_Y_HANG_MIEN_PHI)
 
     def nap(self, cau_hinh: dict) -> None:
@@ -396,9 +442,9 @@ class Module:
         return ds
 
     async def models(self) -> list[dict]:
-        """Danh sách chat của đường tương thích (giữ nguyên) + model VIDEO suy từ `supportedGenerationMethods`
-        của API gốc (có predictLongRunning). Model ẢNH không suy được: Google ghi chúng là generateContent như
-        model chat và không có trường nào nêu kiểu đầu ra — không đoán theo tên."""
+        """Danh sách chat của đường tương thích (giữ nguyên) + `kha_nang` suy từ danh sách API gốc (`_kha_nang`):
+        model video/ảnh được gắn nhãn (có sẵn trong danh sách) hoặc thêm vào (chỉ có ở API gốc). Danh sách gốc
+        hỏng thì trả danh sách chat không nhãn."""
         ds = [dict(m) for m in await self._ct.models()]  # chép: không sửa bản đệm của bộ chuyển tiếp
         try:
             goc = await self._models_goc()
@@ -410,13 +456,16 @@ class Module:
         for m in goc:
             ten = m.get("name")
             pt = m.get("supportedGenerationMethods")
-            if not isinstance(ten, str) or not isinstance(pt, list) or "predictLongRunning" not in pt:
+            if not isinstance(ten, str) or not isinstance(pt, list):
+                continue
+            kn = _kha_nang(_bo_models(ten), pt)
+            if not kn:
                 continue
             id_ = f"{self.tien_to}/{_bo_models(ten)}"
             if id_ in theo_id:
-                theo_id[id_]["kha_nang"] = ["video"]
+                theo_id[id_]["kha_nang"] = kn
             else:
-                muc = {"id": id_, "object": "model", "owned_by": "google", "kha_nang": ["video"]}
+                muc = {"id": id_, "object": "model", "owned_by": "google", "kha_nang": kn}
                 ds.append(muc)
                 theo_id[id_] = muc
         return ds

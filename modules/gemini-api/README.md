@@ -88,7 +88,23 @@ Theo trang giá Google ngày 11/10/2026 (https://ai.google.dev/gemini-api/docs/p
 720p, Veo 3.1 Standard 0,40 USD/giây. Bảng giá đầy đủ ở mục «Module gemini-api» của `README.md` gốc kho.
 
 - **Ảnh**: `POST /v1/images/generations` của web2api → endpoint tương thích OpenAI của Google
-  (`{base_url}/images/generations`), thân đi nguyên văn, chỉ bỏ tiền tố `gemini/`.
+  (`{base_url}/images/generations`), thân đi nguyên văn, chỉ bỏ tiền tố `gemini/`. Trang tương thích của Google (đọc
+  12/10/2026) ghi `images.generate` dùng chính model ảnh dạng Gemini (`gemini-2.5-flash-image`,
+  `gemini-3-pro-image-preview`) — đường này dựa vào tài liệu, **chưa thử** với khoá trả phí; Imagen không còn được nhắc
+  ở đó — Imagen qua đường này chưa có trong tài liệu, chưa đo.
+- **Nhóm model** trong `GET /v1/models` (Provider: «Trò chuyện» / «Tạo ảnh» / «Video»; Studio «Vẽ ảnh» chỉ liệt kê
+  model ảnh, «Trò chuyện» không lẫn chúng) — suy từ danh sách API gốc trong `_kha_nang` của `module.py`:
+  - `"kha_nang": ["video"]`: có `predictLongRunning` (Veo).
+  - `"kha_nang": ["anh"]`: có `predict` (Imagen); **hoặc** có `generateContent` và id có một **đoạn** (tách theo `-` `_`
+    `.` `/`) đúng bằng `image` (`gemini-3.1-flash-image`, `gemini-3-pro-image-preview`…; `imagery` không tính),
+    **hoặc** hai đoạn liền nhau `nano` `banana` (`gemini-nano-banana-2.1`, `nano-banana-pro-preview` — tên thương
+    hiệu Google đặt cho dòng model ảnh; trang tạo ảnh ghi mọi model ảnh có hậu tố `image` TRỪ
+    `gemini-nano-banana-2.1`). Model ảnh dạng Gemini có `supportedGenerationMethods` giống hệt model chat và Google
+    không có trường nào nêu kiểu đầu ra, nên đây là tên Google đặt — hai chỗ **duy nhất** module phân loại theo chữ.
+    Đo trên 46 id thật (12/10/2026): đúng 8 model ảnh dạng Gemini, không dương tính giả. Không đọc
+    `displayName`/`description`: mô tả model chat cũng nhắc «image» như đầu vào.
+  - Giới hạn đã biết: model ảnh mới mang tên khác cả hai quy ước sẽ **không** vào nhóm «Tạo ảnh» (web2api vẫn chuyển
+    yêu cầu theo tên). Danh sách gốc lỗi thì `/v1/models` vẫn trả danh sách chat, không nhãn.
 - **Video**: `POST /v1/videos` (thân JSON) → API gốc Veo `{gốc}/v1beta/models/<model>:predictLongRunning`;
   `GET /v1/videos/{id}` hỏi thao tác tới `completed`; `GET /v1/videos/{id}/content` tải tệp theo stream. Không
   dùng `/v1beta/openai/videos` vì trang tương thích của Google không ghi cách tải tệp. Gemini Omni (Interactions

@@ -46,13 +46,15 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
+| Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
 | Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
 | Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
-| Khoá khách, «Địa chỉ truy cập công khai», Bảo mật & người dùng | Chưa có (giai đoạn sau) | — |
+| «Địa chỉ truy cập công khai» (`GET`/`PUT /api/dia-chi`, `GET /api/ket-noi`, proxy ngược) | Có | 0.1.0-khung · 12/10/2026 |
+| Khoá khách có phạm vi, sổ thao tác quản trị, Bảo mật & người dùng | Có | 0.1.0-khung · 12/10/2026 |
 | Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
 | Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký trên web | Chưa có (chờ module thật đứng sau) | — |
 | Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
@@ -202,7 +204,7 @@ vẫn chạy.
 |---|---|---|
 | `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
 | `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Lưới ô bàn cờ theo loại, trình bày theo trang Tiện ích của demo: khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm có kính lúp + chip lọc loại + lọc trạng thái, lưới ô, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
-| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng (tên nguồn, «khoá …abcd», nhãn sức khoẻ «Dùng được» / «Nghỉ đến …» / «Lỗi»); mở dòng để «Thay khoá» hay «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n»; Model = `/v1/models` theo tiền tố, chia nhóm theo `kha_nang` mà module khai (Trò chuyện / Tạo ảnh / Tạo video — nhãn «hiểu ảnh» của demo bỏ vì không dữ liệu nào nói model hiểu ảnh), nút «Làm mới danh sách»; Tài khoản = sức khoẻ từng khoá (độ trễ, số model, nghỉ đến, ảnh/video theo khoá). Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Phần demo chưa có backend (TOTP, «Xem» khoá, hàng đợi, hạn mức, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
+| `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng: thứ tự «#n» trong danh sách đã lưu (xoay vòng), nhãn nổi bật «Đang dùng» ở khoá vừa phục vụ yêu cầu gần nhất, số lượt đã dùng, lần dùng cuối tương đối, nhãn sức khoẻ («Dùng được» / «Hết hạn mức, hồi lúc …» / «Bị từ chối, thử lại lúc …» / «Lỗi»); mở dòng xem chi tiết: địa chỉ gốc (Chép), khoá dạng che …abcd, bộ đếm số lượt thành công và số lần 429 kể từ lần khởi động hoặc lưu khoá gần nhất, trạng thái hạn mức từng việc, thanh hạn mức chỉ khi module báo trần thật (`toi_da`); nút «Thay khoá» và «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n». Model: `/v1/models` theo tiền tố, chia BA nhóm tách bạch «Trò chuyện», «Tạo ảnh», «Video» (suy từ `kha_nang` mà module khai cho từng model; mã lạ hiện nguyên mã; nhóm chưa có model nào thì không hiện); danh sách model luôn thu gọn (ẩn) khi vào trang (bấm tiêu đề nhóm để mở, đổi provider thì thu gọn lại, không nhớ trạng thái mở giữa các lần vào trang); nút «Làm mới danh sách». Tài khoản: tình trạng từng khoá theo thứ tự «#n», nhãn «Đang dùng» cho khoá phục vụ gần nhất, số lượt dùng, lần dùng cuối, độ trễ ms, số model (dòng tài khoản mở ra không liệt kê danh sách model), trạng thái hạn mức từng việc và thanh hạn mức khi có trần thật. Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Không có nút «Đặt #1» vì web2api giữ chiến lược xoay vòng khoá (lỗi → khoá kế, không dùng hàng đợi ưu tiên cố định). Phần demo chưa có backend (TOTP, «Xem» khoá, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
 | `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chép bố cục `Main.dc.html` của bản demo (một trang cho máy tính và điện thoại): viên trạng thái góc phải, tiêu đề «Bạn muốn làm gì hôm nay?», ô soạn lớn dính đáy với «Vẽ ảnh» / «Tạo video» (khi có module **đã cài** khai `anh` / `video`), chip model (bảng «Model trả lời» với model thật từ `/v1/models`) và nút gửi tròn; dưới ô soạn «Trò chuyện» · «＋ Tạo mới» · «Lịch sử». Gửi rồi thì các lượt hội thoại hiện bên trên (chat stream, markdown an toàn; ảnh; video kèm thanh tiến độ), có hai nút nhảy lên lượt đầu / xuống lượt mới nhất. «Tạo mới» lưu cuộc đang nói vào Lịch sử rồi về màn đầu; «Lịch sử» mở bảng tìm và chọn một cuộc để nói tiếp — lưu ở localStorage của **trình duyệt này** (khoá `web2api_lich_su_tro_chuyen`, tối đa 50 cuộc và 1 triệu ký tự, chỉ lượt chữ; không có khoá nào hay tin giờ), cuộc đang mở được mở lại khi quay lại trang; trình duyệt chặn lưu trữ thì không có nút này. Chế độ chưa có module **đã liên kết** khoá ô soạn và hiện một dòng «Chưa có khoá cho … — Thêm khoá» tới đúng thẻ ở Hệ thống → AI → Tài khoản — không gọi `/v1`. Phần demo chưa có chức năng thật (đính kèm, loa, micro, Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, ô tài khoản) không được vẽ |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
 
@@ -311,10 +313,35 @@ Thư mục `modules/<id>/` gồm:
   content_type, noi_dung)`, `image[]` thành `image`), `.tep_ten(ten)`; lõi đã kiểm phần bắt buộc của chuẩn
   (`file`; `image` và `prompt`). Tên tệp và kiểu khách khai là đầu vào không tin được. Model nào chỉ dùng cho một khả năng
   thì module gắn `"kha_nang": [mã]` vào mục của nó trong `models()` (Studio lọc model theo đó). Hợp đồng chi tiết ở
-  đầu tệp `app/kham_pha.py`; module mẫu thật: `modules/gemini-api/`. **Bộ chuyển đổi của module**: module tự đổi
+  đầu tệp `app/kham_pha.py` (trong đó `suc_khoe()` trả `{ok, base_url?, khoa: [...]}` theo thứ tự đã lưu; mỗi khoá gồm
+  `khoa` dạng che, `ok`, `do_tre_ms`, `so_model`, `loi`, `dang_nghi_den` và các trường tuỳ chọn: thứ tự `thu_tu` từ 1,
+  `dang_dung` là khoá phục vụ yêu cầu gần nhất, lần dùng cuối `dung_cuoi`, số lần 429 `so_429`, `lan_429_cuoi`, và
+  `han_muc`: danh sách `[{"ten", "da_dung", "toi_da", "hoi_luc", "trang_thai", "ma"}]`; `toi_da` chỉ điền khi nhà cung
+  cấp báo trần thật, và khi ấy `da_dung` là mức đã dùng cùng kỳ với trần đó — giao diện vẽ thanh «còn lại / trần», không
+  có trần thì chỉ hiện chữ «đã dùng N lượt» + trạng thái; trạng thái phân loại bằng mã HTTP: `dung_duoc`, `het_han_muc`,
+  `bi_tu_choi`, `chua_ro`);
+  module mẫu thật: `modules/gemini-api/`. Module ghi kênh nhật ký riêng bằng `from app import nhat_ky; nhat_ky.ghi(kenh, muc, tom_tat, ms=None, **them)` (kênh là mã mở dạng `[a-z][a-z0-9_]*`, không cần khai trước; hàm không bao giờ ném lỗi, tự che chuỗi dạng khoá). Module cần địa chỉ gọi lại (OAuth/webhook) gọi `app.dia_chi.dia_chi_hien_tai(request)`: trả về URL gốc công khai (ưu tiên giá trị đã đặt, biến `WEB2API_PUBLIC_URL`, hoặc suy ra từ Host). Địa chỉ suy ra là do KHÁCH gửi (Host): module gửi địa chỉ gọi lại cho bên thứ ba (OAuth) thì dùng `app.dia_chi.lay_thong_tin_dia_chi(request)` và từ chối khi `dang_doan` là `true`. **Bộ chuyển đổi của module**: module tự đổi
   yêu cầu/trả lời giữa chuẩn OpenAI của lõi và API của nhà cung cấp; dùng lại `app.chuyen_tiep.ChuyenTiepOpenAI`
-  khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `doi_id_model`, `goi_y_loi`,
-  `kha_nang`, `goi_y_tu_choi_kha_nang`).
+  khi nhà cung cấp đã nói chuẩn OpenAI, truyền các điểm riêng làm tham số (`ten`, `tien_to`, `base_url`, `khoa`, `doi_id_model`,
+  `phan_loai_loi`, `kha_nang`) — bộ chuyển tiếp tự điền các trường bộ đếm trên từ bộ đếm trong bộ nhớ (kể từ
+  lần khởi động hoặc lưu cấu hình gần nhất), `toi_da` luôn `null` vì API kiểu OpenAI không cho hỏi hạn mức còn lại.
+
+  **Chuẩn phân loại lỗi của lõi (LÕI ĐẶT CHUẨN, MODULE ĐỔI THEO)**: module có thể cài hook tuỳ chọn
+  `phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None`. `loi` là từ điển lỗi đã che khoá
+  `{"error": {"message", "type", "code"}}` (module có thể bổ sung gợi ý vào thông điệp); `boi_canh` chứa
+  `{"viec", "khoa", "model"?, "kha_nang"?, "su_kien"?}`. Nếu hook trả `None` hoặc module không cài hook, lõi tự
+  phân loại mặc định theo mã HTTP (429 → `het_han_muc`, 401/403 → `khoa_hong`, 5xx → `may_chu_loi`, còn lại →
+  `khong_ro`). Mã lạ hoặc hook ném ngoại lệ đều được coi là `khong_ro` (không vỡ tiến trình).
+
+  | Loại lỗi chuẩn | Ý nghĩa | Hành vi của lõi |
+  |---|---|---|
+  | `khoa_hong` | Khoá sai, hết hạn, bị thu hồi (401/403) | Cho khoá nghỉ 1 giờ (3600s), xoay sang khoá kế tiếp. Nếu là khả năng tốn tiền (ảnh/video): nghỉ 24 giờ cho riêng việc đó. |
+  | `het_han_muc` | Hết hạn mức / rate limit (429) | Nghỉ theo `Retry-After` (mặc định 60s, trần 10 phút), xoay khoá kế. Khả năng tốn tiền chưa từng thành công: nghỉ 24 giờ. |
+  | `khong_co_o_khoa` | Model hoặc tính năng không được cấp cho khoá | Chat: ghi sổ cặp (khoá, model) nghỉ 6 giờ, xoay khoá kế (khoá vẫn phục vụ model khác). Khả năng: nghỉ 24 giờ. |
+  | `yeu_cau_sai` | Yêu cầu của khách không hợp lệ | Trả ngay lỗi cho khách, không đổi khoá, không phạt khoá. |
+  | `may_chu_loi` | Máy chủ nhà cung cấp lỗi (5xx) hoặc đứt mạng | Thử thêm đúng một khoá dự phòng. |
+  | `chan_vung` | Máy chủ bị chặn vùng địa lý | Lỗi hạ tầng máy chủ: trả ngay cho khách, không đổi khoá, không phạt khoá. |
+  | `khong_ro` | Chưa rõ do khoá hay do yêu cầu | Lõi dùng thuật toán so sánh giữa các khoá để phân xử (400 và 404). |
 - Tuỳ chọn `web/`: giao diện riêng, phục vụ ở `/m/<id>/` khi module đã cài (kể cả lúc chưa liên kết); thanh trên
   có tab của nó khi module đã liên kết.
 
@@ -500,8 +527,22 @@ khoá thuộc dự án Google Cloud đã bật thanh toán. **Mỗi lần tạo 
 Imagen không còn trên trang giá; Veo 3.0 đã lỗi thời. Gemini Omni (`gemini-omni-1.1-flash`, trang video của
 Google khuyên làm mặc định) dùng API khác (Interactions) nên **chưa** hỗ trợ ở bản này. Tên model đổi theo Google:
 web2api không giữ bảng tên model, bạn gọi đúng mã Google đang có (xem `GET /v1/models`; model video được đánh
-dấu `"kha_nang": ["video"]` theo trường `supportedGenerationMethods` của Google. Model ảnh không đánh dấu được vì
-Google ghi chúng là `generateContent` giống model chat).
+dấu `"kha_nang": ["video"]` theo trường `supportedGenerationMethods` của Google (có `predictLongRunning`).
+
+**Nhóm «Tạo ảnh»** (`"kha_nang": ["anh"]`, Studio «Vẽ ảnh» chỉ liệt kê các model này, «Trò chuyện» không lẫn chúng):
+model có `predict` (Imagen) theo cấu trúc; model ảnh dạng Gemini thì Google ghi `generateContent` **giống hệt** model
+chat và không có trường nào nêu kiểu đầu ra, nên module dùng quy ước đặt tên của Google — id có một **đoạn** (tách
+theo `-` `_` `.` `/`) đúng bằng `image` (`gemini-3.1-flash-image`, `gemini-3-pro-image-preview`…; `imagery` không
+tính), **hoặc** có hai đoạn liền nhau `nano` `banana` — tên thương hiệu Google đặt cho dòng model ảnh Gemini, cần vì
+trang tạo ảnh của Google ghi mọi model ảnh mang hậu tố `image` trừ `gemini-nano-banana-2.1` (model Google khuyên cho
+dự án mới; cùng quy tắc bắt `nano-banana-pro-preview`). Đây là hai chỗ duy nhất module phân loại theo chữ, và chúng
+nằm trong module chứ không ở lõi. Đo trên 46 id model thật (12/10/2026): bắt đúng 8 model ảnh dạng Gemini, không
+dương tính giả. Không đọc `displayName`/`description` vì mô tả model chat cũng nhắc «image» (đầu vào đa phương
+thức). Giới hạn đã biết: model ảnh mới mang tên khác cả hai quy ước sẽ **không** vào nhóm «Tạo ảnh» (web2api vẫn
+chuyển yêu cầu theo tên). Trang tương thích OpenAI của Google (đọc 12/10/2026) ghi `images.generate` dùng chính
+`gemini-2.5-flash-image` / `gemini-3-pro-image-preview` (tham số `prompt`, `model`, `n`, `size`, `response_format`;
+tỉ lệ khung, an toàn, grounding qua `extra_body`), nên đường `/images/generations` dựa vào tài liệu — **chưa thử**
+với khoá trả phí. Imagen không còn được nhắc ở đó nên Imagen qua đường này chưa có trong tài liệu và chưa đo.
 
 Tạo ảnh — đi endpoint tương thích OpenAI của Google (`…/v1beta/openai/images/generations`), thân đi nguyên văn
 (chỉ bỏ tiền tố `gemini/`), nên dùng được cả trường riêng của Google như `aspect_ratio`, `generation_config`:
@@ -545,10 +586,12 @@ và vẫn được thử tạo video bình thường):
 | `400` | Khoá từng làm được việc đó → lỗi của yêu cầu, trả ngay. Chưa rõ → thử khoá kế; khoá sau làm được thì khoá trước bị từ chối 24 giờ; **mọi** khoá đều `400` → trả `400` của Google kèm gợi ý «có thể mọi khoá là hạng miễn phí», không đánh dấu khoá nào (một yêu cầu sai không được khoá cả nhà khỏi ảnh/video) |
 | Mọi khoá đang bị từ chối | `403` mã `no_key_permitted`, nêu từng khoá (dạng che), mã Google đã gặp, giờ thử lại, và câu «hạng miễn phí không dùng được — cần khoá trả phí». Chỉ khi mọi khoá đều từng làm được và chỉ đang hết hạn mức (`429`) thì trả `429` kèm `Retry-After` |
 
-`GET /api/modules/gemini-api/suc-khoe` báo thêm cho từng khoá: `"kha_nang": {"anh": {...}, "video": {...}}` với
-`trang_thai` là `chua_ro` (chưa dùng thật lần nào — web2api **không** thử bằng lời gọi tốn tiền),
-`dung_duoc`, hoặc `bi_tu_choi` (kèm `ma` — mã HTTP Google trả — và `thu_lai_luc`). Trạng thái này nằm trong bộ nhớ: lưu lại cấu
-hình module hay khởi động lại thì về `chua_ro`.
+`GET /api/modules/gemini-api/suc-khoe` báo thêm cho từng khoá: thứ tự `thu_tu` (#n trong danh sách đã lưu), nhãn
+`dang_dung` (`true` ở khoá vừa phục vụ yêu cầu gần nhất), lần dùng cuối `dung_cuoi`, số lần 429 `so_429`, lần 429 cuối
+`lan_429_cuoi`, danh sách hạn mức `han_muc` (với `toi_da: null` vì Google không cho truy vấn trần còn lại), và
+`"kha_nang": {"anh": {...}, "video": {...}}` với `trang_thai` là `chua_ro` (chưa dùng thật lần nào — web2api **không** thử
+bằng lời gọi tốn tiền), `dung_duoc`, hoặc `bi_tu_choi` (kèm `ma` — mã HTTP Google trả — và `thu_lai_luc`). Trạng thái
+và bộ đếm này nằm trong bộ nhớ của thể hiện: lưu lại cấu hình module hay khởi động lại thì về ban đầu (`chua_ro`, 0 lượt).
 
 **Chưa đo với Google thật** (chưa có khoá trả phí để thử): dạng lỗi Google trả cho khoá miễn phí (giả định
 400/403/429 — đọc mã thật trong `ma` ở sức khoẻ hoặc trong thông báo lỗi), đường tạo/hỏi/tải Veo, tên
@@ -560,19 +603,15 @@ bước đó; chưa đo, Worker chưa sửa).
 Tự đo bằng khoá của bạn: gọi lệnh tạo ảnh ở trên **một lần** với model Lite (rẻ nhất), rồi xem
 `GET /api/modules/gemini-api/suc-khoe`.
 
-**Sự cố thường gặp.**
-- `403` `no_key_permitted` khi tạo ảnh/video: không khoá nào được Google cho việc đó — thường là khoá hạng
-  miễn phí. Thêm khoá thuộc dự án đã bật thanh toán (bước 4).
-- `429` «Mọi khoá… đang nghỉ»: mọi khoá hết hạn mức. Khoá gặp 429 nghỉ theo `Retry-After` của Google
-  (mặc định 60 giây, tối đa 10 phút) rồi tự dùng lại. Thêm khoá để chịu tải tốt hơn.
-- `401`/`403` ở một khoá: khoá đó bị đánh dấu hỏng và nghỉ 1 giờ, web2api tự chuyển sang khoá kế.
-- `400` khi chat: Google trả `400` cả cho khoá sai/bị thu hồi, nên web2api so giữa các khoá. Khoá chưa từng
-  chat thành công (từ lần lưu cấu hình/khởi động gần nhất) mà trả `400` → thử khoá kế; khoá kế trả lời được thì
-  khoá trước bị đánh dấu hỏng, nghỉ 1 giờ. **Mọi** khoá đều `400` → trả `400` của Google nguyên văn (đã che khoá),
-  không đánh dấu khoá nào — đó là lỗi của yêu cầu. Khoá đã từng chat được mà gặp `400` → trả ngay, không đổi khoá.
-- `403` hoặc `400` có «chặn vùng»: đặt `base_url` qua proxy như trên. Lỗi chặn vùng không làm khoá bị
-  đánh dấu hỏng (mọi khoá đều sẽ bị như nhau).
-- `504`: Google không trả lời trong 120 giây (stream: 60 giây giữa hai khúc).
+**Phân loại lỗi và sự cố thường gặp (hook `phan_loai_loi` của module).** Module `gemini-api` cài đặt hook `phan_loai_loi` để gom toàn bộ đặc thù của Google về chuẩn trung lập của lõi:
+- Chặn vùng: Google trả `400` hoặc `403` kèm chữ `location` («User location is not supported»). Hook trả về `chan_vung` kèm gợi ý đặt proxy. Lỗi chặn vùng là lỗi hạ tầng máy chủ, lõi trả ngay cho khách, không phạt khoá (mọi khoá đều sẽ bị như nhau).
+- Gợi ý hạng miễn phí: khi hết khoá dùng được cho ảnh/video (`het_khoa`) hoặc mọi khoá đều trả 400 (`moi_khoa_400`), hook tự động gắn thêm gợi ý «Hạng miễn phí của Google không dùng được tính năng này...» vào thông điệp lỗi.
+- `400` khi chat: Google trả `400` cả cho khoá sai/bị thu hồi. Hook trả `None` (`khong_ro`) để lõi so sánh giữa các khoá: khoá chưa từng chat thành công mà trả `400` → thử khoá kế; khoá kế trả lời được thì khoá trước bị đánh dấu hỏng (`khoa_hong`), nghỉ 1 giờ. **Mọi** khoá đều `400` → trả `400` của Google nguyên văn (đã che khoá), không đánh dấu khoá nào — đó là lỗi của yêu cầu. Khoá đã từng chat được mà gặp `400` → trả ngay, không đổi khoá.
+- `404` «model … is no longer available to new users» khi chat: khoá thuộc dự án mới không được dùng model cũ trong khi khoá khác vẫn được. Hook trả `None` (`khong_ro`) để lõi so sánh: khoá chưa từng chat thành công model đó mà trả `404` → thử khoá kế; khoá kế trả lời được thì khoá trước bị bỏ qua riêng cho model đó trong 6 giờ (`khong_co_o_khoa`). **Mọi** khoá đều `404` → trả `404` của Google nguyên văn (đã che khoá), không ghi nhớ gì — model không có thật.
+- `403` `no_key_permitted` khi tạo ảnh/video: không khoá nào được Google cho việc đó — thường là khoá hạng miễn phí. Thêm khoá thuộc dự án đã bật thanh toán (bước 4).
+- `429` «Mọi khoá… đang nghỉ»: mọi khoá hết hạn mức (`het_han_muc`). Khoá gặp 429 nghỉ theo `Retry-After` của Google (mặc định 60 giây, tối đa 10 phút) rồi tự dùng lại. Thêm khoá để chịu tải tốt hơn.
+- `401`/`403` ở một khoá: khoá đó bị đánh dấu hỏng (`khoa_hong`) và nghỉ 1 giờ, web2api tự chuyển sang khoá kế.
+- `504`: Google không trả lời trong 120 giây (stream: 60 giây giữa hai khúc) — lỗi máy chủ thượng nguồn (`may_chu_loi`).
 
 **Đã kiểm với dịch vụ thật ngày 10/10/2026** (lõi mới + Google thật, khoá của c2a):
 
@@ -646,6 +685,59 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 **Giới hạn.**
 - Thử nghiệm — chưa kiểm với dịch vụ thật: chưa có luồng đăng ký thiết bị bằng OTP từ Meta.
 - Chưa hỗ trợ tạo ảnh/video độc lập do dịch vụ daemon của máy ảo chỉ hỗ trợ luồng chat.
+
+---
+
+### Module antigravity — Antigravity (Google AGY CLI)
+
+**Mô tả.** Dùng chính ứng dụng chính thức `agy` (Antigravity CLI) ở chế độ không tương tác qua cầu nối nhỏ chạy trên máy chủ (`dich-vu/antigravity-cau-noi/`). Không gọi API Google trực tiếp, không giả danh ứng dụng, không đọc hay in token. Module chuyển tiếp tới cầu nối qua chuẩn OpenAI, tận dụng bể nhiều tài khoản xoay vòng theo hạn mức còn lại. Mã nguồn: `modules/antigravity/`. Tiền tố model: `antigravity`.
+
+**Cần gì.**
+- Tiến trình cầu nối `dich-vu/antigravity-cau-noi/` chạy trên máy chủ (chạy ngoài container web2api do dung lượng `agy` khoảng 214 MB). Cách chạy, biến môi trường và rủi ro: `dich-vu/antigravity-cau-noi/README.md`.
+- Một hoặc nhiều thư mục HOME đã đăng nhập `agy`, cấu hình `toolPermission: "proceed-in-sandbox"` và `enableTerminalSandbox: true`.
+- Mạng ra: chỉ tới cầu nối. web2api chạy trong Docker thì `127.0.0.1` là chính container — cho cầu nối nghe ở IP cổng nối Docker của máy chủ (`AGY_CAU_NOI_HOST`) và điền địa chỉ đó (chưa kiểm trên máy chủ thật).
+- RAM/đĩa/GPU thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "antigravity"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/antigravity`
+3. Cài cấu hình liên kết:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"dia_chi_cau_noi": "http://<IP cổng nối>:8300", "khoa_cau_noi": "khoa-bi-mat"}}' \
+     $W/api/modules/antigravity/cai
+   ```
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `dia_chi_cau_noi` | Có | Địa chỉ URL của cầu nối trên máy chủ (mặc định `http://127.0.0.1:8300` — chỉ đúng khi web2api không chạy trong container). Liên kết thì web2api gọi `/health` và `/v1/models` của cầu nối. |
+| `khoa_cau_noi` | Có | Khoá bí mật khớp với `AGY_CAU_NOI_KHOA` của cầu nối. Lưu riêng tại `<thư mục dữ liệu>/bi_mat/antigravity.json` quyền 0600, không bao giờ trả lại. |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "antigravity/gemini-3.8-flash-high", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+**Sự cố thường gặp.**
+- Liên kết báo «Không kết nối được cầu nối» — cầu nối chưa chạy, hoặc web2api trong container đang gọi `127.0.0.1` của chính nó (xem «Cần gì»).
+- `502 upstream_error` — `agy` thoát với mã khác 0, trả JSON hỏng hoặc `status` khác `SUCCESS` — xem nhật ký cầu nối (chỉ ghi số thứ tự tài khoản `accN`).
+- `502 agent_wanted_tool` — `agy` dừng lượt vì muốn dùng công cụ bị từ chối — kiểm `toolPermission: "proceed-in-sandbox"` trong HOME của tài khoản; hỏi lại theo hướng chỉ cần trả lời bằng chữ.
+- `504 timeout` — một lượt `agy` quá `AGY_HAN_GIO_S` (mặc định 90 s); cầu nối đã giết cả nhóm tiến trình.
+- `503 accounts_busy` — mọi tài khoản còn hạn mức đều đang chạy một lượt khác (mỗi tài khoản một lượt cùng lúc) — thử lại sau `Retry-After`.
+- `429 rate_limit_exceeded` — mọi tài khoản đã cạn hạn mức cho họ model này; `Retry-After` là mốc reset của cửa sổ đang cạn (web2api nghỉ khoá cầu nối tối đa 10 phút rồi thử lại).
+- `400 context_length_exceeded` — hội thoại ghép vượt 120 KiB (giới hạn một tham số dòng lệnh của Linux).
+
+**Giới hạn.**
+- Chỉ hỗ trợ chat văn bản (chưa hỗ trợ ảnh, âm thanh, video hay gọi công cụ).
+- Tiêu tốn hạn mức token cao (tối thiểu ≈12.500 token/lượt) do khung agent của `agy` nạp ngữ cảnh hệ thống.
+- Chưa đo trên `agy` thật để tránh tiêu tốn hạn mức tài khoản của chủ máy.
 
 ## 5. Triển khai
 
@@ -819,7 +911,7 @@ rỗng của demo kèm nút «Mở tab Tài khoản».*
 ![Hệ thống → AI → Provider sau khi liên kết nguồn AI đầu tiên](docs/anh/sau-lien-ket-may-tinh.png)
 
 *Ảnh 13 — Sau khi liên kết nguồn AI đầu tiên (khoá giả, Google giả): Provider › Model với model thật từ `/v1/models`
-chia nhóm theo khả năng module khai, nút «Làm mới danh sách»; sức khoẻ từng khoá ở «Tài khoản». Không có «Combo»,
+chia nhóm theo khả năng module khai, nhóm thu gọn sẵn (bấm tiêu đề nhóm để xem model), nút «Làm mới danh sách»; sức khoẻ từng khoá ở «Tài khoản». Không có «Combo»,
 bật/tắt hay «Đặt mặc định» model (chưa có backend).*
 
 ![Provider trên điện thoại](docs/anh/sau-lien-ket-dien-thoai.png)
@@ -899,6 +991,118 @@ client.audio.speech.create(model="<tiền tố>/<model đọc>", voice="<giọng
 Home Assistant: dùng tích hợp **cho nhập base URL** kiểu OpenAI (tích hợp «OpenAI Conversation» gốc không cho đổi
 địa chỉ; các tích hợp «OpenAI tương thích» trên HACS thì có). Chưa thử cụ thể trên Home Assistant của nhà.
 
+### Truy cập từ máy khác và từ Internet
+
+Mặc định khi chạy Docker, web2api lắng nghe cổng 3031 trên máy chủ. Để ứng dụng khác (máy tính khác, điện thoại,
+Home Assistant) hoặc người dùng bên ngoài Internet gọi được cổng AI, cần xác định phương thức kết nối phù hợp:
+
+```mermaid
+flowchart TD
+  subgraph LAN["1. Trong nhà (mạng nội bộ LAN)"]
+    KH_LAN["Thiết bị trong nhà<br/>(PC · Điện thoại · Home Assistant)"]
+    MAY["Máy chủ chạy web2api<br/>(Docker lắng nghe cổng 3031)"]
+    KH_LAN -- "http://&lt;IP-máy-chủ&gt;:3031/v1<br/>(Bearer khoá quản trị)" --> MAY
+  end
+
+  subgraph INTERNET["2. Ra ngoài Internet (Cloudflare Tunnel)"]
+    KH_NGOAI["Khách từ Internet<br/>(Bên ngoài nhà)"]
+    CF["Cloudflare Edge (HTTPS)<br/>tự thêm X-Forwarded-*"]
+    TUN["cloudflared (Tunnel)<br/>đường hầm ra Cloudflare, không mở port"]
+    KH_NGOAI -- "https://&lt;tên-miền&gt;/v1<br/>(HTTPS đã mã hoá)" --> CF
+    CF --> TUN
+    TUN -- "http://localhost:3031<br/>(hoặc http://&lt;tên-container&gt;:8000 trong mạng Docker)" --> MAY
+  end
+```
+
+#### a. Chỉ dùng trong nhà (mạng LAN)
+
+Khi chỉ dùng cho các thiết bị trong gia đình hoặc cùng mạng Wi-Fi:
+- **Địa chỉ kết nối:** `http://<IP-máy-chủ>:3031` (Base URL cho các ứng dụng OpenAI là `http://<IP-máy-chủ>:3031/v1`).
+- Thay `<IP-máy-chủ>` bằng địa chỉ IP nội bộ của máy chủ (ví dụ trong dải `192.168.x.x` hoặc `10.x.x.x`).
+- Kết nối trực tiếp qua giao thức HTTP không mã hoá trong mạng riêng, an toàn trước sự dòm ngó từ Internet bên ngoài.
+
+#### b. Ra ngoài bằng Cloudflare Tunnel (`cloudflared`)
+
+Muốn gọi web2api khi ra khỏi nhà hoặc tích hợp dịch vụ bên ngoài, giải pháp an toàn nhất là dùng **Cloudflare Tunnel**:
+1. **Cài đặt `cloudflared`:** cài `cloudflared` trên máy chủ hoặc chạy container `cloudflare/cloudflared`.
+2. **Tạo đường hầm:** đăng nhập tài khoản Cloudflare và tạo tunnel:
+   ```bash
+   cloudflared tunnel login
+   cloudflared tunnel create <tên-tunnel>
+   ```
+3. **Trỏ dịch vụ:** trong tệp cấu hình của tunnel (`~/.cloudflared/config.yml`), trỏ tên miền tới web2api:
+   ```yaml
+   tunnel: <tên-tunnel>
+   credentials-file: /root/.cloudflared/<mã-tunnel>.json
+   ingress:
+     - hostname: <tên-miền>
+       service: http://localhost:3031        # cloudflared chạy trên máy chủ: cổng đã mở của Docker
+       # service: http://<tên-container>:8000  # cloudflared chạy trong cùng mạng Docker: cổng TRONG container là 8000
+     - service: http_status:404
+   ```
+4. **Gắn tên miền và bật HTTPS:** `cloudflared tunnel route dns <tên-tunnel> <tên-miền>` (tạo bản ghi DNS trỏ vào
+   tunnel), rồi `cloudflared tunnel run <tên-tunnel>` (hoặc cài thành dịch vụ: `cloudflared service install`).
+   Cloudflare tự cấp chứng chỉ và phục vụ HTTPS ở `https://<tên-miền>`; đoạn từ cloudflared tới web2api là HTTP trong
+   máy/mạng Docker, không đi qua Internet.
+5. **Cho web2api biết địa chỉ công khai:** cách chắc nhất là **đặt cố định** — biến `WEB2API_PUBLIC_URL=https://<tên-miền>`
+   hoặc `PUT /api/dia-chi` (giá trị đặt qua API được ưu tiên hơn biến). Khi chưa đặt, web2api **đoán** từ yêu cầu đang
+   tới: cloudflared chuyển nguyên `Host` là tên miền công khai (trừ khi đặt `httpHostHeader` trong cấu hình) và
+   Cloudflare gắn `X-Forwarded-Proto: https`; web2api chỉ đọc `X-Forwarded-Proto` / `X-Forwarded-Host` khi đặt
+   **`WEB2API_TIN_PROXY=1`** — chỉ bật khi MỌI đường vào web2api đều qua proxy, vì ai gọi thẳng cổng 3031 cũng tự gửi
+   được hai header này. Header có nhiều giá trị khác nhau, ký tự lạ hay quá dài bị bỏ. Riêng uvicorn (máy chủ web bên
+   trong ảnh) mặc định tự tin `X-Forwarded-Proto` từ kết nối đến từ chính `127.0.0.1` của container, kể cả khi
+   `WEB2API_TIN_PROXY` tắt — không ảnh hưởng khách đi qua cổng Docker (đến từ địa chỉ khác).
+
+#### c. Khuyến nghị Cloudflare Access cho trang quản trị (tuỳ chọn)
+
+Trang giao diện web (`/`) và các API quản trị (`/api/*`) nên được bảo vệ thêm bằng lớp xác thực **Cloudflare Zero Trust / Access**:
+- Thiết lập quy tắc Access chỉ cho phép email của bạn đăng nhập bằng mã OTP một lần hoặc tài khoản Google/GitHub.
+- Có thể tạo chính sách Bypass (bỏ qua Access) riêng cho đường dẫn `/v1/*` để các ứng dụng OpenAI khách bên ngoài vẫn gọi được API trực tiếp thông qua Bearer token, hoặc dùng Service Tokens của Cloudflare Access.
+
+#### d. Vì sao KHÔNG mở thẳng cổng ra Internet
+
+Tuyệt đối **không mở cổng 3031 (Port Forwarding / NAT)** trên router mạng nhà ra Internet:
+- **Nguy cơ nghe lén:** web2api chạy HTTP thuần. Mở cổng thẳng khiến mọi dữ liệu, bao gồm cả khoá quản trị và nội dung hội thoại, truyền dạng văn bản rõ (clear text) trên Internet, dễ bị kẻ xấu bắt gói tin và đánh cắp.
+- **Nguy cơ bị tấn công trực diện:** mở cổng để lộ địa chỉ IP thật của nhà, thu hút các botnet quét cổng, tấn công dò mật khẩu và tấn công từ chối dịch vụ (DDoS).
+- **Lợi ích của Cloudflare Tunnel:** không cần mở cổng router (cloudflared tự gọi RA Cloudflare), giấu địa chỉ IP nhà, khách ngoài chỉ nói HTTPS với Cloudflare; đoạn Cloudflare ↔ cloudflared cũng mã hoá.
+
+#### e. Kiểm bằng `curl` đạt / không đạt
+
+Kiểm tra kết nối trong mạng LAN:
+```bash
+curl -s http://<IP-máy-chủ>:3031/health
+```
+- **Đạt:** trả về `{"ok": true, "phien_ban": "..."}`.
+- **Không đạt:** `Connection refused` (container chưa chạy hoặc sai cổng) hoặc `No route to host` (sai IP máy chủ, bị tường lửa chặn).
+
+Kiểm tra kết nối qua Cloudflare Tunnel:
+```bash
+curl -s https://<tên-miền>/health
+```
+- **Đạt:** trả về `{"ok": true, "phien_ban": "..."}`.
+- **Không đạt:** lỗi SSL hoặc mã HTTP `502 Bad Gateway` / `530` từ Cloudflare (tunnel chưa kết nối được tới cổng 3031 của web2api).
+
+Kiểm tra gọi API bằng khoá quản trị:
+```bash
+curl -s -H "Authorization: Bearer <KHOÁ>" https://<tên-miền>/v1/models
+```
+- **Đạt:** trả về danh sách model `{"object": "list", "data": [...]}`.
+- **Không đạt:** mã HTTP `401` nếu thiếu hoặc sai khoá quản trị.
+
+#### f. Người dùng và bảo mật: khoá quản trị và khoá khách
+
+- **Khoá quản trị** (`WEB2API_ADMIN_KEY` hoặc `/data/admin_key`): có **toàn quyền trên hệ thống** (gọi mọi API `/v1/*`, cài đặt, gỡ bỏ, xem cấu hình module và quản lý khoá khách). Chỉ dành riêng cho chủ máy quản trị; không chia sẻ cho người ngoài.
+- **Khoá khách (Client API Key)**: cấp quyền cho ứng dụng khách hoặc người dùng khác trong nhà để gọi các dịch vụ AI chuẩn OpenAI (`/v1/*`), tách biệt hoàn toàn với quyền quản trị:
+  - Khách gọi đường quản trị (`/api/*`, trang cấu hình) sẽ nhận mã `403` (không để lộ sự tồn tại của dữ liệu quản trị).
+  - Khoá khách có **phạm vi quyền hạn (scope)** cụ thể: tất cả (`*`) hoặc từng mã khả năng mở như `chat`, `anh`, `video`, `noi`, `nghe`, `anh_sua`. Gọi vượt quá phạm vi được cấp sẽ nhận lỗi `403 insufficient_scope` theo chuẩn OpenAI.
+  - Danh mục `GET /v1/models` tự động lọc, chỉ hiển thị các model thuộc phạm vi mà khoá khách được phép dùng.
+  - Khách chỉ được **thu hẹp phạm vi** cho từng lượt gọi thông qua tiêu đề `X-Web2api-Scope` (hoặc `X-Scope`), không thể mở rộng và không thể sửa đổi phạm vi đã lưu hay tạo khoá khác.
+  - **Lưu trữ an toàn:** Khoá thô (tiền tố `w2a_`) chỉ hiển thị **đúng một lần** khi tạo qua giao diện hoặc `POST /api/khoa-khach`. Tệp cấu hình `<WEB2API_DATA>/khoa_khach.json` (quyền 0600) chỉ lưu bản băm SHA-256; so khớp bằng so sánh thời gian hằng (`hmac.compare_digest`). Khoá không bao giờ được ghi vào nhật ký hay phản hồi sau khi tạo.
+  - Khi khoá bị tắt (`bat: false`) hoặc thu hồi (xoá), mọi yêu cầu tiếp theo lập tức bị từ chối với mã `401`.
+  - **Kiểm soát đồng thời:** Biến `WEB2API_KHACH_DONG_THOI` đặt trần số yêu cầu đồng thời tối đa cho mỗi khoá khách. Vượt trần sẽ nhận mã `429` kèm tiêu đề `Retry-After` (không tính là lỗi của nhà cung cấp).
+  - **Sổ thao tác quản trị:** Kênh nhật ký `quan_tri` ghi nhận mọi thao tác tạo, sửa, thu hồi khoá khách và các lần yêu cầu bị từ chối `401`/`403` ở các đường quản trị (tuyệt đối không ghi nội dung khoá).
+  - **Giao diện:** tab «Bảo mật & người dùng» (`He-thong-Bao-mat.dc.html`) cho phép xem danh sách khoá khách (nhãn, chip phạm vi, lần dùng cuối, số lượt), bật/tắt, thu hồi và tạo khoá mới.
+
 ### Vận hành hằng ngày
 
 ```bash
@@ -965,7 +1169,7 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 | `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được nhà cung cấp cho việc đó — với Gemini thường là khoá hạng miễn phí. Xem tiểu mục module. |
 | `501` `capability_not_supported` | Module của tiền tố đó không có khả năng được gọi — tạo ảnh/video, sửa ảnh, đọc hay nghe giọng nói (ví dụ module từ xa). |
 | `415` khi gửi tệp | `/v1/audio/transcriptions` và `/v1/images/edits` chỉ nhận `multipart/form-data`. `POST /v1/videos` nhận JSON hoặc multipart **chỉ có trường chữ**; tệp tham chiếu (`input_reference`) chưa hỗ trợ — gửi ảnh đầu vào theo tài liệu của module. |
-| `413` `request_too_large` | Thân multipart vượt trần (mặc định 25 MB, tính cả mọi tệp và trường). Người vận hành nâng bằng `WEB2API_TEP_TOI_DA_MB` trong `.env`; nhớ container mặc định chỉ có 256 MB RAM. |
+| `413` `request_too_large` | Thân vượt trần: multipart (mặc định 25 MB; `WEB2API_TEP_TOI_DA_MB`) hoặc JSON (mặc định 25 MB; `WEB2API_THAN_TOI_DA_MB`). Đếm byte thật, không tin `Content-Length`; nhớ container mặc định chỉ có 256 MB RAM. |
 | Ô module ở trạng thái «Lỗi» / có khối «Có module không nạp được» | Lý do ghi ngay đó (và ở trường `loi` của `GET /api/modules/catalog`): manifest sai, trùng id/tiền tố, thiếu gói… Sửa xong gọi `POST /api/modules/nap-lai`. |
 | Không thấy module trên git | Chưa dán khoá quản trị, hoặc nguồn git lỗi: xem «＋ Thêm module» → «Từ git» (hoặc `GET /api/nguon-git`, `trang_thai.loi`). Gửi `PUT /api/nguon-git` thân `{}` để thăm dò ngay. |
 | Trạng thái báo hết hạn mức GitHub | Ẩn danh 60 yêu cầu/giờ/IP; web2api tự chờ tới `reset_luc`. Muốn nâng: thêm `token` chỉ đọc. |
@@ -978,8 +1182,6 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 ### Giới hạn và việc chưa làm
 
 - **Combo** chưa có backend: tab không hiện kể cả khi có ≥ 2 nguồn AI đã liên kết.
-- Chưa có khoá khách, ô «Địa chỉ truy cập công khai» (địa chỉ ở khối Kết nối chỉ suy từ trình duyệt), trang Bảo mật
-  & người dùng.
 - «Cần gì để chạy» mới là **hướng dẫn bằng chữ** từ manifest: chưa có checklist ✔/✖ từng yêu cầu, chưa tự cài gói
   Python; trần dung lượng tải module (50 MB tổng, 5 MB/tệp, 200 tệp) vẫn còn.
 - Chưa có màn Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký — sẽ vào khi có module thật đứng sau.
@@ -1005,9 +1207,21 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module |
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |
+| `GET /api/modules/{id}/model` | Có | Danh mục model của module (id, nhóm, bật/tắt, mặc định, số đếm) |
+| `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
 | `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo |
+| `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
+| `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
+| `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |
+| `GET /api/nhat-ky` | Có | Xem nhật ký hệ thống (mới nhất trước; lọc theo `kenh`, `muc`, `q`, phân trang `truoc` = `luc` của dòng cuối trang trước, `gioi_han` ≤ 500). Kênh của lõi: `cuoc_goi` — mỗi lượt `/v1` đúng một dòng (người gọi, đường, model, module, mã HTTP, ms, `usage` nếu có, `request_id`; `dut: true` khi luồng đứt giữa chừng; KHÔNG nội dung lời nhắn/trả lời hay khoá), phản hồi `/v1` mang tiêu đề `x-request-id` (khớp `request_id` trong dòng) và `X-Web2api-Module` (tiền tố module đã phục vụ); `he_thong` — khởi động, nạp/đổi/gỡ module, cấu hình hỏng |
+| `GET /api/nhat-ky/kenh` | Có | Danh sách kênh nhật ký đang có bản ghi (`kenh`, `so_dong`, `lan_cuoi`) |
+| `DELETE /api/nhat-ky` | Có | Xoá bản ghi nhật ký cũ hơn N ngày (`truoc_ngay=N`, 0 ≤ N ≤ 36500; thiếu → `400`, không xoá gì) |
+| `GET /api/khoa-khach` | Có | Danh sách khoá khách (không băm, không khoá thô) |
+| `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; trả về khoá thô một lần duy nhất) |
+| `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt, nhãn, phạm vi) |
+| `DELETE /api/khoa-khach/{id}` | Có | Thu hồi khoá khách (xoá ngay, các lượt gọi sau bị `401`) |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
@@ -1018,15 +1232,21 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
 | `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
+| `* /v1/{duong:path}` | Có | Bắt mọi đường `/v1` chưa có: `404` `unknown_endpoint` đúng khuôn OpenAI; sai phương thức thì `405` kèm `Allow` suy từ router; thừa `/` cuối mà bỏ đi thì khớp một đường có thật (cả phương thức) thì `307` sang đường đó, giữ query |
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
 | `WEB2API_DATA` | `/data` | Thư mục dữ liệu (khoá, cấu hình, module cài thêm) |
 | `WEB2API_ADMIN_KEY` | tự sinh | Khoá quản trị; không đặt thì sinh và lưu `<WEB2API_DATA>/admin_key` |
+| `WEB2API_PUBLIC_URL` | không | Địa chỉ URL công khai chính thức (ví dụ `https://<tên-miền>`), ưu tiên sau giá trị đã đặt qua API |
+| `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai; chỉ bật khi mọi đường vào đều qua proxy |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
+| `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
+| `WEB2API_KHACH_DONG_THOI` | không | Trần số yêu cầu đồng thời tối đa cho mỗi khoá khách; vượt trần trả `429` kèm tiêu đề `Retry-After` (không làm hỏng trạng thái module) |
+| `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |

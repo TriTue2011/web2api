@@ -38,6 +38,10 @@ class LoiOpenAI(Exception):
         self.than = than_loi(ma, thong_diep, loai, code)
         self.headers = headers
 
+    @property
+    def status_code(self) -> int:
+        return self.ma
+
 
 async def xu_ly_loi_openai(_: Request, e: LoiOpenAI) -> JSONResponse:
     return JSONResponse(e.than, status_code=e.ma, headers=e.headers)
