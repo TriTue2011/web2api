@@ -71,15 +71,24 @@ def chuan_hoa_base_url(gia_tri) -> str:
     return s + "/v1beta/openai"
 
 
-def goi_y_loi(ma: int, thong_diep: str) -> str | None:
-    """Chặn vùng là lỗi của MÁY CHỦ, không của khoá: mọi khoá sẽ hỏng y hệt. Google trả nó bằng
-    400 (đo qua proxy c2a) hoặc 403 kèm «User location is not supported».
+def phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None:
+    """Hook phân loại lỗi của Gemini:
+    - Chặn vùng là lỗi của MÁY CHỦ, không của khoá: mọi khoá sẽ hỏng y hệt. Google trả nó bằng
+      400 (đo qua proxy c2a) hoặc 403 kèm «User location is not supported».
+      Khoá theo chữ «location», không theo «not supported» đơn lẻ: «not supported» còn xuất hiện
+      trong 400 bình thường (model không hỗ trợ tính năng) — gợi ý proxy ở đó là chỉ sai đường.
+      Bổ sung gợi ý proxy và trả 'chan_vung'.
+    - Còn lại: trả None để lõi dùng phân loại mặc định (429->het_han_muc, 401/403->khoa_hong, 5xx->may_chu_loi, còn lại->khong_ro).
+    """
+    msg = ""
+    if isinstance(loi, dict) and isinstance(loi.get("error"), dict):
+        msg = str(loi["error"].get("message") or "")
 
-    Khoá theo chữ «location», không theo «not supported» đơn lẻ: «not supported» còn xuất hiện
-    trong 400 bình thường (model không hỗ trợ tính năng) — gợi ý proxy ở đó là chỉ sai đường."""
-    t = thong_diep.lower()
-    if ma in (400, 403) and "location" in t:
-        return GOI_Y_CHAN_VUNG
+    if ma in (400, 403) and "location" in msg.lower():
+        if GOI_Y_CHAN_VUNG not in msg and isinstance(loi, dict) and "error" in loi:
+            loi["error"]["message"] = f"{msg} — {GOI_Y_CHAN_VUNG}".strip()
+        return "chan_vung"
+
     return None
 
 
@@ -167,11 +176,14 @@ class Module:
         self._dem_goc: list[dict] | None = None
         self._dem_goc_luc = 0.0
 
+    def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
+        return phan_loai_loi(ma, loi, boi_canh)
+
     def _tao(self, khoa: list[str], base: str) -> ChuyenTiepOpenAI:
         # Khả năng tốn tiền suc_khoe báo theo từng khoá = mọi mã đã khai ở `cung_cap` trừ chat.
         kn = tuple(x for x in self.manifest.get("cung_cap", []) if x != "chat")
         return ChuyenTiepOpenAI(ten="Gemini", tien_to=self.tien_to, base_url=base, khoa=khoa,
-                                doi_id_model=_bo_models, goi_y_loi=goi_y_loi, kha_nang=kn,
+                                doi_id_model=_bo_models, phan_loai_loi=self.phan_loai_loi, kha_nang=kn,
                                 goi_y_tu_choi_kha_nang=GOI_Y_HANG_MIEN_PHI)
 
     def nap(self, cau_hinh: dict) -> None:

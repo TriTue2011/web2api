@@ -174,7 +174,7 @@ def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Res
 @v1.post("/chat/completions")
 async def v1_chat(request: Request):
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
-    # như extra_content.google.thought_signature.
+    # như chữ ký suy nghĩ hay trường riêng của nhà cung cấp.
     than = await _than_json(request)
     _, m = _module_theo_model(request, than)
     return _tra_ve(*await m.chat(than, bool(than.get("stream"))))

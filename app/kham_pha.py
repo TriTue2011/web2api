@@ -67,6 +67,26 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
     KHÔNG TIN ĐƯỢC: không dùng ten_tep làm đường dẫn, tự kiểm định dạng trước khi gửi đi kèm khoá.
     Header trả về do module chọn và lõi chuyển nguyên (riêng content-length của thân bytes thì lõi tự tính):
     đừng chép nguyên header của nhà cung cấp — content-encoding/content-length sai khi httpx đã giải nén.
+    phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None
+        — phân loại lỗi từ nhà cung cấp thượng nguồn về một trong các chuẩn loại lỗi trung lập (mã mở):
+            "khoa_hong"        — khoá sai, hết hạn, bị thu hồi; lõi cho khoá nghỉ (1 giờ) và thử khoá kế.
+            "het_han_muc"      — hết hạn mức / rate limit; lõi cho khoá nghỉ theo Retry-After và thử khoá kế.
+            "khong_co_o_khoa"  — model hoặc khả năng không được cấp cho khoá này; chat: ghi sổ 6 giờ cho
+                                 (khoá, model) và thử khoá kế; khả năng: nghỉ 24 giờ và thử khoá kế.
+            "yeu_cau_sai"      — yêu cầu của khách không hợp lệ; lõi trả ngay, không đổi khoá, không phạt khoá.
+            "may_chu_loi"      — lỗi phía máy chủ nhà cung cấp hoặc mạng (5xx); lõi thử thêm đúng một khoá.
+            "chan_vung"        — máy chủ bị chặn vùng địa lý; lỗi của hạ tầng, lõi trả ngay, không phạt khoá.
+            "khong_ro"         — chưa rõ lỗi do khoá hay do yêu cầu; lõi dùng so sánh giữa các khoá để phân xử.
+        Mặc định khi module không cài hook hoặc trả về None:
+            429           -> "het_han_muc"
+            401, 403      -> "khoa_hong"
+            500..599      -> "may_chu_loi"
+            còn lại       -> "khong_ro"
+        Mã lạ hoặc hook ném ngoại lệ -> coi là "khong_ro", không vỡ tiến trình.
+        `loi` là từ điển lỗi chuẩn hoá {"error": {"message": ..., "type": ..., "code": ...}}; module được phép
+        bổ sung gợi ý vào loi["error"]["message"] (lõi gọi hook ngay khi chuẩn hoá lỗi, trước khi trả cho khách).
+        `boi_canh` chứa {"viec", "khoa", ...}. Lời giải thích khi khoá bị từ chối một khả năng tốn tiền thì module
+        truyền cho bộ chuyển tiếp bằng tham số `goi_y_tu_choi_kha_nang` (một chuỗi), không qua hook.
 
 Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]; quy ước
 cho các phương thức trên: "noi", "nghe", "anh_sua" (cùng tên phương thức). Lõi chỉ
@@ -113,6 +133,28 @@ _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 #: Id của một mục (tab con) trong `muc` — đi vào id phần tử/đường dẫn của giao diện.
 ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+
+#: Chuẩn phân loại lỗi trung lập cho module (mã mở):
+LOAI_LOI_CHUAN = {
+    "khoa_hong",
+    "het_han_muc",
+    "khong_co_o_khoa",
+    "yeu_cau_sai",
+    "may_chu_loi",
+    "chan_vung",
+    "khong_ro",
+}
+
+
+def phan_loai_loi_mac_dinh(ma: int) -> str:
+    """Phân loại lỗi mặc định theo mã trạng thái HTTP chuẩn khi module không tự phân loại."""
+    if ma == 429:
+        return "het_han_muc"
+    if ma in (401, 403):
+        return "khoa_hong"
+    if 500 <= ma < 600:
+        return "may_chu_loi"
+    return "khong_ro"
 
 
 class LoiNap(Exception):

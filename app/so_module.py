@@ -247,7 +247,7 @@ class SoModule:
     def _tao_tu_kho(self, km: ModuleKhamPha):
         """Thể hiện đã `nap` cấu hình đã lưu; None nếu module chưa có cấu hình, hoặc cấu hình đã lưu thiếu
         trường `bat_buoc` (vd tệp bí mật bị mất). Chặn ở LÕI theo manifest, không trông vào mã module tự
-        vỡ: Gemini `nap({})` không vỡ mà dựng thể hiện với 0 khoá rồi hỏng lúc gọi."""
+        vỡ: module `nap({})` có thể không vỡ mà dựng thể hiện với 0 khoá rồi hỏng lúc gọi."""
         muc = self.muc_da_luu(km.id)
         if muc is None:
             return None

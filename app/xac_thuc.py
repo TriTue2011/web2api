@@ -1,6 +1,6 @@
 """Khoá quản trị — cổng duy nhất cho /v1/* và mọi API đổi trạng thái hay lộ cấu hình.
 
-Vì sao bắt buộc ngay từ module đầu tiên: /v1/* tiêu hạn mức Gemini (và mọi dịch vụ
+Vì sao bắt buộc ngay từ module đầu tiên: /v1/* tiêu hạn mức của nhà cung cấp AI (và mọi dịch vụ
 khác) của chủ máy; mở trần trên LAN thì bất kỳ máy nào trong nhà — kể cả thiết bị IoT
 bị chiếm — dùng không giới hạn.
 
