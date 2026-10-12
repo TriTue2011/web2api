@@ -35,6 +35,9 @@ CAN_QUAN_TRI = [
     ("GET", "/api/nguon-git"),
     ("PUT", "/api/nguon-git"),
     ("POST", "/api/nguon-git/cai/echo"),
+    ("GET", "/api/nhat-ky"),
+    ("GET", "/api/nhat-ky/kenh"),
+    ("DELETE", "/api/nhat-ky"),
 ]
 
 
@@ -105,3 +108,33 @@ def test_modules_json_hong_thi_cai_tu_choi_va_khong_ghi_de(client, tmp_path):
     with pytest.raises(loi):
         kho.luu_cai_dat("echo", [], {})
     assert (tmp_path / "modules.json").read_text() == "{hỏng"
+
+
+def test_khoa_tu_tep_doi_noi_dung_co_hieu_luc_ngay_va_khong_doc_lai_moi_lan(tmp_path, monkeypatch):
+    """Khoá từ tệp được nhớ theo danh tính tệp (che_chuoi gọi khoa_quan_tri cho TỪNG chuỗi của mỗi dòng nhật ký /v1):
+    không mở-đọc tệp mỗi lần, nhưng sửa tại chỗ hay thay tệp thì lần gọi sau thấy ngay khoá mới."""
+    import os
+    from pathlib import Path
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.delenv("WEB2API_ADMIN_KEY", raising=False)
+    p = tmp_path / "admin_key"
+    p.write_text("khoa-thu-nhat-aaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+    assert xac_thuc.khoa_quan_tri() == "khoa-thu-nhat-aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    doc = {"n": 0}
+    goc = Path.read_text
+
+    def dem(self, *a, **k):
+        doc["n"] += 1
+        return goc(self, *a, **k)
+    monkeypatch.setattr(Path, "read_text", dem)
+    for _ in range(50):
+        xac_thuc.khoa_quan_tri()
+    assert doc["n"] == 0
+    # sửa tại chỗ (cùng inode, khác kích thước/mtime)
+    p.write_text("khoa-thu-hai-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n")
+    assert xac_thuc.khoa_quan_tri() == "khoa-thu-hai-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    # thay tệp nguyên tử (inode mới, cùng kích thước)
+    tam = tmp_path / "admin_key.moi"
+    tam.write_text("khoa-thu-ba-cccccccccccccccccccccccccccccccccc\n"[:len("khoa-thu-hai-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n")])
+    os.replace(tam, p)
+    assert xac_thuc.khoa_quan_tri().startswith("khoa-thu-ba-")

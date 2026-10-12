@@ -21,7 +21,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from app import he_thong, kho
+from app import he_thong, kho, nhat_ky
 from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, nap_ma, quet, van_tay)
 
 log = logging.getLogger("web2api.so_module")
@@ -162,6 +162,8 @@ class SoModule:
         def bao_loi(thu_muc: Path, ly_do: str):
             log.warning("Module ở %s không dùng được: %s", thu_muc, ly_do)
             loi.append({"thu_muc": str(thu_muc), "ly_do": ly_do})
+            nhat_ky.ghi("he_thong", "loi", f"Lỗi nạp module ở {thu_muc.name}: {ly_do}",
+                        thu_muc=str(thu_muc), ly_do=str(ly_do))
 
         for nguon, goc in (("anh", THU_MUC_ANH), ("du_lieu", kho.thu_muc_modules())):
             for thu_muc in quet(goc):
@@ -229,6 +231,12 @@ class SoModule:
         self.loi = loi
         if them or doi or go:
             log.warning("Nạp lại module: thêm %s, đổi %s, gỡ %s", them, doi, go)
+            if them:
+                nhat_ky.ghi("he_thong", "thong_tin", f"Nạp module: thêm {', '.join(sorted(them))}", modules=sorted(them))
+            if doi:
+                nhat_ky.ghi("he_thong", "thong_tin", f"Nạp module: đổi {', '.join(sorted(doi))}", modules=sorted(doi))
+            if go:
+                nhat_ky.ghi("he_thong", "thong_tin", f"Nạp module: gỡ {', '.join(sorted(go))}", modules=sorted(go))
         return {"them": them, "doi": doi, "go": go, "loi": loi}
 
     @staticmethod
@@ -268,6 +276,8 @@ class SoModule:
             except Exception as e:  # mã module: lỗi của nó, không phải của lõi
                 log.warning("Module %s không nạp được cấu hình đã lưu: %s", id_, e)
                 loi.append({"thu_muc": str(km.thu_muc), "ly_do": f"không nạp được cấu hình đã lưu: {type(e).__name__}: {e}"})
+                nhat_ky.ghi("he_thong", "loi", f"Module {id_} không nạp được cấu hình đã lưu: {e}",
+                            module=id_, ly_do=str(e))
                 continue
             if the is not None:
                 self.dang_chay[id_] = the

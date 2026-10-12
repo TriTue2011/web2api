@@ -61,8 +61,9 @@ Tuỳ chọn cho giao diện: `loai_ten` (tên hiển thị của loại, vd "AI
 trước), `muc` — tab con/mục của module, mỗi mục {"id", "nhan", "can": [mã…]}: mục chỉ hiện khi module đã
 liên kết VÀ mọi mã trong `can` có ở ít nhất một module đã liên kết (rỗng = luôn hiện khi đã liên kết).
 
-Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep)
-và gói có sẵn trong ảnh; gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
+Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep,
+app.nhat_ky để ghi kênh riêng qua `nhat_ky.ghi(kenh, muc, tom_tat, ...)`) và gói có sẵn trong ảnh;
+gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
 """
 
 from __future__ import annotations

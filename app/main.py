@@ -16,10 +16,11 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import he_thong, kho, tuyen, xac_thuc
+from app import he_thong, kho, nhat_ky, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, xu_ly_loi_openai
 from app.nguon_git import NguonGit
+from app.nhat_ky import MiddlewareNhatKyCuocGoi
 from app.so_module import SoModule
 
 GOC = Path(__file__).resolve().parent.parent
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
     ng = NguonGit(so)
     app.state.nguon_git = ng
     ng.bat_dau()
+    nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
     try:
         yield
     finally:
@@ -50,6 +52,7 @@ app = FastAPI(title="web2api", version=PHIEN_BAN, docs_url=None, redoc_url=None,
               lifespan=lifespan)
 app.add_exception_handler(LoiOpenAI, xu_ly_loi_openai)
 cai_bien_loi(app)  # /v1: mọi lỗi khác cũng ra khuôn OpenAI; lỗi chưa bắt không lộ chi tiết/khoá
+app.add_middleware(MiddlewareNhatKyCuocGoi)  # /v1: ghi đúng một dòng cuoc_goi, thêm x-request-id và X-Web2api-Module
 
 
 def thu_muc_du_lieu() -> str:
@@ -71,6 +74,7 @@ app.include_router(tuyen.v1_khong_co)  # NGAY sau v1: /v1 lạ → 404 unknown_e
 app.include_router(tuyen.modules)
 app.include_router(tuyen.tinh_nang)
 app.include_router(tuyen.nguon_git)
+app.include_router(tuyen.nhat_ky)
 app.include_router(tuyen.tep_module)
 
 
