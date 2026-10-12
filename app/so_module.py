@@ -330,6 +330,7 @@ class SoModule:
             if id_ in self.tu_xa:
                 m = self.dang_chay.pop(id_, None)
                 kho.xoa_tu_xa(id_)
+                kho.xoa_cai_dat_model_module(id_)
                 del self.tu_xa[id_]
                 if m is not None:
                     await self._dung_an_toan(id_, m)
@@ -346,6 +347,7 @@ class SoModule:
                 await self._dung_an_toan(id_, m)
             try:
                 kho.xoa_cai_dat(id_)
+                kho.xoa_cai_dat_model_module(id_)
             except kho.KhoHong as e:
                 raise LoiSo(500, str(e)) from e
             if km.nguon == "anh":

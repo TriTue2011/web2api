@@ -1146,6 +1146,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module |
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |
+| `GET /api/modules/{id}/model` | Có | Danh mục model của module (id, nhóm, bật/tắt, mặc định, số đếm) |
+| `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
 | `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo |
