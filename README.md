@@ -1277,6 +1277,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |
 | `WEB2API_GIT_TOKEN` | không | Token GitHub (kho riêng tư hoặc nâng hạn mức) |
+| `WEB2API_GITHUB_TOKEN` | không | Token GitHub (cần cho kho private: token có quyền Contents: Read; đặt trong docker-compose/Portainer/NAS; ưu tiên hơn token lưu qua API) |
 | `WEB2API_GITHUB_API` | `https://api.github.com` | **Chỉ cho kiểm thử** (trỏ GitHub giả); khác mặc định thì nhật ký có cảnh báo |
 | `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
 | `WEB2API_DEMO_DIR` | không | Chỉ cho test dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |
