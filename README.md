@@ -45,6 +45,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/models`, `/v1/chat/completions` chuẩn OpenAI (có stream) | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
+| Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -600,6 +601,59 @@ Chưa kiểm với dịch vụ thật: `base_url` qua proxy Cloudflare, khoá b�
 - Chưa đo RAM/đĩa thật của module (trường `ram_them_mb`, `dia_mb` trong manifest đang để trống).
 - Proxy Cloudflare có đặt `PROXY_TOKEN` (header `X-Proxy-Token`) chưa dùng được: `base_url` không mang
   thêm header.
+
+---
+
+### Module antigravity — Antigravity (Google AGY CLI)
+
+**Mô tả.** Dùng chính ứng dụng chính thức `agy` (Antigravity CLI) ở chế độ không tương tác qua cầu nối nhỏ chạy trên máy chủ (`dich-vu/antigravity-cau-noi/`). Không gọi API Google trực tiếp, không giả danh ứng dụng, không đọc hay in token. Module chuyển tiếp tới cầu nối qua chuẩn OpenAI, tận dụng bể nhiều tài khoản xoay vòng theo hạn mức còn lại. Mã nguồn: `modules/antigravity/`. Tiền tố model: `antigravity`.
+
+**Cần gì.**
+- Tiến trình cầu nối `dich-vu/antigravity-cau-noi/` chạy trên máy chủ (chạy ngoài container web2api do dung lượng `agy` khoảng 214 MB). Cách chạy, biến môi trường và rủi ro: `dich-vu/antigravity-cau-noi/README.md`.
+- Một hoặc nhiều thư mục HOME đã đăng nhập `agy`, cấu hình `toolPermission: "proceed-in-sandbox"` và `enableTerminalSandbox: true`.
+- Mạng ra: chỉ tới cầu nối. web2api chạy trong Docker thì `127.0.0.1` là chính container — cho cầu nối nghe ở IP cổng nối Docker của máy chủ (`AGY_CAU_NOI_HOST`) và điền địa chỉ đó (chưa kiểm trên máy chủ thật).
+- RAM/đĩa/GPU thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "antigravity"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/antigravity`
+3. Cài cấu hình liên kết:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"dia_chi_cau_noi": "http://<IP cổng nối>:8300", "khoa_cau_noi": "khoa-bi-mat"}}' \
+     $W/api/modules/antigravity/cai
+   ```
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `dia_chi_cau_noi` | Có | Địa chỉ URL của cầu nối trên máy chủ (mặc định `http://127.0.0.1:8300` — chỉ đúng khi web2api không chạy trong container). Liên kết thì web2api gọi `/health` và `/v1/models` của cầu nối. |
+| `khoa_cau_noi` | Có | Khoá bí mật khớp với `AGY_CAU_NOI_KHOA` của cầu nối. Lưu riêng tại `<thư mục dữ liệu>/bi_mat/antigravity.json` quyền 0600, không bao giờ trả lại. |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "antigravity/gemini-3.8-flash-high", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+**Sự cố thường gặp.**
+- Liên kết báo «Không kết nối được cầu nối» — cầu nối chưa chạy, hoặc web2api trong container đang gọi `127.0.0.1` của chính nó (xem «Cần gì»).
+- `502 upstream_error` — `agy` thoát với mã khác 0, trả JSON hỏng hoặc `status` khác `SUCCESS` — xem nhật ký cầu nối (chỉ ghi số thứ tự tài khoản `accN`).
+- `502 agent_wanted_tool` — `agy` dừng lượt vì muốn dùng công cụ bị từ chối — kiểm `toolPermission: "proceed-in-sandbox"` trong HOME của tài khoản; hỏi lại theo hướng chỉ cần trả lời bằng chữ.
+- `504 timeout` — một lượt `agy` quá `AGY_HAN_GIO_S` (mặc định 90 s); cầu nối đã giết cả nhóm tiến trình.
+- `503 accounts_busy` — mọi tài khoản còn hạn mức đều đang chạy một lượt khác (mỗi tài khoản một lượt cùng lúc) — thử lại sau `Retry-After`.
+- `429 rate_limit_exceeded` — mọi tài khoản đã cạn hạn mức cho họ model này; `Retry-After` là mốc reset của cửa sổ đang cạn (web2api nghỉ khoá cầu nối tối đa 10 phút rồi thử lại).
+- `400 context_length_exceeded` — hội thoại ghép vượt 120 KiB (giới hạn một tham số dòng lệnh của Linux).
+
+**Giới hạn.**
+- Chỉ hỗ trợ chat văn bản (chưa hỗ trợ ảnh, âm thanh, video hay gọi công cụ).
+- Tiêu tốn hạn mức token cao (tối thiểu ≈12.500 token/lượt) do khung agent của `agy` nạp ngữ cảnh hệ thống.
+- Chưa đo trên `agy` thật để tránh tiêu tốn hạn mức tài khoản của chủ máy.
 
 ## 5. Triển khai
 
