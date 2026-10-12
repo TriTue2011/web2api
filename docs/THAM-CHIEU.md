@@ -735,22 +735,28 @@ OpenAI dùng chung của lõi (`app/chuyen_tiep.py`); mọi đặc thù của Me
 Bearer auth, phân loại lỗi 401/429/5xx) nằm trong module.
 
 **Cần gì.**
-- Một hoặc nhiều API key lấy ở Meta for Developers Console → Model API dashboard
-  (theo `dev.meta.ai/docs/authentication`, lưu vào biến `MODEL_API_KEY`).
-- Mạng ra tới `api.meta.ai`.
+- Một trong hai: (a) API key lấy ở Meta for Developers Console → Model API
+  dashboard (theo `dev.meta.ai/docs/authentication`); hoặc (b) tài khoản Meta
+  để phê duyệt OAuth trên trình duyệt (không cần dashboard).
+- Mạng ra tới `api.meta.ai` và `auth.meta.com` (nếu dùng OAuth).
 - RAM/đĩa thêm: chưa đo.
 
 **Cách cài.**
 
 1. Xem thông báo: `curl -s -H \"Authorization: Bearer $K\" $W/api/modules/thong-bao` — có `\"id\": \"muse2api\"`.
 2. Tải về: `curl -s -X POST -H \"Authorization: Bearer $K\" $W/api/nguon-git/cai/muse2api`
-3. Cài đặt cấu hình:
+3. Cài đặt cấu hình — **không cần key** (OAuth device flow):
 
    ```bash
    curl -s -X POST -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
-     -d '{\"cau_hinh\": {\"api_keys\": [\"<META_API_KEY>\"]}}' \
+     -d '{"cau_hinh": {}}' \
      $W/api/modules/muse2api/cai
+   # → {"ok": false, "loi": "Mở https://... nhập mã XXXX-YYYY ... bấm Cài đặt lại."}
    ```
+
+   Mở URL, nhập mã, phê duyệt trên trình duyệt của bạn, rồi gọi lại lệnh trên —
+   module đúc key, kiểm tra và lưu. Key tự đúc lại mỗi ngày.
+   Hoặc dùng key tĩnh: `-d '{"cau_hinh": {"api_keys": ["<META_API_KEY>"]}}'`.
 
 **Cấu hình.**
 

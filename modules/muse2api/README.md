@@ -22,10 +22,16 @@ Video: official API không có endpoint nên module không khai.
 | `api_keys` | Có | Một hoặc nhiều key từ Meta for Developers Console → Model API dashboard (biến `MODEL_API_KEY`). Nhiều khoá thì xoay vòng, khoá 429 được cho nghỉ. |
 | `base_url` | Không | Mặc định `https://api.meta.ai/v1`. |
 
-## Lấy key
+## Lấy key — 2 cách
 
-Theo tài liệu `dev.meta.ai/docs/authentication`: đăng nhập Meta for Developers
-Console → tạo team → vào Model API dashboard → Generate key.
+**Cách 1: OAuth device flow (không cần dashboard).** Để trống trường `api_keys`,
+bấm Cài đặt → mở URL hiện ra trên trình duyệt, nhập mã, phê duyệt cho Meta →
+bấm Cài đặt lại. Module đúc Model API key và lưu lại; key tự đúc lại mỗi ngày
+bằng identity token đã lưu (bạn không cần làm gì thêm).
+
+**Cách 2: key tĩnh.** Theo tài liệu `dev.meta.ai/docs/authentication`: đăng nhập
+Meta for Developers Console → tạo team → vào Model API dashboard → Generate key,
+dán vào `api_keys`.
 
 ## Ví dụ dùng
 

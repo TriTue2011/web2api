@@ -14,3 +14,6 @@ bi_mat/
 # Rác soạn thảo / hệ điều hành
 .DS_Store
 *.swp
+
+# trạng thái OAuth tạm của module (mã thiết bị / identity token lúc chạy)
+modules/*/.oauth.json
