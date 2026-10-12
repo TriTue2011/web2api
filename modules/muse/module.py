@@ -14,14 +14,14 @@ import json
 import logging
 from typing import Any, AsyncIterator, Optional
 
-from modules.muse.client import MuseClient
-from modules.muse.converter import (
+from .client import MuseClient
+from .converter import (
     chuyen_dong_muse_sang_sse_openai,
     chuyen_yeu_cau_chat_openai,
     gom_dong_muse_thanh_json_openai,
     tach_model_muse,
 )
-from modules.muse.protobuf import ServiceType
+from .protobuf import ServiceType
 
 log = logging.getLogger("web2api.module.muse")
 

@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 from app import he_thong, kho, nhat_ky
-from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, nap_ma, quet, van_tay)
+from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, go_ma, nap_ma, quet, van_tay)
 
 log = logging.getLogger("web2api.so_module")
 
@@ -204,7 +204,7 @@ class SoModule:
                         the_moi = self._tao_tu_kho(km)
                     except Exception as e:
                         bao_loi(thu_muc, f"bản mới không nạp được cấu hình đã lưu: {type(e).__name__}: {e}")
-                        sys.modules.pop(ten, None)
+                        go_ma(ten)
                         moi[id_] = truoc
                         continue
                     cu_chay = self.dang_chay[id_]
@@ -218,11 +218,11 @@ class SoModule:
                 moi[id_] = km
                 (doi if truoc else them).append(id_)
                 if truoc and truoc.ten_ma != km.ten_ma:
-                    sys.modules.pop(truoc.ten_ma, None)  # dọn bản cũ: không giữ mã cũ trong bộ nhớ
+                    go_ma(truoc.ten_ma)  # dọn bản cũ: không giữ mã cũ trong bộ nhớ
 
         go = [i for i in cu if i not in moi]
         for id_ in go:
-            sys.modules.pop(cu[id_].ten_ma, None)
+            go_ma(cu[id_].ten_ma)
             m = self.dang_chay.pop(id_, None)
             if m is not None:
                 await self._dung_an_toan(id_, m)

@@ -9,9 +9,9 @@ import asyncio
 import logging
 from typing import AsyncIterator, Optional
 
-from modules.muse.khung import BoGhepKhung, tach_khung
-from modules.muse.noise import CipherState, NoiseXXInitiator
-from modules.muse.protobuf import (
+from .khung import BoGhepKhung, tach_khung
+from .noise import CipherState, NoiseXXInitiator
+from .protobuf import (
     ApplicationRequest,
     ApplicationResponse,
     BodyChunk,

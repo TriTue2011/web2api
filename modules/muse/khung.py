@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from modules.muse.protobuf import NoiseTransportFrame
+from .protobuf import NoiseTransportFrame
 
 MAX_CHUNK_PAYLOAD = 65489
 MAX_CHUNKS = 256
