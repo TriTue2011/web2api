@@ -11,6 +11,7 @@ Xác thực: /v1/* và mọi API đổi trạng thái/lộ cấu hình đòi kho
 import asyncio
 import json
 import logging
+import random
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import he_thong, kho, khoa_khach, nhat_ky, tuyen, xac_thuc
+from app import he_thong, kho, khoa_khach, nhat_ky, phien, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -44,6 +45,22 @@ async def _vong_dong_bo_khoa():
             pass
 
 
+async def _vong_quet_phien(app: FastAPI):
+    while True:
+        try:
+            chu_ky = phien.chu_ky_phut()
+            ty_le = random.uniform(0.9, 1.1)
+            cho_giay = max(1.0, chu_ky * 60.0 * ty_le)
+            await asyncio.sleep(cho_giay)
+            so = getattr(app.state, "so", None)
+            if so is not None:
+                await phien.quet_mot_vong(so)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.warning("Lỗi trong vòng quét phiên: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     xac_thuc.khoa_quan_tri()  # sinh tệp khoá ngay lần chạy đầu để người vận hành lấy được
@@ -55,11 +72,13 @@ async def lifespan(app: FastAPI):
     app.state.nguon_git = ng
     ng.bat_dau()
     task_dong_bo = asyncio.create_task(_vong_dong_bo_khoa())
+    task_quet_phien = asyncio.create_task(_vong_quet_phien(app))
     nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
     try:
         yield
     finally:
         task_dong_bo.cancel()
+        task_quet_phien.cancel()
         khoa_khach.dong_bo_dia()
         await ng.dung()
         await so.dung_het()
@@ -145,6 +164,8 @@ app.include_router(tuyen.nguon_git)
 app.include_router(tuyen.dia_chi)
 app.include_router(tuyen.nhat_ky)
 app.include_router(tuyen.khoa_khach)
+app.include_router(tuyen.phien)
+
 app.include_router(tuyen.thiet_bi)
 app.include_router(tuyen.phe_duyet)
 app.include_router(tuyen.tep_module)

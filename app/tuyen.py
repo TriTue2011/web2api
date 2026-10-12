@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
+from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod, phien as phien_mod
+
 from app import dia_chi as dia_chi_mod, kho, khoa_khach as khoa_khach_mod, nhat_ky as nhat_ky_mod, thiet_bi as thiet_bi_mod
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
@@ -37,6 +39,8 @@ nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
 dia_chi = APIRouter(prefix="/api", dependencies=QT)
 nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
 khoa_khach = APIRouter(prefix="/api/khoa-khach", dependencies=QT)
+phien = APIRouter(prefix="/api/phien", dependencies=QT)
+
 thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
 phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
 tep_module = APIRouter()
@@ -698,6 +702,36 @@ async def sua_khoa_khach_khong_path(request: Request):
 def xoa_khoa_khach(id_: str):
     da_xoa = khoa_khach_mod.xoa_khoa(id_khoa=id_)
     return {"ok": True, "da_xoa": da_xoa}
+
+
+# ───────────── /api/phien — quản lý phiên tài khoản (chỉ quản trị) ─────────────
+
+@phien.get("")
+def xem_phien():
+    ds = phien_mod.liet_ke()
+    can_dang_nhap = sum(1 for x in ds if x.get("trang_thai") == "can_dang_nhap")
+    return {"phien": ds, "tong": len(ds), "can_dang_nhap_tong": can_dang_nhap}
+
+
+@phien.delete("/{module}/{tai_khoan}")
+def xoa_phien(module: str, tai_khoan: str):
+    if not phien_mod.ID_HOP_LE.match(module) or not phien_mod.ID_HOP_LE.match(tai_khoan):
+        raise LoiOpenAI(400, "id module hoặc tài khoản không hợp lệ")
+    da_xoa = phien_mod.xoa(module, tai_khoan)
+    if not da_xoa:
+        raise LoiOpenAI(404, "Không tìm thấy phiên")
+    return {"ok": True, "module": module, "tai_khoan": tai_khoan}
+
+
+@phien.post("/{module}/{tai_khoan}/kiem")
+async def kiem_phien(module: str, tai_khoan: str, request: Request):
+    if not phien_mod.ID_HOP_LE.match(module) or not phien_mod.ID_HOP_LE.match(tai_khoan):
+        raise LoiOpenAI(400, "id module hoặc tài khoản không hợp lệ")
+    try:
+        kq = await phien_mod.kiem_mot_phien(module, tai_khoan, so=_so(request))
+    except KeyError:
+        raise LoiOpenAI(404, "Không tìm thấy phiên") from None
+    return {"ok": True, **kq}
 
 
 # ───────────── Tuyến THIẾT BỊ / ỨNG DỤNG (/api/thiet-bi) ─────────────

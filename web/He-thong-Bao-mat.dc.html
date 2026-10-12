@@ -312,7 +312,7 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const tn = s.tn;
-    const navHT = K.navHeThong(tn, 'bao_mat', s.soTb);
+    const navHT = K.menuNav(this, K.navHeThong(tn, 'bao_mat', s.soTb), null);
     const coQuayLai = !!K.quayLai(tn);
     const khongQuayLai = !coQuayLai;
 

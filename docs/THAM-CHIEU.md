@@ -184,7 +184,17 @@ chi tiết mở ở bước kế tiếp.
 | `tu_xa.py` | Module từ xa (chỉ URL), chặn SSRF lúc đăng ký |
 | `chuyen_tiep.py` | Bộ chuyển tiếp OpenAI dùng chung cho module; mọi điểm riêng của nhà cung cấp là tham số |
 | `yeu_cau_da_phan.py` | Đọc `multipart/form-data` cho các đường `/v1` nhận tệp: trần tổng thân, đếm byte thật, dọn tệp tạm, dựng `YeuCauDaPhan` cho module |
+| `phien.py` | Kho phiên tài khoản (`bi_mat/phien/` 0600), bộ quét kiểm phiên và làm mới định kỳ |
 | `kho.py`, `xac_thuc.py`, `he_thong.py` | Lưu trữ trên đĩa (bí mật 0600), khoá quản trị, đọc tài nguyên máy |
+
+```mermaid
+flowchart TD
+  NG["Người dùng đăng nhập tay<br/>(OTP / Captcha)"] -->|"Lưu phiên (luu)"| KHO[("Kho phiên lõi<br/>bi_mat/phien/ (0600)")]
+  KHO -->|"Mở lấy lại (lay)"| MOD["Module dịch vụ"]
+  QUET["Bộ quét định kỳ lõi<br/>(quet_mot_vong)"] -->|"phien_con_song / lam_moi_phien"| MOD
+  QUET -->|"Phiên chết / Hết hạn"| BAO["Trạng thái can_dang_nhap<br/>GET /api/phien · Cảnh báo"]
+  BAO -->|"Thông báo"| NG
+```
 
 ### Giao diện (`web/`)
 
@@ -1196,6 +1206,7 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 - Chưa có màn Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký — sẽ vào khi có module thật đứng sau.
 - Tab riêng của module do lõi phục vụ ở `/m/<id>/`; trường `tab_web.duong` của `GET /api/modules` vẫn là đường
   tuyệt đối (`/m/…`) — giao diện mới dùng đường tương đối từ `GET /api/tinh-nang`.
+- Kho phiên tài khoản lưu ở `<WEB2API_DATA>/bi_mat/phien/` quyền tệp 0600, thư mục 0700; **chưa mã hoá khi nghỉ**.
 
 ## 8. Tra cứu: API và biến môi trường
 
@@ -1231,6 +1242,9 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; trả về khoá thô một lần duy nhất) |
 | `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt, nhãn, phạm vi) |
 | `DELETE /api/khoa-khach/{id}` | Có | Thu hồi khoá khách (xoá ngay, các lượt gọi sau bị `401`) |
+| `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên) |
+| `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |
+| `POST /api/phien/{module}/{tai_khoan}/kiem` | Có | Kiểm tra ngay trạng thái một phiên tài khoản qua module |
 | `GET /api/thiet-bi` | Có | Danh sách thực thể thiết bị/ứng dụng từ các module, kèm trạng thái và rủi ro hiệu lực (hỗ trợ lọc `q`, `loai`, `khu`, `module`, `rui_ro`) |
 | `GET /api/thiet-bi/su-kien` | Có | Nhận luồng sự kiện thiết bị theo thời gian thực (SSE) |
 | `POST /api/thiet-bi/su-kien` | Có | Phát sự kiện thiết bị mới |
@@ -1264,12 +1278,15 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
 | `WEB2API_KHACH_DONG_THOI` | không | Trần số yêu cầu đồng thời tối đa cho mỗi khoá khách; vượt trần trả `429` kèm tiêu đề `Retry-After` (không làm hỏng trạng thái module) |
+| `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
+| `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |
 | `WEB2API_GIT_TOKEN` | không | Token GitHub (kho riêng tư hoặc nâng hạn mức) |
+| `WEB2API_GITHUB_TOKEN` | không | Token GitHub (cần cho kho private: token có quyền Contents: Read; đặt trong docker-compose/Portainer/NAS; ưu tiên hơn token lưu qua API) |
 | `WEB2API_GITHUB_API` | `https://api.github.com` | **Chỉ cho kiểm thử** (trỏ GitHub giả); khác mặc định thì nhật ký có cảnh báo |
 | `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
 | `WEB2API_DEMO_DIR` | không | Chỉ cho test dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |

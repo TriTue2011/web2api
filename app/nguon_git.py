@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import io
 import json
 import logging
 import os
@@ -31,9 +32,10 @@ import posixpath
 import re
 import secrets
 import shutil
+import tarfile
 import time
 import unicodedata
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
@@ -111,6 +113,8 @@ class NguonGit:
         self._ghi_chu: dict[str, tuple[str, str]] = {}
         self._tu_dong_hong: dict[str, str] = {}
         self._lan_dau = False  # lần đồng bộ vừa xong là lần ĐẦU của nguồn này → _tu_dong cập nhật module đang có
+        self._cay_muc: list[dict] = []
+        self._cay_blob: dict[str, str] = {}
         if api_github() != API_MAC_DINH:
             log.warning("WEB2API_GITHUB_API=%s khác mặc định %s — chỉ dùng cho test", api_github(), API_MAC_DINH)
 
@@ -137,12 +141,22 @@ class NguonGit:
             log.warning("Biến môi trường nguồn git sai, bỏ qua: %s", e)
             return None
 
-    def token(self) -> str | None:
+    def token_va_nguon(self) -> tuple[str | None, str | None]:
+        env_tk = (os.environ.get("WEB2API_GITHUB_TOKEN", "").strip()
+                  or os.environ.get("WEB2API_GIT_TOKEN", "").strip())
+        if env_tk:
+            return env_tk, "bien_moi_truong"
         try:
             tk = kho.doc_bi_mat(TEN_BI_MAT).get("token")
         except kho.KhoHong:
             tk = None
-        return tk or os.environ.get("WEB2API_GIT_TOKEN", "").strip() or None
+        if tk:
+            return tk, "da_luu"
+        return None, None
+
+    def token(self) -> str | None:
+        tk, _ = self.token_va_nguon()
+        return tk
 
     def luu_cau_hinh(self, than: dict) -> dict:
         cu = self.cau_hinh() or {}
@@ -174,13 +188,34 @@ class NguonGit:
 
     def cong_khai(self) -> dict:
         cfg = self.cau_hinh()
-        tk = self.token()
+        tk, tk_nguon = self.token_va_nguon()
         tt = self.trang_thai
+        canh_bao = tt.get("canh_bao")
+        if not tk and cfg and isinstance(cfg.get("chu_ky_giay"), (int, float)) and cfg["chu_ky_giay"] < 600:
+            cb_chu_ky = "chu kỳ dưới 10 phút khi chưa có token dễ hết hạn mức (60 yêu cầu/giờ)"
+            canh_bao = f"{canh_bao}; {cb_chu_ky}" if canh_bao else cb_chu_ky
+        cau_hinh_res = None
+        if cfg is not None:
+            cau_hinh_res = {**cfg, "token": kho.che(tk) if tk else None}
+            if tk_nguon == "bien_moi_truong":
+                cau_hinh_res["nguon"] = "bien_moi_truong"
+                cau_hinh_res["token_nguon"] = "bien_moi_truong"
+                cau_hinh_res["nguon_token"] = "bien_moi_truong"
+            elif tk_nguon == "da_luu":
+                cau_hinh_res["token_nguon"] = "da_luu"
+                cau_hinh_res["nguon_token"] = "da_luu"
         return {
-            "cau_hinh": None if cfg is None else {**cfg, "token": kho.che(tk) if tk else None},
-            "trang_thai": {k: tt.get(k) for k in ("kiem_luc", "loi", "canh_bao", "han_muc_con", "reset_luc",
-                                                  "thu_lai_luc")}
-                          | {"commit": tt.get("commit"), "so_module": len(tt.get("modules") or [])},
+            "cau_hinh": cau_hinh_res,
+            "trang_thai": {
+                "kiem_luc": tt.get("kiem_luc"),
+                "loi": tt.get("loi"),
+                "canh_bao": canh_bao,
+                "han_muc_con": tt.get("han_muc_con"),
+                "reset_luc": tt.get("reset_luc"),
+                "thu_lai_luc": tt.get("thu_lai_luc"),
+                "commit": tt.get("commit"),
+                "so_module": len(tt.get("modules") or []),
+            },
         }
 
     # ───────────── HTTP tới GitHub ─────────────
@@ -233,13 +268,67 @@ class NguonGit:
         except (ValueError, AttributeError):
             tin = ""
         goi_y = ""
+        tk = self.token()
         if r.status_code == 404:
-            goi_y = " — không thấy repo/nhánh (kho riêng tư thì cần token có quyền đọc)"
+            if not tk:
+                goi_y = " — không thấy repo/nhánh (kho riêng tư cần token có quyền đọc (Contents: Read))"
+            else:
+                goi_y = " — không thấy repo/nhánh (kiểm tra lại tên repo/nhánh hoặc token có quyền đọc (Contents: Read))"
         elif r.status_code == 401:
             goi_y = " — token sai hoặc hết hạn"
+        elif r.status_code == 403:
+            goi_y = " — bị từ chối truy cập (kho riêng tư cần token có quyền đọc (Contents: Read))"
         elif r.status_code in (301, 302, 307, 308):
             goi_y = " — repo đã đổi tên/chuyển chỗ; sửa «repo» trong cấu hình"
         return LoiGit(self._che(f"GitHub trả HTTP {r.status_code} khi {viec}: {tin[:200]}{goi_y}"), 502)
+
+    async def _tai_tarball(self, repo: str, sha: str) -> bytes:
+        if not isinstance(sha, str) or not SHA_HOP_LE.match(sha):
+            raise LoiGit(f"sha commit không hợp lệ: {sha!r}")
+        hd = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "web2api"}
+        tk = self.token()
+        if tk:
+            hd["Authorization"] = f"Bearer {tk}"
+        try:
+            r = await self._client().get(api_github() + f"/repos/{repo}/tarball/{sha}", headers=hd,
+                                         timeout=httpx.Timeout(60.0, connect=10.0))
+        except httpx.HTTPError as e:
+            raise LoiGit(f"lỗi mạng tới GitHub: {type(e).__name__}") from None
+        self._doc_han_muc(r)
+        if r.status_code == 429 or (r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0"):
+            cho_den = self.trang_thai.get("_reset_epoch")
+            ra = r.headers.get("retry-after")
+            if ra and ra.isdigit():
+                cho_den = max(cho_den or 0, time.time() + int(ra))
+            raise LoiGit(f"hết hạn mức API GitHub ({r.status_code}"
+                         + (", ẩn danh 60 yêu cầu/giờ/IP — thêm token để nâng" if not tk else "")
+                         + f"); thử lại lúc {self.trang_thai.get('reset_luc') or 'sau'}", 429, cho_den)
+
+        # Xử lý chuyển hướng một bước (GitHub 302 sang codeload.github.com)
+        if r.status_code in (301, 302, 307, 308):
+            loc = r.headers.get("location")
+            if not loc:
+                raise LoiGit(f"GitHub trả HTTP {r.status_code} khi tải tarball nhưng thiếu Location", 502)
+            url_tiep = urljoin(str(r.url), loc)
+            hd_tiep = {"User-Agent": "web2api"}
+            # An toàn: KHÔNG gửi Authorization sang máy chủ khác khi theo chuyển hướng
+            # Chỉ gửi token tới đúng máy chủ api_github() đã cấu hình
+            goc_api = urlsplit(api_github()).netloc
+            goc_dich = urlsplit(url_tiep).netloc
+            if tk and goc_api == goc_dich:
+                hd_tiep["Authorization"] = f"Bearer {tk}"
+            try:
+                r = await self._client().get(url_tiep, headers=hd_tiep,
+                                             timeout=httpx.Timeout(60.0, connect=10.0))
+            except httpx.HTTPError as e:
+                raise LoiGit(f"lỗi mạng khi theo chuyển hướng tarball: {type(e).__name__}") from None
+
+        if r.status_code != 200:
+            raise self._loi_http(r, f"tải tarball commit {sha[:12]}")
+        du_lieu = r.content
+        if len(du_lieu) > TRAN_TONG:
+            raise LoiGit(f"tarball commit {sha[:12]} lớn {len(du_lieu)} byte, vượt trần {TRAN_TONG}", 422)
+        return du_lieu
 
     async def _doc_cay(self, repo: str, cay: str) -> list[dict]:
         if not SHA_HOP_LE.match(cay):
@@ -307,6 +396,8 @@ class NguonGit:
                   "da_xac_minh": bool((c.get("verification") or {}).get("verified")),
                   "cay": (c.get("tree") or {}).get("sha")}
         cay = await self._doc_cay(repo, str(commit["cay"]))
+        self._cay_muc = cay
+        self._cay_blob = {e["path"]: e["sha"] for e in cay if e.get("type") == "blob"}
         modules = await self._doc_modules(repo, cay, thu_muc, tt.get("modules") or [])
         # ETag chỉ lưu khi đã đọc xong: hỏng giữa chừng thì lần sau không bị 304 che mất commit này.
         tt.update(etag=r.headers.get("etag"), commit=commit, modules=modules, loi=None)
@@ -432,31 +523,44 @@ class NguonGit:
             raise LoiGit(f"id {id_!r} không hợp lệ", 400)
         commit = self.trang_thai.get("commit") or {}
         m = next((x for x in self.trang_thai.get("modules") or [] if x["id"] == id_), None)
-        if m is None or not commit.get("cay"):
+        if m is None or not commit.get("sha"):
             raise LoiGit(f"module {id_!r} không có trong lần đồng bộ gần nhất — chờ vòng thăm dò sau", 404)
         if m.get("loi"):
             raise LoiGit(f"manifest của {id_!r} lỗi: {m['loi']}", 422)
         repo, thu_muc = cfg["repo"], cfg["thu_muc"]
-        cay = await self._doc_cay(repo, commit["cay"])  # chốt theo ĐÚNG cây đã thấy
         tien = f"{thu_muc}/{id_}/"
-        sha_tm = next((e["sha"] for e in cay if e["path"] == f"{thu_muc}/{id_}" and e.get("type") == "tree"), None)
-        if sha_tm != m["tree_sha"]:
-            raise LoiGit("cây trên GitHub không khớp lần đồng bộ (sha thư mục khác) — từ chối", 422)
-        tep = self._kiem_danh_sach_tep([e for e in cay if e["path"].startswith(tien)], tien)
+
+        # Nếu chưa có cây trong bộ nhớ (ví dụ sau khởi động lại), đọc cây một lần
+        if not self._cay_muc and commit.get("cay"):
+            cay = await self._doc_cay(repo, str(commit["cay"]))
+            self._cay_muc = cay
+            self._cay_blob = {e["path"]: e["sha"] for e in cay if e.get("type") == "blob"}
+
+        # Kiểm tra submodule từ cây nếu có
+        for e in self._cay_muc:
+            if e.get("path", "").startswith(tien):
+                rel = e["path"][len(tien):]
+                if e.get("mode") == "160000" or e.get("type") == "commit":
+                    raise LoiGit(f"module chứa submodule {rel!r} — từ chối", 422)
+
+        # Cài bằng MỘT yêu cầu tarball chốt theo commit đã thấy
+        du_lieu_tar = await self._tai_tarball(repo, str(commit["sha"]))
         tam = kho.thu_muc_modules() / f".tam-{id_}-{secrets.token_hex(4)}"
         try:
-            tam.mkdir(parents=True)
-            tong = 0
-            # Tải và kiểm băm NGOÀI khoá của sổ module: GitHub chậm không làm nghẽn /v1 hay nạp lại.
-            for rel, e in tep:
-                du_lieu = await self._doc_blob(repo, e["sha"])
-                tong += len(du_lieu)
-                if tong > TRAN_TONG:
-                    raise LoiGit(f"tổng dung lượng vượt trần {TRAN_TONG} byte", 422)
-                p = tam / rel
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_bytes(du_lieu)
-                os.chmod(p, 0o644)
+            try:
+                tf = tarfile.open(fileobj=io.BytesIO(du_lieu_tar), mode="r:*")
+            except (tarfile.TarError, EOFError, OSError) as e:
+                raise LoiGit(f"tarball commit {str(commit['sha'])[:12]} hỏng hoặc không đúng định dạng: {e}", 422)
+
+            with tf:
+                tep_trong_module, tong_dung_luong = self._giai_nen_kiem_tra(tf, tien)
+                tam.mkdir(parents=True)
+                for rel, noi_dung in tep_trong_module:
+                    p = tam / rel
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(noi_dung)
+                    os.chmod(p, 0o644)
+
             manifest, ly_do = doc_manifest(tam)
             if ly_do or manifest["id"] != id_:
                 raise LoiGit(f"manifest tải về không hợp lệ: {ly_do or 'id khác tên thư mục'}", 422)
@@ -476,16 +580,43 @@ class NguonGit:
                     str(commit["sha"])[:12])
         return {"ok": True, "id": id_, "phien_ban": manifest.get("phien_ban"), "sha_commit": commit["sha"], **kq}
 
-    @staticmethod
-    def _kiem_danh_sach_tep(muc: list[dict], tien: str) -> list[tuple[str, dict]]:
-        """Chỉ tệp thường. Symlink (120000) có thể trỏ ra ngoài thư mục module; submodule (160000)
-        kéo mã từ kho khác không qua kiểm băm; đường thoát/«..»/tên trùng sau chuẩn hoá là cách
-        đè tệp ngoài ý muốn — tất cả từ chối CẢ module."""
-        ra = []
-        da_thay = set()
+    def _giai_nen_kiem_tra(self, tf: tarfile.TarFile, tien: str) -> tuple[list[tuple[str, bytes]], int]:
+        tep_ra: list[tuple[str, bytes]] = []
+        da_thay: set[str] = set()
         tong = 0
-        for e in muc:
-            rel = e["path"][len(tien):]
+        for member in tf.getmembers():
+            ten_goc = member.name
+            if "\0" in ten_goc or "\\" in ten_goc:
+                raise LoiGit(f"đường dẫn không an toàn trong tarball: {ten_goc!r}", 422)
+            parts = [p for p in ten_goc.split("/") if p]
+            if any(p in ("..", ".") for p in ten_goc.split("/")):
+                raise LoiGit(f"đường dẫn không an toàn trong tarball: {ten_goc!r}", 422)
+            if posixpath.isabs(ten_goc) or ten_goc.startswith("/"):
+                raise LoiGit(f"đường dẫn không an toàn trong tarball: {ten_goc!r}", 422)
+
+            # Xác định đường dẫn tương đối trong kho sau khi bỏ tiền tố gốc nếu có (<owner>-<repo>-<sha>/)
+            if ten_goc.startswith(tien):
+                rel_repo = ten_goc
+            elif len(parts) > 1 and "/".join(parts[1:]).startswith(tien):
+                rel_repo = "/".join(parts[1:])
+            else:
+                rel_repo = None
+
+            if rel_repo is None:
+                # Mục ngoài module: bỏ qua (chỉ giải nén module này)
+                continue
+
+            # Mục thuộc module: kiểm tra an toàn chặt chẽ
+            if member.issym() or member.islnk():
+                raise LoiGit(f"module chứa symlink {member.name!r} — từ chối", 422)
+            if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
+                raise LoiGit(f"loại mục lạ trong module: {member.name!r}", 422)
+            if member.isdir():
+                continue
+            if not member.isreg():
+                raise LoiGit(f"loại mục lạ trong module: {member.name!r}", 422)
+
+            rel = rel_repo[len(tien):]
             if (not rel or rel.startswith("/") or "\\" in rel or "\0" in rel
                     or any(p in ("", ".", "..") for p in rel.split("/")) or posixpath.normpath(rel) != rel):
                 raise LoiGit(f"đường dẫn không an toàn trong module: {rel!r}", 422)
@@ -493,27 +624,35 @@ class NguonGit:
             if khoa in da_thay:
                 raise LoiGit(f"tên tệp trùng nhau sau chuẩn hoá: {rel!r}", 422)
             da_thay.add(khoa)
-            if e.get("mode") == "120000":
-                raise LoiGit(f"module chứa symlink {rel!r} — từ chối", 422)
-            if e.get("mode") == "160000" or e.get("type") == "commit":
-                raise LoiGit(f"module chứa submodule {rel!r} — từ chối", 422)
-            if e.get("type") == "tree":
-                continue
-            if e.get("type") != "blob" or e.get("mode") not in ("100644", "100755"):
-                raise LoiGit(f"loại mục lạ trong module: {rel!r} ({e.get('mode')})", 422)
-            co = int(e.get("size") or 0)
-            if co > TRAN_BLOB:
-                raise LoiGit(f"tệp {rel!r} lớn {co} byte, vượt trần {TRAN_BLOB}", 422)
-            tong += co
-            ra.append((rel, e))
-        if len(ra) > TRAN_TEP:
-            raise LoiGit(f"module có {len(ra)} tệp, vượt trần {TRAN_TEP}", 422)
-        if tong > TRAN_TONG:
-            raise LoiGit(f"tổng dung lượng {tong} byte vượt trần {TRAN_TONG}", 422)
-        ten = {r for r, _ in ra}
-        if "manifest.json" not in ten or "module.py" not in ten:
+
+            if member.size > TRAN_BLOB:
+                raise LoiGit(f"tệp {rel!r} lớn {member.size} byte, vượt trần {TRAN_BLOB}", 422)
+            tong += member.size
+            if tong > TRAN_TONG:
+                raise LoiGit(f"tổng dung lượng {tong} byte vượt trần {TRAN_TONG}", 422)
+            if len(tep_ra) + 1 > TRAN_TEP:
+                raise LoiGit(f"module có nhiều hơn {TRAN_TEP} tệp, vượt trần {TRAN_TEP}", 422)
+
+            f = tf.extractfile(member)
+            if f is None:
+                raise LoiGit(f"không đọc được nội dung tệp {rel!r} từ tarball", 422)
+            du_lieu = f.read()
+            if len(du_lieu) != member.size:
+                raise LoiGit(f"dung lượng tệp {rel!r} đọc được không khớp header tar", 422)
+
+            expected_sha = self._cay_blob.get(rel_repo)
+            if expected_sha and bam_blob(du_lieu) != expected_sha:
+                raise LoiGit(f"tệp {rel!r} SAI BĂM — nội dung nhận được không khớp sha trong cây git; "
+                             "từ chối cả module", 422)
+
+            tep_ra.append((rel, du_lieu))
+
+        ten_tep = {r for r, _ in tep_ra}
+        if not tep_ra:
+            raise LoiGit(f"không tìm thấy thư mục {tien} trong tarball", 404)
+        if "manifest.json" not in ten_tep or "module.py" not in ten_tep:
             raise LoiGit("module phải có manifest.json và module.py ở gốc thư mục", 422)
-        return ra
+        return tep_ra, tong
 
     def da_go(self, id_: str) -> None:
         """Quản trị vừa gỡ module: nhớ (lưu đĩa) sha thư mục của bản trên git để vòng tự cài KHÔNG cài

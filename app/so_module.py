@@ -21,7 +21,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from app import he_thong, kho, nhat_ky
+from app import he_thong, kho, nhat_ky, phien
 from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, go_ma, nap_ma, quet, van_tay)
 
 log = logging.getLogger("web2api.so_module")
@@ -111,7 +111,7 @@ class SoModule:
                 ghi(id_, m.manifest, True)
         thu_tu = sorted(loai.values(), key=lambda x: (x["thu_tu"] is None, x["thu_tu"] or 0, x["ma"]))
         return {"modules": modules, "loai": thu_tu, "kha_nang_da_cai": da_cai, "kha_nang_lien_ket": lien_ket,
-                "tab": tab, "muc": muc, "mui_gio": self.mui_gio}
+                "tab": tab, "muc": muc, "mui_gio": self.mui_gio, "phien": phien.thong_ke()}
 
     # ───────────── khởi động / tắt ─────────────
 

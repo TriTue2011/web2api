@@ -9,8 +9,10 @@ import asyncio
 import base64
 import gzip
 import hashlib
+import io
 import json
 import socket
+import tarfile
 import threading
 import time
 
@@ -440,11 +442,16 @@ class GitHubGia:
         self.han_muc: tuple[int, int] | None = None  # (còn lại, reset epoch) gắn vào MỌI phản hồi
         self.cat_cay = False
         self.nhat_ky: list[dict] = []
+        self.tarball_chuyen_huong: str | None = None
+        self.tarball_tuy_chinh: bytes | None = None
+        self.kho_rieng_tu: bool = False
         p = "/repos/{owner}/{ten}"
         self.app = Starlette(routes=[
             Route(p + "/commits/{nhanh:path}", self.commit),
             Route(p + "/git/trees/{sha}", self.cay),
             Route(p + "/git/blobs/{sha}", self.blob),
+            Route(p + "/tarball/{ref:path}", self.tarball),
+            Route("/tai-tarball/{ref:path}", self.tai_tarball),
         ])
 
     def day(self, tep: dict, thong_diep: str = "cập nhật module", xac_minh: bool = False,
@@ -488,6 +495,8 @@ class GitHubGia:
 
     def _kiem(self, req: Request):
         if f"{req.path_params['owner']}/{req.path_params['ten']}" != self.repo:
+            return JSONResponse({"message": "Not Found"}, status_code=404)
+        if self.kho_rieng_tu and not req.headers.get("authorization"):
             return JSONResponse({"message": "Not Found"}, status_code=404)
         if self.token and req.headers.get("authorization") != f"Bearer {self.token}":
             return JSONResponse({"message": "Bad credentials"}, status_code=401)
@@ -536,6 +545,54 @@ class GitHubGia:
         du_lieu = self.blob_sai.get(sha, self.blobs[sha])
         return JSONResponse({"sha": sha, "size": len(du_lieu), "encoding": "base64",
                              "content": base64.encodebytes(du_lieu).decode()}, headers=self._hm())
+
+    def _dung_tarball(self, sha: str) -> bytes:
+        if sha not in self.commits:
+            return b""
+        c = self.commits[sha]
+        cay_sha = c["cay"]
+        muc = self.trees.get(cay_sha, [])
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            goc = f"{self.repo.replace('/', '-')}-{sha[:7]}"
+            for m in muc:
+                duong = m["path"]
+                if m.get("mode") == "120000":
+                    ti = tarfile.TarInfo(name=f"{goc}/{duong}")
+                    ti.type = tarfile.SYMTYPE
+                    ti.linkname = self.blobs.get(m["sha"], b"").decode("utf-8", errors="replace")
+                    ti.mtime = int(time.time())
+                    tf.addfile(ti)
+                elif m.get("type") == "blob":
+                    du_lieu = self.blob_sai.get(m["sha"], self.blobs.get(m["sha"], b""))
+                    ti = tarfile.TarInfo(name=f"{goc}/{duong}")
+                    ti.size = len(du_lieu)
+                    ti.mtime = int(time.time())
+                    ti.mode = 0o644
+                    tf.addfile(ti, io.BytesIO(du_lieu))
+        return buf.getvalue()
+
+    async def tarball(self, req: Request):
+        self._ghi(req, "tarball")
+        if (loi := self._kiem(req)) is not None:
+            return loi
+        if self.tarball_chuyen_huong is not None:
+            return Response(status_code=302, headers={"Location": self.tarball_chuyen_huong, **self._hm()})
+        ref = req.path_params["ref"]
+        sha = self.nhanh.get(ref, ref)
+        if sha not in self.commits:
+            return JSONResponse({"message": "Not Found"}, status_code=404)
+        du_lieu = self.tarball_tuy_chinh if self.tarball_tuy_chinh is not None else self._dung_tarball(sha)
+        return Response(du_lieu, media_type="application/x-gzip", headers=self._hm())
+
+    async def tai_tarball(self, req: Request):
+        self._ghi(req, "tai_tarball")
+        ref = req.path_params["ref"]
+        sha = self.nhanh.get(ref, ref)
+        if sha not in self.commits:
+            return JSONResponse({"message": "Not Found"}, status_code=404)
+        du_lieu = self.tarball_tuy_chinh if self.tarball_tuy_chinh is not None else self._dung_tarball(sha)
+        return Response(du_lieu, media_type="application/x-gzip", headers=self._hm())
 
 
 # ───────────────────────────── module mẫu cho test ─────────────────────────────
