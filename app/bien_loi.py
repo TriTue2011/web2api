@@ -12,7 +12,8 @@ thì chỉ thấy lỗi mơ hồ. Lỗi do chính lõi ném đã là `LoiOpenAI`
 Vì sao lỗi chưa bắt đi bằng middleware chứ không `add_exception_handler(Exception)`: ServerErrorMiddleware của
 Starlette gửi phản hồi xong LUÔN ném lại lỗi, và uvicorn in «Exception in ASGI application» kèm traceback có NGUYÊN
 chuỗi lỗi — module ném lỗi chứa khoá là khoá vào nhật ký. Middleware ở đây (trong ServerErrorMiddleware, ngoài
-ExceptionMiddleware) nuốt lỗi sau khi tự ghi bản đã che: loại lỗi, vị trí mã (tệp:dòng), thông điệp đã che. Lỗi giữa
+ExceptionMiddleware) nuốt lỗi sau khi tự ghi bản đã che: loại lỗi, vị trí mã (tệp:dòng), thông điệp đã che; mọi chuỗi
+khách điều khiển (phương thức, đường dẫn, thông điệp) đã thoát ký tự điều khiển — không chèn được dòng giả. Lỗi giữa
 một stream đã gửi đầu phản hồi thì không còn gửi được 500: trả về để uvicorn cắt kết nối (khách thấy luồng đứt).
 """
 
@@ -63,6 +64,12 @@ def che_chuoi(van_ban: str) -> str:
     return _DANG_TOKEN.sub(lambda m: kho.che(m.group()), van_ban)
 
 
+def thoat_dieu_khien(van_ban: str) -> str:
+    """Ký tự không in được (xuống dòng, CR, ESC…) thành dạng thoát (`\\n`, `\\x1b`): chuỗi khách điều khiển vào nhật
+    ký không chèn được dòng giả hay mã màu terminal, mà vẫn giữ đủ thông tin để tra."""
+    return "".join(k if k.isprintable() else k.encode("unicode_escape").decode("ascii") for k in van_ban)
+
+
 async def xu_ly_http(request: Request, e: StarletteHTTPException):
     if not la_duong_v1(request.url.path):
         return await http_exception_handler(request, e)
@@ -87,7 +94,8 @@ def _mo_ta_loi(e: BaseException) -> str:
         da_thay.add(id(e))
         for k in traceback.extract_tb(e.__traceback__):
             dong.append(f"  {k.filename}:{k.lineno} trong {k.name}")
-        dong.append(f"{type(e).__module__}.{type(e).__qualname__}: {che_chuoi(str(e))[:500]}")
+        # Thông điệp có thể mang chuỗi khách gửi: thoát từng phần, còn «\n» nối các dòng ở đây là của lõi.
+        dong.append(f"{type(e).__module__}.{type(e).__qualname__}: {thoat_dieu_khien(che_chuoi(str(e))[:500])}")
         e = e.__cause__ or e.__context__
     return "\n".join(dong)
 
@@ -115,7 +123,8 @@ class BatLoiChuaBat:
         except Exception as e:
             ma_tra = secrets.token_hex(4)
             duong = scope.get("path", "")
-            log.error("Lỗi chưa bắt [mã tra %s] %s %s%s\n%s", ma_tra, scope.get("method"), che_chuoi(duong[:200]),
+            log.error("Lỗi chưa bắt [mã tra %s] %s %s%s\n%s", ma_tra, thoat_dieu_khien(str(scope.get("method"))[:20]),
+                      thoat_dieu_khien(che_chuoi(duong[:200])),
                       " (giữa phản hồi đã gửi — cắt kết nối)" if da_bat_dau else "", _mo_ta_loi(e))
             if da_bat_dau:
                 return

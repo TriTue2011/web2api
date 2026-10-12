@@ -1,0 +1,38 @@
+{
+  "id": "antigravity",
+  "ten": "Antigravity (Google AGY CLI)",
+  "mo_ta": "Dùng Antigravity CLI (agy) chính thức ở chế độ không tương tác qua cầu nối cục bộ trên máy chủ: chat các model Gemini, Claude và GPT; bể tài khoản xoay vòng theo hạn mức còn lại.",
+  "phien_ban": "0.1.0",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 20,
+  "giao_thuc": "openai",
+  "tien_to": "antigravity",
+  "yeu_cau_goi": ["httpx"],
+  "cung_cap": ["chat"],
+  "truong_cau_hinh": [
+    {
+      "khoa": "dia_chi_cau_noi",
+      "nhan": "Địa chỉ cầu nối",
+      "kieu": "chuoi",
+      "bat_buoc": true,
+      "mac_dinh": "http://127.0.0.1:8300",
+      "mo_ta": "Địa chỉ của cầu nối dich-vu/antigravity-cau-noi/ trên máy chủ. web2api chạy trong Docker thì 127.0.0.1 là chính container: dùng IP cổng nối Docker của máy chủ, ví dụ http://<IP cổng nối>:8300."
+    },
+    {
+      "khoa": "khoa_cau_noi",
+      "nhan": "Khoá cầu nối",
+      "kieu": "bi_mat",
+      "bat_buoc": true,
+      "mac_dinh": null,
+      "mo_ta": "Khoá bí mật khớp với biến AGY_CAU_NOI_KHOA được cấu hình trên máy chủ cầu nối."
+    }
+  ],
+  "tai_nguyen": {
+    "ram_them_mb": null,
+    "dia_mb": null,
+    "gpu": false,
+    "mang_ra": ["địa chỉ cầu nối trên máy chủ"],
+    "ghi_chu": "Cần chạy cầu nối dich-vu/antigravity-cau-noi/ trên máy chủ (ngoài container) với agy đã đăng nhập, mỗi tài khoản một HOME có toolPermission «proceed-in-sandbox» và enableTerminalSandbox bật; đặt AGY_CAU_NOI_KHOA rồi điền cùng khoá ở đây. Mỗi lượt tốn ≈12.500 token hạn mức — dùng làm nguồn dự phòng. Không gọi API Google trực tiếp từ container."
+  }
+}

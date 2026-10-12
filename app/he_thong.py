@@ -133,6 +133,8 @@ def mui_gio() -> str | None:
         return ZoneInfo(gia_tri).key
     except (ValueError, KeyError, OSError):  # ZoneInfoNotFoundError là KeyError; thư mục/không đọc được là OSError
         log.warning("Biến TZ không phải tên múi giờ IANA (vd Asia/Ho_Chi_Minh) — bỏ qua, Studio dùng múi giờ trình duyệt")
+        from app import nhat_ky
+        nhat_ky.ghi("he_thong", "canh_bao", "Biến TZ không phải tên múi giờ IANA hợp lệ", tz=gia_tri[:50])
         return None
 
 

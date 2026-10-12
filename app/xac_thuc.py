@@ -24,13 +24,26 @@ from app.loi_openai import LoiOpenAI
 log = logging.getLogger("web2api.xac_thuc")
 
 
+#: Khoá đọc từ tệp, nhớ theo danh tính tệp: {(đường, thiết bị, inode, kích thước, mtime_ns): khoá}. che_chuoi gọi
+#: khoa_quan_tri() cho TỪNG chuỗi ghi vào nhật ký (mỗi lượt /v1 vài chuỗi) — một stat thay cho mở-đọc-đóng tệp.
+#: Sửa tại chỗ hay thay tệp đổi danh tính nên khoá mới có hiệu lực ngay ở lần gọi sau.
+_KHOA_TU_TEP: dict[tuple, str] = {}
+
+
 def khoa_quan_tri() -> str:
     tu_bien = os.environ.get("WEB2API_ADMIN_KEY", "").strip()
     if tu_bien:
         return tu_bien
     p = kho.thu_muc_du_lieu() / "admin_key"
     try:
-        khoa = p.read_text(encoding="utf-8").strip()
+        st = os.stat(p)
+        danh_tinh = (p, st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+        khoa = _KHOA_TU_TEP.get(danh_tinh)
+        if khoa is None:
+            khoa = p.read_text(encoding="utf-8").strip()
+            _KHOA_TU_TEP.clear()
+            if khoa:
+                _KHOA_TU_TEP[danh_tinh] = khoa
     except FileNotFoundError:
         p.parent.mkdir(parents=True, exist_ok=True)
         khoa = secrets.token_urlsafe(32)
@@ -66,3 +79,4 @@ async def can_quan_tri(request: Request) -> None:
             code="invalid_api_key",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    request.state.nguoi_goi = "quan_tri"  # nhật ký `cuoc_goi` (app/nhat_ky.py): ai đã gọi lượt này
