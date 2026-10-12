@@ -2,7 +2,8 @@
 
 Container mặc định chỉ có 256 MB RAM; `request.json()`/`request.body()` của Starlette nạp TRỌN thân không giới hạn.
 Hai bước, cùng một chỗ cho mọi người gọi:
-  1. Content-Length lớn hơn trần → 413 NGAY, chưa đọc byte nào; không phải số nguyên không âm → 400.
+  1. Content-Length lớn hơn trần (kể cả số dài bao nhiêu chữ số) → 413 NGAY, chưa đọc byte nào; không phải số
+     nguyên không âm → 400.
   2. Đếm từng byte THẬT khi đọc luồng: header có thể nói dối, hoặc vắng hẳn khi khách gửi chunked. Vượt trần giữa
      luồng → 413 ngay khúc đó, phần còn lại không được đọc vào RAM.
 
@@ -64,7 +65,10 @@ def luong_dem(request: Request, tran: Tran) -> AsyncIterator[bytes]:
         dai = dai.strip()
         if not (dai.isascii() and dai.isdigit()):
             raise LoiOpenAI(400, "Header Content-Length không hợp lệ", code="invalid_content_length")
-        if int(dai) > so_byte:
+        # So số chữ số TRƯỚC khi gọi int(): chuỗi hơn 4300 chữ số làm int() ném ValueError (giới hạn của Python).
+        # Nhiều chữ số có nghĩa hơn chính trần thì chắc chắn lớn hơn trần; int() chỉ còn nhận chuỗi ngắn ngang trần.
+        so = dai.lstrip("0") or "0"
+        if len(so) > len(str(so_byte)) or int(so) > so_byte:
             raise tran.loi_vuot(mb)
     return _dem(request, tran, mb, so_byte)
 

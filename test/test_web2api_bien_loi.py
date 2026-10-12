@@ -178,6 +178,28 @@ def test_sai_phuong_thuc_405_allow_suy_tu_router(client, phuong_thuc, duong):
     assert {m.strip() for m in r.headers["allow"].split(",")} == mong
 
 
+@pytest.mark.parametrize("phuong_thuc,duong,query", [
+    ("GET", "/v1/models/", ""), ("GET", "/v1/models//", "a=1&b=%2F"), ("POST", "/v1/chat/completions/", ""),
+    ("GET", "/v1/videos/bien:x/content/", ""),
+])
+def test_dau_gach_cuoi_307_toi_duong_co_that(client, phuong_thuc, duong, query):
+    """Bỏ «/» cuối mà KHỚP trọn một route của router `v1` (cả phương thức) → 307 sang đường không «/» cuối, giữ query,
+    không đổi phương thức (như redirect_slashes của Starlette — mount StaticFiles ở gốc khiến cơ chế đó không bao giờ
+    chạy). Đáp án suy từ router; còn lại vẫn 404/405 như cũ."""
+    r = client.request(phuong_thuc, duong + ("?" + query if query else ""), headers=QT, follow_redirects=False)
+    assert r.status_code == 307, r.text
+    assert r.headers["location"] == duong.rstrip("/") + ("?" + query if query else "")
+
+
+def test_dau_gach_cuoi_khong_khop_van_404_405_va_van_doi_khoa(client):
+    # «%2F» cuối giải mã thành «/» nhưng không phải dấu «/» của đường: không chuyển hướng (bỏ đi là vòng lặp 307).
+    for phuong_thuc, duong in (("GET", "/v1/"), ("POST", "/v1/"), ("GET", "/v1/khong-co/"), ("POST", "/v1/models/"),
+                               ("GET", "/v1/models%2F")):
+        khuon_openai(client.request(phuong_thuc, duong, headers=QT, follow_redirects=False), 404, "unknown_endpoint")
+    # Chưa xác thực: 401 trước, không cho dò đường nào có bằng cách thêm «/».
+    khuon_openai(client.get("/v1/models/", follow_redirects=False), 401, "invalid_api_key")
+
+
 def test_phuong_thuc_la_ngoai_chuan_van_dung_khuon(client):
     khuon_openai(client.request("FOO", "/v1/models", headers=QT), 405)
 
@@ -205,6 +227,16 @@ def test_than_json_hong_400_dung_khuon(client):
     assert bien().nhan == []
 
 
+@pytest.mark.parametrize("duong", ["/v1/chat/completions", "/api/modules/tu-xa"])
+def test_than_json_long_qua_sau_400_khong_phai_500(client, duong):
+    # json.loads ném RecursionError (không phải ValueError) với mảng lồng sâu — vẫn là thân hỏng của khách, không phải
+    # lỗi nội bộ. Thân ~400 KB, dưới trần mặc định.
+    than = b"[" * 200_000 + b"]" * 200_000
+    e = khuon_openai(client.post(duong, headers={**QT, "content-type": "application/json"}, content=than), 400)
+    assert e["message"] == "Thân yêu cầu không phải JSON hợp lệ"
+    assert bien().nhan == []
+
+
 def test_500_module_nem_loi_khong_lo_chi_tiet_va_khoa(client, caplog):
     bien().loi = RuntimeError(f"hỏng với khoá {K1} và {KHOA_QT} tại {BI_MAT_NOI_BO}")
     with caplog.at_level(logging.DEBUG):
@@ -215,6 +247,29 @@ def test_500_module_nem_loi_khong_lo_chi_tiet_va_khoa(client, caplog):
     # Nhật ký có đủ để người vận hành tra: mã tra cứu trong phản hồi cũng có trong nhật ký, kèm loại lỗi.
     ma_tra = e["message"].split("mã tra nhật ký ", 1)[1].split(")", 1)[0]
     assert ma_tra in caplog.text and "RuntimeError" in caplog.text
+
+
+def test_nhat_ky_loi_chua_bat_khong_cho_khach_chen_dong_gia(caplog):
+    """Đường có %0A được giải mã thành xuống dòng; thông điệp lỗi có thể mang chuỗi khách gửi. Đi nguyên vào nhật ký
+    là khách chèn được dòng giả (vd giả một dòng «Lỗi chưa bắt…» với mã tra khác). Ứng dụng tạm, cài như app thật:
+    «.*» của route /v1 thật không khớp xuống dòng, còn tham số đường «[^/]+» thì khớp."""
+    from app.bien_loi import cai_bien_loi
+
+    tam = FastAPI()
+    cai_bien_loi(tam)
+
+    @tam.get("/v1/hong/{x}")
+    async def hong(x: str):
+        raise RuntimeError(f"không xử lý được {x}\nGIA-MAO-2 dòng giả từ thông điệp")
+
+    with TestClient(tam) as c, caplog.at_level(logging.DEBUG):
+        khuon_openai(c.get("/v1/hong/a%0AGIA-MAO-1%0D%1B[31m dòng giả"), 500, "internal_error")
+    dong = caplog.text.splitlines()
+    assert dong and not [d for d in dong if d.startswith("GIA-MAO")], caplog.text
+    assert "\r" not in caplog.text and "\x1b" not in caplog.text
+    # Vẫn đủ thông tin để tra: ký tự điều khiển hiện ở dạng thoát, không bị nuốt mất.
+    assert "/v1/hong/a\\nGIA-MAO-1\\r\\x1b[31m dòng giả" in caplog.text
+    assert "\\nGIA-MAO-2 dòng giả từ thông điệp" in caplog.text
 
 
 def test_413_va_401_dung_khuon(client, monkeypatch):
@@ -305,6 +360,20 @@ def test_content_length_lon_hon_tran_413_som_khong_phai_so_400(client, monkeypat
     r = client.post("/v1/chat/completions", headers={**QT, "content-type": "application/json",
                                                      "content-length": "abc"}, content=b"{}")
     khuon_openai(r, 400, "invalid_content_length")
+    assert bien().nhan == []
+
+
+@pytest.mark.parametrize("duong,kieu", [("/v1/chat/completions", "application/json"),
+                                        ("/v1/audio/transcriptions", "multipart/form-data; boundary=x")])
+def test_content_length_qua_nhieu_chu_so_413_moi_duong_doc_than(client, duong, kieu):
+    # Hơn 4300 chữ số: int() của Python ném ValueError (giới hạn chuyển chuỗi số) — trước đây thành 500 ở multipart
+    # và «không phải JSON hợp lệ» ở đường JSON. Số lớn hơn mọi trần → 413 như mọi Content-Length vượt trần.
+    r = client.post(duong, headers={**QT, "content-type": kieu, "content-length": "9" * 5000}, content=b"{}")
+    khuon_openai(r, 413, "request_too_large")
+    # Số 0 đứng đầu không làm số lớn lên: «000…02» là 2 byte, không bị coi là vượt trần.
+    r = client.post("/v1/chat/completions", headers={**QT, "content-type": "application/json",
+                                                     "content-length": "0" * 5000 + "2"}, content=b"{}")
+    khuon_openai(r, 400, "missing_model")
     assert bien().nhan == []
 
 

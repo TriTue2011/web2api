@@ -976,7 +976,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
 | `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
-| `* /v1/{duong:path}` | Có | Bắt mọi đường `/v1` chưa có: `404` `unknown_endpoint` đúng khuôn OpenAI; sai phương thức thì `405` kèm `Allow` suy từ router |
+| `* /v1/{duong:path}` | Có | Bắt mọi đường `/v1` chưa có: `404` `unknown_endpoint` đúng khuôn OpenAI; sai phương thức thì `405` kèm `Allow` suy từ router; thừa `/` cuối mà bỏ đi thì khớp một đường có thật (cả phương thức) thì `307` sang đường đó, giữ query |
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -986,7 +986,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
-| `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho các đường `/v1` nhận JSON (chat, tạo ảnh, đọc giọng nói, video…); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
+| `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |
