@@ -273,6 +273,17 @@
     const d = new Date(s);
     return isNaN(d) ? String(s) : d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
+  // «3 phút trước» như dòng «lần dùng cuối» của c2a. Giờ máy chủ nhanh hơn trình duyệt (âm) → «vừa xong».
+  function tuongDoi(s) {
+    if (!s) return '';
+    const d = new Date(s);
+    if (isNaN(d)) return String(s);
+    const giay = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (giay < 60) return 'vừa xong';
+    if (giay < 3600) return Math.floor(giay / 60) + ' phút trước';
+    if (giay < 86400) return Math.floor(giay / 3600) + ' giờ trước';
+    return Math.floor(giay / 86400) + ' ngày trước';
+  }
   // So khớp tìm kiếm không phân biệt dấu tiếng Việt ("gia" khớp "giả").
   const boDau = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
   const diaChiV1 = () => new URL('v1', location.href).href;
@@ -704,6 +715,6 @@
   }
 
   window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
-    BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, boDau, diaChiV1,
+    BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, tuongDoi, boDau, diaChiV1,
     dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom };
 })();

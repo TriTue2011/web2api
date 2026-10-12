@@ -14,7 +14,24 @@ HỢP ĐỒNG lớp `Module` trong module.py:
                                              `cau_hinh_luu` là cấu hình sạch để lưu — lõi KHÔNG trả nó ra API
     async chat(body: dict, stream: bool)   -> (mã HTTP, headers, bytes | async-iterator[bytes])
     async models() -> list[dict]           — id dạng "<tien_to>/<tên>"
-    async suc_khoe() -> dict               — không tốn token, không lộ khoá
+    async suc_khoe() -> dict               — không tốn token, không lộ khoá; không được đổi bộ đếm dùng
+                                             {ok, base_url?, khoa: [mục mỗi khoá, THEO THỨ TỰ ĐÃ LƯU]}; mục mỗi khoá:
+                                             khoa (dạng che …abcd), ok, do_tre_ms, so_model, loi, dang_nghi_den, và
+                                             TUỲ CHỌN (thiếu thì giao diện ẩn phần đó, không lỗi):
+                                               kha_nang  {mã: {trang_thai, ma?, thu_lai_luc?}}
+                                               thu_tu    số thứ tự trong danh sách khoá (từ 1)
+                                               dang_dung true ở khoá phục vụ yêu cầu GẦN NHẤT
+                                               dung_cuoi / lan_429_cuoi  ISO hoặc null; so_429 số lần 429
+                                               han_muc   [{ten: mã việc ("chat", "anh"…), da_dung: số lượt thành công,
+                                                           toi_da: số hoặc null, hoi_luc: ISO hoặc null,
+                                                           trang_thai: "dung_duoc" | "het_han_muc" | "bi_tu_choi" |
+                                                                       "chua_ro", ma: mã HTTP hoặc null}]
+                                             `toi_da` CHỈ điền khi nhà cung cấp cho biết trần thật, và khi ấy `da_dung` phải
+                                             là mức đã dùng CÙNG KỲ với trần đó (cũng do nhà cung cấp báo) — giao diện vẽ thanh
+                                             «còn toi_da − da_dung» khi có nó, không có thì chỉ hiện «đã dùng N lượt» + trạng
+                                             thái; không bịa trần. Bộ chuyển tiếp dùng chung (app/chuyen_tiep.py) điền sẵn mọi
+                                             trường này từ bộ đếm trong bộ nhớ (kể từ lần khởi động / lưu cấu hình gần nhất),
+                                             `toi_da` luôn null.
     async dung() -> None                   — đóng kết nối
 
 PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng; không có thì lõi trả 501 (không vỡ):
