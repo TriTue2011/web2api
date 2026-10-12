@@ -91,6 +91,11 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
         bổ sung gợi ý vào loi["error"]["message"] (lõi gọi hook ngay khi chuẩn hoá lỗi, trước khi trả cho khách).
         `boi_canh` chứa {"viec", "khoa", ...}. Lời giải thích khi khoá bị từ chối một khả năng tốn tiền thì module
         truyền cho bộ chuyển tiếp bằng tham số `goi_y_tu_choi_kha_nang` (một chuỗi), không qua hook.
+    async phien_con_song(du_lieu: dict) -> bool
+        — kiểm RẺ, không tốn token/lượt dùng (tuỳ chọn; thiếu thì lõi coi phiên là «chua_ro» và không kiểm).
+    async lam_moi_phien(du_lieu: dict) -> dict | None
+        — trả `du_lieu` mới (lõi lưu đè) hoặc None nếu không làm mới được (tuỳ chọn).
+    Module lấy phiên qua `app.phien.lay(module, tai_khoan)`, không tự mở tệp.
 
 Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]; quy ước
 cho các phương thức trên: "noi", "nghe", "anh_sua" (cùng tên phương thức). Lõi chỉ

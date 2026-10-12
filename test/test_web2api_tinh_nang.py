@@ -75,7 +75,7 @@ def test_ca_0_module(du_lieu):
     with TestClient(app) as c:
         j = tn(c)
     assert j == {"modules": [], "loai": [], "kha_nang_da_cai": {}, "kha_nang_lien_ket": {}, "tab": [], "muc": [],
-                 "mui_gio": None}
+                 "mui_gio": None, "phien": {"tong": 0, "can_dang_nhap": 0}}
 
 
 # ───────────── múi giờ của nhà: biến TZ → `mui_gio` ─────────────
