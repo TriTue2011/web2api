@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import he_thong, kho, khoa_khach, nhat_ky, phien, tuyen, xac_thuc
+from app import gioi_han, he_thong, kho, khoa_khach, nhat_ky, phien, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -65,6 +65,7 @@ async def _vong_quet_phien(app: FastAPI):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     xac_thuc.khoa_quan_tri()  # sinh tệp khoá ngay lần chạy đầu để người vận hành lấy được
+    gioi_han.khoi_dong()  # đọc cấu hình giới hạn sai khoá (WEB2API_RL_*) một lần lúc khởi động
     # Sổ và vòng nền tạo TRONG vòng sự kiện đang chạy (Lock/Event/Task gắn với nó).
     so = SoModule()
     app.state.so = so
