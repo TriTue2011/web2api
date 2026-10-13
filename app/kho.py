@@ -27,7 +27,7 @@ from typing import Any
 KIEU_BI_MAT = {"bi_mat", "danh_sach_bi_mat"}
 #: Tên tệp bí mật: id module (^[a-z0-9][a-z0-9_-]{1,40}$) hoặc tên nội bộ có gạch dưới đầu
 #: (`_nguon_git`) — gạch dưới đầu không hợp lệ với id module nên hai nhóm không bao giờ trùng.
-_TEN_BI_MAT = re.compile(r"^_?[a-z0-9][a-z0-9_-]{1,40}$")
+_TEN_BI_MAT = re.compile(r"^_?[a-z0-9][a-z0-9_-]{1,40}\Z")
 
 # Đọc-sửa-ghi modules.json/tu_xa.json phải tuần tự: hai yêu cầu cài cùng lúc không được
 # đè mất mục của nhau. Khoá luồng (không phải asyncio) vì các hàm ở đây đồng bộ.
@@ -383,3 +383,48 @@ def xoa_cai_dat_model_module(id_: str) -> bool:
             return True
         return False
 
+
+# ───────────── combo.json (định tuyến dự phòng nhiều nguồn) ─────────────
+
+def _p_combo() -> Path:
+    return thu_muc_du_lieu() / "combo.json"
+
+
+def doc_cai_dat_combo() -> dict:
+    """Đọc THÔ <WEB2API_DATA>/combo.json: {<tên combo>: {"ten", "mo_ta", "kha_nang", "buoc": [{"model", "bat"}]}}.
+    Chưa có tệp = rỗng. Tệp hỏng → KhoHong. Kiểm hình dạng từng mục là việc của app/combo.py (doc_tat_ca).
+    """
+    du_lieu = doc_json(_p_combo())
+    if du_lieu is None:
+        return {}
+    if not isinstance(du_lieu, dict):
+        raise KhoHong(f"{_p_combo()} hỏng: cần dạng đối tượng JSON")
+    return du_lieu
+
+
+def luu_mot_combo(ten: str, thong_tin: dict) -> dict:
+    """Lưu hoặc cập nhật một combo vào combo.json quyền 0600 (nguyên tử, khoá luồng)."""
+    with _KHOA:
+        try:
+            tat_ca = doc_cai_dat_combo()
+        except KhoHong:
+            tat_ca = {}
+        muc = dict(thong_tin)
+        muc["ten"] = ten
+        tat_ca[ten] = muc
+        _ghi_json(_p_combo(), tat_ca, quyen=0o600)
+        return muc
+
+
+def xoa_mot_combo(ten: str) -> bool:
+    """Xoá một combo khỏi combo.json."""
+    with _KHOA:
+        try:
+            tat_ca = doc_cai_dat_combo()
+        except KhoHong:
+            return False
+        if ten in tat_ca:
+            del tat_ca[ten]
+            _ghi_json(_p_combo(), tat_ca, quyen=0o600)
+            return True
+        return False

@@ -11,7 +11,9 @@ IPv4 nhúng trong 6to4/Teredo chịu cùng luật (vd 2002:7f00:1:: mang loopbac
 NHƯNG cho phép LAN riêng tư 10/8, 172.16/12, 192.168/16: module GPU nằm đúng trong mạng nhà
 (.220), chặn chúng là chặn đúng mục đích của tính năng. Cho phép cả http:// vì dịch vụ trong
 LAN gần như không có chứng chỉ TLS.
-Giới hạn đã biết: tên miền được phân giải lúc ĐĂNG KÝ; DNS đổi sau đó (rebinding) không bị kiểm lại.
+Chống DNS rebinding: tên miền được phân giải và kiểm lại NGAY TRƯỚC mỗi lần nối (TransportGhimIp trong
+app/chuyen_tiep.py ghim IP đã kiểm, giữ Host/SNI đúng tên gốc — khuôn app/novnc.py); IP lúc nối khác lúc đăng ký mà bị
+chặn thì lượt gọi đó trả 502 `ssrf_blocked`.
 """
 
 from __future__ import annotations
@@ -92,7 +94,8 @@ class ModuleTuXa:
                          "loai": "ai", "giao_thuc": "openai", "cung_cap": ["chat"]}
         self.tien_to = ban_ghi["tien_to"]
         self._ct = ChuyenTiepOpenAI(ten=ban_ghi["ten"], tien_to=ban_ghi["tien_to"], base_url=ban_ghi["base_url"],
-                                    khoa=[api_key] if api_key else [])
+                                    khoa=[api_key] if api_key else [],
+                                    kiem_ip=_dia_chi_bi_chan)
 
     async def chat(self, body: dict, stream: bool):
         return await self._ct.chat(body, stream)

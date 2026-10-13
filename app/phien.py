@@ -35,7 +35,7 @@ from app import kho, nhat_ky
 
 log = logging.getLogger("web2api.phien")
 
-ID_HOP_LE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+ID_HOP_LE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
 _KHOA = threading.RLock()
 
 MAC_DINH_CHU_KY_PHUT = 180
