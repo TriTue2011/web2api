@@ -46,7 +46,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
 | Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
-| Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Chưa có backend — tab **không** hiện dù đủ điều kiện | — |
+| Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Đã có backend API (`/api/combo`) và điều phối ở lõi — tab giao diện giữ ở việc sau | 0.1.0-khung · 13/10/2026 |
 | «Địa chỉ truy cập công khai» (`GET`/`PUT /api/dia-chi`, `GET /api/ket-noi`, proxy ngược) | Có | 0.1.0-khung · 12/10/2026 |
 | Khoá khách có phạm vi, sổ thao tác quản trị, Bảo mật & người dùng | Có | 0.1.0-khung · 12/10/2026 |
 | Checklist yêu cầu đầy đủ và tự cài gói Python, bỏ trần dung lượng tải module | Chưa có (giai đoạn sau) | — |
@@ -126,6 +126,61 @@ module không có khả năng được gọi (ví dụ không có `anh`) → `50
 (`/v1/audio/transcriptions`, `/v1/images/edits`, `/v1/videos` dạng multipart) đi cùng lối, thêm một bước ở lõi trước
 khi hỏi sổ: đọc `multipart/form-data` thành `YeuCauDaPhan` (vượt trần → `413`, không phải multipart → `415`), lấy
 `model` từ trường chữ để định tuyến.
+
+### Combo: model ảo chạy nhiều bước, lùi theo mã HTTP
+
+Combo là một tên (`ID_HOP_LE`) gắn với danh sách **bước** có thứ tự; mỗi bước chỉ là một model `<tiền tố>/<tên>` của
+module đã cài (`bat: false` để tạm tắt). Lưu ở `<WEB2API_DATA>/combo.json` (0600, ghi nguyên tử), quản trị bằng
+`/api/combo` (chỉ khoá quản trị). Trạng thái cầu chì, hạ bậc, dính tài khoản nằm trong bộ nhớ — khởi động lại là sạch.
+
+**Gọi.** `model: "combo/<tên>"` hoặc tên trần `"<tên>"` (không «/») trên `POST /v1/chat/completions` (cả stream) và
+`POST /v1/images/generations`; đường khác trả `501`. Thứ tự phân giải `model`: tiền tố thuộc một module (kể cả module
+mang tiền tố `combo` — module được ưu tiên, combo khi ấy gọi bằng tên trần) → `combo/<tên>` → tên trần trùng tên combo.
+Không tạo được combo trùng tiền tố module đang có, tên `combo`/`trang-thai`, hay lồng combo trong combo. Khoá khách
+cần phạm vi của ĐƯỜNG đang gọi (`chat` cho chat, `anh` cho ảnh). Lượt gọi module thường không đọc `combo.json`.
+
+**Chọn bước.** Mỗi bước được phân giải bằng ĐÚNG hàm của đường `/v1` thường (`_module_cho_model`): bước tắt, model đã
+tắt ở Hệ thống → AI, module chưa liên kết hay không có phương thức của việc (`chat`/`anh`) bị loại TRƯỚC và không bao
+giờ được gọi; không còn bước hợp lệ → `503 no_available_routes` (JSON chuẩn, kèm mã lý do từng bước). Thứ tự thử trên
+các bước hợp lệ: bước dính (nếu còn tốt) → bước tốt → bước đang bị hạ bậc → bước có cầu chì đang chặn — mỗi nhóm giữ
+thứ tự gốc, nên hết hạn hạ bậc/nghỉ là bước về CHỖ CŨ. «Không bao giờ chặn lựa chọn cuối»: bước bị cầu chì chặn hay hạ
+bậc vẫn được thử khi mọi bước khác hỏng; luật này KHÔNG vượt qua bước không hợp lệ.
+
+**Lùi theo mã của bước** (một bộ phân loại `phan_loai` cho chat và ảnh, theo mã — không dò chữ):
+
+| Bước trả | Combo làm |
+|---|---|
+| 2xx (stream: đã có khúc đầu) | Chốt bước, đóng cầu chì, ghi dính |
+| 400 | **Phân xử**: thử bước hợp lệ kế. Bước so sánh trả 2xx → 400 thuộc (module, model) ấy: bước đó bị hạ bậc `WEB2API_COMBO_NGHI_GIAY` giây trong ĐÚNG nhóm việc đó (nhóm việc khác không bị phạt), trả kết quả 2xx. Bước so sánh cũng 400 → lỗi của yêu cầu: trả 400 của bước đầu NGUYÊN VĂN, không thử thêm, không ai bị hạ. Bước so sánh lỗi khác (5xx, 429…) → lùi bình thường; hết bước → trả 400 đầu |
+| 404, 413, 501 | Bước không dùng được cho yêu cầu này: sang bước kế, không tính hỏng |
+| 429 | Hạ bậc (module, model, việc) tới hết `Retry-After` (1–600 s, thiếu thì 60 s), sang bước kế |
+| 401, 403 | Khoá hỏng (module đã tự xoay hết khoá): cầu chì (module, việc) mở NGAY, sang bước kế |
+| 5xx, lỗi khi gọi / trước byte đầu | Tính một lỗi cầu chì (module, việc), sang bước kế |
+| 4xx khác (422, 409…) | Lỗi của yêu cầu: trả ngay |
+
+Hết bước: trả lỗi 400 đầu tiên nếu có, không thì lỗi của bước thử cuối; thân lỗi JSON giữ nguyên `type`/`code`, chỉ
+`error.message` qua bộ che khoá. Mọi lỗi do chính combo sinh (503, 504, 502 của bước lỗi khi gọi) là JSON chuẩn OpenAI.
+
+**Cầu chì** theo (module, nhóm việc): `dong` → `mo` sau `WEB2API_COMBO_NGUONG` lỗi liên tiếp (401/403 mở ngay) → hết
+`WEB2API_COMBO_NGHI_GIAY` thì cho đúng MỘT lượt thăm dò (nửa mở; lượt thăm dò treo quá 30 s thì lượt khác được thăm dò
+thay). Hỏi trạng thái để xếp thứ tự không chiếm lượt; lượt được chiếm ngay trước khi gọi và luôn được trả (kể cả khi bước
+kết thúc bằng 400/404/413/429 hay khách ngắt).
+
+**Stream.** Chỉ đổi bước TRƯỚC byte đầu. Sau byte đầu mà thượng nguồn hỏng: phát một sự kiện SSE
+`{"error": {"code": "stream_interrupted", "type": "api_error"}}` rồi kết thúc (không nuốt), ghi một lỗi cầu chì.
+Luồng thượng nguồn luôn được `aclose` trong `finally` (hết luồng, lỗi, khách ngắt, bước bị bỏ).
+
+**Trần thời gian tổng** `WEB2API_COMBO_TOI_DA_GIAY`: tính cho các bước tới lúc có kết quả (stream: tới byte đầu); vượt →
+`504 combo_timeout`. Bước đầu luôn được thử; luồng đã chảy không bị trần này cắt.
+
+**Dính tài khoản.** Cùng hội thoại đi lại đúng bước đã trả lời trong `WEB2API_COMBO_DINH_GIAY` giây. Khoá dính là
+sha256 của `user` (hoặc tiêu đề `x-user`) cắt 256 ký tự, không có thì của tin `user` đầu tiên cắt 2000 ký tự — độ dài
+cố định, không giữ chuỗi thô; tối đa 2000 khoá (bỏ cũ nhất). Bước dính bị chặn/hạ bậc/không còn → bỏ dính.
+
+**Tiêu đề phản hồi.** `x-web2api-route: <tiền tố>/<tên>` — model của bước đã thật sự trả lời (dán lại vào `model` là
+gọi thẳng đúng bước đó); `x-web2api-combo: <tên>`; `x-web2api-module` mang tiền tố module THẬT. `/api/tinh-nang` có
+`co_combo` (true khi có ít nhất một combo hợp lệ). `combo.json` sửa tay sai: mục hỏng bị bỏ và ghi cảnh báo, không
+làm hỏng `/v1/models` hay đường gọi.
 
 ### Chuẩn tri thức (`tri_thuc`) và quy trình nối tầng
 
@@ -210,6 +265,7 @@ chi tiết mở ở bước kế tiếp.
 | `chuyen_tiep.py` | Bộ chuyển tiếp OpenAI dùng chung cho module; mọi điểm riêng của nhà cung cấp là tham số |
 | `yeu_cau_da_phan.py` | Đọc `multipart/form-data` cho các đường `/v1` nhận tệp: trần tổng thân, đếm byte thật, dọn tệp tạm, dựng `YeuCauDaPhan` cho module |
 | `phien.py` | Kho phiên tài khoản (`bi_mat/phien/` 0600), bộ quét kiểm phiên và làm mới định kỳ |
+| `combo.py` | Điều phối định tuyến dự phòng nhiều nguồn/model (combo), cầu chì trạng thái đóng/mở/nửa mở, hạ bước cạn hạn mức, dính tài khoản session affinity, phát lại thân yêu cầu |
 | `kho.py`, `xac_thuc.py`, `he_thong.py` | Lưu trữ trên đĩa (bí mật 0600), khoá quản trị, đọc tài nguyên máy |
 
 ```mermaid
@@ -242,8 +298,8 @@ viên trạng thái trong trang suy từ `/api/tinh-nang`: xanh «Mọi dịch v
 «Chờ khoá» (bấm tới chỗ thêm khoá) khi có module chờ khoá, đỏ khi không đọc được. Trên điện thoại (≤ 1023 px, mốc
 của demo) các tab chuyển xuống thanh dưới đáy. Thanh Hệ thống theo demo: «Quay lại» (về trang chính đầu tiên đang có;
 chưa có trang chính nào thì là logo), rồi «AI ▾» (bảng xổ các tab con đang có: Tài khoản, Provider) và «Module» ở chỗ
-ô «Tiện ích» của demo; trên điện thoại «AI» mở tờ nhỏ phía trên thanh dưới. Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện vì chưa
-có backend.
+ô «Tiện ích» của demo; trên điện thoại «AI» mở tờ nhỏ phía trên thanh dưới. Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện: backend đã có
+(`/api/combo`, mục 2 «Combo»), giao diện là việc sau.
 
 **Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được
 chọn sẵn; thẻ trắng viền mảnh bo góc như dòng Tiện ích của demo, ô đang chọn viền xanh 2px): ô biểu tượng, tên, viên
@@ -298,7 +354,7 @@ curl -s $W/api/tinh-nang
 | Hệ thống → Module | luôn; trang đầu khi chưa cài gì |
 | Hệ thống → AI, AI → Tài khoản | `can: ["ai"]`, `da_cai` |
 | AI → Provider | `can: ["ai"]`, `da_cai` (chưa khoá thì tab rỗng chỉ chỗ thêm khoá) |
-| AI → Combo | `can: ["ai"]`, `toi_thieu: 2`, chưa có backend → không bao giờ hiện |
+| AI → Combo | `can: ["ai"]`, `toi_thieu: 2`, chưa có giao diện (`chua_co`) → không hiện; backend ở `/api/combo` |
 | Studio (trang chính) và chế độ Chat | `can: ["chat"]`, `da_cai` |
 | Chế độ Ảnh / Video | `can: ["anh"]` / `["video"]`, `da_cai` |
 
@@ -1411,7 +1467,7 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 
 ### Giới hạn và việc chưa làm
 
-- **Combo** chưa có backend: tab không hiện kể cả khi có ≥ 2 nguồn AI đã liên kết.
+- **Combo**: Đã có backend API (`/api/combo`) và điều phối định tuyến dự phòng đa nguồn/model ở lõi; tab giao diện giữ ở việc kế tiếp.
 - «Cần gì để chạy» mới là **hướng dẫn bằng chữ** từ manifest: chưa có checklist ✔/✖ từng yêu cầu, chưa tự cài gói
   Python; trần dung lượng tải module (50 MB tổng, 5 MB/tệp, 200 tệp) vẫn còn.
 - Chưa có màn Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký — sẽ vào khi có module thật đứng sau.
@@ -1468,7 +1524,12 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/tim-kiem/nguon` | Có | Liệt kê các module nguồn tri thức khai khả năng tìm kiếm, trạng thái và danh mục sơ đồ hỗ trợ (`so_do_tim_kiem`) |
 | `POST /api/tim-kiem` | Có | Tìm kiếm tri thức kết hợp 5 sơ đồ: công tắc (nguồn/sơ đồ), lọc nhiều mặt (+ đếm mặt), cây phân cấp (+ duyệt nút con), mục lục (nhảy tới đề mục, chỉ mục A–Z) và phễu nối tầng |
 | `POST /api/tim-kiem/muc-luc` | Có | Lấy cây mục lục phân cấp của tài liệu (chương → mục → tiểu mục); trần độ sâu 6, trần số nút 2000 |
-| `GET /v1/models` | Có | Model của mọi module đã liên kết |
+| `GET /api/combo` | Có | Mọi combo hợp lệ đã lưu (`combos`) và `so_muc_hong` — số mục hỏng trong `combo.json` bị bỏ qua |
+| `GET /api/combo/trang-thai` | Có | Từng (combo, bước): module phân giải được (`dung_duoc`, `ly_do`), cầu chì theo nhóm việc (`cau_chi`), hạ bậc (`ha_bac`), số phiên dính |
+| `GET /api/combo/{ten}` | Có | Một combo theo tên; tên sai mẫu → `400`, không có → `404` |
+| `PUT /api/combo/{ten}` | Có | Tạo/ghi đè combo. Thân `{"buoc": [{"model": "<tiền tố>/<tên>", "bat": true}], "kha_nang": ["chat"], "mo_ta": ""}`. Sai kiểu → `400`, không lưu; bước trỏ module/model chưa dùng được vẫn lưu, nêu ở `bo_qua: [{"buoc": n, "ly_do": mã}]` |
+| `DELETE /api/combo/{ten}` | Có | Xoá một combo |
+| `GET /v1/models` | Có | Model của mọi module đã liên kết, cộng mỗi combo hợp lệ một mục `combo/<tên>` (`owned_by: "combo"`) |
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
 | `POST /v1/embeddings` | Có | Tạo vector nhúng chuẩn OpenAI (thân `{"model": "...", "input": "..."}`); `501` nếu module không có |
 | `POST /v1/rerank` | Có | Xếp hạng lại danh sách tài liệu (`model`, `query`, `documents`, `top_n`); `501` nếu module không có |
@@ -1513,6 +1574,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
+| `WEB2API_COMBO_NGUONG` | `3` | Số lỗi máy chủ liên tiếp (5xx, lỗi gọi) để mở cầu chì (module, nhóm việc) của combo; 401/403 mở ngay |
+| `WEB2API_COMBO_NGHI_GIAY` | `60` | Giây cầu chì mở trước khi cho MỘT lượt thăm dò (nửa mở); cũng là thời gian hạ bậc bước bị phân xử 400 |
+| `WEB2API_COMBO_DINH_GIAY` | `900` | Giây giữ dính tài khoản (cùng hội thoại → cùng bước); `0` tắt dính |
+| `WEB2API_COMBO_TOI_DA_GIAY` | `300` | Trần thời gian TỔNG của một lượt gọi combo qua các bước tới byte đầu; vượt → `504 combo_timeout` |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |

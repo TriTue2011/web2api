@@ -47,9 +47,9 @@ from app.so_module import LoiSo, SoModule
 log = logging.getLogger("web2api.nguon_git")
 
 API_MAC_DINH = "https://api.github.com"
-REPO_HOP_LE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-DUONG_HOP_LE = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")
-SHA_HOP_LE = re.compile(r"^[0-9a-f]{40}$")
+REPO_HOP_LE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+DUONG_HOP_LE = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*\Z")
+SHA_HOP_LE = re.compile(r"^[0-9a-f]{40}\Z")
 #: Thư mục chứa module trong kho git của dự án (TriTue2011/web2api: modules/<id>/ ở gốc kho).
 THU_MUC_MAC_DINH = "modules"
 TRAN_TEP = 200

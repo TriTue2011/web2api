@@ -16,6 +16,7 @@ from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from app import (
+    combo as combo_mod,
     dia_chi as dia_chi_mod,
     kho,
     khoa_khach as khoa_khach_mod,
@@ -25,6 +26,7 @@ from app import (
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
 )
+from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
@@ -47,6 +49,7 @@ dia_chi = APIRouter(prefix="/api", dependencies=QT)
 nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
 khoa_khach = APIRouter(prefix="/api/khoa-khach", dependencies=QT)
 phien = APIRouter(prefix="/api/phien", dependencies=QT)
+combo = APIRouter(prefix="/api/combo", dependencies=QT)
 
 thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
 phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
@@ -122,6 +125,9 @@ async def v1_models(request: Request):
             if m_id in mac_dinh_ids:
                 muc["mac_dinh"] = True
             data.append(muc)
+
+    data += combo_mod.muc_model(data)  # combo hỏng trong combo.json bị bỏ, không làm sập danh sách
+
     danh_tinh = getattr(request.state, "danh_tinh", None)
     if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
         pham_vi = danh_tinh.get("pham_vi", [])
@@ -149,15 +155,10 @@ def _ghi_nhan_module(request: Request, so: SoModule, id_: str) -> None:
     request.state.tien_to_module = so.tien_to_cua(id_)
 
 
-def _module_theo_model(request: Request, than: dict):
-    """(id, thể hiện) của module có tiền tố ghi trong `model` — 404 rõ ràng nếu không thuộc ai/chưa liên kết."""
-    so = _so(request)
-    model = than.get("model")
-    if isinstance(model, str):
-        request.state.model_khach = model  # ghi TRƯỚC mọi lỗi: lượt 404 model_not_found vẫn có model trong nhật ký
-    if not isinstance(model, str) or not model:
-        raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>; danh sách ở GET /v1/models)",
-                        code="missing_model")
+def _module_cho_model(so: SoModule, model: str):
+    """(id, thể hiện) của module phục vụ `model` dạng <tiền tố>/<tên> — MỘT cơ chế cho /v1 thường VÀ cho từng bước
+    combo (app/combo.py nhận hàm này qua `phan_giai`). Không thuộc ai / chưa liên kết / model đã tắt → LoiOpenAI 404
+    có mã riêng (model_not_found, module_not_configured). Không ghi gì vào request."""
     tien_to, co_gach, _ = model.partition("/")
     id_ = so.tim_theo_tien_to(tien_to) if co_gach else None
     if id_ is None:
@@ -172,6 +173,44 @@ def _module_theo_model(request: Request, than: dict):
     if model in tat_set:
         raise LoiOpenAI(404, f"Model {model!r} đã tắt trong Hệ thống → AI (xem GET /v1/models).",
                         code="model_not_found")
+    return id_, m
+
+
+def _combo_theo_model(request: Request, so: SoModule, model: str):
+    """Thể hiện combo nếu `model` gọi combo, None nếu không. Thứ tự phân giải: tiền tố của một module (kể cả module
+    mang tiền tố «combo») → `combo/<tên>` → tên trần không «/» trùng tên combo. Chỉ đọc combo.json khi model có
+    dạng gọi combo — lượt gọi module thường không chạm đĩa."""
+    tien_to, co_gach, ten = model.partition("/")
+    if co_gach and (tien_to != "combo" or so.tim_theo_tien_to(tien_to) is not None):
+        return None
+    if not co_gach:
+        ten = model
+    if not ID_HOP_LE.fullmatch(ten):
+        return None
+    cb = combo_mod.lay(ten)
+    if cb is None:
+        if co_gach:
+            raise LoiOpenAI(404, f"Không có combo {ten!r} (xem GET /v1/models).", code="model_not_found")
+        return None
+    request.state.module = None
+    request.state.tien_to_module = None
+    return combo_mod.BoDieuPhoiCombo(ten, cb, so, request, phan_giai=lambda mdl: _module_cho_model(so, mdl))
+
+
+def _module_theo_model(request: Request, than: dict):
+    """(id, thể hiện) của module có tiền tố ghi trong `model` — 404 rõ ràng nếu không thuộc ai/chưa liên kết.
+    `model` gọi combo → ("combo/<tên>", thể hiện combo) có `chat`/`anh` như module thật."""
+    so = _so(request)
+    model = than.get("model")
+    if isinstance(model, str):
+        request.state.model_khach = model  # ghi TRƯỚC mọi lỗi: lượt 404 model_not_found vẫn có model trong nhật ký
+    if not isinstance(model, str) or not model:
+        raise LoiOpenAI(400, "Thiếu trường «model» (dạng <tiền tố>/<tên>; danh sách ở GET /v1/models)",
+                        code="missing_model")
+    cb = _combo_theo_model(request, so, model)
+    if cb is not None:
+        return f"combo/{cb.ten}", cb
+    id_, m = _module_cho_model(so, model)
     _ghi_nhan_module(request, so, id_)
     return id_, m
 
@@ -605,8 +644,9 @@ async def cap_nhat_model_module(id_: str, request: Request):
 @tinh_nang.get("/api/tinh-nang")
 async def xem_tinh_nang(request: Request):
     """MỞ (như GET /api/modules): khung giao diện cần nó TRƯỚC khi người dùng dán khoá quản trị — trang đầu
-    là trang Module khi chưa cài gì. Không bí mật, không cấu hình, không tên repo."""
-    return _so(request).tinh_nang()
+    là trang Module khi chưa cài gì. Không bí mật, không cấu hình, không tên repo. `co_combo`: đã có ít nhất một
+    combo hợp lệ."""
+    return {**_so(request).tinh_nang(), "co_combo": combo_mod.co_combo()}
 
 
 # ───────────── /api/nguon-git ─────────────
@@ -1060,5 +1100,52 @@ async def lay_muc_luc(request: Request):
     so = _so(request)
     return await tri_thuc_mod.lay_muc_luc(than, so)
 
+# ───────────── Quản trị Combo (/api/combo) — chỉ khoá quản trị (router `combo`, dependencies=QT) ─────────────
+
+def _phan_giai(request: Request):
+    so = _so(request)
+    return lambda model: _module_cho_model(so, model)
 
 
+@combo.get("")
+async def danh_sach_combo():
+    """Mọi combo hợp lệ đã lưu; `so_muc_hong` đếm mục hỏng trong combo.json bị bỏ qua."""
+    tat_ca, hong = combo_mod.doc_tat_ca()
+    return {"combos": [tat_ca[t] for t in sorted(tat_ca)], "so_muc_hong": hong}
+
+
+@combo.get("/trang-thai")
+async def xem_trang_thai_combo(request: Request):
+    """Trạng thái từng bước: phân giải được không, cầu chì theo nhóm việc, hạ bậc, số phiên dính."""
+    return {"trang_thai": combo_mod.trang_thai_tat_ca(_so(request), _phan_giai(request))}
+
+
+@combo.get("/{ten:path}")
+async def lay_mot_combo(ten: str):
+    muc = combo_mod.lay(combo_mod.kiem_ten(ten))
+    if muc is None:
+        raise LoiOpenAI(404, "Không tìm thấy combo", code="not_found")
+    return muc
+
+
+@combo.put("/{ten:path}")
+async def cap_nhat_combo(ten: str, request: Request):
+    """Tạo/ghi đè một combo. Sai kiểu → 400, không lưu; bước chưa dùng được vẫn lưu và nêu trong `bo_qua`."""
+    than = await _than_json(request)
+    cb, bo_qua = await combo_mod.kiem_tra_combo(ten, than, _so(request), _phan_giai(request))
+    try:
+        luu = kho.luu_mot_combo(cb["ten"], cb)
+    except OSError as e:
+        raise LoiOpenAI(500, f"Không lưu được combo: {type(e).__name__}") from e
+    nhat_ky_mod.ghi("combo", "thong_tin", f"Lưu combo «{cb['ten']}» với {len(cb['buoc'])} bước",
+                    ten=cb["ten"], so_buoc=len(cb["buoc"]), so_bo_qua=len(bo_qua))
+    return {"ok": True, "combo": luu, "bo_qua": bo_qua}
+
+
+@combo.delete("/{ten:path}")
+async def xoa_mot_combo(ten: str):
+    ten = combo_mod.kiem_ten(ten)
+    if not kho.xoa_mot_combo(ten):
+        raise LoiOpenAI(404, "Không tìm thấy combo", code="not_found")
+    nhat_ky_mod.ghi("combo", "thong_tin", f"Xoá combo «{ten}»", ten=ten)
+    return {"ok": True}

@@ -27,10 +27,10 @@ log = logging.getLogger("web2api.dia_chi")
 
 #: Một nhãn tên máy: chữ/số/«-»/«_» (gạch dưới: tên container Docker), không mở/đóng bằng «-», ≤ 63 ký tự.
 _NHAN = r"(?!-)[a-z0-9_-]{1,63}(?<!-)"
-_TEN_MAY = re.compile(rf"^{_NHAN}(?:\.{_NHAN})*\.?$")
+_TEN_MAY = re.compile(rf"^{_NHAN}(?:\.{_NHAN})*\.?\Z")
 #: Đường dẫn tiền tố: chỉ ký tự «không dành riêng» của RFC 3986, «%XX» và «/». Ký tự shell/nháy/«\\» bị loại —
 #: URL này đi nguyên văn vào lệnh curl và mã Python soạn sẵn ở /api/ket-noi (và địa chỉ gọi lại của module).
-_DUONG = re.compile(r"^(?:/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*$")
+_DUONG = re.compile(r"^(?:/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*\Z")
 TOI_DA_URL = 2048
 TOI_DA_HEADER = 260
 
