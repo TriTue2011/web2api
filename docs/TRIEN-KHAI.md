@@ -37,15 +37,21 @@ Cloudflare Tunnel sử dụng dịch vụ `cloudflared` chạy trên cùng máy 
      ```
    - Hoặc nếu chạy `cloudflared` chung một tệp compose với web2api trong cùng mạng Docker riêng, bạn có thể bỏ hoàn toàn mục `ports:`. `cloudflared` kết nối trực tiếp tới `http://web2api:8000`.
 
-3. **Tác động tới giới hạn sai khoá (`WEB2API_TRUST_PROXY`) — đọc kỹ, đây là chỗ dễ sai nhất:**
-   - Khi bạn công bố cổng của Docker (`127.0.0.1:3031:8000`), web2api **không** thấy kết nối là từ `127.0.0.1`. Docker chuyển tiếp kết nối nên bên trong container, nguồn hiện ra là **địa chỉ cổng (gateway) của mạng Docker** (đã đo trên một máy chạy thật: kết nối từ máy chủ vào `127.0.0.1:3031` hiện ra trong container là địa chỉ cổng của mạng compose, không phải loopback).
-   - Vì vậy, dù `cloudflared` chạy cùng máy chủ hay trong container riêng, web2api đều thấy nguồn là một địa chỉ **nội bộ của Docker**, và mặc định coi nó là KHÔNG tin cậy: bỏ qua `X-Forwarded-For`, dồn mọi khách Internet vào MỘT IP. Một người gõ sai khoá 30 lần sẽ chặn tất cả (xem mục 3).
-   - **Cách đúng:** khai địa chỉ nguồn đó vào `WEB2API_TRUST_PROXY`. Lấy địa chỉ cổng của mạng compose bằng lệnh (thay `<tên-mạng>` bằng tên mạng của compose, xem bằng `docker network ls`):
+3. **Tác động tới giới hạn sai khoá (`WEB2API_TRUST_PROXY`) — đọc kỹ, đây là chỗ dễ sai nhất:** web2api biết khách là ai nhờ địa chỉ **nguồn** của kết nối, mà địa chỉ này phụ thuộc `cloudflared` nối vào bằng đường nào. Đã đo trên một máy chạy thật (kết nối từ máy chủ vào cổng công bố của Docker, rồi đọc bảng kết nối trong container):
+
+   | `cloudflared` nối vào web2api qua | Container thấy nguồn là |
+   |---|---|
+   | `127.0.0.1:<cổng>` | địa chỉ **cổng (gateway) của mạng Docker**, KHÔNG phải loopback |
+   | địa chỉ **LAN** của máy chủ (`<IP-LAN-máy-chủ>:<cổng>`) | địa chỉ LAN của máy chạy `cloudflared` (nếu nó cùng máy chủ thì chính là LAN của máy chủ; từ máy LAN khác thì là IP máy đó — chưa đo từ máy LAN khác) |
+
+   - **Cách bạn đang dùng (cloudflared nối qua địa chỉ LAN):** khai đúng **địa chỉ LAN của máy chạy `cloudflared`, dạng `/32`**, ví dụ (địa chỉ MINH HOẠ thuộc dải tài liệu, thay bằng IP LAN thật của bạn) `WEB2API_TRUST_PROXY=192.0.2.10/32`. **Không khai cả dải `/24`**: khi đó mọi thiết bị trong nhà (TV, camera, điện thoại…) đều được coi là proxy và có thể tự gõ `X-Forwarded-For` giả để né giới hạn của chính nó hoặc vu cho người khác bị khoá.
+   - Nếu `cloudflared` nối qua `127.0.0.1` (cổng công bố ở loopback): khai **địa chỉ cổng mạng Docker** (lấy bằng lệnh dưới), cũng dạng `/32`. Nếu `cloudflared` là container trong cùng mạng compose: khai dải mạng của compose (đổi `.Gateway` thành `.Subnet`).
      ```bash
      docker network inspect <tên-mạng> --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
      ```
-     rồi đặt trong `.env` (một địa chỉ đơn, thêm `/32`): `WEB2API_TRUST_PROXY=<địa-chỉ-cổng>/32`. Nếu `cloudflared` là một container trong cùng mạng compose, khai thêm dải mạng của compose (lệnh trên, đổi `.Gateway` thành `.Subnet`).
-   - Peer là loopback THẬT chỉ xảy ra khi tiến trình `cloudflared` nằm **trong cùng container** với web2api (ít gặp). Khi đó web2api tự nhận proxy nếu có `X-Forwarded-For`.
+     (`<tên-mạng>` xem bằng `docker network ls`).
+   - **Không khai** → web2api coi nguồn là không tin cậy, bỏ qua `X-Forwarded-For`, dồn mọi khách Internet vào MỘT IP; một người gõ sai khoá 30 lần sẽ chặn tất cả (mục 3).
+   - Nguồn là loopback THẬT chỉ xảy ra khi tiến trình `cloudflared` nằm **trong cùng container** với web2api (ít gặp); khi đó web2api tự nhận proxy nếu có `X-Forwarded-For`.
    - Sau khi khai xong, **kiểm tra bằng mục 3** trước khi mở cho người ngoài.
 
 ### Kiểu B: Proxy ngược công bố cổng ra Internet
