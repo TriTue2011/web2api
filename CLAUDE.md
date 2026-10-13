@@ -74,6 +74,32 @@ Trước khi sửa lỗi, trả lời ba câu và **viết vào nội dung commi
 Cấm tuyệt đối: `git push --force`, `git reset --hard`, `--no-verify` để lách hook. Hook gitleaks chặn
 `git commit` thì sửa nguyên nhân, đừng bỏ qua.
 
+## Bảo mật — LUẬT CỨNG (chủ kho chốt 13/10/2026)
+
+Kẻ xấu nhắm vào chỗ có đăng nhập, cổng mở sẵn và mã tải về; coi máy chủ như mạng LAN công khai, đừng chọn tiện lợi
+hơn bảo mật. Vi phạm một điều là làm lại.
+
+1. **Kiểm LEO THANG QUYỀN, không chỉ bề mặt.** Mọi đường/phương thức mới có xác thực phải có test: không khoá → 401;
+   khoá khách hoặc vai thấp gọi đường quản trị → 403; đụng tài nguyên của người/hồ sơ/phiên khác bằng cách đổi ID hoặc
+   đường dẫn (IDOR) → 403/404; tài khoản mới không tự có quyền cao. «Đổi được mật khẩu admin» không chứng minh gì.
+2. **Mọi đường đều có xác thực; ngoại lệ phải có chủ đích.** Bearer/khoá luôn bắt buộc dù chỉ một người dùng; không
+   có chế độ «tắt khoá cho tiện». Đường mở không xác thực (hiện chỉ sức khoẻ và đổi vé) phải ghi lý do ở đầu mã và có
+   test giới hạn (dùng một lần, hết hạn, không lộ lý do sai).
+3. **Giao diện chống XSS.** Không chèn dữ liệu từ ngoài vào `innerHTML`/thuộc tính sự kiện khi chưa escape; trang trả về
+   có CSP và header bảo mật; cookie phiên `HttpOnly`, `SameSite=Strict`, `Secure` khi qua HTTPS, giới hạn `Path`.
+4. **Mã bên thứ ba là KHÔNG TIN ĐƯỢC cho tới khi đọc.** Không `curl … | sh`; không cài gói/chạy mã xử lý cookie, khoá
+   hay phiên khi chưa đọc mã; gói mới vào `requirements*.txt` phải ghim đúng phiên bản và nêu lý do trong commit;
+   không lấy mã «chia sẻ sẵn» (plugin, script) chạy thẳng; luôn chạy `bandit` và gitleaks; module cài lúc chạy chỉ từ
+   nguồn đã khai.
+5. **Cổng mạng.** Mặc định không công bố cổng ra ngoài (chỉ `127.0.0.1` hoặc mạng nội bộ Docker); không dựa vào UPnP;
+   dịch vụ phụ (cầu nối, trình duyệt từ xa) nghe nội bộ và có khoá riêng. Tài liệu triển khai phải nói SSH chỉ dùng
+   tệp khoá, tắt đăng nhập bằng mật khẩu.
+6. **Chống SSRF và đường dẫn.** URL do quản trị/khách khai phải qua bộ kiểm chung `app/tu_xa.py`; đường tới tệp/hồ sơ
+   ghép từ ID đã kiểm và sau `resolve()` phải nằm dưới thư mục gốc.
+7. **Quy trình.** Mỗi commit chạm xác thực, phiên, proxy, giao diện, cổng mạng hoặc mã bên thứ ba thêm MỘT đoạn «Bảo
+   mật» vào thông điệp: đường nào mở/không xác thực, tên test leo thang quyền/IDOR đã viết, phụ thuộc mới nào và đã đọc
+   mã chưa. Trước khi gộp phải có một lượt soát độc lập với trọng tâm leo thang quyền/IDOR/XSS.
+
 ## Kho public — không đưa bí mật hay dữ liệu thật của nhà vào mã
 
 Mọi người đọc được cả lịch sử commit; khoá đã commit là đã lộ dù xoá ở commit sau (phải thu hồi). Không
