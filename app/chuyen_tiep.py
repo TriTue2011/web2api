@@ -90,8 +90,10 @@ from __future__ import annotations
 
 import asyncio
 import email.utils
+import ipaddress
 import json
 import logging
+import socket
 import time
 from datetime import datetime, timezone
 from typing import AsyncIterator, Callable
@@ -108,6 +110,64 @@ NGHI_429_TRAN = 600.0
 NGHI_KHOA_HONG = 3600.0
 NGHI_KHA_NANG = 24 * 3600.0
 NGHI_MODEL_KHONG_CO = 6 * 3600.0  # (khoá, model) bị 404 trong khi khoá khác phục vụ được model đó
+
+class LoiDichBiChan(httpx.ConnectError):
+    """Tên máy của base_url lúc KẾT NỐI phân giải ra IP bị chặn (DNS rebinding: kiểm lúc đăng ký thấy IP sạch, lúc gọi
+    DNS đổi sang IP bị chặn). Là lỗi vận chuyển (ConnectError) để mọi nơi bắt `httpx.HTTPError` tự coi là không nối được."""
+
+
+class TransportGhimIp(httpx.AsyncBaseTransport):
+    """Ghim IP lúc KẾT NỐI — chống DNS rebinding («kiểm lúc đăng ký, dùng lúc gọi»).
+
+    Đặt ở TẦNG VẬN CHUYỂN nên MỌI lời gọi đi qua client (chat, ảnh, giọng nói, models, kiểm khoá, và cả chỗ thêm sau này)
+    đều bị kiểm, không phải nhớ gọi ở từng điểm. Mỗi yêu cầu: phân giải tên máy NGAY trước khi gửi, kiểm MỌI IP bằng
+    `kiem_ip` (hàm chung `app.tu_xa._dia_chi_bi_chan`), rồi nối thẳng tới IP đã kiểm đầu tiên mà qua. Header Host giữ
+    nguyên tên gốc (httpx đặt từ URL gốc) và SNI/kiểm chứng chỉ TLS dùng tên gốc (extension `sni_hostname`), khuôn của
+    `app/novnc.py`. IP chữ trong URL cũng bị kiểm (không cần phân giải). Không IP nào qua → LoiDichBiChan."""
+
+    def __init__(self, kiem_ip: Callable[[ipaddress.IPv4Address | ipaddress.IPv6Address], str | None],
+                 goc: httpx.AsyncBaseTransport | None = None):
+        self._kiem_ip = kiem_ip
+        self._goc = goc or httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        may = request.url.host
+        cong = request.url.port or (443 if request.url.scheme == "https" else 80)
+        try:
+            ds = [ipaddress.ip_address(may)]
+            la_ip_chu = True
+        except ValueError:
+            la_ip_chu = False
+            try:
+                tt = await asyncio.get_running_loop().getaddrinfo(may, cong, type=socket.SOCK_STREAM)
+            except OSError:
+                raise httpx.ConnectError("không phân giải được tên máy", request=request) from None
+            ds = []
+            for x in tt:
+                ip = ipaddress.ip_address(x[4][0])
+                if ip not in ds:
+                    ds.append(ip)
+        chon = None
+        ly_do = None
+        for ip in ds:
+            ly_do = self._kiem_ip(ip)
+            if ly_do is None:
+                chon = ip
+                break
+        if chon is None:
+            # Lý do (kèm IP) chỉ vào nhật ký máy chủ, không vào lỗi trả cho khách gọi API.
+            logging.getLogger("web2api.chuyen_tiep").warning("Chặn kết nối tới %s: phân giải ra %s — %s",
+                                                              may, ds[0] if ds else "?", ly_do)
+            raise LoiDichBiChan("đích trỏ vào dải bị chặn lúc kết nối", request=request)
+        if not la_ip_chu:
+            request.url = request.url.copy_with(host=str(chon))
+            if request.url.scheme == "https":
+                request.extensions = {**request.extensions, "sni_hostname": may}
+        return await self._goc.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._goc.aclose()
+
 
 KetQuaChat = tuple[int, dict, "bytes | AsyncIterator[bytes]"]
 
@@ -170,6 +230,7 @@ class ChuyenTiepOpenAI:
         phan_loai_loi: Callable[[int, dict, dict], str | None] | None = None,
         kha_nang: tuple[str, ...] = (),
         goi_y_tu_choi_kha_nang: str = "",
+        kiem_ip: Callable[[ipaddress.IPv4Address | ipaddress.IPv6Address], str | None] | None = None,
     ):
         self.ten = ten
         self.tien_to = tien_to
@@ -201,6 +262,9 @@ class ChuyenTiepOpenAI:
         self._dem_models: list[dict] | None = None
         self._dem_luc = 0.0
         self._khach: httpx.AsyncClient | None = None
+        # Hàm kiểm IP lúc KẾT NỐI (chống DNS rebinding): nhận ipaddress, trả None nếu qua / chuỗi lý do nếu chặn.
+        # None = không ghim — đích do module tự cố định (không phải URL người dùng khai) nên không cần.
+        self._kiem_ip = kiem_ip
         self._dong_ho: Callable[[], float] = time.time
         self.log = logging.getLogger(f"web2api.chuyen_tiep.{tien_to}")
 
@@ -209,7 +273,9 @@ class ChuyenTiepOpenAI:
     def _client(self) -> httpx.AsyncClient:
         # Tạo muộn, BÊN TRONG vòng sự kiện đang chạy: AsyncClient gắn với vòng lặp tạo ra nó.
         if self._khach is None:
-            self._khach = httpx.AsyncClient(follow_redirects=False)
+            self._khach = httpx.AsyncClient(
+                follow_redirects=False,
+                transport=TransportGhimIp(self._kiem_ip) if self._kiem_ip is not None else None)
         return self._khach
 
     @staticmethod
@@ -344,6 +410,9 @@ class ChuyenTiepOpenAI:
             req = khach.build_request("POST", url, json=than, headers=self._tieu_de(khoa), timeout=timeout)
             try:
                 r = await khach.send(req, stream=True)
+            except LoiDichBiChan:  # đích bị chặn lúc nối: mọi khoá sẽ hỏng y hệt, không thử tiếp
+                return tra_loi_json(502, {"error": {"message": f"{self.ten} ({may}): đích trỏ vào dải bị chặn lúc kết nối",
+                                                    "type": "api_error", "code": "ssrf_blocked"}})
             except httpx.TimeoutException as e:
                 loi_cuoi = tra_loi_json(504, {"error": {"message": f"{self.ten} ({may}) không trả lời kịp: {type(e).__name__}",
                                                         "type": "api_error", "code": "timeout"}})
@@ -503,6 +572,10 @@ class ChuyenTiepOpenAI:
             try:
                 r = await self._client().request(phuong_thuc, url, json=json_than, headers=tieu_de(khoa),
                                                  timeout=timeout)
+            except LoiDichBiChan:  # như chat(): trả ngay, không đánh dấu khoá nào
+                return None, tra_loi_json(502, {"error": {
+                    "message": f"{self.ten} ({may}): đích trỏ vào dải bị chặn lúc kết nối",
+                    "type": "api_error", "code": "ssrf_blocked"}})
             except httpx.TimeoutException as e:
                 loi = {"error": {"message": f"{self.ten} ({may}) không trả lời kịp: {type(e).__name__}",
                                  "type": "api_error", "code": "timeout"}}

@@ -189,9 +189,9 @@ from pathlib import Path
 
 log = logging.getLogger("web2api.kham_pha")
 
-ID_HOP_LE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}$")
+ID_HOP_LE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}\Z")
 #: Tiền tố model: đứng trước «/» trong tên model nên không được chứa «/».
-TIEN_TO_HOP_LE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$")
+TIEN_TO_HOP_LE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,40}\Z")
 #: Id trùng chữ của tuyến /api/modules/<chữ> thì `DELETE /api/modules/tu-xa` thành mơ hồ.
 ID_DANH_RIENG = {"catalog", "thong-bao", "nap-lai", "tu-xa"}
 KIEU_TRUONG = {"chuoi", "bi_mat", "danh_sach_bi_mat"}
@@ -202,12 +202,12 @@ MAU_MIEN = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)
 TRUONG_CHUOI_BAT_BUOC = ("id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to")
 #: Phương thức BẮT BUỘC chung: chỉ vòng đời. Khả năng (chat, ảnh, …) theo `cung_cap` — xem HOP_DONG_KHA_NANG.
 PHUONG_THUC = ("nap", "cai", "suc_khoe", "dung")
-_TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 #: Mẫu mã khả năng trong `cung_cap`, mã loại `loai` và mã trong `can` — kiểm dạng, KHÔNG liệt kê mã hợp lệ
 #: (loại/khả năng mới không phải sửa lõi).
-MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
+MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}\Z")
 #: Id của một mục (tab con) trong `muc` — đi vào id phần tử/đường dẫn của giao diện.
-ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}\Z")
 
 #: Chuẩn phân loại lỗi trung lập cho module (mã mở):
 LOAI_LOI_CHUAN = {

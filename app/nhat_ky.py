@@ -49,7 +49,7 @@ _KHOA = threading.RLock()
 _last_luc = ""
 #: Bộ đếm dòng của tệp hiện tại: {"danh_tinh": (đường, thiết bị, inode), "co": kích thước đã biết, "dong": số dòng}.
 _DEM: dict[str, Any] = {}
-_REQ_ID_HOP_LE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_REQ_ID_HOP_LE = re.compile(r"^[A-Za-z0-9._-]{1,128}\Z")
 #: Thân JSON (không stream) lớn hơn mức này thì không phân tích tìm `usage` — ảnh b64_json cỡ MB, phân tích trên
 #: vòng lặp sự kiện chỉ để lấy vài con số là không đáng.
 TRAN_THAN_USAGE = 1024 * 1024
