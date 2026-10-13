@@ -8,8 +8,11 @@ muse-cli's interactive chat.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Iterator
+
+from .protocol import AuthError
 
 
 def event_text(ev: dict) -> str:
@@ -39,10 +42,12 @@ def build_prompt(messages: list[dict]) -> str:
     parts: list[str] = []
     for m in messages:
         role = m.get("role", "user")
+        role = str(role) if not isinstance(role, str) else role
         content = m.get("content", "")
         if isinstance(content, list):  # multi-part content
-            texts = [p.get("text", "") for p in content
-                     if isinstance(p, dict) and p.get("type") == "text"]
+            texts = [p["text"] for p in content
+                     if isinstance(p, dict) and p.get("type") == "text"
+                     and isinstance(p.get("text"), str)]
             content = "\n".join(texts)
         content = str(content or "").strip()
         if not content:
@@ -63,14 +68,13 @@ class ChatSession:
         self.poll_interval = poll_interval
         self.wait_s = wait_s
         self.quiet_s = quiet_s
+        self.da_gui = False  # True ngay sau khi _open("chat.stream") trả về
 
     def _last_seq(self) -> int:
-        try:
-            d = self.gw.call_json("chat.history", body={"limit": 1}, timeout=30)
-        except Exception:
-            return 0
+        """Lấy seq lớn nhất trong lịch sử hiện tại. Không nuốt lỗi."""
+        d = self.gw.call_json("chat.history", body={"limit": 15}, timeout=30)
         evs = d.get("chat_events", []) if isinstance(d, dict) else []
-        return max([e.get("seq", 0) for e in evs] or [0])
+        return max([e.get("seq") or 0 for e in evs] or [0])
 
     def _poll_known(self, baseline: int, known: dict) -> bool:
         """Refresh per-message texts. Returns True if anything changed.
@@ -78,10 +82,7 @@ class ChatSession:
         known: key -> (seq, text). Messages keep their seq while their text
         grows across polls, so we track by message key, not by seq cursor.
         """
-        try:
-            d = self.gw.call_json("chat.history", body={"limit": 15}, timeout=30)
-        except Exception:
-            return False
+        d = self.gw.call_json("chat.history", body={"limit": 15}, timeout=30)
         evs = d.get("chat_events", []) if isinstance(d, dict) else []
         changed = False
         for e in evs:
@@ -89,25 +90,47 @@ class ChatSession:
                 continue
             p = e.get("payload") if isinstance(e.get("payload"), dict) else {}
             key = p.get("message_id") or e.get("message_id") or e.get("seq")
-            item = (e.get("seq", 0), event_text(e))
+            item = (e.get("seq") or 0, event_text(e))
             if known.get(key) != item:
                 known[key] = item
                 changed = True
         return changed
 
-    def run(self, prompt: str) -> Iterator[str]:
-        """Yield text deltas as the assistant reply arrives."""
+    def run(self, prompt: str, co_huy: threading.Event | None = None) -> Iterator[str]:
+        """Yield text deltas as the assistant reply arrives.
+
+        co_huy: nếu được đặt (set), vòng poll dừng ngay và không phát gì thêm.
+        """
         baseline = self._last_seq()
         body = {"items": [{"type": "text", "text": prompt}],
                 "node_id": self.node_id, "capabilities": {}}
         self.gw._open("chat.stream", body=body)  # fire-and-forget
+        self.da_gui = True
         known: dict = {}
         emitted, last_new = "", 0.0
         deadline = time.time() + self.wait_s
         got_any = False
+        loi_lien_tiep = 0
+        loi_cuoi: BaseException | None = None
         while time.time() < deadline:
-            time.sleep(self.poll_interval)
-            if self._poll_known(baseline, known):
+            if co_huy is not None:
+                if co_huy.wait(self.poll_interval):
+                    return  # khách ngắt → dừng, không phát gì thêm
+            else:
+                time.sleep(self.poll_interval)
+            try:
+                changed = self._poll_known(baseline, known)
+            except AuthError:
+                raise  # AuthError luôn nổi lên ngay
+            except Exception as e:  # noqa: BLE001
+                loi_lien_tiep += 1
+                loi_cuoi = e
+                if loi_lien_tiep >= 3:
+                    raise loi_cuoi  # 3 lỗi liên tiếp → ném lại
+                continue
+            loi_lien_tiep = 0
+            loi_cuoi = None
+            if changed:
                 full = "".join(t for _, t in sorted(known.values()))
                 # Emit only the unseen tail (messages grow across polls).
                 delta = full[len(emitted):] if full.startswith(emitted) else full
