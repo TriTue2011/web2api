@@ -36,21 +36,12 @@ def du_lieu(tmp_path, monkeypatch):
 
 
 def _danh_sach_nha_cung_cap() -> list[str]:
-    """Tên nhà cung cấp/module cụ thể: lấy từ modules/ nguồn AI cộng thêm các tên phổ biến."""
+    """Tên nhà cung cấp/module cụ thể: lấy từ modules/ cộng thêm các tên phổ biến."""
     danh_sach = set()
     thu_muc_modules = GOC / "modules"
     if thu_muc_modules.is_dir():
         for d in os.listdir(thu_muc_modules):
-            dir_mod = thu_muc_modules / d
-            if dir_mod.is_dir():
-                mf_path = dir_mod / "manifest.json"
-                if mf_path.is_file():
-                    try:
-                        mf = json.loads(mf_path.read_text(encoding="utf-8"))
-                        if mf.get("loai") != "ai":
-                            continue
-                    except Exception:
-                        pass
+            if (thu_muc_modules / d).is_dir():
                 danh_sach.add(d.lower())
                 for p in d.lower().split("-"):
                     if len(p) >= 4 and p not in {"api", "apis"}:

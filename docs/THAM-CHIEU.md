@@ -40,7 +40,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
-| Module `trinh-duyet` (Trình duyệt từ xa qua noVNC) | Có — kiểm với dịch vụ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 13/10/2026 |
+| Module `vnc-xa` (Trình duyệt từ xa qua noVNC) | Có — kiểm với dịch vụ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 13/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -842,9 +842,9 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 
 ---
 
-### Module trinh-duyet — Trình duyệt từ xa (noVNC)
+### Module vnc-xa — Trình duyệt từ xa (noVNC)
 
-**Mô tả.** Cầu nối HTTP điều khiển dịch vụ trình duyệt riêng để đăng nhập tay (OTP/captcha) và lưu giữ hồ sơ phiên bền vững. Lõi web2api đóng vai trò cấp vé, xác thực phiên ngắn hạn và proxy giao diện noVNC cùng kết nối WebSocket. Mã nguồn: `modules/trinh-duyet/`. Tiền tố: `trinhduyet`.
+**Mô tả.** Cầu nối HTTP điều khiển dịch vụ trình duyệt riêng để đăng nhập tay (OTP/captcha) và lưu giữ hồ sơ phiên bền vững. Lõi web2api đóng vai trò cấp vé, xác thực phiên ngắn hạn và proxy giao diện noVNC cùng kết nối WebSocket. Mã nguồn: `modules/vnc-xa/`. Tiền tố: `vncxa`.
 
 **Cần gì.**
 - Địa chỉ gốc HTTP của dịch vụ trình duyệt riêng (`dich_vu_url`) và khoá xác thực Bearer (`khoa_dich_vu`).
@@ -853,13 +853,13 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 
 **Cách cài.**
 
-1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "trinh-duyet"`.
-2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/trinh-duyet`
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "vnc-xa"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/vnc-xa`
 3. Cài và kiểm cấu hình:
    ```bash
    curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
      -d '{"cau_hinh": {"dich_vu_url": "http://192.168.1.50:6080", "khoa_dich_vu": "sk-khoa-tu-xa-RIENG-7777"}}' \
-     $W/api/modules/trinh-duyet/cai
+     $W/api/modules/vnc-xa/cai
    ```
 
 **Cấu hình.**
@@ -875,7 +875,7 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 # Mở hồ sơ trình duyệt và nhận URL truy cập noVNC kèm vé
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"loai": "chromium"}' \
-  $W/api/trinh-duyet/trinh-duyet/mo
+  $W/api/trinh-duyet/vnc-xa/mo
 ```
 
 **Sự cố thường gặp.**

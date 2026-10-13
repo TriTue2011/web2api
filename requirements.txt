@@ -9,5 +9,5 @@ python-multipart==0.0.32
 # Mật mã (X25519, AES-GCM) cho module cần bắt tay/mã hoá riêng — hiện module `muse` (Noise XX). Có sẵn bánh xe manylinux cho
 # python:3.13-slim (không biên dịch lúc dựng). Bản đã chạy test module muse, đo 12/10/2026.
 cryptography==50.0.2
-# Nhận và chuyển tiếp WebSocket hai chiều cho proxy noVNC (/novnc/.../websockify). Bản trong uv.lock của repo gốc.
+# Nhận và chuyển tiếp WebSocket hai chiều cho proxy noVNC (/novnc/.../websockify), Chuẩn C6; ghim đúng bản đã kiểm, 13/10/2026.
 websockets==17.2

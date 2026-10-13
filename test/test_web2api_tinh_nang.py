@@ -368,13 +368,11 @@ def test_trang_thai_git_cu_thieu_truong_moi_duoc_doc_lai(du_lieu, monkeypatch):
 # ───────────── lõi và khung không mang đặc thù nhà cung cấp ─────────────
 
 def _ten_nha_cung_cap() -> set[str]:
-    """Tên suy từ manifest của CHÍNH các module nguồn AI trong kho (không gõ tay): tiền tố, các đoạn của id, nhãn tên máy
+    """Tên suy từ manifest của CHÍNH các module trong kho (không gõ tay): tiền tố, các đoạn của id, nhãn tên máy
     trong `mang_ra` (bỏ «apis» cuối: generativelanguage.googleapis.com → generativelanguage, google)."""
     ten = set()
     for p in (GOC / "modules").glob("*/manifest.json"):
         m = json.loads(p.read_text(encoding="utf-8"))
-        if m.get("loai") != "ai":
-            continue
         ten.add(m["tien_to"].lower())
         ten |= {x for x in m["id"].lower().split("-") if len(x) >= 4 and x not in {"api", "apis"}}
         for may in m["tai_nguyen"].get("mang_ra", []):

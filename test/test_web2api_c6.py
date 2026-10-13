@@ -1,4 +1,4 @@
-"""Kiểm thử Chuẩn C6: Trình duyệt từ xa qua noVNC (lõi cấp vé/phiên/proxy + module trinh-duyet).
+"""Kiểm thử Chuẩn C6: Trình duyệt từ xa qua noVNC (lõi cấp vé/phiên/proxy + module vnc-xa).
 
 Thiết kế đang kiểm (xem đầu app/novnc.py):
 - Vé 60 giây, dùng một lần. `GET /novnc/dang-nhap?ve=` chỉ trả trang có NÚT; đổi vé bằng `POST` (bot xem trước
@@ -992,10 +992,10 @@ def test_hop_dong_va_loi_hinh_dang(du_lieu, backend_gia):
 
 
 def test_module_trinh_duyet_chuan(du_lieu, backend_gia):
-    """Module trinh-duyet với dịch vụ giả: cai(), mở, đóng, liệt kê; phân loại lỗi."""
+    """Module vnc-xa với dịch vụ giả: cai(), mở, đóng, liệt kê; phân loại lỗi."""
     import importlib.util
 
-    mod_tep = Path(__file__).resolve().parents[1] / "modules" / "trinh-duyet" / "module.py"
+    mod_tep = Path(__file__).resolve().parents[1] / "modules" / "vnc-xa" / "module.py"
     spec = importlib.util.spec_from_file_location("mod_trinh_duyet_test", mod_tep)
     mod_obj = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod_obj)

@@ -20,7 +20,7 @@ import httpx
 
 from app.tu_xa import kiem_url_lan
 
-log = logging.getLogger("web2api.module.trinh_duyet")
+log = logging.getLogger("web2api.module.vnc_xa")
 
 
 def _che_khoa(k: str) -> str:

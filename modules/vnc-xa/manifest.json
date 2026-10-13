@@ -1,5 +1,5 @@
 {
-  "id": "trinh-duyet",
+  "id": "vnc-xa",
   "ten": "Trình duyệt từ xa (noVNC)",
   "mo_ta": "Cầu nối điều khiển dịch vụ trình duyệt từ xa qua noVNC để đăng nhập tay và lưu giữ hồ sơ phiên bền vững.",
   "phien_ban": "0.1.0",
@@ -7,7 +7,7 @@
   "loai_ten": "Tiện ích",
   "loai_thu_tu": 40,
   "giao_thuc": "http",
-  "tien_to": "trinhduyet",
+  "tien_to": "vncxa",
   "yeu_cau_goi": ["httpx"],
   "cung_cap": ["trinh_duyet"],
   "truong_cau_hinh": [
