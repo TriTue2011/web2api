@@ -1,0 +1,62 @@
+services:
+  trinh-duyet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: web2api-trinh-duyet:latest
+    container_name: web2api-trinh-duyet
+    restart: unless-stopped
+    # KHÔNG đặt `init: true`: tini sẽ làm PID 1 với nguyên môi trường container, tức /proc/1/environ vẫn
+    # chứa TRINH_DUYET_KHOA cho mọi tiến trình uid 1000 đọc. server.py tự làm PID 1, xoá khoá khỏi vùng nhớ
+    # môi trường và tự thu dọn tiến trình xác sống mồ côi sau killpg (thu_don_xac_song).
+    # Bỏ MỌI capability và cấm leo quyền qua setuid. CHƯA KIỂM với Docker thật: nếu Chromium/Xvfb không
+    # khởi động được dưới cap_drop ALL thì POST /ho-so/mo trả 502 — khi đó ghi nhận capability cần thiết
+    # thay vì bỏ dòng này.
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    # Trần tiến trình/LUỒNG (cgroup pids đếm cả luồng). Chromium dùng hàng chục luồng mỗi tiến trình và
+    # nhiều tiến trình mỗi hồ sơ; 3 hồ sơ đồng thời ước vài trăm tới hơn nghìn luồng (CHƯA ĐO). 2048 chừa
+    # khoảng trống mà vẫn chặn fork bomb từ một renderer bị chiếm.
+    pids_limit: 2048
+    # Chromium cần kích thước shared memory đủ lớn để không bị crash khi render tab
+    shm_size: 1gb
+    mem_limit: 2g
+    environment:
+      # Biến bắt buộc, KHÔNG có giá trị mặc định để buộc người dùng cấu hình qua .env.
+      # server.py đọc một lần rồi xoá khỏi môi trường tiến trình (kể cả /proc/1/environ); `docker inspect`
+      # trên máy chủ vẫn thấy — chỉ người có quyền Docker (tương đương root) mới đọc được.
+      TRINH_DUYET_KHOA: ${TRINH_DUYET_KHOA}
+      TRINH_DUYET_HOST: "0.0.0.0"
+      TRINH_DUYET_PORT: "8700"
+      TRINH_DUYET_THU_MUC_GOC: "/hoso"
+      TRINH_DUYET_CONG_TU: "6100"
+      TRINH_DUYET_CONG_DEN: "6199"
+      TRINH_DUYET_TOI_DA: "3"
+      TRINH_DUYET_TOI_DA_HO_SO: "20"
+      TRINH_DUYET_IDLE_PHUT: "120"
+      TRINH_DUYET_TOI_DA_PHUT: "480"
+      TRINH_DUYET_HOST_NOI_BO: "trinh-duyet"
+    volumes:
+      - hoso-data:/hoso
+    networks:
+      - trinh-duyet-rieng
+    expose:
+      - "8700"
+      - "6100-6199"
+    # KHÔNG công bố cổng (ports) ra máy chủ. Muốn gỡ lỗi từ chính máy chủ thì chỉ mở loopback:
+    # ports:
+    #   - "127.0.0.1:8700:8700"
+
+volumes:
+  hoso-data:
+    name: web2api_trinh_duyet_hoso
+
+networks:
+  # Mạng RIÊNG của dịch vụ này, do compose tạo (không external, không dùng chung). Chỉ nối thêm đúng
+  # container lõi web2api: `docker network connect web2api-trinh-duyet <container web2api>`.
+  # KHÔNG gắn dịch vụ nào khác: trình duyệt chạy trang web tuỳ ý, mọi thứ cùng mạng là tầm với của nó.
+  # Không `internal: true` vì trình duyệt cần ra Internet để đăng nhập dịch vụ ngoài.
+  trinh-duyet-rieng:
+    name: web2api-trinh-duyet
