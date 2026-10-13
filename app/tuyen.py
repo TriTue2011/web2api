@@ -23,6 +23,7 @@ from app import (
     phien as phien_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
+    novnc as novnc_mod,
 )
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
@@ -51,6 +52,8 @@ thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
 phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
 tim_kiem = APIRouter(prefix="/api/tim-kiem")
 tep_module = APIRouter()
+trinh_duyet = novnc_mod.api_router
+novnc = novnc_mod.novnc_router
 
 
 def _so(request: Request) -> SoModule:

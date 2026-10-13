@@ -40,6 +40,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
+| Module `vnc-xa` (Trình duyệt từ xa qua noVNC) | Có — kiểm với dịch vụ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 13/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -842,6 +843,82 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 - Tiêu tốn hạn mức token cao (tối thiểu ≈12.500 token/lượt) do khung agent của `agy` nạp ngữ cảnh hệ thống.
 - Chưa đo trên `agy` thật để tránh tiêu tốn hạn mức tài khoản của chủ máy.
 
+---
+
+### Module vnc-xa — Trình duyệt từ xa (noVNC)
+
+**Mô tả.** Cầu nối HTTP điều khiển dịch vụ trình duyệt riêng để đăng nhập tay (OTP/captcha) và lưu giữ hồ sơ phiên bền vững. Lõi web2api đóng vai trò cấp vé, xác thực phiên ngắn hạn và proxy giao diện noVNC cùng kết nối WebSocket. Mã nguồn: `modules/vnc-xa/`. Tiền tố: `vncxa`.
+
+**Cần gì.**
+- Địa chỉ gốc HTTP của dịch vụ trình duyệt riêng (`dich_vu_url`) và khoá xác thực Bearer (`khoa_dich_vu`).
+- Mạng ra: dịch vụ trình duyệt chạy ở container độc lập hoặc máy chủ LAN.
+- RAM/đĩa: chưa đo (dịch vụ trình duyệt nặng chạy container riêng).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "vnc-xa"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/vnc-xa`
+3. Cài và kiểm cấu hình:
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"dich_vu_url": "http://192.168.1.50:6080", "khoa_dich_vu": "sk-khoa-tu-xa-RIENG-7777"}}' \
+     $W/api/modules/vnc-xa/cai
+   ```
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `dich_vu_url` | Có | Địa chỉ gốc HTTP của dịch vụ trình duyệt riêng (được kiểm tra chống SSRF). |
+| `khoa_dich_vu` | Có | Khoá bí mật xác thực với dịch vụ trình duyệt (lưu tại kho bí mật, không trả lại). |
+
+**Ví dụ dùng.**
+
+```bash
+# Mở hồ sơ trình duyệt và nhận URL truy cập noVNC kèm vé
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"loai": "chromium"}' \
+  $W/api/trinh-duyet/vnc-xa/mo
+```
+
+**Sự cố thường gặp.**
+- `401` khi bấm «Mở trình duyệt» — vé sai, đã dùng hoặc quá 60 giây — xin vé mới qua `POST /api/trinh-duyet/{module}/{ho_so}/ve`.
+- `429` khi bấm «Mở trình duyệt» — đã đủ 4 phiên cho hồ sơ (hoặc chạm `WEB2API_NOVNC_PHIEN_TOI_DA`) — đóng hồ sơ hoặc `DELETE /api/trinh-duyet/phien` rồi bấm lại trong hạn vé.
+- `502` khi mở hồ sơ — địa chỉ dịch vụ bị chặn SSRF hoặc không kết nối được tới dịch vụ trình duyệt.
+- `401` khi tải trang noVNC — phiên trong đường dẫn sai, đã thu hồi hoặc quá 8 giờ.
+- `502` khi tải trang noVNC — đích không kết nối được hoặc từ chối Basic auth của lõi (bí mật hồ sơ lệch: mở lại hồ sơ).
+
+**Bảo mật của đường noVNC.**
+- Liên kết vé (`/novnc/dang-nhap?ve=…`) chỉ mở trang có nút; vé đổi bằng `POST` khi bấm, nên bot xem trước liên kết
+  của Zalo/Telegram (chỉ GET) không giành được vé. Vé dùng một lần trong 60 giây.
+- Không cookie: phiên (256 bit) nằm trong đường dẫn `/novnc/s/<phien>/…`; hồ sơ suy ra từ phiên, khách không chọn được.
+  Đường dẫn có phiên không vào log (bộ lọc che `/novnc/s/…` trong log uvicorn, kể cả dòng «WebSocket …»).
+- Nội dung noVNC đến từ dịch vụ trình duyệt (không hoàn toàn tin): mọi phản hồi dưới `/novnc/s/` mang
+  `Content-Security-Policy: sandbox allow-scripts allow-forms allow-pointer-lock` (không `allow-same-origin` → trang
+  chạy ở origin mờ, không đọc được khoá quản trị trong localStorage của web2api, không gọi `/api` bằng quyền quản trị),
+  `Access-Control-Allow-Origin: *`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: no-store`, `X-Frame-Options: DENY`. Đã kiểm noVNC 1.6.0 (bản Debian của dịch vụ) chạy được trong đó.
+- Header hai chiều theo danh sách cho phép; chỉ GET/HEAD; `dich` (có thể mang `http://w2a:<bí-mật>@máy:cổng`) được
+  ghim lúc mở: phân giải một lần, mọi địa chỉ qua kiểm SSRF, kết nối thẳng tới IP đã kiểm; bí mật thành Basic auth,
+  chỉ trong RAM. Mở lại cùng hồ sơ mà đích đổi sang máy khác → `502`.
+- `POST …/dong` thu hồi vé, phiên, WebSocket TRƯỚC rồi mới gọi dịch vụ; dịch vụ lỗi vẫn trả `502` kèm `"da_thu_hoi": true`.
+  Không gửi thân thì mặc định `giu_phien: true` (giữ hồ sơ đã đăng nhập).
+- Gỡ, tắt, cài lại hay nạp lại module đã mở hồ sơ: mỗi yêu cầu proxy và vòng kiểm định kỳ của WebSocket thấy module
+  không còn là đối tượng đang chạy → thu hồi cả hồ sơ (`401`, socket đóng mã `1008` trong tối đa 30 giây).
+- Đích trả chuyển hướng (3xx trừ `304`) → `502`; proxy không theo và không chuyển `Location`. Kiểm SSRF áp cả cho IPv4
+  nhúng trong địa chỉ 6to4 (`2002::/16`) và Teredo.
+- **Log của reverse proxy phía trước**: phiên nằm trong đường dẫn, nên access log của Caddy/nginx/Traefik/Cloudflare
+  sẽ ghi `/novnc/s/<phiên>/…` và `/novnc/dang-nhap?ve=…`. Lõi chỉ che được log của chính nó — hãy tắt hoặc che access
+  log cho tiền tố `/novnc` ở proxy phía trước.
+- Phiên KHÔNG gắn với IP hay User-Agent: ai có đường dẫn phiên đều dùng được tới khi hết 8 giờ hoặc bị thu hồi.
+- Thu hồi chỉ theo cả hồ sơ (`POST /api/trinh-duyet/{module}/{ho_so}/dong`) hoặc tất cả
+  (`DELETE /api/trinh-duyet/phien`); chưa thu hồi được từng phiên riêng.
+
+**Giới hạn.**
+- Chưa kiểm tra với dịch vụ trình duyệt thật (chỉ máy chủ ASGI giả lập; noVNC 1.6.0 thật đã chạy qua proxy với backend giả).
+- noVNC phải dựng đường WebSocket tương đối theo trang (noVNC ≥ 1.5 mặc định vậy); bản cũ dựng theo gốc máy sẽ không nối được.
+- Giao diện web người dùng đang ẩn (chỉ có API).
+
 ## 5. Triển khai
 
 ### Cần gì để chạy
@@ -1353,6 +1430,15 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
 | `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
+| `POST /api/trinh-duyet/{module}/mo` | Có | Mở/khôi phục hồ sơ trình duyệt từ xa và cấp vé dùng một lần (60s) |
+| `POST /api/trinh-duyet/{module}/{ho_so}/ve` | Có | Cấp thêm vé ngắn hạn cho hồ sơ đang mở |
+| `GET /api/trinh-duyet/{module}` | Có | Liệt kê danh sách hồ sơ trình duyệt của module |
+| `POST /api/trinh-duyet/{module}/{ho_so}/dong` | Có | Đóng hồ sơ trình duyệt, thu hồi vé/phiên và đóng WebSocket |
+| `DELETE /api/trinh-duyet/phien` | Có | Thu hồi mọi phiên noVNC và đóng các WebSocket đang mở |
+| `GET /novnc/dang-nhap` | Không | Trang nhỏ có nút «Mở trình duyệt» (không script); KHÔNG tiêu thụ vé — bot xem trước liên kết chỉ GET |
+| `POST /novnc/dang-nhap` | Không (vé trong thân form) | Đổi vé (một lần, 60 giây) lấy phiên 8 giờ, 303 sang `/novnc/s/<phien>/vnc.html`; chỉ nhận `application/x-www-form-urlencoded` (khác → `415`, trước khi đọc thân), thân ≤ 4 KiB (quá → `413`, kể cả chunked); `401` vé sai/hết hạn, `429` chạm trần phiên (vé không bị đốt). Không cookie |
+| `GET /novnc/s/{phien}/{duong:path}` | Không (phiên trong đường dẫn) | Proxy ngược HTTP (chỉ GET/HEAD, khác → `405`) tới đích đã ghim của hồ sơ suy ra từ phiên; mọi phản hồi mang CSP `sandbox` (origin mờ) |
+| `GET /novnc/s/{phien}/websockify` | Không (phiên trong đường dẫn) | Proxy WebSocket hai chiều tới đích; bị đóng khi thu hồi/đóng hồ sơ/phiên hết hạn |
 | `* /v1/{duong:path}` | Có | Bắt mọi đường `/v1` chưa có: `404` `unknown_endpoint` đúng khuôn OpenAI; sai phương thức thì `405` kèm `Allow` suy từ router; thừa `/` cuối mà bỏ đi thì khớp một đường có thật (cả phương thức) thì `307` sang đường đó, giữ query |
 
 | Biến môi trường | Mặc định | Ý nghĩa |
@@ -1361,6 +1447,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_ADMIN_KEY` | tự sinh | Khoá quản trị; không đặt thì sinh và lưu `<WEB2API_DATA>/admin_key` |
 | `WEB2API_PUBLIC_URL` | không | Địa chỉ URL công khai chính thức (ví dụ `https://<tên-miền>`), ưu tiên sau giá trị đã đặt qua API |
 | `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai; chỉ bật khi mọi đường vào đều qua proxy |
+| `WEB2API_NOVNC_PHIEN_TOI_DA` | `16` | Trần TOÀN CỤC số phiên noVNC đồng thời (RAM); vượt trần thì phiên MỚI bị từ chối `429`, phiên đang dùng không bị đẩy ra. Riêng mỗi (module, hồ sơ) tối đa 4 phiên |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |

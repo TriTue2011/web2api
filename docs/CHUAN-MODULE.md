@@ -38,6 +38,7 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 | `nhung` | `nhung` | — | `body: dict` | `(mã, headers, bytes)` | 400 (thiếu input/model), 404 (model), 501, 502 |
 | `xep_hang` | `xep_hang` | — | `body: dict` | `(mã, headers, bytes)` | 400 (sai hình dạng documents/query/top_n), 404 (model), 501, 502 |
 | `tim_kiem` | `tim_kiem` | — | `yc: dict` | `dict` `{muc: [...], tong?}` | 400, 502 |
+| `trinh_duyet` | `trinh_duyet_mo`<br>`trinh_duyet_dong`<br>`trinh_duyet_ds` | — | `ho_so, loai` (mở)<br>`ho_so, giu_phien` (đóng) | `dict` `{ho_so, dich, loai}` (mở)<br>`dict` `{ok}` (đóng)<br>`list[dict]` (danh sách) | 400, 404, 501, 502 |
 | *(Mã lạ)* | Không bắt buộc | Tự do | Tuỳ ý | Tuỳ ý | — |
 
 ---
@@ -123,3 +124,12 @@ Nhận danh sách `ids: list[str]` và trả về từ điển:
 - Đầu ra: `{"tai_lieu": str, "tieu_de": str (tuỳ chọn), "muc": [{"id": str, "tieu_de": str, "cap": int, "vi_tri": any, "con": [...]}]}`.
 - Lõi kiểm hình dạng: bỏ nút sai không vỡ cây, áp trần độ sâu (mặc định 6, cấu hình qua `WEB2API_MUC_LUC_TRAN_DO_SAU`) và trần số nút (mặc định 2000, cấu hình qua `WEB2API_MUC_LUC_TRAN_SO_NUT`). Module không có phương thức → lõi trả mã `501` rõ ràng. Yêu cầu quyền/phạm vi `tim_kiem`.
 
+---
+
+## 5. Chi tiết chuẩn `trinh_duyet` (Chuẩn C6: noVNC và hồ sơ trình duyệt)
+
+Dành cho module điều khiển dịch vụ trình duyệt riêng (đăng nhập tay OTP/captcha, giữ phiên trong hồ sơ bền vững):
+- `async trinh_duyet_mo(ho_so: str, loai: str) -> dict`: Mở hoặc khôi phục hồ sơ, trả về `{"ho_so": str, "dich": "http://[w2a:<bí-mật>@]host:port", "loai": str}`. `dich` có thể mang userinfo (bí mật riêng mỗi hồ sơ mà websockify của dịch vụ đòi bằng Basic auth): lõi tách nó ra, kiểm SSRF theo HOSTNAME (mọi địa chỉ phân giải được), GHIM IP lúc mở và proxy giao diện noVNC + WebSocket tới đúng IP đó kèm Basic auth; `dich` chỉ nằm trong RAM, không vào log/nhật ký/phản hồi. Mở lại cùng hồ sơ mà máy/cổng/đường của `dich` đổi → `502`.
+- `async trinh_duyet_dong(ho_so: str, giu_phien: bool) -> dict`: Đóng hồ sơ; `giu_phien=True` (mặc định của API khi quản trị không gửi thân) giữ thư mục dữ liệu hồ sơ (cookie còn), `False` xoá hồ sơ. Lõi THU HỒI TRƯỚC khi gọi phương thức này (module ném lỗi thì quyền truy cập vẫn đã bị cắt, API trả `502` kèm `da_thu_hoi: true`, không nhúng nguyên văn lỗi) — lõi xoá toàn bộ vé/phiên và đóng kết nối WebSocket liên quan.
+- `async trinh_duyet_ds() -> list[dict]`: Liệt kê danh sách hồ sơ: `[{"ho_so": str, "loai": str, "trang_thai": str, "luc_mo"?: str}]`. Lõi chỉ trả đúng bốn trường này (trường khác như `dich` bị bỏ).
+- Nội dung `dich` phục vụ (noVNC) bị coi là không tin được: lõi phục vụ nó dưới `/novnc/s/<phien>/` với CSP `sandbox` (origin mờ) và header theo danh sách cho phép; module không cần và không được tự proxy.

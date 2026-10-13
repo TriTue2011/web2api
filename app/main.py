@@ -141,6 +141,8 @@ class MiddlewareChanKhoaKhachQuanTri:
 
 
 app.add_middleware(MiddlewareChanKhoaKhachQuanTri)
+# /novnc: mọi phản hồi (kể cả lỗi, 405, đường rơi xuống StaticFiles) mang CSP sandbox và header bảo vệ.
+app.add_middleware(tuyen.novnc_mod.MiddlewareBaoVeNoVNC)
 
 
 def thu_muc_du_lieu() -> str:
@@ -171,6 +173,8 @@ app.include_router(tuyen.thiet_bi)
 app.include_router(tuyen.phe_duyet)
 app.include_router(tuyen.tim_kiem)
 app.include_router(tuyen.tep_module)
+app.include_router(tuyen.trinh_duyet)
+app.include_router(tuyen.novnc)
 
 
 @app.get("/")
