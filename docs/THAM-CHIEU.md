@@ -742,6 +742,7 @@ chưa dùng được). Mã nguồn: `modules/muse2api/`. Tiền tố model: `mus
 `/chat/history`. Mọi đặc thù protocol nằm trong module; lõi chỉ định tuyến.
 
 **Cần gì.**
+- Gói Python `curl_cffi`, `noiseprotocol`, `protobuf` phải có trong ảnh (đã nằm trong `requirements.txt`).
 - Một hoặc nhiều bộ cookie từ tab muse.ai đã đăng nhập (DevTools F12 →
   Application → Cookies), dạng `k1=v1; k2=v2`.
 - Mạng ra tới `muse.ai` và `hatch.metaaivm.com`.
@@ -749,13 +750,13 @@ chưa dùng được). Mã nguồn: `modules/muse2api/`. Tiền tố model: `mus
 
 **Cách cài.**
 
-1. Xem thông báo: `curl -s -H \"Authorization: Bearer $K\" $W/api/modules/thong-bao` — có `\"id\": \"muse2api\"`.
-2. Tải về: `curl -s -X POST -H \"Authorization: Bearer $K\" $W/api/nguon-git/cai/muse2api`
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "muse2api"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/muse2api`
 3. Cài đặt cấu hình:
 
    ```bash
-   curl -s -X POST -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
-     -d '{\"cau_hinh\": {\"cookies\": [\"hatch_sess=...; hatch_gw=...; datr=...\"]}}' \
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"cookies": ["hatch_sess=...; hatch_gw=...; datr=..."]}}' \
      $W/api/modules/muse2api/cai
    ```
 
@@ -770,18 +771,20 @@ chưa dùng được). Mã nguồn: `modules/muse2api/`. Tiền tố model: `mus
 **Ví dụ dùng.**
 
 ```bash
-curl -s -H \"Authorization: Bearer $K\" -H \"Content-Type: application/json\" \
-  -d '{\"model\": \"muse2api/muse\", \"messages\": [{\"role\": \"user\", \"content\": \"Xin chào\"}]}' \\
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "muse2api/muse", "messages": [{"role": "user", "content": "Xin chào"}]}' \
   $W/v1/chat/completions
 ```
 
 **Sự cố thường gặp.**
-- `401` «Cookie không hợp lệ/hết hạn»: đăng nhập lại muse.ai trên trình duyệt rồi export lại cookie.
-- `502` «Không kết nối được muse.ai»: máy ảo chưa sẵn sàng — đợi chút rồi thử lại.
+- `401` «Cookie không hợp lệ/hết hạn»: đăng nhập lại muse.ai trên trình duyệt rồi export lại cookie. Có nhiều bộ cookie thì module tự chuyển sang bộ kế khi lời nhắn chưa gửi; bộ bị từ chối vẫn được thử lại ở lượt sau và khoẻ lại ngay khi trả lời được.
+- `502` «Lỗi máy chủ hoặc kết nối: …»: máy ảo chưa sẵn sàng hoặc WebSocket hỏng — đợi chút rồi thử lại. Thông báo chỉ nêu kiểu lỗi và mã trạng thái; nội dung phản hồi của muse.ai chỉ ghi vào log máy chủ. Kết nối cũ chết TRƯỚC khi gửi lời nhắn thì module tự nối lại một lần; chết SAU khi đã gửi thì trả `502`, không nối lại để khỏi hỏi Muse hai lần.
+- `504` «Hết hạn chờ muse.ai»: bắt tay Noise quá 20 giây, cổng im quá 30 giây lúc đọc mốc lịch sử (trước khi gửi), hoặc không có câu trả lời trong 300 giây (`wait_s`) — trợ lý có thể vẫn đang làm, xem lại lịch sử chat sau.
 
 **Giới hạn.**
 - Giao thức nội bộ đã reverse-engineer, không chính thức — Meta đổi web app có thể làm module ngừng hoạt động.
-- Stream là poll lịch sử mỗi ~2s (không phải token-by-token).
+- Độ trễ tối thiểu ≈ 12 giây mỗi lượt (2 giây poll + 10 giây im lặng để chắc đã hết), tin cách quãng quá 10 giây có thể bị cắt.
+- Lỗi giữa stream kết thúc bằng sự kiện `error` không có `[DONE]`.
 - Các request trên cùng một bộ cookie xếp hàng tuần tự, dùng chung main chat.
 - Điều khoản của Muse cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.
 - Cookie chính là tài khoản của bạn: không commit, không chia sẻ.

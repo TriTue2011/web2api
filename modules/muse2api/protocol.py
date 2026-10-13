@@ -31,7 +31,6 @@ import threading
 import time
 import urllib.parse
 import uuid
-import queue as queue_mod
 from pathlib import Path
 
 from curl_cffi import requests as rq
@@ -98,44 +97,61 @@ def _hatch_headers(cookies: str, access_token: str | None = None) -> dict:
 
 
 def fetch_access_token(cookies: str) -> str:
-    r = rq.post("https://muse.ai/api/auth/check", headers=_hatch_headers(cookies),
-                data=b"", impersonate="chrome", timeout=20)
-    if r.status_code != 200:
+    try:
+        r = rq.post("https://muse.ai/api/auth/check", headers=_hatch_headers(cookies),
+                    data=b"", impersonate="chrome", timeout=20)
+    except Exception as e:
+        raise GatewayError(-1, f"auth/check network error: {e}") from e
+    if r.status_code in (401, 403):
         raise AuthError(f"auth/check -> {r.status_code} (cookies expired? re-export)")
+    if r.status_code != 200:
+        raise GatewayError(r.status_code, f"auth/check -> {r.status_code}")
     try:
         return r.json()["access_token"]
     except (ValueError, KeyError) as e:
-        raise AuthError(f"auth/check returned unexpected body: {e}") from e
+        raise GatewayError(-1, f"auth/check returned unexpected body: {e}") from e
 
 
 def fetch_session_info(cookies: str) -> dict:
     """Discover the user's assigned personal VM (id + gateway URL)."""
-    r = rq.get("https://muse.ai/api/session", headers=_hatch_headers(cookies),
-               impersonate="chrome", timeout=20)
-    if r.status_code != 200:
+    try:
+        r = rq.get("https://muse.ai/api/session", headers=_hatch_headers(cookies),
+                   impersonate="chrome", timeout=20)
+    except Exception as e:
+        raise GatewayError(-1, f"api/session network error: {e}") from e
+    if r.status_code in (401, 403):
         raise AuthError(f"api/session -> {r.status_code} (cookies expired? re-export)")
+    if r.status_code != 200:
+        raise GatewayError(r.status_code, f"api/session -> {r.status_code}")
     try:
         info = r.json()
     except ValueError:
-        raise AuthError("api/session returned non-JSON")
-    if "vm_id" not in info:
-        raise GatewayError(-1, f"VM unavailable ({info!r}); retry shortly")
+        raise GatewayError(-1, "api/session returned non-JSON")
+    if not isinstance(info, dict) or "vm_id" not in info:
+        # Chỉ nêu TÊN khoá: giá trị phiên có thể chứa thông tin tài khoản.
+        khoa = sorted(info) if isinstance(info, dict) else type(info).__name__
+        raise GatewayError(-1, f"VM unavailable (session keys: {khoa}); retry shortly")
     return info
 
 
 def fetch_hatch_token(cookies: str, access_token: str, vm_id: str) -> str:
-    r = rq.post(
-        "https://muse.ai/api/hatch/token",
-        headers=_hatch_headers(cookies, access_token),
-        json={"vmAddress": f"wss://{vm_id}.metaaivm.com/", "vmName": vm_id},
-        impersonate="chrome", timeout=20,
-    )
-    if r.status_code != 200:
+    try:
+        r = rq.post(
+            "https://muse.ai/api/hatch/token",
+            headers=_hatch_headers(cookies, access_token),
+            json={"vmAddress": f"wss://{vm_id}.metaaivm.com/", "vmName": vm_id},
+            impersonate="chrome", timeout=20,
+        )
+    except Exception as e:
+        raise GatewayError(-1, f"hatch/token network error: {e}") from e
+    if r.status_code in (401, 403):
         raise AuthError(f"hatch/token -> {r.status_code}")
+    if r.status_code != 200:
+        raise GatewayError(r.status_code, f"hatch/token -> {r.status_code}")
     try:
         return r.json()["token"]
     except (ValueError, KeyError) as e:
-        raise AuthError(f"hatch/token returned unexpected body: {e}") from e
+        raise GatewayError(-1, f"hatch/token returned unexpected body: {e}") from e
 
 
 class Gateway:
@@ -145,6 +161,8 @@ class Gateway:
     Not thread-safe for concurrent frame consumers: hold the account lock
     for the whole request.
     """
+
+    HAN_BAT_TAY = 20.0  # giây, tổng cho connect + bắt tay Noise
 
     def __init__(self, cookies: str, vm_id: str | None = None,
                  access_token: str | None = None, hatch_token: str | None = None):
@@ -156,21 +174,43 @@ class Gateway:
         url = (f"wss://{GATEWAY_HOST}/v1/noise?vm_id={vm_id}"
                f"&auth_token={urllib.parse.quote(hatch_token, safe='')}")
         self.ws = WebSocket()
-        self.ws.connect(url, impersonate="chrome", timeout=20, verify=True)
-        noise = NoiseConnection.from_name(b"Noise_XX_25519_AESGCM_SHA256")
-        noise.set_as_initiator()
-        # Ephemeral static key: no persistent device key needed.
-        noise.set_keypair_from_private_bytes(Keypair.STATIC, os.urandom(32))
-        noise.start_handshake()
-        self.ws.send_bytes(bytes(noise.write_message(b"")))
-        m2, _ = self.ws.recv()
-        noise.read_message(bytes(m2))
-        self.ws.send_bytes(bytes(noise.write_message(b"")))
-        assert noise.handshake_finished
+        # Hạn chót cho bắt tay (connect + Noise XX 3 bước), cùng mẫu cờ như request().
+        het_han = threading.Event()
+        hs_timer = threading.Timer(self.HAN_BAT_TAY, self._het_han, (het_han,))
+        hs_timer.daemon = True
+        hs_timer.start()
+        try:
+            self.ws.connect(url, impersonate="chrome", timeout=20, verify=True)
+            noise = NoiseConnection.from_name(b"Noise_XX_25519_AESGCM_SHA256")
+            noise.set_as_initiator()
+            # Ephemeral static key: no persistent device key needed.
+            noise.set_keypair_from_private_bytes(Keypair.STATIC, os.urandom(32))
+            noise.start_handshake()
+            self.ws.send_bytes(bytes(noise.write_message(b"")))
+            m2, _ = self.ws.recv()
+            noise.read_message(bytes(m2))
+            self.ws.send_bytes(bytes(noise.write_message(b"")))
+            if not noise.handshake_finished:
+                raise GatewayError(-1, "Noise handshake chưa hoàn tất")
+        except BaseException as e:
+            hs_timer.cancel()
+            self.close()  # không để rò kết nối khi bắt tay hỏng
+            if het_han.is_set():
+                raise TimeoutError(
+                    f"Noise handshake quá hạn {self.HAN_BAT_TAY:g}s") from e
+            if isinstance(e, Exception) and not isinstance(e, GatewayError):
+                raise GatewayError(-1, f"handshake failed: {type(e).__name__}: {e}") from e
+            raise
+        hs_timer.cancel()
         self.noise = noise
         self.stream = 1
         self._send_lock = threading.Lock()
         self._recv_lock = threading.Lock()
+
+    def _het_han(self, co: threading.Event):
+        """Gọi từ Timer thread khi quá hạn: bật cờ rồi đóng ws để ép recv() lỗi."""
+        co.set()
+        self.close()
 
     # -- low-level framing -------------------------------------------------
     def _send_envelope(self, service_id: int, frame_bytes: bytes):
@@ -225,27 +265,45 @@ class Gateway:
         route = ROUTES[method]
         if route["http"] == "GET" and body is not None and query is None:
             query, body = body, None
-        sid = self._open(method, path_params, body, query)
-        status, chunks, deadline = None, [], time.time() + timeout
-        while time.time() < deadline:
-            sf = self._read_frame()
-            if sf.stream_id != sid:
-                continue
-            kind = sf.WhichOneof("kind")
-            if kind == "response":
-                status = sf.response.status
-                if sf.response.body:
-                    chunks.append(bytes(sf.response.body))
-                if sf.response.end_body:
-                    break
-            elif kind == "body_chunk":
-                chunks.append(bytes(sf.body_chunk.data))
-                if sf.body_chunk.end_body:
-                    break
-            elif kind == "reset":
-                raise GatewayError(-1, f"stream reset {sf.reset.code}: {sf.reset.reason}")
+        status, chunks = None, []
+        # Timer thật: recv() có thể chặn vĩnh viễn khi máy chủ im lặng,
+        # nên dùng threading.Timer đóng ws sau hạn chót — recv() sẽ lỗi.
+        # Cờ riêng mỗi lượt, bật TRƯỚC khi đóng ws: chỉ khi cờ bật mới là
+        # hết hạn thật; ws/curl/Noise hỏng vì lý do khác là lỗi kết nối.
+        het_han = threading.Event()
+        timer = threading.Timer(timeout, self._het_han, (het_han,))
+        timer.daemon = True
+        timer.start()
+        try:
+            sid = self._open(method, path_params, body, query)
+            while True:
+                sf = self._read_frame()
+                if sf.stream_id != sid:
+                    continue
+                kind = sf.WhichOneof("kind")
+                if kind == "response":
+                    status = sf.response.status
+                    if sf.response.body:
+                        chunks.append(bytes(sf.response.body))
+                    if sf.response.end_body:
+                        break
+                elif kind == "body_chunk":
+                    chunks.append(bytes(sf.body_chunk.data))
+                    if sf.body_chunk.end_body:
+                        break
+                elif kind == "reset":
+                    raise GatewayError(-1, f"stream reset {sf.reset.code}: {sf.reset.reason}")
+        except GatewayError:
+            raise
+        except Exception as e:
+            if het_han.is_set():
+                raise TimeoutError(f"no response for {method} within {timeout:g}s") from e
+            raise GatewayError(-1, f"connection error on {method}: "
+                                   f"{type(e).__name__}: {e}") from e
+        finally:
+            timer.cancel()
         if status is None:
-            raise TimeoutError(f"no response for {method}")
+            raise GatewayError(-1, f"{method}: stream ended without a response status")
         payload = b"".join(chunks)
         if status < 200 or status >= 300:
             raise GatewayError(status, payload[:500].decode("utf-8", "replace"))
