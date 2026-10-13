@@ -123,6 +123,45 @@ def bo_ip_khong_tin(dong_ho):
     return GioiHanSaiKhoa(proxy_tin_cay=[], dong_ho=lambda: dong_ho[0])
 
 
+def _bo_cf(dong_ho):
+    import ipaddress
+    # Giả lập dải của proxy ngược (Cloudflare) bằng dải tài liệu RFC 5737.
+    return GioiHanSaiKhoa(proxy_tin_cay=[ipaddress.ip_network("203.0.113.0/24")], dong_ho=lambda: dong_ho[0])
+
+
+def test_xff_gia_o_ben_trai_khong_doi_duoc_ip(dong_ho):
+    b = _bo_cf(dong_ho)
+    # Proxy NỐI THÊM IP kết nối vào cuối: phần trái do khách gõ. Phải lấy phần tử không-tin-cậy NGOÀI CÙNG BÊN PHẢI.
+    assert b.ip_hieu_luc("203.0.113.5", "9.9.9.9, 198.51.100.7") == "198.51.100.7"
+    assert b.ip_hieu_luc("203.0.113.5", "9.9.9.9, 198.51.100.7, 203.0.113.9") == "198.51.100.7"  # chuỗi proxy tin cậy
+
+
+def test_xff_hong_hoac_peer_la_dung_peer(dong_ho):
+    b = _bo_cf(dong_ho)
+    assert b.ip_hieu_luc("203.0.113.5", "khong-phai-ip") == "203.0.113.5"
+    assert b.ip_hieu_luc("203.0.113.5", "198.51.100.7, rac") == "203.0.113.5"
+    assert b.ip_hieu_luc("198.51.100.1", "9.9.9.9") == "198.51.100.1"  # peer không tin cậy: bỏ XFF
+
+
+def test_proxy_cung_may_loopback_co_xff_van_bi_dem(dong_ho):
+    b = GioiHanSaiKhoa(dong_ho=lambda: dong_ho[0])  # cloudflared chạy cùng máy: không khai CIDR nào
+    assert b.ip_hieu_luc("127.0.0.1", "198.51.100.7") == "198.51.100.7"
+    assert b.ip_hieu_luc("::1", "9.9.9.9, 198.51.100.7") == "198.51.100.7"
+    assert b.ip_hieu_luc("127.0.0.1", None) is None  # healthcheck trực tiếp vẫn miễn
+
+
+def test_khoa_theo_khach_that_sau_proxy_khong_lan_sang_nguoi_khac(dong_ho):
+    b = _bo_cf(dong_ho)
+    xau = b.ip_hieu_luc("203.0.113.5", "1.1.1.1, 198.51.100.7")
+    lanh = b.ip_hieu_luc("203.0.113.5", "198.51.100.8")
+    for _ in range(31):
+        b.ghi_loi(xau)
+    with pytest.raises(LoiOpenAI):
+        b.kiem_tra(xau)
+    b.kiem_tra(lanh)  # cùng cạnh proxy nhưng khách khác: không bị chặn lây
+    b.kiem_tra("203.0.113.5")  # chính IP của proxy cũng không bị khoá
+
+
 # ── Tích hợp nguoi_goi: chỉ đếm 401, 403/đúng khoá không bị ──
 
 def test_nguoi_goi_sai_khoa_vuot_nguong_thi_429(bo):

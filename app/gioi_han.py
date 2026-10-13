@@ -10,9 +10,10 @@ Không đếm 403 (khoá khách thiếu quyền) hay 429 trần đồng thời �
 `quan_tri` khi khoá/mở khoá IP. Đường xác thực thành công chỉ thêm một tra cứu
 dict — không chậm đi đáng kể; so khoá vẫn dùng hmac.compare_digest như cũ.
 
-IP khách: `request.client.host`. Chỉ tin `X-Forwarded-For` khi peer trực tiếp nằm
-trong CIDR ở WEB2API_TRUST_PROXY (rỗng = không tin). Loopback trực tiếp (127.0.0.1,
-::1) được miễn — healthcheck của Docker chạy từ đó. Lấy IP gốc (leftmost) của XFF.
+IP khách: `request.client.host`. Chỉ tin `X-Forwarded-For` khi peer trực tiếp là loopback hoặc nằm
+trong CIDR ở WEB2API_TRUST_PROXY (rỗng = không tin ai ngoài loopback), và lấy khách thật bằng cách
+duyệt XFF từ phải sang trái bỏ qua proxy tin cậy (xem `ip_hieu_luc`). Loopback trực tiếp không kèm
+XFF được miễn — healthcheck của Docker chạy từ đó.
 """
 
 from __future__ import annotations
@@ -77,8 +78,16 @@ class GioiHanSaiKhoa:
             dong_ho=dong_ho,
         )
 
+    def _tin_cay(self, ip) -> bool:
+        return any(ip in mang for mang in self.proxy_tin_cay)
+
     def ip_hieu_luc(self, client_host: str | None, x_forwarded_for: str | None) -> str | None:
-        """IP dùng để tính giới hạn; None = miễn (loopback trực tiếp / peer không xác định)."""
+        """IP dùng để tính giới hạn; None = miễn (loopback trực tiếp không qua proxy / peer không xác định).
+
+        Proxy (Cloudflare, nginx…) NỐI THÊM IP kết nối vào CUỐI `X-Forwarded-For`, nên phần bên trái do chính khách gõ
+        và không tin được. Duyệt từ PHẢI sang TRÁI, bỏ qua các proxy tin cậy (WEB2API_TRUST_PROXY) — địa chỉ đầu tiên
+        không tin cậy là khách thật. Peer loopback chỉ được miễn khi KHÔNG kèm XFF (healthcheck); có XFF nghĩa là proxy
+        chạy cùng máy (vd cloudflared), phải tính theo khách thật chứ không miễn cả luồng."""
         host = (client_host or "").strip()
         if not host:
             return None
@@ -86,17 +95,18 @@ class GioiHanSaiKhoa:
             truc_tiep = ipaddress.ip_address(host)
         except ValueError:
             return None
-        if truc_tiep.is_loopback:
-            return None
-        if x_forwarded_for and self.proxy_tin_cay:
-            if any(truc_tiep in mang for mang in self.proxy_tin_cay):
-                dau = x_forwarded_for.split(",")[0].strip()
-                try:
-                    ipaddress.ip_address(dau)
-                    return dau
-                except ValueError:
-                    pass  # XFF hỏng → dùng peer trực tiếp
-        return host
+        if not x_forwarded_for:
+            return None if truc_tiep.is_loopback else host
+        if not (truc_tiep.is_loopback or self._tin_cay(truc_tiep)):
+            return host  # peer không phải proxy tin cậy: bỏ XFF, kẻ gõ header không đổi được IP của mình
+        for muc in reversed(x_forwarded_for.split(",")):
+            try:
+                ip = ipaddress.ip_address(muc.strip())
+            except ValueError:
+                return host  # XFF hỏng: không đoán, dùng peer trực tiếp
+            if not (ip.is_loopback or self._tin_cay(ip)):
+                return str(ip)
+        return None if truc_tiep.is_loopback else host
 
     def _ban_ghi(self, ip: str) -> dict:
         ban_ghi = self._ip.get(ip)
