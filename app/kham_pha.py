@@ -91,6 +91,16 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
                                                         kết quả {tai_lieu, tieu_de?, muc: [{id, tieu_de, cap, vi_tri?, con: [...]}]};
                                                         cây đề mục: chương → mục → tiểu mục; trần độ sâu 6, trần số nút 2000;
                                                         bỏ nút sai không vỡ cây; kiểm phạm vi "tim_kiem".
+    Phương thức cho khả năng "trinh_duyet":
+      async trinh_duyet_mo(ho_so: str, loai: str) -> dict
+        {ho_so: str, dich: "http://[w2a:<bí-mật>@]host:port", loai: str} — mở/khôi phục hồ sơ, trả địa chỉ nội bộ
+        noVNC; lõi tách userinfo thành Basic auth, kiểm SSRF theo hostname, ghim IP lúc mở, giữ dich chỉ trong RAM;
+        mở lại mà dich đổi máy → 502. Lõi phục vụ noVNC ở /novnc/s/<phien>/ với CSP sandbox (nội dung không tin được).
+      async trinh_duyet_dong(ho_so: str, giu_phien: bool) -> dict
+        {ok: bool} — đóng; giu_phien=True (mặc định khi quản trị không nói) giữ thư mục hồ sơ, False thì xoá.
+        Lõi thu hồi vé/phiên/WebSocket TRƯỚC khi gọi; module ném lỗi → 502 kèm da_thu_hoi, không nhúng nguyên văn lỗi.
+      async trinh_duyet_ds() -> list[dict]
+        list[{ho_so: str, loai: str, trang_thai: str, luc_mo?: str}] — liệt kê; lõi chỉ trả đúng các trường này.
     YeuCauDaPhan (app/yeu_cau_da_phan.py) do lõi đọc từ multipart — module KHÔNG tự phân tích thân:
       .truong: dict[str, str | list[str]]  trường chữ, tên bỏ hậu tố «[]»; gửi một lần và không có «[]» → str,
                                            có «[]» hoặc lặp → list[str] theo thứ tự gửi (đúng hình thân JSON
@@ -197,6 +207,7 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
     "nhung": ("nhung",),
     "xep_hang": ("xep_hang",),
     "tim_kiem": ("tim_kiem",),
+    "trinh_duyet": ("trinh_duyet_mo", "trinh_duyet_dong", "trinh_duyet_ds"),
 }
 
 

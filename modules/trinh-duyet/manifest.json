@@ -1,0 +1,38 @@
+{
+  "id": "trinh-duyet",
+  "ten": "Trình duyệt từ xa (noVNC)",
+  "mo_ta": "Cầu nối điều khiển dịch vụ trình duyệt từ xa qua noVNC để đăng nhập tay và lưu giữ hồ sơ phiên bền vững.",
+  "phien_ban": "0.1.0",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 40,
+  "giao_thuc": "http",
+  "tien_to": "trinhduyet",
+  "yeu_cau_goi": ["httpx"],
+  "cung_cap": ["trinh_duyet"],
+  "truong_cau_hinh": [
+    {
+      "khoa": "dich_vu_url",
+      "nhan": "Địa chỉ dịch vụ trình duyệt",
+      "kieu": "chuoi",
+      "bat_buoc": true,
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ gốc HTTP của dịch vụ trình duyệt riêng (ví dụ http://192.168.1.50:6080)."
+    },
+    {
+      "khoa": "khoa_dich_vu",
+      "nhan": "Khoá dịch vụ",
+      "kieu": "bi_mat",
+      "bat_buoc": true,
+      "mac_dinh": null,
+      "mo_ta": "Khoá Bearer bí mật để xác thực với dịch vụ trình duyệt."
+    }
+  ],
+  "tai_nguyen": {
+    "ram_them_mb": null,
+    "dia_mb": null,
+    "gpu": false,
+    "mang_ra": [],
+    "ghi_chu": "Dịch vụ trình duyệt nặng, cần container riêng (chạy ở dich-vu/trinh-duyet/ hoặc máy chủ riêng)."
+  }
+}
