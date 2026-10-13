@@ -38,6 +38,12 @@ services:
       TRINH_DUYET_IDLE_PHUT: "120"
       TRINH_DUYET_TOI_DA_PHUT: "480"
       TRINH_DUYET_HOST_NOI_BO: "trinh-duyet"
+      # Bản sao cookie tạm (GET /ho-so/{id}/cookie) nằm trên tmpfs RIÊNG (RAM), không trên đĩa container. Chỉ server.py
+      # dùng TMPDIR (tiến trình con không nhận biến này) — /tmp của trình duyệt giữ nguyên. Cỡ ≥ 2 × 64 MiB (db + -wal).
+      # CHƯA KIỂM với Docker thật (uid/mode của tmpfs).
+      TMPDIR: "/run/w2a-cookie"
+    tmpfs:
+      - "/run/w2a-cookie:size=160m,mode=0700,uid=1000,gid=1000,noexec,nosuid,nodev"
     volumes:
       - hoso-data:/hoso
     networks:

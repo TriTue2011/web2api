@@ -139,6 +139,9 @@ def moi_truong_test(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setenv("TRINH_DUYET_KHOA", KHOA_TEST)
     monkeypatch.setenv("TRINH_DUYET_THU_MUC_GOC", str(thu_muc_hoso))
+    # Thư mục tạm riêng của test: lifespan dọn `w2a-cookie-*` cũ ở thư mục tạm — không quét /tmp thật của máy.
+    (tmp_path / "tam").mkdir()
+    monkeypatch.setattr(__import__("tempfile"), "tempdir", str(tmp_path / "tam"))
     monkeypatch.setenv("TRINH_DUYET_CONG_TU", "6100")
     monkeypatch.setenv("TRINH_DUYET_CONG_DEN", "6105")
     monkeypatch.setenv("TRINH_DUYET_TOI_DA", "3")
@@ -409,7 +412,11 @@ def test_dong_ho_so_giu_phien(moi_truong_test):
             json={"giu_phien": True},
         )
         assert res.status_code == 200
-        assert res.json() == {"ok": True}
+        assert res.json() == {"ok": True, "session_preserved": True}
+        # Không gửi thân → mặc định GIỮ phiên (như «Đóng · giữ phiên» của c2a)
+        client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": ho_so_id, "loai": "chromium"})
+        assert client.post(f"/ho-so/{ho_so_id}/dong", headers=HEADER_AUTH).json() == {
+            "ok": True, "session_preserved": True}
 
     # Các tiến trình đã được gọi dung()
     assert all(p.da_dung for p in bo_chay.tien_trinh_tao)
@@ -1444,3 +1451,560 @@ def test_plugin_ws_tep_rong_hoac_hong_thi_khong_khoi_dong(plugin_ws, tmp_path: P
     tep.write_bytes(noi_dung)
     with pytest.raises(ValueError):
         mod.BasicTuTep(str(tep))
+
+
+# ── Đọc cookie hồ sơ Firefox: GET /ho-so/{id}/cookie?mien= ───────────────────
+#
+# cookies.sqlite GIẢ dựng bằng sqlite3 với đúng bảng/cột của Firefox (moz_cookies). Giá trị cookie là chuỗi GIẢ,
+# entropy thấp, đặc trưng để quét rò rỉ trong log/thông báo lỗi.
+
+import sqlite3  # noqa: E402
+import tempfile  # noqa: E402
+
+COT_MOZ_COOKIES = (
+    "id INTEGER PRIMARY KEY, originAttributes TEXT NOT NULL DEFAULT '', name TEXT, value TEXT, host TEXT, "
+    "path TEXT, expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER, "
+    "inBrowserElement INTEGER DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0, "
+    "schemeMap INTEGER DEFAULT 0"
+)
+HS_FF = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0"
+HS_FF_KHAC = "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+TUONG_LAI = int(time.time()) + 30 * 86400
+QUA_KHU = int(time.time()) - 86400
+DUONG_COOKIE = f"/ho-so/{HS_FF}/cookie"
+
+
+def _tao_ho_so_ff(goc: Path, ho_so: str, cookies: list[dict], loai: str | None = "firefox") -> Path:
+    """Thư mục hồ sơ + `.thong_tin.json` + cookies.sqlite giả. Mỗi cookie: dict cột → giá trị (mặc định hợp lệ)."""
+    thu_muc = goc / ho_so
+    thu_muc.mkdir(mode=0o700)
+    if loai is not None:
+        (thu_muc / ".thong_tin.json").write_text(json.dumps({"loai": loai}), encoding="utf-8")
+    con = sqlite3.connect(thu_muc / "cookies.sqlite")
+    con.execute(f"CREATE TABLE moz_cookies ({COT_MOZ_COOKIES})")
+    for i, c in enumerate(cookies):
+        hang = {"originAttributes": "", "path": "/", "expiry": TUONG_LAI, "lastAccessed": 0,
+                "creationTime": 1000 + i, "isSecure": 1, "isHttpOnly": 1} | c
+        con.execute(f"INSERT INTO moz_cookies ({', '.join(hang)}) VALUES ({', '.join('?' * len(hang))})",
+                    list(hang.values()))
+    con.commit()
+    con.close()
+    return thu_muc
+
+
+def _goi_cookie(client, ho_so: str = HS_FF, mien: str = "muse.ai", headers=None):
+    return client.get(f"/ho-so/{ho_so}/cookie", params={"mien": mien},
+                      headers=HEADER_AUTH if headers is None else headers)
+
+
+def test_cookie_loc_dung_ten_mien(moi_truong_test):
+    """Nhận `muse.ai`, `.muse.ai`, `x.muse.ai`; KHÔNG nhận `evilmuse.ai`, `muse.ai.evil.example`, tên miền khác."""
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": "a_goc", "value": "GIA-goc-0001", "host": "muse.ai"},
+        {"name": "b_cham", "value": "GIA-cham-0002", "host": ".muse.ai"},
+        {"name": "c_con", "value": "GIA-con-0003", "host": "x.muse.ai"},
+        {"name": "d_ac", "value": "GIA-AC-evil-0004", "host": "evilmuse.ai"},
+        {"name": "e_ac", "value": "GIA-AC-evil-0005", "host": ".evilmuse.ai"},
+        {"name": "f_ac", "value": "GIA-AC-hau-0006", "host": "muse.ai.evil.example"},
+        {"name": "g_khac", "value": "GIA-AC-khac-0007", "host": "khac.example"},
+        {"name": "h_ai", "value": "GIA-AC-tld-0008", "host": ".ai"},
+    ])
+    with TestClient(app) as client:
+        r = _goi_cookie(client)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"cookie": "a_goc=GIA-goc-0001; b_cham=GIA-cham-0002; c_con=GIA-con-0003", "so_cookie": 3}
+
+
+def test_cookie_loai_het_han_giay_va_mili_giay(moi_truong_test):
+    """`expiry` là giây (Firefox cũ) hay mili-giây (Firefox mới) — nhận biết theo độ lớn từng dòng."""
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": "s_con", "value": "GIA-s-con", "host": ".muse.ai", "expiry": TUONG_LAI},
+        {"name": "s_het", "value": "GIA-AC-s-het", "host": ".muse.ai", "expiry": QUA_KHU},
+        {"name": "ms_con", "value": "GIA-ms-con", "host": ".muse.ai", "expiry": TUONG_LAI * 1000},
+        {"name": "ms_het", "value": "GIA-AC-ms-het", "host": ".muse.ai", "expiry": QUA_KHU * 1000},
+        {"name": "khong", "value": "GIA-AC-khong", "host": ".muse.ai", "expiry": 0},
+        {"name": "rong", "value": "GIA-AC-null", "host": ".muse.ai", "expiry": None},
+    ])
+    with TestClient(app) as client:
+        r = _goi_cookie(client)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"cookie": "s_con=GIA-s-con; ms_con=GIA-ms-con", "so_cookie": 2}
+
+
+def test_cookie_loai_ky_tu_cam_va_ngu_canh_khac(moi_truong_test):
+    """Tên ngoài bảng token RFC 6265, giá trị có ký tự điều khiển/xuống dòng/«;»/ngoài ASCII in được → loại.
+    Cookie của ngăn chứa/phân vùng (originAttributes khác rỗng) → loại. Trùng tên → giữ một (đường dài nhất)."""
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": "tot", "value": "GIA-tot", "host": ".muse.ai"},
+        {"name": "ten;ac", "value": "GIA-AC-1", "host": ".muse.ai"},
+        {"name": "ten=ac", "value": "GIA-AC-2", "host": ".muse.ai"},
+        {"name": "ten ac", "value": "GIA-AC-3", "host": ".muse.ai"},
+        {"name": "", "value": "GIA-AC-4", "host": ".muse.ai"},
+        {"name": "xuong_dong", "value": "GIA-AC-5\r\nX-Chen: 1", "host": ".muse.ai"},
+        {"name": "cham_phay", "value": "GIA-AC-6; chen=1", "host": ".muse.ai"},
+        {"name": "nul", "value": "GIA-AC-7\x00", "host": ".muse.ai"},
+        {"name": "tab", "value": "GIA-AC-8\t", "host": ".muse.ai"},
+        {"name": "unicode", "value": "GIA-AC-9-ạ", "host": ".muse.ai"},
+        {"name": "ngan_chua", "value": "GIA-AC-10", "host": ".muse.ai", "originAttributes": "^userContextId=1"},
+        # Trùng tên: giữ cookie trình duyệt gửi TRƯỚC (đường dài nhất, rồi tạo sớm nhất). Cookie đúng nằm GIỮA theo id
+        # nên thứ tự chèn (id tăng/giảm) hay chỉ một khoá sắp xếp đều chọn sai.
+        {"name": "trung", "value": "GIA-trung-ngan", "host": ".muse.ai", "path": "/", "creationTime": 1},
+        {"name": "trung", "value": "GIA-trung-dai", "host": ".muse.ai", "path": "/api", "creationTime": 2},
+        {"name": "trung", "value": "GIA-trung-dai-moi", "host": ".muse.ai", "path": "/api", "creationTime": 3},
+        {"name": "nhi_phan", "value": b"GIA-AC-blob", "host": ".muse.ai"},  # BLOB, không phải chữ
+    ])
+    with TestClient(app) as client:
+        r = _goi_cookie(client)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"cookie": "trung=GIA-trung-dai; tot=GIA-tot", "so_cookie": 2}
+
+
+def test_cookie_tran_so_luong_va_do_dai(moi_truong_test):
+    ds = [{"name": "qua_dai", "value": "G" * (server.TRAN_DO_DAI_COOKIE + 1), "host": ".muse.ai"}]
+    ds += [{"name": f"c{i:04d}", "value": f"GIA-{i:04d}", "host": ".muse.ai"} for i in range(server.TRAN_SO_COOKIE + 50)]
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, ds)
+    with TestClient(app) as client:
+        kq = _goi_cookie(client).json()
+    assert kq["so_cookie"] == server.TRAN_SO_COOKIE
+    assert "qua_dai" not in kq["cookie"]
+    assert len(kq["cookie"]) <= server.TRAN_CHUOI_COOKIE
+    assert kq["cookie"].count("; ") == server.TRAN_SO_COOKIE - 1
+
+
+def test_cookie_tran_tong_do_dai_chuoi(moi_truong_test, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(server, "TRAN_CHUOI_COOKIE", 40)
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": f"c{i}", "value": "GIA-0123456789", "host": ".muse.ai"} for i in range(5)])
+    with TestClient(app) as client:
+        kq = _goi_cookie(client).json()
+    assert len(kq["cookie"]) <= 40 and kq["so_cookie"] == 2
+
+
+def test_cookie_doc_ca_dong_chi_nam_trong_wal(moi_truong_test):
+    """Firefox đang mở giữ dữ liệu mới trong `cookies.sqlite-wal`: dòng CHỈ có trong WAL vẫn phải đọc được."""
+    thu_muc = _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": "cu", "value": "GIA-trong-db", "host": ".muse.ai"}])
+    nguoi_ghi = sqlite3.connect(thu_muc / "cookies.sqlite")
+    try:
+        assert nguoi_ghi.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        nguoi_ghi.execute("PRAGMA wal_autocheckpoint=0")
+        nguoi_ghi.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        nguoi_ghi.execute("INSERT INTO moz_cookies (name, value, host, path, expiry, creationTime) "
+                          "VALUES ('moi', 'GIA-chi-trong-wal', '.muse.ai', '/', ?, 5000)", (TUONG_LAI,))
+        nguoi_ghi.commit()
+        assert (thu_muc / "cookies.sqlite-wal").stat().st_size > 0
+        # Bản chính KHÔNG có dòng mới (chỉ nằm trong WAL) — nếu có thì phép thử vô nghĩa.
+        tach = Path(tempfile.mkdtemp())
+        try:
+            shutil_copy = __import__("shutil").copyfile
+            shutil_copy(thu_muc / "cookies.sqlite", tach / "x.sqlite")
+            c = sqlite3.connect(tach / "x.sqlite")
+            assert c.execute("SELECT count(*) FROM moz_cookies WHERE name='moi'").fetchone()[0] == 0
+            c.close()
+        finally:
+            for t in tach.iterdir():
+                t.unlink()
+            tach.rmdir()
+        with TestClient(app) as client:
+            kq = _goi_cookie(client).json()
+    finally:
+        nguoi_ghi.close()
+    assert kq == {"cookie": "cu=GIA-trong-db; moi=GIA-chi-trong-wal", "so_cookie": 2}
+
+
+@pytest.mark.parametrize("loai", ["chromium", None])
+def test_cookie_ho_so_chromium_hoac_khong_ro_loai_tra_501(moi_truong_test, loai):
+    """Chromium mã hoá cookie và cần cổng điều khiển trình duyệt — cố ý KHÔNG hỗ trợ. Thiếu `.thong_tin.json` thì
+    coi như chromium (giống GET /ho-so)."""
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": "a", "value": "GIA-AC-chromium", "host": ".muse.ai"}], loai=loai)
+    with TestClient(app) as client:
+        r = _goi_cookie(client)
+    assert r.status_code == 501
+    assert "GIA-AC-chromium" not in r.text
+    assert "Firefox" in r.json()["detail"]
+
+
+def test_cookie_ho_so_dang_mo_409(moi_truong_test):
+    """Chép `cookies.sqlite` rồi `-wal` KHÔNG nguyên tử khi Firefox đang ghi: chỉ đọc hồ sơ ĐÃ ĐÓNG — đang mở → 409,
+    đóng (giữ phiên) xong thì đọc được."""
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [{"name": "a", "value": "GIA-a", "host": ".muse.ai"}])
+    with TestClient(app) as client:
+        assert client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": HS_FF, "loai": "firefox"}).status_code == 200
+        r = _goi_cookie(client)
+        assert r.status_code == 409 and "GIA-a" not in r.text
+        client.post(f"/ho-so/{HS_FF}/dong", headers=HEADER_AUTH)
+        assert _goi_cookie(client).json() == {"cookie": "a=GIA-a", "so_cookie": 1}
+
+
+@pytest.mark.parametrize("mien", [
+    "", "MUSE.AI", ".muse.ai", "muse.ai.", "-muse.ai", "muse-.ai", "muse..ai", "muse_ai.com", "muse.ai/x",
+    "muse.ai%0a", "muse.ai\n", "ai", "localhost", "a" * 64 + ".com", ".".join(["a" * 60] * 5), "mu se.ai",
+    "<script>.ai", "muse.ai:443", "*.muse.ai",
+])
+def test_cookie_ten_mien_sai_400_khong_phan_chieu(moi_truong_test, mien):
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [{"name": "a", "value": "GIA-AC-mien", "host": ".muse.ai"}])
+    with TestClient(app) as client:
+        r = _goi_cookie(client, mien=mien)
+    assert r.status_code == 400
+    assert "GIA-AC-mien" not in r.text
+    if len(mien) >= 4:  # chuỗi ngắn («ai») trùng chữ thường trong câu báo — không phải phản chiếu
+        assert mien not in r.json()["detail"]
+
+
+def test_cookie_ten_mien_hop_le_nhieu_dang(moi_truong_test):
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [
+        {"name": "a", "value": "GIA-a", "host": ".sub-1.vi-du.example"}])
+    with TestClient(app) as client:
+        assert _goi_cookie(client, mien="sub-1.vi-du.example").json()["so_cookie"] == 1
+        assert _goi_cookie(client, mien="vi-du.example").json()["so_cookie"] == 1
+        assert _goi_cookie(client, mien="khac.example").json() == {"cookie": "", "so_cookie": 0}
+        assert client.get(DUONG_COOKIE, headers=HEADER_AUTH).status_code == 400  # thiếu `mien`
+
+
+@pytest.mark.parametrize("id_sai", ["../etc", "F0F0F0F0F0F0F0F0", "f0f0", "f0f0f0f0f0f0f0f0g", "..%2f..%2fetc"])
+def test_cookie_id_sai_400(moi_truong_test, id_sai):
+    with TestClient(app) as client:
+        r = client.get(f"/ho-so/{id_sai}/cookie", params={"mien": "muse.ai"}, headers=HEADER_AUTH)
+    if "/" in id_sai or "%2f" in id_sai:
+        assert r.status_code in (400, 403, 404)  # đường có «/» không khớp tuyến — không bao giờ 200
+    else:
+        assert r.status_code == 400
+
+
+def test_cookie_khong_khoa_hoac_sai_khoa_401(moi_truong_test):
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [{"name": "a", "value": "GIA-AC-401", "host": ".muse.ai"}])
+    with TestClient(app) as client:
+        for h in ({}, {"Authorization": f"Bearer {KHOA_KHAC}"}, {"Authorization": f"Basic {KHOA_TEST}"},
+                  {"Authorization": KHOA_TEST}):
+            r = _goi_cookie(client, headers=h)
+            assert r.status_code == 401, h
+            assert "GIA-AC-401" not in r.text
+
+
+def test_cookie_ho_so_chua_co_hoac_khong_co_kho_cookie_404_chung(moi_truong_test):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    with TestClient(app) as client:
+        r_chua = _goi_cookie(client)  # thư mục hồ sơ chưa từng tạo
+        thu_muc = _tao_ho_so_ff(goc, HS_FF, [])
+        (thu_muc / "cookies.sqlite").unlink()
+        r_thieu = _goi_cookie(client)
+    assert r_chua.status_code == r_thieu.status_code == 404
+    assert r_chua.json() == r_thieu.json()
+    assert r_chua.json()["detail"] != "Not Found", "404 phải do tuyến cookie trả, không phải «không có tuyến»"
+
+
+def test_cookie_symlink_sang_ho_so_khac_bi_chan(moi_truong_test, tmp_path: Path):
+    """IDOR qua symlink: trình duyệt (cùng uid) cài `cookies.sqlite` của hồ sơ A trỏ sang hồ sơ B, hoặc biến cả
+    thư mục hồ sơ A thành symlink tới B / ra ngoài gốc → không đọc được cookie của B."""
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    b = _tao_ho_so_ff(goc, HS_FF_KHAC, [{"name": "b", "value": "GIA-AC-cua-B", "host": ".muse.ai"}])
+    a = _tao_ho_so_ff(goc, HS_FF, [])
+    (a / "cookies.sqlite").unlink()
+    (a / "cookies.sqlite").symlink_to(b / "cookies.sqlite")
+    with TestClient(app) as client:
+        r1 = _goi_cookie(client)
+        assert r1.status_code == 404 and "GIA-AC-cua-B" not in r1.text
+        # Thư mục hồ sơ là symlink tới hồ sơ khác TRONG gốc
+        (a / "cookies.sqlite").unlink()
+        (a / ".thong_tin.json").unlink()
+        a.rmdir()
+        a.symlink_to(b)
+        r2 = _goi_cookie(client)
+        assert r2.status_code in (403, 404) and "GIA-AC-cua-B" not in r2.text
+        # Thư mục hồ sơ là symlink ra NGOÀI gốc
+        ngoai = _tao_ho_so_ff(tmp_path, "ngoai", [{"name": "n", "value": "GIA-AC-ngoai", "host": ".muse.ai"}])
+        a.unlink()
+        a.symlink_to(ngoai)
+        r3 = _goi_cookie(client)
+        assert r3.status_code in (403, 404) and "GIA-AC-ngoai" not in r3.text
+        # WAL là symlink: không theo
+        a.unlink()
+        a2 = _tao_ho_so_ff(goc, HS_FF, [{"name": "a", "value": "GIA-a", "host": ".muse.ai"}])
+        (a2 / "cookies.sqlite-wal").symlink_to(b / "cookies.sqlite")
+        r4 = _goi_cookie(client)
+        assert r4.status_code == 404 and "GIA-AC-cua-B" not in r4.text
+
+
+def test_cookie_tep_khong_phai_tep_thuong_hoac_qua_lon(moi_truong_test, monkeypatch: pytest.MonkeyPatch):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    thu_muc = _tao_ho_so_ff(goc, HS_FF, [{"name": "a", "value": "GIA-AC-lon", "host": ".muse.ai"}])
+    with TestClient(app) as client:
+        monkeypatch.setattr(server, "TRAN_TEP_COOKIE_BYTE", 100)
+        r = _goi_cookie(client)
+        assert r.status_code == 413 and "GIA-AC-lon" not in r.text
+        monkeypatch.setattr(server, "TRAN_TEP_COOKIE_BYTE", 64 * 1024 * 1024)
+        (thu_muc / "cookies.sqlite").unlink()
+        (thu_muc / "cookies.sqlite").mkdir()
+        assert _goi_cookie(client).status_code == 404
+
+
+def test_cookie_kho_hong_tra_500_chung(moi_truong_test):
+    thu_muc = _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [])
+    (thu_muc / "cookies.sqlite").write_bytes(b"day khong phai sqlite GIA-AC-hong " * 20)
+    with TestClient(app) as client:
+        r = _goi_cookie(client)
+    assert r.status_code == 500
+    assert "GIA-AC-hong" not in r.text and "sqlite" not in r.json()["detail"].lower()
+
+
+@pytest.fixture
+def thu_muc_tam_rieng(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Đặt thư mục tạm của tiến trình vào một chỗ riêng để kiểm nó RỖNG sau mỗi lần đọc cookie."""
+    tam = tmp_path / "tam-rieng"
+    tam.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(tam))
+    return tam
+
+
+def test_cookie_thu_muc_tam_0700_va_bi_xoa_moi_duong(moi_truong_test, thu_muc_tam_rieng: Path,
+                                                     monkeypatch: pytest.MonkeyPatch):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    thu_muc = _tao_ho_so_ff(goc, HS_FF, [{"name": "a", "value": "GIA-a", "host": ".muse.ai"}])
+    quyen: list[int] = []
+    doc_that = server._doc_cookie_tu_ban_sao
+
+    def doc_va_ghi_quyen(tep: Path, *a):
+        quyen.append(tep.parent.stat().st_mode & 0o777)
+        assert tep.parent.parent == thu_muc_tam_rieng
+        return doc_that(tep, *a)
+
+    monkeypatch.setattr(server, "_doc_cookie_tu_ban_sao", doc_va_ghi_quyen)
+    with TestClient(app) as client:
+        assert _goi_cookie(client).status_code == 200
+        assert quyen == [0o700]
+        assert list(thu_muc_tam_rieng.iterdir()) == []
+        # Đường lỗi: kho hỏng (500), tệp quá lớn (413), Chromium (501) — thư mục tạm vẫn bị xoá
+        (thu_muc / "cookies.sqlite").write_bytes(b"hong" * 100)
+        assert _goi_cookie(client).status_code == 500
+        assert list(thu_muc_tam_rieng.iterdir()) == []
+        monkeypatch.setattr(server, "TRAN_TEP_COOKIE_BYTE", 10)
+        assert _goi_cookie(client).status_code == 413
+        assert list(thu_muc_tam_rieng.iterdir()) == []
+
+
+def test_cookie_khong_ro_ri_vao_log_moi_muc(moi_truong_test, caplog: pytest.LogCaptureFixture):
+    """Quét TOÀN BỘ log mức DEBUG (mọi logger) qua đường thành công lẫn đường lỗi: không giá trị cookie nào lọt ra."""
+    caplog.set_level(logging.DEBUG)
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    _tao_ho_so_ff(goc, HS_FF, [{"name": "phien", "value": "GIA-LOG-bimat-0001", "host": ".muse.ai"}])
+    hong = _tao_ho_so_ff(goc, HS_FF_KHAC, [])
+    (hong / "cookies.sqlite").write_bytes(b"GIA-LOG-bimat-0002 " * 50)
+    with TestClient(app) as client:
+        assert "GIA-LOG-bimat-0001" in _goi_cookie(client).text
+        _goi_cookie(client, ho_so=HS_FF_KHAC)
+        _goi_cookie(client, mien="KHONG.HOP.LE")
+        client.get("/ho-so", headers=HEADER_AUTH)
+    assert caplog.records, "phải bắt được log để phép quét có nghĩa"
+    for rec in caplog.records:
+        chu = rec.getMessage() + repr(rec.args) + str(rec.exc_info or "")
+        for bi_mat in ("GIA-LOG-bimat-0001", "GIA-LOG-bimat-0002"):
+            assert bi_mat not in chu, rec.getMessage()
+
+
+def test_danh_sach_ho_so_khong_tra_cookie(moi_truong_test):
+    _tao_ho_so_ff(moi_truong_test["thu_muc_hoso"], HS_FF, [{"name": "a", "value": "GIA-AC-ds", "host": ".muse.ai"}])
+    with TestClient(app) as client:
+        r = client.get("/ho-so", headers=HEADER_AUTH)
+    assert r.status_code == 200 and "GIA-AC-ds" not in r.text
+    assert any(m["ho_so"] == HS_FF and m["loai"] == "firefox" for m in r.json())
+
+
+# ── Workspace (mô hình của c2a: tên hiển thị + thư mục hồ sơ ID ngẫu nhiên) ──────────
+
+
+def test_tao_workspace_id_ngau_nhien_ten_trong_tep_0600(moi_truong_test):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    with TestClient(app) as client:
+        r1 = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "  Muse cá nhân  "})
+        r2 = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "Muse cá nhân"})
+        assert r1.status_code == r2.status_code == 200, r1.text
+        a, b = r1.json(), r2.json()
+        assert a["ten"] == b["ten"] == "Muse cá nhân"
+        assert re.fullmatch(r"[a-f0-9]{24}", a["ho_so"]) and a["ho_so"] != b["ho_so"], "tên trùng vẫn hai hồ sơ riêng"
+        thu_muc = goc / a["ho_so"]
+        assert thu_muc.stat().st_mode & 0o777 == 0o700
+        tep = thu_muc / ".workspace.json"
+        assert tep.stat().st_mode & 0o777 == 0o600
+        assert json.loads(tep.read_text(encoding="utf-8")) == {"name": "Muse cá nhân"}
+        assert json.loads((thu_muc / ".thong_tin.json").read_text(encoding="utf-8")) == {"loai": "firefox"}
+        assert client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "x", "loai": "chromium"}).status_code == 200
+        assert client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "x", "loai": "opera"}).status_code == 400
+        assert client.post("/ho-so", json={"ten": "khong khoa"}).status_code == 401
+    assert len(moi_truong_test["bo_chay"].lich_su_lenh) == 0, "tạo workspace KHÔNG mở trình duyệt"
+
+
+@pytest.mark.parametrize("ten", ["", "   ", "x" * 101, "dong\nmoi", "tab\tx", "nul\x00", 5, None, ["a"]])
+def test_tao_workspace_ten_sai_400_khong_phan_chieu(moi_truong_test, ten):
+    with TestClient(app) as client:
+        r = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": ten})
+    assert r.status_code in (400, 422)
+    if isinstance(ten, str) and len(ten.strip()) >= 4:
+        assert ten not in r.text
+    assert list(moi_truong_test["thu_muc_hoso"].iterdir()) == []
+
+
+def test_tao_workspace_tran_tren_dia_429(moi_truong_test, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(moi_truong_test["quan_ly"], "toi_da_ho_so", 2)
+    with TestClient(app) as client:
+        assert client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "a"}).status_code == 200
+        assert client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "b"}).status_code == 200
+        assert client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "c"}).status_code == 429
+
+
+def test_danh_sach_co_ten_dang_mo_thu_cong(moi_truong_test):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    with TestClient(app) as client:
+        a = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "<img src=x onerror=alert(1)>"}).json()["ho_so"]
+        b = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "Tài khoản B"}).json()["ho_so"]
+        client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": b, "loai": "firefox"})
+        # Hồ sơ cũ (mở bằng /ho-so/mo, không có .workspace.json) → tên là chính ID, như c2a
+        cu = "0123456789abcdef0123456789abcdef"
+        client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": cu, "loai": "chromium"})
+        client.post(f"/ho-so/{cu}/dong", headers=HEADER_AUTH)
+        # Tên trên đĩa quá dài (trình duyệt cùng uid sửa được tệp) → cắt 100; symlink → không theo
+        (goc / cu / ".workspace.json").write_text(json.dumps({"name": "y" * 500}), encoding="utf-8")
+        (goc / a / ".workspace.json").unlink()
+        (goc / a / ".workspace.json").symlink_to(goc / b / ".workspace.json")
+        ds = {m["ho_so"]: m for m in client.get("/ho-so", headers=HEADER_AUTH).json()}
+    assert ds[b]["ten"] == "Tài khoản B" and ds[b]["dang_mo"] is True and ds[b]["thu_cong"] is True
+    assert ds[b]["trang_thai"] == "dang_mo" and ds[b]["loai"] == "firefox"
+    assert ds[cu]["ten"] == "y" * 100 and ds[cu]["dang_mo"] is False and ds[cu]["thu_cong"] is False
+    assert ds[a]["ten"] == a, "symlink .workspace.json không được theo"
+
+
+@pytest.mark.parametrize("loai, vi_tri", [("firefox", -1), ("chromium", -1)])
+def test_mo_voi_url_bat_dau_la_doi_so_cuoi(moi_truong_test, loai, vi_tri):
+    bo_chay: BoChayGia = moi_truong_test["bo_chay"]
+    with TestClient(app) as client:
+        r = client.post("/ho-so/mo", headers=HEADER_AUTH,
+                        json={"ho_so": HS_FF, "loai": loai, "url": "https://muse.ai/dang-nhap?x=1"})
+    assert r.status_code == 200, r.text
+    lenh = bo_chay.lich_su_lenh[1]
+    assert lenh[vi_tri] == "https://muse.ai/dang-nhap?x=1"
+    assert "about:blank" not in lenh
+
+
+def test_mo_khong_url_la_trang_trong(moi_truong_test):
+    bo_chay: BoChayGia = moi_truong_test["bo_chay"]
+    with TestClient(app) as client:
+        client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": HS_FF, "loai": "firefox", "url": ""})
+    assert bo_chay.lich_su_lenh[1][-1] == "about:blank"
+
+
+@pytest.mark.parametrize("url", [
+    "javascript:alert(1)", "file:///hoso/.bi-mat-ws/x", "ftp://vi-du.example/", "about:config", "data:text/html,x",
+    "http://nguoi:matkhau@vi-du.example/", "http://nguoi@vi-du.example/", "https://", "https:///duong",
+    "https://vi-du.example/" + "a" * 2048, "https://vi-du.example/a b", "https://vi-du.example/\n--profile=/tmp",
+    "--profile=/hoso/khac", " https://vi-du.example/", "chrome://settings", 5,
+])
+def test_mo_url_sai_400_khong_chay_gi(moi_truong_test, url):
+    bo_chay: BoChayGia = moi_truong_test["bo_chay"]
+    with TestClient(app) as client:
+        r = client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": HS_FF, "loai": "firefox", "url": url})
+    assert r.status_code in (400, 422)
+    assert bo_chay.lich_su_lenh == []
+    if isinstance(url, str) and len(url) > 8:
+        assert url not in r.text
+
+
+def test_mo_khong_ghi_xuyen_symlink_sang_ho_so_khac(moi_truong_test):
+    """Trình duyệt (cùng uid, HOME = thư mục hồ sơ) đặt `.thong_tin.json` của hồ sơ A thành symlink tới kho cookie của
+    hồ sơ B: lần «Mở» A sau đó KHÔNG được ghi đè tệp của B."""
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    b = _tao_ho_so_ff(goc, HS_FF_KHAC, [{"name": "b", "value": "GIA-b", "host": ".muse.ai"}])
+    truoc = (b / "cookies.sqlite").read_bytes()
+    a = goc / HS_FF
+    a.mkdir(mode=0o700)
+    (a / ".thong_tin.json").symlink_to(b / "cookies.sqlite")
+    with TestClient(app) as client:
+        r = client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": HS_FF, "loai": "firefox"})
+    assert r.status_code in (200, 502)
+    assert (b / "cookies.sqlite").read_bytes() == truoc, "ghi xuyên symlink sang hồ sơ khác"
+
+
+# ── FIFO trong hồ sơ (trình duyệt cùng uid tạo được) không được treo dịch vụ ─────────────
+
+import threading  # noqa: E402
+
+
+def _co_han(ham, han: float = 5.0):
+    """Chạy `ham` trong luồng nền; quá `han` giây là TREO → test đỏ (không chờ mãi)."""
+    kq: dict = {}
+    t = threading.Thread(target=lambda: kq.setdefault("r", ham()), daemon=True)
+    t.start()
+    t.join(han)
+    assert not t.is_alive(), "treo: thao tác không trả về trong hạn"
+    return kq["r"]
+
+
+@pytest.mark.parametrize("ten_tep", ["cookies.sqlite", "cookies.sqlite-wal"])
+def test_fifo_kho_cookie_khong_treo(moi_truong_test, ten_tep):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    thu_muc = _tao_ho_so_ff(goc, HS_FF, [{"name": "a", "value": "GIA-a", "host": ".muse.ai"}])
+    if ten_tep == "cookies.sqlite":
+        (thu_muc / ten_tep).unlink()
+    os.mkfifo(thu_muc / ten_tep)
+    with TestClient(app) as client:
+        r = _co_han(lambda: _goi_cookie(client))
+        assert r.status_code == 404
+        assert _co_han(lambda: client.get("/ho-so", headers=HEADER_AUTH)).status_code == 200, "khoá không bị kẹt"
+
+
+@pytest.mark.parametrize("ten_tep", [".workspace.json", ".thong_tin.json"])
+def test_fifo_tep_thong_tin_khong_treo(moi_truong_test, ten_tep):
+    goc: Path = moi_truong_test["thu_muc_hoso"]
+    thu_muc = _tao_ho_so_ff(goc, HS_FF, [{"name": "a", "value": "GIA-a", "host": ".muse.ai"}])
+    (thu_muc / ten_tep).unlink(missing_ok=True)
+    os.mkfifo(thu_muc / ten_tep)
+    with TestClient(app) as client:
+        r = _co_han(lambda: client.get("/ho-so", headers=HEADER_AUTH))
+        assert r.status_code == 200
+        muc = next(m for m in r.json() if m["ho_so"] == HS_FF)
+        assert muc["ten"] == HS_FF if ten_tep == ".workspace.json" else muc["loai"] == "chromium"
+        assert _co_han(lambda: _goi_cookie(client)).status_code == (200 if ten_tep == ".workspace.json" else 501)
+        # «Mở» ghi .thong_tin.json: FIFO không được làm treo lúc mở để ghi
+        r_mo = _co_han(lambda: client.post("/ho-so/mo", headers=HEADER_AUTH, json={"ho_so": HS_FF, "loai": "firefox"}))
+        assert r_mo.status_code in (200, 502)
+        assert _co_han(lambda: client.get("/ho-so", headers=HEADER_AUTH)).status_code == 200
+
+
+def test_fifo_dau_ket_noi_khong_treo(tmp_path: Path):
+    """Dấu kết nối (đếm trong vòng dọn idle, chạy trên event loop): FIFO không được làm treo."""
+    thu_muc = tmp_path / "dau"
+    thu_muc.mkdir()
+    os.mkfifo(thu_muc / str(os.getpid()))
+    ho_so = types.SimpleNamespace(thu_muc_ket_noi=thu_muc)
+    assert _co_han(lambda: server.BoKiemTraKetNoiDaXacThuc().dem_ket_noi(ho_so)) == 0
+
+
+def test_khoi_dong_don_ban_sao_cookie_sot(moi_truong_test, thu_muc_tam_rieng: Path, tmp_path: Path):
+    """Bị SIGKILL/OOM giữa lúc đọc cookie thì `finally` không chạy: lúc KHỞI ĐỘNG dọn `w2a-cookie-*` cũ — chỉ thư mục
+    thật (không symlink), 0700, cùng uid, tên đúng khuôn mkdtemp, và chỉ trong thư mục tạm của chính dịch vụ."""
+    sot = thu_muc_tam_rieng / "w2a-cookie-ab12_CD"
+    sot.mkdir(mode=0o700)
+    (sot / "cookies.sqlite").write_bytes(b"GIA-sot")
+    (sot / "cookies.sqlite-wal").write_bytes(b"GIA-sot")
+    ngoai = tmp_path / "ngoai-GIA"
+    ngoai.mkdir()
+    (ngoai / "giu.txt").write_text("giu", encoding="utf-8")
+    lien_ket = thu_muc_tam_rieng / "w2a-cookie-lienket"
+    lien_ket.symlink_to(ngoai)
+    mo_rong = thu_muc_tam_rieng / "w2a-cookie-quyen755"
+    mo_rong.mkdir(mode=0o755)
+    os.chmod(mo_rong, 0o755)
+    khac = thu_muc_tam_rieng / "khac-w2a-cookie-x"
+    khac.mkdir(mode=0o700)
+    with TestClient(app):
+        pass
+    assert not sot.exists()
+    assert lien_ket.is_symlink() and (ngoai / "giu.txt").exists(), "không theo symlink"
+    assert mo_rong.exists() and khac.exists()
+
+
+def test_compose_thu_muc_tam_cookie_la_tmpfs_rieng():
+    """Bản sao cookie (tạm) nằm trên tmpfs riêng (RAM), không trên đĩa của container."""
+    dv = _compose()["services"]["trinh-duyet"]
+    tmpdir = dv["environment"].get("TMPDIR")
+    assert tmpdir and tmpdir != "/tmp"
+    assert any(str(x).split(":", 1)[0] == tmpdir for x in dv.get("tmpfs", [])), dv.get("tmpfs")

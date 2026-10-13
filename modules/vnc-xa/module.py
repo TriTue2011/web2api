@@ -3,9 +3,11 @@
 Module này đóng vai trò cầu nối HTTP tới một dịch vụ trình duyệt riêng
 (chạy độc lập ở một container hoặc máy chủ riêng):
 - Dịch vụ trình duyệt cung cấp API:
-  POST /ho-so/mo        {ho_so, loai} -> {ho_so, loai, dich}
-  POST /ho-so/{id}/dong {giu_phien}   -> {ok}
-  GET  /ho-so                         -> danh sách hồ sơ
+  POST /ho-so           {ten, loai}   -> {ho_so, ten}  (workspace: tên hiển thị, ID ngẫu nhiên)
+  POST /ho-so/mo        {ho_so, loai, url?} -> {ho_so, loai, dich}
+  POST /ho-so/{id}/dong {giu_phien}   -> {ok, session_preserved}
+  GET  /ho-so                         -> danh sách hồ sơ (ho_so, ten, loai, trang_thai, dang_mo, thu_cong, luc_mo)
+  GET  /ho-so/{id}/cookie?mien=<miền> -> {cookie, so_cookie} (chỉ hồ sơ Firefox; Chromium 501)
 - Mọi lời gọi kèm header Authorization: Bearer <khoa_dich_vu>.
 - Lõi web2api gọi các phương thức trinh_duyet_* của module này để quản lý hồ sơ và lấy
   địa chỉ nội bộ noVNC làm đích proxy.
@@ -13,7 +15,9 @@ Module này đóng vai trò cầu nối HTTP tới một dịch vụ trình duy�
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -21,6 +25,19 @@ import httpx
 from app.tu_xa import kiem_url_lan
 
 log = logging.getLogger("web2api.module.vnc_xa")
+
+#: Mã hồ sơ đi vào ĐƯỜNG DẪN gọi dịch vụ: kiểm lại ở đây dù lõi đã kiểm.
+MAU_HO_SO = re.compile(r"[a-f0-9]{16,64}")
+#: Mã trạng thái của dịch vụ mà lõi chuyển tiếp cho quản trị (hợp đồng `trinh_duyet_cookie`: thuộc tính `ma`).
+MA_CHUYEN_TIEP = (400, 404, 409, 501)
+
+
+class LoiDichVu(RuntimeError):
+    """Lỗi dựng từ MÃ TRẠNG THÁI của dịch vụ (không chép nội dung phản hồi — có thể chứa cookie)."""
+
+    def __init__(self, thong_diep: str, ma: int | None = None):
+        super().__init__(thong_diep)
+        self.ma = ma
 
 
 def _che_khoa(k: str) -> str:
@@ -121,15 +138,36 @@ class Module:
                 "loi": f"Không thể kết nối tới dịch vụ trình duyệt ({type(e).__name__})",
             }
 
-    async def trinh_duyet_mo(self, ho_so: str, loai: str) -> dict[str, Any]:
+    async def trinh_duyet_tao(self, ten: str) -> dict[str, Any]:
+        """Tạo workspace Firefox (Firefox: cookie đọc được để đưa sang module khác — xem trinh_duyet_cookie)."""
+        if not self._dich_vu_url or not self._khoa:
+            raise RuntimeError("Module chưa được cấu hình")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.post(
+                f"{self._dich_vu_url}/ho-so",
+                json={"ten": ten, "loai": "firefox"},
+                headers={"Authorization": f"Bearer {self._khoa}"},
+            )
+        if r.status_code == 200:
+            kq = r.json()
+            if not isinstance(kq, dict):
+                raise LoiDichVu("Phản hồi tạo workspace từ dịch vụ không phải đối tượng JSON")
+            return {"ho_so": kq.get("ho_so"), "ten": kq.get("ten")}
+        if r.status_code in (401, 403):
+            raise LoiDichVu(f"Khoá xác thực dịch vụ bị từ chối (HTTP {r.status_code})")
+        raise LoiDichVu(f"Dịch vụ trình duyệt trả mã lỗi {r.status_code}")
+
+    async def trinh_duyet_mo(self, ho_so: str, loai: str, url: str | None = None) -> dict[str, Any]:
         if not self._dich_vu_url or not self._khoa:
             raise RuntimeError("Module chưa được cấu hình địa chỉ dịch vụ hoặc khoá")
 
-        url = f"{self._dich_vu_url}/ho-so/mo"
+        than: dict[str, Any] = {"ho_so": ho_so, "loai": loai}
+        if url:
+            than["url"] = url  # lõi đã kiểm (http/https, không userinfo); dịch vụ kiểm lại
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
-                url,
-                json={"ho_so": ho_so, "loai": loai},
+                f"{self._dich_vu_url}/ho-so/mo",
+                json=than,
                 headers={"Authorization": f"Bearer {self._khoa}"},
             )
             if r.status_code == 200:
@@ -181,6 +219,30 @@ class Module:
             else:
                 raise RuntimeError(f"Dịch vụ trình duyệt trả mã lỗi {r.status_code}")
 
+    async def trinh_duyet_cookie(self, ho_so: str, mien: str) -> dict[str, Any]:
+        """Cookie của `mien` trong hồ sơ, đọc qua GET /ho-so/{id}/cookie của dịch vụ. KHÔNG log giá trị."""
+        if not self._dich_vu_url or not self._khoa:
+            raise RuntimeError("Module chưa được cấu hình")
+        if not isinstance(ho_so, str) or not MAU_HO_SO.fullmatch(ho_so):
+            raise LoiDichVu("Mã hồ sơ không hợp lệ", ma=400)
+
+        async with httpx.AsyncClient(timeout=15.0) as client:  # httpx mặc định KHÔNG theo chuyển hướng
+            r = await client.get(
+                f"{self._dich_vu_url}/ho-so/{ho_so}/cookie",
+                params={"mien": mien},
+                headers={"Authorization": f"Bearer {self._khoa}"},
+            )
+        if r.status_code == 200:
+            kq = r.json()
+            if not isinstance(kq, dict) or not isinstance(kq.get("cookie"), str):
+                raise LoiDichVu("Phản hồi cookie từ dịch vụ không đúng cấu trúc")
+            so = kq.get("so_cookie")
+            return {"cookie": kq["cookie"], "so_cookie": so if type(so) is int else None}
+        if r.status_code in (401, 403):
+            raise LoiDichVu(f"Khoá xác thực dịch vụ bị từ chối (HTTP {r.status_code})")
+        ma = r.status_code if r.status_code in MA_CHUYEN_TIEP else None
+        raise LoiDichVu(f"Dịch vụ trình duyệt trả mã lỗi {r.status_code}", ma=ma)
+
     async def suc_khoe(self) -> dict[str, Any]:
         if not self._dich_vu_url or not self._khoa:
             return {
@@ -211,6 +273,13 @@ class Module:
                 "loi": f"Lỗi kết nối ({type(e).__name__})",
                 "khoa": [{"khoa": khoa_che, "ok": False, "loi": "Lỗi kết nối"}],
             }
+
+    async def chat(self, body: dict, stream: bool):
+        """Phương thức BẮT BUỘC của hợp đồng lớp Module (lõi từ chối nạp nếu thiếu). Module này không có model nào
+        (models() rỗng) nên lõi không định tuyến chat tới đây; gọi thẳng thì trả 501 chuẩn OpenAI."""
+        than = {"error": {"message": "Module trình duyệt từ xa không phục vụ chat", "type": "invalid_request_error",
+                          "code": "not_implemented"}}
+        return 501, {"content-type": "application/json"}, json.dumps(than, ensure_ascii=False).encode("utf-8")
 
     async def models(self) -> list[dict]:
         return []

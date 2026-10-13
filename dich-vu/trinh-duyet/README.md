@@ -51,19 +51,36 @@ Kiểm tra dịch vụ còn sống. Ngoại lệ có chủ đích duy nhất kh�
 - **Phản hồi 200:** `{"ok": true}`
 
 ### 2. `GET /ho-so`
-Lấy danh sách mọi hồ sơ (đang mở và đang đóng trên đĩa). **Không** trả `dich` hay bí mật nào.
+Lấy danh sách mọi hồ sơ / workspace (đang mở và đang đóng trên đĩa). **Không** trả `dich`, cookie hay bí mật nào.
+`ten` đọc từ `.workspace.json` (không theo symlink, cắt 100 ký tự; thiếu thì là chính ID). Mọi lần mở ở dịch vụ này
+là thủ công (người dùng qua noVNC) nên `thu_cong` = `dang_mo`.
 - **Phản hồi 200:**
   ```json
   [
-    {"ho_so": "0123456789abcdef0123456789abcdef", "loai": "chromium", "trang_thai": "dang_mo", "luc_mo": "2026-10-13T01:00:00+00:00"},
-    {"ho_so": "fedcba9876543210fedcba9876543210", "loai": "firefox", "trang_thai": "dong", "luc_mo": null}
+    {"ho_so": "0123456789abcdef0123456789abcdef", "ten": "0123456789abcdef0123456789abcdef", "loai": "chromium",
+     "trang_thai": "dang_mo", "dang_mo": true, "thu_cong": true, "luc_mo": "2026-10-13T01:00:00+00:00"},
+    {"ho_so": "fedcba9876543210fedcba98", "ten": "Muse cá nhân", "loai": "firefox", "trang_thai": "dong",
+     "dang_mo": false, "thu_cong": false, "luc_mo": null}
   ]
   ```
 
+### 2b. `POST /ho-so` — tạo workspace
+Mô hình workspace của c2a: tên hiển thị tuỳ ý (có thể trùng), thư mục hồ sơ ID **ngẫu nhiên** (`secrets.token_hex(12)`),
+không suy từ tên/email. Không mở trình duyệt.
+- **Thân:** `{"ten": "Muse cá nhân", "loai": "firefox"}` — `ten` 1–100 ký tự in được (không xuống dòng); `loai` mặc
+  định `firefox` (chỉ Firefox lấy được cookie, xem mục 5). Sai → `400` (không phản chiếu); chạm
+  `TRINH_DUYET_TOI_DA_HO_SO` → `429`.
+- Ghi `.workspace.json` `{"name": …}` và `.thong_tin.json` `{"loai": …}` quyền 0600 (O_EXCL, O_NOFOLLOW) trong thư mục 0700.
+- **Phản hồi 200:** `{"ho_so": "<24 hex>", "ten": "Muse cá nhân"}`
+
 ### 3. `POST /ho-so/mo`
 Mở một hồ sơ trình duyệt trên màn hình ảo và khởi động bộ chuyển tiếp noVNC.
-- **Thân yêu cầu (JSON):** `{"ho_so": "0123456789abcdef0123456789abcdef", "loai": "chromium"}`
+- **Thân yêu cầu (JSON):** `{"ho_so": "0123456789abcdef0123456789abcdef", "loai": "chromium", "url": "https://muse.ai/"}`
 - **Quy tắc:**
+  - `url` (tuỳ chọn): trang đầu khi trình duyệt KHỞI ĐỘNG — chỉ `http`/`https`, có tên máy, không userinfo, ≤ 2048
+    ký tự ASCII in được (không khoảng trắng); truyền làm đối số CUỐI của lệnh trình duyệt (mảng đối số, không shell).
+    Sai (`javascript:`, `file:`, `about:`, `--cờ`…) → `400`, không tiến trình nào chạy. Bỏ trống → `about:blank`.
+    Hồ sơ đang mở thì không đổi trang (không có cổng điều khiển trình duyệt).
   - `ho_so`: Chỉ chấp nhận chuỗi hex 16–64 ký tự (`^[a-f0-9]{16,64}$`), do lõi sinh (không suy ra từ email).
   - `loai`: Chỉ chấp nhận `"chromium"` hoặc `"firefox"`. Loại lạ trả về mã `400`.
   - Mở lại hồ sơ đang mở **và cả bộ tiến trình còn sống**: trả lại `dich` (không mở trùng). Có tiến trình đã chết:
@@ -101,7 +118,35 @@ Mở một hồ sơ trình duyệt trên màn hình ảo và khởi động bộ
 - `giu_phien = true`: Giữ thư mục profile để lần sau mở lại vẫn còn cookie / session.
 - `giu_phien = false`: Xoá thư mục profile của hồ sơ — chạy trong luồng riêng (không chặn event loop) và chỉ
   sau khi cả nhóm tiến trình đã chết. Chống thoát thư mục bảo đảm chỉ xoá đúng thư mục hồ sơ con.
-- **Phản hồi 200:** `{"ok": true}`
+- Không gửi thân → mặc định `giu_phien = true` («Đóng · giữ phiên» của c2a).
+- **Phản hồi 200:** `{"ok": true, "session_preserved": <giu_phien>}`
+
+### 5. `GET /ho-so/{id}/cookie?mien=<tên miền>` — đường DUY NHẤT trả cookie
+Đọc cookie đăng nhập của một hồ sơ **Firefox** để lõi chuyển sang cấu hình module khác (không chép cookie bằng tay).
+- Chỉ hồ sơ Firefox: cookie Firefox nằm trong SQLite **không mã hoá** (`<hồ sơ>/cookies.sqlite`, bảng `moz_cookies`).
+  Hồ sơ Chromium (hoặc thiếu `.thong_tin.json`) → `501`: Chromium mã hoá cookie và muốn đọc phải qua cổng điều khiển
+  trình duyệt (CDP) — cố ý KHÔNG hỗ trợ, không mở cổng điều khiển nào.
+- `mien`: chữ thường/số/`-`, các nhãn ngăn bằng `.`, **ít nhất hai nhãn**, ≤ 253 ký tự, không `.`/`-` đầu/cuối. Sai → `400`
+  (không phản chiếu). Một nhãn đơn (`ai`, `localhost`) bị từ chối: đó là cả một đuôi tên miền.
+- Cách đọc: mở thư mục hồ sơ rồi mở `cookies.sqlite` và `cookies.sqlite-wal` (nếu có) TƯƠNG ĐỐI với nó, mọi bước
+  `O_NOFOLLOW` (symlink sang hồ sơ khác → `404`), chỉ tệp thường ≤ 64 MiB (`413` nếu lớn hơn); SAO CHÉP sang thư mục tạm
+  0700 mới (Firefox đang mở giữ dữ liệu mới trong WAL), mở bản sao chỉ-đọc (`mode=ro`), xoá thư mục tạm trong `finally`
+  (cả đường lỗi). Kiểm và sao chép giữ khoá quản lý hồ sơ (không đua với `dong(giu_phien=false)`).
+- Lọc: `host` bằng `mien`, `.mien`, hoặc kết thúc bằng `.mien` (không nhận `evilmien`); chỉ ngữ cảnh mặc định
+  (`originAttributes` rỗng — bỏ ngăn chứa/phân vùng); còn hạn — `expiry` là giây (Firefox cũ) hay mili-giây (Firefox mới)
+  phân biệt theo độ lớn từng dòng (ngưỡng 10¹¹: năm ~5138 tính bằng giây, 03/1973 tính bằng mili-giây); tên đúng bảng
+  «token» RFC 6265, giá trị ASCII in được trừ `;`; trùng tên giữ cookie đứng trước theo thứ tự trình duyệt gửi (đường
+  dài trước); trần 150 cookie, 4096 ký tự mỗi cookie, 32 KiB cả chuỗi.
+- Hồ sơ ĐANG MỞ → `409`: chép `cookies.sqlite` rồi `-wal` không nguyên tử khi Firefox đang ghi, nên chỉ đọc hồ sơ đã
+  đóng (giao diện cũng chỉ liệt kê workspace đã đóng).
+- Hồ sơ không có / chưa có `cookies.sqlite` → `404` chung. Kho hỏng → `500` chung.
+- **Phản hồi 200:** `{"cookie": "tên=giá trị; tên2=giá trị2", "so_cookie": 2}` (không có cookie nào → chuỗi rỗng, 0).
+- Bản sao nằm trong `$TMPDIR` — compose đặt `TMPDIR=/run/w2a-cookie` là tmpfs riêng (RAM, 160 MiB, 0700, uid 1000;
+  chưa kiểm với Docker thật). Bị giết giữa lúc đọc (SIGKILL/OOM) thì lần KHỞI ĐỘNG sau dọn các thư mục `w2a-cookie-*`
+  cũ (chỉ thư mục thật 0700 cùng uid, không theo symlink).
+- Giá trị cookie không bao giờ vào log hay thông báo lỗi. **Chưa kiểm với Firefox thật:** nếu cookie đăng nhập là
+  cookie phiên (không hạn), Firefox có thể không ghi nó vào `cookies.sqlite` — tính năng không thấy nó; khi đó dán
+  cookie tay vào cấu hình module.
 
 ---
 
@@ -115,9 +160,35 @@ Mở một hồ sơ trình duyệt trên màn hình ảo và khởi động bộ
    **Không gắn dịch vụ nào khác** vào mạng này: trình duyệt chạy trang web tuỳ ý, mọi thứ cùng mạng đều trong tầm
    với của nó.
 2. **Không công bố cổng:** compose chỉ `expose` 8700 và 6100–6199 trong mạng Docker; không có `ports`.
-3. **Module điều khiển:** Module `trinh-duyet` gọi `http://trinh-duyet:8700` kèm `Authorization: Bearer <TRINH_DUYET_KHOA>`.
+3. **Module điều khiển:** Module `vnc-xa` gọi `http://trinh-duyet:8700` kèm `Authorization: Bearer <TRINH_DUYET_KHOA>`.
 4. **Proxy noVNC:** Lõi cấp vé phiên có hạn cho người dùng đã xác thực, rồi proxy HTTP / WebSocket tới `dich`
    (gồm userinfo — xem «Hợp đồng với lõi»).
+
+## Đăng nhập Muse trên server (không chép cookie bằng tay)
+
+1. **Dựng và chạy dịch vụ** (trên máy chủ, trong thư mục này): đặt `TRINH_DUYET_KHOA` trong `.env`
+   (`openssl rand -hex 32`), rồi `docker compose up -d --build`. Không công bố cổng nào ra ngoài.
+2. **Nối lõi vào mạng riêng:** `docker network connect web2api-trinh-duyet <tên container web2api>`.
+3. **Cài module `vnc-xa`** với địa chỉ nội bộ và khoá dịch vụ:
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"dich_vu_url": "http://trinh-duyet:8700", "khoa_dich_vu": "<TRINH_DUYET_KHOA>"}}' \
+     $W/api/modules/vnc-xa/cai
+   ```
+4. **Tab «Trình duyệt»** của web2api → «Tên workspace» (ví dụ «Muse cá nhân») → «Tạo workspace» → chọn «Muse» ở
+   gợi ý trang → «Mở» → bấm «Vào trình duyệt» (liên kết dùng một lần trong 60 giây) → bấm nút «Mở trình duyệt».
+5. **Đăng nhập muse.ai** trong Firefox chạy trên server (qua noVNC), làm OTP/captcha nếu có.
+6. **«Đóng · giữ phiên»** (dịch vụ chỉ đọc cookie của workspace đã đóng; chưa kiểm với Firefox thật xem cookie phiên
+   không hạn có được ghi ra đĩa không — nếu không, dán cookie tay).
+7. **«Tái dùng workspace → thêm vào module»:** chọn workspace vừa đóng, «Module nhận — trường» = Muse Web — Cookie
+   muse.ai (`muse2api`, trường `cookies`; tên miền `muse.ai` tự điền theo khai báo `nhan_cookie` của muse2api) →
+   «Lấy cookie sang module». `muse2api` tự kiểm
+   cookie (auth/check + session) rồi lõi mới lưu; trang chỉ hiện kết quả đã che `…abcd`.
+8. Cookie hết hạn: «Mở» lại cùng workspace, đăng nhập lại, đóng, lấy cookie lần nữa (cookie mới THÊM vào danh sách,
+   trùng y hệt thì không thêm).
+
+**SSH vào máy chủ chỉ bằng tệp khoá** (`PasswordAuthentication no`, `PermitRootLogin prohibit-password` trong
+`sshd_config`) — ai vào được máy chủ là đọc được volume hồ sơ (cookie đăng nhập).
 
 ---
 

@@ -28,6 +28,11 @@ Tiền tố model: `muse2api` (model duy nhất: `muse2api/muse`).
 Application → Cookies → copy các giá trị (`hatch_sess`, `hatch_gw`,
 `datr`, …) ghép thành chuỗi `k1=v1; k2=v2`.
 
+Hoặc **đăng nhập ngay trên server** bằng module `vnc-xa` (tab «Trình duyệt»): tạo workspace,
+đăng nhập muse.ai trong Firefox chạy trên server, «Đóng · giữ phiên», rồi «Lấy cookie sang module»
+vào trường `cookies` — không phải chép cookie bằng tay (xem `dich-vu/trinh-duyet/README.md`). Manifest khai
+`"nhan_cookie": {"mien": "muse.ai"}` trên trường `cookies`: chỉ trường này nhận cookie, và chỉ cookie của `muse.ai`.
+
 Lúc **Cài đặt**, module kiểm từng bộ cookie bằng HTTPS bootstrap
 (`auth/check` + `session`) — không tốn tiền, không cần chat thật.
 

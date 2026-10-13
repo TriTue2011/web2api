@@ -13,6 +13,17 @@ Tiến trình con chạy với môi trường tối thiểu, không kế thừa 
 
 websockify của mỗi hồ sơ đòi Basic auth bằng bí mật NGẪU NHIÊN 256 bit sinh mới mỗi lần dựng hồ sơ;
 bí mật chỉ đi ra qua trường ``dich`` của ``POST /ho-so/mo`` (dạng userinfo của URL).
+
+Workspace (mô hình của c2a): ``POST /ho-so`` ``{ten}`` tạo thư mục hồ sơ ID NGẪU NHIÊN + ``.workspace.json`` ghi tên
+hiển thị (tên không bao giờ quyết thư mục); ``GET /ho-so`` trả ``ten``/``dang_mo``/``thu_cong``; ``POST /ho-so/mo`` nhận
+``url`` tuỳ chọn (http/https, đã kiểm) làm trang đầu; ``dong`` mặc định giữ phiên và trả ``session_preserved``.
+
+Cookie đăng nhập của hồ sơ chỉ đi ra qua ``GET /ho-so/{id}/cookie?mien=`` (Bearer như mọi đường), và chỉ với hồ sơ
+FIREFOX: cookie Firefox nằm trong SQLite KHÔNG mã hoá (``cookies.sqlite``, bảng ``moz_cookies``). Chromium mã hoá
+cookie và muốn đọc phải qua cổng điều khiển trình duyệt — cố ý không hỗ trợ (501), không mở cổng điều khiển nào.
+Cách đọc: sao chép ``cookies.sqlite`` (+ ``-wal`` nếu có — Firefox đang mở giữ dữ liệu mới ở đó) sang thư mục tạm 0700
+mới, mở bản sao chỉ-đọc, lọc theo tên miền và hạn, xoá thư mục tạm trong ``finally``. Giá trị cookie không bao giờ vào
+log hay thông báo lỗi.
 """
 
 from __future__ import annotations
@@ -27,13 +38,17 @@ import re
 import secrets
 import shutil
 import signal
+import sqlite3
+import stat
 import sys
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -75,6 +90,32 @@ TEN_NGUOI_DUNG_WS = "w2a"
 THU_MUC_MA = Path(__file__).resolve().parent
 #: Thư mục con (dưới gốc hồ sơ) chứa tệp bí mật websockify; tên không khớp MAU_HO_SO nên không bị coi là hồ sơ.
 TEN_THU_MUC_BI_MAT = ".bi-mat-ws"
+
+# ── Đọc cookie hồ sơ Firefox ──
+#: Tên miền: các nhãn [a-z0-9-] (không bắt đầu/kết thúc bằng «-», ≤ 63 ký tự) nối bằng «.», ÍT NHẤT HAI nhãn, tổng
+#: ≤ 253. Chữ thường; không «.» đầu/cuối, không «..». Một nhãn đơn («ai», «localhost») bị từ chối: hỏi cookie của cả
+#: một đuôi tên miền là lấy cookie của mọi trang dưới nó.
+MAU_MIEN = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+#: Tên cookie: đúng bảng ký tự «token» của RFC 6265 (không khoảng trắng, không «=», «;», ký tự điều khiển).
+MAU_TEN_COOKIE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+#: Giá trị cookie: ASCII in được trừ «;» — chặn xuống dòng/ký tự điều khiển (chèn tiêu đề) và «;» (chèn cookie).
+MAU_GIA_TRI_COOKIE = re.compile(r"[\x20-\x3a\x3c-\x7e]*")
+TEN_TEP_COOKIE = "cookies.sqlite"
+#: Trần cỡ mỗi tệp sao chép (cookies.sqlite của Firefox thường dưới vài MB).
+TRAN_TEP_COOKIE_BYTE = 64 * 1024 * 1024
+TRAN_SO_COOKIE = 150
+#: Trần «tên=giá trị» của MỘT cookie — đúng mức tối thiểu trình duyệt phải nhận (RFC 6265 §6.1: 4096 byte).
+TRAN_DO_DAI_COOKIE = 4096
+TRAN_CHUOI_COOKIE = 32 * 1024
+#: `expiry` của moz_cookies: Firefox cũ lưu GIÂY, bản mới lưu MILI-GIÂY. Phân biệt theo ĐỘ LỚN từng dòng: 1e11 giây là
+#: năm ~5138, 1e11 mili-giây là tháng 3/1973 — không cookie còn hạn nào rơi vào vùng chồng lấn, nên ngưỡng này tách
+#: chắc chắn hai đơn vị mà không phải đoán phiên bản Firefox.
+NGUONG_MILI_GIAY = 10**11
+
+# ── Workspace (mô hình của c2a: tên hiển thị tuỳ ý, thư mục hồ sơ ID ngẫu nhiên — tên không bao giờ quyết thư mục) ──
+TEN_TEP_WORKSPACE = ".workspace.json"
+TRAN_TEN_WORKSPACE = 100
+TRAN_URL_BAT_DAU = 2048
 
 
 # ── Cấu hình ──────────────────────────────────────────────────────────────────
@@ -194,13 +235,199 @@ def kiem_tra_duong_dan_ho_so(ho_so_id: str, thu_muc_goc: Path) -> Path:
     goc_chuan = thu_muc_goc.resolve()
     duong_dan = (goc_chuan / ho_so_id).resolve()
 
-    # Kiểm tra đường dẫn phải nằm chặt chẽ bên dưới thư mục gốc
-    if duong_dan == goc_chuan or goc_chuan not in duong_dan.parents:
+    # Sau resolve() phải là ĐÚNG <gốc>/<id>: chặn cả symlink ra ngoài gốc lẫn symlink sang hồ sơ KHÁC trong gốc (IDOR).
+    if duong_dan != goc_chuan / ho_so_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Đường dẫn hồ sơ không hợp lệ (thoát khỏi thư mục gốc).",
         )
     return duong_dan
+
+
+def mo_tep_thuong(duong: Path | str, co: int, quyen: int = 0o600, dir_fd: int | None = None) -> int:
+    """Mở tệp nằm ở vùng trình duyệt (cùng uid) ghi được: O_NOFOLLOW (không theo symlink sang hồ sơ khác), O_NONBLOCK
+    (FIFO không làm treo lúc mở — mở FIFO để đọc/ghi mà không có đầu kia sẽ chặn mãi), rồi CHỈ nhận tệp thường (fstat).
+    Với tệp thường O_NONBLOCK không đổi cách đọc/ghi. Không phải tệp thường → OSError."""
+    fd = os.open(duong, co | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, quyen, dir_fd=dir_fd)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise OSError("không phải tệp thường")
+    return fd
+
+
+class _KhongCoKhoCookie(Exception):
+    """Không có tệp cookie dùng được (thiếu, symlink, không phải tệp thường) — trả 404 chung."""
+
+
+class _TepCookieQuaLon(Exception):
+    pass
+
+
+def _khop_mien(host: str, mien: str) -> bool:
+    """Cookie của `mien` hoặc tên miền con của nó. `host` của Firefox có «.» đầu với cookie dạng domain."""
+    h = host[1:] if host.startswith(".") else host
+    return h == mien or h.endswith("." + mien)
+
+
+def _han_giay(expiry: Any) -> float | None:
+    if type(expiry) is not int:
+        return None
+    return expiry / 1000 if expiry >= NGUONG_MILI_GIAY else float(expiry)
+
+
+def _sao_chep_tep_cookie(thu_muc_ho_so: Path, tam: Path) -> None:
+    """Sao chép cookies.sqlite (+ -wal nếu có) sang `tam`. Mở thư mục hồ sơ rồi mở tệp TƯƠNG ĐỐI với nó, mọi bước
+    O_NOFOLLOW: thư mục hay tệp bị thay bằng symlink (trình duyệt cùng uid làm được) không dắt sang hồ sơ khác."""
+    fd_thu_muc = os.open(thu_muc_ho_so, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        for ten in (TEN_TEP_COOKIE, TEN_TEP_COOKIE + "-wal"):
+            try:
+                fd_vao = mo_tep_thuong(ten, os.O_RDONLY, dir_fd=fd_thu_muc)
+            except FileNotFoundError:
+                if ten == TEN_TEP_COOKIE:
+                    raise _KhongCoKhoCookie() from None
+                continue
+            except OSError:  # ELOOP (symlink), không phải tệp thường (FIFO, thư mục…)
+                raise _KhongCoKhoCookie() from None
+            try:
+                if os.fstat(fd_vao).st_size > TRAN_TEP_COOKIE_BYTE:
+                    raise _TepCookieQuaLon()
+                fd_ra = os.open(tam / ten, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+                try:
+                    da_chep = 0
+                    while khuc := os.read(fd_vao, 1 << 20):
+                        da_chep += len(khuc)
+                        if da_chep > TRAN_TEP_COOKIE_BYTE:  # tệp lớn lên trong lúc chép
+                            raise _TepCookieQuaLon()
+                        os.write(fd_ra, khuc)
+                finally:
+                    os.close(fd_ra)
+            finally:
+                os.close(fd_vao)
+    finally:
+        os.close(fd_thu_muc)
+
+
+def _doc_cookie_tu_ban_sao(tep: Path, mien: str, bay_gio: float) -> tuple[str, int]:
+    """Đọc BẢN SAO chỉ-đọc → chuỗi ``tên=giá trị; …`` và số cookie. Chỉ ngữ cảnh mặc định (originAttributes rỗng:
+    không ngăn chứa/phân vùng); thứ tự như trình duyệt gửi (đường dài trước, tạo sớm trước); trùng tên giữ cookie
+    đứng trước; cookie hết hạn hoặc có ký tự cấm bị bỏ; dừng ở trần số lượng/độ dài."""
+    con = sqlite3.connect(f"{tep.as_uri()}?mode=ro", uri=True)
+    try:
+        hang = con.execute(
+            "SELECT name, value, host, expiry FROM moz_cookies WHERE originAttributes = '' "
+            "ORDER BY length(path) DESC, creationTime ASC, id ASC"
+        ).fetchall()
+    finally:
+        con.close()
+    cac_muc: list[str] = []
+    da_co: set[str] = set()
+    tong = 0
+    for ten, gia_tri, host, expiry in hang:
+        if not (isinstance(ten, str) and isinstance(gia_tri, str) and isinstance(host, str)):
+            continue
+        han = _han_giay(expiry)
+        if han is None or han <= bay_gio or not _khop_mien(host, mien):
+            continue
+        if not MAU_TEN_COOKIE.fullmatch(ten) or not MAU_GIA_TRI_COOKIE.fullmatch(gia_tri) or ten in da_co:
+            continue
+        muc = f"{ten}={gia_tri}"
+        if len(muc) > TRAN_DO_DAI_COOKIE:
+            continue
+        them = len(muc) + (2 if cac_muc else 0)
+        if len(cac_muc) >= TRAN_SO_COOKIE or tong + them > TRAN_CHUOI_COOKIE:
+            break
+        cac_muc.append(muc)
+        da_co.add(ten)
+        tong += them
+    return "; ".join(cac_muc), len(cac_muc)
+
+
+def _xoa_thu_muc_tam(tam: Path) -> None:
+    """Thư mục tạm do chính ta tạo (mkdtemp, 0700) chỉ chứa tệp phẳng (bản sao + -wal/-shm SQLite tự tạo)."""
+    try:
+        for tep in tam.iterdir():
+            tep.unlink()
+        tam.rmdir()
+    except OSError as e:
+        log.warning("Không xoá hết được thư mục tạm cookie (%s).", type(e).__name__)
+
+
+#: Tên thư mục tạm đọc cookie do mkdtemp(prefix="w2a-cookie-") sinh.
+MAU_THU_MUC_TAM_COOKIE = re.compile(r"w2a-cookie-[A-Za-z0-9_]{1,64}")
+
+
+def don_thu_muc_tam_cookie_cu() -> int:
+    """Lúc KHỞI ĐỘNG: xoá bản sao cookie sót lại khi tiến trình bị giết giữa lúc đọc (`finally` không chạy). Chỉ trong
+    thư mục tạm của chính dịch vụ, chỉ tên đúng khuôn, chỉ thư mục THẬT (lstat — không theo symlink), 0700, cùng uid."""
+    goc = Path(tempfile.gettempdir())
+    so = 0
+    try:
+        cac_muc = list(goc.iterdir())
+    except OSError:
+        return 0
+    for muc in cac_muc:
+        if not MAU_THU_MUC_TAM_COOKIE.fullmatch(muc.name):
+            continue
+        try:
+            tt = os.lstat(muc)
+        except OSError:
+            continue
+        if stat.S_ISDIR(tt.st_mode) and tt.st_uid == os.getuid() and stat.S_IMODE(tt.st_mode) == 0o700:
+            _xoa_thu_muc_tam(muc)
+            so += 1
+    if so:
+        log.warning("Đã dọn %d thư mục tạm cookie sót lại từ lần chạy trước.", so)
+    return so
+
+
+def _doc_json_khong_theo(tep: Path) -> Any:
+    """Đọc tệp JSON nhỏ trong hồ sơ, KHÔNG theo symlink (trình duyệt cùng uid đặt được symlink sang hồ sơ khác).
+    Thiếu/symlink/hỏng → None."""
+    try:
+        fd = mo_tep_thuong(tep, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            return json.loads(f.read(64 * 1024).decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _doc_loai_tren_dia(thu_muc: Path) -> str:
+    """Loại trình duyệt ghi trong `.thong_tin.json`; thiếu/hỏng thì coi là chromium."""
+    data = _doc_json_khong_theo(thu_muc / ".thong_tin.json")
+    if isinstance(data, dict) and data.get("loai") in LOAI_HOP_LE:
+        return data["loai"]
+    return "chromium"
+
+
+def _doc_ten_workspace(thu_muc: Path) -> str:
+    """Tên hiển thị trong `.workspace.json`; thiếu/hỏng thì là chính ID (như c2a). Cắt ở trần độ dài."""
+    data = _doc_json_khong_theo(thu_muc / TEN_TEP_WORKSPACE)
+    ten = data.get("name") if isinstance(data, dict) else None
+    return (ten if isinstance(ten, str) and ten.strip() else thu_muc.name)[:TRAN_TEN_WORKSPACE]
+
+
+def _kiem_url_bat_dau(url: Any) -> str | None:
+    """Trang bắt đầu của trình duyệt: http(s), có tên máy, không userinfo, chỉ ký tự ASCII in được không khoảng trắng
+    (đi vào mảng đối số của tiến trình — không shell, nhưng vẫn không cho đối số trông như cờ). Rỗng → None."""
+    if url is None or url == "":
+        return None
+    sai = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"URL trang bắt đầu cần là http(s), có tên máy, không chứa mật khẩu, tối đa {TRAN_URL_BAT_DAU} ký tự.",
+    )
+    if not isinstance(url, str) or len(url) > TRAN_URL_BAT_DAU or not re.fullmatch(r"[\x21-\x7e]+", url):
+        raise sai
+    try:
+        u = urlsplit(url)
+        if u.scheme not in ("http", "https") or not u.hostname or u.username is not None or u.password is not None:
+            raise ValueError()
+    except ValueError:
+        raise sai from None
+    return url
 
 
 # ── Quản lý tiến trình ────────────────────────────────────────────────────────
@@ -327,7 +554,9 @@ class BoKiemTraKetNoiDaXacThuc(BoKiemTraKetNoi):
     def _con_song(pid: int, dau: Path) -> bool:
         try:
             truong = Path(f"/proc/{pid}/stat").read_bytes().rsplit(b")", 1)[1].split()
-            return truong[0] != b"Z" and truong[19] == dau.read_bytes().strip()
+            fd = mo_tep_thuong(dau, os.O_RDONLY)  # thư mục dấu nằm dưới gốc hồ sơ — trình duyệt ghi được
+            with os.fdopen(fd, "rb") as f:
+                return truong[0] != b"Z" and truong[19] == f.read(64).strip()
         except (OSError, IndexError):
             return False
 
@@ -462,7 +691,7 @@ class QuanLyHoSo:
         """Ghi ``w2a:<bí mật>`` vào tệp 0600 cho plugin websockify (không đưa bí mật lên dòng lệnh) và
         tạo thư mục dấu kết nối đã xác thực ``<tệp>.ket-noi`` (0700, làm mới)."""
         tep = self._thu_muc_bi_mat() / ho_so_id
-        fd = os.open(tep, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        fd = mo_tep_thuong(tep, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
         try:
             os.fchmod(fd, 0o600)
             os.write(fd, f"{TEN_NGUOI_DUNG_WS}:{bi_mat}".encode())
@@ -531,13 +760,41 @@ class QuanLyHoSo:
 
     # ── vòng đời ──
 
-    async def mo(self, ho_so_id: str, loai: str) -> dict[str, str]:
-        """Mở hồ sơ trình duyệt trên màn hình ảo và noVNC."""
+    async def tao(self, ten: Any, loai: str = "firefox") -> dict[str, str]:
+        """Tạo workspace: thư mục hồ sơ ID NGẪU NHIÊN (không suy từ tên/email) + `.workspace.json` ghi tên. Không mở
+        trình duyệt."""
+        if loai not in LOAI_HOP_LE:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Loại trình duyệt chỉ nhận 'chromium' hoặc 'firefox'.")
+        ten = ten.strip() if isinstance(ten, str) else ""
+        if not ten or len(ten) > TRAN_TEN_WORKSPACE or not ten.isprintable():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Nhập tên workspace (1–{TRAN_TEN_WORKSPACE} ký tự, không xuống dòng).")
+        async with self.khoa:
+            if self._dem_ho_so_tren_dia() >= self.toi_da_ho_so:
+                raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                                    detail=f"Đã đạt trần {self.toi_da_ho_so} hồ sơ lưu trên đĩa.")
+            ho_so_id = secrets.token_hex(12)
+            self.thu_muc_goc.resolve().mkdir(parents=True, exist_ok=True)
+            duong_dan = kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
+            duong_dan.mkdir(mode=0o700)
+            os.chmod(duong_dan, 0o700)
+            for ten_tep, du_lieu in ((TEN_TEP_WORKSPACE, {"name": ten}), (".thong_tin.json", {"loai": loai})):
+                fd = mo_tep_thuong(duong_dan / ten_tep, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(du_lieu, f, ensure_ascii=False)
+        log.info("Đã tạo workspace %s.", ho_so_id)
+        return {"ho_so": ho_so_id, "ten": ten}
+
+    async def mo(self, ho_so_id: str, loai: str, url: Any = None) -> dict[str, str]:
+        """Mở hồ sơ trình duyệt trên màn hình ảo và noVNC. `url` (tuỳ chọn, đã kiểm) là trang đầu khi trình duyệt
+        KHỞI ĐỘNG; hồ sơ đang mở thì không đổi trang (không có cổng điều khiển trình duyệt)."""
         if loai not in LOAI_HOP_LE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Loại trình duyệt không hỗ trợ: '{loai}'. Chỉ chấp nhận 'chromium' hoặc 'firefox'.",
             )
+        trang_dau = _kiem_url_bat_dau(url) or "about:blank"
 
         duong_dan = kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
 
@@ -583,7 +840,11 @@ class QuanLyHoSo:
                 os.chmod(duong_dan, 0o700)
 
                 # Lưu metadata loại trình duyệt để khi đóng vẫn nhận diện được
-                (duong_dan / ".thong_tin.json").write_text(json.dumps({"loai": loai}), encoding="utf-8")
+                # O_NOFOLLOW: trình duyệt (cùng uid) có thể đã đặt tệp này thành symlink tới tệp của hồ sơ KHÁC — khi đó
+                # ELOOP → dựng hỏng (502), không ghi xuyên sang hồ sơ khác.
+                fd = mo_tep_thuong(duong_dan / ".thong_tin.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump({"loai": loai}, f)
 
                 tep_bi_mat, thu_muc_dau = self._ghi_tep_bi_mat(ho_so_id, bi_mat)
 
@@ -611,7 +872,7 @@ class QuanLyHoSo:
                         "--disable-gpu",
                         "--disable-dev-shm-usage",
                         "--window-size=1280,800",
-                        "about:blank",
+                        trang_dau,
                     ]
                 else:
                     lenh_browser = [
@@ -623,6 +884,7 @@ class QuanLyHoSo:
                         "1280",
                         "-height",
                         "800",
+                        trang_dau,
                     ]
                 cac_tien_trinh.append(await self.bo_chay.chay(lenh_browser, env_con, cwd=str(duong_dan)))
 
@@ -731,33 +993,75 @@ class QuanLyHoSo:
             goc = self.thu_muc_goc.resolve()
             if goc.exists() and goc.is_dir():
                 for muc in goc.iterdir():
-                    if muc.is_dir() and MAU_HO_SO.fullmatch(muc.name):
-                        loai = "chromium"
-                        tep_meta = muc / ".thong_tin.json"
-                        if tep_meta.exists():
-                            try:
-                                data = json.loads(tep_meta.read_text(encoding="utf-8"))
-                                if data.get("loai") in LOAI_HOP_LE:
-                                    loai = data["loai"]
-                            except (OSError, json.JSONDecodeError):
-                                pass
+                    if muc.is_dir() and not muc.is_symlink() and MAU_HO_SO.fullmatch(muc.name):
                         ket_qua[muc.name] = {
                             "ho_so": muc.name,
-                            "loai": loai,
+                            "ten": _doc_ten_workspace(muc),
+                            "loai": _doc_loai_tren_dia(muc),
                             "trang_thai": "dong",
+                            "dang_mo": False,
+                            "thu_cong": False,
                             "luc_mo": None,
                         }
 
             # Cập nhật các hồ sơ đang mở
+            # Mọi lần mở ở dịch vụ này là THỦ CÔNG (người dùng qua noVNC) — `thu_cong` giữ cùng nghĩa với c2a.
             for id_mo, thong_tin in self.danh_sach_mo.items():
                 ket_qua[id_mo] = {
                     "ho_so": id_mo,
+                    "ten": _doc_ten_workspace(thong_tin.duong_dan),
                     "loai": thong_tin.loai,
                     "trang_thai": "dang_mo",
+                    "dang_mo": True,
+                    "thu_cong": True,
                     "luc_mo": thong_tin.luc_mo,
                 }
 
             return sorted(ket_qua.values(), key=lambda x: x["ho_so"])
+
+    async def doc_cookie(self, ho_so_id: str, mien: str) -> dict[str, Any]:
+        """Cookie của `mien` (và tên miền con) trong hồ sơ Firefox, dạng ``tên=giá trị; …``. KHÔNG log giá trị."""
+        if not isinstance(mien, str) or not MAU_MIEN.fullmatch(mien):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tên miền không hợp lệ (chữ thường, số, «-», «.»; ít nhất hai nhãn, ví dụ vi-du.example).",
+            )
+        duong_dan = kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
+        khong_co = HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                 detail="Hồ sơ không có hoặc chưa có kho cookie.")
+        tam = Path(tempfile.mkdtemp(prefix="w2a-cookie-"))  # 0700, tên ngẫu nhiên
+        try:
+            # Giữ khoá khi KIỂM và SAO CHÉP: `dong(giu_phien=False)` không xoá thư mục giữa chừng.
+            async with self.khoa:
+                # Chép cookies.sqlite rồi -wal KHÔNG nguyên tử khi trình duyệt đang ghi → chỉ đọc hồ sơ ĐÃ ĐÓNG.
+                if ho_so_id in self.danh_sach_mo:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                        detail="Hồ sơ đang mở — đóng (giữ phiên) rồi lấy cookie.")
+                if not duong_dan.is_dir():
+                    raise khong_co
+                loai = _doc_loai_tren_dia(duong_dan)
+                if loai != "firefox":
+                    raise HTTPException(
+                        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                        detail="Chỉ đọc được cookie của hồ sơ Firefox (Chromium mã hoá cookie — không hỗ trợ).",
+                    )
+                try:
+                    await asyncio.to_thread(_sao_chep_tep_cookie, duong_dan, tam)
+                except _KhongCoKhoCookie:
+                    raise khong_co from None
+                except _TepCookieQuaLon:
+                    raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                                        detail="Kho cookie của hồ sơ quá lớn.") from None
+            try:
+                chuoi, so = await asyncio.to_thread(_doc_cookie_tu_ban_sao, tam / TEN_TEP_COOKIE, mien, time.time())
+            except sqlite3.Error:
+                log.warning("Không đọc được kho cookie của hồ sơ %s.", ho_so_id)
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                    detail="Không đọc được kho cookie của hồ sơ.") from None
+        finally:
+            await asyncio.to_thread(_xoa_thu_muc_tam, tam)
+        log.info("Đã đọc %d cookie của hồ sơ %s.", so, ho_so_id)
+        return {"cookie": chuoi, "so_cookie": so}
 
     async def don_idle(self) -> list[str]:
         """Tự đóng (giữ phiên) hồ sơ: idle quá hạn và không ai kết nối, HOẶC quá hạn tuyệt đối, HOẶC đã chết."""
@@ -801,6 +1105,12 @@ class QuanLyHoSo:
 class MoHoSoYeuCau(BaseModel):
     ho_so: str = Field(..., description="ID hồ sơ hex 16-64 ký tự")
     loai: str = Field(..., description="Loại trình duyệt: 'chromium' hoặc 'firefox'")
+    url: str | None = Field(None, description="Trang đầu khi trình duyệt khởi động (http/https, tuỳ chọn)")
+
+
+class TaoHoSoYeuCau(BaseModel):
+    ten: Any = Field(..., description="Tên hiển thị 1-100 ký tự (kiểm ở QuanLyHoSo.tao, không phản chiếu)")
+    loai: str = Field("firefox", description="Loại trình duyệt của workspace")
 
 
 class DongHoSoYeuCau(BaseModel):
@@ -873,6 +1183,7 @@ async def _vong_lap_don_idle(quan_ly: QuanLyHoSo) -> None:
 async def lifespan(app: FastAPI):
     # Nạp khoá (hoặc dùng khoá main() đã nạp); thiếu/yếu thì từ chối khởi động
     nap_khoa()
+    don_thu_muc_tam_cookie_cu()
 
     global quan_ly_toan_cuc
     if quan_ly_toan_cuc is None:
@@ -920,10 +1231,22 @@ async def danh_sach_ho_so() -> list[dict[str, Any]]:
     return await _quan_ly().danh_sach()
 
 
+@app.post("/ho-so")
+async def tao_ho_so(req: TaoHoSoYeuCau) -> dict[str, str]:
+    """Tạo workspace (thư mục hồ sơ ID ngẫu nhiên + tên hiển thị). Không mở trình duyệt."""
+    return await _quan_ly().tao(req.ten, req.loai)
+
+
 @app.post("/ho-so/mo")
 async def mo_ho_so(req: MoHoSoYeuCau) -> dict[str, str]:
     """Mở một hồ sơ trình duyệt trên màn hình ảo và noVNC. `dich` mang bí mật — chỉ đường này trả."""
-    return await _quan_ly().mo(req.ho_so, req.loai)
+    return await _quan_ly().mo(req.ho_so, req.loai, req.url)
+
+
+@app.get("/ho-so/{id}/cookie")
+async def cookie_ho_so(id: str, mien: str = "") -> dict[str, Any]:
+    """Cookie của `mien` trong hồ sơ Firefox — đường DUY NHẤT trả cookie (GET /ho-so không trả)."""
+    return await _quan_ly().doc_cookie(id, mien)
 
 
 @app.post("/ho-so/{id}/dong")
@@ -931,7 +1254,7 @@ async def dong_ho_so(id: str, req: DongHoSoYeuCau | None = None) -> dict[str, bo
     """Đóng hồ sơ trình duyệt và dừng các tiến trình."""
     giu_phien = True if req is None else req.giu_phien
     await _quan_ly().dong(id, giu_phien=giu_phien)
-    return {"ok": True}
+    return {"ok": True, "session_preserved": giu_phien}
 
 
 def main() -> None:

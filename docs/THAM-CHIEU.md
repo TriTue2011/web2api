@@ -40,7 +40,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
-| Module `vnc-xa` (Trình duyệt từ xa qua noVNC) | Có — kiểm với dịch vụ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 13/10/2026 |
+| Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -872,13 +872,34 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 | `dich_vu_url` | Có | Địa chỉ gốc HTTP của dịch vụ trình duyệt riêng (được kiểm tra chống SSRF). |
 | `khoa_dich_vu` | Có | Khoá bí mật xác thực với dịch vụ trình duyệt (lưu tại kho bí mật, không trả lại). |
 
+**Giao diện: tab «Trình duyệt» (`/m/vnc-xa/index.html`).** Bám thẻ «Workspace trình duyệt» của c2a: ô «Tên workspace»
++ «Tạo workspace» + «Làm mới»; «Trang cần mở (tùy chọn)» kèm nút chọn nhanh dịch vụ; danh sách workspace (tên, «Đang mở
+thủ công» / «Đã đóng · giữ phiên», nút «Mở» → liên kết «Vào trình duyệt» mở tab mới, «Đóng · giữ phiên»); mục «Tái dùng
+workspace → thêm vào module»: chọn workspace ĐÃ ĐÓNG + module nhận — trường (lấy từ `truong_cau_hinh` kiểu bí mật của
+module, chỉ trường khai `nhan_cookie`; tên miền tự điền theo khai báo) → «Lấy cookie sang module» → kết quả đã che. Dùng được trên điện thoại.
+
+**Đăng nhập trên server rồi đưa cookie sang module (không chép cookie bằng tay).**
+1. Tab «Trình duyệt» → tạo workspace (ví dụ «Muse cá nhân») → chọn dịch vụ → «Mở» → bấm «Vào trình duyệt» → đăng nhập
+   trong Firefox chạy trên server (noVNC).
+2. «Đóng · giữ phiên» (dịch vụ chỉ đọc cookie của workspace ĐÃ ĐÓNG, đang mở → `409`). Chưa kiểm với Firefox thật: nếu
+   cookie đăng nhập là cookie phiên (không hạn) thì có thể không nằm trong `cookies.sqlite` — tính năng không thấy nó,
+   khi đó dán cookie tay vào cấu hình module.
+3. «Tái dùng»: chọn workspace vừa đóng, module nhận (ví dụ `muse2api` — Cookie muse.ai; tên miền tự điền theo khai báo) →
+   «Lấy cookie sang module». Module đích tự kiểm cookie bằng `cai()` rồi lõi mới lưu.
+
 **Ví dụ dùng.**
 
 ```bash
-# Mở hồ sơ trình duyệt và nhận URL truy cập noVNC kèm vé
+# Tạo workspace (tên hiển thị; ID thư mục do dịch vụ sinh ngẫu nhiên)
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
-  -d '{"loai": "chromium"}' \
-  $W/api/trinh-duyet/vnc-xa/mo
+  -d '{"ten": "Muse cá nhân"}' $W/api/trinh-duyet/vnc-xa
+# Mở Firefox của workspace với trang bắt đầu, nhận URL vé noVNC
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"loai": "firefox", "ho_so": "<id>", "url": "https://muse.ai/"}' $W/api/trinh-duyet/vnc-xa/mo
+# Sau khi đăng nhập và đóng: lấy cookie sang trường «cookies» của muse2api (muse2api khai nhan_cookie: muse.ai)
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"module_dich": "muse2api", "truong": "cookies"}' \
+  $W/api/trinh-duyet/vnc-xa/<id>/cookie-sang-module
 ```
 
 **Sự cố thường gặp.**
@@ -887,6 +908,17 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 - `502` khi mở hồ sơ — địa chỉ dịch vụ bị chặn SSRF hoặc không kết nối được tới dịch vụ trình duyệt.
 - `401` khi tải trang noVNC — phiên trong đường dẫn sai, đã thu hồi hoặc quá 8 giờ.
 - `502` khi tải trang noVNC — đích không kết nối được hoặc từ chối Basic auth của lõi (bí mật hồ sơ lệch: mở lại hồ sơ).
+- `501` khi lấy cookie — workspace là Chromium (cookie mã hoá, cố ý không hỗ trợ); tạo workspace mới (mặc định Firefox).
+- `404` khi lấy cookie — workspace chưa từng mở/chưa có cookie của tên miền đó: đăng nhập rồi «Đóng · giữ phiên» trước;
+  cookie phiên (không hạn) có thể không được ghi ra đĩa — khi đó dán cookie tay.
+- `409` khi lấy cookie — workspace đang mở: «Đóng · giữ phiên» rồi thử lại.
+- «Chưa thêm cookie mới» (`200`, `da_them: 0`) — cookie đã có y hệt, hoặc module đích không nhận cookie mới nhưng vẫn còn
+  khoá cũ dùng được (`ok: true`). Module đích có thể tự bỏ khoá bị từ chối khỏi danh sách đã lưu trong cùng lượt kiểm
+  (muse2api làm vậy); giao diện chỉ cảnh báo điều này khi `ket_qua_tung_khoa` thật sự có khoá `ok: false`.
+- Liên kết «Vào trình duyệt» tự ẩn sau ~55 giây (vé 60 giây, dùng một lần) và thay bằng nút «Mở lại» xin vé mới. «Mở»
+  workspace đang mở kèm URL: trang báo ngay «URL chỉ áp dụng khi mở mới» và không gửi URL. Dịch vụ không có mở tự
+  động nên mọi workspace đang mở hiện «Đang mở thủ công» (`thu_cong` luôn bằng `dang_mo`).
+- `400` khi lấy cookie, kèm `ket_qua_tung_khoa` — module đích kiểm cookie thất bại (phiên hết hạn): đăng nhập lại.
 
 **Bảo mật của đường noVNC.**
 - Liên kết vé (`/novnc/dang-nhap?ve=…`) chỉ mở trang có nút; vé đổi bằng `POST` khi bấm, nên bot xem trước liên kết
@@ -914,10 +946,28 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 - Thu hồi chỉ theo cả hồ sơ (`POST /api/trinh-duyet/{module}/{ho_so}/dong`) hoặc tất cả
   (`DELETE /api/trinh-duyet/phien`); chưa thu hồi được từng phiên riêng.
 
+**Bảo mật của đường cookie sang module.**
+- Chỉ quản trị (`401` không khoá, `403` khoá khách). Cookie chỉ đi dịch vụ trình duyệt → lõi → module đích, trong RAM
+  của một lời gọi: không vào phản hồi, giao diện, log hay nhật ký (kênh `trinh_duyet` chỉ ghi module, hồ sơ, module
+  đích, trường, tên miền, kết quả). Lõi KHÔNG chuyển tiếp chuỗi tự do nào do `cai()` của module đích trả (`loi`
+  tổng và từng khoá): phản hồi chỉ có `ok`, `khoa` đúng dạng che `…abcd` (sai dạng → `…`), `da_them` và câu lỗi của
+  LÕI — chuỗi của module có thể chứa cookie (mới hay cũ, ở dạng mã hoá bất kỳ) nên không lọc theo nội dung được.
+- Trường đích phải là trường mà CHÍNH module đích khai `"nhan_cookie": {"mien": "…"}` trong `truong_cau_hinh` (chỉ trên
+  trường bí mật: `bi_mat` thay, `danh_sach_bi_mat` thêm vào cuối + khử trùng) — trường bí mật khác (khoá API của module
+  khác) bị từ chối `400`, giá trị cũ không đổi. Tên miền lấy từ bản khai (thân gửi `mien` khác → `400`). Lõi không biết
+  tên module/trường nào. Lưu qua đúng đường cài có sẵn (kho 0600).
+- Dịch vụ chỉ đọc cookie của hồ sơ FIREFOX từ BẢN SAO `cookies.sqlite` (+ `-wal`) trong thư mục tạm 0700, mở không
+  theo symlink (chặn đọc chéo hồ sơ), chỉ cookie còn hạn của đúng tên miền và tên miền con, xoá bản sao ngay.
+- Trang tab module (`/m/<id>/…`) mang CSP `default-src 'self'; script-src 'self'; …; frame-ancestors 'none'`,
+  `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`; trang chỉ dựng DOM bằng `textContent`.
+
 **Giới hạn.**
 - Chưa kiểm tra với dịch vụ trình duyệt thật (chỉ máy chủ ASGI giả lập; noVNC 1.6.0 thật đã chạy qua proxy với backend giả).
+- Chưa kiểm với Firefox thật và muse.ai thật: cookie đăng nhập chỉ đọc được nếu Firefox đã ghi nó ra `cookies.sqlite`
+  (cookie phiên không có hạn có thể chỉ nằm trong RAM của Firefox — khi đó «Lấy cookie» trả `404`).
 - noVNC phải dựng đường WebSocket tương đối theo trang (noVNC ≥ 1.5 mặc định vậy); bản cũ dựng theo gốc máy sẽ không nối được.
-- Giao diện web người dùng đang ẩn (chỉ có API).
+- Trang bắt đầu (`url`) chỉ áp dụng khi trình duyệt mở MỚI; workspace đang mở thì gõ địa chỉ trong noVNC (không có cổng
+  điều khiển trình duyệt).
 
 ## 5. Triển khai
 
@@ -1430,9 +1480,11 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /v1/videos/{id}` | Có | Trạng thái video: `queued`, `in_progress`, `completed`, `failed` |
 | `GET /v1/videos/{id}/content` | Có | Tải tệp video (stream); `409` nếu chưa xong |
 | `GET /m/{id}/<tệp>` | Không | Giao diện riêng của module đã cài (kể cả chưa liên kết) |
-| `POST /api/trinh-duyet/{module}/mo` | Có | Mở/khôi phục hồ sơ trình duyệt từ xa và cấp vé dùng một lần (60s) |
+| `POST /api/trinh-duyet/{module}/mo` | Có | Mở/khôi phục hồ sơ trình duyệt từ xa (tuỳ chọn `url` trang bắt đầu) và cấp vé dùng một lần (60s) |
 | `POST /api/trinh-duyet/{module}/{ho_so}/ve` | Có | Cấp thêm vé ngắn hạn cho hồ sơ đang mở |
-| `GET /api/trinh-duyet/{module}` | Có | Liệt kê danh sách hồ sơ trình duyệt của module |
+| `GET /api/trinh-duyet/{module}` | Có | Liệt kê workspace (hồ sơ) của module: `ho_so`, `ten`, `loai`, `trang_thai`, `dang_mo`, `thu_cong`, `luc_mo` |
+| `POST /api/trinh-duyet/{module}` | Có | Tạo workspace `{"ten"}` → `{"ho_so", "ten"}` (ID ngẫu nhiên, không mở trình duyệt) |
+| `POST /api/trinh-duyet/{module}/{ho_so}/cookie-sang-module` | Có | Lấy cookie của `mien` từ hồ sơ, cài vào trường bí mật `truong` của `module_dich` (phản hồi không chứa cookie) |
 | `POST /api/trinh-duyet/{module}/{ho_so}/dong` | Có | Đóng hồ sơ trình duyệt, thu hồi vé/phiên và đóng WebSocket |
 | `DELETE /api/trinh-duyet/phien` | Có | Thu hồi mọi phiên noVNC và đóng các WebSocket đang mở |
 | `GET /novnc/dang-nhap` | Không | Trang nhỏ có nút «Mở trình duyệt» (không script); KHÔNG tiêu thụ vé — bot xem trước liên kết chỉ GET |

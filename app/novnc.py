@@ -29,6 +29,11 @@ Cơ chế:
    khi nối; thu hồi/đóng hồ sơ/hết hạn phiên đều đặt cờ huỷ và chính tác vụ phục vụ socket đóng nó.
 8. Đóng hồ sơ: THU HỒI TRƯỚC (vé, phiên, socket, đích ghim) rồi mới gọi module.
 9. Nhật ký kênh `trinh_duyet` không bao giờ ghi vé, phiên, bí mật; log uvicorn được lọc che đoạn phiên và vé.
+10. Cookie sang module (`POST /api/trinh-duyet/{module}/{ho_so}/cookie-sang-module`, chỉ quản trị): đăng nhập xong
+   trong trình duyệt trên server thì lõi lấy cookie của một tên miền qua phương thức TUỲ CHỌN `trinh_duyet_cookie` của
+   module nguồn và đưa vào trường BÍ MẬT (nhận bằng `kieu` trong manifest, không bằng tên) của module đích QUA ĐÚNG
+   đường cài có sẵn (`SoModule.cai`: module đích tự kiểm bằng `cai()` rồi lõi mới lưu, bí mật vào kho 0600). Cookie chỉ
+   đi dịch vụ → lõi → module đích trong RAM của lời gọi: không vào phản hồi, log, nhật ký; không lưu biến toàn cục.
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ import base64
 import hashlib
 import html
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -55,9 +61,11 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import nhat_ky
+from app import kho, nhat_ky
+from app.kham_pha import ID_HOP_LE, MAU_MIEN
 from app.loi_openai import LoiOpenAI, than_loi
-from app.so_module import SoModule
+from app.so_module import LoiSo, SoModule
+from app.than_co_tran import THAN_JSON, doc_het
 from app.tu_xa import _dia_chi_bi_chan
 from app.xac_thuc import can_quan_tri
 
@@ -83,6 +91,30 @@ THAN_DOI_VE_TOI_DA = 4096
 
 #: Dùng với fullmatch (không `$`: `$` nhận thêm một «\n» cuối).
 MAU_HO_SO = re.compile(r"[a-f0-9]{16,64}")
+#: Tên miền hỏi cookie — cùng khuôn với dịch vụ trình duyệt: nhãn [a-z0-9-] không «-» đầu/cuối, ÍT NHẤT hai nhãn,
+#: ≤ 253 ký tự. Một nhãn đơn là cả một đuôi tên miền (cookie của mọi trang dưới nó) → từ chối.
+#: Chuỗi cookie module nguồn trả: ASCII in được (không CR/LF/ký tự điều khiển — đi thẳng vào tiêu đề HTTP của module
+#: đích), có trần độ dài.
+MAU_CHUOI_COOKIE = re.compile(r"[\x20-\x7e]+")
+TRAN_COOKIE = 64 * 1024
+#: Workspace (hồ sơ có tên hiển thị): tên 1..100 ký tự in được; trang bắt đầu http(s) ≤ 2048 ký tự.
+TRAN_TEN_WORKSPACE = 100
+TRAN_URL_BAT_DAU = 2048
+#: Dạng che khoá chuẩn của lõi/module (`kho.che`): «…» + tối đa 4 ký tự in được.
+MAU_KHOA_CHE = re.compile(r"…[\x21-\x7e]{0,4}")
+#: Câu của LÕI thay cho mọi chuỗi tự do module đích trả (`loi` tổng và từng khoá): chuỗi đó có thể chứa cookie dưới
+#: dạng bất kỳ (mã hoá, cắt, cookie cũ đã lưu) — không lọc được theo nội dung, nên không bao giờ chuyển tiếp.
+LOI_KHOA_DICH = "Module đích từ chối khoá này (chi tiết xem nhật ký của module)"
+LOI_TONG_DICH = "Module đích từ chối cookie (chi tiết xem nhật ký của module)"
+#: Lỗi có cấu trúc từ `trinh_duyet_cookie` (thuộc tính `ma`) mà lõi chuyển tiếp — kèm câu của LÕI, không chép câu module.
+LOI_COOKIE_NGUON = {
+    400: "Dịch vụ trình duyệt từ chối yêu cầu (mã hồ sơ hoặc tên miền không hợp lệ)",
+    404: ("Hồ sơ không có hoặc chưa có kho cookie — mở trình duyệt, đăng nhập, đóng (giữ phiên) rồi thử lại. "
+          "Nếu cookie đăng nhập là cookie phiên (không hạn) thì trình duyệt có thể không ghi nó ra đĩa — khi đó dán "
+          "cookie tay vào cấu hình module"),
+    409: "Hồ sơ đang mở — bấm «Đóng · giữ phiên» rồi lấy cookie",
+    501: "Dịch vụ trình duyệt không hỗ trợ lấy cookie cho loại hồ sơ này",
+}
 MAU_VE = re.compile(r"[A-Za-z0-9_-]{20,128}")
 
 #: Tiêu đề YÊU CẦU được chuyển tới đích (cho phép); còn lại (Origin, Referer, Cookie, Authorization của khách,
@@ -147,6 +179,23 @@ def kiem_tra_ho_so_id(ho_so: str) -> None:
 
 def _so(request: Request) -> SoModule:
     return request.app.state.so
+
+
+def kiem_url_bat_dau(url: Any) -> str | None:
+    """Trang đầu khi trình duyệt khởi động: http(s), có tên máy, không userinfo, ASCII in được không khoảng trắng
+    (đi vào đối số tiến trình ở dịch vụ). Rỗng/không gửi → None. Sai → 400 không phản chiếu."""
+    if url is None or url == "":
+        return None
+    sai = LoiOpenAI(400, f"Trường «url» cần là http(s), có tên máy, không chứa mật khẩu, tối đa {TRAN_URL_BAT_DAU} ký tự")
+    if not isinstance(url, str) or len(url) > TRAN_URL_BAT_DAU or not re.fullmatch(r"[\x21-\x7e]+", url):
+        raise sai
+    try:
+        u = urlsplit(url)
+        if u.scheme not in ("http", "https") or not u.hostname or u.username is not None or u.password is not None:
+            raise ValueError()
+    except ValueError:
+        raise sai from None
+    return url
 
 
 # ───────────── Sổ vé / phiên / socket (mọi hàm *_khoa gọi khi đang giữ _KHOA) ─────────────
@@ -436,10 +485,12 @@ async def api_mo_trinh_duyet(module: str, request: Request):
         kiem_tra_ho_so_id(ho_so)
     else:
         ho_so = sinh_ho_so_id()
+    url = kiem_url_bat_dau(than.get("url"))
 
     mod = _module_co(request, module, "trinh_duyet_mo", "mở trình duyệt")
     try:
-        kq = await mod.trinh_duyet_mo(ho_so=ho_so, loai=loai)
+        # `url` chỉ truyền khi có: module cũ chỉ nhận (ho_so, loai) vẫn chạy.
+        kq = await mod.trinh_duyet_mo(ho_so=ho_so, loai=loai, **({"url": url} if url else {}))
     except Exception as e:
         log.warning("Module %s lỗi khi gọi trinh_duyet_mo: %s", module, _ten_loi(e))
         raise LoiOpenAI(502, f"Module lỗi khi mở trình duyệt ({_ten_loi(e)})")
@@ -490,7 +541,32 @@ async def api_xin_ve(module: str, ho_so: str, request: Request):
 
 #: Trường của một mục hồ sơ theo hợp đồng `trinh_duyet_ds` — chỉ những trường này ra khỏi lõi (dịch vụ có thể trả
 #: kèm `dich` mang bí mật).
-_TRUONG_DS = ("ho_so", "loai", "trang_thai", "luc_mo")
+_TRUONG_DS = ("ho_so", "ten", "loai", "trang_thai", "dang_mo", "thu_cong", "luc_mo")
+
+
+@api_router.post("/{module}")
+async def api_tao_workspace(module: str, request: Request):
+    """Tạo workspace (hồ sơ có tên hiển thị; ID do dịch vụ sinh ngẫu nhiên, không suy từ tên). Không mở trình duyệt."""
+    try:
+        than = json.loads(await doc_het(request, THAN_JSON))
+    except (ValueError, RecursionError):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là JSON hợp lệ") from None
+    ten = than.get("ten") if isinstance(than, dict) else None
+    ten = ten.strip() if isinstance(ten, str) else ""
+    if not ten or len(ten) > TRAN_TEN_WORKSPACE or not ten.isprintable():
+        raise LoiOpenAI(400, f"Nhập tên workspace (1–{TRAN_TEN_WORKSPACE} ký tự, không xuống dòng)")
+    mod = _module_co(request, module, "trinh_duyet_tao", "tạo workspace")
+    try:
+        kq = await mod.trinh_duyet_tao(ten=ten)
+    except Exception as e:
+        log.warning("Module %s lỗi khi gọi trinh_duyet_tao: %s", module, _ten_loi(e))
+        raise LoiOpenAI(502, f"Module lỗi khi tạo workspace ({_ten_loi(e)})") from None
+    ho_so = kq.get("ho_so") if isinstance(kq, dict) else None
+    if not isinstance(ho_so, str) or not MAU_HO_SO.fullmatch(ho_so):
+        raise LoiOpenAI(502, "Kết quả tạo workspace từ module không đúng cấu trúc (cần ho_so hợp lệ)")
+    nhat_ky.ghi("trinh_duyet", "thong_tin", f"Tạo workspace {ho_so} ({module})", module=module, ho_so=ho_so,
+                hanh_dong="tao", ket_qua="thanh_cong")
+    return {"ho_so": ho_so, "ten": ten}
 
 
 @api_router.get("/{module}")
@@ -546,6 +622,104 @@ async def api_thu_hoi_het_phien():
     nhat_ky.ghi("trinh_duyet", "thong_tin", f"Thu hồi toàn bộ {so_phien} phiên noVNC",
                 hanh_dong="thu_hoi_phien", ket_qua="thanh_cong")
     return {"ok": True, "so_phien": so_phien}
+
+
+# ───────────── Cookie từ hồ sơ trình duyệt → cấu hình module đích ─────────────
+
+def _gia_tri_da_luu(so: SoModule, km, truong: str) -> list[str]:
+    """Giá trị đã lưu của một trường bí mật (đọc kho như `SoModule.cai`), chuẩn về danh sách chuỗi."""
+    muc = so.muc_da_luu(km.id)
+    if not muc:
+        return []
+    v = kho.doc_cau_hinh(km.id, km.truong_cau_hinh, muc).get(truong)
+    if isinstance(v, str):
+        return [v]
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+
+def _khoa_che(chu: Any) -> str:
+    """`khoa` module đích trả chỉ được ra ngoài khi ĐÚNG dạng che «…» + tối đa 4 ký tự; khác thì «…»."""
+    return chu if isinstance(chu, str) and MAU_KHOA_CHE.fullmatch(chu) else "…"
+
+
+@api_router.post("/{module}/{ho_so}/cookie-sang-module")
+async def api_cookie_sang_module(module: str, ho_so: str, request: Request):
+    kiem_tra_ho_so_id(ho_so)
+    try:
+        than = json.loads(await doc_het(request, THAN_JSON))
+    except (ValueError, RecursionError):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là JSON hợp lệ") from None
+    if not isinstance(than, dict):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
+    mien, module_dich, truong = than.get("mien"), than.get("module_dich"), than.get("truong")
+    so = _so(request)
+    km = so.catalog.get(module_dich) if isinstance(module_dich, str) and ID_HOP_LE.fullmatch(module_dich) else None
+    if km is None:
+        raise LoiOpenAI(404, "Không có module đích này (cần id của module đã cài, xem GET /api/modules/catalog)")
+    # Chỉ trường mà CHÍNH module đích khai `nhan_cookie` (kham_pha đã kiểm hình dạng: trường bí mật + tên miền chặt):
+    # người gọi không ghi được cookie vào khoá API của module khác, và không chọn tên miền.
+    khai = next((t for t in km.truong_cau_hinh if isinstance(truong, str) and t["khoa"] == truong), None)
+    if khai is None or khai["kieu"] not in kho.KIEU_BI_MAT or not isinstance(khai.get("nhan_cookie"), dict):
+        raise LoiOpenAI(400, "Trường «truong» phải là trường mà module đích khai nhận cookie (nhan_cookie trong manifest)")
+    if mien not in (None, "", khai["nhan_cookie"]["mien"]):
+        raise LoiOpenAI(400, "Trường «mien» khác tên miền mà module đích khai nhận cookie — bỏ trống để dùng tên miền đã khai")
+    mien = khai["nhan_cookie"]["mien"]  # kham_pha.kiem_manifest đã kiểm theo MAU_MIEN lúc nạp module
+    la_danh_sach = khai["kieu"] == "danh_sach_bi_mat"
+    mod = _module_co(request, module, "trinh_duyet_cookie", "lấy cookie từ hồ sơ")
+
+    boi_canh = {"module": module, "ho_so": ho_so, "module_dich": module_dich, "truong": truong, "mien": mien,
+                "hanh_dong": "cookie_sang_module"}
+    tom_tat = f"Cookie hồ sơ {ho_so} ({module}) sang {module_dich}/{truong}"
+    try:
+        kq = await mod.trinh_duyet_cookie(ho_so=ho_so, mien=mien)
+    except Exception as e:
+        ma = getattr(e, "ma", None)
+        nhat_ky.ghi("trinh_duyet", "loi", f"{tom_tat}: module nguồn lỗi", **boi_canh, ket_qua="that_bai",
+                    kieu_loi=_ten_loi(e), ma=ma if type(ma) is int else None)
+        if type(ma) is int and ma in LOI_COOKIE_NGUON:
+            raise LoiOpenAI(ma, LOI_COOKIE_NGUON[ma]) from None
+        log.warning("Module %s lỗi khi gọi trinh_duyet_cookie: %s", module, _ten_loi(e))
+        raise LoiOpenAI(502, f"Module lỗi khi lấy cookie ({_ten_loi(e)})") from None
+    cookie = kq.get("cookie") if isinstance(kq, dict) else None
+    if not isinstance(cookie, str):
+        raise LoiOpenAI(502, "Kết quả lấy cookie từ module không đúng cấu trúc (cần {\"cookie\": chuỗi})")
+    cookie = cookie.strip()
+    if not cookie:
+        nhat_ky.ghi("trinh_duyet", "canh_bao", f"{tom_tat}: hồ sơ chưa có cookie cho tên miền", **boi_canh,
+                    ket_qua="that_bai")
+        raise LoiOpenAI(404, "Hồ sơ chưa có cookie nào của tên miền này — đăng nhập trong trình duyệt, đóng (giữ phiên) "
+                             "rồi thử lại. Nếu cookie đăng nhập là cookie phiên (không hạn) thì trình duyệt có thể không "
+                             "ghi nó ra đĩa — khi đó dán cookie tay vào cấu hình module")
+    if len(cookie) > TRAN_COOKIE or not MAU_CHUOI_COOKIE.fullmatch(cookie):
+        raise LoiOpenAI(502, "Chuỗi cookie từ module không hợp lệ (ký tự điều khiển hoặc quá dài)")
+
+    try:
+        truoc = _gia_tri_da_luu(so, km, truong)
+        # Dạng sửa {"them": [...]} của đường cài có sẵn: giữ mọi khoá đã lưu, thêm vào cuối, khử trùng chuỗi y hệt.
+        kq_cai = await so.cai(module_dich, {truong: {"them": [cookie]} if la_danh_sach else cookie})
+        sau = _gia_tri_da_luu(so, km, truong) if kq_cai["ok"] else []
+    except (LoiSo, kho.KhoHong) as e:  # lời nhắn của sổ/kho không chứa giá trị khoá (như POST /api/modules/{id}/cai)
+        nhat_ky.ghi("trinh_duyet", "loi", f"{tom_tat}: không cài được", **boi_canh, ket_qua="that_bai",
+                    kieu_loi=_ten_loi(e))
+        raise LoiOpenAI(e.ma if isinstance(e, LoiSo) else 500, str(e)) from None
+    except Exception as e:  # mã module đích: lỗi của nó, không nhúng nguyên văn (có thể chứa cookie)
+        nhat_ky.ghi("trinh_duyet", "loi", f"{tom_tat}: module đích lỗi khi kiểm", **boi_canh, ket_qua="that_bai",
+                    kieu_loi=_ten_loi(e))
+        log.warning("Module %s lỗi khi kiểm cookie: %s", module_dich, _ten_loi(e))
+        raise LoiOpenAI(502, f"Module đích lỗi khi kiểm cookie ({_ten_loi(e)})") from None
+
+    da_them = int(bool(kq_cai["ok"]) and cookie not in truoc and cookie in sau)
+    # Chỉ dữ liệu CÓ CẤU TRÚC đi ra: ok (bool), khoa (đúng dạng che), câu lỗi của LÕI — không chuỗi tự do nào của module.
+    ket_qua = [{"khoa": _khoa_che(x.get("khoa")), "ok": bool(x.get("ok")),
+                "loi": None if x.get("ok") else LOI_KHOA_DICH}
+               for x in kq_cai.get("ket_qua_tung_khoa") or [] if isinstance(x, dict)]
+    ra = {"ok": bool(kq_cai["ok"]), "ket_qua_tung_khoa": ket_qua, "da_them": da_them}
+    if not ra["ok"]:
+        ra["loi"] = LOI_TONG_DICH
+    nhat_ky.ghi("trinh_duyet", "thong_tin" if ra["ok"] else "canh_bao",
+                f"{tom_tat}: {'đã cài' if ra['ok'] else 'module đích từ chối'}", **boi_canh,
+                ket_qua="thanh_cong" if ra["ok"] else "that_bai", da_them=da_them)
+    return JSONResponse(ra, status_code=200 if ra["ok"] else 400)
 
 
 # ───────────── Tuyến noVNC (/novnc) ─────────────

@@ -22,7 +22,22 @@ Module kết nối tới dịch vụ trình duyệt riêng (chạy ở container
 3. **Danh sách hồ sơ:**
    - Tuyến: `GET {dich_vu_url}/ho-so`
    - Tiêu đề: `Authorization: Bearer <khoa_dich_vu>`
-   - Phản hồi: `[{"ho_so": "...", "loai": "...", "trang_thai": "...", "luc_mo": "..."}]`
+   - Phản hồi: `[{"ho_so": "...", "ten": "...", "loai": "...", "trang_thai": "...", "dang_mo": false, "thu_cong": false, "luc_mo": null}]`
+
+4. **Tạo workspace:** `POST {dich_vu_url}/ho-so` thân `{"ten": "...", "loai": "firefox"}` → `{"ho_so", "ten"}`.
+5. **Lấy cookie:** `GET {dich_vu_url}/ho-so/{id}/cookie?mien=<tên miền>` → `{"cookie", "so_cookie"}` (chỉ hồ sơ Firefox).
+   Mã 400/404/501 của dịch vụ thành ngoại lệ có thuộc tính `ma` (lõi chuyển tiếp kèm câu của lõi); lỗi khác chỉ nêu mã
+   trạng thái — không chép nội dung phản hồi.
+
+`mo` nhận thêm `url` (trang bắt đầu, lõi đã kiểm). Danh sách hồ sơ có thêm `ten`, `dang_mo`, `thu_cong`.
+
+## Giao diện — tab «Trình duyệt»
+
+Trang `web/index.html` (bám thẻ «Workspace trình duyệt» + mục «Tái dùng» của c2a): tạo workspace, chọn trang bắt
+đầu (Muse, Google, ChatGPT, Claude, Gemini), «Mở» → liên kết «Vào trình duyệt», «Đóng · giữ phiên», và «Tái dùng
+workspace → thêm vào module»: chọn workspace đã đóng + module nhận — trường bí mật + tên miền → «Lấy cookie sang
+module». Cookie đi dịch vụ → lõi → module đích, không bao giờ qua trang. Các bước đầy đủ: `dich-vu/trinh-duyet/README.md`
+mục «Đăng nhập Muse trên server».
 
 ## Cấu hình
 

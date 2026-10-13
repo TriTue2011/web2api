@@ -17,7 +17,7 @@ flowchart LR
 | `muse` | Muse (Meta AI VM): giao thức Noise XX; cần khoá thiết bị nên **chưa dùng được** | Thử nghiệm, chưa kiểm với dịch vụ thật |
 | `muse2api` | Muse (muse.ai) qua giao thức trực tiếp: chat miễn phí bằng cookie, không cần API key | Có sẵn |
 | `antigravity` | Chat qua Antigravity CLI (`agy`) chạy trên máy chủ, cần cầu nối | Có khung, chưa kiểm với `agy` thật |
-| `vnc-xa` | Trình duyệt từ xa qua noVNC: đăng nhập tay (OTP/captcha), giữ phiên trong hồ sơ | Có sẵn (API) |
+| `vnc-xa` | Workspace trình duyệt trên server qua noVNC: đăng nhập tay (OTP/captcha), giữ phiên, đưa cookie sang module khác | Có sẵn (tab «Trình duyệt») |
 
 ## Cài nhanh với Docker Compose
 

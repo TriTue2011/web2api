@@ -100,7 +100,24 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
         {ok: bool} — đóng; giu_phien=True (mặc định khi quản trị không nói) giữ thư mục hồ sơ, False thì xoá.
         Lõi thu hồi vé/phiên/WebSocket TRƯỚC khi gọi; module ném lỗi → 502 kèm da_thu_hoi, không nhúng nguyên văn lỗi.
       async trinh_duyet_ds() -> list[dict]
-        list[{ho_so: str, loai: str, trang_thai: str, luc_mo?: str}] — liệt kê; lõi chỉ trả đúng các trường này.
+        list[{ho_so: str, ten?: str, loai: str, trang_thai: str, dang_mo?: bool, thu_cong?: bool, luc_mo?: str}] —
+        liệt kê workspace; lõi chỉ trả đúng các trường này (trường khác như `dich` bị bỏ).
+      trinh_duyet_mo nhận thêm `url` (tuỳ chọn, từ khoá) — trang đầu khi trình duyệt khởi động; lõi đã kiểm http(s),
+        có tên máy, không userinfo, ≤ 2048 ký tự, và CHỈ truyền khi quản trị gửi (module cũ (ho_so, loai) vẫn chạy).
+      Phương thức TUỲ CHỌN của khả năng "trinh_duyet" (thiếu → lõi trả 501, không tính là sai chuẩn):
+      async trinh_duyet_tao(ten: str) -> dict
+        {ho_so: str, ten: str} — tạo workspace: tên hiển thị (lõi đã kiểm 1..100 ký tự in được), thư mục hồ sơ ID
+        NGẪU NHIÊN do dịch vụ sinh (không suy từ tên/email). Không mở trình duyệt. POST /api/trinh-duyet/{module}.
+      Trường NHẬN cookie do module ĐÍCH tự khai trong manifest: phần tử `truong_cau_hinh` kiểu bí mật thêm
+        "nhan_cookie": {"mien": "<tên miền chặt, ≥ 2 nhãn>"}. Lõi chỉ ghi cookie vào trường có khai báo này và chỉ với
+        đúng tên miền đã khai (người gọi không chọn tên miền, không ghi được vào khoá API của module khác).
+      async trinh_duyet_cookie(ho_so: str, mien: str) -> dict
+        {cookie: str} — chuỗi «tên=giá trị; …» các cookie CÒN HẠN của tên miền `mien` (và tên miền con) trong hồ sơ.
+        Lõi đã kiểm `mien` (chữ thường, ≥ 2 nhãn). Dùng ở POST /api/trinh-duyet/{module}/{ho_so}/cookie-sang-module:
+        lõi đưa chuỗi vào trường BÍ MẬT của module đích qua đường cài có sẵn (cai() của module đích kiểm trước khi
+        lưu). Module KHÔNG log giá trị cookie. Lỗi có cấu trúc: ném ngoại lệ có thuộc tính `ma` (int) — 400 (yêu cầu
+        sai), 404 (hồ sơ không có/chưa có kho cookie), 409 (hồ sơ đang mở), 501 (loại hồ sơ không hỗ trợ) được lõi chuyển tiếp kèm câu
+        của LÕI; mọi lỗi khác → 502 chỉ nêu tên kiểu lỗi (không nhúng nguyên văn — có thể chứa cookie).
     YeuCauDaPhan (app/yeu_cau_da_phan.py) do lõi đọc từ multipart — module KHÔNG tự phân tích thân:
       .truong: dict[str, str | list[str]]  trường chữ, tên bỏ hậu tố «[]»; gửi một lần và không có «[]» → str,
                                            có «[]» hoặc lặp → list[str] theo thứ tự gửi (đúng hình thân JSON
@@ -175,6 +192,10 @@ TIEN_TO_HOP_LE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$")
 #: Id trùng chữ của tuyến /api/modules/<chữ> thì `DELETE /api/modules/tu-xa` thành mơ hồ.
 ID_DANH_RIENG = {"catalog", "thong-bao", "nap-lai", "tu-xa"}
 KIEU_TRUONG = {"chuoi", "bi_mat", "danh_sach_bi_mat"}
+KIEU_BI_MAT_TRUONG = {"bi_mat", "danh_sach_bi_mat"}
+#: Tên miền chặt: nhãn [a-z0-9-] không «-» đầu/cuối (≤ 63), ÍT NHẤT hai nhãn, tổng ≤ 253, chữ thường. Một nhãn đơn là cả
+#: một đuôi tên miền (cookie của mọi trang dưới nó). Dùng cho `nhan_cookie.mien` và đường cookie của lõi.
+MAU_MIEN = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 TRUONG_CHUOI_BAT_BUOC = ("id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to")
 PHUONG_THUC = ("nap", "cai", "chat", "models", "suc_khoe", "dung")
 _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -319,6 +340,14 @@ def kiem_manifest(m) -> str | None:
             return f"truong_cau_hinh[{i}] kiểu {t.get('kieu')!r} không hợp lệ (chỉ {sorted(KIEU_TRUONG)})"
         if t["khoa"] in khoa_da_co:
             return f"truong_cau_hinh trùng khoá {t['khoa']!r}"
+        if "nhan_cookie" in t:
+            nc = t["nhan_cookie"]
+            if t["kieu"] not in KIEU_BI_MAT_TRUONG:
+                return f"truong_cau_hinh[{i}] khai nhan_cookie phải là trường bí mật (bi_mat hoặc danh_sach_bi_mat)"
+            if (not isinstance(nc, dict) or set(nc) != {"mien"} or not isinstance(nc["mien"], str)
+                    or not MAU_MIEN.fullmatch(nc["mien"])):
+                return (f'truong_cau_hinh[{i}].nhan_cookie cần {{"mien": tên miền chữ thường, ít nhất hai nhãn}} '
+                        '(ví dụ {"mien": "vi-du.example"})')
         khoa_da_co.add(t["khoa"])
     if not isinstance(m.get("tai_nguyen"), dict):
         return "thiếu «tai_nguyen» (đối tượng)"

@@ -634,6 +634,18 @@ async def cai_tu_git(id_: str, request: Request):
 
 # ───────────── /m/<id>/ — giao diện đi theo module ─────────────
 
+#: Trang module chạy CÙNG origin với giao diện quản trị (khoá quản trị nằm ở localStorage): CSP chặt — chỉ script/kiểu
+#: từ chính máy chủ (không inline, không eval), không nhúng khung, không plugin — và header bảo vệ, kể cả khi 404.
+HEADER_TRANG_MODULE = {
+    "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                                "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
+                                "frame-ancestors 'none'"),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
 @tep_module.get("/m/{id_}/{duong:path}")
 async def tep_cua_module(id_: str, duong: str, request: Request):
     so = _so(request)
@@ -641,13 +653,13 @@ async def tep_cua_module(id_: str, duong: str, request: Request):
     # Mở khi module ĐÃ CÀI (mã trên đĩa) và khai tab riêng — kể cả lúc chưa liên kết: tệp tĩnh của module,
     # không chứa bí mật, và có khi chính là nơi người dùng thêm khoá.
     if km is None or not km.manifest.get("tab_web"):
-        raise HTTPException(404)
+        raise HTTPException(404, headers=HEADER_TRANG_MODULE)
     goc = (km.thu_muc / "web").resolve()
     p = (goc / duong).resolve()
     # resolve() rồi so tổ tiên: chặn «..» lẫn symlink trỏ ra ngoài thư mục web/ của module.
     if not p.is_relative_to(goc) or not p.is_file():
-        raise HTTPException(404)
-    return FileResponse(p)
+        raise HTTPException(404, headers=HEADER_TRANG_MODULE)
+    return FileResponse(p, headers=HEADER_TRANG_MODULE)
 
 
 # ───────────── /api/dia-chi, /api/ket-noi ─────────────

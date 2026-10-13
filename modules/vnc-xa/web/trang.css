@@ -1,0 +1,30 @@
+/* Trang «Workspace trình duyệt» của module vnc-xa — bố cục theo thẻ Workspace trình duyệt của c2a, dùng lớp có sẵn
+   của khung.css (.goc .the .nut .o .bao .phu). Mốc điện thoại: mọi hàng tự xuống dòng, không tràn ngang ở 360px. */
+.trang-tb{box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+.trang-tb h1{font-family:Newsreader,Georgia,serif;font-size:26px;font-weight:500}
+.trang-tb h2{font-size:16px;font-weight:600}
+.trang-tb label{font-weight:500;display:block}
+.trang-tb .quay-lai{align-self:flex-start}
+.trang-tb .o{font-size:16px}
+.nho{font-size:12px}
+.hang-tao{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.o-ten{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:4px}
+.hang-chon{display:flex;gap:8px;min-width:0}
+.hang-chon .o{flex:1 1 auto;min-width:0}
+.chon-dv{display:flex;flex-wrap:wrap;gap:8px}
+.chon-dv .nut[aria-pressed=true]{background:var(--accsoft);border-color:var(--acc)}
+.ds-ws{display:flex;flex-direction:column;gap:8px;max-height:32rem;overflow-y:auto}
+.ws{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.ws-dau{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ws-ten{font-weight:600;overflow-wrap:anywhere}
+.ws-tt{font-size:12px;color:var(--mute)}
+.ws-id{font-size:12px;color:var(--mute);word-break:break-all;font-family:ui-monospace,monospace}
+.ws-nut{display:flex;flex-wrap:wrap;gap:8px}
+.ws a.vao{display:inline-flex;align-items:center;min-height:44px;font-weight:600;color:var(--acc);overflow-wrap:anywhere}
+.trang-thai{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere}
+.trang-thai.tot{border-color:#B7DDD5;background:#E2F0ED}
+.trang-thai.loi{border-color:#F1C4BE;background:#FDECEA}
+.trang-thai.vang{border-color:#F3D9A4;background:#FDF5E4}
+.trang-thai .nhan-tt{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.trang-thai ul{margin:0;padding-left:20px}
+[hidden]{display:none !important}

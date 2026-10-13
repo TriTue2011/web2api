@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Workspace trình duyệt</title>
+<link rel="stylesheet" href="../../khung.css">
+<link rel="stylesheet" href="trang.css">
+<script src="trang.js" defer></script>
+</head>
+<body>
+<div class="goc">
+<main class="trang-tb">
+  <a class="quay-lai" href="../../He-thong.dc.html">← Hệ thống</a>
+  <h1>Workspace trình duyệt</h1>
+
+  <section class="the" id="o-khoa" hidden>
+    <h2>Khoá quản trị</h2>
+    <p class="phu">Trang cần khoá quản trị (cùng khoá với trang Hệ thống).</p>
+    <label for="khoa">Khoá</label>
+    <input class="o" id="khoa" type="password" autocomplete="off" spellcheck="false">
+    <button class="nut nut-chinh" id="luu-khoa" type="button">Dùng khoá này</button>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-ws">
+    <h2 id="tieu-de-ws">Workspace</h2>
+    <p class="phu">Mỗi workspace giữ cookie và dữ liệu đăng nhập riêng. Tạo workspace khác cho tài khoản khác. Đóng
+      cửa sổ để giải phóng CPU/RAM; mở lại vẫn dùng hồ sơ đã lưu, trừ khi nhà cung cấp đã hết hạn hoặc thu hồi phiên.</p>
+    <div class="hang-tao">
+      <label class="o-ten">Tên workspace
+        <input class="o" id="ten" maxlength="100" placeholder="Ví dụ: Muse cá nhân" autocomplete="off">
+      </label>
+      <button class="nut nut-chinh" id="tao" type="button" disabled>Tạo workspace</button>
+      <button class="nut" id="lam-moi" type="button">Làm mới</button>
+    </div>
+    <label for="url">Trang cần mở (tùy chọn)</label>
+    <input class="o" id="url" type="url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false"
+           placeholder="Để trống: trang trống">
+    <div class="chon-dv" id="chon-dv" role="group" aria-label="Chọn dịch vụ"></div>
+    <p class="phu nho">Bấm Mở rồi bấm liên kết «Vào trình duyệt» (dùng một lần trong 60 giây) để đăng nhập qua noVNC.
+      Trang cần mở chỉ áp dụng khi trình duyệt mở mới; workspace đang mở thì gõ địa chỉ ngay trong noVNC.</p>
+    <p class="phu nho">Xong thì bấm «Đóng · giữ phiên». Muốn đưa tài khoản vào module, dùng mục «Tái dùng» bên dưới và
+      chọn đúng workspace đã đóng.</p>
+    <p class="bao bao-loi" id="loi" role="alert" hidden></p>
+    <div class="ds-ws" id="ds-ws"></div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-tai-dung">
+    <h2 id="tieu-de-tai-dung">Tái dùng workspace → thêm vào module</h2>
+    <p class="phu">Chọn workspace đã đăng nhập và đã đóng → lấy cookie của tên miền → lưu vào trường bí mật của module.
+      Module tự kiểm cookie trước khi lưu. Cookie đi thẳng từ server vào cấu hình module, không hiện ở trang này.</p>
+    <label for="ws-tai-dung">Workspace đã đóng</label>
+    <div class="hang-chon">
+      <select class="o" id="ws-tai-dung"></select>
+      <button class="nut nut-nho" id="tai-lai" type="button" title="Tải lại danh sách workspace" aria-label="Tải lại danh sách workspace">↻</button>
+    </div>
+    <label for="dich">Module nhận — trường</label>
+    <select class="o" id="dich"></select>
+    <label for="mien">Tên miền (theo khai báo của module nhận)</label>
+    <input class="o" id="mien" type="text" readonly tabindex="-1" placeholder="Tự điền khi chọn module nhận">
+    <button class="nut nut-chinh" id="lay-cookie" type="button">Lấy cookie sang module</button>
+    <div id="ket-qua" aria-live="polite"></div>
+  </section>
+
+  <p class="bao" id="thong-bao" role="status" aria-live="polite" hidden></p>
+</main>
+</div>
+</body>
+</html>
