@@ -118,11 +118,29 @@ sequenceDiagram
   M->>P: gọi API của nhà cung cấp bằng khoá đã liên kết (xoay vòng)
   P-->>M: trả lời (stream từng khúc)
   M-->>L: (mã, header, nội dung) chuẩn OpenAI
-  L-->>A: chuyển từng dòng SSE ngay khi tới
+  L-->>A: chuyển từng sự kiện SSE ngay khi đủ (dòng trống kết thúc)
 ```
 
 Không thuộc module nào → `404 model_not_found`; module đã cài mà chưa liên kết → `404 module_not_configured`;
-module không có khả năng được gọi (ví dụ không có `anh`) → `501 capability_not_supported`. Đường nhận tệp
+module không có khả năng được gọi (ví dụ không có `anh`, hay không có `chat` cho `/v1/chat/completions`) →
+`501 capability_not_supported` — lõi xét phương thức CÓ THẬT trên module, không xét lời khai `cung_cap`.
+
+Lõi giữ đúng giao thức cho khách ở `/v1/chat/completions` (không đổi gì khác của phản hồi module):
+
+- **`finish_reason` khi có `tool_calls`**: choice có `tool_calls` mà kết thúc bằng `"stop"` → lõi đổi thành
+  `"tool_calls"` (SDK OpenAI, LangChain, n8n bỏ qua lời gọi hàm khi thấy `stop`). Quyết bằng cấu trúc JSON, nhớ
+  theo `index` của từng choice. `"length"` và `"content_filter"` **giữ nguyên**: lời gọi hàm bị cắt vì hết token có
+  tham số JSON đứt, gắn `tool_calls` là báo sai rằng nó hoàn chỉnh. Thân không stream là trọn một lượt nên
+  `finish_reason` thiếu/null cũng được đổi; trong stream null nghĩa là chưa xong nên không đụng. Khúc không phải JSON
+  đúng dạng (kể cả `index` không phải số nguyên) đi nguyên văn.
+- **Giữ kết nối SSE**: stream im lặng quá `WEB2API_SSE_GIU_GIAY` giây (mặc định 15; giá trị không phải số dương thì
+  về mặc định) → lõi gửi dòng chú thích `: keep-alive` (không phải `data:`), để proxy (Cloudflare, Nginx) không cắt
+  khi model suy luận lâu. Lõi tự đệm theo **ranh giới sự kiện SSE** (dòng trống), không dựa cách module chia khúc:
+  chỉ chuẩn hoá và phát sự kiện trọn vẹn, mỗi sự kiện phát ngay khi đủ; keep-alive chỉ chen giữa hai sự kiện; phần
+  dở dang lúc hết luồng phát nguyên văn. Khách ngắt (hoặc luồng bị đóng giữa chừng) → lõi huỷ việc đang chờ và đóng
+  (`aclose`) luồng của module, để luồng ngược dòng không chạy tiếp giữ kết nối và token.
+
+Đường nhận tệp
 (`/v1/audio/transcriptions`, `/v1/images/edits`, `/v1/videos` dạng multipart) đi cùng lối, thêm một bước ở lõi trước
 khi hỏi sổ: đọc `multipart/form-data` thành `YeuCauDaPhan` (vượt trần → `413`, không phải multipart → `415`), lấy
 `model` từ trường chữ để định tuyến.
@@ -329,8 +347,11 @@ Thư mục `modules/<id>/` gồm:
     hỏi", "can": []}` và `{"id": "dieu-khien", "nhan": "Điều khiển", "can": ["ai"]}`;
   - tuỳ chọn `phien_ban`, `yeu_cau_goi` (gói Python module cần import), `tab_web`
     (`{"nhan": "...", "trang": "web/<tệp>"}`).
-- `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`,
-  `async chat(body, stream)`, `async models()`, `async suc_khoe()`, `async dung()`. Tuỳ chọn: `async anh(body)`
+- `module.py`: lớp `Module` với `__init__(manifest)`, `nap(cau_hinh)`, `async cai(cau_hinh)`, `async suc_khoe()`,
+  `async dung()` (bắt buộc với mọi module). `async chat(body, stream)` bắt buộc khi `cung_cap` có `chat` (mở
+  `/v1/chat/completions`; thiếu → `501`); `async models()` bắt buộc khi `cung_cap` có khả năng định tuyến theo
+  `model` (`chat`, `anh`, `anh_sua`, `video`, `noi`, `nghe`, `nhung`, `xep_hang`) — module chỉ làm thiết bị/tri
+  thức không phải khai hàm giả. Tuỳ chọn: `async anh(body)`
   (mở `/v1/images/generations`) và bộ ba `async video_tao(body)`, `async video_trang_thai(ma)`,
   `async video_noi_dung(ma)` (mở `/v1/videos`); `async noi(body)` (mở `/v1/audio/speech`, trả âm thanh nhị phân
   hoặc iterator để stream), `async nghe(yc)` (mở `/v1/audio/transcriptions`) và `async anh_sua(yc)` (mở
@@ -1397,7 +1418,7 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 | Gemini báo «chặn vùng» / «User location is not supported» | Đặt `base_url` qua proxy (mục 4, gemini-api). |
 | `429` từ nhà cung cấp | Hết hạn mức; khoá tự nghỉ rồi dùng lại. Thêm khoá nếu hay gặp. |
 | `403` `no_key_permitted` khi tạo ảnh/video | Không khoá nào được nhà cung cấp cho việc đó — với Gemini thường là khoá hạng miễn phí. Xem tiểu mục module. |
-| `501` `capability_not_supported` | Module của tiền tố đó không có khả năng được gọi — tạo ảnh/video, sửa ảnh, đọc hay nghe giọng nói (ví dụ module từ xa). |
+| `501` `capability_not_supported` | Module của tiền tố đó không có khả năng được gọi — trò chuyện, tạo ảnh/video, sửa ảnh, đọc hay nghe giọng nói (ví dụ module từ xa, module chỉ làm giọng nói). |
 | `415` khi gửi tệp | `/v1/audio/transcriptions` và `/v1/images/edits` chỉ nhận `multipart/form-data`. `POST /v1/videos` nhận JSON hoặc multipart **chỉ có trường chữ**; tệp tham chiếu (`input_reference`) chưa hỗ trợ — gửi ảnh đầu vào theo tài liệu của module. |
 | `413` `request_too_large` | Thân vượt trần: multipart (mặc định 25 MB; `WEB2API_TEP_TOI_DA_MB`) hoặc JSON (mặc định 25 MB; `WEB2API_THAN_TOI_DA_MB`). Đếm byte thật, không tin `Content-Length`; nhớ container mặc định chỉ có 256 MB RAM. |
 | Ô module ở trạng thái «Lỗi» / có khối «Có module không nạp được» | Lý do ghi ngay đó (và ở trường `loi` của `GET /api/modules/catalog`): manifest sai, trùng id/tiền tố, thiếu gói… Sửa xong gọi `POST /api/modules/nap-lai`. |
@@ -1446,7 +1467,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
 | `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
 | `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |
-| `GET /api/nhat-ky` | Có | Xem nhật ký hệ thống (mới nhất trước; lọc theo `kenh`, `muc`, `q`, phân trang `truoc` = `luc` của dòng cuối trang trước, `gioi_han` ≤ 500). Kênh của lõi: `cuoc_goi` — mỗi lượt `/v1` đúng một dòng (người gọi, đường, model, module, mã HTTP, ms, `usage` nếu có, `request_id`; `dut: true` khi luồng đứt giữa chừng; KHÔNG nội dung lời nhắn/trả lời hay khoá), phản hồi `/v1` mang tiêu đề `x-request-id` (khớp `request_id` trong dòng) và `X-Web2api-Module` (tiền tố module đã phục vụ); `he_thong` — khởi động, nạp/đổi/gỡ module, cấu hình hỏng |
+| `GET /api/nhat-ky` | Có | Xem nhật ký hệ thống (mới nhất trước; lọc theo `kenh`, `muc`, `q`, phân trang `truoc` = `luc` của dòng cuối trang trước, `gioi_han` ≤ 500). Kênh của lõi: `cuoc_goi` — mỗi lượt `/v1` đúng một dòng (người gọi, đường, model, module, mã HTTP, ms, `usage` nếu có, `request_id` và `ma_yeu_cau` (cùng giá trị: `x-request-id` của khách nếu hợp lệ — ≤ 128 ký tự `[A-Za-z0-9._-]` — không thì lõi sinh `req.<16 hex>`; giá trị khách gửi không hợp lệ không được ghi); `dut: true` khi luồng đứt giữa chừng; KHÔNG nội dung lời nhắn/trả lời hay khoá), phản hồi `/v1` mang tiêu đề `x-request-id` (khớp `request_id` trong dòng) và `X-Web2api-Module` (tiền tố module đã phục vụ); `he_thong` — khởi động, nạp/đổi/gỡ module, cấu hình hỏng |
 | `GET /api/nhat-ky/kenh` | Có | Danh sách kênh nhật ký đang có bản ghi (`kenh`, `so_dong`, `lan_cuoi`) |
 | `DELETE /api/nhat-ky` | Có | Xoá bản ghi nhật ký cũ hơn N ngày (`truoc_ngay=N`, 0 ≤ N ≤ 36500; thiếu → `400`, không xoá gì) |
 | `GET /api/khoa-khach` | Có | Danh sách khoá khách (không băm, không khoá thô) |
@@ -1469,7 +1490,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/tim-kiem` | Có | Tìm kiếm tri thức kết hợp 5 sơ đồ: công tắc (nguồn/sơ đồ), lọc nhiều mặt (+ đếm mặt), cây phân cấp (+ duyệt nút con), mục lục (nhảy tới đề mục, chỉ mục A–Z) và phễu nối tầng |
 | `POST /api/tim-kiem/muc-luc` | Có | Lấy cây mục lục phân cấp của tài liệu (chương → mục → tiểu mục); trần độ sâu 6, trần số nút 2000 |
 | `GET /v1/models` | Có | Model của mọi module đã liên kết |
-| `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream |
+| `GET /v1/models/{model}` | Có | Chi tiết model (tôn trọng model tắt, phạm vi khoá khách; `404` `model_not_found` nếu không có) |
+| `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream (chuẩn hoá `finish_reason` khi có `tool_calls`, `: keep-alive` khi im lặng — mục 2); `501` nếu module không có `chat` |
 | `POST /v1/embeddings` | Có | Tạo vector nhúng chuẩn OpenAI (thân `{"model": "...", "input": "..."}`); `501` nếu module không có |
 | `POST /v1/rerank` | Có | Xếp hạng lại danh sách tài liệu (`model`, `query`, `documents`, `top_n`); `501` nếu module không có |
 | `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
@@ -1510,6 +1532,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
+| `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |

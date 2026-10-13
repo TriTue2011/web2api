@@ -429,8 +429,10 @@ def _trich_xuat_usage_sse(chunk: bytes) -> dict | None:
 def _request_id(scope: Scope) -> str:
     for k, v in scope.get("headers", []):
         if k.lower() == b"x-request-id":
-            gia_tri = v.decode("latin-1").strip()
-            if _REQ_ID_HOP_LE.match(gia_tri):
+            # Chỉ bỏ khoảng trắng biên của tiêu đề (OWS: dấu cách, tab); «abc\n» không phải «abc». fullmatch: `$` của
+            # mẫu còn khớp trước «\n» cuối nếu dùng match.
+            gia_tri = v.decode("latin-1").strip(" \t")
+            if _REQ_ID_HOP_LE.fullmatch(gia_tri):
                 return gia_tri
             break
     # 64 bit ngẫu nhiên, ngắt bằng «.» để KHÔNG mang dạng token (che_chuoi che mọi chuỗi [A-Za-z0-9_-]{20,}):
@@ -506,6 +508,7 @@ class MiddlewareNhatKyCuocGoi:
             ma = ma_http if ma_http is not None else (500 if loi else 499)
             muc = "loi" if ma >= 500 else "canh_bao" if ma >= 400 or dut else "thong_tin"
             them: dict[str, Any] = {
+                "ma_yeu_cau": req_id,
                 "request_id": req_id,
                 "nguoi_goi": trang_thai.get("nguoi_goi") or "chua_xac_thuc",
                 "duong": scope.get("path", ""),
