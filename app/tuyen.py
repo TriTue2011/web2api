@@ -9,9 +9,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
+import os
+import re
 from http import HTTPMethod
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.convertors import PathConvertor
 from starlette.routing import Match
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
@@ -59,6 +63,13 @@ trinh_duyet = novnc_mod.api_router
 novnc = novnc_mod.novnc_router
 
 
+def _nhac_lai(chuoi: str) -> str:
+    """Chuỗi khách điều khiển (đường, model) để nêu lại trong thông báo lỗi: bỏ ký tự điều khiển, cắt 120 ký tự —
+    không phản chiếu chuỗi dài/độc."""
+    chuoi = "".join(k for k in chuoi if k.isprintable())
+    return chuoi if len(chuoi) <= 120 else chuoi[:120] + "…"
+
+
 def _so(request: Request) -> SoModule:
     return request.app.state.so
 
@@ -98,10 +109,9 @@ def _nhom_cua_model(item: dict) -> str:
     return "chat"
 
 
-@v1.get("/models")
-async def v1_models(request: Request):
+async def _danh_sach_models(request: Request) -> list[dict]:
     so = _so(request)
-    cac = list(so.dang_chay.items())
+    cac = [(id_, m) for id_, m in so.dang_chay.items() if callable(getattr(m, "models", None))]
     ket_qua = await asyncio.gather(*(m.models() for _, m in cac), return_exceptions=True)
     try:
         cai_dat_tat_ca = kho.doc_cai_dat_model()
@@ -136,7 +146,37 @@ async def v1_models(request: Request):
                 m for m in data
                 if any(kn in pham_vi for kn in (m.get("kha_nang") or ["chat"]))
             ]
+    return data
+
+
+@v1.get("/models")
+async def v1_models(request: Request):
+    data = await _danh_sach_models(request)
     return {"object": "list", "data": data}
+
+
+@v1.get("/models/{model:path}")
+async def v1_model_retrieve(request: Request, model: str):
+    raw_path = request.scope.get("raw_path", b"")
+    if not model or not model.strip("/"):
+        if raw_path.endswith(b"/"):
+            tho = raw_path.rstrip(b"/")
+            dich = tho + (b"?" + request.scope["query_string"] if request.scope.get("query_string") else b"")
+            return RedirectResponse(dich.decode("latin-1"), status_code=307)
+        raise LoiOpenAI(404, f"web2api không có đường {request.method} {_nhac_lai(request.url.path)} (chưa hỗ trợ). "
+                             "Các đường /v1 đang có: xem README mục 8; danh sách model: GET /v1/models.",
+                        loai="invalid_request_error", code="unknown_endpoint")
+    request.state.model_khach = model
+    data = await _danh_sach_models(request)
+    for muc in data:
+        if muc.get("id") == model:
+            tien_to, co_gach, _ = model.partition("/")
+            so = _so(request)
+            id_ = so.tim_theo_tien_to(tien_to) if co_gach else None
+            if id_ and id_ in so.dang_chay:
+                _ghi_nhan_module(request, so, id_)
+            return muc
+    raise LoiOpenAI(404, f"Model {_nhac_lai(model)!r} không tồn tại hoặc đã tắt.", code="model_not_found")
 
 
 def _module_dang_chay(so: SoModule, id_: str, tien_to: str):
@@ -247,6 +287,152 @@ def _can_tep(yc: YeuCauDaPhan, ten: str, toi_thieu: int = 1, toi_da: int | None 
         raise LoiOpenAI(400, f"Chỉ nhận tối đa {toi_da} tệp «{ten}», nhận {so}", code="too_many_files")
 
 
+def sse_giu_giay() -> float:
+    """Số giây im lặng tối đa của stream trước khi lõi chen `: keep-alive` (WEB2API_SSE_GIU_GIAY, mặc định 15).
+    Giá trị không phải số dương hữu hạn (0, âm, chữ, nan, inf) → mặc định: đặt sai không được tắt keep-alive."""
+    try:
+        val = float(os.environ.get("WEB2API_SSE_GIU_GIAY", "15"))
+    except ValueError:
+        return 15.0
+    return val if val > 0 and math.isfinite(val) else 15.0
+
+
+def _index_hop_le(choice: dict) -> int | None:
+    """`index` của một choice: thiếu → 0 (một choice); không phải số nguyên thật (list, dict, bool, chuỗi, số thực)
+    → None: choice đó chuyển nguyên văn, không ném (giá trị lạ có thể không băm được)."""
+    idx = choice.get("index", 0)
+    return idx if isinstance(idx, int) and not isinstance(idx, bool) else None
+
+
+def _co_tool_calls(choice: dict) -> bool:
+    msg = choice.get("message") or choice.get("delta")
+    return isinstance(msg, dict) and isinstance(msg.get("tool_calls"), list) and len(msg["tool_calls"]) > 0
+
+
+def _chuan_hoa_chat_thuong(noi_dung: bytes) -> bytes:
+    """Phản hồi chat KHÔNG stream có tool_calls mà finish_reason là "stop" hoặc thiếu/null → "tool_calls" (SDK
+    OpenAI/LangChain/n8n bỏ qua lời gọi hàm khi thấy "stop"). Thân không stream là trọn một lượt nên «thiếu» cũng là
+    đã kết thúc. "length"/"content_filter" GIỮ NGUYÊN: lời gọi hàm bị cắt có tham số JSON đứt, gắn "tool_calls" là
+    báo sai rằng nó hoàn chỉnh. Quyết bằng cấu trúc JSON; thân không phải JSON đúng dạng → nguyên văn."""
+    try:
+        j = json.loads(noi_dung)
+    except (ValueError, RecursionError):
+        return noi_dung
+    choices = j.get("choices") if isinstance(j, dict) else None
+    if not isinstance(choices, list):
+        return noi_dung
+    da_sua = False
+    for choice in choices:
+        if isinstance(choice, dict) and _co_tool_calls(choice) and choice.get("finish_reason") in ("stop", None):
+            choice["finish_reason"] = "tool_calls"
+            da_sua = True
+    return json.dumps(j, ensure_ascii=False).encode("utf-8") if da_sua else noi_dung
+
+
+def _chuan_hoa_khuc_stream(su_kien: bytes, choices_co_tool: set[int]) -> bytes:
+    """Chuẩn hoá MỘT sự kiện SSE trọn vẹn: choice đã có tool_calls (ở sự kiện này hoặc trước đó, nhớ theo `index`
+    trong `choices_co_tool`) mà kết thúc bằng finish_reason "stop" → "tool_calls". Trong stream, null nghĩa là CHƯA
+    xong nên không đụng; "length"/"content_filter" giữ nguyên (xem _chuan_hoa_chat_thuong). Dòng nào không phải
+    `data:` JSON đúng dạng → nguyên văn; dòng được ghi lại giữ nguyên ký tự cuối dòng (\r)."""
+    if b"data:" not in su_kien:
+        return su_kien
+    da_sua_khuc = False
+    dong_moi = []
+    for dong in su_kien.split(b"\n"):
+        than = dong.strip()
+        j = None
+        if than.startswith(b"data:") and than[5:].strip() != b"[DONE]":
+            try:
+                j = json.loads(than[5:])
+            except (ValueError, RecursionError):
+                j = None
+        choices = j.get("choices") if isinstance(j, dict) else None
+        da_sua_dong = False
+        for choice in choices if isinstance(choices, list) else ():
+            if not isinstance(choice, dict):
+                continue
+            idx = _index_hop_le(choice)
+            if idx is None:
+                continue
+            if _co_tool_calls(choice):
+                choices_co_tool.add(idx)
+            if choice.get("finish_reason") == "stop" and idx in choices_co_tool:
+                choice["finish_reason"] = "tool_calls"
+                da_sua_dong = True
+        if da_sua_dong:
+            da_sua_khuc = True
+            dong = b"data: " + json.dumps(j, ensure_ascii=False).encode("utf-8") + dong[len(dong.rstrip()):]
+        dong_moi.append(dong)
+    return b"\n".join(dong_moi) if da_sua_khuc else su_kien
+
+
+#: Kết thúc một sự kiện SSE = một dòng trống (dòng kết bằng LF hoặc CRLF).
+_HET_SU_KIEN = re.compile(rb"\r?\n\r?\n")
+_KEEP_ALIVE = b": keep-alive\n\n"
+
+
+async def _khuc_ke(it):
+    return await anext(it)
+
+
+async def _dong_luong_module(cho: asyncio.Task | None, it) -> None:
+    """Huỷ tác vụ đang chờ khúc kế (nếu còn), ĐỢI nó dừng hẳn, rồi mới aclose() luồng module — aclose khi luồng còn
+    chạy trong tác vụ kia ném «already running» và không đóng được gì."""
+    if cho is not None:
+        cho.cancel()
+        await asyncio.wait({cho})
+        if not cho.cancelled():
+            cho.exception()  # đã lấy: không cảnh báo «exception was never retrieved»
+    dong = getattr(it, "aclose", None)
+    if callable(dong):
+        try:
+            await dong()
+        except Exception as e:  # luồng module hỏng lúc đóng: không đổi kết cục của lượt gọi
+            log.warning("Đóng luồng stream của module lỗi: %s", type(e).__name__)
+
+
+async def _luong_sse_chuan_hoa(iterator, giu_giay: float):
+    """Bọc stream chat của module: chuẩn hoá finish_reason và chen `: keep-alive` khi im lặng quá `giu_giay`.
+
+    Lõi TỰ đệm theo ranh giới sự kiện SSE (dòng trống), không dựa cách module chia khúc (từng dòng, từng mẩu byte hay
+    nhiều sự kiện một khúc): chỉ chuẩn hoá và phát SỰ KIỆN TRỌN, mỗi sự kiện phát ngay khi đủ ranh giới; keep-alive chỉ
+    chen khi bộ đệm rỗng (không đang dở một sự kiện). Phần dở dang lúc hết luồng phát nguyên văn.
+
+    Mọi đường thoát — đọc hết, module lỗi, khách ngắt lúc chờ (CancelledError), generator bị đóng khi đang dừng ở
+    `yield` (GeneratorExit) — đều đi qua `finally`: huỷ tác vụ chờ và aclose() luồng module, để luồng ngược dòng không
+    chạy tiếp giữ kết nối và token. Việc dọn được che chắn (shield) vì cancel scope của anyio (Starlette) huỷ lặp lại
+    ở mọi await còn trong scope."""
+    co_tool: set[int] = set()
+    it = iterator.__aiter__()
+    cho: asyncio.Task | None = None
+    dem = b""
+    try:
+        while True:
+            if cho is None:
+                cho = asyncio.create_task(_khuc_ke(it))
+            xong, _ = await asyncio.wait({cho}, timeout=giu_giay)
+            if not xong:
+                if not dem:
+                    yield _KEEP_ALIVE
+                continue
+            tac_vu, cho = cho, None
+            try:
+                khuc = tac_vu.result()
+            except StopAsyncIteration:
+                break
+            dem += khuc.encode("utf-8") if isinstance(khuc, str) else khuc
+            while (het := _HET_SU_KIEN.search(dem)) is not None:
+                su_kien, dem = dem[:het.end()], dem[het.end():]
+                yield _chuan_hoa_khuc_stream(su_kien, co_tool)
+            if dem and not dem.strip(b"\r\n"):  # chỉ còn dòng trống lẻ giữa hai sự kiện: không dở gì, phát luôn
+                yield dem
+                dem = b""
+        if dem:
+            yield dem
+    finally:
+        await asyncio.shield(_dong_luong_module(cho, it))
+
+
 def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
     headers = dict(headers)
     kieu = headers.pop("content-type", None)
@@ -273,8 +459,16 @@ async def v1_chat(request: Request):
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
     # như chữ ký suy nghĩ hay trường riêng của nhà cung cấp.
     than = await _than_json(request)
-    _, m = _module_theo_model(request, than)
-    return _tra_ve(*await m.chat(than, bool(than.get("stream"))))
+    id_, m = _module_theo_model(request, than)
+    _can_phuong_thuc(m, id_, "trò chuyện", "chat")
+    stream = bool(than.get("stream"))
+    ma, headers, noi_dung = await m.chat(than, stream)
+    if ma == 200:
+        if stream and hasattr(noi_dung, "__aiter__"):
+            noi_dung = _luong_sse_chuan_hoa(noi_dung, sse_giu_giay())
+        elif isinstance(noi_dung, bytes):
+            noi_dung = _chuan_hoa_chat_thuong(noi_dung)
+    return _tra_ve(ma, headers, noi_dung)
 
 
 @v1.post("/images/generations")
@@ -405,13 +599,22 @@ async def v1_rerank(request: Request):
 
 
 
+def _nuot_moi_hau_to(route) -> bool:
+    """Route có tham số kiểu `path` (vd `/models/{model:path}`) khớp MỌI hậu tố: nó khớp-một-phần một đường không chứng
+    minh đường đó có thật (chỉ biết khi tra dữ liệu), nên không dùng để trả 405 — giữ 404 `unknown_endpoint` như đường
+    lạ. Quyết từ kiểu bộ chuyển tham số của route, không từ bảng đường gõ tay."""
+    return any(isinstance(c, PathConvertor) for c in getattr(route, "param_convertors", {}).values())
+
+
 @v1_khong_co.api_route("", methods=list(HTTPMethod), include_in_schema=False)
 @v1_khong_co.api_route("/{duong:path}", methods=list(HTTPMethod), include_in_schema=False)
 async def duong_v1_khong_co(request: Request):
     """Đường có trong router `v1` nhưng sai phương thức → 405 + Allow; không có hẳn → 404 `unknown_endpoint`.
 
     Suy từ CHÍNH router `v1` (route nào khớp đường mà không khớp phương thức — Match.PARTIAL của Starlette), không từ
-    bảng tay: thêm đường mới vào `v1` là tự đúng. Nêu lại đường khách gọi nhưng chỉ phần path (query có thể mang
+    bảng tay: thêm đường mới vào `v1` là tự đúng. Ngoại lệ suy từ cấu trúc: route có tham số `path` khớp mọi hậu tố
+    (`_nuot_moi_hau_to`) nên không làm căn cứ cho 405 — vd `POST /v1/models/x` vẫn 404 như trước khi có
+    `GET /v1/models/{model}`. Nêu lại đường khách gọi nhưng chỉ phần path (query có thể mang
     khoá, vd ?key=…), đã cắt ngắn và bỏ ký tự điều khiển — không phản chiếu chuỗi dài/độc.
 
     Đường có «/» cuối mà bỏ «/» thì KHỚP TRỌN một route của `v1` (cả phương thức) → 307 sang đường không «/» cuối,
@@ -426,10 +629,9 @@ async def duong_v1_khong_co(request: Request):
         if any(r.matches(bo_gach)[0] is Match.FULL for r in v1.routes):
             dich = tho + (b"?" + scope["query_string"] if scope["query_string"] else b"")
             return RedirectResponse(dich.decode("latin-1"), status_code=307)
-    cho_phep = sorted({pt for r in v1.routes if r.matches(scope)[0] is Match.PARTIAL for pt in r.methods})
-    duong = "".join(k for k in request.url.path if k.isprintable())
-    duong = duong if len(duong) <= 120 else duong[:120] + "…"
-    goi = f"{request.method} {duong}"
+    cho_phep = sorted({pt for r in v1.routes if not _nuot_moi_hau_to(r) and r.matches(scope)[0] is Match.PARTIAL
+                       for pt in r.methods})
+    goi = f"{request.method} {_nhac_lai(request.url.path)}"
     if cho_phep:
         raise LoiOpenAI(405, f"{goi}: đường này chỉ nhận {', '.join(cho_phep)}", code="method_not_allowed",
                         headers={"Allow": ", ".join(cho_phep)})
@@ -552,6 +754,8 @@ async def _model_cua_module(id_: str, request: Request) -> list[dict]:
     m = so.dang_chay.get(id_)
     if m is None:
         raise LoiOpenAI(404, f"Module {id_!r} chưa liên kết", code="module_not_configured")
+    if not callable(getattr(m, "models", None)):  # không khai khả năng theo model: không có model nào (như /v1/models)
+        return []
     try:
         return await m.models()
     except Exception as e:

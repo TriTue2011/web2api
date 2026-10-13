@@ -17,7 +17,10 @@ HỢP ĐỒNG lớp `Module` trong module.py:
                                              {ok, ket_qua_tung_khoa: [...], loi, cau_hinh_luu (chỉ khi ok)}
                                              `cau_hinh_luu` là cấu hình sạch để lưu — lõi KHÔNG trả nó ra API
     async chat(body: dict, stream: bool)   -> (mã HTTP, headers, bytes | async-iterator[bytes])
-    async models() -> list[dict]           — id dạng "<tien_to>/<tên>"
+                                             — bắt buộc khi `cung_cap` có "chat"; tuỳ chọn nếu không (thiếu thì
+                                             POST /v1/chat/completions trả 501 capability_not_supported)
+    async models() -> list[dict]           — id dạng "<tien_to>/<tên>"; bắt buộc khi `cung_cap` có khả năng định
+                                             tuyến theo `model` (KHA_NANG_CO_MODEL), tuỳ chọn nếu không
     async suc_khoe() -> dict               — không tốn token, không lộ khoá; không được đổi bộ đếm dùng
                                              {ok, base_url?, khoa: [mục mỗi khoá, THEO THỨ TỰ ĐÃ LƯU]}; mục mỗi khoá:
                                              khoa (dạng che …abcd), ok, do_tre_ms, so_model, loi, dang_nghi_den, và
@@ -197,7 +200,8 @@ KIEU_BI_MAT_TRUONG = {"bi_mat", "danh_sach_bi_mat"}
 #: một đuôi tên miền (cookie của mọi trang dưới nó). Dùng cho `nhan_cookie.mien` và đường cookie của lõi.
 MAU_MIEN = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 TRUONG_CHUOI_BAT_BUOC = ("id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to")
-PHUONG_THUC = ("nap", "cai", "chat", "models", "suc_khoe", "dung")
+#: Phương thức BẮT BUỘC chung: chỉ vòng đời. Khả năng (chat, ảnh, …) theo `cung_cap` — xem HOP_DONG_KHA_NANG.
+PHUONG_THUC = ("nap", "cai", "suc_khoe", "dung")
 _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 #: Mẫu mã khả năng trong `cung_cap`, mã loại `loai` và mã trong `can` — kiểm dạng, KHÔNG liệt kê mã hợp lệ
 #: (loại/khả năng mới không phải sửa lõi).
@@ -230,6 +234,13 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
     "tim_kiem": ("tim_kiem",),
     "trinh_duyet": ("trinh_duyet_mo", "trinh_duyet_dong", "trinh_duyet_ds"),
 }
+
+
+#: Khả năng mà đường /v1 của LÕI chọn module theo trường `model` của khách (tuyen._module_theo_model) — khai một
+#: trong số này thì phải có `models()` để model hiện ở GET /v1/models. Không suy được từ HOP_DONG_KHA_NANG: bảng đó
+#: có cả khả năng không đi theo model (thiet_bi, tim_kiem, trinh_duyet). Đây là thuộc tính của các đường chuẩn OpenAI
+#: lõi đang có, không phải danh sách tên nhà cung cấp; khả năng lạ không nằm đây thì không bị bắt `models` (mã mở).
+KHA_NANG_CO_MODEL = frozenset({"chat", "anh", "anh_sua", "video", "noi", "nghe", "nhung", "xep_hang"})
 
 
 def kiem_chuan_module(cung_cap: list[str], lop: type) -> dict[str, list[str]]:
@@ -451,7 +462,10 @@ def nap_ma(thu_muc: Path, manifest: dict, vt: str) -> tuple[type, str]:
         lop = getattr(mod, "Module", None)
         if not isinstance(lop, type):
             raise LoiNap("module.py không có lớp «Module»")
-        thieu_pt = [p for p in PHUONG_THUC if not callable(getattr(lop, p, None))]
+        bat_buoc = list(PHUONG_THUC)
+        if KHA_NANG_CO_MODEL.intersection(manifest.get("cung_cap", [])):
+            bat_buoc.append("models")
+        thieu_pt = [p for p in bat_buoc if not callable(getattr(lop, p, None))]
         if thieu_pt:
             raise LoiNap(f"lớp Module thiếu phương thức: {', '.join(thieu_pt)}")
         lop(manifest)  # tạo thử: lỗi trong __init__ lộ NGAY lúc nạp, không đợi lúc cài/khởi động

@@ -20,7 +20,9 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 - `__init__(manifest: dict)`: Khởi tạo nhẹ, không gọi mạng.
 - `nap(cau_hinh: dict) -> None`: Nạp cấu hình đã lưu.
 - `async cai(cau_hinh: dict) -> dict`: Kiểm tra cấu hình và trả về `{ok, ket_qua_tung_khoa, loi, cau_hinh_luu}`.
-- `async models() -> list[dict]`: Liệt kê các model dạng `<tien_to>/<tên>`.
+- `async models() -> list[dict]`: Liệt kê các model dạng `<tien_to>/<tên>`. Bắt buộc khi `cung_cap` có khả năng định tuyến theo `model` (`chat`, `anh`, `anh_sua`, `video`, `noi`, `nghe`, `nhung`, `xep_hang` — `KHA_NANG_CO_MODEL` ở `app/kham_pha.py`); module chỉ làm thiết bị/tri thức không cần. Thiếu thì module không có model trong `GET /v1/models`.
+
+`chat` không còn bắt buộc chung: chỉ bắt buộc khi `cung_cap` có `chat` (bảng dưới). Lõi định tuyến theo phương thức CÓ THẬT — module không có `chat` gọi `POST /v1/chat/completions` nhận `501 capability_not_supported`.
 - `async suc_khoe() -> dict`: Kiểm tra trạng thái sức khoẻ, hạn mức.
 - `async dung() -> None`: Dọn dẹp kết nối khi dừng.
 

@@ -28,6 +28,30 @@ def test_chan_ssrf(url):
 
 
 @pytest.mark.parametrize("url", [
+    "http://[2002:7f00:1::]/v1",      # 6to4 mang 127.0.0.1 (loopback)
+    "http://[2002:a9fe:a9fe::]/v1",   # 6to4 mang 169.254.169.254 (metadata đám mây)
+    "http://[2002:0000:0000::]/v1",   # 6to4 mang 0.0.0.0 (không định tuyến)
+    "http://[2001:0:7f00:1:0:0:0:1]/v1",                    # Teredo: server 127.0.0.1
+    "http://[2001:0000:0808:0808:0000:0000:5601:5601]/v1",  # Teredo: client 169.254.169.254
+])
+def test_chan_6to4_teredo_nhung_ipv4_xau(url):
+    with pytest.raises(ValueError, match="IPv4 nhúng"):
+        asyncio.run(kiem_url_lan(url))
+
+
+@pytest.mark.parametrize("url", [
+    "http://[2002:0808:0808::]/v1",                   # 6to4 mang 8.8.8.8 (public)
+    "http://[2001:0000:0808:0808:0000:0000:fefe:fefe]/v1",  # Teredo: server/client public
+    # IPv4 nhúng chịu CÙNG luật với IPv4 trực tiếp: riêng tư được phép ở tu_xa
+    # (module GPU nằm trong LAN), như 10.0.0.1 trực tiếp ở test_cho_phep_lan_va_internet.
+    "http://[2002:0a00:0001::]/v1",                   # 6to4 mang 10.0.0.1
+    "http://[2001:4860:4860::8888]/v1",              # IPv6 global thường, không nhúng
+])
+def test_6to4_teredo_hop_le_van_qua(url):
+    assert asyncio.run(kiem_url_lan(url)) == url.rstrip("/")
+
+
+@pytest.mark.parametrize("url", [
     "http://192.168.1.220:8000/v1", "http://10.0.0.5/v1/", "http://172.16.3.4:9000/v1", "https://8.8.8.8/v1",
 ])
 def test_cho_phep_lan_va_internet(url):

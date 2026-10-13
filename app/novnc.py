@@ -306,22 +306,6 @@ async def _phan_giai(ten: str, cong: int) -> list[str]:
     return ds
 
 
-def _ly_do_chan(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
-    """Quy tắc chặn của lõi, áp thêm cho IPv4 NHÚNG trong địa chỉ 6to4 (2002::/16) và Teredo (2001::/32) — lấy
-    theo cấu trúc địa chỉ (`sixtofour`, `teredo`), vd 2002:7f00:1:: mang 127.0.0.1, 2002:a9fe:a9fe:: mang metadata."""
-    ly_do = _dia_chi_bi_chan(ip)
-    if ly_do or not isinstance(ip, ipaddress.IPv6Address):
-        return ly_do
-    nhung = [ip.sixtofour] if ip.sixtofour else []
-    if ip.teredo:
-        nhung += list(ip.teredo)
-    for v4 in nhung:
-        ly_do = _dia_chi_bi_chan(v4)
-        if ly_do:
-            return f"IPv4 nhúng {v4}: {ly_do}"
-    return None
-
-
 async def ghim_dich(dich: str) -> dict[str, Any]:
     """Kiểm và ghim đích. ValueError mang lý do KHÔNG chứa URL/bí mật."""
     phan = urlsplit(str(dich or "").strip())
@@ -345,7 +329,7 @@ async def ghim_dich(dich: str) -> dict[str, Any]:
     if not ds:
         raise ValueError("không phân giải được tên máy của đích")
     for ip in ds:
-        ly_do = _ly_do_chan(ipaddress.ip_address(ip))
+        ly_do = _dia_chi_bi_chan(ipaddress.ip_address(ip))
         if ly_do:
             raise ValueError(f"đích trỏ vào dải bị chặn: {ly_do}")
     host_url = f"[{host}]" if ":" in host else host
