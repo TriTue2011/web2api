@@ -7,6 +7,7 @@ lõi (đổi tên model bỏ tiền tố, giữ trường lạ, stream từng d�
 Chặn SSRF khi đăng ký: lõi sẽ gửi yêu cầu (kèm khoá) tới URL này theo lệnh của quản trị, nên
 không được trỏ vào chính container (loopback — cổng quản trị nội bộ, admin_key…), link-local
 169.254.0.0/16 (metadata đám mây: 169.254.169.254 trả khoá IAM) hay địa chỉ không định tuyến.
+IPv4 nhúng trong 6to4/Teredo chịu cùng luật (vd 2002:7f00:1:: mang loopback).
 NHƯNG cho phép LAN riêng tư 10/8, 172.16/12, 192.168/16: module GPU nằm đúng trong mạng nhà
 (.220), chặn chúng là chặn đúng mục đích của tính năng. Cho phép cả http:// vì dịch vụ trong
 LAN gần như không có chứng chỉ TLS.
@@ -43,6 +44,17 @@ def _dia_chi_bi_chan(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str |
         return "địa chỉ không định tuyến"
     if not (ip.is_private or ip.is_global):
         return "dải địa chỉ đặc biệt"
+    if isinstance(ip, ipaddress.IPv6Address):
+        # IPv4 NHÚNG trong 6to4 (2002::/16) và Teredo (2001::/32): áp CÙNG luật trên
+        # theo CẤU TRÚC địa chỉ (sixtofour/teredo), không khớp chuỗi — vd 2002:7f00:1::
+        # mang 127.0.0.1, 2002:a9fe:a9fe:: mang 169.254.169.254. Bản chung cho mọi nơi kiểm SSRF.
+        nhung = [ip.sixtofour] if ip.sixtofour else []
+        if ip.teredo:
+            nhung += list(ip.teredo)
+        for v4 in nhung:
+            ly_do = _dia_chi_bi_chan(v4)
+            if ly_do:
+                return f"IPv4 nhúng {v4}: {ly_do}"
     return None
 
 

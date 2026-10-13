@@ -28,7 +28,7 @@ from typing import Any
 
 from fastapi import Request
 
-from app import kho, khoa_khach, nhat_ky
+from app import gioi_han, kho, khoa_khach, nhat_ky
 from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.xac_thuc")
@@ -86,10 +86,13 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
     if isinstance(danh_tinh, dict):
         return danh_tinh
 
+    gioi_han.kiem_tra_truoc_xac_thuc(request)  # IP đang bị khoá vì sai khoá nhiều → 429
+
     loai_auth, _, gia_tri = request.headers.get("authorization", "").partition(" ")
     gia_tri = gia_tri.strip()
 
     if loai_auth.lower() != "bearer" or not gia_tri:
+        gioi_han.ghi_loi_xac_thuc(request)
         raise LoiOpenAI(
             401,
             "Thiếu hoặc sai khoá xác thực. Gửi header «Authorization: Bearer <khoá>».",
@@ -109,6 +112,7 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
     khach = khoa_khach.tim_theo_khoa_tho(gia_tri)
     if khach is not None:
         if not khach.get("bat", True):
+            gioi_han.ghi_loi_xac_thuc(request)
             raise LoiOpenAI(
                 401,
                 "Khoá khách đã bị tắt hoặc thu hồi.",
@@ -144,6 +148,7 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
         request.state.danh_tinh = danh_tinh
         return danh_tinh
 
+    gioi_han.ghi_loi_xac_thuc(request)
     raise LoiOpenAI(
         401,
         "Thiếu hoặc sai khoá xác thực. Gửi header «Authorization: Bearer <khoá>».",

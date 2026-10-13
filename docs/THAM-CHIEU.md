@@ -1528,6 +1528,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
 | `WEB2API_KHACH_DONG_THOI` | không | Trần số yêu cầu đồng thời tối đa cho mỗi khoá khách; vượt trần trả `429` kèm tiêu đề `Retry-After` (không làm hỏng trạng thái module) |
+| `WEB2API_RL_LOI_XAC_THUC` | `30` | Chống đoán khoá: số lần sai khoá xác thực (401) tối đa mỗi IP trong một cửa sổ; vượt thì khoá IP tạm thời, mọi yêu cầu từ IP đó (kể cả có khoá đúng) nhận `429` kèm `Retry-After`; `0` = tắt. IP loopback trực tiếp được miễn |
+| `WEB2API_RL_CUA_SO_GIAY` | `60` | Cửa sổ trượt (giây) đếm lần sai khoá xác thực |
+| `WEB2API_RL_KHOA_GIAY` | `60` | Thời gian khoá IP (giây) khi vượt ngưỡng sai khoá xác thực |
+| `WEB2API_TRUST_PROXY` | không | Danh sách CIDR (cách nhau bằng dấu phẩy) của proxy ngược được tin: chỉ khi peer trực tiếp nằm trong danh sách này mới dùng `X-Forwarded-For` để xác định IP khách cho giới hạn sai khoá; rỗng = không tin (mọi khách sau proxy sẽ chung một IP) |
 | `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
