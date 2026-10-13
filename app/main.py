@@ -26,6 +26,7 @@ from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
 from app.nhat_ky import MiddlewareNhatKyCuocGoi
 from app.so_module import SoModule
+from app.tieu_de_bao_mat import MiddlewareTieuDeBaoMat
 
 GOC = Path(__file__).resolve().parent.parent
 WEB = GOC / "web"
@@ -143,6 +144,8 @@ class MiddlewareChanKhoaKhachQuanTri:
 app.add_middleware(MiddlewareChanKhoaKhachQuanTri)
 # /novnc: mọi phản hồi (kể cả lỗi, 405, đường rơi xuống StaticFiles) mang CSP sandbox và header bảo vệ.
 app.add_middleware(tuyen.novnc_mod.MiddlewareBaoVeNoVNC)
+# Ngoài cùng: 3 header bảo vệ cho MỌI phản hồi HTTP; chỉ đặt khi chưa có (không đè /novnc, /m/).
+app.add_middleware(MiddlewareTieuDeBaoMat)
 
 
 def thu_muc_du_lieu() -> str:
