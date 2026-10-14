@@ -119,6 +119,21 @@ async def _than_json(request: Request) -> dict:
     return than
 
 
+def _lay_bool(than: dict, ten: str, mac_dinh: bool | None = False) -> bool | None:
+    """Lấy trường logic từ thân JSON của khách/quản trị: chỉ nhận đúng bool, vắng mặt hoặc null.
+
+    Ép kiểu lỏng (`bool("false")` → True) từng khiến chuỗi "false" bị coi là đồng ý/xác nhận.
+    Vắng mặt hoặc null → `mac_dinh` (mặc định False). Kiểu khác → 400 (theo mẫu kiểm trường
+    trong tệp này).
+    """
+    if ten not in than or than[ten] is None:
+        return mac_dinh
+    gia_tri = than[ten]
+    if not isinstance(gia_tri, bool):
+        raise LoiOpenAI(400, f"«{ten}» phải là true/false.", code="invalid_request")
+    return gia_tri
+
+
 def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
     return LoiOpenAI(e.ma, lam_sach_thong_diep(str(e)))
 
@@ -538,9 +553,9 @@ async def v1_chat(request: Request):
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
     # như chữ ký suy nghĩ hay trường riêng của nhà cung cấp.
     than = await _than_json(request)
+    stream = _lay_bool(than, "stream", False)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "trò chuyện", "chat")
-    stream = bool(than.get("stream"))
     ma, headers, noi_dung = await m.chat(than, stream)
     if ma == 200:
         if stream and hasattr(noi_dung, "__aiter__"):
@@ -847,6 +862,9 @@ async def v1_responses(request: Request):
     # phạm vi ngay sau khi biết chức năng, TRƯỚC khi tra model (khoá hẹp không dò được model nào tồn tại).
     kiem_tra_pham_vi(request, "anh", "anh_sua")
     than = await _than_json(request)
+    # Kiểm kiểu NGAY khi đọc thân, trước mọi việc tốn tài nguyên: sai kiểu mà để sau lệnh gọi module thì ảnh đã
+    # sinh (đã tốn hạn mức nhà cung cấp) rồi khách mới nhận 400.
+    stream = _lay_bool(than, "stream", False)
     tool = _kiem_tra_va_tach_tool_image_generation(than)
     prompt, input_images = _trich_xuat_responses_prompt_va_anh(than)
     sua_anh = bool(input_images)
@@ -889,7 +907,7 @@ async def v1_responses(request: Request):
     # Thân do LÕI dựng lại nên chỉ giữ tiêu đề thuộc không gian tên của chính web2api (vd x-web2api-route của combo);
     # mọi tiêu đề khác của module (set-cookie, server, tiêu đề tả thân cũ…) mặc định bị bỏ.
     tieu_de = {k: v for k, v in dict(headers).items() if k.lower().startswith("x-web2api-")}
-    if not bool(than.get("stream")):
+    if not stream:
         return JSONResponse(resp_obj, status_code=200, headers=tieu_de)
     return StreamingResponse(
         _sse_responses_anh(resp_obj),
@@ -1419,7 +1437,7 @@ async def sua_khoa_khach(id_: str, request: Request):
     than = await _than_json(request)
     kq = khoa_khach_mod.sua_khoa(
         id_khoa=id_,
-        bat=than.get("bat"),
+        bat=_lay_bool(than, "bat", None),
         nhan=than.get("nhan"),
         pham_vi=than.get("pham_vi"),
     )
@@ -1434,7 +1452,7 @@ async def sua_khoa_khach_khong_path(request: Request):
         raise LoiOpenAI(400, "Thiếu trường «id» trong thân yêu cầu.")
     kq = khoa_khach_mod.sua_khoa(
         id_khoa=id_,
-        bat=than.get("bat"),
+        bat=_lay_bool(than, "bat", None),
         nhan=than.get("nhan"),
         pham_vi=than.get("pham_vi"),
     )
@@ -1592,7 +1610,7 @@ async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
     tham_so = than.get("tham_so") or {}
     if not isinstance(tham_so, dict):
         raise LoiOpenAI(400, "«tham_so» phải là đối tượng")
-    xac_nhan = bool(than.get("xac_nhan", False))
+    xac_nhan = _lay_bool(than, "xac_nhan", False)
     ly_do = str(than.get("ly_do") or "")
 
     so = _so(request)

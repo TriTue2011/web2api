@@ -797,3 +797,13 @@ def test_responses_anh_loi_module_khong_lot_chuoi_bi_mat(moi_truong):
     assert CHUOI_BI_MAT_GIA not in r.text
     for ten, gtri in r.headers.items():
         assert CHUOI_BI_MAT_GIA not in ten and CHUOI_BI_MAT_GIA not in gtri
+
+
+@pytest.mark.parametrize("stream", ["false", "0", "no", 1, [], {}, ""])
+def test_responses_stream_sai_kieu_400_truoc_khi_goi_module(moi_truong, stream):
+    """`stream` không phải bool → 400 NGAY, module KHÔNG được gọi (ảnh chưa sinh, chưa tốn hạn mức)."""
+    client, mod_gia, _, _ = moi_truong
+    r = client.post("/v1/responses", headers=QT, json={**_than_tao(), "stream": stream})
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "invalid_request"
+    assert mod_gia.da_nhan_anh == [] and mod_gia.da_nhan_sua == []
