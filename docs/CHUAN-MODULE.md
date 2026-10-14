@@ -43,6 +43,8 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 | `trinh_duyet` | `trinh_duyet_mo`<br>`trinh_duyet_dong`<br>`trinh_duyet_ds` | `trinh_duyet_tao`<br>`trinh_duyet_cookie` | `ho_so, loai, url?` (mở)<br>`ho_so, giu_phien` (đóng)<br>`ten` (tạo)<br>`ho_so, mien` (cookie) | `dict` `{ho_so, dich, loai}` (mở)<br>`dict` `{ok}` (đóng)<br>`list[dict]` (danh sách)<br>`{ho_so, ten}` (tạo)<br>`{cookie}` (cookie) | 400, 404, 501, 502 |
 | *(Mã lạ)* | Không bắt buộc | Tự do | Tuỳ ý | Tuỳ ý | — |
 
+> **Lưu ý**: Phương thức `anh` và `anh_sua` cũng được gọi từ `POST /v1/responses` khi client chỉ định công cụ `image_generation` (không có ảnh đầu vào → gọi `anh` với thân kiểu `/v1/images/generations`, `response_format: "b64_json"`; có `input_image` dạng data URL base64 → dựng `YeuCauDaPhan` gọi `anh_sua`). Module nhận y như từ đường chuẩn: `model` đầy đủ `<tiền tố>/<tên>`, các trường `prompt`, `n`, `size`, `quality`, `background`, `output_format` (nếu khách gửi). Đường này cần phản hồi `b64_json` (trả `url` → `502`); nên nêu `size`/`quality`/`background`/`output_format` ở cấp đầu phản hồi để lõi báo đúng thuộc tính của kết quả.
+
 ---
 
 ## 3. Chi tiết chuẩn `thiet_bi`

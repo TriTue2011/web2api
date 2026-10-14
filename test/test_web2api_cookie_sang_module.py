@@ -491,6 +491,9 @@ def _vnc_xa(url: str, khoa: str = KHOA_DV):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     m = mod.Module(json.loads((THU_MUC_VNC / "manifest.json").read_text(encoding="utf-8")))
+    # Máy chủ giả chạy trên loopback: mở kiểm IP của thể hiện này (mỗi test một thể
+    # hiện mới nên gán trực tiếp tương đương monkeypatch, không rò sang test khác).
+    m._kiem_ip = lambda ip: None
     m.nap({"dich_vu_url": url, "khoa_dich_vu": khoa})
     return m
 
