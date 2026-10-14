@@ -116,4 +116,5 @@ Khi lấy module từ một kho GitHub riêng tư hoặc tránh hạn mức 60 y
 
 ## Đọc tiếp
 
-Tài liệu kỹ thuật đầy đủ về kiến trúc, thành phần, chi tiết từng module, vận hành nâng cao, bảo mật và bảng tra cứu API / biến môi trường: xem tại [docs/THAM-CHIEU.md](docs/THAM-CHIEU.md).
+- Tài liệu kỹ thuật đầy đủ về kiến trúc, thành phần, chi tiết từng module, vận hành nâng cao, bảo mật và bảng tra cứu API / biến môi trường: xem tại [docs/THAM-CHIEU.md](docs/THAM-CHIEU.md).
+- Hướng dẫn triển khai an toàn ra Internet (sau Cloudflare Tunnel, proxy ngược, SSH): xem tại [docs/TRIEN-KHAI.md](docs/TRIEN-KHAI.md).
