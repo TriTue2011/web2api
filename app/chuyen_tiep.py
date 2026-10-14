@@ -53,7 +53,8 @@ Phân loại lỗi (quyết định đổi khoá hay trả ngay):
 Trạng thái «đã phục vụ thành công» và sổ «model không có» nằm trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi
 động lại thì về «chưa rõ».
 
-KHẢ NĂNG TỐN TIỀN (ảnh, video — `goi_kha_nang`): cùng một khoá có thể chat được mà không được tạo ảnh/video
+KHẢ NĂNG TỐN TIỀN (ảnh, video — `goi_kha_nang`; giọng nói `noi`, nhận dạng `nghe`, sửa ảnh `anh_sua` của module từ
+xa cũng đi qua đây): cùng một khoá có thể chat được mà không được tạo ảnh/video
 (hạng miễn phí của một số nhà cung cấp: «Not available»). Nên trạng thái nhớ theo (khoá, khả năng), TÁCH khỏi `_nghi` của
 chat — khoá bị từ chối tạo ảnh vẫn chat bình thường. Phân loại theo MÃ TRẠNG THÁI và so sánh giữa các khoá,
 không theo chữ trong thông điệp (dạng lỗi thật của khoá miễn phí CHƯA ĐO):
@@ -71,6 +72,9 @@ không theo chữ trong thông điệp (dạng lỗi thật của khoá miễn p
   5xx/lỗi mạng   → như chat.
   404/khác       → lỗi của yêu cầu → trả ngay (CHƯA so giữa các khoá như chat — chưa đo nhà cung cấp trả 404
                    theo khoá ở đây).
+Với `noi`/`nghe`/`anh_sua` nghĩa là: khoá bị từ chối giọng nói (401/403) chỉ nghỉ VIỆC đó, chat vẫn chạy và ngược lại;
+429 ngay lần dùng ĐẦU cũng nghỉ 24 giờ và lỗi cuối là 403 `no_key_permitted` (khoá đã từng dùng được thì 429 kèm
+Retry-After); 501 tính là lỗi máy chủ (thử thêm một khoá); 400 phân xử bằng so sánh giữa các khoá như trên.
 Không bao giờ dò khoá bằng lời gọi tốn tiền: trạng thái là «chua_ro» cho tới khi dùng thật. Trạng thái nằm
 trong bộ nhớ của thể hiện — lưu lại cấu hình hay khởi động lại thì về «chua_ro».
 
@@ -93,6 +97,7 @@ import email.utils
 import ipaddress
 import json
 import logging
+import re
 import socket
 import time
 from datetime import datetime, timezone
@@ -104,6 +109,81 @@ import httpx
 from app.kham_pha import LOAI_LOI_CHUAN, phan_loai_loi_mac_dinh
 from app.kho import che
 from app.loi_openai import loai_theo_ma
+from app.yeu_cau_da_phan import YeuCauDaPhan
+
+MAU_CONTENT_TYPE = re.compile(r"^[a-zA-Z0-9!#$&^_.+-]+/[a-zA-Z0-9!#$&^_.+-]+$")
+
+
+def tieu_de_cho_khach(r: httpx.Response, kieu_mac_dinh: str) -> dict[str, str]:
+    """Header của dịch vụ xa được đi tới khách — MẶC ĐỊNH TỪ CHỐI, chỉ `content-type` (vắng thì `kieu_mac_dinh`).
+
+    Chỗ DUY NHẤT header của phản hồi ngược dòng thành header trả khách (chat, khả năng tốn tiền, giọng nói, multipart).
+    Dịch vụ xa không được đặt cookie lên origin của lõi (Set-Cookie), mở CORS, bật hộp đăng nhập của trình duyệt
+    (WWW-Authenticate), ép tải về/đổi tên tệp (Content-Disposition), đè CSP của lõi, lộ phần mềm nội bộ (Server,
+    X-Powered-By) hay chen khung kết nối (Connection, Keep-Alive, Transfer-Encoding). Content-Length/Content-Encoding
+    cũng không: httpx đã giải nén, chuyển nguyên là khách giải nén lần hai. Retry-After của 429 do lõi tự tính từ sổ
+    nghỉ (`_con_nghi`, `_loi_het_khoa`), không lấy của dịch vụ xa. Cùng nguyên tắc với danh sách cho phép ở app/novnc.py."""
+    return {"content-type": r.headers.get("content-type", kieu_mac_dinh)}
+
+
+class LuongNhiPhan:
+    """Luồng nhị phân của MỘT phản hồi ngược dòng, chuyển từng khúc `aiter_bytes()` (không cắt dòng — byte nào cũng giữ).
+
+    Lớp thay vì async generator: `aclose()` của generator CHƯA chạy (khách ngắt trước byte đầu) không chạy `finally`,
+    kết nối ngược dòng treo trong pool. Ở đây `aclose()` luôn đóng phản hồi. Lỗi giữa chừng (đứt kết nối, gzip hỏng)
+    KHÔNG bị nuốt: đi lên để lõi cắt kết nối tới khách (khách thấy luồng chunked không kết thúc, nhật ký ghi `dut`) —
+    nhị phân không có chỗ chen sự kiện lỗi như SSE, kết thúc êm là khách tưởng tệp âm thanh đã trọn."""
+
+    def __init__(self, r: httpx.Response, log: logging.Logger, ten: str):
+        self._r = r
+        self._it = r.aiter_bytes()
+        self._log = log
+        self._ten = ten
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            return await self._it.__anext__()
+        except StopAsyncIteration:
+            await self.aclose()
+            raise
+        except httpx.HTTPError as e:
+            self._log.warning("%s: luồng nhị phân đứt giữa chừng: %s", self._ten, type(e).__name__)
+            await self.aclose()
+            raise
+
+    async def aclose(self) -> None:
+        try:
+            await self._it.aclose()
+        finally:
+            await self._r.aclose()
+
+
+def lam_sach_ten_tep(ten: str, mac_dinh: str = "tep") -> str:
+    """Làm sạch tên tệp do khách khai: không làm đường dẫn, bỏ ký tự điều khiển, bỏ ../."""
+    import urllib.parse
+    s = str(ten or "")
+    try:
+        s = urllib.parse.unquote(s)
+    except Exception:
+        pass
+    s = re.sub(r"[\x00-\x1f\x7f]", "", s)
+    s = s.replace("\\", "/").split("/")[-1].strip()
+    while s.startswith("."):
+        s = s.lstrip(".")
+    s = s.strip()
+    return s or mac_dinh
+
+
+def lam_sach_content_type(ct: str) -> str:
+    """Chỉ nhận dạng type/subtype hợp lệ, không thì application/octet-stream."""
+    s = str(ct or "").strip()
+    if MAU_CONTENT_TYPE.match(s):
+        return s
+    return "application/octet-stream"
+
 
 NGHI_429_MAC_DINH = 60.0
 NGHI_429_TRAN = 600.0
@@ -437,16 +517,14 @@ class ChuyenTiepOpenAI:
                         self.log.warning("%s: khoá %s không có model %s (404 trong khi khoá khác trả 200), bỏ qua "
                                          "khoá này cho model đó %.0f s", self.ten, self.nhan_khoa(k), model,
                                          NGHI_MODEL_KHONG_CO)
-                    # Chỉ chuyển content-type: httpx đã giải nén gzip, chuyển nguyên content-encoding/
-                    # content-length là khách giải nén lần hai và hỏng.
-                    ct = r.headers.get("content-type", "application/json")
+                    hd = tieu_de_cho_khach(r, "application/json")
                     if stream:
-                        return 200, {"content-type": ct}, self._chuyen_dong(r)
+                        return 200, hd, self._chuyen_dong(r)
                     try:
                         noi_dung = await r.aread()
                     finally:
                         await r.aclose()
-                    return 200, {"content-type": ct}, noi_dung
+                    return 200, hd, noi_dung
                 try:
                     noi_dung = await r.aread()
                 finally:
@@ -522,6 +600,47 @@ class ChuyenTiepOpenAI:
         finally:
             await r.aclose()
 
+    async def noi(self, body: dict) -> KetQuaChat:
+        """POST /v1/audio/speech — chuyển tiếp JSON OpenAI, trả âm thanh nhị phân stream từng khúc. Xoay khoá theo
+        (khoá, "noi") như khả năng tốn tiền (`goi_kha_nang`): khoá không có quyền giọng nói không làm chat nghỉ."""
+        _, kq = await self.goi_kha_nang("noi", "đọc văn bản thành giọng nói", "POST", f"{self.base_url}/audio/speech",
+                                        json_than=self.doi_model(body), tieu_de=self._tieu_de, stream=True,
+                                        kieu_mac_dinh="audio/mpeg")
+        return kq
+
+    async def chuyen_multipart(self, endpoint: str, kha_nang: str, viec: str, yc: YeuCauDaPhan) -> KetQuaChat:
+        """Gửi yêu cầu multipart tới `{base_url}/{endpoint}`: dựng data/files đã làm sạch tên tệp và MIME type, xoay khoá
+        theo (khoá, `kha_nang`) qua `goi_kha_nang`."""
+        truong = dict(yc.truong)
+        model = truong.get("model")
+        if isinstance(model, str) and model.startswith(self.tien_to + "/"):
+            truong["model"] = model[len(self.tien_to) + 1:]
+
+        data = {}
+        for k, v in truong.items():
+            if isinstance(v, list):
+                data[k] = [str(item) for item in v]
+            else:
+                data[k] = str(v)
+
+        files = []
+        for t in yc.tep:
+            ten_tep = lam_sach_ten_tep(t.ten_tep, mac_dinh=f"{t.ten_truong}.bin")
+            ct = lam_sach_content_type(t.content_type)
+            files.append((t.ten_truong, (ten_tep, t.noi_dung, ct)))
+
+        _, kq = await self.goi_kha_nang(kha_nang, viec, "POST", f"{self.base_url}/{endpoint}", data=data, files=files,
+                                        tieu_de=self._tieu_de)
+        return kq
+
+    async def nghe(self, yc: YeuCauDaPhan) -> tuple[int, dict, bytes]:
+        """POST /v1/audio/transcriptions (multipart) — chuyển nguyên tới dịch vụ ở xa."""
+        return await self.chuyen_multipart("audio/transcriptions", "nghe", "nhận dạng giọng nói", yc)
+
+    async def anh_sua(self, yc: YeuCauDaPhan) -> tuple[int, dict, bytes]:
+        """POST /v1/images/edits (multipart) — chuyển nguyên tới dịch vụ ở xa."""
+        return await self.chuyen_multipart("images/edits", "anh_sua", "sửa ảnh", yc)
+
     # ── khả năng tốn tiền (ảnh, video…) — xem «KHẢ NĂNG TỐN TIỀN» ở đầu tệp ──
 
     def _ghi_kn(self, khoa: str, kha_nang: str, **gia_tri) -> None:
@@ -550,10 +669,14 @@ class ChuyenTiepOpenAI:
                          "code": "rate_limit_exceeded" if chi_429 else "no_key_permitted"}}
         return tra_loi_json(ma, loi, hd)
 
-    async def goi_kha_nang(self, kha_nang: str, viec: str, phuong_thuc: str, url: str, *, json_than,
-                           tieu_de: Callable[[str], dict]) -> tuple[str | None, KetQuaChat]:
-        """Gọi một khả năng tốn tiền, xoay khoá theo (khoá, khả năng). Trả (khoá đã thành công, kết quả đã đọc hết)
-        hoặc (None, lỗi chuẩn OpenAI đã che khoá). `tieu_de(khoa)` dựng header mang khoá — khoá không vào URL."""
+    async def goi_kha_nang(self, kha_nang: str, viec: str, phuong_thuc: str, url: str, *, json_than=None,
+                           data: dict | None = None, files: list | None = None, tieu_de: Callable[[str], dict],
+                           stream: bool = False, kieu_mac_dinh: str = "application/json",
+                           ) -> tuple[str | None, KetQuaChat]:
+        """Gọi một khả năng tốn tiền, xoay khoá theo (khoá, khả năng). Trả (khoá đã thành công, kết quả đã đọc hết —
+        hoặc `LuongNhiPhan` nếu `stream`) hoặc (None, lỗi chuẩn OpenAI đã che khoá). Thân là `json_than` hoặc
+        multipart `data`/`files`. `tieu_de(khoa)` dựng header mang khoá — khoá không vào URL. `stream` chỉ đọc trước
+        mã trạng thái: đổi khoá chỉ xảy ra TRƯỚC byte đầu gửi khách."""
         bay_gio = self._dong_ho()
         n = len(self.khoa)
         dau = self._vi_tri % n
@@ -562,16 +685,18 @@ class ChuyenTiepOpenAI:
         ung_vien = [k for k in ung_vien if self._kn.get((k, kha_nang), {}).get("den", 0.0) <= bay_gio]
         if not ung_vien:
             return None, self._loi_het_khoa(kha_nang, viec, bay_gio)
-        timeout = httpx.Timeout(self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI)
+        timeout = httpx.Timeout(self.TIMEOUT_DOC_STREAM if stream else self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI)
         may = urlsplit(url).netloc
         loi_cuoi: KetQuaChat | None = None
         loi_400: dict | None = None
         nghi_ngo: list[str] = []  # khoá chưa rõ trả 400 — bị từ chối nếu một khoá sau thành công
         da_thu_lai = False
         for khoa in ung_vien:
+            khach = self._client()
+            req = khach.build_request(phuong_thuc, url, json=json_than, data=data, files=files, headers=tieu_de(khoa),
+                                      timeout=timeout)
             try:
-                r = await self._client().request(phuong_thuc, url, json=json_than, headers=tieu_de(khoa),
-                                                 timeout=timeout)
+                r = await khach.send(req, stream=stream)
             except LoiDichBiChan:  # như chat(): trả ngay, không đánh dấu khoá nào
                 return None, tra_loi_json(502, {"error": {
                     "message": f"{self.ten} ({may}): đích trỏ vào dải bị chặn lúc kết nối",
@@ -586,6 +711,11 @@ class ChuyenTiepOpenAI:
                 loi_cuoi = tra_loi_json(502, loi)
             else:
                 ma = r.status_code
+                if stream and not 200 <= ma < 300:
+                    try:
+                        await r.aread()
+                    finally:
+                        await r.aclose()
                 if 200 <= ma < 300:
                     self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
                     self._ghi_dung(khoa, kha_nang, ma)
@@ -593,7 +723,8 @@ class ChuyenTiepOpenAI:
                         self._ghi_kn(k, kha_nang, dung_duoc=False, ma=400, den=bay_gio + NGHI_KHA_NANG)
                         self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
                                          self.ten, self.nhan_khoa(k), viec, NGHI_KHA_NANG)
-                    return khoa, (ma, {"content-type": r.headers.get("content-type", "application/json")}, r.content)
+                    hd = tieu_de_cho_khach(r, kieu_mac_dinh)
+                    return khoa, (ma, hd, LuongNhiPhan(r, self.log, self.ten) if stream else r.content)
                 loi, loai = self.loi_va_loai(ma, r.content, {"viec": viec, "kha_nang": kha_nang, "khoa": khoa})
                 loi_cuoi = tra_loi_json(ma, loi)
                 tin = loi["error"]["message"]

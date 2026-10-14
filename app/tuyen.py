@@ -7,16 +7,20 @@ mọi tuyến khác ở đây đòi khoá quản trị (xác thực theo từng 
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import math
 import os
 import re
+import secrets
+import time
 from http import HTTPMethod
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.convertors import PathConvertor
 from starlette.routing import Match
+from starlette.types import Receive, Scope, Send
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from app import (
@@ -34,9 +38,9 @@ from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
-from app.than_co_tran import THAN_JSON, doc_het
+from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
 from app.xac_thuc import can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
-from app.yeu_cau_da_phan import YeuCauDaPhan, doc_multipart, la_multipart
+from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
 QT = [Depends(can_quan_tri)]
@@ -461,6 +465,29 @@ async def _luong_sse_chuan_hoa(iterator, giu_giay: float, dem_toi_da: int | None
         await asyncio.shield(_dong_luong_module(cho, it))
 
 
+class PhanHoiDong(StreamingResponse):
+    """StreamingResponse bảo đảm gọi aclose() trên iterator của module đúng một lần khi hoàn thành hoặc ngắt."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        da_dong = False
+
+        async def _dong():
+            nonlocal da_dong
+            if not da_dong:
+                da_dong = True
+                dong = getattr(self.body_iterator, "aclose", None)
+                if callable(dong):
+                    try:
+                        await dong()
+                    except Exception as e:  # như _dong_luong_module: không đổi kết cục lượt gọi, nhưng không im lặng
+                        log.warning("Đóng luồng nhị phân của module lỗi: %s", type(e).__name__)
+
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await _dong()
+
+
 def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
     headers = dict(headers)
     kieu = headers.pop("content-type", None)
@@ -468,7 +495,9 @@ def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
         # Thân đã có trọn: Starlette tự tính content-length đúng; số của module (có thể lệch) bị bỏ.
         headers = {k: v for k, v in headers.items() if k.lower() != "content-length"}
         return Response(noi_dung, status_code=ma, headers=headers, media_type=kieu)
-    return StreamingResponse(noi_dung, status_code=ma, headers=headers, media_type=kieu)
+    bo_stream = {"content-length", "content-encoding", "transfer-encoding"}
+    headers = {k: v for k, v in headers.items() if k.lower() not in bo_stream}
+    return PhanHoiDong(noi_dung, status_code=ma, headers=headers, media_type=kieu)
 
 
 def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Response:
@@ -505,6 +534,7 @@ async def v1_anh(request: Request):
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
+    _kiem_n_anh(than.get("n"))
     return _tra_ve(*await m.anh(than))
 
 
@@ -519,7 +549,332 @@ async def v1_anh_sua(request: Request):
     prompt = yc.truong.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         raise LoiOpenAI(400, "Thiếu trường «prompt» (mô tả cần sửa gì)", code="missing_prompt")
+    _kiem_n_anh(yc.truong.get("n"), tu_form=True)
     return _tra_ve(*await m.anh_sua(yc))
+
+
+def _kiem_tra_va_tach_tool_image_generation(than: dict) -> dict:
+    tools = than.get("tools")
+    if not isinstance(tools, list) or len(tools) != 1:
+        raise LoiOpenAI(400, "Chỉ hỗ trợ công cụ image_generation", code="unsupported_tool")
+    tool = tools[0]
+    if not isinstance(tool, dict) or tool.get("type") != "image_generation":
+        raise LoiOpenAI(400, "Chỉ hỗ trợ công cụ image_generation", code="unsupported_tool")
+    return tool
+
+
+#: Vai của chuẩn Responses → phần của prompt Images một lượt. developer/system là CHỈ DẪN (cùng nghĩa với trường
+#: `instructions`); user là lời yêu cầu; assistant là lượt trả lời cũ — Images không có hội thoại, ghép vào là bịa thêm
+#: yêu cầu nên bỏ. Đây là bảng ÁNH XẠ giữa hai hợp đồng (đủ bốn vai của đặc tả), không phải danh sách dò chữ: vai
+#: ngoài bảng → 400, không đoán nghĩa.
+_PHAN_THEO_VAI = {"developer": "chi_dan", "system": "chi_dan", "user": "yeu_cau", "assistant": None}
+
+
+def _trich_xuat_responses_prompt_va_anh(than: dict) -> tuple[str, list[str]]:
+    """(prompt, các URL ảnh đầu vào) từ thân Responses. Prompt = phần chỉ dẫn (`instructions`, rồi tin developer/system
+    theo thứ tự gặp) + phần yêu cầu (tin user và mục không có vai), nối bằng dòng trống. Ảnh lấy ở mọi tin không bị
+    bỏ."""
+    raw_input = than.get("input")
+    instructions = than.get("instructions")
+    chi_dan: list[str] = []
+    yeu_cau: list[str] = []
+    input_images: list[str] = []
+    if isinstance(instructions, str) and instructions.strip():
+        chi_dan.append(instructions.strip())
+
+    def _xu_ly_phan(phan, dich: list[str]):
+        if not isinstance(phan, dict):
+            if isinstance(phan, str) and phan.strip():
+                dich.append(phan.strip())
+            return
+        ptype = phan.get("type")
+        if ptype == "input_text":
+            txt = phan.get("text")
+            if isinstance(txt, str) and txt.strip():
+                dich.append(txt.strip())
+        elif ptype == "input_image":
+            img = phan.get("image_url")
+            if isinstance(img, str) and img.strip():
+                input_images.append(img.strip())
+            elif isinstance(img, dict) and isinstance(img.get("url"), str) and img["url"].strip():
+                input_images.append(img["url"].strip())
+
+    if isinstance(raw_input, str):
+        if raw_input.strip():
+            yeu_cau.append(raw_input.strip())
+    elif isinstance(raw_input, list):
+        for muc in raw_input:
+            if isinstance(muc, str):
+                if muc.strip():
+                    yeu_cau.append(muc.strip())
+            elif isinstance(muc, dict):
+                role = muc.get("role")
+                if role is None:
+                    phan = "yeu_cau"
+                elif isinstance(role, str) and role in _PHAN_THEO_VAI:
+                    phan = _PHAN_THEO_VAI[role]
+                else:
+                    raise LoiOpenAI(400, "«role» của mục trong «input» phải là user, developer, system hoặc assistant",
+                                    code="invalid_value")
+                if phan is None:
+                    continue
+                dich = chi_dan if phan == "chi_dan" else yeu_cau
+                content = muc.get("content")
+                if content is None:
+                    _xu_ly_phan(muc, dich)
+                elif isinstance(content, str):
+                    if content.strip():
+                        dich.append(content.strip())
+                elif isinstance(content, list):
+                    for p in content:
+                        _xu_ly_phan(p, dich)
+
+    return "\n\n".join(chi_dan + yeu_cau), input_images
+
+
+#: Trần `n` (số ảnh một lượt) của MỌI đường ảnh — đúng trần trong đặc tả OpenAI Images API («Must be between 1 and
+#: 10»). Lõi chặn ở biên để một lượt gọi không nhân chi phí/hạn mức của nhà cung cấp lên tuỳ ý; module vẫn có thể
+#: chặn chặt hơn theo model.
+N_ANH_TOI_DA = 10
+_SO_NGUYEN_ASCII = re.compile(r"[0-9]{1,6}")
+
+
+def _kiem_n_anh(n, *, tu_form: bool = False) -> None:
+    """Kiểm `n` cho /v1/images/generations, /v1/images/edits và /v1/responses — một hàm, một luật. None (thiếu hoặc
+    null) = module dùng mặc định. Thân JSON: số nguyên thật (bool không phải số). Trường form multipart luôn là chuỗi
+    (`tu_form`): nhận chuỗi chữ số ASCII. Sai kiểu hoặc ngoài [1, N_ANH_TOI_DA] → 400."""
+    if n is None:
+        return
+    if tu_form and isinstance(n, str) and _SO_NGUYEN_ASCII.fullmatch(n.strip()):
+        n = int(n)
+    if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= N_ANH_TOI_DA:
+        raise LoiOpenAI(400, f"«n» phải là số nguyên từ 1 đến {N_ANH_TOI_DA}", code="invalid_value")
+
+
+#: Tham số của công cụ image_generation lõi chuyển sang module — cùng tên trường của /v1/images/generations và
+#: /v1/images/edits (đặc tả OpenAI), nên module nhận y như từ đường chuẩn; cũng là các thuộc tính mục output của
+#: Responses nêu lại từ KẾT QUẢ. Bảng ÁNH XẠ giữa hai hợp đồng, không phải danh sách dò chữ.
+_THAM_SO_CHUOI_ANH = ("size", "quality", "background", "output_format")
+
+
+def _giai_ma_input_images(input_images: list[str]) -> list[TepTai]:
+    tep_list: list[TepTai] = []
+    mb_tran = THAN_MULTIPART.so_mb()
+    byte_tran = int(mb_tran * 1024 * 1024)
+    tong_byte = 0
+
+    for idx, url in enumerate(input_images):
+        url = url.strip()
+        if url.startswith(("http://", "https://")):
+            raise LoiOpenAI(400, "Không hỗ trợ tải ảnh từ URL từ xa qua đường này (chống SSRF)",
+                            code="unsupported_image_url")
+        if not url.startswith("data:"):
+            raise LoiOpenAI(400, "Ảnh đầu vào phải là data URL base64", code="unsupported_image_url")
+
+        header, sep, b64_str = url.partition(",")
+        if not sep or not header.startswith("data:") or ";base64" not in header:
+            raise LoiOpenAI(400, "Data URL ảnh không hợp lệ (cần data:image/...;base64,...)",
+                            code="unsupported_image_url")
+
+        phan_dau = header[len("data:"):].strip()
+        mime = phan_dau.split(";")[0].strip().lower()
+        if mime not in ("image/png", "image/jpeg", "image/webp"):
+            raise LoiOpenAI(400, f"Định dạng ảnh không được hỗ trợ: {_nhac_lai(mime)} (chỉ nhận image/png, image/jpeg, "
+                                 "image/webp)", code="unsupported_image_url")
+
+        try:
+            noi_dung = base64.b64decode(b64_str, validate=True)
+        except Exception:
+            raise LoiOpenAI(400, "Dữ liệu base64 của ảnh không hợp lệ", code="unsupported_image_url")
+
+        tong_byte += len(noi_dung)
+        if len(noi_dung) > byte_tran or tong_byte > byte_tran:
+            raise THAN_MULTIPART.loi_vuot(mb_tran)
+
+        duoi = "png" if mime == "image/png" else ("jpg" if mime == "image/jpeg" else "webp")
+        tep_list.append(TepTai(
+            ten_truong="image",
+            ten_tep=f"input_image_{idx}.{duoi}",
+            content_type=mime,
+            noi_dung=noi_dung,
+        ))
+    return tep_list
+
+
+def _dinh_dang_anh(b64: str) -> str | None:
+    """Định dạng thật của ảnh theo chữ ký đầu tệp (chuẩn của chính PNG/JPEG/WebP, không theo nhà cung cấp) — để mục
+    output nêu `output_format` của KẾT QUẢ khi module không nêu, thay vì lặp lại định dạng khách xin."""
+    try:
+        dau = base64.b64decode(b64[:24], validate=True)  # 24 ký tự base64 = 18 byte đầu, đủ cho cả ba chữ ký
+    except ValueError:
+        return None
+    if dau.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if dau.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if dau[:4] == b"RIFF" and dau[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def _xu_ly_ket_qua_module_anh(noi_dung, model_khach: str) -> dict:
+    """Phản hồi THÀNH CÔNG của module (thân /v1/images/*) → đối tượng `response`. Thuộc tính ảnh (size, quality,
+    background, output_format) chỉ nêu khi biết từ kết quả: trường cấp đầu của phản hồi module, hoặc — riêng
+    output_format — chữ ký byte ảnh. Không lặp tham số khách như thể là kết quả."""
+    if not isinstance(noi_dung, (bytes, bytearray, str)):
+        raise LoiOpenAI(502, "Phản hồi từ module không hợp lệ", code="upstream_error")
+
+    try:
+        data_json = json.loads(noi_dung)
+    except Exception:
+        raise LoiOpenAI(502, "Phản hồi từ module không phải JSON hợp lệ", code="upstream_error")
+
+    if not isinstance(data_json, dict) or not isinstance(data_json.get("data"), list):
+        raise LoiOpenAI(502, "Phản hồi từ module thiếu danh sách dữ liệu ảnh «data»", code="upstream_error")
+
+    cac_anh = data_json["data"]
+    if not cac_anh:
+        raise LoiOpenAI(502, "Phản hồi từ module không có ảnh nào trong «data»", code="upstream_error")
+
+    thuoc_tinh = {k: data_json[k] for k in _THAM_SO_CHUOI_ANH if isinstance(data_json.get(k), str)}
+    output_items = []
+    for phan_tu in cac_anh:
+        if not isinstance(phan_tu, dict):
+            continue
+        if "url" in phan_tu and "b64_json" not in phan_tu:
+            raise LoiOpenAI(502, "Module trả về URL thay vì b64_json; Responses API cần dữ liệu ảnh",
+                            code="upstream_error")
+        b64 = phan_tu.get("b64_json")
+        if not isinstance(b64, str) or not b64:
+            raise LoiOpenAI(502, "Phản hồi từ module không chứa b64_json", code="upstream_error")
+
+        if b64.startswith("data:"):
+            _, sep, phan_thuan = b64.partition(",")
+            if sep:
+                b64 = phan_thuan
+
+        item = {
+            "id": f"ig_{secrets.token_hex(12)}",
+            "type": "image_generation_call",
+            "status": "completed",
+            "result": b64,
+        }
+        if phan_tu.get("revised_prompt"):
+            item["revised_prompt"] = phan_tu["revised_prompt"]
+        item.update(thuoc_tinh)
+        if "output_format" not in item and (dinh_dang := _dinh_dang_anh(b64)):
+            item["output_format"] = dinh_dang
+        output_items.append(item)
+
+    if not output_items:
+        raise LoiOpenAI(502, "Không có ảnh hợp lệ nào trong phản hồi của module", code="upstream_error")
+
+    resp_id = f"resp_{secrets.token_hex(12)}"
+    return {
+        "id": resp_id,
+        "object": "response",
+        "created_at": int(time.time()),
+        "status": "completed",
+        "model": model_khach,
+        "output": output_items,
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        },
+    }
+
+
+async def _sse_responses_anh(resp_obj: dict):
+    """Chuỗi sự kiện Responses cho kết quả ảnh đã có trọn. Lỗi giữa chừng (mã 200 đã gửi) → MỘT sự kiện `error` đúng
+    khuôn Responses (type, sequence_number, code, message, param) rồi dừng; chữ của ngoại lệ chỉ vào log (tên lớp)."""
+    seq = 0
+
+    def _su_kien(ten: str, du_lieu: dict) -> str:
+        return f"event: {ten}\ndata: {json.dumps({'type': ten, 'sequence_number': seq, **du_lieu}, ensure_ascii=False)}\n\n"
+
+    try:
+        resp_khoi_tao = {**resp_obj, "status": "in_progress", "output": [], "usage": None}
+        yield _su_kien("response.created", {"response": resp_khoi_tao})
+        seq += 1
+        yield _su_kien("response.in_progress", {"response": resp_khoi_tao})
+        seq += 1
+        for out_idx, it in enumerate(resp_obj["output"]):
+            it_in_progress = {"id": it["id"], "type": "image_generation_call", "status": "in_progress",
+                              **{k: it[k] for k in _THAM_SO_CHUOI_ANH if k in it}}
+            yield _su_kien("response.output_item.added", {"output_index": out_idx, "item": it_in_progress})
+            seq += 1
+            yield _su_kien("response.image_generation_call.in_progress", {"output_index": out_idx, "item_id": it["id"]})
+            seq += 1
+            yield _su_kien("response.image_generation_call.generating", {"output_index": out_idx, "item_id": it["id"]})
+            seq += 1
+            yield _su_kien("response.output_item.done", {"output_index": out_idx, "item": it})
+            seq += 1
+        yield _su_kien("response.completed", {"response": resp_obj})
+    except Exception as e:
+        log.warning("Stream /v1/responses lỗi giữa chừng: %s", type(e).__name__)
+        yield _su_kien("error", {"code": "stream_error", "message": "Lỗi khi phát sự kiện stream của web2api",
+                                 "param": None})
+
+
+@v1.post("/responses")
+async def v1_responses(request: Request):
+    # Phạm vi theo CHỨC NĂNG THẬT, cùng luật với đường chuẩn: có ảnh đầu vào là sửa ảnh → «anh_sua» như
+    # /v1/images/edits; không có là tạo ảnh → «anh» như /v1/images/generations. Chưa đọc thân thì chưa biết chức
+    # năng, nên cửa đầu chỉ cho khoá có MỘT trong hai (khoá không quyền ảnh nào → 403 trước khi đọc thân); đòi đúng
+    # phạm vi ngay sau khi biết chức năng, TRƯỚC khi tra model (khoá hẹp không dò được model nào tồn tại).
+    kiem_tra_pham_vi(request, "anh", "anh_sua")
+    than = await _than_json(request)
+    tool = _kiem_tra_va_tach_tool_image_generation(than)
+    prompt, input_images = _trich_xuat_responses_prompt_va_anh(than)
+    sua_anh = bool(input_images)
+    kiem_tra_pham_vi(request, "anh_sua" if sua_anh else "anh")
+    if not prompt:
+        raise LoiOpenAI(400, "Thiếu mô tả yêu cầu trong «input» hoặc «instructions»", code="missing_prompt")
+    _kiem_n_anh(tool.get("n"))
+    tham_so = {k: tool[k] for k in _THAM_SO_CHUOI_ANH if tool.get(k) is not None}
+    if not all(isinstance(v, str) for v in tham_so.values()):
+        raise LoiOpenAI(400, f"Tham số {', '.join(_THAM_SO_CHUOI_ANH)} của công cụ image_generation phải là chuỗi",
+                        code="invalid_value")
+
+    id_, m = _module_theo_model(request, than)
+    model_khach = request.state.model_khach
+    # Thân/yêu cầu cho module dựng y như đường chuẩn tương ứng: model ĐẦY ĐỦ (module tự bỏ tiền tố như với
+    # /v1/images/*; combo tự thay model của từng bước), cùng bộ tham số.
+    if sua_anh:
+        _can_phuong_thuc(m, id_, "sửa ảnh", "anh_sua")
+        truong: dict[str, str | list[str]] = {"model": model_khach, "prompt": prompt, **tham_so}
+        if tool.get("n") is not None:
+            truong["n"] = str(tool["n"])
+        yc = YeuCauDaPhan(truong=truong, tep=_giai_ma_input_images(input_images))
+    else:
+        _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
+        body_images = {"model": model_khach, "prompt": prompt, "response_format": "b64_json", **tham_so}
+        if tool.get("n") is not None:
+            body_images["n"] = tool["n"]
+    try:
+        ma, headers, noi_dung = await (m.anh_sua(yc) if sua_anh else m.anh(body_images))
+    except LoiOpenAI:
+        raise
+    except Exception as e:
+        log.warning("Module %s lỗi khi xử lý ảnh trong responses: %s", id_, type(e).__name__)
+        raise LoiOpenAI(502, f"Module gặp sự cố khi xử lý ảnh ({type(e).__name__})", code="upstream_error") from None
+
+    if not 200 <= ma < 300:
+        return _tra_ve(ma, headers, noi_dung)  # lỗi của module chuyển NGUYÊN như /v1/images/* (cả Retry-After)
+
+    resp_obj = _xu_ly_ket_qua_module_anh(noi_dung, model_khach)
+    # Thân do LÕI dựng lại nên chỉ giữ tiêu đề thuộc không gian tên của chính web2api (vd x-web2api-route của combo);
+    # mọi tiêu đề khác của module (set-cookie, server, tiêu đề tả thân cũ…) mặc định bị bỏ.
+    tieu_de = {k: v for k, v in dict(headers).items() if k.lower().startswith("x-web2api-")}
+    if not bool(than.get("stream")):
+        return JSONResponse(resp_obj, status_code=200, headers=tieu_de)
+    return StreamingResponse(
+        _sse_responses_anh(resp_obj),
+        status_code=200,
+        media_type="text/event-stream",
+        headers={**tieu_de, "cache-control": "no-cache", "connection": "keep-alive", "x-accel-buffering": "no"},
+    )
 
 
 @v1.post("/audio/speech")

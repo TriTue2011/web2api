@@ -26,6 +26,7 @@ import socket
 from urllib.parse import urlsplit
 
 from app.chuyen_tiep import ChuyenTiepOpenAI
+from app.yeu_cau_da_phan import YeuCauDaPhan
 
 log = logging.getLogger("web2api.tu_xa")
 
@@ -95,10 +96,22 @@ class ModuleTuXa:
         self.tien_to = ban_ghi["tien_to"]
         self._ct = ChuyenTiepOpenAI(ten=ban_ghi["ten"], tien_to=ban_ghi["tien_to"], base_url=ban_ghi["base_url"],
                                     khoa=[api_key] if api_key else [],
+                                    # Sổ nghỉ theo (khoá, khả năng) của các việc chuyển tiếp ngoài chat — suc_khoe báo
+                                    # trạng thái từng việc; khoá bị từ chối giọng nói không làm chat nghỉ.
+                                    kha_nang=("noi", "nghe", "anh_sua"),
                                     kiem_ip=_dia_chi_bi_chan)
 
     async def chat(self, body: dict, stream: bool):
         return await self._ct.chat(body, stream)
+
+    async def noi(self, body: dict):
+        return await self._ct.noi(body)
+
+    async def nghe(self, yc: YeuCauDaPhan):
+        return await self._ct.nghe(yc)
+
+    async def anh_sua(self, yc: YeuCauDaPhan):
+        return await self._ct.anh_sua(yc)
 
     async def models(self) -> list[dict]:
         return await self._ct.models()
