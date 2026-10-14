@@ -137,7 +137,9 @@ Lõi giữ đúng giao thức cho khách ở `/v1/chat/completions` (không đ�
   về mặc định) → lõi gửi dòng chú thích `: keep-alive` (không phải `data:`), để proxy (Cloudflare, Nginx) không cắt
   khi model suy luận lâu. Lõi tự đệm theo **ranh giới sự kiện SSE** (dòng trống), không dựa cách module chia khúc:
   chỉ chuẩn hoá và phát sự kiện trọn vẹn, mỗi sự kiện phát ngay khi đủ; keep-alive chỉ chen giữa hai sự kiện; phần
-  dở dang lúc hết luồng phát nguyên văn. Khách ngắt (hoặc luồng bị đóng giữa chừng) → lõi huỷ việc đang chờ và đóng
+  dở dang lúc hết luồng phát nguyên văn. Bộ đệm có trần `WEB2API_SSE_DEM_TOI_DA_KB` (mặc định 1024 KiB = 1 MiB):
+  nếu vượt trần mà chưa gặp ranh giới sự kiện thì phát nguyên văn để chống cạn bộ nhớ và ghi đúng một cảnh báo.
+  Khách ngắt (hoặc luồng bị đóng giữa chừng) → lõi huỷ việc đang chờ và đóng
   (`aclose`) luồng của module, để luồng ngược dòng không chạy tiếp giữ kết nối và token.
 
 Đường nhận tệp
@@ -1692,16 +1694,21 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_RL_LOI_XAC_THUC` | `30` | Chống đoán khoá: số lần sai khoá xác thực (401) tối đa mỗi IP trong một cửa sổ; vượt thì khoá IP tạm thời, mọi yêu cầu từ IP đó (kể cả có khoá đúng) nhận `429` kèm `Retry-After`; `0` = tắt. IP loopback trực tiếp được miễn |
 | `WEB2API_RL_CUA_SO_GIAY` | `60` | Cửa sổ trượt (giây) đếm lần sai khoá xác thực |
 | `WEB2API_RL_KHOA_GIAY` | `60` | Thời gian khoá IP (giây) khi vượt ngưỡng sai khoá xác thực |
+<<<<<<< HEAD
 | `WEB2API_DANG_NHAP_SAI_TOI_DA` | `5` | Số lần đăng nhập sai mật khẩu liên tiếp tối đa cho một tên đăng nhập trước khi tạm khoá tài khoản |
 | `WEB2API_DANG_NHAP_KHOA_PHUT` | `15` | Thời gian tạm khoá tài khoản (phút) khi vượt quá số lần đăng nhập sai mật khẩu liên tiếp |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
 | `WEB2API_PHIEN_WEB_TOI_DA_NGAY` | `7` | Thời gian sống tuyệt đối tối đa (ngày) của một phiên web kể từ lúc tạo |
+=======
+| `WEB2API_QT_IP_CHO_PHEP` | không | Danh sách CIDR (cách nhau bằng dấu phẩy, vd `192.0.2.0/24`) được phép gọi đường QUẢN TRỊ (`can_quan_tri`). Trống/không đặt = tắt, không hạn chế. Có giá trị: IP hiệu lực (tính như `WEB2API_TRUST_PROXY`) ngoài danh sách → `403 ip_not_allowed`, ghi cảnh báo kênh `quan_tri` (tối đa một dòng mỗi IP mỗi phút), không đếm vào giới hạn sai khoá. Loopback trực tiếp không kèm `X-Forwarded-For` luôn được phép (healthcheck/khôi phục); peer không phải IP bị từ chối. Đọc mỗi lượt — đổi không cần khởi động lại. Mục CIDR hỏng bị bỏ qua; tất cả đều hỏng → chặn hết trừ loopback. Xem `docs/TRIEN-KHAI.md` mục «Chỉ cho mạng nhà gọi đường quản trị» |
+>>>>>>> main
 | `WEB2API_TRUST_PROXY` | không | Danh sách CIDR (cách nhau bằng dấu phẩy) của proxy ngược được tin để xác định IP khách cho giới hạn sai khoá. Lõi duyệt `X-Forwarded-For` từ PHẢI sang TRÁI, bỏ qua proxy tin cậy, lấy địa chỉ đầu tiên không tin cậy (proxy nối IP kết nối vào cuối nên phần trái do khách gõ, không tin). Peer loopback kèm `X-Forwarded-For` được coi là proxy — nhưng qua cổng công bố của Docker, nguồn mà container thấy là **địa chỉ cổng (gateway) của mạng Docker**, KHÔNG phải loopback, nên phải khai nó (hoặc dải của mạng compose) vào biến này. Nếu proxy nối vào qua địa chỉ LAN của máy chủ thì nguồn là IP LAN của máy chạy proxy: khai đúng IP đó dạng `/32`, đừng khai cả dải LAN (mọi thiết bị trong nhà sẽ được coi là proxy và giả được `X-Forwarded-For`). **Sau Cloudflare:** khai dải IP của Cloudflare (cloudflare.com/ips) nếu proxy ngược công bố cổng, hoặc địa chỉ cổng mạng Docker nếu dùng tunnel; xem `docs/TRIEN-KHAI.md`. Để trống = chỉ loopback là proxy, mọi khách ngoài bị tính theo IP của peer trực tiếp |
 | `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
+| `WEB2API_SSE_DEM_TOI_DA_KB` | `1024` | Trần bộ đệm tối đa của luồng stream SSE chat (KiB, mặc định 1024 = 1 MiB) trước khi phát nguyên văn chống cạn bộ nhớ; giá trị không phải số dương hữu hạn → `1024` |
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |

@@ -336,30 +336,34 @@ def test_07_idor_quan_tri_id_khong_ton_tai(moi_truong):
     assert r5.status_code == 404, f"GET /api/thiet-bi/{'{id}'} mong đợi 404, nhận {r5.status_code}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DELETE /api/khoa-khach/{id_} hiện trả 200 da_xoa=False thay vì 404 khi ID không tồn tại",
-)
-def test_08_idor_delete_khoa_khach_khong_ton_tai_tra_404(moi_truong):
-    """Phát hiện: DELETE /api/khoa-khach/{id_} khi ID không tồn tại cần trả 404 thay vì 200."""
+def test_08_idor_delete_khoa_khach_khong_ton_tai_tra_200_idempotent(moi_truong):
+    """DELETE /api/khoa-khach/{id_} khi ID không tồn tại trả 200 {da_xoa: false} — xoá lặp lại an toàn (idempotent)."""
     client, _, _ = moi_truong
     headers_qt = {"Authorization": f"Bearer {KHOA_QT}"}
     res = client.delete("/api/khoa-khach/kk_khongtontai999", headers=headers_qt)
-    assert res.status_code == 404, f"Mong đợi 404 nhưng nhận {res.status_code}"
+    assert res.status_code == 200, f"Mong đợi 200 (idempotent) nhưng nhận {res.status_code}"
+    body = res.json()
+    assert body.get("da_xoa") is False, f"Mong đợi da_xoa=false nhưng nhận {body}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PATCH /api/khoa-khach/{id_} phản chiếu nguyên văn chuỗi ID dài trong thông báo 404 mà không qua _nhac_lai",
-)
 def test_09_idor_patch_khoa_khach_khong_phan_chieu_id_dai(moi_truong):
-    """Phát hiện: Thông báo lỗi 404 của PATCH /api/khoa-khach/{id_} phản chiếu chuỗi ID dài nguyên văn."""
+    """Thông báo lỗi 404 của PATCH /api/khoa-khach/{id_} không phản chiếu chuỗi ID dài nguyên văn."""
     client, _, _ = moi_truong
     headers_qt = {"Authorization": f"Bearer {KHOA_QT}"}
     id_dai = "kk_" + "A" * 200
     res = client.patch(f"/api/khoa-khach/{id_dai}", headers=headers_qt, json={"nhan": "Sửa"})
     assert res.status_code == 404
-    # Thông báo lỗi bảo mật không được phản chiếu nguyên văn chuỗi dài 200 ký tự (phải cắt <= 120 ký tự)
+    # Thông báo lỗi bảo mật không được phản chiếu nguyên văn chuỗi dài 200 ký tự (phải cắt ≤ 400 ký tự toàn thông báo)
+    assert id_dai not in res.text, "Chuỗi ID dài bị phản chiếu nguyên văn trong thông báo lỗi!"
+
+
+def test_09b_idor_thiet_bi_khong_phan_chieu_id_dai(moi_truong):
+    """Thông báo lỗi 404 của GET /api/thiet-bi/{id_thuc_the} không phản chiếu chuỗi ID dài nguyên văn."""
+    client, _, _ = moi_truong
+    headers_qt = {"Authorization": f"Bearer {KHOA_QT}"}
+    id_dai = "tb_" + "A" * 200
+    res = client.get(f"/api/thiet-bi/{id_dai}", headers=headers_qt)
+    assert res.status_code == 404
     assert id_dai not in res.text, "Chuỗi ID dài bị phản chiếu nguyên văn trong thông báo lỗi!"
 
 
