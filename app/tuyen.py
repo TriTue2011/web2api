@@ -1354,6 +1354,13 @@ def cac_kenh_nhat_ky():
     return kho_nhat_ky.danh_sach_kenh()
 
 
+@nhat_ky.get("/chuoi")
+async def kiem_tra_chuoi_nhat_ky():
+    # async + to_thread: quét tới 100 MB không chặn vòng lặp sự kiện. Không trả nội dung bản ghi.
+    from app import nhat_ky as kho_nhat_ky
+    return await asyncio.to_thread(kho_nhat_ky.kiem_tra_chuoi)
+
+
 #: Trần của `truoc_ngay` (100 năm): số lớn hơn không mang nghĩa gì và làm phép trừ ngày tràn.
 TRAN_TRUOC_NGAY = 36500
 

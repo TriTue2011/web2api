@@ -1577,6 +1577,21 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
 - Trang web chỉ gửi khoá quản trị trong header (không bao giờ trong URL); khoá API dán vào form bị xoá khỏi trang
   ngay khi gửi.
 
+#### Nhật ký chống sửa lén (chuỗi băm)
+
+Mỗi bản ghi nhật ký mới mang `truoc` (băm SHA-256 của bản ghi liền trước, hoặc `"GOC"`) và `bam`
+(SHA-256 của `truoc` + bản ghi đã chuẩn hoá sau khi che bí mật). Sửa/xoá/đổi chỗ/chèn một dòng ở giữa
+làm đứt chuỗi và bị phát hiện bằng `GET /api/nhat-ky/chuoi` (chỉ quản trị): `ok`, `so_ban_ghi`,
+`neo_dau`, `dau_cuoi`, `loi` (`bam_sai` — nội dung bị sửa; `dut_chuoi` — mất liên kết; `thieu_bam_giua_chuoi`
+— dòng chèn tay). Khi khởi động, chuỗi hỏng thì lõi ghi một dòng cảnh báo kênh `he_thong`.
+
+Cách neo ngoài: định kỳ gọi `GET /api/nhat-ky/chuoi`, chép `dau_cuoi` ra sổ ngoài web2api (giấy, tệp riêng).
+Khi cần đối chứng, so `dau_cuoi` hiện tại với sổ: khớp mà `ok` là `true` thì chuỗi từ lần neo đến nay nguyên vẹn.
+
+Giới hạn đã biết: kẻ xoá trọn ĐẦU hoặc ĐUÔI chuỗi **và** sửa được cả sổ neo ngoài thì không phát hiện được —
+chuỗi băm chỉ phát hiện sửa/xoá/chèn ở GIỮA. `xoa_cu` / xoay vòng làm mất đầu chuỗi là hợp lệ (bản ghi đầu
+còn lại thành điểm bắt đầu mới, `neo_dau` đổi). Tắt khẩn cấp bằng `WEB2API_NHAT_KY_CHUOI_BAM=0` (mặc định `1`).
+
 ### Xử lý sự cố thường gặp
 
 | Hiện tượng | Nguyên nhân và cách xử lý |
@@ -1641,6 +1656,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/nhat-ky` | Có | Xem nhật ký hệ thống (mới nhất trước; lọc theo `kenh`, `muc`, `q`, phân trang `truoc` = `luc` của dòng cuối trang trước, `gioi_han` ≤ 500). Kênh của lõi: `cuoc_goi` — mỗi lượt `/v1` đúng một dòng (người gọi, đường, model, module, mã HTTP, ms, `usage` nếu có, `request_id` và `ma_yeu_cau` (cùng giá trị: `x-request-id` của khách nếu hợp lệ — ≤ 128 ký tự `[A-Za-z0-9._-]` — không thì lõi sinh `req.<16 hex>`; giá trị khách gửi không hợp lệ không được ghi); `dut: true` khi luồng đứt giữa chừng; KHÔNG nội dung lời nhắn/trả lời hay khoá), phản hồi `/v1` mang tiêu đề `x-request-id` (khớp `request_id` trong dòng) và `X-Web2api-Module` (tiền tố module đã phục vụ); `he_thong` — khởi động, nạp/đổi/gỡ module, cấu hình hỏng |
 | `GET /api/nhat-ky/kenh` | Có | Danh sách kênh nhật ký đang có bản ghi (`kenh`, `so_dong`, `lan_cuoi`) |
 | `DELETE /api/nhat-ky` | Có | Xoá bản ghi nhật ký cũ hơn N ngày (`truoc_ngay=N`, 0 ≤ N ≤ 36500; thiếu → `400`, không xoá gì) |
+| `GET /api/nhat-ky/chuoi` | Có | Kiểm tra chuỗi băm chống sửa lén của nhật ký: `ok`, `so_ban_ghi`, `so_ban_ghi_cu`, `neo_dau` (băm neo đầu chuỗi còn lại), `dau_cuoi` (băm bản ghi cuối — chép ra ngoài làm neo), `loi` (tối đa 20 mục `vi_tri`/`tep`/`ly_do`: `bam_sai`, `dut_chuoi`, `thieu_bam_giua_chuoi`). Không trả nội dung bản ghi. Xem «Nhật ký chống sửa lén» |
 | `GET /api/khoa-khach` | Có | Danh sách khoá khách (không băm, không khoá thô) |
 | `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; trả về khoá thô một lần duy nhất) |
 | `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt, nhãn, phạm vi) |
@@ -1719,6 +1735,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
+| `WEB2API_NHAT_KY_CHUOI_BAM` | `1` | Bật chuỗi băm chống sửa lén cho bản ghi nhật ký mới (`1` bật; `0` tắt để quay lại hành vi cũ khi sự cố; giá trị lạ → bật) |
 | `WEB2API_COMBO_NGUONG` | `3` | Số lỗi máy chủ liên tiếp (5xx, lỗi gọi) để mở cầu chì (module, nhóm việc) của combo; 401/403 mở ngay |
 | `WEB2API_COMBO_NGHI_GIAY` | `60` | Giây cầu chì mở trước khi cho MỘT lượt thăm dò (nửa mở); cũng là thời gian hạ bậc bước bị phân xử 400 |
 | `WEB2API_COMBO_DINH_GIAY` | `900` | Giây giữ dính tài khoản (cùng hội thoại → cùng bước); `0` tắt dính |

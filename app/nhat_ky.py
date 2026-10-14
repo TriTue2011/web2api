@@ -21,6 +21,7 @@ Nguyên tắc chủ máy:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -198,6 +199,64 @@ def _lam_sach(v: Any, do_dai: int) -> Any:
     return "".join(k for k in s if k.isprintable())
 
 
+# ───────────── chuỗi băm chống sửa/xoá lén (cẩm nang §20) ─────────────
+#
+# Mỗi bản ghi MỚI mang `truoc` (băm bản ghi liền trước, hoặc "GOC") và `bam` = SHA-256 của
+# (truoc + dạng chuẩn hoá của bản ghi KHÔNG có `bam`). Băm đúng cái ghi xuống đĩa (sau khi
+# che bí mật/làm sạch). Chuỗi xuyên các tệp xoay vòng. Trạng thái "băm cuối" giữ trong bộ nhớ;
+# khởi động hay tệp đổi danh tính thì nạp lại từ đuôi tệp hiện tại.
+
+#: Trạng thái chuỗi trong bộ nhớ: {"danh_tinh": (đường, thiết bị, inode), "bam_cuoi": str}.
+_CHUOI: dict[str, Any] = {}
+
+
+def chuoi_bam_bat() -> bool:
+    """Bật chuỗi băm? Mặc định BẬT ("1"); "0" tắt để quay lại hành vi cũ khi sự cố;
+    giá trị lạ → bật (đóng khi lỗi). Đọc mỗi lượt ghi để tắt khẩn cấp không cần khởi động lại."""
+    return os.environ.get("WEB2API_NHAT_KY_CHUOI_BAM", "1").strip() != "0"
+
+
+def _bam_ban_ghi(truoc: str, dong_khong_bam: dict) -> str:
+    chuan = json.dumps(dong_khong_bam, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256((truoc + chuan).encode("utf-8")).hexdigest()
+
+
+def _doc_bam_cuoi(p: Path) -> str:
+    """Băm của bản ghi có `bam` cuối cùng trong tệp (quét ngược từ đuôi, không đọc cả tệp).
+    Không có bản ghi nào có `bam` → "GOC"."""
+    try:
+        with open(p, "rb") as f:
+            for raw in _dong_nguoc(f):
+                rec = _ban_ghi(raw)
+                if rec is None:
+                    continue
+                bam = rec.get("bam")
+                if isinstance(bam, str) and bam:
+                    return bam
+    except OSError:
+        pass
+    return "GOC"
+
+
+def _lay_bam_cuoi() -> str:
+    """Băm cuối đã biết; nạp lại từ đuôi tệp khi tệp đổi danh tính (xoay/thay/xoá từ ngoài)
+    hay tiến trình mới khởi động. Chỉ gọi khi đang giữ _KHOA. Không thêm I/O khi danh tính khớp."""
+    p = _p_hien_tai()
+    try:
+        st = os.stat(p)
+    except OSError:
+        return "GOC"
+    danh_tinh = (str(p), st.st_dev, st.st_ino)
+    if _CHUOI.get("danh_tinh") == danh_tinh:
+        bam_cuoi = _CHUOI.get("bam_cuoi")
+        if isinstance(bam_cuoi, str) and bam_cuoi:
+            return bam_cuoi
+    bam = _doc_bam_cuoi(p)
+    _CHUOI["danh_tinh"] = danh_tinh
+    _CHUOI["bam_cuoi"] = bam
+    return bam
+
+
 def ghi(kenh: str, muc: str, tom_tat: str, /, ms: float | int | None = None, **them) -> None:
     """Ghi một dòng nhật ký vào kho.
 
@@ -246,7 +305,19 @@ def ghi(kenh: str, muc: str, tom_tat: str, /, ms: float | int | None = None, **t
                 "ms": ms_val,
                 "them": clean_them,
             }
+            bat_chuoi = chuoi_bam_bat()
+            if bat_chuoi:
+                truoc = _lay_bam_cuoi()
+                dong["truoc"] = truoc
+                dong["bam"] = _bam_ban_ghi(truoc, dong)
             _ghi_dong((json.dumps(dong, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8"))
+            if bat_chuoi:
+                # Chỉ cập nhật SAU khi ghi thành công: lần ghi lỗi đĩa không làm đứt chuỗi
+                # (lần sau nối đúng vào băm cuối đã ghi thành công).
+                _CHUOI["bam_cuoi"] = dong["bam"]
+                danh_tinh = _DEM.get("danh_tinh")
+                if danh_tinh is not None:
+                    _CHUOI["danh_tinh"] = danh_tinh
     except Exception as e:
         log.warning("Không thể ghi nhật ký (bỏ qua để lõi chạy tiếp): %s: %s", type(e).__name__, che_chuoi(str(e)))
 
@@ -396,6 +467,99 @@ def xoa_cu(truoc_ngay: float) -> int:
             else:
                 kho.ghi_nguyen_tu(p, b"".join(giu).decode("utf-8", errors="replace"), quyen=0o600)
     return da_xoa
+
+
+# ───────────── kiểm tra chuỗi băm ─────────────
+
+def kiem_tra_chuoi() -> dict:
+    """Kiểm tra chuỗi băm trên toàn bộ nhật ký, từ cũ đến mới, xuyên các tệp xoay vòng.
+
+    Quét luồng từng dòng (không nạp cả nhật ký vào RAM — an toàn với tệp 20 MB × 5 trên
+    container 256 MB). Trả về {"ok", "so_ban_ghi", "so_ban_ghi_cu", "neo_dau", "dau_cuoi",
+    "loi"}; mỗi mục lỗi {"vi_tri" (số thứ tự từ 1), "tep", "ly_do"} với ly_do là
+    "bam_sai" (nội dung bị sửa), "dut_chuoi" (mất/mất liên kết giữa hai bản ghi),
+    "thieu_bam_giua_chuoi" (bản ghi chèn tay không có `bam` sau khi chuỗi đã bắt đầu).
+    Tối đa 20 mục lỗi. KHÔNG trả nội dung bản ghi.
+    """
+    loi: list[dict] = []
+    so_ban_ghi = 0
+    so_ban_ghi_cu = 0
+    neo_dau: str | None = None
+    dau_cuoi: str | None = None
+    bam_truoc: str | None = None
+    trong_chuoi = False
+    vi_tri = 0
+
+    def ghi_loi(ten_tep: str, ly_do: str) -> None:
+        if len(loi) < 20:
+            loi.append({"vi_tri": vi_tri, "tep": ten_tep, "ly_do": ly_do})
+
+    tep = _mo_anh_chup()
+    try:
+        for f in reversed(tep):  # cũ → mới
+            ten_tep = Path(f.name).name
+            for raw in f:
+                if not raw.strip():
+                    continue
+                vi_tri += 1
+                rec = _ban_ghi(raw)
+                if rec is None:
+                    continue  # dòng dở/hỏng: bỏ qua như doc()
+                bam = rec.get("bam")
+                if not isinstance(bam, str) or not bam:
+                    if trong_chuoi:
+                        ghi_loi(ten_tep, "thieu_bam_giua_chuoi")
+                    else:
+                        so_ban_ghi_cu += 1
+                    continue
+                truoc = rec.get("truoc")
+                if not isinstance(truoc, str):
+                    truoc = ""
+                khong_bam = {k: v for k, v in rec.items() if k != "bam"}
+                if _bam_ban_ghi(truoc, khong_bam) != bam:
+                    ghi_loi(ten_tep, "bam_sai")
+                else:
+                    if not trong_chuoi:
+                        trong_chuoi = True
+                        neo_dau = truoc
+                    elif truoc != bam_truoc:
+                        ghi_loi(ten_tep, "dut_chuoi")
+                # Cập nhật bam_truoc kể cả khi bam_sai: lỗi sau đó được quy về đúng điểm
+                # đứt đầu tiên thay vì đổ dồn thành một chùm dut_chuoi.
+                bam_truoc = bam
+                dau_cuoi = bam
+                so_ban_ghi += 1
+    finally:
+        for f in tep:
+            f.close()
+    return {
+        "ok": not loi,
+        "so_ban_ghi": so_ban_ghi,
+        "so_ban_ghi_cu": so_ban_ghi_cu,
+        "neo_dau": neo_dau,
+        "dau_cuoi": dau_cuoi,
+        "loi": loi,
+    }
+
+
+def kiem_tra_chuoi_nen() -> None:
+    """Kiểm tra chuỗi băm ở luồng nền khi khởi động; nếu hỏng, ghi MỘT dòng cảnh báo kênh he_thong.
+
+    Lựa chọn thiết kế: luôn kiểm ở nền thay vì bỏ qua khi tệp lớn — không chặn khởi động
+    (daemon thread), và bỏ qua sẽ im lặng đúng trường hợp cần cảnh báo nhất.
+    """
+    def _chay() -> None:
+        try:
+            kq = kiem_tra_chuoi()
+        except Exception as e:  # noqa: BLE001 — kiểm nền không được làm hỏng khởi động
+            log.warning("Không kiểm được chuỗi băm nhật ký: %s", e)
+            return
+        if not kq["ok"]:
+            ghi("he_thong", "canh_bao",
+                f"Chuỗi băm nhật ký hỏng: {len(kq['loi'])} điểm bất thường",
+                so_loi=len(kq["loi"]))
+
+    threading.Thread(target=_chay, daemon=True, name="nhat-ky-kiem-chuoi").start()
 
 
 # ───────────── Middleware ASGI cho kênh cuoc_goi ─────────────
