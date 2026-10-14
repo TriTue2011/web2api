@@ -30,6 +30,7 @@ from app import (
     khoa_khach as khoa_khach_mod,
     nhat_ky as nhat_ky_mod,
     phien as phien_mod,
+    sao_luu as sao_luu_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
@@ -58,6 +59,7 @@ nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)
 khoa_khach = APIRouter(prefix="/api/khoa-khach", dependencies=QT)
 phien = APIRouter(prefix="/api/phien", dependencies=QT)
 combo = APIRouter(prefix="/api/combo", dependencies=QT)
+sao_luu = APIRouter(prefix="/api", dependencies=QT)
 
 thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
 phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
@@ -1734,3 +1736,59 @@ async def xoa_mot_combo(ten: str):
         raise LoiOpenAI(404, "Không tìm thấy combo", code="not_found")
     nhat_ky_mod.ghi("combo", "thong_tin", f"Xoá combo «{ten}»", ten=ten)
     return {"ok": True}
+
+
+# ───────────── Sao lưu và khôi phục (/api/sao-luu, /api/khoi-phuc) ─────────────
+
+@sao_luu.post("/sao-luu")
+async def tao_sao_luu_route(request: Request):
+    than = await _than_json(request)
+    kem_phien = than.get("kem_phien", False)
+    if not isinstance(kem_phien, bool):
+        raise LoiOpenAI(400, "«kem_phien» phải là true/false.", code="invalid_request")
+    # scrypt + đọc tệp: luồng phụ, không chặn vòng sự kiện.
+    du_lieu_bytes, ten_tep = await asyncio.to_thread(sao_luu_mod.tao_ban_sao_luu, than.get("mat_khau"), kem_phien)
+    return Response(
+        content=du_lieu_bytes,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{ten_tep}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+def _truong_mot(yc, ten: str) -> str | None:
+    v = yc.truong.get(ten)
+    if isinstance(v, list):
+        v = v[0] if v else None
+    return None if v is None else str(v).strip()
+
+
+@sao_luu.post("/khoi-phuc")
+async def khoi_phuc_route(request: Request):
+    """Hai chế độ cùng MỘT kế hoạch (app/sao_luu.py): `kiem` (mặc định) trả kế hoạch + khác biệt nhạy cảm + sha256 của
+    tệp, không ghi; `ap_dung` đòi `sha256` đó rồi mới ghi."""
+    yc = await doc_multipart(request)
+    ds_tep = yc.tep_ten("tep")
+    if len(ds_tep) != 1 or not ds_tep[0].noi_dung:
+        nhat_ky_mod.ghi("quan_tri", "canh_bao", "Khôi phục thất bại: thiếu hoặc thừa tệp trong trường «tep»")
+        raise LoiOpenAI(400, "Cần đúng một tệp sao lưu trong trường «tep».", code="sao_luu_khong_hop_le")
+    tep = ds_tep[0]
+    mat_khau = _truong_mot(yc, "mat_khau") or None
+    che_do = (_truong_mot(yc, "che_do") or "kiem").lower()
+    if che_do not in ("kiem", "ap_dung"):
+        raise LoiOpenAI(400, "«che_do» chỉ nhận «kiem» hoặc «ap_dung».", code="invalid_request")
+
+    try:
+        if che_do == "kiem":
+            return await sao_luu_mod.kiem_khoi_phuc(tep.noi_dung, mat_khau, so=_so(request), ng=_ng(request))
+        return await sao_luu_mod.ap_dung_khoi_phuc(tep.noi_dung, mat_khau, so=_so(request), ng=_ng(request),
+                                                   sha256_da_kiem=_truong_mot(yc, "sha256"))
+    except LoiOpenAI as e:
+        nhat_ky_mod.ghi("quan_tri", "canh_bao", f"Khôi phục thất bại ({che_do}): {e}", che_do=che_do)
+        raise
+    except Exception as e:
+        nhat_ky_mod.ghi("quan_tri", "loi", f"Khôi phục lỗi không xác định ({che_do}): {type(e).__name__}",
+                        che_do=che_do)
+        raise LoiOpenAI(400, "Bản sao lưu không hợp lệ.", code="sao_luu_khong_hop_le") from e

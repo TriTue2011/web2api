@@ -30,12 +30,15 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from app import kho, nhat_ky
+from app.kham_pha import MA_KHA_NANG
 from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.khoa_khach")
@@ -118,20 +121,114 @@ def dong_bo_dia() -> None:
             _ghi_ra_dia_khoi_tao()
 
 
-def tim_theo_khoa_tho(khoa_tho: str) -> dict[str, Any] | None:
-    """Đường nóng: tìm khoá khách theo chuỗi khoá thô (tính sha256 và so digest trong bộ nhớ).
+def lam_moi_cache() -> None:
+    """Xoá cache trong bộ nhớ để lượt đọc tiếp theo nạp lại tệp khoa_khach.json từ đĩa."""
+    global _KHOA_KHACH_CACHE, _CACHE_FILE_STAT, _CO_THAY_DOI
+    with _KHOA_LUONG:
+        _KHOA_KHACH_CACHE = []
+        _CACHE_FILE_STAT = None
+        _CO_THAY_DOI = False
 
-    Không ghi đĩa. Trả về dict khoá (bản sao hoặc tham chiếu an toàn) hoặc None.
+
+@contextmanager
+def thay_tep_tu_ngoai():
+    """Ghi đè khoa_khach.json từ NGOÀI module (khôi phục) trong khối này: giữ khoá luồng suốt lượt ghi để nhịp
+    `dong_bo_dia` không ghi cache CŨ đè lên tệp mới, rồi bỏ cache để lượt tra sau đọc lại từ đĩa."""
+    with _KHOA_LUONG:
+        try:
+            yield
+        finally:
+            lam_moi_cache()
+
+
+_ID_KHOA = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_BAM_HOP_LE = re.compile(r"[0-9a-f]{64}")
+
+
+def kiem_tep(du_lieu: Any) -> list[dict[str, Any]]:
+    """Kiểm THUẦN (không ghi) nội dung khoa_khach.json — dùng cho khôi phục, cùng hình dạng `tao_khoa` ghi ra.
+
+    Mọi trường quyết định quyền đều BẮT BUỘC và đúng kiểu: thiếu `pham_vi`/`bat` không được rơi về mặc định «*»/bật
+    của đường xác thực. Trả danh sách bản ghi chuẩn hoá; sai → ValueError nêu vị trí và quy tắc, không chép giá trị.
     """
-    if not khoa_tho or not isinstance(khoa_tho, str):
+    ds = du_lieu.get("khoa") if isinstance(du_lieu, dict) else None
+    if not isinstance(ds, list):
+        raise ValueError('cần dạng {"khoa": [...]}')
+    ra, id_da_thay, bam_da_thay = [], set(), set()
+    for i, k in enumerate(ds):
+        if not isinstance(k, dict):
+            raise ValueError(f"khoa[{i}]: phải là đối tượng")
+        if not isinstance(k.get("id"), str) or not _ID_KHOA.fullmatch(k["id"]):
+            raise ValueError(f"khoa[{i}]: «id» phải gồm chữ, số, «_», «-» (1–64 ký tự)")
+        if not isinstance(k.get("bam"), str) or not _BAM_HOP_LE.fullmatch(k["bam"]):
+            raise ValueError(f"khoa[{i}]: «bam» phải là SHA-256 dạng 64 ký tự hex thường")
+        if k["id"] in id_da_thay or k["bam"] in bam_da_thay:
+            raise ValueError(f"khoa[{i}]: «id» hoặc «bam» trùng mục trước")
+        if not isinstance(k.get("bat"), bool):
+            raise ValueError(f"khoa[{i}]: «bat» phải là true/false")
+        pv = k.get("pham_vi")
+        if (not isinstance(pv, list) or not pv
+                or not all(isinstance(x, str) and (x == "*" or MA_KHA_NANG.match(x)) for x in pv)):
+            raise ValueError(f"khoa[{i}]: «pham_vi» phải là danh sách khác rỗng gồm «*» hoặc mã khả năng")
+        nhan = k.get("nhan", "Khoá khách")
+        so_luot = k.get("so_luot", 0)
+        if not isinstance(nhan, str) or len(nhan) > 200:
+            raise ValueError(f"khoa[{i}]: «nhan» phải là chuỗi ≤ 200 ký tự")
+        if not isinstance(so_luot, int) or isinstance(so_luot, bool) or so_luot < 0:
+            raise ValueError(f"khoa[{i}]: «so_luot» phải là số nguyên ≥ 0")
+        for t in ("tao_luc", "dung_cuoi"):
+            if k.get(t) is not None and not isinstance(k[t], str):
+                raise ValueError(f"khoa[{i}]: «{t}» phải là chuỗi hoặc null")
+        id_da_thay.add(k["id"])
+        bam_da_thay.add(k["bam"])
+        ra.append({"id": k["id"], "nhan": nhan, "bat": k["bat"], "pham_vi": list(dict.fromkeys(pv)),
+                   "tao_luc": k.get("tao_luc"), "dung_cuoi": k.get("dung_cuoi"), "so_luot": so_luot,
+                   "bam": k["bam"]})
+    return ra
+
+
+def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
+    """So danh sách khoá (đã qua `kiem_tep`) với khoá đang có — cho người duyệt khôi phục thấy mình chấp nhận gì:
+    khoá MỚI (có thể là băm do người khác chọn = cửa vào /v1), khoá cùng id mà ĐỔI BĂM, đổi phạm vi/bật/nhãn, và
+    khoá đang có sẽ MẤT. Không trả băm."""
+    with _KHOA_LUONG:
+        cu = {k.get("id"): dict(k) for k in _doc_tu_dia_neu_can()}
+    ds = []
+    for k in moi:
+        c = cu.get(k["id"])
+        if c is None:
+            tt = "moi"
+        elif c.get("bam") != k["bam"]:
+            tt = "doi_bam"
+        elif (c.get("bat", True), list(c.get("pham_vi", ["*"])), c.get("nhan")) != (k["bat"], k["pham_vi"], k["nhan"]):
+            tt = "doi"
+        else:
+            tt = "giu_nguyen"
+        ds.append({"id": k["id"], "nhan": k["nhan"], "bat": k["bat"], "pham_vi": list(k["pham_vi"]), "trang_thai": tt})
+    con = {k["id"] for k in moi}
+    return {"so_khoa": len(moi), "khoa": ds, "se_mat": sorted(str(i) for i in cu if i not in con)}
+
+
+def tim_theo_bam(bam_tim: str) -> dict[str, Any] | None:
+    """Tra khoá khách theo băm SHA-256 (đường tra thật của xác thực, sau bước băm). None nếu không có."""
+    if not isinstance(bam_tim, str):
         return None
-    bam_tim = hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest()
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
         for k in ds:
             if hmac.compare_digest(bam_tim.encode("ascii"), str(k.get("bam", "")).encode("ascii")):
                 return k
     return None
+
+
+def tim_theo_khoa_tho(khoa_tho: str) -> dict[str, Any] | None:
+    """Đường nóng: tìm khoá khách theo chuỗi khoá thô (tính sha256 rồi tra bằng `tim_theo_bam`).
+
+    Không ghi đĩa. Trả về dict khoá (bản sao hoặc tham chiếu an toàn) hoặc None.
+    """
+    if not khoa_tho or not isinstance(khoa_tho, str):
+        return None
+    return tim_theo_bam(hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest())
 
 
 def ghi_nhan_su_dung(id_khoa: str) -> None:

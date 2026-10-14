@@ -92,8 +92,18 @@ def _ghi_json(p: Path, du_lieu: Any, quyen: int = 0o644) -> None:
 
 # ───────────── bí mật ─────────────
 
+def ten_bi_mat_hop_le(ten) -> bool:
+    """Một quy tắc tên tệp bí mật cho mọi nơi (kho, sao lưu/khôi phục) — fullmatch, không lệch `$`/`\\Z`."""
+    return isinstance(ten, str) and _TEN_BI_MAT.fullmatch(ten) is not None
+
+
+def giu_khoa_kho() -> threading.RLock:
+    """Khoá đọc-sửa-ghi của kho — cho việc ghi NHIỀU tệp một lượt (khôi phục) không xen với PUT đang chạy."""
+    return _KHOA
+
+
 def _duong_bi_mat(ten: str) -> Path:
-    if not isinstance(ten, str) or not _TEN_BI_MAT.match(ten):
+    if not ten_bi_mat_hop_le(ten):
         raise ValueError(f"tên bí mật không hợp lệ: {ten!r}")
     return thu_muc_du_lieu() / "bi_mat" / f"{ten}.json"
 
@@ -141,6 +151,43 @@ def doc_modules() -> tuple[list[dict], str | None]:
     except KhoHong as e:
         return [], f"{e}; coi như chưa có cấu hình module nào"
     return ds, None
+
+
+def kiem_tep_modules(du_lieu: Any) -> list[dict]:
+    """Kiểm THUẦN (không ghi) nội dung modules.json: {"modules": [{"id", "cai_luc", "cau_hinh_cong_khai"}]}.
+    Trả danh sách mục đã chuẩn hoá (chỉ ba trường lõi hiểu); sai → ValueError nêu vị trí, không chép giá trị."""
+    from app.kham_pha import ID_HOP_LE
+
+    ds = du_lieu.get("modules") if isinstance(du_lieu, dict) else None
+    if not isinstance(ds, list):
+        raise ValueError('cần dạng {"modules": [...]}')
+    ra, da_thay = [], set()
+    for i, m in enumerate(ds):
+        if not isinstance(m, dict) or not isinstance(m.get("id"), str) or not ID_HOP_LE.match(m["id"]):
+            raise ValueError(f"modules[{i}]: «id» phải là id module hợp lệ")
+        if m["id"] in da_thay:
+            raise ValueError(f"modules[{i}]: «id» trùng mục trước")
+        da_thay.add(m["id"])
+        if not isinstance(m.get("cai_luc"), str):
+            raise ValueError(f"modules[{i}]: «cai_luc» phải là chuỗi")
+        if not isinstance(m.get("cau_hinh_cong_khai"), dict):
+            raise ValueError(f"modules[{i}]: «cau_hinh_cong_khai» phải là đối tượng")
+        ra.append({"id": m["id"], "cai_luc": m["cai_luc"], "cau_hinh_cong_khai": m["cau_hinh_cong_khai"]})
+    return ra
+
+
+def kiem_cau_hinh_cong_khai(truong: list[dict], cong_khai: dict) -> None:
+    """Cấu hình công khai đã lưu phải khớp khai báo `truong_cau_hinh` của manifest module sở hữu: chỉ trường đã khai;
+    trường thường là chuỗi; trường bí mật chỉ ở dạng ĐÃ CHE (chuỗi hoặc danh sách chuỗi). Sai → ValueError."""
+    kieu = {t["khoa"]: t["kieu"] for t in truong}
+    for k, v in cong_khai.items():
+        if k not in kieu:
+            raise ValueError("có trường không được manifest của module khai")
+        if kieu[k] in KIEU_BI_MAT:
+            if not (isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))):
+                raise ValueError("trường bí mật (dạng che) phải là chuỗi hoặc danh sách chuỗi")
+        elif not isinstance(v, str):
+            raise ValueError("trường cấu hình thường phải là chuỗi")
 
 
 def _doc_modules_de_sua() -> list[dict]:
@@ -334,6 +381,27 @@ def doc_cai_dat_model() -> dict:
     if not isinstance(du_lieu, dict):
         raise KhoHong(f"{_p_model()} hỏng: cần dạng đối tượng JSON")
     return du_lieu
+
+
+def kiem_cai_dat_model(du_lieu: Any) -> dict:
+    """Kiểm THUẦN (không ghi) nội dung model.json: {<id module>: {"tat": [chuỗi], "mac_dinh": {chuỗi: chuỗi}}}.
+    Trả bản chuẩn hoá; sai kiểu → ValueError (lời nhắn nêu vị trí, không chép giá trị)."""
+    from app.kham_pha import ID_HOP_LE
+
+    if not isinstance(du_lieu, dict):
+        raise ValueError("cần dạng đối tượng {<id module>: {...}}")
+    ra = {}
+    for id_, muc in du_lieu.items():
+        if not ID_HOP_LE.match(id_):
+            raise ValueError("khoá phải là id module hợp lệ")
+        if (not isinstance(muc, dict) or not isinstance(muc.get("tat", []), list)
+                or not all(isinstance(x, str) for x in muc.get("tat", []))):
+            raise ValueError("«tat» phải là danh sách chuỗi")
+        mac_dinh = muc.get("mac_dinh", {})
+        if not isinstance(mac_dinh, dict) or not all(isinstance(v, str) for v in mac_dinh.values()):
+            raise ValueError("«mac_dinh» phải là đối tượng {nhóm: id model}")
+        ra[id_] = {"tat": list(dict.fromkeys(muc.get("tat", []))), "mac_dinh": dict(mac_dinh)}
+    return ra
 
 
 def doc_cai_dat_model_module(id_: str) -> dict:

@@ -172,6 +172,7 @@ app.include_router(tuyen.dia_chi)
 app.include_router(tuyen.nhat_ky)
 app.include_router(tuyen.khoa_khach)
 app.include_router(tuyen.phien)
+app.include_router(tuyen.sao_luu)
 
 app.include_router(tuyen.thiet_bi)
 app.include_router(tuyen.phe_duyet)

@@ -92,6 +92,55 @@ def kiem_repo(repo) -> str:
     return repo
 
 
+def kiem_cau_hinh(than: dict, cu: dict) -> dict:
+    """Kiểm THUẦN (không ghi) cấu hình nguồn git — MỘT bộ kiểm cho PUT /api/nguon-git, cho lượt đọc nguon_git.json và
+    cho khôi phục. Trường vắng trong `than` lấy từ `cu`, rồi mặc định. Sai → ValueError (không chép giá trị khoá)."""
+    if not isinstance(than, dict):
+        raise ValueError("cấu hình nguồn git phải là đối tượng JSON")
+    repo = kiem_repo(than.get("repo", cu.get("repo")))
+    nhanh = _duong_an_toan(than.get("nhanh", cu.get("nhanh", "main")), "nhanh")
+    thu_muc = _duong_an_toan(than.get("thu_muc", cu.get("thu_muc", THU_MUC_MAC_DINH)), "thu_muc")
+    chu_ky = than.get("chu_ky_giay", cu.get("chu_ky_giay", 300))
+    if not isinstance(chu_ky, int) or isinstance(chu_ky, bool) or not 1 <= chu_ky <= 86400:
+        raise ValueError("chu_ky_giay phải là số nguyên 1..86400")
+    co = {}
+    for k in ("tu_dong", "yeu_cau_chu_ky"):
+        v = than.get(k, cu.get(k, False))
+        if not isinstance(v, bool):
+            raise ValueError(f"{k} phải là true/false")
+        co[k] = v
+    return {"repo": repo, "nhanh": nhanh, "thu_muc": thu_muc, "chu_ky_giay": chu_ky, **co}
+
+
+def doc_cau_hinh() -> dict | None:
+    """Cấu hình nguồn git đang hiệu lực: nguon_git.json (qua CÙNG bộ kiểm `kiem_cau_hinh` — tệp sửa tay sai hay
+    «repo» «../..» không được dùng) hoặc biến môi trường. None = chưa cấu hình."""
+    p = kho.thu_muc_du_lieu() / TEP_CAU_HINH
+    try:
+        cfg = kho.doc_json(p)
+    except kho.KhoHong as e:
+        log.warning("%s — coi như chưa cấu hình nguồn git", e)
+        return None
+    if isinstance(cfg, dict) and cfg.get("repo"):
+        try:
+            return kiem_cau_hinh(cfg, {})
+        except ValueError as e:
+            log.warning("%s sai (%s) — coi như chưa cấu hình nguồn git", p, e)
+            return None
+    repo = os.environ.get("WEB2API_GIT_REPO", "").strip()
+    if not repo:
+        return None
+    try:
+        return {"repo": kiem_repo(repo),
+                "nhanh": _duong_an_toan(os.environ.get("WEB2API_GIT_NHANH") or "main", "WEB2API_GIT_NHANH"),
+                "thu_muc": _duong_an_toan(os.environ.get("WEB2API_GIT_THU_MUC") or THU_MUC_MAC_DINH,
+                                          "WEB2API_GIT_THU_MUC"),
+                "chu_ky_giay": 300, "tu_dong": False, "yeu_cau_chu_ky": False, "nguon": "bien_moi_truong"}
+    except ValueError as e:
+        log.warning("Biến môi trường nguồn git sai, bỏ qua: %s", e)
+        return None
+
+
 class NguonGit:
     #: Nhân thời gian chờ của vòng nền — test đặt nhỏ để không phải ngủ thật.
     HE_SO_CHO = 1.0
@@ -121,25 +170,7 @@ class NguonGit:
     # ───────────── cấu hình ─────────────
 
     def cau_hinh(self) -> dict | None:
-        try:
-            cfg = kho.doc_json(kho.thu_muc_du_lieu() / TEP_CAU_HINH)
-        except kho.KhoHong as e:
-            log.warning("%s — coi như chưa cấu hình nguồn git", e)
-            return None
-        if isinstance(cfg, dict) and cfg.get("repo"):
-            return cfg
-        repo = os.environ.get("WEB2API_GIT_REPO", "").strip()
-        if not repo:
-            return None
-        try:
-            return {"repo": kiem_repo(repo),
-                    "nhanh": _duong_an_toan(os.environ.get("WEB2API_GIT_NHANH") or "main", "WEB2API_GIT_NHANH"),
-                    "thu_muc": _duong_an_toan(os.environ.get("WEB2API_GIT_THU_MUC") or THU_MUC_MAC_DINH,
-                                              "WEB2API_GIT_THU_MUC"),
-                    "chu_ky_giay": 300, "tu_dong": False, "yeu_cau_chu_ky": False, "nguon": "bien_moi_truong"}
-        except ValueError as e:
-            log.warning("Biến môi trường nguồn git sai, bỏ qua: %s", e)
-            return None
+        return doc_cau_hinh()
 
     def token_va_nguon(self) -> tuple[str | None, str | None]:
         env_tk = (os.environ.get("WEB2API_GITHUB_TOKEN", "").strip()
@@ -159,23 +190,10 @@ class NguonGit:
         return tk
 
     def luu_cau_hinh(self, than: dict) -> dict:
-        cu = self.cau_hinh() or {}
-        repo = kiem_repo(than.get("repo", cu.get("repo")))
-        nhanh = _duong_an_toan(than.get("nhanh", cu.get("nhanh", "main")), "nhanh")
-        thu_muc = _duong_an_toan(than.get("thu_muc", cu.get("thu_muc", THU_MUC_MAC_DINH)), "thu_muc")
-        chu_ky = than.get("chu_ky_giay", cu.get("chu_ky_giay", 300))
-        if not isinstance(chu_ky, int) or isinstance(chu_ky, bool) or not 1 <= chu_ky <= 86400:
-            raise ValueError("chu_ky_giay phải là số nguyên 1..86400")
-        co = {}
-        for k in ("tu_dong", "yeu_cau_chu_ky"):
-            v = than.get(k, cu.get(k, False))
-            if not isinstance(v, bool):
-                raise ValueError(f"{k} phải là true/false")
-            co[k] = v
+        cfg = kiem_cau_hinh(than, self.cau_hinh() or {})
         token = than.get("token", None)
         if token is not None and not isinstance(token, str):
             raise ValueError("token phải là chuỗi")
-        cfg = {"repo": repo, "nhanh": nhanh, "thu_muc": thu_muc, "chu_ky_giay": chu_ky, **co}
         kho.ghi_json_cong_khai(TEP_CAU_HINH, cfg)
         if "token" in than:
             if token:
