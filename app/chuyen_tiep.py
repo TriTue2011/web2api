@@ -248,17 +248,14 @@ async def doc_phan_hoi_co_tran(
         async with asyncio.timeout(tran_giay):
             async for khuc in r.aiter_bytes():
                 if len(dem) + len(khuc) > tran_bytes:
-                    await r.aclose()
                     raise PhanHoiQuaLon(len(dem) + len(khuc), tran_bytes)
                 dem.extend(khuc)
-    except Exception:
-        await r.aclose()
-        raise
-    else:
-        await r.aclose()
-        kq = bytes(dem)
-        del dem
-        return kq
+        return bytes(dem)
+    finally:
+        # MỌI đường thoát — đọc xong, vượt trần, quá giờ, lỗi mạng, và cả khách ngắt (CancelledError, không phải
+        # Exception) — đều đóng phản hồi để kết nối ngược dòng không treo trong pool. shield vì cancel scope của anyio
+        # (Starlette) huỷ lặp lại ở mọi await còn trong scope.
+        await asyncio.shield(r.aclose())
 
 
 class LuongSSE:

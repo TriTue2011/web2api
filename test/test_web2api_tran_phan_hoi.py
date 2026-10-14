@@ -361,3 +361,34 @@ def test_aclose_chua_chay_dong_nao_dong_ket_noi():
                 await ct.dung()
 
     asyncio.run(chay())
+
+
+def test_khach_ngat_giua_luc_doc_van_dong_phan_hoi():
+    """Tác vụ đang đọc phản hồi ngược dòng bị HUỶ (khách ngắt → CancelledError, không phải Exception) vẫn phải đóng phản
+    hồi — nếu không kết nối ngược dòng treo trong pool."""
+    import asyncio
+
+    from app.chuyen_tiep import doc_phan_hoi_co_tran
+
+    class PhanHoiGia:
+        def __init__(self):
+            self.da_dong = 0
+
+        async def aiter_bytes(self):
+            yield b"mot-khuc"
+            await asyncio.sleep(30)  # nguồn nhỏ giọt: đang chờ khúc kế thì bị huỷ
+            yield b"khong-bao-gio-toi"
+
+        async def aclose(self):
+            self.da_dong += 1
+
+    async def chay():
+        r = PhanHoiGia()
+        tac_vu = asyncio.create_task(doc_phan_hoi_co_tran(r, tran_bytes=1024, tran_giay=60))
+        await asyncio.sleep(0.05)
+        tac_vu.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tac_vu
+        return r.da_dong
+
+    assert asyncio.run(chay()) >= 1, "phản hồi không được đóng khi tác vụ đọc bị huỷ"
