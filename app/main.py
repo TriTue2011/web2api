@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import gioi_han, he_thong, kho, khoa_khach, nhat_ky, phien, tuyen, xac_thuc
+from app import gioi_han, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -66,6 +66,7 @@ async def _vong_quet_phien(app: FastAPI):
 async def lifespan(app: FastAPI):
     xac_thuc.khoa_quan_tri()  # sinh tệp khoá ngay lần chạy đầu để người vận hành lấy được
     gioi_han.khoi_dong()  # đọc cấu hình giới hạn sai khoá (WEB2API_RL_*) một lần lúc khởi động
+    nguoi_dung.khoi_tao_thiet_lap_lan_dau()  # tạo mã thiết lập lần đầu nếu chưa có admin
     # Sổ và vòng nền tạo TRONG vòng sự kiện đang chạy (Lock/Event/Task gắn với nó).
     so = SoModule()
     app.state.so = so
@@ -102,8 +103,12 @@ class MiddlewareChanKhoaKhachQuanTri:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             path = scope.get("path", "")
-            la_duong_tim_kiem = path in ("/api/tim-kiem", "/api/tim-kiem/", "/api/tim-kiem/muc-luc")
-            if ((path.startswith("/api/") and not path.startswith("/api/thiet-bi") and not la_duong_tim_kiem) or path.endswith(".dc.html")):
+            la_duong_ngoai_le = (
+                path in ("/api/tim-kiem", "/api/tim-kiem/", "/api/tim-kiem/muc-luc")
+                or path.startswith("/api/thiet-lap")
+                or path.startswith("/api/dang-nhap")
+            )
+            if ((path.startswith("/api/") and not path.startswith("/api/thiet-bi") and not la_duong_ngoai_le) or path.endswith(".dc.html")):
                 for k, v in scope.get("headers", []):
                     if k.lower() == b"authorization":
                         gia_tri = v.decode("latin-1").strip()
@@ -180,6 +185,12 @@ app.include_router(tuyen.combo)
 app.include_router(tuyen.tep_module)
 app.include_router(tuyen.trinh_duyet)
 app.include_router(tuyen.novnc)
+
+app.include_router(tuyen.thiet_lap)
+app.include_router(tuyen.dang_nhap)
+app.include_router(tuyen.dang_xuat)
+app.include_router(tuyen.toi)
+app.include_router(tuyen.nguoi_dung)
 
 
 @app.get("/")

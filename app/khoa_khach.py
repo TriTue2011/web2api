@@ -130,6 +130,14 @@ def tim_theo_khoa_tho(khoa_tho: str) -> dict[str, Any] | None:
         ds = _doc_tu_dia_neu_can()
         for k in ds:
             if hmac.compare_digest(bam_tim.encode("ascii"), str(k.get("bam", "")).encode("ascii")):
+                chu_id = k.get("chu_id")
+                if chu_id:
+                    from app import nguoi_dung
+                    nd = nguoi_dung.tim_theo_id(chu_id)
+                    if nd is None or not nd.get("bat", True):
+                        k_copy = dict(k)
+                        k_copy["bat"] = False
+                        return k_copy
                 return k
     return None
 
@@ -187,6 +195,7 @@ def _sach_khoa(k: dict[str, Any]) -> dict[str, Any]:
         "nhan": k.get("nhan"),
         "bat": bool(k.get("bat", True)),
         "pham_vi": list(k.get("pham_vi", ["*"])),
+        "chu_id": k.get("chu_id"),
         "tao_luc": k.get("tao_luc"),
         "dung_cuoi": k.get("dung_cuoi"),
         "so_luot": int(k.get("so_luot", 0)),
@@ -200,7 +209,30 @@ def danh_sach_khoa() -> list[dict[str, Any]]:
         return [_sach_khoa(k) for k in ds]
 
 
-def tao_khoa(nhan: str = "", pham_vi: list[str] | None = None) -> tuple[dict[str, Any], str]:
+def danh_sach_khoa_theo_chu(chu_id: str) -> list[dict[str, Any]]:
+    """Liệt kê khoá khách thuộc về một người dùng cụ thể."""
+    with _KHOA_LUONG:
+        ds = _doc_tu_dia_neu_can()
+        return [_sach_khoa(k) for k in ds if k.get("chu_id") == chu_id]
+
+
+def xoa_khoa_theo_chu(chu_id: str) -> int:
+    """Xoá toàn bộ khoá khách thuộc về một người dùng (khi xoá người dùng)."""
+    with _KHOA_LUONG:
+        ds = _doc_tu_dia_neu_can()
+        ban_dau = len(ds)
+        _KHOA_KHACH_CACHE[:] = [k for k in ds if k.get("chu_id") != chu_id]
+        da_xoa = ban_dau - len(_KHOA_KHACH_CACHE)
+        if da_xoa > 0:
+            _ghi_ra_dia_khoi_tao()
+    return da_xoa
+
+
+def tao_khoa(
+    nhan: str = "",
+    pham_vi: list[str] | None = None,
+    chu_id: str | None = None,
+) -> tuple[dict[str, Any], str]:
     """Tạo khoá khách mới: sinh khoá ngẫu nhiên hiện MỘT LẦN, ghi nguyên tử 0600 và ghi sổ quan_tri."""
     nhan_chuan = str(nhan or "").strip() or "Khoá khách"
     pv = list(pham_vi) if isinstance(pham_vi, list) and pham_vi else ["*"]
@@ -214,6 +246,7 @@ def tao_khoa(nhan: str = "", pham_vi: list[str] | None = None) -> tuple[dict[str
         "nhan": nhan_chuan,
         "bat": True,
         "pham_vi": pv,
+        "chu_id": chu_id,
         "tao_luc": tao_luc,
         "dung_cuoi": None,
         "so_luot": 0,
@@ -232,6 +265,7 @@ def tao_khoa(nhan: str = "", pham_vi: list[str] | None = None) -> tuple[dict[str
         id_khoa=id_khoa,
         nhan=nhan_chuan,
         pham_vi=pv,
+        chu_id=chu_id,
     )
     ban_ghi = _sach_khoa(muc)
     return ban_ghi, khoa_tho

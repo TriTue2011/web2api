@@ -15,6 +15,7 @@ Kiểm tra:
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -23,10 +24,10 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.routing import Mount, Route, WebSocketRoute
 
-from app import khoa_khach
+from app import khoa_khach, nguoi_dung, phien_web
 from app.main import app
 from app.so_module import SoModule
-from app.xac_thuc import can_quan_tri, xac_thuc_v1
+from app.xac_thuc import can_phien_web, can_quan_tri, xac_thuc_v1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BẢNG NGOẠI LỆ MỞ CÓ CHỦ ĐÍCH DUY NHẤT (Luật bảo mật số 2)
@@ -44,6 +45,9 @@ BANG_NGOAI_LE_MO: dict[tuple[str, str], str] = {
     ("POST", "/novnc/dang-nhap"): "Đổi vé sử dụng một lần (60 giây) trong thân form urlencoded lấy phiên noVNC ngắn hạn",
     ("*", "/novnc/s/{phien}/{duong:path}"): "Proxy HTTP noVNC bảo vệ bằng sha256 phiên 256-bit trong URL, CSP sandbox không same-origin",
     ("GET", "/"): "Trang khởi đầu điều hướng giao diện (trả về tệp tĩnh index.html)",
+    ("GET", "/api/thiet-lap"): "Kiểm tra hệ thống có cần thiết lập tài khoản admin lần đầu hay không (chỉ trả cờ boolean, không chứa dữ liệu nhạy cảm)",
+    ("POST", "/api/thiet-lap"): "Thiết lập tài khoản admin lần đầu (chỉ chạy khi chưa có admin, bảo vệ bằng mã thiết lập/khóa quản trị và giới hạn tần suất)",
+    ("POST", "/api/dang-nhap"): "Đăng nhập giao diện web bằng mật khẩu (giới hạn tần suất IP và khóa tên tài khoản, băm giả chống dò tìm)",
 }
 
 # Chuỗi khoá giả nằm trong allowlist của .gitleaks.toml
@@ -114,6 +118,8 @@ def phan_loai_route(route: Any) -> str:
         return "quan_tri"
     if xac_thuc_v1 in deps:
         return "khach"
+    if can_phien_web in deps:
+        return "phien_web"
     return "mo"
 
 
@@ -176,6 +182,7 @@ def test_01_thong_ke_va_tu_bao_so_route():
     routes = thu_thap_routes(app)
     quan_tri: list[str] = []
     khach: list[str] = []
+    phien_web_routes: list[str] = []
     mo: list[str] = []
 
     for r in routes:
@@ -184,12 +191,15 @@ def test_01_thong_ke_va_tu_bao_so_route():
             quan_tri.append(r.path)
         elif loai == "khach":
             khach.append(r.path)
+        elif loai == "phien_web":
+            phien_web_routes.append(r.path)
         else:
             mo.append(r.path)
 
     print("\n=== THỐNG KÊ MA TRẬN QUYỀN ===")
     print(f"- Số route Quản trị (QT): {len(quan_tri)}")
     print(f"- Số route API khách (V1_AUTH): {len(khach)}")
+    print(f"- Số route Phiên web (PW): {len(phien_web_routes)}")
     print(f"- Số route Mở (không xác thực): {len(mo)}")
     print(f"- Tổng số route HTTP đã duyệt: {len(routes)}")
 
@@ -199,6 +209,7 @@ def test_01_thong_ke_va_tu_bao_so_route():
 
     assert len(quan_tri) >= 1, "Phải có ít nhất 1 route quản trị được kiểm"
     assert len(khach) >= 1, "Phải có ít nhất 1 route API khách được kiểm"
+    assert len(phien_web_routes) >= 1, "Phải có ít nhất 1 route phiên web được kiểm"
     assert len(mo) >= 1, "Phải có ít nhất 1 route mở được kiểm"
 
 
@@ -217,10 +228,10 @@ def test_02_moi_route_mo_phai_nam_trong_bang_ngoai_le():
 
 
 def test_03_ma_tran_khong_khoa_tra_401(moi_truong):
-    """Mọi route quản trị và API khách: không gửi khoá -> 401 Unauthorized (xác thực chạy trước khi đọc thân)."""
+    """Mọi route quản trị, API khách và phiên web: không gửi khoá/cookie -> 401 Unauthorized."""
     client, _, _ = moi_truong
     routes = thu_thap_routes(app)
-    cac_route_can_bao_ve = [r for r in routes if phan_loai_route(r) in ("quan_tri", "khach")]
+    cac_route_can_bao_ve = [r for r in routes if phan_loai_route(r) in ("quan_tri", "khach", "phien_web")]
 
     for r in cac_route_can_bao_ve:
         duong = thay_the_tham_so(r.path)
@@ -233,10 +244,10 @@ def test_03_ma_tran_khong_khoa_tra_401(moi_truong):
 
 
 def test_04_ma_tran_khoa_sai_tra_401(moi_truong):
-    """Mọi route quản trị và API khách: gửi khoá sai -> 401 Unauthorized."""
+    """Mọi route quản trị, API khách và phiên web: gửi khoá sai -> 401 Unauthorized."""
     client, _, _ = moi_truong
     routes = thu_thap_routes(app)
-    cac_route_can_bao_ve = [r for r in routes if phan_loai_route(r) in ("quan_tri", "khach")]
+    cac_route_can_bao_ve = [r for r in routes if phan_loai_route(r) in ("quan_tri", "khach", "phien_web")]
     headers_sai = {"Authorization": f"Bearer {KHOA_SAI}"}
 
     for r in cac_route_can_bao_ve:
@@ -376,3 +387,31 @@ def test_10_idor_khoa_khach_doi_id_sang_tai_nguyen_khac(moi_truong):
     # 5. Khách cố xoá phiên tài khoản của module -> 403
     r_phien = client.delete("/api/phien/mock/tk1", headers=headers_khach)
     assert r_phien.status_code == 403
+
+
+def test_11_ma_tran_cookie_vai_user_goi_quan_tri_tra_403(moi_truong):
+    """Mọi route quản trị (QT): cookie phiên vai user gọi -> 403 Forbidden."""
+    client, _, _ = moi_truong
+    # Tạo người dùng vai user
+    u_ban_ghi, _, _ = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(
+            vai="user",
+            ten_dang_nhap="user-ma-tran-test",
+            mat_khau="MatKhauTest123456",
+        )
+    )
+    p_ban_ghi, token_tho = phien_web.tao_phien(u_ban_ghi["id"])
+
+    routes = thu_thap_routes(app)
+    cac_route_qt = [r for r in routes if phan_loai_route(r) == "quan_tri"]
+    headers = {"X-CSRF-Token": p_ban_ghi["csrf"]}
+
+    for r in cac_route_qt:
+        duong = thay_the_tham_so(r.path)
+        for m in cac_phuong_thuc_chinh(r.methods):
+            res = client.request(m, duong, cookies={"w2a_phien": token_tho}, headers=headers, json={})
+            assert res.status_code == 403, (
+                f"Route quản trị {m} {r.path} khi cookie vai user gọi trả {res.status_code} thay vì 403! "
+                f"Nội dung: {res.text}"
+            )
+

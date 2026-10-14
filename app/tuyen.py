@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hmac
 import json
 import logging
 import math
@@ -26,25 +27,30 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from app import (
     combo as combo_mod,
     dia_chi as dia_chi_mod,
+    gioi_han as gioi_han_mod,
     kho,
     khoa_khach as khoa_khach_mod,
+    nguoi_dung as nguoi_dung_mod,
     nhat_ky as nhat_ky_mod,
     phien as phien_mod,
+    phien_web as phien_web_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
+    xac_thuc,
 )
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
-from app.xac_thuc import can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
+from app.xac_thuc import can_phien_web, can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
 from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
 QT = [Depends(can_quan_tri)]
 V1_AUTH = [Depends(xac_thuc_v1)]
+PW = [Depends(can_phien_web)]
 
 v1 = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 #: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
@@ -65,6 +71,12 @@ tim_kiem = APIRouter(prefix="/api/tim-kiem")
 tep_module = APIRouter()
 trinh_duyet = novnc_mod.api_router
 novnc = novnc_mod.novnc_router
+
+thiet_lap = APIRouter(prefix="/api/thiet-lap")
+dang_nhap = APIRouter(prefix="/api/dang-nhap")
+dang_xuat = APIRouter(prefix="/api/dang-xuat", dependencies=PW)
+toi = APIRouter(prefix="/api/toi", dependencies=PW)
+nguoi_dung = APIRouter(prefix="/api/nguoi-dung", dependencies=QT)
 
 
 def _nhac_lai(chuoi: str) -> str:
@@ -1708,3 +1720,348 @@ async def xoa_mot_combo(ten: str):
         raise LoiOpenAI(404, "Không tìm thấy combo", code="not_found")
     nhat_ky_mod.ghi("combo", "thong_tin", f"Xoá combo «{ten}»", ten=ten)
     return {"ok": True}
+
+
+# ───────────── THIẾT LẬP LẦN ĐẦU ─────────────
+
+_KHOA_THIET_LAP = asyncio.Lock()
+
+
+@thiet_lap.get("")
+def kiem_tra_thiet_lap():
+    # Ngoại lệ mở có chủ đích: Kiểm tra hệ thống có cần thiết lập tài khoản admin lần đầu hay không
+    # (chỉ trả cờ boolean can_thiet_lap, không chứa thông tin nhạy cảm hay bí mật).
+    return {"can_thiet_lap": not nguoi_dung_mod.co_admin()}
+
+
+@thiet_lap.post("")
+async def thuc_hien_thiet_lap(request: Request, response: Response):
+    # Ngoại lệ mở có chủ đích: Thiết lập tài khoản admin lần đầu (chỉ chạy khi chưa có admin;
+    # đã có admin trả 409 ngay và không xử lý thân; bảo vệ bằng mã thiết lập/khoá quản trị và giới hạn tần suất).
+    gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
+
+    # Đã có admin -> 409 ngay, không xử lý thân
+    if nguoi_dung_mod.co_admin():
+        raise LoiOpenAI(
+            409,
+            "Hệ thống đã có tài khoản quản trị viên. Không thể thiết lập lại.",
+            loai="invalid_request_error",
+            code="already_setup",
+        )
+
+    than = await _than_json(request)
+    ma_thiet_lap = str(than.get("ma_thiet_lap", "")).strip()
+    ten_dang_nhap = str(than.get("ten_dang_nhap", "")).strip()
+    mat_khau = str(than.get("mat_khau", ""))
+
+    ma_luu = nguoi_dung_mod.doc_ma_thiet_lap() or ""
+    khoa_qt = xac_thuc.khoa_quan_tri()
+
+    hop_le = False
+    if ma_thiet_lap:
+        if ma_luu and hmac.compare_digest(ma_thiet_lap.encode("utf-8"), ma_luu.encode("utf-8")):
+            hop_le = True
+        elif hmac.compare_digest(ma_thiet_lap.encode("utf-8"), khoa_qt.encode("utf-8")):
+            hop_le = True
+
+    if not hop_le:
+        gioi_han_mod.ghi_loi_xac_thuc(request)
+        raise LoiOpenAI(
+            401,
+            "Mã thiết lập không chính xác.",
+            loai="invalid_request_error",
+            code="invalid_setup_code",
+        )
+
+    async with _KHOA_THIET_LAP:
+        if nguoi_dung_mod.co_admin():
+            raise LoiOpenAI(
+                409,
+                "Hệ thống đã có tài khoản quản trị viên. Không thể thiết lập lại.",
+                loai="invalid_request_error",
+                code="already_setup",
+            )
+        ban_ghi, ten_chuan, _ = await nguoi_dung_mod.tao_nguoi_dung(
+            vai="admin",
+            ten_dang_nhap=ten_dang_nhap,
+            mat_khau=mat_khau,
+            pham_vi_toi_da=["*"],
+        )
+        nguoi_dung_mod.xoa_ma_thiet_lap()
+        phien, token_tho = phien_web_mod.tao_phien(ban_ghi["id"])
+        phien_web_mod.dat_cookie_phien(response, request, token_tho)
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "thong_tin",
+            f"Thiết lập thành công tài khoản quản trị «{_nhac_lai(ten_chuan)}»",
+            ten_dang_nhap=_nhac_lai(ten_chuan),
+        )
+        return {"ok": True, "csrf": phien["csrf"], "nguoi_dung": ban_ghi}
+
+
+# ───────────── ĐĂNG NHẬP / ĐĂNG XUẤT ─────────────
+
+@dang_nhap.post("")
+async def dang_nhap_web(request: Request, response: Response):
+    # Ngoại lệ mở có chủ đích: Đăng nhập giao diện web bằng mật khẩu (giới hạn tần suất IP,
+    # khóa tên tài khoản sau 5 lần sai liên tiếp trong 15 phút, băm giả chống timing attack, lỗi 401 đồng nhất).
+    gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
+
+    than = await _than_json(request)
+    ten_dang_nhap = str(than.get("ten_dang_nhap", "")).strip()
+    mat_khau = str(than.get("mat_khau", ""))
+
+    if not ten_dang_nhap or not mat_khau:
+        await nguoi_dung_mod.chay_bam_gia()
+        gioi_han_mod.ghi_loi_xac_thuc(request)
+        raise LoiOpenAI(
+            401,
+            "Sai tên đăng nhập hoặc mật khẩu.",
+            loai="invalid_request_error",
+            code="invalid_credentials",
+        )
+
+    # 1. Kiểm tra khóa theo tên
+    try:
+        nguoi_dung_mod.kiem_tra_khoa_ten(ten_dang_nhap)
+    except LoiOpenAI:
+        await nguoi_dung_mod.chay_bam_gia()
+        gioi_han_mod.ghi_loi_xac_thuc(request)
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Từ chối đăng nhập: tài khoản «{_nhac_lai(ten_dang_nhap)}» đang bị khoá tạm thời",
+            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+        )
+        raise
+
+    # 2. Tìm người dùng
+    nd = nguoi_dung_mod.tim_theo_ten(ten_dang_nhap)
+    if nd is None or not nd.get("bat", True):
+        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap)
+        await nguoi_dung_mod.chay_bam_gia()
+        gioi_han_mod.ghi_loi_xac_thuc(request)
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Đăng nhập thất bại: tên «{_nhac_lai(ten_dang_nhap)}» không tồn tại hoặc bị tắt",
+            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+        )
+        raise LoiOpenAI(
+            401,
+            "Sai tên đăng nhập hoặc mật khẩu.",
+            loai="invalid_request_error",
+            code="invalid_credentials",
+        )
+
+    # 3. Kiểm tra mật khẩu
+    dung = await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, nd.get("bam_mat_khau", ""))
+    if not dung:
+        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap)
+        gioi_han_mod.ghi_loi_xac_thuc(request)
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Đăng nhập thất bại: sai mật khẩu cho «{_nhac_lai(ten_dang_nhap)}»",
+            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+        )
+        raise LoiOpenAI(
+            401,
+            "Sai tên đăng nhập hoặc mật khẩu.",
+            loai="invalid_request_error",
+            code="invalid_credentials",
+        )
+
+    # 4. Thành công: reset bộ đếm sai theo tên, tạo phiên mới
+    nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap)
+    phien, token_tho = phien_web_mod.tao_phien(nd["id"])
+    phien_web_mod.dat_cookie_phien(response, request, token_tho)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Đăng nhập web thành công: «{_nhac_lai(ten_dang_nhap)}»",
+        ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+    )
+    return {"ok": True, "csrf": phien["csrf"], "nguoi_dung": nguoi_dung_mod.ban_ghi_sach(nd)}
+
+
+@dang_xuat.post("")
+def dang_xuat_web(request: Request, response: Response):
+    phien = getattr(request.state, "phien_web", None)
+    if phien and "bam" in phien:
+        phien_web_mod.thu_hoi_phien(phien["bam"])
+    phien_web_mod.xoa_cookie_phien(response)
+    return {"ok": True}
+
+
+# ───────────── TỰ PHỤC VỤ (can_phien_web) ─────────────
+
+@toi.get("")
+def lay_thong_tin_toi(request: Request):
+    nd = getattr(request.state, "nguoi_dung", {})
+    phien = getattr(request.state, "phien_web", {})
+    return {
+        "id": nd.get("id"),
+        "ten_dang_nhap": nd.get("ten_dang_nhap"),
+        "vai": nd.get("vai"),
+        "csrf": phien.get("csrf"),
+        "pham_vi_toi_da": list(nd.get("pham_vi_toi_da", ["*"] if nd.get("vai") == "admin" else [])),
+    }
+
+
+@toi.post("/mat-khau")
+async def doi_mat_khau_toi(request: Request):
+    nd = getattr(request.state, "nguoi_dung", {})
+    phien = getattr(request.state, "phien_web", {})
+    than = await _than_json(request)
+    mat_khau_cu = str(than.get("mat_khau_cu", ""))
+    mat_khau_moi = str(than.get("mat_khau_moi", ""))
+    if not mat_khau_cu or not mat_khau_moi:
+        raise LoiOpenAI(400, "Cần cung cấp mật khẩu cũ và mật khẩu mới.", code="invalid_input")
+
+    await nguoi_dung_mod.doi_mat_khau_chinh_minh(nd["id"], mat_khau_cu, mat_khau_moi)
+    phien_web_mod.thu_hoi_phien_nguoi_dung(nd["id"], tru_bam=phien.get("bam"))
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Người dùng «{_nhac_lai(nd.get('ten_dang_nhap', ''))}» đổi mật khẩu thành công",
+        id_nguoi_dung=nd["id"],
+    )
+    return {"ok": True}
+
+
+@toi.get("/khoa")
+def lay_khoa_toi(request: Request):
+    nd = getattr(request.state, "nguoi_dung", {})
+    return {"khoa": khoa_khach_mod.danh_sach_khoa_theo_chu(nd["id"])}
+
+
+@toi.post("/khoa")
+async def tao_khoa_toi(request: Request):
+    nd = getattr(request.state, "nguoi_dung", {})
+    than = await _than_json(request)
+    nhan = str(than.get("nhan", "")).strip()
+    pham_vi = than.get("pham_vi")
+
+    # Trần tối đa 10 khoá
+    ds_khoa = khoa_khach_mod.danh_sach_khoa_theo_chu(nd["id"])
+    if len(ds_khoa) >= 10:
+        raise LoiOpenAI(400, "Mỗi người dùng chỉ được tạo tối đa 10 khoá API.", code="max_keys_reached")
+
+    vai = nd.get("vai", "user")
+    pv_max = list(nd.get("pham_vi_toi_da", ["*"] if vai == "admin" else []))
+
+    if pham_vi is not None:
+        if not isinstance(pham_vi, list):
+            raise LoiOpenAI(400, "Phạm vi phải là danh sách chuỗi.", code="invalid_scope")
+        pv_yc = [str(s).strip() for s in pham_vi if str(s).strip()]
+    else:
+        pv_yc = pv_max
+
+    if vai != "admin" and "*" not in pv_max:
+        if "*" in pv_yc:
+            raise LoiOpenAI(403, "Không thể yêu cầu phạm vi toàn quyền (*).", loai="insufficient_scope", code="insufficient_scope")
+        for s in pv_yc:
+            if s not in pv_max:
+                raise LoiOpenAI(403, f"Không thể yêu cầu phạm vi vượt quá giới hạn (thiếu «{s}»).", loai="insufficient_scope", code="insufficient_scope")
+
+    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(nhan=nhan, pham_vi=pv_yc, chu_id=nd["id"])
+    return {"khoa": ban_ghi, "khoa_tho": khoa_tho}
+
+
+@toi.delete("/khoa/{id}")
+def xoa_khoa_toi(id: str, request: Request):
+    nd = getattr(request.state, "nguoi_dung", {})
+    ds_khoa = khoa_khach_mod.danh_sach_khoa_theo_chu(nd["id"])
+    tim = next((k for k in ds_khoa if k.get("id") == id), None)
+    if tim is None:
+        # Khoá của người khác hoặc không tồn tại đều trả 404 giống hệt (không lộ tồn tại)
+        raise LoiOpenAI(404, "Không tìm thấy khoá khách.", code="key_not_found")
+    khoa_khach_mod.xoa_khoa(id)
+    return {"ok": True}
+
+
+# ───────────── QUẢN TRỊ NGƯỜI DÙNG (QT) ─────────────
+
+@nguoi_dung.get("")
+def lay_danh_sach_nguoi_dung():
+    return {"nguoi_dung": nguoi_dung_mod.danh_sach_nguoi_dung()}
+
+
+@nguoi_dung.post("")
+async def tao_nguoi_dung_moi(request: Request):
+    than = await _than_json(request)
+    vai = than.get("vai", "user")
+    ten_dang_nhap = than.get("ten_dang_nhap")
+    mat_khau = than.get("mat_khau")
+    pham_vi_toi_da = than.get("pham_vi_toi_da")
+
+    ban_ghi, ten_chuan, mat_khau_tho = await nguoi_dung_mod.tao_nguoi_dung(
+        vai=vai,
+        ten_dang_nhap=ten_dang_nhap,
+        mat_khau=mat_khau,
+        pham_vi_toi_da=pham_vi_toi_da,
+    )
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Quản trị viên tạo người dùng «{_nhac_lai(ten_chuan)}» (vai: {ban_ghi['vai']})",
+        id_nguoi_dung=ban_ghi["id"],
+        vai=ban_ghi["vai"],
+    )
+    return {"nguoi_dung": ban_ghi, "ten_dang_nhap": ten_chuan, "mat_khau": mat_khau_tho}
+
+
+@nguoi_dung.patch("/{id}")
+async def cap_nhat_nguoi_dung(id: str, request: Request):
+    than = await _than_json(request)
+    vai = than.get("vai")
+    bat = than.get("bat")
+    pham_vi_toi_da = than.get("pham_vi_toi_da")
+
+    ban_ghi = nguoi_dung_mod.sua_nguoi_dung(
+        id_=id,
+        vai=vai,
+        bat=bat,
+        pham_vi_toi_da=pham_vi_toi_da,
+    )
+    if bat is False:
+        phien_web_mod.thu_hoi_phien_nguoi_dung(id)
+
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Cập nhật tài khoản người dùng (id: {_nhac_lai(id)})",
+        id_nguoi_dung=id,
+        bat=ban_ghi["bat"],
+        vai=ban_ghi["vai"],
+    )
+    return {"nguoi_dung": ban_ghi}
+
+
+@nguoi_dung.post("/{id}/dat-lai-mat-khau")
+async def dat_lai_mat_khau(id: str):
+    ban_ghi, mat_khau_moi = await nguoi_dung_mod.dat_lai_mat_khau_nguoi_dung(id)
+    phien_web_mod.thu_hoi_phien_nguoi_dung(id)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Đặt lại mật khẩu cho người dùng (id: {_nhac_lai(id)})",
+        id_nguoi_dung=id,
+    )
+    return {"nguoi_dung": ban_ghi, "mat_khau_moi": mat_khau_moi}
+
+
+@nguoi_dung.delete("/{id}")
+def xoa_tai_khoan(id: str):
+    nguoi_dung_mod.xoa_nguoi_dung(id)
+    phien_web_mod.thu_hoi_phien_nguoi_dung(id)
+    khoa_khach_mod.xoa_khoa_theo_chu(id)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Xoá tài khoản người dùng (id: {_nhac_lai(id)})",
+        id_nguoi_dung=id,
+    )
+    return {"ok": True}
+

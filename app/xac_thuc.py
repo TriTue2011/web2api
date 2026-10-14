@@ -91,7 +91,65 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
     loai_auth, _, gia_tri = request.headers.get("authorization", "").partition(" ")
     gia_tri = gia_tri.strip()
 
-    if loai_auth.lower() != "bearer" or not gia_tri:
+    if request.headers.get("authorization"):
+        if loai_auth.lower() != "bearer" or not gia_tri:
+            gioi_han.ghi_loi_xac_thuc(request)
+            raise LoiOpenAI(
+                401,
+                "Thiếu hoặc sai khoá xác thực. Gửi header «Authorization: Bearer <khoá>».",
+                loai="invalid_request_error",
+                code="invalid_api_key",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # 1. So khớp khoá quản trị
+        if hmac.compare_digest(gia_tri.encode("utf-8"), khoa_quan_tri().encode("utf-8")):
+            request.state.nguoi_goi = "quan_tri"
+            danh_tinh = {"loai": "quan_tri", "id": "quan_tri", "pham_vi": ["*"]}
+            request.state.danh_tinh = danh_tinh
+            return danh_tinh
+
+        # 2. So khớp khoá khách
+        khach = khoa_khach.tim_theo_khoa_tho(gia_tri)
+        if khach is not None:
+            if not khach.get("bat", True):
+                gioi_han.ghi_loi_xac_thuc(request)
+                raise LoiOpenAI(
+                    401,
+                    "Khoá khách đã bị tắt hoặc thu hồi.",
+                    loai="invalid_request_error",
+                    code="invalid_api_key",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            id_khach = str(khach.get("id"))
+            khoa_khach.ghi_nhan_su_dung(id_khach)
+
+            pham_vi_goc = list(khach.get("pham_vi", ["*"]))
+            pham_vi_hieu_luc = pham_vi_goc
+
+            # Khách có thể tự thu hẹp phạm vi thông qua header X-Web2api-Scope hoặc X-Scope
+            thu_hep = request.headers.get("x-web2api-scope") or request.headers.get("x-scope")
+            if thu_hep:
+                cac_yeu_cau = [s.strip() for s in thu_hep.split(",") if s.strip()]
+                if cac_yeu_cau:
+                    if "*" not in pham_vi_goc:
+                        for s in cac_yeu_cau:
+                            if s not in pham_vi_goc:
+                                raise LoiOpenAI(
+                                    403,
+                                    f"Không thể mở rộng phạm vi vượt quá phạm vi của khoá (thiếu «{s}»).",
+                                    loai="insufficient_scope",
+                                    code="insufficient_scope",
+                                )
+                    pham_vi_hieu_luc = cac_yeu_cau
+
+            request.state.nguoi_goi = f"khach:{id_khach}"
+            danh_tinh = {"loai": "khach", "id": id_khach, "pham_vi": pham_vi_hieu_luc}
+            request.state.danh_tinh = danh_tinh
+            return danh_tinh
+
+        # Có Authorization nhưng sai -> KHÔNG lùi về cookie (không bypass)
         gioi_han.ghi_loi_xac_thuc(request)
         raise LoiOpenAI(
             401,
@@ -101,52 +159,24 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 1. So khớp khoá quản trị
-    if hmac.compare_digest(gia_tri.encode("utf-8"), khoa_quan_tri().encode("utf-8")):
-        request.state.nguoi_goi = "quan_tri"
-        danh_tinh = {"loai": "quan_tri", "id": "quan_tri", "pham_vi": ["*"]}
-        request.state.danh_tinh = danh_tinh
-        return danh_tinh
-
-    # 2. So khớp khoá khách
-    khach = khoa_khach.tim_theo_khoa_tho(gia_tri)
-    if khach is not None:
-        if not khach.get("bat", True):
-            gioi_han.ghi_loi_xac_thuc(request)
-            raise LoiOpenAI(
-                401,
-                "Khoá khách đã bị tắt hoặc thu hồi.",
-                loai="invalid_request_error",
-                code="invalid_api_key",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        id_khach = str(khach.get("id"))
-        khoa_khach.ghi_nhan_su_dung(id_khach)
-
-        pham_vi_goc = list(khach.get("pham_vi", ["*"]))
-        pham_vi_hieu_luc = pham_vi_goc
-
-        # Khách có thể tự thu hẹp phạm vi thông qua header X-Web2api-Scope hoặc X-Scope
-        thu_hep = request.headers.get("x-web2api-scope") or request.headers.get("x-scope")
-        if thu_hep:
-            cac_yeu_cau = [s.strip() for s in thu_hep.split(",") if s.strip()]
-            if cac_yeu_cau:
-                if "*" not in pham_vi_goc:
-                    for s in cac_yeu_cau:
-                        if s not in pham_vi_goc:
-                            raise LoiOpenAI(
-                                403,
-                                f"Không thể mở rộng phạm vi vượt quá phạm vi của khoá (thiếu «{s}»).",
-                                loai="insufficient_scope",
-                                code="insufficient_scope",
-                            )
-                pham_vi_hieu_luc = cac_yeu_cau
-
-        request.state.nguoi_goi = f"khach:{id_khach}"
-        danh_tinh = {"loai": "khach", "id": id_khach, "pham_vi": pham_vi_hieu_luc}
-        request.state.danh_tinh = danh_tinh
-        return danh_tinh
+    # Nhánh phiên web khi KHÔNG có header Authorization
+    from app import nguoi_dung, phien_web
+    phien = phien_web.xac_thuc_cookie(request)
+    if phien is not None:
+        nd = nguoi_dung.tim_theo_id(phien.get("nguoi_dung_id", ""))
+        if nd is not None and nd.get("bat", True):
+            phien_web.kiem_tra_csrf(request, phien)
+            nd_id = str(nd.get("id"))
+            vai = nd.get("vai", "user")
+            request.state.nguoi_goi = f"nguoi_dung:{nd_id}"
+            request.state.phien_web = phien
+            request.state.nguoi_dung = nd
+            if vai == "admin":
+                danh_tinh = {"loai": "quan_tri", "id": f"nguoi_dung:{nd_id}", "pham_vi": ["*"]}
+            else:
+                danh_tinh = {"loai": "nguoi_dung", "id": f"nguoi_dung:{nd_id}", "pham_vi": []}
+            request.state.danh_tinh = danh_tinh
+            return danh_tinh
 
     gioi_han.ghi_loi_xac_thuc(request)
     raise LoiOpenAI(
@@ -156,6 +186,50 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
         code="invalid_api_key",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+async def can_phien_web(request: Request) -> dict[str, Any]:
+    """Phụ thuộc FastAPI cho các đường tự phục vụ web (/api/toi/*, /api/dang-xuat):
+    đòi cookie phiên hợp lệ (cho cả admin và user). Gọi bằng Bearer bị từ chối 401.
+    """
+    auth_hdr = request.headers.get("authorization", "").strip()
+    if auth_hdr:
+        raise LoiOpenAI(
+            401,
+            "Cần đăng nhập phiên web bằng cookie để thực hiện thao tác này.",
+            loai="invalid_request_error",
+            code="unauthorized",
+        )
+    from app import nguoi_dung, phien_web
+    phien = phien_web.xac_thuc_cookie(request)
+    if phien is None:
+        raise LoiOpenAI(
+            401,
+            "Cần đăng nhập phiên web để thực hiện thao tác này.",
+            loai="invalid_request_error",
+            code="unauthorized",
+        )
+    nd = nguoi_dung.tim_theo_id(phien.get("nguoi_dung_id", ""))
+    if nd is None or not nd.get("bat", True):
+        raise LoiOpenAI(
+            401,
+            "Tài khoản không tồn tại hoặc đã bị tắt.",
+            loai="invalid_request_error",
+            code="unauthorized",
+        )
+    phien_web.kiem_tra_csrf(request, phien)
+    request.state.phien_web = phien
+    request.state.nguoi_dung = nd
+    nd_id = str(nd.get("id"))
+    request.state.nguoi_goi = f"nguoi_dung:{nd_id}"
+    vai = nd.get("vai", "user")
+    danh_tinh = {
+        "loai": "quan_tri" if vai == "admin" else "nguoi_dung",
+        "id": f"nguoi_dung:{nd_id}",
+        "pham_vi": ["*"] if vai == "admin" else [],
+    }
+    request.state.danh_tinh = danh_tinh
+    return danh_tinh
 
 
 async def can_quan_tri(request: Request) -> dict[str, Any]:
@@ -199,8 +273,16 @@ async def xac_thuc_v1(request: Request) -> dict[str, Any]:
     """Phụ thuộc FastAPI cho /v1/*: nhận cả quan_tri và khach.
 
     Khách bị kiểm soát trần đồng thời WEB2API_KHACH_DONG_THOI.
+    Loại khác (nguoi_dung) bị 403.
     """
     nguoi = await nguoi_goi(request)
+    if nguoi.get("loai") not in ("quan_tri", "khach"):
+        raise LoiOpenAI(
+            403,
+            "Không có quyền truy cập.",
+            loai="permission_error",
+            code="forbidden",
+        )
     if nguoi.get("loai") == "khach":
         id_khach = nguoi.get("id")
         if id_khach and not getattr(request.state, "khach_id", None):
