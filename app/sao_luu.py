@@ -605,7 +605,7 @@ def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str)
             # Khoá ĐANG có chủ mà bản sao lưu bỏ/đổi chủ: thành khoá không chủ (hết trần chủ, sống khi chủ bị tắt) hoặc
             # sang trần người khác — là leo thang quyền, không phải khôi phục. Gán chủ cho khoá không chủ (thu hẹp)
             # chỉ được đánh dấu `doi_chu`.
-            if m.get("chu_id_hien_tai") and m["chu_id"] != m["chu_id_hien_tai"]:
+            if m["bo_chu"]:
                 tu_choi.append({"tep": "khoa_khach.json", "id": m["id"],
                                 "ly_do": "khoá đang có chủ mà bản sao lưu bỏ hoặc đổi chủ (khoá sẽ thoát trần của chủ "
                                          "và không còn tắt theo chủ) — thu hồi khoá này rồi khôi phục, hoặc sửa bản "

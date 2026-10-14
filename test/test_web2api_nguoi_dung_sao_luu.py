@@ -241,3 +241,32 @@ def test_khoi_phuc_duoc_khi_tep_khoa_hien_tai_hong(du_lieu):
     assert kq["co_the_ap_dung"] is True
     _ap(ban)
     assert khoa_khach.tim_theo_khoa_tho(tho)["pham_vi"] == ["chat"]
+
+
+def test_doi_id_giu_bam_de_bo_chu_bi_tu_choi(may_a):
+    """Đổi TÊN khoá (id mới, cùng băm = cùng khoá thô của bob) và bỏ chủ: khoá thô là thứ xác thực, id chỉ là nhãn —
+    vẫn phải bị chặn như bỏ chủ."""
+    bob, tho, id_k, _ = may_a
+    tep = json.loads(khoa_khach._p_khoa_khach().read_text())
+    k = tep["khoa"][0]
+    k.pop("chu_id", None)
+    k["id"] = "kk_doi_ten"
+    kq = _kiem(_ban_tu_tep(tep))
+    assert kq["co_the_ap_dung"] is False
+    assert any(t["tep"] == "khoa_khach.json" and t["id"] == "kk_doi_ten" for t in kq["tu_choi"])
+    r = khoa_khach.tim_theo_khoa_tho(tho)
+    assert r["chu_id"] == bob
+
+
+def test_hoan_doi_bam_de_bo_chu_bi_tu_choi(may_a):
+    """Giữ id cũ với băm mới (vẫn chủ bob) và đưa băm CŨ sang một khoá mới không chủ: vẫn là khoá thô của bob mất chủ."""
+    _, _, id_k, _ = may_a
+    tep = json.loads(khoa_khach._p_khoa_khach().read_text())
+    cu = dict(tep["khoa"][0])
+    tep["khoa"][0]["bam"] = "c" * 64
+    moi = {k: v for k, v in cu.items() if k != "chu_id"}
+    moi["id"] = "kk_hoan_doi"
+    tep["khoa"].append(moi)
+    kq = _kiem(_ban_tu_tep(tep))
+    assert kq["co_the_ap_dung"] is False
+    assert any(t["id"] == "kk_hoan_doi" for t in kq["tu_choi"])

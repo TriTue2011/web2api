@@ -296,7 +296,8 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
     khoá MỚI (có thể là băm do người khác chọn = cửa vào /v1), khoá cùng id mà ĐỔI BĂM, ĐỔI CHỦ (`doi_chu`), đổi phạm
     vi/bật/nhãn, và khoá đang có sẽ MẤT. Mỗi mục nêu `chu_id` (và `chu_id_hien_tai` nếu khoá đang có), cờ
     `mo_rong_pham_vi` (khoá mới «*», hoặc phạm vi rộng hơn bản đang có) và `canh_bao` khi chủ không dùng được (khoá sẽ
-    bị đóng sau khôi phục). Kho hiện tại hỏng → mọi khoá là «moi», `kho_hien_tai_hong=True` (khôi phục là đường cứu,
+    bị đóng sau khôi phục). `bo_chu=True` khi khoá thô ĐANG có chủ (khớp theo id HOẶC theo băm — băm mới là thứ xác
+    thực, id chỉ là nhãn) mà bản sao lưu bỏ/đổi chủ — sao_luu chặn mục đó. Kho hiện tại hỏng → mọi khoá là «moi», `kho_hien_tai_hong=True` (khôi phục là đường cứu,
     không được chặn nó). Không trả băm."""
     hong = False
     with _KHOA_LUONG:
@@ -304,9 +305,11 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
             cu = {k.get("id"): dict(k) for k in _doc_tu_dia_neu_can()}
         except LoiKhoKhoaKhach:
             cu, hong = {}, True
+    cu_theo_bam = {c.get("bam"): c for c in cu.values()}
     ds = []
     for k in moi:
         c = cu.get(k["id"])
+        chu_dang_co = {x.get("chu_id") for x in (c, cu_theo_bam.get(k["bam"])) if x is not None and x.get("chu_id")}
         if c is None:
             tt = "moi"
         elif c.get("bam") != k["bam"]:
@@ -320,7 +323,7 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
         muc = {"id": k["id"], "nhan": k["nhan"], "bat": k["bat"], "pham_vi": list(k["pham_vi"]),
                "chu_id": k.get("chu_id"), "trang_thai": tt,
                "mo_rong_pham_vi": _rong_hon(k["pham_vi"], None if c is None else list(c.get("pham_vi", ["*"]))),
-               "canh_bao": None}
+               "canh_bao": None, "bo_chu": any(ch != k.get("chu_id") for ch in chu_dang_co)}
         if c is not None:
             muc["chu_id_hien_tai"] = c.get("chu_id")
         if k.get("chu_id"):
