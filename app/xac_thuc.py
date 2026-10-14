@@ -33,6 +33,20 @@ from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.xac_thuc")
 
+
+def _nguoi_dung_cua_phien(phien: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Người dùng ĐANG BẬT của một phiên web; kho người dùng hỏng → None (đóng khi lỗi: 401, không 500)."""
+    if phien is None:
+        return None
+    from app import nguoi_dung
+    try:
+        nd = nguoi_dung.tim_theo_id(phien.get("nguoi_dung_id", ""))
+    except nguoi_dung.LoiKhoNguoiDung:
+        return None
+    if nd is None or not nd.get("bat", True):
+        return None
+    return nd
+
 _KHOA_TU_TEP: dict[tuple, str] = {}
 
 
@@ -160,11 +174,11 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
         )
 
     # Nhánh phiên web khi KHÔNG có header Authorization
-    from app import nguoi_dung, phien_web
+    from app import phien_web
     phien = phien_web.xac_thuc_cookie(request)
     if phien is not None:
-        nd = nguoi_dung.tim_theo_id(phien.get("nguoi_dung_id", ""))
-        if nd is not None and nd.get("bat", True):
+        nd = _nguoi_dung_cua_phien(phien)
+        if nd is not None:
             phien_web.kiem_tra_csrf(request, phien)
             nd_id = str(nd.get("id"))
             vai = nd.get("vai", "user")
@@ -200,7 +214,7 @@ async def can_phien_web(request: Request) -> dict[str, Any]:
             loai="invalid_request_error",
             code="unauthorized",
         )
-    from app import nguoi_dung, phien_web
+    from app import phien_web
     phien = phien_web.xac_thuc_cookie(request)
     if phien is None:
         raise LoiOpenAI(
@@ -209,8 +223,8 @@ async def can_phien_web(request: Request) -> dict[str, Any]:
             loai="invalid_request_error",
             code="unauthorized",
         )
-    nd = nguoi_dung.tim_theo_id(phien.get("nguoi_dung_id", ""))
-    if nd is None or not nd.get("bat", True):
+    nd = _nguoi_dung_cua_phien(phien)
+    if nd is None:
         raise LoiOpenAI(
             401,
             "Tài khoản không tồn tại hoặc đã bị tắt.",

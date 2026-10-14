@@ -613,3 +613,475 @@ def test_23_khong_lo_mat_khau_trong_log(moi_truong, caplog):
         client.post("/api/dang-nhap", json={"ten_dang_nhap": "admin-log", "mat_khau": mat_khau_doc_nhat})
 
     assert mat_khau_doc_nhat not in caplog.text, "Mật khẩu bị lộ trong log!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. SOÁT ĐỘC LẬP — leo thang phạm vi, kho hỏng, đầu vào sai kiểu, đồng thời
+# ─────────────────────────────────────────────────────────────────────────────
+
+QT_HDR = {"Authorization": f"Bearer {KHOA_QT}"}
+MK = "MatKhauChuan123456"
+
+
+def _tao_va_vao(ten, vai="user", pham_vi_toi_da=None):
+    """Tạo người dùng và một phiên web; trả (bản ghi, token cookie, header CSRF)."""
+    u, _, _ = asyncio.run(nguoi_dung.tao_nguoi_dung(vai=vai, ten_dang_nhap=ten, mat_khau=MK, pham_vi_toi_da=pham_vi_toi_da))
+    p, tok = phien_web.tao_phien(u["id"])
+    return u, tok, {"X-CSRF-Token": p["csrf"]}
+
+
+def _ma_loi_chat(client, khoa_tho, them_hdr=None):
+    """Gọi /v1/chat/completions bằng khoá khách; trả (mã HTTP, mã lỗi). Phạm vi được kiểm TRƯỚC khi tra model."""
+    r = client.post("/v1/chat/completions", headers={"Authorization": f"Bearer {khoa_tho}", **(them_hdr or {})},
+                    json={"model": "khong-co/model", "messages": [{"role": "user", "content": "x"}]})
+    try:
+        return r.status_code, r.json().get("error", {}).get("code")
+    except Exception:
+        return r.status_code, None
+
+
+def _ma_loi_anh(client, khoa_tho):
+    r = client.post("/v1/images/generations", headers={"Authorization": f"Bearer {khoa_tho}"},
+                    json={"model": "khong-co/model", "prompt": "x"})
+    return r.status_code, r.json().get("error", {}).get("code")
+
+
+@pytest.mark.parametrize("than", [
+    {"pham_vi": []},
+    {"pham_vi": ["", " "]},
+    {"pham_vi": ["*"]},
+    {"pham_vi": ["chat", "*"]},
+    {"pham_vi": [["*"]]},
+    {"pham_vi": [1]},
+    {"pham_vi": [None]},
+    {"pham_vi": "chat"},
+    {"pham_vi": ["CHAT"]},
+    {"pham_vi": ["chat", ""]},
+    {"pham_vi": {"*": True}},
+    {"pham_vi": None},
+])
+def test_24_tao_khoa_toi_pham_vi_sai_khong_ra_khoa_rong_hon_tran(moi_truong, than):
+    """Điểm 1: vai user trần ["chat"] — mọi dạng pham_vi sai/rỗng/«*» đều bị từ chối, không ra khoá «*»."""
+    client, _ = moi_truong
+    u, tok, h = _tao_va_vao("bob-pv", pham_vi_toi_da=["chat"])
+    r = client.post("/api/toi/khoa", cookies={"w2a_phien": tok}, headers=h, json={"nhan": "k", **than})
+    assert r.status_code in (400, 403), f"{than} → {r.status_code} {r.text}"
+    assert khoa_khach.danh_sach_khoa_theo_chu(u["id"]) == [], f"{than} vẫn tạo được khoá"
+
+
+def test_25_tao_khoa_toi_thieu_truong_bang_tran_va_tran_rong(moi_truong):
+    """Điểm 1: thiếu pham_vi → khoá ĐÚNG bằng trần; người dùng trần rỗng không tạo được khoá nào."""
+    client, _ = moi_truong
+    u, tok, h = _tao_va_vao("bob-thieu", pham_vi_toi_da=["chat"])
+    r = client.post("/api/toi/khoa", cookies={"w2a_phien": tok}, headers=h, json={"nhan": "k"})
+    assert r.status_code == 200
+    assert r.json()["khoa"]["pham_vi"] == ["chat"]
+
+    e, tok_e, h_e = _tao_va_vao("eve-rong", pham_vi_toi_da=[])
+    for than in ({"nhan": "k"}, {"nhan": "k", "pham_vi": []}, {"nhan": "k", "pham_vi": ["chat"]}, {"nhan": "k", "pham_vi": ["*"]}):
+        r = client.post("/api/toi/khoa", cookies={"w2a_phien": tok_e}, headers=h_e, json=than)
+        assert r.status_code in (400, 403), f"{than} → {r.status_code} {r.text}"
+    assert khoa_khach.danh_sach_khoa_theo_chu(e["id"]) == []
+
+    # Admin dùng cookie: trần «*» — thiếu trường ra «*», danh sách rỗng vẫn bị từ chối
+    a, tok_a, h_a = _tao_va_vao("admin-pv", vai="admin")
+    r = client.post("/api/toi/khoa", cookies={"w2a_phien": tok_a}, headers=h_a, json={"nhan": "k"})
+    assert r.status_code == 200 and r.json()["khoa"]["pham_vi"] == ["*"]
+    r = client.post("/api/toi/khoa", cookies={"w2a_phien": tok_a}, headers=h_a, json={"nhan": "k", "pham_vi": []})
+    assert r.status_code == 400
+
+
+def test_26_duong_quan_tri_khoa_khach_rong_khong_thanh_tat_ca(moi_truong):
+    """Điểm 1 (đường quản trị): không nêu pham_vi vẫn là «*» (hợp đồng cũ), nhưng [] / phần tử sai → 400, bat phải là bool."""
+    client, _ = moi_truong
+    r = client.post("/api/khoa-khach", headers=QT_HDR, json={"nhan": "k"})
+    assert r.status_code == 200 and r.json()["khoa"]["pham_vi"] == ["*"]
+    id_k = r.json()["khoa"]["id"]
+    for pv in ([], ["", " "], [1], "chat", ["CHAT"]):
+        r = client.post("/api/khoa-khach", headers=QT_HDR, json={"nhan": "k", "pham_vi": pv})
+        assert r.status_code == 400, f"{pv} → {r.status_code}"
+        r = client.patch(f"/api/khoa-khach/{id_k}", headers=QT_HDR, json={"pham_vi": pv})
+        assert r.status_code == 400, f"PATCH {pv} → {r.status_code}"
+    r = client.patch(f"/api/khoa-khach/{id_k}", headers=QT_HDR, json={"bat": False})
+    assert r.status_code == 200 and r.json()["khoa"]["bat"] is False
+    r = client.patch(f"/api/khoa-khach/{id_k}", headers=QT_HDR, json={"bat": "true"})
+    assert r.status_code == 400
+    assert khoa_khach.danh_sach_khoa()[0]["bat"] is False
+    # Mã có hậu tố «:» của thiết bị vẫn hợp lệ
+    r = client.post("/api/khoa-khach", headers=QT_HDR, json={"nhan": "k", "pham_vi": ["thiet_bi:doc"]})
+    assert r.status_code == 200 and r.json()["khoa"]["pham_vi"] == ["thiet_bi:doc"]
+
+
+def test_27_ha_tran_thu_hep_khoa_da_cap_ngay(moi_truong, monkeypatch):
+    """Điểm 2: phạm vi hiệu lực = giao(phạm vi khoá, trần HIỆN TẠI của chủ); hạ trần → hẹp ngay, nâng → rộng lại."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, _ = moi_truong
+    u, _, _ = _tao_va_vao("bob-tran", pham_vi_toi_da=["chat"])
+    # Khoá «*» như đã đúc qua lỗ cũ (hoặc lúc trần còn rộng)
+    _, khoa_sao = khoa_khach.tao_khoa("cũ", pham_vi=["*"], chu_id=u["id"])
+    assert _ma_loi_chat(client, khoa_sao)[1] != "insufficient_scope"
+    assert _ma_loi_anh(client, khoa_sao) == (403, "insufficient_scope")
+    # Thu hẹp bằng header cũng không vượt trần
+    assert _ma_loi_chat(client, khoa_sao, {"X-Web2api-Scope": "anh"}) == (403, "insufficient_scope")
+
+    # Hạ trần về rỗng → khoá cũ mất mọi phạm vi
+    r = client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json={"pham_vi_toi_da": []})
+    assert r.status_code == 200
+    assert _ma_loi_chat(client, khoa_sao) == (403, "insufficient_scope")
+    r = client.get("/v1/models", headers={"Authorization": f"Bearer {khoa_sao}"})
+    assert r.status_code == 200 and r.json()["data"] == []
+
+    # Nâng lại trần → rộng lại ngay
+    client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json={"pham_vi_toi_da": ["chat", "anh"]})
+    assert _ma_loi_chat(client, khoa_sao)[1] != "insufficient_scope"
+    assert _ma_loi_anh(client, khoa_sao)[1] != "insufficient_scope"
+
+
+def test_28_ha_vai_admin_thu_hep_khoa(moi_truong, monkeypatch):
+    """Điểm 2: hạ vai admin → user không kèm trần mới: khoá «*» của người đó về trần mặc định của user."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, _ = moi_truong
+    _tao_va_vao("admin-giu", vai="admin")
+    a2, _, _ = _tao_va_vao("admin-ha", vai="admin")
+    _, khoa_sao = khoa_khach.tao_khoa("của admin", pham_vi=["*"], chu_id=a2["id"])
+    assert _ma_loi_anh(client, khoa_sao)[1] != "insufficient_scope"
+    r = client.patch(f"/api/nguoi-dung/{a2['id']}", headers=QT_HDR, json={"vai": "user"})
+    assert r.status_code == 200
+    assert r.json()["nguoi_dung"]["pham_vi_toi_da"] == ["chat"]
+    assert _ma_loi_anh(client, khoa_sao) == (403, "insufficient_scope")
+    assert _ma_loi_chat(client, khoa_sao)[1] != "insufficient_scope"
+
+
+def _sha(p):
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("noi_dung", ["{hong", "[1, 2]", '{"nguoi_dung": "x"}', '{"nguoi_dung": [1]}', '{"nguoi_dung": [{"ten_dang_nhap": "khong-id"}]}'])
+def test_29_kho_nguoi_dung_hong_khong_mo_lai_thiet_lap_khong_ghi_de(moi_truong, monkeypatch, noi_dung):
+    """Điểm 3: tệp tồn tại mà hỏng → đóng khi lỗi: không mở lại thiết lập, không ghi đè, đăng nhập 401 đồng nhất."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, data_dir = moi_truong
+    u, _, _ = asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="admin-that", mat_khau=MK))
+    p_phien, tok = phien_web.tao_phien(u["id"])
+    r_sai = client.post("/api/dang-nhap", json={"ten_dang_nhap": "admin-that", "mat_khau": "SaiMatKhau123456"})
+    tep = data_dir / "nguoi_dung.json"
+    (data_dir / "ma_thiet_lap").unlink(missing_ok=True)  # mã do lượt khởi động của fixture tạo (lúc chưa có admin)
+    tep.write_text(noi_dung, encoding="utf-8")
+    truoc = _sha(tep)
+
+    assert nguoi_dung.co_admin() is True
+    assert client.get("/api/thiet-lap").json() == {"can_thiet_lap": False}
+    r = client.post("/api/thiet-lap", json={"ma_thiet_lap": KHOA_QT, "ten_dang_nhap": "hacker1", "mat_khau": "HackerPass-12345"})
+    assert r.status_code in (409, 503), r.text
+    r = client.post("/api/nguoi-dung", headers=QT_HDR, json={"ten_dang_nhap": "moi-1", "mat_khau": MK})
+    assert r.status_code == 503, r.text
+    r = client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json={"bat": True})
+    assert r.status_code == 503
+    r = client.delete(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR)
+    assert r.status_code == 503
+    r = client.post(f"/api/nguoi-dung/{u['id']}/dat-lai-mat-khau", headers=QT_HDR)
+    assert r.status_code == 503
+    r = client.post("/api/dang-nhap", json={"ten_dang_nhap": "admin-that", "mat_khau": MK})
+    assert r.status_code == 401 and r.text == r_sai.text
+    # Cookie khi kho hỏng: 401, không 500
+    assert client.get("/api/toi", cookies={"w2a_phien": tok}).status_code == 401
+    assert client.get("/v1/models", cookies={"w2a_phien": tok}).status_code == 401
+    # Gọi trực tiếp hàm cũng không ghi đè
+    with pytest.raises(Exception):
+        asyncio.run(nguoi_dung.tao_nguoi_dung(vai="user", ten_dang_nhap="moi-2", mat_khau=MK))
+    with pytest.raises(Exception):
+        nguoi_dung.sua_nguoi_dung(u["id"], bat=True)
+    # Khởi động lại khi kho hỏng: không tạo mã thiết lập
+    nguoi_dung.khoi_tao_thiet_lap_lan_dau()
+    assert not (data_dir / "ma_thiet_lap").exists()
+    assert _sha(tep) == truoc, "Tệp người dùng bị ghi đè khi đọc lỗi"
+
+
+def test_30_kho_nguoi_dung_hong_khoa_co_chu_bi_tu_choi_khoa_khac_van_chay(moi_truong, monkeypatch):
+    """Điểm 3: kho người dùng hỏng → khoá có chủ 401; khoá không chủ và khoá quản trị vẫn dùng được."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, data_dir = moi_truong
+    u, _, _ = _tao_va_vao("bob-kho", pham_vi_toi_da=["chat"])
+    _, khoa_chu = khoa_khach.tao_khoa("có chủ", pham_vi=["chat"], chu_id=u["id"])
+    _, khoa_le = khoa_khach.tao_khoa("không chủ", pham_vi=["chat"])
+    (data_dir / "nguoi_dung.json").write_text("{hong", encoding="utf-8")
+    assert client.get("/v1/models", headers={"Authorization": f"Bearer {khoa_chu}"}).status_code == 401
+    assert client.get("/v1/models", headers={"Authorization": f"Bearer {khoa_le}"}).status_code == 200
+    assert client.get("/v1/models", headers=QT_HDR).status_code == 200
+
+
+@pytest.mark.parametrize("gia_tri", [b"\xe9", b"\xc3\xa9" * 20, b"a" * 5000, b"", b"abc def", b"A" * 42, b"A" * 44])
+def test_31_cookie_phien_sai_dang_la_401_khong_500(moi_truong, monkeypatch, gia_tri):
+    """Điểm 4: cookie phiên không đúng dạng token → coi như không có phiên (401), không ngoại lệ."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, _ = moi_truong
+    hdr = {"Cookie": b"w2a_phien=" + gia_tri}
+    for duong in ("/api/toi", "/v1/models", "/api/nguoi-dung"):
+        r = client.get(duong, headers=hdr)
+        assert r.status_code == 401, f"{duong} {gia_tri[:10]!r} → {r.status_code}"
+
+
+def test_32_token_va_csrf_sai_dang_ham_va_http(moi_truong, monkeypatch):
+    """Điểm 4: xac_thuc_token từ chối token sai dạng (kể cả xuống dòng cuối, NUL); CSRF không ASCII/quá dài → 403."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, _ = moi_truong
+    u, tok, h = _tao_va_vao("bob-csrf", pham_vi_toi_da=["chat"])
+    assert phien_web.xac_thuc_token(tok) is not None
+    for xau in (tok + "\n", "\x00" * 43, "é" * 43, tok[:-1] + " ", tok + "A", ""):
+        assert phien_web.xac_thuc_token(xau) is None, repr(xau[:8])
+    for gui in (b"\xc3\xa9", b"\xe9" * 43, b"x" * 10000, h["X-CSRF-Token"].encode() + b"\xe9"):
+        r = client.post("/api/toi/khoa", headers={"Cookie": f"w2a_phien={tok}", "X-CSRF-Token": gui}, json={"nhan": "k"})
+        assert r.status_code == 403, f"{gui[:10]!r} → {r.status_code}"
+    r = client.post("/api/toi/khoa", headers={"Cookie": f"w2a_phien={tok}", **h}, json={"nhan": "k"})
+    assert r.status_code == 200
+
+
+def _semaphore_moi(monkeypatch):
+    """Semaphore scrypt cấp module gắn vào vòng lặp đầu tiên tranh chấp nó; test chạy nhiều vòng lặp (asyncio.run,
+    mỗi TestClient một vòng) nên cấp bản mới cho từng vòng — máy chủ thật chỉ có một vòng uvicorn."""
+    monkeypatch.setattr(nguoi_dung, "_SEMAPHORE_SCRYPT", asyncio.Semaphore(2))
+
+
+def test_33_tao_trung_ten_dong_thoi_ham(moi_truong, monkeypatch):
+    """Điểm 5: 5 lời gọi đồng thời cùng tên → đúng MỘT bản ghi; chỉ một admin khi thiết lập đồng thời."""
+    _semaphore_moi(monkeypatch)
+
+    async def goi():
+        return await asyncio.gather(*[
+            nguoi_dung.tao_nguoi_dung(ten_dang_nhap="dup", mat_khau=f"DupPassword-123{i}") for i in range(5)
+        ], return_exceptions=True)
+    kq = asyncio.run(goi())
+    assert sum(1 for x in kq if isinstance(x, tuple)) == 1, kq
+    assert all(getattr(x, "than", {}).get("error", {}).get("code") == "username_taken" for x in kq if not isinstance(x, tuple)), kq
+    assert sum(1 for u in nguoi_dung.danh_sach_nguoi_dung() if u["ten_dang_nhap"] == "dup") == 1
+    _semaphore_moi(monkeypatch)
+
+    async def goi_admin():
+        return await asyncio.gather(*[
+            nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap=f"adm-{i}", mat_khau=MK, chi_khi_chua_co_admin=True)
+            for i in range(3)
+        ], return_exceptions=True)
+    kq = asyncio.run(goi_admin())
+    assert sum(1 for x in kq if isinstance(x, tuple)) == 1, kq
+    assert all(getattr(x, "than", {}).get("error", {}).get("code") == "already_setup" for x in kq if not isinstance(x, tuple)), kq
+    assert sum(1 for u in nguoi_dung.danh_sach_nguoi_dung() if u["vai"] == "admin") == 1
+
+
+def test_34_tao_trung_ten_dong_thoi_http(moi_truong, monkeypatch):
+    """Điểm 5 qua HTTP: 5 yêu cầu song song cùng tên → một 200, còn lại 400 username_taken, một bản ghi."""
+    client, _ = moi_truong
+    _semaphore_moi(monkeypatch)
+
+    async def goi():
+        return await asyncio.gather(*[
+            asyncio.to_thread(client.post, "/api/nguoi-dung", headers=QT_HDR,
+                              json={"ten_dang_nhap": "dup-http", "mat_khau": f"DupPassword-123{i}"})
+            for i in range(5)
+        ])
+    rs = asyncio.run(goi())
+    assert sorted(r.status_code for r in rs) == [200, 400, 400, 400, 400], [r.status_code for r in rs]
+    assert sum(1 for u in nguoi_dung.danh_sach_nguoi_dung() if u["ten_dang_nhap"] == "dup-http") == 1
+
+
+@pytest.mark.parametrize("than", [
+    {"bat": 0}, {"bat": ""}, {"bat": "false"}, {"bat": 1}, {"bat": []},
+    {"vai": 1}, {"vai": ["admin"]}, {"vai": "root"}, {"vai": ""},
+    {"pham_vi_toi_da": "chat"}, {"pham_vi_toi_da": 5}, {"pham_vi_toi_da": ["", "chat"]},
+    {"pham_vi_toi_da": [1]}, {"pham_vi_toi_da": ["CHAT"]}, {"pham_vi_toi_da": {"chat": 1}},
+])
+def test_35_patch_nguoi_dung_sai_kieu_la_400(moi_truong, than):
+    """Điểm 6: PATCH /api/nguoi-dung/{id} kiểm KIỂU ở biên → 400 invalid_value, bản ghi không đổi."""
+    client, _ = moi_truong
+    u, _, _ = _tao_va_vao("bob-kieu", pham_vi_toi_da=["chat"])
+    truoc = nguoi_dung.tim_theo_id(u["id"])
+    r = client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json=than)
+    assert r.status_code == 400, f"{than} → {r.status_code} {r.text}"
+    assert nguoi_dung.tim_theo_id(u["id"]) == truoc
+
+
+def test_36_tat_roi_bat_lai_khong_song_lai_phien_cu(moi_truong):
+    """Điểm 6: tắt tài khoản thu hồi phiên; bật lại không làm sống lại phiên cũ."""
+    client, _ = moi_truong
+    u, tok, _ = _tao_va_vao("bob-tat", pham_vi_toi_da=["chat"])
+    assert client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json={"bat": False}).status_code == 200
+    assert client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json={"bat": True}).status_code == 200
+    assert phien_web.xac_thuc_token(tok) is None
+    assert client.get("/api/toi", cookies={"w2a_phien": tok}).status_code == 401
+
+
+@pytest.mark.parametrize("duong,than", [
+    ("/api/nguoi-dung", {"vai": 1}),
+    ("/api/nguoi-dung", {"vai": "root"}),
+    ("/api/nguoi-dung", {"pham_vi_toi_da": "chat"}),
+    ("/api/nguoi-dung", {"pham_vi_toi_da": [""]}),
+    ("/api/nguoi-dung", {"ten_dang_nhap": 12345}),
+    ("/api/nguoi-dung", {"mat_khau": 123456789012345}),
+])
+def test_37_tao_nguoi_dung_sai_kieu_la_400(moi_truong, duong, than):
+    """Điểm 6: POST /api/nguoi-dung kiểm kiểu ở biên, không tạo bản ghi."""
+    client, _ = moi_truong
+    r = client.post(duong, headers=QT_HDR, json=than)
+    assert r.status_code == 400, f"{than} → {r.status_code} {r.text}"
+    assert nguoi_dung.danh_sach_nguoi_dung() == []
+
+
+def test_38_tu_phuc_vu_sai_kieu_la_400(moi_truong):
+    """Điểm 6: /api/toi/mat-khau và /api/toi/khoa từ chối kiểu sai (null không thành chuỗi «None»)."""
+    client, _ = moi_truong
+    u, tok, h = _tao_va_vao("bob-tu", pham_vi_toi_da=["chat"])
+    for than in ({"mat_khau_cu": MK, "mat_khau_moi": 123456789012345}, {"mat_khau_cu": None, "mat_khau_moi": "MatKhauMoi1234567"},
+                 {"mat_khau_cu": MK, "mat_khau_moi": None}):
+        r = client.post("/api/toi/mat-khau", cookies={"w2a_phien": tok}, headers=h, json=than)
+        assert r.status_code == 400, f"{than} → {r.status_code}"
+    r = client.post("/api/toi/khoa", cookies={"w2a_phien": tok}, headers=h, json={"nhan": {"x": 1}})
+    assert r.status_code == 400
+
+
+def test_39_xoa_cookie_phien_du_thuoc_tinh(moi_truong):
+    """Điểm 7: đăng xuất xoá __Host-w2a_phien với Secure; HttpOnly; SameSite=Strict; Path=/ và w2a_phien với HttpOnly; SameSite=Strict."""
+    _, _ = moi_truong
+    u, tok, h = _tao_va_vao("bob-xoa", pham_vi_toi_da=["chat"])
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.post("/api/dang-xuat", headers={"Cookie": f"__Host-w2a_phien={tok}", **h})
+    assert r.status_code == 200
+    cac = r.headers.get_list("set-cookie")
+    host = [x for x in cac if x.startswith("__Host-w2a_phien=")]
+    thuong = [x for x in cac if x.startswith("w2a_phien=")]
+    assert host and thuong, cac
+    for thuoc_tinh in ("Secure", "HttpOnly", "Path=/", "Max-Age=0"):
+        assert thuoc_tinh in host[0], host[0]
+    assert "samesite=strict" in host[0].lower()
+    for thuoc_tinh in ("HttpOnly", "Path=/", "Max-Age=0"):
+        assert thuoc_tinh in thuong[0], thuong[0]
+    assert "samesite=strict" in thuong[0].lower()
+
+
+@pytest.mark.parametrize("than", [
+    {"ten_dang_nhap": "", "mat_khau": ""},
+    {"ten_dang_nhap": "admin-x", "mat_khau": ""},
+    {"ten_dang_nhap": "", "mat_khau": "MatKhauAdminTot123456"},
+    {},
+    {"ten_dang_nhap": 123, "mat_khau": "MatKhauAdminTot123456"},
+    {"ten_dang_nhap": "admin-x", "mat_khau": 123456789012345},
+])
+def test_40_thiet_lap_bat_buoc_ten_va_mat_khau(moi_truong, than):
+    """Điểm 8: thiết lập lần đầu bắt buộc tên và mật khẩu (chuỗi không rỗng) → 400, không tạo admin ngẫu nhiên."""
+    client, data_dir = moi_truong
+    nguoi_dung.khoi_tao_thiet_lap_lan_dau()
+    ma = nguoi_dung.doc_ma_thiet_lap()
+    r = client.post("/api/thiet-lap", json={"ma_thiet_lap": ma, **than})
+    assert r.status_code == 400, f"{than} → {r.status_code} {r.text}"
+    assert nguoi_dung.danh_sach_nguoi_dung() == []
+    assert (data_dir / "ma_thiet_lap").exists()
+
+
+def test_41_thiet_lap_qua_cong_ip_quan_tri(moi_truong, monkeypatch):
+    """Điểm 9: đặt WEB2API_QT_IP_CHO_PHEP thì thiết lập chỉ từ IP cho phép (loopback trực tiếp vẫn được)."""
+    client, _ = moi_truong
+    from app import ip_cho_phep
+    ip_cho_phep._LAN_GHI_CUOI.clear()
+    monkeypatch.setenv("WEB2API_QT_IP_CHO_PHEP", "192.0.2.0/24")
+    than = {"ma_thiet_lap": KHOA_QT, "ten_dang_nhap": "admin-ip", "mat_khau": "MatKhauAdminTot123456"}
+    client._transport.client = ("203.0.113.9", 1234)
+    r = client.post("/api/thiet-lap", json=than)
+    assert r.status_code == 403 and r.json()["error"]["code"] == "ip_not_allowed"
+    assert nguoi_dung.danh_sach_nguoi_dung() == []
+    client._transport.client = ("127.0.0.1", 1234)
+    assert client.post("/api/thiet-lap", json=than).status_code == 200
+
+
+def test_42_thiet_lap_qua_cong_ip_trong_danh_sach(moi_truong, monkeypatch):
+    """Điểm 9: IP trong danh sách được thiết lập."""
+    client, _ = moi_truong
+    monkeypatch.setenv("WEB2API_QT_IP_CHO_PHEP", "192.0.2.0/24")
+    client._transport.client = ("192.0.2.5", 1234)
+    r = client.post("/api/thiet-lap", json={"ma_thiet_lap": KHOA_QT, "ten_dang_nhap": "admin-ip2", "mat_khau": "MatKhauAdminTot123456"})
+    assert r.status_code == 200
+
+
+def test_43_mat_khau_dang_nhap_qua_dai_la_sai_khong_bam(moi_truong, monkeypatch):
+    """Điểm 10: mật khẩu > 128 ký tự → 401 như sai, chạy băm giả, không băm chuỗi dài; vẫn đếm vào khoá theo tên."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, _ = moi_truong
+    asyncio.run(nguoi_dung.tao_nguoi_dung(vai="user", ten_dang_nhap="bob-dai", mat_khau=MK))
+    r_sai = client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-dai", "mat_khau": "SaiMatKhau123456"})
+    do_dai = []
+    goc_scrypt = hashlib.scrypt
+
+    def ghi_lai(pw, **kw):  # mọi lượt scrypt (băm thật lẫn băm giả) đi qua đây
+        do_dai.append(len(pw))
+        return goc_scrypt(pw, **kw)
+
+    with patch.object(nguoi_dung.hashlib, "scrypt", side_effect=ghi_lai):
+        r = client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-dai", "mat_khau": MK + "x" * 200})
+    assert r.status_code == 401 and r.text == r_sai.text
+    assert do_dai and max(do_dai) <= nguoi_dung.MAT_KHAU_TOI_DA, do_dai
+    for _ in range(3):
+        client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-dai", "mat_khau": "y" * 129})
+    assert client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-dai", "mat_khau": MK}).status_code == 401
+
+
+def test_44_xoa_admin_da_tat_khong_bi_409(moi_truong):
+    """Điểm 11: còn một admin bật — xoá admin ĐÃ TẮT được; xoá admin bật cuối cùng vẫn 409."""
+    client, _ = moi_truong
+    a1, _, _ = asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="admin-bat", mat_khau=MK))
+    a2, _, _ = asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="admin-tat", mat_khau=MK))
+    nguoi_dung.sua_nguoi_dung(a2["id"], bat=False)
+    assert client.delete(f"/api/nguoi-dung/{a2['id']}", headers=QT_HDR).status_code == 200
+    assert client.delete(f"/api/nguoi-dung/{a1['id']}", headers=QT_HDR).status_code == 409
+
+
+def test_45_doi_mat_khau_sai_mat_khau_cu_dem_vao_khoa_ten(moi_truong, monkeypatch):
+    """Ghi nhận: thử mật khẩu cũ sai ở /api/toi/mat-khau đếm vào khoá theo tên (chặn dò mật khẩu bằng phiên trộm)."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, _ = moi_truong
+    u, tok, h = _tao_va_vao("bob-doi", pham_vi_toi_da=["chat"])
+    for _ in range(5):
+        r = client.post("/api/toi/mat-khau", cookies={"w2a_phien": tok}, headers=h,
+                        json={"mat_khau_cu": "SaiMatKhau123456", "mat_khau_moi": "MatKhauMoi1234567"})
+        assert r.status_code == 401
+    r = client.post("/api/toi/mat-khau", cookies={"w2a_phien": tok}, headers=h,
+                    json={"mat_khau_cu": MK, "mat_khau_moi": "MatKhauMoi1234567"})
+    assert r.status_code == 401
+    assert client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-doi", "mat_khau": MK}).status_code == 401
+
+
+def test_46_phien_chi_ghi_dung_cuoi_khi_qua_nguong(moi_truong):
+    """Ghi nhận: xác thực cookie liên tiếp không ghi lại tệp phiên mỗi lượt (chỉ khi dung_cuoi cũ ≥ 60 giây)."""
+    client, data_dir = moi_truong
+    u, tok, _ = _tao_va_vao("bob-ghi", pham_vi_toi_da=["chat"])
+    tep = data_dir / "phien_web.json"
+    st = tep.stat()
+    for _ in range(5):
+        assert phien_web.xac_thuc_token(tok) is not None
+    st2 = tep.stat()
+    assert (st.st_ino, st.st_mtime_ns) == (st2.st_ino, st2.st_mtime_ns)
+    from datetime import datetime, timedelta, timezone
+    sau = datetime.now(timezone.utc) + timedelta(seconds=61)
+    with patch("app.phien_web.datetime") as mock_dt:
+        mock_dt.now.return_value = sau
+        mock_dt.fromisoformat = datetime.fromisoformat
+        assert phien_web.xac_thuc_token(tok) is not None
+    assert json.loads(tep.read_text())["phien"][0]["dung_cuoi"] == sau.isoformat(timespec="seconds")
+
+
+@pytest.mark.parametrize("noi_dung", ["{hong", '{"phien": "x"}'])
+def test_47_kho_phien_hong_khong_doi_nua_chung(moi_truong, monkeypatch, noi_dung):
+    """Kho phiên hỏng: đóng khi lỗi TRƯỚC khi đổi trạng thái — đăng nhập/thiết lập/sửa/xoá/đặt lại mật khẩu trả 503
+    (không 500), bản ghi người dùng, tệp khoá và tệp phiên giữ nguyên byte."""
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+    client, data_dir = moi_truong
+    asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="admin-p", mat_khau=MK))
+    u, _, _ = asyncio.run(nguoi_dung.tao_nguoi_dung(vai="user", ten_dang_nhap="bob-p", mat_khau=MK))
+    khoa_khach.tao_khoa("của bob", pham_vi=["chat"], chu_id=u["id"])
+    tep_phien, tep_nd, tep_khoa = data_dir / "phien_web.json", data_dir / "nguoi_dung.json", data_dir / "khoa_khach.json"
+    tep_phien.write_text(noi_dung, encoding="utf-8")
+    truoc = (_sha(tep_phien), _sha(tep_nd), _sha(tep_khoa))
+
+    r = client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-p", "mat_khau": MK})
+    assert r.status_code == 503, r.text
+    assert client.post("/api/thiet-lap", json={"ma_thiet_lap": KHOA_QT, "ten_dang_nhap": "x-y", "mat_khau": MK}).status_code in (409, 503)
+    assert client.patch(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR, json={"bat": False}).status_code == 503
+    assert client.delete(f"/api/nguoi-dung/{u['id']}", headers=QT_HDR).status_code == 503
+    assert client.post(f"/api/nguoi-dung/{u['id']}/dat-lai-mat-khau", headers=QT_HDR).status_code == 503
+    assert (_sha(tep_phien), _sha(tep_nd), _sha(tep_khoa)) == truoc

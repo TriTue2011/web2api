@@ -9,6 +9,9 @@ Thiết kế bảo mật:
 - Băm giả (chay_bam_gia) khi đăng nhập sai tên, tên bị khoá, hoặc tài khoản bị tắt để chống timing attack.
 - Khoá tên tài khoản khi sai liên tiếp 5 lần trong 15 phút (cấu hình qua biến môi trường).
 - Bất biến: luôn còn ít nhất một admin đang bật trong hệ thống (chặn hạ vai, tắt hoặc xoá admin cuối cùng).
+- Kho hỏng ĐÓNG KHI LỖI: tệp tồn tại mà không đọc/phân tích được → `LoiKhoNguoiDung` (503), không bao giờ coi là
+  «chưa có ai» (sẽ mở lại thiết lập lần đầu) và không bao giờ ghi đè tệp. Chỉ tệp KHÔNG tồn tại mới là kho rỗng.
+- Kiểm-rồi-ghi trong CÙNG một vùng găng: trùng tên và «chỉ khi chưa có admin» được kiểm lại ngay trong lần khoá ghi.
 """
 
 from __future__ import annotations
@@ -44,6 +47,27 @@ _THEO_DOI_SAI: OrderedDict[str, dict[str, Any]] = OrderedDict()
 TOI_DA_THEO_DOI = 10000
 
 _SEMAPHORE_SCRYPT = asyncio.Semaphore(2)
+
+#: Chính sách độ dài mật khẩu — dùng chung cho đặt mật khẩu và đăng nhập (dài hơn trần → sai, không băm chuỗi dài).
+MAT_KHAU_TOI_THIEU = 12
+MAT_KHAU_TOI_DA = 128
+
+VAI_HOP_LE = ("admin", "user")
+#: Trần phạm vi mặc định của vai user (khi tạo không nêu, và khi hạ vai admin → user không kèm trần mới).
+PHAM_VI_MAC_DINH_USER = ["chat"]
+
+
+class LoiKhoNguoiDung(LoiOpenAI):
+    """Tệp nguoi_dung.json tồn tại nhưng không đọc/phân tích được. 503, không lộ chi tiết tệp ra phản hồi."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            503,
+            "Kho tài khoản người dùng không đọc được. Khôi phục tệp nguoi_dung.json từ bản sao lưu rồi thử lại; "
+            "thiết lập lần đầu bị khoá để không ghi đè tài khoản hiện có.",
+            loai="server_error",
+            code="user_store_unreadable",
+        )
 
 
 def _p_nguoi_dung() -> Path:
@@ -125,6 +149,11 @@ async def bam_mat_khau(mat_khau: str) -> str:
 
 
 async def kiem_tra_mat_khau(mat_khau: str, chuoi_bam: str) -> bool:
+    """So mật khẩu với băm. Không phải chuỗi hoặc dài hơn MAT_KHAU_TOI_DA → sai, vẫn chạy MỘT lượt băm giả
+    (thời gian đồng nhất, không băm chuỗi dài do khách gửi)."""
+    if not isinstance(mat_khau, str) or len(mat_khau) > MAT_KHAU_TOI_DA:
+        await chay_bam_gia()
+        return False
     async with _SEMAPHORE_SCRYPT:
         return await asyncio.to_thread(_kiem_tra_mat_khau_dong_bo, mat_khau, chuoi_bam)
 
@@ -136,10 +165,10 @@ async def chay_bam_gia() -> None:
 
 
 def kiem_tra_chinh_sach_mat_khau(mat_khau: str, ten_dang_nhap: str = "") -> None:
-    if not isinstance(mat_khau, str) or len(mat_khau) < 12 or len(mat_khau) > 128:
+    if not isinstance(mat_khau, str) or len(mat_khau) < MAT_KHAU_TOI_THIEU or len(mat_khau) > MAT_KHAU_TOI_DA:
         raise LoiOpenAI(
             400,
-            "Mật khẩu phải từ 12 đến 128 ký tự.",
+            f"Mật khẩu phải từ {MAT_KHAU_TOI_THIEU} đến {MAT_KHAU_TOI_DA} ký tự.",
             loai="invalid_request_error",
             code="invalid_password",
         )
@@ -153,7 +182,7 @@ def kiem_tra_chinh_sach_mat_khau(mat_khau: str, ten_dang_nhap: str = "") -> None
 
 
 def kiem_tra_ten_dang_nhap(ten: str) -> str:
-    ten_s = str(ten or "").strip().lower()
+    ten_s = ten.strip().lower() if isinstance(ten, str) else ""
     if not TEN_DANG_NHAP_RE.match(ten_s):
         raise LoiOpenAI(
             400,
@@ -174,6 +203,21 @@ def sinh_ten_dang_nhap_ngau_nhien() -> str:
 
 # ───────────── Quản lý kho người dùng trên đĩa ─────────────
 
+def tran_pham_vi(nd: dict[str, Any]) -> list[str]:
+    """Trần phạm vi HIỆU LỰC của một người dùng: admin → «*» theo vai; user → `pham_vi_toi_da` đã lưu (thiếu → rỗng)."""
+    if nd.get("vai") == "admin":
+        return ["*"]
+    pv = nd.get("pham_vi_toi_da", [])
+    return [x for x in pv if isinstance(x, str)] if isinstance(pv, list) else []
+
+
+def kiem_vai(vai: Any) -> str:
+    """Kiểm KIỂU ở biên: vai phải là chuỗi ∈ VAI_HOP_LE (không phân biệt hoa thường)."""
+    if not isinstance(vai, str) or vai.strip().lower() not in VAI_HOP_LE:
+        raise LoiOpenAI(400, "Vai người dùng phải là «admin» hoặc «user».", code="invalid_value")
+    return vai.strip().lower()
+
+
 def ban_ghi_sach(nd: dict[str, Any]) -> dict[str, Any]:
     """Bản ghi an toàn không chứa mật khẩu hay băm mật khẩu."""
     return {
@@ -187,15 +231,30 @@ def ban_ghi_sach(nd: dict[str, Any]) -> dict[str, Any]:
 
 
 def _doc_nguoi_dung() -> list[dict[str, Any]]:
+    """Đọc kho. Tệp KHÔNG tồn tại → [] (chưa có ai). Tệp tồn tại mà đọc lỗi, JSON hỏng hoặc sai cấu trúc (gốc không
+    phải object, `nguoi_dung` không phải list, phần tử không phải object có `id`) → LoiKhoNguoiDung.
+
+    Không lọc lặng lẽ phần tử hỏng: lọc rồi lần ghi sau sẽ xoá mất chúng (đọc mất rồi ghi đè).
+    """
     p = _p_nguoi_dung()
     try:
         du_lieu = kho.doc_json(p)
-        if isinstance(du_lieu, dict) and isinstance(du_lieu.get("nguoi_dung"), list):
-            return [dict(u) for u in du_lieu["nguoi_dung"] if isinstance(u, dict) and "id" in u]
+    except kho.KhoHong as e:
+        log.warning("Kho người dùng hỏng (%s): %s", p, e)
+        raise LoiKhoNguoiDung() from None
+    if du_lieu is None:
         return []
-    except Exception as e:
-        log.warning("Lỗi đọc tệp %s: %s", p, e)
-        return []
+    ds = du_lieu.get("nguoi_dung") if isinstance(du_lieu, dict) else None
+    if not isinstance(ds, list) or not all(isinstance(u, dict) and "id" in u for u in ds):
+        log.warning("Kho người dùng sai cấu trúc: %s", p)
+        raise LoiKhoNguoiDung()
+    return [dict(u) for u in ds]
+
+
+def kiem_tra_kho() -> None:
+    """Ném LoiKhoNguoiDung nếu kho tồn tại mà không đọc được (dùng ở cổng thiết lập để báo rõ, không đọc thân)."""
+    with _KHOA_LUONG:
+        _doc_nguoi_dung()
 
 
 def _ghi_nguoi_dung(ds: list[dict[str, Any]]) -> None:
@@ -231,12 +290,17 @@ def tim_theo_ten(ten: str) -> dict[str, Any] | None:
     return None
 
 
+def _co_admin_bat(ds: list[dict[str, Any]]) -> bool:
+    return any(u.get("vai") == "admin" and u.get("bat", True) for u in ds)
+
+
 def co_admin() -> bool:
+    """Đã có admin đang bật chưa. ĐÓNG KHI LỖI: kho hỏng → True (coi như đã có), để thiết lập lần đầu không mở lại."""
     with _KHOA_LUONG:
-        for u in _doc_nguoi_dung():
-            if u.get("vai") == "admin" and u.get("bat", True):
-                return True
-    return False
+        try:
+            return _co_admin_bat(_doc_nguoi_dung())
+        except LoiKhoNguoiDung:
+            return True
 
 
 # ───────────── Thiết lập ban đầu ─────────────
@@ -259,7 +323,19 @@ def xoa_ma_thiet_lap() -> None:
 
 
 def khoi_tao_thiet_lap_lan_dau() -> None:
-    """Khởi động tạo <DATA>/ma_thiet_lap (quyền 0600) khi chưa có admin nào và ghi nhật ký một dòng."""
+    """Khởi động tạo <DATA>/ma_thiet_lap (quyền 0600) khi chưa có admin nào và ghi nhật ký một dòng.
+
+    Kho hỏng: không tạo, không xoá mã — chỉ ghi một cảnh báo hướng dẫn khôi phục (ứng dụng vẫn khởi động).
+    """
+    try:
+        kiem_tra_kho()
+    except LoiKhoNguoiDung:
+        nhat_ky.ghi(
+            "he_thong",
+            "canh_bao",
+            f"Kho tài khoản {_p_nguoi_dung()} không đọc được — khôi phục từ bản sao lưu; thiết lập lần đầu bị khoá.",
+        )
+        return
     if co_admin():
         xoa_ma_thiet_lap()
         return
@@ -320,26 +396,46 @@ def ghi_nhan_dang_nhap_dung(ten: str) -> None:
 
 # ───────────── Thao tác người dùng ─────────────
 
+def _kiem_trung_ten(ds: list[dict[str, Any]], ten_chuan: str) -> None:
+    for u in ds:
+        if str(u.get("ten_dang_nhap", "")).lower() == ten_chuan:
+            raise LoiOpenAI(400, f"Tên đăng nhập «{ten_chuan}» đã tồn tại.", code="username_taken")
+
+
+def _loi_da_co_admin() -> LoiOpenAI:
+    return LoiOpenAI(
+        409,
+        "Hệ thống đã có tài khoản quản trị viên. Không thể thiết lập lại.",
+        loai="invalid_request_error",
+        code="already_setup",
+    )
+
+
 async def tao_nguoi_dung(
     vai: str = "user",
     ten_dang_nhap: str | None = None,
     mat_khau: str | None = None,
     pham_vi_toi_da: list[str] | None = None,
+    chi_khi_chua_co_admin: bool = False,
 ) -> tuple[dict[str, Any], str, str]:
-    """Tạo người dùng mới. Nếu thiếu tên hoặc mật khẩu thì tự sinh ngẫu nhiên.
-    Trả về (bản_ghi_sạch, tên_đăng_nhập, mật_khẩu_thô). Mật khẩu thô chỉ hiện một lần duy nhất."""
-    vai_chuan = str(vai or "user").strip().lower()
-    if vai_chuan not in ("admin", "user"):
-        raise LoiOpenAI(400, "Vai người dùng phải là «admin» hoặc «user».", code="invalid_role")
+    """Tạo người dùng mới. Nếu thiếu tên hoặc mật khẩu thì tự sinh ngẫu nhiên (chỉ đường admin tạo người dùng dùng).
+    Trả về (bản_ghi_sạch, tên_đăng_nhập, mật_khẩu_thô). Mật khẩu thô chỉ hiện một lần duy nhất.
+
+    Băm mật khẩu chạy NGOÀI khoá (chậm); vì vậy trùng tên và `chi_khi_chua_co_admin` (thiết lập lần đầu) được kiểm
+    LẠI trong chính lần khoá ghi — kiểm-rồi-ghi trong cùng vùng găng, hai lời gọi đồng thời không cùng lọt.
+    """
+    vai_chuan = kiem_vai(vai)
+    pv = (list(PHAM_VI_MAC_DINH_USER) if vai_chuan == "user" else ["*"]) if pham_vi_toi_da is None else \
+        _chuan_hoa_tran(pham_vi_toi_da)
 
     with _KHOA_LUONG:
         ds = _doc_nguoi_dung()
+        if chi_khi_chua_co_admin and _co_admin_bat(ds):
+            raise _loi_da_co_admin()
 
         if ten_dang_nhap:
             ten_chuan = kiem_tra_ten_dang_nhap(ten_dang_nhap)
-            for u in ds:
-                if str(u.get("ten_dang_nhap", "")).lower() == ten_chuan:
-                    raise LoiOpenAI(400, f"Tên đăng nhập «{ten_chuan}» đã tồn tại.", code="username_taken")
+            _kiem_trung_ten(ds, ten_chuan)
         else:
             for _ in range(100):
                 thu = sinh_ten_dang_nhap_ngau_nhien()
@@ -356,11 +452,6 @@ async def tao_nguoi_dung(
     id_nd = f"nd_{secrets.token_hex(6)}"
     tao_luc = kho.bay_gio_iso()
 
-    if pham_vi_toi_da is not None:
-        pv = list(pham_vi_toi_da)
-    else:
-        pv = ["*"] if vai_chuan == "admin" else ["chat"]
-
     ban_ghi = {
         "id": id_nd,
         "ten_dang_nhap": ten_chuan,
@@ -373,10 +464,18 @@ async def tao_nguoi_dung(
 
     with _KHOA_LUONG:
         ds = _doc_nguoi_dung()
+        if chi_khi_chua_co_admin and _co_admin_bat(ds):
+            raise _loi_da_co_admin()
+        _kiem_trung_ten(ds, ten_chuan)
         ds.append(ban_ghi)
         _ghi_nguoi_dung(ds)
 
     return ban_ghi_sach(ban_ghi), ten_chuan, mat_khau_tho
+
+
+def _chuan_hoa_tran(pham_vi_toi_da: Any) -> list[str]:
+    from app.khoa_khach import chuan_hoa_pham_vi
+    return chuan_hoa_pham_vi(pham_vi_toi_da, cho_phep_rong=True, ten_truong="pham_vi_toi_da")
 
 
 def sua_nguoi_dung(
@@ -385,6 +484,16 @@ def sua_nguoi_dung(
     bat: bool | None = None,
     pham_vi_toi_da: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Sửa vai/bật-tắt/trần. None = giữ nguyên. Kiểm KIỂU trước khi đọc kho: `bat` phải là bool thật, `vai` là chuỗi
+    hợp lệ, `pham_vi_toi_da` là danh sách mã hợp lệ (rỗng được) → sai → 400 invalid_value.
+
+    Hạ vai admin → user mà không kèm `pham_vi_toi_da`: trần về PHAM_VI_MAC_DINH_USER (không để trần «*» lưu từ lúc
+    làm admin tiếp tục hiệu lực cho khoá đã cấp).
+    """
+    if bat is not None and not isinstance(bat, bool):
+        raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false.", code="invalid_value")
+    vai_moi = None if vai is None else kiem_vai(vai)
+    tran_moi = None if pham_vi_toi_da is None else _chuan_hoa_tran(pham_vi_toi_da)
     with _KHOA_LUONG:
         ds = _doc_nguoi_dung()
         tim = None
@@ -399,8 +508,8 @@ def sua_nguoi_dung(
         la_admin_bat = (tim.get("vai") == "admin" and tim.get("bat", True))
         so_admin_bat = sum(1 for u in ds if u.get("vai") == "admin" and u.get("bat", True))
 
-        muon_ha_vai = vai is not None and vai.lower() != "admin"
-        muon_tat = bat is not None and not bat
+        muon_ha_vai = vai_moi is not None and vai_moi != "admin"
+        muon_tat = bat is False
 
         if la_admin_bat and (muon_ha_vai or muon_tat) and so_admin_bat <= 1:
             raise LoiOpenAI(
@@ -410,15 +519,14 @@ def sua_nguoi_dung(
                 code="last_admin_invariant",
             )
 
-        if vai is not None:
-            vai_s = vai.strip().lower()
-            if vai_s not in ("admin", "user"):
-                raise LoiOpenAI(400, "Vai người dùng phải là «admin» hoặc «user».", code="invalid_role")
-            tim["vai"] = vai_s
+        if vai_moi is not None:
+            if tim.get("vai") == "admin" and vai_moi == "user" and tran_moi is None:
+                tim["pham_vi_toi_da"] = list(PHAM_VI_MAC_DINH_USER)
+            tim["vai"] = vai_moi
         if bat is not None:
-            tim["bat"] = bool(bat)
-        if pham_vi_toi_da is not None:
-            tim["pham_vi_toi_da"] = list(pham_vi_toi_da)
+            tim["bat"] = bat
+        if tran_moi is not None:
+            tim["pham_vi_toi_da"] = tran_moi
 
         _ghi_nguoi_dung(ds)
         return ban_ghi_sach(tim)
@@ -459,8 +567,15 @@ async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str)
         ten = str(u.get("ten_dang_nhap", ""))
         bam_cu = str(u.get("bam_mat_khau", ""))
 
+    # Thử mật khẩu cũ đếm chung bộ khoá theo tên với đăng nhập: phiên bị trộm không dò được mật khẩu không giới hạn.
+    try:
+        kiem_tra_khoa_ten(ten)
+    except LoiOpenAI:
+        await chay_bam_gia()
+        raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password") from None
     dung = await kiem_tra_mat_khau(mat_khau_cu, bam_cu)
     if not dung:
+        ghi_nhan_dang_nhap_sai(ten)
         raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password")
 
     kiem_tra_chinh_sach_mat_khau(mat_khau_moi, ten)
@@ -490,8 +605,8 @@ def xoa_nguoi_dung(id_: str) -> bool:
         if not tim:
             raise LoiOpenAI(404, f"Không tìm thấy người dùng có id {id_!r}", code="user_not_found")
 
-        # BẤT BIẾN: không thể xoá admin cuối cùng
-        if tim.get("vai") == "admin":
+        # BẤT BIẾN: không thể xoá admin ĐANG BẬT cuối cùng (xoá admin đã tắt không làm giảm số admin bật)
+        if tim.get("vai") == "admin" and tim.get("bat", True):
             so_admin = sum(1 for u in ds if u.get("vai") == "admin" and u.get("bat", True))
             if so_admin <= 1:
                 raise LoiOpenAI(

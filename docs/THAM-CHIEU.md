@@ -1467,35 +1467,39 @@ Nhằm bảo vệ hệ thống khi triển khai qua tên miền công khai hoặ
 
 - **Mô hình tài khoản:**
   - Hai vai trò: `admin` (toàn quyền như khoá quản trị, quản lý người dùng, cấu hình module) và `user` (chỉ đăng nhập giao diện web, đổi mật khẩu của mình, tự quản lý tạo/thu hồi tối đa 10 khoá API cá nhân; không gọi được API quản trị `/api/*` và không dùng cookie phiên để gọi `/v1/*`).
-  - Lưu trữ: `<WEB2API_DATA>/nguoi_dung.json` (quyền 0600, ghi nguyên tử qua tệp tạm).
+  - Lưu trữ: `<WEB2API_DATA>/nguoi_dung.json` (quyền 0600, ghi nguyên tử qua tệp tạm). Tệp tồn tại mà đọc lỗi/hỏng/sai cấu trúc → **đóng khi lỗi**: các đường người dùng trả `503 user_store_unreadable`, đăng nhập trả `401` đồng nhất (một cảnh báo kênh `he_thong`), khoá API có chủ trả `401`, thiết lập lần đầu KHÔNG mở lại và tệp không bao giờ bị ghi đè — khôi phục tệp từ bản sao lưu. Chỉ khi tệp không tồn tại mới coi là chưa có tài khoản.
   - Tên đăng nhập: 3–32 ký tự `[a-z0-9._-]`, so sánh chữ thường không phân biệt hoa thường. Có thể tự sinh ngẫu nhiên dạng `nd-` + 6 ký tự base32.
   - Mật khẩu: băm bằng thuật toán an toàn `hashlib.scrypt` ($N=2^{14}, r=8, p=1$, muối ngẫu nhiên 16 byte), định dạng tự mô tả `scrypt$14$8$1$<muối b64>$<băm b64>`, so khớp bằng `hmac.compare_digest`. Quá trình băm chạy trong luồng riêng (`asyncio.to_thread`) với cờ semaphore giới hạn tối đa 2 phép tính song song để bảo vệ bộ nhớ RAM container (256 MB). Có thể tự sinh mật khẩu ngẫu nhiên 20 ký tự (bảng chữ loại trừ các ký tự dễ nhầm lẫn như `0`, `O`, `1`, `l`, `I`). Mật khẩu bản rõ chỉ trả về duy nhất một lần khi tạo hoặc đặt lại mật khẩu.
-  - Bất biến admin cuối cùng: hệ thống bảo vệ nghiêm ngặt tài khoản admin duy nhất đang hoạt động (không thể hạ vai, tắt hoặc xoá tài khoản admin cuối cùng; vi phạm trả mã `409`).
+  - Bất biến admin cuối cùng: hệ thống bảo vệ nghiêm ngặt tài khoản admin duy nhất đang hoạt động (không thể hạ vai, tắt hoặc xoá tài khoản admin ĐANG BẬT cuối cùng; vi phạm trả mã `409`; xoá một admin đã tắt thì được).
+  - Thân `PATCH`/`POST` kiểm kiểu ở biên: `bat` phải là `true`/`false`, `vai` là `"admin"`/`"user"`, `pham_vi_toi_da` là danh sách mã phạm vi (rỗng được = không quyền nào), trường chuỗi phải là chuỗi — sai → `400 invalid_value`. Hạ vai admin → user mà không kèm `pham_vi_toi_da` thì trần về mặc định của user (`["chat"]`).
 
 - **Thiết lập admin lần đầu (chống chiếm quyền):**
   - Khi chưa có tài khoản admin nào trong hệ thống, lúc khởi động web2api tự sinh tệp mã thiết lập `<WEB2API_DATA>/ma_thiet_lap` (quyền 0600, chứa 20 ký tự ngẫu nhiên) và ghi một dòng nhật ký duy nhất chứa đường dẫn tệp (không ghi nội dung mã).
   - Khách truy cập web lần đầu kiểm tra qua `GET /api/thiet-lap` (`{"can_thiet_lap": true}`).
-  - Thiết lập admin ban đầu thực hiện qua `POST /api/thiet-lap` với mã thiết lập đọc từ tệp trên máy chủ (`ma_thiet_lap`) hoặc khoá quản trị (`khoa_quan_tri`). Sau khi thiết lập thành công, tệp `ma_thiet_lap` tự động bị xoá bỏ hoàn toàn.
-  - Người quản trị luôn có thể dùng khoá quản trị `khoa_quan_tri` gọi `POST /api/thiet-lap` để khôi phục hoặc tạo tài khoản admin mới khi cần.
+  - Thiết lập admin ban đầu thực hiện qua `POST /api/thiet-lap` với trường `ma_thiet_lap` = mã đọc từ tệp trên máy chủ hoặc khoá quản trị, cùng `ten_dang_nhap` và `mat_khau` BẮT BUỘC (thiếu → `400`, không sinh admin ngẫu nhiên). Chỉ chạy khi chưa có admin (`409` nếu đã có, kiểm lại trong cùng lần khoá ghi nên hai yêu cầu đồng thời chỉ tạo một admin) và qua cùng cổng IP `WEB2API_QT_IP_CHO_PHEP` với đường quản trị. Sau khi thiết lập thành công, tệp `ma_thiet_lap` tự động bị xoá bỏ hoàn toàn.
+  - Quên mật khẩu admin: dùng khoá quản trị (Bearer) gọi `POST /api/nguoi-dung/{id}/dat-lai-mat-khau`.
 
 - **Đăng nhập và phiên làm việc web:**
   - `POST /api/dang-nhap`: Đăng nhập bằng `ten_dang_nhap` và `mat_khau`.
   - Chống tấn công thời gian (timing attack): khi tên đăng nhập không tồn tại, hệ thống tự động băm một chuỗi giả để giữ độ trễ phản hồi tương đương với tài khoản thật.
-  - Chống dò quét mật khẩu: kết hợp bộ đếm IP (`gioi_han.py`) và bộ khoá tài khoản tạm thời. Nếu sai mật khẩu liên tiếp quá số lần quy định (`WEB2API_DANG_NHAP_SAI_TOI_DA`, mặc định 5 lần), tài khoản bị tạm khoá trong `WEB2API_DANG_NHAP_KHOA_PHUT` (mặc định 15 phút).
+  - Chống dò quét mật khẩu: kết hợp bộ đếm IP (`gioi_han.py`) và bộ khoá tài khoản tạm thời. Nếu sai mật khẩu liên tiếp quá số lần quy định (`WEB2API_DANG_NHAP_SAI_TOI_DA`, mặc định 5 lần), tài khoản bị tạm khoá trong `WEB2API_DANG_NHAP_KHOA_PHUT` (mặc định 15 phút). Thử mật khẩu cũ sai ở `POST /api/toi/mat-khau` đếm chung bộ khoá này. Mật khẩu dài hơn 128 ký tự (trần của chính sách đặt mật khẩu) bị coi là sai mà không băm chuỗi dài (vẫn chạy một lượt băm giả).
   - Phiên đăng nhập: sinh token ngẫu nhiên 256-bit an toàn mật mã học, lưu trong `<WEB2API_DATA>/phien_web.json` (quyền 0600, chỉ lưu bản băm SHA-256). Giới hạn tối đa 5 phiên hoạt động đồng thời cho mỗi người dùng (phiên cũ nhất tự động bị đẩy ra khi tạo phiên thứ 6).
   - Cookie phiên: tên cookie là `__Host-w2a_phien` (khi kết nối qua HTTPS an toàn) hoặc `w2a_phien` (khi kết nối HTTP nội bộ), kèm cờ `HttpOnly`, `SameSite=Strict`, `Path=/`.
   - Hạn phiên: hết hạn do nhàn rỗi sau `WEB2API_PHIEN_WEB_RANH_GIO` (mặc định 8 giờ không hoạt động) và hết hạn tuyệt đối sau `WEB2API_PHIEN_WEB_TOI_DA_NGAY` (mặc định 7 ngày kể từ lúc tạo).
-  - Thu hồi phiên: đổi mật khẩu hoặc xoá/tắt tài khoản lập tức thu hồi toàn bộ các phiên đang hoạt động của người dùng đó. Đăng xuất `POST /api/dang-xuat` thu hồi phiên hiện tại.
+  - Token phiên trong cookie phải đúng dạng (43 ký tự `[A-Za-z0-9_-]`); sai dạng coi như không có phiên (`401`).
+  - Thu hồi phiên: đổi mật khẩu hoặc xoá/tắt tài khoản lập tức thu hồi toàn bộ các phiên đang hoạt động của người dùng đó (bật lại không làm sống lại phiên cũ). Đăng xuất `POST /api/dang-xuat` thu hồi phiên hiện tại và xoá cookie với cùng thuộc tính lúc đặt (`__Host-` kèm `Secure`).
 
 - **Bảo vệ chống giả mạo yêu cầu chéo trang (CSRF):**
   - Mọi phiên web được cấp một mã `csrf_token` ngẫu nhiên khi đăng nhập hoặc kiểm tra thông tin.
-  - Mọi yêu cầu thay đổi dữ liệu (`POST`, `PUT`, `PATCH`, `DELETE`) xác thực bằng cookie phiên web BẮT BUỘC phải gửi kèm tiêu đề HTTP `X-CSRF-Token` khớp với CSRF token của phiên (lỗi thiếu hoặc sai trả về mã `403 csrf_that_bai`).
+  - Mọi yêu cầu thay đổi dữ liệu (`POST`, `PUT`, `PATCH`, `DELETE`) xác thực bằng cookie phiên web BẮT BUỘC phải gửi kèm tiêu đề HTTP `X-CSRF-Token` khớp với CSRF token của phiên (thiếu, sai hoặc sai dạng trả về mã `403 csrf_token_invalid`).
   - Các yêu cầu xác thực bằng Bearer token (khoá quản trị hoặc khoá API khách) được miễn trừ kiểm tra CSRF token.
 
 - **Khoá API cá nhân của người dùng:**
   - Khoá khách tạo bởi người dùng được gắn định danh `chu_id` trỏ về tài khoản sở hữu.
   - Người dùng vai `user` chỉ có thể xem danh sách và thu hồi các khoá API do chính mình tạo qua `GET /api/toi/khoa` và `DELETE /api/toi/khoa/{id}`.
   - Khi tài khoản người dùng bị tắt (`bat: false`) hoặc bị xoá, toàn bộ khoá API thuộc sở hữu của người dùng đó lập tức bị vô hiệu hoá khi gọi `/v1/*` (trả về `401`).
+  - Phạm vi khoá do người dùng tạo (`POST /api/toi/khoa`): không nêu `pham_vi` = đúng trần `pham_vi_toi_da`; đã nêu thì phải là danh sách KHÔNG rỗng gồm `*` hoặc mã khả năng (`[a-z][a-z0-9_]`, có thể kèm `:<mã>`) nằm trong trần (`400`/`403` nếu không). Danh sách rỗng KHÔNG BAO GIỜ nghĩa là «tất cả».
+  - Phạm vi HIỆU LỰC của khoá có chủ ở mỗi lượt `/v1/*` = giao của phạm vi khoá với trần HIỆN TẠI của chủ (admin → `*`): hạ trần hoặc hạ vai thu hẹp ngay mọi khoá đã cấp, nâng lại thì rộng lại.
 
 ### Vận hành hằng ngày
 
@@ -1614,17 +1618,17 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/nhat-ky/kenh` | Có | Danh sách kênh nhật ký đang có bản ghi (`kenh`, `so_dong`, `lan_cuoi`) |
 | `DELETE /api/nhat-ky` | Có | Xoá bản ghi nhật ký cũ hơn N ngày (`truoc_ngay=N`, 0 ≤ N ≤ 36500; thiếu → `400`, không xoá gì) |
 | `GET /api/khoa-khach` | Có | Danh sách khoá khách (không băm, không khoá thô) |
-| `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; trả về khoá thô một lần duy nhất) |
-| `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt, nhãn, phạm vi) |
+| `POST /api/khoa-khach` | Có | Tạo khoá khách mới (nhãn, phạm vi; không nêu phạm vi = `*`, danh sách rỗng hoặc mã sai → `400`; trả về khoá thô một lần duy nhất) |
+| `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt — `bat` phải là `true`/`false`, nhãn, phạm vi — rỗng → `400`) |
 | `DELETE /api/khoa-khach/{id}` | Có | Thu hồi khoá khách (xoá ngay, các lượt gọi sau bị `401`) |
 | `GET /api/thiet-lap` | Không | Kiểm tra trạng thái cần thiết lập tài khoản admin ban đầu (`{"can_thiet_lap": bool}`) |
-| `POST /api/thiet-lap` | Không | Thiết lập admin ban đầu (`{"ma_thiet_lap": "...", "ten_dang_nhap": "...", "mat_khau": "..."}`) hoặc đặt lại bằng khoá quản trị (`{"khoa_quan_tri": "...", ...}`) |
+| `POST /api/thiet-lap` | Không | Thiết lập admin ban đầu (`{"ma_thiet_lap": "<mã hoặc khoá quản trị>", "ten_dang_nhap": "...", "mat_khau": "..."}`, cả ba bắt buộc); chỉ khi chưa có admin (`409`), qua cổng `WEB2API_QT_IP_CHO_PHEP`, kho người dùng hỏng → `503` |
 | `POST /api/dang-nhap` | Không | Đăng nhập web bằng tên đăng nhập và mật khẩu, trả cookie phiên `w2a_phien` (hoặc `__Host-w2a_phien`) và `csrf_token` |
 | `POST /api/dang-xuat` | Phiên web | Đăng xuất phiên web hiện tại, vô hiệu hoá cookie phiên |
 | `GET /api/toi` | Phiên web | Thông tin người dùng hiện tại (`id`, `ten_dang_nhap`, `vai`, `pham_vi_toi_da`) |
 | `POST /api/toi/mat-khau` | Phiên web | Tự đổi mật khẩu người dùng hiện tại (thu hồi mọi phiên khác) |
 | `GET /api/toi/khoa` | Phiên web | Danh sách khoá API của chính người dùng hiện tại |
-| `POST /api/toi/khoa` | Phiên web | Tự tạo khoá API mới cho chính mình (phạm vi trong `pham_vi_toi_da`, tối đa 10 khoá; trả về khoá thô một lần duy nhất) |
+| `POST /api/toi/khoa` | Phiên web | Tự tạo khoá API mới cho chính mình (phạm vi: danh sách không rỗng trong `pham_vi_toi_da`, không nêu = bằng trần; tối đa 10 khoá; trả về khoá thô một lần duy nhất) |
 | `DELETE /api/toi/khoa/{id}` | Phiên web | Thu hồi khoá API của chính mình (`404` đồng nhất nếu không tìm thấy hoặc không thuộc về mình) |
 | `GET /api/nguoi-dung` | Có | Danh sách tài khoản người dùng (`id`, `ten_dang_nhap`, `vai`, `bat`, `pham_vi_toi_da`, `tao_luc`) |
 | `POST /api/nguoi-dung` | Có | Tạo tài khoản người dùng mới (tuỳ chọn sinh ngẫu nhiên tên/mật khẩu nếu để trống; mật khẩu chỉ trả về một lần duy nhất) |
@@ -1698,7 +1702,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DANG_NHAP_KHOA_PHUT` | `15` | Thời gian tạm khoá tài khoản (phút) khi vượt quá số lần đăng nhập sai mật khẩu liên tiếp |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
 | `WEB2API_PHIEN_WEB_TOI_DA_NGAY` | `7` | Thời gian sống tuyệt đối tối đa (ngày) của một phiên web kể từ lúc tạo |
-| `WEB2API_QT_IP_CHO_PHEP` | không | Danh sách CIDR (cách nhau bằng dấu phẩy, vd `192.0.2.0/24`) được phép gọi đường QUẢN TRỊ (`can_quan_tri`). Trống/không đặt = tắt, không hạn chế. Có giá trị: IP hiệu lực (tính như `WEB2API_TRUST_PROXY`) ngoài danh sách → `403 ip_not_allowed`, ghi cảnh báo kênh `quan_tri` (tối đa một dòng mỗi IP mỗi phút), không đếm vào giới hạn sai khoá. Loopback trực tiếp không kèm `X-Forwarded-For` luôn được phép (healthcheck/khôi phục); peer không phải IP bị từ chối. Đọc mỗi lượt — đổi không cần khởi động lại. Mục CIDR hỏng bị bỏ qua; tất cả đều hỏng → chặn hết trừ loopback. Xem `docs/TRIEN-KHAI.md` mục «Chỉ cho mạng nhà gọi đường quản trị» |
+| `WEB2API_QT_IP_CHO_PHEP` | không | Danh sách CIDR (cách nhau bằng dấu phẩy, vd `192.0.2.0/24`) được phép gọi đường QUẢN TRỊ (`can_quan_tri`) và `POST /api/thiet-lap` (đường tạo admin lần đầu). Trống/không đặt = tắt, không hạn chế. Có giá trị: IP hiệu lực (tính như `WEB2API_TRUST_PROXY`) ngoài danh sách → `403 ip_not_allowed`, ghi cảnh báo kênh `quan_tri` (tối đa một dòng mỗi IP mỗi phút), không đếm vào giới hạn sai khoá. Loopback trực tiếp không kèm `X-Forwarded-For` luôn được phép (healthcheck/khôi phục); peer không phải IP bị từ chối. Đọc mỗi lượt — đổi không cần khởi động lại. Mục CIDR hỏng bị bỏ qua; tất cả đều hỏng → chặn hết trừ loopback. Xem `docs/TRIEN-KHAI.md` mục «Chỉ cho mạng nhà gọi đường quản trị» |
 | `WEB2API_TRUST_PROXY` | không | Danh sách CIDR (cách nhau bằng dấu phẩy) của proxy ngược được tin để xác định IP khách cho giới hạn sai khoá. Lõi duyệt `X-Forwarded-For` từ PHẢI sang TRÁI, bỏ qua proxy tin cậy, lấy địa chỉ đầu tiên không tin cậy (proxy nối IP kết nối vào cuối nên phần trái do khách gõ, không tin). Peer loopback kèm `X-Forwarded-For` được coi là proxy — nhưng qua cổng công bố của Docker, nguồn mà container thấy là **địa chỉ cổng (gateway) của mạng Docker**, KHÔNG phải loopback, nên phải khai nó (hoặc dải của mạng compose) vào biến này. Nếu proxy nối vào qua địa chỉ LAN của máy chủ thì nguồn là IP LAN của máy chạy proxy: khai đúng IP đó dạng `/32`, đừng khai cả dải LAN (mọi thiết bị trong nhà sẽ được coi là proxy và giả được `X-Forwarded-For`). **Sau Cloudflare:** khai dải IP của Cloudflare (cloudflare.com/ips) nếu proxy ngược công bố cổng, hoặc địa chỉ cổng mạng Docker nếu dùng tunnel; xem `docs/TRIEN-KHAI.md`. Để trống = chỉ loopback là proxy, mọi khách ngoài bị tính theo IP của peer trực tiếp |
 | `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |

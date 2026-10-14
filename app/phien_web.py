@@ -7,6 +7,10 @@ Thiết kế bảo mật:
 - Tối đa 5 phiên mỗi người dùng — tự động thu hồi phiên cũ nhất khi vượt trần.
 - Cookie: tên w2a_phien hoặc __Host-w2a_phien khi qua HTTPS; HttpOnly, SameSite=Strict, Path=/, Secure khi HTTPS; không Domain; cookie phiên không Max-Age.
 - CSRF: token ngẫu nhiên gắn với phiên; bắt buộc header X-CSRF-Token cho POST/PUT/PATCH/DELETE bằng cookie; so sánh thời gian hằng số; Bearer token được miễn.
+- Token phiên/CSRF do khách gửi phải đúng DẠNG token_urlsafe(32) (43 ký tự [A-Za-z0-9_-]) trước khi băm/so — sai dạng
+  (không ASCII, quá dài, khoảng trắng, NUL, xuống dòng) = không có phiên / CSRF sai, không bao giờ ngoại lệ 500.
+- Kho phiên hỏng: đóng khi lỗi (không phiên nào hợp lệ, tạo phiên 503) và không ghi đè tệp.
+- `dung_cuoi` chỉ ghi ra đĩa khi đã cũ ≥ GHI_DUNG_CUOI_GIAY (không fsync mỗi yêu cầu bằng cookie).
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import threading
 from datetime import datetime, timedelta, timezone
@@ -30,6 +35,20 @@ log = logging.getLogger("web2api.phien_web")
 
 _KHOA_LUONG = threading.RLock()
 TOI_DA_PHIEN_MOI_NGUOI = 5
+#: Dạng đúng của token phiên và token CSRF: secrets.token_urlsafe(32) = 43 ký tự base64url, không đệm.
+DANG_TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")
+#: Chỉ ghi lại `dung_cuoi` khi đã cũ hơn ngần này giây (hạn nhàn rỗi tính bằng giờ nên sai số 60 giây không đáng kể).
+GHI_DUNG_CUOI_GIAY = 60
+
+
+def la_dang_token(x: object) -> bool:
+    return isinstance(x, str) and DANG_TOKEN.fullmatch(x) is not None
+
+
+class LoiKhoPhien(LoiOpenAI):
+    def __init__(self) -> None:
+        super().__init__(503, "Kho phiên đăng nhập không đọc được. Khôi phục tệp phien_web.json hoặc xoá nó để đăng nhập lại.",
+                         loai="server_error", code="session_store_unreadable")
 
 
 def _p_phien_web() -> Path:
@@ -57,15 +76,27 @@ def _bam_token(token: str) -> str:
 
 
 def _doc_phien() -> list[dict[str, Any]]:
+    """Tệp không tồn tại → []; tồn tại mà hỏng/sai cấu trúc → LoiKhoPhien (không lọc lặng lẽ rồi ghi đè)."""
     p = _p_phien_web()
     try:
         du_lieu = kho.doc_json(p)
-        if isinstance(du_lieu, dict) and isinstance(du_lieu.get("phien"), list):
-            return [dict(x) for x in du_lieu["phien"] if isinstance(x, dict) and "bam" in x]
+    except kho.KhoHong as e:
+        log.warning("Kho phiên hỏng (%s): %s", p, e)
+        raise LoiKhoPhien() from None
+    if du_lieu is None:
         return []
-    except Exception as e:
-        log.warning("Lỗi đọc %s: %s", p, e)
-        return []
+    ds = du_lieu.get("phien") if isinstance(du_lieu, dict) else None
+    if not isinstance(ds, list) or not all(isinstance(x, dict) and "bam" in x for x in ds):
+        log.warning("Kho phiên sai cấu trúc: %s", p)
+        raise LoiKhoPhien()
+    return [dict(x) for x in ds]
+
+
+def kiem_tra_kho() -> None:
+    """Ném LoiKhoPhien nếu kho phiên tồn tại mà không đọc được. Gọi TRƯỚC thao tác ghi nào còn phải tạo/thu hồi phiên
+    sau đó — để không xảy ra cảnh đã đổi xong (xoá người, đặt mật khẩu…) rồi mới 503 ở bước phiên."""
+    with _KHOA_LUONG:
+        _doc_phien()
 
 
 def _ghi_phien(ds: list[dict[str, Any]]) -> None:
@@ -114,17 +145,20 @@ def tao_phien(nguoi_dung_id: str) -> tuple[dict[str, Any], str]:
 def xac_thuc_token(token: str) -> dict[str, Any] | None:
     """Xác thực token phiên: kiểm tra băm SHA-256, hạn nhàn rỗi và hạn tuyệt đối.
     Cập nhật dung_cuoi nếu hợp lệ; xoá nếu hết hạn."""
-    if not token or not isinstance(token, str):
+    if not la_dang_token(token):
         return None
     bam_tim = _bam_token(token)
     now = datetime.now(timezone.utc)
     bay_gio_str = now.isoformat(timespec="seconds")
 
     with _KHOA_LUONG:
-        ds = _doc_phien()
+        try:
+            ds = _doc_phien()
+        except LoiKhoPhien:
+            return None  # đóng khi lỗi: kho phiên hỏng thì không phiên nào hợp lệ
         tim = None
         for p in ds:
-            if hmac.compare_digest(bam_tim.encode("ascii"), str(p.get("bam", "")).encode("ascii")):
+            if hmac.compare_digest(bam_tim.encode("utf-8"), str(p.get("bam", "")).encode("utf-8")):
                 tim = p
                 break
 
@@ -155,9 +189,10 @@ def xac_thuc_token(token: str) -> dict[str, Any] | None:
             _ghi_phien(ds)
             return None
 
-        # Hợp lệ: cập nhật dung_cuoi
-        tim["dung_cuoi"] = bay_gio_str
-        _ghi_phien(ds)
+        # Hợp lệ: cập nhật dung_cuoi — chỉ ghi đĩa khi đã cũ ≥ GHI_DUNG_CUOI_GIAY
+        if now - dc >= timedelta(seconds=GHI_DUNG_CUOI_GIAY):
+            tim["dung_cuoi"] = bay_gio_str
+            _ghi_phien(ds)
         return dict(tim)
 
 
@@ -200,17 +235,20 @@ def dat_cookie_phien(response: Response, request: Request, token: str) -> None:
 
 
 def xoa_cookie_phien(response: Response) -> None:
-    """Xoá cả hai cookie phiên."""
-    response.delete_cookie("__Host-w2a_phien", path="/")
-    response.delete_cookie("w2a_phien", path="/")
+    """Xoá cả hai cookie phiên, cùng thuộc tính như lúc đặt (trình duyệt bỏ lệnh xoá `__Host-` thiếu Secure)."""
+    response.delete_cookie("__Host-w2a_phien", path="/", secure=True, httponly=True, samesite="strict")
+    response.delete_cookie("w2a_phien", path="/", httponly=True, samesite="strict")
 
 
 def kiem_tra_csrf(request: Request, phien: dict[str, Any]) -> None:
     """Bắt buộc header X-CSRF-Token cho các phương thức thay đổi trạng thái khi xác thực bằng cookie."""
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         token_gui = request.headers.get("x-csrf-token", "").strip()
-        token_phien = str(phien.get("csrf", "")).strip()
-        if not token_gui or not token_phien or not hmac.compare_digest(token_gui.encode("ascii"), token_phien.encode("ascii")):
+        token_phien = str(phien.get("csrf", ""))
+        # Kiểm DẠNG trước (độ dài cố định, chỉ base64url) rồi mới so bytes thời gian hằng số — không ngoại lệ với chuỗi lạ.
+        if not la_dang_token(token_gui) or not la_dang_token(token_phien) or not hmac.compare_digest(
+            token_gui.encode("utf-8"), token_phien.encode("utf-8")
+        ):
             raise LoiOpenAI(
                 403,
                 "Sai hoặc thiếu token CSRF.",

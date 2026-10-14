@@ -1,4 +1,5 @@
-"""Cổng IP cho đường quản trị (cẩm nang §25) — đặt ở MỘT chỗ: đầu `can_quan_tri`.
+"""Cổng IP cho đường quản trị (cẩm nang §25) — một hàm, gọi ở đầu `can_quan_tri` và đầu `POST /api/thiet-lap`
+(đường mở tạo admin lần đầu: cũng là đường cấp quyền quản trị nên chịu cùng cổng).
 
 `WEB2API_QT_IP_CHO_PHEP` = danh sách CIDR cách nhau dấu phẩy (vd "192.0.2.0/24,2001:db8::/32").
 TRỐNG hoặc không đặt = TẮT, không hạn chế (mặc định, để không khoá nhầm ai).
@@ -68,7 +69,7 @@ def _doc_danh_sach():
 
 
 def kiem_tra_ip_quan_tri(request) -> None:
-    """Cổng IP cho đường quản trị — gọi NGAY ĐẦU `can_quan_tri`, trước mọi xác thực.
+    """Cổng IP cho đường quản trị — gọi NGAY ĐẦU `can_quan_tri` (và đầu thiết lập lần đầu), trước mọi xác thực.
 
     Qua → trả None. Không qua → ném LoiOpenAI(403, code="ip_not_allowed").
     """

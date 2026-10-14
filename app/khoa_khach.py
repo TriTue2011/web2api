@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from app import kho, nhat_ky
+from app.kham_pha import MA_KHA_NANG
 from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.khoa_khach")
@@ -49,6 +50,53 @@ _DONG_THOI_DANG_CHAY: dict[str, int] = {}
 
 def _p_khoa_khach() -> Path:
     return kho.thu_muc_du_lieu() / "khoa_khach.json"
+
+
+#: Trần số phần tử một danh sách phạm vi (chặn thân yêu cầu nhồi danh sách khổng lồ vào tệp).
+TOI_DA_PHAN_TU_PHAM_VI = 64
+
+
+def la_ma_pham_vi(x: Any) -> bool:
+    """Một phần tử phạm vi hợp lệ: `*` hoặc mã khả năng mẫu MA_KHA_NANG, có thể kèm hậu tố `:<mã>`
+    (vd `thiet_bi:ghi` — đúng dạng các đường /api/thiet-bi kiểm). Mã MỞ: kiểm MẪU, không giữ danh sách mã."""
+    if not isinstance(x, str):
+        return False
+    if x == "*":
+        return True
+    phan = x.split(":")
+    return len(phan) <= 2 and all(MA_KHA_NANG.match(m) for m in phan)
+
+
+def chuan_hoa_pham_vi(gia_tri: Any, *, cho_phep_rong: bool, ten_truong: str = "pham_vi") -> list[str]:
+    """Bộ kiểm DUY NHẤT cho danh sách phạm vi do khách gửi (khoá khách và trần của người dùng).
+
+    Phải là list các chuỗi hợp lệ (`la_ma_pham_vi`), không phần tử rỗng/khoảng trắng/sai kiểu, bỏ trùng giữ thứ tự.
+    KHÔNG BAO GIỜ đổi danh sách rỗng thành «*»: rỗng nghĩa là KHÔNG có quyền nào — `cho_phep_rong=False`
+    (phạm vi một khoá) thì rỗng → 400; `cho_phep_rong=True` (trần của người dùng) thì rỗng hợp lệ.
+    """
+    if not isinstance(gia_tri, list) or len(gia_tri) > TOI_DA_PHAN_TU_PHAM_VI:
+        raise LoiOpenAI(400, f"Trường «{ten_truong}» phải là danh sách mã phạm vi (tối đa {TOI_DA_PHAN_TU_PHAM_VI} phần tử).",
+                        code="invalid_value")
+    ket_qua: list[str] = []
+    for x in gia_tri:
+        if not la_ma_pham_vi(x):
+            raise LoiOpenAI(400, f"Trường «{ten_truong}» chỉ nhận «*» hoặc mã khả năng [a-z][a-z0-9_] (có thể kèm «:<mã>»).",
+                            code="invalid_value")
+        if x not in ket_qua:
+            ket_qua.append(x)
+    if not ket_qua and not cho_phep_rong:
+        raise LoiOpenAI(400, f"Trường «{ten_truong}» không được rỗng — rỗng là không có quyền nào, không phải «tất cả».",
+                        code="invalid_value")
+    return ket_qua
+
+
+def giao_pham_vi(pham_vi: list[str], tran: list[str]) -> list[str]:
+    """Phạm vi hiệu lực = GIAO của phạm vi khoá với trần. «*» ở một bên nghĩa là bên kia quyết."""
+    if "*" in tran:
+        return list(pham_vi)
+    if "*" in pham_vi:
+        return list(tran)
+    return [x for x in pham_vi if x in tran]
 
 
 def tran_dong_thoi() -> int | None:
@@ -122,6 +170,11 @@ def tim_theo_khoa_tho(khoa_tho: str) -> dict[str, Any] | None:
     """Đường nóng: tìm khoá khách theo chuỗi khoá thô (tính sha256 và so digest trong bộ nhớ).
 
     Không ghi đĩa. Trả về dict khoá (bản sao hoặc tham chiếu an toàn) hoặc None.
+
+    Khoá có chủ (`chu_id`): chủ bị tắt/xoá hoặc kho người dùng đọc lỗi → bản sao `bat=False` (401, đóng khi lỗi);
+    còn lại → bản sao có `pham_vi` = GIAO(phạm vi khoá, trần HIỆN TẠI của chủ) — hạ trần/hạ vai thu hẹp khoá đã
+    cấp ngay ở lượt sau, không cần sửa khoá. Thứ tự khoá: khoá khách rồi mới tới khoá người dùng; module
+    nguoi_dung không bao giờ gọi vào đây khi đang giữ khoá của nó.
     """
     if not khoa_tho or not isinstance(khoa_tho, str):
         return None
@@ -133,11 +186,16 @@ def tim_theo_khoa_tho(khoa_tho: str) -> dict[str, Any] | None:
                 chu_id = k.get("chu_id")
                 if chu_id:
                     from app import nguoi_dung
-                    nd = nguoi_dung.tim_theo_id(chu_id)
-                    if nd is None or not nd.get("bat", True):
-                        k_copy = dict(k)
+                    try:
+                        nd = nguoi_dung.tim_theo_id(chu_id)
+                    except nguoi_dung.LoiKhoNguoiDung:
+                        nd = None
+                    k_copy = dict(k)
+                    if nd is None or nd.get("bat", True) is not True:
                         k_copy["bat"] = False
                         return k_copy
+                    k_copy["pham_vi"] = giao_pham_vi(list(k.get("pham_vi", ["*"])), nguoi_dung.tran_pham_vi(nd))
+                    return k_copy
                 return k
     return None
 
@@ -233,9 +291,13 @@ def tao_khoa(
     pham_vi: list[str] | None = None,
     chu_id: str | None = None,
 ) -> tuple[dict[str, Any], str]:
-    """Tạo khoá khách mới: sinh khoá ngẫu nhiên hiện MỘT LẦN, ghi nguyên tử 0600 và ghi sổ quan_tri."""
+    """Tạo khoá khách mới: sinh khoá ngẫu nhiên hiện MỘT LẦN, ghi nguyên tử 0600 và ghi sổ quan_tri.
+
+    `pham_vi=None` (không nêu) = «*» — hợp đồng cũ của đường quản trị. Đã nêu thì phải qua `chuan_hoa_pham_vi`
+    (danh sách rỗng → 400, KHÔNG thành «*»). Đường người dùng luôn truyền danh sách tường minh đã kiểm trần.
+    """
     nhan_chuan = str(nhan or "").strip() or "Khoá khách"
-    pv = list(pham_vi) if isinstance(pham_vi, list) and pham_vi else ["*"]
+    pv = ["*"] if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
     khoa_tho = f"w2a_{secrets.token_urlsafe(32)}"
     bam = hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest()
     id_khoa = f"kk_{secrets.token_hex(6)}"
@@ -277,7 +339,10 @@ def sua_khoa(
     nhan: str | None = None,
     pham_vi: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Cập nhật thông tin khoá khách (bật/tắt, nhãn, phạm vi)."""
+    """Cập nhật thông tin khoá khách (bật/tắt, nhãn, phạm vi). None = giữ nguyên; `bat` phải là bool thật."""
+    if bat is not None and not isinstance(bat, bool):
+        raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false.", code="invalid_value")
+    pv_moi = None if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
         tim_thay = None
@@ -289,11 +354,11 @@ def sua_khoa(
             raise LoiOpenAI(404, f"Không tìm thấy khoá khách có id {id_khoa!r}", code="key_not_found")
 
         if bat is not None:
-            tim_thay["bat"] = bool(bat)
+            tim_thay["bat"] = bat
         if nhan is not None:
             tim_thay["nhan"] = str(nhan).strip() or tim_thay.get("nhan", "Khoá khách")
-        if pham_vi is not None:
-            tim_thay["pham_vi"] = list(pham_vi) if isinstance(pham_vi, list) and pham_vi else ["*"]
+        if pv_moi is not None:
+            tim_thay["pham_vi"] = pv_moi
 
         _ghi_ra_dia_khoi_tao()
         kq = _sach_khoa(tim_thay)
