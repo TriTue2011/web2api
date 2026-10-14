@@ -14,6 +14,8 @@ chạy tiếp. Module ĐANG chạy mà bản mới trên đĩa nạp hỏng thì
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import secrets
@@ -23,6 +25,7 @@ from pathlib import Path
 
 from app import he_thong, kho, nhat_ky, phien
 from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, go_ma, nap_ma, quet, van_tay)
+from app.quyen_module import bam_diff, cac_muc_chuan, diff_quyen
 
 log = logging.getLogger("web2api.so_module")
 
@@ -38,10 +41,55 @@ class LoiSo(Exception):
         self.ma = ma
 
 
+def _van_tay_tu_xa(ban_ghi: dict, api_key: str | None) -> tuple:
+    """Dấu để biết thể hiện từ xa đang chạy còn khớp đĩa không — băm khoá, không giữ thêm bản khoá thô."""
+    return (json.dumps(ban_ghi, sort_keys=True, ensure_ascii=False),
+            hashlib.sha256(api_key.encode("utf-8")).hexdigest() if api_key else None)
+
+
+async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
+    """Kiểm THUẦN (không ghi) một bản ghi module từ xa — MỘT bộ kiểm cho đăng ký (POST /api/modules/tu-xa) và cho
+    khôi phục tu_xa.json: id/tên/tiền tố đúng quy tắc, base_url qua `kiem_url_lan` (chặn SSRF). Trả
+    {id, ten, tien_to, base_url} đã chuẩn hoá; sai → LoiSo(400)."""
+    from app.kham_pha import ID_DANH_RIENG, TIEN_TO_HOP_LE
+    from app.tu_xa import kiem_url_lan
+
+    if not isinstance(than, dict):
+        raise LoiSo(400, "bản ghi module từ xa phải là đối tượng")
+    id_, ten, tien_to = than.get("id"), than.get("ten"), than.get("tien_to")
+    if not isinstance(id_, str) or not ID_HOP_LE.match(id_) or id_ in ID_DANH_RIENG:
+        raise LoiSo(400, "id không hợp lệ (cần ^[a-z0-9][a-z0-9_-]{1,40}$, không trùng tên tuyến)")
+    if not isinstance(ten, str) or not ten.strip():
+        raise LoiSo(400, "thiếu «ten»")
+    if not isinstance(tien_to, str) or not TIEN_TO_HOP_LE.match(tien_to):
+        raise LoiSo(400, "tien_to không hợp lệ (chữ, số, . _ -; không có «/»)")
+    try:
+        base = await kiem_url_lan(than.get("base_url"))
+    except ValueError as e:
+        raise LoiSo(400, str(e)) from None
+    return {"id": id_, "ten": ten.strip(), "tien_to": tien_to, "base_url": base}
+
+
+class LoiCanDuyetQuyen(LoiSo):
+    """409 khi bản mới của module đã cài xin thêm quyền: chưa kích hoạt, chờ quản trị duyệt.
+
+    Thuộc tính: id_, diff {"them": [...], "bot": [...]}, sha_commit, tree_sha của bản mới.
+    """
+
+    def __init__(self, id_: str, diff: dict, sha_commit: str | None, tree_sha: str | None):
+        super().__init__(409, f"Module {id_!r} có bản mới xin thêm {len(diff.get('them') or [])} quyền — "
+                              f"cần quản trị duyệt trước khi kích hoạt")
+        self.id_ = id_
+        self.diff = diff
+        self.sha_commit = sha_commit
+        self.tree_sha = tree_sha
+
+
 class SoModule:
     def __init__(self):
         self.catalog: dict[str, ModuleKhamPha] = {}
         self.tu_xa: dict[str, dict] = {}
+        self._vt_tu_xa: dict[str, tuple] = {}  # (bản ghi, băm khoá) mà thể hiện từ xa đang chạy được dựng từ đó
         self.dang_chay: dict[str, object] = {}
         self.loi: list[dict] = []  # lỗi của lần quét/nạp gần nhất: [{thu_muc, ly_do}]
         # Tạo trong vòng sự kiện của lifespan (asyncio.Lock gắn vòng lặp ở lần chờ đầu).
@@ -119,20 +167,52 @@ class SoModule:
         from app.tu_xa import ModuleTuXa  # nhập muộn: tu_xa nhập so_module để lấy LoiSo
 
         async with self.khoa:
+            loi = await self._dong_bo_tu_xa()
+            kq = await self._nap_lai()
+            self.loi = loi + self.loi
+            return kq
+
+    async def _dong_bo_tu_xa(self) -> list[dict]:
+        """Cho sổ module từ xa khớp tu_xa.json + bi_mat/<id>.json trên đĩa: bản ghi mới/đổi (hoặc khoá đổi) → dựng
+        thể hiện mới rồi dừng bản cũ; bản ghi không còn → dừng. MỘT đường cho khởi động và cho nạp lại sau khôi phục.
+        Gọi khi ĐANG giữ self.khoa. Trả danh sách lỗi {thu_muc, ly_do}."""
+        from app.tu_xa import ModuleTuXa  # nhập muộn: tu_xa nhập so_module để lấy LoiSo
+
+        loi: list[dict] = []
+        try:
+            ds = kho.doc_tu_xa()
+        except kho.KhoHong as e:
+            log.warning("%s", e)
+            return [{"thu_muc": str(kho.thu_muc_du_lieu() / "tu_xa.json"), "ly_do": str(e)}]
+        moi: dict[str, tuple[dict, str | None]] = {}
+        for ban_ghi in ds:
             try:
-                ds = kho.doc_tu_xa()
-            except kho.KhoHong as e:
-                log.warning("%s", e)
-                self.loi.append({"thu_muc": str(kho.thu_muc_du_lieu() / "tu_xa.json"), "ly_do": str(e)})
-                ds = []
-            for ban_ghi in ds:
-                try:
-                    api_key = kho.doc_bi_mat(ban_ghi["id"]).get("api_key")
-                    self.tu_xa[ban_ghi["id"]] = ban_ghi
-                    self.dang_chay[ban_ghi["id"]] = ModuleTuXa(ban_ghi, api_key)
-                except (KeyError, ValueError, kho.KhoHong) as e:
-                    log.warning("Bỏ qua module từ xa hỏng %r: %s", ban_ghi, e)
-            return await self._nap_lai()
+                moi[ban_ghi["id"]] = (ban_ghi, kho.doc_bi_mat(ban_ghi["id"]).get("api_key"))
+            except (KeyError, TypeError, ValueError, kho.KhoHong) as e:
+                log.warning("Bỏ qua module từ xa hỏng: %s", e)
+        for id_ in [i for i in self.tu_xa if i not in moi]:
+            del self.tu_xa[id_]
+            self._vt_tu_xa.pop(id_, None)
+            m = self.dang_chay.pop(id_, None)
+            if m is not None:
+                await self._dung_an_toan(id_, m)
+        for id_, (ban_ghi, api_key) in moi.items():
+            vt = _van_tay_tu_xa(ban_ghi, api_key)
+            cu = self.dang_chay.get(id_) if id_ in self.tu_xa else None
+            if cu is not None and self._vt_tu_xa.get(id_) == vt:
+                continue
+            try:
+                the = ModuleTuXa(ban_ghi, api_key)
+            except (KeyError, TypeError, ValueError) as e:
+                log.warning("Bỏ qua module từ xa hỏng %s: %s", id_, e)
+                loi.append({"thu_muc": str(kho.thu_muc_du_lieu() / "tu_xa.json"), "ly_do": f"{id_}: {e}"})
+                continue
+            self._vt_tu_xa[id_] = vt
+            self.tu_xa[id_] = ban_ghi
+            self.dang_chay[id_] = the
+            if cu is not None:
+                await self._dung_an_toan(id_, cu)
+        return loi
 
     async def dung_het(self) -> None:
         for id_, m in list(self.dang_chay.items()):
@@ -151,6 +231,30 @@ class SoModule:
     async def nap_lai(self) -> dict:
         async with self.khoa:
             return await self._nap_lai()
+
+    async def nap_lai_tu_kho(self, doi_cau_hinh: set[str]) -> dict:
+        """Nạp lại SAU KHI tệp cấu hình bị thay từ ngoài (khôi phục): module từ xa theo tu_xa.json; module có mã ĐANG
+        chạy mà cấu hình/bí mật đổi (`doi_cau_hinh`) hoặc không còn trong modules.json thì dựng lại từ kho (hỏng →
+        dừng và báo lỗi, không để mã chạy với cấu hình cũ trong khi đĩa đã khác); rồi quét như `nap_lai`."""
+        async with self.khoa:
+            loi = await self._dong_bo_tu_xa()
+            con = {m.get("id") for m in kho.doc_modules()[0] if isinstance(m, dict)}
+            for id_ in [i for i in self.dang_chay if i in self.catalog and (i in doi_cau_hinh or i not in con)]:
+                cu = self.dang_chay.pop(id_)
+                km = self.catalog[id_]
+                try:
+                    the = self._tao_tu_kho(km)
+                except Exception as e:  # mã module: lỗi của nó, không phải của lõi
+                    the = None
+                    loi.append({"thu_muc": str(km.thu_muc),
+                                "ly_do": f"không nạp được cấu hình đã khôi phục: {type(e).__name__}: {e}"})
+                if the is not None:
+                    self.dang_chay[id_] = the
+                await self._dung_an_toan(id_, cu)
+            kq = await self._nap_lai()
+            kq["loi"] = loi + kq["loi"]
+            self.loi = kq["loi"]
+            return kq
 
     async def _nap_lai(self) -> dict:
         """Quét lại hai nguồn. Trả {them, doi, go, loi}. Gọi khi ĐANG giữ self.khoa."""
@@ -343,6 +447,7 @@ class SoModule:
                 kho.xoa_tu_xa(id_)
                 kho.xoa_cai_dat_model_module(id_)
                 del self.tu_xa[id_]
+                self._vt_tu_xa.pop(id_, None)
                 if m is not None:
                     await self._dung_an_toan(id_, m)
                 return {"ok": True, "id": id_, "loai": "tu_xa"}
@@ -373,33 +478,23 @@ class SoModule:
     # ───────────── module từ xa ─────────────
 
     async def them_tu_xa(self, than: dict) -> dict:
-        from app.kham_pha import ID_DANH_RIENG, TIEN_TO_HOP_LE
-        from app.tu_xa import ModuleTuXa, kiem_url_lan
+        from app.tu_xa import ModuleTuXa
 
-        id_, ten, tien_to = than.get("id"), than.get("ten"), than.get("tien_to")
         api_key = than.get("api_key") or None
-        if not isinstance(id_, str) or not ID_HOP_LE.match(id_) or id_ in ID_DANH_RIENG:
-            raise LoiSo(400, "id không hợp lệ (cần ^[a-z0-9][a-z0-9_-]{1,40}$, không trùng tên tuyến)")
-        if not isinstance(ten, str) or not ten.strip():
-            raise LoiSo(400, "thiếu «ten»")
-        if not isinstance(tien_to, str) or not TIEN_TO_HOP_LE.match(tien_to):
-            raise LoiSo(400, "tien_to không hợp lệ (chữ, số, . _ -; không có «/»)")
         if api_key is not None and not isinstance(api_key, str):
             raise LoiSo(400, "api_key phải là chuỗi")
-        try:
-            base = await kiem_url_lan(than.get("base_url"))
-        except ValueError as e:
-            raise LoiSo(400, str(e)) from None
+        sach = await kiem_ban_ghi_tu_xa(than)
+        id_, ten, tien_to, base = sach["id"], sach["ten"], sach["tien_to"], sach["base_url"]
         async with self.khoa:
             if id_ in self.catalog or id_ in self.tu_xa:
                 raise LoiSo(409, f"id {id_!r} đã có")
             if self.tim_theo_tien_to(tien_to):
                 raise LoiSo(409, f"tiền tố {tien_to!r} đã thuộc module {self.tim_theo_tien_to(tien_to)!r}")
-            ban_ghi = {"id": id_, "ten": ten.strip(), "tien_to": tien_to, "base_url": base,
-                       "cai_luc": kho.bay_gio_iso()}
+            ban_ghi = {"id": id_, "ten": ten, "tien_to": tien_to, "base_url": base, "cai_luc": kho.bay_gio_iso()}
             kho.luu_tu_xa(ban_ghi, api_key)
             self.tu_xa[id_] = ban_ghi
             m = ModuleTuXa(ban_ghi, api_key)
+            self._vt_tu_xa[id_] = _van_tay_tu_xa(ban_ghi, api_key)
             self.dang_chay[id_] = m
         return {"ok": True, "module": self.cong_khai_tu_xa(id_), "suc_khoe": await m.suc_khoe()}
 
@@ -413,10 +508,61 @@ class SoModule:
 
     # ───────────── cài thư mục mã (dùng bởi nguồn git) ─────────────
 
-    async def cai_thu_muc(self, id_: str, tam: Path) -> dict:
+    @staticmethod
+    def _nguon_cua_tam(tam: Path) -> dict:
+        """Đọc .nguon.json mà nguồn git đã ghi vào thư mục tạm (sha_commit, tree_sha)."""
+        try:
+            du_lieu = json.loads((tam / ".nguon.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return du_lieu if isinstance(du_lieu, dict) else {}
+
+    @staticmethod
+    def thu_muc_cho_duyet(id_: str) -> Path:
+        """Thư mục giữ bản chờ duyệt của module `id_` — suy từ id (đã kiểm mẫu ở nơi gọi), cố định dưới thư mục modules."""
+        return kho.thu_muc_modules() / f".cho-duyet-{id_}"
+
+    def _cho_duyet_quyen(self, id_: str, tam: Path, mf_moi: dict, nguon: dict, diff: dict) -> None:
+        """Bản mới xin thêm quyền: dời `tam` vào nơi chờ duyệt, lưu yêu cầu (nguyên tử, 0600)."""
+        cho = self.thu_muc_cho_duyet(id_)  # suy từ id, KHÔNG tin đường dẫn lưu trong tệp JSON
+        if cho.exists():
+            shutil.rmtree(cho, ignore_errors=True)
+        os.rename(tam, cho)
+        kho.luu_cho_duyet_quyen(id_, {
+            "id": id_, "sha_commit": nguon.get("sha_commit"), "tree_sha": nguon.get("tree_sha"),
+            "diff": diff, "bam_diff": bam_diff(diff), "thu_muc": str(cho),
+            "phien_ban": mf_moi.get("phien_ban"), "luc": kho.bay_gio_iso(),
+        })
+        nhat_ky.ghi("he_thong", "canh_bao",
+                    f"Module {id_} có bản mới (commit {str(nguon.get('sha_commit'))[:12]}) "
+                    f"xin thêm {len(diff['them'])} quyền — chưa kích hoạt, chờ quản trị duyệt",
+                    module=id_)
+
+    @staticmethod
+    def _kiem_duyet_quyen(id_: str, nguon: dict, diff: dict, chap_nhan: list | None) -> None:
+        """Duyệt phải KHỚP CHÍNH XÁC: cùng SHA đã xem + cùng băm diff + đúng danh sách «them»."""
+        pending = kho.doc_cho_duyet_quyen(id_)
+        if pending is None:
+            raise LoiSo(409, f"Module {id_!r} không có yêu cầu chờ duyệt quyền — cài thường để tạo yêu cầu")
+        sha = nguon.get("sha_commit")
+        if not sha or sha != pending.get("sha_commit"):
+            raise LoiSo(409, "SHA commit đã đổi sau khi xem diff — yêu cầu duyệt cũ mất hiệu lực, "
+                             "cài lại để xem diff mới")
+        if bam_diff(diff) != pending.get("bam_diff"):
+            raise LoiSo(409, "Diff quyền đã đổi — yêu cầu duyệt cũ mất hiệu lực, cài lại để xem diff mới")
+        if cac_muc_chuan(chap_nhan) != cac_muc_chuan((pending.get("diff") or {}).get("them")):
+            raise LoiSo(409, "Danh sách chấp nhận phải khớp chính xác phần «them» đã xem")
+
+    async def cai_thu_muc(self, id_: str, tam: Path, chap_nhan_quyen_them: list | None = None) -> dict:
         """Đổi tên NGUYÊN TỬ `tam` → `<WEB2API_DATA>/modules/<id>/`, nạp lại; bản mới nạp hỏng →
         hoàn về bản cũ (bản cũ không ngừng phục vụ lúc nào) và LoiSo. Module chưa cần cấu hình
-        bắt buộc thì tự cài cấu hình rỗng để dùng được ngay."""
+        bắt buộc thì tự cài cấu hình rỗng để dùng được ngay.
+
+        Chống rug-pull (cẩm nang §23): module ĐÃ cài mà bản mới xin thêm quyền (so manifest)
+        thì KHÔNG kích hoạt — `chap_nhan_quyen_them=None` → lưu yêu cầu chờ duyệt và ném
+        LoiCanDuyetQuyen(409); duyệt thì truyền đúng danh sách «them» đã xem (kèm SHA khớp).
+        Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ quyền module xin.
+        """
         if not ID_HOP_LE.match(id_):
             raise LoiSo(400, f"id {id_!r} không hợp lệ")
         async with self.khoa:
@@ -428,6 +574,15 @@ class SoModule:
                 raise LoiSo(409, f"Id {id_!r} đã có ở {km_cu.thu_muc} — gỡ bản đó trước")
             if id_ in self.tu_xa:
                 raise LoiSo(409, f"Id {id_!r} đang là module từ xa")
+            # ── Cổng duyệt quyền (chỉ khi đã có bản cũ; cài mới không chặn) ──
+            mf_moi, loi_mf = doc_manifest(tam)
+            diff = diff_quyen(km_cu.manifest if km_cu else {}, mf_moi) if loi_mf is None else None
+            if km_cu is not None and diff and diff["them"]:
+                nguon = self._nguon_cua_tam(tam)
+                if chap_nhan_quyen_them is None:
+                    self._cho_duyet_quyen(id_, tam, mf_moi, nguon, diff)
+                    raise LoiCanDuyetQuyen(id_, diff, nguon.get("sha_commit"), nguon.get("tree_sha"))
+                self._kiem_duyet_quyen(id_, nguon, diff, chap_nhan_quyen_them)
             sao_luu = None
             if dich.exists():
                 sao_luu = dich.parent / f".cu-{id_}-{secrets.token_hex(4)}"
@@ -447,7 +602,9 @@ class SoModule:
                             + ": " + ("; ".join(ly_do) or "module không được nạp"))
             if sao_luu is not None:
                 shutil.rmtree(sao_luu, ignore_errors=True)
+            if chap_nhan_quyen_them is not None:
+                kho.xoa_cho_duyet_quyen(id_)
             cai = None
             if not km.can_cau_hinh and id_ not in self.dang_chay:
                 cai = await self._cai(km, {})
-            return {"nap_lai": kq, "cai": cai}
+            return {"nap_lai": kq, "cai": cai, "diff_quyen": diff or {"them": [], "bot": []}}

@@ -22,7 +22,7 @@ from typing import Any
 
 import httpx
 
-from app.chuyen_tiep import TransportGhimIp
+from app.chuyen_tiep import PhanHoiQuaLon, TransportGhimIp, doc_phan_hoi_co_tran
 from app.tu_xa import _dia_chi_bi_chan, kiem_url_lan
 
 log = logging.getLogger("web2api.module.vnc_xa")
@@ -155,13 +155,24 @@ class Module:
         if not self._dich_vu_url or not self._khoa:
             raise RuntimeError("Module chưa được cấu hình")
         async with self._client(15.0) as client:
-            r = await client.post(
+            req = client.build_request(
+                "POST",
                 f"{self._dich_vu_url}/ho-so",
                 json={"ten": ten, "loai": "firefox"},
                 headers={"Authorization": f"Bearer {self._khoa}"},
             )
+            r = await client.send(req, stream=True)
+            try:
+                noi_dung = await doc_phan_hoi_co_tran(r)
+            except PhanHoiQuaLon:
+                raise LoiDichVu("Phản hồi tạo workspace từ dịch vụ quá lớn", ma=502)
+            except TimeoutError:
+                raise LoiDichVu("Dịch vụ không trả lời kịp: quá thời gian đọc", ma=504)
         if r.status_code == 200:
-            kq = r.json()
+            try:
+                kq = json.loads(noi_dung)
+            except ValueError:
+                kq = None
             if not isinstance(kq, dict):
                 raise LoiDichVu("Phản hồi tạo workspace từ dịch vụ không phải đối tượng JSON")
             return {"ho_so": kq.get("ho_so"), "ten": kq.get("ten")}
@@ -177,13 +188,24 @@ class Module:
         if url:
             than["url"] = url  # lõi đã kiểm (http/https, không userinfo); dịch vụ kiểm lại
         async with self._client(30.0) as client:
-            r = await client.post(
+            req = client.build_request(
+                "POST",
                 f"{self._dich_vu_url}/ho-so/mo",
                 json=than,
                 headers={"Authorization": f"Bearer {self._khoa}"},
             )
+            r = await client.send(req, stream=True)
+            try:
+                noi_dung = await doc_phan_hoi_co_tran(r)
+            except PhanHoiQuaLon:
+                raise RuntimeError("Phản hồi mở hồ sơ từ dịch vụ quá lớn")
+            except TimeoutError:
+                raise RuntimeError("Dịch vụ trình duyệt không trả lời kịp: quá thời gian đọc")
             if r.status_code == 200:
-                kq = r.json()
+                try:
+                    kq = json.loads(noi_dung)
+                except ValueError:
+                    kq = None
                 if not isinstance(kq, dict):
                     raise RuntimeError("Phản hồi mở hồ sơ từ dịch vụ không phải đối tượng JSON")
                 return kq
@@ -198,13 +220,24 @@ class Module:
 
         url = f"{self._dich_vu_url}/ho-so/{ho_so}/dong"
         async with self._client(15.0) as client:
-            r = await client.post(
+            req = client.build_request(
+                "POST",
                 url,
                 json={"giu_phien": giu_phien},
                 headers={"Authorization": f"Bearer {self._khoa}"},
             )
+            r = await client.send(req, stream=True)
+            try:
+                noi_dung = await doc_phan_hoi_co_tran(r)
+            except PhanHoiQuaLon:
+                raise RuntimeError("Phản hồi đóng hồ sơ từ dịch vụ quá lớn")
+            except TimeoutError:
+                raise RuntimeError("Dịch vụ trình duyệt không trả lời kịp: quá thời gian đọc")
             if r.status_code == 200:
-                kq = r.json()
+                try:
+                    kq = json.loads(noi_dung)
+                except ValueError:
+                    kq = None
                 return kq if isinstance(kq, dict) else {"ok": True}
             elif r.status_code in (401, 403):
                 raise RuntimeError(f"Khoá xác thực dịch vụ bị từ chối (HTTP {r.status_code})")
@@ -217,12 +250,23 @@ class Module:
 
         url = f"{self._dich_vu_url}/ho-so"
         async with self._client(15.0) as client:
-            r = await client.get(
+            req = client.build_request(
+                "GET",
                 url,
                 headers={"Authorization": f"Bearer {self._khoa}"},
             )
+            r = await client.send(req, stream=True)
+            try:
+                noi_dung = await doc_phan_hoi_co_tran(r)
+            except PhanHoiQuaLon:
+                raise RuntimeError("Danh sách hồ sơ từ dịch vụ quá lớn")
+            except TimeoutError:
+                raise RuntimeError("Dịch vụ trình duyệt không trả lời kịp: quá thời gian đọc")
             if r.status_code == 200:
-                ds = r.json()
+                try:
+                    ds = json.loads(noi_dung)
+                except ValueError:
+                    ds = None
                 if not isinstance(ds, list):
                     raise RuntimeError("Danh sách hồ sơ không phải mảng JSON")
                 return ds
@@ -239,13 +283,24 @@ class Module:
             raise LoiDichVu("Mã hồ sơ không hợp lệ", ma=400)
 
         async with self._client(15.0) as client:  # httpx mặc định KHÔNG theo chuyển hướng
-            r = await client.get(
+            req = client.build_request(
+                "GET",
                 f"{self._dich_vu_url}/ho-so/{ho_so}/cookie",
                 params={"mien": mien},
                 headers={"Authorization": f"Bearer {self._khoa}"},
             )
+            r = await client.send(req, stream=True)
+            try:
+                noi_dung = await doc_phan_hoi_co_tran(r)
+            except PhanHoiQuaLon:
+                raise LoiDichVu("Phản hồi cookie từ dịch vụ quá lớn", ma=502)
+            except TimeoutError:
+                raise LoiDichVu("Dịch vụ trình duyệt không trả lời kịp: quá thời gian đọc", ma=504)
         if r.status_code == 200:
-            kq = r.json()
+            try:
+                kq = json.loads(noi_dung)
+            except ValueError:
+                kq = None
             if not isinstance(kq, dict) or not isinstance(kq.get("cookie"), str):
                 raise LoiDichVu("Phản hồi cookie từ dịch vụ không đúng cấu trúc")
             so = kq.get("so_cookie")

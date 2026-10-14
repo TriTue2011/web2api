@@ -148,6 +148,64 @@ main.pg{padding:12px 16px 24px}
 </sc-if>
 </section>
 
+<section class="the" aria-labelledby="h-sao-luu" id="sao-luu-khoi-phuc">
+<h2 id="h-sao-luu" class="nhan-muc">Sao lưu &amp; Khôi phục cấu hình</h2>
+<p class="phu">Xuất hoặc nhập toàn bộ cấu hình hệ thống và khoá khách trong một tệp duy nhất (.w2a). Khi khôi phục, khoá khách cũ được giữ nguyên bản ghi băm để không làm gián đoạn ứng dụng đang kết nối.</p>
+
+<div style="display:flex;flex-direction:column;gap:16px;margin-top:12px">
+<div style="padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--card)">
+<h3 style="font-size:14px;font-weight:600;margin:0 0 8px">Xuất bản sao lưu</h3>
+<p class="phu" style="margin:0 0 12px">Đặt mật khẩu (≥ 12 ký tự) để mã hoá AES-256-GCM toàn bộ cấu hình kèm bí mật API. Nếu không đặt mật khẩu, bản sao lưu sẽ bỏ qua khoá API bí mật.</p>
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+<div class="truong" style="flex:1 1 220px">
+<label for="o-mat-khau-sao-luu" class="an-chu">Mật khẩu sao lưu</label>
+<input id="o-mat-khau-sao-luu" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Mật khẩu bảo vệ (≥ 12 ký tự, tuỳ chọn)" value="{{matKhauSaoLuu}}" onInput="{{goMatKhauSaoLuu}}">
+</div>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+<input type="checkbox" id="cb-kem-phien" checked="{{kemPhien}}" onChange="{{doiKemPhien}}"> Kèm phiên
+</label>
+<button type="button" class="nut nut-chinh" id="nut-tai-sao-luu" onClick="{{taiSaoLuu}}" disabled="{{dangTaiSaoLuu}}">{{nhanTaiSaoLuu}}</button>
+</div>
+<sc-if value="{{saoLuuLoi}}"><p role="alert" class="bao bao-loi" style="margin-top:8px">{{saoLuuLoi}}</p></sc-if>
+</div>
+
+<div style="padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--card)">
+<h3 style="font-size:14px;font-weight:600;margin:0 0 8px">Khôi phục cấu hình</h3>
+<p class="phu" style="margin:0 0 12px">Chọn tệp sao lưu (.w2a) và nhập mật khẩu giải mã nếu có. Bấm «Kiểm tra» để xem những gì sẽ thay đổi; «Áp dụng» chỉ bật sau khi kiểm tra đạt với CHÍNH tệp đó, và luôn hỏi xác nhận trước khi ghi đè.</p>
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+<input type="file" id="o-tep-khoi-phuc" accept=".w2a" style="font-size:13px;max-width:100%" onChange="{{doiTepKhoiPhuc}}">
+<div class="truong" style="flex:1 1 200px">
+<label for="o-mat-khau-khoi-phuc" class="an-chu">Mật khẩu giải mã</label>
+<input id="o-mat-khau-khoi-phuc" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Mật khẩu giải mã (nếu có)" value="{{matKhauKhoiPhuc}}" onInput="{{goMatKhauKhoiPhuc}}">
+</div>
+<button type="button" class="nut" id="nut-kiem-khoi-phuc" onClick="{{kiemKhoiPhuc}}" disabled="{{dangXuLyKhoiPhuc}}">Kiểm tra</button>
+<button type="button" class="nut nut-chinh" id="nut-ap-dung-khoi-phuc" onClick="{{moXacNhanKhoiPhuc}}" disabled="{{khongApDungDuoc}}">Áp dụng</button>
+</div>
+<sc-if value="{{coKetQuaKiem}}">
+<div id="khac-biet-khoi-phuc" style="margin-top:12px">
+<p class="phu" style="margin:0 0 6px">Kết quả kiểm tra — đây là ĐÚNG những gì «Áp dụng» sẽ ghi (sha256 tệp <span class="ma">{{kiemSha}}</span>):</p>
+<ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6;overflow-wrap:anywhere">
+<sc-for list="{{dongKhacBiet}}" as="d"><li data-loai="{{d.loai}}"><b>{{d.nhom}}:</b> {{d.chu}}</li></sc-for>
+</ul>
+<sc-if value="{{coTuChoi}}"><p role="alert" class="bao bao-loi" id="tu-choi-khoi-phuc" style="margin-top:8px">Có mục bị từ chối — bản sao lưu này không áp dụng được cho tới khi xử lý các mục trên.</p></sc-if>
+</div>
+</sc-if>
+<sc-if value="{{xacNhanKhoiPhucMo}}">
+<div class="bao bao-vang" id="hop-xac-nhan-khoi-phuc" role="alertdialog" aria-labelledby="tieu-de-xac-nhan-khoi-phuc" style="margin-top:12px">
+<p id="tieu-de-xac-nhan-khoi-phuc" style="margin:0 0 8px;font-weight:600">Ghi đè cấu hình đang chạy bằng {{soTepSeGhi}} tệp từ bản sao lưu?</p>
+<p style="margin:0 0 10px">Các khác biệt ở trên (nguồn git, địa chỉ module từ xa, khoá khách, bí mật) sẽ có hiệu lực ngay. Cấu hình hiện tại được lưu một bản ở thư mục dữ liệu trước khi ghi.</p>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<button type="button" class="nut nut-nguy" id="nut-xac-nhan-khoi-phuc" onClick="{{apDungKhoiPhuc}}" disabled="{{dangXuLyKhoiPhuc}}">Xác nhận ghi đè</button>
+<button type="button" class="nut" id="nut-huy-khoi-phuc" onClick="{{huyXacNhanKhoiPhuc}}">Huỷ</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{khoiPhucTin}}"><p class="bao bao-tot" id="thong-bao-khoi-phuc" style="margin-top:8px">{{khoiPhucTin}}</p></sc-if>
+<sc-if value="{{khoiPhucLoi}}"><p role="alert" class="bao bao-loi" id="loi-khoi-phuc" style="margin-top:8px">{{khoiPhucLoi}}</p></sc-if>
+</div>
+</div>
+</section>
+
 </sc-if>
 
 </main>
@@ -188,7 +246,18 @@ class Component extends DCLogic {
       dangHoiXoa: null,
       dangXoa: null,
       dangDoi: null,
+      matKhauSaoLuu: '',
+      kemPhien: false,
+      dangTaiSaoLuu: false,
+      saoLuuLoi: '',
+      matKhauKhoiPhuc: '',
+      dangXuLyKhoiPhuc: false,
+      khoiPhucTin: '',
+      khoiPhucLoi: '',
+      kiemKq: null,          // phản hồi chế độ kiem cho ĐÚNG tệp đang chọn (null = chưa kiểm / đã đổi tệp)
+      xacNhanKhoiPhucMo: false,
     };
+    this.tepDaKiem = null;   // đối tượng File đã kiểm — Áp dụng chỉ gửi đúng đối tượng này kèm sha256 server trả
   }
 
   async didMount() {
@@ -308,6 +377,156 @@ class Component extends DCLogic {
     }
   }
 
+  async taiSaoLuu() {
+    if (this.state.dangTaiSaoLuu) return;
+    this.setState({ dangTaiSaoLuu: true, saoLuuLoi: '' });
+    try {
+      const mk = (this.state.matKhauSaoLuu || '').trim();
+      const res = await fetch('/api/sao-luu', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + this.state.khoa
+        },
+        body: JSON.stringify({
+          mat_khau: mk || null,
+          kem_phien: !!this.state.kemPhien
+        })
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error((errJson && errJson.error && errJson.error.message) || `Lỗi ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const disp = res.headers.get('content-disposition') || '';
+      const match = disp.match(/filename="?([^"]+)"?/);
+      a.download = match ? match[1] : 'web2api-sao-luu.w2a';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      this.setState({ dangTaiSaoLuu: false });
+    } catch (err) {
+      this.setState({ dangTaiSaoLuu: false, saoLuuLoi: err.message || 'Lỗi tải sao lưu' });
+    }
+  }
+
+  boKetQuaKiem(them) {
+    this.tepDaKiem = null;
+    this.setState({ kiemKq: null, xacNhanKhoiPhucMo: false, khoiPhucTin: '', khoiPhucLoi: '', ...(them || {}) });
+  }
+
+  tepDangChon() {
+    const o = document.getElementById('o-tep-khoi-phuc');
+    return (o && o.files && o.files.length) ? o.files[0] : null;
+  }
+
+  async guiKhoiPhuc(file, cheDo, sha) {
+    const fd = new FormData();
+    fd.append('tep', file);
+    const mk = (this.state.matKhauKhoiPhuc || '').trim();
+    if (mk) fd.append('mat_khau', mk);
+    fd.append('che_do', cheDo);
+    if (sha) fd.append('sha256', sha);
+    const res = await fetch('/api/khoi-phuc', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + this.state.khoa },
+      body: fd
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((data && data.error && data.error.message) || `Lỗi ${res.status}`);
+    }
+    return data;
+  }
+
+  async kiemKhoiPhuc() {
+    if (this.state.dangXuLyKhoiPhuc) return;
+    const file = this.tepDangChon();
+    this.boKetQuaKiem();
+    if (!file) {
+      this.setState({ khoiPhucLoi: 'Hãy chọn tệp sao lưu (.w2a).' });
+      return;
+    }
+    this.setState({ dangXuLyKhoiPhuc: true });
+    try {
+      const data = await this.guiKhoiPhuc(file, 'kiem', null);
+      this.tepDaKiem = file;
+      this.setState({ dangXuLyKhoiPhuc: false, kiemKq: data });
+    } catch (err) {
+      this.setState({ dangXuLyKhoiPhuc: false, khoiPhucLoi: err.message || 'Lỗi kiểm tra bản sao lưu' });
+    }
+  }
+
+  moXacNhanKhoiPhuc() {
+    const kq = this.state.kiemKq;
+    if (!kq || !kq.co_the_ap_dung || this.tepDangChon() !== this.tepDaKiem) {
+      this.boKetQuaKiem({ khoiPhucLoi: 'Hãy «Kiểm tra» lại đúng tệp sẽ áp dụng.' });
+      return;
+    }
+    this.setState({ xacNhanKhoiPhucMo: true });
+  }
+
+  async apDungKhoiPhuc() {
+    if (this.state.dangXuLyKhoiPhuc) return;
+    const kq = this.state.kiemKq;
+    const file = this.tepDangChon();
+    if (!kq || !kq.co_the_ap_dung || !file || file !== this.tepDaKiem) {
+      this.boKetQuaKiem({ khoiPhucLoi: 'Hãy «Kiểm tra» lại đúng tệp sẽ áp dụng.' });
+      return;
+    }
+    this.setState({ dangXuLyKhoiPhuc: true, khoiPhucLoi: '' });
+    try {
+      const data = await this.guiKhoiPhuc(file, 'ap_dung', kq.sha256);
+      const soTep = (data.da_ap_dung || []).length;
+      const bt = data.ban_truoc || {};
+      this.boKetQuaKiem({
+        dangXuLyKhoiPhuc: false,
+        khoiPhucTin: `Đã khôi phục ${soTep} tệp (${data.bi_mat}). Bản cấu hình trước khi khôi phục: <DATA>/${bt.thu_muc || '?'}/ (đang giữ ${bt.so_ban_giu || 0}/${bt.toi_da || 3} bản — chứa khoá thật, xoá tay khi không cần).`
+      });
+      await this.taiDsKhoa();
+    } catch (err) {
+      this.setState({ dangXuLyKhoiPhuc: false, xacNhanKhoiPhucMo: false, khoiPhucLoi: err.message || 'Lỗi khôi phục' });
+    }
+  }
+
+  dongKhacBiet(kq) {
+    // Danh sách DÒNG CHỮ (chèn bằng {{ }}, không innerHTML): mọi khác biệt nhạy cảm người duyệt cần thấy.
+    if (!kq) return [];
+    const ds = [];
+    const them = (loai, nhom, chu) => ds.push({ loai, nhom, chu });
+    const tt = { moi: 'mới', doi: 'đổi', giu_nguyen: 'giữ nguyên', doi_bam: 'ĐỔI BĂM (khoá khác)' };
+    const kb = kq.khac_biet || {};
+    them('tep', 'Sẽ ghi', (kq.se_ap_dung || []).join(', ') || '(không tệp nào)');
+    if ((kq.se_bo || []).length) them('bo', 'Giữ nguyên, không ghi', kq.se_bo.join(', '));
+    (kq.giu_lai || []).forEach((g) => them('giu', 'Giữ giá trị đang có', `${g.tep} · ${g.truong}: ${g.ly_do}`));
+    (kq.tu_choi || []).forEach((t) => them('tu-choi', 'BỊ TỪ CHỐI', `${t.tep} «${t.id}»: ${t.ly_do}`));
+    if (kb.nguon_git) {
+      const g = kb.nguon_git;
+      const hien = g.hien_tai ? `${g.hien_tai.repo} (${g.hien_tai.nhanh}/${g.hien_tai.thu_muc})` : 'chưa cấu hình';
+      const bs = g.ban_sao_luu || {};
+      them('nguon-git', 'Nguồn git', `hiện tại ${hien}; bản sao lưu ${bs.repo} (${bs.nhanh}/${bs.thu_muc}), tự cài ${bs.tu_dong ? 'BẬT' : 'tắt'}, bắt chữ ký ${bs.yeu_cau_chu_ky ? 'bật' : 'TẮT'}`);
+      if (g.se_ghi) them('nguon-git', 'Nguồn git sẽ ghi', `tự cài ${g.se_ghi.tu_dong ? 'bật' : 'tắt'}, bắt chữ ký ${g.se_ghi.yeu_cau_chu_ky ? 'bật' : 'tắt'}, chu kỳ ${g.se_ghi.chu_ky_giay} giây`);
+    }
+    (kb.tu_xa || []).forEach((m) => them('tu-xa', 'Module từ xa', `${m.id} (tiền tố ${m.tien_to}): ${m.base_url_hien_tai ? m.base_url_hien_tai + ' → ' : ''}${m.base_url} [${tt[m.trang_thai] || m.trang_thai}]`));
+    if ((kb.tu_xa_se_go || []).length) them('tu-xa', 'Module từ xa sẽ gỡ', kb.tu_xa_se_go.join(', '));
+    (kb.modules || []).forEach((m) => them('module', 'Module', `${m.id} [${tt[m.trang_thai] || m.trang_thai}]${(m.truong_doi || []).length ? ' — đổi: ' + m.truong_doi.join(', ') : ''}`));
+    if ((kb.modules_se_go || []).length) them('module', 'Cấu hình module sẽ gỡ', kb.modules_se_go.join(', '));
+    if (kb.khoa_khach) {
+      const kk = kb.khoa_khach;
+      them('khoa-khach', 'Khoá khách', `${kk.so_khoa} khoá trong bản sao lưu`);
+      (kk.khoa || []).forEach((k) => them('khoa-khach', 'Khoá khách', `${k.id} «${k.nhan}» — phạm vi ${(k.pham_vi || []).join(', ')}${k.bat ? '' : ' (tắt)'} [${tt[k.trang_thai] || k.trang_thai}]`));
+      if ((kk.se_mat || []).length) them('khoa-khach', 'Khoá khách SẼ MẤT', kk.se_mat.join(', '));
+    }
+    if ((kb.bi_mat || []).length) them('bi-mat', 'Bí mật (khoá API, phiên)', kb.bi_mat.join(', '));
+    if ((kb.combo || []).length) them('combo', 'Combo', kb.combo.join(', '));
+    (kq.modules_git || []).forEach((m) => them('git', 'Mã module từ git (không kèm, cài lại từ git)', `${m.id}${m.sha_commit ? ' @ ' + m.sha_commit.slice(0, 12) : ''}`));
+    return ds;
+  }
+
   // ---------- render props ----------
   renderVals() {
     const s = this.state;
@@ -418,6 +637,33 @@ class Component extends DCLogic {
       khongCoKhoaDs: dsKhoaHienThi.length === 0,
       tongSoKhoa: dsKhoaHienThi.length,
       dsKhoaHienThi,
+
+      matKhauSaoLuu: s.matKhauSaoLuu,
+      goMatKhauSaoLuu: (e) => this.setState({ matKhauSaoLuu: e.target.value }),
+      kemPhien: s.kemPhien,
+      doiKemPhien: (e) => this.setState({ kemPhien: !!e.target.checked }),
+      dangTaiSaoLuu: s.dangTaiSaoLuu,
+      nhanTaiSaoLuu: s.dangTaiSaoLuu ? 'Đang xuất…' : 'Xuất sao lưu',
+      taiSaoLuu: () => this.taiSaoLuu(),
+      saoLuuLoi: s.saoLuuLoi,
+
+      matKhauKhoiPhuc: s.matKhauKhoiPhuc,
+      goMatKhauKhoiPhuc: (e) => { this.boKetQuaKiem(); this.setState({ matKhauKhoiPhuc: e.target.value }); },
+      doiTepKhoiPhuc: () => this.boKetQuaKiem(),
+      dangXuLyKhoiPhuc: s.dangXuLyKhoiPhuc,
+      kiemKhoiPhuc: () => this.kiemKhoiPhuc(),
+      khongApDungDuoc: s.dangXuLyKhoiPhuc || !s.kiemKq || !s.kiemKq.co_the_ap_dung,
+      moXacNhanKhoiPhuc: () => this.moXacNhanKhoiPhuc(),
+      xacNhanKhoiPhucMo: s.xacNhanKhoiPhucMo,
+      huyXacNhanKhoiPhuc: () => this.setState({ xacNhanKhoiPhucMo: false }),
+      apDungKhoiPhuc: () => this.apDungKhoiPhuc(),
+      coKetQuaKiem: !!s.kiemKq,
+      kiemSha: s.kiemKq ? String(s.kiemKq.sha256 || '').slice(0, 16) + '…' : '',
+      dongKhacBiet: this.dongKhacBiet(s.kiemKq),
+      coTuChoi: !!(s.kiemKq && !s.kiemKq.co_the_ap_dung),
+      soTepSeGhi: s.kiemKq ? (s.kiemKq.se_ap_dung || []).length : 0,
+      khoiPhucTin: s.khoiPhucTin,
+      khoiPhucLoi: s.khoiPhucLoi,
     };
   }
 }

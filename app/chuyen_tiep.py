@@ -97,6 +97,8 @@ import email.utils
 import ipaddress
 import json
 import logging
+import math
+import os
 import re
 import socket
 import time
@@ -183,6 +185,125 @@ def lam_sach_content_type(ct: str) -> str:
     if MAU_CONTENT_TYPE.match(s):
         return s
     return "application/octet-stream"
+
+
+def phan_hoi_toi_da_mb() -> float:
+    """Trần dung lượng phản hồi tối đa từ dịch vụ thượng nguồn tính theo MB (WEB2API_PHAN_HOI_TOI_DA_MB, mặc định 32).
+    Đọc mỗi lượt; chữ/≤0/nan/inf/rỗng về mặc định: không tắt được."""
+    try:
+        val = float(os.environ.get("WEB2API_PHAN_HOI_TOI_DA_MB", "32"))
+    except (ValueError, TypeError):
+        return 32.0
+    return val if val > 0 and math.isfinite(val) else 32.0
+
+
+def phan_hoi_toi_da_bytes() -> int:
+    """Trần dung lượng phản hồi tối đa (byte) từ dịch vụ thượng nguồn."""
+    mb = phan_hoi_toi_da_mb()
+    so_byte = int(mb * 1024 * 1024)
+    return so_byte if so_byte > 0 else 32 * 1024 * 1024
+
+
+def phan_hoi_toi_da_giay() -> float:
+    """Trần thời gian tổng tối đa (giây) cho việc đọc toàn bộ phản hồi thượng nguồn (WEB2API_PHAN_HOI_TOI_DA_GIAY, mặc định 300).
+    Đọc mỗi lượt; chữ/≤0/nan/inf/rỗng về mặc định: không tắt được."""
+    try:
+        val = float(os.environ.get("WEB2API_PHAN_HOI_TOI_DA_GIAY", "300"))
+    except (ValueError, TypeError):
+        return 300.0
+    return val if val > 0 and math.isfinite(val) else 300.0
+
+
+class PhanHoiQuaLon(Exception):
+    """Thân phản hồi từ dịch vụ thượng nguồn vượt quá trần cho phép (chống OOM)."""
+
+    def __init__(self, da_nhan: int, tran_bytes: int):
+        self.da_nhan = da_nhan
+        self.tran_bytes = tran_bytes
+        mb = tran_bytes / (1024 * 1024)
+        super().__init__(f"vượt trần {mb:.0f} MB ({tran_bytes} bytes)")
+
+
+async def doc_phan_hoi_co_tran(
+    r: httpx.Response,
+    tran_bytes: int | None = None,
+    tran_giay: float | None = None,
+) -> bytes:
+    """Đọc thân phản hồi httpx.Response ở chế độ stream bằng aiter_bytes() có trần dung lượng và trần thời gian tổng.
+
+    - Đọc từng khúc qua `aiter_bytes()`, cộng dồn;
+    - Ngắt ngay khi vượt trần `tran_bytes` (mặc định lấy từ WEB2API_PHAN_HOI_TOI_DA_MB qua `phan_hoi_toi_da_bytes()`),
+      đóng phản hồi `await r.aclose()` và ném `PhanHoiQuaLon`; không bao giờ giữ hai bản (bytes + str) cùng lúc quá trần;
+    - Giới hạn thời gian tổng bằng `asyncio.timeout(tran_giay)` (mặc định từ WEB2API_PHAN_HOI_TOI_DA_GIAY qua
+      `phan_hoi_toi_da_giay()`), quá giờ đóng phản hồi và ném TimeoutError;
+    - Khi kết thúc, luôn đóng phản hồi `await r.aclose()`.
+    """
+    if tran_bytes is None:
+        tran_bytes = phan_hoi_toi_da_bytes()
+    if tran_giay is None:
+        tran_giay = phan_hoi_toi_da_giay()
+
+    dem = bytearray()
+    try:
+        async with asyncio.timeout(tran_giay):
+            async for khuc in r.aiter_bytes():
+                if len(dem) + len(khuc) > tran_bytes:
+                    raise PhanHoiQuaLon(len(dem) + len(khuc), tran_bytes)
+                dem.extend(khuc)
+        return bytes(dem)
+    finally:
+        # MỌI đường thoát — đọc xong, vượt trần, quá giờ, lỗi mạng, và cả khách ngắt (CancelledError, không phải
+        # Exception) — đều đóng phản hồi để kết nối ngược dòng không treo trong pool. shield vì cancel scope của anyio
+        # (Starlette) huỷ lặp lại ở mọi await còn trong scope.
+        await asyncio.shield(r.aclose())
+
+
+class LuongSSE:
+    """Luồng SSE chuyển tiếp từng dòng từ phản hồi ngược dòng.
+
+    Lớp thay vì async generator: aclose() của generator CHƯA chạy (khách ngắt trước byte đầu) không chạy finally,
+    kết nối ngược dòng treo trong pool. Ở đây aclose() luôn đóng phản hồi.
+    Lỗi giữa chừng (httpx.HTTPError) phát sự kiện lỗi SSE data: {...} và kết thúc.
+    """
+
+    def __init__(self, r: httpx.Response, log: logging.Logger, ten: str):
+        self._r = r
+        self._it = r.aiter_lines()
+        self._log = log
+        self._ten = ten
+        self._da_loi = False
+        self._da_dong = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._da_loi or self._da_dong:
+            raise StopAsyncIteration
+        try:
+            dong = await self._it.__anext__()
+            return (dong + "\n").encode("utf-8")
+        except StopAsyncIteration:
+            await self.aclose()
+            raise
+        except httpx.HTTPError as e:
+            self._da_loi = True
+            self._log.warning("%s: luồng đứt giữa chừng: %s", self._ten, type(e).__name__)
+            loi = {"error": {"message": f"{self._ten}: luồng đứt giữa chừng ({type(e).__name__})",
+                             "type": "api_error", "code": "stream_interrupted"}}
+            await self.aclose()
+            return f"data: {json.dumps(loi, ensure_ascii=False)}\n\n".encode("utf-8")
+        except Exception:
+            await self.aclose()
+            raise
+
+    async def aclose(self) -> None:
+        if not self._da_dong:
+            self._da_dong = True
+            try:
+                await self._it.aclose()
+            finally:
+                await self._r.aclose()
 
 
 NGHI_429_MAC_DINH = 60.0
@@ -521,14 +642,22 @@ class ChuyenTiepOpenAI:
                     if stream:
                         return 200, hd, self._chuyen_dong(r)
                     try:
-                        noi_dung = await r.aread()
-                    finally:
-                        await r.aclose()
+                        noi_dung = await doc_phan_hoi_co_tran(r)
+                    except PhanHoiQuaLon as e:
+                        return tra_loi_json(502, {"error": {"message": f"{self.ten} ({may}): phản hồi quá lớn ({e})",
+                                                            "type": "api_error", "code": "upstream_too_large"}})
+                    except TimeoutError:
+                        return tra_loi_json(504, {"error": {"message": f"{self.ten} ({may}) không trả lời kịp: quá thời gian đọc",
+                                                            "type": "api_error", "code": "upstream_timeout"}})
                     return 200, hd, noi_dung
                 try:
-                    noi_dung = await r.aread()
-                finally:
-                    await r.aclose()
+                    noi_dung = await doc_phan_hoi_co_tran(r)
+                except PhanHoiQuaLon as e:
+                    return tra_loi_json(502, {"error": {"message": f"{self.ten} ({may}): phản hồi quá lớn ({e})",
+                                                        "type": "api_error", "code": "upstream_too_large"}})
+                except TimeoutError:
+                    return tra_loi_json(504, {"error": {"message": f"{self.ten} ({may}) không trả lời kịp: quá thời gian đọc",
+                                                        "type": "api_error", "code": "upstream_timeout"}})
                 ma = r.status_code
                 loi, loai = self.loi_va_loai(ma, noi_dung, {"viec": "chat", "model": model, "khoa": khoa})
                 loi_cuoi = tra_loi_json(ma, loi)
@@ -587,18 +716,8 @@ class ChuyenTiepOpenAI:
             loi_cuoi = (429, {**loi_cuoi[1], "retry-after": str(self._con_nghi(bay_gio))}, loi_cuoi[2])
         return loi_cuoi
 
-    async def _chuyen_dong(self, r: httpx.Response) -> AsyncIterator[bytes]:
-        try:
-            async for dong in r.aiter_lines():
-                yield (dong + "\n").encode("utf-8")
-        except httpx.HTTPError as e:
-            # Đã gửi byte cho khách → không đổi khoá giữa chừng; báo bằng một sự kiện lỗi SSE thay vì cắt câm.
-            self.log.warning("%s: luồng đứt giữa chừng: %s", self.ten, type(e).__name__)
-            loi = {"error": {"message": f"{self.ten}: luồng đứt giữa chừng ({type(e).__name__})",
-                             "type": "api_error", "code": "stream_interrupted"}}
-            yield f"data: {json.dumps(loi, ensure_ascii=False)}\n\n".encode("utf-8")
-        finally:
-            await r.aclose()
+    def _chuyen_dong(self, r: httpx.Response) -> LuongSSE:
+        return LuongSSE(r, self.log, self.ten)
 
     async def noi(self, body: dict) -> KetQuaChat:
         """POST /v1/audio/speech — chuyển tiếp JSON OpenAI, trả âm thanh nhị phân stream từng khúc. Xoay khoá theo
@@ -696,7 +815,7 @@ class ChuyenTiepOpenAI:
             req = khach.build_request(phuong_thuc, url, json=json_than, data=data, files=files, headers=tieu_de(khoa),
                                       timeout=timeout)
             try:
-                r = await khach.send(req, stream=stream)
+                r = await khach.send(req, stream=True)
             except LoiDichBiChan:  # như chat(): trả ngay, không đánh dấu khoá nào
                 return None, tra_loi_json(502, {"error": {
                     "message": f"{self.ten} ({may}): đích trỏ vào dải bị chặn lúc kết nối",
@@ -711,11 +830,27 @@ class ChuyenTiepOpenAI:
                 loi_cuoi = tra_loi_json(502, loi)
             else:
                 ma = r.status_code
-                if stream and not 200 <= ma < 300:
-                    try:
-                        await r.aread()
-                    finally:
-                        await r.aclose()
+                if stream and 200 <= ma < 300:
+                    self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
+                    self._ghi_dung(khoa, kha_nang, ma)
+                    for k in nghi_ngo:  # cùng thân yêu cầu, khoá này được còn khoá kia 400 → lỗi của khoá kia
+                        self._ghi_kn(k, kha_nang, dung_duoc=False, ma=400, den=bay_gio + NGHI_KHA_NANG)
+                        self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
+                                         self.ten, self.nhan_khoa(k), viec, NGHI_KHA_NANG)
+                    hd = tieu_de_cho_khach(r, kieu_mac_dinh)
+                    return khoa, (ma, hd, LuongNhiPhan(r, self.log, self.ten))
+
+                try:
+                    noi_dung = await doc_phan_hoi_co_tran(r)
+                except PhanHoiQuaLon as e:
+                    return None, tra_loi_json(502, {"error": {
+                        "message": f"{self.ten} ({may}): phản hồi quá lớn ({e})",
+                        "type": "api_error", "code": "upstream_too_large"}})
+                except TimeoutError:
+                    return None, tra_loi_json(504, {"error": {
+                        "message": f"{self.ten} ({may}) không trả lời kịp: quá thời gian đọc",
+                        "type": "api_error", "code": "upstream_timeout"}})
+
                 if 200 <= ma < 300:
                     self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
                     self._ghi_dung(khoa, kha_nang, ma)
@@ -724,8 +859,8 @@ class ChuyenTiepOpenAI:
                         self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
                                          self.ten, self.nhan_khoa(k), viec, NGHI_KHA_NANG)
                     hd = tieu_de_cho_khach(r, kieu_mac_dinh)
-                    return khoa, (ma, hd, LuongNhiPhan(r, self.log, self.ten) if stream else r.content)
-                loi, loai = self.loi_va_loai(ma, r.content, {"viec": viec, "kha_nang": kha_nang, "khoa": khoa})
+                    return khoa, (ma, hd, noi_dung)
+                loi, loai = self.loi_va_loai(ma, noi_dung, {"viec": viec, "kha_nang": kha_nang, "khoa": khoa})
                 loi_cuoi = tra_loi_json(ma, loi)
                 tin = loi["error"]["message"]
                 if loai == "chan_vung":  # chặn vùng: lỗi của máy chủ, mọi khoá sẽ hỏng y hệt
@@ -774,19 +909,33 @@ class ChuyenTiepOpenAI:
         """GET /models với một khoá: {khoa (che), ok, do_tre_ms, so_model, loi}. Không gọi chat (không tốn token)."""
         muc = {"khoa": self.nhan_khoa(khoa), "ok": False, "do_tre_ms": None, "so_model": 0, "loi": None}
         bat_dau = time.monotonic()
+        khach = self._client()
+        req = khach.build_request("GET", f"{self.base_url}/models", headers=self._tieu_de(khoa),
+                                  timeout=httpx.Timeout(self.TIMEOUT_KIEM))
         try:
-            r = await self._client().get(f"{self.base_url}/models", headers=self._tieu_de(khoa),
-                                         timeout=httpx.Timeout(self.TIMEOUT_KIEM))
+            r = await khach.send(req, stream=True)
+            noi_dung = await doc_phan_hoi_co_tran(r)
+        except PhanHoiQuaLon as e:
+            muc["do_tre_ms"] = int((time.monotonic() - bat_dau) * 1000)
+            muc["loi"] = f"phản hồi quá lớn (upstream_too_large): {e}"
+            self.log.warning("%s: kiểm khoá %s lỗi: upstream_too_large", self.ten, self.nhan_khoa(khoa))
+            return muc
+        except TimeoutError:
+            muc["do_tre_ms"] = int((time.monotonic() - bat_dau) * 1000)
+            muc["loi"] = "quá thời gian (upstream_timeout)"
+            self.log.warning("%s: kiểm khoá %s lỗi: upstream_timeout", self.ten, self.nhan_khoa(khoa))
+            return muc
         except httpx.HTTPError as e:
             muc["do_tre_ms"] = int((time.monotonic() - bat_dau) * 1000)
             muc["loi"] = f"lỗi mạng: {type(e).__name__}"
             return muc
         muc["do_tre_ms"] = int((time.monotonic() - bat_dau) * 1000)
         if r.status_code != 200:
-            muc["loi"] = f"HTTP {r.status_code}: {self.chuan_hoa_loi(r.status_code, r.content)['error']['message']}"
+            muc["loi"] = f"HTTP {r.status_code}: {self.chuan_hoa_loi(r.status_code, noi_dung)['error']['message']}"
             return muc
         try:
-            data = r.json().get("data")
+            j = json.loads(noi_dung)
+            data = j.get("data") if isinstance(j, dict) else None
         except (ValueError, AttributeError):
             data = None
         if not isinstance(data, list):
@@ -802,15 +951,19 @@ class ChuyenTiepOpenAI:
         if self._dem_models is not None and bay_gio - self._dem_luc < self.DEM_MODELS_GIAY:
             return list(self._dem_models)
         khoa = next((k for k in self.khoa if self._nghi.get(k, 0.0) <= bay_gio), self.khoa[0])
+        khach = self._client()
+        req = khach.build_request("GET", f"{self.base_url}/models", headers=self._tieu_de(khoa),
+                                  timeout=httpx.Timeout(self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI))
         try:
-            r = await self._client().get(f"{self.base_url}/models", headers=self._tieu_de(khoa),
-                                         timeout=httpx.Timeout(self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI))
+            r = await khach.send(req, stream=True)
+            noi_dung = await doc_phan_hoi_co_tran(r)
             if r.status_code != 200:
-                raise ValueError(f"HTTP {r.status_code}: {self.chuan_hoa_loi(r.status_code, r.content)['error']['message']}")
-            data = r.json().get("data")
+                raise ValueError(f"HTTP {r.status_code}: {self.chuan_hoa_loi(r.status_code, noi_dung)['error']['message']}")
+            j = json.loads(noi_dung)
+            data = j.get("data") if isinstance(j, dict) else None
             if not isinstance(data, list):
                 raise ValueError("phản hồi không có danh sách data")
-        except (httpx.HTTPError, ValueError, AttributeError) as e:
+        except (httpx.HTTPError, ValueError, AttributeError, PhanHoiQuaLon, TimeoutError) as e:
             ly_do = self.che_khoa(f"{type(e).__name__}: {e}")
             if self._dem_models is not None:
                 self.log.warning("%s: không lấy được danh sách model (%s) — dùng bản đệm cũ %d model lấy lúc %s",

@@ -35,6 +35,7 @@ import shutil
 import tarfile
 import time
 import unicodedata
+from pathlib import Path
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
@@ -42,7 +43,7 @@ import httpx
 from app import kho
 from app.chuyen_tiep import iso
 from app.kham_pha import ID_HOP_LE, doc_manifest, kiem_manifest
-from app.so_module import LoiSo, SoModule
+from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
 
 log = logging.getLogger("web2api.nguon_git")
 
@@ -92,6 +93,55 @@ def kiem_repo(repo) -> str:
     return repo
 
 
+def kiem_cau_hinh(than: dict, cu: dict) -> dict:
+    """Kiểm THUẦN (không ghi) cấu hình nguồn git — MỘT bộ kiểm cho PUT /api/nguon-git, cho lượt đọc nguon_git.json và
+    cho khôi phục. Trường vắng trong `than` lấy từ `cu`, rồi mặc định. Sai → ValueError (không chép giá trị khoá)."""
+    if not isinstance(than, dict):
+        raise ValueError("cấu hình nguồn git phải là đối tượng JSON")
+    repo = kiem_repo(than.get("repo", cu.get("repo")))
+    nhanh = _duong_an_toan(than.get("nhanh", cu.get("nhanh", "main")), "nhanh")
+    thu_muc = _duong_an_toan(than.get("thu_muc", cu.get("thu_muc", THU_MUC_MAC_DINH)), "thu_muc")
+    chu_ky = than.get("chu_ky_giay", cu.get("chu_ky_giay", 300))
+    if not isinstance(chu_ky, int) or isinstance(chu_ky, bool) or not 1 <= chu_ky <= 86400:
+        raise ValueError("chu_ky_giay phải là số nguyên 1..86400")
+    co = {}
+    for k in ("tu_dong", "yeu_cau_chu_ky"):
+        v = than.get(k, cu.get(k, False))
+        if not isinstance(v, bool):
+            raise ValueError(f"{k} phải là true/false")
+        co[k] = v
+    return {"repo": repo, "nhanh": nhanh, "thu_muc": thu_muc, "chu_ky_giay": chu_ky, **co}
+
+
+def doc_cau_hinh() -> dict | None:
+    """Cấu hình nguồn git đang hiệu lực: nguon_git.json (qua CÙNG bộ kiểm `kiem_cau_hinh` — tệp sửa tay sai hay
+    «repo» «../..» không được dùng) hoặc biến môi trường. None = chưa cấu hình."""
+    p = kho.thu_muc_du_lieu() / TEP_CAU_HINH
+    try:
+        cfg = kho.doc_json(p)
+    except kho.KhoHong as e:
+        log.warning("%s — coi như chưa cấu hình nguồn git", e)
+        return None
+    if isinstance(cfg, dict) and cfg.get("repo"):
+        try:
+            return kiem_cau_hinh(cfg, {})
+        except ValueError as e:
+            log.warning("%s sai (%s) — coi như chưa cấu hình nguồn git", p, e)
+            return None
+    repo = os.environ.get("WEB2API_GIT_REPO", "").strip()
+    if not repo:
+        return None
+    try:
+        return {"repo": kiem_repo(repo),
+                "nhanh": _duong_an_toan(os.environ.get("WEB2API_GIT_NHANH") or "main", "WEB2API_GIT_NHANH"),
+                "thu_muc": _duong_an_toan(os.environ.get("WEB2API_GIT_THU_MUC") or THU_MUC_MAC_DINH,
+                                          "WEB2API_GIT_THU_MUC"),
+                "chu_ky_giay": 300, "tu_dong": False, "yeu_cau_chu_ky": False, "nguon": "bien_moi_truong"}
+    except ValueError as e:
+        log.warning("Biến môi trường nguồn git sai, bỏ qua: %s", e)
+        return None
+
+
 class NguonGit:
     #: Nhân thời gian chờ của vòng nền — test đặt nhỏ để không phải ngủ thật.
     HE_SO_CHO = 1.0
@@ -121,25 +171,7 @@ class NguonGit:
     # ───────────── cấu hình ─────────────
 
     def cau_hinh(self) -> dict | None:
-        try:
-            cfg = kho.doc_json(kho.thu_muc_du_lieu() / TEP_CAU_HINH)
-        except kho.KhoHong as e:
-            log.warning("%s — coi như chưa cấu hình nguồn git", e)
-            return None
-        if isinstance(cfg, dict) and cfg.get("repo"):
-            return cfg
-        repo = os.environ.get("WEB2API_GIT_REPO", "").strip()
-        if not repo:
-            return None
-        try:
-            return {"repo": kiem_repo(repo),
-                    "nhanh": _duong_an_toan(os.environ.get("WEB2API_GIT_NHANH") or "main", "WEB2API_GIT_NHANH"),
-                    "thu_muc": _duong_an_toan(os.environ.get("WEB2API_GIT_THU_MUC") or THU_MUC_MAC_DINH,
-                                              "WEB2API_GIT_THU_MUC"),
-                    "chu_ky_giay": 300, "tu_dong": False, "yeu_cau_chu_ky": False, "nguon": "bien_moi_truong"}
-        except ValueError as e:
-            log.warning("Biến môi trường nguồn git sai, bỏ qua: %s", e)
-            return None
+        return doc_cau_hinh()
 
     def token_va_nguon(self) -> tuple[str | None, str | None]:
         env_tk = (os.environ.get("WEB2API_GITHUB_TOKEN", "").strip()
@@ -159,23 +191,10 @@ class NguonGit:
         return tk
 
     def luu_cau_hinh(self, than: dict) -> dict:
-        cu = self.cau_hinh() or {}
-        repo = kiem_repo(than.get("repo", cu.get("repo")))
-        nhanh = _duong_an_toan(than.get("nhanh", cu.get("nhanh", "main")), "nhanh")
-        thu_muc = _duong_an_toan(than.get("thu_muc", cu.get("thu_muc", THU_MUC_MAC_DINH)), "thu_muc")
-        chu_ky = than.get("chu_ky_giay", cu.get("chu_ky_giay", 300))
-        if not isinstance(chu_ky, int) or isinstance(chu_ky, bool) or not 1 <= chu_ky <= 86400:
-            raise ValueError("chu_ky_giay phải là số nguyên 1..86400")
-        co = {}
-        for k in ("tu_dong", "yeu_cau_chu_ky"):
-            v = than.get(k, cu.get(k, False))
-            if not isinstance(v, bool):
-                raise ValueError(f"{k} phải là true/false")
-            co[k] = v
+        cfg = kiem_cau_hinh(than, self.cau_hinh() or {})
         token = than.get("token", None)
         if token is not None and not isinstance(token, str):
             raise ValueError("token phải là chuỗi")
-        cfg = {"repo": repo, "nhanh": nhanh, "thu_muc": thu_muc, "chu_ky_giay": chu_ky, **co}
         kho.ghi_json_cong_khai(TEP_CAU_HINH, cfg)
         if "token" in than:
             if token:
@@ -511,9 +530,36 @@ class NguonGit:
         đã cài rồi (có trong catalog, kể cả chưa liên kết hay đặt tay) thì mọi thay đổi bản là «cập nhật»."""
         return "cập nhật" if id_ in self.so.catalog else "cài"
 
-    async def cai(self, id_: str) -> dict:
+    async def cai(self, id_: str, chap_nhan_quyen_them: list | None = None,
+                sha_commit: str | None = None) -> dict:
+        """Cài module từ git. Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
+        (phải khớp chính xác diff đã xem); không có → cài thường (bản mới xin thêm quyền
+        thì 409 chờ duyệt thay vì kích hoạt)."""
         async with self._khoa:
+            if chap_nhan_quyen_them is not None or sha_commit is not None:
+                return await self._cai_duyet(id_, chap_nhan_quyen_them, sha_commit)
             return await self._cai(id_)
+
+    async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None) -> dict:
+        """Duyệt bản đang chờ: không tải lại, kích hoạt đúng thư mục đã chốt khi xem diff."""
+        if not isinstance(chap_nhan_quyen_them, list) or not sha_commit:
+            raise LoiGit("duyệt cần thân {\"chap_nhan_quyen_them\": [...], \"sha_commit\": \"...\"}", 400)
+        pending = kho.doc_cho_duyet_quyen(id_)
+        if pending is None:
+            raise LoiGit(f"module {id_!r} không có yêu cầu chờ duyệt quyền", 409)
+        if sha_commit != pending.get("sha_commit"):
+            raise LoiGit("SHA commit không khớp yêu cầu chờ duyệt — cài lại để xem diff mới", 409)
+        thu_muc = SoModule.thu_muc_cho_duyet(id_)  # suy từ id, không dùng đường dẫn lưu trong JSON
+        if not thu_muc.is_dir():
+            kho.xoa_cho_duyet_quyen(id_)
+            raise LoiGit(f"bản chờ duyệt của {id_!r} không còn trên đĩa — cài lại để tạo yêu cầu mới", 409)
+        if self.so.catalog.get(id_) is None:
+            kho.xoa_cho_duyet_quyen(id_)
+            raise LoiGit(f"module {id_!r} hiện không cài — cài mới thay vì duyệt", 409)
+        kq = await self.so.cai_thu_muc(id_, thu_muc, chap_nhan_quyen_them=chap_nhan_quyen_them)
+        log.warning("Đã duyệt và kích hoạt bản mới của module %s (commit %s)",
+                    id_, str(sha_commit)[:12])
+        return {"ok": True, "id": id_, "duyet_quyen": True, **kq}
 
     async def _cai(self, id_: str) -> dict:
         cfg = self.cau_hinh()
@@ -669,8 +715,8 @@ class NguonGit:
     # ───────────── tự cài ─────────────
 
     async def _tu_dong(self) -> None:
-        """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, xin thêm quyền,
-        bản vừa gỡ, bản đã tự cài hỏng):
+        """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, bản vừa gỡ,
+        bản đã tự cài hỏng; xin thêm quyền do cổng trong `cai_thu_muc` chặn và giữ lại chờ duyệt):
           - `tu_dong` bật: module mới và bản mới;
           - lần đồng bộ ĐẦU của nguồn git (`_lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, cập nhật module
             đã có mã mà git có bản khác (`co_ban_moi`, kể cả module đặt tay không có .nguon.json) dù
@@ -698,19 +744,19 @@ class NguonGit:
             ly_do = None
             if cfg.get("yeu_cau_chu_ky") and not commit.get("da_xac_minh"):
                 ly_do = f"commit chưa được GitHub xác minh chữ ký (yeu_cau_chu_ky bật) — không tự {viec}, cần quản trị {viec} tay"
-            elif x["trang_thai"] == "co_ban_moi":
-                km = self.so.catalog.get(x["id"])
-                goi = sorted(set(m.get("yeu_cau_goi") or []) - set(km.manifest.get("yeu_cau_goi", [])))
-                mang = sorted(set(m.get("mang_ra") or []) - set(km.manifest["tai_nguyen"].get("mang_ra", [])))
-                if goi or mang:
-                    ly_do = ("bản mới XIN THÊM QUYỀN (" + "; ".join(
-                        ([f"gói: {', '.join(goi)}"] if goi else []) + ([f"mạng ra: {', '.join(mang)}"] if mang else []))
-                        + f") — không tự {viec}, cần quản trị duyệt và {viec} tay")
             if ly_do:
                 self._ghi_chu[x["id"]] = (m["tree_sha"], ly_do)
                 continue
             try:
                 await self._cai(x["id"])
+            except LoiCanDuyetQuyen as e:
+                # Bản mới xin thêm quyền: cổng trong cai_thu_muc đã lưu yêu cầu chờ duyệt —
+                # giữ lại, đánh dấu để không tải lại mỗi vòng (quản trị duyệt tay khi sẵn sàng).
+                self._tu_dong_hong[x["id"]] = m["tree_sha"]
+                self._ghi_chu[x["id"]] = (m["tree_sha"],
+                    f"bản mới XIN THÊM QUYỀN ({len(e.diff['them'])} mục) — không tự {viec}, "
+                    f"chờ quản trị duyệt (POST /api/nguon-git/cai/{x['id']})")
+                log.warning("Tự %s module %s: bản mới xin thêm quyền, chờ quản trị duyệt", viec, x["id"])
             except (LoiGit, LoiSo) as e:
                 self._tu_dong_hong[x["id"]] = m["tree_sha"]
                 self._ghi_chu[x["id"]] = (m["tree_sha"], f"tự {viec} hỏng: {e}")
