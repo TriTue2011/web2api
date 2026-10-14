@@ -38,7 +38,7 @@ from app import (
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
-from app.so_module import LoiSo, SoModule
+from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
 from app.xac_thuc import can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
 from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
@@ -1042,7 +1042,8 @@ async def ds_modules(request: Request):
         muc.setdefault("ten", km.manifest["ten"])
         muc.update(loai=km.manifest["loai"], tien_to=km.tien_to, phien_ban=km.manifest.get("phien_ban"),
                    nguon=km.nguon, can_cau_hinh=km.can_cau_hinh, da_cau_hinh=id_ in so.dang_chay,
-                   tab_web=km.duong_tab())
+                   tab_web=km.duong_tab(),
+                   cho_duyet_quyen=kho.doc_cho_duyet_quyen(id_) is not None)
         ra.append(muc)
     # Mục cấu hình mà mã đã mất (xoá tay) hoặc hỏng: vẫn hiện, không giấu — để quản trị thấy.
     ra += [dict(m) if isinstance(m, dict) else {"id": None, "hong": repr(m)} for m in ds
@@ -1253,8 +1254,25 @@ async def dat_nguon_git(request: Request):
 
 @nguon_git.post("/cai/{id_}")
 async def cai_tu_git(id_: str, request: Request):
+    """Cài module từ git. Thân JSON tuỳ chọn {"chap_nhan_quyen_them": [...], "sha_commit": "..."}
+    để DUYỆT bản đang chờ (phải khớp chính xác diff đã xem); không có thân → cài thường."""
+    than = {}
+    if (request.headers.get("content-type") or "").split(";")[0].strip().lower() == "application/json":
+        try:
+            than = await request.json()
+        except ValueError:
+            than = {}
+    if not isinstance(than, dict):
+        than = {}
     try:
+        if than.get("chap_nhan_quyen_them") is not None or than.get("sha_commit") is not None:
+            return await _ng(request).cai(id_, chap_nhan_quyen_them=than.get("chap_nhan_quyen_them"),
+                                         sha_commit=than.get("sha_commit"))
         return await _ng(request).cai(id_)
+    except LoiCanDuyetQuyen as e:
+        return JSONResponse({"ok": False, "ma": "can_duyet_quyen", "id": e.id_,
+                             "sha_commit": e.sha_commit, "tree_sha": e.tree_sha, "diff": e.diff},
+                            status_code=409)
     except (LoiGit, LoiSo) as e:
         raise _loi_so(e) from None
 

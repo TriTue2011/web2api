@@ -162,6 +162,33 @@ class GioiHanSaiKhoa:
                             f"xác thực trong {int(self.cua_so)}s", ip=ip)
 
 
+def ip_hieu_luc_phan_loai(client_host: str | None, x_forwarded_for: str | None) -> tuple[str | None, str]:
+    """Như `GioiHanSaiKhoa.ip_hieu_luc` nhưng phân biệt vì sao không có IP.
+
+    Trả (ip, loai):
+    - (ip, "vong_lap"): peer là loopback TRỰC TIẾP và không kèm X-Forwarded-For.
+    - (ip, "ip"): IP hiệu lực là một địa chỉ IP hợp lệ.
+    - (None, "khong_xac_dinh"): peer rỗng/không phân tích được thành IP, hoặc có XFF
+      nhưng không rút ra được IP khách (kể cả peer loopback kèm XFF) — bên gọi nên
+      ĐÓNG khi lỗi thay vì miễn.
+
+    Không đổi hành vi của `ip_hieu_luc`; chỉ thêm phân loại cho cổng IP đường quản trị.
+    """
+    host = (client_host or "").strip()
+    if not host:
+        return None, "khong_xac_dinh"
+    try:
+        truc_tiep = ipaddress.ip_address(host)
+    except ValueError:
+        return None, "khong_xac_dinh"
+    if not x_forwarded_for and truc_tiep.is_loopback:
+        return str(truc_tiep), "vong_lap"
+    ip = _bo().ip_hieu_luc(host, x_forwarded_for)
+    if ip is None:
+        return None, "khong_xac_dinh"
+    return ip, "ip"
+
+
 _BO: GioiHanSaiKhoa | None = None
 
 

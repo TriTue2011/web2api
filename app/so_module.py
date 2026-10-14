@@ -25,6 +25,7 @@ from pathlib import Path
 
 from app import he_thong, kho, nhat_ky, phien
 from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, go_ma, nap_ma, quet, van_tay)
+from app.quyen_module import bam_diff, cac_muc_chuan, diff_quyen
 
 log = logging.getLogger("web2api.so_module")
 
@@ -67,6 +68,21 @@ async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
     except ValueError as e:
         raise LoiSo(400, str(e)) from None
     return {"id": id_, "ten": ten.strip(), "tien_to": tien_to, "base_url": base}
+
+
+class LoiCanDuyetQuyen(LoiSo):
+    """409 khi bản mới của module đã cài xin thêm quyền: chưa kích hoạt, chờ quản trị duyệt.
+
+    Thuộc tính: id_, diff {"them": [...], "bot": [...]}, sha_commit, tree_sha của bản mới.
+    """
+
+    def __init__(self, id_: str, diff: dict, sha_commit: str | None, tree_sha: str | None):
+        super().__init__(409, f"Module {id_!r} có bản mới xin thêm {len(diff.get('them') or [])} quyền — "
+                              f"cần quản trị duyệt trước khi kích hoạt")
+        self.id_ = id_
+        self.diff = diff
+        self.sha_commit = sha_commit
+        self.tree_sha = tree_sha
 
 
 class SoModule:
@@ -492,10 +508,61 @@ class SoModule:
 
     # ───────────── cài thư mục mã (dùng bởi nguồn git) ─────────────
 
-    async def cai_thu_muc(self, id_: str, tam: Path) -> dict:
+    @staticmethod
+    def _nguon_cua_tam(tam: Path) -> dict:
+        """Đọc .nguon.json mà nguồn git đã ghi vào thư mục tạm (sha_commit, tree_sha)."""
+        try:
+            du_lieu = json.loads((tam / ".nguon.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return du_lieu if isinstance(du_lieu, dict) else {}
+
+    @staticmethod
+    def thu_muc_cho_duyet(id_: str) -> Path:
+        """Thư mục giữ bản chờ duyệt của module `id_` — suy từ id (đã kiểm mẫu ở nơi gọi), cố định dưới thư mục modules."""
+        return kho.thu_muc_modules() / f".cho-duyet-{id_}"
+
+    def _cho_duyet_quyen(self, id_: str, tam: Path, mf_moi: dict, nguon: dict, diff: dict) -> None:
+        """Bản mới xin thêm quyền: dời `tam` vào nơi chờ duyệt, lưu yêu cầu (nguyên tử, 0600)."""
+        cho = self.thu_muc_cho_duyet(id_)  # suy từ id, KHÔNG tin đường dẫn lưu trong tệp JSON
+        if cho.exists():
+            shutil.rmtree(cho, ignore_errors=True)
+        os.rename(tam, cho)
+        kho.luu_cho_duyet_quyen(id_, {
+            "id": id_, "sha_commit": nguon.get("sha_commit"), "tree_sha": nguon.get("tree_sha"),
+            "diff": diff, "bam_diff": bam_diff(diff), "thu_muc": str(cho),
+            "phien_ban": mf_moi.get("phien_ban"), "luc": kho.bay_gio_iso(),
+        })
+        nhat_ky.ghi("he_thong", "canh_bao",
+                    f"Module {id_} có bản mới (commit {str(nguon.get('sha_commit'))[:12]}) "
+                    f"xin thêm {len(diff['them'])} quyền — chưa kích hoạt, chờ quản trị duyệt",
+                    module=id_)
+
+    @staticmethod
+    def _kiem_duyet_quyen(id_: str, nguon: dict, diff: dict, chap_nhan: list | None) -> None:
+        """Duyệt phải KHỚP CHÍNH XÁC: cùng SHA đã xem + cùng băm diff + đúng danh sách «them»."""
+        pending = kho.doc_cho_duyet_quyen(id_)
+        if pending is None:
+            raise LoiSo(409, f"Module {id_!r} không có yêu cầu chờ duyệt quyền — cài thường để tạo yêu cầu")
+        sha = nguon.get("sha_commit")
+        if not sha or sha != pending.get("sha_commit"):
+            raise LoiSo(409, "SHA commit đã đổi sau khi xem diff — yêu cầu duyệt cũ mất hiệu lực, "
+                             "cài lại để xem diff mới")
+        if bam_diff(diff) != pending.get("bam_diff"):
+            raise LoiSo(409, "Diff quyền đã đổi — yêu cầu duyệt cũ mất hiệu lực, cài lại để xem diff mới")
+        if cac_muc_chuan(chap_nhan) != cac_muc_chuan((pending.get("diff") or {}).get("them")):
+            raise LoiSo(409, "Danh sách chấp nhận phải khớp chính xác phần «them» đã xem")
+
+    async def cai_thu_muc(self, id_: str, tam: Path, chap_nhan_quyen_them: list | None = None) -> dict:
         """Đổi tên NGUYÊN TỬ `tam` → `<WEB2API_DATA>/modules/<id>/`, nạp lại; bản mới nạp hỏng →
         hoàn về bản cũ (bản cũ không ngừng phục vụ lúc nào) và LoiSo. Module chưa cần cấu hình
-        bắt buộc thì tự cài cấu hình rỗng để dùng được ngay."""
+        bắt buộc thì tự cài cấu hình rỗng để dùng được ngay.
+
+        Chống rug-pull (cẩm nang §23): module ĐÃ cài mà bản mới xin thêm quyền (so manifest)
+        thì KHÔNG kích hoạt — `chap_nhan_quyen_them=None` → lưu yêu cầu chờ duyệt và ném
+        LoiCanDuyetQuyen(409); duyệt thì truyền đúng danh sách «them» đã xem (kèm SHA khớp).
+        Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ quyền module xin.
+        """
         if not ID_HOP_LE.match(id_):
             raise LoiSo(400, f"id {id_!r} không hợp lệ")
         async with self.khoa:
@@ -507,6 +574,15 @@ class SoModule:
                 raise LoiSo(409, f"Id {id_!r} đã có ở {km_cu.thu_muc} — gỡ bản đó trước")
             if id_ in self.tu_xa:
                 raise LoiSo(409, f"Id {id_!r} đang là module từ xa")
+            # ── Cổng duyệt quyền (chỉ khi đã có bản cũ; cài mới không chặn) ──
+            mf_moi, loi_mf = doc_manifest(tam)
+            diff = diff_quyen(km_cu.manifest if km_cu else {}, mf_moi) if loi_mf is None else None
+            if km_cu is not None and diff and diff["them"]:
+                nguon = self._nguon_cua_tam(tam)
+                if chap_nhan_quyen_them is None:
+                    self._cho_duyet_quyen(id_, tam, mf_moi, nguon, diff)
+                    raise LoiCanDuyetQuyen(id_, diff, nguon.get("sha_commit"), nguon.get("tree_sha"))
+                self._kiem_duyet_quyen(id_, nguon, diff, chap_nhan_quyen_them)
             sao_luu = None
             if dich.exists():
                 sao_luu = dich.parent / f".cu-{id_}-{secrets.token_hex(4)}"
@@ -526,7 +602,9 @@ class SoModule:
                             + ": " + ("; ".join(ly_do) or "module không được nạp"))
             if sao_luu is not None:
                 shutil.rmtree(sao_luu, ignore_errors=True)
+            if chap_nhan_quyen_them is not None:
+                kho.xoa_cho_duyet_quyen(id_)
             cai = None
             if not km.can_cau_hinh and id_ not in self.dang_chay:
                 cai = await self._cai(km, {})
-            return {"nap_lai": kq, "cai": cai}
+            return {"nap_lai": kq, "cai": cai, "diff_quyen": diff or {"them": [], "bot": []}}

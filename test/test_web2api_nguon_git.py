@@ -228,12 +228,12 @@ def test_tu_dong_chi_khi_co_chu_ky_va_khong_doi_quyen(gh, du_lieu):
         gh.day(tep_kho({"echo": tep_echo("echo v1b")}), xac_minh=True)
         await vong()
         assert await tra_loi(so) == "echo v1b: a"
-        # Bản mới xin thêm gói / mạng ra → để quản trị duyệt, KHÔNG tự cài dù đã ký.
+        # Bản mới xin thêm gói / mạng ra → cổng giữ lại chờ duyệt, KHÔNG tự cài dù đã ký.
         gh.day(tep_kho({"echo": tep_echo("echo v2", yeu_cau_goi=["json"], mang_ra=["vi-du.com"])}), xac_minh=True)
         await vong()
         assert await tra_loi(so) == "echo v1b: a"
         x = ng.thong_bao()["danh_sach"][0]
-        assert x["trang_thai"] == "co_ban_moi" and "THÊM QUYỀN" in x["ghi_chu"] and "vi-du.com" in x["ghi_chu"]
+        assert x["trang_thai"] == "co_ban_moi" and "THÊM QUYỀN" in x["ghi_chu"] and "2 mục" in x["ghi_chu"]
         gh.day(tep_kho({"echo": tep_echo("echo v3")}), xac_minh=True)
         await vong()
         assert await tra_loi(so) == "echo v3: a"

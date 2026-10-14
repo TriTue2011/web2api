@@ -110,7 +110,28 @@ Kiểm tra bằng chính cơ chế ghi nhật ký hệ thống của web2api:
 
 ---
 
-## 4. HSTS và TLS (HTTPS)
+## 4. Chỉ cho mạng nhà gọi đường quản trị (`WEB2API_QT_IP_CHO_PHEP`)
+
+Kể cả khi khoá quản trị bị lộ, đường quản trị (`/api/*` qua `can_quan_tri`) vẫn chỉ dùng được từ mạng bạn cho phép:
+
+```bash
+WEB2API_QT_IP_CHO_PHEP=192.0.2.0/24
+```
+
+(địa chỉ minh hoạ thuộc dải tài liệu RFC 5737 — thay bằng dải LAN thật của nhà bạn, ví dụ dải mà router cấp). Không đặt biến (mặc định) = không hạn chế. Có giá trị: IP hiệu lực ngoài danh sách → `403 ip_not_allowed`, ghi cảnh báo ở kênh nhật ký `quan_tri` (tối đa một dòng mỗi IP mỗi phút), không tính vào bộ đếm sai khoá. Đổi biến có hiệu lực ngay, không cần khởi động lại. Đường `/v1/*` (khoá API của khách) KHÔNG bị ảnh hưởng.
+
+**Hai bẫy phải nhớ:**
+
+1. **Đi qua Cloudflare thì IP khách là IP Internet, không phải IP LAN.** web2api xác định IP khách đúng một cách duy nhất (duyệt `X-Forwarded-For` từ phải sang trái như mục 2), nên admin ở nhà mở tên miền qua Cloudflare sẽ bị tính là IP Internet và bị chặn nếu danh sách chỉ chứa dải LAN. Muốn quản trị từ nhà: mở thẳng địa chỉ LAN của máy chủ (ví dụ `http://192.0.2.10:3031` — địa chỉ minh hoạ, thay bằng IP LAN thật), đừng đi qua tên miền Cloudflare.
+2. **Tự khoá mình thì khôi phục bằng loopback trực tiếp.** Kết nối loopback trực tiếp không kèm `X-Forwarded-For` luôn được phép, kể cả khi danh sách đặt sai hết (tất cả CIDR hỏng → chặn mọi IP khác, trừ loopback). Container không có `curl` nên dùng `python3`, chạy ngay trên máy chủ:
+   ```bash
+   docker exec <tên-container> python3 -c "import urllib.request as u; print(u.urlopen(u.Request('http://127.0.0.1:8000/api/nhat-ky?kenh=quan_tri', headers={'Authorization': 'Bearer <khoá-quản-trị>'})).read().decode())"
+   ```
+   Sửa lại `.env` rồi `docker compose up -d` (hoặc bỏ biến) là hết khoá.
+
+---
+
+## 5. HSTS và TLS (HTTPS)
 
 - **Nguyên tắc:** Việc mã hoá TLS/HTTPS và thiết lập HSTS (`Strict-Transport-Security`) được thực hiện tại Cloudflare hoặc reverse proxy, **không làm ở web2api**.
 - **Lý do:** Lõi web2api (`app/tieu_de_bao_mat.py`) chỉ gắn các tiêu đề bảo mật cơ bản (`x-content-type-options: nosniff`, `x-frame-options: DENY`, `referrer-policy: no-referrer`) và chủ động không thêm HSTS toàn cục. Điều này giúp người vận hành không bị khoá cứng vào giao thức HTTPS khi cần truy cập nội bộ bằng HTTP qua mạng LAN.
@@ -122,7 +143,7 @@ Kiểm tra bằng chính cơ chế ghi nhật ký hệ thống của web2api:
 
 ---
 
-## 5. Bảo mật SSH và cổng mạng
+## 6. Bảo mật SSH và cổng mạng
 
 Máy chủ đặt dịch vụ web2api cần được khoá chặt các cổng quản trị:
 
@@ -146,7 +167,7 @@ Máy chủ đặt dịch vụ web2api cần được khoá chặt các cổng qu
 
 ---
 
-## 6. Danh sách kiểm trước khi mở ra Internet
+## 7. Danh sách kiểm trước khi mở ra Internet
 
 Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra từng mục sau:
 
@@ -156,13 +177,14 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - [ ] **Bật `WEB2API_TIN_PROXY=1`:** Giúp giao diện nhận diện đúng giao thức HTTPS từ proxy để tạo liên kết kết nối chuẩn xác.
 - [ ] **SSH an toàn:** Đã tắt đăng nhập bằng mật khẩu (`PasswordAuthentication no`), chỉ cho phép đăng nhập bằng SSH Key.
 - [ ] **Cổng SSH không mở thẳng ra Internet:** Chỉ kết nối SSH qua Tunnel, VPN hoặc mạng nội bộ.
+- [ ] **Quản trị chỉ từ mạng nhà:** Đã đặt `WEB2API_QT_IP_CHO_PHEP` bằng dải LAN (mục 4) và đã thử: từ ngoài Internet gọi đường quản trị nhận `403`, từ mạng nhà vẫn vào được.
 - [ ] **Tắt UPnP:** Đã tắt tính năng UPnP trên router mạng.
 - [ ] **Tắt tự cài module ngầm:** Giữ nguyên mặc định `WEB2API_GIT_REPO` chỉ báo module mới, không bật tự động cài (`tu_dong: false`).
 - [ ] **Sao lưu định kỳ:** Đã có phương án sao lưu volume dữ liệu `web2api-data` thường xuyên.
 
 ---
 
-## 7. Các lỗi hay gặp và cách xử lý
+## 8. Các lỗi hay gặp và cách xử lý
 
 ### 1. Bị lỗi 429 Too Many Requests (bị khoá cả nhà)
 - **Triệu chứng:** Người dùng dùng đúng khoá nhưng vẫn bị trả về mã HTTP `429` kèm thông báo sai khoá quá nhiều lần.
