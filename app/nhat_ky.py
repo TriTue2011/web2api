@@ -39,6 +39,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app import kho
 from app.bien_loi import che_chuoi, la_duong_v1
 from app.kham_pha import MA_KHA_NANG
+from app.loi_openai import lam_sach_thong_diep
 
 log = logging.getLogger("web2api.nhat_ky")
 
@@ -193,7 +194,8 @@ def _lam_sach(v: Any, do_dai: int) -> Any:
         return v
     if isinstance(v, (int, float)):
         return _so_huu_han(v)
-    return che_chuoi(str(v))[:do_dai]
+    s = che_chuoi(str(v))[:do_dai]
+    return "".join(k for k in s if k.isprintable())
 
 
 def ghi(kenh: str, muc: str, tom_tat: str, /, ms: float | int | None = None, **them) -> None:
@@ -211,7 +213,7 @@ def ghi(kenh: str, muc: str, tom_tat: str, /, ms: float | int | None = None, **t
         if muc_str not in MUC_HOP_LE:
             muc_str = "thong_tin"
 
-        tom_tat_str = che_chuoi(str(tom_tat or ""))[:300]
+        tom_tat_str = lam_sach_thong_diep(che_chuoi(str(tom_tat or "")), tran=300)
 
         ms_val = None
         if ms is not None:

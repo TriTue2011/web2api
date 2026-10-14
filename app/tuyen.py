@@ -31,7 +31,7 @@ from app import (
     novnc as novnc_mod,
 )
 from app.kham_pha import ID_HOP_LE
-from app.loi_openai import LoiOpenAI
+from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, doc_het
@@ -64,10 +64,8 @@ novnc = novnc_mod.novnc_router
 
 
 def _nhac_lai(chuoi: str) -> str:
-    """Chuỗi khách điều khiển (đường, model) để nêu lại trong thông báo lỗi: bỏ ký tự điều khiển, cắt 120 ký tự —
-    không phản chiếu chuỗi dài/độc."""
-    chuoi = "".join(k for k in chuoi if k.isprintable())
-    return chuoi if len(chuoi) <= 120 else chuoi[:120] + "…"
+    """Chuỗi khách điều khiển (đường dẫn, tên model) nêu lại trong thông báo lỗi: dùng nhac_lai của loi_openai."""
+    return nhac_lai(chuoi)
 
 
 def _so(request: Request) -> SoModule:
@@ -94,7 +92,7 @@ async def _than_json(request: Request) -> dict:
 
 
 def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
-    return LoiOpenAI(e.ma, str(e))
+    return LoiOpenAI(e.ma, lam_sach_thong_diep(str(e)))
 
 
 # ───────────── /v1 ─────────────

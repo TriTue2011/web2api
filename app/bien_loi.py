@@ -33,7 +33,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import kho, xac_thuc
-from app.loi_openai import than_loi
+from app.loi_openai import lam_sach_thong_diep, than_loi
 
 log = logging.getLogger("web2api.loi")
 
@@ -72,9 +72,11 @@ def thoat_dieu_khien(van_ban: str) -> str:
 
 async def xu_ly_http(request: Request, e: StarletteHTTPException):
     if not la_duong_v1(request.url.path):
+        if isinstance(e.detail, str):
+            e.detail = lam_sach_thong_diep(e.detail)
         return await http_exception_handler(request, e)
     thong_diep = e.detail if isinstance(e.detail, str) and e.detail else code_theo_ma(e.status_code)
-    return JSONResponse(than_loi(e.status_code, thong_diep[:300], code=code_theo_ma(e.status_code)),
+    return JSONResponse(than_loi(e.status_code, thong_diep, code=code_theo_ma(e.status_code)),
                         status_code=e.status_code, headers=e.headers)
 
 
@@ -83,7 +85,7 @@ async def xu_ly_tham_so(request: Request, e: RequestValidationError):
         return await request_validation_exception_handler(request, e)
     # Chỉ VỊ TRÍ và lời giải thích của lỗi; bỏ "input" (giá trị khách gửi — có thể là chuỗi dài hay khoá).
     phan = ["/".join(str(x) for x in loi.get("loc", ())) + ": " + str(loi.get("msg", "")) for loi in e.errors()]
-    return JSONResponse(than_loi(400, ("Tham số không hợp lệ — " + "; ".join(phan))[:500],
+    return JSONResponse(than_loi(400, "Tham số không hợp lệ — " + "; ".join(phan),
                                  code="invalid_request_error"), status_code=400)
 
 
