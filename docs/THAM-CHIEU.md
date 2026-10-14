@@ -540,7 +540,12 @@ nội dung *đòi quyền gì*.
 Khi cài/cập nhật một module **đã cài**, web2api so sánh QUYỀN giữa manifest đang cài và bản mới
 (`app/quyen_module.py:diff_quyen`, hàm thuần): từng mã `cung_cap`, từng tên miền `nhan_cookie`, từng gói
 `yeu_cau_goi`, từng mục `tai_nguyen.mang_ra` — và mọi **trường lạ chưa biết đều được coi là quyền** (mặc định
-đóng, không danh sách trắng tên). Chỉ phần **thêm** mới cần duyệt; bớt quyền được qua tự do.
+đóng, không danh sách trắng tên). Riêng `tai_nguyen` (trừ `mang_ra`) phân ba loại theo cấu trúc giá trị để
+bớt báo động giả: (1) `ghi_chu` là chữ mô tả cho người đọc — không phải quyền, không so sánh; (2) số tài nguyên
+không âm (`dia_mb`, `ram_them_mb`…) — chỉ **tăng** so với bản cũ mới là quyền thêm (mục diff nêu
+`{"loai": "tai_nguyen", "ten": ..., "tang_tu": <số cũ>, "tang_len": <số mới>}`; giảm/bằng thì qua tự do);
+(3) mọi khoá khác chưa biết (kể cả kiểu bất thường: chuỗi thay số, số âm, bool, số quá lớn) — vẫn là quyền.
+Chỉ phần **thêm** mới cần duyệt; bớt quyền được qua tự do.
 
 - Bản mới xin thêm quyền → **không kích hoạt**, bản cũ tiếp tục chạy nguyên trạng; `POST /api/nguon-git/cai/<id>`
   trả `409` với `{"ma": "can_duyet_quyen", "diff": {"them": [...], "bot": [...]}, "sha_commit": ...}` và ghi một
