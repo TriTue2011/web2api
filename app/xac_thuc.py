@@ -182,6 +182,8 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             phien_web.kiem_tra_csrf(request, phien)
             nd_id = str(nd.get("id"))
             vai = nd.get("vai", "user")
+            if vai == "admin":
+                ip_cho_phep.kiem_tra_ip_quan_tri(request)  # phiên admin = quyền quản trị: cùng cổng IP với Bearer admin
             request.state.nguoi_goi = f"nguoi_dung:{nd_id}"
             request.state.phien_web = phien
             request.state.nguoi_dung = nd
@@ -205,6 +207,7 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
 async def can_phien_web(request: Request) -> dict[str, Any]:
     """Phụ thuộc FastAPI cho các đường tự phục vụ web (/api/toi/*, /api/dang-xuat):
     đòi cookie phiên hợp lệ (cho cả admin và user). Gọi bằng Bearer bị từ chối 401.
+    Phiên vai admin từ IP ngoài cổng quản trị → 403 ip_not_allowed (kể cả đăng xuất — cookie đó vô dụng ngoài cổng).
     """
     auth_hdr = request.headers.get("authorization", "").strip()
     if auth_hdr:
@@ -231,12 +234,16 @@ async def can_phien_web(request: Request) -> dict[str, Any]:
             loai="invalid_request_error",
             code="unauthorized",
         )
+    vai = nd.get("vai", "user")
+    if vai == "admin":
+        # Phiên admin tự phục vụ đúc được khoá «*» và đổi mật khẩu admin — là quyền quản trị, nên chịu CÙNG cổng IP
+        # quản trị (WEB2API_QT_IP_CHO_PHEP; loopback trực tiếp vẫn qua). Người dùng thường không bị cổng này.
+        ip_cho_phep.kiem_tra_ip_quan_tri(request)
     phien_web.kiem_tra_csrf(request, phien)
     request.state.phien_web = phien
     request.state.nguoi_dung = nd
     nd_id = str(nd.get("id"))
     request.state.nguoi_goi = f"nguoi_dung:{nd_id}"
-    vai = nd.get("vai", "user")
     danh_tinh = {
         "loai": "quan_tri" if vai == "admin" else "nguoi_dung",
         "id": f"nguoi_dung:{nd_id}",

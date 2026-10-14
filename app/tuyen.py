@@ -54,6 +54,15 @@ QT = [Depends(can_quan_tri)]
 V1_AUTH = [Depends(xac_thuc_v1)]
 PW = [Depends(can_phien_web)]
 
+
+def _khong_luu_dem(response: Response) -> None:
+    """Phản hồi mang bí mật MỘT LẦN (mật khẩu sinh ra, khoá thô, csrf): không cho trình duyệt/proxy lưu đệm —
+    cùng cách `POST /api/sao-luu` đã làm."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+KHONG_LUU = [Depends(_khong_luu_dem)]
+
 v1 = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 #: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
 #: trước nó). Thiếu nó thì mount StaticFiles ở gốc nuốt mất và trả 405 {"detail"} cho mọi POST lạ.
@@ -1395,7 +1404,7 @@ def ds_khoa_khach():
     return {"ok": True, "khoa": khoa_khach_mod.danh_sach_khoa()}
 
 
-@khoa_khach.post("")
+@khoa_khach.post("", dependencies=KHONG_LUU)
 async def tao_khoa_khach(request: Request):
     than = await _than_json(request)
     ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
@@ -1804,7 +1813,7 @@ def kiem_tra_thiet_lap():
     return {"can_thiet_lap": not nguoi_dung_mod.co_admin()}
 
 
-@thiet_lap.post("")
+@thiet_lap.post("", dependencies=KHONG_LUU)
 async def thuc_hien_thiet_lap(request: Request, response: Response):
     # Ngoại lệ mở có chủ đích: Thiết lập tài khoản admin lần đầu (chỉ chạy khi chưa có admin;
     # đã có admin trả 409 ngay và không xử lý thân; bảo vệ bằng mã thiết lập/khoá quản trị và giới hạn tần suất).
@@ -1889,16 +1898,19 @@ def _canh_bao_kho_hong_khi_dang_nhap() -> None:
     )
 
 
-@dang_nhap.post("")
+@dang_nhap.post("", dependencies=KHONG_LUU)
 async def dang_nhap_web(request: Request, response: Response):
     # Ngoại lệ mở có chủ đích: Đăng nhập giao diện web bằng mật khẩu (giới hạn tần suất IP,
     # khóa tên tài khoản sau 5 lần sai liên tiếp trong 15 phút, băm giả chống timing attack, lỗi 401 đồng nhất).
+    # KHÔNG chịu cổng IP quản trị, có chủ đích: người dùng thường đăng nhập từ ngoài cổng; đăng nhập chỉ cấp PHIÊN,
+    # còn quyền quản trị của phiên admin bị cổng IP chặn ở MỌI chỗ dùng phiên (xac_thuc.can_phien_web, nguoi_goi).
     gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
     phien_web_mod.kiem_tra_kho()  # kho phiên hỏng → 503 trước khi kiểm mật khẩu (không lộ gì về tài khoản)
 
     than = await _than_json(request)
-    ten_dang_nhap = than.get("ten_dang_nhap")
-    ten_dang_nhap = ten_dang_nhap.strip() if isinstance(ten_dang_nhap, str) else ""
+    # Tên không thể là tài khoản (sai mẫu, quá dài, sai kiểu) = cùng 401 đồng nhất + băm giả, và KHÔNG đi tiếp xuống
+    # bộ theo dõi sai/nhật ký: mọi cấu trúc trong RAM chỉ nhận khoá đã qua mẫu tên (≤ 32 ký tự).
+    ten_dang_nhap = nguoi_dung_mod.ten_co_the_ton_tai(than.get("ten_dang_nhap")) or ""
     mat_khau = than.get("mat_khau")
     mat_khau = mat_khau if isinstance(mat_khau, str) else ""  # sai kiểu = thiếu → cùng 401 đồng nhất
 
@@ -1997,7 +2009,7 @@ def dang_xuat_web(request: Request, response: Response):
 
 # ───────────── TỰ PHỤC VỤ (can_phien_web) ─────────────
 
-@toi.get("")
+@toi.get("", dependencies=KHONG_LUU)
 def lay_thong_tin_toi(request: Request):
     nd = getattr(request.state, "nguoi_dung", {})
     phien = getattr(request.state, "phien_web", {})
@@ -2038,7 +2050,7 @@ def lay_khoa_toi(request: Request):
     return {"khoa": khoa_khach_mod.danh_sach_khoa_theo_chu(nd["id"])}
 
 
-@toi.post("/khoa")
+@toi.post("/khoa", dependencies=KHONG_LUU)
 async def tao_khoa_toi(request: Request):
     nd = getattr(request.state, "nguoi_dung", {})
     than = await _than_json(request)
@@ -2081,7 +2093,7 @@ def lay_danh_sach_nguoi_dung():
     return {"nguoi_dung": nguoi_dung_mod.danh_sach_nguoi_dung()}
 
 
-@nguoi_dung.post("")
+@nguoi_dung.post("", dependencies=KHONG_LUU)
 async def tao_nguoi_dung_moi(request: Request):
     than = await _than_json(request)
     vai = than.get("vai", "user")  # kiểu kiểm trong tao_nguoi_dung (kiem_vai), trần trong chuan_hoa_pham_vi
@@ -2133,7 +2145,7 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
     return {"nguoi_dung": ban_ghi}
 
 
-@nguoi_dung.post("/{id}/dat-lai-mat-khau")
+@nguoi_dung.post("/{id}/dat-lai-mat-khau", dependencies=KHONG_LUU)
 async def dat_lai_mat_khau(id: str):
     phien_web_mod.kiem_tra_kho()  # không đặt mật khẩu mới rồi mới 503 (mật khẩu mất, không ai biết)
     ban_ghi, mat_khau_moi = await nguoi_dung_mod.dat_lai_mat_khau_nguoi_dung(id)
@@ -2150,6 +2162,7 @@ async def dat_lai_mat_khau(id: str):
 @nguoi_dung.delete("/{id}")
 def xoa_tai_khoan(id: str):
     phien_web_mod.kiem_tra_kho()  # kiểm trước khi xoá: không để xoá xong người dùng rồi 503 bỏ dở khoá/phiên
+    khoa_khach_mod.kiem_tra_kho()  # cùng lý do: kho khoá hỏng → 503 TRƯỚC khi xoá người dùng
     nguoi_dung_mod.xoa_nguoi_dung(id)
     khoa_khach_mod.xoa_khoa_theo_chu(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)

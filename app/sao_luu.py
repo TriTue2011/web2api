@@ -599,7 +599,17 @@ def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str)
         khac_biet["combo"] = sorted(sach["combo.json"])
 
     if "khoa_khach.json" in sach:
-        khac_biet["khoa_khach"] = khoa_khach.khac_biet(sach["khoa_khach.json"]["khoa"])
+        kb_khoa = khoa_khach.khac_biet(sach["khoa_khach.json"]["khoa"])
+        khac_biet["khoa_khach"] = kb_khoa
+        for m in kb_khoa["khoa"]:
+            # Khoá ĐANG có chủ mà bản sao lưu bỏ/đổi chủ: thành khoá không chủ (hết trần chủ, sống khi chủ bị tắt) hoặc
+            # sang trần người khác — là leo thang quyền, không phải khôi phục. Gán chủ cho khoá không chủ (thu hẹp)
+            # chỉ được đánh dấu `doi_chu`.
+            if m.get("chu_id_hien_tai") and m["chu_id"] != m["chu_id_hien_tai"]:
+                tu_choi.append({"tep": "khoa_khach.json", "id": m["id"],
+                                "ly_do": "khoá đang có chủ mà bản sao lưu bỏ hoặc đổi chủ (khoá sẽ thoát trần của chủ "
+                                         "và không còn tắt theo chủ) — thu hồi khoá này rồi khôi phục, hoặc sửa bản "
+                                         "sao lưu giữ đúng chủ"})
 
     bi_mat = sorted(k for k in sach if k.startswith("bi_mat/"))
     if bi_mat:
@@ -769,13 +779,19 @@ def _loi_hoan_tac(ly_do: str, loi: list[str], tm_truoc: Path) -> LoiOpenAI:
 
 
 def _kiem_chung(ghi: dict[str, Any], so: Any) -> str | None:
-    """Sau ghi + nạp lại: tra lại từng khoá khách của bản sao lưu bằng đường tra THẬT của xác thực (theo băm — lõi
-    không giữ khoá thô) và từng module từ xa đã khôi phục. Trả lý do hỏng hoặc None."""
+    """Sau ghi + nạp lại: từng khoá khách của bản sao lưu phải (1) đọc lại được ĐÚNG bản ghi đã ghi (id, bật, phạm vi,
+    chủ — bản ghi THÔ theo băm, lõi không giữ khoá thô) và (2) thấy được qua đường tra THẬT của xác thực. Không so
+    phạm vi/bật HIỆU LỰC với tệp: chính sách trần chủ (hạ trần, chủ tắt, máy mới chưa có chủ) áp lúc chạy và được
+    phép khác bản ghi — so nó từng làm hỏng (500) mọi khôi phục có khoá có chủ. Cùng kiểm từng module từ xa đã khôi
+    phục. Trả lý do hỏng hoặc None."""
     for k in (ghi.get("khoa_khach.json") or {}).get("khoa", []):
-        r = khoa_khach.tim_theo_bam(k["bam"])
+        r = khoa_khach.ban_ghi_theo_bam(k["bam"])
         if (r is None or r.get("id") != k["id"] or r.get("bat", True) != k["bat"]
-                or list(r.get("pham_vi", ["*"])) != k["pham_vi"]):
-            return f"khoá khách {k['id']} không tra được đúng như bản sao lưu"
+                or list(r.get("pham_vi", ["*"])) != k["pham_vi"] or r.get("chu_id") != k.get("chu_id")):
+            return f"khoá khách {k['id']} không đọc lại được đúng như bản sao lưu"
+        t = khoa_khach.tim_theo_bam(k["bam"])
+        if t is None or t.get("id") != k["id"]:
+            return f"khoá khách {k['id']} không tra được qua đường xác thực"
     if so is not None:
         for rec in (ghi.get("tu_xa.json") or {}).get("modules", []):
             if rec["id"] not in so.dang_chay:
