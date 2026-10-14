@@ -38,7 +38,14 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from app.chuyen_tiep import ChuyenTiepOpenAI, ds_khoa, tra_loi_json
+from app.chuyen_tiep import (
+    ChuyenTiepOpenAI,
+    LuongNhiPhan,
+    PhanHoiQuaLon,
+    doc_phan_hoi_co_tran,
+    ds_khoa,
+    tra_loi_json,
+)
 
 BASE_MAC_DINH = "https://generativelanguage.googleapis.com/v1beta/openai"
 GOI_Y_HANG_MIEN_PHI = ("Hạng miễn phí của Google không dùng được tính năng này (trang giá ghi «Not available») — "
@@ -318,15 +325,22 @@ class Module:
     async def _hoi(self, ten: str, khoa: str) -> tuple[dict | None, tuple | None]:
         """GET thao tác Veo bằng đúng khoá đã tạo → (thao tác, None) hoặc (None, lỗi đã chuẩn hoá)."""
         may = urlsplit(self._goc_api).netloc
+        khach = self._ct._client()
+        req = khach.build_request("GET", f"{self._goc_api}/{ten}", headers=self._tieu_de_goc(khoa),
+                                  timeout=httpx.Timeout(self._ct.TIMEOUT_KIEM * 3, connect=self._ct.TIMEOUT_KET_NOI))
         try:
-            r = await self._ct._client().get(f"{self._goc_api}/{ten}", headers=self._tieu_de_goc(khoa),
-                                             timeout=httpx.Timeout(self._ct.TIMEOUT_KIEM * 3, connect=self._ct.TIMEOUT_KET_NOI))
+            r = await khach.send(req, stream=True)
+            noi_dung = await doc_phan_hoi_co_tran(r)
+        except PhanHoiQuaLon as e:
+            return None, _loi(502, f"Phản hồi từ Gemini quá lớn: {e}", "upstream_too_large")
+        except TimeoutError:
+            return None, _loi(504, "Gemini không trả lời kịp: quá thời gian đọc", "upstream_timeout")
         except httpx.HTTPError as e:
             return None, _loi(502, f"Không hỏi được Gemini ({may}): {type(e).__name__}", "upstream_unreachable")
         if r.status_code != 200:
-            return None, tra_loi_json(r.status_code, self._ct.chuan_hoa_loi(r.status_code, r.content))
+            return None, tra_loi_json(r.status_code, self._ct.chuan_hoa_loi(r.status_code, noi_dung))
         try:
-            j = r.json()
+            j = json.loads(noi_dung)
         except ValueError:
             j = None
         if not isinstance(j, dict):
@@ -403,19 +417,19 @@ class Module:
                 continue
             if r.status_code != 200:
                 try:
-                    noi_dung = await r.aread()
-                finally:
-                    await r.aclose()
+                    noi_dung = await doc_phan_hoi_co_tran(r)
+                except PhanHoiQuaLon as e:
+                    return _loi(502, f"Phản hồi tải video quá lớn: {e}", "upstream_too_large")
+                except TimeoutError:
+                    return _loi(504, "Tải video không trả lời kịp: quá thời gian đọc", "upstream_timeout")
+                except httpx.HTTPError as e:
+                    return _loi(502, f"Không đọc được phản hồi tải video: {type(e).__name__}", "upstream_unreachable")
                 return tra_loi_json(r.status_code, self._ct.chuan_hoa_loi(r.status_code, noi_dung))
             return 200, {"content-type": r.headers.get("content-type", "video/mp4")}, self._luong(r)
         return _loi(502, f"Tải video: quá {CHUYEN_HUONG_TOI_DA} lần chuyển hướng", "too_many_redirects")
 
-    async def _luong(self, r: httpx.Response):
-        try:
-            async for khuc in r.aiter_bytes():
-                yield khuc
-        finally:
-            await r.aclose()
+    def _luong(self, r: httpx.Response):
+        return LuongNhiPhan(r, self._ct.log, "gemini-api")
 
     # ── models / sức khoẻ ──
 
@@ -429,11 +443,14 @@ class Module:
         trang = None
         for _ in range(50):
             tham_so = {"pageSize": self.CO_TRANG_MODELS_GOC, **({"pageToken": trang} if trang else {})}
-            r = await self._ct._client().get(f"{self._goc_api}/models", params=tham_so, headers=self._tieu_de_goc(khoa),
-                                             timeout=httpx.Timeout(self._ct.TIMEOUT_DOC, connect=self._ct.TIMEOUT_KET_NOI))
+            khach = self._ct._client()
+            req = khach.build_request("GET", f"{self._goc_api}/models", params=tham_so, headers=self._tieu_de_goc(khoa),
+                                      timeout=httpx.Timeout(self._ct.TIMEOUT_DOC, connect=self._ct.TIMEOUT_KET_NOI))
+            r = await khach.send(req, stream=True)
+            noi_dung = await doc_phan_hoi_co_tran(r)
             if r.status_code != 200:
                 raise ValueError(f"HTTP {r.status_code}")
-            j = r.json()
+            j = json.loads(noi_dung)
             ds += [m for m in j.get("models") or [] if isinstance(m, dict)]
             trang = j.get("nextPageToken")
             if not trang:

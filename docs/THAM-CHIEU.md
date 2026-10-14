@@ -141,6 +141,13 @@ Lõi giữ đúng giao thức cho khách ở `/v1/chat/completions` (không đ�
   nếu vượt trần mà chưa gặp ranh giới sự kiện thì phát nguyên văn để chống cạn bộ nhớ và ghi đúng một cảnh báo.
   Khách ngắt (hoặc luồng bị đóng giữa chừng) → lõi huỷ việc đang chờ và đóng
   (`aclose`) luồng của module, để luồng ngược dòng không chạy tiếp giữ kết nối và token.
+- **Trần phản hồi ngược dòng đọc vào RAM**: mọi phản hồi từ dịch vụ xa (nhà cung cấp AI, module từ xa do quản trị
+  khai URL, dịch vụ trình duyệt) khi đọc trọn vào RAM (chat không stream, gọi khả năng, kiểm khoá, lấy model, API
+  quản trị trình duyệt) đều được đọc từng khúc qua luồng có trần dung lượng `WEB2API_PHAN_HOI_TOI_DA_MB` (mặc định 32 MB)
+  và trần thời gian tổng `WEB2API_PHAN_HOI_TOI_DA_GIAY` (mặc định 300 giây). Vượt trần dung lượng ngắt ngay và trả
+  `502 upstream_too_large` (chống OOM-kill container 256 MB); quá giờ đọc ngắt và trả `504 upstream_timeout`. Các luồng
+  phát (`LuongSSE`, `LuongNhiPhan`) dùng lớp có phương thức `aclose()` bảo đảm đóng phản hồi ngược dòng ngay cả khi
+  chưa kịp nhận byte đầu.
 
 Đường nhận tệp
 (`/v1/audio/transcriptions`, `/v1/images/edits`, `/v1/videos` dạng multipart) đi cùng lối, thêm một bước ở lõi trước
@@ -1652,6 +1659,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
 | `WEB2API_SSE_DEM_TOI_DA_KB` | `1024` | Trần bộ đệm tối đa của luồng stream SSE chat (KiB, mặc định 1024 = 1 MiB) trước khi phát nguyên văn chống cạn bộ nhớ; giá trị không phải số dương hữu hạn → `1024` |
+| `WEB2API_PHAN_HOI_TOI_DA_MB` | `32` | Trần dung lượng phản hồi tối đa (MB) từ dịch vụ ngược dòng khi đọc trọn vào RAM; vượt trần ngắt ngay và trả `502 upstream_too_large` chống OOM; chữ/≤0/nan/inf → `32` (không tắt được) |
+| `WEB2API_PHAN_HOI_TOI_DA_GIAY` | `300` | Trần thời gian tổng tối đa (giây) cho việc đọc toàn bộ phản hồi từ dịch vụ ngược dòng; vượt quá ngắt và trả `504 upstream_timeout`; chữ/≤0/nan/inf → `300` (không tắt được) |
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |

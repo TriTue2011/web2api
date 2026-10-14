@@ -7,9 +7,16 @@ Mọi giao tiếp đi qua bộ chuyển tiếp dùng chung ``app.chuyen_tiep.Chu
 
 from __future__ import annotations
 
+import json
+
 import httpx
 
-from app.chuyen_tiep import ChuyenTiepOpenAI, tra_loi_json
+from app.chuyen_tiep import (
+    ChuyenTiepOpenAI,
+    PhanHoiQuaLon,
+    doc_phan_hoi_co_tran,
+    tra_loi_json,
+)
 from app.kho import che
 
 
@@ -64,21 +71,24 @@ class Module:
 
             # 2. Kiểm /v1/models
             try:
-                r_models = await client.get(f"{dia_chi}/v1/models", headers=headers)
+                req_models = client.build_request("GET", f"{dia_chi}/v1/models", headers=headers)
+                r_models = await client.send(req_models, stream=True)
+                noi_dung = await doc_phan_hoi_co_tran(r_models)
                 if r_models.status_code != 200:
                     return {
                         "ok": False,
                         "ket_qua_tung_khoa": [],
                         "loi": f"Cầu nối từ chối xác thực hoặc lỗi tại /v1/models (HTTP {r_models.status_code})",
                     }
-                data = r_models.json().get("data")
+                j = json.loads(noi_dung)
+                data = j.get("data") if isinstance(j, dict) else None
                 if not isinstance(data, list):
                     return {
                         "ok": False,
                         "ket_qua_tung_khoa": [],
                         "loi": "Cầu nối trả /v1/models không đúng định dạng OpenAI",
                     }
-            except (httpx.HTTPError, ValueError) as e:
+            except (httpx.HTTPError, ValueError, PhanHoiQuaLon, TimeoutError) as e:
                 return {
                     "ok": False,
                     "ket_qua_tung_khoa": [],
@@ -121,16 +131,19 @@ class Module:
         if self._dia_chi_cau_noi and self._khoa:
             try:
                 khach = self._ct._client()
-                r = await khach.get(
+                req = khach.build_request(
+                    "GET",
                     f"{self._dia_chi_cau_noi}/tai-khoan",
                     headers={"Authorization": f"Bearer {self._khoa}"},
                     timeout=httpx.Timeout(self._ct.TIMEOUT_KIEM),
                 )
+                r = await khach.send(req, stream=True)
+                noi_dung = await doc_phan_hoi_co_tran(r)
                 if r.status_code == 200:
-                    j = r.json()
+                    j = json.loads(noi_dung)
                     if isinstance(j, dict) and "tai_khoan" in j:
                         kq["tai_khoan"] = j["tai_khoan"]
-            except (httpx.HTTPError, ValueError):
+            except (httpx.HTTPError, ValueError, PhanHoiQuaLon, TimeoutError):
                 pass
         return kq
 
