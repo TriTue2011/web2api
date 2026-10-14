@@ -810,9 +810,9 @@ async def v1_responses(request: Request):
         return _tra_ve(ma, headers, noi_dung)  # lỗi của module chuyển NGUYÊN như /v1/images/* (cả Retry-After)
 
     resp_obj = _xu_ly_ket_qua_module_anh(noi_dung, model_khach)
-    # Tiêu đề của module (vd x-web2api-route của combo) giữ lại; tiêu đề tả THÂN CŨ không áp cho thân lõi dựng lại.
-    tieu_de = {k: v for k, v in dict(headers).items()
-               if k.lower() not in ("content-type", "content-length", "content-encoding")}
+    # Thân do LÕI dựng lại nên chỉ giữ tiêu đề thuộc không gian tên của chính web2api (vd x-web2api-route của combo);
+    # mọi tiêu đề khác của module (set-cookie, server, tiêu đề tả thân cũ…) mặc định bị bỏ.
+    tieu_de = {k: v for k, v in dict(headers).items() if k.lower().startswith("x-web2api-")}
     if not bool(than.get("stream")):
         return JSONResponse(resp_obj, status_code=200, headers=tieu_de)
     return StreamingResponse(

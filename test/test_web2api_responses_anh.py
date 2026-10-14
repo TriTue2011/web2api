@@ -77,7 +77,8 @@ class ModuleGia:
                 "b64_json": B64_PNG,
                 "revised_prompt": f"Ảnh đã sửa {i + 1}" if i == 0 else None,
             })
-        return 200, {"content-type": "application/json", "x-module-rieng": "co"}, json.dumps({
+        return 200, {"content-type": "application/json", "x-web2api-rieng": "co", "set-cookie": "sid=KE-TAN-CONG",
+                     "server": "may-noi-bo/9.9"}, json.dumps({
             "created": 1728860000,
             "data": cac_anh,
             **self.tra_them,
@@ -277,7 +278,9 @@ def test_responses_anh_khong_stream_dung_hinh_dang(moi_truong):
     }
     r = client.post("/v1/responses", headers=QT, json=payload)
     assert r.status_code == 200, r.text
-    assert r.headers.get("x-module-rieng") == "co"  # tiêu đề của module không bị bỏ
+    # Thân do lõi dựng lại: chỉ tiêu đề thuộc không gian tên x-web2api-* đi qua; mọi tiêu đề khác của module mặc định bị bỏ.
+    assert r.headers.get("x-web2api-rieng") == "co"
+    assert "set-cookie" not in r.headers and "server" not in r.headers
     data = r.json()
 
     assert data["id"].startswith("resp_")
