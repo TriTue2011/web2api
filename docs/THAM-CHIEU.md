@@ -674,6 +674,44 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   $W/v1/images/generations | jq -r '.data[0].b64_json' | base64 -d > anh.png
 ```
 
+Responses API (`POST /v1/responses`) — chuẩn OpenAI Responses API cho công cụ `image_generation` (dùng cho Home Assistant và các ứng dụng gọi Responses để tạo/sửa ảnh):
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini/gemini-3.1-flash-image", "input": "Con mèo đội nón lá", "tools": [{"type": "image_generation", "size": "1024x1024"}]}' \
+  $W/v1/responses
+```
+
+- **Giới hạn**: Hiện tại đường này chỉ hỗ trợ công cụ `image_generation` (chưa hỗ trợ Responses cho hội thoại thuần chữ hay công cụ khác; thiếu công cụ hoặc khai công cụ khác bị trả `400` `unsupported_tool`).
+- **Phạm vi khoá khách** theo chức năng thật, cùng luật với đường chuẩn: có `input_image` là sửa ảnh → cần `anh_sua` (như `/v1/images/edits`); không có là tạo ảnh → cần `anh` (như `/v1/images/generations`). Khoá thiếu phạm vi nhận `403` trước khi lõi tra model.
+- **Thân yêu cầu**: `model` (`<tiền tố>/<tên>` hoặc `combo/<tên>`), `input` (chuỗi, hoặc danh sách mục `{role, content}`), `instructions` tuỳ chọn, `tools` (bắt buộc đúng một phần tử `{"type": "image_generation", ...}`), `stream` tuỳ chọn. Tham số của công cụ chuyển sang module đúng tên trường của `/v1/images/*`: `size`, `quality`, `background`, `output_format` (phải là chuỗi, sai kiểu → `400`) và `n` (số nguyên 1–10, cùng một luật với `/v1/images/generations` và `/v1/images/edits`; thiếu/`null` → module dùng mặc định). Model chuyển **đầy đủ** như đường chuẩn (module tự bỏ tiền tố). Trường khác của công cụ (vd `moderation`, `output_compression`, `partial_images`) hiện **không** được chuyển và bị bỏ qua.
+- **Ghép prompt**: phần chỉ dẫn trước — `instructions`, rồi nội dung các mục vai `developer`/`system` theo thứ tự gặp (cùng nghĩa «chỉ dẫn» với `instructions`) — rồi phần yêu cầu: mục vai `user` và mục không có vai; các phần nối bằng dòng trống. Mục vai `assistant` (lượt trả lời cũ) bị bỏ vì Images không có hội thoại. Vai ngoài bốn vai của chuẩn → `400`.
+- **Ảnh đầu vào**: Khi có `input_image` (dưới dạng data URL base64 `image/png`, `image/jpeg`, `image/webp`), lõi giải mã và chuyển thành `YeuCauDaPhan` gọi phương thức `anh_sua` của module (trần dung lượng tính theo `WEB2API_TEP_TOI_DA_MB`). URL ngoài (`http://`, `https://`) bị từ chối `400` `unsupported_image_url` để chống SSRF.
+- **Khuôn phản hồi không stream**:
+  ```json
+  {
+    "id": "resp_<hex>",
+    "object": "response",
+    "created_at": 1728860000,
+    "status": "completed",
+    "model": "<model khách gửi>",
+    "output": [
+      {
+        "id": "ig_<hex>",
+        "type": "image_generation_call",
+        "status": "completed",
+        "result": "<base64 thuần>",
+        "revised_prompt": "...",
+        "output_format": "png"
+      }
+    ],
+    "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+  }
+  ```
+- **Stream SSE (`stream: true`)**: Phát chuỗi sự kiện SSE với `sequence_number` tăng dần: `response.created` → `response.in_progress` → `response.output_item.added` (trạng thái `in_progress`) → `response.image_generation_call.in_progress` → `response.image_generation_call.generating` → `response.output_item.done` (kèm `result`) → `response.completed`. Không gửi `[DONE]`. Lỗi trước byte đầu luôn trả mã trạng thái HTTP thật thay vì stream 200 rỗng; lỗi giữa chừng (sau khi đã gửi 200) phát một sự kiện `error` khuôn Responses (`type`, `sequence_number`, `code: stream_error`, `message`, `param`) rồi dừng.
+- **Thuộc tính ảnh trong mục output** (`size`, `quality`, `background`, `output_format`) chỉ nêu khi biết từ **kết quả**: trường cùng tên ở cấp đầu phản hồi của module, hoặc — riêng `output_format` — chữ ký byte ảnh (PNG/JPEG/WebP). Lõi không lặp tham số khách gửi như thể là kết quả.
+- **Lỗi của module** (mã khác 2xx) chuyển nguyên mã, thân và tiêu đề (kể cả `Retry-After`) như `/v1/images/*`; tiêu đề của module ở lượt thành công (vd `x-web2api-route`/`x-web2api-combo` của combo) cũng được giữ.
+
 Tạo video — không đồng bộ, như `/v1/videos` của OpenAI: tạo → hỏi trạng thái tới `completed` → tải. Module đi
 API gốc Veo (`:predictLongRunning`) vì trang tương thích OpenAI của Google không ghi cách tải tệp video. Thân là
 **JSON**, hoặc `multipart/form-data` chỉ có trường chữ (như SDK `openai` gửi `videos.create`; `seconds` dạng chuỗi
@@ -1555,8 +1593,9 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /v1/chat/completions` | Có | Chat chuẩn OpenAI, có stream (chuẩn hoá `finish_reason` khi có `tool_calls`, `: keep-alive` khi im lặng — mục 2); `501` nếu module không có `chat` |
 | `POST /v1/embeddings` | Có | Tạo vector nhúng chuẩn OpenAI (thân `{"model": "...", "input": "..."}`); `501` nếu module không có |
 | `POST /v1/rerank` | Có | Xếp hạng lại danh sách tài liệu (`model`, `query`, `documents`, `top_n`); `501` nếu module không có |
-| `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `501` nếu module không có |
-| `POST /v1/images/edits` | Có | Sửa ảnh chuẩn OpenAI (`multipart/form-data`: `image` hoặc `image[]`, `mask`, `prompt`…); `501` nếu module không có |
+| `POST /v1/images/generations` | Có | Tạo ảnh chuẩn OpenAI; `n` (nếu có) phải là số nguyên 1–10 như đặc tả OpenAI, sai → `400`; `501` nếu module không có |
+| `POST /v1/images/edits` | Có | Sửa ảnh chuẩn OpenAI (`multipart/form-data`: `image` hoặc `image[]`, `mask`, `prompt`…); `n` (nếu có) là chữ số 1–10, sai → `400`; `501` nếu module không có |
+| `POST /v1/responses` | Có | Responses API chuẩn OpenAI cho công cụ `image_generation` (tạo/sửa ảnh qua `anh`/`anh_sua`, có stream SSE); khoá khách cần `anh` (tạo) hoặc `anh_sua` (có ảnh đầu vào); `400` nếu công cụ khác, URL ảnh ngoài (chống SSRF) hoặc tham số sai kiểu, `501` nếu module không có |
 | `POST /v1/audio/speech` | Có | Đọc văn bản thành giọng nói (thân JSON chuẩn OpenAI) → âm thanh nhị phân, có thể stream; `501` nếu module không có |
 | `POST /v1/audio/transcriptions` | Có | Nhận dạng giọng nói (`multipart/form-data`: `file`, `model`, `language`…); `501` nếu module không có |
 | `POST /v1/videos` | Có | Tạo video (không đồng bộ; thân JSON, hoặc multipart chỉ có trường chữ như SDK openai gửi) → `id` dạng `<tiền tố>:<mã>` |
