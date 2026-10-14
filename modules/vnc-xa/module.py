@@ -22,7 +22,8 @@ from typing import Any
 
 import httpx
 
-from app.tu_xa import kiem_url_lan
+from app.chuyen_tiep import TransportGhimIp
+from app.tu_xa import _dia_chi_bi_chan, kiem_url_lan
 
 log = logging.getLogger("web2api.module.vnc_xa")
 
@@ -64,6 +65,17 @@ class Module:
         self.manifest = manifest
         self._dich_vu_url = ""
         self._khoa = ""
+        # Hàm kiểm IP lúc KẾT NỐI (chống DNS rebinding: kiểm lúc cài, dùng lúc gọi).
+        # Mặc định là chính sách SSRF của lõi; test cần nối máy chủ giả trên loopback
+        # thì gán thuộc tính này của thể hiện (không có công tắc môi trường).
+        self._kiem_ip = _dia_chi_bi_chan
+
+    def _client(self, timeout: float) -> httpx.AsyncClient:
+        """MỘT chỗ dựng client cho mọi lời gọi tới dịch vụ trình duyệt.
+
+        Transport ghim IP: mỗi yêu cầu phân giải tên máy NGAY trước khi gửi, kiểm mọi IP bằng `self._kiem_ip`,
+        nối thẳng IP đã kiểm (giữ Host/SNI gốc)."""
+        return httpx.AsyncClient(timeout=timeout, transport=TransportGhimIp(self._kiem_ip))
 
     def nap(self, cau_hinh: dict) -> None:
         self._dich_vu_url = str(cau_hinh.get("dich_vu_url") or "").strip().rstrip("/")
@@ -98,7 +110,7 @@ class Module:
 
         # Kiểm tra kết nối tới dịch vụ trình duyệt qua GET /ho-so (KHÔNG mở trình duyệt khi cài)
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self._client(10.0) as client:
                 r = await client.get(
                     f"{url_sach}/ho-so",
                     headers={"Authorization": f"Bearer {khoa}"},
@@ -142,7 +154,7 @@ class Module:
         """Tạo workspace Firefox (Firefox: cookie đọc được để đưa sang module khác — xem trinh_duyet_cookie)."""
         if not self._dich_vu_url or not self._khoa:
             raise RuntimeError("Module chưa được cấu hình")
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with self._client(15.0) as client:
             r = await client.post(
                 f"{self._dich_vu_url}/ho-so",
                 json={"ten": ten, "loai": "firefox"},
@@ -164,7 +176,7 @@ class Module:
         than: dict[str, Any] = {"ho_so": ho_so, "loai": loai}
         if url:
             than["url"] = url  # lõi đã kiểm (http/https, không userinfo); dịch vụ kiểm lại
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with self._client(30.0) as client:
             r = await client.post(
                 f"{self._dich_vu_url}/ho-so/mo",
                 json=than,
@@ -185,7 +197,7 @@ class Module:
             raise RuntimeError("Module chưa được cấu hình")
 
         url = f"{self._dich_vu_url}/ho-so/{ho_so}/dong"
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with self._client(15.0) as client:
             r = await client.post(
                 url,
                 json={"giu_phien": giu_phien},
@@ -204,7 +216,7 @@ class Module:
             raise RuntimeError("Module chưa được cấu hình")
 
         url = f"{self._dich_vu_url}/ho-so"
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with self._client(15.0) as client:
             r = await client.get(
                 url,
                 headers={"Authorization": f"Bearer {self._khoa}"},
@@ -226,7 +238,7 @@ class Module:
         if not isinstance(ho_so, str) or not MAU_HO_SO.fullmatch(ho_so):
             raise LoiDichVu("Mã hồ sơ không hợp lệ", ma=400)
 
-        async with httpx.AsyncClient(timeout=15.0) as client:  # httpx mặc định KHÔNG theo chuyển hướng
+        async with self._client(15.0) as client:  # httpx mặc định KHÔNG theo chuyển hướng
             r = await client.get(
                 f"{self._dich_vu_url}/ho-so/{ho_so}/cookie",
                 params={"mien": mien},
@@ -252,7 +264,7 @@ class Module:
             }
         khoa_che = _che_khoa(self._khoa)
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with self._client(5.0) as client:
                 r = await client.get(
                     f"{self._dich_vu_url}/ho-so",
                     headers={"Authorization": f"Bearer {self._khoa}"},
