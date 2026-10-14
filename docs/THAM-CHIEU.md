@@ -137,7 +137,9 @@ Lõi giữ đúng giao thức cho khách ở `/v1/chat/completions` (không đ�
   về mặc định) → lõi gửi dòng chú thích `: keep-alive` (không phải `data:`), để proxy (Cloudflare, Nginx) không cắt
   khi model suy luận lâu. Lõi tự đệm theo **ranh giới sự kiện SSE** (dòng trống), không dựa cách module chia khúc:
   chỉ chuẩn hoá và phát sự kiện trọn vẹn, mỗi sự kiện phát ngay khi đủ; keep-alive chỉ chen giữa hai sự kiện; phần
-  dở dang lúc hết luồng phát nguyên văn. Khách ngắt (hoặc luồng bị đóng giữa chừng) → lõi huỷ việc đang chờ và đóng
+  dở dang lúc hết luồng phát nguyên văn. Bộ đệm có trần `WEB2API_SSE_DEM_TOI_DA_KB` (mặc định 1024 KiB = 1 MiB):
+  nếu vượt trần mà chưa gặp ranh giới sự kiện thì phát nguyên văn để chống cạn bộ nhớ và ghi đúng một cảnh báo.
+  Khách ngắt (hoặc luồng bị đóng giữa chừng) → lõi huỷ việc đang chờ và đóng
   (`aclose`) luồng của module, để luồng ngược dòng không chạy tiếp giữ kết nối và token.
 
 Đường nhận tệp
@@ -1598,6 +1600,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
+| `WEB2API_SSE_DEM_TOI_DA_KB` | `1024` | Trần bộ đệm tối đa của luồng stream SSE chat (KiB, mặc định 1024 = 1 MiB) trước khi phát nguyên văn chống cạn bộ nhớ; giá trị không phải số dương hữu hạn → `1024` |
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |

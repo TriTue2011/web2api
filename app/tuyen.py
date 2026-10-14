@@ -297,6 +297,19 @@ def sse_giu_giay() -> float:
     return val if val > 0 and math.isfinite(val) else 15.0
 
 
+def sse_dem_toi_da_bytes() -> int:
+    """Trần bộ đệm (byte) của luồng SSE chat trước khi phát nguyên văn (WEB2API_SSE_DEM_TOI_DA_KB, mặc định 1024 KiB).
+    Giá trị không phải số dương hữu hạn (0, âm, chữ, nan, inf) → mặc định 1024 KiB: đặt sai không được tắt trần."""
+    try:
+        val = float(os.environ.get("WEB2API_SSE_DEM_TOI_DA_KB", "1024"))
+    except (ValueError, TypeError):
+        return 1024 * 1024
+    if not (val > 0 and math.isfinite(val)):
+        return 1024 * 1024
+    so_byte = int(val * 1024)
+    return so_byte if so_byte > 0 else 1024 * 1024
+
+
 def _index_hop_le(choice: dict) -> int | None:
     """`index` của một choice: thiếu → 0 (một choice); không phải số nguyên thật (list, dict, bool, chuỗi, số thực)
     → None: choice đó chuyển nguyên văn, không ném (giá trị lạ có thể không băm được)."""
@@ -391,21 +404,27 @@ async def _dong_luong_module(cho: asyncio.Task | None, it) -> None:
             log.warning("Đóng luồng stream của module lỗi: %s", type(e).__name__)
 
 
-async def _luong_sse_chuan_hoa(iterator, giu_giay: float):
+async def _luong_sse_chuan_hoa(iterator, giu_giay: float, dem_toi_da: int | None = None):
     """Bọc stream chat của module: chuẩn hoá finish_reason và chen `: keep-alive` khi im lặng quá `giu_giay`.
 
     Lõi TỰ đệm theo ranh giới sự kiện SSE (dòng trống), không dựa cách module chia khúc (từng dòng, từng mẩu byte hay
     nhiều sự kiện một khúc): chỉ chuẩn hoá và phát SỰ KIỆN TRỌN, mỗi sự kiện phát ngay khi đủ ranh giới; keep-alive chỉ
-    chen khi bộ đệm rỗng (không đang dở một sự kiện). Phần dở dang lúc hết luồng phát nguyên văn.
+    chen khi bộ đệm rỗng (không đang dở một sự kiện). Bộ đệm có trần `dem_toi_da` (mặc định đọc từ
+    WEB2API_SSE_DEM_TOI_DA_KB qua sse_dem_toi_da_bytes()): nếu vượt trần mà chưa gặp ranh giới sự kiện, phát nguyên văn
+    phần đã đệm để tránh cạn bộ nhớ và ghi đúng một cảnh báo cho mỗi lượt gọi. Quét ranh giới bắt đầu từ
+    max(0, độ dài bộ đệm cũ − 3) để tránh chi phí bậc hai O(N^2). Phần dở dang lúc hết luồng phát nguyên văn.
 
     Mọi đường thoát — đọc hết, module lỗi, khách ngắt lúc chờ (CancelledError), generator bị đóng khi đang dừng ở
     `yield` (GeneratorExit) — đều đi qua `finally`: huỷ tác vụ chờ và aclose() luồng module, để luồng ngược dòng không
     chạy tiếp giữ kết nối và token. Việc dọn được che chắn (shield) vì cancel scope của anyio (Starlette) huỷ lặp lại
     ở mọi await còn trong scope."""
+    if dem_toi_da is None:
+        dem_toi_da = sse_dem_toi_da_bytes()
     co_tool: set[int] = set()
     it = iterator.__aiter__()
     cho: asyncio.Task | None = None
     dem = b""
+    canh_bao_tran = False
     try:
         while True:
             if cho is None:
@@ -420,11 +439,20 @@ async def _luong_sse_chuan_hoa(iterator, giu_giay: float):
                 khuc = tac_vu.result()
             except StopAsyncIteration:
                 break
+            len_cu = len(dem)
             dem += khuc.encode("utf-8") if isinstance(khuc, str) else khuc
-            while (het := _HET_SU_KIEN.search(dem)) is not None:
+            pos = max(0, len_cu - 3)
+            while (het := _HET_SU_KIEN.search(dem, pos)) is not None:
                 su_kien, dem = dem[:het.end()], dem[het.end():]
                 yield _chuan_hoa_khuc_stream(su_kien, co_tool)
+                pos = 0
             if dem and not dem.strip(b"\r\n"):  # chỉ còn dòng trống lẻ giữa hai sự kiện: không dở gì, phát luôn
+                yield dem
+                dem = b""
+            elif len(dem) > dem_toi_da:
+                if not canh_bao_tran:
+                    log.warning("Bộ đệm SSE vượt trần %d byte, phát nguyên văn để tránh cạn bộ nhớ", dem_toi_da)
+                    canh_bao_tran = True
                 yield dem
                 dem = b""
         if dem:
@@ -465,7 +493,7 @@ async def v1_chat(request: Request):
     ma, headers, noi_dung = await m.chat(than, stream)
     if ma == 200:
         if stream and hasattr(noi_dung, "__aiter__"):
-            noi_dung = _luong_sse_chuan_hoa(noi_dung, sse_giu_giay())
+            noi_dung = _luong_sse_chuan_hoa(noi_dung, sse_giu_giay(), sse_dem_toi_da_bytes())
         elif isinstance(noi_dung, bytes):
             noi_dung = _chuan_hoa_chat_thuong(noi_dung)
     return _tra_ve(ma, headers, noi_dung)
