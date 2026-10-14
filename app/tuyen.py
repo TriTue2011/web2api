@@ -17,6 +17,7 @@ from http import HTTPMethod
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.convertors import PathConvertor
 from starlette.routing import Match
+from starlette.types import Receive, Scope, Send
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from app import (
@@ -433,6 +434,29 @@ async def _luong_sse_chuan_hoa(iterator, giu_giay: float):
         await asyncio.shield(_dong_luong_module(cho, it))
 
 
+class PhanHoiDong(StreamingResponse):
+    """StreamingResponse bảo đảm gọi aclose() trên iterator của module đúng một lần khi hoàn thành hoặc ngắt."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        da_dong = False
+
+        async def _dong():
+            nonlocal da_dong
+            if not da_dong:
+                da_dong = True
+                dong = getattr(self.body_iterator, "aclose", None)
+                if callable(dong):
+                    try:
+                        await dong()
+                    except Exception as e:  # như _dong_luong_module: không đổi kết cục lượt gọi, nhưng không im lặng
+                        log.warning("Đóng luồng nhị phân của module lỗi: %s", type(e).__name__)
+
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await _dong()
+
+
 def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
     headers = dict(headers)
     kieu = headers.pop("content-type", None)
@@ -440,7 +464,9 @@ def _tra_ve(ma: int, headers: dict, noi_dung) -> Response:
         # Thân đã có trọn: Starlette tự tính content-length đúng; số của module (có thể lệch) bị bỏ.
         headers = {k: v for k, v in headers.items() if k.lower() != "content-length"}
         return Response(noi_dung, status_code=ma, headers=headers, media_type=kieu)
-    return StreamingResponse(noi_dung, status_code=ma, headers=headers, media_type=kieu)
+    bo_stream = {"content-length", "content-encoding", "transfer-encoding"}
+    headers = {k: v for k, v in headers.items() if k.lower() not in bo_stream}
+    return PhanHoiDong(noi_dung, status_code=ma, headers=headers, media_type=kieu)
 
 
 def _gan_tien_to_ma_video(tien_to: str, ma: int, headers: dict, noi_dung) -> Response:

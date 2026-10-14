@@ -534,6 +534,17 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 `base_url` được phép là địa chỉ mạng nhà (192.168.x.x, 10.x.x.x, 172.16–31.x.x) và `http://`. Bị chặn: địa chỉ của
 chính container (127.0.0.1, localhost), dải 169.254.0.0/16 (metadata đám mây), địa chỉ không định tuyến.
 
+Module từ xa hỗ trợ đầy đủ các đường chuẩn OpenAI:
+- **Trò chuyện**: `POST /v1/chat/completions` (JSON, stream SSE từng dòng).
+- **Giọng nói (TTS)**: `POST /v1/audio/speech` (JSON, stream nhị phân từng khúc bằng `aiter_bytes`, bảo toàn từng byte không hỏng `\n`/`\r`, tự giải nén gzip từ dịch vụ xa).
+- **Nhận dạng giọng nói (STT)**: `POST /v1/audio/transcriptions` (multipart/form-data, làm sạch tên tệp và MIME type, giữ nguyên trường lạ, đổi model bỏ tiền tố).
+- **Sửa ảnh**: `POST /v1/images/edits` (multipart/form-data, hỗ trợ tệp ảnh và mặt nạ).
+- Đường gọi luôn là `{base_url}/<endpoint>` như chat (`base_url` đã gồm tiền tố phiên bản, vd `/v1` hay `/openai`).
+- Giọng nói, nhận dạng, sửa ảnh xoay khoá theo (khoá, việc) như ảnh/video: khoá bị từ chối một việc không làm chat nghỉ, và ngược lại; trạng thái từng việc hiện trong `han_muc` của sức khoẻ.
+- Header của dịch vụ xa: mặc định từ chối, chỉ `content-type` tới khách (Set-Cookie, CORS, Server, WWW-Authenticate… bị bỏ).
+- Chống SSRF: không theo chuyển hướng 3xx của dịch vụ xa, ghim IP lúc kết nối (đích bị chặn → 502 `ssrf_blocked`); chuỗi khoá giả/lỗi thượng nguồn được che trước khi trả về khách. Khách ngắt kết nối giữa chừng (kể cả trước byte đầu) thì kết nối tới dịch vụ xa được đóng; luồng của dịch vụ xa đứt giữa chừng thì kết nối tới khách bị cắt (không kết thúc êm), nhật ký cuộc gọi ghi `dut`.
+
+
 ## 4. Module có sẵn
 
 Mỗi module có một tiểu mục dưới đây (mẫu: `MAU-TIEU-MUC-MODULE.md`) và một dòng ở bảng «Trạng thái hiện tại»

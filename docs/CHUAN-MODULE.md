@@ -22,7 +22,7 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 - `async cai(cau_hinh: dict) -> dict`: Kiểm tra cấu hình và trả về `{ok, ket_qua_tung_khoa, loi, cau_hinh_luu}`.
 - `async models() -> list[dict]`: Liệt kê các model dạng `<tien_to>/<tên>`. Bắt buộc khi `cung_cap` có khả năng định tuyến theo `model` (`chat`, `anh`, `anh_sua`, `video`, `noi`, `nghe`, `nhung`, `xep_hang` — `KHA_NANG_CO_MODEL` ở `app/kham_pha.py`); module chỉ làm thiết bị/tri thức không cần. Thiếu thì module không có model trong `GET /v1/models`.
 
-`chat` không còn bắt buộc chung: chỉ bắt buộc khi `cung_cap` có `chat` (bảng dưới). Lõi định tuyến theo phương thức CÓ THẬT — module không có `chat` gọi `POST /v1/chat/completions` nhận `501 capability_not_supported`.
+`chat` không còn bắt buộc chung: chỉ bắt buộc khi `cung_cap` có `chat` (bảng dưới) — module chỉ làm giọng nói, sửa ảnh, thiết bị hay trình duyệt không cần khai hàm `chat` giả. Lõi định tuyến theo phương thức CÓ THẬT — module không có `chat` gọi `POST /v1/chat/completions` nhận `501 capability_not_supported`.
 - `async suc_khoe() -> dict`: Kiểm tra trạng thái sức khoẻ, hạn mức.
 - `async dung() -> None`: Dọn dẹp kết nối khi dừng.
 
@@ -139,3 +139,23 @@ Dành cho module điều khiển dịch vụ trình duyệt riêng (đăng nhậ
 - TUỲ CHỌN `async trinh_duyet_cookie(ho_so: str, mien: str) -> dict`: `{"cookie": "tên=giá trị; …"}` — cookie CÒN HẠN của `mien` và tên miền con trong hồ sơ (lõi đã kiểm `mien`: chữ thường, ≥ 2 nhãn). Thiếu → `501`. Lỗi có cấu trúc qua thuộc tính `ma` của ngoại lệ: `400`/`404`/`409`/`501` được lõi chuyển tiếp kèm câu của LÕI; lỗi khác → `502` chỉ nêu tên kiểu lỗi. Module không log giá trị cookie.
 - Lõi dùng `trinh_duyet_cookie` ở `POST /api/trinh-duyet/{module}/{ho_so}/cookie-sang-module` thân `{"module_dich", "truong", "mien"?}` (chỉ quản trị): `truong` phải là trường mà CHÍNH module đích khai nhận cookie trong `truong_cau_hinh` — `"nhan_cookie": {"mien": "<tên miền chặt, ≥ 2 nhãn>"}`, chỉ đặt được trên trường `kieu` `bi_mat` (thay) hoặc `danh_sach_bi_mat` (THÊM vào cuối, khử trùng); `kiem_manifest` từ chối hình dạng sai. Trường bí mật không khai (khoá API…) → `400`, giá trị cũ giữ nguyên. Tên miền là tên miền ĐÃ KHAI: `mien` trong thân bỏ trống hoặc phải bằng nó, khác → `400` (người gọi không chọn tên miền, nên cũng không chạm được đuôi tên miền công cộng như `co.uk`). Cookie đi vào cấu hình QUA ĐÚNG đường cài có sẵn (`cai()` của module đích kiểm rồi lõi mới lưu, bí mật vào kho 0600). Phản hồi chỉ `{"ok", "ket_qua_tung_khoa" ([{khoa (đúng dạng che «…abcd», sai dạng → «…»), ok, loi (câu của LÕI)}]), "da_them", "loi"? (câu của LÕI)}`: lõi KHÔNG chuyển tiếp chuỗi tự do nào của module đích (có thể chứa cookie mới/cũ ở dạng mã hoá bất kỳ).
 - Nội dung `dich` phục vụ (noVNC) bị coi là không tin được: lõi phục vụ nó dưới `/novnc/s/<phien>/` với CSP `sandbox` (origin mờ) và header theo danh sách cho phép; module không cần và không được tự proxy.
+
+---
+
+## 6. Hợp đồng chuyển tiếp nhị phân và tệp tải lên (Audio, Images)
+
+### 6.1. Luồng nhị phân (TTS `POST /v1/audio/speech`)
+- Phương thức module: `async noi(body: dict) -> (mã, headers, bytes | async-iterator[bytes])`.
+- **Stream nhị phân**: Dữ liệu âm thanh thô chứa các byte đặc biệt `\n`, `\r`, `\x00` và toàn bộ 256 giá trị byte. Bộ chuyển tiếp stream bằng `aiter_bytes()`, tuyệt đối không cắt dòng theo text (tránh làm biến dạng hoặc hỏng byte). Luồng của dịch vụ xa đứt giữa chừng (hay gzip hỏng) thì lỗi đi lên: kết nối tới khách bị cắt, nhật ký cuộc gọi ghi `dut` — không kết thúc êm như thể tệp đã trọn.
+- **Header của dịch vụ xa** (bộ chuyển tiếp dùng chung `ChuyenTiepOpenAI`): mặc định từ chối — chỉ `content-type` tới khách (`tieu_de_cho_khach` trong `app/chuyen_tiep.py`, chỗ duy nhất cho chat, ảnh/video, giọng nói, multipart). Set-Cookie, Access-Control-*, Server, X-Powered-By, WWW-Authenticate, Connection, Keep-Alive, Content-Disposition, CSP… của dịch vụ xa không tới khách; `content-length`/`content-encoding` cũng không (httpx đã giải nén). Khi trả stream, lõi bỏ `content-length`/`content-encoding`/`transfer-encoding` mà module tự đặt (lõi quyết khung truyền).
+- **Vòng đời stream (`aclose`)**: Lõi bảo đảm luôn gọi `aclose()` trên iterator của module đúng một lần cả khi luồng kết thúc bình thường lẫn khi khách ngắt kết nối giữa chừng. Iterator của module nên là đối tượng có `aclose()` đóng tài nguyên kể cả khi CHƯA đọc khúc nào (async generator chưa chạy thì `aclose()` không chạy `finally` của nó).
+- **Xoay khoá** (bộ chuyển tiếp dùng chung): `noi`, `nghe`, `anh_sua` nhớ trạng thái theo (khoá, việc) như ảnh/video (`goi_kha_nang`) — khoá bị từ chối giọng nói không làm chat nghỉ, và ngược lại.
+
+### 6.2. Yêu cầu đa phần (`YeuCauDaPhan`, STT `POST /v1/audio/transcriptions` và sửa ảnh `POST /v1/images/edits`)
+- Phương thức module: `async nghe(yc: YeuCauDaPhan) -> (mã, headers, bytes)` và `async anh_sua(yc: YeuCauDaPhan) -> (mã, headers, bytes)`.
+- **Dựng multipart an toàn**:
+  - Tên tệp (`filename`) do khách khai là đầu vào không tin cậy: lõi giải mã unquote, loại bỏ đường dẫn (`../`, `/`), bỏ ký tự điều khiển ASCII trước khi chuyển tiếp.
+  - MIME type (`content_type`) chỉ chấp nhận định dạng chuẩn `type/subtype` hợp lệ, mọi chuỗi lạ/rác được fallback về `application/octet-stream`.
+  - Giữ nguyên toàn bộ các trường chữ lạ (không lọc bỏ) và đổi tên model bỏ tiền tố `<tien_to>/`.
+  - Nội dung tệp nhị phân được truyền trực tiếp dạng bytes vào multipart payload mà không nhân đôi RAM.
+
