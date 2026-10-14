@@ -492,7 +492,7 @@ Module đã cài nhưng chưa có cấu hình thì liên kết bằng `POST /api
 
 **Lần đầu thêm nguồn git thì cập nhật luôn module đang có**: ở lần đồng bộ thành công đầu tiên của một nguồn,
 web2api **cập nhật** một lần mọi module đã có mã trên máy mà git có bản khác — dù `tu_dong` tắt. Module **mới**
-trên git không tự cài. Giữ mọi chốt: bản mới xin thêm quyền (gói Python, mạng ra) hoặc commit chưa ký khi bật
+trên git không tự cài. Giữ mọi chốt: bản mới xin thêm quyền hoặc commit chưa ký khi bật
 `yeu_cau_chu_ky` thì không cập nhật và ghi lý do vào `ghi_chu`; bản vừa gỡ không cài lại; cập nhật hỏng thì giữ
 bản cũ. Dấu «đã đồng bộ» là commit lưu trong `nguon_git_trang_thai.json`.
 
@@ -520,7 +520,39 @@ curl -s -H "Authorization: Bearer $K" $W/api/nguon-git      # cấu hình + tr�
 Gửi lại `PUT /api/nguon-git` (thân `{}`) để thăm dò **ngay**. Hạn mức GitHub ẩn danh là 60 yêu cầu/giờ/IP;
 web2api đọc số còn lại sau mỗi phản hồi, còn dưới 10 thì giãn nhịp tới giờ đặt lại (`han_muc_con`, `reset_luc`).
 **Tự cài** (`tu_dong: true`) không chạy khi commit chưa ký (nếu bật `yeu_cau_chu_ky`) hoặc khi bản mới xin thêm
-quyền (`yeu_cau_goi`, `tai_nguyen.mang_ra`) — các trường hợp này hiện trong `ghi_chu` để quản trị xem và cài tay.
+quyền — các trường hợp này hiện trong `ghi_chu` để quản trị xem và cài tay (xem «Cập nhật module và duyệt quyền»).
+
+### Cập nhật module và duyệt quyền (chống «rug-pull»)
+
+Kho module bị chiếm (hoặc người viết đổi ý) có thể đẩy một commit mới cho module đã được tin, lén thêm quyền
+nhạy cảm — đặc biệt `nhan_cookie` (nhận cookie đăng nhập của người dùng theo tên miền), `cung_cap` (khả năng mới),
+`yeu_cau_goi` (gói Python cần cài). Cổng chữ ký (`yeu_cau_chu_ky`) chỉ xác thực *ai* ký; đây là tầng khác: xác thực
+nội dung *đòi quyền gì*.
+
+Khi cài/cập nhật một module **đã cài**, web2api so sánh QUYỀN giữa manifest đang cài và bản mới
+(`app/quyen_module.py:diff_quyen`, hàm thuần): từng mã `cung_cap`, từng tên miền `nhan_cookie`, từng gói
+`yeu_cau_goi`, từng mục `tai_nguyen.mang_ra` — và mọi **trường lạ chưa biết đều được coi là quyền** (mặc định
+đóng, không danh sách trắng tên). Chỉ phần **thêm** mới cần duyệt; bớt quyền được qua tự do.
+
+- Bản mới xin thêm quyền → **không kích hoạt**, bản cũ tiếp tục chạy nguyên trạng; `POST /api/nguon-git/cai/<id>`
+  trả `409` với `{"ma": "can_duyet_quyen", "diff": {"them": [...], "bot": [...]}, "sha_commit": ...}` và ghi một
+  dòng cảnh báo ở kênh nhật ký `he_thong`. Yêu cầu chờ duyệt được lưu (nguyên tử, quyền 0600) gắn với đúng SHA
+  commit và băm của diff.
+- Quản trị duyệt bằng **chính đường cài**, thân JSON `{"chap_nhan_quyen_them": [<đúng danh sách «them» đã xem>],
+  "sha_commit": "<đúng SHA đã xem>"}`. Duyệt phải **khớp chính xác**: SHA đổi (kho đẩy tiếp commit mới sau khi bạn
+  xem diff) hoặc diff đổi → duyệt cũ mất hiệu lực, trả 409, không áp dụng gì (chống TOCTOU).
+- Đường `tu_dong`: bản mới xin thêm quyền thì **giữ lại chờ duyệt**, không tự cài (tự cài chỉ áp cho bản không
+  thêm quyền).
+- `GET /api/modules` (đường mở) nêu cờ boolean `cho_duyet_quyen` cho mỗi module — chi tiết diff chỉ có ở phản
+  hồi 409 của đường quản trị, không đưa ra đường mở.
+- Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ module xin những quyền gì (`diff_quyen.them`).
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/echo   # 409 + diff nếu xin thêm quyền
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"chap_nhan_quyen_them": [{"loai": "cung_cap", "ten": "chat"}], "sha_commit": "<sha>"}' \
+  $W/api/nguon-git/cai/echo
+```
 
 ### Module từ xa
 
@@ -1557,7 +1589,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /health` | Không | `{"ok": true, "phien_ban": ...}` |
 | `GET /api/he-thong` | Không | RAM, CPU, đĩa, GPU của máy và container |
 | `GET /api/tinh-nang` | Không | «Tính năng đang có»: module đã cài (`loai`, `cung_cap`, `da_lien_ket`, `tu_xa`), thống kê theo loại, số module theo mã khả năng (đã cài / đã liên kết), `tab`, `muc` |
-| `GET /api/modules` | Không | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so` |
+| `GET /api/modules` | Không | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so`, cờ `cho_duyet_quyen` (true khi có bản mới đang chờ duyệt quyền — chi tiết chỉ ở đường quản trị) |
 | `GET /api/modules/catalog` | Không | Mọi module khám phá được (kèm `loai_ten`, `loai_thu_tu`, `cung_cap`, `muc`, `truong_cau_hinh`, `tai_nguyen`) và `loi` của từng thư mục hỏng |
 | `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git, kèm tóm tắt manifest và `dung_luong`; `moi_nhat` = id các module đã cài đúng bản trên git («Đã là bản mới nhất») |
 | `POST /api/modules/nap-lai` | Có | Quét lại thư mục module, nạp nóng |
@@ -1570,7 +1602,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
-| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo |
+| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo. Bản mới xin thêm quyền → `409 can_duyet_quyen` kèm diff (không kích hoạt); duyệt bằng thân JSON `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}` khớp chính xác. Xem «Cập nhật module và duyệt quyền» |
 | `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
 | `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
 | `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |

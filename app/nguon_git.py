@@ -35,6 +35,7 @@ import shutil
 import tarfile
 import time
 import unicodedata
+from pathlib import Path
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
@@ -42,7 +43,7 @@ import httpx
 from app import kho
 from app.chuyen_tiep import iso
 from app.kham_pha import ID_HOP_LE, doc_manifest, kiem_manifest
-from app.so_module import LoiSo, SoModule
+from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
 
 log = logging.getLogger("web2api.nguon_git")
 
@@ -511,9 +512,36 @@ class NguonGit:
         đã cài rồi (có trong catalog, kể cả chưa liên kết hay đặt tay) thì mọi thay đổi bản là «cập nhật»."""
         return "cập nhật" if id_ in self.so.catalog else "cài"
 
-    async def cai(self, id_: str) -> dict:
+    async def cai(self, id_: str, chap_nhan_quyen_them: list | None = None,
+                sha_commit: str | None = None) -> dict:
+        """Cài module từ git. Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
+        (phải khớp chính xác diff đã xem); không có → cài thường (bản mới xin thêm quyền
+        thì 409 chờ duyệt thay vì kích hoạt)."""
         async with self._khoa:
+            if chap_nhan_quyen_them is not None or sha_commit is not None:
+                return await self._cai_duyet(id_, chap_nhan_quyen_them, sha_commit)
             return await self._cai(id_)
+
+    async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None) -> dict:
+        """Duyệt bản đang chờ: không tải lại, kích hoạt đúng thư mục đã chốt khi xem diff."""
+        if not isinstance(chap_nhan_quyen_them, list) or not sha_commit:
+            raise LoiGit("duyệt cần thân {\"chap_nhan_quyen_them\": [...], \"sha_commit\": \"...\"}", 400)
+        pending = kho.doc_cho_duyet_quyen(id_)
+        if pending is None:
+            raise LoiGit(f"module {id_!r} không có yêu cầu chờ duyệt quyền", 409)
+        if sha_commit != pending.get("sha_commit"):
+            raise LoiGit("SHA commit không khớp yêu cầu chờ duyệt — cài lại để xem diff mới", 409)
+        thu_muc = SoModule.thu_muc_cho_duyet(id_)  # suy từ id, không dùng đường dẫn lưu trong JSON
+        if not thu_muc.is_dir():
+            kho.xoa_cho_duyet_quyen(id_)
+            raise LoiGit(f"bản chờ duyệt của {id_!r} không còn trên đĩa — cài lại để tạo yêu cầu mới", 409)
+        if self.so.catalog.get(id_) is None:
+            kho.xoa_cho_duyet_quyen(id_)
+            raise LoiGit(f"module {id_!r} hiện không cài — cài mới thay vì duyệt", 409)
+        kq = await self.so.cai_thu_muc(id_, thu_muc, chap_nhan_quyen_them=chap_nhan_quyen_them)
+        log.warning("Đã duyệt và kích hoạt bản mới của module %s (commit %s)",
+                    id_, str(sha_commit)[:12])
+        return {"ok": True, "id": id_, "duyet_quyen": True, **kq}
 
     async def _cai(self, id_: str) -> dict:
         cfg = self.cau_hinh()
@@ -669,8 +697,8 @@ class NguonGit:
     # ───────────── tự cài ─────────────
 
     async def _tu_dong(self) -> None:
-        """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, xin thêm quyền,
-        bản vừa gỡ, bản đã tự cài hỏng):
+        """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, bản vừa gỡ,
+        bản đã tự cài hỏng; xin thêm quyền do cổng trong `cai_thu_muc` chặn và giữ lại chờ duyệt):
           - `tu_dong` bật: module mới và bản mới;
           - lần đồng bộ ĐẦU của nguồn git (`_lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, cập nhật module
             đã có mã mà git có bản khác (`co_ban_moi`, kể cả module đặt tay không có .nguon.json) dù
@@ -698,19 +726,19 @@ class NguonGit:
             ly_do = None
             if cfg.get("yeu_cau_chu_ky") and not commit.get("da_xac_minh"):
                 ly_do = f"commit chưa được GitHub xác minh chữ ký (yeu_cau_chu_ky bật) — không tự {viec}, cần quản trị {viec} tay"
-            elif x["trang_thai"] == "co_ban_moi":
-                km = self.so.catalog.get(x["id"])
-                goi = sorted(set(m.get("yeu_cau_goi") or []) - set(km.manifest.get("yeu_cau_goi", [])))
-                mang = sorted(set(m.get("mang_ra") or []) - set(km.manifest["tai_nguyen"].get("mang_ra", [])))
-                if goi or mang:
-                    ly_do = ("bản mới XIN THÊM QUYỀN (" + "; ".join(
-                        ([f"gói: {', '.join(goi)}"] if goi else []) + ([f"mạng ra: {', '.join(mang)}"] if mang else []))
-                        + f") — không tự {viec}, cần quản trị duyệt và {viec} tay")
             if ly_do:
                 self._ghi_chu[x["id"]] = (m["tree_sha"], ly_do)
                 continue
             try:
                 await self._cai(x["id"])
+            except LoiCanDuyetQuyen as e:
+                # Bản mới xin thêm quyền: cổng trong cai_thu_muc đã lưu yêu cầu chờ duyệt —
+                # giữ lại, đánh dấu để không tải lại mỗi vòng (quản trị duyệt tay khi sẵn sàng).
+                self._tu_dong_hong[x["id"]] = m["tree_sha"]
+                self._ghi_chu[x["id"]] = (m["tree_sha"],
+                    f"bản mới XIN THÊM QUYỀN ({len(e.diff['them'])} mục) — không tự {viec}, "
+                    f"chờ quản trị duyệt (POST /api/nguon-git/cai/{x['id']})")
+                log.warning("Tự %s module %s: bản mới xin thêm quyền, chờ quản trị duyệt", viec, x["id"])
             except (LoiGit, LoiSo) as e:
                 self._tu_dong_hong[x["id"]] = m["tree_sha"]
                 self._ghi_chu[x["id"]] = (m["tree_sha"], f"tự {viec} hỏng: {e}")

@@ -428,3 +428,39 @@ def xoa_mot_combo(ten: str) -> bool:
             _ghi_json(_p_combo(), tat_ca, quyen=0o600)
             return True
         return False
+
+
+# ───────────── yêu cầu chờ duyệt quyền module (chống rug-pull, cẩm nang §23) ─────────────
+
+def _p_cho_duyet_quyen() -> Path:
+    return thu_muc_du_lieu() / "cho_duyet_quyen.json"
+
+
+def doc_cho_duyet_quyen(id_: str) -> dict | None:
+    """Yêu cầu chờ duyệt quyền của module, hoặc None."""
+    with _KHOA:
+        du_lieu = doc_json(_p_cho_duyet_quyen())
+        if not isinstance(du_lieu, dict):
+            return None
+        muc = du_lieu.get(id_)
+        return dict(muc) if isinstance(muc, dict) else None
+
+
+def luu_cho_duyet_quyen(id_: str, ban_ghi: dict) -> None:
+    """Lưu yêu cầu chờ duyệt (nguyên tử, quyền 0600)."""
+    with _KHOA:
+        du_lieu = doc_json(_p_cho_duyet_quyen())
+        tat_ca = du_lieu if isinstance(du_lieu, dict) else {}
+        tat_ca[id_] = dict(ban_ghi)
+        _ghi_json(_p_cho_duyet_quyen(), tat_ca, quyen=0o600)
+
+
+def xoa_cho_duyet_quyen(id_: str) -> bool:
+    """Xoá yêu cầu chờ duyệt (đã duyệt hoặc hết hiệu lực)."""
+    with _KHOA:
+        du_lieu = doc_json(_p_cho_duyet_quyen())
+        if not isinstance(du_lieu, dict) or id_ not in du_lieu:
+            return False
+        del du_lieu[id_]
+        _ghi_json(_p_cho_duyet_quyen(), du_lieu, quyen=0o600)
+        return True
