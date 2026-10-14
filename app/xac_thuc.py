@@ -28,7 +28,7 @@ from typing import Any
 
 from fastapi import Request
 
-from app import gioi_han, kho, khoa_khach, nhat_ky
+from app import gioi_han, ip_cho_phep, kho, khoa_khach, nhat_ky
 from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.xac_thuc")
@@ -163,6 +163,7 @@ async def can_quan_tri(request: Request) -> dict[str, Any]:
 
     Khách gọi → 403 (không lộ dữ liệu). Lỗi 401/403 được ghi vào kênh nhật ký `quan_tri`.
     """
+    ip_cho_phep.kiem_tra_ip_quan_tri(request)  # cổng IP đường quản trị (cẩm nang §25), trước mọi xác thực
     try:
         nguoi = await nguoi_goi(request)
     except LoiOpenAI as e:
