@@ -123,8 +123,15 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             request.state.danh_tinh = danh_tinh
             return danh_tinh
 
-        # 2. So khớp khoá khách
-        khach = khoa_khach.tim_theo_khoa_tho(gia_tri)
+        # 2. So khớp khoá khách. Kho khoá hỏng là lỗi HẠ TẦNG của máy chủ, không phải khách đoán sai: chuỗi có đúng
+        # dạng khoá khách → 503, KHÔNG đếm vào giới hạn sai khoá (khách hợp lệ gọi lại không được khoá IP — kéo theo
+        # khoá quản trị cùng IP). Chuỗi dạng khác vẫn đếm như cũ: kho hỏng không mở đường dò khoá quản trị.
+        try:
+            khach = khoa_khach.tim_theo_khoa_tho(gia_tri, nem_khi_kho_hong=True)
+        except khoa_khach.LoiKhoKhoaKhach:
+            if khoa_khach.DANG_KHOA_THO.fullmatch(gia_tri):
+                raise
+            khach = None
         if khach is not None:
             if not khach.get("bat", True):
                 gioi_han.ghi_loi_xac_thuc(request)

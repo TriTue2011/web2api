@@ -519,7 +519,7 @@ class Component extends DCLogic {
       const kk = kb.khoa_khach;
       them('khoa-khach', 'Khoá khách', `${kk.so_khoa} khoá trong bản sao lưu`);
       if (kk.kho_hien_tai_hong) them('khoa-khach', 'Khoá khách', 'kho khoá hiện tại KHÔNG đọc được — mọi khoá được coi là mới');
-      (kk.khoa || []).forEach((k) => them('khoa-khach', 'Khoá khách', `${k.id} «${k.nhan}» — phạm vi ${(k.pham_vi || []).join(', ')}${k.mo_rong_pham_vi ? ' (MỞ RỘNG phạm vi)' : ''}${k.bat ? '' : ' (tắt)'}${k.chu_id ? ' · chủ ' + k.chu_id : ''} [${tt[k.trang_thai] || k.trang_thai}]${k.canh_bao ? ' — ' + k.canh_bao : ''}`));
+      (kk.khoa || []).forEach((k) => them('khoa-khach', 'Khoá khách', `${k.id} «${k.nhan}» — phạm vi ${(k.pham_vi || []).join(', ')}${k.mo_rong_pham_vi ? ' (MỞ RỘNG phạm vi)' : ''}${k.bat_lai ? ' (BẬT LẠI)' : ''}${k.bat ? '' : ' (tắt)'}${k.chu_id ? ' · chủ ' + k.chu_id : ''} [${tt[k.trang_thai] || k.trang_thai}]${k.canh_bao ? ' — ' + k.canh_bao : ''}`));
       if ((kk.se_mat || []).length) them('khoa-khach', 'Khoá khách SẼ MẤT', kk.se_mat.join(', '));
     }
     if ((kb.bi_mat || []).length) them('bi-mat', 'Bí mật (khoá API, phiên)', kb.bi_mat.join(', '));

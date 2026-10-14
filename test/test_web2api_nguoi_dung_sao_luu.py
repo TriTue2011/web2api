@@ -270,3 +270,19 @@ def test_hoan_doi_bam_de_bo_chu_bi_tu_choi(may_a):
     kq = _kiem(_ban_tu_tep(tep))
     assert kq["co_the_ap_dung"] is False
     assert any(t["id"] == "kk_hoan_doi" for t in kq["tu_choi"])
+
+
+def test_bat_lai_khoa_da_tat_va_pham_vi_sao_duoc_canh_bao(du_lieu):
+    """Khôi phục BẬT LẠI một khoá đang tắt phải được đánh dấu riêng; mọi khoá MỚI/ĐỔI có phạm vi «*» có cảnh báo."""
+    k, _ = khoa_khach.tao_khoa(nhan="a", pham_vi=["*"])
+    k2, _ = khoa_khach.tao_khoa(nhan="b", pham_vi=["chat"])
+    khoa_khach.sua_khoa(k["id"], bat=False)
+    khoa_khach.dong_bo_dia()
+    tep = json.loads(khoa_khach._p_khoa_khach().read_text())
+    tep["khoa"][0]["bat"] = True
+    tep["khoa"].append({**tep["khoa"][1], "id": "kk_moi", "bam": "d" * 64, "pham_vi": ["*"]})
+    kq = _kiem(_ban_tu_tep(tep))
+    m = _muc_kb(kq, k["id"])
+    assert m["trang_thai"] == "doi" and m["bat_lai"] is True and "«*»" in (m["canh_bao"] or "")
+    assert _muc_kb(kq, k2["id"])["bat_lai"] is False and _muc_kb(kq, k2["id"])["canh_bao"] is None
+    assert "«*»" in (_muc_kb(kq, "kk_moi")["canh_bao"] or "") and _muc_kb(kq, "kk_moi")["bat_lai"] is False

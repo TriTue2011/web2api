@@ -201,9 +201,10 @@ def test_kho_khoa_khach_hong_khong_bi_ghi_de(moi_truong, hong):
     assert client.get("/api/khoa-khach", headers=QT).status_code == 503
     assert _sha(p) == truoc, "tệp khoá hỏng bị ghi đè — mất mọi khoá cũ"
 
-    # Đường xác thực ĐÓNG (không cấp quyền, không 500); khoá quản trị và /health vẫn chạy để khôi phục được.
+    # Đường xác thực ĐÓNG (không cấp quyền, không 500 — 503 vì là lỗi hạ tầng, xem soát lần ba mục 2); khoá quản
+    # trị và /health vẫn chạy để khôi phục được.
     assert khoa_khach.tim_theo_khoa_tho(tho) is None
-    assert client.get("/v1/models", headers={"Authorization": f"Bearer {tho}"}).status_code == 401
+    assert client.get("/v1/models", headers={"Authorization": f"Bearer {tho}"}).status_code == 503
     assert client.get("/v1/models", headers=QT).status_code == 200
     assert client.get("/api/nguoi-dung", headers=QT).status_code == 200
     assert client.get("/health").status_code == 200
@@ -269,3 +270,124 @@ def test_danh_sach_khoa_neu_pham_vi_hieu_luc(moi_truong):
     nguoi_dung.sua_nguoi_dung(u["id"], bat=False)
     theo_id = {x["id"]: x for x in client.get("/api/khoa-khach", headers=QT).json()["khoa"]}
     assert theo_id[k["id"]]["pham_vi_hieu_luc"] == []
+
+
+# ───────────── Soát lần ba ─────────────
+
+import json  # noqa: E402
+
+from app import gioi_han, nhat_ky  # noqa: E402
+
+BAN_GHI_DUNG = {"id": "kk_x", "nhan": "x", "bat": True, "pham_vi": ["chat"], "tao_luc": None, "dung_cuoi": None,
+                "so_luot": 0, "bam": "a" * 64}
+
+
+@pytest.mark.parametrize("sua", [
+    {"bam": "é"}, {"bam": 12345}, {"bam": "A" * 64}, {"id": "co khoang"}, {"id": 7}, {"bat": "true"}, {"bat": None},
+    {"pham_vi": 5}, {"pham_vi": None}, {"pham_vi": "x" * 500}, {"pham_vi": []}, {"pham_vi": ["Chat"]},
+    {"chu_id": ["x"]}, {"chu_id": "../x"}, {"so_luot": "1"}, {"nhan": 5}, {"tao_luc": 1},
+])
+def test_ban_ghi_khoa_sai_gia_tri_dong_khi_loi_khong_500(moi_truong, sua):
+    """Kho khoá «đúng cấu trúc nông» (có id + bam) nhưng giá trị sai kiểu/không ASCII: nạp bằng CÙNG bộ kiểm của
+    khôi phục → 503 ở đường khoá, khách 401/503, KHOÁ QUẢN TRỊ VẪN 200 (không bao giờ 500)."""
+    client, d = moi_truong
+    (d / "khoa_khach.json").write_text(json.dumps({"khoa": [{**BAN_GHI_DUNG, **sua}]}))
+    khoa_khach.lam_moi_cache()
+    assert client.get("/api/nguoi-dung", headers=QT).status_code == 200
+    assert client.get("/v1/models", headers=QT).status_code == 200
+    r = client.get("/api/khoa-khach", headers=QT)
+    assert r.status_code == 503 and r.json()["error"]["code"] == "guest_key_store_unreadable"
+    assert client.get("/v1/models", headers={"Authorization": "Bearer w2a_khach"}).status_code in (401, 503)
+    assert client.get("/health").status_code == 200
+
+
+def test_ban_ghi_khoa_hop_le_kieu_cu_van_nap(moi_truong):
+    """Đối chứng: bản ghi đúng như tao_khoa ghi (kể cả chu_id null) nạp bình thường."""
+    client, d = moi_truong
+    (d / "khoa_khach.json").write_text(json.dumps({"khoa": [{**BAN_GHI_DUNG, "chu_id": None, "nhan": "x" * 300}]}))
+    khoa_khach.lam_moi_cache()
+    assert client.get("/api/khoa-khach", headers=QT).status_code == 200, "nhãn dài do bản cũ ghi không được làm sập kho"
+
+
+def test_khoa_quan_tri_khong_di_qua_tra_khoa_khach(moi_truong, monkeypatch):
+    """Middleware chặn khoá khách ở /api không được tra khoá quản trị trong kho khoá khách: tra hỏng kiểu gì thì
+    khoá quản trị vẫn 200."""
+    client, _ = moi_truong
+
+    def hong(*a, **k):
+        raise RuntimeError("tra khoá khách hỏng")
+
+    monkeypatch.setattr(khoa_khach, "tim_theo_khoa_tho", hong)
+    assert client.get("/api/nguoi-dung", headers=QT).status_code == 200
+
+
+def test_tim_theo_bam_nhan_bam_khong_ascii_khong_nem(moi_truong):
+    khoa_khach.tao_khoa(nhan="a", pham_vi=["chat"])
+    assert khoa_khach.tim_theo_bam("é" * 64) is None
+
+
+def test_nhan_khoa_qua_dai_bi_tu_choi_o_bien(moi_truong):
+    """Nhãn > 200 ký tự bị từ chối lúc tạo/sửa — để mọi khoá ứng dụng ghi ra đều khôi phục lại được."""
+    client, _ = moi_truong
+    assert client.post("/api/khoa-khach", headers=QT, json={"nhan": "x" * 201}).status_code == 400
+    k = client.post("/api/khoa-khach", headers=QT, json={"nhan": "ok"}).json()["khoa"]
+    assert client.patch(f"/api/khoa-khach/{k['id']}", headers=QT, json={"nhan": "x" * 201}).status_code == 400
+
+
+def test_kho_hong_khach_hop_le_khong_bi_dem_nhu_doan_sai(moi_truong, monkeypatch):
+    """Kho khoá hỏng là lỗi hạ tầng của máy chủ: khách HỢP LỆ gọi lại nhiều lần nhận 503, KHÔNG bị đếm sai khoá, và
+    khoá quản trị cùng IP vẫn 200 (không 429)."""
+    client, d = moi_truong
+    monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "5")
+    gioi_han.khoi_dong()
+    client._transport.client = (IP_NGOAI, 1234)  # IP thật (peer "testclient" được miễn đếm)
+    try:
+        _, tho = khoa_khach.tao_khoa(nhan="a", pham_vi=["chat"])
+        p = d / "khoa_khach.json"
+        p.write_text(p.read_text()[:40])
+        khoa_khach.lam_moi_cache()
+        ma = {client.get("/v1/models", headers={"Authorization": f"Bearer {tho}"}).status_code for _ in range(12)}
+        assert ma == {503}, ma
+        assert client.get("/api/nguoi-dung", headers=QT).status_code == 200
+        # Đoán khoá dạng KHÁC khoá khách vẫn bị đếm (kho hỏng không mở đường dò khoá quản trị không giới hạn).
+        ma_doan = [client.get("/v1/models", headers={"Authorization": "Bearer doan-khoa-quan-tri"}).status_code
+                   for _ in range(8)]
+        assert 429 in ma_doan
+    finally:
+        monkeypatch.setenv("WEB2API_RL_LOI_XAC_THUC", "0")
+        gioi_han.khoi_dong()
+
+
+def test_admin_ngoai_cong_dang_nhap_bi_403_khong_tao_phien(moi_truong, monkeypatch):
+    client, _ = moi_truong
+    adm = _tao("admin", "admin-a")
+    _tao("user", "bob-u")
+    monkeypatch.setenv("WEB2API_QT_IP_CHO_PHEP", MANG_NHA)
+    client._transport.client = (IP_NGOAI, 1234)
+    truoc = len(phien_web._doc_phien())
+    r = client.post("/api/dang-nhap", json={"ten_dang_nhap": "admin-a", "mat_khau": MK})
+    assert r.status_code == 403 and r.json()["error"]["code"] == "ip_not_allowed"
+    assert "csrf" not in r.text and not client.cookies.get("w2a_phien")
+    assert len(phien_web._doc_phien()) == truoc
+    # Sai mật khẩu vẫn 401 đồng nhất (không lộ vai), người dùng thường ngoài cổng vẫn đăng nhập được.
+    assert client.post("/api/dang-nhap", json={"ten_dang_nhap": "admin-a", "mat_khau": "sai" * 5}).status_code == 401
+    assert client.post("/api/dang-nhap", json={"ten_dang_nhap": "bob-u", "mat_khau": MK}).status_code == 200
+    client.cookies.clear()
+    client._transport.client = (IP_TRONG, 1234)
+    assert client.post("/api/dang-nhap", json={"ten_dang_nhap": "admin-a", "mat_khau": MK}).status_code == 200
+    assert adm
+
+
+def test_ten_sai_mau_ghi_mot_dong_nhat_ky_co_gioi_han(moi_truong, monkeypatch):
+    client, _ = moi_truong
+    dong = []
+    monkeypatch.setattr(nhat_ky, "ghi", lambda kenh, muc, noi_dung, **k: dong.append(noi_dung))
+    client._transport.client = (IP_NGOAI, 1234)
+    for _ in range(5):
+        assert client.post("/api/dang-nhap", json={"ten_dang_nhap": "X" * 5000, "mat_khau": "x" * 14}).status_code == 401
+    lien_quan = [d for d in dong if "không hợp lệ" in d]
+    assert len(lien_quan) == 1, dong
+    assert len(lien_quan[0]) < 400 and "X" * 200 not in lien_quan[0]
+    client._transport.client = (IP_TRONG, 1234)
+    client.post("/api/dang-nhap", json={"ten_dang_nhap": "Y y", "mat_khau": "x" * 14})
+    assert len([d for d in dong if "không hợp lệ" in d]) == 2

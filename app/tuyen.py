@@ -1898,12 +1898,36 @@ def _canh_bao_kho_hong_khi_dang_nhap() -> None:
     )
 
 
+#: Nhật ký «tên đăng nhập sai mẫu»: tối đa một dòng mỗi IP mỗi 60 giây, nhớ tối đa 1024 IP (bỏ cũ nhất) — kẻ gửi
+#: dồn dập không đẩy trôi được dòng nhật ký khác, và RAM có trần.
+_TEN_SAI_LAN_GHI: dict[str, float] = {}
+
+
+def _ghi_ten_sai_mau(request: Request, ten: Any) -> None:
+    ip, _ = gioi_han_mod.ip_hieu_luc_phan_loai(request.client.host if request.client else "",
+                                               request.headers.get("x-forwarded-for"))
+    ip = ip or "khong-xac-dinh"
+    bay_gio = time.monotonic()
+    if bay_gio - _TEN_SAI_LAN_GHI.get(ip, -1e9) < 60:
+        return
+    if len(_TEN_SAI_LAN_GHI) >= 1024:
+        _TEN_SAI_LAN_GHI.pop(next(iter(_TEN_SAI_LAN_GHI)))
+    _TEN_SAI_LAN_GHI.pop(ip, None)
+    _TEN_SAI_LAN_GHI[ip] = bay_gio
+    mo_ta = _nhac_lai(ten[:200]) if isinstance(ten, str) else f"<{type(ten).__name__}>"
+    nhat_ky_mod.ghi("quan_tri", "canh_bao",
+                    f"Đăng nhập thất bại: tên đăng nhập không hợp lệ «{mo_ta}» từ IP {ip} (tối đa một dòng/phút/IP)",
+                    ip=ip)
+
+
 @dang_nhap.post("", dependencies=KHONG_LUU)
 async def dang_nhap_web(request: Request, response: Response):
     # Ngoại lệ mở có chủ đích: Đăng nhập giao diện web bằng mật khẩu (giới hạn tần suất IP,
     # khóa tên tài khoản sau 5 lần sai liên tiếp trong 15 phút, băm giả chống timing attack, lỗi 401 đồng nhất).
-    # KHÔNG chịu cổng IP quản trị, có chủ đích: người dùng thường đăng nhập từ ngoài cổng; đăng nhập chỉ cấp PHIÊN,
-    # còn quyền quản trị của phiên admin bị cổng IP chặn ở MỌI chỗ dùng phiên (xac_thuc.can_phien_web, nguoi_goi).
+    # KHÔNG chịu cổng IP quản trị TRƯỚC khi kiểm mật khẩu, có chủ đích: người dùng thường đăng nhập từ ngoài cổng.
+    # Tài khoản vai admin: mật khẩu đúng mà IP ngoài cổng → 403 ip_not_allowed, KHÔNG tạo phiên (phiên admin ngoài
+    # cổng chẳng dùng được gì — mọi chỗ dùng phiên admin đều chịu cổng: xac_thuc.can_phien_web, nguoi_goi). Kiểm SAU
+    # mật khẩu để sai mật khẩu vẫn là 401 đồng nhất (không lộ vai); 403 không lộ thêm gì so với 200 trước đây.
     gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
     phien_web_mod.kiem_tra_kho()  # kho phiên hỏng → 503 trước khi kiểm mật khẩu (không lộ gì về tài khoản)
 
@@ -1915,6 +1939,8 @@ async def dang_nhap_web(request: Request, response: Response):
     mat_khau = mat_khau if isinstance(mat_khau, str) else ""  # sai kiểu = thiếu → cùng 401 đồng nhất
 
     if not ten_dang_nhap or not mat_khau:
+        if not ten_dang_nhap and than.get("ten_dang_nhap") not in (None, ""):
+            _ghi_ten_sai_mau(request, than.get("ten_dang_nhap"))
         await nguoi_dung_mod.chay_bam_gia()
         gioi_han_mod.ghi_loi_xac_thuc(request)
         raise LoiOpenAI(
@@ -1985,7 +2011,11 @@ async def dang_nhap_web(request: Request, response: Response):
             code="invalid_credentials",
         )
 
-    # 4. Thành công: reset bộ đếm sai theo tên, tạo phiên mới
+    # 4. Mật khẩu đúng: tài khoản admin chịu cổng IP quản trị trước khi có phiên (xem lý do ở đầu hàm)
+    if nd.get("vai") == "admin":
+        ip_cho_phep_mod.kiem_tra_ip_quan_tri(request)
+
+    # 5. Thành công: reset bộ đếm sai theo tên, tạo phiên mới
     nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap)
     phien, token_tho = phien_web_mod.tao_phien(nd["id"])
     phien_web_mod.dat_cookie_phien(response, request, token_tho)
