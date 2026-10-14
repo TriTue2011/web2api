@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
     task_dong_bo = asyncio.create_task(_vong_dong_bo_khoa())
     task_quet_phien = asyncio.create_task(_vong_quet_phien(app))
     nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
+    nhat_ky.kiem_tra_chuoi_nen()  # kiểm tra chuỗi băm ở luồng nền; hỏng thì ghi 1 dòng cảnh báo
     try:
         yield
     finally:
@@ -172,6 +173,7 @@ app.include_router(tuyen.dia_chi)
 app.include_router(tuyen.nhat_ky)
 app.include_router(tuyen.khoa_khach)
 app.include_router(tuyen.phien)
+app.include_router(tuyen.sao_luu)
 
 app.include_router(tuyen.thiet_bi)
 app.include_router(tuyen.phe_duyet)
