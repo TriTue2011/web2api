@@ -40,6 +40,7 @@ from app import (
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
     xac_thuc,
+    cong_cu as cong_cu_mod,
 )
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
@@ -80,6 +81,7 @@ sao_luu = APIRouter(prefix="/api", dependencies=QT)
 thiet_bi = APIRouter(prefix="/api/thiet-bi", dependencies=V1_AUTH)
 phe_duyet = APIRouter(prefix="/api/phe-duyet", dependencies=QT)
 tim_kiem = APIRouter(prefix="/api/tim-kiem")
+cong_cu = APIRouter(prefix="/api/cong-cu", dependencies=V1_AUTH)
 tep_module = APIRouter()
 trinh_duyet = novnc_mod.api_router
 novnc = novnc_mod.novnc_router
@@ -1727,6 +1729,47 @@ async def xu_ly_duyet(pd_id: str, request: Request):
 def xu_ly_tu_choi(pd_id: str, request: Request):
     nguoi_tu_choi = getattr(request.state, "nguoi_goi", "quan_tri")
     return thiet_bi_mod.tu_choi_phe_duyet(pd_id, nguoi_tu_choi=nguoi_tu_choi)
+
+
+# ───────────── Công cụ cho AI (/api/cong-cu) ─────────────
+
+@cong_cu.get("")
+async def lay_danh_sach_cong_cu(
+    request: Request,
+    loai: str | None = None,
+    q: str | None = None,
+):
+    """GET /api/cong-cu: sinh danh sách công cụ chuẩn OpenAI function-calling từ thực thể thiết bị.
+
+    - Không khoá -> 401 (qua V1_AUTH).
+    - Khoá khách thiếu phạm vi thiet_bi:doc hoặc thiet_bi:ghi -> 403 (insufficient_scope).
+    - Khoá khách có thiet_bi:doc -> chỉ thấy tools có rủi ro "doc".
+    - Khoá khách có thiet_bi:ghi hoặc quản trị -> thấy đầy đủ tools.
+    """
+    kiem_tra_pham_vi(request, "thiet_bi:doc", "thiet_bi:ghi")
+    so = _so(request)
+
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    duoc_ghi = False
+    if isinstance(danh_tinh, dict):
+        if danh_tinh.get("loai") == "quan_tri":
+            duoc_ghi = True
+        else:
+            pv = danh_tinh.get("pham_vi", [])
+            if "*" in pv or "thiet_bi:ghi" in pv:
+                duoc_ghi = True
+    elif getattr(request.state, "nguoi_goi", "") == "quan_tri":
+        duoc_ghi = True
+
+    ds, _ = await thiet_bi_mod.lay_danh_sach_thuc_the(so, loc_q=q, loc_loai=loai)
+    tools = cong_cu_mod.sinh_cong_cu(ds, duoc_ghi=duoc_ghi)
+    return {
+        "object": "list",
+        "data": list(tools),
+        "tong": tools.tong,
+        "bi_cat": tools.bi_cat,
+        "nguon_ngoai": True,
+    }
 
 
 # ───────────── Tìm kiếm và nguồn tri thức (/api/tim-kiem) ─────────────
