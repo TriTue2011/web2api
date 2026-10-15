@@ -351,8 +351,8 @@ def test_get_modules_mo_chi_boolean(gh, du_lieu):
             await ng.cai("echo")
     chay(ham)
     with TestClient(app) as c:
-        r = c.get("/api/modules")  # đường MỞ, không khoá
+        r = c.get("/api/modules", headers=QT)
         assert r.status_code == 200
         echo = next(m for m in r.json()["modules"] if m["id"] == "echo")
         assert echo["cho_duyet_quyen"] is True
-        assert "diff" not in echo and "them" not in echo  # không lộ chi tiết quyền ở đường mở
+        assert "diff" not in echo and "them" not in echo

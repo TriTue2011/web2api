@@ -13,10 +13,14 @@ from fastapi.testclient import TestClient
 from app import he_thong
 from app.main import app, PHIEN_BAN
 
+KHOA_QT = "AIzaSyKIEMNGHIEM-000000000000000000009"
+QT = {"Authorization": f"Bearer {KHOA_QT}"}
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
     # `with` để chạy lifespan: sổ module (app.state.so) được dựng lúc khởi động.
     with TestClient(app) as c:
         yield c
@@ -30,7 +34,7 @@ def test_health(client):
 
 
 def test_he_thong_du_khoa_va_dung_kieu(client, tmp_path):
-    r = client.get("/api/he-thong")
+    r = client.get("/api/he-thong", headers=QT)
     assert r.status_code == 200
     j = r.json()
     assert j["phien_ban"] == PHIEN_BAN
@@ -53,7 +57,8 @@ def test_he_thong_du_khoa_va_dung_kieu(client, tmp_path):
 
 def test_dia_thu_muc_khong_ton_tai_bao_loi_khong_raise(tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path / "chua-co"))
-    j = TestClient(app).get("/api/he-thong").json()
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    j = TestClient(app).get("/api/he-thong", headers=QT).json()
     assert j["dia"]["tong"] is None and j["dia"]["trong"] is None
     assert "chua-co" in j["dia"]["loi"]
 
@@ -107,14 +112,14 @@ def test_gpu_doc_dung_dau_ra(monkeypatch):
 
 
 def test_modules_chua_co_file_la_rong(client):
-    r = client.get("/api/modules")
+    r = client.get("/api/modules", headers=QT)
     assert r.status_code == 200
     assert r.json() == {"modules": [], "canh_bao": None, "thong_bao_so": 0}
 
 
 def test_modules_doc_tu_file(client, tmp_path):
     (tmp_path / "modules.json").write_text(json.dumps({"modules": [{"id": "gemini-web", "ten": "Gemini web"}]}))
-    assert client.get("/api/modules").json() == {
+    assert client.get("/api/modules", headers=QT).json() == {
         "modules": [{"id": "gemini-web", "ten": "Gemini web"}],
         "canh_bao": None,
         "thong_bao_so": 0,
@@ -125,7 +130,7 @@ def test_modules_doc_tu_file(client, tmp_path):
 def test_modules_hong_tra_rong_va_ghi_log(client, tmp_path, caplog, noi_dung):
     (tmp_path / "modules.json").write_text(noi_dung)
     with caplog.at_level(logging.WARNING):
-        j = client.get("/api/modules").json()
+        j = client.get("/api/modules", headers=QT).json()
     assert j["modules"] == []
     assert "modules.json" in j["canh_bao"]
     # Không nuốt im lặng: log có cảnh báo nêu rõ đường dẫn file.
@@ -137,7 +142,7 @@ def test_goc_tra_trang_chon_trang_dau(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     # index.html: đọc /api/tinh-nang rồi chuyển sang Studio hoặc Hệ thống → Module (đường tương đối).
-    assert 'src="./khung.js"' in r.text and "trangDau" in r.text and "He-thong.dc.html" in r.text
+    assert 'src="./khung.js"' in r.text and "taiTinhNang" in r.text and "Dang-nhap.dc.html" in r.text
 
 
 def test_phuc_vu_support_js_va_trang_dc(client):
@@ -166,12 +171,12 @@ def test_chan_thoat_khoi_thu_muc_web(client, duong):
 
 def test_api_khong_bi_mount_che(client):
     # /api/* đăng ký TRƯỚC mount "/" nên không rơi vào StaticFiles.
-    assert client.get("/api/modules").headers["content-type"].startswith("application/json")
-    assert client.get("/api/khong-co").status_code == 404
+    assert client.get("/api/modules", headers=QT).headers["content-type"].startswith("application/json")
+    assert client.get("/api/khong-co", headers=QT).status_code == 404
 
 
 def test_ram_cpu_may_mac_dinh_doc_tu_proc(client):
-    j = client.get("/api/he-thong").json()
+    j = client.get("/api/he-thong", headers=QT).json()
     assert j["ram"]["may"]["nguon"] == "doc_tu_proc" and j["cpu"]["nguon"] == "doc_tu_proc"
 
 
@@ -179,7 +184,7 @@ def test_ram_cpu_may_do_nguoi_van_hanh_khai(client, monkeypatch):
     # Trong LXC, /proc/meminfo của container bị giới hạn chỉ thấy phần được cấp (đo 10/10/2026) → cho khai số máy.
     monkeypatch.setenv("WEB2API_MAY_RAM_MB", "12288")
     monkeypatch.setenv("WEB2API_MAY_CPU", "8")
-    j = client.get("/api/he-thong").json()
+    j = client.get("/api/he-thong", headers=QT).json()
     assert j["ram"]["may"] == {"tong": 12288 * 1024 * 1024, "trong": None, "nguon": "khai_bao"}
     assert j["cpu"]["so_nhan_may"] == 8 and j["cpu"]["nguon"] == "khai_bao"
     assert set(j["ram"]["container"]) == {"gioi_han", "dang_dung"}  # số container vẫn đọc cgroup
@@ -189,5 +194,5 @@ def test_ram_cpu_may_do_nguoi_van_hanh_khai(client, monkeypatch):
 def test_khai_bao_sai_thi_bo_qua_va_canh_bao(client, monkeypatch, caplog, gia_tri):
     monkeypatch.setenv("WEB2API_MAY_RAM_MB", gia_tri)
     with caplog.at_level(logging.WARNING):
-        j = client.get("/api/he-thong").json()
+        j = client.get("/api/he-thong", headers=QT).json()
     assert j["ram"]["may"]["nguon"] == "doc_tu_proc" and "WEB2API_MAY_RAM_MB" in caplog.text

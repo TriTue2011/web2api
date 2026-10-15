@@ -359,7 +359,7 @@ Mỗi module có **id** (ví dụ `gemini-api`) và **tiền tố model** (ví d
   `bat_buoc` mà chưa có khoá thì không được nạp, không có trong `/v1/models`, và `/v1/chat/completions` trả `404`
   nêu rõ «chưa có khoá». Module không có trường bắt buộc thì cài từ git xong là liên kết luôn.
 
-**«Tính năng đang có»** — `GET /api/tinh-nang` (mở, không bí mật): mỗi module đã cài góp mã `loai` và các mã
+**«Tính năng đang có»** — `GET /api/tinh-nang` (đòi hỏi khoá quản trị hoặc phiên web quản trị viên): mỗi module đã cài góp mã `loai` và các mã
 `cung_cap` của nó; lõi đếm số module theo từng mã, tách **đã cài** (`kha_nang_da_cai`) và **đã liên kết**
 (`kha_nang_lien_ket`), kèm thống kê theo loại (`loai`: `ma`, `ten`, `thu_tu`, `so_da_cai`, `so_da_lien_ket`), tab
 riêng của module đã liên kết (`tab`, đường tương đối) và mục con module khai (`muc`, kèm `can`). Module từ xa được
@@ -551,8 +551,8 @@ Khi cài/cập nhật một module **đã cài**, web2api so sánh QUYỀN giữ
   xem diff) hoặc diff đổi → duyệt cũ mất hiệu lực, trả 409, không áp dụng gì (chống TOCTOU).
 - Đường `tu_dong`: bản mới xin thêm quyền thì **giữ lại chờ duyệt**, không tự cài (tự cài chỉ áp cho bản không
   thêm quyền).
-- `GET /api/modules` (đường mở) nêu cờ boolean `cho_duyet_quyen` cho mỗi module — chi tiết diff chỉ có ở phản
-  hồi 409 của đường quản trị, không đưa ra đường mở.
+- `GET /api/modules` nêu cờ boolean `cho_duyet_quyen` cho mỗi module — chi tiết diff chỉ có ở phản
+  hồi 409 của đường quản trị.
 - Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ module xin những quyền gì (`diff_quyen.them`).
 
 ```bash
@@ -1619,10 +1619,9 @@ vừa gỡ và không tự cài lại đúng bản đó. Module từ xa gỡ cù
   nếu dùng thì **chỉ đọc**.
 - **Kho public**: mọi người đọc được mã module và toàn bộ lịch sử commit — không đưa khoá, mật khẩu, địa chỉ nội
   bộ vào module; bí mật nhập lúc liên kết (trường `bi_mat`), lưu ở `/data/bi_mat/` quyền 0600.
-- Khoá API, token không xuất hiện trong phản hồi API, nhật ký hay thông báo lỗi; chỉ hiện dạng che `…abcd`. Các GET
-  mở (`/api/modules`, `/api/modules/catalog`, `/api/tinh-nang`) không chứa bí mật và không lộ tên kho git.
-- Trang web chỉ gửi khoá quản trị trong header (không bao giờ trong URL); khoá API dán vào form bị xoá khỏi trang
-  ngay khi gửi.
+- Khoá API, token không xuất hiện trong phản hồi API, nhật ký hay thông báo lỗi; chỉ hiện dạng che `…abcd`. Các tuyến
+  API quản trị (`/api/he-thong`, `/api/modules`, `/api/modules/catalog`, `/api/tinh-nang`) đòi hỏi khoá quản trị hoặc phiên quản trị viên và không lộ tên kho git hay bí mật.
+- Giao diện web sử dụng phiên cookie HttpOnly `w2a_phien` và header `X-CSRF-Token` lưu trong bộ nhớ; không còn lưu khoá quản trị trên trình duyệt. Khoá API dán vào form bị xoá khỏi trang ngay khi gửi.
 
 #### Nhật ký chống sửa lén (chuỗi băm)
 
@@ -1681,10 +1680,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 |---|---|---|
 | `GET /` | Không | Trang nhỏ chọn trang đầu (Studio hoặc Hệ thống → Module) theo `/api/tinh-nang` |
 | `GET /health` | Không | `{"ok": true, "phien_ban": ...}` |
-| `GET /api/he-thong` | Không | RAM, CPU, đĩa, GPU của máy và container |
-| `GET /api/tinh-nang` | Không | «Tính năng đang có»: module đã cài (`loai`, `cung_cap`, `da_lien_ket`, `tu_xa`), thống kê theo loại, số module theo mã khả năng (đã cài / đã liên kết), `tab`, `muc` |
-| `GET /api/modules` | Không | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so`, cờ `cho_duyet_quyen` (true khi có bản mới đang chờ duyệt quyền — chi tiết chỉ ở đường quản trị) |
-| `GET /api/modules/catalog` | Không | Mọi module khám phá được (kèm `loai_ten`, `loai_thu_tu`, `cung_cap`, `muc`, `truong_cau_hinh`, `tai_nguyen`) và `loi` của từng thư mục hỏng |
+| `GET /api/he-thong` | Có | RAM, CPU, đĩa, GPU của máy và container |
+| `GET /api/tinh-nang` | Có | «Tính năng đang có»: module đã cài (`loai`, `cung_cap`, `da_lien_ket`, `tu_xa`), thống kê theo loại, số module theo mã khả năng (đã cài / đã liên kết), `tab`, `muc` |
+| `GET /api/modules` | Có | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so`, cờ `cho_duyet_quyen` (true khi có bản mới đang chờ duyệt quyền — chi tiết chỉ ở đường quản trị) |
+| `GET /api/modules/catalog` | Có | Mọi module khám phá được (kèm `loai_ten`, `loai_thu_tu`, `cung_cap`, `muc`, `truong_cau_hinh`, `tai_nguyen`) và `loi` của từng thư mục hỏng |
 | `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git, kèm tóm tắt manifest và `dung_luong`; `moi_nhat` = id các module đã cài đúng bản trên git («Đã là bản mới nhất») |
 | `POST /api/modules/nap-lai` | Có | Quét lại thư mục module, nạp nóng |
 | `POST /api/modules/tu-xa` | Có | Đăng ký module từ xa |

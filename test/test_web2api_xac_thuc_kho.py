@@ -41,6 +41,10 @@ CAN_QUAN_TRI = [
     ("GET", "/api/nhat-ky"),
     ("GET", "/api/nhat-ky/kenh"),
     ("DELETE", "/api/nhat-ky"),
+    ("GET", "/api/he-thong"),
+    ("GET", "/api/modules"),
+    ("GET", "/api/modules/catalog"),
+    ("GET", "/api/tinh-nang"),
 ]
 
 
@@ -54,7 +58,7 @@ def test_thieu_hoac_sai_khoa_bi_401(client, phuong_thuc, duong, tieu_de):
     assert loi["type"] == "invalid_request_error" and loi["code"] == "invalid_api_key" and loi["message"]
 
 
-@pytest.mark.parametrize("duong", ["/health", "/api/he-thong", "/api/modules", "/api/modules/catalog", "/", "/support.js"])
+@pytest.mark.parametrize("duong", ["/health", "/", "/support.js", "/api/thiet-lap"])
 def test_duong_mo_khong_can_khoa(client, duong):
     assert client.get(duong).status_code == 200
 

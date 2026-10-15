@@ -225,7 +225,7 @@ def test_tich_hop_web2api_cai_khong_khoa_sau_do_lien_ket(du_lieu):
 
     with TestClient(app) as c:
         # Cài không cần khoá: có trong danh sách nhưng chưa phục vụ
-        r = c.get("/api/modules")
+        r = c.get("/api/modules", headers=HEADER_ADMIN)
         assert r.status_code == 200
         mods = r.json()["modules"]
         ag = next((m for m in mods if m["id"] == "antigravity"), None)
@@ -248,7 +248,7 @@ def test_tich_hop_web2api_cai_khong_khoa_sau_do_lien_ket(du_lieu):
             assert r.json()["ok"] is True
 
             # Sau khi liên kết: da_cau_hinh = True
-            r_mod = c.get("/api/modules").json()["modules"]
+            r_mod = c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"]
             ag_sau = next(m for m in r_mod if m["id"] == "antigravity")
             assert ag_sau["da_cau_hinh"] is True
 
@@ -281,9 +281,9 @@ def test_dieu_kien_1_loi_chay_dung_khi_khong_co_module_va_khi_co_module_la(du_li
     # 1. Không có module nào
     with TestClient(app) as c:
         assert c.get("/health").status_code == 200
-        assert c.get("/api/he-thong").status_code == 200
-        assert c.get("/api/modules").status_code == 200
-        assert c.get("/api/modules").json()["modules"] == []
+        assert c.get("/api/he-thong", headers=HEADER_ADMIN).status_code == 200
+        assert c.get("/api/modules", headers=HEADER_ADMIN).status_code == 200
+        assert c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"] == []
         assert c.get("/v1/models", headers=HEADER_ADMIN).json()["data"] == []
 
     # 2. Chỉ có module loại lạ (ví dụ loai: "nha_thong_minh", cung_cap: ["den"])
@@ -316,8 +316,8 @@ class Module:
 
     with TestClient(app) as c:
         assert c.get("/health").status_code == 200
-        assert c.get("/api/tinh-nang").status_code == 200
-        mods = c.get("/api/modules").json()["modules"]
+        assert c.get("/api/tinh-nang", headers=HEADER_ADMIN).status_code == 200
+        mods = c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"]
         assert len(mods) == 1
         assert mods[0]["loai"] == "nha_thong_minh"
 
@@ -325,7 +325,7 @@ class Module:
 def test_dieu_kien_2_them_go_module_giua_chung_khong_sua_ma_loi(du_lieu):
     """ĐK 2: Thêm/gỡ module giữa chừng không phải sửa mã lõi."""
     with TestClient(app) as c:
-        assert len(c.get("/api/modules").json()["modules"]) == 0
+        assert len(c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"]) == 0
 
         # Thả module mới vào thư mục dữ liệu
         mod_moi = du_lieu / "modules" / "cam-bien-la"
@@ -356,13 +356,13 @@ class Module:
 
         # Nạp lại
         assert c.post("/api/modules/nap-lai", headers=HEADER_ADMIN).status_code == 200
-        mods = c.get("/api/modules").json()["modules"]
+        mods = c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"]
         assert any(x["id"] == "cam-bien-la" for x in mods)
 
         # Gỡ module
         shutil.rmtree(mod_moi)
         assert c.post("/api/modules/nap-lai", headers=HEADER_ADMIN).status_code == 200
-        mods_sau = c.get("/api/modules").json()["modules"]
+        mods_sau = c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"]
         assert not any(x["id"] == "cam-bien-la" for x in mods_sau)
 
 
@@ -371,10 +371,10 @@ def test_dieu_kien_2_tha_va_go_chinh_module_antigravity_giua_chung(du_lieu):
     hình), liên kết → model hiện; gỡ thư mục, nạp nóng → biến mất khỏi /api/modules và /v1/models. Không sửa lõi."""
     dich = du_lieu / "modules" / "antigravity"
     with TestClient(app) as c:
-        assert c.get("/api/modules").json()["modules"] == []
+        assert c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"] == []
         shutil.copytree(THU_MUC_MODULE, dich, ignore=shutil.ignore_patterns("__pycache__"))
         assert c.post("/api/modules/nap-lai", headers=HEADER_ADMIN).status_code == 200
-        ag = next(m for m in c.get("/api/modules").json()["modules"] if m["id"] == "antigravity")
+        ag = next(m for m in c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"] if m["id"] == "antigravity")
         assert ag["can_cau_hinh"] is True and ag["da_cau_hinh"] is False
         assert not [m for m in c.get("/v1/models", headers=HEADER_ADMIN).json()["data"] if m["id"].startswith("antigravity/")]
 
@@ -390,7 +390,7 @@ def test_dieu_kien_2_tha_va_go_chinh_module_antigravity_giua_chung(du_lieu):
         # (lõi cố ý không giấu cấu hình mất mã — app/tuyen.py ds_modules).
         shutil.rmtree(dich)
         assert c.post("/api/modules/nap-lai", headers=HEADER_ADMIN).status_code == 200
-        con = [m for m in c.get("/api/modules").json()["modules"] if m.get("id") == "antigravity"]
+        con = [m for m in c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"] if m.get("id") == "antigravity"]
         assert all("loai" not in m and not m.get("da_cau_hinh") for m in con), con
         assert not [m for m in c.get("/v1/models", headers=HEADER_ADMIN).json()["data"] if m["id"].startswith("antigravity/")]
         r = c.post("/v1/chat/completions", headers=HEADER_ADMIN,
@@ -400,7 +400,7 @@ def test_dieu_kien_2_tha_va_go_chinh_module_antigravity_giua_chung(du_lieu):
         shutil.copytree(THU_MUC_MODULE, dich, ignore=shutil.ignore_patterns("__pycache__"))
         assert c.post("/api/modules/nap-lai", headers=HEADER_ADMIN).status_code == 200
         assert c.delete("/api/modules/antigravity", headers=HEADER_ADMIN).status_code == 200
-        assert not any(m.get("id") == "antigravity" for m in c.get("/api/modules").json()["modules"])
+        assert not any(m.get("id") == "antigravity" for m in c.get("/api/modules", headers=HEADER_ADMIN).json()["modules"])
         assert not (du_lieu / "bi_mat" / "antigravity.json").exists()
 
 

@@ -350,7 +350,7 @@ def test_go_module_giu_phien_khong_quet(du_lieu):
 def test_loi_chay_binh_thuong_khi_khong_co_phien(du_lieu):
     with TestClient(app) as c:
         # GET /api/tinh-nang
-        r_tn = c.get("/api/tinh-nang")
+        r_tn = c.get("/api/tinh-nang", headers=QT)
         assert r_tn.status_code == 200
         j_tn = r_tn.json()
         assert j_tn["phien"] == {"tong": 0, "can_dang_nhap": 0}

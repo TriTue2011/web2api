@@ -34,7 +34,11 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
 <sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
 </div></sc-for></div>
-<div class="acc-cho" aria-hidden="true"></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
 </nav>
 <sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
 
@@ -42,15 +46,6 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <h1 class="an-chu">Hệ thống — AI · {{tieuMuc}}</h1>
 <sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang đọc…</p></sc-if>
 <sc-if value="{{tnLoi}}"><p role="alert" class="bao bao-loi">Không đọc được dữ liệu: {{tnLoi}}</p></sc-if>
-
-<sc-if value="{{khongKhoa}}">
-<section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri" style="gap:10px">
-<h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2>
-<p class="phu">Thêm, thay, xoá khoá và kiểm tình trạng từng khoá đều cần khoá quản trị. Khoá chỉ lưu trong trình duyệt này.</p>
-<div class="o-va-nut"><label for="o-khoa" class="an-chu">Khoá quản trị</label><input id="o-khoa" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}"><button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button></div>
-</section>
-</sc-if>
-<sc-if value="{{khoaLoi}}"><p role="alert" class="bao bao-loi" id="khoa-loi">{{khoaLoi}}</p></sc-if>
 
 <sc-if value="{{coMsg}}"><div role="{{msgVai}}" id="tin-ai" style="{{msgSt}}"><span style="flex:1 1 0;min-width:0;text-wrap:pretty">{{msg}}</span><button type="button" aria-label="Đóng thông báo" onClick="{{dongMsg}}" style="{{msgNutSt}}">✕</button></div></sc-if>
 
@@ -264,9 +259,8 @@ const chuThuong = (s) => String(s || '').charAt(0).toLowerCase() + String(s || '
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    const khoa = K.docKhoa();
     const den = this.neoTk();
-    this.state = { khoa, khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', cat: [], mods: [], models: [], dangTai: true,
+    this.state = { nguoiDung: null, tn: null, tnLoi: '', cat: [], mods: [], models: [], dangTai: true,
       tab: den ? 'tai_khoan' : tabTheoNeo(), sk: {}, menuMo: null, ghi: '', ghiLoi: false,
       tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
@@ -286,6 +280,7 @@ class Component extends DCLogic {
   }
 
   async didMount() {
+    K.napToi().then((nd) => { if (nd) this.setState({ nguoiDung: nd }); });
     let tn;
     try { tn = await K.taiTinhNang(); } catch (e) { this.setState({ tnLoi: e.message, dangTai: false }); return; }
     // Gõ tay trang/tab chưa đủ điều kiện → về trang Module kèm lời giải thích; không dựng gì của tab đó.
@@ -302,12 +297,11 @@ class Component extends DCLogic {
     if (this._den) this.denForm();
   }
   async taiLai() {
-    const [tn, cat, mods] = await Promise.allSettled([K.taiTinhNang(), K.goi('api/modules/catalog', { khoa: '' }), K.goi('api/modules', { khoa: '' })]);
+    const [tn, cat, mods] = await Promise.allSettled([K.taiTinhNang(), K.goi('api/modules/catalog'), K.goi('api/modules')]);
     this.setState({ tn: tn.status === 'fulfilled' ? tn.value : this.state.tn,
       cat: cat.status === 'fulfilled' ? ((cat.value.j && cat.value.j.modules) || []) : this.state.cat,
       mods: mods.status === 'fulfilled' ? ((mods.value.j && mods.value.j.modules) || []) : this.state.mods,
       soTb: mods.status === 'fulfilled' ? (mods.value.j.thong_bao_so || 0) : 0, dangTai: false });
-    if (!this.state.khoa) return;
     for (const m of this.dsAi()) if (m.da_lien_ket) {
       this.kiem(m.id);
       this.taiModelModule(m.id);
@@ -322,7 +316,7 @@ class Component extends DCLogic {
     } catch (e) { this.loi(e); return false; }
   }
   async taiModelModule(id) {
-    if (!this.state.khoa || !id) return;
+    if (!id) return;
     try {
       const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/model');
       if (j && (j.models || j.danh_muc)) {
@@ -410,7 +404,7 @@ class Component extends DCLogic {
       this.msg('Lỗi lưu thay đổi: ' + e.message, true);
     }
   }
-  loi(e) { if (e && e.ma === 401) this.setState({ khoaLoi: 'Khoá quản trị sai hoặc thiếu (HTTP 401). Dán lại khoá đúng ở trang Hệ thống → Module.' }); }
+  loi(e) {}
   dsAi() { return ((this.state.tn && this.state.tn.modules) || []).filter((m) => K.coMa(m, K.AI)); }
   async kiem(id) {
     this.setState((s) => ({ sk: Object.assign({}, s.sk, { [id]: Object.assign({}, s.sk[id], { dang: true }) }) }));
@@ -422,13 +416,6 @@ class Component extends DCLogic {
   chonTab(id) {
     this.setState({ tab: id, ghi: '', xoa: null, pvDd: false });
     history.replaceState(null, '', id === TAB[0] ? location.pathname : '#' + K.DIEU_KIEN[id].neo);
-  }
-  luuKhoa() {
-    const k = (this.state.khoaNhap || '').trim();
-    if (!k) return;
-    K.luuKhoa(k);
-    this.setState({ khoa: k, khoaNhap: '', khoaLoi: '' });
-    setTimeout(() => this.taiLai(), 0);
   }
   msg(chu, loi) { this.setState({ ghi: chu, ghiLoi: !!loi }); }
 
@@ -513,7 +500,7 @@ class Component extends DCLogic {
     const ai = tn ? this.dsAi() : [];
     const catId = new Map((s.cat || []).filter((m) => m && m.id).map((m) => [m.id, m]));
     const khoa = new Map(ai.map((m) => [m.id, this.khoaCua(m)]));
-    const coKhoaQt = !!s.khoa;
+    const coKhoaQt = true;
 
     // ===== Tài khoản =====
     const tatCaTk = ai.flatMap((m) => khoa.get(m.id));
@@ -709,9 +696,10 @@ class Component extends DCLogic {
       hinh: K.BIEU_TUONG, navHT: K.menuNav(this, K.navHeThong(tn, 'ai', s.soTb), s.tab), menuMo: !!s.menuMo,
       dongMenu: () => this.setState({ menuMo: null }), phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null, pvDd: false }); },
       coQuayLai: !!ql, khongQuayLai: !ql, quayLai: ql || {},
-      dangTai: s.dangTai, tnLoi: s.tnLoi, khongKhoa: !s.khoa, khoaNhap: s.khoaNhap, khoaLoi: s.khoaLoi,
-      goKhoa: (e) => this.setState({ khoaNhap: e.target.value }), luuKhoa: () => this.luuKhoa(),
-      phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
+      dangTai: s.dangTai, tnLoi: s.tnLoi, khongKhoa: false, khoaLoi: '',
+      tenNguoiDung: s.nguoiDung ? s.nguoiDung.ten : '',
+      nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '',
+      dangXuat: () => K.dangXuat(),
       coMsg: !!s.ghi, msg: s.ghi, msgVai: s.ghiLoi ? 'alert' : 'status', dongMsg: () => this.setState({ ghi: '' }),
       msgSt: 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;font-size:13px;' + (s.ghiLoi ? 'border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12' : 'border:1px solid #BFE0D9;background:#E8F4F1;color:#0B5A53'),
       msgNutSt: 'flex:0 0 auto;width:32px;height:32px;border:0;border-radius:50%;background:transparent;font-size:16px;line-height:1;padding:0;color:' + (s.ghiLoi ? '#8A1C12' : '#0B5A53'),

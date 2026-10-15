@@ -302,7 +302,7 @@ def test_combo_json_hong_khong_lam_sap(moi_truong, noi_dung):
     assert ("combo/tot" in ids) == ("tot" in noi_dung)
     assert client.get("/api/combo/trang-thai", headers=QT).status_code == 200
     assert client.get("/api/combo", headers=QT).status_code == 200
-    assert client.get("/api/tinh-nang").json()["co_combo"] is ("tot" in noi_dung)
+    assert client.get("/api/tinh-nang", headers=QT).json()["co_combo"] is ("tot" in noi_dung)
     assert chat(client, "combo/hong1").status_code == 404
     if "tot" in noi_dung:
         assert chat(client, "combo/tot").headers["x-web2api-route"] == "pa/m1"
@@ -738,11 +738,11 @@ def test_khoa_dinh_bam_va_co_tran():
 
 def test_co_combo_dung_nghia(moi_truong):
     client, _, _ = moi_truong
-    assert client.get("/api/tinh-nang").json()["co_combo"] is False
+    assert client.get("/api/tinh-nang", headers=QT).json()["co_combo"] is False
     assert put(client, "cb", [{"model": "pa/m1"}]).status_code == 200
-    assert client.get("/api/tinh-nang").json()["co_combo"] is True
+    assert client.get("/api/tinh-nang", headers=QT).json()["co_combo"] is True
     assert client.delete("/api/combo/cb", headers=QT).status_code == 200
-    assert client.get("/api/tinh-nang").json()["co_combo"] is False
+    assert client.get("/api/tinh-nang", headers=QT).json()["co_combo"] is False
 
 
 def test_combo_trong_v1_models(moi_truong):

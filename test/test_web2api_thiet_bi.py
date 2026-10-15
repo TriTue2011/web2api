@@ -180,7 +180,7 @@ def test_1_loi_chay_dung_khi_khong_co_module(moi_truong):
     assert res["rui_ro"] == ["doc", "ghi", "nguy_hiem"]
 
     # /api/tinh-nang hoạt động bình thường
-    r_tn = client.get("/api/tinh-nang")
+    r_tn = client.get("/api/tinh-nang", headers=QT)
     assert r_tn.status_code == 200
 
 

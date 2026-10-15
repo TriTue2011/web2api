@@ -291,8 +291,8 @@ def test_them_vao_danh_sach_khu_trung_va_khong_tra_cookie(client, caplog):
         _khong_chua_cookie(r.text)
         for muc in r.json()["ket_qua_tung_khoa"]:
             assert set(muc) <= {"khoa", "ok", "loi"}, "chỉ khoa/ok/loi — trường thừa của module bị bỏ"
-    # Cấu hình công khai (GET mở) chỉ có dạng che
-    _khong_chua_cookie(json.dumps(client.get("/api/modules").json(), ensure_ascii=False))
+    # Cấu hình công khai chỉ có dạng che
+    _khong_chua_cookie(json.dumps(client.get("/api/modules", headers=QT).json(), ensure_ascii=False))
     _khong_chua_cookie(json.dumps(client.get("/api/modules/dich-gia/cau-hinh", headers=QT).json(), ensure_ascii=False))
     _khong_chua_cookie("\n".join(rec.getMessage() + repr(rec.args) for rec in caplog.records))
     so_nk = nhat_ky.doc(kenh="trinh_duyet", gioi_han=100)

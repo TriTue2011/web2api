@@ -13,18 +13,19 @@
 <helmet>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
-main.pg{padding:32px 32px 48px;gap:20px}
-.khoa-khach-hang{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px;border-top:1px solid var(--line);min-width:0}
-.khoa-khach-hang:first-child{border-top:0}
-.khoa-thong-tin{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:4px}
-.khoa-nhan{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.khoa-phu{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.khoa-tac-vu{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-left:auto}
+main.pg{padding:32px 32px 48px;gap:24px}
+.khoa-khach-hang,.nguoi-dung-hang{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px;border-top:1px solid var(--line);min-width:0}
+.khoa-khach-hang:first-child,.nguoi-dung-hang:first-child{border-top:0}
+.khoa-thong-tin,.nguoi-dung-thong-tin{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.khoa-nhan,.nguoi-dung-nhan{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.khoa-phu,.nguoi-dung-phu{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.khoa-tac-vu,.nguoi-dung-tac-vu{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-left:auto}
 .pham-vi-chon{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .the-ket-noi-moi{background:#F1F7F5;border-color:#B7DDD5}
+.acc-hop{flex:0 0 auto;margin-left:auto;display:flex;align-items:center;gap:10px}
 @media (max-width:1023px){
 main.pg{padding:12px 16px 24px}
-.khoa-tac-vu{margin-left:0;width:100%;justify-content:flex-end}
+.khoa-tac-vu,.nguoi-dung-tac-vu{margin-left:0;width:100%;justify-content:flex-end}
 }
 </style>
 </helmet>
@@ -38,29 +39,145 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
 <sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
 </div></sc-for></div>
-<div class="acc-cho" aria-hidden="true"></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
 </nav>
 <sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
 
 <main class="pg">
 <h1 class="an-chu">Hệ thống — Bảo mật &amp; người dùng</h1>
 
-<sc-if value="{{khongKhoa}}">
-<section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri">
-<div class="dong-nut" style="justify-content:space-between"><h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2><span class="huy huy-vang">Chưa có khoá</span></div>
-<p class="phu">Cần khoá quản trị để quản lý khoá khách và cấu hình bảo mật. Dán khoá quản trị đã cấp để tiếp tục.</p>
-<div class="o-va-nut">
-<label for="o-khoa" class="an-chu">Khoá quản trị</label>
-<input id="o-khoa" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}">
-<button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button>
+<sc-if value="{{laAdmin}}">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     KHỐI QUẢN TRỊ VIÊN: QUẢN LÝ NGƯỜI DÙNG
+     ═══════════════════════════════════════════════════════════════ -->
+
+<sc-if value="{{coNguoiDungMoi}}">
+<section class="the the-ket-noi-moi" aria-labelledby="h-nd-moi" id="the-thong-tin-nd-moi">
+<div class="dong-nut" style="justify-content:space-between">
+<h2 id="h-nd-moi" class="nhan-muc" style="color:#0B5A53">Thông tin tài khoản vừa tạo</h2>
+<button type="button" class="nut nut-nho" onClick="{{dongNguoiDungMoi}}">Đóng</button>
 </div>
-<sc-if value="{{khoaLoi}}"><p role="alert" class="bao bao-loi">{{khoaLoi}}</p></sc-if>
+<p class="phu" style="color:#0B5A53">Mật khẩu chỉ hiển thị <strong>MỘT LẦN DUY NHẤT</strong>. Hãy sao chép và gửi cho người dùng ngay.</p>
+<dl class="bang">
+<div class="bang-dong"><dt>Tên đăng nhập</dt><dd><span class="ma" id="nd-moi-ten">{{nguoiDungMoi.ten}}</span></dd></div>
+<div class="bang-dong"><dt>Mật khẩu</dt><dd><span class="ma" id="nd-moi-mk">{{nguoiDungMoi.matKhau}}</span></dd></div>
+<div class="bang-dong"><dt>Vai trò</dt><dd><span class="huy huy-lam">{{nguoiDungMoi.vai}}</span></dd></div>
+</dl>
+<div class="dong-nut">
+<button type="button" class="nut nut-chinh nut-nho" id="nut-chep-nd-moi" onClick="{{chepNguoiDungMoi}}">{{nhanChepNdMoi}}</button>
+</div>
 </section>
 </sc-if>
 
-<sc-if value="{{coKhoa}}">
+<sc-if value="{{coMatKhauDatLai}}">
+<section class="the the-ket-noi-moi" aria-labelledby="h-mk-dat-lai" id="the-mk-dat-lai">
+<div class="dong-nut" style="justify-content:space-between">
+<h2 id="h-mk-dat-lai" class="nhan-muc" style="color:#0B5A53">Mật khẩu mới đã đặt lại</h2>
+<button type="button" class="nut nut-nho" onClick="{{dongMatKhauDatLai}}">Đóng</button>
+</div>
+<p class="phu" style="color:#0B5A53">Mật khẩu mới chỉ hiển thị <strong>MỘT LẦN DUY NHẤT</strong>. Mọi phiên trước đó của tài khoản đã bị thu hồi.</p>
+<dl class="bang">
+<div class="bang-dong"><dt>Tài khoản</dt><dd><span class="ma">{{matKhauDatLai.ten}}</span></dd></div>
+<div class="bang-dong"><dt>Mật khẩu mới</dt><dd><span class="ma" id="mk-dat-lai-moi">{{matKhauDatLai.matKhau}}</span></dd></div>
+</dl>
+<div class="dong-nut">
+<button type="button" class="nut nut-chinh nut-nho" id="nut-chep-mk-dat-lai" onClick="{{chepMatKhauDatLai}}">{{nhanChepMkDatLai}}</button>
+</div>
+</section>
+</sc-if>
 
-<p class="mo-ta-trang">Quản lý khoá khách (chuẩn OpenAI) cho từng người dùng hoặc ứng dụng trong mạng nhà. Mỗi khoá chỉ có quyền trong phạm vi được cấp và bị giới hạn trần đồng thời.</p>
+<section class="the" aria-labelledby="h-tao-nd" id="tao-nguoi-dung">
+<h2 id="h-tao-nd" class="nhan-muc">Tạo tài khoản người dùng mới</h2>
+<form class="form-tao-nd" novalidate onSubmit="{{taoNdSubmit}}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;flex-wrap:wrap;gap:12px">
+<div class="truong" style="flex:1 1 200px">
+<label for="o-ten-nd-moi">Tên đăng nhập (để trống = tự sinh)</label>
+<input id="o-ten-nd-moi" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="3–32 ký tự (chữ thường, số, ._-)" value="{{tenNdMoi}}" onInput="{{goTenNdMoi}}">
+</div>
+<div class="truong" style="flex:1 1 200px">
+<label for="o-mk-nd-moi">Mật khẩu (để trống = tự sinh)</label>
+<input id="o-mk-nd-moi" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Tối thiểu 12 ký tự" value="{{mkNdMoi}}" onInput="{{goMkNdMoi}}">
+</div>
+</div>
+<div class="truong">
+<label>Vai trò</label>
+<div class="pham-vi-chon">
+<button type="button" class="chip" data-vai="user" aria-pressed="{{laVaiUserChon}}" onClick="{{chonVaiUser}}">Người dùng (user)</button>
+<button type="button" class="chip" data-vai="admin" aria-pressed="{{laVaiAdminChon}}" onClick="{{chonVaiAdmin}}">Quản trị viên (admin)</button>
+</div>
+</div>
+<sc-if value="{{laVaiUserChon}}">
+<div class="truong">
+<label>Trần phạm vi tối đa cho phép</label>
+<div class="pham-vi-chon">
+<sc-for list="{{danhSachPhamViNd}}" as="pv">
+<button type="button" class="chip" data-pham-vi="{{pv.ma}}" aria-pressed="{{pv.chon}}" onClick="{{pv.toggle}}">{{pv.nhan}}</button>
+</sc-for>
+</div>
+<span class="phu">Người dùng chỉ được tạo khoá API trong giới hạn các phạm vi này.</span>
+</div>
+</sc-if>
+<sc-if value="{{taoNdLoi}}"><p role="alert" class="bao bao-loi" id="loi-tao-nd">{{taoNdLoi}}</p></sc-if>
+<div class="dong-nut">
+<button type="submit" class="nut nut-chinh" id="nut-tao-nd" disabled="{{dangTaoNd}}">{{nhanTaoNd}}</button>
+</div>
+</form>
+</section>
+
+<section class="bang-tb" aria-labelledby="h-ds-nd" id="danh-sach-nguoi-dung">
+<div class="bang-tb-dau">
+<h2 id="h-ds-nd" style="font-size:inherit;margin:0">Danh sách tài khoản người dùng</h2>
+<span class="dem-phai">{{tongSoNd}} người dùng</span>
+</div>
+<sc-if value="{{ndThaoTacLoi}}"><p role="alert" class="bao bao-loi" id="loi-thao-tac-nd" style="margin:8px 16px">{{ndThaoTacLoi}}</p></sc-if>
+<ul class="bang-tb-ds">
+<sc-for list="{{dsNdHienThi}}" as="u">
+<li class="nguoi-dung-hang" data-nd-id="{{u.id}}">
+<div class="nguoi-dung-thong-tin">
+<div class="nguoi-dung-nhan">
+<span>{{u.ten}}</span>
+<sc-if value="{{u.laAdmin}}"><span class="huy huy-lam">admin</span></sc-if>
+<sc-if value="{{u.laUser}}"><span class="huy huy-xam">user</span></sc-if>
+<sc-if value="{{u.bat}}"><span class="huy huy-xanh">Đang bật</span></sc-if>
+<sc-if value="{{u.tat}}"><span class="huy huy-vang">Đã tắt</span></sc-if>
+</div>
+<div class="nguoi-dung-phu">
+<span class="ma">{{u.id}}</span>
+<span>Tạo: {{u.taoLuc}}</span>
+<sc-if value="{{u.coPhamVi}}">
+<div class="hang-chip" style="margin:2px 0 0">
+<sc-for list="{{u.chipPhamVi}}" as="cp"><span class="huy huy-lam">{{cp}}</span></sc-for>
+</div>
+</sc-if>
+</div>
+</div>
+<div class="nguoi-dung-tac-vu">
+<button type="button" class="nut nut-nho" data-hd="doi-trang-thai-nd" onClick="{{u.doiTrangThai}}" disabled="{{u.dangDoi}}">{{u.nhanDoi}}</button>
+<button type="button" class="nut nut-nho" data-hd="doi-vai-nd" onClick="{{u.doiVai}}" disabled="{{u.dangDoiVai}}">{{u.nhanDoiVai}}</button>
+<button type="button" class="nut nut-nho" data-hd="dat-lai-mk-nd" onClick="{{u.datLaiMk}}" disabled="{{u.dangDatLaiMk}}">Đặt lại mật khẩu</button>
+<sc-if value="{{u.chuaXacNhanXoa}}">
+<button type="button" class="nut nut-nho nut-nguy" data-hd="xoa-nd" onClick="{{u.hoiXoa}}">Xoá</button>
+</sc-if>
+<sc-if value="{{u.dangXacNhanXoa}}">
+<button type="button" class="nut nut-nho nut-nguy" data-hd="xac-nhan-xoa-nd" onClick="{{u.xacNhanXoa}}" disabled="{{u.dangXoa}}">Xác nhận xoá?</button>
+<button type="button" class="nut nut-nho" onClick="{{u.huyXoa}}">Huỷ</button>
+</sc-if>
+</div>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     KHỐI QUẢN TRỊ VIÊN: TOÀN BỘ KHOÁ KHÁCH HỆ THỐNG
+     ═══════════════════════════════════════════════════════════════ -->
+
+<p class="mo-ta-trang" style="margin-top:12px">Quản lý khoá khách (chuẩn OpenAI) cho từng người dùng hoặc ứng dụng trong mạng nhà. Mỗi khoá chỉ có quyền trong phạm vi được cấp và bị giới hạn trần đồng thời.</p>
 
 <sc-if value="{{coKhoaMoi}}">
 <section class="the the-ket-noi-moi" aria-labelledby="h-khoa-moi" id="the-thong-tin-khach">
@@ -89,7 +206,7 @@ main.pg{padding:12px 16px 24px}
 <input id="o-nhan-khoa" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="Ví dụ: Open WebUI phòng khách, Bạn bè…" value="{{nhanNhap}}" onInput="{{goNhan}}">
 </div>
 <div class="truong">
-<label>Phạm vi truy cập (chọn tính năng cho phép)</label>
+<label>Phạm vi truy cập (chọn ít nhất 1 tính năng)</label>
 <div class="pham-vi-chon">
 <button type="button" class="chip" data-pham-vi="*" aria-pressed="{{chonTatCa}}" onClick="{{toggleTatCa}}">Tất cả (*)</button>
 <sc-for list="{{danhSachPhamVi}}" as="kn">
@@ -147,6 +264,10 @@ main.pg{padding:12px 16px 24px}
 <div class="bang-tb-rong">Chưa có khoá khách nào. Dùng biểu mẫu ở trên để tạo khoá đầu tiên.</div>
 </sc-if>
 </section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     KHỐI QUẢN TRỊ VIÊN: SAO LƯU & KHÔI PHỤC CẤU HÌNH
+     ═══════════════════════════════════════════════════════════════ -->
 
 <section class="the" aria-labelledby="h-sao-luu" id="sao-luu-khoi-phuc">
 <h2 id="h-sao-luu" class="nhan-muc">Sao lưu &amp; Khôi phục cấu hình</h2>
@@ -208,6 +329,122 @@ main.pg{padding:12px 16px 24px}
 
 </sc-if>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     DÀNH CHO MỌI NGƯỜI DÙNG (CẢ ADMIN VÀ USER):
+     1. KHOÁ API CỦA TÔI
+     2. ĐỔI MẬT KHẨU CÁ NHÂN
+     ═══════════════════════════════════════════════════════════════ -->
+
+<sc-if value="{{coKhoaToiMoi}}">
+<section class="the the-ket-noi-moi" aria-labelledby="h-khoa-toi-moi" id="the-khoa-toi-moi">
+<div class="dong-nut" style="justify-content:space-between">
+<h2 id="h-khoa-toi-moi" class="nhan-muc" style="color:#0B5A53">Khoá API cá nhân mới tạo</h2>
+<button type="button" class="nut nut-nho" onClick="{{dongKhoaToiMoi}}">Đóng</button>
+</div>
+<p class="phu" style="color:#0B5A53">Khoá API chỉ hiển thị <strong>MỘT LẦN DUY NHẤT</strong>. Hãy sao chép ngay để sử dụng trong ứng dụng của bạn.</p>
+<dl class="bang">
+<div class="bang-dong"><dt>Địa chỉ gốc (base_url)</dt><dd><span class="ma">{{diaChiV1}}</span></dd></div>
+<div class="bang-dong"><dt>Khoá API cá nhân</dt><dd><span class="ma" id="khoa-toi-moi-gia-tri">{{khoaToiMoi.khoa}}</span></dd></div>
+<div class="bang-dong"><dt>Phạm vi</dt><dd><sc-for list="{{khoaToiMoi.phamViText}}" as="pv"><span class="huy huy-lam" style="margin-right:4px">{{pv}}</span></sc-for></dd></div>
+</dl>
+<div class="dong-nut">
+<button type="button" class="nut nut-chinh nut-nho" id="nut-chep-khoa-toi" onClick="{{chepKhoaToi}}">{{nhanChepKhoaToi}}</button>
+</div>
+</section>
+</sc-if>
+
+<section class="the" aria-labelledby="h-tao-khoa-toi" id="tao-khoa-toi">
+<h2 id="h-tao-khoa-toi" class="nhan-muc">Tạo khoá API của tôi</h2>
+<form class="form-tao-khoa-toi" novalidate onSubmit="{{taoKhoaToiSubmit}}" style="display:flex;flex-direction:column;gap:12px">
+<div class="truong">
+<label for="o-nhan-khoa-toi">Nhãn / Tên ứng dụng (tuỳ chọn)</label>
+<input id="o-nhan-khoa-toi" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="Ví dụ: Chat cá nhân, Cursor, Obsidian…" value="{{nhanKhoaToiNhap}}" onInput="{{goNhanKhoaToi}}">
+</div>
+<div class="truong">
+<label>Phạm vi truy cập (chọn ít nhất một quyền)</label>
+<div class="pham-vi-chon">
+<sc-if value="{{laAdmin}}">
+<button type="button" class="chip" data-pham-vi="*" aria-pressed="{{chonTatCaKhoaToi}}" onClick="{{toggleTatCaKhoaToi}}">Tất cả (*)</button>
+</sc-if>
+<sc-for list="{{danhSachPhamViToi}}" as="pv">
+<button type="button" class="chip" data-pham-vi="{{pv.ma}}" aria-pressed="{{pv.chon}}" onClick="{{pv.toggle}}">{{pv.nhan}}</button>
+</sc-for>
+</div>
+<span class="phu">Khoá chỉ được phép gọi các API chuẩn OpenAI nằm trong phạm vi đã chọn.</span>
+</div>
+<sc-if value="{{taoKhoaToiLoi}}"><p role="alert" class="bao bao-loi" id="loi-tao-khoa-toi">{{taoKhoaToiLoi}}</p></sc-if>
+<div class="dong-nut">
+<button type="submit" class="nut nut-chinh" id="nut-gui-tao-khoa-toi" disabled="{{dangTaoKhoaToi}}">{{nhanTaoKhoaToi}}</button>
+</div>
+</form>
+</section>
+
+<section class="bang-tb" aria-labelledby="h-ds-khoa-toi" id="danh-sach-khoa-toi">
+<div class="bang-tb-dau">
+<h2 id="h-ds-khoa-toi" style="font-size:inherit;margin:0">Danh sách khoá API của tôi</h2>
+<span class="dem-phai">{{tongSoKhoaToi}} / 10 khoá</span>
+</div>
+<sc-if value="{{coKhoaToiDs}}">
+<ul class="bang-tb-ds">
+<sc-for list="{{dsKhoaToiHienThi}}" as="k">
+<li class="khoa-khach-hang" data-khoa-id="{{k.id}}">
+<div class="khoa-thong-tin">
+<div class="khoa-nhan">
+<span>{{k.nhan}}</span>
+<sc-if value="{{k.bat}}"><span class="huy huy-xanh">Đang bật</span></sc-if>
+<sc-if value="{{k.tat}}"><span class="huy huy-xam">Đã tắt</span></sc-if>
+</div>
+<div class="khoa-phu">
+<span class="ma">{{k.id}}</span>
+<span>{{k.soLuot}}</span>
+<span>{{k.dungCuoi}}</span>
+<div class="hang-chip" style="margin:2px 0 0">
+<sc-for list="{{k.chipPhamVi}}" as="cp"><span class="huy huy-lam">{{cp}}</span></sc-for>
+</div>
+</div>
+</div>
+<div class="khoa-tac-vu">
+<sc-if value="{{k.chuaXacNhanXoa}}">
+<button type="button" class="nut nut-nho nut-nguy" data-hd="xoa-khoa-toi" onClick="{{k.hoiXoa}}">Thu hồi</button>
+</sc-if>
+<sc-if value="{{k.dangXacNhanXoa}}">
+<button type="button" class="nut nut-nho nut-nguy" data-hd="xac-nhan-xoa-khoa-toi" onClick="{{k.xacNhanXoa}}" disabled="{{k.dangXoa}}">Xác nhận thu hồi?</button>
+<button type="button" class="nut nut-nho" onClick="{{k.huyXoa}}">Huỷ</button>
+</sc-if>
+</div>
+</li>
+</sc-for>
+</ul>
+</sc-if>
+<sc-if value="{{khongCoKhoaToiDs}}">
+<div class="bang-tb-rong">Bạn chưa tạo khoá API cá nhân nào. Dùng biểu mẫu ở trên để tạo khoá.</div>
+</sc-if>
+</section>
+
+<section class="the" aria-labelledby="h-doi-mk" id="doi-mat-khau">
+<h2 id="h-doi-mk" class="nhan-muc">Đổi mật khẩu tài khoản của tôi</h2>
+<p class="phu">Đổi mật khẩu sẽ tự động thu hồi mọi phiên đăng nhập web khác trên các thiết bị khác của bạn.</p>
+<form class="form-doi-mk" novalidate onSubmit="{{doiMkSubmit}}" style="display:flex;flex-direction:column;gap:12px;max-width:440px">
+<div class="truong">
+<label for="o-mk-cu">Mật khẩu hiện tại</label>
+<input id="o-mk-cu" class="o" type="password" autocomplete="current-password" spellcheck="false" placeholder="Nhập mật khẩu hiện tại" value="{{mkCu}}" onInput="{{goMkCu}}">
+</div>
+<div class="truong">
+<label for="o-mk-moi">Mật khẩu mới (tối thiểu 12 ký tự)</label>
+<input id="o-mk-moi" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Nhập mật khẩu mới" value="{{mkMoi}}" onInput="{{goMkMoi}}">
+</div>
+<div class="truong">
+<label for="o-nhap-lai-mk-moi">Nhập lại mật khẩu mới</label>
+<input id="o-nhap-lai-mk-moi" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Nhập lại mật khẩu mới" value="{{nhapLaiMkMoi}}" onInput="{{goNhapLaiMkMoi}}">
+</div>
+<sc-if value="{{doiMkTin}}"><p class="bao bao-tot" id="thong-bao-doi-mk">{{doiMkTin}}</p></sc-if>
+<sc-if value="{{doiMkLoi}}"><p role="alert" class="bao bao-loi" id="loi-doi-mk">{{doiMkLoi}}</p></sc-if>
+<div class="dong-nut">
+<button type="submit" class="nut nut-chinh" id="nut-gui-doi-mk" disabled="{{dangDoiMk}}">{{nhanDoiMk}}</button>
+</div>
+</form>
+</section>
+
 </main>
 
 <nav aria-label="Điều hướng Hệ thống (điện thoại)" class="bn"><sc-for list="{{navHT}}" as="t">
@@ -225,15 +462,33 @@ const K = window.Khung;
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    const khoa = K.docKhoa();
     this.state = {
-      khoa,
-      khoaNhap: khoa,
-      khoaLoi: '',
+      toi: null,
       tn: null,
       tnLoi: '',
       soTb: 0,
       menuMo: null,
+
+      // Quản lý người dùng (admin)
+      dsNguoiDung: [],
+      tenNdMoi: '',
+      mkNdMoi: '',
+      vaiNdMoi: 'user',
+      phamViNdMoi: ['chat'],
+      dangTaoNd: false,
+      taoNdLoi: '',
+      nguoiDungMoi: null,
+      chepNdMoiTin: false,
+      matKhauDatLai: null,
+      chepMkDatLaiTin: false,
+      dangDoiTrangThaiNd: null,
+      dangDoiVaiNd: null,
+      dangDatLaiMkNd: null,
+      dangHoiXoaNd: null,
+      dangXoaNd: null,
+      ndThaoTacLoi: '',
+
+      // Khoá khách toàn hệ thống (admin)
       dsKhoa: [],
       nhanNhap: '',
       phamViChon: ['*'],
@@ -246,6 +501,27 @@ class Component extends DCLogic {
       dangHoiXoa: null,
       dangXoa: null,
       dangDoi: null,
+
+      // Khoá API của tôi (mọi người dùng)
+      dsKhoaToi: [],
+      nhanKhoaToiNhap: '',
+      phamViKhoaToiChon: ['chat'],
+      dangTaoKhoaToi: false,
+      taoKhoaToiLoi: '',
+      khoaToiMoi: null,
+      chepKhoaToiTin: false,
+      dangHoiXoaKhoaToi: null,
+      dangXoaKhoaToi: null,
+
+      // Đổi mật khẩu cá nhân
+      mkCu: '',
+      mkMoi: '',
+      nhapLaiMkMoi: '',
+      dangDoiMk: false,
+      doiMkTin: '',
+      doiMkLoi: '',
+
+      // Sao lưu & khôi phục (admin)
       matKhauSaoLuu: '',
       kemPhien: false,
       dangTaiSaoLuu: false,
@@ -254,10 +530,10 @@ class Component extends DCLogic {
       dangXuLyKhoiPhuc: false,
       khoiPhucTin: '',
       khoiPhucLoi: '',
-      kiemKq: null,          // phản hồi chế độ kiem cho ĐÚNG tệp đang chọn (null = chưa kiểm / đã đổi tệp)
+      kiemKq: null,
       xacNhanKhoiPhucMo: false,
     };
-    this.tepDaKiem = null;   // đối tượng File đã kiểm — Áp dụng chỉ gửi đúng đối tượng này kèm sha256 server trả
+    this.tepDaKiem = null;
   }
 
   async didMount() {
@@ -265,10 +541,26 @@ class Component extends DCLogic {
   }
 
   async taiLai() {
+    const toi = await K.napToi();
+    if (!toi || !toi.id) {
+      K.chuyenDangNhap();
+      return;
+    }
+    this.setState({ toi });
+
+    const laAdmin = toi.vai === 'admin';
+    const tranUser = toi.pham_vi_toi_da || ['chat'];
+    if (!laAdmin && tranUser.length > 0) {
+      this.setState({
+        phamViKhoaToiChon: [tranUser[0]]
+      });
+    }
+
     const [tnRes, ketNoiRes] = await Promise.allSettled([
       K.taiTinhNang(),
-      K.goi('api/ket-noi', { khoa: '' })
+      K.goi('api/ket-noi')
     ]);
+
     const them = {};
     if (tnRes.status === 'fulfilled') {
       them.tn = tnRes.value;
@@ -283,40 +575,206 @@ class Component extends DCLogic {
     }
     this.setState(them);
 
-    if (this.state.khoa) {
-      await this.taiDsKhoa();
+    // Tải dữ liệu người dùng và khoá
+    await this.taiKhoaToi();
+    if (laAdmin) {
+      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa()]);
     }
   }
 
-  async taiDsKhoa() {
+  // ═══════════════════════════════════════════════════════════════
+  // QUẢN LÝ NGƯỜI DÙNG (ADMIN)
+  // ═══════════════════════════════════════════════════════════════
+
+  async taiDsNguoiDung() {
     try {
-      const { j } = await K.goi('api/khoa-khach');
-      this.setState({ dsKhoa: (j && j.khoa) || [], khoaLoi: '' });
+      const { j } = await K.goi('api/nguoi-dung');
+      this.setState({ dsNguoiDung: (j && j.nguoi_dung) || [], ndThaoTacLoi: '' });
     } catch (e) {
-      if (e && e.ma === 401) {
-        this.setState({ khoaLoi: 'Khoá quản trị không đúng hoặc đã hết hạn.' });
+      if (e && e.ma === 403) {
+        // Không phải admin
+      } else {
+        this.setState({ ndThaoTacLoi: e.message || 'Không tải được danh sách người dùng.' });
       }
     }
   }
 
-  luuKhoa() {
-    const k = (this.state.khoaNhap || '').trim();
-    if (!k) {
-      this.setState({ khoaLoi: 'Hãy dán khoá quản trị.' });
+  goTenNdMoi(e) { this.setState({ tenNdMoi: e.target.value, taoNdLoi: '' }); }
+  goMkNdMoi(e) { this.setState({ mkNdMoi: e.target.value, taoNdLoi: '' }); }
+
+  chonVaiUser() {
+    this.setState({ vaiNdMoi: 'user', taoNdLoi: '' });
+  }
+
+  chonVaiAdmin() {
+    this.setState({ vaiNdMoi: 'admin', taoNdLoi: '' });
+  }
+
+  togglePhamViNd(ma) {
+    let cur = this.state.phamViNdMoi.slice();
+    if (cur.includes(ma)) cur = cur.filter((x) => x !== ma);
+    else cur.push(ma);
+    if (!cur.length) cur = ['chat'];
+    this.setState({ phamViNdMoi: cur });
+  }
+
+  async taoNdSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.dangTaoNd) return;
+
+    const ten = (this.state.tenNdMoi || '').trim();
+    const mk = this.state.mkNdMoi || '';
+    const vai = this.state.vaiNdMoi || 'user';
+    const pv = vai === 'admin' ? ['*'] : this.state.phamViNdMoi;
+
+    if (mk && mk.length < 12) {
+      this.setState({ taoNdLoi: 'Mật khẩu phải có tối thiểu 12 ký tự.' });
       return;
     }
-    K.luuKhoa(k);
-    this.setState({ khoa: k, khoaLoi: '' });
-    this.taiLai();
+
+    this.setState({ dangTaoNd: true, taoNdLoi: '' });
+    try {
+      const { j } = await K.goi('api/nguoi-dung', {
+        method: 'POST',
+        json: {
+          vai,
+          ten_dang_nhap: ten || null,
+          mat_khau: mk || null,
+          pham_vi_toi_da: pv
+        }
+      });
+      if (j && j.nguoi_dung) {
+        this.setState({
+          nguoiDungMoi: {
+            ten: j.ten_dang_nhap || (j.nguoi_dung && j.nguoi_dung.ten_dang_nhap),
+            matKhau: j.mat_khau || mk || '(không đổi)',
+            vai: j.nguoi_dung && j.nguoi_dung.vai
+          },
+          tenNdMoi: '',
+          mkNdMoi: '',
+          dangTaoNd: false,
+          chepNdMoiTin: false
+        });
+        await this.taiDsNguoiDung();
+      } else {
+        this.setState({ dangTaoNd: false, taoNdLoi: 'Không tạo được người dùng.' });
+      }
+    } catch (err) {
+      this.setState({ dangTaoNd: false, taoNdLoi: err.message || 'Lỗi khi tạo người dùng.' });
+    }
   }
+
+  dongNguoiDungMoi() { this.setState({ nguoiDungMoi: null }); }
+  dongMatKhauDatLai() { this.setState({ matKhauDatLai: null }); }
+
+  chepNguoiDungMoi() {
+    const nd = this.state.nguoiDungMoi;
+    if (!nd) return;
+    this.chepChuoi(`Tên đăng nhập: ${nd.ten}\nMật khẩu: ${nd.matKhau}\nVai: ${nd.vai}`, 'chepNdMoiTin');
+  }
+
+  chepMatKhauDatLai() {
+    const mk = this.state.matKhauDatLai;
+    if (!mk) return;
+    this.chepChuoi(`Tài khoản: ${mk.ten}\nMật khẩu mới: ${mk.matKhau}`, 'chepMkDatLaiTin');
+  }
+
+  async doiTrangThaiNd(id, batHienTai) {
+    this.setState({ dangDoiTrangThaiNd: id, ndThaoTacLoi: '' });
+    try {
+      await K.goi('api/nguoi-dung/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        json: { bat: !batHienTai }
+      });
+      await this.taiDsNguoiDung();
+    } catch (e) {
+      const msg = e.ma === 409 ? 'Không thể tắt hoặc xoá quản trị viên cuối cùng của hệ thống.' : (e.message || 'Lỗi cập nhật người dùng.');
+      this.setState({ ndThaoTacLoi: msg });
+    } finally {
+      this.setState({ dangDoiTrangThaiNd: null });
+    }
+  }
+
+  async doiVaiNd(id, vaiHienTai) {
+    const vaiMoi = vaiHienTai === 'admin' ? 'user' : 'admin';
+    this.setState({ dangDoiVaiNd: id, ndThaoTacLoi: '' });
+    try {
+      await K.goi('api/nguoi-dung/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        json: { vai: vaiMoi }
+      });
+      await this.taiDsNguoiDung();
+    } catch (e) {
+      const msg = e.ma === 409 ? 'Không thể hạ vai quản trị viên cuối cùng của hệ thống.' : (e.message || 'Lỗi đổi vai người dùng.');
+      this.setState({ ndThaoTacLoi: msg });
+    } finally {
+      this.setState({ dangDoiVaiNd: null });
+    }
+  }
+
+  async datLaiMkNd(id, ten) {
+    this.setState({ dangDatLaiMkNd: id, ndThaoTacLoi: '' });
+    try {
+      const { j } = await K.goi('api/nguoi-dung/' + encodeURIComponent(id) + '/dat-lai-mat-khau', {
+        method: 'POST'
+      });
+      if (j && j.mat_khau_moi) {
+        this.setState({
+          matKhauDatLai: { ten, matKhau: j.mat_khau_moi },
+          chepMkDatLaiTin: false
+        });
+      }
+    } catch (e) {
+      this.setState({ ndThaoTacLoi: e.message || 'Lỗi đặt lại mật khẩu.' });
+    } finally {
+      this.setState({ dangDatLaiMkNd: null });
+    }
+  }
+
+  async xoaNd(id) {
+    this.setState({ dangXoaNd: id, ndThaoTacLoi: '' });
+    try {
+      await K.goi('api/nguoi-dung/' + encodeURIComponent(id), {
+        method: 'DELETE'
+      });
+      this.setState({ dangHoiXoaNd: null });
+      await this.taiDsNguoiDung();
+    } catch (e) {
+      const msg = e.ma === 409 ? 'Không thể xoá quản trị viên cuối cùng của hệ thống.' : (e.message || 'Lỗi xoá người dùng.');
+      this.setState({ ndThaoTacLoi: msg });
+    } finally {
+      this.setState({ dangXoaNd: null });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // KHOÁ KHÁCH HỆ THỐNG (ADMIN)
+  // ═══════════════════════════════════════════════════════════════
+
+  async taiDsKhoa() {
+    try {
+      const { j } = await K.goi('api/khoa-khach');
+      this.setState({ dsKhoa: (j && j.khoa) || [] });
+    } catch (e) {
+      // nuốt lỗi
+    }
+  }
+
+  goNhan(e) { this.setState({ nhanNhap: e.target.value }); }
 
   async taoKhoaSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (this.state.dangTao) return;
+
+    const phamVi = this.state.phamViChon.includes('*') ? ['*'] : this.state.phamViChon;
+    if (!phamVi || !phamVi.length) {
+      this.setState({ taoLoi: 'Hãy chọn ít nhất một phạm vi truy cập.' });
+      return;
+    }
+
     this.setState({ dangTao: true, taoLoi: '' });
     try {
       const nhan = (this.state.nhanNhap || '').trim() || 'Khoá khách';
-      const phamVi = this.state.phamViChon.includes('*') ? ['*'] : this.state.phamViChon;
       const { j } = await K.goi('api/khoa-khach', {
         method: 'POST',
         json: { nhan, pham_vi: phamVi }
@@ -348,7 +806,7 @@ class Component extends DCLogic {
       });
       await this.taiDsKhoa();
     } catch (e) {
-      // nuốt lỗi để giao diện không sập
+      // nuốt lỗi
     } finally {
       this.setState({ dangDoi: null });
     }
@@ -357,9 +815,7 @@ class Component extends DCLogic {
   async xoaKhoa(id) {
     this.setState({ dangXoa: id });
     try {
-      await K.goi('api/khoa-khach/' + encodeURIComponent(id), {
-        method: 'DELETE'
-      });
+      await K.goi('api/khoa-khach/' + encodeURIComponent(id), { method: 'DELETE' });
       this.setState({ dangHoiXoa: null });
       await this.taiDsKhoa();
     } catch (e) {
@@ -368,6 +824,146 @@ class Component extends DCLogic {
       this.setState({ dangXoa: null });
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // KHOÁ API CỦA TÔI (MỌI NGƯỜI DÙNG)
+  // ═══════════════════════════════════════════════════════════════
+
+  async taiKhoaToi() {
+    try {
+      const { j } = await K.goi('api/toi/khoa');
+      this.setState({ dsKhoaToi: (j && j.khoa) || [] });
+    } catch (e) {
+      // nuốt lỗi
+    }
+  }
+
+  goNhanKhoaToi(e) { this.setState({ nhanKhoaToiNhap: e.target.value, taoKhoaToiLoi: '' }); }
+
+  toggleTatCaKhoaToi() {
+    this.setState({ phamViKhoaToiChon: ['*'], taoKhoaToiLoi: '' });
+  }
+
+  togglePhamViToi(ma) {
+    let cur = this.state.phamViKhoaToiChon.filter((x) => x !== '*');
+    if (cur.includes(ma)) cur = cur.filter((x) => x !== ma);
+    else cur.push(ma);
+    this.setState({ phamViKhoaToiChon: cur, taoKhoaToiLoi: '' });
+  }
+
+  async taoKhoaToiSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.dangTaoKhoaToi) return;
+
+    const pv = this.state.phamViKhoaToiChon;
+    if (!pv || !pv.length) {
+      this.setState({ taoKhoaToiLoi: 'Hãy chọn ít nhất một phạm vi truy cập.' });
+      return;
+    }
+
+    this.setState({ dangTaoKhoaToi: true, taoKhoaToiLoi: '' });
+    try {
+      const nhan = (this.state.nhanKhoaToiNhap || '').trim() || 'Khoá của tôi';
+      const body = { nhan, pham_vi: pv };
+      const { j } = await K.goi('api/toi/khoa', {
+        method: 'POST',
+        json: body
+      });
+      if (j && j.khoa && j.khoa_tho) {
+        this.setState({
+          khoaToiMoi: {
+            id: j.khoa.id,
+            nhan: j.khoa.nhan,
+            khoa: j.khoa_tho,
+            pham_vi: j.khoa.pham_vi || pv
+          },
+          nhanKhoaToiNhap: '',
+          dangTaoKhoaToi: false,
+          chepKhoaToiTin: false
+        });
+        await this.taiKhoaToi();
+      } else {
+        this.setState({ dangTaoKhoaToi: false, taoKhoaToiLoi: 'Không tạo được khoá API.' });
+      }
+    } catch (err) {
+      this.setState({ dangTaoKhoaToi: false, taoKhoaToiLoi: err.message || 'Lỗi khi tạo khoá API.' });
+    }
+  }
+
+  dongKhoaToiMoi() { this.setState({ khoaToiMoi: null }); }
+
+  chepKhoaToi() {
+    const k = this.state.khoaToiMoi;
+    if (!k) return;
+    this.chepChuoi(k.khoa, 'chepKhoaToiTin');
+  }
+
+  async xoaKhoaToi(id) {
+    this.setState({ dangXoaKhoaToi: id });
+    try {
+      await K.goi('api/toi/khoa/' + encodeURIComponent(id), { method: 'DELETE' });
+      this.setState({ dangHoiXoaKhoaToi: null });
+      await this.taiKhoaToi();
+    } catch (e) {
+      // nuốt lỗi
+    } finally {
+      this.setState({ dangXoaKhoaToi: null });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ĐỔI MẬT KHẨU CÁ NHÂN
+  // ═══════════════════════════════════════════════════════════════
+
+  goMkCu(e) { this.setState({ mkCu: e.target.value, doiMkLoi: '', doiMkTin: '' }); }
+  goMkMoi(e) { this.setState({ mkMoi: e.target.value, doiMkLoi: '', doiMkTin: '' }); }
+  goNhapLaiMkMoi(e) { this.setState({ nhapLaiMkMoi: e.target.value, doiMkLoi: '', doiMkTin: '' }); }
+
+  async doiMkSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.dangDoiMk) return;
+
+    const cu = this.state.mkCu;
+    const moi = this.state.mkMoi;
+    const nhapLai = this.state.nhapLaiMkMoi;
+
+    if (!cu) {
+      this.setState({ doiMkLoi: 'Vui lòng nhập mật khẩu hiện tại.' });
+      return;
+    }
+    if (!moi || moi.length < 12) {
+      this.setState({ doiMkLoi: 'Mật khẩu mới phải có tối thiểu 12 ký tự.' });
+      return;
+    }
+    if (moi !== nhapLai) {
+      this.setState({ doiMkLoi: 'Mật khẩu mới nhập lại không khớp.' });
+      return;
+    }
+
+    this.setState({ dangDoiMk: true, doiMkLoi: '', doiMkTin: '' });
+    try {
+      await K.goi('api/toi/mat-khau', {
+        method: 'POST',
+        json: { mat_khau_cu: cu, mat_khau_moi: moi }
+      });
+      this.setState({
+        dangDoiMk: false,
+        mkCu: '',
+        mkMoi: '',
+        nhapLaiMkMoi: '',
+        doiMkTin: 'Đổi mật khẩu thành công! Các phiên đăng nhập khác đã được thu hồi.'
+      });
+    } catch (err) {
+      this.setState({
+        dangDoiMk: false,
+        doiMkLoi: err.message || 'Lỗi khi đổi mật khẩu.'
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SAO LƯU & KHÔI PHỤC (ADMIN)
+  // ═══════════════════════════════════════════════════════════════
 
   chepChuoi(txt, key) {
     if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
@@ -382,12 +978,13 @@ class Component extends DCLogic {
     this.setState({ dangTaiSaoLuu: true, saoLuuLoi: '' });
     try {
       const mk = (this.state.matKhauSaoLuu || '').trim();
-      const res = await fetch('/api/sao-luu', {
+      const hd = { 'Content-Type': 'application/json' };
+      if (K.layCsrf()) hd['X-CSRF-Token'] = K.layCsrf();
+
+      const res = await fetch('api/sao-luu', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + this.state.khoa
-        },
+        headers: hd,
+        credentials: 'same-origin',
         body: JSON.stringify({
           mat_khau: mk || null,
           kem_phien: !!this.state.kemPhien
@@ -431,9 +1028,14 @@ class Component extends DCLogic {
     if (mk) fd.append('mat_khau', mk);
     fd.append('che_do', cheDo);
     if (sha) fd.append('sha256', sha);
-    const res = await fetch('/api/khoi-phuc', {
+
+    const hd = {};
+    if (K.layCsrf()) hd['X-CSRF-Token'] = K.layCsrf();
+
+    const res = await fetch('api/khoi-phuc', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + this.state.khoa },
+      headers: hd,
+      credentials: 'same-origin',
       body: fd
     });
     const data = await res.json().catch(() => ({}));
@@ -485,7 +1087,7 @@ class Component extends DCLogic {
       const bt = data.ban_truoc || {};
       this.boKetQuaKiem({
         dangXuLyKhoiPhuc: false,
-        khoiPhucTin: `Đã khôi phục ${soTep} tệp (${data.bi_mat}). Bản cấu hình trước khi khôi phục: <DATA>/${bt.thu_muc || '?'}/ (đang giữ ${bt.so_ban_giu || 0}/${bt.toi_da || 3} bản — chứa khoá thật, xoá tay khi không cần).`
+        khoiPhucTin: `Đã khôi phục ${soTep} tệp (${data.bi_mat}). Bản cấu hình trước khi khôi phục: <DATA>/${bt.thu_muc || '?'}/ (đang giữ ${bt.so_ban_giu || 0}/${bt.toi_da || 3} bản).`
       });
       await this.taiDsKhoa();
     } catch (err) {
@@ -494,7 +1096,6 @@ class Component extends DCLogic {
   }
 
   dongKhacBiet(kq) {
-    // Danh sách DÒNG CHỮ (chèn bằng {{ }}, không innerHTML): mọi khác biệt nhạy cảm người duyệt cần thấy.
     if (!kq) return [];
     const ds = [];
     const them = (loai, nhom, chu) => ds.push({ loai, nhom, chu });
@@ -508,36 +1109,31 @@ class Component extends DCLogic {
       const g = kb.nguon_git;
       const hien = g.hien_tai ? `${g.hien_tai.repo} (${g.hien_tai.nhanh}/${g.hien_tai.thu_muc})` : 'chưa cấu hình';
       const bs = g.ban_sao_luu || {};
-      them('nguon-git', 'Nguồn git', `hiện tại ${hien}; bản sao lưu ${bs.repo} (${bs.nhanh}/${bs.thu_muc}), tự cài ${bs.tu_dong ? 'BẬT' : 'tắt'}, bắt chữ ký ${bs.yeu_cau_chu_ky ? 'bật' : 'TẮT'}`);
-      if (g.se_ghi) them('nguon-git', 'Nguồn git sẽ ghi', `tự cài ${g.se_ghi.tu_dong ? 'bật' : 'tắt'}, bắt chữ ký ${g.se_ghi.yeu_cau_chu_ky ? 'bật' : 'tắt'}, chu kỳ ${g.se_ghi.chu_ky_giay} giây`);
+      them('nguon-git', 'Nguồn git', `hiện tại ${hien}; bản sao lưu ${bs.repo} (${bs.nhanh}/${bs.thu_muc})`);
     }
-    (kb.tu_xa || []).forEach((m) => them('tu-xa', 'Module từ xa', `${m.id} (tiền tố ${m.tien_to}): ${m.base_url_hien_tai ? m.base_url_hien_tai + ' → ' : ''}${m.base_url} [${tt[m.trang_thai] || m.trang_thai}]`));
-    if ((kb.tu_xa_se_go || []).length) them('tu-xa', 'Module từ xa sẽ gỡ', kb.tu_xa_se_go.join(', '));
-    (kb.modules || []).forEach((m) => them('module', 'Module', `${m.id} [${tt[m.trang_thai] || m.trang_thai}]${(m.truong_doi || []).length ? ' — đổi: ' + m.truong_doi.join(', ') : ''}`));
-    if ((kb.modules_se_go || []).length) them('module', 'Cấu hình module sẽ gỡ', kb.modules_se_go.join(', '));
+    (kb.tu_xa || []).forEach((m) => them('tu-xa', 'Module từ xa', `${m.id} [${tt[m.trang_thai] || m.trang_thai}]`));
+    (kb.modules || []).forEach((m) => them('module', 'Module', `${m.id} [${tt[m.trang_thai] || m.trang_thai}]`));
     if (kb.khoa_khach) {
       const kk = kb.khoa_khach;
       them('khoa-khach', 'Khoá khách', `${kk.so_khoa} khoá trong bản sao lưu`);
-      (kk.khoa || []).forEach((k) => them('khoa-khach', 'Khoá khách', `${k.id} «${k.nhan}» — phạm vi ${(k.pham_vi || []).join(', ')}${k.bat ? '' : ' (tắt)'} [${tt[k.trang_thai] || k.trang_thai}]`));
-      if ((kk.se_mat || []).length) them('khoa-khach', 'Khoá khách SẼ MẤT', kk.se_mat.join(', '));
     }
-    if ((kb.bi_mat || []).length) them('bi-mat', 'Bí mật (khoá API, phiên)', kb.bi_mat.join(', '));
-    if ((kb.combo || []).length) them('combo', 'Combo', kb.combo.join(', '));
-    (kq.modules_git || []).forEach((m) => them('git', 'Mã module từ git (không kèm, cài lại từ git)', `${m.id}${m.sha_commit ? ' @ ' + m.sha_commit.slice(0, 12) : ''}`));
     return ds;
   }
 
-  // ---------- render props ----------
   renderVals() {
     const s = this.state;
+    const toi = s.toi;
+    const laAdmin = toi && toi.vai === 'admin';
     const tn = s.tn;
     const navHT = K.menuNav(this, K.navHeThong(tn, 'bao_mat', s.soTb), null);
     const coQuayLai = !!K.quayLai(tn);
     const khongQuayLai = !coQuayLai;
 
-    // Danh sách khả năng mở từ tinh-nang để chọn phạm vi
+    // Danh sách khả năng mở từ tinh-nang
     const daCai = (tn && tn.kha_nang_da_cai) || {};
     const dsMa = Object.keys(daCai).filter((k) => k !== 'ai');
+
+    // Phạm vi khoá khách (admin)
     const phamViList = dsMa.map((ma) => {
       const chon = s.phamViChon.includes(ma);
       return {
@@ -546,28 +1142,78 @@ class Component extends DCLogic {
         chon,
         toggle: () => {
           let pv = s.phamViChon.filter((x) => x !== '*');
-          if (pv.includes(ma)) {
-            pv = pv.filter((x) => x !== ma);
-          } else {
-            pv.push(ma);
-          }
+          if (pv.includes(ma)) pv = pv.filter((x) => x !== ma);
+          else pv.push(ma);
           if (pv.length === 0) pv = ['*'];
           this.setState({ phamViChon: pv });
         }
       };
     });
-
     const chonTatCa = s.phamViChon.includes('*');
 
-    // Dữ liệu hiển thị danh sách khoá
+    // Phạm vi người dùng mới (admin tạo user)
+    const phamViNdList = dsMa.map((ma) => {
+      const chon = s.phamViNdMoi.includes(ma);
+      return {
+        ma,
+        nhan: K.tenMa ? K.tenMa(ma, tn) : ma,
+        chon,
+        toggle: () => this.togglePhamViNd(ma)
+      };
+    });
+
+    // Phạm vi khoá của tôi (giới hạn bởi pham_vi_toi_da)
+    const tranToi = laAdmin ? ['*'] : (toi && toi.pham_vi_toi_da) || ['chat'];
+    const dsMaToi = laAdmin ? dsMa : dsMa.filter((m) => tranToi.includes(m));
+    const phamViToiList = dsMaToi.map((ma) => {
+      const chon = s.phamViKhoaToiChon.includes(ma);
+      return {
+        ma,
+        nhan: K.tenMa ? K.tenMa(ma, tn) : ma,
+        chon,
+        toggle: () => this.togglePhamViToi(ma)
+      };
+    });
+    const chonTatCaKhoaToi = s.phamViKhoaToiChon.includes('*');
+
+    // Danh sách người dùng
+    const dsNdHienThi = s.dsNguoiDung.map((u) => {
+      const uId = u.id;
+      const uBat = !!u.bat;
+      const uLaAdmin = u.vai === 'admin';
+      return {
+        id: uId,
+        ten: u.ten_dang_nhap || uId,
+        bat: uBat,
+        tat: !uBat,
+        laAdmin: uLaAdmin,
+        laUser: !uLaAdmin,
+        taoLuc: K.ngayGio(u.tao_luc),
+        coPhamVi: !uLaAdmin && Array.isArray(u.pham_vi_toi_da),
+        chipPhamVi: u.pham_vi_toi_da || [],
+        nhanDoi: uBat ? 'Tắt' : 'Bật',
+        dangDoi: s.dangDoiTrangThaiNd === uId,
+        doiTrangThai: () => this.doiTrangThaiNd(uId, uBat),
+        nhanDoiVai: uLaAdmin ? 'Hạ vai user' : 'Nâng admin',
+        dangDoiVai: s.dangDoiVaiNd === uId,
+        doiVai: () => this.doiVaiNd(uId, u.vai),
+        dangDatLaiMk: s.dangDatLaiMkNd === uId,
+        datLaiMk: () => this.datLaiMkNd(uId, u.ten_dang_nhap || uId),
+        chuaXacNhanXoa: s.dangHoiXoaNd !== uId,
+        dangXacNhanXoa: s.dangHoiXoaNd === uId,
+        dangXoa: s.dangXoaNd === uId,
+        hoiXoa: () => this.setState({ dangHoiXoaNd: uId, ndThaoTacLoi: '' }),
+        huyXoa: () => this.setState({ dangHoiXoaNd: null }),
+        xacNhanXoa: () => this.xoaNd(uId),
+      };
+    });
+
+    // Danh sách khoá khách
     const dsKhoaHienThi = s.dsKhoa.map((k) => {
       const bat = !!k.bat;
       const chipPhamVi = (k.pham_vi || ['*']).map((p) => p === '*' ? 'Tất cả (*)' : p);
-      const dungCuoi = k.dung_cuoi ? `Dùng cuối: ${k.dung_cuoi.slice(0, 19).replace('T', ' ')}` : 'Chưa dùng';
+      const dungCuoi = k.dung_cuoi ? `Dùng cuối: ${K.tuongDoi(k.dung_cuoi)}` : 'Chưa dùng';
       const soLuot = `${k.so_luot || 0} lượt`;
-      const dangXacNhanXoa = s.dangHoiXoa === k.id;
-      const chuaXacNhanXoa = !dangXacNhanXoa;
-
       return {
         id: k.id,
         nhan: k.nhan || 'Khoá khách',
@@ -579,8 +1225,8 @@ class Component extends DCLogic {
         dangDoi: s.dangDoi === k.id,
         nhanDoi: bat ? 'Tắt' : 'Bật',
         doiTrangThai: () => this.doiTrangThai(k.id, bat),
-        chuaXacNhanXoa,
-        dangXacNhanXoa,
+        chuaXacNhanXoa: s.dangHoiXoa !== k.id,
+        dangXacNhanXoa: s.dangHoiXoa === k.id,
         dangXoa: s.dangXoa === k.id,
         hoiXoa: () => this.setState({ dangHoiXoa: k.id }),
         huyXoa: () => this.setState({ dangHoiXoa: null }),
@@ -588,9 +1234,37 @@ class Component extends DCLogic {
       };
     });
 
+    // Danh sách khoá của tôi
+    const dsKhoaToiHienThi = s.dsKhoaToi.map((k) => {
+      const bat = !!k.bat;
+      const chipPhamVi = (k.pham_vi || ['*']).map((p) => p === '*' ? 'Tất cả (*)' : p);
+      const dungCuoi = k.dung_cuoi ? `Dùng cuối: ${K.tuongDoi(k.dung_cuoi)}` : 'Chưa dùng';
+      const soLuot = `${k.so_luot || 0} lượt`;
+      return {
+        id: k.id,
+        nhan: k.nhan || 'Khoá cá nhân',
+        bat,
+        tat: !bat,
+        chipPhamVi,
+        dungCuoi,
+        soLuot,
+        chuaXacNhanXoa: s.dangHoiXoaKhoaToi !== k.id,
+        dangXacNhanXoa: s.dangHoiXoaKhoaToi === k.id,
+        dangXoa: s.dangXoaKhoaToi === k.id,
+        hoiXoa: () => this.setState({ dangHoiXoaKhoaToi: k.id }),
+        huyXoa: () => this.setState({ dangHoiXoaKhoaToi: null }),
+        xacNhanXoa: () => this.xoaKhoaToi(k.id),
+      };
+    });
+
     const khoaMoiView = s.khoaMoi ? {
       khoa: s.khoaMoi.khoa,
       phamViText: (s.khoaMoi.pham_vi || ['*']).map((p) => p === '*' ? 'Tất cả (*)' : p)
+    } : null;
+
+    const khoaToiMoiView = s.khoaToiMoi ? {
+      khoa: s.khoaToiMoi.khoa,
+      phamViText: (s.khoaToiMoi.pham_vi || ['*']).map((p) => p === '*' ? 'Tất cả (*)' : p)
     } : null;
 
     return {
@@ -603,28 +1277,54 @@ class Component extends DCLogic {
       dongMenu: () => this.setState({ menuMo: null }),
       phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
 
-      coKhoa: !!s.khoa,
-      khongKhoa: !s.khoa,
-      khoaNhap: s.khoaNhap,
-      khoaLoi: s.khoaLoi,
-      goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
-      phimKhoa: (e) => { if (e.key === 'Enter') this.luuKhoa(); },
-      luuKhoa: () => this.luuKhoa(),
+      tenNguoiDung: (toi && toi.ten_dang_nhap) || '...',
+      nhanVai: laAdmin ? 'Quản trị (admin)' : 'Người dùng (user)',
+      laAdmin,
+      dangXuat: () => K.dangXuat(),
 
+      // Quản lý người dùng
+      coNguoiDungMoi: !!s.nguoiDungMoi,
+      nguoiDungMoi: s.nguoiDungMoi,
+      nhanChepNdMoi: s.chepNdMoiTin ? 'Đã sao chép ✓' : 'Sao chép thông tin',
+      dongNguoiDungMoi: () => this.dongNguoiDungMoi(),
+      chepNguoiDungMoi: () => this.chepNguoiDungMoi(),
+
+      coMatKhauDatLai: !!s.matKhauDatLai,
+      matKhauDatLai: s.matKhauDatLai,
+      nhanChepMkDatLai: s.chepMkDatLaiTin ? 'Đã sao chép ✓' : 'Sao chép mật khẩu mới',
+      dongMatKhauDatLai: () => this.dongMatKhauDatLai(),
+      chepMatKhauDatLai: () => this.chepMatKhauDatLai(),
+
+      tenNdMoi: s.tenNdMoi,
+      goTenNdMoi: (e) => this.goTenNdMoi(e),
+      mkNdMoi: s.mkNdMoi,
+      goMkNdMoi: (e) => this.goMkNdMoi(e),
+      laVaiUserChon: s.vaiNdMoi === 'user',
+      laVaiAdminChon: s.vaiNdMoi === 'admin',
+      chonVaiUser: () => this.chonVaiUser(),
+      chonVaiAdmin: () => this.chonVaiAdmin(),
+      danhSachPhamViNd: phamViNdList,
+      dangTaoNd: s.dangTaoNd,
+      nhanTaoNd: s.dangTaoNd ? 'Đang tạo…' : 'Tạo tài khoản',
+      taoNdLoi: s.taoNdLoi,
+      taoNdSubmit: (e) => this.taoNdSubmit(e),
+
+      tongSoNd: dsNdHienThi.length,
+      dsNdHienThi,
+      ndThaoTacLoi: s.ndThaoTacLoi,
+
+      // Khoá khách
       coKhoaMoi: !!khoaMoiView,
       khoaMoi: khoaMoiView,
       diaChiV1: s.diaChiV1,
       dongKhoaMoi: () => this.setState({ khoaMoi: null }),
       chepKhoa: () => this.chepChuoi((khoaMoiView && khoaMoiView.khoa) || '', 'chepKhoaTin'),
       nhanChepKhoa: s.chepKhoaTin ? 'Đã sao chép!' : 'Sao chép khoá',
-      chepCauHinh: () => this.chepChuoi(
-        `Base URL: ${s.diaChiV1}\nAPI Key: ${(khoaMoiView && khoaMoiView.khoa) || ''}`,
-        'chepCauHinhTin'
-      ),
+      chepCauHinh: () => this.chepChuoi(`Base URL: ${s.diaChiV1}\nAPI Key: ${(khoaMoiView && khoaMoiView.khoa) || ''}`, 'chepCauHinhTin'),
       nhanChepCauHinh: s.chepCauHinhTin ? 'Đã sao chép cấu hình!' : 'Sao chép cấu hình',
 
       nhanNhap: s.nhanNhap,
-      goNhan: (e) => this.setState({ nhanNhap: e.target.value }),
+      goNhan: (e) => this.goNhan(e),
       chonTatCa,
       toggleTatCa: () => this.setState({ phamViChon: ['*'] }),
       danhSachPhamVi: phamViList,
@@ -638,6 +1338,42 @@ class Component extends DCLogic {
       tongSoKhoa: dsKhoaHienThi.length,
       dsKhoaHienThi,
 
+      // Khoá API của tôi
+      coKhoaToiMoi: !!khoaToiMoiView,
+      khoaToiMoi: khoaToiMoiView,
+      dongKhoaToiMoi: () => this.dongKhoaToiMoi(),
+      chepKhoaToi: () => this.chepKhoaToi(),
+      nhanChepKhoaToi: s.chepKhoaToiTin ? 'Đã sao chép ✓' : 'Sao chép khoá của tôi',
+
+      nhanKhoaToiNhap: s.nhanKhoaToiNhap,
+      goNhanKhoaToi: (e) => this.goNhanKhoaToi(e),
+      chonTatCaKhoaToi,
+      toggleTatCaKhoaToi: () => this.toggleTatCaKhoaToi(),
+      danhSachPhamViToi: phamViToiList,
+      dangTaoKhoaToi: s.dangTaoKhoaToi,
+      nhanTaoKhoaToi: s.dangTaoKhoaToi ? 'Đang tạo…' : 'Tạo khoá API',
+      taoKhoaToiLoi: s.taoKhoaToiLoi,
+      taoKhoaToiSubmit: (e) => this.taoKhoaToiSubmit(e),
+
+      coKhoaToiDs: dsKhoaToiHienThi.length > 0,
+      khongCoKhoaToiDs: dsKhoaToiHienThi.length === 0,
+      tongSoKhoaToi: dsKhoaToiHienThi.length,
+      dsKhoaToiHienThi,
+
+      // Đổi mật khẩu cá nhân
+      mkCu: s.mkCu,
+      goMkCu: (e) => this.goMkCu(e),
+      mkMoi: s.mkMoi,
+      goMkMoi: (e) => this.goMkMoi(e),
+      nhapLaiMkMoi: s.nhapLaiMkMoi,
+      goNhapLaiMkMoi: (e) => this.goNhapLaiMkMoi(e),
+      dangDoiMk: s.dangDoiMk,
+      nhanDoiMk: s.dangDoiMk ? 'Đang đổi…' : 'Đổi mật khẩu',
+      doiMkTin: s.doiMkTin,
+      doiMkLoi: s.doiMkLoi,
+      doiMkSubmit: (e) => this.doiMkSubmit(e),
+
+      // Sao lưu & khôi phục
       matKhauSaoLuu: s.matKhauSaoLuu,
       goMatKhauSaoLuu: (e) => this.setState({ matKhauSaoLuu: e.target.value }),
       kemPhien: s.kemPhien,

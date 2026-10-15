@@ -424,14 +424,14 @@ def test_get_mo_khong_lo_repo_va_vong_nen_that(gh, du_lieu):
     with TestClient(app) as c:
         assert c.put("/api/nguon-git", json=CAU_HINH, headers=QT).status_code == 200
         han = time.monotonic() + 10
-        while c.get("/api/modules").json()["thong_bao_so"] == 0 and time.monotonic() < han:
+        while c.get("/api/modules", headers=QT).json()["thong_bao_so"] == 0 and time.monotonic() < han:
             time.sleep(0.1)
-        mo = c.get("/api/modules").text + c.get("/api/modules/catalog").text
+        mo = c.get("/api/modules", headers=QT).text + c.get("/api/modules/catalog", headers=QT).text
         tb = c.get("/api/modules/thong-bao", headers=QT).json()
         r = c.post("/api/nguon-git/cai/echo", headers=QT)
         assert r.status_code == 200, r.text
-        assert c.get("/api/modules").json()["thong_bao_so"] == 0
-        assert c.get("/api/modules").json()["modules"][0]["tab_web"]["duong"] == "/m/echo/echo.dc.html"
+        assert c.get("/api/modules", headers=QT).json()["thong_bao_so"] == 0
+        assert c.get("/api/modules", headers=QT).json()["modules"][0]["tab_web"]["duong"] == "/m/echo/echo.dc.html"
         assert c.post("/api/nguon-git/cai/khong-co", headers=QT).status_code == 404
     assert '"thong_bao_so":1' in mo
     for bi_mat in (REPO, "bí mật nội bộ", gh.nhanh["main"]):
