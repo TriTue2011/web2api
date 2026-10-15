@@ -1432,6 +1432,26 @@ async def tao_khoa_khach(request: Request):
     return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
 
 
+@khoa_khach.post("/{id_}/xoay", dependencies=KHONG_LUU)
+async def xoay_khoa_khach(id_: str, request: Request):
+    raw = await doc_het(request, THAN_JSON)
+    if raw.strip():
+        try:
+            than = json.loads(raw)
+        except (ValueError, RecursionError):
+            raise LoiOpenAI(400, "Thân yêu cầu không phải JSON hợp lệ") from None
+        if not isinstance(than, dict):
+            raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
+    else:
+        than = {}
+    cu_giay = than.get("cu_giay")
+    ban_ghi, khoa_tho = khoa_khach_mod.xoay_khoa(
+        id_khoa=id_,
+        cu_giay=cu_giay,
+    )
+    return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
+
+
 @khoa_khach.patch("/{id_}")
 async def sua_khoa_khach(id_: str, request: Request):
     than = await _than_json(request)

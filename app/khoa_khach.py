@@ -32,8 +32,10 @@ import logging
 import os
 import re
 import secrets
+import tempfile
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,11 +45,103 @@ from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.khoa_khach")
 
+#: Số giây mặc định khoá cũ còn dùng được khi xoay khoá (7 ngày).
+CU_GIAY_MAC_DINH = 7 * 86400
+#: Trần số giây khoá cũ còn dùng được (30 ngày). 0 = hết hạn ngay.
+CU_GIAY_TOI_DA = 30 * 86400
+
 _KHOA_LUONG = threading.RLock()
 _KHOA_KHACH_CACHE: list[dict[str, Any]] = []
 _CACHE_FILE_STAT: tuple[Any, ...] | None = None
 _CO_THAY_DOI = False
 _DONG_THOI_DANG_CHAY: dict[str, int] = {}
+_KHOA_VAN_TAY_CACHE: tuple[Path, bytes] | None = None
+
+
+def _lay_khoa_noi_bo() -> bytes | None:
+    """Lấy hoặc sinh khoá nội bộ 32 byte để tính HMAC vân tay. Lưu ở <DATA>/bi_mat/khoa_van_tay (quyền 0600).
+    Nạp lười, giữ trong bộ nhớ. Lỗi đọc/ghi thì trả None (vân tay trả '?', không chặn xác thực)."""
+    global _KHOA_VAN_TAY_CACHE
+    p = kho.thu_muc_du_lieu() / "bi_mat" / "khoa_van_tay"
+    if _KHOA_VAN_TAY_CACHE is not None and _KHOA_VAN_TAY_CACHE[0] == p:
+        return _KHOA_VAN_TAY_CACHE[1]
+    try:
+        if p.is_file():
+            data = p.read_bytes()
+            if len(data) == 32:
+                _KHOA_VAN_TAY_CACHE = (p, data)
+                return data
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(p.parent, 0o700)
+        except OSError:
+            pass
+        moi = secrets.token_bytes(32)
+        fd, tam = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".tam")
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(moi)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tam, p)
+        except BaseException:
+            try:
+                os.unlink(tam)
+            except FileNotFoundError:
+                pass
+            raise
+        _KHOA_VAN_TAY_CACHE = (p, moi)
+        return moi
+    except Exception as e:
+        log.warning("Không thể đọc/ghi khoá nội bộ vân tay (%s): %s", p, e)
+        return None
+
+
+def van_tay(bam: str) -> str:
+    """HMAC-SHA256(khoa_noi_bo, bam) lấy 16 ký tự hex đầu. Không ném ngoại lệ (lỗi trả '?')."""
+    if not isinstance(bam, str) or not bam:
+        return "?"
+    knb = _lay_khoa_noi_bo()
+    if knb is None:
+        return "?"
+    try:
+        return hmac.new(knb, bam.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
+    except Exception:
+        return "?"
+
+
+def _la_iso_hop_le(s: Any) -> bool:
+    """Kiểm tra một chuỗi có phải ISO-8601 hợp lệ."""
+    if not isinstance(s, str) or not s:
+        return False
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt is not None
+    except (ValueError, TypeError):
+        return False
+
+
+def _la_tuong_lai(iso_str: Any) -> bool:
+    """Kiểm tra thời điểm ISO còn ở tương lai so với hiện tại (UTC). Thiếu/hỏng/quá khứ → False."""
+    if not isinstance(iso_str, str) or not iso_str:
+        return False
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt > datetime.now(timezone.utc)
+    except (ValueError, TypeError):
+        return False
+
+
+def _don_khoa_cu_het_han_trong_cache() -> None:
+    """Dọn bam_cu và cu_het_han đã hết hạn khỏi cache theo cách lười trước khi ghi đĩa."""
+    for k in _KHOA_KHACH_CACHE:
+        if k.get("bam_cu") and not _la_tuong_lai(k.get("cu_het_han")):
+            k.pop("bam_cu", None)
+            k.pop("cu_het_han", None)
+
 
 
 class LoiKhoKhoaKhach(LoiOpenAI):
@@ -180,6 +274,7 @@ def kiem_tra_kho() -> None:
 def _ghi_ra_dia_khoi_tao() -> None:
     """Ghi cache hiện tại ra đĩa với quyền 0600 (nguyên tử). Luôn gọi khi đang giữ _KHOA_LUONG."""
     global _CACHE_FILE_STAT, _CO_THAY_DOI
+    _don_khoa_cu_het_han_trong_cache()
     p = _p_khoa_khach()
     du_lieu = {"khoa": _KHOA_KHACH_CACHE}
     kho.ghi_nguyen_tu(p, kho.json.dumps(du_lieu, ensure_ascii=False, indent=2), quyen=0o600)
@@ -256,6 +351,19 @@ def kiem_tep(du_lieu: Any, *, nhan_toi_da: int | None = TOI_DA_NHAN) -> list[dic
             raise ValueError(f"khoa[{i}]: «id» phải gồm chữ, số, «_», «-» (1–64 ký tự)")
         if not isinstance(k.get("bam"), str) or not _BAM_HOP_LE.fullmatch(k["bam"]):
             raise ValueError(f"khoa[{i}]: «bam» phải là SHA-256 dạng 64 ký tự hex thường")
+        bam_cu = k.get("bam_cu")
+        cu_het_han = k.get("cu_het_han")
+        if bam_cu is not None or cu_het_han is not None:
+            if bam_cu is None or cu_het_han is None:
+                raise ValueError(f"khoa[{i}]: phải có đủ cả «bam_cu» và «cu_het_han» (hoặc không có cả hai)")
+            if not isinstance(bam_cu, str) or not _BAM_HOP_LE.fullmatch(bam_cu):
+                raise ValueError(f"khoa[{i}]: «bam_cu» phải là SHA-256 dạng 64 ký tự hex thường")
+            if not _la_iso_hop_le(cu_het_han):
+                raise ValueError(f"khoa[{i}]: «cu_het_han» phải là chuỗi thời gian ISO hợp lệ")
+            if k["bam"] == bam_cu:
+                raise ValueError(f"khoa[{i}]: «bam_cu» không được trùng «bam» của chính khoá này")
+            if bam_cu in bam_da_thay:
+                raise ValueError(f"khoa[{i}]: «bam_cu» trùng băm mục trước")
         if k["id"] in id_da_thay or k["bam"] in bam_da_thay:
             raise ValueError(f"khoa[{i}]: «id» hoặc «bam» trùng mục trước")
         if not isinstance(k.get("bat"), bool):
@@ -279,9 +387,15 @@ def kiem_tep(du_lieu: Any, *, nhan_toi_da: int | None = TOI_DA_NHAN) -> list[dic
             raise ValueError(f"khoa[{i}]: «chu_id» phải là null hoặc mã người dùng hợp lệ")
         id_da_thay.add(k["id"])
         bam_da_thay.add(k["bam"])
-        ra.append({"id": k["id"], "nhan": nhan, "bat": k["bat"], "pham_vi": pv,
-                   "tao_luc": k.get("tao_luc"), "dung_cuoi": k.get("dung_cuoi"), "so_luot": so_luot,
-                   "bam": k["bam"], **({"chu_id": chu_id} if chu_id else {})})
+        if bam_cu:
+            bam_da_thay.add(bam_cu)
+        muc_ra = {"id": k["id"], "nhan": nhan, "bat": k["bat"], "pham_vi": pv,
+                  "tao_luc": k.get("tao_luc"), "dung_cuoi": k.get("dung_cuoi"), "so_luot": so_luot,
+                  "bam": k["bam"], **({"chu_id": chu_id} if chu_id else {})}
+        if bam_cu:
+            muc_ra["bam_cu"] = bam_cu
+            muc_ra["cu_het_han"] = cu_het_han
+        ra.append(muc_ra)
     return ra
 
 
@@ -320,11 +434,23 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
             cu = {k.get("id"): dict(k) for k in _doc_tu_dia_neu_can()}
         except LoiKhoKhoaKhach:
             cu, hong = {}, True
-    cu_theo_bam = {c.get("bam"): c for c in cu.values()}
+    cu_theo_bam: dict[str, dict[str, Any]] = {}
+    for c in cu.values():
+        if c.get("bam"):
+            cu_theo_bam[c["bam"]] = c
+        if c.get("bam_cu"):
+            cu_theo_bam[c["bam_cu"]] = c
     ds = []
     for k in moi:
         c = cu.get(k["id"])
-        dang_co = [x for x in (c, cu_theo_bam.get(k["bam"])) if x is not None]  # cùng id HOẶC cùng khoá thô
+        cac_bam_k = [k["bam"]]
+        if k.get("bam_cu"):
+            cac_bam_k.append(k["bam_cu"])
+        dang_co = [c] if c is not None else []
+        for b in cac_bam_k:
+            cb = cu_theo_bam.get(b)
+            if cb is not None and cb not in dang_co:
+                dang_co.append(cb)
         chu_dang_co = {x.get("chu_id") for x in dang_co if x.get("chu_id")}
         if c is None:
             tt = "moi"
@@ -332,15 +458,20 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
             tt = "doi_bam"
         elif c.get("chu_id") != k.get("chu_id"):
             tt = "doi_chu"
-        elif (c.get("bat", True), list(c.get("pham_vi", ["*"])), c.get("nhan")) != (k["bat"], k["pham_vi"], k["nhan"]):
+        elif (c.get("bat", True), list(c.get("pham_vi", ["*"])), c.get("nhan"),
+              c.get("bam_cu"), c.get("cu_het_han")) != (
+                  k["bat"], k["pham_vi"], k["nhan"], k.get("bam_cu"), k.get("cu_het_han")):
             tt = "doi"
         else:
             tt = "giu_nguyen"
+        trung_khoa_khac = any(x.get("id") != k["id"] for x in dang_co)
+        bo_chu = any(ch != k.get("chu_id") for ch in chu_dang_co)
         muc = {"id": k["id"], "nhan": k["nhan"], "bat": k["bat"], "pham_vi": list(k["pham_vi"]),
                "chu_id": k.get("chu_id"), "trang_thai": tt,
                "mo_rong_pham_vi": _rong_hon(k["pham_vi"], None if c is None else list(c.get("pham_vi", ["*"]))),
                "bat_lai": k["bat"] and any(x.get("bat", True) is False for x in dang_co),
-               "canh_bao": None, "bo_chu": any(ch != k.get("chu_id") for ch in chu_dang_co)}
+               "canh_bao": None, "bo_chu": bo_chu, "trung_khoa_khac": trung_khoa_khac,
+               "co_khoa_cu": bool(k.get("bam_cu")), "cu_het_han": k.get("cu_het_han")}
         if c is not None:
             muc["chu_id_hien_tai"] = c.get("chu_id")
         canh_bao = []
@@ -380,9 +511,18 @@ def ban_ghi_theo_bam(bam_tim: str) -> dict[str, Any] | None:
     """Bản ghi THÔ (bản sao, chưa áp chính sách chủ) theo băm — thứ đã ghi trên đĩa. Kho hỏng → LoiKhoKhoaKhach."""
     if not isinstance(bam_tim, str) or not _BAM_HOP_LE.fullmatch(bam_tim):
         return None
+    bam_tim_bytes = bam_tim.encode("ascii")
+    zero_bytes = b"0" * 64
     with _KHOA_LUONG:
         for k in _doc_tu_dia_neu_can():
-            if hmac.compare_digest(bam_tim.encode("ascii"), str(k.get("bam", "")).encode("ascii")):
+            khop_moi = hmac.compare_digest(bam_tim_bytes, str(k.get("bam", "")).encode("ascii"))
+            bam_cu = k.get("bam_cu")
+            khop_cu = False
+            if bam_cu and _la_tuong_lai(k.get("cu_het_han")):
+                khop_cu = hmac.compare_digest(bam_tim_bytes, str(bam_cu).encode("ascii"))
+            else:
+                _ = hmac.compare_digest(bam_tim_bytes, zero_bytes)
+            if khop_moi or khop_cu:
                 return dict(k)
     return None
 
@@ -461,7 +601,11 @@ def ra_dong_thoi(id_khoa: str | None) -> None:
 # ───────────── Quản trị qua API ─────────────
 
 def _sach_khoa(k: dict[str, Any]) -> dict[str, Any]:
-    """Trả về bản ghi an toàn: bỏ trường `bam` và mọi thông tin bí mật."""
+    """Trả về bản ghi an toàn: bỏ trường `bam`, `bam_cu` và mọi thông tin bí mật.
+    Thêm `van_tay`, `cu_het_han` và `co_khoa_cu: bool`."""
+    bam = k.get("bam", "")
+    cu_het_han = k.get("cu_het_han")
+    co_khoa_cu = bool(k.get("bam_cu") and _la_tuong_lai(cu_het_han))
     return {
         "id": k.get("id"),
         "nhan": k.get("nhan"),
@@ -471,6 +615,9 @@ def _sach_khoa(k: dict[str, Any]) -> dict[str, Any]:
         "tao_luc": k.get("tao_luc"),
         "dung_cuoi": k.get("dung_cuoi"),
         "so_luot": int(k.get("so_luot", 0)),
+        "van_tay": van_tay(bam) if bam else "?",
+        "cu_het_han": cu_het_han,
+        "co_khoa_cu": co_khoa_cu,
     }
 
 
@@ -549,11 +696,66 @@ def tao_khoa(
         "thong_tin",
         f"Tạo khoá khách «{nhan_chuan}» (id: {id_khoa})",
         id_khoa=id_khoa,
+        khoa_van_tay=van_tay(bam),
         nhan=nhan_chuan,
         pham_vi=pv,
         chu_id=chu_id,
     )
     ban_ghi = _sach_khoa(muc)
+    return ban_ghi, khoa_tho
+
+
+def xoay_khoa(
+    id_khoa: str,
+    cu_giay: Any = CU_GIAY_MAC_DINH,
+) -> tuple[dict[str, Any], str]:
+    """Xoay khoá khách: sinh khoá mới, đẩy bam hiện tại thành bam_cu, đặt cu_het_han.
+
+    - `cu_giay`: số giây khoá cũ còn dùng được (0 đến CU_GIAY_TOI_DA; mặc định CU_GIAY_MAC_DINH).
+    - cu_giay=0: khoá cũ hết hạn ngay.
+    - Trả (bản_ghi_an_toàn, khoa_thô_mới).
+    """
+    if cu_giay is None:
+        cu_giay = CU_GIAY_MAC_DINH
+    if isinstance(cu_giay, bool) or not isinstance(cu_giay, int):
+        raise LoiOpenAI(400, "Trường «cu_giay» phải là số nguyên (giây).", code="invalid_value")
+    if cu_giay < 0 or cu_giay > CU_GIAY_TOI_DA:
+        raise LoiOpenAI(400, f"Trường «cu_giay» phải từ 0 đến {CU_GIAY_TOI_DA} giây.", code="invalid_value")
+
+    khoa_tho = f"w2a_{secrets.token_urlsafe(32)}"
+    bam_moi = hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest()
+    cu_het_han_dt = datetime.now(timezone.utc) + timedelta(seconds=cu_giay)
+    cu_het_han = cu_het_han_dt.isoformat(timespec="seconds")
+
+    with _KHOA_LUONG:
+        ds = _doc_tu_dia_neu_can()
+        tim_thay = None
+        for k in ds:
+            if k.get("id") == id_khoa:
+                tim_thay = k
+                break
+        if not tim_thay:
+            raise LoiOpenAI(404, f"Không tìm thấy khoá khách có id {id_khoa!r}", code="key_not_found")
+
+        bam_hien_tai = tim_thay["bam"]
+        tim_thay["bam_cu"] = bam_hien_tai
+        tim_thay["cu_het_han"] = cu_het_han
+        tim_thay["bam"] = bam_moi
+
+        ban_ghi = _sach_khoa(tim_thay)
+        ban_ghi["cu_het_han"] = cu_het_han
+
+        _ghi_ra_dia_khoi_tao()
+
+    vt_moi = van_tay(bam_moi)
+    nhat_ky.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Xoay khoá khách (id: {id_khoa})",
+        id_khoa=id_khoa,
+        khoa_van_tay=vt_moi,
+        cu_het_han=cu_het_han,
+    )
     return ban_ghi, khoa_tho
 
 
@@ -593,6 +795,7 @@ def sua_khoa(
         "thong_tin",
         f"Cập nhật khoá khách (id: {id_khoa})",
         id_khoa=id_khoa,
+        khoa_van_tay=van_tay(tim_thay.get("bam", "")),
         bat=kq["bat"],
         nhan=kq["nhan"],
         pham_vi=kq["pham_vi"],
@@ -602,19 +805,26 @@ def sua_khoa(
 
 def xoa_khoa(id_khoa: str) -> bool:
     """Thu hồi khoá khách (xoá khỏi danh sách, ghi đĩa ngay, các lượt sau lập tức 401)."""
+    bam_da_xoa = None
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
         ban_dau = len(ds)
+        for k in ds:
+            if k.get("id") == id_khoa:
+                bam_da_xoa = k.get("bam")
+                break
         _KHOA_KHACH_CACHE[:] = [k for k in ds if k.get("id") != id_khoa]
         da_xoa = len(_KHOA_KHACH_CACHE) < ban_dau
         if da_xoa:
             _ghi_ra_dia_khoi_tao()
 
     if da_xoa:
+        vt = van_tay(bam_da_xoa) if bam_da_xoa else "?"
         nhat_ky.ghi(
             "quan_tri",
             "thong_tin",
             f"Thu hồi khoá khách (id: {id_khoa})",
             id_khoa=id_khoa,
+            khoa_van_tay=vt,
         )
     return da_xoa

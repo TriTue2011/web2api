@@ -9,6 +9,7 @@ Xác thực: /v1/* và mọi API đổi trạng thái/lộ cấu hình đòi kho
 """
 
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -121,6 +122,7 @@ class MiddlewareChanKhoaKhachQuanTri:
                             khach = None if la_qt else khoa_khach.tim_theo_khoa_tho(token.strip())
                             if khach is not None:
                                 id_k = str(khach.get("id", "khach"))
+                                bam_k = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
                                 nhat_ky.ghi(
                                     "quan_tri",
                                     "canh_bao",
@@ -128,6 +130,7 @@ class MiddlewareChanKhoaKhachQuanTri:
                                     duong=path,
                                     phuong_thuc=scope.get("method", ""),
                                     nguoi_goi=f"khach:{id_k}",
+                                    khoa_van_tay=khoa_khach.van_tay(bam_k),
                                 )
                                 noi_dung = json.dumps(
                                     than_loi(403, "Không có quyền truy cập.", "permission_error", "forbidden"),

@@ -20,6 +20,7 @@ log chỉ nêu đường dẫn tệp để người vận hành `docker exec …
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import os
@@ -166,7 +167,9 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
                     pham_vi_hieu_luc = cac_yeu_cau
 
             request.state.nguoi_goi = f"khach:{id_khach}"
-            danh_tinh = {"loai": "khach", "id": id_khach, "pham_vi": pham_vi_hieu_luc}
+            bam_k = hashlib.sha256(gia_tri.encode("utf-8")).hexdigest()
+            vt_k = khoa_khach.van_tay(bam_k)
+            danh_tinh = {"loai": "khach", "id": id_khach, "pham_vi": pham_vi_hieu_luc, "khoa_van_tay": vt_k}
             request.state.danh_tinh = danh_tinh
             return danh_tinh
 
@@ -281,13 +284,19 @@ async def can_quan_tri(request: Request) -> dict[str, Any]:
 
     if nguoi.get("loai") != "quan_tri":
         id_k = nguoi.get("id", "khach")
+        vt = nguoi.get("khoa_van_tay")
+        nk_kwargs = {
+            "duong": request.url.path,
+            "phuong_thuc": request.method,
+            "nguoi_goi": f"khach:{id_k}",
+        }
+        if vt:
+            nk_kwargs["khoa_van_tay"] = vt
         nhat_ky.ghi(
             "quan_tri",
             "canh_bao",
             f"Từ chối 403 trên đường quản trị: khoá khách ({id_k}) gọi {request.method} {request.url.path}",
-            duong=request.url.path,
-            phuong_thuc=request.method,
-            nguoi_goi=f"khach:{id_k}",
+            **nk_kwargs,
         )
         raise LoiOpenAI(
             403,
