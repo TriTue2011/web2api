@@ -146,7 +146,7 @@ Lõi giữ đúng giao thức cho khách ở `/v1/chat/completions` (không đ�
   khai URL, dịch vụ trình duyệt) khi đọc trọn vào RAM (chat không stream, gọi khả năng, kiểm khoá, lấy model, API
   quản trị trình duyệt) đều được đọc từng khúc qua luồng có trần dung lượng `WEB2API_PHAN_HOI_TOI_DA_MB` (mặc định 32 MB)
   và trần thời gian tổng `WEB2API_PHAN_HOI_TOI_DA_GIAY` (mặc định 300 giây). Vượt trần dung lượng ngắt ngay và trả
-  `502 upstream_too_large` (chống OOM-kill container 256 MB); quá giờ đọc ngắt và trả `504 upstream_timeout`. Các luồng
+  `502 upstream_too_large` (chống OOM-kill container bị giới hạn RAM); quá giờ đọc ngắt và trả `504 upstream_timeout`. Các luồng
   phát (`LuongSSE`, `LuongNhiPhan`) dùng lớp có phương thức `aclose()` bảo đảm đóng phản hồi ngược dòng ngay cả khi
   chưa kịp nhận byte đầu.
 
@@ -1198,7 +1198,7 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 - **Docker** có `docker compose` 2.24 trở lên. Không cần Python trên máy chủ.
 - **RAM**: lõi rỗng chạy ổn định khoảng **32 MB**, gần như không tốn CPU lúc rảnh (đo thật 0,14% ngày
-  10/10/2026). Giới hạn **256 MB** là đủ cho lõi và module Gemini API (module chỉ chuyển tiếp).
+  10/10/2026). Dùng thực tế khoảng 100 MB với vài module (đo 16/10/2026); `docker-compose.yml` đặt giới hạn **1 GB** cho dư địa khi nhiều module hoặc ảnh/video lớn — giới hạn này KHÔNG bắt buộc (xem «Giới hạn tài nguyên» bên dưới).
 - **Đĩa**: ảnh lõi **198 MB** (đo 10/10/2026, trước khi thêm gói `httpx` — khoảng 1,8 MB nữa; ảnh mới chưa đo
   lại), cộng vài MB dữ liệu.
 - **Mạng ra Internet** tới nhà cung cấp mà module gọi (ví dụ `generativelanguage.googleapis.com`) và tới
@@ -1222,8 +1222,10 @@ Dữ liệu (khoá quản trị, cấu hình, module đã cài) nằm trong **vo
 mới quyền của người dùng trong ảnh (uid 1000), không phải tạo thư mục hay đổi quyền. Mở `http://<IP-máy-chủ>:3031/`
 rồi làm tiếp mục 6.
 
-`docker-compose.yml` đặt sẵn: tên container `web2api`; cổng `3031 → 8000`; giới hạn 256 MB RAM, 0,5 nhân CPU, 100
-tiến trình; chạy bằng uid 1000; tự khởi động lại trừ khi bạn dừng; kiểm sức khoẻ `/health` mỗi 30 giây; nguồn
+**Giới hạn tài nguyên (không bắt buộc).** Ba dòng `mem_limit`, `cpus`, `pids_limit` trong `docker-compose.yml` chỉ là hàng rào, không phải điều kiện để web2api chạy: bỏ đi (xoá dòng) vẫn chạy bình thường. Chúng chặn một module lỗi (rò bộ nhớ, vòng lặp, sinh tiến trình vô hạn) ăn hết RAM/CPU của máy chủ và kéo các dịch vụ khác trên cùng máy chết theo — vì module cài từ git chạy ngay trong tiến trình lõi nên đây là lớp bảo vệ cuối. Gợi ý: máy chỉ chạy web2api thì bỏ cũng được; máy dùng chung với dịch vụ khác thì nên giữ. `mem_limit` tăng thoải mái (`2g`, `4g`…) nếu dùng nhiều module hoặc ảnh/video lớn; muốn đổi ngay không khởi động lại: `docker update --memory 2g --memory-swap 2g web2api` (và sửa cả tệp compose để lần tạo lại sau không quay về giá trị cũ). `cpus: 0.5` chỉ làm băm mật khẩu và đăng nhập chậm hơn khi nhiều người cùng đăng nhập; `pids_limit: 100` là rào chống sinh tiến trình vô hạn — nên giữ.
+
+`docker-compose.yml` đặt sẵn: tên container `web2api`; cổng `3031 → 8000`; giới hạn 1 GB RAM, 0,5 nhân CPU, 100
+tiến trình (ba giới hạn này không bắt buộc, xem ngay dưới); chạy bằng uid 1000; tự khởi động lại trừ khi bạn dừng; kiểm sức khoẻ `/health` mỗi 30 giây; nguồn
 module git của dự án (`WEB2API_GIT_REPO=TriTue2011/web2api`, `WEB2API_GIT_NHANH=main`, `WEB2API_GIT_THU_MUC=modules`
 — đọc ẩn danh, chỉ báo, không tự cài); nhãn không cho Watchtower tự cập nhật.
 
@@ -1250,7 +1252,7 @@ WEB2API_MAY_CPU=8
 ```bash
 docker build -t web2api:latest .
 docker run -d --name web2api \
-  --memory 256m \
+  --memory 1g \
   -p 3031:8000 \
   -v web2api-data:/data \
   -e WEB2API_GIT_REPO=TriTue2011/web2api \
