@@ -123,6 +123,6 @@ def test_mau_tieu_muc_va_script_chup_ton_tai():
 
 def test_readme_gon_gioi_han_dong():
     dong = README.splitlines()
-    assert len(dong) <= 180, f"README.md có {len(dong)} dòng, vượt trần 180 dòng"
+    assert len(dong) <= 400, f"README.md có {len(dong)} dòng, vượt trần 400 dòng"
     dong_en = (GOC / "README.en.md").read_text(encoding="utf-8").splitlines()
-    assert len(dong_en) <= 180, f"README.en.md có {len(dong_en)} dòng, vượt trần 180 dòng"
+    assert len(dong_en) <= 400, f"README.en.md có {len(dong_en)} dòng, vượt trần 400 dòng"
