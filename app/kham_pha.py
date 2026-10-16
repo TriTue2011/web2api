@@ -311,7 +311,13 @@ class ModuleKhamPha:
         return any(t.get("bat_buoc") for t in self.truong_cau_hinh)
 
     def tao(self):
-        return self.lop(self.manifest)
+        the = self.lop(self.manifest)
+        if not hasattr(the, "manifest") or not isinstance(getattr(the, "manifest", None), dict):
+            try:
+                the.manifest = self.manifest
+            except Exception:
+                pass
+        return the
 
     def duong_tab(self) -> dict:
         """Tab của module trên thanh trên. Manifest khai `tab_web` thì dùng giao diện riêng ở /m/<id>/;

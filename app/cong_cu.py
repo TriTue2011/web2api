@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from typing import Any
@@ -119,7 +120,8 @@ def _lam_sach_de_quy(luoc_do: Any, do_sau: int) -> dict[str, Any]:
             if isinstance(v, bool):
                 cac_enum.append(v)
             elif isinstance(v, (int, float)):
-                cac_enum.append(v)
+                if math.isfinite(v):
+                    cac_enum.append(v)
             elif isinstance(v, str):
                 v_sach = v.strip()
                 if _MAU_DINH_DANH.fullmatch(v_sach):
@@ -160,10 +162,11 @@ def _lam_sach_de_quy(luoc_do: Any, do_sau: int) -> dict[str, Any]:
         elif isinstance(items, list):
             kq["items"] = [_lam_sach_de_quy(it, do_sau=do_sau + 1) for it in items if isinstance(it, dict)]
 
-    # 6. Giới hạn số/độ dài
-    for k in ("minimum", "maximum"):
+    # 6. Giới hạn số/độ dài: mọi số lấy từ lược đồ ngoài phải hữu hạn
+    for k in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
         if k in luoc_do and isinstance(luoc_do[k], (int, float)) and not isinstance(luoc_do[k], bool):
-            kq[k] = luoc_do[k]
+            if math.isfinite(luoc_do[k]):
+                kq[k] = luoc_do[k]
 
     for k in ("minLength", "maxLength"):
         if k in luoc_do and isinstance(luoc_do[k], int) and not isinstance(luoc_do[k], bool) and luoc_do[k] >= 0:
