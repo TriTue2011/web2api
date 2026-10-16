@@ -65,9 +65,6 @@ def _dang_nhap_admin(client):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True, reason="NV51 SU1: đặt lại mật khẩu người khác chưa đòi xác nhận lại"
-)
 def test_stepup_dat_lai_mat_khau_doi_xac_nhan_lai(moi_truong):
     client, _ = moi_truong
     cookies, headers = _dang_nhap_admin(client)
@@ -87,9 +84,6 @@ def test_stepup_dat_lai_mat_khau_doi_xac_nhan_lai(moi_truong):
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="NV51 SU2: tạo tài khoản admin mới chưa đòi xác nhận lại"
-)
 def test_stepup_tao_admin_moi_doi_xac_nhan_lai(moi_truong):
     client, _ = moi_truong
     cookies, headers = _dang_nhap_admin(client)
@@ -108,9 +102,6 @@ def test_stepup_tao_admin_moi_doi_xac_nhan_lai(moi_truong):
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="NV51 SU3: hạ vai admin xuống user chưa đòi xác nhận lại"
-)
 def test_stepup_ha_vai_admin_doi_xac_nhan_lai(moi_truong):
     client, _ = moi_truong
     cookies, headers = _dang_nhap_admin(client)
@@ -130,9 +121,6 @@ def test_stepup_ha_vai_admin_doi_xac_nhan_lai(moi_truong):
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="NV51 SU4: xoay khoá khách chưa đòi xác nhận lại"
-)
 def test_stepup_xoay_khoa_khach_doi_xac_nhan_lai(moi_truong):
     client, _ = moi_truong
     cookies, headers = _dang_nhap_admin(client)
@@ -153,9 +141,6 @@ def test_stepup_xoay_khoa_khach_doi_xac_nhan_lai(moi_truong):
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="NV51 SU5: duyệt phê duyệt chưa đòi xác nhận lại"
-)
 def test_stepup_duyet_phe_duyet_doi_xac_nhan_lai(moi_truong):
     from app import thiet_bi
 
@@ -175,10 +160,6 @@ def test_stepup_duyet_phe_duyet_doi_xac_nhan_lai(moi_truong):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="NV51 SU6: phản hồi khi chưa xác nhận lại phải chung chung, không lộ lý do sai",
-)
 def test_stepup_ly_do_chung_chung_khong_lo(moi_truong):
     """Khi thiếu xác nhận lại, mã lỗi phải chung chung: không được phân biệt
     «sai mật khẩu xác nhận» với «tài khoản không tồn tại» qua mã trạng thái
@@ -302,3 +283,268 @@ def test_phong_thu_tai_khoan_moi_khong_tu_co_quyen_cao(moi_truong):
         f"/api/nguoi-dung/{uid}", json={"vai": "admin"}, cookies=cookies, headers=headers
     )
     assert r2.status_code == 403
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XÁC NHẬN LẠI (STEP-UP) THÀNH CÔNG VÀ KIỂM THỬ BẢO MẬT ĐƯỜNG MỚI
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_stepup_xac_nhan_lai_mat_khau_thanh_cong_mo_khoa(moi_truong):
+    """Xác nhận lại bằng mật khẩu admin thành công -> mở khoá thao tác nguy hiểm."""
+    client, _ = moi_truong
+    cookies, headers = _dang_nhap_admin(client)
+    nan_nhan, _, _ = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(
+            vai="user", ten_dang_nhap="nan-nhan-xn1", mat_khau=MK_USER
+        )
+    )
+    # Xác nhận lại
+    r_xn = client.post(
+        "/api/toi/xac-nhan-lai",
+        json={"mat_khau": MK_ADMIN},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r_xn.status_code == 200
+    assert r_xn.json().get("ok") is True
+
+    # Giờ đây thao tác nguy hiểm thành công (200)
+    r = client.post(
+        f"/api/nguoi-dung/{nan_nhan['id']}/dat-lai-mat-khau",
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert "mat_khau_moi" in r.json()
+
+
+def test_stepup_xac_nhan_lai_khoa_quan_tri_thanh_cong_mo_khoa(moi_truong):
+    """Xác nhận lại bằng khoá quản trị thành công -> mở khoá thao tác nguy hiểm."""
+    client, _ = moi_truong
+    cookies, headers = _dang_nhap_admin(client)
+    # Xác nhận lại bằng khoá quản trị
+    r_xn = client.post(
+        "/api/toi/xac-nhan-lai",
+        json={"khoa_quan_tri": KHOA_QT},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r_xn.status_code == 200
+    assert r_xn.json().get("ok") is True
+
+    # Tạo admin mới thành công
+    r = client.post(
+        "/api/nguoi-dung",
+        json={
+            "ten_dang_nhap": "admin-sau-stepup",
+            "mat_khau": "MatKhauAdminMoi123456",
+            "vai": "admin",
+        },
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["nguoi_dung"]["vai"] == "admin"
+
+
+def test_stepup_het_han_buoc_lam_lai(moi_truong, monkeypatch):
+    """Xác nhận lại nhưng hết hạn cửa sổ ngắn -> lại bị từ chối 403."""
+    import time
+    client, _ = moi_truong
+    # Đặt cửa sổ hiệu lực 1 giây
+    monkeypatch.setenv("WEB2API_STEPUP_GIAY", "1")
+    cookies, headers = _dang_nhap_admin(client)
+    r_xn = client.post(
+        "/api/toi/xac-nhan-lai",
+        json={"mat_khau": MK_ADMIN},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r_xn.status_code == 200
+
+    time.sleep(1.2)
+
+    nan_nhan, _, _ = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(
+            vai="user", ten_dang_nhap="nan-nhan-hh1", mat_khau=MK_USER
+        )
+    )
+    r = client.post(
+        f"/api/nguoi-dung/{nan_nhan['id']}/dat-lai-mat-khau",
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code in (401, 403), "Hết hạn step-up phải bị từ chối 401/403"
+
+
+def test_xac_nhan_lai_khong_khoa_401(moi_truong):
+    """BẢO MẬT: Đường /api/toi/xac-nhan-lai không có phiên -> 401."""
+    client, _ = moi_truong
+    assert client.post("/api/toi/xac-nhan-lai", json={"mat_khau": MK_ADMIN}).status_code == 401
+
+
+def test_xac_nhan_lai_khoa_khach_403(moi_truong):
+    """BẢO MẬT: Khoá khách gọi đường xác nhận lại phiên -> 403 (không có quyền quản trị)."""
+    client, _ = moi_truong
+    r = client.post(
+        "/api/khoa-khach", json={"nhan": "kk-stepup-pt"}, headers={"Authorization": "Bearer " + KHOA_QT}
+    )
+    khoa_tho = r.json()["khoa"]["khoa"]
+    h = {"Authorization": f"Bearer {khoa_tho}"}
+    assert client.post("/api/toi/xac-nhan-lai", json={"mat_khau": MK_ADMIN}, headers=h).status_code in (401, 403)
+
+
+def test_xac_nhan_lai_vai_user_403(moi_truong):
+    """BẢO MẬT: Phiên tài khoản vai user gọi xác nhận lại quyền admin -> 403."""
+    client, _ = moi_truong
+    asyncio.run(
+        nguoi_dung.tao_nguoi_dung(
+            vai="user", ten_dang_nhap="user-stepup-pt", mat_khau=MK_USER
+        )
+    )
+    r_dn = client.post(
+        "/api/dang-nhap",
+        json={"ten_dang_nhap": "user-stepup-pt", "mat_khau": MK_USER},
+    )
+    cookies = {"w2a_phien": r_dn.cookies.get("w2a_phien")}
+    headers = {"X-CSRF-Token": r_dn.json()["csrf"]}
+    r = client.post(
+        "/api/toi/xac-nhan-lai",
+        json={"mat_khau": MK_USER},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code == 403
+
+
+def test_xac_nhan_lai_sai_mat_khau_401(moi_truong):
+    """BẢO MẬT: Nhập sai mật khẩu khi xác nhận lại -> 401."""
+    client, _ = moi_truong
+    cookies, headers = _dang_nhap_admin(client)
+    r = client.post(
+        "/api/toi/xac-nhan-lai",
+        json={"mat_khau": "MatKhauSaiHoanToan123"},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code == 401
+
+
+def test_xac_nhan_lai_thieu_thong_tin_400(moi_truong):
+    """BẢO MẬT: Thiếu cả mật khẩu lẫn khoá quản trị -> 400."""
+    client, _ = moi_truong
+    cookies, headers = _dang_nhap_admin(client)
+    r = client.post(
+        "/api/toi/xac-nhan-lai",
+        json={},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code == 400
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BỐN TEST BẮT BUỘC CHO LƯỢT 2 (đỏ trước, rồi xanh)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_stepup_khong_phien_khong_bearer_403(moi_truong):
+    """(a) Không phiên và không Bearer -> 403 trên route gắn kiem_tra_step_up hoặc gọi trực tiếp."""
+    from starlette.requests import Request
+    from app.loi_openai import LoiOpenAI
+    from app.xac_thuc import kiem_tra_step_up
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/nguoi-dung",
+        "headers": [],
+    }
+    req = Request(scope)
+    with pytest.raises(LoiOpenAI) as exc_info:
+        kiem_tra_step_up(req)
+    assert exc_info.value.ma == 403
+    assert exc_info.value.code == "step_up_required"
+
+
+def test_stepup_bearer_khoa_khach_khong_duoc_mien(moi_truong):
+    """(b) Bearer khoá khách gọi vào kiem_tra_step_up -> không được miễn (403)."""
+    from starlette.requests import Request
+    from app.loi_openai import LoiOpenAI
+    from app.xac_thuc import kiem_tra_step_up
+
+    client, _ = moi_truong
+    r = client.post(
+        "/api/khoa-khach",
+        json={"nhan": "kk-stepup-b"},
+        headers={"Authorization": "Bearer " + KHOA_QT},
+    )
+    assert r.status_code == 200
+    khoa_tho = r.json()["khoa"]["khoa"]
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/nguoi-dung",
+        "headers": [(b"authorization", f"Bearer {khoa_tho}".encode("utf-8"))],
+    }
+    req = Request(scope)
+    with pytest.raises(LoiOpenAI) as exc_info:
+        kiem_tra_step_up(req)
+    assert exc_info.value.ma == 403
+
+
+def test_stepup_tat_tai_khoan_admin_bat_false_doi_xac_nhan_lai(moi_truong):
+    """(c) Tắt tài khoản admin bằng bat=false khi chưa step-up -> 403."""
+    client, _ = moi_truong
+    cookies, headers = _dang_nhap_admin(client)
+    admin2, _, _ = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(
+            vai="admin", ten_dang_nhap="admin2-tat-su", mat_khau=MK_ADMIN
+        )
+    )
+    r = client.patch(
+        f"/api/nguoi-dung/{admin2['id']}",
+        json={"bat": False},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r.status_code == 403, (
+        f"tắt tài khoản admin bằng bat=false khi chưa step-up phải bị 403, nhận {r.status_code}"
+    )
+
+
+def test_stepup_ghi_kho_loi_khong_xac_nhan(moi_truong):
+    """(d) Ghi kho lỗi khi xác nhận lại -> 503/500 có thông điệp chung và phiên KHÔNG được coi là đã xác nhận."""
+    from unittest.mock import patch
+
+    client, _ = moi_truong
+    cookies, headers = _dang_nhap_admin(client)
+
+    nan_nhan, _, _ = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(
+            vai="user", ten_dang_nhap="nan-nhan-loi-kho", mat_khau=MK_USER
+        )
+    )
+
+    with patch("app.phien_web._ghi_phien", side_effect=OSError("Lỗi ghi đĩa giả lập")):
+        r = client.post(
+            "/api/toi/xac-nhan-lai",
+            json={"mat_khau": MK_ADMIN},
+            cookies=cookies,
+            headers=headers,
+        )
+        assert r.status_code in (500, 503), f"ghi kho lỗi phải trả 503/500, nhận {r.status_code}"
+        assert "error" in r.json() or "detail" in r.json(), "phản hồi phải có cấu trúc lỗi chung"
+
+    # Phiên không được coi là đã xác nhận -> thao tác nguy hiểm vẫn bị 403
+    r_nguy_hiem = client.post(
+        f"/api/nguoi-dung/{nan_nhan['id']}/dat-lai-mat-khau",
+        cookies=cookies,
+        headers=headers,
+    )
+    assert r_nguy_hiem.status_code in (401, 403), (
+        f"phiên sau khi ghi kho lỗi không được coi là đã xác nhận, nhận {r_nguy_hiem.status_code}"
+    )
+

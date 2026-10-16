@@ -97,10 +97,6 @@ def _duyet_thanh_cong(client) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="NV51 AT1: PUT /api/dia-chi chưa ghi vào kênh nhật ký quản trị",
-)
 def test_doi_dia_chi_ghi_kenh_quan_tri(moi_truong):
     client, _ = moi_truong
     r = client.put(
@@ -116,10 +112,6 @@ def test_doi_dia_chi_ghi_kenh_quan_tri(moi_truong):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="NV51 AT2: duyệt phê duyệt thành công chưa ghi vào kênh nhật ký quản trị",
-)
 def test_duyet_phe_duyet_ghi_kenh_quan_tri(moi_truong):
     client, _ = moi_truong
     _duyet_thanh_cong(client)

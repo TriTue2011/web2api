@@ -404,3 +404,37 @@ def dinh_danh_nguoi_thuc_hien(request: Request | None = None) -> str:
         return str(nc.danh_tinh["id"])
     return "quan_tri"
 
+
+def kiem_tra_step_up(request: Request) -> None:
+    """Kiểm tra xác nhận lại (step-up) cho thao tác quản trị nguy hiểm.
+
+    - Gọi bằng Bearer Admin trực tiếp: được miễn (đã gửi khoá bí mật cao nhất trong Authorization header).
+    - Gọi bằng phiên web (cookie): bắt buộc phiên phải đã xác nhận lại trong cửa sổ ngắn.
+    - Không phiên, chưa xác nhận lại hoặc đã hết hạn: từ chối 403 chung chung (không phân biệt id tồn tại hay không).
+    """
+    # 1. Chỉ miễn trừ khi danh tính là khoá quản trị Bearer (loai="quan_tri", id="quan_tri")
+    danh_tinh = getattr(request.state, "danh_tinh", None) if hasattr(request, "state") else None
+    if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "quan_tri" and danh_tinh.get("id") == "quan_tri":
+        return
+
+    # Nếu danh tính chưa có trên request.state (gọi trực tiếp hàm), kiểm tra Authorization header với khoá quản trị
+    auth_hdr = request.headers.get("authorization", "").strip() if hasattr(request, "headers") else ""
+    loai_auth, _, gia_tri = auth_hdr.partition(" ")
+    if loai_auth.lower() == "bearer" and gia_tri.strip():
+        if hmac.compare_digest(gia_tri.strip().encode("utf-8"), khoa_quan_tri().encode("utf-8")):
+            return
+
+    # 2. Cổng bảo mật fail-closed: nếu không phải Bearer quản trị, bắt buộc có phiên hợp lệ và đã xác nhận lại
+    from app import phien_web
+    phien = getattr(request.state, "phien_web", None) if hasattr(request, "state") else None
+    if phien is None:
+        phien = phien_web.xac_thuc_cookie(request)
+
+    if phien is None or not phien_web.la_phien_da_xac_nhan_lai(phien):
+        raise LoiOpenAI(
+            403,
+            "Thao tác quản trị yêu cầu xác nhận lại.",
+            loai="permission_error",
+            code="step_up_required",
+        )
+

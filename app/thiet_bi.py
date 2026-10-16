@@ -764,6 +764,7 @@ async def duyet_phe_duyet(
         raise LoiOpenAI(502, f"Module lỗi khi thực hiện: {type(e).__name__}", code="upstream_error") from e
 
     luoc_do = lay_luoc_do_tham_so(item.get("tinh_nang", []), hanh_dong)
+    ts_sach = lam_sach_tham_so(tham_so, luoc_do)
     nhat_ky.ghi(
         "thiet_bi",
         "thong_tin",
@@ -772,7 +773,17 @@ async def duyet_phe_duyet(
         ai_de_xuat=ai_de_xuat,
         thuc_the=thuc_the_id,
         hanh_dong=hanh_dong,
-        tham_so=lam_sach_tham_so(tham_so, luoc_do),
+        tham_so=ts_sach,
+    )
+    nhat_ky.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Quản trị duyệt hành động «{hanh_dong}» cho thực thể «{thuc_the_id}» (đề xuất bởi {ai_de_xuat})",
+        nguoi_duyet=nguoi_duyet,
+        ai_de_xuat=ai_de_xuat,
+        thuc_the=thuc_the_id,
+        hanh_dong=hanh_dong,
+        tham_so=ts_sach,
     )
     BO_PHAT.phat_dong_bo({"loai": "phe_duyet_xong", "id": pd_id, "thuc_the": thuc_the_id, "hanh_dong": hanh_dong})
     return {"ok": True, "id": pd_id, "ket_qua": kq}

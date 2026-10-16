@@ -47,9 +47,10 @@ def la_dang_token(x: object) -> bool:
 
 
 class LoiKhoPhien(LoiOpenAI):
-    def __init__(self) -> None:
-        super().__init__(503, "Kho phiên đăng nhập không đọc được. Khôi phục tệp phien_web.json hoặc xoá nó để đăng nhập lại.",
-                         loai="server_error", code="session_store_unreadable")
+    def __init__(self, thong_diep: str | None = None, code: str = "session_store_unreadable") -> None:
+        msg = thong_diep or "Kho phiên đăng nhập không đọc được. Khôi phục tệp phien_web.json hoặc xoá nó để đăng nhập lại."
+        super().__init__(503, msg, loai="server_error", code=code)
+
 
 
 def _p_phien_web() -> Path:
@@ -70,6 +71,11 @@ def phien_ranh_gio() -> int:
 
 def phien_toi_da_ngay() -> int:
     return _so_nguyen("WEB2API_PHIEN_WEB_TOI_DA_NGAY", 7)
+
+
+def stepup_cua_so_giay() -> int:
+    """Cửa sổ hiệu lực xác nhận lại cho thao tác nguy hiểm (giây; mặc định 15 phút = 900s)."""
+    return _so_nguyen("WEB2API_STEPUP_GIAY", 900)
 
 
 def _bam_token(token: str) -> str:
@@ -338,3 +344,45 @@ def thu_hoi_phien_nguoi_dung(nguoi_dung_id: str, tru_bam: str | None = None) -> 
             except Exception:
                 pass
     return da_xoa
+
+
+def la_phien_da_xac_nhan_lai(phien: dict[str, Any] | None, cua_so_giay: int | None = None) -> bool:
+    """Kiểm tra phiên web đã được xác nhận lại (step-up) và còn trong cửa sổ ngắn hay không."""
+    if not isinstance(phien, dict):
+        return False
+    xnl = phien.get("xac_nhan_lai_luc")
+    if not xnl:
+        return False
+    if cua_so_giay is None:
+        cua_so_giay = stepup_cua_so_giay()
+    try:
+        dt = datetime.fromisoformat(str(xnl).replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        return (now - dt) <= timedelta(seconds=cua_so_giay)
+    except Exception:
+        return False
+
+
+def xac_nhan_lai_phien(bam: str) -> bool:
+    """Ghi nhận mốc thời gian xác nhận lại (step-up) cho phiên theo băm."""
+    now = datetime.now(timezone.utc)
+    bay_gio_str = now.isoformat(timespec="seconds")
+    with _KHOA_LUONG:
+        ds = _doc_phien()
+        tim = next((p for p in ds if hmac.compare_digest(bam.encode("utf-8"), str(p.get("bam", "")).encode("utf-8"))), None)
+        if tim is not None:
+            ds_moi = [dict(p) for p in ds]
+            tim_moi = next((p for p in ds_moi if hmac.compare_digest(bam.encode("utf-8"), str(p.get("bam", "")).encode("utf-8"))), None)
+            if tim_moi is not None:
+                tim_moi["xac_nhan_lai_luc"] = bay_gio_str
+            try:
+                _ghi_phien(ds_moi)
+            except Exception as e:
+                log.error("Lỗi khi ghi kho phiên xác nhận lại: %s", e)
+                raise LoiKhoPhien(
+                    "Kho phiên đăng nhập gặp sự cố khi lưu dữ liệu xác nhận lại.",
+                    code="session_store_write_error",
+                ) from None
+            tim["xac_nhan_lai_luc"] = bay_gio_str
+            return True
+        return False
