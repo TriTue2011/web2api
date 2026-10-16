@@ -102,7 +102,6 @@ def test_nv54_tu_doi_mat_khau_thu_hoi_ve_novnc(moi_truong):
     assert not _ve_con(ve), "vé noVNC vẫn sống sau khi chủ tài khoản tự đổi mật khẩu"
 
 
-@pytest.mark.xfail(strict=True, reason="NV54: cap_nhat_nguoi_dung chỉ thu hồi khi bat=False nên hạ vai (vẫn bật) không thu hồi vé noVNC")
 def test_nv54_ha_vai_thu_hoi_ve_novnc(moi_truong):
     """Hạ vai admin→user (tài khoản vẫn bật) phải thu hồi vé noVNC đã cấp cho tài khoản đó."""
     _tao_tai_khoan("admin", "nv54-giu-lai")

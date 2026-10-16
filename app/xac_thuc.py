@@ -387,3 +387,20 @@ def kiem_tra_pham_vi(request: Request | None, *cac_kha_nang: str) -> None:
         loai="insufficient_scope",
         code="insufficient_scope",
     )
+
+
+def dinh_danh_nguoi_thuc_hien(request: Request | None = None) -> str:
+    """Định danh người thực hiện thao tác quản trị (tài khoản/quản trị, KHÔNG phải khoá)."""
+    if request is not None and hasattr(request, "state"):
+        ng = getattr(request.state, "nguoi_goi", None)
+        if ng:
+            return str(ng)
+        dt = getattr(request.state, "danh_tinh", None)
+        if isinstance(dt, dict) and dt.get("id"):
+            return str(dt["id"])
+    from app import ngu_canh
+    nc = ngu_canh.lay()
+    if nc is not None and isinstance(nc.danh_tinh, dict) and nc.danh_tinh.get("id"):
+        return str(nc.danh_tinh["id"])
+    return "quan_tri"
+
