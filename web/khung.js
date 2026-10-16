@@ -17,6 +17,12 @@
  */
 (() => {
   'use strict';
+  // Dọn khoá quản trị cũ từ phiên bản trước còn sót lại trong storage trình duyệt (SEC-002)
+  try {
+    localStorage.removeItem('web2api_khoa');
+    sessionStorage.removeItem('web2api_khoa');
+  } catch (e) { /* nuốt lỗi khi storage bị chặn */ }
+
   // Biến bộ nhớ phiên: csrfToken và thông tin người dùng nạp từ GET /api/toi.
   // KHÔNG lưu vào localStorage/sessionStorage/cookie (luật cứng bảo mật).
   let csrfToken = '';
@@ -141,14 +147,18 @@
     return null;
   }
 
-  // Chống chuyển hướng mở (Open Redirect): CHỈ chấp nhận đường dẫn tương đối cùng nguồn
-  // bắt đầu bằng '/' và không phải '//', không chứa '\' và không chứa ':'.
+  // Chống chuyển hướng mở (Open Redirect): chuỗi phải bắt đầu '/', rồi phân tích bằng
+  // new URL(s, location.origin) và chỉ nhận khi x.origin === location.origin.
   function duongVeHopLe(u) {
     if (typeof u !== 'string') return '';
     const s = u.trim();
-    if (s.startsWith('/') && !s.startsWith('//') && !s.includes('\\') && !s.includes(':')) {
-      return s;
-    }
+    if (!s.startsWith('/')) return '';
+    try {
+      const x = new URL(s, location.origin);
+      if (x.origin === location.origin) {
+        return x.pathname + x.search + x.hash;
+      }
+    } catch (e) { /* nuốt lỗi URL không hợp lệ */ }
     return '';
   }
 
@@ -171,6 +181,16 @@
         cache: 'no-store'
       });
     } catch (e) { /* nuốt lỗi */ }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const cacKhoa = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('web2api_')) cacKhoa.push(k);
+        }
+        for (const k of cacKhoa) localStorage.removeItem(k);
+      }
+    } catch (e) { /* nuốt lỗi khi storage bị chặn */ }
     csrfToken = '';
     nguoiDungHienTai = null;
     location.replace('Dang-nhap.dc.html');

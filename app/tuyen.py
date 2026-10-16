@@ -106,6 +106,19 @@ def _ng(request: Request) -> NguonGit:
     return request.app.state.nguon_git
 
 
+def _kiem_content_type_json(request: Request) -> None:
+    """Chống Login CSRF: chỉ nhận Content-Type: application/json (so phần trước dấu ;, không phân biệt hoa thường)."""
+    ct = request.headers.get("content-type", "")
+    kieu = ct.split(";", 1)[0].strip().lower()
+    if kieu != "application/json":
+        raise LoiOpenAI(
+            415,
+            "Chỉ chấp nhận Content-Type: application/json",
+            code="unsupported_media_type",
+        )
+
+
+
 async def _than_json(request: Request) -> dict:
     # Không dùng request.json(): nó nạp trọn thân không giới hạn (và giữ thêm một bản trong request suốt lượt gọi).
     # Thân đọc ngay trong lời gọi json.loads, KHÔNG gán biến: json.loads giải mã bytearray thành str rồi bỏ nó, bộ nhớ
@@ -1914,6 +1927,7 @@ async def thuc_hien_thiet_lap(request: Request, response: Response):
             code="already_setup",
         )
 
+    _kiem_content_type_json(request)
     than = await _than_json(request)
     ma_thiet_lap = than.get("ma_thiet_lap")
     ma_thiet_lap = ma_thiet_lap.strip() if isinstance(ma_thiet_lap, str) else ""
@@ -2012,6 +2026,7 @@ async def dang_nhap_web(request: Request, response: Response):
     gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
     phien_web_mod.kiem_tra_kho()  # kho phiên hỏng → 503 trước khi kiểm mật khẩu (không lộ gì về tài khoản)
 
+    _kiem_content_type_json(request)
     than = await _than_json(request)
     # Tên không thể là tài khoản (sai mẫu, quá dài, sai kiểu) = cùng 401 đồng nhất + băm giả, và KHÔNG đi tiếp xuống
     # bộ theo dõi sai/nhật ký: mọi cấu trúc trong RAM chỉ nhận khoá đã qua mẫu tên (≤ 32 ký tự).
