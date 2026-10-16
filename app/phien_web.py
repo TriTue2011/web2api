@@ -22,13 +22,14 @@ import os
 import re
 import secrets
 import threading
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import Request, Response
 
-from app import dia_chi, kho
+from app import dia_chi, kho, nhat_ky
 from app.loi_openai import LoiOpenAI
 
 log = logging.getLogger("web2api.phien_web")
@@ -196,14 +197,54 @@ def xac_thuc_token(token: str) -> dict[str, Any] | None:
         return dict(tim)
 
 
+_DA_CANH_BAO_TIN_PROXY = False
+
+
+def xoa_canh_bao_tin_proxy() -> None:
+    """Xoá cờ cảnh báo tin_proxy (dùng cho test)."""
+    global _DA_CANH_BAO_TIN_PROXY
+    _DA_CANH_BAO_TIN_PROXY = False
+
+
 def la_https(request: Request) -> bool:
-    """Xác định yêu cầu có qua HTTPS hay không (xét cả proxy tin cậy nếu có bật WEB2API_TIN_PROXY)."""
+    """Xác định yêu cầu có qua HTTPS hay không (xét cả proxy tin cậy nếu có bật WEB2API_TIN_PROXY).
+
+    Nếu địa chỉ công khai đã cấu hình là https:// và yêu cầu đến từ host đó, tự động coi là HTTPS
+    để bật cờ Secure cho cookie bảo vệ người dùng, đồng thời ghi cảnh báo nhật ký một lần nếu
+    WEB2API_TIN_PROXY chưa được bật.
+    """
+    global _DA_CANH_BAO_TIN_PROXY
     if request.url.scheme == "https":
         return True
     if dia_chi.la_tin_proxy():
         x_proto = request.headers.get("x-forwarded-proto", "").lower().strip()
         if x_proto == "https":
             return True
+
+    # Địa chỉ công khai đã cấu hình là https:// và yêu cầu đến từ host đó
+    dia_chi_ck = dia_chi.dia_chi_cong_khai_da_cau_hinh()
+    if dia_chi_ck:
+        try:
+            tach_ck = urllib.parse.urlsplit(dia_chi_ck)
+            if tach_ck.scheme.lower() == "https":
+                host_req = dia_chi._mot_gia_tri(request, "host") or ""
+                auth = dia_chi._chuan_hoa_authority(host_req)
+                if auth:
+                    tach_req = urllib.parse.urlsplit(f"//{auth}")
+                    if (tach_req.hostname or "").lower() == (tach_ck.hostname or "").lower():
+                        if not dia_chi.la_tin_proxy() and not _DA_CANH_BAO_TIN_PROXY:
+                            _DA_CANH_BAO_TIN_PROXY = True
+                            nhat_ky.ghi(
+                                "he_thong",
+                                "canh_bao",
+                                "Địa chỉ công khai dùng HTTPS nhưng WEB2API_TIN_PROXY chưa bật — đã tự bật Secure cho cookie theo Host",
+                                public_url=dia_chi_ck,
+                                tin_proxy=False,
+                            )
+                        return True
+        except Exception:
+            pass
+
     return False
 
 

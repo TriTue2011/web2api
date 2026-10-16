@@ -175,6 +175,46 @@ def _la_dia_chi_internet(host: str) -> bool:
     return ip.is_global
 
 
+def la_ip_literal(ten_may: str | None) -> bool:
+    """Kiểm tra tên máy có phải là địa chỉ IP (IPv4 hoặc IPv6 literal) hay không."""
+    if not ten_may:
+        return False
+    h = ten_may.strip("[]")
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
+
+
+def la_localhost(ten_may: str | None) -> bool:
+    """Kiểm tra tên máy có phải localhost hoặc *.localhost (RFC 6761), hoặc testserver của môi trường kiểm thử hay không."""
+    if not ten_may:
+        return False
+    h = ten_may.strip("[]").lower()
+    return h in ("localhost", "testserver") or h.endswith(".localhost")
+
+
+def dia_chi_cong_khai_da_cau_hinh() -> str | None:
+    """Đọc địa chỉ công khai đã cấu hình chính thức (qua dia_chi.json hoặc WEB2API_PUBLIC_URL).
+
+    Trả về URL chuẩn hoá hoặc None nếu chưa cấu hình hoặc cấu hình hỏng.
+    """
+    try:
+        da_dat = kho.doc_dia_chi_da_dat()
+        if da_dat:
+            return kiem_tra_va_chuan_hoa_url(da_dat)
+    except Exception:
+        pass
+    tu_bien = os.environ.get("WEB2API_PUBLIC_URL", "").strip()
+    if tu_bien:
+        try:
+            return kiem_tra_va_chuan_hoa_url(tu_bien)
+        except Exception:
+            pass
+    return None
+
+
 def kiem_tra_canh_bao(url: str, dang_doan: bool) -> list[str]:
     """Phát hiện cảnh báo bảo mật và trạng thái cấu hình."""
     canh_bao = []

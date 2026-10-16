@@ -1421,13 +1421,37 @@ TRAN_TRUOC_NGAY = 36500
 
 
 @nhat_ky.delete("")
-def xoa_nhat_ky(truoc_ngay: float | None = None):
+def xoa_nhat_ky(request: Request, truoc_ngay: float | None = None):
     if truoc_ngay is None:
-        raise LoiOpenAI(400, "Thiếu tham số «truoc_ngay» (số ngày; 0 = xoá mọi bản ghi tới hiện tại)")
-    if not 0 <= truoc_ngay <= TRAN_TRUOC_NGAY:  # NaN cũng trượt phép so này
-        raise LoiOpenAI(400, f"Tham số «truoc_ngay» phải trong khoảng 0…{TRAN_TRUOC_NGAY}")
+        raise LoiOpenAI(400, "Thiếu tham số «truoc_ngay» (số ngày)")
     from app import nhat_ky as kho_nhat_ky
-    return {"ok": True, "da_xoa": kho_nhat_ky.xoa_cu(truoc_ngay)}
+    nguong_min = kho_nhat_ky.nguong_xoa_toi_thieu_ngay()
+    if not (math.isfinite(truoc_ngay) and nguong_min <= truoc_ngay <= TRAN_TRUOC_NGAY):
+        raise LoiOpenAI(
+            400,
+            f"Tham số «truoc_ngay» phải trong khoảng {nguong_min}…{TRAN_TRUOC_NGAY}"
+            + (f" (ngưỡng tối thiểu {nguong_min} ngày để chống xoá lén nhật ký)" if truoc_ngay < nguong_min else ""),
+        )
+    da_xoa = kho_nhat_ky.xoa_cu(truoc_ngay)
+    # Ghi nhận ngay sau khi xoá để dòng này còn lại trong nhật ký
+    from app.gioi_han import lay_ip_an_toan
+    ip_khach = lay_ip_an_toan(request)
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    nguoi_goi = (
+        danh_tinh.get("id", "quan_tri")
+        if isinstance(danh_tinh, dict)
+        else getattr(request.state, "nguoi_goi", "quan_tri")
+    )
+    kho_nhat_ky.ghi(
+        "quan_tri",
+        "canh_bao",
+        f"Xoá nhật ký kiểm toán cũ hơn {truoc_ngay} ngày: đã xoá {da_xoa} dòng",
+        da_xoa=da_xoa,
+        nguoi_goi=nguoi_goi,
+        ip=ip_khach,
+        truoc_ngay=truoc_ngay,
+    )
+    return {"ok": True, "da_xoa": da_xoa}
 
 
 # ───────────── /api/khoa-khach — quản lý khoá khách (chỉ quản trị) ─────────────
@@ -2043,63 +2067,67 @@ async def dang_nhap_web(request: Request, response: Response):
     mat_khau = than.get("mat_khau")
     mat_khau = mat_khau if isinstance(mat_khau, str) else ""  # sai kiểu = thiếu → cùng 401 đồng nhất
 
-    if not ten_dang_nhap or not mat_khau:
-        if not ten_dang_nhap and than.get("ten_dang_nhap") not in (None, ""):
-            _ghi_ten_sai_mau(request, than.get("ten_dang_nhap"))
-        await nguoi_dung_mod.chay_bam_gia()
-        gioi_han_mod.ghi_loi_xac_thuc(request)
-        raise LoiOpenAI(
-            401,
-            "Sai tên đăng nhập hoặc mật khẩu.",
-            loai="invalid_request_error",
-            code="invalid_credentials",
-        )
-
-    # 1. Kiểm tra khóa hai tầng: theo (IP, tên) và theo tên toàn cục
     try:
-        nguoi_dung_mod.kiem_tra_khoa_ten(ten_dang_nhap, ip=ip_khach)
-    except LoiOpenAI:
-        await nguoi_dung_mod.chay_bam_gia()
+        if not ten_dang_nhap or not mat_khau:
+            if not ten_dang_nhap and than.get("ten_dang_nhap") not in (None, ""):
+                _ghi_ten_sai_mau(request, than.get("ten_dang_nhap"))
+            await nguoi_dung_mod.chay_bam_gia()
+            gioi_han_mod.ghi_loi_xac_thuc(request)
+            raise LoiOpenAI(
+                401,
+                "Sai tên đăng nhập hoặc mật khẩu.",
+                loai="invalid_request_error",
+                code="invalid_credentials",
+            )
+
+        # 1. Kiểm tra khóa hai tầng: theo (IP, tên) và theo tên toàn cục
+        try:
+            nguoi_dung_mod.kiem_tra_khoa_ten(ten_dang_nhap, ip=ip_khach)
+        except LoiOpenAI:
+            await nguoi_dung_mod.chay_bam_gia()
+            gioi_han_mod.ghi_loi_xac_thuc(request)
+            nhat_ky_mod.ghi(
+                "quan_tri",
+                "canh_bao",
+                f"Từ chối đăng nhập: tài khoản «{_nhac_lai(ten_dang_nhap)}» đang bị khoá tạm thời",
+                ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+            )
+            raise
+
+        # 2. Tìm người dùng — kho hỏng: cùng 401 đồng nhất như sai thông tin (không lộ), một cảnh báo he_thong
+        try:
+            nd = nguoi_dung_mod.tim_theo_ten(ten_dang_nhap)
+        except nguoi_dung_mod.LoiKhoNguoiDung:
+            await nguoi_dung_mod.chay_bam_gia()
+            _canh_bao_kho_hong_khi_dang_nhap()
+            raise LoiOpenAI(
+                401,
+                "Sai tên đăng nhập hoặc mật khẩu.",
+                loai="invalid_request_error",
+                code="invalid_credentials",
+            ) from None
+        if nd is None or not nd.get("bat", True):
+            nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap, ip=ip_khach)
+            await nguoi_dung_mod.chay_bam_gia()
+            gioi_han_mod.ghi_loi_xac_thuc(request)
+            nhat_ky_mod.ghi(
+                "quan_tri",
+                "canh_bao",
+                f"Đăng nhập thất bại: tên «{_nhac_lai(ten_dang_nhap)}» không tồn tại hoặc bị tắt",
+                ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+            )
+            raise LoiOpenAI(
+                401,
+                "Sai tên đăng nhập hoặc mật khẩu.",
+                loai="invalid_request_error",
+                code="invalid_credentials",
+            )
+
+        # 3. Kiểm tra mật khẩu
+        dung = await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, nd.get("bam_mat_khau", ""))
+    except nguoi_dung_mod.LoiHangChoQuaTai:
         gioi_han_mod.ghi_loi_xac_thuc(request)
-        nhat_ky_mod.ghi(
-            "quan_tri",
-            "canh_bao",
-            f"Từ chối đăng nhập: tài khoản «{_nhac_lai(ten_dang_nhap)}» đang bị khoá tạm thời",
-            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
-        )
         raise
-
-    # 2. Tìm người dùng — kho hỏng: cùng 401 đồng nhất như sai thông tin (không lộ), một cảnh báo he_thong
-    try:
-        nd = nguoi_dung_mod.tim_theo_ten(ten_dang_nhap)
-    except nguoi_dung_mod.LoiKhoNguoiDung:
-        await nguoi_dung_mod.chay_bam_gia()
-        _canh_bao_kho_hong_khi_dang_nhap()
-        raise LoiOpenAI(
-            401,
-            "Sai tên đăng nhập hoặc mật khẩu.",
-            loai="invalid_request_error",
-            code="invalid_credentials",
-        ) from None
-    if nd is None or not nd.get("bat", True):
-        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap, ip=ip_khach)
-        await nguoi_dung_mod.chay_bam_gia()
-        gioi_han_mod.ghi_loi_xac_thuc(request)
-        nhat_ky_mod.ghi(
-            "quan_tri",
-            "canh_bao",
-            f"Đăng nhập thất bại: tên «{_nhac_lai(ten_dang_nhap)}» không tồn tại hoặc bị tắt",
-            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
-        )
-        raise LoiOpenAI(
-            401,
-            "Sai tên đăng nhập hoặc mật khẩu.",
-            loai="invalid_request_error",
-            code="invalid_credentials",
-        )
-
-    # 3. Kiểm tra mật khẩu
-    dung = await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, nd.get("bam_mat_khau", ""))
     if not dung:
         nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap, ip=ip_khach)
         gioi_han_mod.ghi_loi_xac_thuc(request)

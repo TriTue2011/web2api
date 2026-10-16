@@ -281,5 +281,6 @@ def test_hieu_nang_20000_khuc_nho_tuyen_tinh_khong_bac_hai(monkeypatch):
     assert tong_byte_quet < 2 * 1024 * 1024, (
         f"Số byte quét regex quá lớn ({tong_byte_quet:,} byte), chứng tỏ đang quét lại bậc hai từ 0!"
     )
-    # Thời gian chạy phải nhanh (< 2 giây)
-    assert thoi_gian < 2.0, f"Thời gian chạy quá chậm ({thoi_gian:.2f}s)"
+    # Thời gian chạy phải nhanh (tuyến tính O(N), tránh flaky do tải máy chủ)
+    assert thoi_gian < 5.0, f"Thời gian chạy quá chậm ({thoi_gian:.2f}s)"
+

@@ -11,9 +11,11 @@ chỉ còn mở: /health, GET/POST /api/thiet-lap, POST /api/dang-nhap và tệp
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import random
+import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, gioi_han, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -169,9 +171,180 @@ class MiddlewareChanKhoaKhachQuanTri:
         await self.app(scope, receive, send)
 
 
+class MiddlewareCanhBaoKhoaQuanTri:
+    """Ghi cảnh báo kênh quan_tri khi khoá quản trị được dùng từ IP mới (tối đa 1 lần/IP/24h)."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+        trang_thai = scope.get("state", {})
+        if trang_thai.get("nguoi_goi") == "quan_tri":
+            from app.gioi_han import lay_ip_an_toan
+            ip = lay_ip_an_toan(Request(scope))
+            nhat_ky.ghi_nhan_ip_quan_tri(ip)
+
+
+class MiddlewareKiemTraHost:
+    """Kiểm tra tiêu đề Host chống DNS rebinding.
+
+    Nguyên tắc:
+    - Ngoại lệ: /health từ loopback luôn qua.
+    - Chấp nhận Host là IP literal (không thể rebinding) HOẶC localhost (*.localhost)
+      HOẶC host của địa chỉ công khai đã cấu hình.
+    - Nếu đã cấu hình địa chỉ công khai mà Host là tên lạ: trả về HTTP 421 (Misdirected Request).
+    - Nếu chưa cấu hình địa chỉ công khai: không chặn (tránh khoá ngoài qua tunnel) nhưng ghi cảnh báo
+      nhật ký kênh he_thong một lần.
+    - Host rỗng hoặc hỏng (cổng sai, IPv6 sai...): trả về HTTP 400.
+    - Áp dụng cho cả HTTP và WebSocket.
+    """
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        client = scope.get("client")
+        client_ip = client[0] if client and len(client) > 0 else ""
+
+        # Ngoại lệ: /health từ loopback luôn qua
+        if path == "/health" and self._la_loopback(client_ip):
+            await self.app(scope, receive, send)
+            return
+
+        # Tìm header Host
+        headers = scope.get("headers", [])
+        host_ds = [v for k, v in headers if k.lower() == b"host"]
+        if len(host_ds) != 1:
+            await self._tu_choi(scope, receive, send, 400, "Tiêu đề Host thiếu hoặc không hợp lệ")
+            return
+
+        try:
+            host_str = host_ds[0].decode("latin-1").strip()
+        except UnicodeDecodeError:
+            await self._tu_choi(scope, receive, send, 400, "Tiêu đề Host không đúng định dạng")
+            return
+
+        if not host_str:
+            await self._tu_choi(scope, receive, send, 400, "Tiêu đề Host không được để trống")
+            return
+
+        dia_chi_ck = dia_chi.dia_chi_cong_khai_da_cau_hinh()
+
+        auth = dia_chi._chuan_hoa_authority(host_str)
+        if auth is None:
+            if dia_chi_ck:
+                await self._tu_choi(scope, receive, send, 400, "Tiêu đề Host chứa tên máy hoặc cổng không hợp lệ")
+                return
+            self._ghi_canh_bao_host(host_str)
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            tach = urllib.parse.urlsplit(f"//{auth}")
+            ten_may = (tach.hostname or "").lower()
+        except Exception:
+            if dia_chi_ck:
+                await self._tu_choi(scope, receive, send, 400, "Không thể phân tích tiêu đề Host")
+                return
+            self._ghi_canh_bao_host(host_str)
+            await self.app(scope, receive, send)
+            return
+
+        # 1. IP literal luôn qua
+        if dia_chi.la_ip_literal(ten_may):
+            await self.app(scope, receive, send)
+            return
+
+        # 2. localhost / *.localhost / testserver luôn qua
+        if dia_chi.la_localhost(ten_may):
+            await self.app(scope, receive, send)
+            return
+
+        # 3. Địa chỉ công khai đã cấu hình
+        if dia_chi_ck:
+            try:
+                host_ck = (urllib.parse.urlsplit(dia_chi_ck).hostname or "").lower()
+            except Exception:
+                host_ck = ""
+            if ten_may == host_ck:
+                await self.app(scope, receive, send)
+                return
+            await self._tu_choi(
+                scope,
+                receive,
+                send,
+                421,
+                "Tên máy chủ không hợp lệ (Host không khớp địa chỉ công khai đã cấu hình)",
+            )
+            return
+
+        # 4. Chưa cấu hình địa chỉ công khai: cho qua nhưng ghi cảnh báo nhật ký 1 lần
+        self._ghi_canh_bao_host(host_str)
+        await self.app(scope, receive, send)
+
+    def _ghi_canh_bao_host(self, host_str: str) -> None:
+        state = getattr(app, "state", None)
+        if state is not None and not getattr(state, "_da_canh_bao_host", False):
+            state._da_canh_bao_host = True
+            nhat_ky.ghi(
+                "he_thong",
+                "canh_bao",
+                "Chưa cấu hình địa chỉ công khai (WEB2API_PUBLIC_URL hoặc dia_chi.json) — nguy cơ DNS rebinding khi nhận yêu cầu mang Host lạ",
+                host=host_str,
+            )
+
+    def _la_loopback(self, ip_str: str) -> bool:
+        if not ip_str:
+            return False
+        try:
+            return ipaddress.ip_address(ip_str).is_loopback
+        except ValueError:
+            return False
+
+    async def _tu_choi(self, scope: Scope, receive: Receive, send: Send, ma_trang_thai: int, thong_diep: str) -> None:
+        if scope["type"] == "websocket":
+            msg = await receive()
+            if msg.get("type") == "websocket.connect":
+                await send({"type": "websocket.close", "code": 1008 if ma_trang_thai == 400 else 4421})
+            return
+
+        loai = "invalid_request_error"
+        ma_loi = "invalid_host" if ma_trang_thai == 400 else "misdirected_request"
+        noi_dung = json.dumps(
+            than_loi(ma_trang_thai, thong_diep, loai, ma_loi),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        await send({
+            "type": "http.response.start",
+            "status": ma_trang_thai,
+            "headers": [
+                (b"content-type", b"application/json; charset=utf-8"),
+                (b"content-length", str(len(noi_dung)).encode("ascii")),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": noi_dung,
+            "more_body": False,
+        })
+
+
+app.add_middleware(MiddlewareCanhBaoKhoaQuanTri)
 app.add_middleware(MiddlewareChanKhoaKhachQuanTri)
 # /novnc: mọi phản hồi (kể cả lỗi, 405, đường rơi xuống StaticFiles) mang CSP sandbox và header bảo vệ.
 app.add_middleware(tuyen.novnc_mod.MiddlewareBaoVeNoVNC)
+app.add_middleware(MiddlewareKiemTraHost)
 # Ngoài cùng: 3 header bảo vệ cho MỌI phản hồi HTTP; chỉ đặt khi chưa có (không đè /novnc, /m/).
 app.add_middleware(MiddlewareTieuDeBaoMat)
 
