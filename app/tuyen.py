@@ -2270,6 +2270,7 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
     )
     if not ban_ghi["bat"]:  # trạng thái sau thao tác là TẮT → thu hồi mọi phiên (bật lại không sống lại phiên cũ)
         phien_web_mod.thu_hoi_phien_nguoi_dung(id)
+        novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
 
     nhat_ky_mod.ghi(
         "quan_tri",
@@ -2287,6 +2288,7 @@ async def dat_lai_mat_khau(id: str):
     phien_web_mod.kiem_tra_kho()  # không đặt mật khẩu mới rồi mới 503 (mật khẩu mất, không ai biết)
     ban_ghi, mat_khau_moi = await nguoi_dung_mod.dat_lai_mat_khau_nguoi_dung(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)
+    novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
     nhat_ky_mod.ghi(
         "quan_tri",
         "thong_tin",
@@ -2303,6 +2305,7 @@ def xoa_tai_khoan(id: str):
     nguoi_dung_mod.xoa_nguoi_dung(id)
     khoa_khach_mod.xoa_khoa_theo_chu(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)
+    novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
     nhat_ky_mod.ghi(
         "quan_tri",
         "thong_tin",

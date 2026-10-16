@@ -61,6 +61,7 @@ def may_tep(_may):
 def du_lieu(tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
     monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
     shutil.copytree(GOC_GEMINI, tmp_path / "modules" / "gemini-api")
     return tmp_path

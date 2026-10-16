@@ -354,9 +354,9 @@ async def lay_danh_sach_thuc_the(
 
             rr_mac_dinh = item.get("rui_ro_mac_dinh")
             if rr_mac_dinh not in RUI_RO_HOP_LE:
-                rr_mac_dinh = "ghi"
+                rr_mac_dinh = "nguy_hiem"
 
-            # Rủi ro hiệu lực: người dùng ghi đè > mặc định > "ghi"
+            # Rủi ro hiệu lực: người dùng ghi đè > mặc định > "nguy_hiem"
             rr_hieu_luc = ghi_de.get(e_id, rr_mac_dinh)
 
             muc = {
@@ -442,7 +442,7 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
     ghi_de = doc_ghi_de_rui_ro()
     rr_mac_dinh = tim_thay.get("rui_ro_mac_dinh")
     if rr_mac_dinh not in RUI_RO_HOP_LE:
-        rr_mac_dinh = "ghi"
+        rr_mac_dinh = "nguy_hiem"
     rr_hieu_luc = ghi_de.get(id_thuc_the, rr_mac_dinh)
 
     trang_thai = None

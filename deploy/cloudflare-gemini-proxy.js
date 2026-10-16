@@ -13,14 +13,13 @@
  *
  * Dùng với web2api (module gemini-api): đặt trường base_url khi cài module thành
  *   https://<your-worker-name>.<your-subdomain>.workers.dev
- * (web2api tự thêm /v1beta/openai). Chép từ deploy/ của dự án c2a cũ (chatgpt2api) khi tách kho
- * 10/10/2026 để kho web2api tự đủ. Lưu ý: web2api CHƯA gửi được header X-Proxy-Token, nên Worker
- * dùng với web2api phải để PROXY_TOKEN trống.
+ * (web2api tự thêm /v1beta/openai) và trường proxy_token khớp với bí mật PROXY_TOKEN
+ * cấu hình trên Cloudflare Worker.
  *
- * Optional auth: set the env var PROXY_TOKEN in Cloudflare. If set,
- * requests must include header `X-Proxy-Token: <value>` or query
- * param `proxy_token=<value>`. Without it, the Worker is open and any
- * caller can exhaust your free quota (100k req/day).
+ * Auth (bắt buộc): cấu hình biến môi trường bí mật PROXY_TOKEN trong Cloudflare
+ * (wrangler secret put PROXY_TOKEN hoặc Settings → Variables and Secrets). Yêu cầu
+ * phải gửi header `X-Proxy-Token: <giá_trị>`. Worker TỪ CHỐI (403) nếu PROXY_TOKEN
+ * chưa được đặt trong môi trường Worker hoặc token gửi lên không khớp.
  */
 
 const UPSTREAM = "https://generativelanguage.googleapis.com";
@@ -45,16 +44,9 @@ async function handle(request, env) {
     return cors(json({ ok: true, target: UPSTREAM, ts: Date.now() }));
   }
 
-  // Optional shared-secret auth
-  if (env.PROXY_TOKEN) {
-    const provided =
-      request.headers.get("X-Proxy-Token") ||
-      url.searchParams.get("proxy_token") ||
-      "";
-    if (provided !== env.PROXY_TOKEN) {
-      return cors(new Response("Forbidden", { status: 403 }));
-    }
-    url.searchParams.delete("proxy_token");
+  // Bắt buộc shared-secret auth qua header X-Proxy-Token; từ chối nếu chưa cấu hình hoặc sai
+  if (!env.PROXY_TOKEN || request.headers.get("X-Proxy-Token") !== env.PROXY_TOKEN) {
+    return cors(new Response("Forbidden", { status: 403 }));
   }
 
   // Build upstream URL — keep path + query identical, just swap host

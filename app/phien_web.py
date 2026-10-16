@@ -269,6 +269,15 @@ def thu_hoi_phien(bam: str) -> bool:
         return False
 
 
+_MOC_THU_HOI: list = []
+
+
+def dang_ky_moc_thu_hoi(ham) -> None:
+    """Đăng ký hàm thu hồi bổ sung (ví dụ dịch vụ trình duyệt) khi thu hồi toàn bộ phiên người dùng."""
+    if ham not in _MOC_THU_HOI:
+        _MOC_THU_HOI.append(ham)
+
+
 def thu_hoi_phien_nguoi_dung(nguoi_dung_id: str, tru_bam: str | None = None) -> int:
     """Thu hồi toàn bộ phiên của một người dùng (tuỳ chọn giữ lại phiên hiện tại)."""
     with _KHOA_LUONG:
@@ -278,4 +287,11 @@ def thu_hoi_phien_nguoi_dung(nguoi_dung_id: str, tru_bam: str | None = None) -> 
         da_xoa = truoc - len(ds)
         if da_xoa > 0:
             _ghi_phien(ds)
-        return da_xoa
+    # Thu hồi luôn mọi phiên phụ của người dùng này (đóng WebSocket đang mở)
+    if tru_bam is None:
+        for moc in list(_MOC_THU_HOI):
+            try:
+                moc(nguoi_dung_id)
+            except Exception:
+                pass
+    return da_xoa

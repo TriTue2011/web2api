@@ -61,7 +61,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import gioi_han, kho, nhat_ky
+from app import gioi_han, kho, nhat_ky, phien_web
 from app.kham_pha import ID_HOP_LE, MAU_MIEN
 from app.loi_openai import LoiOpenAI, than_loi
 from app.so_module import LoiSo, SoModule
@@ -238,7 +238,23 @@ def _phien_va_dich_khoa(bam_phien: str, so: SoModule) -> tuple[dict[str, Any], d
     return p, hs
 
 
-def cap_ve(module: str, ho_so: str) -> str:
+def lay_nguoi_dung_id(request: Request) -> str | None:
+    """Lấy ID người dùng từ request.state.danh_tinh hoặc request.state.nguoi_dung.
+
+    Khoá quản trị cũ hoặc khoá khách không gắn với người dùng thì trả None.
+    """
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    if isinstance(danh_tinh, dict):
+        dt_id = str(danh_tinh.get("id") or "")
+        if dt_id.startswith("nguoi_dung:"):
+            return dt_id.split(":", 1)[1]
+    nguoi_dung = getattr(request.state, "nguoi_dung", None)
+    if isinstance(nguoi_dung, dict) and nguoi_dung.get("id"):
+        return str(nguoi_dung["id"])
+    return None
+
+
+def cap_ve(module: str, ho_so: str, nguoi_dung_id: str | None = None) -> str:
     ve = secrets.token_urlsafe(32)
     with _KHOA:
         now = _bay_gio()
@@ -252,7 +268,12 @@ def cap_ve(module: str, ho_so: str) -> str:
                         break
             else:
                 _VE.pop(next(iter(_VE)), None)
-        _VE[_bam(ve)] = {"module": module, "ho_so": ho_so, "het_han": now + THOI_HAN_VE_GIAY}
+        _VE[_bam(ve)] = {
+            "module": module,
+            "ho_so": ho_so,
+            "het_han": now + THOI_HAN_VE_GIAY,
+            "nguoi_dung_id": nguoi_dung_id,
+        }
     return ve
 
 
@@ -279,9 +300,26 @@ def doi_ve_lay_phien(ve: str) -> tuple[int, str | None, dict[str, Any] | None]:
             return 429, None, tt
         _VE.pop(bam_ve, None)
         phien = secrets.token_urlsafe(32)  # 256 bit
-        _PHIEN[_bam(phien)] = {"module": tt["module"], "ho_so": tt["ho_so"], "tao_luc": now,
-                               "het_han": now + THOI_HAN_PHIEN_GIAY}
+        _PHIEN[_bam(phien)] = {
+            "module": tt["module"],
+            "ho_so": tt["ho_so"],
+            "tao_luc": now,
+            "het_han": now + THOI_HAN_PHIEN_GIAY,
+            "nguoi_dung_id": tt.get("nguoi_dung_id"),
+        }
         return 200, phien, tt
+
+
+def thu_hoi_phien_theo_nguoi_dung(nguoi_dung_id: str) -> int:
+    """Thu hồi toàn bộ vé và phiên noVNC của một người dùng, đóng WebSocket đang mở."""
+    if not nguoi_dung_id:
+        return 0
+    with _KHOA:
+        for k in [k for k, v in _VE.items() if v.get("nguoi_dung_id") == nguoi_dung_id]:
+            _VE.pop(k, None)
+        cac_phien = [k for k, v in _PHIEN.items() if v.get("nguoi_dung_id") == nguoi_dung_id]
+        _thu_hoi_phien_khoa(cac_phien)
+        return len(cac_phien)
 
 
 def thu_hoi_ho_so(module: str, ho_so: str) -> None:
@@ -513,7 +551,8 @@ async def api_mo_trinh_duyet(module: str, request: Request):
                     module=module, ho_so=ho_so_kq, hanh_dong="mo", ket_qua="that_bai")
         raise LoiOpenAI(502, "Đích của hồ sơ đang mở đã đổi sang máy khác; đóng hồ sơ rồi mở lại")
 
-    ve = cap_ve(module, ho_so_kq)
+    nguoi_dung_id = lay_nguoi_dung_id(request)
+    ve = cap_ve(module, ho_so_kq, nguoi_dung_id=nguoi_dung_id)
     nhat_ky.ghi("trinh_duyet", "thong_tin", f"Mở hồ sơ trình duyệt {ho_so_kq} ({module})",
                 module=module, ho_so=ho_so_kq, hanh_dong="mo", ket_qua="thanh_cong")
     return {"ho_so": ho_so_kq, "ve": ve, "url": f"/novnc/dang-nhap?ve={ve}"}
@@ -527,7 +566,8 @@ async def api_xin_ve(module: str, ho_so: str, request: Request):
     with _KHOA:
         if (module, ho_so) not in _HO_SO:
             raise LoiOpenAI(404, f"Hồ sơ {ho_so} chưa được mở")
-    ve = cap_ve(module, ho_so)
+    nguoi_dung_id = lay_nguoi_dung_id(request)
+    ve = cap_ve(module, ho_so, nguoi_dung_id=nguoi_dung_id)
     nhat_ky.ghi("trinh_duyet", "thong_tin", f"Cấp vé mới cho hồ sơ {ho_so} ({module})",
                 module=module, ho_so=ho_so, hanh_dong="xin_ve", ket_qua="thanh_cong")
     return {"ho_so": ho_so, "ve": ve, "url": f"/novnc/dang-nhap?ve={ve}"}
@@ -938,3 +978,7 @@ async def novnc_http_proxy(phien: str, duong: str, request: Request):
             await client.aclose()
 
     return StreamingResponse(_stream_va_dong(), status_code=r.status_code, headers=headers_tra)
+
+
+# Đăng ký mốc thu hồi với kho phiên web khi người dùng bị thu hồi toàn bộ phiên
+phien_web.dang_ky_moc_thu_hoi(thu_hoi_phien_theo_nguoi_dung)

@@ -26,6 +26,14 @@
       "bat_buoc": false,
       "mac_dinh": "https://generativelanguage.googleapis.com/v1beta/openai",
       "mo_ta": "Để trống là gọi thẳng Google. Bị chặn vùng thì nhập gốc proxy (ví dụ Cloudflare Worker); thiếu /v1beta/openai thì tự thêm."
+    },
+    {
+      "khoa": "proxy_token",
+      "nhan": "Mã xác thực proxy (X-Proxy-Token)",
+      "kieu": "bi_mat",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Mã bí mật gửi qua header X-Proxy-Token tới proxy (Cloudflare Worker). Để trống nếu gọi thẳng Google."
     }
   ],
   "tai_nguyen": {
