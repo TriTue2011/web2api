@@ -94,6 +94,7 @@ dang_nhap = APIRouter(prefix="/api/dang-nhap")
 dang_xuat = APIRouter(prefix="/api/dang-xuat", dependencies=PW)
 toi = APIRouter(prefix="/api/toi", dependencies=PW)
 nguoi_dung = APIRouter(prefix="/api/nguoi-dung", dependencies=QT)
+bao_mat = APIRouter(prefix="/api/bao-mat", dependencies=QT)
 
 
 def _nhac_lai(chuoi: str) -> str:
@@ -2141,7 +2142,26 @@ async def dang_nhap_web(request: Request, response: Response):
         ip_cho_phep_mod.kiem_tra_ip_quan_tri(request)
 
     # 5. Thành công: reset bộ đếm sai theo cặp (IP, tên) và trừ tầng 2, tạo phiên mới
-    nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap, ip=ip_khach)
+    so_that_bai = nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap, ip=ip_khach)
+    thiet_bi_moi = nguoi_dung_mod.kiem_va_ghi_nhan_thiet_bi(
+        ten_dang_nhap, ip=ip_khach, ua=request.headers.get("user-agent", "")
+    )
+    if thiet_bi_moi:
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Đăng nhập từ thiết bị/IP chưa từng thấy: «{_nhac_lai(ten_dang_nhap)}»",
+            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+            ip=ip_khach,
+        )
+    if so_that_bai > 0:
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Đăng nhập thành công sau {so_that_bai} lần đăng nhập thất bại: «{_nhac_lai(ten_dang_nhap)}»",
+            ten_dang_nhap=_nhac_lai(ten_dang_nhap),
+            ip=ip_khach,
+        )
     phien, token_tho = phien_web_mod.tao_phien(nd["id"])
     phien_web_mod.dat_cookie_phien(response, request, token_tho)
     nhat_ky_mod.ghi(
@@ -2397,3 +2417,23 @@ async def khoi_phuc_route(request: Request):
         nhat_ky_mod.ghi("quan_tri", "loi", f"Khôi phục lỗi không xác định ({che_do}): {type(e).__name__}",
                         che_do=che_do)
         raise LoiOpenAI(400, "Bản sao lưu không hợp lệ.", code="sao_luu_khong_hop_le") from e
+
+
+# ───────────── Bảo mật (/api/bao-mat) — chỉ quản trị (dependencies=QT) ─────────────
+
+@bao_mat.get("/trang-thai")
+def lay_trang_thai_bao_mat():
+    mangs = ip_cho_phep_mod._doc_danh_sach()
+    trong = mangs is None
+    bang_ron = (
+        "Cổng IP quản trị đang tắt (WEB2API_QT_IP_CHO_PHEP trống). Bất kỳ IP nào cũng có thể truy cập nếu có quyền quản trị."
+        if trong
+        else None
+    )
+    so_mang = len(mangs) if isinstance(mangs, list) else 0
+    return {
+        "cong_ip_quan_tri_trong": trong,
+        "bang_ron": bang_ron,
+        "so_mang": so_mang,
+    }
+

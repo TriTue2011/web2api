@@ -44,7 +44,16 @@ MUOI_GIA = b"\x00" * 16
 
 _KHOA_LUONG = threading.RLock()
 _KHOA_THEO_DOI = threading.Lock()
-_THEO_DOI_SAI: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_THIET_BI_DA_BIET: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+
+class _TheoDoiDict(OrderedDict):
+    def clear(self) -> None:
+        super().clear()
+        _THIET_BI_DA_BIET.clear()
+
+
+_THEO_DOI_SAI: OrderedDict[str, dict[str, Any]] = _TheoDoiDict()
 TOI_DA_THEO_DOI = 10000
 
 _SEMAPHORE_SCRYPT = asyncio.Semaphore(2)
@@ -514,10 +523,10 @@ def ghi_nhan_dang_nhap_sai(ten: str, ip: str | None = None) -> None:
         _THEO_DOI_SAI.move_to_end(ten_chuan)
 
 
-def ghi_nhan_dang_nhap_dung(ten: str, ip: str | None = None) -> None:
+def ghi_nhan_dang_nhap_dung(ten: str, ip: str | None = None) -> int:
     ten_chuan = ten_co_the_ton_tai(ten)
     if ten_chuan is None:
-        return
+        return 0
     with _KHOA_THEO_DOI:
         k_cap = _khoa_cap(ip, ten_chuan)
         so_sai_cap = 0
@@ -526,15 +535,42 @@ def ghi_nhan_dang_nhap_dung(ten: str, ip: str | None = None) -> None:
             if muc_cap:
                 so_sai_cap = muc_cap.get("so_sai", 0)
         else:
-            _THEO_DOI_SAI.pop(ten_chuan, None)
-            return
+            muc_ten = _THEO_DOI_SAI.pop(ten_chuan, None)
+            return muc_ten.get("so_sai", 0) if muc_ten else 0
 
-        # Trừ phần sai của cặp đó ở tầng 2, không xoá trắng tầng 2 của người khác
-        if so_sai_cap > 0 and ten_chuan in _THEO_DOI_SAI:
+        so_sai_ten = 0
+        if ten_chuan in _THEO_DOI_SAI:
             muc_ten = _THEO_DOI_SAI[ten_chuan]
-            muc_ten["so_sai"] = max(0, muc_ten.get("so_sai", 0) - so_sai_cap)
-            if muc_ten["so_sai"] == 0 and not muc_ten.get("khoa_den"):
-                _THEO_DOI_SAI.pop(ten_chuan, None)
+            so_sai_ten = muc_ten.get("so_sai", 0)
+            if so_sai_cap > 0:
+                muc_ten["so_sai"] = max(0, muc_ten.get("so_sai", 0) - so_sai_cap)
+                if muc_ten["so_sai"] == 0 and not muc_ten.get("khoa_den"):
+                    _THEO_DOI_SAI.pop(ten_chuan, None)
+
+        return max(so_sai_cap, so_sai_ten)
+
+
+def kiem_va_ghi_nhan_thiet_bi(ten: str, ip: str, ua: str) -> bool:
+    """Kiểm tra và ghi nhận dấu thiết bị = sha256(ip|ua) cho tài khoản.
+
+    Trả về True nếu đây là dấu CHƯA từng thấy của tài khoản (thiết bị mới),
+    False nếu đã từng thấy. Lưu bộ nhớ có trần (TOI_DA_THEO_DOI).
+    """
+    ten_chuan = ten_co_the_ton_tai(ten)
+    if ten_chuan is None:
+        return False
+    ip_str = ip.strip() if ip else ""
+    ua_str = ua.strip() if ua else ""
+    dau = hashlib.sha256(f"{ip_str}|{ua_str}".encode("utf-8")).hexdigest()
+    khoa = f"{ten_chuan}:{dau}"
+    with _KHOA_THEO_DOI:
+        if khoa in _THIET_BI_DA_BIET:
+            _THIET_BI_DA_BIET.move_to_end(khoa)
+            return False
+        if len(_THIET_BI_DA_BIET) >= TOI_DA_THEO_DOI:
+            _THIET_BI_DA_BIET.popitem(last=False)
+        _THIET_BI_DA_BIET[khoa] = {"thoi_gian": time.monotonic()}
+        return True
 
 
 # ───────────── Thao tác người dùng ─────────────
