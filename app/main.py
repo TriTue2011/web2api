@@ -47,8 +47,8 @@ async def _vong_dong_bo_khoa():
             khoa_khach.dong_bo_dia()
         except asyncio.CancelledError:
             break
-        except Exception:
-            pass
+        except Exception as e:
+            nhat_ky.ghi_canh_bao_bo_qua("he_thong", "Đồng bộ khoá khách", e)
 
 
 async def _vong_quet_phien(app: FastAPI):

@@ -43,6 +43,7 @@ from app import (
     gui_ra as gui_ra_mod,
     xac_thuc,
     cong_cu as cong_cu_mod,
+    kiem_bien,
 )
 from app.goi_kha_nang import goi
 from app.kham_pha import ID_HOP_LE
@@ -138,18 +139,8 @@ async def _than_json(request: Request) -> dict:
 
 
 def _lay_bool(than: dict, ten: str, mac_dinh: bool | None = False) -> bool | None:
-    """Lấy trường logic từ thân JSON của khách/quản trị: chỉ nhận đúng bool, vắng mặt hoặc null.
-
-    Ép kiểu lỏng (`bool("false")` → True) từng khiến chuỗi "false" bị coi là đồng ý/xác nhận.
-    Vắng mặt hoặc null → `mac_dinh` (mặc định False). Kiểu khác → 400 (theo mẫu kiểm trường
-    trong tệp này).
-    """
-    if ten not in than or than[ten] is None:
-        return mac_dinh
-    gia_tri = than[ten]
-    if not isinstance(gia_tri, bool):
-        raise LoiOpenAI(400, f"«{ten}» phải là true/false.", code="invalid_request")
-    return gia_tri
+    """Lấy trường logic từ thân JSON của khách/quản trị: chỉ nhận đúng bool, vắng mặt hoặc null."""
+    return kiem_bien.kiem_boolean(than.get(ten), cho_phep_none=True, mac_dinh=mac_dinh, ten_truong=ten)
 
 
 def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
@@ -1719,9 +1710,7 @@ async def lay_chi_tiet_thiet_bi(id_thuc_the: str, request: Request):
 @thiet_bi.put("/{id_thuc_the}/rui-ro", dependencies=QT)
 async def dat_rui_ro_thiet_bi(id_thuc_the: str, request: Request):
     than = await _than_json(request)
-    rui_ro = than.get("rui_ro")
-    if rui_ro not in thiet_bi_mod.RUI_RO_HOP_LE:
-        raise LoiOpenAI(400, f"Mức rủi ro không hợp lệ (chỉ nhận: {sorted(thiet_bi_mod.RUI_RO_HOP_LE)})", code="invalid_request")
+    rui_ro = kiem_bien.kiem_thanh_vien(than.get("rui_ro"), thiet_bi_mod.RUI_RO_HOP_LE, ten_truong="rui_ro")
     so = _so(request)
     item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
     tn = item.get("tinh_nang") if item else None
@@ -1814,12 +1803,14 @@ async def xu_ly_duyet(pd_id: str, request: Request):
     so = _so(request)
     nguoi_duyet = getattr(request.state, "nguoi_goi", "quan_tri")
     bam_mong_doi = None
-    if int(request.headers.get("content-length", "0") or "0") > 0:
-        try:
-            than = await _than_json(request)
-            bam_mong_doi = than.get("bam")
-        except Exception:
-            pass
+    cl = 0
+    try:
+        cl = int(request.headers.get("content-length", "0") or "0")
+    except (ValueError, TypeError):
+        cl = 0
+    if cl > 0:
+        than = await _than_json(request)
+        bam_mong_doi = kiem_bien.kiem_chuoi(than.get("bam"), cho_phep_none=True, ten_truong="bam")
     return await thiet_bi_mod.duyet_phe_duyet(pd_id, so, nguoi_duyet=nguoi_duyet, bam_mong_doi=bam_mong_doi)
 
 
@@ -1966,15 +1957,12 @@ _KHOA_THIET_LAP = asyncio.Lock()
 
 
 def _chuoi_tuy_chon(than: dict, ten: str) -> str | None:
-    """Kiểm KIỂU ở biên: trường vắng/null → None; có thì phải là chuỗi, sai → 400 invalid_value (không str() ép kiểu)."""
-    gia_tri = than.get(ten)
-    if gia_tri is not None and not isinstance(gia_tri, str):
-        raise LoiOpenAI(400, f"Trường «{ten}» phải là chuỗi.", code="invalid_value")
-    return gia_tri
+    """Kiểm KIỂU ở biên: trường vắng/null → None; có thì phải là chuỗi hợp lệ (không surrogate), sai → 400."""
+    return kiem_bien.kiem_chuoi(than.get(ten), cho_phep_none=True, ten_truong=ten)
 
 
 def _chuoi_bat_buoc(than: dict, ten: str) -> str:
-    """Trường bắt buộc: phải là chuỗi không rỗng (sau khi bỏ khoảng trắng hai đầu), sai/thiếu → 400 invalid_value."""
+    """Trường bắt buộc: phải là chuỗi không rỗng (sau khi bỏ khoảng trắng hai đầu), sai/thiếu → 400."""
     gia_tri = _chuoi_tuy_chon(than, ten)
     if gia_tri is None or not gia_tri.strip():
         raise LoiOpenAI(400, f"Thiếu trường «{ten}».", code="invalid_value")

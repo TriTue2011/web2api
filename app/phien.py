@@ -207,7 +207,8 @@ def liet_ke(module: str | None = None) -> list[dict]:
                     ban_ghi = ham_khoa.doc_bi_mat_tep(tep)
                 except ham_khoa.KhoHong:
                     raise
-                except Exception:
+                except Exception as e:
+                    nhat_ky.ghi_canh_bao_bo_qua("phien", f"Đọc tệp phiên {tep.name}", e)
                     continue
                 if not isinstance(ban_ghi, dict):
                     continue

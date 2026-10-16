@@ -62,51 +62,47 @@ def client(tmp_path, monkeypatch):
 def sach_khoa_khach(client):
     """Chụp/khôi phục trạng thái bộ nhớ của kho khoá khách (tránh nhiễm độc lan sang test khác)."""
     from app import khoa_khach
+    khoa_khach.lam_moi_cache()
     truoc = (list(khoa_khach._KHOA_KHACH_CACHE), khoa_khach._CO_THAY_DOI,
              khoa_khach._CACHE_FILE_STAT)
     yield
     khoa_khach._KHOA_KHACH_CACHE[:] = truoc[0]
     khoa_khach._CO_THAY_DOI = truoc[1]
     khoa_khach._CACHE_FILE_STAT = truoc[2]
+    khoa_khach.lam_moi_cache()
 
 
-# ─────────────────────────── ĐỎ: F1 (rui_ro) ───────────────────────────
+# ─────────────────────────── ĐÃ SỬA: F1 (rui_ro) ───────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="NV45 F1: rui_ro=[] -> 500 TypeError unhashable (app/tuyen.py:1679)")
 def test_rui_ro_list_khong_500(client):
     r = client.put(RUI_RO, json={"rui_ro": []}, headers=QT)
     assert r.status_code != 500, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="NV45 F1: rui_ro={} -> 500 TypeError unhashable (app/tuyen.py:1679)")
 def test_rui_ro_dict_khong_500(client):
     r = client.put(RUI_RO, json={"rui_ro": {}}, headers=QT)
     assert r.status_code != 500, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="NV45 F1: rui_ro lồng 300 tầng -> 500 (app/tuyen.py:1679)")
 def test_rui_ro_long_sau_khong_500(client):
     r = client.put(RUI_RO, json={"rui_ro": _long_nhau(300)}, headers=QT)
     assert r.status_code != 500, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="NV45 F1: khoá JSON trùng -> rui_ro=[] -> 500 (app/tuyen.py:1679)")
 def test_rui_ro_khoa_trung_khong_500(client):
     r = client.put(RUI_RO, content=b'{"rui_ro": "doc", "rui_ro": []}',
                    headers={**QT, **JSON})
     assert r.status_code != 500, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="NV45 F1: rui_ro lồng 1000 tầng (thô) -> 500 (app/tuyen.py:1679)")
 def test_rui_ro_long_1000_tho_khong_500(client):
     raw = b'{"rui_ro": ' + ('{"x":' * 1000).encode() + b'1' + ('}' * 1000).encode() + b'}'
     r = client.put(RUI_RO, content=raw, headers={**QT, **JSON})
     assert r.status_code != 500, r.text[:200]
 
 
-# ─────────────────────── ĐỎ: F2 (surrogate -> nhiễm độc kho) ───────────────────────
+# ─────────────────────── ĐÃ SỬA: F2 (surrogate -> nhiễm độc kho) ───────────────────────
 
-@pytest.mark.xfail(strict=True, reason="NV45 F2: tao khoa nhan lone-surrogate -> 500 UnicodeEncodeError (khoa_khach.py:795 -> kho.py:72)")
 def test_khoa_khach_tao_nhan_surrogate_khong_500(client, sach_khoa_khach):
     r = client.post("/api/khoa-khach",
                     content=_tho({"nhan": "x", "pham_vi": ["*"]}, "nhan", b'"x\\ud800y"'),
@@ -114,7 +110,6 @@ def test_khoa_khach_tao_nhan_surrogate_khong_500(client, sach_khoa_khach):
     assert r.status_code != 500, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="NV45 F2: sua khoa nhan lone-surrogate -> 500 UnicodeEncodeError (khoa_khach.py:907 -> kho.py:72)")
 def test_khoa_khach_sua_nhan_surrogate_khong_500(client, sach_khoa_khach):
     from app import khoa_khach
     kid = khoa_khach.tao_khoa(nhan="sach", pham_vi=["*"])[0]["id"]
@@ -124,17 +119,38 @@ def test_khoa_khach_sua_nhan_surrogate_khong_500(client, sach_khoa_khach):
     assert r.status_code != 500, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="NV45 F2: sau khi nhan surrogate làm hỏng 1 lần ghi, mọi ghi khoá khách sau (kể cả hợp lệ) đều 500 — DoS kéo dài tới khi khởi động lại")
 def test_khoa_khach_nhiem_doc_lan_sau(client, sach_khoa_khach):
     from app import khoa_khach
     kid = khoa_khach.tao_khoa(nhan="sach", pham_vi=["*"])[0]["id"]
     r1 = client.post("/api/khoa-khach",
                      content=_tho({"nhan": "x", "pham_vi": ["*"]}, "nhan", b'"x\\ud800y"'),
                      headers={**QT, **JSON})
-    assert r1.status_code == 500  # bước nhiễm độc: đang 500
-    # Thao tác HOÀN TOÀN HỢP LỆ sau đó vẫn 500 vì kho trong bộ nhớ đã nhiễm độc:
+    assert r1.status_code in (400, 500)  # chặn surrogate ở biên trả 400, hoặc ghi lỗi 500
+    # Thao tác HOÀN TOÀN HỢP LỆ sau đó vẫn thành công vì kho trong bộ nhớ không bị nhiễm độc:
     r2 = client.patch(f"/api/khoa-khach/{kid}", json={"bat": True}, headers=QT)
     assert r2.status_code != 500, "khoá hợp lệ bị 500 sau khi kho nhiễm độc: " + r2.text[:200]
+
+
+def test_thu_tu_ghi_ghi_loi_bo_nho_khong_doi(monkeypatch, sach_khoa_khach):
+    """Ghi lỗi đĩa (monkeypatch kho.ghi_nguyen_tu ném) -> bộ nhớ không đổi, lần ghi hợp lệ sau đó vẫn thành công."""
+    from app import kho, khoa_khach
+    khoa_khach.tao_khoa(nhan="khoa-truoc-loi", pham_vi=["*"])
+    ban_dau = list(khoa_khach._KHOA_KHACH_CACHE)
+    assert len(ban_dau) >= 1
+
+    def _ghi_hong(*args, **kwargs):
+        raise OSError("Lỗi đĩa mô phỏng")
+
+    with monkeypatch.context() as m:
+        m.setattr(kho, "ghi_nguyen_tu", _ghi_hong)
+        with pytest.raises(OSError):
+            khoa_khach.tao_khoa(nhan="khoa-loi-dia", pham_vi=["*"])
+
+    # Bộ nhớ không đổi
+    assert len(khoa_khach._KHOA_KHACH_CACHE) == len(ban_dau)
+    # Lần ghi hợp lệ sau đó vẫn thành công
+    ban_ghi, _ = khoa_khach.tao_khoa(nhan="khoa-sau-loi", pham_vi=["*"])
+    assert ban_ghi["nhan"] == "khoa-sau-loi"
 
 
 # ─────────────────────────── XANH: phòng thủ đã có ───────────────────────────

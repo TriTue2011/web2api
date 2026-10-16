@@ -101,13 +101,8 @@ ROUTES = [
     ("POST", "/api/thiet-lap", {}, []),
 ]
 
-# (method, path, label) các ca đã biết ĐỎ -> bỏ qua ở sweep, có test riêng xfail.
-BO_QUA = {
-    ("PUT", "/api/thiet-bi/khong-co-thuc-the/rui-ro", "rui_ro",
-     frozenset({"[]", "{}", "[[]]", "long-sau-300"})),
-    ("POST", "/api/khoa-khach", "nhan", frozenset({"unicode-la"})),
-    ("PATCH", "/api/khoa-khach/{kid}", "nhan", frozenset({"unicode-la"})),
-}
+# Đã sửa F1 và F2: không bỏ qua ca nào trong sweep.
+BO_QUA = set()
 
 # Thân thô gửi thêm (không qua từng trường).
 THAN_THO = [

@@ -446,3 +446,48 @@ def test_tai_lieu_trien_khai_va_xac_thuc_bon_duong_api(client, du_lieu):
         assert r_co_khoa.status_code == 200, f"{d} có khoá QT phải trả 200 nhưng trả {r_co_khoa.status_code}"
 
 
+def test_la_https_loi_phan_tich_tra_ve_false_va_ghi_canh_bao(monkeypatch, du_lieu):
+    """Khi phân tích địa chỉ trong la_https gặp lỗi:
+    - Trả về False (fail-closed, không tự ý bật Secure/tin cậy proxy);
+    - Ghi cảnh báo nhật ký không nuốt âm thầm;
+    - Cảnh báo không chứa thông tin nhạy cảm.
+    """
+    from starlette.requests import Request
+    from app import phien_web, dia_chi, nhat_ky
+    import urllib.parse
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"host", b"api.example.com")],
+        "scheme": "http",
+    }
+    req = Request(scope)
+
+    monkeypatch.setattr(dia_chi, "dia_chi_cong_khai_da_cau_hinh", lambda: "https://api.example.com")
+    monkeypatch.setattr(dia_chi, "la_tin_proxy", lambda: False)
+
+    orig_split = urllib.parse.urlsplit
+
+    def _split_loi(url, *args, **kwargs):
+        if url == "https://api.example.com":
+            raise ValueError("Lỗi phân tích URL mô phỏng")
+        return orig_split(url, *args, **kwargs)
+
+    monkeypatch.setattr(urllib.parse, "urlsplit", _split_loi)
+
+    ket_qua = phien_web.la_https(req)
+    assert ket_qua is False
+
+    ds = nhat_ky.doc(kenh="he_thong")
+    dong_cb = [
+        d for d in ds
+        if "Phân tích địa chỉ HTTPS trong la_https" in d.get("tom_tat", "")
+    ]
+    assert len(dong_cb) >= 1
+    noi_dung_log = str(dong_cb[0]).lower()
+    for tu_khoa in ("password", "secret", "token", "khoa_bi_mat", "bearer"):
+        assert tu_khoa not in noi_dung_log
+
+
