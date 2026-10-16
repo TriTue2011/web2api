@@ -164,3 +164,7 @@ Dành cho module điều khiển dịch vụ trình duyệt riêng (đăng nhậ
   - Giữ nguyên toàn bộ các trường chữ lạ (không lọc bỏ) và đổi tên model bỏ tiền tố `<tien_to>/`.
   - Nội dung tệp nhị phân được truyền trực tiếp dạng bytes vào multipart payload mà không nhân đôi RAM.
 
+
+---
+
+*Xem thêm: [Chuẩn Bảo Mật cho Module](CHUAN-BAO-MAT-MODULE.md) (luật bảo mật: hạng module, khai báo manifest, dịch vụ lõi dùng chung, test bắt buộc).*
