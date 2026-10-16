@@ -107,7 +107,9 @@ Trạng thái mỗi dịch vụ: **có** (đã chạy), **đang làm** (một ph
 
 ### 3.1. Cổng phạm vi + danh tính người gọi — có
 
-Mọi đường vào khả năng (kể cả gọi nội bộ giữa các module) phải đi qua **một hàm gọi duy nhất** của lõi (`app.goi_kha_nang.goi`), mang theo **ngữ cảnh gọi** (`app.ngu_canh`): danh tính người gọi (quản trị, khoá khách, nội bộ), nguồn gọi (`nguoi`, `ai`, `tu_dong`, `kenh`) và phạm vi cho phép. Thiếu danh tính hoặc ngữ cảnh gọi hợp lệ → từ chối (403 `missing_context`). Với hành động thiết bị, chuyển tiếp kiểm tra qua cổng rủi ro và hàng chờ phê duyệt dùng chung (`thuc_hien_hanh_dong_loi`).
+Mọi đường vào khả năng (kể cả gọi nội bộ giữa các module) từ các luồng nghiệp vụ chuẩn phải đi qua **một hàm gọi duy nhất** của lõi (`app.goi_kha_nang.goi`), mang theo **ngữ cảnh gọi** (`app.ngu_canh`): danh tính người gọi (quản trị, khoá khách, nội bộ), nguồn gọi (`nguoi`, `ai`, `tu_dong`, `kenh`) và phạm vi cho phép. Thiếu danh tính hoặc ngữ cảnh gọi hợp lệ → từ chối (403 `missing_context`). Với hành động thiết bị, chuyển tiếp kiểm tra qua cổng rủi ro và hàng chờ phê duyệt dùng chung (`thuc_hien_hanh_dong_loi`).
+
+*Ngoại lệ kỹ thuật được kiểm soát riêng:* Một số đường gọi đặc thù của lõi gọi trực tiếp module không qua `goi` do yêu cầu kiến trúc (đều có cơ chế xác thực/cô lập riêng): `tuyen.py` gọi `m.phien_ban_duoc_ho_tro()` khi kiểm tra tương thích giao thức và xử lý ảnh trong `/v1/responses` (`m.anh`/`m.anh_sua` sau khi đã xác thực V1_AUTH và kiểm tra phạm vi); `quy_trinh.py` fan-out tìm kiếm đa nguồn song song (`m.tim_kiem(...)` qua `asyncio.gather`) với việc kiểm tra danh mục và đóng cờ `nguon_ngoai`; `tri_thuc.py` gọi `m.muc_luc(...)` phục vụ phân tầng tri thức; `novnc.py` gọi `m.trinh_duyet_*` gắn với tiến trình noVNC; và `combo.py` điều phối gọi các module thành phần.
 
 - **Vì sao**: Không có danh tính ở điểm gọi thì mọi kiểm tra phạm vi sau đó đều là đoán.
 - **Cách kiểm**: Gọi khả năng qua đường vòng (không qua hàm duy nhất) → không tới được module; gọi không danh tính → bị từ chối.

@@ -152,13 +152,23 @@ def test_1_phan_quyen_va_pham_vi(moi_truong):
     assert r_chat.status_code == 403
     assert r_chat.json()["error"]["code"] == "insufficient_scope"
 
-    # 3. Khoá khách chỉ có thiet_bi:doc -> chỉ thấy tools có rui_ro == "doc"
+    # 3. Khi thực thể chưa được quản trị xác nhận -> rủi ro là nguy_hiem, khách doc không thấy
     r_tao_doc = client.post(
         "/api/khoa-khach",
         headers=QT,
         json={"nhan": "Khach Doc", "pham_vi": ["thiet_bi:doc"]},
     )
     khoa_doc = r_tao_doc.json()["khoa"]["khoa"]
+    r_doc_chua_xn = client.get("/api/cong-cu", headers={"Authorization": f"Bearer {khoa_doc}"})
+    assert r_doc_chua_xn.status_code == 200
+    assert r_doc_chua_xn.json()["data"] == []
+
+    # Quản trị xác nhận các thực thể của module (Mục 2 & SEC-004f)
+    for id_tt in ["tbcc.cam_bien_nhiet", "tbcc.den_phong_khach", "tbcc.khoa_cong"]:
+        r_xn = client.post(f"/api/thiet-bi/{id_tt}/xac-nhan", headers=QT)
+        assert r_xn.status_code == 200
+
+    # Sau khi xác nhận -> khách chỉ có thiet_bi:doc thấy tools có rui_ro == "doc"
     r_doc = client.get("/api/cong-cu", headers={"Authorization": f"Bearer {khoa_doc}"})
     assert r_doc.status_code == 200
     res_doc = r_doc.json()
@@ -632,6 +642,10 @@ def test_11_leo_thang_quyen_va_idor(moi_truong):
     assert client.get("/api/nhat-ky", headers=h_doc).status_code == 403
     assert client.get("/api/khoa-khach", headers=h_doc).status_code == 403
     assert client.get("/api/tim-kiem/nguon", headers=h_doc).status_code == 403
+
+    # Quản trị xác nhận các thực thể của module (Mục 2 & SEC-004f)
+    for id_tt in ["tbcc.cam_bien_nhiet", "tbcc.den_phong_khach", "tbcc.khoa_cong"]:
+        client.post(f"/api/thiet-bi/{id_tt}/xac-nhan", headers=QT)
 
     # 4. Lọc phạm vi theo tham số loai: khách lọc loại "cam_bien" chỉ thấy cam_bien, không lộ thực thể loại khác
     r_loc = client.get("/api/cong-cu?loai=cam_bien", headers=h_doc)

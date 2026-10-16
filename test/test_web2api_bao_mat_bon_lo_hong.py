@@ -318,17 +318,31 @@ def test_muc_2_rui_ro_thieu_va_la_roi_ve_nguy_hiem(moi_truong):
     assert r.status_code == 200
     thuc_the = {x["id"]: x for x in r.json()["thuc_the"]}
 
-    # Cửa ga-ra quên khai rui_ro_mac_dinh -> nguy_hiem
-    assert thuc_the["tbat.cua_ga_ra"]["rui_ro_mac_dinh"] == "nguy_hiem"
+    # Khi chưa xác nhận: mọi thực thể mới đều có rui_ro == nguy_hiem (Mục 2 & SEC-004f)
     assert thuc_the["tbat.cua_ga_ra"]["rui_ro"] == "nguy_hiem"
-
-    # Khoá điện tử khai mã lạ -> nguy_hiem
-    assert thuc_the["tbat.khoa_dien_tu"]["rui_ro_mac_dinh"] == "nguy_hiem"
     assert thuc_the["tbat.khoa_dien_tu"]["rui_ro"] == "nguy_hiem"
+    assert thuc_the["tbat.den_chieu_sang"]["rui_ro"] == "nguy_hiem"
+    assert thuc_the["tbat.nhiet_ke"]["rui_ro"] == "nguy_hiem"
 
-    # Đèn và nhiệt kế giữ nguyên tường minh
-    assert thuc_the["tbat.den_chieu_sang"]["rui_ro"] == "ghi"
-    assert thuc_the["tbat.nhiet_ke"]["rui_ro"] == "doc"
+    # Quản trị viên xác nhận thực thể
+    for id_tt in ["tbat.cua_ga_ra", "tbat.khoa_dien_tu", "tbat.den_chieu_sang", "tbat.nhiet_ke"]:
+        r_xn = client.post(f"/api/thiet-bi/{id_tt}/xac-nhan", headers=QT)
+        assert r_xn.status_code == 200
+
+    r_sau_xn = client.get("/api/thiet-bi", headers=QT)
+    thuc_the_xn = {x["id"]: x for x in r_sau_xn.json()["thuc_the"]}
+
+    # Cửa ga-ra quên khai rui_ro_mac_dinh -> vẫn nguy_hiem
+    assert thuc_the_xn["tbat.cua_ga_ra"]["rui_ro_mac_dinh"] == "nguy_hiem"
+    assert thuc_the_xn["tbat.cua_ga_ra"]["rui_ro"] == "nguy_hiem"
+
+    # Khoá điện tử khai mã lạ -> vẫn nguy_hiem
+    assert thuc_the_xn["tbat.khoa_dien_tu"]["rui_ro_mac_dinh"] == "nguy_hiem"
+    assert thuc_the_xn["tbat.khoa_dien_tu"]["rui_ro"] == "nguy_hiem"
+
+    # Đèn và nhiệt kế giữ nguyên tường minh sau khi xác nhận
+    assert thuc_the_xn["tbat.den_chieu_sang"]["rui_ro"] == "ghi"
+    assert thuc_the_xn["tbat.nhiet_ke"]["rui_ro"] == "doc"
 
     # GET từng thực thể cũng phải đóng khi lỗi
     r_single = client.get("/api/thiet-bi/tbat.cua_ga_ra", headers=QT)
@@ -360,7 +374,18 @@ def test_muc_2_khach_thiet_bi_ghi_khong_the_dieu_khien_thiet_bi_thieu_rui_ro(moi
     assert r_gara.status_code == 202, f"Phải vào hàng chờ phê duyệt 202, nhận {r_gara.status_code}: {r_gara.text}"
     assert "phe_duyet_id" in r_gara.json()
 
-    # Gọi đèn (khai tường minh ghi): chạy thẳng 200
+    # Trước khi xác nhận: đèn (khai tường minh ghi nhưng chưa xác nhận) -> nguy_hiem -> vào hàng chờ 202 (Mục 2)
+    r_den_chua_xn = client.post("/api/thiet-bi/tbat.den_chieu_sang/hanh-dong", headers=hd_khach, json={
+        "hanh_dong": "bat", "tham_so": {}
+    })
+    assert r_den_chua_xn.status_code == 202
+    assert "phe_duyet_id" in r_den_chua_xn.json()
+
+    # Quản trị viên xác nhận đèn -> có hiệu lực rui_ro_mac_dinh "ghi"
+    r_xn = client.post("/api/thiet-bi/tbat.den_chieu_sang/xac-nhan", headers=QT)
+    assert r_xn.status_code == 200
+
+    # Sau khi xác nhận: đèn ghi chạy thẳng 200
     r_den = client.post("/api/thiet-bi/tbat.den_chieu_sang/hanh-dong", headers=hd_khach, json={
         "hanh_dong": "bat", "tham_so": {}
     })

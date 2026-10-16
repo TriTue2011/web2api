@@ -122,18 +122,17 @@ def _kiem_content_type_json(request: Request) -> None:
 
 
 
+def _tu_choi_constant(c: str) -> None:
+    raise ValueError(f"Giá trị số không hợp lệ: {c}")
+
+
 async def _than_json(request: Request) -> dict:
-    # Không dùng request.json(): nó nạp trọn thân không giới hạn (và giữ thêm một bản trong request suốt lượt gọi).
-    # Thân đọc ngay trong lời gọi json.loads, KHÔNG gán biến: json.loads giải mã bytearray thành str rồi bỏ nó, bộ nhớ
-    # đỉnh 2× thân thay vì 3× (test_bo_nho_dinh_than_json_vua_tran). Bước đọc chỉ ném LoiOpenAI (413/400 có mã riêng),
-    # nên except dưới đây chỉ bắt lỗi giải mã: ValueError (cả UnicodeDecodeError) và RecursionError (mảng/đối tượng
-    # lồng quá sâu — vẫn là thân hỏng của khách, không phải lỗi nội bộ).
     try:
-        than = json.loads(await doc_het(request, THAN_JSON))
+        than = json.loads(await doc_het(request, THAN_JSON), parse_constant=_tu_choi_constant)
     except (ValueError, RecursionError):
-        raise LoiOpenAI(400, "Thân yêu cầu không phải JSON hợp lệ") from None
+        raise LoiOpenAI(400, "Thân yêu cầu không phải JSON hợp lệ", code="invalid_request") from None
     if not isinstance(than, dict):
-        raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
+        raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON", code="invalid_request")
     return than
 
 
@@ -1151,24 +1150,6 @@ async def cai(id_: str, request: Request):
         kq = await _so(request).cai(id_, cau_hinh)
     except LoiSo as e:
         raise _loi_so(e) from None
-    if isinstance(kq, dict) and kq.get("ok"):
-        try:
-            so = _so(request)
-            m = so.dang_chay.get(id_)
-            km = so.catalog.get(id_)
-            if km and "thiet_bi" in km.manifest.get("cung_cap", []) and m and callable(getattr(m, "thuc_the", None)):
-                raw_ents = await m.thuc_the(None)
-                if isinstance(raw_ents, list):
-                    tien_to = km.tien_to
-                    da_id = set()
-                    for ent in raw_ents:
-                        if isinstance(ent, dict):
-                            e_id = ent.get("id")
-                            if isinstance(e_id, str) and e_id.startswith(f"{tien_to}.") and e_id not in da_id:
-                                da_id.add(e_id)
-                                thiet_bi_mod.xac_nhan_thuc_the(e_id, ent.get("tinh_nang", []))
-        except Exception as e:
-            log.warning("Không thể tự xác nhận thực thể khi cài module %s: %s", id_, e)
     return JSONResponse(kq, status_code=200 if kq["ok"] else 400)
 
 
@@ -1762,8 +1743,8 @@ async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
 # ───────────── Hàng chờ phê duyệt (/api/phe-duyet) ─────────────
 
 @phe_duyet.get("")
-def danh_sach_phe_duyet():
-    return {"hang_cho": thiet_bi_mod.doc_hang_cho_phe_duyet()}
+async def danh_sach_phe_duyet(request: Request):
+    return {"hang_cho": await thiet_bi_mod.lay_hang_cho_hien_thi(_so(request))}
 
 
 @phe_duyet.post("/{pd_id}/duyet")

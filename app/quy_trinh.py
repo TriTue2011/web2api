@@ -667,12 +667,9 @@ async def _thuc_hien_mot_tang(
                 raise LoiOpenAI(400, f"Khả năng «tim_kiem» không được module {nguon!r} cung cấp", code="unknown_capability")
             if "tim_kiem" in getattr(km, "chuan_loi", {}):
                 raise LoiOpenAI(501, f"Khả năng «tim_kiem» của module {nguon!r} không đúng chuẩn", code="capability_not_supported")
-            tok_nb = ngu_canh.dat_noi_bo(nguon="tu_dong") if ngu_canh.lay() is None else None
-            try:
-                kq = await goi(m, "tim_kiem", yc)
-            finally:
-                if tok_nb is not None:
-                    ngu_canh.khoi_phuc(tok_nb)
+            if ngu_canh.lay() is None:
+                raise LoiOpenAI(403, "Thiếu ngữ cảnh thực thi (missing context)", code="missing_context")
+            kq = await goi(m, "tim_kiem", yc)
             if not isinstance(kq, dict):
                 kq = {"muc": []}
             muc = kq.get("muc", [])
@@ -869,14 +866,17 @@ async def _thuc_hien_mot_tang(
 
         query = str(tham_so.get("query") or tham_so.get("chuoi") or du_lieu_vao.get("chuoi") or "")
         docs = [str(item.get("doan") or item.get("text") or "") for item in muc_in if isinstance(item, dict)]
+        if not docs:
+            return du_lieu_vao
         model = str(tham_so.get("model") or (f"{km.tien_to}/rerank" if km else "rerank"))
-        top_n = tham_so.get("top_n") or tham_so.get("n") or len(docs)
-        tok_nb = ngu_canh.dat_noi_bo(nguon="tu_dong") if ngu_canh.lay() is None else None
-        try:
-            kq_raw = await goi(m, "xep_hang", {"model": model, "query": query, "documents": docs, "top_n": top_n})
-        finally:
-            if tok_nb is not None:
-                ngu_canh.khoi_phuc(tok_nb)
+        top_n_raw = tham_so.get("top_n") or tham_so.get("n")
+        if top_n_raw is not None:
+            top_n = so_nguyen_chat(top_n_raw, "top_n", toi_thieu=1, toi_da=len(docs))
+        else:
+            top_n = len(docs)
+        if ngu_canh.lay() is None:
+            raise LoiOpenAI(403, "Thiếu ngữ cảnh thực thi (missing context)", code="missing_context")
+        kq_raw = await goi(m, "xep_hang", {"model": model, "query": query, "documents": docs, "top_n": top_n})
         if isinstance(kq_raw, tuple) and len(kq_raw) == 3:
             ma, _, noi_dung = kq_raw
             if ma >= 400:

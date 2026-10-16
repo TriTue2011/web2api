@@ -62,6 +62,12 @@ async def goi(
 ) -> Any:
     """MỘT cổng duy nhất gọi khả năng trên module (SEC-002).
 
+    Nguyên tắc kiểm tra khả năng:
+    - «chat»: Khả năng cốt lõi (hợp đồng đầu app/kham_pha.py), định tuyến theo phương thức `chat` có thật trên thể hiện.
+    - Các khả năng chuyên biệt khác («anh», «video», «noi», «nghe», «thiet_bi», «nhung», «xep_hang», «tim_kiem»...):
+      Bắt buộc đòi hỏi CẢ khai báo trong `cung_cap` của manifest LẪN phương thức hợp đồng tương ứng trên thể hiện.
+    - Người gọi bắt buộc phải có ngữ cảnh hợp lệ (danh tính và phạm vi truy cập).
+
     Tham số:
     - `module`: Thể hiện module (đối tượng có manifest hoặc catalog).
     - `kha_nang`: Tên khả năng ("chat", "thiet_bi"...) hoặc phương thức hợp đồng ("thuc_hien", "video_tao"...).
@@ -123,13 +129,27 @@ async def goi(
         co_phuong_thuc = callable(getattr(module, "thuc_hien", None)) or callable(getattr(module, "thuc_the", None))
 
     manifest = getattr(module, "manifest", None)
-    cung_cap: list[str] = []
-    if isinstance(manifest, dict):
-        cung_cap = manifest.get("cung_cap") or []
+    cung_cap: list[str] | None = None
+    if isinstance(manifest, dict) and "cung_cap" in manifest:
+        raw_cc = manifest.get("cung_cap")
+        if isinstance(raw_cc, (list, tuple, set)):
+            cung_cap = list(raw_cc)
     elif hasattr(module, "du_lieu") and isinstance(getattr(module, "du_lieu"), dict):
-        cung_cap = getattr(module, "du_lieu").get("kha_nang") or []
+        raw_cc = getattr(module, "du_lieu").get("kha_nang")
+        if isinstance(raw_cc, (list, tuple, set)):
+            cung_cap = list(raw_cc)
 
-    if not co_phuong_thuc and cap not in cung_cap:
+    # Hợp đồng kham_pha.py: chat là khả năng cốt lõi (có hàm chat thì luôn được hỗ trợ dù cung_cap không khai).
+    # Các khả năng chuyên biệt khác (anh, video, noi, nghe, thiet_bi, xep_hang, tim_kiem...): đòi CẢ phương thức LẪN cung_cap.
+    co_cung_cap = True
+    if cung_cap is not None:
+        if cap == "chat":
+            co_cung_cap = ("chat" in cung_cap) or co_phuong_thuc
+        else:
+            kha_nang_ct = getattr(getattr(module, "_ct", None), "kha_nang", ())
+            co_cung_cap = (cap in cung_cap) or (cap in kha_nang_ct) or (cap == "anh" and "anh_sua" in kha_nang_ct)
+
+    if not co_cung_cap:
         raise LoiOpenAI(
             501,
             f"Module không cung cấp khả năng «{cap}».",
@@ -143,6 +163,10 @@ async def goi(
             code="capability_not_supported",
         )
 
+    mod_id = getattr(module, "id", None) or (
+        manifest.get("id") if isinstance(manifest, dict) else type(module).__name__
+    )
+
     # 5. Kiểm tra phạm vi quyền hạn theo ngữ cảnh gọi
     can_pv = PHAM_VI_YEU_CAU.get(phuong_thuc) or PHAM_VI_YEU_CAU.get(cap) or (cap,)
     danh_tinh = ngu_canh.danh_tinh
@@ -152,6 +176,17 @@ async def goi(
     if not la_quan_tri and "*" not in pv_hieu_luc:
         if not any(p in pv_hieu_luc for p in can_pv):
             can_p = can_pv[0] if can_pv else cap
+            nhat_ky.ghi(
+                "goi_kha_nang",
+                "canh_bao",
+                f"Từ chối lời gọi khả năng «{cap}» (phương thức «{phuong_thuc}»): thiếu phạm vi «{can_p}»",
+                module=mod_id,
+                kha_nang=cap,
+                phuong_thuc=phuong_thuc,
+                nguon=ngu_canh.nguon,
+                danh_tinh_loai=danh_tinh.get("loai"),
+                danh_tinh_id=danh_tinh.get("id"),
+            )
             raise LoiOpenAI(
                 403,
                 f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can_p}»).",
@@ -182,22 +217,20 @@ async def goi(
         )
         return kq
 
-    # 7. Ghi sổ kiểm toán với danh tính và nguồn do LÕI đóng dấu
-    kenh = "thiet_bi" if cap == "thiet_bi" else "quan_tri"
-    mod_id = getattr(module, "id", None) or (
-        manifest.get("id") if isinstance(manifest, dict) else type(module).__name__
-    )
-    nhat_ky.ghi(
-        kenh,
-        "thong_tin",
-        f"Lõi gọi khả năng «{cap}» (phương thức «{phuong_thuc}») trên module {mod_id}",
-        module=mod_id,
-        kha_nang=cap,
-        phuong_thuc=phuong_thuc,
-        nguon=ngu_canh.nguon,
-        danh_tinh_loai=danh_tinh.get("loai"),
-        danh_tinh_id=danh_tinh.get("id"),
-    )
+    # 7. Ghi sổ kiểm toán kênh goi_kha_nang: chỉ ghi hành động ghi/nguy hiểm (không ghi chat/models thường)
+    la_hanh_dong_ghi = phuong_thuc in ("anh_sua", "video_tao")
+    if la_hanh_dong_ghi:
+        nhat_ky.ghi(
+            "goi_kha_nang",
+            "thong_tin",
+            f"Lõi gọi khả năng ghi «{cap}» (phương thức «{phuong_thuc}») trên module {mod_id}",
+            module=mod_id,
+            kha_nang=cap,
+            phuong_thuc=phuong_thuc,
+            nguon=ngu_canh.nguon,
+            danh_tinh_loai=danh_tinh.get("loai"),
+            danh_tinh_id=danh_tinh.get("id"),
+        )
 
     # 8. Thực hiện lời gọi, bảo toàn ContextVar cho luồng thực thi
     token = dat_ngu_canh(
