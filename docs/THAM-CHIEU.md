@@ -1855,6 +1855,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DANG_NHAP_SAI_TOI_DA` | `5` | Số lần đăng nhập sai mật khẩu liên tiếp tối đa cho một cặp (IP, tên đăng nhập) trước khi tạm khoá cặp đó |
 | `WEB2API_DANG_NHAP_TOAN_CUC_SAI_TOI_DA` | `50` | Ngưỡng sai mật khẩu toàn cục tối đa cho một tên đăng nhập (chống tấn công phân tán nhiều IP) trước khi tạm khoá tài khoản đối với mọi IP |
 | `WEB2API_DANG_NHAP_KHOA_PHUT` | `15` | Thời gian tạm khoá tài khoản (phút) khi vượt quá số lần đăng nhập sai mật khẩu liên tiếp |
+| `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` | `16` | Trần số lượt yêu cầu đăng nhập đang chờ và đang băm scrypt đồng thời; vượt trần trả `429` kèm `Retry-After` ngay lập tức để bỏ tải |
+| `WEB2API_SCRYPT_HANG_CHO_TOI_DA` | `16` | Bí danh của `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` cấu hình trần hàng chờ băm mật khẩu scrypt |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
 | `WEB2API_PHIEN_WEB_TOI_DA_NGAY` | `7` | Thời gian sống tuyệt đối tối đa (ngày) của một phiên web kể từ lúc tạo |
 | `WEB2API_QT_IP_CHO_PHEP` | không | Danh sách CIDR (cách nhau bằng dấu phẩy, vd `192.0.2.0/24`) được phép gọi đường QUẢN TRỊ (`can_quan_tri`) và `POST /api/thiet-lap` (đường tạo admin lần đầu). Trống/không đặt = tắt, không hạn chế. Có giá trị: IP hiệu lực (tính như `WEB2API_TRUST_PROXY`) ngoài danh sách → `403 ip_not_allowed`, ghi cảnh báo kênh `quan_tri` (tối đa một dòng mỗi IP mỗi phút), không đếm vào giới hạn sai khoá. Loopback trực tiếp không kèm `X-Forwarded-For` luôn được phép (healthcheck/khôi phục); peer không phải IP bị từ chối. Đọc mỗi lượt — đổi không cần khởi động lại. Mục CIDR hỏng bị bỏ qua; tất cả đều hỏng → chặn hết trừ loopback. Xem `docs/TRIEN-KHAI.md` mục «Chỉ cho mạng nhà gọi đường quản trị» |
@@ -1871,6 +1873,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_MUC_LUC_TRAN_SO_NUT` | `2000` | Trần tổng số nút tối đa của cây mục lục tài liệu |
 | `WEB2API_NHAT_KY_TOI_DA_MB` | `20` | Trần dung lượng lưu trữ nhật ký hệ thống (MB), xoay vòng khi chạm trần |
 | `WEB2API_NHAT_KY_CHUOI_BAM` | `1` | Bật chuỗi băm chống sửa lén cho bản ghi nhật ký mới (`1` bật; `0` tắt để quay lại hành vi cũ khi sự cố; giá trị lạ → bật) |
+| `WEB2API_NHAT_KY_XOA_TOI_THIEU_NGAY` | `1.0` | Ngưỡng thời gian tối thiểu (ngày) khi gọi `DELETE /api/nhat-ky?truoc_ngay=N`; nhỏ hơn ngưỡng bị từ chối `400` chống xoá lén dấu vết gần |
 | `WEB2API_COMBO_NGUONG` | `3` | Số lỗi máy chủ liên tiếp (5xx, lỗi gọi) để mở cầu chì (module, nhóm việc) của combo; 401/403 mở ngay |
 | `WEB2API_COMBO_NGHI_GIAY` | `60` | Giây cầu chì mở trước khi cho MỘT lượt thăm dò (nửa mở); cũng là thời gian hạ bậc bước bị phân xử 400 |
 | `WEB2API_COMBO_DINH_GIAY` | `900` | Giây giữ dính tài khoản (cùng hội thoại → cùng bước); `0` tắt dính |

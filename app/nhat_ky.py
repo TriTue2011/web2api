@@ -432,6 +432,18 @@ def danh_sach_kenh() -> list[dict]:
     return sorted(thong_ke.values(), key=lambda x: x["kenh"])
 
 
+def nguong_xoa_toi_thieu_ngay() -> float:
+    """Ngưỡng tối thiểu của tham số `truoc_ngay` khi xoá nhật ký (mặc định 1.0 ngày).
+    Cấu hình qua biến môi trường WEB2API_NHAT_KY_XOA_TOI_THIEU_NGAY.
+    """
+    tu_bien = os.environ.get("WEB2API_NHAT_KY_XOA_TOI_THIEU_NGAY", "1").strip()
+    try:
+        val = float(tu_bien)
+        return val if val >= 0 and math.isfinite(val) else 1.0
+    except (ValueError, TypeError):
+        return 1.0
+
+
 def xoa_cu(truoc_ngay: float) -> int:
     """Xoá các bản ghi cũ hơn `truoc_ngay` ngày (0 ≤ truoc_ngay, hữu hạn). Trả về số dòng đã xoá.
 
@@ -697,3 +709,54 @@ class MiddlewareNhatKyCuocGoi:
                 them["dut"] = True
             ghi("cuoc_goi", muc, f"{scope.get('method', '')} {scope.get('path', '')} {ma}"
                 + (" (luồng đứt giữa chừng)" if dut else ""), ms=ms_chay, **them)
+
+
+# ───────────── Theo dõi và cảnh báo khoá quản trị từ IP mới ─────────────
+
+_IP_QUAN_TRI_DA_BIET: dict[str, float] = {}
+_TRAN_BO_NHO_IP_QT = 1000
+_CHU_KY_IP_QT_GIAY = 86400.0  # 24 giờ
+
+
+def xoa_bo_nho_ip_quan_tri() -> None:
+    """Xoá bộ nhớ theo dõi IP quản trị (dùng cho kiểm thử)."""
+    with _KHOA:
+        _IP_QUAN_TRI_DA_BIET.clear()
+
+
+def ghi_nhan_ip_quan_tri(ip: str | None) -> bool:
+    """Ghi cảnh báo khi khoá quản trị được dùng từ IP mới.
+
+    Tối đa một lần cho mỗi IP mỗi 24 giờ.
+    Bộ nhớ có trần, không bao giờ ghi khoá.
+    Trả về True nếu có ghi dòng cảnh báo, False nếu IP đã biết hoặc không hợp lệ.
+    """
+    if not ip or not isinstance(ip, str):
+        return False
+    ip_sach = ip.strip()[:45]
+    if not ip_sach:
+        return False
+
+    now = time.time()
+    with _KHOA:
+        if len(_IP_QUAN_TRI_DA_BIET) >= _TRAN_BO_NHO_IP_QT:
+            het_han = [k for k, v in _IP_QUAN_TRI_DA_BIET.items() if now - v >= _CHU_KY_IP_QT_GIAY]
+            for k in het_han:
+                _IP_QUAN_TRI_DA_BIET.pop(k, None)
+            if len(_IP_QUAN_TRI_DA_BIET) >= _TRAN_BO_NHO_IP_QT:
+                cu_nhat = min(_IP_QUAN_TRI_DA_BIET.items(), key=lambda x: x[1])[0]
+                _IP_QUAN_TRI_DA_BIET.pop(cu_nhat, None)
+
+        lan_cuoi = _IP_QUAN_TRI_DA_BIET.get(ip_sach)
+        if lan_cuoi is not None and (now - lan_cuoi) < _CHU_KY_IP_QT_GIAY:
+            return False
+
+        _IP_QUAN_TRI_DA_BIET[ip_sach] = now
+
+    ghi(
+        "quan_tri",
+        "canh_bao",
+        f"Khoá quản trị dùng từ IP mới: {ip_sach}",
+        ip=ip_sach,
+    )
+    return True

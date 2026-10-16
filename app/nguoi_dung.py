@@ -28,6 +28,7 @@ import secrets
 import threading
 import time
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,58 @@ _THEO_DOI_SAI: OrderedDict[str, dict[str, Any]] = OrderedDict()
 TOI_DA_THEO_DOI = 10000
 
 _SEMAPHORE_SCRYPT = asyncio.Semaphore(2)
+_KHOA_HANG_CHO = threading.Lock()
+_dem_hang_cho_scrypt = 0
+MAC_DINH_HANG_CHO_SCRYPT = 16
+
+
+class LoiHangChoQuaTai(LoiOpenAI):
+    """Hàng chờ băm mật khẩu quá trần."""
+
+    def __init__(self, retry_after: int = 1) -> None:
+        super().__init__(
+            429,
+            "Hàng chờ xác thực quá tải. Vui lòng thử lại sau.",
+            loai="rate_limit_error",
+            code="rate_limit_exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def hang_cho_scrypt_toi_da() -> int:
+    val = os.environ.get("WEB2API_DANG_NHAP_HANG_CHO_TOI_DA") or os.environ.get("WEB2API_SCRYPT_HANG_CHO_TOI_DA")
+    if val:
+        try:
+            n = int(val)
+            return n if n > 0 else MAC_DINH_HANG_CHO_SCRYPT
+        except (ValueError, TypeError):
+            pass
+    return MAC_DINH_HANG_CHO_SCRYPT
+
+
+_HOOK_VAO_HANG_CHO = None
+
+
+@asynccontextmanager
+async def giu_slot_scrypt():
+    """Giữ một vị trí trong hàng chờ băm scrypt (đang chờ + đang băm). Quá trần -> 429 Retry-After ngay."""
+    global _dem_hang_cho_scrypt
+    with _KHOA_HANG_CHO:
+        tran = hang_cho_scrypt_toi_da()
+        if _dem_hang_cho_scrypt >= tran:
+            raise LoiHangChoQuaTai()
+        _dem_hang_cho_scrypt += 1
+        if _HOOK_VAO_HANG_CHO is not None:
+            try:
+                _HOOK_VAO_HANG_CHO(_dem_hang_cho_scrypt)
+            except Exception:
+                pass
+    try:
+        async with _SEMAPHORE_SCRYPT:
+            yield
+    finally:
+        with _KHOA_HANG_CHO:
+            _dem_hang_cho_scrypt -= 1
 
 #: Chính sách độ dài mật khẩu — dùng chung cho đặt mật khẩu và đăng nhập (dài hơn trần → sai, không băm chuỗi dài).
 MAT_KHAU_TOI_THIEU = 12
@@ -149,7 +202,7 @@ def _kiem_tra_mat_khau_dong_bo(mat_khau: str, chuoi_bam: str) -> bool:
 
 
 async def bam_mat_khau(mat_khau: str) -> str:
-    async with _SEMAPHORE_SCRYPT:
+    async with giu_slot_scrypt():
         return await asyncio.to_thread(_bam_mat_khau_dong_bo, mat_khau)
 
 
@@ -159,13 +212,13 @@ async def kiem_tra_mat_khau(mat_khau: str, chuoi_bam: str) -> bool:
     if not isinstance(mat_khau, str) or len(mat_khau) > MAT_KHAU_TOI_DA:
         await chay_bam_gia()
         return False
-    async with _SEMAPHORE_SCRYPT:
+    async with giu_slot_scrypt():
         return await asyncio.to_thread(_kiem_tra_mat_khau_dong_bo, mat_khau, chuoi_bam)
 
 
 async def chay_bam_gia() -> None:
     """Thực hiện một lượt băm giả đồng nhất tham số scrypt để thời gian không phân biệt được."""
-    async with _SEMAPHORE_SCRYPT:
+    async with giu_slot_scrypt():
         await asyncio.to_thread(_bam_mat_khau_dong_bo, "mat_khau_gia_cho_thoi_gian_dong_nhat", MUOI_GIA)
 
 
