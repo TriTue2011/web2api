@@ -226,6 +226,7 @@ def test_novnc_gioi_han_ve_sai_va_tran_kho_ve(moi_truong, monkeypatch):
             "/novnc/dang-nhap",
             data=f"ve=ve-sai-khong-hop-le-chua-tung-co-{i:04d}",
             headers={
+                "origin": "http://testserver",
                 "content-type": "application/x-www-form-urlencoded",
                 "x-forwarded-for": ip_test,
             },
@@ -237,6 +238,7 @@ def test_novnc_gioi_han_ve_sai_va_tran_kho_ve(moi_truong, monkeypatch):
         "/novnc/dang-nhap",
         data="ve=ve-sai-thu-31-kich-hoat-chan-ip-ngay",
         headers={
+            "origin": "http://testserver",
             "content-type": "application/x-www-form-urlencoded",
             "x-forwarded-for": ip_test,
         },
@@ -265,6 +267,7 @@ def test_novnc_gioi_han_ve_sai_va_tran_kho_ve(moi_truong, monkeypatch):
         "/novnc/dang-nhap",
         data=f"ve={ve_dung}",
         headers={
+            "origin": "http://testserver",
             "content-type": "application/x-www-form-urlencoded",
             "x-forwarded-for": ip_khac,
         },

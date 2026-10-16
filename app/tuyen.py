@@ -2282,7 +2282,7 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
         bat=bat,
         pham_vi_toi_da=pham_vi_toi_da,
     )
-    if not ban_ghi["bat"]:  # trạng thái sau thao tác là TẮT → thu hồi mọi phiên (bật lại không sống lại phiên cũ)
+    if not ban_ghi["bat"] or vai is not None:  # tắt hoặc đổi vai → thu hồi mọi phiên (hạ vai không giữ quyền cũ)
         phien_web_mod.thu_hoi_phien_nguoi_dung(id)
         novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
 
