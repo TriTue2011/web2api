@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Hệ thống · Tích hợp &amp; công cụ</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+main.pg{padding:32px 32px 48px;gap:24px}
+.khoi-dau{width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer;padding:4px 0}
+.khoi-dau .nhan-muc{margin:0}
+.khoi-dau .mui{transition:transform .15s ease;color:var(--mute)}
+.khoi-dau[aria-expanded="true"] .mui{transform:rotate(180deg)}
+.luoi-the{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.the{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 16px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.the-ten{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.the-mo{font-size:12.5px;color:var(--ink);overflow-wrap:anywhere}
+.the-phu{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:500;background:#F0EEE9;color:var(--ink)}
+.chip-xanh{background:#E2F0ED;color:#0B5A53}
+.chip-do{background:#FDECEA;color:#8A1C12}
+.chip-vang{background:#FDF3E3;color:#8A5A12}
+.hang-mot{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.truong{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute);min-width:0}
+.truong .o{min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+textarea.o{padding:8px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.bao{border-radius:10px;padding:10px 14px;font-size:13px}
+.bao-loi{background:#FDECEA;color:#8A1C12}
+.bao-tin{background:#E2F0ED;color:#0B5A53}
+.nut{box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);padding:6px 14px;font:inherit;font-size:13px;cursor:pointer;min-height:36px}
+.nut-chinh{background:#0B5A53;border-color:#0B5A53;color:#fff;font-weight:600}
+.nut-nho{font-size:12px;min-height:30px;padding:3px 10px}
+.nut:disabled{opacity:.5;cursor:default}
+.dong-nut{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bang{width:100%;border-collapse:collapse;font-size:13px}
+.bang th,.bang td{text-align:left;padding:8px 10px;border-top:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.bang th{font-size:12px;color:var(--mute);font-weight:600;border-top:0}
+.muc-kq{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);min-width:0}
+.canh-bao-ktin{background:#FDF3E3;border:1px solid #EBD3A0;border-radius:10px;padding:8px 12px;font-size:12px;color:#8A5A12}
+ul.cay{list-style:none;margin:0;padding-left:18px}
+ul.cay>li{margin:2px 0}
+@media (max-width:480px){
+main.pg{padding:12px 16px 24px}
+.luoi-the{grid-template-columns:1fr}
+.bang-wrap{overflow-x:auto}
+}
+</style>
+</helmet>
+<div class="goc">
+
+<nav aria-label="Điều hướng Hệ thống" class="tb tb-ht" onKeyDown="{{phimNav}}">
+<sc-if value="{{coQuayLai}}"><div style="display:flex;align-items:center;gap:12px;flex:0 0 auto"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}" title="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.quay_lai}}"></path></svg><span>Quay lại</span></a></div></sc-if>
+<sc-if value="{{khongQuayLai}}"><div class="thuong-hieu"><div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div><span class="ten-web">web2api</span></div></sc-if>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><div class="muc-nav">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
+</nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
+
+<main class="pg">
+<h1 class="an-chu">Hệ thống — Tích hợp &amp; công cụ</h1>
+<sc-if value="{{coLoiTaiTrang}}"><p role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>{{loiTaiTrang}}</span><button type="button" class="nut nut-nho" onClick="{{taiLai}}">Thử lại</button></p></sc-if>
+
+<sc-if value="{{laAdmin}}">
+
+<!-- (a) Công cụ cho AI -->
+<section class="the" aria-labelledby="h-cong-cu">
+<button type="button" class="khoi-dau" id="nut-cong-cu" aria-expanded="{{ccMo}}" aria-controls="khoi-cong-cu" onClick="{{doiCcMo}}">
+<h2 id="h-cong-cu" class="nhan-muc">Công cụ cho AI ({{ccDem}})</h2>
+<svg class="mui" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+<sc-if value="{{ccMo}}"><div id="khoi-cong-cu" style="padding:4px 16px 16px;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:12px;color:var(--mute);margin:0">Chỉ xem. Danh sách công cụ chuẩn OpenAI function-calling sinh từ thực thể thiết bị (<span style="font-family:ui-monospace,Menlo,Consolas,monospace">GET /api/cong-cu</span>).</p>
+<sc-if value="{{ccLoi}}"><p class="bao bao-loi" role="alert">{{ccLoi}}</p></sc-if>
+<sc-if value="{{ccBiCat}}"><p class="bao bao-loi" role="alert">Danh sách đã bị cắt ở trần {{ccTong}} công cụ (tối đa 128).</p></sc-if>
+<div class="luoi-the">
+<sc-for list="{{ccTools}}" as="t">
+<div class="the" data-cong-cu="{{t.ten}}">
+<div class="the-ten" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">{{t.ten}}</div>
+<div class="the-phu"><span class="chip {{t.chipLop}}">{{t.nhanRuiRo}}</span><span>{{t.loai}} · {{t.hanhDong}}</span></div>
+<div class="the-mo">{{t.moTa}}</div>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{ccRong}}"><p style="color:var(--mute);font-size:13px">Chưa có công cụ nào (chưa có thực thể thiết bị nào khai hành động).</p></sc-if>
+</div></sc-if>
+</section>
+
+<!-- (b) Tìm kiếm -->
+<section class="the" aria-labelledby="h-tim-kiem">
+<button type="button" class="khoi-dau" id="nut-tim-kiem" aria-expanded="{{tkMo}}" aria-controls="khoi-tim-kiem" onClick="{{doiTkMo}}">
+<h2 id="h-tim-kiem" class="nhan-muc">Tìm kiếm</h2>
+<svg class="mui" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+<sc-if value="{{tkMo}}"><div id="khoi-tim-kiem" style="padding:4px 16px 16px;display:flex;flex-direction:column;gap:16px">
+
+<div>
+<div style="font-weight:600;font-size:13px;margin-bottom:8px">Nguồn tri thức</div>
+<sc-if value="{{tkLoiNguon}}"><p class="bao bao-loi" role="alert">{{tkLoiNguon}}</p></sc-if>
+<div class="luoi-the">
+<sc-for list="{{tkNguon}}" as="n">
+<div class="the" data-nguon="{{n.id}}">
+<div class="the-ten">{{n.ten}}</div>
+<div class="the-phu"><span class="chip {{n.chipLop}}">{{n.nhanTrangThai}}</span><sc-if value="{{n.soDo}}"><span>Sơ đồ: {{n.soDo}}</span></sc-if></div>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{tkNguonRong}}"><p style="color:var(--mute);font-size:13px">Chưa có module nào khai khả năng tìm kiếm.</p></sc-if>
+</div>
+
+<form novalidate onSubmit="{{tkTimSubmit}}">
+<div style="font-weight:600;font-size:13px;margin-bottom:8px">Tìm thử</div>
+<div class="hang-mot">
+<label class="truong" style="flex:3 1 240px">Chuỗi tìm kiếm<input id="o-chuoi-tim" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="Nhập chuỗi cần tìm" value="{{tkChuoi}}" onInput="{{tkGoChuoi}}"></label>
+<label class="truong" style="flex:0 1 110px">Số mục<input class="o" type="number" min="1" max="50" value="{{tkSoLuong}}" onInput="{{tkGoSoLuong}}"></label>
+<button type="submit" id="nut-tim-thu" class="nut nut-chinh" disabled="{{tkDangTim}}">{{tkNhanTim}}</button>
+</div>
+</form>
+<sc-if value="{{tkLoiTim}}"><p class="bao bao-loi" role="alert">{{tkLoiTim}}</p></sc-if>
+<sc-if value="{{tkCoKq}}">
+<p class="canh-bao-ktin" role="note">Kết quả dưới đây là <strong>dữ liệu không tin được</strong> từ nguồn ngoài — chỉ hiển thị dạng chữ thuần, đã cắt ngắn.</p>
+<div style="display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{tkKetQua}}" as="k">
+<div class="muc-kq" data-ket-qua="{{k.stt}}">
+<div style="font-weight:600;font-size:13px;margin-bottom:4px">Mục {{k.stt}}<sc-if value="{{k.nguon}}"><span style="font-weight:400;color:var(--mute)"> · {{k.nguon}}</span></sc-if></div>
+<sc-for list="{{k.truong}}" as="f"><div style="font-size:12.5px;margin:2px 0;overflow-wrap:anywhere"><span style="color:var(--mute)">{{f.k}}:</span> {{f.v}}</div></sc-for>
+</div>
+</sc-for>
+</div>
+<p style="font-size:12px;color:var(--mute);margin:0">Tổng {{tkTong}} mục.</p>
+</sc-if>
+
+<form novalidate onSubmit="{{tkMucLucSubmit}}">
+<div style="font-weight:600;font-size:13px;margin-bottom:8px">Mục lục tài liệu</div>
+<div class="hang-mot">
+<label class="truong" style="flex:1 1 180px">Nguồn<select id="o-ml-nguon" class="o" value="{{tkMlNguon}}" onInput="{{tkGoMlNguon}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"><sc-for list="{{tkNguon}}" as="n"><option value="{{n.id}}">{{n.ten}}</option></sc-for></select></label>
+<label class="truong" style="flex:2 1 220px">Tài liệu<input id="o-ml-tai-lieu" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="Tên/đường dẫn tài liệu trong nguồn" value="{{tkMlTaiLieu}}" onInput="{{tkGoMlTaiLieu}}"></label>
+<button type="submit" id="nut-ml-lay" class="nut" disabled="{{tkMlDangTai}}">{{tkMlNhan}}</button>
+</div>
+</form>
+<sc-if value="{{tkMlLoi}}"><p class="bao bao-loi" role="alert">{{tkMlLoi}}</p></sc-if>
+<sc-if value="{{tkMlCo}}"><div class="the"><div class="the-ten" style="margin-bottom:6px">Cây mục lục</div><ul class="cay" aria-label="Cây mục lục"><sc-for list="{{tkMlHang}}" as="h"><li><span style="{{h.le}}">{{h.tieuDe}}</span></li></sc-for></ul></div></sc-if>
+
+</div></sc-if>
+</section>
+
+<!-- (c) Nạp lại module -->
+<section class="the" aria-labelledby="h-nap-lai">
+<button type="button" class="khoi-dau" id="nut-nap-lai" aria-expanded="{{nlMo}}" aria-controls="khoi-nap-lai" onClick="{{doiNlMo}}">
+<h2 id="h-nap-lai" class="nhan-muc">Nạp lại module</h2>
+<svg class="mui" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+<sc-if value="{{nlMo}}"><div id="khoi-nap-lai" style="padding:4px 16px 16px;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:12px;color:var(--mute);margin:0">Quét lại thư mục module và nạp lại các module đã đổi (<span style="font-family:ui-monospace,Menlo,Consolas,monospace">POST /api/modules/nap-lai</span>).</p>
+<div class="dong-nut"><button type="button" class="nut nut-chinh" id="nut-goi-nap-lai" onClick="{{nlGoi}}" disabled="{{nlDangGoi}}">{{nlNhan}}</button></div>
+<sc-if value="{{nlLoi}}"><p class="bao bao-loi" role="alert">{{nlLoi}}</p></sc-if>
+<sc-if value="{{nlTin}}"><p class="bao bao-tin" role="status">{{nlTin}}</p></sc-if>
+</div></sc-if>
+</section>
+
+<!-- (d) Webhook & gửi ra -->
+<section class="the" aria-labelledby="h-wh">
+<button type="button" class="khoi-dau" id="nut-wh" aria-expanded="{{whMo}}" aria-controls="khoi-wh" onClick="{{doiWhMo}}">
+<h2 id="h-wh" class="nhan-muc">Webhook &amp; gửi ra</h2>
+<svg class="mui" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+<sc-if value="{{whMo}}"><div id="khoi-wh" style="padding:4px 16px 16px;display:flex;flex-direction:column;gap:16px">
+<p style="font-size:12px;color:var(--mute);margin:0">Chỉ xem cấu hình. Bí mật webhook, chữ ký và khoá <strong>không bao giờ</strong> hiển thị ở đây.</p>
+<sc-if value="{{whLoi}}"><p class="bao bao-loi" role="alert">{{whLoi}}</p></sc-if>
+<div class="bang-wrap"><table class="bang" aria-label="Cổng gửi ra của các module">
+<thead><tr><th>Module</th><th>Cổng gửi ra</th><th>Trần tần suất hiệu lực</th></tr></thead>
+<tbody><sc-for list="{{whHang}}" as="w">
+<tr data-module="{{w.id}}">
+<td><div style="font-weight:600">{{w.ten}}</div><div style="font-size:12px;color:var(--mute);font-family:ui-monospace,Menlo,Consolas,monospace">{{w.id}}</div></td>
+<sc-if value="{{w.coGuiRa}}"><td><span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px">/api/gui/{{w.id}}</span><div style="font-size:12px;color:var(--mute)">cần phạm vi «gui:{{w.id}}»</div></td></sc-if>
+<sc-if value="{{w.khongGuiRa}}"><td style="color:var(--mute)">—</td></sc-if>
+<td style="font-size:12.5px">{{w.tran}}</td>
+</tr>
+</sc-for></tbody>
+</table></div>
+<sc-if value="{{whRong}}"><p style="color:var(--mute);font-size:13px">Chưa có module nào khai cổng gửi ra («kenh_ra» trong manifest).</p></sc-if>
+<p style="font-size:12px;color:var(--mute);margin:0">Trần gửi ra theo biến môi trường: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">WEB2API_GUI_TIN_PHUT</span> (mặc định 20 tin/phút theo từng cặp khoá–module), <span style="font-family:ui-monospace,Menlo,Consolas,monospace">WEB2API_GUI_DONG_THOI</span> (mặc định 8 lượt đồng thời toàn cục). Giá trị hiệu lực do máy chủ đặt.</p>
+<p style="font-size:12px;color:var(--mute);margin:0">Cổng webhook (nhà cung cấp gọi vào: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">POST /api/webhook/{module}/{mã}</span>; trần mặc định 60 tin/phút mỗi module, 4 lượt đồng thời — <span style="font-family:ui-monospace,Menlo,Consolas,monospace">WEB2API_WEBHOOK_TIN_PHUT</span>, <span style="font-family:ui-monospace,Menlo,Consolas,monospace">WEB2API_WEBHOOK_DONG_THOI</span>): API hiện chưa cho biết module nào đã khai webhook nên trang không liệt kê ở đây (xem báo cáo NV39). «mã» là bí mật riêng của module, không bao giờ hiển thị.</p>
+
+<form novalidate onSubmit="{{skSubmit}}">
+<div style="font-weight:600;font-size:13px;margin-bottom:8px">Gửi sự kiện thử</div>
+<div class="hang-mot">
+<label class="truong" style="flex:1 1 180px">Thực thể (id)<input id="o-sk-thuc-the" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="id thực thể đang có" value="{{skThucThe}}" onInput="{{skGoThucThe}}"></label>
+<label class="truong" style="flex:0 1 150px">Loại<input class="o" type="text" autocomplete="off" spellcheck="false" placeholder="trang_thai" value="{{skLoai}}" onInput="{{skGoLoai}}"></label>
+<label class="truong" style="flex:2 1 220px">Giá trị (JSON)<textarea class="o" rows="2" spellcheck="false" placeholder='{"trang_thai": "bat"}' value="{{skGiaTri}}" onInput="{{skGoGiaTri}}"></textarea></label>
+<button type="submit" class="nut nut-chinh" disabled="{{skDangGui}}">{{skNhan}}</button>
+</div>
+<p style="font-size:12px;color:var(--mute);margin:4px 0 0">Gửi một sự kiện lên bus nội bộ (<span style="font-family:ui-monospace,Menlo,Consolas,monospace">POST /api/thiet-bi/su-kien</span>). Thực thể phải đang tồn tại trong danh mục.</p>
+</form>
+<sc-if value="{{skLoi}}"><p class="bao bao-loi" role="alert">{{skLoi}}</p></sc-if>
+<sc-if value="{{skTin}}"><p class="bao bao-tin" role="status">{{skTin}}</p></sc-if>
+
+</div></sc-if>
+</section>
+
+</sc-if>
+
+<sc-if value="{{khongLaAdmin}}">
+<p class="bao bao-loi" role="alert">Trang Tích hợp &amp; công cụ chỉ dành cho quản trị viên.</p>
+</sc-if>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{}'>
+const K = window.Khung;
+
+const TRAN_TRUONG = 500;
+const NHAN_RUI_RO = { doc: 'Đọc', ghi: 'Ghi', nguy_hiem: 'Nguy hiểm' };
+const LOP_RUI_RO = { doc: 'chip-xanh', ghi: 'chip-vang', nguy_hiem: 'chip-do' };
+const NHAN_TRANG_THAI_NGUON = { san_sang: 'Sẵn sàng', chua_cau_hinh: 'Chưa cấu hình', loi_chuan: 'Lỗi chuẩn' };
+const LOP_TRANG_THAI_NGUON = { san_sang: 'chip-xanh', chua_cau_hinh: 'chip-vang', loi_chuan: 'chip-do' };
+
+function catChuoi(v) {
+  let s;
+  if (typeof v === 'string') s = v;
+  else { try { s = JSON.stringify(v, null, 1); } catch (e) { s = String(v); } }
+  s = String(s).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+  return s.length > TRAN_TRUONG ? s.slice(0, TRAN_TRUONG) + '…' : s;
+}
+
+function nutCon(nut) {
+  if (!nut || typeof nut !== 'object') return [];
+  for (const k of ['con', 'muc_con', 'children', 'muc']) {
+    if (Array.isArray(nut[k])) return nut[k];
+  }
+  return [];
+}
+
+function phangCay(nut, sau, ra) {
+  ra = ra || [];
+  const tieuDe = (nut && (nut.tieu_de || nut.ten || nut.tieuDe || nut.id)) || '(không tên)';
+  ra.push({ sau, tieuDe: catChuoi(tieuDe), le: 'padding-left:' + (sau * 18) + 'px' });
+  for (const c of nutCon(nut)) phangCay(c, sau + 1, ra);
+  return ra;
+}
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      toi: null, tn: null, loiTaiTrang: '', menuMo: null, soTb: 0,
+      ccMo: false, tkMo: false, nlMo: false, whMo: false,
+      // (a) công cụ
+      ccTools: [], ccTong: 0, ccBiCat: false, ccLoi: '', ccDaTai: false, ccDangTai: false,
+      // (b) tìm kiếm
+      tkNguon: [], tkLoiNguon: '', tkDaTaiNguon: false,
+      tkChuoi: '', tkSoLuong: 10, tkDangTim: false, tkLoiTim: '', tkKetQua: [], tkTong: 0, tkDaTim: false,
+      tkMlNguon: '', tkMlTaiLieu: '', tkMlDangTai: false, tkMlLoi: '', tkMlHang: [], tkMlDaTai: false,
+      tkMlXacNhan: false,
+      // (c) nạp lại
+      nlDangGoi: false, nlLoi: '', nlTin: '',
+      // (d) webhook & gửi ra
+      whHang: [], whLoi: '', whDaTai: false, whRong: false,
+      skThucThe: '', skLoai: 'trang_thai', skGiaTri: '', skDangGui: false, skLoi: '', skTin: '',
+    };
+  }
+
+  async didMount() {
+    await this.taiLai();
+  }
+
+  async taiLai() {
+    let toi;
+    try {
+      toi = await K.napToi();
+    } catch (e) {
+      this.setState({ loiTaiTrang: (e && e.message) || 'Lỗi kết nối máy chủ.' });
+      return;
+    }
+    if (!toi || !toi.id) { K.chuyenDangNhap(); return; }
+    this.setState({ toi, loiTaiTrang: '' });
+  }
+
+  // ── (a) công cụ cho AI ──
+
+  async doiCcMo() {
+    const mo = !this.state.ccMo;
+    this.setState({ ccMo: mo });
+    if (mo && !this.state.ccDaTai && !this.state.ccDangTai) {
+      this.setState({ ccDangTai: true, ccLoi: '' });
+      try {
+        const r = await K.goi('api/cong-cu');
+        const data = ((r.j && r.j.data) || []);
+        const tools = data.map((t) => {
+          const fn = (t && t.function) || {};
+          const x = (t && t.x_web2api) || {};
+          const rr = x.rui_ro || 'nguy_hiem';
+          return {
+            ten: String(fn.name || '(không tên)'),
+            moTa: catChuoi(fn.description || ''),
+            loai: String(x.loai || ''),
+            hanhDong: String(x.hanh_dong || ''),
+            nhanRuiRo: NHAN_RUI_RO[rr] || rr,
+            chipLop: LOP_RUI_RO[rr] || 'chip-do',
+          };
+        });
+        this.setState({ ccTools: tools, ccTong: (r.j && r.j.tong) || tools.length,
+                        ccBiCat: !!(r.j && r.j.bi_cat), ccDaTai: true, ccDangTai: false });
+      } catch (e) {
+        this.setState({ ccLoi: (e && e.message) || 'Không tải được danh sách công cụ.', ccDangTai: false });
+      }
+    }
+  }
+
+  // ── (b) tìm kiếm ──
+
+  async taiNguon() {
+    if (this.state.tkDaTaiNguon) return;
+    try {
+      const r = await K.goi('api/tim-kiem/nguon');
+      const ds = ((r.j && r.j.nguon) || []).map((n) => ({
+        id: String(n.id || ''), ten: String(n.ten || n.id || ''),
+        nhanTrangThai: NHAN_TRANG_THAI_NGUON[n.trang_thai] || String(n.trang_thai || ''),
+        chipLop: LOP_TRANG_THAI_NGUON[n.trang_thai] || '',
+        soDo: Array.isArray(n.so_do_tim_kiem) ? n.so_do_tim_kiem.join(', ') : '',
+      }));
+      this.setState({ tkNguon: ds, tkDaTaiNguon: true, tkLoiNguon: '',
+                      tkMlNguon: this.state.tkMlNguon || (ds.length ? ds[0].id : '') });
+    } catch (e) {
+      this.setState({ tkLoiNguon: (e && e.message) || 'Không tải được danh sách nguồn.' });
+    }
+  }
+
+  async doiTkMo() {
+    const mo = !this.state.tkMo;
+    this.setState({ tkMo: mo });
+    if (mo) await this.taiNguon();
+  }
+
+  async tkTimSubmit(e) {
+    e.preventDefault();
+    if (this.state.tkDangTim) return;
+    const chuoi = (this.state.tkChuoi || '').trim();
+    if (!chuoi) { this.setState({ tkLoiTim: 'Nhập chuỗi cần tìm.' }); return; }
+    let soLuong = parseInt(this.state.tkSoLuong, 10);
+    if (!(soLuong >= 1)) soLuong = 10;
+    soLuong = Math.min(soLuong, 50);
+    this.setState({ tkDangTim: true, tkLoiTim: '', tkDaTim: false });
+    try {
+      const r = await K.goi('api/tim-kiem', { method: 'POST', json: { chuoi, so_luong: soLuong } });
+      const muc = ((r.j && r.j.muc) || []).filter((m) => m && typeof m === 'object');
+      const ketQua = muc.map((m, i) => {
+        const truong = [];
+        for (const k of Object.keys(m)) {
+          if (k === 'nguon_ngoai') continue;
+          truong.push({ k, v: catChuoi(m[k]) });
+          if (truong.length >= 6) break;
+        }
+        return { stt: i + 1, nguon: typeof m.nguon === 'string' ? m.nguon : '', truong };
+      });
+      this.setState({ tkKetQua: ketQua, tkTong: (r.j && r.j.tong) || ketQua.length,
+                      tkDangTim: false, tkDaTim: true });
+    } catch (err) {
+      this.setState({ tkLoiTim: (err && err.message) || 'Tìm kiếm thất bại.', tkDangTim: false });
+    }
+  }
+
+  async tkMucLucSubmit(e) {
+    e.preventDefault();
+    if (this.state.tkMlDangTai) return; // chống bấm đôi
+    const nguon = (this.state.tkMlNguon || '').trim();
+    const taiLieu = (this.state.tkMlTaiLieu || '').trim();
+    if (!nguon) { this.setState({ tkMlLoi: 'Chọn nguồn tri thức.' }); return; }
+    if (!taiLieu) { this.setState({ tkMlLoi: 'Nhập tên tài liệu cần lấy mục lục.' }); return; }
+    if (!this.state.tkMlXacNhan) {
+      // Xác nhận hai bước: lần bấm đầu chỉ "lên cò".
+      this.setState({ tkMlXacNhan: true });
+      return;
+    }
+    this.setState({ tkMlDangTai: true, tkMlLoi: '', tkMlDaTai: false, tkMlXacNhan: false });
+    try {
+      const r = await K.goi('api/tim-kiem/muc-luc', { method: 'POST', json: { nguon, tai_lieu: taiLieu } });
+      const muc = ((r.j && r.j.muc) || []);
+      const hang = [];
+      for (const nut of muc) phangCay(nut, 0, hang);
+      this.setState({ tkMlHang: hang, tkMlDangTai: false, tkMlDaTai: true });
+    } catch (err) {
+      this.setState({ tkMlLoi: (err && err.message) || 'Lấy mục lục thất bại.', tkMlDangTai: false });
+    }
+  }
+
+  // ── (c) nạp lại module ──
+
+  async doiNlMo() {
+    this.setState({ nlMo: !this.state.nlMo });
+  }
+
+  async nlGoi() {
+    if (this.state.nlDangGoi) return;
+    this.setState({ nlDangGoi: true, nlLoi: '', nlTin: '' });
+    try {
+      const r = await K.goi('api/modules/nap-lai', { method: 'POST' });
+      const j = r.j || {};
+      const soModule = j.so_module !== undefined ? j.so_module : (Array.isArray(j.modules) ? j.modules.length : '?');
+      this.setState({ nlDangGoi: false, nlTin: 'Đã nạp lại xong (' + soModule + ' module trong sổ).' });
+    } catch (e) {
+      this.setState({ nlDangGoi: false, nlLoi: (e && e.message) || 'Nạp lại thất bại.' });
+    }
+  }
+
+  // ── (d) webhook & gửi ra ──
+
+  async doiWhMo() {
+    const mo = !this.state.whMo;
+    this.setState({ whMo: mo });
+    if (mo && !this.state.whDaTai) {
+      try {
+        // catalog cho biết manifest.cung_cap của từng module -> module nào khai «kenh_ra».
+        // (Khai báo webhook không có đường đọc nào trả về nên không liệt kê ở đây.)
+        const r = await K.goi('api/modules/catalog');
+        const ds = ((r.j && r.j.modules) || [])
+          .filter((m) => m && m.id)
+          .map((m) => {
+            const cc = (m && m.cung_cap) || [];
+            const coGuiRa = Array.isArray(cc) && cc.indexOf('kenh_ra') >= 0;
+            return {
+              id: String(m.id), ten: String(m.ten || m.id),
+              coGuiRa, khongGuiRa: !coGuiRa,
+              tran: coGuiRa ? '20 tin/phút theo (khoá, module) · 8 đồng thời' : '—',
+            };
+          });
+        this.setState({ whHang: ds, whDaTai: true, whLoi: '',
+                        whRong: !ds.some((w) => w.coGuiRa) });
+      } catch (e) {
+        this.setState({ whLoi: (e && e.message) || 'Không tải được danh sách module.' });
+      }
+    }
+  }
+
+  async skSubmit(e) {
+    e.preventDefault();
+    if (this.state.skDangGui) return;
+    const thucThe = (this.state.skThucThe || '').trim();
+    if (!thucThe) { this.setState({ skLoi: 'Nhập id thực thể.' }); return; }
+    const loai = (this.state.skLoai || '').trim() || 'trang_thai';
+    if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(loai)) {
+      this.setState({ skLoi: 'Trường «loai» không hợp lệ (mẫu: ^[A-Za-z0-9_.:-]{1,64}$).' }); return;
+    }
+    let giaTri = null;
+    const chuoiGt = (this.state.skGiaTri || '').trim();
+    if (chuoiGt) {
+      try { giaTri = JSON.parse(chuoiGt); }
+      catch (err) { this.setState({ skLoi: '«Giá trị» không phải JSON hợp lệ.' }); return; }
+    }
+    this.setState({ skDangGui: true, skLoi: '', skTin: '' });
+    try {
+      await K.goi('api/thiet-bi/su-kien', { method: 'POST', json: { id: thucThe, loai, gia_tri: giaTri } });
+      this.setState({ skDangGui: false, skTin: 'Đã gửi sự kiện thử cho thực thể «' + thucThe + '».' });
+    } catch (err) {
+      this.setState({ skDangGui: false, skLoi: (err && err.message) || 'Gửi sự kiện thất bại.' });
+    }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const toi = s.toi || {};
+    const laAdmin = toi.vai === 'admin';
+    const tn = s.tn;
+    const navHT = K.menuNav(this, K.navHeThong(tn, 'tich_hop', s.soTb), 'tich_hop');
+    return {
+      hinh: K.BIEU_TUONG,
+      navHT, menuMo: !!s.menuMo,
+      dongMenu: () => this.setState({ menuMo: null }),
+      phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
+      coQuayLai: !!K.quayLai, khongQuayLai: !K.quayLai,
+      quayLai: K.quayLai || {},
+      tenNguoiDung: K.tenNguoiDung ? K.tenNguoiDung(toi) : (toi.ten || ''),
+      nhanVai: laAdmin ? 'Quản trị viên' : 'Người dùng',
+      dangXuat: () => K.dangXuat(),
+      coLoiTaiTrang: !!s.loiTaiTrang, loiTaiTrang: s.loiTaiTrang,
+      taiLai: () => this.taiLai(),
+      laAdmin, khongLaAdmin: !!toi.id && !laAdmin,
+
+      ccMo: s.ccMo, doiCcMo: () => this.doiCcMo(),
+      ccDem: s.ccDaTai ? s.ccTools.length : '…',
+      ccTools: s.ccTools, ccTong: s.ccTong, ccBiCat: s.ccBiCat, ccLoi: s.ccLoi,
+      ccRong: s.ccDaTai && !s.ccTools.length && !s.ccLoi,
+
+      tkMo: s.tkMo, doiTkMo: () => this.doiTkMo(),
+      tkNguon: s.tkNguon, tkLoiNguon: s.tkLoiNguon,
+      tkNguonRong: s.tkDaTaiNguon && !s.tkNguon.length && !s.tkLoiNguon,
+      tkChuoi: s.tkChuoi, tkGoChuoi: (e) => this.setState({ tkChuoi: e.target.value }),
+      tkSoLuong: s.tkSoLuong, tkGoSoLuong: (e) => this.setState({ tkSoLuong: e.target.value }),
+      tkDangTim: s.tkDangTim, tkNhanTim: s.tkDangTim ? 'Đang tìm…' : 'Tìm thử',
+      tkTimSubmit: (e) => this.tkTimSubmit(e),
+      tkLoiTim: s.tkLoiTim, tkCoKq: s.tkDaTim, tkKetQua: s.tkKetQua, tkTong: s.tkTong,
+      tkMlNguon: s.tkMlNguon, tkGoMlNguon: (e) => this.setState({ tkMlNguon: e.target.value, tkMlXacNhan: false }),
+      tkMlTaiLieu: s.tkMlTaiLieu, tkGoMlTaiLieu: (e) => this.setState({ tkMlTaiLieu: e.target.value, tkMlXacNhan: false }),
+      tkMlDangTai: s.tkMlDangTai,
+      tkMlNhan: s.tkMlDangTai ? 'Đang lấy…' : (s.tkMlXacNhan ? 'Bấm lần nữa để xác nhận' : 'Lấy mục lục'),
+      tkMucLucSubmit: (e) => this.tkMucLucSubmit(e),
+      tkMlLoi: s.tkMlLoi, tkMlCo: s.tkMlDaTai, tkMlHang: s.tkMlHang,
+
+      nlMo: s.nlMo, doiNlMo: () => this.doiNlMo(),
+      nlGoi: () => this.nlGoi(), nlDangGoi: s.nlDangGoi,
+      nlNhan: s.nlDangGoi ? 'Đang nạp lại…' : 'Nạp lại module',
+      nlLoi: s.nlLoi, nlTin: s.nlTin,
+
+      whMo: s.whMo, doiWhMo: () => this.doiWhMo(),
+      whHang: s.whHang, whLoi: s.whLoi, whRong: s.whRong,
+      skThucThe: s.skThucThe, skGoThucThe: (e) => this.setState({ skThucThe: e.target.value }),
+      skLoai: s.skLoai, skGoLoai: (e) => this.setState({ skLoai: e.target.value }),
+      skGiaTri: s.skGiaTri, skGoGiaTri: (e) => this.setState({ skGiaTri: e.target.value }),
+      skDangGui: s.skDangGui, skNhan: s.skDangGui ? 'Đang gửi…' : 'Gửi sự kiện thử',
+      skSubmit: (e) => this.skSubmit(e), skLoi: s.skLoi, skTin: s.skTin,
+    };
+  }
+}
+</script>
+</body>
+</html>
