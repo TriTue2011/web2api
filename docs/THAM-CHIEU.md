@@ -1850,6 +1850,11 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
 | `WEB2API_DATA` | `/data` | Thư mục dữ liệu (khoá, cấu hình, module cài thêm) |
+| `WEB2API_KHOA_CHINH` | không | Khoá chính 32 byte (dạng hex 64 ký tự hoặc base64) dùng mã hoá AES-256-GCM bí mật và phiên khi nghỉ trên đĩa |
+| `WEB2API_KHOA_CHINH_TEP` | không | Đường dẫn tệp chứa khoá chính 32 byte (quyền 0600, bắt buộc NGOÀI volume dữ liệu; khuyến nghị Docker secret hoặc bind-mount riêng) |
+| `WEB2API_BAT_BUOC_MA_HOA` | không | Đặt `1` để bắt buộc mã hoá khi nghỉ: thiếu hoặc sai khoá chính thì lõi dừng ngay lúc khởi động (đóng khi lỗi) |
+| `WEB2API_CHO_DOC_RO` | không | Đặt `1` để cho phép đọc tệp bí mật bản rõ khi đã có khoá chính (chỉ dùng cho di trú; bị cấm khi `WEB2API_BAT_BUOC_MA_HOA=1`) |
+| `WEB2API_GIU_TRUOC_KHOI_PHUC_NGAY` | không | Số ngày lưu giữ các bản sao lưu `.truoc-khoi-phuc-*` trước khi xoá theo tuổi (mặc định không đặt = không xoá theo tuổi; luôn giữ tối đa 3 bản gần nhất) |
 | `WEB2API_ADMIN_KEY` | tự sinh | Khoá quản trị; không đặt thì sinh và lưu `<WEB2API_DATA>/admin_key` |
 | `WEB2API_PUBLIC_URL` | không | Địa chỉ URL công khai chính thức (ví dụ `https://<tên-miền>`), ưu tiên sau giá trị đã đặt qua API |
 | `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai và kích hoạt cờ `Secure` / tiền tố `__Host-` cho cookie phiên qua HTTPS; chỉ bật khi mọi đường vào đều qua proxy |

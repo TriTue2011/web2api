@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -69,6 +69,7 @@ async def _vong_quet_phien(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ham_khoa.kiem_tra_khoi_dong()  # kiểm tra khoá chính và cấm khởi động nếu thiếu khoá khi bắt buộc mã hoá
     xac_thuc.khoa_quan_tri()  # sinh tệp khoá ngay lần chạy đầu để người vận hành lấy được
     gioi_han.khoi_dong()  # đọc cấu hình giới hạn sai khoá (WEB2API_RL_*) một lần lúc khởi động
     nguoi_dung.khoi_tao_thiet_lap_lan_dau()  # tạo mã thiết lập lần đầu nếu chưa có admin
