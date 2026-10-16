@@ -128,7 +128,8 @@ def test_ui_thiet_bi_khi_da_cai_module(trang, tmp_path, monkeypatch):
 
         dang_nhap_quan_tri(trang, w.url)
 
-        # Tab thiet_bi xuất hiện trong nav
+        # Tab thiet_bi xuất hiện trong nav (nav dựng sau khi /api/tinh-nang trả về: chờ rồi mới đọc)
+        trang.cho("document.querySelector('[data-nav=\"thiet_bi\"]')", mo_ta="tab thiết bị trong nav")
         assert "thiet_bi" in nav(trang)
 
         # Mở trang thiết bị

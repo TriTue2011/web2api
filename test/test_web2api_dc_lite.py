@@ -45,6 +45,8 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import pytest
 
+from ui_chung import dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401  (hai fixture Chrome + đăng nhập bằng phiên)
+
 THU_MUC_TEST = Path(__file__).resolve().parent
 WEB = THU_MUC_TEST.parent / "web"
 # Các trang demo thiết kế nằm NGOÀI kho (kho thiết kế riêng) → chỉ chạy khi chỉ rõ thư mục, không đoán đường dẫn.
@@ -407,15 +409,25 @@ def may_chu_web2api(tmp_path_factory):
     os.environ.pop("WEB2API_DATA", None)
 
 
+def dom_sau_dang_nhap(trang, goc: str, duong: str) -> str:
+    """Trang quản trị cần phiên: đăng nhập thật bằng giao diện, mở `duong`, chờ dựng xong rồi lấy DOM đã dựng."""
+    dang_nhap_quan_tri(trang, goc)
+    trang.di(goc + duong)
+    trang.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
+              mo_ta="trang dựng xong")
+    trang.cho("document.querySelectorAll('[data-nav]').length >= 2", mo_ta="thanh điều hướng")
+    return trang.js("document.documentElement.outerHTML")
+
+
 @CAN_CHROME
-def test_dia_chi_goc_mo_trang_module_voi_api_that(may_chu_web2api):
+def test_dia_chi_goc_mo_trang_module_voi_api_that(may_chu_web2api, trang):
     # Lõi rỗng: «/» (index.html) chọn trang đầu theo /api/tinh-nang → Hệ thống → Module, đã dựng bằng dc-lite.
-    dom = dump_dom(may_chu_web2api + "/")
+    dom = dom_sau_dang_nhap(trang, may_chu_web2api, "/")
     cay = phan_tich(dom)
     assert tim(cay, "x-dc")["attrs"].get("data-dc") == "san-sang", dom[-800:]
     # Bỏ <script>/<style> trước khi lấy chữ: mã nguồn trang cũng chứa các câu này, so trên đó là đạt suông.
     chu = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b.*?</\1>", " ", dom, flags=re.S)))
-    assert "Kết nối với web2api" in chu and "Chưa có khoá" in chu
+    assert "Kết nối với web2api" in chu
     assert re.findall(r'data-nav="([^"]+)"', dom) == ["module", "bao_mat"]   # chưa cài gì: không Studio, không AI; «Bảo mật» là tab của lõi nên luôn có
     assert "Đang đọc danh sách module" not in chu
     assert 'class="cham"' not in dom  # chưa có thông báo module mới → không có chấm báo
@@ -423,7 +435,7 @@ def test_dia_chi_goc_mo_trang_module_voi_api_that(may_chu_web2api):
 
 
 @CAN_CHROME
-def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch):
+def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch, trang):
     # Trạng thái đồng bộ git có một module «mới» chưa cài → /api/modules trả thong_bao_so=1 → mục Module có chấm báo.
     import json as _json
 
@@ -441,7 +453,7 @@ def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch):
     ghi_thu_muc(tmp_path / "modules" / "echo", tep_echo())
     (tmp_path / "modules.json").write_text(_json.dumps({"modules": [{"id": "echo", "cau_hinh_cong_khai": {}}]}))
     with MayChuThat(app, lifespan="on") as w:
-        dom = dump_dom(w.url + "/He-thong.dc.html")
+        dom = dom_sau_dang_nhap(trang, w.url, "/He-thong.dc.html")
     assert re.search(r'<span class="cham" role="img" aria-label="1 module mới hoặc có bản mới trên git"', dom), dom[:3000]
     assert re.search(r'<a class="quay-lai" data-nav="quay-lai" href="http://127\.0\.0\.1:\d+/m/echo/echo\.dc\.html"', dom), dom[:3000]
     assert 'data-o="echo"' in dom and 'data-tt="dang-chay"' in dom

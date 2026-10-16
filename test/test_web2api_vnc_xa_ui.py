@@ -24,7 +24,7 @@ from app import kho, novnc, so_module
 from app.main import app
 from gia import MayChuThat
 from test_web2api_cookie_sang_module import MA_DICH, MANIFEST_DICH
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
 
 GOC = Path(__file__).resolve().parents[1]
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
@@ -141,14 +141,11 @@ def test_vong_workspace_va_tai_dung_chrome(trang, moi_truong):
     w, dv = moi_truong
     # Workspace có sẵn với tên chứa HTML (tên nằm trong tệp mà trình duyệt cùng uid sửa được)
     dv.ws["aaaaaaaaaaaaaaaaaaaaaaaa"] = {"ten": TEN_XSS, "loai": "firefox", "mo": False}
+    # (a) đã đăng nhập bằng phiên cookie (không dán khoá): trang liệt kê workspace, KHÔNG lưu khoá nào ở trình duyệt
+    dang_nhap_quan_tri(trang, w.url)
     _mo_trang(trang, f"{w.url}/m/vnc-xa/index.html")
-
-    # (a) chưa có khoá → ô nhập khoá
-    trang.cho("!document.getElementById('o-khoa').hidden", mo_ta="ô khoá quản trị")
-    trang.go("#khoa", KHOA_QT)
-    trang.bam("document.getElementById('luu-khoa')")
     trang.cho(f"!!({_hang(TEN_XSS)})", mo_ta="danh sách workspace")
-    assert trang.js("localStorage.getItem('web2api_khoa')") == KHOA_QT
+    assert trang.js("localStorage.getItem('web2api_khoa')") is None
     assert trang.js("getComputedStyle(document.getElementById('o-khoa')).display") == "none"
     assert trang.js(f"{_hang(TEN_XSS)}.querySelector('.ws-tt').textContent") == "Đã đóng · giữ phiên"
 
@@ -261,8 +258,7 @@ def test_dien_thoai_khong_tran_ngang_nut_du_to_chrome(trang, moi_truong):
     w, dv = moi_truong
     dv.ws["bbbbbbbbbbbbbbbbbbbbbbbb"] = {"ten": "Tên workspace rất dài " * 6, "loai": "firefox", "mo": True}
     trang.khung(360, 800, dien_thoai=True)
-    _mo_trang(trang, f"{w.url}/m/vnc-xa/index.html")
-    trang.js(f"localStorage.setItem('web2api_khoa', {json.dumps(KHOA_QT)})")
+    dang_nhap_quan_tri(trang, w.url)
     _mo_trang(trang, f"{w.url}/m/vnc-xa/index.html")
     trang.cho("document.querySelectorAll('.ws').length === 1", mo_ta="danh sách trên điện thoại")
     assert trang.js("document.documentElement.scrollWidth") <= 360
