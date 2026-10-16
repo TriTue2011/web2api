@@ -36,11 +36,13 @@ def loi_that(tmp_path, monkeypatch):
         yield w
 
 
-def _cho_san_sang(trang):
+def _cho_san_sang(trang, la_admin: bool = True):
+    so = 9 if la_admin else 2
     trang.cho(
         "(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'"
-        " && document.getElementById('o-loc-tro-giup')",
-        mo_ta="trang Trợ giúp dựng xong",
+        " && document.getElementById('o-loc-tro-giup')"
+        f" && document.querySelectorAll('#danh-sach-muc .khoi').length === {so}",
+        mo_ta="trang Trợ giúp dựng xong và nạp đủ mục",
     )
 
 
@@ -48,7 +50,7 @@ def test_admin_thay_du_9_muc_va_loc_hoat_dong(trang, trinh_duyet, tmp_path, monk
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Tro-giup.dc.html")
-        _cho_san_sang(trang)
+        _cho_san_sang(trang, la_admin=True)
         so_muc = trang.js("document.querySelectorAll('#danh-sach-muc .khoi').length")
         assert so_muc == 9, f"admin phải thấy 9 mục, thấy {so_muc}"
         # Mọi khối đóng
@@ -83,7 +85,9 @@ def test_admin_thay_du_9_muc_va_loc_hoat_dong(trang, trinh_duyet, tmp_path, monk
         )
         assert "Sao lưu" in tieu_de
         # Xoá lọc → đủ 9
-        trang.go("#o-loc-tro-giup", "")
+        trang.js(
+            "const o = document.getElementById('o-loc-tro-giup'); o.value = ''; o.dispatchEvent(new Event('input', {bubbles: true}))"
+        )
         trang.cho(
             "document.querySelectorAll('#danh-sach-muc .khoi').length === 9",
             mo_ta="xoá lọc hiện lại 9 mục",
@@ -98,6 +102,11 @@ def test_user_thuong_chi_thay_2_muc(trang, trinh_duyet, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         asyncio.run(
             nguoi_dung.tao_nguoi_dung(
+                vai="admin", ten_dang_nhap="ad_nv40", mat_khau="MatKhauAdminBaoMat123456"
+            )
+        )
+        asyncio.run(
+            nguoi_dung.tao_nguoi_dung(
                 vai="user", ten_dang_nhap="nd_kiem_thu", mat_khau="MatKhauNd123456"
             )
         )
@@ -110,7 +119,7 @@ def test_user_thuong_chi_thay_2_muc(trang, trinh_duyet, tmp_path, monkeypatch):
             mo_ta="đăng nhập user thường xong",
         )
         trang.di(f"{w.url}/He-thong-Tro-giup.dc.html")
-        _cho_san_sang(trang)
+        _cho_san_sang(trang, la_admin=False)
         so_muc = trang.js("document.querySelectorAll('#danh-sach-muc .khoi').length")
         assert so_muc == 2, f"user thường chỉ thấy 2 mục, thấy {so_muc}"
 
@@ -118,8 +127,24 @@ def test_user_thuong_chi_thay_2_muc(trang, trinh_duyet, tmp_path, monkeypatch):
 def test_mobile_khong_cuon_ngang(trang, trinh_duyet, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
-        trinh_duyet.kich_thuoc(390, 844)
+        # Kiểm tra ở 1900px
+        trang.khung(1900, 1000)
         trang.di(f"{w.url}/He-thong-Tro-giup.dc.html")
-        _cho_san_sang(trang)
-        cuon = trang.js("document.documentElement.scrollWidth > window.innerWidth")
-        assert not cuon, "màn 390px không được cuộn ngang"
+        _cho_san_sang(trang, la_admin=True)
+        so_mo_1900 = trang.js(
+            "document.querySelectorAll('#danh-sach-muc .khoi-tieu-de[aria-expanded=\"true\"]').length"
+        )
+        assert so_mo_1900 == 0, "mọi khối phải đóng mặc định ở 1900px"
+        cuon_1900 = trang.js("document.documentElement.scrollWidth > window.innerWidth")
+        assert not cuon_1900, "màn 1900px không được cuộn ngang"
+        trang.chup("nv40-tro-giup-1900px")
+
+        # Kiểm tra ở 390px
+        trang.khung(390, 844, dien_thoai=True)
+        so_mo_390 = trang.js(
+            "document.querySelectorAll('#danh-sach-muc .khoi-tieu-de[aria-expanded=\"true\"]').length"
+        )
+        assert so_mo_390 == 0, "mọi khối phải đóng mặc định ở 390px"
+        cuon_390 = trang.js("document.documentElement.scrollWidth > window.innerWidth")
+        assert not cuon_390, "màn 390px không được cuộn ngang"
+        trang.chup("nv40-tro-giup-390px")

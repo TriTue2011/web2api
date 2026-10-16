@@ -13,18 +13,19 @@
 <helmet>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
-main.pg{padding:32px 32px 48px;gap:24px}
+main.pg{padding:32px 32px 48px;gap:24px;box-sizing:border-box}
 .thanh-loc{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-.thanh-loc input{flex:1 1 240px;min-width:0;max-width:480px}
-.khoi{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.thanh-loc input{flex:1 1 240px;min-width:0;max-width:480px;box-sizing:border-box}
+.khoi{border:1px solid var(--line);border-radius:10px;overflow:hidden;box-sizing:border-box}
 .khoi + .khoi{margin-top:12px}
-.khoi-tieu-de{width:100%;display:flex;align-items:center;gap:10px;padding:14px 16px;background:none;border:0;cursor:pointer;font-size:15px;font-weight:600;text-align:left;color:inherit}
+.khoi-tieu-de{width:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:14px 16px;background:none;border:0;cursor:pointer;font-size:15px;font-weight:600;text-align:left;color:inherit}
 .khoi-tieu-de:hover{background:var(--nen-nhat)}
+.khoi-tieu-de span{overflow-wrap:anywhere}
 .khoi-tieu-de .mui{margin-left:auto;flex:0 0 auto;transition:transform .15s}
 .khoi-tieu-de[aria-expanded="true"] .mui{transform:rotate(180deg)}
-.khoi-noi-dung{padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
-.khoi-noi-dung p{margin:0;line-height:1.6}
-.ma-mau{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--nen-ma,#0f172a);overflow:hidden}
+.khoi-noi-dung{padding:4px 16px 16px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+.khoi-noi-dung p{margin:0;line-height:1.6;overflow-wrap:anywhere}
+.ma-mau{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--nen-ma,#0f172a);overflow:hidden;min-width:0}
 .ma-mau pre{margin:0;padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.55;color:#e2e8f0}
 .ma-mau .nut-sao-chep{position:absolute;top:8px;right:8px}
 .lien-ket-trang{font-weight:600}
@@ -136,7 +137,7 @@ const MUC = [
   {
     id: 'doi-khoa-qt', tieuDe: 'Đổi khoá quản trị', admin: true,
     doan: [
-      { k: 'van', t: 'Bản hiện tại CHƯA đổi được khoá quản trị trên trình duyệt. Khoá quản trị lấy từ biến môi trường WEB2API_ADMIN_KEY, nếu không đặt thì web2api tự sinh một lần và lưu vào tệp <thư-mục-dữ-liệu>/admin_key (mặc định /data/admin_key, quyền 0600).' },
+      { k: 'van', t: 'Bản hiện tại CHƯA đổi được khoá quản trị trên trình duyệt (trang Cài đặt hệ thống chưa nằm trong main — điều phối sẽ cập nhật mục này khi trang Cài đặt vào). Khoá quản trị lấy từ biến môi trường WEB2API_ADMIN_KEY, nếu không đặt thì web2api tự sinh một lần và lưu vào tệp <thư-mục-dữ-liệu>/admin_key (mặc định /data/admin_key, quyền 0600).' },
       { k: 'van', t: 'Cách 1 — đặt khoá cố định trong tệp .env rồi khởi động lại:' },
       { k: 'ma', t: 'WEB2API_ADMIN_KEY=<khoá-mới-do-bạn-tự-sinh>\ndocker compose up -d' },
       { k: 'van', t: 'Cách 2 — xoá tệp admin_key để web2api sinh khoá mới khi khởi động lại, rồi đọc khoá mới:' },
@@ -309,7 +310,7 @@ class Component extends DCLogic {
       hinh: K.BIEU_TUONG,
       navHT,
       coQuayLai, khongQuayLai,
-      quayLai: coQuayLai ? K.quayLai(tn) : null,
+      quayLai: coQuayLai ? K.quayLai(tn) : {},
       phimNav: (e) => K.phimNav ? K.phimNav(e) : null,
       menuMo: s.menuMo,
       dongMenu: () => this.setState({ menuMo: null }),

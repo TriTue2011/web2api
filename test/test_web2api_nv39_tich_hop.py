@@ -319,7 +319,7 @@ class Module:
         ], "tong": 1}
 
     async def muc_luc(self, yc: dict):
-        return {"muc": [{"tieu_de": "Chương 1", "con": [{"tieu_de": "Mục 1.1"}]}]}
+        return {"muc": [{"id": "c1", "tieu_de": "Chương 1", "con": [{"id": "c1.1", "tieu_de": "Mục 1.1"}]}]}
 
     async def gui_tin(self, dich: dict, noi_dung: dict):
         return {"ok": True, "kenh": dich.get("kenh_id")}
@@ -409,3 +409,25 @@ def test_chrome_wh_hien_kenh_ra_va_khong_lo_bi_mat(trang, loi_that_ui_chrome):
     assert "/api/gui/mod-tich-hop" in html
     assert KHOA_QT not in html
     assert "khoa-quan-tri-test" not in html
+
+
+@pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
+def test_chrome_kich_thuoc_1900_va_390_khong_cuon_ngang(trang, loi_that_ui_chrome):
+    """Mở ở 1900px và 390px: 4 khối đóng mặc định, không cuộn ngang, bố cục dày gọn, chụp ảnh."""
+    _mo_trang(trang, loi_that_ui_chrome)
+    # 1900px
+    trang.khung(1900, 1000)
+    for khoi in ["#khoi-cong-cu", "#khoi-tim-kiem", "#khoi-nap-lai", "#khoi-wh"]:
+        assert trang.js(f"document.querySelector('{khoi}') === null"), f"{khoi} phải ẩn lúc đầu ở 1900px"
+    cuon_1900 = trang.js("document.documentElement.scrollWidth > window.innerWidth")
+    assert not cuon_1900, "màn 1900px không được cuộn ngang"
+    trang.chup("nv39-tich-hop-1900px")
+
+    # 390px
+    trang.khung(390, 844, dien_thoai=True)
+    for khoi in ["#khoi-cong-cu", "#khoi-tim-kiem", "#khoi-nap-lai", "#khoi-wh"]:
+        assert trang.js(f"document.querySelector('{khoi}') === null"), f"{khoi} phải ẩn lúc đầu ở 390px"
+    cuon_390 = trang.js("document.documentElement.scrollWidth > window.innerWidth")
+    assert not cuon_390, "màn 390px không được cuộn ngang"
+    trang.chup("nv39-tich-hop-390px")
+
