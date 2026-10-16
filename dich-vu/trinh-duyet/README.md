@@ -246,8 +246,10 @@ Mở một hồ sơ trình duyệt trên màn hình ảo và khởi động bộ
   `/proc/1/environ` chỉ thu hẹp một đường; không biến container thành nhiều vùng cô lập. Người không tin nhau thì
   mỗi người một container.
 - **Trình duyệt có đường ra Internet** nên vẫn tới được mạng LAN của máy chủ từ trong container nếu router cho phép.
-  Nên chặn đầu ra tới dải riêng tư bằng iptables/bộ lọc của Docker. Gợi ý (CHƯA chạy; thay `br-XXXX` bằng tên cầu
-  của mạng `web2api-trinh-duyet`, lấy từ `docker network inspect web2api-trinh-duyet -f '{{.Id}}'` — tên cầu là
+  ĐÃ có script triển khai sẵn `scripts/chan-lan-trinh-duyet.sh` — chạy trên máy chủ bằng
+  `sudo ./scripts/chan-lan-trinh-duyet.sh` (chặn trong chuỗi `DOCKER-USER` theo dải địa chỉ,
+  không hard-code cầu; xem `docs/TRIEN-KHAI.md` mục 9 để kiểm bằng curl và gắn systemd).
+  Gợi ý cũ (chỉ còn tính lịch sử — đừng dùng, hãy dùng script):
   `br-` + 12 ký tự đầu của Id):
   ```bash
   # Chặn kết nối MỚI từ mạng trình duyệt đi tới dải riêng tư, trừ lưu lượng trong chính cầu đó (lõi ↔ trình duyệt).

@@ -179,6 +179,9 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - [ ] **SSH an toàn:** Đã tắt đăng nhập bằng mật khẩu (`PasswordAuthentication no`), chỉ cho phép đăng nhập bằng SSH Key.
 - [ ] **Cổng SSH không mở thẳng ra Internet:** Chỉ kết nối SSH qua Tunnel, VPN hoặc mạng nội bộ.
 - [ ] **Quản trị chỉ từ mạng nhà:** Đã đặt `WEB2API_QT_IP_CHO_PHEP` bằng dải LAN (mục 4) và đã thử: từ ngoài Internet gọi đường quản trị nhận `403`, từ mạng nhà vẫn vào được.
+- [ ] **Trình duyệt từ xa không chạm được mạng LAN:** Đã cài luật bằng
+  `sudo ./scripts/chan-lan-trinh-duyet.sh` và kiểm bằng curl từ trong container
+  (xem mục 9).
 - [ ] **Tắt UPnP:** Đã tắt tính năng UPnP trên router mạng.
 - [ ] **Tắt tự cài module ngầm:** Giữ nguyên mặc định `WEB2API_GIT_REPO` chỉ báo module mới, không bật tự động cài (`tu_dong: false`).
 - [ ] **Sao lưu định kỳ:** Đã có phương án sao lưu volume dữ liệu `web2api-data` thường xuyên.
@@ -206,3 +209,75 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - **Triệu chứng:** Hướng dẫn kết nối và địa chỉ mẫu trên giao diện web2api hiển thị dạng `http://example.com` thay vì `https://example.com`, hoặc cookie phiên không có cờ `Secure` và không mang tiền tố `__Host-` (`w2a_phien` thay vì `__Host-w2a_phien`) dù đã chạy qua HTTPS.
 - **Nguyên nhân:** web2api chạy sau proxy nhận kết nối nội bộ là HTTP (`request.url.scheme == "http"`). Khi chưa bật `WEB2API_TIN_PROXY=1`, hệ thống không tin tiêu đề `X-Forwarded-Proto: https` từ proxy nên coi yêu cầu là HTTP thường (`la_https(request)` trả về `False`), khiến cookie phiên bị phát hành ở chế độ không `Secure`.
 - **Cách sửa:** Thêm biến `WEB2API_TIN_PROXY=1` vào tệp `.env` và khởi động lại container (chỉ bật khi mọi đường vào web2api đều đi qua proxy).
+
+## 9. Chặn trình duyệt từ xa chạm mạng nhà
+
+**Vì sao:** container `web2api-trinh-duyet` (`dich-vu/trinh-duyet/`) chạy Chromium/Firefox,
+giữ cookie các tài khoản đã đăng nhập và CẦN ra Internet để đăng nhập dịch vụ ngoài —
+compose cố ý không đặt mạng `internal`. Một trang độc/quảng cáo chạy JS trong trình
+duyệt có thể gọi `http://<IP-LAN>:3030/` (Home Assistant, router, gateway Docker...)
+ngay từ TRONG mạng nhà. Chính sách Chromium chỉ chặn `file://`, không chặn theo IP.
+
+**Giải pháp:** luật iptables/ip6tables của MÁY CHỦ trong chuỗi `DOCKER-USER`, chặn theo
+DẢI ĐỊA CHỈ (không theo tên miền — không có danh sách trang nào để duy trì):
+- Chặn (REJECT): `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`,
+  `100.64.0.0/10`, `127.0.0.0/8` và IPv6 `fc00::/7`, `fe80::/10`, `::1/128`.
+- Ngoại lệ (đứng TRƯỚC mọi luật chặn): lưu lượng trong chính mạng của dịch vụ
+  (lõi web2api được nối vào mạng này bằng `docker network connect`; docker-compose.yml
+  của dịch vụ chỉ có MỘT service nên không còn dịch vụ phụ nào khác cần ngoại lệ)
+  và DNS cổng 53 tới gateway của mạng Docker.
+- Mọi luật gắn nhãn comment `web2api-trinh-duyet`; dải mạng Docker lấy từ
+  `docker network inspect web2api-trinh-duyet`, không hard-code.
+
+**Cài (một lần, idempotent — chạy hai lần không nhân đôi luật):**
+
+```bash
+sudo ./scripts/chan-lan-trinh-duyet.sh
+```
+
+**Chỉ kiểm tra, không đổi gì:** `sudo ./scripts/chan-lan-trinh-duyet.sh --kiem`
+(thoát 0 nếu đủ luật, 1 nếu thiếu). **Xem trước lệnh sẽ chạy, không cần quyền:**
+`./scripts/chan-lan-trinh-duyet.sh --dry-run`.
+
+**Kiểm bằng một lệnh curl từ trong container** (phải BỊ TỪ CHỐI, curl thoát mã lỗi
+khác 0, không phải HTTP 200):
+
+```bash
+docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://192.168.1.1:3030/ ; echo "curl exit=$?"
+docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://10.0.0.1/ ; echo "curl exit=$?"
+```
+
+**Gỡ:** `sudo ./scripts/chan-lan-trinh-duyet.sh --go` — chỉ gỡ đúng các luật có nhãn
+`web2api-trinh-duyet`, không đụng luật khác.
+
+**CẢNH BÁO — luật mất khi khởi động lại:** luật iptables không lưu trữ; khởi động lại
+máy hoặc `systemctl restart docker` là mất. Gắn vào systemd để tự cài lại sau khi
+Docker lên (chuỗi `DOCKER-USER` chỉ tồn tại khi Docker đã chạy):
+
+```ini
+# /etc/systemd/system/chan-lan-trinh-duyet.service
+[Unit]
+Description=Chặn container trình duyệt chạm mạng LAN
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/web2api/scripts/chan-lan-trinh-duyet.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now chan-lan-trinh-duyet.service
+```
+
+**Giới hạn đã biết:**
+- Lưu lượng từ container tới CHÍNH MÁY CHỦ (ví dụ tới `<IP-máy-chủ>:3030`) đi qua
+  chuỗi `INPUT` của máy chủ, không qua `DOCKER-USER` — nếu một dịch vụ trên máy chủ
+  lắng nghe `0.0.0.0` thì cần thêm luật `INPUT -i <cầu của mạng>` riêng.
+- Container dùng DNS `127.0.0.11` của Docker không đi qua `DOCKER-USER` (Docker chặn
+  ngay trong netns của container); script vẫn dự phòng ngoại lệ DNS cổng 53 tới
+  gateway đề phòng container dùng gateway làm trình phân giải.
