@@ -2529,6 +2529,22 @@ uv venv && uv pip install -r requirements.txt -r requirements-dev.txt
   mục và dòng trạng thái, mọi đường API và biến `WEB2API_*` trong mã có trong README, đường dẫn trong lệnh mẫu tồn
   tại.
 
+### Công cụ cho tác giả module
+
+`python3 -m scripts.kiem_module modules/<id>` (`--json` cho dữ kiện có cấu trúc) — kiểm module **trước khi
+chia sẻ**, không chạy mã module:
+
+| Kiểm tra | Nguồn chuẩn | Vi phạm khi |
+|---|---|---|
+| Manifest | đúng `kiem_manifest` của lõi (`app/kham_pha.py`) | thiếu/sai trường, `hang`/`can_module`/`nguy_hiem`/`mang_ra` sai |
+| Gọi mạng | quét tĩnh `ast` tên miền/URL cố định | miền chưa khai trong `tai_nguyen.mang_ra` |
+| Gói import | quét tĩnh `ast` | gói ngoài stdlib, ngoài `requirements.txt` của kho mà `yeu_cau_goi` không khai |
+| Nguy hiểm | `subprocess`, `os.system`, `exec`/`eval`/`pickle`, `verify=False` | có mà không khai `nguy_hiem` |
+| Rò bí mật | chuỗi giống khoá/token, IP nội bộ (cảnh báo) | — |
+
+Mã thoát: `0` = đạt; `1` = lỗi manifest hoặc vi phạm; `2` = không đọc được. Dạng `--json` là «bản rút gọn do
+mã trích» để đưa cho AI đọc ở bước sau — mọi chuỗi lấy từ mã đều bị cắt ngắn và làm sạch.
+
 ### Cách bổ sung README khi thêm module
 
 1. Chép `MAU-TIEU-MUC-MODULE.md` thành tiểu mục mới trong mục 4 «Module có sẵn», tiêu đề có id module.

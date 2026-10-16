@@ -261,3 +261,21 @@ Trường `hang` là **bắt buộc** trong `manifest.json`, chỉ nhận giá t
 ---
 
 *Xem thêm: [Chuẩn Bảo Mật cho Module](CHUAN-BAO-MAT-MODULE.md) (luật bảo mật: hạng module, khai báo manifest, dịch vụ lõi dùng chung, test bắt buộc).*
+
+## 10. Công cụ cho tác giả module (`scripts/kiem_module.py`)
+
+Trước khi chia sẻ module (fork GitHub riêng — chủ kho không duyệt), tác giả tự soát bằng:
+
+```bash
+python3 -m scripts.kiem_module modules/<id>        # văn bản tiếng Việt
+python3 -m scripts.kiem_module modules/<id> --json  # dữ kiện có cấu trúc
+```
+
+Công cụ **không chạy mã module**: kiểm `manifest.json` bằng đúng bộ kiểm của lõi (`kiem_manifest` trong
+`app/kham_pha.py`) rồi quét tĩnh cây cú pháp (`ast`) các tệp `.py` để liệt kê import, lời gọi mạng và tên
+miền/URL cố định, mở tệp, tiến trình con, `exec`/`eval`/`pickle`, đọc biến môi trường, `verify=False`; đối
+chiếu với quyền đã khai (`tai_nguyen.mang_ra`, `yeu_cau_goi`) và báo mọi chỗ làm nhiều hơn khai; cảnh báo chuỗi
+giống bí mật nhúng cứng. Dạng `--json` là «bản rút gọn do mã trích» để đưa cho AI đọc ở bước sau — mọi chuỗi lấy
+từ mã đều bị cắt ngắn và làm sạch vì nội dung mã là dữ liệu không tin được.
+
+Mã thoát: `0` = đạt; `1` = lỗi manifest hoặc vi phạm; `2` = không đọc được.
