@@ -298,6 +298,9 @@ chi tiết mở ở bước kế tiếp.
 | `phien.py` | Kho phiên tài khoản (`bi_mat/phien/` 0600), bộ quét kiểm phiên và làm mới định kỳ |
 | `combo.py` | Điều phối định tuyến dự phòng nhiều nguồn/model (combo), cầu chì trạng thái đóng/mở/nửa mở, hạ bước cạn hạn mức, dính tài khoản session affinity, phát lại thân yêu cầu |
 | `kho.py`, `xac_thuc.py`, `he_thong.py` | Lưu trữ trên đĩa (bí mật 0600), khoá quản trị, đọc tài nguyên máy |
+| `tai_url_khong_tin.py` | Bộ tải URL không tin cậy (`attachment_url`, `image_url`): chặn toàn bộ IP riêng/LAN/loopback/CGNAT, ghim IP, chuyển hướng tối đa 3 chặng, cấm hạ scheme, trần byte và thời gian |
+| `tep_an_toan.py` | Bộ kiểm tra tệp tải lên: kiểm tra kích thước header ảnh PNG/JPEG/GIF/WebP trước giải mã; kiểm tra archive ZIP chống zip-slip, symlink, bom nén |
+| `url_ky.py` | URL ký cho media: HMAC-SHA256 phủ phương thức + đường dẫn chuẩn hoá + hạn dùng, giải đường dẫn an toàn `duong_tep_an_toan` |
 
 ```mermaid
 flowchart TD
@@ -307,6 +310,71 @@ flowchart TD
   QUET -->|"Phiên chết / Hết hạn"| BAO["Trạng thái can_dang_nhap<br/>GET /api/phien · Cảnh báo"]
   BAO -->|"Thông báo"| NG
 ```
+
+### Dịch vụ an toàn dùng chung cho module
+
+Ba dịch vụ bảo mật lõi dùng chung (chuẩn hoá theo [CHUAN-BAO-MAT-MODULE.md](CHUAN-BAO-MAT-MODULE.md) mục 3.6–3.8), module không tự chế:
+
+#### 1. Bộ tải URL không tin (`app/tai_url_khong_tin.py`)
+
+Tải an toàn các URL do người dùng, mô hình, hoặc bên ngoài cung cấp (`image_url`, `attachment_url`).
+- **Hợp đồng**: `async def tai_url(url: str, *, tran_byte: int, tran_giay: float, cho_phep_host: set | list | Callable = None, tieu_de: dict = None) -> tuple[bytes, str]`
+- **Bảo vệ**: Chặn toàn bộ loopback, link-local, private LAN, CGNAT, IPv6 ULA, 6to4/Teredo nhúng IP cấm; phân giải và ghim IP kết nối chống DNS rebinding; chuyển hướng tối đa 3 chặng có kiểm tra lại từng chặng; cấm hạ cấp `https` → `http`; không chuyển tiếp `Authorization`/`Cookie`; trần byte và trần thời gian tổng.
+- **Ngoại lệ**: `LoiTaiUrl(ma, ly_do)` (không chứa thân phản hồi đích, không lộ nội dung).
+- **Ví dụ**:
+  ```python
+  from app.tai_url_khong_tin import tai_url, LoiTaiUrl
+
+  try:
+      du_lieu, mime = await tai_url(
+          "https://example.com/anh.png",
+          tran_byte=10 * 1024 * 1024,  # trần 10 MB
+          tran_giay=15.0,              # trần 15 giây
+      )
+  except LoiTaiUrl as e:
+      log.warning("Tải URL thất bại: [%s] %s", e.ma, e.ly_do)
+  ```
+
+#### 2. Bộ kiểm tra tệp tải lên (`app/tep_an_toan.py`)
+
+Kiểm tra an toàn dữ liệu nhị phân ảnh và tệp nén trước khi đưa vào xử lý sâu hoặc lưu trữ.
+- **Hợp đồng ảnh**: `kiem_anh(du_lieu: bytes, *, canh_toi_da: int = 8192, diem_anh_toi_da: int = 40_000_000) -> dict`
+  - Đọc header PNG/JPEG/GIF/WebP thuần Python; nhận dạng theo nội dung nhị phân (không tin phần mở rộng tệp); từ chối ngay khi kích thước vượt trần trước khi giải mã (chống bom điểm ảnh / OOM).
+  - Trả về: `{"loai": str, "mime": str, "rong": int, "cao": int, "diem_anh": int}`.
+- **Hợp đồng zip**: `kiem_zip(du_lieu: bytes, *, so_muc_toi_da: int = 2000, tong_giai_nen_toi_da: int = 200 * 1024 * 1024, ti_le_nen_toi_da: float = 150.0) -> dict`
+  - Đọc mục lục bằng `zipfile` trong bộ nhớ, **không giải nén ra đĩa**; chặn zip-slip (`..`, đường dẫn tuyệt đối), symlink, bom nén theo tỉ lệ và tổng giải nén.
+  - Trả về: `{"so_muc": int, "tong_giai_nen": int, "kich_thuoc_nen": int}`.
+- **Ngoại lệ**: `LoiTep(ma, ly_do)`.
+- **Ví dụ**:
+  ```python
+  from app.tep_an_toan import kiem_anh, kiem_zip, LoiTep
+
+  try:
+      thong_tin_anh = kiem_anh(raw_bytes, canh_toi_da=4096)
+  except LoiTep as e:
+      raise ValueError(f"Tệp không an toàn: [{e.ma}] {e.ly_do}")
+  ```
+
+#### 3. URL ký cho media (`app/url_ky.py`)
+
+Cung cấp đường dẫn media có chữ ký HMAC-SHA256 chống đoán URL và IDOR.
+- **Hợp đồng**:
+  - `ky_url(duong: str, *, het_han_giay: int, phuong_thuc: str = "GET") -> str`: ký HMAC-SHA256 phủ phương thức + đường dẫn chuẩn hoá + hạn dùng Unix timestamp. Khoá HMAC 32 byte riêng tại `<DATA>/bi_mat/khoa_url_ky` (0600), không đưa khoá quản trị vào URL.
+  - `kiem_chu_ky(phuong_thuc: str, duong: str, tham_so: dict | str = None) -> bool`: kiểm tra chữ ký hằng thời gian (`hmac.compare_digest`). Trả về `False` khi sai/hết hạn/đường dẫn khác mà không phân biệt lý do.
+  - `duong_tep_an_toan(goc: Path | str, ten: str) -> Path`: giải quyết đường dẫn bằng `resolve()` rồi kiểm tra `is_relative_to(goc)`.
+- **Ví dụ**:
+  ```python
+  from app.url_ky import ky_url, kiem_chu_ky, duong_tep_an_toan
+
+  # Ký URL cho media tồn tại trong 1 giờ
+  link = ky_url("/media/anh_chup.png", het_han_giay=3600)
+
+  # Xác thực yêu cầu đến
+  hop_le = kiem_chu_ky("GET", link)
+
+  # Truy cập tệp trên đĩa an toàn
+  duong_that = duong_tep_an_toan(thu_muc_media, "anh_chup.png")
+  ```
 
 ### Giao diện (`web/`)
 
