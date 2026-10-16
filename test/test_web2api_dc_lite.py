@@ -439,11 +439,16 @@ def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch, t
     (tmp_path / "nguon_git_trang_thai.json").write_text(_json.dumps({
         "commit": {"sha": "a" * 40, "tac_gia": "x", "thong_diep": "y", "cay": "b" * 40},
         "modules": [{"id": "dich", "ten": "Dịch", "tree_sha": "c" * 40, "loi": None}]}))
-    # Một module ĐÃ LIÊN KẾT có tab_web → là trang chính duy nhất → «Quay lại» của Hệ thống trỏ tab đó.
+    # Một module ĐÃ LIÊN KẾT có tab_web → hiện thành tab trên thanh Hệ thống (sau Module, trước Bảo mật & người dùng).
     ghi_thu_muc(tmp_path / "modules" / "echo", tep_echo())
     (tmp_path / "modules.json").write_text(_json.dumps({"modules": [{"id": "echo", "cau_hinh_cong_khai": {}}]}))
     with MayChuThat(app, lifespan="on") as w:
         dom = dom_sau_dang_nhap(trang, w.url, "/He-thong.dc.html")
     assert re.search(r'<span class="cham" role="img" aria-label="1 module mới hoặc có bản mới trên git"', dom), dom[:3000]
-    assert re.search(r'<a class="quay-lai" data-nav="quay-lai" href="http://127\.0\.0\.1:\d+/m/echo/echo\.dc\.html"', dom), dom[:3000]
+    # echo là module loại AI đã liên kết nên thanh Hệ thống có «AI» ở đầu; tab riêng của module đứng SAU «Module» và TRƯỚC «Bảo mật».
+    assert re.findall(r'data-nav="([^"]+)"', dom) == ["ai", "module", "m-echo", "bao_mat"]
+    the = re.search(r'<[^>]*data-nav="m-echo"[^>]*>', dom)
+    assert the, dom[:3000]  # thuộc tính HTML không có thứ tự cố định: lấy cả thẻ rồi kiểm href trong đó
+    assert re.search(r'href="http://127\.0\.0\.1:\d+/m/echo/echo\.dc\.html"', the.group(0)), the.group(0)
+    assert 'data-nav="quay-lai"' not in dom
     assert 'data-o="echo"' in dom and 'data-tt="dang-chay"' in dom

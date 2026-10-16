@@ -329,6 +329,7 @@ def test_ma_mo_loai_la_va_kha_nang_la(du_lieu):
                 "const kq = {"
                 "  trangDau: K.trangDau(tn),"
                 "  nav: K.navChinh(tn, ''),"
+                "  navHT: K.navHeThong(tn, '', 0).map((x) => x.id),"
                 "  thieu: K.thieu(tn.muc[0], tn),"
                 "  noiThemKhoa: K.noiThemKhoa(tn.modules[0], tn)"
                 "};"
@@ -338,5 +339,77 @@ def test_ma_mo_loai_la_va_kha_nang_la(du_lieu):
             assert r_node.returncode == 0, r_node.stderr
             kq_khung = json.loads(r_node.stdout)
             assert kq_khung["trangDau"] == "He-thong.dc.html"
+            assert not any(x["id"].startswith("m-") for x in kq_khung["nav"])
+            assert "module" in kq_khung["navHT"] and "bao_mat" in kq_khung["navHT"]
             assert kq_khung["thieu"] == []  # Không thiếu vì đã liên kết và có đủ khả năng
             assert kq_khung["noiThemKhoa"]["tab"] == "module"
+
+
+def test_module_mang_tab_web_la_doc_lap(du_lieu):
+    """Module mang tab_web LẠ: lõi tự nhận, khi liên kết tab hiện trong thanh Hệ thống
+    (sau Module, trước Bảo mật), không nằm trên thanh chính/thanh dưới; gỡ thì biến mất."""
+    mod_id = "mod-tab-la-doc-lap"
+    mod_dir = du_lieu / "modules" / mod_id
+    mod_dir.mkdir(parents=True)
+    manifest = {
+        "id": mod_id,
+        "ten": "Module Tab Lạ Độc Lập",
+        "mo_ta": "Mô tả tính năng tab web lạ",
+        "loai": "loai_la_uvw",
+        "loai_ten": "Loại Lạ UVW",
+        "loai_thu_tu": 80,
+        "giao_thuc": "openai",
+        "tien_to": "la_uvw",
+        "cung_cap": ["kha_nang_la_123"],
+        "truong_cau_hinh": [],
+        "tai_nguyen": {"mang_ra": []},
+        "tab_web": {"nhan": "Tab Riêng Lạ", "trang": "web/index.html"},
+    }
+    (mod_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    ma_code = """class Module:
+    def __init__(self, m): self.manifest = m; self.tien_to = m["tien_to"]
+    def nap(self, cfg): pass
+    async def cai(self, cfg): return {"ok": True, "ket_qua_tung_khoa": [], "loi": None, "cau_hinh_luu": {}}
+    async def suc_khoe(self): return {"ok": True}
+    async def dung(self): pass
+"""
+    (mod_dir / "module.py").write_text(ma_code, encoding="utf-8")
+
+    with TestClient(app) as c:
+        assert c.post("/api/modules/nap-lai", headers=QT).status_code == 200
+        # Cài/liên kết
+        r_cai = c.post(f"/api/modules/{mod_id}/cai", json={"cau_hinh": {}}, headers=QT)
+        assert r_cai.status_code == 200 and r_cai.json()["ok"] is True
+
+        tn = c.get("/api/tinh-nang", headers=QT).json()
+        assert any(t["module"] == mod_id for t in tn.get("tab", []))
+
+        if shutil.which("node"):
+            ma_js = (
+                "const fs = require('fs'), vm = require('vm');"
+                "const sb = {window: {}, location: {href: 'http://may/', replace() {}}, URL, console};"
+                "vm.createContext(sb);"
+                f"vm.runInContext(fs.readFileSync({json.dumps(str(GOC / 'web' / 'khung.js'))}, 'utf8'), sb);"
+                f"const K = sb.window.Khung, tn = {json.dumps(tn)};"
+                "const kq = {"
+                "  navChinh: K.navChinh(tn, '').map((x) => x.id),"
+                "  navDuoi: K.navDuoi(tn, '').map((x) => x.id),"
+                "  navHT: K.navHeThong(tn, '', 0).map((x) => x.id)"
+                "};"
+                "process.stdout.write(JSON.stringify(kq));"
+            )
+            r_node = subprocess.run(["node", "-e", ma_js], capture_output=True, text=True, timeout=15)
+            assert r_node.returncode == 0, r_node.stderr
+            res = json.loads(r_node.stdout)
+            # Không có trên thanh trên và thanh dưới
+            assert f"m-{mod_id}" not in res["navChinh"]
+            assert f"m-{mod_id}" not in res["navDuoi"]
+            # Nằm trong thanh Hệ thống, sau module và trước bao_mat
+            assert f"m-{mod_id}" in res["navHT"]
+            assert res["navHT"].index("module") < res["navHT"].index(f"m-{mod_id}") < res["navHT"].index("bao_mat")
+
+        # Gỡ module
+        assert c.delete(f"/api/modules/{mod_id}", headers=QT).status_code == 200
+        tn_sau = c.get("/api/tinh-nang", headers=QT).json()
+        assert not any(t["module"] == mod_id for t in tn_sau.get("tab", []))
+
