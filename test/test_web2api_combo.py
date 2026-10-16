@@ -51,6 +51,7 @@ def mau_module_gia(id_: str, tien_to: str, co_anh: bool = True) -> dict[str, byt
         "ten": f"Module giả {id_}",
         "mo_ta": "Module giả để kiểm thử combo",
         "loai": "ai",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["chat", "anh"] if co_anh else ["chat"],

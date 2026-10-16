@@ -37,7 +37,7 @@ def client(tmp_path, monkeypatch):
 
 def _module_muc_luc():
     manifest = {
-        "id": "ml-nv21", "ten": "ML NV21", "mo_ta": "test", "loai": "tri_thuc",
+        "id": "ml-nv21", "ten": "ML NV21", "mo_ta": "test", "loai": "tri_thuc", "hang": "A",
         "giao_thuc": "cuc_bo", "tien_to": "mlnv21", "cung_cap": ["tim_kiem"],
         "truong_cau_hinh": [],
         "tai_nguyen": {"ram_them_mb": None, "dia_mb": None, "gpu": False,

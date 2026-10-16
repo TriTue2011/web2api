@@ -248,4 +248,16 @@ Người gọi dùng `POST /api/gui/{module}` (xác thực `V1_AUTH` + phạm vi
 
 ---
 
+## 9. Khai báo manifest.json và trường bắt buộc `hang`
+
+Mỗi module bắt buộc có tệp `manifest.json` ở thư mục gốc của module. Các trường chuỗi bắt buộc gồm: `id`, `ten`, `mo_ta`, `loai`, `giao_thuc`, `tien_to` và `hang`.
+
+Trường `hang` là **bắt buộc** trong `manifest.json`, chỉ nhận giá trị `"A"` hoặc `"B"` (`kiem_manifest` từ chối manifest thiếu `hang` hoặc mang giá trị khác):
+- `"A"`: Chủ máy đã đọc toàn bộ mã nguồn, ghim SHA của bản đã đọc, tự chịu trách nhiệm; chạy trong tiến trình lõi.
+- `"B"`: Mã của bên thứ ba, chạy ngoài tiến trình lõi.
+
+> **Lưu ý nguyên tắc bảo mật**: `hang` là lời khai của tác giả; máy chủ có quyền coi module bên thứ ba là B bất kể lời khai.
+
+---
+
 *Xem thêm: [Chuẩn Bảo Mật cho Module](CHUAN-BAO-MAT-MODULE.md) (luật bảo mật: hạng module, khai báo manifest, dịch vụ lõi dùng chung, test bắt buộc).*

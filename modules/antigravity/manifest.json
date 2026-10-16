@@ -3,6 +3,7 @@
   "ten": "Antigravity (Google AGY CLI)",
   "mo_ta": "Dùng Antigravity CLI (agy) chính thức ở chế độ không tương tác qua cầu nối cục bộ trên máy chủ: chat các model Gemini, Claude và GPT; bể tài khoản xoay vòng theo hạn mức còn lại.",
   "phien_ban": "0.1.0",
+  "hang": "A",
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 20,

@@ -40,6 +40,7 @@ def mau_module_tim_kiem(
         "ten": f"Module {id_}",
         "mo_ta": "Module tim kiem gia",
         "loai": "tri_thuc",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["tim_kiem"],

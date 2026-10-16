@@ -41,7 +41,7 @@ def module_ai_ba_nguon(id_: str, ten: str, tien_to: str, cung_cap: tuple[str, ..
     """Nguồn AI giả cho 3 nguồn: trường api_keys không bắt buộc (bat_buoc: False) để kiểm thử việc xoá khoá cuối."""
     m = {
         "id": id_, "ten": ten, "mo_ta": "Nguồn AI giả cho kiểm thử giao diện nhóm provider.",
-        "phien_ban": "1.0.0", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10, "giao_thuc": "openai", "tien_to": tien_to,
+        "phien_ban": "1.0.0", "hang": "A", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10, "giao_thuc": "openai", "tien_to": tien_to,
         "cung_cap": list(cung_cap),
         "truong_cau_hinh": [
             {"khoa": "api_keys", "nhan": "Khoá API", "kieu": "danh_sach_bi_mat", "bat_buoc": False, "mac_dinh": None,
@@ -416,7 +416,7 @@ def module_ai_nhieu_model(id_: str = "ai-haieu", ten: str = "AI Nhiều Model", 
     """Nguồn AI giả có nhiều model để kiểm thử bố cục lưới và hiệu năng cuộn."""
     m = {
         "id": id_, "ten": ten, "mo_ta": "Nguồn AI giả nhiều model cho test bố cục.",
-        "phien_ban": "1.0.0", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10, "giao_thuc": "openai", "tien_to": tien_to,
+        "phien_ban": "1.0.0", "hang": "A", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10, "giao_thuc": "openai", "tien_to": tien_to,
         "cung_cap": ["chat"],
         "truong_cau_hinh": [
             {"khoa": "api_keys", "nhan": "Khoá API", "kieu": "danh_sach_bi_mat", "bat_buoc": True, "mac_dinh": None,

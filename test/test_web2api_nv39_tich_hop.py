@@ -285,6 +285,7 @@ def mau_module_tich_hop() -> dict[str, bytes]:
         "ten": "Module Tích hợp giả",
         "mo_ta": "Module gia lap cho test NV39",
         "loai": "tri_thuc",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": "mth",
         "cung_cap": ["tim_kiem", "kenh_ra"],

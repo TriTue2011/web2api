@@ -53,6 +53,7 @@ def _tha_module_mock(du_lieu: Path, id_: str, ma_python: str) -> None:
         "mo_ta": "Module giả để kiểm tra phiên",
         "phien_ban": "0.1.0",
         "loai": "ai",
+        "hang": "A",
         "giao_thuc": "openai",
         "tien_to": id_.replace("-", ""),
         "cung_cap": ["chat"],

@@ -727,6 +727,7 @@ def _module_gia_model(id_: str, tien_to: str, cung_cap: tuple[str, ...], cac_mod
         "loai": "ai",
         "loai_ten": "AI",
         "loai_thu_tu": 10,
+        "hang": "A",
         "giao_thuc": "openai",
         "tien_to": tien_to,
         "cung_cap": list(cung_cap),

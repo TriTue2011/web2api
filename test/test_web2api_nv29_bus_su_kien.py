@@ -42,6 +42,7 @@ def _module_gia() -> dict[str, bytes]:
         "ten": "Module sự kiện giả",
         "mo_ta": "Module giả cho test bus sự kiện NV29",
         "loai": "ung_dung",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": "skgia",
         "cung_cap": ["thiet_bi"],

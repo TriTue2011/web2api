@@ -51,6 +51,7 @@ def mau_module_muc_luc(
         "ten": f"Module {id_}",
         "mo_ta": "Module muc luc gia lap",
         "loai": "tri_thuc",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["tim_kiem"],

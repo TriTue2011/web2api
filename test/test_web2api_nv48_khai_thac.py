@@ -53,7 +53,7 @@ class Module:
 def _viet_module_gia(tmp_path: Path, id_: str, payload: str):
     d = tmp_path / id_
     d.mkdir()
-    manifest = {"id": id_, "ten": f"Module gia NV48 {id_}", "mo_ta": "gia", "loai": "ai",
+    manifest = {"id": id_, "ten": f"Module gia NV48 {id_}", "mo_ta": "gia", "loai": "ai", "hang": "A",
                 "giao_thuc": "local", "tien_to": "nv48gia", "truong_cau_hinh": [], "tai_nguyen": {}}
     (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (d / "module.py").write_text(MAU_MODULE.format(PAYLOAD=payload), encoding="utf-8")

@@ -34,7 +34,7 @@ DUONG = f"/api/trinh-duyet/nguon-gia/{HO_SO}/cookie-sang-module"
 THAN = {"mien": "vi-du.example", "module_dich": "dich-gia", "truong": "cookies"}
 
 MANIFEST_DICH = {
-    "id": "dich-gia", "ten": "Đích giả", "mo_ta": "Module đích giả nhận cookie", "loai": "ai", "giao_thuc": "gia",
+    "id": "dich-gia", "ten": "Đích giả", "mo_ta": "Module đích giả nhận cookie", "loai": "ai", "hang": "A", "giao_thuc": "gia",
     "tien_to": "dichgia", "cung_cap": ["chat"], "tai_nguyen": {"mang_ra": []},
     "tab_web": {"nhan": "Đích", "trang": "web/index.html"},
     "truong_cau_hinh": [

@@ -166,7 +166,7 @@ def module_ai(id_: str = "ai-gia", ten: str = "AI giả", tien_to: str = "gia", 
     """Nguồn AI giả có trường bắt buộc (cài xong là «chờ khoá»)."""
     m = {
         "id": id_, "ten": ten, "mo_ta": "Nguồn AI giả cho test giao diện: chat stream, ảnh, video, khoá xoay vòng.",
-        "phien_ban": "1.0.0", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10, "giao_thuc": "openai", "tien_to": tien_to,
+        "phien_ban": "1.0.0", "hang": "A", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10, "giao_thuc": "openai", "tien_to": tien_to,
         "cung_cap": list(cung_cap),
         "truong_cau_hinh": [
             {"khoa": "api_keys", "nhan": "Khoá API", "kieu": "danh_sach_bi_mat", "bat_buoc": True, "mac_dinh": None,
@@ -182,7 +182,7 @@ def module_ai(id_: str = "ai-gia", ten: str = "AI giả", tien_to: str = "gia", 
 
 def module_khong_khoa(id_: str, ten: str, loai: str, tien_to: str, *, loai_ten=None, loai_thu_tu=None,
                       cung_cap=(), muc=None, tab=False, mo_ta="Module giả không cần khoá.") -> dict:
-    m = {"id": id_, "ten": ten, "mo_ta": mo_ta, "phien_ban": "0.1.0", "loai": loai, "giao_thuc": "openai",
+    m = {"id": id_, "ten": ten, "mo_ta": mo_ta, "phien_ban": "0.1.0", "hang": "A", "loai": loai, "giao_thuc": "openai",
          "tien_to": tien_to, "cung_cap": list(cung_cap), "truong_cau_hinh": [],
          "tai_nguyen": {"ram_them_mb": None, "dia_mb": 2, "gpu": None, "mang_ra": [], "ghi_chu": ""}}
     if loai_ten:

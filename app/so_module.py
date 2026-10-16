@@ -274,6 +274,10 @@ class SoModule:
             for thu_muc in quet(goc):
                 manifest, ly_do = doc_manifest(thu_muc)
                 if ly_do:
+                    truoc = cu.get(thu_muc.name) or next((m for m in cu.values() if m.thu_muc == thu_muc), None)
+                    if truoc and truoc.thu_muc == thu_muc and van_tay(thu_muc) == truoc.van_tay:
+                        moi[truoc.id] = truoc
+                        continue
                     bao_loi(thu_muc, ly_do)
                     continue
                 id_ = manifest["id"]
@@ -619,7 +623,9 @@ class SoModule:
                 raise LoiSo(409, f"Id {id_!r} đang là module từ xa")
             # ── Cổng duyệt quyền (chỉ khi đã có bản cũ; cài mới không chặn) ──
             mf_moi, loi_mf = doc_manifest(tam)
-            diff = diff_quyen(km_cu.manifest if km_cu else {}, mf_moi) if loi_mf is None else None
+            if loi_mf is not None:
+                raise LoiSo(422, f"Bản mới nạp hỏng: {loi_mf}")
+            diff = diff_quyen(km_cu.manifest if km_cu else {}, mf_moi)
             if km_cu is not None and diff and diff["them"]:
                 nguon = self._nguon_cua_tam(tam)
                 if chap_nhan_quyen_them is None:

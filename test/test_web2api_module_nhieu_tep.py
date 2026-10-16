@@ -44,7 +44,7 @@ def _tha_module(goc, id_, he_so, ten="client"):
     thu_muc = goc / "modules" / id_
     (thu_muc / "goi_con").mkdir(parents=True, exist_ok=True)
     (thu_muc / "manifest.json").write_text(json.dumps({
-        "id": id_, "ten": id_, "mo_ta": "thử", "phien_ban": "0.0.1", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10,
+        "id": id_, "ten": id_, "mo_ta": "thử", "phien_ban": "0.0.1", "hang": "A", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 10,
         "giao_thuc": "openai", "tien_to": id_.replace("-", ""), "cung_cap": ["chat"], "truong_cau_hinh": [],
         "tai_nguyen": {"mang_ra": []}}), encoding="utf-8")
     (thu_muc / "module.py").write_text(MA_MODULE, encoding="utf-8")

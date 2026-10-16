@@ -49,6 +49,7 @@ def mau_module_thiet_bi(
         "ten": "Thiết bị giả lập",
         "mo_ta": "Module thiết bị giả để kiểm thử",
         "loai": loai,
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": cung_cap,

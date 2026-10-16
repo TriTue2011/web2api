@@ -85,7 +85,7 @@ class Module:
 def _viet_module_gia(tmp_path: Path, id_: str, payload: str) -> Path:
     d = tmp_path / id_
     d.mkdir()
-    manifest = {"id": id_, "ten": f"Module gia NV52 {id_}", "mo_ta": "gia", "loai": "ai",
+    manifest = {"id": id_, "ten": f"Module gia NV52 {id_}", "mo_ta": "gia", "loai": "ai", "hang": "A",
                 "giao_thuc": "local", "tien_to": "nv52gia", "truong_cau_hinh": [],
                 "tai_nguyen": {"mang_ra": []}}
     (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -331,7 +331,7 @@ def test_nv52_hang_a_van_nap_va_chay_trong_tien_trinh_loi(tmp_path):
     dau_ra = tmp_path / "pid.txt"
     d = tmp_path / "nv52-hanga"
     d.mkdir()
-    manifest = {"id": "nv52-hanga", "ten": "Hang A NV52", "mo_ta": "gia", "loai": "ai",
+    manifest = {"id": "nv52-hanga", "ten": "Hang A NV52", "mo_ta": "gia", "loai": "ai", "hang": "A",
                 "giao_thuc": "local", "tien_to": "nv52a", "truong_cau_hinh": [],
                 "tai_nguyen": {}}
     (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

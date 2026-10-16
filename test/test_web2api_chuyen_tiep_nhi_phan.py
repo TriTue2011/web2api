@@ -549,6 +549,7 @@ def test_module_khong_khai_chat_nap_duoc_va_chat_tra_501(du_lieu, tmp_path):
         "ten": "Module chỉ nói",
         "mo_ta": "Chỉ làm TTS",
         "loai": "ai",
+        "hang": "A",
         "giao_thuc": "openai",
         "tien_to": "noi",
         "truong_cau_hinh": [],

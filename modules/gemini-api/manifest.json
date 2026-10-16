@@ -3,6 +3,7 @@
   "ten": "Gemini API (Google AI Studio)",
   "mo_ta": "Gọi model Gemini bằng khoá API của Google AI Studio: chat (endpoint tương thích OpenAI của Google), tạo ảnh và tạo video Veo (chỉ khoá TRẢ PHÍ — hạng miễn phí của Google không có ảnh/video); xoay vòng nhiều khoá, nghỉ khoá khi hết hạn mức.",
   "phien_ban": "0.2.0",
+  "hang": "A",
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 10,
