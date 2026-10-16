@@ -472,8 +472,52 @@ flowchart LR
   HD -->|rui_ro: doc / ghi| TH["Thực hiện ngay"]
   HD -->|rui_ro: nguy_hiem + khách| HC["Hàng chờ phê duyệt<br/>(/api/phe-duyet)"]
   HC -->|Quản trị duyệt| TH
-  HC -->|Quản trị từ chối| HUY["Huỷ bỏ"]
 ```
+ 
+##### Công cụ cho AI (`GET /api/cong-cu`)
+ 
+Biến các thực thể và hành động của chuẩn `thiet_bi` thành danh sách công cụ (tools) chuẩn OpenAI function-calling để các mô hình AI hoặc ứng dụng bên ngoài sử dụng:
+ 
+- **Mỗi cặp (loại thực thể × hành động) là MỘT tool** (không tạo tool theo từng thực thể để tránh làm quá tải ngữ cảnh).
+- **Phân quyền và bảo mật**:
+  - Yêu cầu xác thực `V1_AUTH` và phạm vi `thiet_bi:doc` hoặc `thiet_bi:ghi` (khoá khách thiếu phạm vi trả `403`, không có khoá trả `401`).
+  - Khoá chỉ có quyền đọc (`thiet_bi:doc`) chỉ thấy các công cụ có mức rủi ro `doc`. Khoá có quyền ghi (`thiet_bi:ghi`) hoặc quản trị thấy thêm các công cụ `ghi` và `nguy_hiem`.
+  - Mô tả công cụ (`description`) chỉ ghép từ các trường có cấu trúc (`loai`, `hanh_dong`, `rui_ro`), không chèn văn bản tự do hay tên thực thể từ nguồn ngoài để ngăn ngừa triệt để tấn công prompt injection.
+  - Công cụ có mức rủi ro `nguy_hiem` ghi rõ yêu cầu phê duyệt trong `description`, và lược đồ tham số (`parameters`) **không bao giờ** chứa trường `xac_nhan` (mô hình AI không được phép tự xác nhận).
+- **Định dạng phản hồi**:
+  ```json
+  {
+    "object": "list",
+    "nguon_ngoai": true,
+    "data": [
+      {
+        "type": "function",
+        "function": {
+          "name": "den_bat",
+          "description": "Thực hiện hành động «bat» cho thực thể loại «den» (mức rủi ro: ghi).",
+          "parameters": {
+            "type": "object",
+            "required": ["thuc_the"],
+            "properties": {
+              "thuc_the": {"type": "string", "description": "id thực thể, lấy từ GET /api/thiet-bi"},
+              "tham_so": {"type": "object"},
+              "ly_do": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "x_web2api": {
+          "loai": "den",
+          "hanh_dong": "bat",
+          "rui_ro": "ghi"
+        }
+      }
+    ],
+    "tong": 1,
+    "bi_cat": false
+  }
+  ```
+- **Trần số lượng**: Tối đa 128 công cụ; nếu vượt trần, danh sách sẽ được cắt còn 128 và phản hồi trả về `bi_cat: true`. Hỗ trợ tham số truy vấn `?loai=` để lọc công cụ theo loại thực thể cụ thể.
 
 
 Module cần gói Python mà ảnh lõi không có thì bị **từ chối nạp** với thông báo nêu tên gói — lõi không tự cài gói
@@ -1739,6 +1783,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |
 | `POST /api/phien/{module}/{tai_khoan}/kiem` | Có | Kiểm tra ngay trạng thái một phiên tài khoản qua module |
 | `GET /api/thiet-bi` | Có | Danh sách thực thể thiết bị/ứng dụng từ các module, kèm trạng thái và rủi ro hiệu lực (hỗ trợ lọc `q`, `loai`, `khu`, `module`, `rui_ro`) |
+| `GET /api/cong-cu` | Có | Danh sách công cụ (tools) chuẩn OpenAI function-calling sinh từ cặp (loại thực thể × hành động), hỗ trợ lọc `loai` |
 | `GET /api/thiet-bi/su-kien` | Có | Nhận luồng sự kiện thiết bị theo thời gian thực (SSE) |
 | `POST /api/thiet-bi/su-kien` | Có | Phát sự kiện thiết bị mới |
 | `GET /api/thiet-bi/{id}` | Có | Chi tiết và trạng thái của một thực thể thiết bị |

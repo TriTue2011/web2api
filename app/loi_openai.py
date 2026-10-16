@@ -1,6 +1,6 @@
 """Lỗi dạng OpenAI {"error": {"message", "type", "code"}} cho mọi API của lõi.
 
-Khách của web2api là thư viện/ứng dụng nói chuẩn OpenAI (SDK openai, Home Assistant…):
+Khách của web2api là thư viện/ứng dụng nói chuẩn OpenAI (SDK openai, ứng dụng nhà thông minh…):
 chúng đọc `error.message` để hiện cho người dùng. Trả lỗi kiểu FastAPI ({"detail": …})
 thì khách chỉ thấy "Unknown error".
 """

@@ -97,6 +97,25 @@ cai_bien_loi(app)  # /v1: mọi lỗi khác cũng ra khuôn OpenAI; lỗi chưa 
 app.add_middleware(MiddlewareNhatKyCuocGoi)  # /v1: ghi đúng một dòng cuoc_goi, thêm x-request-id và X-Web2api-Module
 
 
+def la_duong_khoa_khach_duoc_goi(path: str) -> bool:
+    """Kiểm tra đường /api/* mà khoá khách được phép đi qua middleware để vào router xác thực riêng.
+
+    Các đường này có cơ chế kiểm tra phạm vi (V1_AUTH) hoặc xác thực riêng ở router:
+    - /api/cong-cu*: công cụ AI chuẩn OpenAI (kiểm tra phạm vi thiet_bi:doc, thiet_bi:ghi).
+    - /api/thiet-bi*: thực thể thiết bị (kiểm tra phạm vi thiet_bi:*; riêng rui-ro chặn bằng QT).
+    - /api/tim-kiem*: tìm kiếm tri thức và mục lục (loại trừ /api/tim-kiem/nguon là đường quản trị).
+    - /api/thiet-lap*: thiết lập ban đầu khi chưa có quản trị.
+    - /api/dang-nhap*: đăng nhập bằng mật khẩu người dùng.
+    """
+    if path.startswith("/api/cong-cu") or path.startswith("/api/thiet-bi"):
+        return True
+    if path.startswith("/api/tim-kiem") and not path.startswith("/api/tim-kiem/nguon"):
+        return True
+    if path.startswith("/api/thiet-lap") or path.startswith("/api/dang-nhap"):
+        return True
+    return False
+
+
 class MiddlewareChanKhoaKhachQuanTri:
     """Chặn khoá khách gọi các đường quản trị (/api/*) và trang quản trị (.dc.html) → 403."""
 
@@ -106,12 +125,7 @@ class MiddlewareChanKhoaKhachQuanTri:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             path = scope.get("path", "")
-            la_duong_ngoai_le = (
-                path in ("/api/tim-kiem", "/api/tim-kiem/", "/api/tim-kiem/muc-luc")
-                or path.startswith("/api/thiet-lap")
-                or path.startswith("/api/dang-nhap")
-            )
-            if ((path.startswith("/api/") and not path.startswith("/api/thiet-bi") and not la_duong_ngoai_le) or path.endswith(".dc.html")):
+            if ((path.startswith("/api/") and not la_duong_khoa_khach_duoc_goi(path)) or path.endswith(".dc.html")):
                 for k, v in scope.get("headers", []):
                     if k.lower() == b"authorization":
                         gia_tri = v.decode("latin-1").strip()
@@ -189,6 +203,7 @@ app.include_router(tuyen.sao_luu)
 app.include_router(tuyen.thiet_bi)
 app.include_router(tuyen.phe_duyet)
 app.include_router(tuyen.tim_kiem)
+app.include_router(tuyen.cong_cu)
 app.include_router(tuyen.combo)
 app.include_router(tuyen.tep_module)
 app.include_router(tuyen.trinh_duyet)

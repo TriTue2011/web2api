@@ -70,6 +70,7 @@ Mỗi thực thể do module trả về phải có cấu trúc từ điển:
   - `"doc"`: Chỉ đọc dữ liệu, không làm thay đổi trạng thái thiết bị.
   - `"ghi"`: Thao tác thông thường (bật, tắt, đổi trạng thái công tắc/đèn).
   - `"nguy_hiem"`: Thao tác có tính chất rủi ro cao (mở khoá cửa, khởi động lại hệ thống mạng, xoá dữ liệu).
+- **Tính năng (`tinh_nang`)**: Danh sách tên hành động (chuỗi) hoặc đối tượng khai báo hành động kèm lược đồ tham số (`{"hanh_dong": "...", "tham_so": {...}}`); được lõi tổng hợp thành tools function-calling cho AI qua `GET /api/cong-cu`.
 
 ### 3.2. Trạng thái (`trang_thai`)
 Nhận danh sách `ids: list[str]` và trả về từ điển:

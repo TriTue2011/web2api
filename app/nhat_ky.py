@@ -617,13 +617,22 @@ class MiddlewareNhatKyCuocGoi:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not la_duong_v1(scope.get("path", "")):
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
+            return
+
+        trang_thai = scope.setdefault("state", {})
+        if not la_duong_v1(scope.get("path", "")):
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                if trang_thai.get("khach_id"):
+                    from app.khoa_khach import ra_dong_thoi
+                    ra_dong_thoi(trang_thai.get("khach_id"))
             return
 
         bat_dau = time.perf_counter()
         req_id = _request_id(scope)
-        trang_thai = scope.setdefault("state", {})  # cùng dict với request.state ở đường /v1
         ma_http: int | None = None
         xong = False  # đã gửi trọn khúc cuối (more_body=False)
         loai_than = None
