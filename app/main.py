@@ -9,6 +9,7 @@ chỉ còn mở: /health, GET/POST /api/thiet-lap, POST /api/dang-nhap và tệp
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import random
@@ -115,7 +116,9 @@ class MiddlewareChanKhoaKhachQuanTri:
                         gia_tri = v.decode("latin-1").strip()
                         loai_auth, _, token = gia_tri.partition(" ")
                         if loai_auth.lower() == "bearer" and token.strip():
-                            khach = khoa_khach.tim_theo_khoa_tho(token.strip())
+                            # Khoá quản trị không bao giờ đi qua tra khoá khách (kho khoá hỏng không được chạm nó).
+                            la_qt = hmac.compare_digest(token.strip().encode("utf-8"), xac_thuc.khoa_quan_tri().encode("utf-8"))
+                            khach = None if la_qt else khoa_khach.tim_theo_khoa_tho(token.strip())
                             if khach is not None:
                                 id_k = str(khach.get("id", "khach"))
                                 nhat_ky.ghi(

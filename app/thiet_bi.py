@@ -74,7 +74,10 @@ def _p_phe_duyet() -> Path:
 # ───────────── Ghi đè rủi ro ─────────────
 
 def doc_ghi_de_rui_ro() -> dict[str, str]:
-    """Đọc từ điển ghi đè rủi ro {id_thuc_the: "doc" | "ghi" | "nguy_hiem"}."""
+    """Đọc từ điển ghi đè rủi ro {id_thuc_the: "doc" | "ghi" | "nguy_hiem"}.
+
+    Tệp hỏng → 503 (không trả rỗng): trả rỗng rồi ghi lại sẽ XOÁ toàn bộ ghi đè cũ.
+    """
     with _KHOA_LUONG:
         p = _p_thiet_bi()
         try:
@@ -85,6 +88,8 @@ def doc_ghi_de_rui_ro() -> dict[str, str]:
             pass
         except Exception as e:
             log.warning("Lỗi khi đọc %s: %s", p, e)
+            raise LoiOpenAI(503, f"Không đọc được kho thiết bị ({p.name}), không ghi đè.",
+                            code="store_unreadable") from None
         return {}
 
 
@@ -114,7 +119,10 @@ def thoi_han_phe_duyet_phut() -> int:
 
 
 def doc_hang_cho_phe_duyet() -> list[dict[str, Any]]:
-    """Đọc danh sách mục đang chờ phê duyệt. Mục quá hạn tự động bị loại bỏ."""
+    """Đọc danh sách mục đang chờ phê duyệt. Mục quá hạn tự động bị loại bỏ.
+
+    Tệp hỏng → 503 (không trả rỗng): trả rỗng rồi ghi lại sẽ XOÁ toàn bộ hàng chờ.
+    """
     with _KHOA_LUONG:
         p = _p_phe_duyet()
         hang_cho: list[dict[str, Any]] = []
@@ -126,7 +134,8 @@ def doc_hang_cho_phe_duyet() -> list[dict[str, Any]]:
             return []
         except Exception as e:
             log.warning("Lỗi khi đọc %s: %s", p, e)
-            return []
+            raise LoiOpenAI(503, f"Không đọc được hàng chờ phê duyệt ({p.name}), không ghi đè.",
+                            code="store_unreadable") from None
 
         bay_gio = datetime.now(timezone.utc)
         con_han: list[dict[str, Any]] = []

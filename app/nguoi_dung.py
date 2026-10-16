@@ -357,8 +357,23 @@ def khoi_tao_thiet_lap_lan_dau() -> None:
 
 # ───────────── Khoá đăng nhập theo tên ─────────────
 
-def kiem_tra_khoa_ten(ten: str) -> None:
+def ten_co_the_ton_tai(ten: Any) -> str | None:
+    """Tên chuẩn hoá nếu nó CÓ THỂ là một tài khoản (đúng TEN_DANG_NHAP_RE), ngược lại None.
+
+    Bộ theo dõi đăng nhập sai chỉ nhận khoá qua hàm này: khoá của nó luôn ≤ 32 ký tự, nên RAM bị chặn bởi
+    TOI_DA_THEO_DOI × 32 byte bất kể khách gửi gì (tên 24 MB từng ghim 24 MB vĩnh viễn). Cắt độ dài TRƯỚC `.lower()`
+    để không sao chép chuỗi khổng lồ.
+    """
+    if not isinstance(ten, str) or len(ten) > 64:
+        return None
     ten_chuan = ten.strip().lower()
+    return ten_chuan if TEN_DANG_NHAP_RE.match(ten_chuan) else None
+
+
+def kiem_tra_khoa_ten(ten: str) -> None:
+    ten_chuan = ten_co_the_ton_tai(ten)
+    if ten_chuan is None:
+        return  # tên không thể tồn tại: không có gì để khoá (đường đăng nhập đã trả 401 trước đó)
     with _KHOA_THEO_DOI:
         muc = _THEO_DOI_SAI.get(ten_chuan)
         if muc and muc.get("khoa_den"):
@@ -375,7 +390,9 @@ def kiem_tra_khoa_ten(ten: str) -> None:
 
 
 def ghi_nhan_dang_nhap_sai(ten: str) -> None:
-    ten_chuan = ten.strip().lower()
+    ten_chuan = ten_co_the_ton_tai(ten)
+    if ten_chuan is None:
+        return
     toi_da = dang_nhap_sai_toi_da()
     khoa_giay = dang_nhap_khoa_phut() * 60
     with _KHOA_THEO_DOI:
@@ -389,7 +406,9 @@ def ghi_nhan_dang_nhap_sai(ten: str) -> None:
 
 
 def ghi_nhan_dang_nhap_dung(ten: str) -> None:
-    ten_chuan = ten.strip().lower()
+    ten_chuan = ten_co_the_ton_tai(ten)
+    if ten_chuan is None:
+        return
     with _KHOA_THEO_DOI:
         _THEO_DOI_SAI.pop(ten_chuan, None)
 
@@ -590,6 +609,11 @@ async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str)
                 break
         if not tim:
             raise LoiOpenAI(404, "Không tìm thấy người dùng.", code="user_not_found")
+        # Kiểm-rồi-ghi trong CÙNG vùng găng: mật khẩu cũ được xác minh NGOÀI khoá (băm chậm); trong lúc đó admin có thể
+        # đã đặt lại mật khẩu (hoặc phiên khác đã đổi). Ghi vô điều kiện sẽ lặng lẽ huỷ thay đổi đó → 409.
+        if str(tim.get("bam_mat_khau", "")) != bam_cu:
+            raise LoiOpenAI(409, "Mật khẩu vừa được thay đổi ở nơi khác. Tải lại trang rồi thử lại.",
+                            loai="invalid_request_error", code="password_changed_concurrently")
         tim["bam_mat_khau"] = bam_moi
         _ghi_nguoi_dung(ds)
 

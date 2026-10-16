@@ -508,11 +508,11 @@ def sdk(du_lieu):
 def test_sdk_openai_doc_duoc_loi(sdk, monkeypatch):
     openai, c = sdk
     with pytest.raises(openai.NotFoundError) as e:
-        c.responses.create(model="bien/x", input="chào")
+        c.moderations.create(model="bien/x", input="chào")  # đường /v1 không có (responses đã có thật từ khi hỗ trợ ảnh)
     assert e.value.code == "unknown_endpoint" and e.value.type == "invalid_request_error"
-    assert "/v1/responses" in e.value.body["message"]
+    assert "/v1/moderations" in e.value.body["message"]
     with pytest.raises(openai.APIStatusError) as e:
-        c.embeddings.create(model="bien/x", input="chào")
+        c.completions.create(model="bien/x", prompt="chào")  # /v1/completions (kiểu cũ) không có; embeddings đã có thật
     assert e.value.status_code == 404 and e.value.code == "unknown_endpoint"
 
     monkeypatch.setenv("WEB2API_THAN_TOI_DA_MB", "0.01")

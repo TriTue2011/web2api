@@ -50,6 +50,23 @@ _CO_THAY_DOI = False
 _DONG_THOI_DANG_CHAY: dict[str, int] = {}
 
 
+class LoiKhoKhoaKhach(LoiOpenAI):
+    """khoa_khach.json tồn tại nhưng không đọc/phân tích được. 503, không lộ chi tiết tệp ra phản hồi.
+
+    ĐÓNG KHI LỖI (cùng nguyên tắc với `nguoi_dung.LoiKhoNguoiDung`): không bao giờ coi tệp hỏng là «chưa có khoá» —
+    lần ghi kế tiếp sẽ GHI ĐÈ mất mọi khoá cũ. Mọi đường ghi đọc qua `_doc_tu_dia_neu_can` nên dừng ở đây; đường xác
+    thực (`tim_theo_bam`) bắt lỗi này và trả None (không cấp quyền, không 500)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            503,
+            "Kho khoá khách không đọc được. Khôi phục tệp khoa_khach.json từ bản sao lưu (Hệ thống → Sao lưu) rồi thử "
+            "lại; các thao tác ghi khoá bị khoá để không ghi đè khoá hiện có.",
+            loai="server_error",
+            code="guest_key_store_unreadable",
+        )
+
+
 def _p_khoa_khach() -> Path:
     return kho.thu_muc_du_lieu() / "khoa_khach.json"
 
@@ -116,35 +133,48 @@ def tran_dong_thoi() -> int | None:
 def _doc_tu_dia_neu_can() -> list[dict[str, Any]]:
     """Đọc tệp khoa_khach.json nếu cache chưa có hoặc tệp bị đổi bên ngoài (so stat).
 
-    Luôn gọi khi đang giữ _KHOA_LUONG.
+    Luôn gọi khi đang giữ _KHOA_LUONG. Tệp KHÔNG tồn tại → kho rỗng. Tệp tồn tại mà đọc lỗi, JSON hỏng hoặc sai cấu
+    trúc (không qua `kiem_tep` — cùng bộ kiểm của khôi phục) → LoiKhoKhoaKhach, cache giữ
+    nguyên. Không lọc lặng lẽ phần tử hỏng: lọc rồi lần ghi sau sẽ xoá mất chúng.
     """
     global _KHOA_KHACH_CACHE, _CACHE_FILE_STAT, _CO_THAY_DOI
     p = _p_khoa_khach()
     try:
         st = os.stat(p)
-        danh_tinh = (str(p), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
-        if _CACHE_FILE_STAT == danh_tinh and not _CO_THAY_DOI:
-            return _KHOA_KHACH_CACHE
-        if not _CO_THAY_DOI or _CACHE_FILE_STAT != danh_tinh:
-            du_lieu = kho.doc_json(p)
-            if isinstance(du_lieu, dict) and isinstance(du_lieu.get("khoa"), list):
-                _KHOA_KHACH_CACHE = [
-                    dict(k) for k in du_lieu["khoa"] if isinstance(k, dict) and "bam" in k and "id" in k
-                ]
-            else:
-                _KHOA_KHACH_CACHE = []
-            _CACHE_FILE_STAT = danh_tinh
-            _CO_THAY_DOI = False
     except FileNotFoundError:
         if not _CO_THAY_DOI:
             _KHOA_KHACH_CACHE = []
             _CACHE_FILE_STAT = None
-    except Exception as e:
-        log.warning("Lỗi khi đọc %s: %s", p, e)
-        if not _CO_THAY_DOI:
-            _KHOA_KHACH_CACHE = []
-            _CACHE_FILE_STAT = None
+        return _KHOA_KHACH_CACHE
+    except OSError as e:
+        log.warning("Không đọc được %s: %s", p, type(e).__name__)
+        raise LoiKhoKhoaKhach() from None
+    danh_tinh = (str(p), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+    if _CACHE_FILE_STAT == danh_tinh:
+        return _KHOA_KHACH_CACHE
+    try:
+        du_lieu = kho.doc_json(p)
+    except kho.KhoHong as e:
+        log.warning("Kho khoá khách hỏng: %s", e)
+        raise LoiKhoKhoaKhach() from None
+    try:
+        # CÙNG bộ kiểm của khôi phục (`kiem_tep`): kiểm nông «có id và bam» từng để lọt `bam` không ASCII (ném ở
+        # compare_digest → 500 cho MỌI Bearer, cả khoá quản trị) và `pham_vi` sai kiểu (500 ở danh sách khoá).
+        # Chỉ nới trần độ dài nhãn: tệp do bản cũ ghi (chưa chặn nhãn dài) không được làm sập cả kho.
+        kiem_tep(du_lieu, nhan_toi_da=None)
+    except ValueError as e:
+        log.warning("Kho khoá khách sai cấu trúc (%s): %s", p, e)
+        raise LoiKhoKhoaKhach() from None
+    _KHOA_KHACH_CACHE = [dict(k) for k in du_lieu["khoa"]]
+    _CACHE_FILE_STAT = danh_tinh
+    _CO_THAY_DOI = False
     return _KHOA_KHACH_CACHE
+
+
+def kiem_tra_kho() -> None:
+    """Ném LoiKhoKhoaKhach nếu kho tồn tại mà không đọc được — cho đường cần kiểm TRƯỚC khi đổi trạng thái khác."""
+    with _KHOA_LUONG:
+        _doc_tu_dia_neu_can()
 
 
 def _ghi_ra_dia_khoi_tao() -> None:
@@ -164,6 +194,12 @@ def _ghi_ra_dia_khoi_tao() -> None:
 def dong_bo_dia() -> None:
     """Đồng bộ dữ liệu thay đổi từ bộ nhớ ra đĩa nếu có cờ _CO_THAY_DOI (chạy theo nhịp / shutdown)."""
     with _KHOA_LUONG:
+        if not _CO_THAY_DOI:
+            return
+        try:
+            _doc_tu_dia_neu_can()  # tệp đổi từ ngoài → nạp lại (bỏ đếm lượt); hỏng → KHÔNG ghi đè
+        except LoiKhoKhoaKhach:
+            return  # không ném: vòng nền và lúc tắt tiến trình gọi hàm này
         if _CO_THAY_DOI:
             _ghi_ra_dia_khoi_tao()
 
@@ -192,8 +228,19 @@ _ID_KHOA = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _BAM_HOP_LE = re.compile(r"[0-9a-f]{64}")
 
 
-def kiem_tep(du_lieu: Any) -> list[dict[str, Any]]:
-    """Kiểm THUẦN (không ghi) nội dung khoa_khach.json — dùng cho khôi phục, cùng hình dạng `tao_khoa` ghi ra.
+#: Trần độ dài nhãn khoá — kiểm ở biên tạo/sửa và ở khôi phục (mọi khoá ứng dụng ghi ra phải khôi phục lại được).
+TOI_DA_NHAN = 200
+
+
+def _kiem_nhan(nhan: Any) -> str:
+    if not isinstance(nhan, str) or len(nhan) > TOI_DA_NHAN:
+        raise LoiOpenAI(400, f"Trường «nhan» phải là chuỗi tối đa {TOI_DA_NHAN} ký tự.", code="invalid_value")
+    return nhan
+
+
+def kiem_tep(du_lieu: Any, *, nhan_toi_da: int | None = TOI_DA_NHAN) -> list[dict[str, Any]]:
+    """Kiểm THUẦN (không ghi) nội dung khoa_khach.json — bộ kiểm DUY NHẤT cho cả khôi phục và lượt nạp tệp từ đĩa
+    (`_doc_tu_dia_neu_can`, với `nhan_toi_da=None`), cùng hình dạng `tao_khoa` ghi ra.
 
     Mọi trường quyết định quyền đều BẮT BUỘC và đúng kiểu: thiếu `pham_vi`/`bat` không được rơi về mặc định «*»/bật
     của đường xác thực. Trả danh sách bản ghi chuẩn hoá; sai → ValueError nêu vị trí và quy tắc, không chép giá trị.
@@ -213,14 +260,15 @@ def kiem_tep(du_lieu: Any) -> list[dict[str, Any]]:
             raise ValueError(f"khoa[{i}]: «id» hoặc «bam» trùng mục trước")
         if not isinstance(k.get("bat"), bool):
             raise ValueError(f"khoa[{i}]: «bat» phải là true/false")
-        pv = k.get("pham_vi")
-        if (not isinstance(pv, list) or not pv
-                or not all(isinstance(x, str) and (x == "*" or MA_KHA_NANG.match(x)) for x in pv)):
-            raise ValueError(f"khoa[{i}]: «pham_vi» phải là danh sách khác rỗng gồm «*» hoặc mã khả năng")
+        try:  # CÙNG bộ kiểm với đường tạo/sửa khoá — tệp khôi phục không được hẹp hơn hay rộng hơn thứ đã ghi ra
+            pv = chuan_hoa_pham_vi(k.get("pham_vi"), cho_phep_rong=False)
+        except LoiOpenAI:
+            raise ValueError(f"khoa[{i}]: «pham_vi» phải là danh sách khác rỗng (tối đa {TOI_DA_PHAN_TU_PHAM_VI} phần "
+                             "tử) gồm «*» hoặc mã khả năng (có thể kèm «:<mã>»)") from None
         nhan = k.get("nhan", "Khoá khách")
         so_luot = k.get("so_luot", 0)
-        if not isinstance(nhan, str) or len(nhan) > 200:
-            raise ValueError(f"khoa[{i}]: «nhan» phải là chuỗi ≤ 200 ký tự")
+        if not isinstance(nhan, str) or (nhan_toi_da is not None and len(nhan) > nhan_toi_da):
+            raise ValueError(f"khoa[{i}]: «nhan» phải là chuỗi ≤ {TOI_DA_NHAN} ký tự")
         if not isinstance(so_luot, int) or isinstance(so_luot, bool) or so_luot < 0:
             raise ValueError(f"khoa[{i}]: «so_luot» phải là số nguyên ≥ 0")
         for t in ("tao_luc", "dung_cuoi"):
@@ -231,73 +279,139 @@ def kiem_tep(du_lieu: Any) -> list[dict[str, Any]]:
             raise ValueError(f"khoa[{i}]: «chu_id» phải là null hoặc mã người dùng hợp lệ")
         id_da_thay.add(k["id"])
         bam_da_thay.add(k["bam"])
-        ra.append({"id": k["id"], "nhan": nhan, "bat": k["bat"], "pham_vi": list(dict.fromkeys(pv)),
+        ra.append({"id": k["id"], "nhan": nhan, "bat": k["bat"], "pham_vi": pv,
                    "tao_luc": k.get("tao_luc"), "dung_cuoi": k.get("dung_cuoi"), "so_luot": so_luot,
                    "bam": k["bam"], **({"chu_id": chu_id} if chu_id else {})})
     return ra
 
 
+def _rong_hon(moi: list[str], cu: list[str] | None) -> bool:
+    """Phạm vi `moi` cho quyền mà `cu` không cho (khoá mới: `cu=None`, chỉ «*» mới là cờ đỏ)."""
+    if cu is None:
+        return "*" in moi
+    return "*" not in cu and ("*" in moi or any(x not in cu for x in moi))
+
+
+def _chu_cua(chu_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    """(bản ghi chủ, None) hoặc (None, lý do chủ không dùng được). Gọi NGOÀI _KHOA_LUONG."""
+    from app import nguoi_dung
+    try:
+        nd = nguoi_dung.tim_theo_id(chu_id)
+    except nguoi_dung.LoiKhoNguoiDung:
+        return None, "kho người dùng không đọc được"
+    if nd is None:
+        return None, "chủ không tồn tại trên máy này"
+    if nd.get("bat", True) is not True:
+        return None, "chủ đang bị tắt"
+    return nd, None
+
+
 def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
     """So danh sách khoá (đã qua `kiem_tep`) với khoá đang có — cho người duyệt khôi phục thấy mình chấp nhận gì:
-    khoá MỚI (có thể là băm do người khác chọn = cửa vào /v1), khoá cùng id mà ĐỔI BĂM, đổi phạm vi/bật/nhãn, và
-    khoá đang có sẽ MẤT. Không trả băm."""
+    khoá MỚI (có thể là băm do người khác chọn = cửa vào /v1), khoá cùng id mà ĐỔI BĂM, ĐỔI CHỦ (`doi_chu`), đổi phạm
+    vi/bật/nhãn, và khoá đang có sẽ MẤT. Mỗi mục nêu `chu_id` (và `chu_id_hien_tai` nếu khoá đang có), cờ
+    `mo_rong_pham_vi` (khoá mới «*», hoặc phạm vi rộng hơn bản đang có), cờ `bat_lai` (khoá thô đang TẮT sẽ được bật)
+    và `canh_bao` (khoá mới/đổi có «*», bật lại, chủ không dùng được → khoá sẽ bị đóng sau khôi phục). `bo_chu=True` khi khoá thô ĐANG có chủ (khớp theo id HOẶC theo băm — băm mới là thứ xác
+    thực, id chỉ là nhãn) mà bản sao lưu bỏ/đổi chủ — sao_luu chặn mục đó. Kho hiện tại hỏng → mọi khoá là «moi», `kho_hien_tai_hong=True` (khôi phục là đường cứu,
+    không được chặn nó). Không trả băm."""
+    hong = False
     with _KHOA_LUONG:
-        cu = {k.get("id"): dict(k) for k in _doc_tu_dia_neu_can()}
+        try:
+            cu = {k.get("id"): dict(k) for k in _doc_tu_dia_neu_can()}
+        except LoiKhoKhoaKhach:
+            cu, hong = {}, True
+    cu_theo_bam = {c.get("bam"): c for c in cu.values()}
     ds = []
     for k in moi:
         c = cu.get(k["id"])
+        dang_co = [x for x in (c, cu_theo_bam.get(k["bam"])) if x is not None]  # cùng id HOẶC cùng khoá thô
+        chu_dang_co = {x.get("chu_id") for x in dang_co if x.get("chu_id")}
         if c is None:
             tt = "moi"
         elif c.get("bam") != k["bam"]:
             tt = "doi_bam"
+        elif c.get("chu_id") != k.get("chu_id"):
+            tt = "doi_chu"
         elif (c.get("bat", True), list(c.get("pham_vi", ["*"])), c.get("nhan")) != (k["bat"], k["pham_vi"], k["nhan"]):
             tt = "doi"
         else:
             tt = "giu_nguyen"
-        ds.append({"id": k["id"], "nhan": k["nhan"], "bat": k["bat"], "pham_vi": list(k["pham_vi"]), "trang_thai": tt})
+        muc = {"id": k["id"], "nhan": k["nhan"], "bat": k["bat"], "pham_vi": list(k["pham_vi"]),
+               "chu_id": k.get("chu_id"), "trang_thai": tt,
+               "mo_rong_pham_vi": _rong_hon(k["pham_vi"], None if c is None else list(c.get("pham_vi", ["*"]))),
+               "bat_lai": k["bat"] and any(x.get("bat", True) is False for x in dang_co),
+               "canh_bao": None, "bo_chu": any(ch != k.get("chu_id") for ch in chu_dang_co)}
+        if c is not None:
+            muc["chu_id_hien_tai"] = c.get("chu_id")
+        canh_bao = []
+        if tt != "giu_nguyen" and "*" in k["pham_vi"]:
+            canh_bao.append("phạm vi «*» — mọi khả năng, kể cả khả năng của module cài sau này")
+        if muc["bat_lai"]:
+            canh_bao.append("khoá đang TẮT sẽ được BẬT LẠI")
+        if k.get("chu_id"):
+            _, ly_do = _chu_cua(k["chu_id"])
+            if ly_do:
+                canh_bao.append(f"{ly_do} — khoá sẽ bị đóng sau khôi phục (401) cho tới khi chủ có mặt và được bật")
+        muc["canh_bao"] = "; ".join(canh_bao) or None
+        ds.append(muc)
     con = {k["id"] for k in moi}
-    return {"so_khoa": len(moi), "khoa": ds, "se_mat": sorted(str(i) for i in cu if i not in con)}
+    return {"so_khoa": len(moi), "khoa": ds, "se_mat": sorted(str(i) for i in cu if i not in con),
+            "kho_hien_tai_hong": hong}
 
 
-def tim_theo_bam(bam_tim: str) -> dict[str, Any] | None:
-    """Tra khoá khách theo băm SHA-256 (đường tra thật của xác thực, sau bước băm). None nếu không có.
+def ap_chinh_sach_chu(k: dict[str, Any]) -> dict[str, Any]:
+    """Chính sách DUY NHẤT từ bản ghi thô ra khoá hiệu lực (bản sao). Khoá không chủ → nguyên. Khoá có chủ: chủ bị
+    tắt/xoá hoặc kho người dùng đọc lỗi → `bat=False` (đóng khi lỗi); còn lại `pham_vi` = GIAO(phạm vi khoá, trần
+    HIỆN TẠI của chủ) — hạ trần/hạ vai thu hẹp khoá đã cấp ngay ở lượt sau. Gọi NGOÀI _KHOA_LUONG."""
+    k = dict(k)
+    chu_id = k.get("chu_id")
+    if not chu_id:
+        return k
+    from app import nguoi_dung
+    nd, _ = _chu_cua(chu_id)
+    if nd is None:
+        k["bat"] = False
+    else:
+        k["pham_vi"] = giao_pham_vi(list(k.get("pham_vi", ["*"])), nguoi_dung.tran_pham_vi(nd))
+    return k
 
-    Khoá có chủ (`chu_id`): chủ bị tắt/xoá hoặc kho người dùng đọc lỗi → bản sao `bat=False` (401, đóng khi lỗi);
-    còn lại → bản sao có `pham_vi` = GIAO(phạm vi khoá, trần HIỆN TẠI của chủ) — hạ trần/hạ vai thu hẹp khoá đã
-    cấp ngay ở lượt sau, không cần sửa khoá. Thứ tự khoá: khoá khách rồi mới tới khoá người dùng; module
-    nguoi_dung không bao giờ gọi vào đây khi đang giữ khoá của nó.
-    """
-    if not isinstance(bam_tim, str):
+
+def ban_ghi_theo_bam(bam_tim: str) -> dict[str, Any] | None:
+    """Bản ghi THÔ (bản sao, chưa áp chính sách chủ) theo băm — thứ đã ghi trên đĩa. Kho hỏng → LoiKhoKhoaKhach."""
+    if not isinstance(bam_tim, str) or not _BAM_HOP_LE.fullmatch(bam_tim):
         return None
     with _KHOA_LUONG:
-        ds = _doc_tu_dia_neu_can()
-        for k in ds:
+        for k in _doc_tu_dia_neu_can():
             if hmac.compare_digest(bam_tim.encode("ascii"), str(k.get("bam", "")).encode("ascii")):
-                chu_id = k.get("chu_id")
-                if chu_id:
-                    from app import nguoi_dung
-                    try:
-                        nd = nguoi_dung.tim_theo_id(chu_id)
-                    except nguoi_dung.LoiKhoNguoiDung:
-                        nd = None
-                    k_copy = dict(k)
-                    if nd is None or nd.get("bat", True) is not True:
-                        k_copy["bat"] = False
-                        return k_copy
-                    k_copy["pham_vi"] = giao_pham_vi(list(k.get("pham_vi", ["*"])), nguoi_dung.tran_pham_vi(nd))
-                    return k_copy
-                return k
+                return dict(k)
     return None
 
 
-def tim_theo_khoa_tho(khoa_tho: str) -> dict[str, Any] | None:
+def tim_theo_bam(bam_tim: str, *, nem_khi_kho_hong: bool = False) -> dict[str, Any] | None:
+    """Tra khoá khách theo băm SHA-256 (đường tra thật của xác thực, sau bước băm): bản ghi thô qua
+    `ap_chinh_sach_chu`. None nếu không có — và cả khi kho khoá khách hỏng (ĐÓNG: không cấp quyền, không 500; khoá
+    quản trị vẫn dùng được để khôi phục). Tra chủ chạy sau khi nhả khoá khoá khách."""
+    try:
+        k = ban_ghi_theo_bam(bam_tim)
+    except LoiKhoKhoaKhach:
+        if nem_khi_kho_hong:  # bên gọi cần phân biệt «không có khoá này» với «máy chủ không đọc được kho»
+            raise
+        return None
+    return None if k is None else ap_chinh_sach_chu(k)
+
+
+#: Dạng khoá khách do `tao_khoa` sinh: «w2a_» + token_urlsafe(32). Dùng để biết một Bearer CÓ THỂ là khoá khách.
+DANG_KHOA_THO = re.compile(r"w2a_[A-Za-z0-9_-]{43}")
+
+
+def tim_theo_khoa_tho(khoa_tho: str, *, nem_khi_kho_hong: bool = False) -> dict[str, Any] | None:
     """Đường nóng: tìm khoá khách theo chuỗi khoá thô (tính sha256 rồi tra bằng `tim_theo_bam`).
 
     Không ghi đĩa. Trả về dict khoá (bản sao hoặc tham chiếu an toàn) hoặc None.
     """
     if not khoa_tho or not isinstance(khoa_tho, str):
         return None
-    return tim_theo_bam(hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest())
+    return tim_theo_bam(hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest(), nem_khi_kho_hong=nem_khi_kho_hong)
 
 
 def ghi_nhan_su_dung(id_khoa: str) -> None:
@@ -360,18 +474,28 @@ def _sach_khoa(k: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _kem_hieu_luc(ds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bản ghi an toàn kèm `pham_vi_hieu_luc` — đúng thứ xác thực sẽ cấp (cùng `ap_chinh_sach_chu`); khoá tắt hoặc chủ
+    không dùng được → []. `pham_vi` giữ nguyên là phạm vi gốc đã lưu."""
+    ra = []
+    for k in ds:
+        hl = ap_chinh_sach_chu(k)
+        ra.append({**_sach_khoa(k), "pham_vi_hieu_luc": list(hl.get("pham_vi", ["*"])) if hl.get("bat", True) else []})
+    return ra
+
+
 def danh_sach_khoa() -> list[dict[str, Any]]:
     """Liệt kê mọi khoá khách (không băm, không khoá thô)."""
     with _KHOA_LUONG:
-        ds = _doc_tu_dia_neu_can()
-        return [_sach_khoa(k) for k in ds]
+        ds = [dict(k) for k in _doc_tu_dia_neu_can()]
+    return _kem_hieu_luc(ds)
 
 
 def danh_sach_khoa_theo_chu(chu_id: str) -> list[dict[str, Any]]:
     """Liệt kê khoá khách thuộc về một người dùng cụ thể."""
     with _KHOA_LUONG:
-        ds = _doc_tu_dia_neu_can()
-        return [_sach_khoa(k) for k in ds if k.get("chu_id") == chu_id]
+        ds = [dict(k) for k in _doc_tu_dia_neu_can() if k.get("chu_id") == chu_id]
+    return _kem_hieu_luc(ds)
 
 
 def xoa_khoa_theo_chu(chu_id: str) -> int:
@@ -396,7 +520,7 @@ def tao_khoa(
     `pham_vi=None` (không nêu) = «*» — hợp đồng cũ của đường quản trị. Đã nêu thì phải qua `chuan_hoa_pham_vi`
     (danh sách rỗng → 400, KHÔNG thành «*»). Đường người dùng luôn truyền danh sách tường minh đã kiểm trần.
     """
-    nhan_chuan = str(nhan or "").strip() or "Khoá khách"
+    nhan_chuan = _kiem_nhan("" if nhan is None else nhan).strip() or "Khoá khách"
     pv = ["*"] if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
     khoa_tho = f"w2a_{secrets.token_urlsafe(32)}"
     bam = hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest()
@@ -443,6 +567,7 @@ def sua_khoa(
     if bat is not None and not isinstance(bat, bool):
         raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false.", code="invalid_value")
     pv_moi = None if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
+    nhan_moi = None if nhan is None else _kiem_nhan(nhan).strip()
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
         tim_thay = None
@@ -455,8 +580,8 @@ def sua_khoa(
 
         if bat is not None:
             tim_thay["bat"] = bat
-        if nhan is not None:
-            tim_thay["nhan"] = str(nhan).strip() or tim_thay.get("nhan", "Khoá khách")
+        if nhan_moi is not None:
+            tim_thay["nhan"] = nhan_moi or tim_thay.get("nhan", "Khoá khách")
         if pv_moi is not None:
             tim_thay["pham_vi"] = pv_moi
 

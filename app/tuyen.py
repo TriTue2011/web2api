@@ -54,6 +54,15 @@ QT = [Depends(can_quan_tri)]
 V1_AUTH = [Depends(xac_thuc_v1)]
 PW = [Depends(can_phien_web)]
 
+
+def _khong_luu_dem(response: Response) -> None:
+    """Phản hồi mang bí mật MỘT LẦN (mật khẩu sinh ra, khoá thô, csrf): không cho trình duyệt/proxy lưu đệm —
+    cùng cách `POST /api/sao-luu` đã làm."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+KHONG_LUU = [Depends(_khong_luu_dem)]
+
 v1 = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 #: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
 #: trước nó). Thiếu nó thì mount StaticFiles ở gốc nuốt mất và trả 405 {"detail"} cho mọi POST lạ.
@@ -108,6 +117,21 @@ async def _than_json(request: Request) -> dict:
     if not isinstance(than, dict):
         raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
     return than
+
+
+def _lay_bool(than: dict, ten: str, mac_dinh: bool | None = False) -> bool | None:
+    """Lấy trường logic từ thân JSON của khách/quản trị: chỉ nhận đúng bool, vắng mặt hoặc null.
+
+    Ép kiểu lỏng (`bool("false")` → True) từng khiến chuỗi "false" bị coi là đồng ý/xác nhận.
+    Vắng mặt hoặc null → `mac_dinh` (mặc định False). Kiểu khác → 400 (theo mẫu kiểm trường
+    trong tệp này).
+    """
+    if ten not in than or than[ten] is None:
+        return mac_dinh
+    gia_tri = than[ten]
+    if not isinstance(gia_tri, bool):
+        raise LoiOpenAI(400, f"«{ten}» phải là true/false.", code="invalid_request")
+    return gia_tri
 
 
 def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
@@ -529,9 +553,9 @@ async def v1_chat(request: Request):
     # Đọc thân như dict THÔ (không qua mô hình Pydantic): mô hình sẽ lặng lẽ bỏ trường lạ
     # như chữ ký suy nghĩ hay trường riêng của nhà cung cấp.
     than = await _than_json(request)
+    stream = _lay_bool(than, "stream", False)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "trò chuyện", "chat")
-    stream = bool(than.get("stream"))
     ma, headers, noi_dung = await m.chat(than, stream)
     if ma == 200:
         if stream and hasattr(noi_dung, "__aiter__"):
@@ -838,6 +862,9 @@ async def v1_responses(request: Request):
     # phạm vi ngay sau khi biết chức năng, TRƯỚC khi tra model (khoá hẹp không dò được model nào tồn tại).
     kiem_tra_pham_vi(request, "anh", "anh_sua")
     than = await _than_json(request)
+    # Kiểm kiểu NGAY khi đọc thân, trước mọi việc tốn tài nguyên: sai kiểu mà để sau lệnh gọi module thì ảnh đã
+    # sinh (đã tốn hạn mức nhà cung cấp) rồi khách mới nhận 400.
+    stream = _lay_bool(than, "stream", False)
     tool = _kiem_tra_va_tach_tool_image_generation(than)
     prompt, input_images = _trich_xuat_responses_prompt_va_anh(than)
     sua_anh = bool(input_images)
@@ -880,7 +907,7 @@ async def v1_responses(request: Request):
     # Thân do LÕI dựng lại nên chỉ giữ tiêu đề thuộc không gian tên của chính web2api (vd x-web2api-route của combo);
     # mọi tiêu đề khác của module (set-cookie, server, tiêu đề tả thân cũ…) mặc định bị bỏ.
     tieu_de = {k: v for k, v in dict(headers).items() if k.lower().startswith("x-web2api-")}
-    if not bool(than.get("stream")):
+    if not stream:
         return JSONResponse(resp_obj, status_code=200, headers=tieu_de)
     return StreamingResponse(
         _sse_responses_anh(resp_obj),
@@ -1395,7 +1422,7 @@ def ds_khoa_khach():
     return {"ok": True, "khoa": khoa_khach_mod.danh_sach_khoa()}
 
 
-@khoa_khach.post("")
+@khoa_khach.post("", dependencies=KHONG_LUU)
 async def tao_khoa_khach(request: Request):
     than = await _than_json(request)
     ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
@@ -1410,7 +1437,7 @@ async def sua_khoa_khach(id_: str, request: Request):
     than = await _than_json(request)
     kq = khoa_khach_mod.sua_khoa(
         id_khoa=id_,
-        bat=than.get("bat"),
+        bat=_lay_bool(than, "bat", None),
         nhan=than.get("nhan"),
         pham_vi=than.get("pham_vi"),
     )
@@ -1425,7 +1452,7 @@ async def sua_khoa_khach_khong_path(request: Request):
         raise LoiOpenAI(400, "Thiếu trường «id» trong thân yêu cầu.")
     kq = khoa_khach_mod.sua_khoa(
         id_khoa=id_,
-        bat=than.get("bat"),
+        bat=_lay_bool(than, "bat", None),
         nhan=than.get("nhan"),
         pham_vi=than.get("pham_vi"),
     )
@@ -1583,7 +1610,7 @@ async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
     tham_so = than.get("tham_so") or {}
     if not isinstance(tham_so, dict):
         raise LoiOpenAI(400, "«tham_so» phải là đối tượng")
-    xac_nhan = bool(than.get("xac_nhan", False))
+    xac_nhan = _lay_bool(than, "xac_nhan", False)
     ly_do = str(than.get("ly_do") or "")
 
     so = _so(request)
@@ -1804,7 +1831,7 @@ def kiem_tra_thiet_lap():
     return {"can_thiet_lap": not nguoi_dung_mod.co_admin()}
 
 
-@thiet_lap.post("")
+@thiet_lap.post("", dependencies=KHONG_LUU)
 async def thuc_hien_thiet_lap(request: Request, response: Response):
     # Ngoại lệ mở có chủ đích: Thiết lập tài khoản admin lần đầu (chỉ chạy khi chưa có admin;
     # đã có admin trả 409 ngay và không xử lý thân; bảo vệ bằng mã thiết lập/khoá quản trị và giới hạn tần suất).
@@ -1889,20 +1916,49 @@ def _canh_bao_kho_hong_khi_dang_nhap() -> None:
     )
 
 
-@dang_nhap.post("")
+#: Nhật ký «tên đăng nhập sai mẫu»: tối đa một dòng mỗi IP mỗi 60 giây, nhớ tối đa 1024 IP (bỏ cũ nhất) — kẻ gửi
+#: dồn dập không đẩy trôi được dòng nhật ký khác, và RAM có trần.
+_TEN_SAI_LAN_GHI: dict[str, float] = {}
+
+
+def _ghi_ten_sai_mau(request: Request, ten: Any) -> None:
+    ip, _ = gioi_han_mod.ip_hieu_luc_phan_loai(request.client.host if request.client else "",
+                                               request.headers.get("x-forwarded-for"))
+    ip = ip or "khong-xac-dinh"
+    bay_gio = time.monotonic()
+    if bay_gio - _TEN_SAI_LAN_GHI.get(ip, -1e9) < 60:
+        return
+    if len(_TEN_SAI_LAN_GHI) >= 1024:
+        _TEN_SAI_LAN_GHI.pop(next(iter(_TEN_SAI_LAN_GHI)))
+    _TEN_SAI_LAN_GHI.pop(ip, None)
+    _TEN_SAI_LAN_GHI[ip] = bay_gio
+    mo_ta = _nhac_lai(ten[:200]) if isinstance(ten, str) else f"<{type(ten).__name__}>"
+    nhat_ky_mod.ghi("quan_tri", "canh_bao",
+                    f"Đăng nhập thất bại: tên đăng nhập không hợp lệ «{mo_ta}» từ IP {ip} (tối đa một dòng/phút/IP)",
+                    ip=ip)
+
+
+@dang_nhap.post("", dependencies=KHONG_LUU)
 async def dang_nhap_web(request: Request, response: Response):
     # Ngoại lệ mở có chủ đích: Đăng nhập giao diện web bằng mật khẩu (giới hạn tần suất IP,
     # khóa tên tài khoản sau 5 lần sai liên tiếp trong 15 phút, băm giả chống timing attack, lỗi 401 đồng nhất).
+    # KHÔNG chịu cổng IP quản trị TRƯỚC khi kiểm mật khẩu, có chủ đích: người dùng thường đăng nhập từ ngoài cổng.
+    # Tài khoản vai admin: mật khẩu đúng mà IP ngoài cổng → 403 ip_not_allowed, KHÔNG tạo phiên (phiên admin ngoài
+    # cổng chẳng dùng được gì — mọi chỗ dùng phiên admin đều chịu cổng: xac_thuc.can_phien_web, nguoi_goi). Kiểm SAU
+    # mật khẩu để sai mật khẩu vẫn là 401 đồng nhất (không lộ vai); 403 không lộ thêm gì so với 200 trước đây.
     gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
     phien_web_mod.kiem_tra_kho()  # kho phiên hỏng → 503 trước khi kiểm mật khẩu (không lộ gì về tài khoản)
 
     than = await _than_json(request)
-    ten_dang_nhap = than.get("ten_dang_nhap")
-    ten_dang_nhap = ten_dang_nhap.strip() if isinstance(ten_dang_nhap, str) else ""
+    # Tên không thể là tài khoản (sai mẫu, quá dài, sai kiểu) = cùng 401 đồng nhất + băm giả, và KHÔNG đi tiếp xuống
+    # bộ theo dõi sai/nhật ký: mọi cấu trúc trong RAM chỉ nhận khoá đã qua mẫu tên (≤ 32 ký tự).
+    ten_dang_nhap = nguoi_dung_mod.ten_co_the_ton_tai(than.get("ten_dang_nhap")) or ""
     mat_khau = than.get("mat_khau")
     mat_khau = mat_khau if isinstance(mat_khau, str) else ""  # sai kiểu = thiếu → cùng 401 đồng nhất
 
     if not ten_dang_nhap or not mat_khau:
+        if not ten_dang_nhap and than.get("ten_dang_nhap") not in (None, ""):
+            _ghi_ten_sai_mau(request, than.get("ten_dang_nhap"))
         await nguoi_dung_mod.chay_bam_gia()
         gioi_han_mod.ghi_loi_xac_thuc(request)
         raise LoiOpenAI(
@@ -1973,7 +2029,11 @@ async def dang_nhap_web(request: Request, response: Response):
             code="invalid_credentials",
         )
 
-    # 4. Thành công: reset bộ đếm sai theo tên, tạo phiên mới
+    # 4. Mật khẩu đúng: tài khoản admin chịu cổng IP quản trị trước khi có phiên (xem lý do ở đầu hàm)
+    if nd.get("vai") == "admin":
+        ip_cho_phep_mod.kiem_tra_ip_quan_tri(request)
+
+    # 5. Thành công: reset bộ đếm sai theo tên, tạo phiên mới
     nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap)
     phien, token_tho = phien_web_mod.tao_phien(nd["id"])
     phien_web_mod.dat_cookie_phien(response, request, token_tho)
@@ -1997,7 +2057,7 @@ def dang_xuat_web(request: Request, response: Response):
 
 # ───────────── TỰ PHỤC VỤ (can_phien_web) ─────────────
 
-@toi.get("")
+@toi.get("", dependencies=KHONG_LUU)
 def lay_thong_tin_toi(request: Request):
     nd = getattr(request.state, "nguoi_dung", {})
     phien = getattr(request.state, "phien_web", {})
@@ -2038,7 +2098,7 @@ def lay_khoa_toi(request: Request):
     return {"khoa": khoa_khach_mod.danh_sach_khoa_theo_chu(nd["id"])}
 
 
-@toi.post("/khoa")
+@toi.post("/khoa", dependencies=KHONG_LUU)
 async def tao_khoa_toi(request: Request):
     nd = getattr(request.state, "nguoi_dung", {})
     than = await _than_json(request)
@@ -2081,7 +2141,7 @@ def lay_danh_sach_nguoi_dung():
     return {"nguoi_dung": nguoi_dung_mod.danh_sach_nguoi_dung()}
 
 
-@nguoi_dung.post("")
+@nguoi_dung.post("", dependencies=KHONG_LUU)
 async def tao_nguoi_dung_moi(request: Request):
     than = await _than_json(request)
     vai = than.get("vai", "user")  # kiểu kiểm trong tao_nguoi_dung (kiem_vai), trần trong chuan_hoa_pham_vi
@@ -2133,7 +2193,7 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
     return {"nguoi_dung": ban_ghi}
 
 
-@nguoi_dung.post("/{id}/dat-lai-mat-khau")
+@nguoi_dung.post("/{id}/dat-lai-mat-khau", dependencies=KHONG_LUU)
 async def dat_lai_mat_khau(id: str):
     phien_web_mod.kiem_tra_kho()  # không đặt mật khẩu mới rồi mới 503 (mật khẩu mất, không ai biết)
     ban_ghi, mat_khau_moi = await nguoi_dung_mod.dat_lai_mat_khau_nguoi_dung(id)
@@ -2150,6 +2210,7 @@ async def dat_lai_mat_khau(id: str):
 @nguoi_dung.delete("/{id}")
 def xoa_tai_khoan(id: str):
     phien_web_mod.kiem_tra_kho()  # kiểm trước khi xoá: không để xoá xong người dùng rồi 503 bỏ dở khoá/phiên
+    khoa_khach_mod.kiem_tra_kho()  # cùng lý do: kho khoá hỏng → 503 TRƯỚC khi xoá người dùng
     nguoi_dung_mod.xoa_nguoi_dung(id)
     khoa_khach_mod.xoa_khoa_theo_chu(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)
