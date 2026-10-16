@@ -235,3 +235,30 @@ def test_nhat_ky_khong_ghi_bi_mat_hay_noi_dung(client):
     tat_ca = " ".join(str(d) for d in dong)
     assert BI_MAT_DUNG not in tat_ca
     assert "bi-mat-noi-dung-gia" not in tat_ca
+
+
+def test_wh1_so_sanh_bi_mat_thoi_gian_hang(client, monkeypatch):
+    """WH1: So sánh bí mật webhook bằng hmac.compare_digest (thời gian hằng); đột biến == phải đỏ."""
+    c, mod, so = client
+    that_compare = hmac.compare_digest
+    so_lan_goi = 0
+
+    def dem_compare(a, b):
+        nonlocal so_lan_goi
+        so_lan_goi += 1
+        return that_compare(a, b)
+
+    monkeypatch.setattr(webhook_mod.hmac, "compare_digest", dem_compare)
+
+    # 1. Gọi đường thật với bí mật ĐÚNG
+    so_lan_goi = 0
+    r_dung = _post(c, ma=BI_MAT_DUNG, json={"id_su_kien": "wh1-sk-dung"})
+    assert r_dung.status_code == 200
+    assert so_lan_goi >= 1, "hmac.compare_digest phải được gọi khi bí mật đúng"
+
+    # 2. Gọi đường thật với bí mật SAI
+    so_lan_goi = 0
+    r_sai = _post(c, ma=BI_MAT_SAI, json={"id_su_kien": "wh1-sk-sai"})
+    assert r_sai.status_code == 404
+    assert so_lan_goi >= 1, "hmac.compare_digest phải được gọi khi bí mật sai"
+

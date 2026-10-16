@@ -302,19 +302,19 @@ def test_b6_jpeg_quet_marker_chua_nhieu_byte_khong():
     assert kq["cao"] == 400
 
 
-def test_b2_kiem_zip_khai_gian_kich_thuoc():
-    # Zip có file_size khai báo 100 nhưng giải nén thật ra 10.000 bytes
-    that = b"X" * 10000
+def test_ta4_kiem_zip_khai_gian_kich_thuoc():
+    """TA4: Lệch file_size so với số byte giải nén thật (so_byte_muc != info.file_size); đột biến phải đỏ."""
+    # Tạo tệp zip với DEFLATE: dữ liệu thật 100 bytes
+    that = b"B" * 100
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("gian_lan.txt", that)
     zip_bytes = bytearray(buf.getvalue())
 
-    # Sửa uncompressed_size (10000 -> 100) trong Central Directory và Local Header
-    len_that = struct.pack("<I", 10000)
-    len_gia = struct.pack("<I", 100)
+    # Sửa uncompressed_size (100 -> 200) trong Central Directory và Local Header
+    len_that = struct.pack("<I", 100)
+    len_gia = struct.pack("<I", 200)
 
-    # Thay trong toàn bộ chuỗi zip nhị phân
     idx = 0
     while True:
         pos = zip_bytes.find(len_that, idx)
@@ -325,7 +325,10 @@ def test_b2_kiem_zip_khai_gian_kich_thuoc():
 
     with pytest.raises(LoiTep) as exc:
         kiem_zip(bytes(zip_bytes))
-    assert exc.value.ma in ("khai_gian_kich_thuoc", "zip_hong")
+    assert exc.value.ma == "khai_gian_kich_thuoc"
+
+
+test_b2_kiem_zip_khai_gian_kich_thuoc = test_ta4_kiem_zip_khai_gian_kich_thuoc
 
 
 def test_b2_kiem_zip_chan_zip_long():

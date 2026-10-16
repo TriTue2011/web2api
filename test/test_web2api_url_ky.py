@@ -231,3 +231,87 @@ def test_khong_lo_khoa_quan_tri_trong_url():
     assert "admin_key" not in url_da_ky
     assert "w2a_" not in url_da_ky
     assert "Authorization" not in url_da_ky
+
+
+def test_uk4_kiem_chu_ky_dung_thoi_gian_hang(monkeypatch):
+    """UK4: kiem_chu_ky so sánh chữ ký bằng hmac.compare_digest; đột biến == phải đỏ."""
+    import hmac
+    import app.url_ky as url_ky_mod
+    that_compare = hmac.compare_digest
+    so_lan_goi = 0
+
+    def dem_compare(a, b):
+        nonlocal so_lan_goi
+        so_lan_goi += 1
+        return that_compare(a, b)
+
+    monkeypatch.setattr(url_ky_mod.hmac, "compare_digest", dem_compare)
+
+    duong = "/media/anh.png"
+    url_dung = ky_url(duong, het_han_giay=300, phuong_thuc="GET")
+
+    # 1. Gọi với chữ ký ĐÚNG
+    so_lan_goi = 0
+    assert kiem_chu_ky("GET", url_dung) is True
+    assert so_lan_goi >= 1, "hmac.compare_digest phải được gọi khi chữ ký đúng"
+
+    # 2. Gọi với chữ ký SAI
+    so_lan_goi = 0
+    idx = url_dung.find("_ky=")
+    char_cu = url_dung[idx + 4]
+    char_moi = "0" if char_cu != "0" else "1"
+    url_sai = url_dung[:idx + 4] + char_moi + url_dung[idx + 5:]
+    assert kiem_chu_ky("GET", url_sai) is False
+    assert so_lan_goi >= 1, "hmac.compare_digest phải được gọi khi chữ ký sai"
+
+
+def test_uk6_chuan_hoa_query_chuan_tac(monkeypatch):
+    """UK6: Tham số query đảo thứ tự, lặp, rỗng, %20 vs + phải cho chữ ký giống nhau và kiểm hợp lệ."""
+    # Cố định thời gian để hai lần ký sinh cùng _het_han
+    moc_tg = 1700000000.0
+    monkeypatch.setattr(time, "time", lambda: moc_tg)
+
+    # 1. ?a=1&b=2 và ?b=2&a=1 phải cho chữ ký GIỐNG nhau và cả hai kiem_chu_ky = True
+    u_ab = ky_url("/media/anh.png?a=1&b=2", het_han_giay=300)
+    u_ba = ky_url("/media/anh.png?b=2&a=1", het_han_giay=300)
+
+    parsed_ab = urllib.parse.urlsplit(u_ab)
+    parsed_ba = urllib.parse.urlsplit(u_ba)
+    qs_ab = urllib.parse.parse_qs(parsed_ab.query)
+    qs_ba = urllib.parse.parse_qs(parsed_ba.query)
+
+    assert qs_ab["_ky"][0] == qs_ba["_ky"][0], "Chữ ký phải giống nhau khi tham số khác thứ tự"
+    assert kiem_chu_ky("GET", u_ab) is True
+    assert kiem_chu_ky("GET", u_ba) is True
+
+    # Tráo query string nhưng giữ chữ ký: URL gọi bằng ?b=2&a=1 với _ky của u_ab vẫn True
+    u_trao = f"/media/anh.png?b=2&a=1&_het_han={qs_ab['_het_han'][0]}&_ky={qs_ab['_ky'][0]}"
+    assert kiem_chu_ky("GET", u_trao) is True
+
+    # 2. Tham số lặp: a=1&a=2 và a=2&a=1 khác thứ tự
+    u_lap1 = ky_url("/media/anh.png?a=1&a=2", het_han_giay=300)
+    u_lap2 = ky_url("/media/anh.png?a=2&a=1", het_han_giay=300)
+    qs_lap1 = urllib.parse.parse_qs(urllib.parse.urlsplit(u_lap1).query)
+    qs_lap2 = urllib.parse.parse_qs(urllib.parse.urlsplit(u_lap2).query)
+    assert qs_lap1["_ky"][0] == qs_lap2["_ky"][0], "Chữ ký phải giống nhau với tham số lặp khác thứ tự"
+    assert kiem_chu_ky("GET", u_lap1) is True
+    assert kiem_chu_ky("GET", u_lap2) is True
+
+    # 3. Giá trị rỗng: a=&b=2 và b=2&a=
+    u_rong1 = ky_url("/media/anh.png?a=&b=2", het_han_giay=300)
+    u_rong2 = ky_url("/media/anh.png?b=2&a=", het_han_giay=300)
+    qs_rong1 = urllib.parse.parse_qs(urllib.parse.urlsplit(u_rong1).query)
+    qs_rong2 = urllib.parse.parse_qs(urllib.parse.urlsplit(u_rong2).query)
+    assert qs_rong1["_ky"][0] == qs_rong2["_ky"][0], "Chữ ký phải giống nhau với giá trị rỗng"
+    assert kiem_chu_ky("GET", u_rong1) is True
+    assert kiem_chu_ky("GET", u_rong2) is True
+
+    # 4. Mã hoá %20 vs +: parse_qsl đều chuẩn hoá thành dấu cách và urlencode thành +
+    u_space_pct = ky_url("/media/anh.png?q=hello%20world", het_han_giay=300)
+    u_space_plus = ky_url("/media/anh.png?q=hello+world", het_han_giay=300)
+    qs_pct = urllib.parse.parse_qs(urllib.parse.urlsplit(u_space_pct).query)
+    qs_plus = urllib.parse.parse_qs(urllib.parse.urlsplit(u_space_plus).query)
+    assert qs_pct["_ky"][0] == qs_plus["_ky"][0], "Chữ ký phải giống nhau giữa %20 và +"
+    assert kiem_chu_ky("GET", u_space_pct) is True
+    assert kiem_chu_ky("GET", u_space_plus) is True
+
