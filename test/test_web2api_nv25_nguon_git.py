@@ -11,6 +11,7 @@ NG1 (app/nguon_git.py ~375): _doc_blob phát hiện nội dung blob không khớ
 from __future__ import annotations
 
 import asyncio
+import httpx
 
 import pytest
 from starlette.applications import Starlette
@@ -115,6 +116,68 @@ def test_ng2_redirect_tarball_khong_ro_token_sang_host_la(gh, du_lieu, monkeypat
     assert ho_so_xau.get("so_lan") == 1, f"máy chủ xấu phải nhận đúng 1 yêu cầu: {ho_so_xau}"
     assert ho_so_xau.get("authorization") is None, \
         f"RÒ TOKEN GitHub sang host lạ qua redirect: {ho_so_xau.get('authorization')!r}"
+
+
+def test_ng2_tai_tarball_l5_redirect_tuong_doi_ghep_url_goc():
+    """L5: url_tiep dùng url_goc để ghép Location tương đối, không dùng r.url (IP trần)."""
+    ng = NguonGit.__new__(NguonGit)
+    ng._khach = None
+    ng.trang_thai = {}
+    ng.token = lambda: None
+
+    cac_yeu_cau = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cac_yeu_cau.append(request)
+        if len(cac_yeu_cau) == 1:
+            # Mô phỏng TransportGhimIp ghi đè request.url thành IP
+            r = httpx.Response(302, headers={"Location": "/codeload/tarball/main.tar.gz"}, request=request)
+            r.request.url = httpx.URL("https://140.82.121.4/repos/chu-may/repo/tarball/" + "a" * 40)
+            return r
+        return httpx.Response(200, content=b"tarball-content")
+
+    ng._client = lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("app.nguon_git.api_github", lambda: "https://api.github.com")
+        asyncio.run(ng._tai_tarball("chu-may/repo", "a" * 40))
+
+    assert len(cac_yeu_cau) == 2
+    yc2 = cac_yeu_cau[1]
+    # L5: Host của yêu cầu 2 phải là api.github.com (từ url_goc), KHÔNG phải IP trần 140.82.121.4
+    assert yc2.url.host == "api.github.com", \
+        f"L5 vi phạm: url_tiep bị trỏ vào IP trần do dùng r.url: {yc2.url}"
+
+
+def test_ng2_redirect_ha_giao_thuc_khong_mang_authorization():
+    """L6: redirect hạ giao thức (https -> http cùng netloc) KHÔNG được gửi Authorization."""
+    ng = NguonGit.__new__(NguonGit)
+    ng._khach = None
+    ng.trang_thai = {}
+    ng.token = lambda: TOKEN_GITHUB_GIA
+
+    cac_yeu_cau = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cac_yeu_cau.append(request)
+        if len(cac_yeu_cau) == 1:
+            # Yêu cầu đầu: trả 302 hạ giao thức sang http://api.github.com/...
+            return httpx.Response(302, headers={"Location": "http://api.github.com/tai-tarball/main.tar.gz"}, request=request)
+        return httpx.Response(200, content=b"tarball-content")
+
+    ng._client = lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("app.nguon_git.api_github", lambda: "https://api.github.com")
+        asyncio.run(ng._tai_tarball("chu-may/repo", "a" * 40))
+
+    assert len(cac_yeu_cau) == 2
+    yc1, yc2 = cac_yeu_cau
+    assert yc1.headers.get("authorization") == f"Bearer {TOKEN_GITHUB_GIA}"
+    # L6: Yêu cầu 2 bị hạ giao thức sang http -> KHÔNG được mang Authorization
+    assert yc2.headers.get("authorization") is None, \
+        f"L6 vi phạm: Authorization vẫn bị gửi khi hạ giao thức sang HTTP: {yc2.headers.get('authorization')}"
+
 
 
 def test_ng1_doc_blob_sai_bam_tu_choi_422(gh, du_lieu):

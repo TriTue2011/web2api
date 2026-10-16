@@ -6,8 +6,12 @@
 import asyncio
 
 import pytest
+from starlette.applications import Starlette
+from starlette.responses import Response
+from starlette.routing import Route
 
-from app.nguon_git import NguonGit
+from app.nguon_git import LoiGit, NguonGit
+from gia import MayChuThat
 
 
 def test_client_nguon_git_co_ghim_ip():
@@ -25,27 +29,73 @@ def test_client_nguon_git_co_ghim_ip():
         asyncio.run(client.aclose())
 
 
-def test_302_toi_loopback_bi_chan():
-    """Kết nối tới 127.0.0.1 qua client NguonGit phải bị chặn (trừ khi test cho phép)."""
-    import os
-    os.environ.pop("WEB2API_TEST_CHO_PHEP_LOOPBACK", None)
+def test_302_toi_loopback_bi_chan(monkeypatch):
+    """Máy chủ giả trả 302 về metadata 169.254.169.254: _tai_tarball phải bắt và quấn thành LoiGit."""
+    async def tra_302_metadata(req):
+        return Response(status_code=302, headers={"Location": "http://169.254.169.254/latest/meta-data/"})
 
-    from app.chuyen_tiep import LoiDichBiChan
+    app = Starlette(routes=[
+        Route("/repos/{repo:path}/tarball/{sha:str}", tra_302_metadata)
+    ])
 
-    ng = NguonGit.__new__(NguonGit)
-    ng._khach = None
-    client = ng._client()
+    with MayChuThat(app) as s:
+        monkeypatch.setenv("WEB2API_GITHUB_API", s.url)
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
 
-    async def chay():
-        try:
-            # Giả lập redirect tới 127.0.0.1 — transport phải chặn
-            req = client.build_request("GET", "http://127.0.0.1:9/tai.tar.gz")
-            with pytest.raises(Exception) as ei:
-                await client.send(req)
-            # Phải là lỗi chặn SSRF, không phải lỗi kết nối thông thường
-            assert "chan" in str(ei.value).lower() or isinstance(ei.value, LoiDichBiChan), \
-                f"Lỗi không phải do chặn SSRF: {ei.value}"
-        finally:
-            await client.aclose()
+        ng = NguonGit.__new__(NguonGit)
+        ng._khach = None
+        ng.trang_thai = {}
+        ng.token = lambda: None
 
-    asyncio.run(chay())
+        async def chay():
+            try:
+                with pytest.raises(LoiGit) as ei:
+                    await ng._tai_tarball("chu-may/repo-test", "0123456789abcdef0123456789abcdef01234567")
+                assert "LoiDichBiChan" in str(ei.value)
+            finally:
+                if ng._khach:
+                    await ng._khach.aclose()
+
+        asyncio.run(chay())
+
+
+def test_302_toi_loopback_thuc_bi_chan(monkeypatch):
+    """Máy chủ giả trả 302 về loopback 127.0.0.1: khi không cho phép loopback ở đích redirect, _tai_tarball ném LoiGit."""
+    from app import tu_xa
+    da_goi_lan_dau = False
+
+    def cho_phep_co_dieu_kien():
+        # Lần đầu (gọi tới s.url ở 127.0.0.1) cho phép; sau khi đã nhận 302 thì cấm loopback
+        if not da_goi_lan_dau:
+            return True
+        return False
+
+    async def tra_302_loopback(req):
+        nonlocal da_goi_lan_dau
+        da_goi_lan_dau = True
+        return Response(status_code=302, headers={"Location": "http://127.0.0.1:9/tai.tar.gz"})
+
+    app = Starlette(routes=[
+        Route("/repos/{repo:path}/tarball/{sha:str}", tra_302_loopback)
+    ])
+
+    monkeypatch.setattr(tu_xa, "cho_phep_loopback_cho_test", cho_phep_co_dieu_kien)
+
+    with MayChuThat(app) as s:
+        monkeypatch.setenv("WEB2API_GITHUB_API", s.url)
+
+        ng = NguonGit.__new__(NguonGit)
+        ng._khach = None
+        ng.trang_thai = {}
+        ng.token = lambda: None
+
+        async def chay():
+            try:
+                with pytest.raises(LoiGit) as ei:
+                    await ng._tai_tarball("chu-may/repo-test", "0123456789abcdef0123456789abcdef01234567")
+                assert "LoiDichBiChan" in str(ei.value)
+            finally:
+                if ng._khach:
+                    await ng._khach.aclose()
+
+        asyncio.run(chay())

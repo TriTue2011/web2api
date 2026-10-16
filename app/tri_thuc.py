@@ -280,7 +280,7 @@ async def lay_muc_luc(than: dict, so: SoModule) -> dict[str, Any]:
     do_sau_hieu_luc = tran_do_sau
     if "do_sau" in than and than["do_sau"] is not None:
         # Số nguyên chặt (loại bool/float/chuỗi; int(inf) từng lọt OverflowError thành 500).
-        do_sau_in = so_nguyen_chat(than["do_sau"], "do_sau", toi_thieu=1)
+        do_sau_in = so_nguyen_chat(than["do_sau"], "do_sau", toi_thieu=1, toi_da=100)
         do_sau_hieu_luc = min(do_sau_in, tran_do_sau)
 
     yc_module = {"tai_lieu": tai_lieu, "do_sau": do_sau_hieu_luc}

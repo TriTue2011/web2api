@@ -36,9 +36,10 @@ THU_MUC_ANH = Path(__file__).resolve().parent / "modules"
 class LoiSo(Exception):
     """Lỗi nghiệp vụ trả về cho quản trị: `ma` là mã HTTP gợi ý."""
 
-    def __init__(self, ma: int, thong_diep: str):
+    def __init__(self, ma: int, thong_diep: str, code: str | None = None):
         super().__init__(thong_diep)
         self.ma = ma
+        self.code = code
 
 
 def _van_tay_tu_xa(ban_ghi: dict, api_key: str | None) -> tuple:
@@ -444,8 +445,12 @@ class SoModule:
         async with self.khoa:
             if id_ in self.tu_xa:
                 m = self.dang_chay.pop(id_, None)
-                kho.xoa_tu_xa(id_)
-                kho.xoa_cai_dat_model_module(id_)
+                try:
+                    kho.xoa_tu_xa(id_)
+                    kho.xoa_cai_dat_model_module(id_)
+                except kho.KhoHong as e:
+                    raise LoiSo(500, f"Không xoá được module từ xa: {e} — khôi phục hoặc xoá tệp tu_xa.json hỏng",
+                                code="store_unreadable") from e
                 del self.tu_xa[id_]
                 self._vt_tu_xa.pop(id_, None)
                 if m is not None:
@@ -465,7 +470,7 @@ class SoModule:
                 kho.xoa_cai_dat(id_)
                 kho.xoa_cai_dat_model_module(id_)
             except kho.KhoHong as e:
-                raise LoiSo(500, str(e)) from e
+                raise LoiSo(500, str(e), code="store_unreadable") from e
             if km.nguon == "anh":
                 return {"ok": True, "id": id_, "ghi_chu": "đã gỡ cấu hình; mã đi kèm ảnh vẫn còn"}
             # Đổi tên trước rồi mới xoá: thư mục biến mất khỏi khám phá NGAY, xoá dở cũng không nạp lại nửa module.
@@ -491,7 +496,11 @@ class SoModule:
             if self.tim_theo_tien_to(tien_to):
                 raise LoiSo(409, f"tiền tố {tien_to!r} đã thuộc module {self.tim_theo_tien_to(tien_to)!r}")
             ban_ghi = {"id": id_, "ten": ten, "tien_to": tien_to, "base_url": base, "cai_luc": kho.bay_gio_iso()}
-            kho.luu_tu_xa(ban_ghi, api_key)
+            try:
+                kho.luu_tu_xa(ban_ghi, api_key)
+            except kho.KhoHong as e:
+                raise LoiSo(500, f"Không lưu được module từ xa: {e} — khôi phục hoặc xoá tệp tu_xa.json hỏng",
+                            code="store_unreadable") from e
             self.tu_xa[id_] = ban_ghi
             m = ModuleTuXa(ban_ghi, api_key)
             self._vt_tu_xa[id_] = _van_tay_tu_xa(ban_ghi, api_key)
@@ -528,11 +537,17 @@ class SoModule:
         if cho.exists():
             shutil.rmtree(cho, ignore_errors=True)
         os.rename(tam, cho)
-        kho.luu_cho_duyet_quyen(id_, {
-            "id": id_, "sha_commit": nguon.get("sha_commit"), "tree_sha": nguon.get("tree_sha"),
-            "diff": diff, "bam_diff": bam_diff(diff), "thu_muc": str(cho),
-            "phien_ban": mf_moi.get("phien_ban"), "luc": kho.bay_gio_iso(),
-        })
+        try:
+            kho.luu_cho_duyet_quyen(id_, {
+                "id": id_, "sha_commit": nguon.get("sha_commit"), "tree_sha": nguon.get("tree_sha"),
+                "diff": diff, "bam_diff": bam_diff(diff), "thu_muc": str(cho),
+                "phien_ban": mf_moi.get("phien_ban"), "luc": kho.bay_gio_iso(),
+            })
+        except kho.KhoHong as e:
+            if cho.exists():
+                shutil.rmtree(cho, ignore_errors=True)
+            raise LoiSo(500, f"Không lưu được yêu cầu chờ duyệt quyền: {e} — khôi phục hoặc xoá tệp cho_duyet_quyen.json hỏng",
+                        code="store_unreadable") from e
         nhat_ky.ghi("he_thong", "canh_bao",
                     f"Module {id_} có bản mới (commit {str(nguon.get('sha_commit'))[:12]}) "
                     f"xin thêm {len(diff['them'])} quyền — chưa kích hoạt, chờ quản trị duyệt",

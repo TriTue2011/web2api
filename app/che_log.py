@@ -1,75 +1,130 @@
-"""Che bí mật trong LOG HỆ THỐNG (stderr) ở gốc — NV13.
+"""Che bí mật trong LOG HỆ THỐNG (stderr) ở gốc — NV13 / NV26.
 
-Sổ `nhat_ky.ghi` đã che bằng `che_chuoi`, nhưng các dòng `log.warning/exception(... %s, e)` rải khắp
-`app/` ghi NGUYÊN lời nhắn lỗi; lỗi httpx hay chứa URL có token (vd `.../bot.../getUpdates`) ⇒ token
-nằm nguyên trong stderr.
-
-Nguyên tắc: MỘT bộ lọc ở gốc, dùng CHUNG `che_chuoi` (app/bien_loi.py) — không viết bộ che thứ hai,
-không sửa từng dòng log. Lọc áp SAU khi định dạng (`getMessage()`), và cả `exc_info`/traceback.
-
-LƯU Ý: Filter phải gắn vào HANDLER (không phải Logger) — Python chỉ kiểm filter của logger tạo
-record, không kiểm filter của logger cha khi lan truyền. Gắn vào handler gốc thì mọi logger con
-đều được lọc.
-
-Đăng ký: `cai_dat()` (gọi một lần ở app/main.py) bọc nhà máy tạo bản ghi log của Python, nên MỌI bản ghi
-đều được che bất kể handler nào in ra. Không gắn filter vào `logging.getLogger().handlers` vì dưới uvicorn
-logger gốc KHÔNG có handler (dòng log rơi vào `lastResort`) — vòng lặp trên danh sách rỗng sẽ không che gì.
+Lọc áp dụng ở nơi tạo bản ghi log (nhà máy toàn cục) hoặc qua filter gắn vào handler.
+Phân biệt định danh vận hành (tên model, đường dẫn, tên tệp) với khoá/token ngẫu nhiên.
 """
 
 from __future__ import annotations
 
 import logging
+import re
+from typing import Any
+
+from app import kho
+
+_TEN_BIEN_MOI_TRUONG = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")
+_DOAN_LIEN_MACH = re.compile(r"[A-Za-z0-9_\-]{20,}")
+_HEX_32 = re.compile(r"^[0-9a-fA-F]{32,}\Z")
+
+# Mẫu (d): bot URL / bot token, Bearer, Authorization, api_key=, token=, key=
+_MAU_BOT = re.compile(r"((?:/|\b)bot\d+:)([A-Za-z0-9_\-]+)")
+_MAU_AUTH = re.compile(r"(?i)\b(authorization\s*:\s*(?:bearer\s+)?)([A-Za-z0-9_\-./+=]+)")
+_MAU_BEARER = re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9_\-./+=]+)")
+_MAU_KEY = re.compile(r"(?i)\b((?:api_key|token|key)\s*[:=]\s*['\"]?)([A-Za-z0-9_\-./+=]+)(['\"]?)")
 
 
-def _che_chuoi(van_ban: str) -> str:
-    """Lấy che_chuoi muộn để tránh import vòng (bien_loi ↔ nhat_ky)."""
-    from app.bien_loi import che_chuoi
-    return che_chuoi(van_ban)
+def _la_khoa_ngau_nhien(s: str) -> bool:
+    """Kiểm tra hình khoá ngẫu nhiên hoặc băm hex:
+
+    (a) độ dài ≥ 20 VÀ có ≥ 3 trong 4 lớp {thường, HOA, số, -/_} VÀ có ≥ 1 số VÀ ≥ 1 HOA;
+    (b) toàn hex dài ≥ 32.
+    Định danh toàn HOA/số/gạch (tên biến môi trường) hoặc thuần chữ thường + gạch/chấm không bị coi là khoá.
+    """
+    if _TEN_BIEN_MOI_TRUONG.fullmatch(s):
+        return False
+    # (b) toàn hex dài ≥ 32 (băm, khoá hex)
+    if len(s) >= 32 and _HEX_32.fullmatch(s):
+        return True
+    # (a) độ dài ≥ 20 và có cả HOA lẫn số, cùng ít nhất một lớp nữa (thường hoặc gạch)
+    if len(s) >= 20:
+        co_thuong = any(c.islower() for c in s)
+        co_hoa = any(c.isupper() for c in s)
+        co_so = any(c.isdigit() for c in s)
+        co_gach = any(c in "-_" for c in s)
+        if co_hoa and co_so and (co_thuong or co_gach):
+            return True
+    return False
 
 
-def _che_doi_so(a):
-    """Chuỗi và đối tượng lỗi (httpx… hay mang URL có token) được che; số/bool/None giữ nguyên để `%d` còn chạy."""
-    if a is None or isinstance(a, (bool, int, float)):
-        return a
-    return _che_chuoi(a if isinstance(a, str) else str(a))
+def che_log(van_ban: str) -> str:
+    """Che bí mật trong log hệ thống theo hình khoá ngẫu nhiên, giữ nguyên định danh vận hành."""
+    if not van_ban:
+        return van_ban
+
+    # (c) trùng đúng giá trị khoá quản trị hiện hành
+    try:
+        from app import xac_thuc
+        khoa = xac_thuc.khoa_quan_tri()
+    except Exception:
+        khoa = ""
+    if khoa:
+        van_ban = van_ban.replace(khoa, kho.che(khoa))
+
+    # (d) cấu trúc bot URL, Bearer, Authorization, api_key=, token=, key=
+    van_ban = _MAU_BOT.sub(lambda m: m.group(1) + kho.che(m.group(2)), van_ban)
+    van_ban = _MAU_AUTH.sub(lambda m: m.group(1) + kho.che(m.group(2)), van_ban)
+    van_ban = _MAU_BEARER.sub(lambda m: m.group(1) + kho.che(m.group(2)), van_ban)
+    van_ban = _MAU_KEY.sub(lambda m: m.group(1) + kho.che(m.group(2)) + m.group(3), van_ban)
+
+    # (a) & (b) các đoạn liền mạch dạng token ngẫu nhiên hoặc hex
+    return _DOAN_LIEN_MACH.sub(
+        lambda m: kho.che(m.group()) if _la_khoa_ngau_nhien(m.group()) else m.group(), van_ban)
+
+
+def _che_doi_so(a: Any) -> Any:
+    """Chỉ che đối số str và đối tượng ngoại lệ; giữ nguyên mọi kiểu khác (Decimal, Path, số...)."""
+    if isinstance(a, str):
+        try:
+            return che_log(a)
+        except Exception:
+            return "<không che được>"
+    if isinstance(a, BaseException):
+        try:
+            return che_log(str(a))
+        except Exception:
+            return "<không che được>"
+    return a
 
 
 class CheBiMat(logging.Filter):
-    """Filter che bí mật cho mọi log record đi qua logger được gắn.
-
-    - Thông điệp và từng đối số của `%s` được che riêng (cấu trúc `args` được giữ).
-    - Ngoại lệ (`exc_info`): thay giá trị ngoại lệ bằng bản có thông điệp đã che, giữ nguyên
-      loại và traceback (vị trí mã vẫn đủ để tra, token không lọt).
-    - Luôn trả True: chỉ che, không chặn dòng nào.
-    """
+    """Filter che bí mật cho mọi log record đi qua logger/handler được gắn."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        # Che TỪNG phần, GIỮ cấu trúc `args`: formatter của uvicorn (access log) mở `record.args` thành bộ năm phần,
-        # nên không được gộp thành một chuỗi rồi đặt args=None.
         try:
-            if isinstance(record.msg, str):
-                record.msg = _che_chuoi(record.msg)
-            if isinstance(record.args, tuple):
-                record.args = tuple(_che_doi_so(a) for a in record.args)
-            elif isinstance(record.args, dict):
-                record.args = {k: _che_doi_so(v) for k, v in record.args.items()}
+            has_args = bool(record.args)
+            if not has_args:
+                # args rỗng (f-string hoặc log trực tiếp ngoại lệ): che msg
+                try:
+                    if isinstance(record.msg, str):
+                        record.msg = che_log(record.msg)
+                    else:
+                        record.msg = che_log(str(record.msg))
+                except Exception:
+                    record.msg = "<không che được>"
+            else:
+                # args khác rỗng: KHÔNG che chuỗi mẫu record.msg
+                if isinstance(record.args, tuple):
+                    record.args = tuple(_che_doi_so(a) for a in record.args)
+                elif isinstance(record.args, dict):
+                    record.args = {k: _che_doi_so(v) for k, v in record.args.items()}
         except Exception:
             pass
-        if record.exc_info:
-            exc_type, exc_val, exc_tb = record.exc_info
-            if exc_val is not None:
-                try:
-                    masked = _che_chuoi(str(exc_val))
-                except Exception:
-                    masked = ""
-                try:
-                    new_exc = exc_type(masked)
-                except Exception:
-                    new_exc = Exception(masked)
-                new_exc.__traceback__ = exc_tb
-                # Giữ chuỗi nguyên nhân để tra, nhưng các thông điệp trong đó cũng đã qua che
-                # ở lần ghi (không đệ quy sâu để tránh chậm đường nóng).
-                record.exc_info = (exc_type, new_exc, exc_tb)
+
+        # T1: không dựng lại ngoại lệ; che ở dạng văn bản exc_text, giữ nguyên record.exc_info
+        try:
+            if record.exc_info:
+                if not getattr(record, "exc_text", None):
+                    try:
+                        record.exc_text = che_log(logging.Formatter().formatException(record.exc_info))
+                    except Exception:
+                        record.exc_text = None
+                else:
+                    record.exc_text = che_log(record.exc_text)
+            if getattr(record, "stack_info", None):
+                record.stack_info = che_log(record.stack_info)
+        except Exception:
+            pass
+
         return True
 
 
