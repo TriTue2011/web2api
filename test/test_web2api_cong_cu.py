@@ -670,3 +670,53 @@ def test_10_hanh_dong_khong_tu_ha_rui_ro_cua_thuc_the():
     assert co_ghi == {"mo": "nguy_hiem", "bat": "nguy_hiem", "xem": "doc"}
     chi_doc = [t["x_web2api"]["hanh_dong"] for t in cong_cu.sinh_cong_cu(ds, duoc_ghi=False)]
     assert chi_doc == ["xem"]
+
+
+def test_11_lam_sach_luoc_do_loai_bo_nan_inf_va_khong_loi_500(moi_truong):
+    """Mục E: Lược đồ module chứa minimum/maximum/enum là NaN hoặc Infinity không gây 500 cho /api/cong-cu."""
+    client, data_dir, so = moi_truong
+    mod_path = data_dir / "modules" / "thiet-bi-cong-cu"
+    ghi_thu_muc(mod_path, mau_module_cong_cu())
+    client.post("/api/modules/nap-lai", headers=QT)
+    client.post("/api/modules/thiet-bi-cong-cu/cai", headers=QT, json={"cau_hinh": {}})
+
+    m = so.dang_chay["thiet-bi-cong-cu"]
+    async def thuc_the_nan(loc=None):
+        return [
+            {
+                "id": f"{m.tien_to}.cam_bien_nan",
+                "ten": "Cảm biến số dị",
+                "loai": "cam_bien",
+                "tinh_nang": [
+                    {
+                        "hanh_dong": "do_nhiet",
+                        "tham_so": {
+                            "type": "object",
+                            "properties": {
+                                "nhiet_do": {
+                                    "type": "number",
+                                    "minimum": float("nan"),
+                                    "maximum": float("inf"),
+                                    "enum": [1.0, float("nan"), float("-inf"), 2.0],
+                                }
+                            }
+                        }
+                    }
+                ],
+                "rui_ro_mac_dinh": "doc",
+            }
+        ]
+    m.thuc_the = thuc_the_nan
+    client.post(f"/api/thiet-bi/{m.tien_to}.cam_bien_nan/xac-nhan", headers=QT)
+
+    # Gọi /api/cong-cu qua HTTP bằng TestClient -> serialize ra JSONResponse không bị lỗi 500
+    r = client.get("/api/cong-cu", headers=QT)
+    assert r.status_code == 200
+    d = r.json()
+    assert "data" in d
+    tools = [t for t in d["data"] if t["x_web2api"]["hanh_dong"] == "do_nhiet"]
+    assert len(tools) == 1
+    props = tools[0]["function"]["parameters"]["properties"]["tham_so"]["properties"]
+    assert "minimum" not in props["nhiet_do"]
+    assert "maximum" not in props["nhiet_do"]
+    assert props["nhiet_do"]["enum"] == [1.0, 2.0]

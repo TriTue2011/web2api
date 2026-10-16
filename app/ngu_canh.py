@@ -76,17 +76,3 @@ def bat_buoc() -> NguCanh:
         )
     return nc
 
-
-def ngu_canh_noi_bo(nguon: NguonGoi = "tu_dong") -> NguCanh:
-    """Tạo ngữ cảnh nội bộ của lõi hệ thống."""
-    return NguCanh(
-        danh_tinh={"loai": "noi_bo", "id": "noi_bo", "pham_vi": ["*"]},
-        nguon=nguon,
-        pham_vi_hieu_luc=("*",),
-    )
-
-
-def dat_noi_bo(nguon: NguonGoi = "tu_dong") -> contextvars.Token[NguCanh | None]:
-    """Đặt ngữ cảnh nội bộ của lõi hệ thống."""
-    nc = ngu_canh_noi_bo(nguon=nguon)
-    return NGU_CANH.set(nc)

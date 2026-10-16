@@ -1681,7 +1681,12 @@ async def dat_rui_ro_thiet_bi(id_thuc_the: str, request: Request):
     so = _so(request)
     item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
     tn = item.get("tinh_nang") if item else None
-    thiet_bi_mod.luu_ghi_de_rui_ro(id_thuc_the, rui_ro, tinh_nang=tn)
+    thiet_bi_mod.luu_ghi_de_rui_ro(
+        id_thuc_the,
+        rui_ro,
+        tinh_nang=tn,
+        rui_ro_mac_dinh=item.get("rui_ro_mac_dinh") if item else None,
+    )
     nhat_ky_mod.ghi(
         "thiet_bi",
         "thong_tin",
@@ -1700,13 +1705,17 @@ async def xac_nhan_thuc_the_thiet_bi(id_thuc_the: str, request: Request):
     if not item:
         raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
     than = {}
-    try:
-        if int(request.headers.get("content-length", "0") or "0") > 0:
-            than = await _than_json(request)
-    except Exception:
-        pass
+    if int(request.headers.get("content-length", "0") or "0") > 0:
+        than = await _than_json(request)
     rui_ro = than.get("rui_ro")
-    thiet_bi_mod.xac_nhan_thuc_the(id_thuc_the, item.get("tinh_nang", []), rui_ro=rui_ro)
+    if rui_ro is not None and rui_ro not in thiet_bi_mod.RUI_RO_HOP_LE:
+        raise LoiOpenAI(400, f"Mức rủi ro không hợp lệ: {rui_ro!r} (hợp lệ: {sorted(thiet_bi_mod.RUI_RO_HOP_LE)})", code="invalid_request")
+    thiet_bi_mod.xac_nhan_thuc_the(
+        id_thuc_the,
+        item.get("tinh_nang", []),
+        rui_ro=rui_ro,
+        rui_ro_mac_dinh=item.get("rui_ro_mac_dinh"),
+    )
     nhat_ky_mod.ghi(
         "thiet_bi",
         "thong_tin",
@@ -1724,6 +1733,8 @@ async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
     tham_so = than.get("tham_so") or {}
     xac_nhan = _lay_bool(than, "xac_nhan", False)
     ly_do = str(than.get("ly_do") or "")
+    if len(ly_do) > 500:
+        raise LoiOpenAI(400, "Độ dài «ly_do» vượt quá giới hạn cho phép (tối đa 500 ký tự)", code="invalid_request")
     so = _so(request)
 
     ma, kq = await thiet_bi_mod.thuc_hien_hanh_dong_loi(
@@ -1751,7 +1762,14 @@ async def danh_sach_phe_duyet(request: Request):
 async def xu_ly_duyet(pd_id: str, request: Request):
     so = _so(request)
     nguoi_duyet = getattr(request.state, "nguoi_goi", "quan_tri")
-    return await thiet_bi_mod.duyet_phe_duyet(pd_id, so, nguoi_duyet=nguoi_duyet)
+    bam_mong_doi = None
+    if int(request.headers.get("content-length", "0") or "0") > 0:
+        try:
+            than = await _than_json(request)
+            bam_mong_doi = than.get("bam")
+        except Exception:
+            pass
+    return await thiet_bi_mod.duyet_phe_duyet(pd_id, so, nguoi_duyet=nguoi_duyet, bam_mong_doi=bam_mong_doi)
 
 
 @phe_duyet.post("/{pd_id}/tu-choi")

@@ -129,22 +129,49 @@ async def goi(
         co_phuong_thuc = callable(getattr(module, "thuc_hien", None)) or callable(getattr(module, "thuc_the", None))
 
     manifest = getattr(module, "manifest", None)
+    if not isinstance(manifest, dict):
+        manifest = getattr(module, "_manifest", None)
+    if not isinstance(manifest, dict) and hasattr(module, "du_lieu") and isinstance(getattr(module, "du_lieu"), dict):
+        manifest = getattr(module, "du_lieu")
+
+    if not isinstance(manifest, dict):
+        so_obj = kw.get("so") or getattr(module, "so", None)
+        if so_obj is None:
+            try:
+                from app.main import app as main_app
+                so_obj = getattr(getattr(main_app, "state", None), "so", None)
+            except Exception:
+                pass
+        if so_obj is not None:
+            mod_id = getattr(module, "id", None)
+            tien_to = getattr(module, "tien_to", None)
+            if hasattr(so_obj, "catalog"):
+                for k, km in getattr(so_obj, "catalog", {}).items():
+                    if (mod_id and k == mod_id) or (tien_to and getattr(km, "tien_to", None) == tien_to):
+                        manifest = getattr(km, "manifest", None)
+                        break
+            if not isinstance(manifest, dict) and hasattr(so_obj, "tu_xa"):
+                for k, tx in getattr(so_obj, "tu_xa", {}).items():
+                    if (mod_id and k == mod_id) or (tien_to and isinstance(tx, dict) and tx.get("tien_to") == tien_to):
+                        manifest = tx if (isinstance(tx, dict) and "cung_cap" in tx) else {"cung_cap": ["chat", "anh", "noi", "nghe", "video"]}
+                        break
+
     cung_cap: list[str] | None = None
-    if isinstance(manifest, dict) and "cung_cap" in manifest:
-        raw_cc = manifest.get("cung_cap")
+    if isinstance(manifest, dict):
+        raw_cc = manifest.get("cung_cap") if "cung_cap" in manifest else manifest.get("kha_nang")
         if isinstance(raw_cc, (list, tuple, set)):
             cung_cap = list(raw_cc)
-    elif hasattr(module, "du_lieu") and isinstance(getattr(module, "du_lieu"), dict):
-        raw_cc = getattr(module, "du_lieu").get("kha_nang")
-        if isinstance(raw_cc, (list, tuple, set)):
-            cung_cap = list(raw_cc)
+    elif hasattr(module, "models") and callable(getattr(module, "models")):
+        cung_cap = [m for m in ("chat", "anh", "noi", "nghe", "video", "thiet_bi", "tim_kiem", "xep_hang") if callable(getattr(module, m, None))]
 
     # Hợp đồng kham_pha.py: chat là khả năng cốt lõi (có hàm chat thì luôn được hỗ trợ dù cung_cap không khai).
     # Các khả năng chuyên biệt khác (anh, video, noi, nghe, thiet_bi, xep_hang, tim_kiem...): đòi CẢ phương thức LẪN cung_cap.
-    co_cung_cap = True
-    if cung_cap is not None:
-        if cap == "chat":
-            co_cung_cap = ("chat" in cung_cap) or co_phuong_thuc
+    # Nguyên tắc bảo mật (Fail closed): Không biết khai báo (cung_cap is None) -> ĐÓNG (từ chối 501).
+    if cap == "chat":
+        co_cung_cap = (cung_cap is not None and "chat" in cung_cap) or co_phuong_thuc
+    else:
+        if cung_cap is None:
+            co_cung_cap = False
         else:
             kha_nang_ct = getattr(getattr(module, "_ct", None), "kha_nang", ())
             co_cung_cap = (cap in cung_cap) or (cap in kha_nang_ct) or (cap == "anh" and "anh_sua" in kha_nang_ct)

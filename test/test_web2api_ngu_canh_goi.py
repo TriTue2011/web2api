@@ -127,7 +127,27 @@ class Module:
                 "ten": "Cửa cuốn tự động",
                 "loai": "cua",
                 "khu": "gara",
-                "tinh_nang": ["mo_cua", "dong_cua"],
+                "tinh_nang": [
+                    {{
+                        "hanh_dong": "mo_cua",
+                        "tham_so": {{
+                            "type": "object",
+                            "properties": {{
+                                "ma_pin": {{"type": "string", "bi_mat": True}},
+                                "ma_the_tu": {{"type": "array", "items": {{"type": "string", "bi_mat": True}}}},
+                                "cau_hinh_con": {{
+                                    "type": "object",
+                                    "properties": {{
+                                        "khoa_bi_mat": {{"type": "string", "bi_mat": True}},
+                                        "ghi_chu": {{"type": "string"}}
+                                    }}
+                                }},
+                                "toc_do": {{"type": "integer", "maximum": 100}}
+                            }}
+                        }}
+                    }},
+                    "dong_cua"
+                ],
                 "rui_ro_mac_dinh": "nguy_hiem",
             }},
         ]
@@ -291,7 +311,21 @@ def test_sec002_nguon_khong_do_nguoi_goi_dat_duoc(moi_truong):
     r_xn = client.post("/api/thiet-bi/mnc.den-phong/xac-nhan", headers=QT)
     assert r_xn.status_code == 200
 
-    # 3. Sau khi xác nhận -> gọi thành công, nguon trong nhật ký PHẢI là "nguoi" từ ngu_canh
+    # Bọc m.chat nhận **kwargs để khẳng định 'nguon' do người gọi truyền vào bị loại bỏ
+    kw_nhan_duoc = {}
+    goc_chat = m.chat
+    async def chat_kiem_tra(*args, **kwargs):
+        kw_nhan_duoc.update(kwargs)
+        assert "nguon" not in kwargs, "Trường 'nguon' do người gọi truyền vào KHÔNG được lọt vào module!"
+        return await goc_chat(*args, **kwargs)
+    m.chat = chat_kiem_tra
+
+    # Người gọi cố tình truyền nguon="kenh" qua goi()
+    asyncio.run(goi(m, "chat", {"messages": []}, nguon="kenh", ngu_canh=nc, stream=False))
+    assert "stream" in kw_nhan_duoc
+    assert "nguon" not in kw_nhan_duoc
+
+    # 3. Sau khi xác nhận -> gọi thuc_hien thành công, nguon trong nhật ký PHẢI là "nguoi" từ ngu_canh
     asyncio.run(goi(m, "thuc_hien", "mnc.den-phong", "bat", {}, nguon="kenh", ngu_canh=nc, so=so))
 
     r_nk = client.get("/api/nhat-ky?kenh=thiet_bi", headers=QT)
@@ -359,48 +393,68 @@ def test_sec002_tac_vu_nen_ke_thua_ngu_canh(moi_truong):
 
 
 def test_sec002_dong_thoi_khong_lan_ngu_canh(moi_truong):
-    """6. Hai yêu cầu HTTP ĐỒNG THỜI (khách chỉ chat và admin) qua cổng thật: khách không bao giờ nhận quyền admin."""
+    """6. Hai coroutine đồng thời (khách chỉ chat và admin) đan xen qua asyncio.sleep: không lẫn ngữ cảnh."""
     client, data_dir, so = moi_truong
     mod_path = data_dir / "modules" / "mod-nang-cao"
     ghi_thu_muc(mod_path, mau_module_nang_cao())
     client.post("/api/modules/nap-lai", headers=QT)
     client.post("/api/modules/mod-nang-cao/cai", headers=QT, json={"cau_hinh": {}})
+    client.post("/api/thiet-bi/mnc.den-phong/xac-nhan", headers=QT)
 
-    r_k = client.post("/api/khoa-khach", headers=QT, json={"nhan": "App Chi Chat", "pham_vi": ["chat"]})
-    khoa_khach = r_k.json()["khoa"]["khoa"]
-    hd_khach = {"Authorization": f"Bearer {khoa_khach}"}
+    m = so.dang_chay["mod-nang-cao"]
 
-    def goi_khach_chat():
-        # Khách gọi /v1/chat/completions (cổng thật qua HTTP, lõi gọi goi(m, "chat", ...))
-        return client.post("/v1/chat/completions", headers=hd_khach, json={
-            "model": "mnc/chat-model",
-            "messages": [{"role": "user", "content": "hello"}]
-        })
+    async def chay_coroutine_dan_xen():
+        danh_sach_vai_admin = []
+        danh_sach_vai_khach = []
+        ket_qua_goi_admin = []
+        ket_qua_goi_khach = []
 
-    def goi_khach_admin_endpoint():
-        # Khách thử leo thang quyền gọi đường quản trị xác nhận thực thể
-        return client.post("/api/thiet-bi/mnc.den-phong/xac-nhan", headers=hd_khach)
+        async def task_admin():
+            tok = ngu_canh.dat(
+                {"loai": "quan_tri", "id": "admin_1", "vai": "quan_tri"},
+                nguon="nguoi",
+                pham_vi_hieu_luc=("*",),
+            )
+            try:
+                await asyncio.sleep(0.03)
+                nc = ngu_canh.lay()
+                danh_sach_vai_admin.append(nc.danh_tinh.get("vai") if nc else None)
+                res = await goi(m, "thuc_hien", "mnc.den-phong", "bat", {}, so=so)
+                ket_qua_goi_admin.append(res.get("ok"))
+            finally:
+                ngu_canh.khoi_phuc(tok)
 
-    def goi_admin():
-        # Quản trị gọi đường quản trị
-        return client.post("/api/thiet-bi/mnc.den-phong/xac-nhan", headers=QT)
+        async def task_khach():
+            await asyncio.sleep(0.01)
+            tok = ngu_canh.dat(
+                {"loai": "khach", "id": "khach_1", "vai": "khach"},
+                nguon="ai",
+                pham_vi_hieu_luc=("chat",),
+            )
+            try:
+                await asyncio.sleep(0.03)
+                nc = ngu_canh.lay()
+                danh_sach_vai_khach.append(nc.danh_tinh.get("vai") if nc else None)
+                try:
+                    await goi(m, "thuc_hien", "mnc.den-phong", "bat", {}, so=so)
+                    ket_qua_goi_khach.append("thanh_cong")
+                except LoiOpenAI as e:
+                    ket_qua_goi_khach.append(e.ma)
+            finally:
+                ngu_canh.khoi_phuc(tok)
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        for _ in range(5):
-            f_chat = pool.submit(goi_khach_chat)
-            f_khach_admin = pool.submit(goi_khach_admin_endpoint)
-            f_admin = pool.submit(goi_admin)
+        await asyncio.gather(task_admin(), task_khach())
+        return danh_sach_vai_admin, danh_sach_vai_khach, ket_qua_goi_admin, ket_qua_goi_khach
 
-            r_chat = f_chat.result()
-            r_khach_admin = f_khach_admin.result()
-            r_admin = f_admin.result()
+    vai_admin, vai_khach, kq_admin, kq_khach = asyncio.run(chay_coroutine_dan_xen())
 
-            # Khách gọi chat thành công (200)
-            assert r_chat.status_code == 200
-            # Khách gọi đường quản trị luôn bị 403, tuyệt đối không lọt quyền admin
-            assert r_khach_admin.status_code == 403
-            # Admin luôn thành công 200
-            assert r_admin.status_code == 200
+    # Task admin không bị lẫn ngữ cảnh của task khách
+    assert vai_admin == ["quan_tri"]
+    assert kq_admin == [True]
+
+    # Task khách không bị lẫn ngữ cảnh hay leo thang quyền từ admin
+    assert vai_khach == ["khach"]
+    assert kq_khach == [403]
 
 
 def test_sec002_leo_thang_quyen_va_khong_khoa(moi_truong):
@@ -561,26 +615,67 @@ def test_sec004b_che_tham_so_bi_mat_va_khong_khai(moi_truong):
     assert "chuoi-rat-bi-mat-12345" not in chuoi_log
     assert "…che" in chuoi_log
 
-    # Tạo yêu cầu phê duyệt có tham số bí mật
+    # Tạo yêu cầu phê duyệt có tham số bí mật (chuỗi, mảng và object con) và tham số ngoài lược đồ
     r_tao_k = client.post("/api/khoa-khach", headers=QT, json={"nhan": "App Test Che", "pham_vi": ["thiet_bi:ghi"]})
     hd_k = {"Authorization": f"Bearer {r_tao_k.json()['khoa']['khoa']}"}
     client.post("/api/thiet-bi/mnc.cua-cuon/xac-nhan", headers=QT)
 
-    # Tạo yêu cầu phê duyệt
-    r_pd = client.post(
-        "/api/thiet-bi/mnc.cua-cuon/hanh-dong",
-        headers=hd_k,
-        json={"hanh_dong": "mo_cua", "tham_so": {"ma_pin": "pin-bi-mat-9999"}},
-    )
-    assert r_pd.status_code == 202
-    assert "status_code" not in r_pd.json()
+    # Đăng ký nhận sự kiện SSE trước khi gửi yêu cầu (H.4)
+    q_sse = thiet_bi.BO_PHAT.dang_ky("admin_sse", la_quan_tri=True)
+    try:
+        ts_gui = {
+            "ma_pin": "pin-bi-mat-9999",
+            "ma_the_tu": ["card-secret-1", "card-secret-2"],
+            "cau_hinh_con": {
+                "khoa_bi_mat": "token-sub-secret-8888",
+                "ghi_chu": "cong_phu",
+            },
+            "khong_khai": "gia_tri_ngoai_999",
+        }
+        r_pd = client.post(
+            "/api/thiet-bi/mnc.cua-cuon/hanh-dong",
+            headers=hd_k,
+            json={"hanh_dong": "mo_cua", "tham_so": ts_gui},
+        )
+        assert r_pd.status_code == 202
+        assert "status_code" not in r_pd.json()
 
-    # GET /api/phe-duyet PHẢI CHE tham số bí mật / chưa khai báo
-    r_ds_pd = client.get("/api/phe-duyet", headers=QT)
-    assert r_ds_pd.status_code == 200
-    hang_cho_json = json.dumps(r_ds_pd.json(), ensure_ascii=False)
-    assert "pin-bi-mat-9999" not in hang_cho_json
-    assert "…che(độ dài" in hang_cho_json
+        # Kiểm tra sự kiện SSE phát ra: tham số PHẢI ĐƯỢC CHE ĐỆ QUY (H.4 & I)
+        evt = q_sse.get_nowait()
+        assert evt["loai"] == "phe_duyet_moi"
+        evt_ts = evt["muc"]["tham_so"]
+        assert evt_ts["ma_pin"] == "…che"
+        assert evt_ts["ma_the_tu"] == ["…che", "…che"]
+        assert evt_ts["cau_hinh_con"]["khoa_bi_mat"] == "…che"
+        assert evt_ts["cau_hinh_con"]["ghi_chu"] == "cong_phu"
+        assert evt_ts["khong_khai"] == f"…che(độ dài {len('gia_tri_ngoai_999')})"
+
+        evt_str = json.dumps(evt, ensure_ascii=False)
+        assert "pin-bi-mat-9999" not in evt_str
+        assert "card-secret-1" not in evt_str
+        assert "token-sub-secret-8888" not in evt_str
+        assert "gia_tri_ngoai_999" not in evt_str
+
+        # GET /api/phe-duyet PHẢI CHE tham số bí mật / chưa khai báo đệ quy
+        r_ds_pd = client.get("/api/phe-duyet", headers=QT)
+        assert r_ds_pd.status_code == 200
+        hang_cho = r_ds_pd.json().get("hang_cho", [])
+        hang_cho_json = json.dumps(hang_cho, ensure_ascii=False)
+        assert "pin-bi-mat-9999" not in hang_cho_json
+        assert "card-secret-1" not in hang_cho_json
+        assert "token-sub-secret-8888" not in hang_cho_json
+        assert "gia_tri_ngoai_999" not in hang_cho_json
+
+        muc_cuon = next((m for m in hang_cho if m.get("thuc_the") == "mnc.cua-cuon"), None)
+        assert muc_cuon is not None
+        ts_hien_thi = muc_cuon["tham_so"]
+        assert ts_hien_thi["ma_pin"] == "…che"
+        assert ts_hien_thi["ma_the_tu"] == ["…che", "…che"]
+        assert ts_hien_thi["cau_hinh_con"]["khoa_bi_mat"] == "…che"
+        assert ts_hien_thi["cau_hinh_con"]["ghi_chu"] == "cong_phu"
+        assert ts_hien_thi["khong_khai"] == f"…che(độ dài {len('gia_tri_ngoai_999')})"
+    finally:
+        thiet_bi.BO_PHAT.huy(q_sse)
 
 
 def test_sec004c_hang_cho_loai_trung_va_tran_so_muc(moi_truong, monkeypatch):
@@ -608,19 +703,30 @@ def test_sec004c_hang_cho_loai_trung_va_tran_so_muc(moi_truong, monkeypatch):
     assert r1_a.status_code == 202
     pd_a_id = r1_a.json()["phe_duyet_id"]
 
-    # 2. Khoá A gửi lại yêu cầu 1 với tham số khác -> loại trùng theo (khoá, thực thể, hành động), cập nhật tham số, trả pd_a_id
-    r1_a_dup = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd_a, json={"hanh_dong": "mo_cua", "tham_so": {"toc_do": 5}})
-    assert r1_a_dup.status_code == 202
-    assert r1_a_dup.json()["phe_duyet_id"] == pd_a_id
+    # 2a. Khoá A gửi lại yêu cầu 1 với nội dung Y HỆT -> trả về cùng pd_a_id (idempotent)
+    r1_a_same = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd_a, json={"hanh_dong": "mo_cua"})
+    assert r1_a_same.status_code == 202
+    assert r1_a_same.json()["phe_duyet_id"] == pd_a_id
+
+    # 2b. Khoá A gửi lại với tham số KHÁC -> huỷ mục cũ, cấp id MỚI (chống TOCTOU ghi đè tham số)
+    r1_a_diff = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd_a, json={"hanh_dong": "mo_cua", "tham_so": {"toc_do": 5}})
+    assert r1_a_diff.status_code == 202
+    pd_a_moi_id = r1_a_diff.json()["phe_duyet_id"]
+    assert pd_a_moi_id != pd_a_id
     ds_pd = thiet_bi.doc_hang_cho_phe_duyet()
     assert len(ds_pd) == 1
+    assert ds_pd[0]["id"] == pd_a_moi_id
     assert ds_pd[0]["tham_so"] == {"toc_do": 5}
 
-    # 3. Khoá B gửi cùng yêu cầu (mnc.cua-cuon, mo_cua) -> KHÔNG ĐƯỢC trả pd_a_id của khoá A
+    # ID cũ đã bị huỷ vĩnh viễn, duyệt id cũ -> 404 (chứng minh id cũ không thể mang nội dung mới)
+    r_duyet_cu = client.post(f"/api/phe-duyet/{pd_a_id}/duyet", headers=QT)
+    assert r_duyet_cu.status_code == 404
+
+    # 3. Khoá B gửi cùng yêu cầu (mnc.cua-cuon, mo_cua) -> KHÔNG ĐƯỢC trả ID của khoá A
     r1_b = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd_b, json={"hanh_dong": "mo_cua"})
     assert r1_b.status_code == 202
     pd_b_id = r1_b.json()["phe_duyet_id"]
-    assert pd_b_id != pd_a_id  # Mục luôn thuộc đúng người đề xuất
+    assert pd_b_id != pd_a_moi_id  # Mục luôn thuộc đúng người đề xuất
     assert len(thiet_bi.doc_hang_cho_phe_duyet()) == 2
 
     # 4. Khoá A gửi yêu cầu 2 (hành động khác: dong_cua) -> thành công (đủ 2/2 mục của khoá A)
@@ -717,6 +823,13 @@ def test_sec004_duyet_dong_thoi_chi_chay_mot_lan(moi_truong):
     m = so.dang_chay["mod-nang-cao"]
     m.da_chay.clear()
 
+    # Giả lập module thực hiện bất đồng bộ có độ trễ I/O (chờ thiết bị thật)
+    goc_thuc_hien = m.thuc_hien
+    async def thuc_hien_cham(*args, **kwargs):
+        await asyncio.sleep(0.05)
+        return await goc_thuc_hien(*args, **kwargs)
+    m.thuc_hien = thuc_hien_cham
+
     # Gọi duyệt đồng thời qua duyet_phe_duyet
     async def chay_dong_thoi():
         task1 = thiet_bi.duyet_phe_duyet(pd_id, so, nguoi_duyet="admin_1")
@@ -760,7 +873,25 @@ def test_sec004e_tran_tan_suat_thiet_bi(moi_truong, monkeypatch):
     r_chan = client.post("/api/thiet-bi/mnc.den-phong/hanh-dong", headers=hd, json={"hanh_dong": "bat"})
     assert r_chan.status_code == 429
     assert r_chan.json()["error"]["code"] == "rate_limit_exceeded"
+    assert "5 giây" in r_chan.json()["error"]["message"]
     assert "Retry-After" in r_chan.headers
+
+    # 2. Kiểm tra trần theo phút (khoá, thực thể): WEB2API_THIET_BI_TRAN_PHUT (H.7)
+    r_tao2 = client.post("/api/khoa-khach", headers=QT, json={"nhan": "App RateLimit Minute", "pham_vi": ["thiet_bi:ghi"]})
+    hd2 = {"Authorization": f"Bearer {r_tao2.json()['khoa']['khoa']}"}
+
+    monkeypatch.setenv("WEB2API_THIET_BI_TRAN_LUOT", "20")
+    monkeypatch.setenv("WEB2API_THIET_BI_TRAN_PHUT", "4")
+
+    for _ in range(4):
+        r = client.post("/api/thiet-bi/mnc.den-phong/hanh-dong", headers=hd2, json={"hanh_dong": "bat"})
+        assert r.status_code == 200
+
+    r_chan_phut = client.post("/api/thiet-bi/mnc.den-phong/hanh-dong", headers=hd2, json={"hanh_dong": "bat"})
+    assert r_chan_phut.status_code == 429
+    assert r_chan_phut.json()["error"]["code"] == "rate_limit_exceeded"
+    assert "lệnh/phút" in r_chan_phut.json()["error"]["message"]
+    assert "Retry-After" in r_chan_phut.headers
 
 
 def test_sec004f_thuc_the_moi_doi_tinh_nang_coi_la_nguy_hiem(moi_truong):
@@ -806,6 +937,27 @@ def test_sec004f_thuc_the_moi_doi_tinh_nang_coi_la_nguy_hiem(moi_truong):
     r3 = client.post("/api/thiet-bi/mnc.den-phong/hanh-dong", headers=hd, json={"hanh_dong": "bat"})
     assert r3.status_code == 200
 
+    # 5. Kịch bản Mục D: Admin xác nhận cửa cuốn (mặc định nguy_hiem)
+    r_xn_cc = client.post("/api/thiet-bi/mnc.cua-cuon/xac-nhan", headers=QT)
+    assert r_xn_cc.status_code == 200
+
+    # Module cập nhật: GIỮ NGUYÊN tinh_nang nhưng đổi rui_ro_mac_dinh từ nguy_hiem thành doc
+    m = so.dang_chay["mod-nang-cao"]
+    thuc_the_goc = m.thuc_the
+    async def thuc_the_doi_rui_ro(loc=None):
+        ents = await thuc_the_goc(loc)
+        for e in ents:
+            if e.get("id") == "mnc.cua-cuon":
+                e["rui_ro_mac_dinh"] = "doc"
+        return ents
+    m.thuc_the = thuc_the_doi_rui_ro
+
+    # Vì rui_ro_mac_dinh thay đổi, băm không khớp -> mất xác nhận -> rủi ro hiệu lực trở thành nguy_hiem!
+    # Khách gọi dong_cua KHÔNG được chạy thẳng 200 mà PHẢI vào hàng chờ 202
+    r_dong_cua = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "dong_cua"})
+    assert r_dong_cua.status_code == 202
+    assert r_dong_cua.json()["cho_phe_duyet"] is True
+
 
 def test_sec002_kenh_nhat_ky_goi_kha_nang(moi_truong):
     """Mục 8: Kênh riêng goi_kha_nang: chỉ ghi từ chối hoặc hành động ghi/nguy hiểm, không ngập kênh quan_tri."""
@@ -818,15 +970,15 @@ def test_sec002_kenh_nhat_ky_goi_kha_nang(moi_truong):
     r_k = client.post("/api/khoa-khach", headers=QT, json={"nhan": "App Chat", "pham_vi": ["chat"]})
     hd = {"Authorization": f"Bearer {r_k.json()['khoa']['khoa']}"}
 
-    # 1. Khách gọi chat bình thường -> KHÔNG ghi từng lời gọi vào kênh quan_tri
+    # 1. Khách gọi chat bình thường -> KHÔNG ghi từng lời gọi vào kênh goi_kha_nang (chống spam log)
     for _ in range(5):
         r_chat = client.post("/v1/chat/completions", headers=hd, json={"model": "mnc/model", "messages": [{"role": "user", "content": "hi"}]})
         assert r_chat.status_code == 200
 
-    r_qt = client.get("/api/nhat-ky?kenh=quan_tri", headers=QT)
-    dong_qt = r_qt.json()
-    # Kênh quan_tri không chứa dòng spam gọi chat
-    assert not any("Lõi gọi khả năng «chat»" in d.get("tom_tat", "") for d in dong_qt)
+    r_gk_chat = client.get("/api/nhat-ky?kenh=goi_kha_nang", headers=QT)
+    assert r_gk_chat.status_code == 200
+    dong_gk_chat = r_gk_chat.json()
+    assert not any("chat" in d.get("tom_tat", "").lower() for d in dong_gk_chat)
 
     # 2. Khách bị từ chối phạm vi (chỉ có chat, gọi thuc_hien) -> ghi nhận cảnh báo vào kênh goi_kha_nang
     nc_khach = NguCanh(danh_tinh={"loai": "khach", "id": "khach1"}, nguon="nguoi", pham_vi_hieu_luc=("chat",))
@@ -863,16 +1015,26 @@ def test_sec002_hoi_quy_quy_trinh_va_goi(moi_truong):
         ))
         assert kq_rong == {"chuoi": "hoi", "muc": []}
 
-        # 2. xep_hang với top_n không hợp lệ (> len(docs) hoặc <= 0) -> bị so_nguyen_chat từ chối 400
+        # 2. xep_hang với top_n không hợp lệ (<= 0 hoặc sai kiểu) -> bị so_nguyen_chat từ chối 400
         with pytest.raises(LoiOpenAI) as exc_topn:
             asyncio.run(quy_trinh._thuc_hien_mot_tang(
                 kha_nang="xep_hang",
                 nguon="mod-nang-cao",
-                tham_so={"top_n": 10},
+                tham_so={"top_n": 0},
                 du_lieu_vao={"chuoi": "hoi", "muc": [{"doan": "doc1"}]},
                 so=so,
             ))
         assert exc_topn.value.ma == 400
+
+        # top_n > len(docs) được kẹp về len(docs) mà không báo lỗi 400
+        kq_kep = asyncio.run(quy_trinh._thuc_hien_mot_tang(
+            kha_nang="xep_hang",
+            nguon="mod-nang-cao",
+            tham_so={"top_n": 10},
+            du_lieu_vao={"chuoi": "hoi", "muc": [{"doan": "doc1"}]},
+            so=so,
+        ))
+        assert isinstance(kq_kep, dict)
     finally:
         ngu_canh.khoi_phuc(tok)
 
@@ -904,5 +1066,178 @@ def test_sec002_hoi_quy_quy_trinh_va_goi(moi_truong):
             asyncio.run(goi(m_khong_khai, "anh", {}))
         assert exc_501.value.ma == 501
         assert exc_501.value.code == "capability_not_supported"
+
+        # 5. Module chỉ có _manifest (như muse): nhận diện đúng cung_cap từ _manifest
+        class ModuleCoUnderscoreManifest:
+            def __init__(self):
+                self._manifest = {"id": "mod-underscore", "cung_cap": ["anh"]}
+            async def anh(self, body): return 200, {}, b'{"anh": true}'
+            async def noi(self, body): return 200, {}, b'{"noi": true}'
+
+        m_under = ModuleCoUnderscoreManifest()
+        # "anh" có trong _manifest -> thành công
+        ma_anh, _, noi_dung_anh = asyncio.run(goi(m_under, "anh", {}))
+        assert ma_anh == 200
+        assert b"anh" in noi_dung_anh
+
+        # "noi" không có trong _manifest -> 501
+        with pytest.raises(LoiOpenAI) as exc_under:
+            asyncio.run(goi(m_under, "noi", {}))
+        assert exc_under.value.ma == 501
+        assert exc_under.value.code == "capability_not_supported"
+
+        # 6. Module hoàn toàn không có manifest -> ĐÓNG (fail closed) với các khả năng chuyên biệt
+        class ModuleKhongCoManifestNao:
+            async def anh(self, body): return 200, {}, b"{}"
+            async def chat(self, body, stream=False): return 200, {}, b"{}"
+
+        m_no_manifest = ModuleKhongCoManifestNao()
+        with pytest.raises(LoiOpenAI) as exc_no_mf:
+            asyncio.run(goi(m_no_manifest, "anh", {}))
+        assert exc_no_mf.value.ma == 501
+        assert exc_no_mf.value.code == "capability_not_supported"
+
+        # Chat cốt lõi vẫn gọi được
+        ma_chat, _, _ = asyncio.run(goi(m_no_manifest, "chat", {}))
+        assert ma_chat == 200
     finally:
         ngu_canh.khoi_phuc(tok_nb)
+
+
+def test_sec004a_tham_so_long_sau_bi_chan_400():
+    """Mục E: Tham số lồng sâu ~990 tầng bị từ chối 400 (chống RecursionError 500)."""
+    # Tạo cấu trúc lồng sâu 990 tầng
+    cur = {"val": 1}
+    for i in range(990):
+        cur = {"sub": cur}
+
+    # kiem_tra_tham_so từ chối 400, không bị RecursionError 500
+    with pytest.raises(LoiOpenAI) as exc:
+        thiet_bi.kiem_tra_tham_so([], "test", cur)
+    assert exc.value.ma == 400
+    assert "Độ sâu" in str(exc.value)
+
+    # them_hang_cho_phe_duyet cũng từ chối 400
+    with pytest.raises(LoiOpenAI) as exc_hc:
+        thiet_bi.them_hang_cho_phe_duyet("admin", "test.dev", "test", cur)
+    assert exc_hc.value.ma == 400
+    assert "Độ sâu" in str(exc_hc.value)
+
+
+def test_sec004_ly_do_va_chuoi_tran_do_dai(moi_truong):
+    """Mục F: ly_do vượt 500 ký tự hoặc chuỗi vào hàng chờ vượt trần -> 400 invalid_request."""
+    client, data_dir, so = moi_truong
+    mod_path = data_dir / "modules" / "mod-nang-cao"
+    ghi_thu_muc(mod_path, mau_module_nang_cao())
+    client.post("/api/modules/nap-lai", headers=QT)
+    client.post("/api/modules/mod-nang-cao/cai", headers=QT, json={"cau_hinh": {}})
+    client.post("/api/thiet-bi/mnc.cua-cuon/xac-nhan", headers=QT)
+
+    r_k = client.post("/api/khoa-khach", headers=QT, json={"nhan": "App F", "pham_vi": ["thiet_bi:ghi"]})
+    hd = {"Authorization": f"Bearer {r_k.json()['khoa']['khoa']}"}
+
+    # 1. ly_do dài 501 ký tự qua HTTP -> 400 invalid_request
+    ly_do_dai = "a" * 501
+    r = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "mo_cua", "ly_do": ly_do_dai})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "invalid_request"
+    assert "500 ký tự" in r.json()["error"]["message"]
+
+    # 2. ly_do đúng 500 ký tự -> hợp lệ 202
+    ly_do_hop_le = "a" * 500
+    r_ok = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "mo_cua", "ly_do": ly_do_hop_le})
+    assert r_ok.status_code == 202
+
+    # 3. them_hang_cho_phe_duyet với ai_de_xuat > 128 hoặc thuc_the > 256 -> 400
+    with pytest.raises(LoiOpenAI) as exc_ai:
+        thiet_bi.them_hang_cho_phe_duyet("x" * 129, "mnc.cua-cuon", "mo_cua", {})
+    assert exc_ai.value.ma == 400
+
+    with pytest.raises(LoiOpenAI) as exc_tt:
+        thiet_bi.them_hang_cho_phe_duyet("admin", "x" * 257, "mo_cua", {})
+    assert exc_tt.value.ma == 400
+
+
+def test_sec004_kiem_lai_luoc_do_khi_duyet_va_dedup(moi_truong):
+    """H.6: Bắt bỏ kiểm lại lược đồ khi duyệt (đổi lược đồ -> 409); test dedup huỷ mục cũ cấp id mới."""
+    client, data_dir, so = moi_truong
+    mod_path = data_dir / "modules" / "mod-nang-cao"
+    ghi_thu_muc(mod_path, mau_module_nang_cao())
+    client.post("/api/modules/nap-lai", headers=QT)
+    client.post("/api/modules/mod-nang-cao/cai", headers=QT, json={"cau_hinh": {}})
+    client.post("/api/thiet-bi/mnc.cua-cuon/xac-nhan", headers=QT)
+
+    r_k = client.post("/api/khoa-khach", headers=QT, json={"nhan": "App H6", "pham_vi": ["thiet_bi:ghi"]})
+    hd = {"Authorization": f"Bearer {r_k.json()['khoa']['khoa']}"}
+
+    m = so.dang_chay["mod-nang-cao"]
+    m.da_chay.clear()
+
+    # 1. Kiểm lại lược đồ khi duyệt:
+    # Khách gửi mo_cua với toc_do: 80 (lúc này hợp lệ vì maximum: 100)
+    r_yc = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "mo_cua", "tham_so": {"toc_do": 80}})
+    assert r_yc.status_code == 202
+    pd_id = r_yc.json()["phe_duyet_id"]
+
+    # Giả lập module đổi lược đồ: hạ maximum xuống 50
+    thuc_the_goc = m.thuc_the
+    async def thuc_the_luoc_do_moi(loc=None):
+        ents = await thuc_the_goc(loc)
+        for e in ents:
+            if e.get("id") == "mnc.cua-cuon":
+                for tn in e.get("tinh_nang", []):
+                    if isinstance(tn, dict) and tn.get("hanh_dong") == "mo_cua":
+                        tn["tham_so"]["properties"]["toc_do"]["maximum"] = 50
+        return ents
+    m.thuc_the = thuc_the_luoc_do_moi
+
+    # Quản trị duyệt -> phát hiện tính năng/lược đồ đã thay đổi -> trả 409 conflict
+    r_duyet = client.post(f"/api/phe-duyet/{pd_id}/duyet", headers=QT)
+    assert r_duyet.status_code == 409
+    assert ("thay đổi" in r_duyet.json()["error"]["message"] or "lược đồ" in r_duyet.json()["error"]["message"])
+    assert len(m.da_chay) == 0
+
+    # Khôi phục thuc_the
+    m.thuc_the = thuc_the_goc
+
+    # Kiểm tra trực tiếp bước kiểm lại lược đồ (khi mục không có băm cũ):
+    r_yc2 = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "mo_cua", "tham_so": {"toc_do": 80}})
+    pd_id_2 = r_yc2.json()["phe_duyet_id"]
+    p_pd = data_dir / "phe_duyet.json"
+    doc_pd = kho.doc_json(p_pd)
+    for it in doc_pd.get("hang_cho", []):
+        if it.get("id") == pd_id_2:
+            it["bam"] = None
+    kho.ghi_nguyen_tu(p_pd, json.dumps(doc_pd, indent=2), quyen=0o600)
+
+    m.thuc_the = thuc_the_luoc_do_moi
+    r_duyet_ld = client.post(f"/api/phe-duyet/{pd_id_2}/duyet", headers=QT)
+    assert r_duyet_ld.status_code == 409
+    assert "lược đồ" in r_duyet_ld.json()["error"]["message"]
+    assert len(m.da_chay) == 0
+
+    m.thuc_the = thuc_the_goc
+
+    # 2. Test dedup: nếu nội dung thay đổi, huỷ mục cũ và cấp id mới
+    r_lan1 = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "mo_cua", "tham_so": {"toc_do": 10}})
+    assert r_lan1.status_code == 202
+    pd_id_1 = r_lan1.json()["phe_duyet_id"]
+
+    r_lan2 = client.post("/api/thiet-bi/mnc.cua-cuon/hanh-dong", headers=hd, json={"hanh_dong": "mo_cua", "tham_so": {"toc_do": 20}})
+    assert r_lan2.status_code == 202
+    pd_id_2 = r_lan2.json()["phe_duyet_id"]
+
+    # ID mới phải khác ID cũ
+    assert pd_id_1 != pd_id_2
+
+    # Duyệt ID cũ bị 404 (vì đã bị huỷ để tránh TOCTOU)
+    r_duyet_cu = client.post(f"/api/phe-duyet/{pd_id_1}/duyet", headers=QT)
+    assert r_duyet_cu.status_code == 404
+
+    # Duyệt ID mới thành công 200
+    r_duyet_moi = client.post(f"/api/phe-duyet/{pd_id_2}/duyet", headers=QT)
+    assert r_duyet_moi.status_code == 200
+    assert len(m.da_chay) == 1
+    assert m.da_chay[0]["tham_so"]["toc_do"] == 20
+
+

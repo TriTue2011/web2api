@@ -869,9 +869,9 @@ async def _thuc_hien_mot_tang(
         if not docs:
             return du_lieu_vao
         model = str(tham_so.get("model") or (f"{km.tien_to}/rerank" if km else "rerank"))
-        top_n_raw = tham_so.get("top_n") or tham_so.get("n")
+        top_n_raw = tham_so.get("top_n") if "top_n" in tham_so else tham_so.get("n")
         if top_n_raw is not None:
-            top_n = so_nguyen_chat(top_n_raw, "top_n", toi_thieu=1, toi_da=len(docs))
+            top_n = min(so_nguyen_chat(top_n_raw, "top_n", toi_thieu=1, toi_da=100_000), len(docs))
         else:
             top_n = len(docs)
         if ngu_canh.lay() is None:

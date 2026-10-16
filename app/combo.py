@@ -561,6 +561,7 @@ class BoDieuPhoiCombo:
         self.so = so
         self.request = request
         self.phan_giai = phan_giai
+        self.manifest = {"id": f"combo/{ten}", "cung_cap": ["chat", "anh"]}
 
     # ── chọn bước ──
 
