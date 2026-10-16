@@ -14,7 +14,6 @@
   const $ = (id) => document.getElementById(id);
 
   let csrfToken = '';
-  let khoaTrang = '';
   let ban = false;
   let dsWs = [];
   let dsDich = [];
@@ -23,8 +22,24 @@
   const lienKet = {}; // ho_so → {url: URL vé đã kiểm, het: mốc hết hạn (ms)}
   let henVe = 0;
 
-  function docKhoa() { return khoaTrang; }
-  function luuKhoa(k) { khoaTrang = k; }
+  function duongVeHopLe(u) {
+    if (typeof u !== 'string') return '';
+    const s = u.trim();
+    if (!s.startsWith('/')) return '';
+    try {
+      const x = new URL(s, location.origin);
+      if (x.origin === location.origin) {
+        return x.pathname + x.search + x.hash;
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function chuyenDangNhap() {
+    const duongHienTai = location.pathname + location.search + location.hash;
+    const ve = duongVeHopLe(duongHienTai);
+    location.replace('../../Dang-nhap.dc.html' + (ve ? '?ve=' + encodeURIComponent(ve) : ''));
+  }
 
   async function layCsrf() {
     if (csrfToken) return csrfToken;
@@ -57,8 +72,6 @@
   async function goi(duong, than) {
     const method = than === undefined ? 'GET' : 'POST';
     const hd = {};
-    const khoa = docKhoa();
-    if (khoa) hd.Authorization = 'Bearer ' + khoa;
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       hd['Content-Type'] = 'application/json';
       const csrf = await layCsrf();
@@ -76,7 +89,10 @@
     const r = await fetch(new URL(duong, GOC), tuyChon);
     let du = null;
     try { du = await r.json(); } catch (e) { du = null; }
-    if (r.status === 401) $('o-khoa').hidden = false;
+    if (r.status === 401) {
+      chuyenDangNhap();
+      return { r, du };
+    }
     return { r, du };
   }
 
@@ -227,12 +243,8 @@
   async function napDich() {
     // Danh mục module (yêu cầu quản trị). Chỉ liệt kê trường mà CHÍNH module đích khai nhận cookie
     // (`nhan_cookie: {mien}` trong manifest) — không ghi nhầm vào khoá API của module khác; tên miền theo bản khai.
-    const hd = {};
-    const khoa = docKhoa();
-    if (khoa) hd.Authorization = 'Bearer ' + khoa;
-    const r = await fetch(new URL('api/modules/catalog', GOC), { headers: hd, credentials: 'same-origin', cache: 'no-store' });
-    const du = await r.json().catch(() => null);
-    if (r.status === 401) $('o-khoa').hidden = false;
+    const { r, du } = await goi('api/modules/catalog');
+    if (r && r.status === 401) return;
     dsDich = [];
     for (const m of (du && Array.isArray(du.modules) ? du.modules : [])) {
       if (!m || typeof m.id !== 'string' || m.id === MODULE || !Array.isArray(m.truong_cau_hinh)) continue;
@@ -330,14 +342,6 @@
     $('ws-tai-dung').addEventListener('change', veNut);
     $('dich').addEventListener('change', chonDich);
     $('lay-cookie').addEventListener('click', layCookie);
-    $('luu-khoa').addEventListener('click', () => {
-      const k = $('khoa').value.trim();
-      if (!k) return;
-      luuKhoa(k);
-      $('khoa').value = '';
-      $('o-khoa').hidden = true;
-      napTatCa();
-    });
     veDichVu();
     veTaiDung();
     napTatCa();
