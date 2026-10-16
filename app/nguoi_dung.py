@@ -94,6 +94,11 @@ def dang_nhap_khoa_phut() -> int:
     return _so_nguyen("WEB2API_DANG_NHAP_KHOA_PHUT", 15)
 
 
+def dang_nhap_toan_cuc_sai_toi_da() -> int:
+    return _so_nguyen("WEB2API_DANG_NHAP_TOAN_CUC_SAI_TOI_DA", 50)
+
+
+
 # ───────────── Băm và kiểm tra mật khẩu ─────────────
 
 def _bam_scrypt(mat_khau: str, muoi: bytes) -> bytes:
@@ -355,7 +360,7 @@ def khoi_tao_thiet_lap_lan_dau() -> None:
     )
 
 
-# ───────────── Khoá đăng nhập theo tên ─────────────
+# ───────────── Khoá đăng nhập hai tầng: (IP, tên) và tên toàn cục ─────────────
 
 def ten_co_the_ton_tai(ten: Any) -> str | None:
     """Tên chuẩn hoá nếu nó CÓ THỂ là một tài khoản (đúng TEN_DANG_NHAP_RE), ngược lại None.
@@ -370,14 +375,39 @@ def ten_co_the_ton_tai(ten: Any) -> str | None:
     return ten_chuan if TEN_DANG_NHAP_RE.match(ten_chuan) else None
 
 
-def kiem_tra_khoa_ten(ten: str) -> None:
+def _khoa_cap(ip: str | None, ten_chuan: str) -> str | None:
+    if not ip or not isinstance(ip, str):
+        return None
+    ip_s = ip.strip()[:45]
+    return f"{ip_s}:{ten_chuan}" if ip_s else None
+
+
+def kiem_tra_khoa_ten(ten: str, ip: str | None = None) -> None:
     ten_chuan = ten_co_the_ton_tai(ten)
     if ten_chuan is None:
         return  # tên không thể tồn tại: không có gì để khoá (đường đăng nhập đã trả 401 trước đó)
+    now = time.monotonic()
     with _KHOA_THEO_DOI:
-        muc = _THEO_DOI_SAI.get(ten_chuan)
-        if muc and muc.get("khoa_den"):
-            con_lai = muc["khoa_den"] - time.monotonic()
+        # Tầng 1: kiểm tra khoá theo cặp (IP, tên) nếu có IP
+        k_cap = _khoa_cap(ip, ten_chuan)
+        if k_cap:
+            muc_cap = _THEO_DOI_SAI.get(k_cap)
+            if muc_cap and muc_cap.get("khoa_den"):
+                con_lai = muc_cap["khoa_den"] - now
+                if con_lai > 0:
+                    raise LoiOpenAI(
+                        401,
+                        "Sai tên đăng nhập hoặc mật khẩu.",
+                        loai="invalid_request_error",
+                        code="invalid_credentials",
+                    )
+                muc_cap["khoa_den"] = None
+                muc_cap["so_sai"] = 0
+
+        # Tầng 2: kiểm tra khoá tên toàn cục (chống tấn công phân tán nhiều IP)
+        muc_ten = _THEO_DOI_SAI.get(ten_chuan)
+        if muc_ten and muc_ten.get("khoa_den"):
+            con_lai = muc_ten["khoa_den"] - now
             if con_lai > 0:
                 raise LoiOpenAI(
                     401,
@@ -385,32 +415,73 @@ def kiem_tra_khoa_ten(ten: str) -> None:
                     loai="invalid_request_error",
                     code="invalid_credentials",
                 )
-            muc["khoa_den"] = None
-            muc["so_sai"] = 0
+            muc_ten["khoa_den"] = None
+            muc_ten["so_sai"] = 0
 
 
-def ghi_nhan_dang_nhap_sai(ten: str) -> None:
+def ghi_nhan_dang_nhap_sai(ten: str, ip: str | None = None) -> None:
     ten_chuan = ten_co_the_ton_tai(ten)
     if ten_chuan is None:
         return
-    toi_da = dang_nhap_sai_toi_da()
+    toi_da_cap = dang_nhap_sai_toi_da()
+    toi_da_toan_cuc = dang_nhap_toan_cuc_sai_toi_da()
     khoa_giay = dang_nhap_khoa_phut() * 60
+    now = time.monotonic()
     with _KHOA_THEO_DOI:
+        # Tầng 1: Đếm và khoá theo cặp (IP, tên)
+        k_cap = _khoa_cap(ip, ten_chuan)
+        if k_cap:
+            if len(_THEO_DOI_SAI) >= TOI_DA_THEO_DOI and k_cap not in _THEO_DOI_SAI:
+                _THEO_DOI_SAI.popitem(last=False)
+            muc_cap = _THEO_DOI_SAI.setdefault(k_cap, {"so_sai": 0, "khoa_den": None, "het_han": now + khoa_giay})
+            if muc_cap.get("khoa_den") and muc_cap["khoa_den"] <= now:
+                muc_cap["khoa_den"] = None
+                muc_cap["so_sai"] = 0
+            elif not muc_cap.get("khoa_den") and now > muc_cap.get("het_han", 0):
+                muc_cap["so_sai"] = 0
+            muc_cap["so_sai"] = muc_cap.get("so_sai", 0) + 1
+            muc_cap["het_han"] = now + khoa_giay
+            if muc_cap["so_sai"] >= toi_da_cap:
+                muc_cap["khoa_den"] = now + khoa_giay
+            _THEO_DOI_SAI.move_to_end(k_cap)
+
+        # Tầng 2: Đếm và khoá theo tên toàn cục
         if len(_THEO_DOI_SAI) >= TOI_DA_THEO_DOI and ten_chuan not in _THEO_DOI_SAI:
             _THEO_DOI_SAI.popitem(last=False)
-        muc = _THEO_DOI_SAI.setdefault(ten_chuan, {"so_sai": 0, "khoa_den": None})
-        muc["so_sai"] = muc.get("so_sai", 0) + 1
-        if muc["so_sai"] >= toi_da:
-            muc["khoa_den"] = time.monotonic() + khoa_giay
-            _THEO_DOI_SAI.move_to_end(ten_chuan)
+        muc_ten = _THEO_DOI_SAI.setdefault(ten_chuan, {"so_sai": 0, "khoa_den": None, "het_han": now + khoa_giay})
+        if muc_ten.get("khoa_den") and muc_ten["khoa_den"] <= now:
+            muc_ten["khoa_den"] = None
+            muc_ten["so_sai"] = 0
+        elif not muc_ten.get("khoa_den") and now > muc_ten.get("het_han", 0):
+            muc_ten["so_sai"] = 0
+        muc_ten["so_sai"] = muc_ten.get("so_sai", 0) + 1
+        muc_ten["het_han"] = now + khoa_giay
+        if muc_ten["so_sai"] >= toi_da_toan_cuc:
+            muc_ten["khoa_den"] = now + khoa_giay
+        _THEO_DOI_SAI.move_to_end(ten_chuan)
 
 
-def ghi_nhan_dang_nhap_dung(ten: str) -> None:
+def ghi_nhan_dang_nhap_dung(ten: str, ip: str | None = None) -> None:
     ten_chuan = ten_co_the_ton_tai(ten)
     if ten_chuan is None:
         return
     with _KHOA_THEO_DOI:
-        _THEO_DOI_SAI.pop(ten_chuan, None)
+        k_cap = _khoa_cap(ip, ten_chuan)
+        so_sai_cap = 0
+        if k_cap:
+            muc_cap = _THEO_DOI_SAI.pop(k_cap, None)
+            if muc_cap:
+                so_sai_cap = muc_cap.get("so_sai", 0)
+        else:
+            _THEO_DOI_SAI.pop(ten_chuan, None)
+            return
+
+        # Trừ phần sai của cặp đó ở tầng 2, không xoá trắng tầng 2 của người khác
+        if so_sai_cap > 0 and ten_chuan in _THEO_DOI_SAI:
+            muc_ten = _THEO_DOI_SAI[ten_chuan]
+            muc_ten["so_sai"] = max(0, muc_ten.get("so_sai", 0) - so_sai_cap)
+            if muc_ten["so_sai"] == 0 and not muc_ten.get("khoa_den"):
+                _THEO_DOI_SAI.pop(ten_chuan, None)
 
 
 # ───────────── Thao tác người dùng ─────────────
@@ -578,7 +649,7 @@ async def dat_lai_mat_khau_nguoi_dung(id_: str) -> tuple[dict[str, Any], str]:
     return sach, mat_khau_moi
 
 
-async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str) -> None:
+async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str, ip: str | None = None) -> None:
     with _KHOA_LUONG:
         u = tim_theo_id(id_)
         if not u:
@@ -588,14 +659,16 @@ async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str)
 
     # Thử mật khẩu cũ đếm chung bộ khoá theo tên với đăng nhập: phiên bị trộm không dò được mật khẩu không giới hạn.
     try:
-        kiem_tra_khoa_ten(ten)
+        kiem_tra_khoa_ten(ten, ip=ip)
     except LoiOpenAI:
         await chay_bam_gia()
         raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password") from None
     dung = await kiem_tra_mat_khau(mat_khau_cu, bam_cu)
     if not dung:
-        ghi_nhan_dang_nhap_sai(ten)
+        ghi_nhan_dang_nhap_sai(ten, ip=ip)
         raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password")
+
+    ghi_nhan_dang_nhap_dung(ten, ip=ip)
 
     kiem_tra_chinh_sach_mat_khau(mat_khau_moi, ten)
     bam_moi = await bam_mat_khau(mat_khau_moi)

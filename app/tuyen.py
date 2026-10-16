@@ -2011,6 +2011,7 @@ async def dang_nhap_web(request: Request, response: Response):
     # mật khẩu để sai mật khẩu vẫn là 401 đồng nhất (không lộ vai); 403 không lộ thêm gì so với 200 trước đây.
     gioi_han_mod.kiem_tra_truoc_xac_thuc(request)
     phien_web_mod.kiem_tra_kho()  # kho phiên hỏng → 503 trước khi kiểm mật khẩu (không lộ gì về tài khoản)
+    ip_khach = gioi_han_mod.lay_ip_an_toan(request)
 
     than = await _than_json(request)
     # Tên không thể là tài khoản (sai mẫu, quá dài, sai kiểu) = cùng 401 đồng nhất + băm giả, và KHÔNG đi tiếp xuống
@@ -2031,9 +2032,9 @@ async def dang_nhap_web(request: Request, response: Response):
             code="invalid_credentials",
         )
 
-    # 1. Kiểm tra khóa theo tên
+    # 1. Kiểm tra khóa hai tầng: theo (IP, tên) và theo tên toàn cục
     try:
-        nguoi_dung_mod.kiem_tra_khoa_ten(ten_dang_nhap)
+        nguoi_dung_mod.kiem_tra_khoa_ten(ten_dang_nhap, ip=ip_khach)
     except LoiOpenAI:
         await nguoi_dung_mod.chay_bam_gia()
         gioi_han_mod.ghi_loi_xac_thuc(request)
@@ -2058,7 +2059,7 @@ async def dang_nhap_web(request: Request, response: Response):
             code="invalid_credentials",
         ) from None
     if nd is None or not nd.get("bat", True):
-        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap)
+        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap, ip=ip_khach)
         await nguoi_dung_mod.chay_bam_gia()
         gioi_han_mod.ghi_loi_xac_thuc(request)
         nhat_ky_mod.ghi(
@@ -2077,7 +2078,7 @@ async def dang_nhap_web(request: Request, response: Response):
     # 3. Kiểm tra mật khẩu
     dung = await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, nd.get("bam_mat_khau", ""))
     if not dung:
-        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap)
+        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten_dang_nhap, ip=ip_khach)
         gioi_han_mod.ghi_loi_xac_thuc(request)
         nhat_ky_mod.ghi(
             "quan_tri",
@@ -2096,8 +2097,8 @@ async def dang_nhap_web(request: Request, response: Response):
     if nd.get("vai") == "admin":
         ip_cho_phep_mod.kiem_tra_ip_quan_tri(request)
 
-    # 5. Thành công: reset bộ đếm sai theo tên, tạo phiên mới
-    nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap)
+    # 5. Thành công: reset bộ đếm sai theo cặp (IP, tên) và trừ tầng 2, tạo phiên mới
+    nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten_dang_nhap, ip=ip_khach)
     phien, token_tho = phien_web_mod.tao_phien(nd["id"])
     phien_web_mod.dat_cookie_phien(response, request, token_tho)
     nhat_ky_mod.ghi(
@@ -2143,8 +2144,9 @@ async def doi_mat_khau_toi(request: Request):
     if not mat_khau_cu or not mat_khau_moi:
         raise LoiOpenAI(400, "Cần cung cấp mật khẩu cũ và mật khẩu mới.", code="invalid_input")
     phien_web_mod.kiem_tra_kho()  # bước thu hồi phiên sau đó phải chạy được, kiểm trước khi đổi
+    ip_khach = gioi_han_mod.lay_ip_an_toan(request)
 
-    await nguoi_dung_mod.doi_mat_khau_chinh_minh(nd["id"], mat_khau_cu, mat_khau_moi)
+    await nguoi_dung_mod.doi_mat_khau_chinh_minh(nd["id"], mat_khau_cu, mat_khau_moi, ip=ip_khach)
     phien_web_mod.thu_hoi_phien_nguoi_dung(nd["id"], tru_bam=phien.get("bam"))
     nhat_ky_mod.ghi(
         "quan_tri",

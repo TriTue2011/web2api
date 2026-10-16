@@ -211,6 +211,24 @@ def _lay_ip(request) -> str | None:
     return _bo().ip_hieu_luc(host, request.headers.get("x-forwarded-for"))
 
 
+def lay_ip_an_toan(request) -> str:
+    """Lấy IP khách an toàn qua bộ kiểm proxy XFF (dùng chung cho đăng nhập / trình duyệt từ xa).
+
+    - Duyệt XFF từ phải sang trái qua ip_hieu_luc (chỉ tin khi peer là proxy tin cậy hoặc loopback có proxy).
+    - Peer ngoài trực tiếp không tin cậy thì bỏ XFF, dùng chính peer (chống giả mạo XFF).
+    - Cắt tối đa 45 ký tự (chuẩn IPv6 tối đa) chống phình bộ nhớ.
+    - Fallback '127.0.0.1' nếu không xác định được IP.
+    """
+    client = getattr(request, "client", None)
+    host = client.host if client else ""
+    ip = _bo().ip_hieu_luc(host, request.headers.get("x-forwarded-for"))
+    if ip:
+        return ip[:45]
+    if host:
+        return host[:45]
+    return "127.0.0.1"
+
+
 def kiem_tra_truoc_xac_thuc(request) -> None:
     """Gọi ĐẦU `nguoi_goi`: IP đang bị khoá → LoiOpenAI 429 kèm Retry-After."""
     bo = _bo()
