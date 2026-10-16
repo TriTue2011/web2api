@@ -207,11 +207,12 @@ def test_module_cai_ghi_nho_nguon_trong_nguon_json(gh, du_lieu):
 
 # ───────────── đỏ: hành vi CHƯA có trên main ─────────────
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-01: chưa có danh sách nguồn; cấu hình cũ chưa tự thành danh sách một phần tử")
 def test_cau_hinh_cu_thanh_danh_sach_mot_phan_tu(gh, du_lieu):
     """Hợp đồng 1: cấu hình cũ một-repo tự thành danh sách một phần tử (đọc được, không bắt cấu hình lại).
-    Không PUT cấu hình trước — đường mới chưa tồn tại nên 404 bất kể có cấu hình hay không;
-    PUT sẽ đánh thức vòng nền và có thể treo khi tắt TestClient (ghi nhận NV59)."""
+    Setup ghi cấu hình cũ vào đĩa qua tầng đơn vị (không PUT HTTP — né đánh thức vòng nền, ghi nhận NV59)."""
+    async def _dat(so, ng):
+        ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main"})
+    chay(_dat)
     with TestClient(app) as c:
         r = c.get("/api/nguon-git/nguon", headers=QT)
         assert r.status_code == 200, r.text
@@ -221,11 +222,13 @@ def test_cau_hinh_cu_thanh_danh_sach_mot_phan_tu(gh, du_lieu):
     assert ds[0]["tu_dong"] is False  # mặc định an toàn khi chuyển đổi
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-02: chưa có đường thêm nguồn thứ hai")
 def test_them_nguon_thu_hai(gh, du_lieu):
     """Mục tiêu NV59: giữ nguồn của chủ kho VÀ thêm nguồn riêng cùng lúc.
-    Không PUT cấu hình trước — đường mới chưa tồn tại nên 405 bất kể có cấu hình hay không;
-    PUT sẽ đánh thức vòng nền và có thể treo khi tắt TestClient (ghi nhận NV59)."""
+    Setup ghi cấu hình cũ (nguồn «chinh») vào đĩa qua tầng đơn vị trước — không PUT HTTP
+    để né đánh thức vòng nền (ghi nhận NV59)."""
+    async def _dat(so, ng):
+        ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main"})
+    chay(_dat)
     with TestClient(app) as c:
         r = c.post("/api/nguon-git/nguon", json=NGUON_B, headers=QT)
         assert r.status_code == 200, r.text
@@ -235,32 +238,28 @@ def test_them_nguon_thu_hai(gh, du_lieu):
     assert {n["id"] for n in ds} == {"chinh", "rieng"}
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-03: chưa thăm dò riêng từng nguồn; lỗi nguồn này chặn nguồn kia")
 def test_tham_do_rieng_loi_nguon_nay_khong_chan_nguon_kia(gh, du_lieu):
     """Hợp đồng 2: nguồn A lỗi 500 liên tiếp, nguồn B vẫn thăm dò và thấy module mới."""
     gh.a.day(tep_kho({"echo": tep_echo("echo v1", "1.0.0")}))
-    gh.b.day(tep_kho({"phu": tep_echo("phu v1", "1.0.0")}))
+    gh.b.day(tep_kho({"phu": tep_echo("phu v1", "1.0.0", id_="phu")}))
 
     async def ham(so, ng):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
         # Giả lập: thêm nguồn thứ hai (đường mới) rồi làm nguồn A lỗi
         await ng.them_nguon(NGUON_B)
         gh.a.loi_commit += [(500, {}), (500, {})]
-        await ng.dong_bo_nguon("chinh")   # nguồn A lỗi → LoiGit
+        with pytest.raises(LoiGit):
+            await ng.dong_bo_nguon("chinh")   # nguồn A lỗi → LoiGit
         await ng.dong_bo_nguon("rieng")   # nguồn B vẫn phải thăm dò được
         return ng.danh_sach_nguon()
 
-    try:
-        ds = chay(ham)
-    except LoiGit:
-        pass  # nguồn A lỗi là đúng kỳ vọng; quan trọng là B không bị chặn
+    ds = chay(ham)
     assert any(n["id"] == "rieng" and n["so_module"] == 1 for n in ds)
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-04: .nguon.json chưa ghi nguồn đã cài (nguon_id)")
 def test_nguon_json_ghi_nguon_id(gh, du_lieu):
     """Hợp đồng 3: module cài từ git ghi nhớ nó đến từ nguồn nào."""
-    gh.b.day(tep_kho({"phu": tep_echo("phu v1", "2.0.0")}))
+    gh.b.day(tep_kho({"phu": tep_echo("phu v1", "2.0.0", id_="phu")}))
 
     async def ham(so, ng):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
@@ -273,7 +272,6 @@ def test_nguon_json_ghi_nguon_id(gh, du_lieu):
     assert nguon["nguon_id"] == "rieng" and nguon["repo"] == REPO_B
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-05: hai nguồn trùng id module chưa bị chặn 409")
 def test_trung_id_hai_nguon_khong_tu_de_nhau(gh, du_lieu):
     """Hợp đồng 3: module «echo» đã cài từ nguồn chính; nguồn riêng cũng có «echo» →
     cài từ nguồn riêng phải 409 với lý do rõ, KHÔNG tự đè."""
@@ -294,7 +292,6 @@ def test_trung_id_hai_nguon_khong_tu_de_nhau(gh, du_lieu):
     chay(ham)
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-06: cập nhật từ đúng nguồn cũ chưa được cho phép riêng")
 def test_cap_nhat_tu_dung_nguon_cu_van_duoc(gh, du_lieu):
     """Hợp đồng 3 (ngoại lệ): trùng id nhưng đúng nguồn cũ → cập nhật bình thường."""
     gh.a.day(tep_kho({"echo": tep_echo("echo v1", "1.0.0")}))
@@ -312,11 +309,10 @@ def test_cap_nhat_tu_dung_nguon_cu_van_duoc(gh, du_lieu):
     chay(ham)
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-07: chưa xoá được nguồn; module đã cài chưa giữ lại đúng cách")
 def test_xoa_nguon_khong_go_module_da_cai(gh, du_lieu):
     """Hợp đồng 5: xoá nguồn «rieng» → module «phu» vẫn chạy, không còn cập nhật từ nguồn ấy,
     trạng thái hiển thị «nguồn đã gỡ»."""
-    gh.b.day(tep_kho({"phu": tep_echo("phu v1", "1.0.0")}))
+    gh.b.day(tep_kho({"phu": tep_echo("phu v1", "1.0.0", id_="phu")}))
 
     async def ham(so, ng):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
@@ -332,7 +328,6 @@ def test_xoa_nguon_khong_go_module_da_cai(gh, du_lieu):
     chay(ham)
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-08: tu_dong chưa tính theo từng nguồn; nguồn mới chưa mặc định tắt")
 def test_tu_dong_mac_dinh_tat_cho_nguon_moi(gh, du_lieu):
     """Hợp đồng 4: nguồn mới không khai tu_dong → tu_dong = False; module mới không tự cài."""
     gh.b.day(tep_kho({"phu": tep_echo("phu v1", "1.0.0")}))
@@ -349,7 +344,6 @@ def test_tu_dong_mac_dinh_tat_cho_nguon_moi(gh, du_lieu):
     chay(ham)
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-09: yeu_cau_chu_ky chưa tính theo từng nguồn")
 def test_yeu_cau_chu_ky_theo_tung_nguon(gh, du_lieu):
     """Hợp đồng 4: nguồn B bật yeu_cau_chu_ky, commit chưa xác minh → không tự cài từ B;
     nguồn A tắt → vẫn tự cài."""
@@ -369,7 +363,6 @@ def test_yeu_cau_chu_ky_theo_tung_nguon(gh, du_lieu):
     chay(ham)
 
 
-@pytest.mark.xfail(strict=True, reason="NV59 NV59-10: đường quản lý nguồn chưa tồn tại nên chưa có cổng quản trị")
 def test_duong_quan_ly_nguon_la_duong_quan_tri(gh, du_lieu):
     """Hợp đồng 7: thêm/sửa/xoá/liệt kê nguồn là đường quản trị — không khoá 401, khoá khách 403."""
     with TestClient(app) as c:

@@ -61,6 +61,14 @@ HAN_MUC_THAP = 10
 TEN_BI_MAT = "_nguon_git"
 TEP_CAU_HINH = "nguon_git.json"
 TEP_TRANG_THAI = "nguon_git_trang_thai.json"
+#: NV59: nguồn git phụ (id -> cấu hình), tách khỏi nguon_git.json để định dạng cũ một-repo vẫn đọc được.
+TEP_NGUON_PHU = "nguon_git_nguon.json"
+#: NV59: trạng thái đồng bộ của từng nguồn phụ (id -> trạng thái).
+TEP_TT_NGUON = "nguon_git_trang_thai_nguon.json"
+#: NV59: id nguồn phụ — chữ thường, ngắn, an toàn làm tên tệp/khoá bí mật.
+ID_NGUON_HOP_LE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}\Z")
+#: NV59: id dành riêng cho nguồn cấu hình cũ một-repo.
+ID_NGUON_CHINH = "chinh"
 
 
 def api_github() -> str:
@@ -94,6 +102,26 @@ def kiem_repo(repo) -> str:
     return repo
 
 
+def kiem_id_nguon(id_: object) -> str:
+    """NV59: kiểm id nguồn git phụ. Sai → ValueError (không chép giá trị khoá)."""
+    if not isinstance(id_, str) or not ID_NGUON_HOP_LE.match(id_):
+        raise ValueError("id nguồn chỉ gồm chữ thường, số, «-», «_», dài 1..32, bắt đầu bằng chữ/số")
+    if id_ == ID_NGUON_CHINH:
+        raise ValueError(f"id {ID_NGUON_CHINH!r} dành riêng cho nguồn cấu hình cũ một-repo")
+    return id_
+
+
+def kiem_nguon(than: dict) -> dict:
+    """NV59: kiểm THUẦN (không ghi) cấu hình MỘT nguồn phụ — id + cùng bộ kiểm repo/SSRF của nguồn cũ.
+    `tu_dong` mặc định TẮT cho nguồn mới (hợp đồng 4). Sai → ValueError."""
+    if not isinstance(than, dict):
+        raise ValueError("cấu hình nguồn git phải là đối tượng JSON")
+    id_ = kiem_id_nguon(than.get("id"))
+    cfg = kiem_cau_hinh({k: v for k, v in than.items() if k != "id"},
+                        {"tu_dong": False, "yeu_cau_chu_ky": False})
+    return {"id": id_, **cfg}
+
+
 def kiem_cau_hinh(than: dict, cu: dict) -> dict:
     """Kiểm THUẦN (không ghi) cấu hình nguồn git — MỘT bộ kiểm cho PUT /api/nguon-git, cho lượt đọc nguon_git.json và
     cho khôi phục. Trường vắng trong `than` lấy từ `cu`, rồi mặc định. Sai → ValueError (không chép giá trị khoá)."""
@@ -112,6 +140,44 @@ def kiem_cau_hinh(than: dict, cu: dict) -> dict:
             raise ValueError(f"{k} phải là true/false")
         co[k] = v
     return {"repo": repo, "nhanh": nhanh, "thu_muc": thu_muc, "chu_ky_giay": chu_ky, **co}
+
+
+def _doc_nguon_phu() -> list[dict]:
+    """NV59: đọc danh sách nguồn git phụ từ nguon_git_nguon.json (qua CÙNG bộ kiểm `kiem_nguon`).
+    Tệp hỏng/sai → coi như rỗng (không chặn nguồn chính)."""
+    p = kho.thu_muc_du_lieu() / TEP_NGUON_PHU
+    try:
+        du = kho.doc_json(p)
+    except kho.KhoHong as e:
+        log.warning("%s — coi như chưa có nguồn phụ", e)
+        return []
+    ds = (du or {}).get("nguon") if isinstance(du, dict) else None
+    if not isinstance(ds, list):
+        return []
+    ra = []
+    thay = {n.get("id"): n for n in ds if isinstance(n, dict)}
+    for id_, n in thay.items():
+        try:
+            ra.append(kiem_nguon(n))
+        except ValueError as e:
+            log.warning("Nguồn git phụ %r sai (%s) — bỏ qua", id_, e)
+    return ra
+
+
+def _ghi_nguon_phu(ds: list[dict]) -> None:
+    """NV59: ghi danh sách nguồn phụ (đã kiểm)."""
+    kho.ghi_json_cong_khai(TEP_NGUON_PHU, {"nguon": ds})
+
+
+def doc_danh_sach_nguon() -> list[dict] | None:
+    """NV59: toàn bộ nguồn git đã cấu hình — nguồn «chinh» (cấu hình cũ một-repo, nếu có) rồi các nguồn phụ.
+    None = chưa cấu hình gì."""
+    ds = []
+    cfg = doc_cau_hinh()
+    if cfg is not None:
+        ds.append({"id": ID_NGUON_CHINH, **cfg})
+    ds.extend(_doc_nguon_phu())
+    return ds or None
 
 
 def doc_cau_hinh() -> dict | None:
@@ -176,11 +242,25 @@ class NguonGit:
         self._khach: httpx.AsyncClient | None = None
         self._tac_vu: asyncio.Task | None = None
         self._lan_loi = 0
-        self._ghi_chu: dict[str, tuple[str, str]] = {}
-        self._tu_dong_hong: dict[str, str] = {}
         self._lan_dau = False  # lần đồng bộ vừa xong là lần ĐẦU của nguồn này → _tu_dong cập nhật module đang có
         self._cay_muc: list[dict] = []
         self._cay_blob: dict[str, str] = {}
+        # NV59: trạng thái đồng bộ từng nguồn phụ (id -> trạng thái), cờ lần đầu, cây theo nguồn.
+        self._tt_nguon: dict[str, dict] = {}
+        self._lan_dau_nguon: dict[str, bool] = {}
+        self._cay_nguon: dict[str, dict] = {}
+        self._ghi_chu: dict[tuple[str, str], tuple[str, str]] = {}  # NV59: khoá (nguon_id, module_id)
+        self._tu_dong_hong: dict[tuple[str, str], str] = {}  # NV59: khoá (nguon_id, module_id)
+        p_tt_nguon = kho.thu_muc_du_lieu() / TEP_TT_NGUON
+        try:
+            tt_n = kho.doc_json(p_tt_nguon)
+        except kho.KhoHong as e:
+            log.warning("%s — coi như chưa có trạng thái nguồn phụ", e)
+            tt_n = None
+        if isinstance(tt_n, dict):
+            for nid, st in (tt_n.get("nguon") or {}).items():
+                if isinstance(nid, str) and isinstance(st, dict):
+                    self._tt_nguon[nid] = st
         if api_github() != API_MAC_DINH:
             log.warning("WEB2API_GITHUB_API=%s khác mặc định %s — chỉ dùng cho test", api_github(), API_MAC_DINH)
 
@@ -220,6 +300,156 @@ class NguonGit:
         self._lan_loi = 0
         self.danh_thuc()
         return self.cong_khai()
+
+    # ───────────── NV59: quản lý nhiều nguồn ─────────────
+
+    def _danh_sach_nguon(self) -> list[dict]:
+        """Danh sách nguồn đã cấu hình (đọc đĩa mỗi lần — PUT/xoá có hiệu lực ngay)."""
+        return doc_danh_sach_nguon() or []
+
+    def _lay_nguon(self, id_: str) -> dict:
+        """Nguồn theo id; không có → LoiGit 404."""
+        for n in self._danh_sach_nguon():
+            if n["id"] == id_:
+                return n
+        raise LoiGit(f"không có nguồn git {id_!r}", 404)
+
+    def _nguon_chinh(self) -> tuple[dict | None, dict]:
+        """(cấu hình, trạng thái) của nguồn «chinh»; chưa cấu hình → (None, trang_thai)."""
+        for n in self._danh_sach_nguon():
+            if n["id"] == ID_NGUON_CHINH:
+                return n, self.trang_thai
+        return None, self.trang_thai
+
+    def _tt(self, nid: str) -> dict:
+        """Trạng thái đồng bộ của nguồn: «chinh» dùng self.trang_thai, nguồn phụ dùng _tt_nguon."""
+        if nid == ID_NGUON_CHINH:
+            return self.trang_thai
+        return self._tt_nguon.setdefault(nid, {})
+
+    def _luu_tt_nguon(self) -> None:
+        """Lưu trạng thái đồng bộ các nguồn phụ."""
+        kho.ghi_json_cong_khai(TEP_TT_NGUON, {"nguon": self._tt_nguon})
+
+    def _token_cua(self, nid: str) -> tuple[str | None, str | None]:
+        """Token cho một nguồn: «chinh» dùng luồng cũ (env/kho _nguon_git), nguồn phụ dùng
+        bí mật riêng _nguon_git_<id> (không dùng chung — thu hồi độc lập)."""
+        if nid == ID_NGUON_CHINH:
+            tk, nguon = self.token_va_nguon()
+            if tk is None:
+                # Tương thích: test có thể mock trực tiếp token()
+                tk = self.token()
+            return tk, nguon
+        env_tk = (os.environ.get(f"WEB2API_GITHUB_TOKEN_{nid.upper()}", "").strip()
+                  or os.environ.get(f"WEB2API_GIT_TOKEN_{nid.upper()}", "").strip())
+        if env_tk:
+            return env_tk, "bien_moi_truong"
+        try:
+            bm = kho.doc_bi_mat(f"{TEN_BI_MAT}_{nid}")
+        except kho.KhoHong:
+            bm = None
+        if isinstance(bm, dict) and bm.get("token"):
+            return str(bm["token"]), "da_luu"
+        return self.token_va_nguon()
+
+    async def them_nguon(self, than: dict) -> dict:
+        """Thêm nguồn git phụ (đã kiểm qua kiem_nguon; trùng id → 409). Token riêng theo nguồn."""
+        cfg = kiem_nguon(than)
+        token = than.get("token")
+        if token is not None and not isinstance(token, str):
+            raise ValueError("token phải là chuỗi")
+        async with self._khoa:
+            ds = _doc_nguon_phu()
+            if any(n["id"] == cfg["id"] for n in ds):
+                raise LoiGit(f"đã có nguồn git {cfg['id']!r}", 409)
+            ds.append(cfg)
+            _ghi_nguon_phu(ds)
+            nid = cfg["id"]
+            if token:
+                kho.ghi_bi_mat(f"{TEN_BI_MAT}_{nid}", {"token": token.strip()})
+            else:
+                kho.xoa_bi_mat(f"{TEN_BI_MAT}_{nid}")
+            self._lan_dau_nguon[nid] = True
+            self.danh_thuc()
+            return self._cong_khai_nguon(cfg)
+
+    async def sua_nguon(self, id_: str, than: dict) -> dict:
+        """Sửa nguồn phụ (trừ id). Không có → 404."""
+        if not isinstance(than, dict):
+            raise ValueError("cấu hình nguồn git phải là đối tượng JSON")
+        token = than.get("token")
+        if token is not None and not isinstance(token, str):
+            raise ValueError("token phải là chuỗi")
+        async with self._khoa:
+            ds = _doc_nguon_phu()
+            cu = next((n for n in ds if n["id"] == id_), None)
+            if cu is None:
+                raise LoiGit(f"không có nguồn git {id_!r}", 404)
+            cfg = kiem_cau_hinh(than, cu)
+            ds = [{"id": n["id"], **cfg} if n["id"] == id_ else n for n in ds]
+            _ghi_nguon_phu(ds)
+            if token is not None:
+                if token:
+                    kho.ghi_bi_mat(f"{TEN_BI_MAT}_{id_}", {"token": token.strip()})
+                else:
+                    kho.xoa_bi_mat(f"{TEN_BI_MAT}_{id_}")
+            self._lan_dau_nguon[id_] = True
+            self.danh_thuc()
+            return self._cong_khai_nguon({"id": id_, **cfg})
+
+    async def xoa_nguon(self, id_: str) -> None:
+        """Xoá nguồn phụ: gỡ cấu hình + trạng thái + bí mật + bộ nhớ đệm, GIỮ NGUYÊN module đã cài
+        (hợp đồng 5). Không có → 404."""
+        async with self._khoa:
+            ds = _doc_nguon_phu()
+            if not any(n["id"] == id_ for n in ds):
+                raise LoiGit(f"không có nguồn git {id_!r}", 404)
+            _ghi_nguon_phu([n for n in ds if n["id"] != id_])
+            self._tt_nguon.pop(id_, None)
+            self._lan_dau_nguon.pop(id_, None)
+            self._cay_nguon.pop(id_, None)
+            kho.xoa_bi_mat(f"{TEN_BI_MAT}_{id_}")
+            self._luu_tt_nguon()
+            self.danh_thuc()
+
+    async def dong_bo_nguon(self, id_: str) -> dict:
+        """Đồng bộ NGAY một nguồn (qua _dong_bo dùng chung với vòng nền)."""
+        async with self._khoa:
+            nguon = self._lay_nguon(id_)
+            tt = self._tt(id_)
+            await self._dong_bo(nguon, tt)
+            if id_ == ID_NGUON_CHINH:
+                lan_dau, self._lan_dau = self._lan_dau, False
+            else:
+                lan_dau = self._lan_dau_nguon.pop(id_, False)
+            await self._tu_dong_mot(nguon, tt, lan_dau)
+            return self._cong_khai_nguon(nguon)
+
+    def danh_sach_nguon(self) -> list[dict]:
+        """Danh sách nguồn công khai (không lộ token): cấu hình + trạng thái tóm tắt."""
+        return [self._cong_khai_nguon(n) for n in self._danh_sach_nguon()]
+
+    def _cong_khai_nguon(self, nguon: dict) -> dict:
+        nid = nguon["id"]
+        tt = self._tt(nid)
+        commit = tt.get("commit") or {}
+        tk, tk_nguon = self._token_cua(nid)
+        return {
+            "id": nid,
+            "repo": nguon["repo"], "nhanh": nguon["nhanh"], "thu_muc": nguon["thu_muc"],
+            "chu_ky_giay": nguon["chu_ky_giay"], "tu_dong": nguon.get("tu_dong", False),
+            "yeu_cau_chu_ky": nguon.get("yeu_cau_chu_ky", False),
+            "token": kho.che(tk) if tk else None, "token_nguon": tk_nguon,
+            "so_module": len(tt.get("modules") or []),
+            "commit": {k: commit.get(k) for k in ("sha", "tac_gia", "thong_diep", "thoi_gian", "da_xac_minh")},
+            "loi": tt.get("loi"),
+        }
+
+    async def cai_tu_nguon(self, nid: str, id_: str) -> dict:
+        """Cài module từ ĐÚNG một nguồn (kiểm 409 trùng nguồn khác trong _cai_tu)."""
+        async with self._khoa:
+            nguon = self._lay_nguon(nid)
+            return await self._cai_tu(nguon, self._tt(nid), id_)
 
     def cong_khai(self) -> dict:
         cfg = self.cau_hinh()
@@ -264,22 +494,24 @@ class NguonGit:
                                             transport=TransportGhimIp(_dia_chi_bi_chan))
         return self._khach
 
-    def _che(self, van_ban: str) -> str:
-        tk = self.token()
+    def _che(self, van_ban: str, nid: str = ID_NGUON_CHINH) -> str:
+        tk, _ = self._token_cua(nid)
         return van_ban.replace(tk, kho.che(tk)) if tk else van_ban
 
-    def _doc_han_muc(self, r: httpx.Response) -> None:
+    def _doc_han_muc(self, r: httpx.Response, tt: dict | None = None) -> None:
+        tt = self.trang_thai if tt is None else tt
         con = r.headers.get("x-ratelimit-remaining")
         reset = r.headers.get("x-ratelimit-reset")
         if con is not None and con.isdigit():
-            self.trang_thai["han_muc_con"] = int(con)
+            tt["han_muc_con"] = int(con)
         if reset is not None and reset.isdigit():
-            self.trang_thai["reset_luc"] = iso(int(reset))
-            self.trang_thai["_reset_epoch"] = int(reset)
+            tt["reset_luc"] = iso(int(reset))
+            tt["_reset_epoch"] = int(reset)
 
-    async def _goi(self, duong: str, etag: str | None = None) -> httpx.Response:
+    async def _goi(self, duong: str, etag: str | None = None,
+                   nid: str = ID_NGUON_CHINH, tt: dict | None = None) -> httpx.Response:
         hd = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "web2api"}
-        tk = self.token()
+        tk, _ = self._token_cua(nid)
         if tk:
             hd["Authorization"] = f"Bearer {tk}"
         if etag:
@@ -289,24 +521,25 @@ class NguonGit:
                                          timeout=httpx.Timeout(30.0, connect=10.0))
         except httpx.HTTPError as e:
             raise LoiGit(f"lỗi mạng tới GitHub: {type(e).__name__}") from None
-        self._doc_han_muc(r)
+        self._doc_han_muc(r, tt)
         if r.status_code == 429 or (r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0"):
-            cho_den = self.trang_thai.get("_reset_epoch")
+            cho_den = (self.trang_thai if tt is None else tt).get("_reset_epoch")
             ra = r.headers.get("retry-after")
             if ra and ra.isdigit():
                 cho_den = max(cho_den or 0, time.time() + int(ra))
             raise LoiGit(f"hết hạn mức API GitHub ({r.status_code}"
                          + (", ẩn danh 60 yêu cầu/giờ/IP — thêm token để nâng" if not tk else "")
-                         + f"); thử lại lúc {self.trang_thai.get('reset_luc') or 'sau'}", 429, cho_den)
+                         + f"); thử lại lúc {(self.trang_thai if tt is None else tt).get('reset_luc') or 'sau'}",
+                         429, cho_den)
         return r
 
-    def _loi_http(self, r: httpx.Response, viec: str) -> LoiGit:
+    def _loi_http(self, r: httpx.Response, viec: str, nid: str = ID_NGUON_CHINH) -> LoiGit:
         try:
             tin = str(r.json().get("message") or "")
         except (ValueError, AttributeError):
             tin = ""
         goi_y = ""
-        tk = self.token()
+        tk, _ = self._token_cua(nid)
         if r.status_code == 404:
             if not tk:
                 goi_y = " — không thấy repo/nhánh (kho riêng tư cần token có quyền đọc (Contents: Read))"
@@ -318,13 +551,14 @@ class NguonGit:
             goi_y = " — bị từ chối truy cập (kho riêng tư cần token có quyền đọc (Contents: Read))"
         elif r.status_code in (301, 302, 307, 308):
             goi_y = " — repo đã đổi tên/chuyển chỗ; sửa «repo» trong cấu hình"
-        return LoiGit(self._che(f"GitHub trả HTTP {r.status_code} khi {viec}: {tin[:200]}{goi_y}"), 502)
+        return LoiGit(self._che(f"GitHub trả HTTP {r.status_code} khi {viec}: {tin[:200]}{goi_y}", nid), 502)
 
-    async def _tai_tarball(self, repo: str, sha: str) -> bytes:
+    async def _tai_tarball(self, repo: str, sha: str, nid: str = ID_NGUON_CHINH,
+                           tt: dict | None = None) -> bytes:
         if not isinstance(sha, str) or not SHA_HOP_LE.match(sha):
             raise LoiGit(f"sha commit không hợp lệ: {sha!r}")
         hd = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "web2api"}
-        tk = self.token()
+        tk, _ = self._token_cua(nid)
         if tk:
             hd["Authorization"] = f"Bearer {tk}"
         url_goc = api_github() + f"/repos/{repo}/tarball/{sha}"
@@ -333,15 +567,16 @@ class NguonGit:
                                          timeout=httpx.Timeout(60.0, connect=10.0))
         except httpx.HTTPError as e:
             raise LoiGit(f"lỗi mạng tới GitHub: {type(e).__name__}") from None
-        self._doc_han_muc(r)
+        self._doc_han_muc(r, tt)
         if r.status_code == 429 or (r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0"):
-            cho_den = self.trang_thai.get("_reset_epoch")
+            cho_den = (self.trang_thai if tt is None else tt).get("_reset_epoch")
             ra = r.headers.get("retry-after")
             if ra and ra.isdigit():
                 cho_den = max(cho_den or 0, time.time() + int(ra))
             raise LoiGit(f"hết hạn mức API GitHub ({r.status_code}"
                          + (", ẩn danh 60 yêu cầu/giờ/IP — thêm token để nâng" if not tk else "")
-                         + f"); thử lại lúc {self.trang_thai.get('reset_luc') or 'sau'}", 429, cho_den)
+                         + f"); thử lại lúc {(self.trang_thai if tt is None else tt).get('reset_luc') or 'sau'}",
+                         429, cho_den)
 
         # Xử lý chuyển hướng một bước (GitHub 302 sang codeload.github.com)
         if r.status_code in (301, 302, 307, 308):
@@ -363,29 +598,31 @@ class NguonGit:
                 raise LoiGit(f"lỗi mạng khi theo chuyển hướng tarball: {type(e).__name__}") from None
 
         if r.status_code != 200:
-            raise self._loi_http(r, f"tải tarball commit {sha[:12]}")
+            raise self._loi_http(r, f"tải tarball commit {sha[:12]}", nid)
         du_lieu = r.content
         if len(du_lieu) > TRAN_TONG:
             raise LoiGit(f"tarball commit {sha[:12]} lớn {len(du_lieu)} byte, vượt trần {TRAN_TONG}", 422)
         return du_lieu
 
-    async def _doc_cay(self, repo: str, cay: str) -> list[dict]:
+    async def _doc_cay(self, repo: str, cay: str, nid: str = ID_NGUON_CHINH,
+                       tt: dict | None = None) -> list[dict]:
         if not SHA_HOP_LE.match(cay):
             raise LoiGit(f"sha cây không hợp lệ: {cay!r}")
-        r = await self._goi(f"/repos/{repo}/git/trees/{cay}?recursive=1")
+        r = await self._goi(f"/repos/{repo}/git/trees/{cay}?recursive=1", nid=nid, tt=tt)
         if r.status_code != 200:
-            raise self._loi_http(r, "đọc cây thư mục")
+            raise self._loi_http(r, "đọc cây thư mục", nid)
         j = r.json()
         if j.get("truncated"):
             raise LoiGit("cây thư mục quá lớn, GitHub cắt bớt (truncated) — không đọc được đầy đủ")
         return j.get("tree") or []
 
-    async def _doc_blob(self, repo: str, sha: str) -> bytes:
+    async def _doc_blob(self, repo: str, sha: str, nid: str = ID_NGUON_CHINH,
+                        tt: dict | None = None) -> bytes:
         if not isinstance(sha, str) or not SHA_HOP_LE.match(sha):
             raise LoiGit(f"sha tệp không hợp lệ: {sha!r}")
-        r = await self._goi(f"/repos/{repo}/git/blobs/{sha}")
+        r = await self._goi(f"/repos/{repo}/git/blobs/{sha}", nid=nid, tt=tt)
         if r.status_code != 200:
-            raise self._loi_http(r, f"tải tệp {sha[:12]}")
+            raise self._loi_http(r, f"tải tệp {sha[:12]}", nid)
         j = r.json()
         if j.get("encoding") != "base64" or not isinstance(j.get("content"), str):
             raise LoiGit(f"tệp {sha[:12]} không ở dạng base64")
@@ -405,20 +642,25 @@ class NguonGit:
         kho.ghi_json_cong_khai(TEP_TRANG_THAI, tt)
 
     async def mot_lan(self) -> None:
-        """Một vòng thăm dò. LoiGit nếu GitHub lỗi (người gọi lùi nhịp)."""
-        cfg = self.cau_hinh()
-        if not cfg:
+        """Một vòng thăm dò nguồn «chinh». LoiGit nếu GitHub lỗi (người gọi lùi nhịp)."""
+        nguon, tt = self._nguon_chinh()
+        if nguon is None:
             return
-        repo, nhanh, thu_muc = cfg["repo"], cfg["nhanh"], cfg["thu_muc"]
-        tt = self.trang_thai
+        await self._dong_bo(nguon, tt)
+
+    async def _dong_bo(self, nguon: dict, tt: dict) -> None:
+        """Một vòng thăm dò của ĐÚNG một nguồn. LoiGit nếu GitHub lỗi (người gọi lùi nhịp)."""
+        nid = nguon["id"]
+        repo, nhanh, thu_muc = nguon["repo"], nguon["nhanh"], nguon["thu_muc"]
         if tt.get("dinh_danh") != [repo, nhanh, thu_muc]:
             tt.clear()
             tt["dinh_danh"] = [repo, nhanh, thu_muc]
         # «Lần đầu» = trạng thái chưa từng có commit của ĐÚNG nguồn này (đổi repo/nhánh/thư mục thì tt vừa bị
-        # xoá ở trên). Dấu chính là commit đã lưu trong nguon_git_trang_thai.json: máy đã đồng bộ từ bản cũ
+        # xoá ở trên). Dấu chính là commit đã lưu trong trạng thái: máy đã đồng bộ từ bản cũ
         # thì có sẵn commit → nâng cấp lõi KHÔNG tự cập nhật module lúc không ai bấm; khởi động lại cũng vậy.
         lan_dau = not tt.get("commit")
-        r = await self._goi(f"/repos/{repo}/commits/{quote(nhanh, safe='/')}", etag=tt.get("etag"))
+        r = await self._goi(f"/repos/{repo}/commits/{quote(nhanh, safe='/')}", etag=tt.get("etag"),
+                            nid=nid, tt=tt)
         tt["kiem_luc"] = kho.bay_gio_iso()
         if r.status_code == 304:
             tt["loi"] = None
@@ -427,22 +669,29 @@ class NguonGit:
             tt.update(etag=None, commit=None, modules=[], loi=None)
             return
         if r.status_code != 200:
-            raise self._loi_http(r, "đọc commit mới nhất")
+            raise self._loi_http(r, "đọc commit mới nhất", nid)
         j = r.json()
         c = j.get("commit") or {}
         commit = {"sha": j.get("sha"), "tac_gia": (c.get("author") or {}).get("name"),
                   "thong_diep": str(c.get("message") or "")[:300],
                   "da_xac_minh": bool((c.get("verification") or {}).get("verified")),
                   "cay": (c.get("tree") or {}).get("sha")}
-        cay = await self._doc_cay(repo, str(commit["cay"]))
-        self._cay_muc = cay
-        self._cay_blob = {e["path"]: e["sha"] for e in cay if e.get("type") == "blob"}
-        modules = await self._doc_modules(repo, cay, thu_muc, tt.get("modules") or [])
+        cay = await self._doc_cay(repo, str(commit["cay"]), nid, tt)
+        self._cay_nguon[nid] = {"muc": cay, "blob": {e["path"]: e["sha"] for e in cay if e.get("type") == "blob"}}
+        if nid == ID_NGUON_CHINH:
+            # tương thích: mã cũ đọc self._cay_muc/_cay_blob
+            self._cay_muc = self._cay_nguon[nid]["muc"]
+            self._cay_blob = self._cay_nguon[nid]["blob"]
+        modules = await self._doc_modules(repo, cay, thu_muc, tt.get("modules") or [], nid, tt)
         # ETag chỉ lưu khi đã đọc xong: hỏng giữa chừng thì lần sau không bị 304 che mất commit này.
         tt.update(etag=r.headers.get("etag"), commit=commit, modules=modules, loi=None)
-        self._lan_dau = lan_dau
+        if nid == ID_NGUON_CHINH:
+            self._lan_dau = lan_dau
+        else:
+            self._lan_dau_nguon[nid] = lan_dau
 
-    async def _doc_modules(self, repo: str, cay: list[dict], thu_muc: str, cu: list[dict]) -> list[dict]:
+    async def _doc_modules(self, repo: str, cay: list[dict], thu_muc: str, cu: list[dict],
+                           nid: str = ID_NGUON_CHINH, tt: dict | None = None) -> list[dict]:
         tien = thu_muc + "/"
         thu_muc_con = {e["path"][len(tien):]: e["sha"] for e in cay
                        if e.get("type") == "tree" and e["path"].startswith(tien) and "/" not in e["path"][len(tien):]}
@@ -467,7 +716,7 @@ class NguonGit:
                 continue
             muc = {"id": ten, "tree_sha": sha_tm, "loi": None, "dung_luong": dung_luong.get(ten, 0)}
             try:
-                m = json.loads(await self._doc_blob(repo, manifest[ten]))
+                m = json.loads(await self._doc_blob(repo, manifest[ten], nid, tt))
                 ly_do = kiem_manifest(m)
                 if ly_do is None and m["id"] != ten:
                     ly_do = f"id trong manifest ({m['id']!r}) khác tên thư mục ({ten!r})"
@@ -492,33 +741,39 @@ class NguonGit:
         if km is None or km.nguon != "du_lieu":
             return None
         try:
-            return json.loads((km.thu_muc / ".nguon.json").read_text(encoding="utf-8"))
+            nj = json.loads((km.thu_muc / ".nguon.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+        if isinstance(nj, dict):
+            nj.setdefault("nguon_id", ID_NGUON_CHINH)  # NV59: bản cài cũ (trước NV59) coi như từ «chinh»
+        return nj
 
-    def danh_sach(self) -> list[dict]:
-        """Trạng thái từng module trên git so với bản đã cài — tính LÚC ĐỌC (người dùng cài/gỡ
+    def _danh_sach_mot(self, nguon: dict | None, tt: dict) -> list[dict]:
+        """Trạng thái từng module của MỘT nguồn so với bản đã cài — tính LÚC ĐỌC (người dùng cài/gỡ
         không cần đợi vòng thăm dò sau mới thấy đúng). Bản đã cài khớp khi sha THƯ MỤC module
         trong git bằng nhau: so nội dung thật, chặt hơn so số phiên bản (quên tăng phiên bản vẫn thấy)."""
-        commit = self.trang_thai.get("commit") or {}
+        if nguon is None:
+            return []
+        nid = nguon["id"]
+        commit = tt.get("commit") or {}
         ra = []
-        for m in self.trang_thai.get("modules") or []:
+        for m in tt.get("modules") or []:
             km = self.so.catalog.get(m["id"])
-            nguon = self._nguon_da_cai(m["id"])
+            nguon_da_cai = self._nguon_da_cai(m["id"])
             ly_do = m.get("loi")
             if ly_do:
-                tt = "loi_manifest"
+                tt_trang_thai = "loi_manifest"
             elif km is not None and km.nguon == "anh":
-                tt, ly_do = "loi_manifest", "trùng id với module đi kèm ảnh"
+                tt_trang_thai, ly_do = "loi_manifest", "trùng id với module đi kèm ảnh"
             elif km is None:
-                tt = "moi"
-            elif nguon and nguon.get("tree_sha") == m["tree_sha"]:
-                tt = "da_cai_dung"
+                tt_trang_thai = "moi"
+            elif nguon_da_cai and nguon_da_cai.get("tree_sha") == m["tree_sha"]:
+                tt_trang_thai = "da_cai_dung"
             else:
-                tt = "co_ban_moi"
-            ghi_chu = self._ghi_chu.get(m["id"])
+                tt_trang_thai = "co_ban_moi"
+            ghi_chu = self._ghi_chu.get((nid, m["id"]))
             ra.append({
-                "id": m["id"], "ten": m.get("ten"), "trang_thai": tt,
+                "id": m["id"], "ten": m.get("ten"), "trang_thai": tt_trang_thai,
                 "phien_ban_cu": km.manifest.get("phien_ban") if km else None,
                 "phien_ban_moi": m.get("phien_ban"),
                 # Tóm tắt manifest trên git: trang Module xếp ô «Chưa cài» vào khu theo `loai` và hiện «Cần gì để chạy».
@@ -527,6 +782,30 @@ class NguonGit:
                 "commit": {k: commit.get(k) for k in ("sha", "tac_gia", "thong_diep")},
                 "ly_do": ly_do,
                 "ghi_chu": ghi_chu[1] if ghi_chu and ghi_chu[0] == m["tree_sha"] else None,
+            })
+        return ra
+
+    def danh_sach(self) -> list[dict]:
+        """Trạng thái từng module trên git so với bản đã cài (nguồn chính), cộng các module đã cài
+        từ nguồn đã bị xoá (NV59: `nguon_trang_thai` = «nguồn đã gỡ», module KHÔNG bị gỡ theo)."""
+        nguon, tt = self._nguon_chinh()
+        ra = self._danh_sach_mot(nguon, tt)
+        co = {x["id"] for x in ra}
+        ids_hien = {n["id"] for n in self._danh_sach_nguon()}
+        for id_mod, km in self.so.catalog.items():
+            if id_mod in co or km.nguon != "du_lieu":
+                continue
+            nj = self._nguon_da_cai(id_mod)
+            nid = (nj or {}).get("nguon_id")
+            if not nid or nid in ids_hien:
+                continue
+            ra.append({
+                "id": id_mod, "ten": km.manifest.get("ten"), "trang_thai": "nguon_da_go",
+                "nguon_trang_thai": "nguồn đã gỡ", "nguon_id": nid,
+                "phien_ban_cu": km.manifest.get("phien_ban"), "phien_ban_moi": None,
+                "mo_ta": km.manifest.get("mo_ta"),
+                "commit": {"sha": (nj or {}).get("sha_commit")},
+                "ly_do": None, "ghi_chu": None,
             })
         return ra
 
@@ -552,13 +831,16 @@ class NguonGit:
 
     async def cai(self, id_: str, chap_nhan_quyen_them: list | None = None,
                 sha_commit: str | None = None) -> dict:
-        """Cài module từ git. Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
+        """Cài module từ git (nguồn chính). Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
         (phải khớp chính xác diff đã xem); không có → cài thường (bản mới xin thêm quyền
         thì 409 chờ duyệt thay vì kích hoạt)."""
         async with self._khoa:
             if chap_nhan_quyen_them is not None or sha_commit is not None:
                 return await self._cai_duyet(id_, chap_nhan_quyen_them, sha_commit)
-            return await self._cai(id_)
+            nguon, tt = self._nguon_chinh()
+            if nguon is None:
+                raise LoiGit("chưa cấu hình nguồn git (PUT /api/nguon-git)", 400)
+            return await self._cai_tu(nguon, tt, id_)
 
     async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None) -> dict:
         """Duyệt bản đang chờ: không tải lại, kích hoạt đúng thư mục đã chốt khi xem diff."""
@@ -581,37 +863,50 @@ class NguonGit:
                     id_, str(sha_commit)[:12])
         return {"ok": True, "id": id_, "duyet_quyen": True, **kq}
 
-    async def _cai(self, id_: str, tu_dong: bool = False) -> dict:
-        """`tu_dong=True` chỉ từ vòng tự cài: bản mới của module ĐÃ cài thì giữ chờ duyệt (cai_thu_muc, NV49 R-1)."""
-        cfg = self.cau_hinh()
-        if not cfg:
-            raise LoiGit("chưa cấu hình nguồn git (PUT /api/nguon-git)", 400)
+    async def _cai_tu(self, nguon: dict, tt: dict, id_: str, tu_dong: bool = False) -> dict:
+        """Cài module từ ĐÚNG một nguồn. NV59: trùng id với module đã cài từ nguồn KHÁC → 409
+        (không tự đè); đúng nguồn cũ → cập nhật bình thường.
+        `tu_dong=True` chỉ từ vòng tự cài: bản mới của module ĐÃ cài thì giữ chờ duyệt (cai_thu_muc, NV49 R-1)."""
+        nid = nguon["id"]
         if not isinstance(id_, str) or not ID_HOP_LE.match(id_):
             raise LoiGit(f"id {id_!r} không hợp lệ", 400)
-        commit = self.trang_thai.get("commit") or {}
-        m = next((x for x in self.trang_thai.get("modules") or [] if x["id"] == id_), None)
+        commit = tt.get("commit") or {}
+        m = next((x for x in tt.get("modules") or [] if x["id"] == id_), None)
         if m is None or not commit.get("sha"):
-            raise LoiGit(f"module {id_!r} không có trong lần đồng bộ gần nhất — chờ vòng thăm dò sau", 404)
+            raise LoiGit(f"module {id_!r} không có trong lần đồng bộ gần nhất của nguồn {nid!r}"
+                         " — chờ vòng thăm dò sau", 404)
         if m.get("loi"):
             raise LoiGit(f"manifest của {id_!r} lỗi: {m['loi']}", 422)
-        repo, thu_muc = cfg["repo"], cfg["thu_muc"]
+        # NV59 hợp đồng 3: hai nguồn trùng id module → KHÔNG tự đè nhau.
+        da_cai = self._nguon_da_cai(id_)
+        if da_cai is not None:
+            nid_cu = da_cai.get("nguon_id") or "chinh"
+            if nid_cu != nid:
+                raise LoiGit(f"module {id_!r} đã cài từ nguồn {nid_cu!r} — không tự đè bằng nguồn {nid!r} "
+                             "(trùng id module từ hai nguồn)", 409)
+        repo, thu_muc = nguon["repo"], nguon["thu_muc"]
         tien = f"{thu_muc}/{id_}/"
 
         # Nếu chưa có cây trong bộ nhớ (ví dụ sau khởi động lại), đọc cây một lần
-        if not self._cay_muc and commit.get("cay"):
-            cay = await self._doc_cay(repo, str(commit["cay"]))
-            self._cay_muc = cay
-            self._cay_blob = {e["path"]: e["sha"] for e in cay if e.get("type") == "blob"}
+        cay_blob = self._cay_nguon.get(nid)
+        if not cay_blob and commit.get("cay"):
+            cay = await self._doc_cay(repo, str(commit["cay"]), nid, tt)
+            cay_blob = {"muc": cay, "blob": {e["path"]: e["sha"] for e in cay if e.get("type") == "blob"}}
+            self._cay_nguon[nid] = cay_blob
+            if nid == ID_NGUON_CHINH:
+                self._cay_muc, self._cay_blob = cay_blob["muc"], cay_blob["blob"]
+        cay_muc = (cay_blob or {}).get("muc") or []
+        blob_theo_duong = (cay_blob or {}).get("blob") or {}
 
         # Kiểm tra submodule từ cây nếu có
-        for e in self._cay_muc:
+        for e in cay_muc:
             if e.get("path", "").startswith(tien):
                 rel = e["path"][len(tien):]
                 if e.get("mode") == "160000" or e.get("type") == "commit":
                     raise LoiGit(f"module chứa submodule {rel!r} — từ chối", 422)
 
         # Cài bằng MỘT yêu cầu tarball chốt theo commit đã thấy
-        du_lieu_tar = await self._tai_tarball(repo, str(commit["sha"]))
+        du_lieu_tar = await self._tai_tarball(repo, str(commit["sha"]), nid, tt)
         tam = kho.thu_muc_modules() / f".tam-{id_}-{secrets.token_hex(4)}"
         try:
             try:
@@ -620,7 +915,7 @@ class NguonGit:
                 raise LoiGit(f"tarball commit {str(commit['sha'])[:12]} hỏng hoặc không đúng định dạng: {e}", 422)
 
             with tf:
-                tep_trong_module, tong_dung_luong = self._giai_nen_kiem_tra(tf, tien)
+                tep_trong_module, tong_dung_luong = self._giai_nen_kiem_tra(tf, tien, blob_theo_duong)
                 tam.mkdir(parents=True)
                 for rel, noi_dung in tep_trong_module:
                     p = tam / rel
@@ -631,7 +926,8 @@ class NguonGit:
             manifest, ly_do = doc_manifest(tam)
             if ly_do or manifest["id"] != id_:
                 raise LoiGit(f"manifest tải về không hợp lệ: {ly_do or 'id khác tên thư mục'}", 422)
-            nguon = {"repo": repo, "nhanh": cfg["nhanh"], "sha_commit": commit["sha"], "tree_sha": m["tree_sha"],
+            nguon = {"nguon_id": nid, "repo": repo, "nhanh": nguon["nhanh"], "sha_commit": commit["sha"],
+                     "tree_sha": m["tree_sha"],
                      "phien_ban": manifest.get("phien_ban"), "cai_luc": kho.bay_gio_iso()}
             (tam / ".nguon.json").write_text(json.dumps(nguon, ensure_ascii=False, indent=2), encoding="utf-8")
             viec = self.viec(id_)  # đọc TRƯỚC khi cài: cài xong thì module đã nằm trong catalog
@@ -640,14 +936,15 @@ class NguonGit:
             if tam.exists():
                 shutil.rmtree(tam, ignore_errors=True)
             raise
-        self._ghi_chu.pop(id_, None)
-        self._tu_dong_hong.pop(id_, None)
-        (self.trang_thai.get("da_go") or {}).pop(id_, None)
+        self._ghi_chu.pop((nid, id_), None)
+        self._tu_dong_hong.pop((nid, id_), None)
+        (tt.get("da_go") or {}).pop(id_, None)
         log.warning("Đã %s module %s phiên bản %s từ git (commit %s)", viec, id_, manifest.get("phien_ban"),
                     str(commit["sha"])[:12])
         return {"ok": True, "id": id_, "phien_ban": manifest.get("phien_ban"), "sha_commit": commit["sha"], **kq}
 
-    def _giai_nen_kiem_tra(self, tf: tarfile.TarFile, tien: str) -> tuple[list[tuple[str, bytes]], int]:
+    def _giai_nen_kiem_tra(self, tf: tarfile.TarFile, tien: str,
+                           blob_theo_duong: dict[str, str]) -> tuple[list[tuple[str, bytes]], int]:
         tep_ra: list[tuple[str, bytes]] = []
         da_thay: set[str] = set()
         tong = 0
@@ -707,7 +1004,7 @@ class NguonGit:
             if len(du_lieu) != member.size:
                 raise LoiGit(f"dung lượng tệp {rel!r} đọc được không khớp header tar", 422)
 
-            expected_sha = self._cay_blob.get(rel_repo)
+            expected_sha = blob_theo_duong.get(rel_repo)
             if expected_sha and bam_blob(du_lieu) != expected_sha:
                 raise LoiGit(f"tệp {rel!r} SAI BĂM — nội dung nhận được không khớp sha trong cây git; "
                              "từ chối cả module", 422)
@@ -723,73 +1020,100 @@ class NguonGit:
 
     def da_go(self, id_: str) -> None:
         """Quản trị vừa gỡ module: nhớ (lưu đĩa) sha thư mục của bản trên git để vòng tự cài KHÔNG cài
-        lại đúng bản đó ở lần thăm dò sau — không thì gỡ xong một chu kỳ là module quay về."""
+        lại đúng bản đó ở lần thăm dò sau — không thì gỡ xong một chu kỳ là module quay về.
+        NV59: đánh dấu ở mọi nguồn đang liệt kê module này (không biết module từ nguồn nào vì đã gỡ)."""
+        # Luôn đánh dấu ở self.trang_thai: vừa là trạng thái nguồn «chinh», vừa tương thích mã/test
+        # gán trực tiếp trang_thai (không qua cấu hình nguồn).
         m = next((x for x in self.trang_thai.get("modules") or [] if x["id"] == id_), None)
-        if m is None:
-            return
-        self.trang_thai.setdefault("da_go", {})[id_] = m["tree_sha"]
+        if m is not None:
+            self.trang_thai.setdefault("da_go", {})[id_] = m["tree_sha"]
+        for nguon in self._danh_sach_nguon():
+            if nguon["id"] == ID_NGUON_CHINH:
+                continue  # đã xử lý ở trên
+            tt = self._tt(nguon["id"])
+            m = next((x for x in tt.get("modules") or [] if x["id"] == id_), None)
+            if m is None:
+                continue
+            tt.setdefault("da_go", {})[id_] = m["tree_sha"]
         try:
             self._luu_trang_thai()
         except OSError as e:
             log.warning("Không ghi được %s: %s", TEP_TRANG_THAI, e)
+        try:
+            self._luu_tt_nguon()
+        except OSError as e:
+            log.warning("Không ghi được %s: %s", TEP_TT_NGUON, e)
 
     # ───────────── tự cài ─────────────
 
-    async def _tu_dong(self) -> None:
-        """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, bản vừa gỡ,
+    async def _tu_dong(self, bo_qua: set[str] | None = None) -> None:
+        """Tự cài cho TẤT CẢ nguồn đã cấu hình — mỗi nguồn theo `tu_dong`/`yeu_cau_chu_ky` của mình
+        (NV59 hợp đồng 4). `bo_qua`: id các nguồn vừa đồng bộ hỏng (vòng nền) thì bỏ qua lượt này."""
+        bo_qua = bo_qua or set()
+        for nguon in self._danh_sach_nguon():
+            nid = nguon["id"]
+            if nid in bo_qua:
+                continue
+            tt = self._tt(nid)
+            if nid == ID_NGUON_CHINH:
+                lan_dau, self._lan_dau = self._lan_dau, False
+            else:
+                lan_dau = self._lan_dau_nguon.pop(nid, False)
+            await self._tu_dong_mot(nguon, tt, lan_dau)
+
+    async def _tu_dong_mot(self, nguon: dict, tt: dict, lan_dau: bool) -> None:
+        """Tự cài sau một vòng thăm dò của MỘT nguồn, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, bản vừa gỡ,
         bản đã tự cài hỏng):
           - `tu_dong` bật: module MỚI thì cài thẳng; bản mới của module đã cài thì tải về giữ chờ duyệt;
-          - lần đồng bộ ĐẦU của nguồn git (`_lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, module đã có mã mà
+          - lần đồng bộ ĐẦU của nguồn (`lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, module đã có mã mà
             git có bản khác (`co_ban_moi`, kể cả module đặt tay không có .nguon.json) được tải về giữ chờ duyệt
             dù `tu_dong` tắt — không cài module mới, việc đó chủ máy bấm.
         NV49 R-1: mọi bản mới của module ĐÃ cài (đổi mã dù quyền giữ nguyên, hay xin thêm quyền) đều do cổng
         trong `cai_thu_muc` giữ lại chờ duyệt — mã mới chỉ chạy khi quản trị bấm «Cập nhật» hoặc duyệt."""
-        cfg = self.cau_hinh()
-        lan_dau, self._lan_dau = self._lan_dau, False
-        if not cfg:
-            return
-        duoc = {"moi", "co_ban_moi"} if cfg.get("tu_dong") else {"co_ban_moi"} if lan_dau else set()
+        nid = nguon["id"]
+        duoc = {"moi", "co_ban_moi"} if nguon.get("tu_dong") else {"co_ban_moi"} if lan_dau else set()
         if not duoc:
             return
-        commit = self.trang_thai.get("commit") or {}
-        snap = {m["id"]: m for m in self.trang_thai.get("modules") or []}
-        for x in self.danh_sach():
+        commit = tt.get("commit") or {}
+        snap = {m["id"]: m for m in tt.get("modules") or []}
+        for x in self._danh_sach_mot(nguon, tt):
             if x["trang_thai"] not in duoc:
                 continue
             m = snap[x["id"]]
             viec = self.viec(x["id"])
-            if self._tu_dong_hong.get(x["id"]) == m["tree_sha"]:
+            khoa = (nid, x["id"])
+            if self._tu_dong_hong.get(khoa) == m["tree_sha"]:
                 continue  # bản này đã tự cài hỏng một lần — chờ bản mới hoặc quản trị
-            if (self.trang_thai.get("da_go") or {}).get(x["id"]) == m["tree_sha"]:
-                self._ghi_chu[x["id"]] = (m["tree_sha"], f"quản trị đã gỡ bản này — không tự {viec} lại; "
-                                                          f"bản mới trên git hoặc {viec} tay thì {viec}")
+            if (tt.get("da_go") or {}).get(x["id"]) == m["tree_sha"]:
+                self._ghi_chu[khoa] = (m["tree_sha"], f"quản trị đã gỡ bản này — không tự {viec} lại; "
+                                                     f"bản mới trên git hoặc {viec} tay thì {viec}")
                 continue
             ly_do = None
-            if cfg.get("yeu_cau_chu_ky") and not commit.get("da_xac_minh"):
+            if nguon.get("yeu_cau_chu_ky") and not commit.get("da_xac_minh"):
                 ly_do = f"commit chưa được GitHub xác minh chữ ký (yeu_cau_chu_ky bật) — không tự {viec}, cần quản trị {viec} tay"
             if ly_do:
-                self._ghi_chu[x["id"]] = (m["tree_sha"], ly_do)
+                self._ghi_chu[khoa] = (m["tree_sha"], ly_do)
                 continue
             try:
-                await self._cai(x["id"], tu_dong=True)
+                await self._cai_tu(nguon, tt, x["id"], tu_dong=True)
             except LoiCanDuyetQuyen as e:
                 # Bản mới xin thêm quyền hoặc đổi mã module đã cài: cổng trong cai_thu_muc đã lưu yêu cầu chờ
                 # duyệt — giữ lại, đánh dấu để không tải lại mỗi vòng (quản trị duyệt tay khi sẵn sàng).
-                self._tu_dong_hong[x["id"]] = m["tree_sha"]
+                self._tu_dong_hong[khoa] = m["tree_sha"]
                 if e.diff["them"]:
-                    self._ghi_chu[x["id"]] = (m["tree_sha"],
+                    self._ghi_chu[khoa] = (m["tree_sha"],
                         f"bản mới XIN THÊM QUYỀN ({len(e.diff['them'])} mục) — không tự {viec}, "
                         f"chờ quản trị duyệt (POST /api/nguon-git/cai/{x['id']})")
                     log.warning("Tự %s module %s: bản mới xin thêm quyền, chờ quản trị duyệt", viec, x["id"])
                 else:
-                    self._ghi_chu[x["id"]] = (m["tree_sha"],
+                    self._ghi_chu[khoa] = (m["tree_sha"],
                         f"bản mới ĐỔI MÃ module đã cài (không xin thêm quyền) — "
                         f"không tự {viec}, chờ quản trị duyệt: bấm «Cập nhật» hoặc POST /api/nguon-git/cai/{x['id']} "
                         f"với {{\"chap_nhan_quyen_them\": [], \"sha_commit\": \"{e.sha_commit}\"}}")
                     log.warning("Tự %s module %s: bản mới đổi mã, chờ quản trị duyệt", viec, x["id"])
             except (LoiGit, LoiSo) as e:
-                self._tu_dong_hong[x["id"]] = m["tree_sha"]
-                self._ghi_chu[x["id"]] = (m["tree_sha"], f"tự {viec} hỏng: {e}")
+                self._tu_dong_hong[khoa] = m["tree_sha"]
+                self._ghi_chu[khoa] = (m["tree_sha"], f"tự {viec} hỏng: {e}")
                 log.warning("Tự %s module %s hỏng: %s", viec, x["id"], e)
 
     # ───────────── vòng nền ─────────────
@@ -819,20 +1143,51 @@ class NguonGit:
             pass
         self._danh_thuc.clear()
 
+    def _ghi_loi_nguon(self, nid: str, e: Exception) -> None:
+        """Ghi lỗi đồng bộ của MỘT nguồn (NV59: lỗi nguồn này không chặn nguồn kia)."""
+        tt = self._tt(nid)
+        if isinstance(e, LoiGit):
+            tin = str(e)
+        else:
+            log.exception("Lỗi nội bộ khi đồng bộ nguồn git %s", nid)
+            tin = f"lỗi nội bộ: {type(e).__name__}"
+        tin = self._che(tin, nid)
+        tt["loi"] = tin
+        log.warning("Đồng bộ nguồn git %s hỏng: %s", nid, tin)
+
     async def chay_nen(self) -> None:
         while True:
-            cfg = self.cau_hinh()
-            if not cfg:
+            ds = self._danh_sach_nguon()
+            if not ds:
                 await self._cho(None)  # chưa cấu hình: ngủ tới khi PUT /api/nguon-git đánh thức
                 continue
-            chu_ky = float(cfg["chu_ky_giay"])
+            chu_ky = min(float(n["chu_ky_giay"]) for n in ds)
             # Lời đánh thức tới TRƯỚC vòng này đã được chính vòng này phục vụ — xoá để lần chờ sau
             # không bật lại ngay (đo được: PUT cấu hình rồi khởi động → 2 yêu cầu liền nhau lúc hết hạn mức).
             self._danh_thuc.clear()
             try:
                 async with self._khoa:
-                    await self.mot_lan()
-                    await self._tu_dong()
+                    that_bai = set()
+                    loi_dau = None
+                    for nguon in ds:
+                        # NV59 hợp đồng 2: mỗi nguồn thăm dò riêng; lỗi nguồn này không chặn nguồn kia.
+                        try:
+                            await self._dong_bo(nguon, self._tt(nguon["id"]))
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            that_bai.add(nguon["id"])
+                            self._ghi_loi_nguon(nguon["id"], e)
+                            if loi_dau is None:
+                                loi_dau = e
+                    if loi_dau is not None and len(that_bai) == len(ds):
+                        # Tất cả nguồn đều hỏng → lùi nhịp toàn cục như cũ (đặt thu_lai_luc).
+                        raise loi_dau
+                    await self._tu_dong(bo_qua=that_bai)
+                    try:
+                        self._luu_tt_nguon()
+                    except OSError as e:
+                        log.warning("Không ghi được %s: %s", TEP_TT_NGUON, e)
                 self._lan_loi = 0
                 cho = self.nhip_ke_tiep(chu_ky)
                 self.trang_thai["thu_lai_luc"] = None

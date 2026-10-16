@@ -1353,6 +1353,44 @@ async def cai_tu_git(id_: str, request: Request):
         raise _loi_so(e) from None
 
 
+# ───────────── /api/nguon-git/nguon — NV59: quản lý nhiều nguồn git ─────────────
+
+@nguon_git.get("/nguon")
+async def ds_nguon_git(request: Request):
+    return {"nguon": _ng(request).danh_sach_nguon()}
+
+
+@nguon_git.post("/nguon")
+async def them_nguon_git(request: Request):
+    try:
+        return await _ng(request).them_nguon(await _than_json(request))
+    except ValueError as e:
+        raise LoiOpenAI(400, str(e)) from None
+    except (LoiGit, LoiSo) as e:
+        raise _loi_so(e) from None
+
+
+@nguon_git.put("/nguon/{id_}")
+async def sua_nguon_git(id_: str, request: Request):
+    try:
+        return await _ng(request).sua_nguon(id_, await _than_json(request))
+    except ValueError as e:
+        raise LoiOpenAI(400, str(e)) from None
+    except (LoiGit, LoiSo) as e:
+        raise _loi_so(e) from None
+
+
+@nguon_git.delete("/nguon/{id_}")
+async def xoa_nguon_git(id_: str, request: Request):
+    try:
+        await _ng(request).xoa_nguon(id_)
+        return {"ok": True, "id": id_}
+    except ValueError as e:
+        raise LoiOpenAI(400, str(e)) from None
+    except (LoiGit, LoiSo) as e:
+        raise _loi_so(e) from None
+
+
 # ───────────── /m/<id>/ — giao diện đi theo module ─────────────
 
 #: Trang module chạy CÙNG origin với giao diện quản trị (khoá quản trị nằm ở localStorage): CSP chặt — chỉ script/kiểu

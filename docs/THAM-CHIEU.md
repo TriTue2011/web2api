@@ -736,6 +736,34 @@ web2api đọc số còn lại sau mỗi phản hồi, còn dưới 10 thì giã
 module **đã cài**: bản mới (xin thêm quyền hay chỉ đổi mã) được giữ chờ duyệt — các trường hợp này hiện trong
 `ghi_chu` để quản trị xem và cài tay (xem «Cập nhật module và duyệt quyền»).
 
+### Nhiều nguồn git
+
+Ngoài nguồn chính (cấu hình một-repo ở `PUT /api/nguon-git`, luôn có id `"chinh"`), web2api cho phép thêm
+nhiều nguồn git phụ — ví dụ giữ nguồn của chủ kho và thêm kho riêng của mình cùng lúc. Cấu hình cũ một-repo
+vẫn đọc được và tự thành danh sách một phần tử (không bắt cấu hình lại).
+
+- Mỗi nguồn có `id` ngắn (chữ thường, số, `-`, `_`; `"chinh"` dành riêng cho nguồn cấu hình cũ), `repo`,
+  `nhanh`, `thu_muc`, `chu_ky_giay`, `tu_dong`, `yeu_cau_chu_ky` — cùng bộ kiểm `kiem_repo`/`_duong_an_toan`/SSRF
+  như nguồn chính. `tu_dong` mặc định **tắt** cho nguồn mới.
+- Mỗi nguồn thăm dò **riêng**; lỗi hoặc hết hạn mức của nguồn này không chặn nguồn kia. `tu_dong` và
+  `yeu_cau_chu_ky` tính theo từng nguồn.
+- Module cài từ git ghi `nguon_id` vào `.nguon.json`. Hai nguồn có module trùng id → **không tự đè nhau**:
+  cài từ nguồn thứ hai bị từ chối `409`; cập nhật từ đúng nguồn cũ vẫn được.
+- Xoá nguồn không gỡ module đã cài: module vẫn chạy, không còn cập nhật từ nguồn ấy; `GET /api/modules`
+  hiện `nguon_trang_thai` là «nguồn đã gỡ».
+- Token theo nguồn: nguồn `"chinh"` dùng `WEB2API_GITHUB_TOKEN`/`WEB2API_GIT_TOKEN` hoặc bí mật đã lưu;
+  nguồn phụ dùng biến `WEB2API_GITHUB_TOKEN_<ID>` / `WEB2API_GIT_TOKEN_<ID>` (ID viết hoa) hoặc bí mật riêng
+  `_nguon_git_<id>` (lưu 0600, thu hồi độc lập).
+
+| Đường | Ý nghĩa |
+|---|---|
+| `GET /api/nguon-git/nguon` | Danh sách nguồn: `{"nguon": [{id, repo, nhanh, thu_muc, chu_ky_giay, tu_dong, yeu_cau_chu_ky, token (che), so_module, commit, loi}]}`. |
+| `POST /api/nguon-git/nguon` | Thêm nguồn: thân `{id, repo, nhanh, thu_muc, chu_ky_giay, tu_dong, yeu_cau_chu_ky[, token]}`; trùng id → 409. |
+| `PUT /api/nguon-git/nguon/{id}` | Sửa nguồn phụ (trừ id); không có → 404. |
+| `DELETE /api/nguon-git/nguon/{id}` | Xoá nguồn phụ (giữ module đã cài); không có → 404. |
+
+Cả bốn đường đều là đường quản trị (không khoá → 401, khoá khách → 403).
+
 ### Cập nhật module và duyệt quyền (chống «rug-pull»)
 
 Kho module bị chiếm (hoặc người viết đổi ý) có thể đẩy một commit mới cho module đã được tin, lén thêm quyền
@@ -2288,7 +2316,11 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
-| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo. Bản mới xin thêm quyền → `409 can_duyet_quyen` kèm diff (không kích hoạt); duyệt bằng thân JSON `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}` khớp chính xác. Xem «Cập nhật module và duyệt quyền». Phản hồi cài luôn có `can_module_thieu` — id các module được khai cần mà chưa cài (để đề nghị, không tự cài lén; xem «Phụ thuộc giữa các module») |
+| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo.
+| `GET /api/nguon-git/nguon` | Có | Danh sách nguồn git: `{"nguon": [...]}` (nguồn `"chinh"` = cấu hình cũ một-repo) |
+| `POST /api/nguon-git/nguon` | Có | Thêm nguồn git phụ `{id, repo, nhanh, thu_muc, chu_ky_giay, tu_dong, yeu_cau_chu_ky[, token]}`; trùng id → 409 |
+| `PUT /api/nguon-git/nguon/{id}` | Có | Sửa nguồn git phụ (trừ id); không có → 404 |
+| `DELETE /api/nguon-git/nguon/{id}` | Có | Xoá nguồn git phụ (giữ module đã cài); không có → 404 | Bản mới xin thêm quyền → `409 can_duyet_quyen` kèm diff (không kích hoạt); duyệt bằng thân JSON `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}` khớp chính xác. Xem «Cập nhật module và duyệt quyền». Phản hồi cài luôn có `can_module_thieu` — id các module được khai cần mà chưa cài (để đề nghị, không tự cài lén; xem «Phụ thuộc giữa các module») |
 | `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
 | `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
 | `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |
