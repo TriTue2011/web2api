@@ -244,7 +244,7 @@ Người gọi dùng `POST /api/gui/{module}` (xác thực `V1_AUTH` + phạm vi
 - `kenh_id` **bắt buộc** khi module có hơn một đích — lõi không đoán «đích đầu danh sách» (`400` `kenh_required`); module chỉ có một đích thì được bỏ qua.
 - Trần: 20 tin/phút theo (khoá, module), 8 lượt đồng thời toàn cục (`429` + `Retry-After`); nội dung ≤ 16 KiB, tệp ≤ 25 MB (`413`); gọi module quá 60 giây → `504`.
 - Phản hồi thành công `{"ok": true, "kenh": "<id>"}` — luôn nêu kênh thực sự đã gửi để người gọi tự xác minh không bị gửi nhầm. Lỗi thô của nhà cung cấp không bao giờ lộ ra phản hồi.
-- Nhật ký kênh `gui_ra`: module, `kenh_id` đã băm SHA-256, mã kết quả, độ dài — không nội dung tin, không token.
+- Nhật ký kênh `gui_ra`: module, `kenh_id` băm SHA-256 rút gọn (16 ký tự hex), mã kết quả, độ dài — không nội dung tin, không token.
 
 ---
 
