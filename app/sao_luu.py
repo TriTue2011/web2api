@@ -95,6 +95,79 @@ TRAN_TEP_TAI_LEN = TRAN_TONG + (TRAN_SO_THANH_VIEN + 2) * 4096 + HEADER_MA_HOA_L
 TOI_DA_BAN_TRUOC = 3
 TIEN_TO_BAN_TRUOC = ".truoc-khoi-phuc-"
 
+
+def so_ngay_giu_ban_truoc() -> int | None:
+    """Số ngày giữ bản .truoc-khoi-phuc-*; None nếu không đặt (mặc định không xoá theo tuổi)."""
+    val = os.environ.get("WEB2API_GIU_TRUOC_KHOI_PHUC_NGAY", "").strip()
+    if not val:
+        return None
+    try:
+        n = int(val)
+        return n if n > 0 else None
+    except ValueError:
+        return None
+
+
+def don_ban_truoc_khoi_phuc(goc: Path | None = None) -> int:
+    """Xoá bản .truoc-khoi-phuc-*:
+    - Xoá theo tuổi CHỈ khi người vận hành đặt WEB2API_GIU_TRUOC_KHOI_PHUC_NGAY.
+    - Luôn giữ tối đa TOI_DA_BAN_TRUOC (3 bản) gần nhất.
+    - Không nuốt lỗi (ghi cảnh báo nhật ký).
+    Trả về số bản đã xoá."""
+    if goc is None:
+        goc = kho.thu_muc_du_lieu()
+    if not goc.is_dir():
+        return 0
+
+    so_xoa = 0
+    now = datetime.now(timezone.utc)
+    ngay = so_ngay_giu_ban_truoc()
+    han_giay = (ngay * 86400) if ngay is not None else None
+
+    ds_truoc = []
+    try:
+        for d in goc.iterdir():
+            if d.is_dir() and d.name.startswith(TIEN_TO_BAN_TRUOC):
+                ds_truoc.append(d)
+    except OSError as e:
+        log.warning("Không thể đọc thư mục %s khi dọn bản trước: %s", goc, e)
+        nhat_ky.ghi("he_thong", "canh_bao", f"Lỗi đọc thư mục {goc} khi dọn bản sao lưu: {e}")
+        return 0
+
+    ds_truoc.sort(key=lambda x: (x.stat().st_mtime, x.name))
+    con_lai = []
+    for d in ds_truoc:
+        xoa_vi_tuoi = False
+        if han_giay is not None:
+            try:
+                tuoi_giay = now.timestamp() - d.stat().st_mtime
+                if tuoi_giay > han_giay:
+                    xoa_vi_tuoi = True
+            except OSError as e:
+                log.warning("Lỗi stat %s: %s", d, e)
+        if xoa_vi_tuoi:
+            try:
+                shutil.rmtree(d)
+                so_xoa += 1
+            except Exception as e:
+                log.warning("Không thể xoá bản cũ %s: %s", d, e)
+                nhat_ky.ghi("he_thong", "canh_bao", f"Không thể xoá bản cũ {d.name}: {e}")
+                con_lai.append(d)
+        else:
+            con_lai.append(d)
+
+    while len(con_lai) > TOI_DA_BAN_TRUOC:
+        bo = con_lai.pop(0)
+        try:
+            shutil.rmtree(bo)
+            so_xoa += 1
+        except Exception as e:
+            log.warning("Không thể xoá bản thừa %s: %s", bo, e)
+            nhat_ky.ghi("he_thong", "canh_bao", f"Không thể xoá bản thừa {bo.name}: {e}")
+
+    return so_xoa
+
+
 _SHA_COMMIT = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -186,6 +259,12 @@ def _bo_kiem_cua(duong_rel: str) -> Callable[[Any], Any] | None:
         except ValueError:
             return None
         return _kiem_doi_tuong
+    if len(parts) == 4 and parts[:2] == ["bi_mat", "mo-dun"] and parts[3].endswith(".json"):
+        try:
+            phien.kiem_tra_id(parts[2], parts[3][:-5])
+        except ValueError:
+            return None
+        return _kiem_doi_tuong
     return None
 
 
@@ -241,6 +320,12 @@ def tao_ban_sao_luu(
                 rel = f"bi_mat/{p.name}"
                 if p.is_file() and la_tep_cho_phep(rel):
                     tep_can_sao.append((rel, p))
+            tm_modun = tm_bimat / "mo-dun"
+            if tm_modun.is_dir():
+                for p in sorted(tm_modun.rglob("*.json")):
+                    rel = p.relative_to(goc).as_posix()
+                    if p.is_file() and la_tep_cho_phep(rel):
+                        tep_can_sao.append((rel, p))
         if kem_phien:
             tm_phien = goc / "bi_mat" / "phien"
             if tm_phien.is_dir():
@@ -269,10 +354,18 @@ def tao_ban_sao_luu(
     danh_sach_tep: list[dict[str, Any]] = []
     tong_kich_thuoc = 0
     for rel, p in tep_can_sao:
+        from app import ham_khoa
         try:
-            data = p.read_bytes()
-        except OSError as e:
-            nhat_ky.ghi("quan_tri", "canh_bao", f"Không đọc được tệp {rel} khi sao lưu: {type(e).__name__}")
+            if rel.startswith("bi_mat/"):
+                obj = ham_khoa.doc_bi_mat_tep(p)
+                if obj is not None:
+                    data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
+                else:
+                    data = p.read_bytes()
+            else:
+                data = p.read_bytes()
+        except (OSError, ham_khoa.KhoHong) as e:
+            nhat_ky.ghi("quan_tri", "canh_bao", f"Bỏ qua tệp hỏng hoặc không giải mã được {rel} khi sao lưu: {type(e).__name__}: {e}")
             continue
         tong_kich_thuoc += len(data)
         if len(data) > TRAN_MOI_TEP or tong_kich_thuoc > TRAN_TONG:
@@ -682,11 +775,7 @@ def _sao_luu_truoc_khi_ap_dung(goc: Path) -> tuple[Path, int]:
             shutil.copy2(goc / f, tm_truoc / f)
     if (goc / "bi_mat").is_dir():
         shutil.copytree(goc / "bi_mat", tm_truoc / "bi_mat", symlinks=True)
-    ds_truoc = sorted((d for d in goc.iterdir() if d.is_dir() and d.name.startswith(TIEN_TO_BAN_TRUOC)),
-                      key=lambda x: (x.stat().st_mtime, x.name))
-    for d in ds_truoc[:-TOI_DA_BAN_TRUOC]:
-        if d != tm_truoc:
-            shutil.rmtree(d, ignore_errors=True)
+    don_ban_truoc_khoi_phuc(goc)
     so_ban = sum(1 for d in goc.iterdir() if d.is_dir() and d.name.startswith(TIEN_TO_BAN_TRUOC))
     return tm_truoc, so_ban
 
@@ -727,9 +816,13 @@ def _ghi_ke_hoach(goc: Path, ghi: dict[str, Any], nk: _NhatKyGhi) -> None:
             os.mkdir(goc / d, 0o700)
             os.chmod(goc / d, 0o700)
             nk.thu_muc.append(goc / d)
-        noi_dung = json.dumps(ghi[rel], ensure_ascii=False, indent=2).encode("utf-8")
         co_truoc = p.exists()
-        _ghi_tep(p, noi_dung, _quyen_tep(rel))
+        if rel.startswith("bi_mat/"):
+            from app import ham_khoa
+            ham_khoa.ghi_bi_mat_tep(p, ghi[rel], _quyen_tep(rel))
+        else:
+            noi_dung = json.dumps(ghi[rel], ensure_ascii=False, indent=2).encode("utf-8")
+            _ghi_tep(p, noi_dung, _quyen_tep(rel))
         nk.tep.append((rel, co_truoc))
 
 

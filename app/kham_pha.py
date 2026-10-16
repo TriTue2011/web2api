@@ -156,7 +156,7 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
         — kiểm RẺ, không tốn token/lượt dùng (tuỳ chọn; thiếu thì lõi coi phiên là «chua_ro» và không kiểm).
     async lam_moi_phien(du_lieu: dict) -> dict | None
         — trả `du_lieu` mới (lõi lưu đè) hoặc None nếu không làm mới được (tuỳ chọn).
-    Module lấy phiên qua `app.phien.lay(module, tai_khoan)`, không tự mở tệp.
+    Module lấy bí mật/phiên qua tay cầm do lõi trao (self.kho.phien_lay(tai_khoan), self.kho.doc(ten)), không tự mở tệp hay gọi qua id khác.
 
 Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]; quy ước
 cho các phương thức trên: "noi", "nghe", "anh_sua" (cùng tên phương thức). Lõi chỉ
@@ -233,6 +233,8 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
     "xep_hang": ("xep_hang",),
     "tim_kiem": ("tim_kiem",),
     "trinh_duyet": ("trinh_duyet_mo", "trinh_duyet_dong", "trinh_duyet_ds"),
+    #: Gửi ra đích danh (NV32): module liệt kê đích qua kenh_ra() và gửi qua gui_tin().
+    "kenh_ra": ("gui_tin", "kenh_ra"),
 }
 
 
@@ -393,6 +395,30 @@ def kiem_manifest(m) -> str | None:
         if (not isinstance(tab, dict) or not isinstance(tab.get("nhan"), str) or not isinstance(trang, str)
                 or not trang.startswith("web/") or ".." in trang.split("/") or "\\" in trang):
             return "tab_web cần {\"nhan\": chuỗi, \"trang\": \"web/<tệp>\"} (không «..»)"
+    wh = m.get("webhook")
+    if wh is not None:
+        # Cửa webhook chung của lõi (app/webhook.py): khai báo là quyền (xem diff_quyen).
+        if not isinstance(wh, dict):
+            return "webhook phải là đối tượng"
+        bm = wh.get("bi_mat")
+        if not isinstance(bm, str) or not bm:
+            return "webhook.bi_mat phải là tên khoá cấu hình (chuỗi khác rỗng)"
+        truong_bm = {t["khoa"] for t in truong if t.get("kieu") == "bi_mat"}
+        if bm not in truong_bm:
+            return (f"webhook.bi_mat {bm!r} phải là khoá trong truong_cau_hinh có kieu «bi_mat» "
+                    "(bí mật webhook lưu ở kho 0600, không nằm trong manifest)")
+        tb = wh.get("tran_byte", 65536)
+        if type(tb) is not int or tb <= 0:
+            return "webhook.tran_byte phải là số nguyên dương (byte)"
+        isk = wh.get("id_su_kien", "su_kien_id")
+        if not isinstance(isk, str) or not isk:
+            return "webhook.id_su_kien phải là tên phương thức trích id sự kiện (chuỗi khác rỗng)"
+        ck = wh.get("chu_ky")
+        if ck is not None and (not isinstance(ck, str) or not ck.startswith("header:")
+                               or not ck[7:].strip()):
+            return "webhook.chu_ky phải có dạng «header:TÊN» (tên header mang chữ ký HMAC)"
+        if wh.get("thuat_toan", "hmac-sha256") != "hmac-sha256":
+            return "webhook.thuat_toan chỉ hỗ trợ «hmac-sha256»"
     return None
 
 

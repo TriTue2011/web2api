@@ -319,3 +319,90 @@ sudo systemctl enable --now chan-lan-trinh-duyet.service
 - Container dùng DNS `127.0.0.11` của Docker không đi qua `DOCKER-USER` (Docker chặn
   ngay trong netns của container); script vẫn dự phòng ngoại lệ DNS cổng 53 tới
   gateway đề phòng container dùng gateway làm trình phân giải.
+
+---
+
+## 8. Mã hoá bí mật và phiên khi nghỉ (Encryption at Rest) và quay vòng khoá
+
+Mặc định, nếu không cấu hình khoá chính, các tệp bí mật (`bi_mat/<id>.json`, `bi_mat/mo-dun/<id>/...`) và phiên tài khoản (`bi_mat/phien/<module>/<tai_khoan>.json`) được lưu dưới dạng JSON thuần với quyền 0600. Tuy nhiên, nếu máy chủ bị xâm nhập, ổ đĩa bị tháo trộm hoặc snapshot volume bị lộ, toàn bộ khoá API và cookie sẽ bị lộ dạng rõ.
+
+Từ phiên bản F5, web2api hỗ trợ mã hoá AES-256-GCM khi nghỉ với tiêu đề `W2A1` và xác thực liên kết đường dẫn (AAD) chống tráo đổi tệp.
+
+### 8.1. Cấu hình khoá chính 32 byte an toàn
+
+Khoá chính là một chuỗi 32 byte (256 bit). Có thể sinh ngẫu nhiên bằng lệnh:
+
+```bash
+# Sinh khoá chính dạng hex 64 ký tự:
+openssl rand -hex 32
+
+# Hoặc dạng base64:
+openssl rand -base64 32
+```
+
+web2api lấy khoá chính theo thứ tự ưu tiên:
+1. **Biến môi trường `WEB2API_KHOA_CHINH`**: Chuỗi hex 64 ký tự hoặc base64. Thích hợp cho môi trường thử nghiệm:
+   ```yaml
+   environment:
+     - WEB2API_KHOA_CHINH=<kết quả của: openssl rand -hex 32>
+   ```
+   > [!WARNING]
+   > Khoá truyền qua biến môi trường dễ bị lộ qua lệnh `docker inspect` và tệp `/proc/<pid>/environ` trên máy chủ máy chủ. Trong môi trường sản xuất, **khuyến nghị dùng tệp ngoài volume hoặc Docker Secret** (`WEB2API_KHOA_CHINH_TEP`).
+
+2. **Tệp khoá `WEB2API_KHOA_CHINH_TEP` (Khuyến nghị cho sản xuất / Docker Secret)**:
+   - Tệp phải có quyền nghiêm ngặt **0600** (`chmod 0600`).
+   - **BẮT BUỘC NGOÀI VOLUME DỮ LIỆU**: Tệp khoá phải nằm ngoài thư mục `<WEB2API_DATA>` (ví dụ không nằm trong `/data`).
+   > [!CAUTION]
+   > **Tuyệt đối KHÔNG lưu tệp khoá chính vào cùng thư mục dữ liệu `/data`**. Nếu khoá nằm cạnh dữ liệu, kẻ tấn công chụp snapshot ổ đĩa hoặc sao lưu volume sẽ lấy được cả khoá lẫn dữ liệu, biến mã hoá thành vô nghĩa. Hãy dùng Docker secret hoặc bind-mount riêng một tệp từ hệ thống tệp của máy chủ:
+   ```yaml
+   services:
+     web2api:
+       volumes:
+         - web2api_data:/data
+         - /etc/web2api/khoa_chinh.key:/run/secrets/khoa_chinh.key:ro
+       environment:
+         - WEB2API_KHOA_CHINH_TEP=/run/secrets/khoa_chinh.key
+         - WEB2API_BAT_BUOC_MA_HOA=1
+   ```
+
+3. **Cờ bắt buộc mã hoá `WEB2API_BAT_BUOC_MA_HOA=1`**:
+   Bật cờ này để đảm bảo máy chủ dừng khởi động nếu thiếu khoá chính hoặc khoá bị sai định dạng/sai quyền/entropy quá thấp. Giúp ngăn ngừa sự cố người vận hành quên nạp khoá khiến dữ liệu mới ghi dạng rõ.
+
+> [!NOTE]
+> **Phạm vi mã hoá và mô hình an ninh**:
+> - Hiện tại, hàm khoá mã hoá các tệp bí mật (`bi_mat/<id>.json`, `bi_mat/mo-dun/<id>/...`) và phiên tài khoản (`bi_mat/phien/...`). Các tệp quản trị hệ thống khác (`bi_mat/khoa_van_tay`, `admin_key`, `khoa_khach.json`, `nguoi_dung`, `phien_web`) chưa qua hàm khoá.
+> - Tiêu đề `W2A1` chưa mang mã khoá (key ID) nên việc xoay khoá dần trên đĩa chưa hỗ trợ; xoay khoá thực hiện qua quy trình sao lưu và khôi phục ở mục 8.2.
+> - Module hạng A chạy chung tiến trình với lõi có toàn quyền trong RAM (đọc được biến môi trường và khoá chính). Cô lập an ninh toàn diện chỉ có khi chạy module hạng B (tiến trình riêng / container riêng như module từ xa).
+
+### 8.2. Quy trình quay vòng khoá (Key Rotation)
+
+Bản sao lưu (`POST /api/sao-luu`) của web2api có mã hoá độc lập bằng mật khẩu người dùng (dùng scrypt + AES-256-GCM), các tệp bí mật bên trong gói tar được giải mã sang dạng chuẩn trước khi đóng gói. Nhờ vậy, bản sao lưu **không phụ thuộc** vào khoá chính của máy chủ.
+
+Để quay vòng sang khoá chính mới mà không làm mất bí mật và phiên:
+1. Tạo một bản sao lưu có mật khẩu:
+   ```bash
+   curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"mat_khau": "MatKhauSaoLuuAnToan123456", "kem_phien": true}' \
+     http://127.0.0.1:3031/api/sao-luu -o ban_sao_luu.tar.enc
+   ```
+2. Sinh khoá chính mới và cập nhật `WEB2API_KHOA_CHINH` hoặc tệp `WEB2API_KHOA_CHINH_TEP`.
+3. Khởi động lại container web2api với khoá chính mới.
+4. Kiểm tra và khôi phục bản sao lưu:
+   ```bash
+   # Bước 1: Kiểm tra tệp sao lưu và lấy sha256
+   SHA=$(curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     -F "tep=@ban_sao_luu.tar.enc" \
+     -F "mat_khau=MatKhauSaoLuuAnToan123456" \
+     -F "che_do=kiem" \
+     http://127.0.0.1:3031/api/khoi-phuc | jq -r .sha256)
+
+   # Bước 2: Áp dụng khôi phục
+   curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+     -F "tep=@ban_sao_luu.tar.enc" \
+     -F "mat_khau=MatKhauSaoLuuAnToan123456" \
+     -F "che_do=ap_dung" \
+     -F "sha256=$SHA" \
+     http://127.0.0.1:3031/api/khoi-phuc
+   ```
+5. Toàn bộ bí mật và phiên sẽ được tự động giải mã từ bản sao lưu và ghi lại lên đĩa với mã hoá bằng **khoá chính mới**.
