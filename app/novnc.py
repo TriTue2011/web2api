@@ -61,7 +61,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import dia_chi, gioi_han, kho, nhat_ky, phien_web
+from app import gioi_han, kho, nhat_ky, phien_web
 from app.kham_pha import ID_HOP_LE, MAU_MIEN
 from app.loi_openai import LoiOpenAI, than_loi
 from app.so_module import LoiSo, SoModule
@@ -126,6 +126,7 @@ PH_CHO_PHEP = ("content-type", "etag", "last-modified", "accept-ranges", "conten
 
 HEADER_BAO_VE_PROXY: tuple[tuple[bytes, bytes], ...] = (
     (b"content-security-policy", b"sandbox allow-scripts allow-forms allow-pointer-lock"),
+    (b"access-control-allow-origin", b"*"),
     (b"x-content-type-options", b"nosniff"),
     (b"referrer-policy", b"no-referrer"),
     (b"cache-control", b"no-store"),
@@ -255,7 +256,6 @@ def lay_nguoi_dung_id(request: Request) -> str | None:
 
 def cap_ve(module: str, ho_so: str, nguoi_dung_id: str | None = None) -> str:
     ve = secrets.token_urlsafe(32)
-    dinh_danh = nguoi_dung_id or "__bearer__"
     with _KHOA:
         now = _bay_gio()
         _don_het_han_khoa(now)
@@ -272,7 +272,7 @@ def cap_ve(module: str, ho_so: str, nguoi_dung_id: str | None = None) -> str:
             "module": module,
             "ho_so": ho_so,
             "het_han": now + THOI_HAN_VE_GIAY,
-            "nguoi_dung_id": dinh_danh,
+            "nguoi_dung_id": nguoi_dung_id,
         }
     return ve
 
@@ -310,17 +310,14 @@ def doi_ve_lay_phien(ve: str) -> tuple[int, str | None, dict[str, Any] | None]:
         return 200, phien, tt
 
 
-def thu_hoi_phien_theo_nguoi_dung(nguoi_dung_id: str | None = None) -> int:
-    """Thu hồi toàn bộ vé và phiên noVNC của một người dùng hoặc khoá Bearer quản trị, đóng WebSocket đang mở."""
+def thu_hoi_phien_theo_nguoi_dung(nguoi_dung_id: str) -> int:
+    """Thu hồi toàn bộ vé và phiên noVNC của một người dùng, đóng WebSocket đang mở."""
+    if not nguoi_dung_id:
+        return 0
     with _KHOA:
-        if nguoi_dung_id and nguoi_dung_id != "__bearer__":
-            cac_ve = [k for k, v in _VE.items() if v.get("nguoi_dung_id") in (nguoi_dung_id, None, "__bearer__", "")]
-            cac_phien = [k for k, v in _PHIEN.items() if v.get("nguoi_dung_id") in (nguoi_dung_id, None, "__bearer__", "")]
-        else:
-            cac_ve = [k for k, v in _VE.items() if v.get("nguoi_dung_id") in (None, "__bearer__", "")]
-            cac_phien = [k for k, v in _PHIEN.items() if v.get("nguoi_dung_id") in (None, "__bearer__", "")]
-        for k in cac_ve:
+        for k in [k for k, v in _VE.items() if v.get("nguoi_dung_id") == nguoi_dung_id]:
             _VE.pop(k, None)
+        cac_phien = [k for k, v in _PHIEN.items() if v.get("nguoi_dung_id") == nguoi_dung_id]
         _thu_hoi_phien_khoa(cac_phien)
         return len(cac_phien)
 
@@ -457,87 +454,6 @@ for _ten in ("uvicorn.error", "uvicorn.access"):
     logging.getLogger(_ten).addFilter(_BO_LOC_LOG)
 
 
-def danh_sach_origin_cho_phep_headers(headers: Any, base_url: Any = None) -> set[str]:
-    """Tập hợp origin được phép cho đường noVNC suy từ Host/X-Forwarded-Host và cấu hình công khai."""
-    cho_phep = set()
-    host = ""
-    if hasattr(headers, "get"):
-        host = headers.get("host") or ""
-    elif isinstance(headers, dict):
-        host = headers.get("host") or ""
-    host = str(host).strip().lower()
-    if host:
-        cho_phep.add(f"http://{host}")
-        cho_phep.add(f"https://{host}")
-        if ":" in host:
-            ten_khong_cong = host.split(":", 1)[0]
-            cho_phep.add(f"http://{ten_khong_cong}")
-            cho_phep.add(f"https://{ten_khong_cong}")
-
-    if dia_chi.la_tin_proxy():
-        xf_host = ""
-        if hasattr(headers, "get"):
-            xf_host = headers.get("x-forwarded-host") or ""
-        elif isinstance(headers, dict):
-            xf_host = headers.get("x-forwarded-host") or ""
-        xf_host = str(xf_host).strip().lower()
-        if xf_host:
-            cho_phep.add(f"http://{xf_host}")
-            cho_phep.add(f"https://{xf_host}")
-
-    if base_url:
-        try:
-            b_str = str(base_url).rstrip("/")
-            p = urlsplit(b_str)
-            if p.scheme and p.netloc:
-                cho_phep.add(f"{p.scheme.lower()}://{p.netloc.lower()}")
-        except Exception:
-            pass
-
-    try:
-        url_ck = dia_chi.dia_chi_cong_khai_da_cau_hinh()
-        if url_ck:
-            p = urlsplit(url_ck)
-            if p.scheme and p.netloc:
-                cho_phep.add(f"{p.scheme.lower()}://{p.netloc.lower()}")
-    except Exception:
-        pass
-
-    return cho_phep
-
-
-def la_origin_cho_phep(request: Request, origin: str) -> bool:
-    """Kiểm tra origin của request có thuộc danh sách cho phép."""
-    if not origin or not isinstance(origin, str):
-        return False
-    o = origin.strip()
-    if not o:
-        return False
-    p = urlsplit(o)
-    if not p.scheme or not p.netloc:
-        return False
-    chuan = f"{p.scheme.lower()}://{p.netloc.lower()}"
-    cho_phep = danh_sach_origin_cho_phep_headers(request.headers, getattr(request, "base_url", None))
-    return chuan in cho_phep
-
-
-def la_origin_cho_phep_scope(scope: Scope, origin: str) -> bool:
-    """Kiểm tra origin từ ASGI scope."""
-    if not origin or not isinstance(origin, str):
-        return False
-    o = origin.strip()
-    if not o:
-        return False
-    p = urlsplit(o)
-    if not p.scheme or not p.netloc:
-        return False
-    chuan = f"{p.scheme.lower()}://{p.netloc.lower()}"
-    raw_headers = scope.get("headers", [])
-    hdrs = {k.decode("latin1").lower(): v.decode("latin1") for k, v in raw_headers}
-    cho_phep = danh_sach_origin_cho_phep_headers(hdrs)
-    return chuan in cho_phep
-
-
 # ───────────── Header bảo vệ cho mọi phản hồi dưới /novnc ─────────────
 
 class MiddlewareBaoVeNoVNC:
@@ -553,39 +469,13 @@ class MiddlewareBaoVeNoVNC:
         if not (path == "/novnc" or path.startswith("/novnc/")):
             await self.app(scope, receive, send)
             return
-
-        raw_headers = scope.get("headers", [])
-        hdrs = {k.decode("latin1").lower(): v.decode("latin1") for k, v in raw_headers}
-        origin_val = hdrs.get("origin")
-        origin_hop_le: str | None = None
-
-        if origin_val:
-            if la_origin_cho_phep_scope(scope, origin_val):
-                p = urlsplit(origin_val.strip())
-                origin_hop_le = f"{p.scheme.lower()}://{p.netloc.lower()}"
-            elif path == "/novnc/dang-nhap":
-                noi_dung = json.dumps(than_loi(403, "Origin không thuộc danh sách cho phép.")).encode("utf-8")
-                tra_loi = [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(noi_dung)).encode("ascii")),
-                    (b"x-content-type-options", b"nosniff"),
-                    (b"cache-control", b"no-store"),
-                ]
-                await send({"type": "http.response.start", "status": 403, "headers": tra_loi})
-                await send({"type": "http.response.body", "body": noi_dung})
-                return
-
         bo = HEADER_BAO_VE_TRANG_VE if path == "/novnc/dang-nhap" else HEADER_BAO_VE_PROXY
         ten_bo = {k for k, _ in bo}
 
         async def gui(msg: Message) -> None:
             if msg["type"] == "http.response.start":
                 headers = [(k, v) for k, v in msg.get("headers", []) if k.lower() not in ten_bo]
-                danh_sach_them = list(bo)
-                if origin_hop_le:
-                    danh_sach_them.append((b"access-control-allow-origin", origin_hop_le.encode("latin1")))
-                    danh_sach_them.append((b"vary", b"Origin"))
-                msg = {**msg, "headers": headers + danh_sach_them}
+                msg = {**msg, "headers": headers + list(bo)}
             await send(msg)
 
         await self.app(scope, receive, gui)
@@ -890,9 +780,6 @@ def _loi_json(ma: int, thong_diep: str) -> JSONResponse:
 @novnc_router.get("/dang-nhap")
 async def novnc_trang_ve(request: Request):
     """Trang nút, KHÔNG tiêu thụ vé (bot xem trước liên kết chỉ GET)."""
-    origin = request.headers.get("origin")
-    if origin and not la_origin_cho_phep(request, origin):
-        return HTMLResponse("<!doctype html><p>Origin không thuộc danh sách cho phép.</p>", status_code=403)
     ve = request.query_params.get("ve", "")
     if not MAU_VE.fullmatch(ve):
         return HTMLResponse("<!doctype html><p>Liên kết không hợp lệ.</p>", status_code=400)
@@ -923,14 +810,7 @@ async def novnc_doi_ve(request: Request):
     except (UnicodeDecodeError, ValueError):
         truong = {}
     ds_ve = truong.get("ve", [])
-    ve_str = ds_ve[0] if len(ds_ve) == 1 else ""
-    if ve_str:
-        origin_val = request.headers.get("origin")
-        if not origin_val:
-            return _loi_json(403, "Origin thiếu khi gửi kèm vé.")
-        if not la_origin_cho_phep(request, origin_val):
-            return _loi_json(403, "Origin không thuộc danh sách cho phép.")
-    ma, phien, tt = doi_ve_lay_phien(ve_str)
+    ma, phien, tt = doi_ve_lay_phien(ds_ve[0] if len(ds_ve) == 1 else "")
     if ma == 429:
         nhat_ky.ghi("trinh_duyet", "canh_bao", "Từ chối đổi vé: chạm trần số phiên", module=tt["module"],
                     ho_so=tt["ho_so"], hanh_dong="doi_ve", ket_qua="that_bai")
