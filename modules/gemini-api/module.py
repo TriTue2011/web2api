@@ -31,6 +31,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import ipaddress
 import json
 import re
 import time
@@ -40,12 +41,28 @@ import httpx
 
 from app.chuyen_tiep import (
     ChuyenTiepOpenAI,
+    LoiDichBiChan,
     LuongNhiPhan,
     PhanHoiQuaLon,
+    TransportGhimIp,
     doc_phan_hoi_co_tran,
     ds_khoa,
     tra_loi_json,
 )
+from app.tu_xa import _dia_chi_bi_chan, cho_phep_loopback_cho_test
+
+
+def _kiem_ip_tai_video(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback:
+        if isinstance(ip, ipaddress.IPv6Address):
+            return "IPv6 loopback"
+        return None if cho_phep_loopback_cho_test() else "loopback (chính container)"
+    if ip.is_private:
+        return "mạng riêng tư (private IP)"
+    return _dia_chi_bi_chan(ip)
+
 
 BASE_MAC_DINH = "https://generativelanguage.googleapis.com/v1beta/openai"
 GOI_Y_HANG_MIEN_PHI = ("Hạng miễn phí của Google không dùng được tính năng này (trang giá ghi «Not available») — "
@@ -182,20 +199,42 @@ class Module:
         self._ct: ChuyenTiepOpenAI | None = None
         self._dem_goc: list[dict] | None = None
         self._dem_goc_luc = 0.0
+        self._proxy_token = ""
+        self._kiem_ip = _kiem_ip_tai_video
+        self._khach_tai: httpx.AsyncClient | None = None
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
         return phan_loai_loi(ma, loi, boi_canh)
 
-    def _tao(self, khoa: list[str], base: str) -> ChuyenTiepOpenAI:
+    def _client_tai(self) -> httpx.AsyncClient:
+        if self._khach_tai is None:
+            self._khach_tai = httpx.AsyncClient(
+                follow_redirects=False,
+                transport=TransportGhimIp(self._kiem_ip),
+            )
+        return self._khach_tai
+
+    def _tao(self, khoa: list[str], base: str, proxy_token: str = "") -> ChuyenTiepOpenAI:
         # Khả năng tốn tiền suc_khoe báo theo từng khoá = mọi mã đã khai ở `cung_cap` trừ chat.
         kn = tuple(x for x in self.manifest.get("cung_cap", []) if x != "chat")
-        return ChuyenTiepOpenAI(ten="Gemini", tien_to=self.tien_to, base_url=base, khoa=khoa,
-                                doi_id_model=_bo_models, phan_loai_loi=self.phan_loai_loi, kha_nang=kn,
-                                goi_y_tu_choi_kha_nang=GOI_Y_HANG_MIEN_PHI)
+        ct = ChuyenTiepOpenAI(ten="Gemini", tien_to=self.tien_to, base_url=base, khoa=khoa,
+                              doi_id_model=_bo_models, phan_loai_loi=self.phan_loai_loi, kha_nang=kn,
+                              goi_y_tu_choi_kha_nang=GOI_Y_HANG_MIEN_PHI)
+        if proxy_token:
+            goc_tieu_de = ct._tieu_de
+
+            def _tieu_de_kem_proxy(k: str) -> dict:
+                h = dict(goc_tieu_de(k))
+                h["X-Proxy-Token"] = proxy_token
+                return h
+
+            ct._tieu_de = _tieu_de_kem_proxy
+        return ct
 
     def nap(self, cau_hinh: dict) -> None:
         """Nạp cấu hình ĐÃ KIỂM (lúc khởi động/cài xong) — không gọi mạng."""
-        self._ct = self._tao(ds_khoa(cau_hinh.get("api_keys")), chuan_hoa_base_url(cau_hinh.get("base_url")))
+        self._proxy_token = str(cau_hinh.get("proxy_token") or "").strip()
+        self._ct = self._tao(ds_khoa(cau_hinh.get("api_keys")), chuan_hoa_base_url(cau_hinh.get("base_url")), self._proxy_token)
 
     async def cai(self, cau_hinh: dict) -> dict:
         """Kiểm từng khoá bằng GET /models (không tốn token). Chỉ giữ khoá hợp lệ; không khoá nào → ok=false.
@@ -207,7 +246,8 @@ class Module:
             base = chuan_hoa_base_url(cau_hinh.get("base_url"))
         except ValueError as e:
             return {"ok": False, "ket_qua_tung_khoa": [], "loi": str(e)}
-        ct = self._tao(khoa, base)
+        proxy_token = str(cau_hinh.get("proxy_token") or "").strip()
+        ct = self._tao(khoa, base, proxy_token)
         try:
             ds = (await ct.suc_khoe())["khoa"]
         finally:
@@ -221,8 +261,11 @@ class Module:
             if any(muc["loi"] and GOI_Y_CHAN_VUNG in muc["loi"] for muc in ds):
                 loi += " " + GOI_Y_CHAN_VUNG[0].upper() + GOI_Y_CHAN_VUNG[1:] + "."
             return {"ok": False, "ket_qua_tung_khoa": ds, "loi": loi}
+        cau_hinh_luu: dict[str, Any] = {"api_keys": tot, "base_url": base}
+        if proxy_token:
+            cau_hinh_luu["proxy_token"] = proxy_token
         return {"ok": True, "ket_qua_tung_khoa": ds, "loi": None,
-                "cau_hinh_luu": {"api_keys": tot, "base_url": base}}
+                "cau_hinh_luu": cau_hinh_luu}
 
     async def chat(self, body: dict, stream: bool):
         return await self._ct.chat(body, stream)
@@ -241,9 +284,11 @@ class Module:
         # base_url luôn kết thúc bằng /v1beta/openai (chuan_hoa_base_url) → gốc API là /v1beta, qua cùng proxy.
         return self._ct.base_url.removesuffix("/openai")
 
-    @staticmethod
-    def _tieu_de_goc(khoa: str) -> dict:
-        return {"x-goog-api-key": khoa}
+    def _tieu_de_goc(self, khoa: str) -> dict:
+        h = {"x-goog-api-key": khoa}
+        if self._proxy_token:
+            h["X-Proxy-Token"] = self._proxy_token
+        return h
 
     def _than_veo(self, body: dict) -> tuple[str, dict]:
         """Thân /v1/videos (OpenAI + tham số của Google) → (tên model Veo, thân predictLongRunning). ValueError = 400."""
@@ -407,13 +452,18 @@ class Module:
     async def _tai(self, url: str, khoa: str):
         """Tải video theo STREAM, tự đi chuyển hướng: khoá chỉ gửi khi máy đích là máy của base_url (httpx tự đi
         chuyển hướng thì giữ header tự đặt như x-goog-api-key sang máy khác). Không ghi log URL (có thể mang chữ ký)."""
-        khach = self._ct._client()
+        khach = self._client_tai()
         goc_khoa = _goc(self._goc_api)
         timeout = httpx.Timeout(self.TIMEOUT_TAI, connect=self._ct.TIMEOUT_KET_NOI)
         for _ in range(CHUYEN_HUONG_TOI_DA + 1):
+            p = urlsplit(url)
+            if p.scheme not in ("http", "https") or not p.hostname:
+                return _loi(400, "Địa chỉ tải video không hợp lệ", "invalid_url")
             tieu_de = self._tieu_de_goc(khoa) if _goc(url) == goc_khoa else {}
             try:
                 r = await khach.send(khach.build_request("GET", url, headers=tieu_de, timeout=timeout), stream=True)
+            except LoiDichBiChan as e:
+                return _loi(502, f"Đích tải video bị chặn: {e}", "ssrf_blocked")
             except httpx.HTTPError as e:
                 return _loi(502, f"Không tải được video: {type(e).__name__}", "upstream_unreachable")
             if r.is_redirect and r.headers.get("location"):
@@ -496,5 +546,8 @@ class Module:
         return await self._ct.suc_khoe()
 
     async def dung(self) -> None:
+        if self._khach_tai is not None:
+            await self._khach_tai.aclose()
+            self._khach_tai = None
         if self._ct is not None:
             await self._ct.dung()

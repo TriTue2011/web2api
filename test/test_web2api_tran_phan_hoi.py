@@ -240,6 +240,7 @@ def test_models_than_lon(monkeypatch):
 
 def test_gemini_api_hoi_va_tai_than_lon(monkeypatch):
     monkeypatch.setenv("WEB2API_PHAN_HOI_TOI_DA_MB", "1")
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
 
     async def chay():
         with MayChuThat(tao_app_dich_vu_lon()) as sv:

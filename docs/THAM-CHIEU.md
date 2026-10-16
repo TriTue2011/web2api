@@ -464,7 +464,7 @@ Thư mục `modules/<id>/` gồm:
 
 Chuẩn `thiet_bi` hợp nhất việc điều khiển thực thể (đèn, công tắc, cảm biến, camera, máy chủ, cổng mạng…) từ nhiều module khác nhau vào một giao thức duy nhất. Lõi không chứa tên phần cứng hay dịch vụ cụ thể nào; quy chuẩn chi tiết cho người viết module được quy định tại [CHUAN-MODULE.md](CHUAN-MODULE.md).
 
-Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
+Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Theo nguyên tắc đóng khi lỗi: nếu module không khai báo hoặc khai báo mức rủi ro không hợp lệ, lõi mặc định coi là `nguy_hiem` (module chủ động khai `doc`/`ghi` để hạ). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
 
 ```mermaid
 flowchart LR
@@ -711,14 +711,15 @@ lõi chỉ cấp bộ chuyển tiếp dùng chung.
 |---|---|---|
 | `api_keys` | Có | Danh sách khoá (hoặc một chuỗi, các khoá cách nhau bằng dấu phẩy/xuống dòng). Lưu ở `/data/bi_mat/gemini-api.json` quyền 0600; không API nào trả lại khoá. |
 | `base_url` | Không | Mặc định gọi thẳng Google. Bị chặn vùng thì đặt địa chỉ proxy, ví dụ `https://<tên>.workers.dev`; thiếu `/v1beta/openai` thì web2api tự thêm. |
+| `proxy_token` | Không | Bí mật xác thực gửi qua header `X-Proxy-Token` tới proxy (Cloudflare Worker). Lưu ở thư mục bí mật quyền 0600, che khi trả qua API. |
 
 Nếu Google chặn vùng (lỗi chứa «User location is not supported»), dựng một Cloudflare Worker từ tệp
-`deploy/cloudflare-gemini-proxy.js` trong kho (để trống `PROXY_TOKEN` của Worker — web2api chưa gửi được
-header `X-Proxy-Token`) rồi cài lại với `base_url`:
+`deploy/cloudflare-gemini-proxy.js` trong kho (bắt buộc đặt bí mật `PROXY_TOKEN` trên Worker) rồi cài lại với
+`base_url` và `proxy_token`:
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
-  -d '{"cau_hinh": {"api_keys": ["AIza..."], "base_url": "https://<tên>.workers.dev"}}' \
+  -d '{"cau_hinh": {"api_keys": ["AIza..."], "base_url": "https://<tên>.workers.dev", "proxy_token": "token-bi-mat"}}' \
   $W/api/modules/gemini-api/cai
 ```
 

@@ -26,8 +26,8 @@ _BAC_RUI_RO = ("doc", "ghi", "nguy_hiem")
 
 
 def _chuan_rui_ro(v: Any) -> str:
-    """Mã rủi ro hợp lệ giữ nguyên; thiếu hoặc lạ ⇒ «ghi» (cùng quy tắc với thiet_bi.py, không bao giờ nới)."""
-    return v if v in _BAC_RUI_RO else "ghi"
+    """Mã rủi ro hợp lệ giữ nguyên; thiếu hoặc lạ ⇒ «nguy_hiem» (nguyên tắc đóng khi lỗi, cùng quy tắc với thiet_bi.py)."""
+    return v if v in _BAC_RUI_RO else "nguy_hiem"
 
 
 class DanhSachCongCu(list):
@@ -242,7 +242,7 @@ def sinh_cong_cu(thuc_the: list[dict[str, Any]], duoc_ghi: bool) -> DanhSachCong
             continue
 
         raw_loai = str(item.get("loai") or "thiet_bi").strip()
-        # Rủi ro hiệu lực của thực thể do lõi (thiet_bi.py) tính: ghi đè của quản trị > mặc định > «ghi».
+        # Rủi ro hiệu lực của thực thể do lõi (thiet_bi.py) tính: ghi đè của quản trị > mặc định > «nguy_hiem».
         # Không đọc gì khác từ khai báo của module: module không tự hạ được mức rủi ro.
         rui_ro_thuc_the = _chuan_rui_ro(item.get("rui_ro"))
         tinh_nang = item.get("tinh_nang") or []

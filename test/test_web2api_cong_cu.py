@@ -362,8 +362,8 @@ def test_5_ma_mo_loai_rui_ro_hanh_dong_la(moi_truong):
     # Kiểm tra x_web2api giữ nguyên mã lạ
     assert tool["x_web2api"]["loai"] == "loai_la_chua_he_biet_999"
     assert tool["x_web2api"]["hanh_dong"] == "hanh_dong_la_chua_tung_thay_xyz"
-    # Mã rủi ro lạ không bao giờ được nới: coi như «ghi» (cùng quy tắc với thiet_bi.py)
-    assert tool["x_web2api"]["rui_ro"] == "ghi"
+    # Mã rủi ro lạ không bao giờ được nới: coi như «nguy_hiem» (đóng khi lỗi, cùng quy tắc với thiet_bi.py)
+    assert tool["x_web2api"]["rui_ro"] == "nguy_hiem"
     assert REGEX_NAME_OPENAI.match(tool["function"]["name"])
 
 

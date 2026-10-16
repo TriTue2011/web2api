@@ -184,7 +184,7 @@ def test_them_bot_khoa_tung_cai_khong_lo_khoa(du_lieu, google, caplog):
 
         # Hợp đồng form: trường của manifest + giá trị đã lưu, bí mật CHỈ ở dạng che, theo thứ tự (chỉ số).
         ch = goi("GET", "/api/modules/gemini-api/cau-hinh").json()
-        assert [t["khoa"] for t in ch["truong_cau_hinh"]] == ["api_keys", "base_url"]
+        assert [t["khoa"] for t in ch["truong_cau_hinh"]] == ["api_keys", "base_url", "proxy_token"]
         assert ch["gia_tri"] == {"api_keys": ["…" + K1[-4:]], "base_url": google.url + "/v1beta/openai"}
         assert ch["da_cau_hinh"] is True
 

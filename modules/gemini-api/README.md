@@ -62,9 +62,9 @@ Module nhận ra lỗi này (mã 400 hoặc 403 kèm chữ «location») và g�
 vùng **không** làm khoá bị đánh dấu hỏng vì mọi khoá đều sẽ bị như nhau.
 
 Cách vượt: dựng một Cloudflare Worker từ `deploy/cloudflare-gemini-proxy.js` ở gốc kho (Worker chuyển
-nguyên đường dẫn sang `generativelanguage.googleapis.com`), rồi cài lại với
-`"base_url": "https://<tên>.workers.dev"`. Để trống biến `PROXY_TOKEN` của Worker: web2api chưa gửi được
-header `X-Proxy-Token`.
+nguyên đường dẫn sang `generativelanguage.googleapis.com`), cấu hình biến bí mật `PROXY_TOKEN` trên Worker
+(wrangler secret put PROXY_TOKEN), rồi cài lại module với `"base_url": "https://<tên>.workers.dev"` và
+`"proxy_token": "<giá_trị_token>"`. web2api sẽ gửi header `X-Proxy-Token` trong mọi lời gọi tới proxy.
 
 ## Hành vi khi gọi
 
