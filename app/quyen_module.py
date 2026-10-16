@@ -3,6 +3,7 @@
 Hàm THUẦN (chỉ dùng thư viện chuẩn, không nhập `app.*`, không đọc môi trường): suy quyền
 theo CẤU TRÚC từ hợp đồng manifest (đầu `app/kham_pha.py`):
 - `cung_cap`: mỗi mã khả năng là một quyền;
+- `can_module`: mỗi id module cần tới là một quyền (module có thêm đường nhờ module khác);
 - `truong_cau_hinh[].nhan_cookie`: mỗi tên miền là một quyền;
 - `yeu_cau_goi`: mỗi gói Python là một quyền;
 - `tai_nguyen.mang_ra`: mỗi mục mạng ra là một quyền;
@@ -23,7 +24,7 @@ import json
 import math
 
 #: Khoá cấp cao của manifest KHÔNG mang quyền (mô tả, hiển thị, cấu hình do quản trị nhập).
-#: Mọi khoá khác → quyền. `truong_cau_hinh`/`tai_nguyen`/`yeu_cau_goi`/`cung_cap` có mặt ở đây
+#: Mọi khoá khác → quyền. `truong_cau_hinh`/`tai_nguyen`/`yeu_cau_goi`/`cung_cap`/`can_module` có mặt ở đây
 #: vì khía cạnh quyền của chúng được rút theo cấu trúc riêng, không phải vì khoá vô hại.
 #: NV15b: `tab_web` KHÔNG còn ở đây — false→true cho module chạy JS ở origin lõi
 #: (đọc được localStorage khoá quản trị) nên là quyền, chỉ tăng mới cần duyệt.
@@ -31,7 +32,7 @@ _TRUONG_KHONG_QUYEN = frozenset({
     "id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to",
     "loai_ten", "loai_thu_tu", "muc",
     "truong_cau_hinh", "tai_nguyen", "phien_ban",
-    "yeu_cau_goi", "cung_cap",
+    "yeu_cau_goi", "cung_cap", "can_module",
 })
 
 #: Khoá đã biết trong mỗi phần tử `truong_cau_hinh` (ngoài `nhan_cookie` mang quyền).
@@ -103,6 +104,10 @@ def tap_quyen(manifest: dict | None) -> set[tuple]:
     q: set[tuple] = set()
     for ma in m.get("cung_cap") or []:
         q.add(("cung_cap", str(ma), None))
+    cm = m.get("can_module")
+    if isinstance(cm, list):
+        for dep in cm:
+            q.add(("can_module", str(dep), None))
     for goi in m.get("yeu_cau_goi") or []:
         q.add(("yeu_cau_goi", str(goi), None))
     tai_nguyen = m.get("tai_nguyen")

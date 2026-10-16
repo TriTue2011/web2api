@@ -396,6 +396,7 @@ app.include_router(tuyen.dang_nhap)
 app.include_router(tuyen.dang_xuat)
 app.include_router(tuyen.toi)
 app.include_router(tuyen.nguoi_dung)
+app.include_router(tuyen.danh_tinh)
 app.include_router(tuyen.bao_mat)
 
 

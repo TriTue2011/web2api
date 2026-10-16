@@ -168,6 +168,14 @@ Tuỳ chọn cho giao diện: `loai_ten` (tên hiển thị của loại, vd "AI
 trước), `muc` — tab con/mục của module, mỗi mục {"id", "nhan", "can": [mã…]}: mục chỉ hiện khi module đã
 liên kết VÀ mọi mã trong `can` có ở ít nhất một module đã liên kết (rỗng = luôn hiện khi đã liên kết).
 
+`can_module` (tuỳ chọn): danh sách id module mà module này CẦN mới chạy đầy đủ (vd ["mod-phu"]).
+Lõi đếm tham chiếu suy từ manifest các module đã cài (không cần kho riêng): cài module mà cái cần chưa
+có → phản hồi cài nêu `can_module_thieu` để ĐỀ NGHỊ cài (không tự cài lén); gỡ module đang được module
+khác cần → 409 `module_dang_duoc_can`; gỡ module cuối cùng còn cần một module chung → phản hồi nêu
+`hoi_giu_phu_thuoc` để hỏi giữ hay gỡ theo (lõi không tự quyết). Lõi không nhắc tên module cụ thể nào:
+đây là dữ liệu khai báo mở — id lạ hiện nguyên mã. Thêm id vào `can_module` là thêm quyền, bản cập nhật
+phải qua cổng duyệt quyền (app/quyen_module.py).
+
 Mã module chạy TRONG tiến trình lõi (quyền như lõi). Được import `app.*` (vd app.chuyen_tiep,
 app.dia_chi, app.nhat_ky để ghi kênh riêng qua `nhat_ky.ghi(kenh, muc, tom_tat, ...)`) và gói có sẵn trong ảnh;
 gói thiếu khai ở `yeu_cau_goi` để lõi từ chối sớm, rõ ràng.
@@ -412,6 +420,12 @@ def kiem_manifest(m) -> str | None:
                 or not all(isinstance(x, str) and (MA_KHA_NANG.match(x) or (len(x.split(":")) <= 2 and all(MA_KHA_NANG.match(p) for p in x.split(":")))) for x in nguy_hiem)
                 or len(set(nguy_hiem)) != len(nguy_hiem)):
             return 'nguy_hiem phải là danh sách mã khả năng không trùng (chữ thường, số, _; ví dụ ["thiet_bi:ghi"])'
+    can = m.get("can_module", [])
+    if (not isinstance(can, list) or not all(isinstance(x, str) and ID_HOP_LE.match(x) for x in can)
+            or len(set(can)) != len(can)):
+        return 'can_module phải là danh sách id module không trùng (ví dụ ["mod-phu"])'
+    if m["id"] in can:
+        return "can_module không được chứa chính id của module"
     muc = m.get("muc", [])
     if not isinstance(muc, list):
         return 'muc phải là danh sách [{"id", "nhan", "can": [mã…]}]'

@@ -88,6 +88,20 @@ class LoiCanDuyetQuyen(LoiSo):
         self.tree_sha = tree_sha
 
 
+class LoiModuleDangDuocCan(LoiSo):
+    """409 khi gỡ module đang được module khác cần (`can_module`): chưa gỡ gì cả.
+
+    Thuộc tính: id_, dung — danh sách id các module đã cài đang khai cần module này.
+    """
+
+    def __init__(self, id_: str, dung: list[str]):
+        super().__init__(409, f"Module {id_!r} đang được {len(dung)} module cần tới: "
+                              f"{', '.join(dung)} — gỡ các module đó trước",
+                         code="module_dang_duoc_can")
+        self.id_ = id_
+        self.dung = list(dung)
+
+
 class SoModule:
     def __init__(self):
         self.catalog: dict[str, ModuleKhamPha] = {}
@@ -120,6 +134,22 @@ class SoModule:
 
     def tien_to_dang_chay(self) -> list[str]:
         return sorted(f"{self.tien_to_cua(i)}/" for i in self.dang_chay)
+
+    # ───────────── phụ thuộc module (`can_module`, NV73) ─────────────
+
+    def dang_duoc_can_boi(self, id_: str) -> list[str]:
+        """Id các module ĐÃ CÀI khai `can_module` chứa `id_` — đếm tham chiếu SUY TỪ manifest,
+        không cần kho riêng nên tự đúng sau mọi lần nạp lại (không lệch bộ đếm)."""
+        return sorted(km.id for km in self.catalog.values()
+                      if id_ in (km.manifest.get("can_module") or []))
+
+    def can_module_thieu(self, id_: str) -> list[str]:
+        """Các id trong `can_module` của module `id_` mà chưa cài — để đề nghị cài, không tự cài lén."""
+        km = self.catalog.get(id_)
+        if km is None:
+            return []
+        cm = km.manifest.get("can_module") or []
+        return [d for d in cm if isinstance(d, str) and d not in self.catalog]
 
     def tinh_nang(self) -> dict:
         """«Tính năng đang có» cho khung giao diện (GET /api/tinh-nang) — suy từ manifest module ĐÃ CÀI và trạng thái
@@ -456,6 +486,11 @@ class SoModule:
             if nguoi is None:
                 from app.xac_thuc import dinh_danh_nguoi_thuc_hien
                 nguoi = dinh_danh_nguoi_thuc_hien()
+            # NV73: module đang được module khác cần (can_module) thì không cho gỡ — kể cả
+            # module từ xa (id của nó cũng có thể được khai trong can_module).
+            dung = self.dang_duoc_can_boi(id_)
+            if dung:
+                raise LoiModuleDangDuocCan(id_, dung)
             if id_ in self.tu_xa:
                 m = self.dang_chay.pop(id_, None)
                 try:
@@ -479,6 +514,7 @@ class SoModule:
             km = self.catalog.get(id_)
             if km is None:
                 raise LoiSo(404, f"Không có module {id_!r}")
+            mf_cu = km.manifest  # giữ để tính module chung bị «mồ côi» sau khi gỡ
             co_cau_hinh = id_ in self.dang_chay or self.muc_da_luu(id_) is not None
             if km.nguon == "anh" and not co_cau_hinh:
                 raise LoiSo(400, f"Module {id_!r} đi kèm ảnh: mã nằm trong ảnh nên không xoá được, "
@@ -505,6 +541,10 @@ class SoModule:
             os.rename(km.thu_muc, rac)
             shutil.rmtree(rac, ignore_errors=True)
             kq = await self._nap_lai()
+            # NV73: module chung mà module vừa gỡ cần, nay không còn ai cần nữa → KHÔNG tự gỡ lén,
+            # trả cờ để giao diện hỏi quản trị «giữ hay gỡ theo».
+            mo_coi = sorted(d for d in (mf_cu.get("can_module") or [])
+                            if isinstance(d, str) and d in self.catalog and not self.dang_duoc_can_boi(d))
             nhat_ky.ghi(
                 "quan_tri",
                 "thong_tin",
@@ -512,7 +552,7 @@ class SoModule:
                 id_module=id_,
                 nguoi_thuc_hien=nguoi,
             )
-            return {"ok": True, "id": id_, "nap_lai": kq}
+            return {"ok": True, "id": id_, "nap_lai": kq, "hoi_giu_phu_thuoc": mo_coi}
 
     # ───────────── module từ xa ─────────────
 
@@ -616,6 +656,9 @@ class SoModule:
 
         NV49 R-1: `tu_dong=True` (vòng tự cài, không người bấm) mà module ĐÃ cài → mọi bản mới (đổi mã dù quyền
         giữ nguyên) cũng giữ lại chờ duyệt như trên; chỉ quản trị cài/duyệt tay mới kích hoạt được.
+
+        NV73: phản hồi luôn có `can_module_thieu` — các id trong `can_module` của bản vừa cài mà chưa có
+        trên máy (để đề nghị cài, không tự cài lén).
         """
         if not ID_HOP_LE.match(id_):
             raise LoiSo(400, f"id {id_!r} không hợp lệ")
@@ -670,4 +713,7 @@ class SoModule:
             cai = None
             if not km.can_cau_hinh and id_ not in self.dang_chay:
                 cai = await self._cai(km, {})
-            return {"nap_lai": kq, "cai": cai, "diff_quyen": diff or {"them": [], "bot": []}}
+            # NV73: module mới cài cần module khác mà chưa có → ĐỀ NGHỊ cài (không tự cài lén);
+            # giao diện dùng danh sách này để hiện nút cài từng cái thiếu.
+            return {"nap_lai": kq, "cai": cai, "diff_quyen": diff or {"them": [], "bot": []},
+                    "can_module_thieu": self.can_module_thieu(id_)}

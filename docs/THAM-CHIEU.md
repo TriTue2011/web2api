@@ -42,6 +42,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; **chưa kiểm với claude.ai thật** | 17/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
+| Phụ thuộc module (`can_module` + đếm tham chiếu): cài thì đề nghị cài cái thiếu (không tự cài lén), gỡ cái đang được cần → `409`, gỡ provider cuối thì hỏi giữ hay gỡ cái chung | Có — kiểm bằng test NV73 | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
@@ -58,6 +59,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Tác phẩm, Nhà, Đời sống, giọng nói, MCP, nhật ký trên web | Chưa có (chờ module thật đứng sau) | — |
 | Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
 | Chữ ký số cho module | Chưa có (chỉ kiểm chữ ký commit của GitHub, tuỳ chọn) | — |
+| Kho danh tính + API danh tính (`GET`/`POST /api/danh-tinh`, `GET`/`DELETE /api/danh-tinh/{id}`, `POST …/{id}/gan|go`): một email một lần, gắn nhiều provider, xoá bị chặn khi còn tài khoản trỏ tới, kho mã hoá AES-256-GCM quyền 0600 | Có — kiểm với máy chủ giả (NV67 nhóm 1, việc 1–2); **chưa có giao diện** | 17/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -307,6 +309,7 @@ chi tiết mở ở bước kế tiếp.
 | `tep_an_toan.py` | Bộ kiểm tra tệp tải lên: kiểm tra kích thước header ảnh PNG/JPEG/GIF/WebP trước giải mã; kiểm tra archive ZIP chống zip-slip, symlink, bom nén |
 | `url_ky.py` | URL ký cho media: HMAC-SHA256 phủ phương thức + đường dẫn chuẩn hoá + hạn dùng, giải đường dẫn an toàn `duong_tep_an_toan` |
 | `tieu_de_bao_mat.py` | Tiêu đề bảo mật toàn cục và phục vụ tĩnh: tệp tĩnh luôn no-cache + ETag để nâng cấp không gây lệch phiên bản giao diện |
+| `tai_khoan_hang_loat.py` | Tách dòng tài khoản hàng loạt + bộ chạy đăng nhập lần lượt (NV67 việc 5–6): hai khuôn dòng, hợp đồng đăng nhập chung cho module, giãn cách 30s, dừng khi hỏng 2 liên tiếp, xoá bí mật sau dùng |
 
 ```mermaid
 flowchart TD
@@ -380,6 +383,39 @@ Cung cấp đường dẫn media có chữ ký HMAC-SHA256 chống đoán URL v�
 
   # Truy cập tệp trên đĩa an toàn
   duong_that = duong_tep_an_toan(thu_muc_media, "anh_chup.png")
+  ```
+
+#### 4. Tách dòng tài khoản hàng loạt + bộ chạy đăng nhập lần lượt (`app/tai_khoan_hang_loat.py`)
+
+Thư viện lõi cho «dán hàng loạt» và «đăng nhập lần lượt» (NV67 nhóm 3, việc 5–6). Lõi KHÔNG chứa tên
+nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua hợp đồng chung. API/bảng tiến độ là việc 7.
+
+- **Tách dòng** `tach_dong(van_ban) -> (danh_sach, loi, bo_trung)`:
+  - Hai khuôn: `email|mật khẩu|TOTP` (TOTP có thể trống) và `email|cookie=…`; dòng chỉ có email
+    nghĩa là «đăng nhập lại tài khoản đã lưu».
+  - Dòng trống hoặc bắt đầu bằng `#` → bỏ qua; dòng sai khuôn → báo đúng số dòng (tính từ 1),
+    các dòng đúng vẫn được nhận; email trùng (không phân biệt hoa/thường) → giữ lần đầu.
+  - Email kiểm bằng biểu thức hẹp (chặn luôn ký tự HTML `<>&"'` ngay từ đầu vào → chống XSS khi hiển thị).
+- **Hợp đồng đăng nhập chung**: module triển khai `async dang_nhap(tai_khoan: DongDaTach) -> KetQuaDangNhap`
+  (`thanh_cong` + `cookie` mới, hoặc `ma_loi` + `ma_trang_thai`). `ma_loi` phải là mã ngắn
+  `[a-z0-9_]{1,64}` — module đưa mã lạ/câu dài → lõi thay bằng `phan_loai_loi(ma_trang_thai)`
+  (401 → `sai_chung_thuc`, 403 → `bi_cam`, 404 → `khong_tim_thay`, 429 → `han_muc`, 5xx → `loi_may_chu`,
+  không mạng → `loi_mang`). Phân loại bằng mã trạng thái, không dò chữ.
+- **Bộ chạy** `LuotChay(tai_khoan, ham_dang_nhap, *, dong_ho=None, ngu=None)`:
+  - Một luồng; giãn cách `WEB2API_DANG_NHAP_GIAN_CACH_GIAY` giây (mặc định 30, đọc mỗi lượt chạy)
+    giữa hai tài khoản; chỉ một lượt chạy một lúc trong toàn tiến trình (lượt thứ hai → `DaCoLuotChay`).
+  - Dừng cả hàng khi hỏng 2 tài khoản LIÊN TIẾP; `dung()` dừng sau tài khoản đang chạy và giữ
+    kết quả đã xong; tài khoản chưa tới lượt → trạng thái `bo_qua`.
+  - Bí mật thô (mật khẩu/TOTP/cookie) nằm trong `BiMatTam` (bytearray) và bị ghi đè bằng 0 ngay
+    sau khi tài khoản đó đăng nhập xong (kể cả khi lỗi); kết quả chỉ giữ `ma_loi`/`ma_trang_thai`,
+    không giữ cookie (cookie mới do module lưu vào kho mã hoá của nó).
+- **Ví dụ**:
+  ```python
+  from app.tai_khoan_hang_loat import tach_dong, LuotChay
+
+  ds, loi, trung = tach_dong(van_ban_dan)
+  luot = LuotChay(ds, module.dang_nhap)  # module triển khai hợp đồng KetQuaDangNhap
+  tom_tat = await luot.chay()  # TomTatLuotChay(tong, xong, loi, bo_qua, ket_qua)
   ```
 
 ### Giao diện (`web/`)
@@ -716,6 +752,34 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
   -d '{"chap_nhan_quyen_them": [{"loai": "cung_cap", "ten": "chat"}], "sha_commit": "<sha>"}' \
   $W/api/nguon-git/cai/echo
 ```
+
+### Phụ thuộc giữa các module (`can_module`)
+
+Một module có thể cần module khác mới chạy đầy đủ — ví dụ các module provider web đều cần Trình duyệt từ xa
+(noVNC) để đăng nhập tay và lấy cookie. Người viết module khai trong `manifest.json`:
+
+```json
+"can_module": ["vnc-xa"]
+```
+
+Luật kiểm manifest: danh sách id không trùng, mỗi id đúng mẫu id module, không được chứa chính id của mình —
+sai thì module bị từ chối lúc nạp (lý do ghi ở trường `loi` của `GET /api/modules/catalog`). Trường này là
+**quyền**: bản cập nhật thêm id vào `can_module` phải qua cổng duyệt quyền như thêm `cung_cap` (diff hiện
+`{"loai": "can_module", "ten": "<id>"}`); bớt đi thì qua tự do.
+
+Lõi **không nhắc tên module cụ thể nào** — `can_module` là dữ liệu khai báo mở, id lạ hiện nguyên mã.
+Đếm tham chiếu được suy từ manifest các module đã cài (không có kho đếm riêng nên không bao giờ lệch):
+
+- **Cài** (`POST /api/nguon-git/cai/<id>`): module mới cài mà cái cần chưa có → cài vẫn thành công, phản
+  hồi thêm `can_module_thieu: ["<id>"]` để **đề nghị** cài — không tự cài lén, vẫn qua xác nhận của quản trị.
+  `GET /api/modules` và `GET /api/modules/catalog` nêu `can_module` của từng module để giao diện hiện.
+- **Gỡ cái đang được cần** (`DELETE /api/modules/<id>`): còn module đã cài nào khai cần nó → `409`
+  `{"ma": "module_dang_duoc_can", "dang_duoc_can_boi": ["<id>"]}` — chưa gỡ gì cả, phải gỡ các module
+  đang cần nó trước.
+- **Gỡ provider cuối cùng**: module chung mà nó cần nay không còn ai cần → phản hồi gỡ có
+  `hoi_giu_phu_thuoc: ["<id>"]` để giao diện **hỏi** quản trị giữ hay gỡ theo — lõi không tự quyết
+  (biết đâu quản trị còn muốn dùng module chung vào việc khác). Chọn gỡ theo thì gọi
+  `DELETE /api/modules/<id>` như thường — lúc này không còn ai cần nên được gỡ.
 
 ### Module từ xa
 
@@ -1462,6 +1526,40 @@ dùng model mặc định; bí danh `flash`/`pro`/`flash-lite` cũng dùng đư�
 
 ---
 
+### Kho danh tính và API danh tính (lõi)
+
+**Mô tả.** Sổ danh bạ tập trung của lõi (NV67): mỗi email chỉ nhập **một lần** thành một «danh tính»;
+các module provider (gemini-web, grok-web…) gắn tài khoản của mình vào danh tính đó thay vì mỗi module
+giữ một bản email riêng. Lõi **không chứa tên nhà cung cấp nào**: bản ghi chỉ có `id`, `email`, `nhan`
+và danh sách id module đã gắn (`gan`).
+
+- Kho: `app/danh_tinh.py`; lưu ở `<WEB2API_DATA>/bi_mat/danh_tinh.json` qua `kho.doc_bi_mat`/`ghi_bi_mat` —
+  mã hoá AES-256-GCM khi nghỉ (khi đã cấu hình `WEB2API_KHOA_CHINH`), tệp quyền 0600, thư mục cha 0700.
+- Email chuẩn hoá `strip` + `casefold` (hoa/thường coi như một); trùng → `400` `email_ton_tai`.
+- `id` ổn định sinh từ email đã chuẩn hoá (`dt-` + 16 ký tự hex của SHA-256): xoá rồi tạo lại vẫn id cũ.
+- Gắn (`POST /api/danh-tinh/{id}/gan`) đòi module **đã cài** (chưa cài → `404` `module_chua_cai`),
+  lũy đẳng (gắn lại không trùng); gỡ (`…/go`) khi chưa gắn → `404` `khong_gan`.
+- Xoá danh tính còn tài khoản provider trỏ tới → `409` `con_tai_khoan` kèm danh sách module (tránh mồ côi).
+- Mọi đường chỉ quản trị; id lạ → `404` đồng nhất (không lộ tồn tại).
+- Mọi thao tác đổi trạng thái ghi vào sổ thao tác quản trị (`quan_tri`).
+
+Ví dụ:
+
+```bash
+DT=$(curl -s -H "Authorization: Bearer $KHOA" -H 'Content-Type: application/json' \
+  -d '{"email": "ban@gmail.com", "nhan": "Gmail cá nhân"}' $W/api/danh-tinh | python3 -c 'import sys,json; print(json.load(sys.stdin)["danh_tinh"]["id"])')
+curl -s -H "Authorization: Bearer $KHOA" -H 'Content-Type: application/json' \
+  -d '{"module_id": "gemini-web"}' $W/api/danh-tinh/$DT/gan
+curl -s -H "Authorization: Bearer $KHOA" $W/api/danh-tinh | python3 -m json.tool
+```
+
+**Giới hạn.**
+- Chưa có giao diện (việc của agy sau); cookie/phiên của từng tài khoản vẫn nằm trong kho riêng
+  của module sở hữu — di chuyển sang danh tính chung ở nhóm 4.
+- Email chỉ kiểm khuôn (có `@`), không xác minh sở hữu — việc đó của luồng đăng nhập (nhóm 3).
+
+---
+
 ## 5. Triển khai
 
 ### Cần gì để chạy
@@ -2032,20 +2130,20 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /health` | Không | `{"ok": true, "phien_ban": ...}` |
 | `GET /api/he-thong` | Có | RAM, CPU, đĩa, GPU của máy và container |
 | `GET /api/tinh-nang` | Có | «Tính năng đang có»: module đã cài (`loai`, `cung_cap`, `da_lien_ket`, `tu_xa`), thống kê theo loại, số module theo mã khả năng (đã cài / đã liên kết), `tab`, `muc` |
-| `GET /api/modules` | Có | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so`, cờ `cho_duyet_quyen` (true khi có bản mới đang chờ duyệt quyền — chi tiết chỉ ở đường quản trị) |
-| `GET /api/modules/catalog` | Có | Mọi module khám phá được (kèm `loai_ten`, `loai_thu_tu`, `cung_cap`, `muc`, `truong_cau_hinh`, `tai_nguyen`) và `loi` của từng thư mục hỏng |
+| `GET /api/modules` | Có | Module đã cài (`nguon`, `can_cau_hinh`, `da_cau_hinh`, `tab_web`, `can_module`, cấu hình công khai với bí mật đã che), module từ xa, `thong_bao_so`, cờ `cho_duyet_quyen` (true khi có bản mới đang chờ duyệt quyền — chi tiết chỉ ở đường quản trị) |
+| `GET /api/modules/catalog` | Có | Mọi module khám phá được (kèm `loai_ten`, `loai_thu_tu`, `cung_cap`, `can_module`, `muc`, `truong_cau_hinh`, `tai_nguyen`) và `loi` của từng thư mục hỏng |
 | `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git, kèm tóm tắt manifest và `dung_luong`; `moi_nhat` = id các module đã cài đúng bản trên git («Đã là bản mới nhất») |
 | `POST /api/modules/nap-lai` | Có | Quét lại thư mục module, nạp nóng |
 | `POST /api/modules/tu-xa` | Có | Đăng ký module từ xa |
 | `POST /api/modules/{id}/cai` | Có | Kiểm và lưu cấu hình module (thân `{"cau_hinh": {...}}`; trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận `{"giu": [...], "them": [...]}`) |
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
-| `DELETE /api/modules/{id}` | Có | Gỡ module |
+| `DELETE /api/modules/{id}` | Có | Gỡ module. Còn module đã cài khai `can_module` cần nó → `409` `{"ma": "module_dang_duoc_can", "dang_duoc_can_boi": [...]}`. Gỡ module cuối cùng còn cần một module chung → phản hồi có `hoi_giu_phu_thuoc: [...]` để hỏi giữ hay gỡ theo (xem «Phụ thuộc giữa các module») |
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |
 | `GET /api/modules/{id}/model` | Có | Danh mục model của module (id, nhóm, bật/tắt, mặc định, số đếm) |
 | `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
-| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo. Bản mới xin thêm quyền → `409 can_duyet_quyen` kèm diff (không kích hoạt); duyệt bằng thân JSON `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}` khớp chính xác. Xem «Cập nhật module và duyệt quyền» |
+| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo. Bản mới xin thêm quyền → `409 can_duyet_quyen` kèm diff (không kích hoạt); duyệt bằng thân JSON `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}` khớp chính xác. Xem «Cập nhật module và duyệt quyền». Phản hồi cài luôn có `can_module_thieu` — id các module được khai cần mà chưa cài (để đề nghị, không tự cài lén; xem «Phụ thuộc giữa các module») |
 | `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
 | `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
 | `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |
@@ -2074,6 +2172,12 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PATCH /api/nguoi-dung/{id}` | Có | Cập nhật tài khoản người dùng (bật/tắt, vai, phạm vi; bảo vệ admin cuối cùng) |
 | `POST /api/nguoi-dung/{id}/dat-lai-mat-khau` | Có | Đặt lại mật khẩu tài khoản người dùng (tuỳ chọn sinh ngẫu nhiên; mật khẩu chỉ trả về một lần duy nhất, thu hồi mọi phiên cũ) |
 | `DELETE /api/nguoi-dung/{id}` | Có | Xoá tài khoản người dùng và thu hồi mọi phiên/khoá API của tài khoản đó (bảo vệ admin cuối cùng) |
+| `GET /api/danh-tinh` | Có | Danh sách danh tính (`id`, `email`, `nhan`, `ngay_tao`, `gan`) — sổ email nhập một lần của lõi (NV67) |
+| `POST /api/danh-tinh` | Có | Tạo danh tính (`email` bắt buộc, chuẩn hoá hoa/thường; `nhan` tuỳ chọn; trùng → `400` `email_ton_tai`) |
+| `GET /api/danh-tinh/{id}` | Có | Chi tiết một danh tính (`404` đồng nhất nếu id lạ) |
+| `DELETE /api/danh-tinh/{id}` | Có | Xoá danh tính; còn tài khoản provider trỏ tới → `409` `con_tai_khoan` |
+| `POST /api/danh-tinh/{id}/gan` | Có | Gắn danh tính vào một module provider đã cài (`module_id`); lũy đẳng |
+| `POST /api/danh-tinh/{id}/go` | Có | Gỡ danh tính khỏi một module provider (chưa gắn → `404` `khong_gan`) |
 | `GET /api/bao-mat/trang-thai` | Có | Trạng thái bảo mật cho trang quản trị: cờ cổng IP quản trị bật/tắt (`cong_ip_quan_tri_trong`), chuỗi băng rôn tĩnh (`bang_ron`) và số mạng cấu hình (`so_mang`); không lộ IP nội bộ |
 | `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên). Giao diện: trang «Phiên tài khoản» (`web/He-thong-Phien.dc.html`) — nhóm theo module (khối thu gọn, đóng mặc định), lưới thẻ (tài khoản, trạng thái, hạn, lần kiểm cuối), nút «Kiểm ngay» và «Xoá phiên» (xác nhận hai bước) |
 | `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |
@@ -2158,6 +2262,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DANG_NHAP_KHOA_PHUT` | `15` | Thời gian tạm khoá tài khoản (phút) khi vượt quá số lần đăng nhập sai mật khẩu liên tiếp |
 | `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` | `16` | Trần số lượt yêu cầu đăng nhập đang chờ và đang băm scrypt đồng thời; vượt trần trả `429` kèm `Retry-After` ngay lập tức để bỏ tải |
 | `WEB2API_SCRYPT_HANG_CHO_TOI_DA` | `16` | Bí danh của `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` cấu hình trần hàng chờ băm mật khẩu scrypt |
+| `WEB2API_DANG_NHAP_GIAN_CACH_GIAY` | `30` | Giãn cách (giây) giữa hai lần đăng nhập tự động liên tiếp trong lượt đăng nhập hàng loạt (`app/tai_khoan_hang_loat.py`); số thực, kẹp trong `[0, 3600]`, sai → `30`. Đọc mỗi lượt chạy (đổi không cần khởi động lại) |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
 | `WEB2API_STEPUP_GIAY` | `900` | Thời gian hiệu lực (giây) của xác nhận lại (step-up) cho thao tác nguy hiểm của quản trị; mặc định 15 phút |
 | `WEB2API_WEBHOOK_THAN_TOI_DA_MB` | `1.0` | Trần thân (MB) cho cửa webhook `POST /api/webhook/{module}/{ma}` (lấy `min` với `webhook.tran_byte` của module); vượt là `413`. Đọc mỗi lượt; đếm byte thật, không tin `Content-Length` |

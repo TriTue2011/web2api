@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 
 from app import (
     combo as combo_mod,
+    danh_tinh as danh_tinh_mod,
     dia_chi as dia_chi_mod,
     gioi_han as gioi_han_mod,
     ip_cho_phep as ip_cho_phep_mod,
@@ -49,7 +50,7 @@ from app.goi_kha_nang import goi
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
-from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
+from app.so_module import LoiCanDuyetQuyen, LoiModuleDangDuocCan, LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
 from app.xac_thuc import can_phien_web, can_quan_tri, dinh_danh_nguoi_thuc_hien, khop_pham_vi, kiem_tra_pham_vi, kiem_tra_step_up, xac_thuc_v1
 from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
@@ -95,6 +96,7 @@ dang_nhap = APIRouter(prefix="/api/dang-nhap")
 dang_xuat = APIRouter(prefix="/api/dang-xuat", dependencies=PW)
 toi = APIRouter(prefix="/api/toi", dependencies=PW)
 nguoi_dung = APIRouter(prefix="/api/nguoi-dung", dependencies=QT)
+danh_tinh = APIRouter(prefix="/api/danh-tinh", dependencies=QT)
 bao_mat = APIRouter(prefix="/api/bao-mat", dependencies=QT)
 
 
@@ -1107,6 +1109,7 @@ async def ds_modules(request: Request):
         muc.update(loai=km.manifest["loai"], tien_to=km.tien_to, phien_ban=km.manifest.get("phien_ban"),
                    nguon=km.nguon, can_cau_hinh=km.can_cau_hinh, da_cau_hinh=id_ in so.dang_chay,
                    tab_web=km.duong_tab(),
+                   can_module=km.manifest.get("can_module") or [],
                    cho_duyet_quyen=kho.doc_cho_duyet_quyen(id_) is not None)
         ra.append(muc)
     # Mục cấu hình mà mã đã mất (xoá tay) hoặc hỏng: vẫn hiện, không giấu — để quản trị thấy.
@@ -1124,7 +1127,7 @@ async def catalog(request: Request):
         m = km.manifest
         ds.append({k: m.get(k) for k in ("id", "ten", "mo_ta", "phien_ban", "loai", "giao_thuc", "tien_to",
                                          "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web", "cung_cap",
-                                         "loai_ten", "loai_thu_tu", "muc")}
+                                         "loai_ten", "loai_thu_tu", "muc", "can_module")}
                   | {"nguon": km.nguon, "da_cau_hinh": km.id in so.dang_chay})
     return {"modules": ds, "loi": so.loi}
 
@@ -1162,9 +1165,15 @@ async def cai(id_: str, request: Request):
 
 @modules.delete("/{id_}", dependencies=QT)
 async def go(id_: str, request: Request):
+    """Gỡ module. NV73: module đang được module khác cần (`can_module`) → 409 `module_dang_duoc_can`
+    kèm danh sách; gỡ module cuối cùng còn cần một module chung → phản hồi có `hoi_giu_phu_thuoc`
+    để giao diện hỏi quản trị giữ hay gỡ theo (lõi không tự quyết)."""
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     try:
         kq = await _so(request).go(id_, nguoi_thuc_hien=nguoi_thuc_hien)
+    except LoiModuleDangDuocCan as e:
+        return JSONResponse({"ok": False, "ma": "module_dang_duoc_can", "id": e.id_,
+                             "dang_duoc_can_boi": e.dung}, status_code=409)
     except LoiSo as e:
         raise _loi_so(e) from None
     _ng(request).da_go(id_)  # đang bật tự cài thì không được cài lại ngay bản vừa gỡ
@@ -2485,6 +2494,91 @@ def xoa_tai_khoan(id: str, request: Request):
         nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"ok": True}
+
+
+# ───────────── DANH TÍNH (QT) ─────────────
+
+@danh_tinh.get("")
+def lay_danh_sach_danh_tinh():
+    return {"danh_tinh": danh_tinh_mod.danh_sach()}
+
+
+@danh_tinh.post("", status_code=201)
+async def tao_danh_tinh_moi(request: Request):
+    than = await _than_json(request)
+    email = _chuoi_tuy_chon(than, "email")
+    nhan = _chuoi_tuy_chon(than, "nhan")
+    if email is None or not email.strip():
+        raise LoiOpenAI(400, "Thiếu trường «email».", code="invalid_value")
+    ban_ghi = danh_tinh_mod.tao(email, nhan)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Tạo danh tính «{_nhac_lai(ban_ghi['email'])}»",
+        id_danh_tinh=ban_ghi["id"],
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"danh_tinh": ban_ghi}
+
+
+@danh_tinh.get("/{id}")
+def lay_mot_danh_tinh(id: str):
+    ban_ghi = danh_tinh_mod.lay(id)
+    if ban_ghi is None:
+        raise LoiOpenAI(404, "Không tìm thấy danh tính.", code="danh_tinh_khong_co")
+    return {"danh_tinh": ban_ghi}
+
+
+@danh_tinh.delete("/{id}")
+def xoa_danh_tinh(id: str, request: Request):
+    danh_tinh_mod.xoa(id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Xoá danh tính (id: {_nhac_lai(id)})",
+        id_danh_tinh=id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"ok": True}
+
+
+@danh_tinh.post("/{id}/gan")
+async def gan_danh_tinh_vao_provider(id: str, request: Request):
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    danh_tinh_mod.kiem_module_id(module_id)
+    if request.app.state.so.tien_to_cua(module_id) is None:
+        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa được cài.", code="module_chua_cai")
+    ban_ghi = danh_tinh_mod.gan(id, module_id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Gắn danh tính (id: {_nhac_lai(id)}) vào module «{_nhac_lai(module_id)}»",
+        id_danh_tinh=id,
+        module=module_id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"danh_tinh": ban_ghi}
+
+
+@danh_tinh.post("/{id}/go")
+async def go_danh_tinh_khoi_provider(id: str, request: Request):
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    ban_ghi = danh_tinh_mod.go(id, module_id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Gỡ danh tính (id: {_nhac_lai(id)}) khỏi module «{_nhac_lai(module_id)}»",
+        id_danh_tinh=id,
+        module=module_id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"danh_tinh": ban_ghi}
 
 
 # ───────────── Sao lưu và khôi phục (/api/sao-luu, /api/khoi-phuc) ─────────────
