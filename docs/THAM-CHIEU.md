@@ -302,6 +302,7 @@ chi tiết mở ở bước kế tiếp.
 | `tai_url_khong_tin.py` | Bộ tải URL không tin cậy (`attachment_url`, `image_url`): chặn toàn bộ IP riêng/LAN/loopback/CGNAT, ghim IP, chuyển hướng tối đa 3 chặng, cấm hạ scheme, trần byte và thời gian |
 | `tep_an_toan.py` | Bộ kiểm tra tệp tải lên: kiểm tra kích thước header ảnh PNG/JPEG/GIF/WebP trước giải mã; kiểm tra archive ZIP chống zip-slip, symlink, bom nén |
 | `url_ky.py` | URL ký cho media: HMAC-SHA256 phủ phương thức + đường dẫn chuẩn hoá + hạn dùng, giải đường dẫn an toàn `duong_tep_an_toan` |
+| `tieu_de_bao_mat.py` | Tiêu đề bảo mật toàn cục và phục vụ tĩnh: tệp tĩnh luôn no-cache + ETag để nâng cấp không gây lệch phiên bản giao diện |
 
 ```mermaid
 flowchart TD
@@ -382,7 +383,7 @@ Cung cấp đường dẫn media có chữ ký HMAC-SHA256 chống đoán URL v�
 Trang `.dc.html` chạy trên **dc-lite** (`web/support.js`, runtime mã nguồn mở đọc nguyên văn các trang của bản
 demo thiết kế). Phần dùng chung nằm ở `web/khung.js` (gọi API, khoá quản trị, bảng điều kiện và **một** hàm đánh
 giá điều kiện duy nhất) và `web/khung.css`. Mọi đường dẫn là tương đối, nên web2api nằm sau proxy ở thư mục con
-vẫn chạy.
+vẫn chạy. Phục vụ tĩnh: tệp tĩnh luôn no-cache + ETag để nâng cấp không gây lệch phiên bản giao diện.
 
 | Trang | Hiện khi | Nội dung |
 |---|---|---|
