@@ -320,6 +320,19 @@ def test_5_phan_quyen_khoa_khach_va_hang_cho_phe_duyet(moi_truong):
     r_ktt = client.post("/api/thiet-bi/tbgia.den/hanh-dong", headers=hd_ghi, json={"hanh_dong": "hanh_dong_la"})
     assert r_ktt.status_code == 400
 
+    # Chưa xác nhận -> thực thể coi là nguy_hiem -> khách gọi vào hàng chờ 202
+    r_chua_xn = client.post(
+        "/api/thiet-bi/tbgia.den/hanh-dong",
+        headers=hd_ghi,
+        json={"hanh_dong": "bat", "tham_so": {"do_sang": 90}},
+    )
+    assert r_chua_xn.status_code == 202
+    assert r_chua_xn.json()["cho_phe_duyet"] is True
+
+    # Quản trị xác nhận thực thể tbgia.den
+    r_xn = client.post("/api/thiet-bi/tbgia.den/xac-nhan", headers=QT)
+    assert r_xn.status_code == 200
+
     # Khách có quyền gọi hành động bình thường (rui_ro="ghi") -> 200 thành công ngay
     r_chay = client.post(
         "/api/thiet-bi/tbgia.den/hanh-dong",
@@ -469,6 +482,7 @@ def test_8_so_kenh_thiet_bi_va_che_bi_mat(moi_truong):
     ghi_thu_muc(mod_path, mau_module_thiet_bi("thiet-bi-gia", "tbgia"))
     client.post("/api/modules/nap-lai", headers=QT)
     client.post("/api/modules/thiet-bi-gia/cai", headers=QT, json={"cau_hinh": {}})
+    client.post("/api/thiet-bi/tbgia.den/xac-nhan", headers=QT)
 
     # Quản trị gọi hành động có tham số nhạy cảm: mat_khau
     r = client.post(

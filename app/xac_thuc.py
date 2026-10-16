@@ -99,6 +99,8 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
     """
     danh_tinh = getattr(request.state, "danh_tinh", None)
     if isinstance(danh_tinh, dict):
+        from app import ngu_canh
+        ngu_canh.dat(danh_tinh, nguon="nguoi", pham_vi_hieu_luc=tuple(danh_tinh.get("pham_vi", ())))
         return danh_tinh
 
     gioi_han.kiem_tra_truoc_xac_thuc(request)  # IP đang bị khoá vì sai khoá nhiều → 429
@@ -122,6 +124,8 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             request.state.nguoi_goi = "quan_tri"
             danh_tinh = {"loai": "quan_tri", "id": "quan_tri", "pham_vi": ["*"]}
             request.state.danh_tinh = danh_tinh
+            from app import ngu_canh
+            ngu_canh.dat(danh_tinh, nguon="nguoi", pham_vi_hieu_luc=("*",))
             return danh_tinh
 
         # 2. So khớp khoá khách. Kho khoá hỏng là lỗi HẠ TẦNG của máy chủ, không phải khách đoán sai: chuỗi có đúng
@@ -171,6 +175,8 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             vt_k = khoa_khach.van_tay(bam_k)
             danh_tinh = {"loai": "khach", "id": id_khach, "pham_vi": pham_vi_hieu_luc, "khoa_van_tay": vt_k}
             request.state.danh_tinh = danh_tinh
+            from app import ngu_canh
+            ngu_canh.dat(danh_tinh, nguon="nguoi", pham_vi_hieu_luc=tuple(pham_vi_hieu_luc))
             return danh_tinh
 
         # Có Authorization nhưng sai -> KHÔNG lùi về cookie (không bypass)
@@ -202,6 +208,8 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             else:
                 danh_tinh = {"loai": "nguoi_dung", "id": f"nguoi_dung:{nd_id}", "pham_vi": []}
             request.state.danh_tinh = danh_tinh
+            from app import ngu_canh
+            ngu_canh.dat(danh_tinh, nguon="nguoi", pham_vi_hieu_luc=tuple(danh_tinh.get("pham_vi", ())))
             return danh_tinh
 
     gioi_han.ghi_loi_xac_thuc(request)
@@ -260,6 +268,8 @@ async def can_phien_web(request: Request) -> dict[str, Any]:
         "pham_vi": ["*"] if vai == "admin" else [],
     }
     request.state.danh_tinh = danh_tinh
+    from app import ngu_canh
+    ngu_canh.dat(danh_tinh, nguon="nguoi", pham_vi_hieu_luc=tuple(danh_tinh.get("pham_vi", ())))
     return danh_tinh
 
 
@@ -341,17 +351,31 @@ async def xac_thuc_v1(request: Request) -> dict[str, Any]:
     return nguoi
 
 
-def kiem_tra_pham_vi(request: Request, *cac_kha_nang: str) -> None:
-    """Kiểm tra phạm vi quyền hạn cho đường gọi /v1/*.
+def kiem_tra_pham_vi(request: Request | None, *cac_kha_nang: str) -> None:
+    """Kiểm tra phạm vi quyền hạn cho đường gọi /v1/* và gọi nội bộ.
 
     Khách thiếu phạm vi → LoiOpenAI(403 insufficient_scope).
+    Thiếu danh tính trong ngữ cảnh gọi nội bộ → LoiOpenAI(403 missing_context).
     """
-    danh_tinh = getattr(request.state, "danh_tinh", None)
+    danh_tinh = getattr(request.state, "danh_tinh", None) if request and hasattr(request, "state") else None
+    from app import ngu_canh
     if not isinstance(danh_tinh, dict):
+        nc = ngu_canh.lay()
+        if nc is not None and isinstance(nc.danh_tinh, dict):
+            danh_tinh = nc.danh_tinh
+            pham_vi = nc.pham_vi_hieu_luc
+        else:
+            raise LoiOpenAI(
+                403,
+                "Thiếu danh tính hoặc ngữ cảnh gọi hợp lệ (missing context).",
+                loai="permission_error",
+                code="missing_context",
+            )
+    else:
+        pham_vi = danh_tinh.get("pham_vi", [])
+
+    if danh_tinh.get("loai") in ("quan_tri", "noi_bo"):
         return
-    if danh_tinh.get("loai") == "quan_tri":
-        return
-    pham_vi = danh_tinh.get("pham_vi", [])
     if "*" in pham_vi:
         return
     if any(kn in pham_vi for kn in cac_kha_nang):

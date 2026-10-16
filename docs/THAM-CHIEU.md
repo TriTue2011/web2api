@@ -537,6 +537,26 @@ Chuẩn `thiet_bi` hợp nhất việc điều khiển thực thể (đèn, côn
 
 Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Theo nguyên tắc đóng khi lỗi: nếu module không khai báo hoặc khai báo mức rủi ro không hợp lệ, lõi mặc định coi là `nguy_hiem` (module chủ động khai `doc`/`ghi` để hạ). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
 
+**Cách ly thực thể mới và thay đổi tính năng (SEC-004):** Khi một thực thể mới xuất hiện, thực thể cũ chưa có trong `da_xac_nhan`, hoặc thay đổi danh sách/cấu trúc `tinh_nang` (so sánh qua chuỗi băm SHA-256 `bam_tinh_nang`), lõi tự động nâng mức rủi ro hiệu lực lên `nguy_hiem` cho tới khi quản trị viên xác nhận thực thể qua `POST /api/thiet-bi/{id}/xac-nhan` hoặc đặt lại rủi ro qua `PUT /api/thiet-bi/{id}/rui-ro`. Danh sách thực thể đã xác nhận cùng mã băm được lưu bền vững tại `<WEB2API_DATA>/thiet_bi.json`.
+
+**Kiểm soát tham số và bảo mật thông tin (SEC-004):**
+- **Lược đồ tham số:** Lõi kiểm tra nghiêm ngặt `tham_so` của hành động trước khi gọi module (`kiem_tra_tham_so`): kiểm tra kiểu, trường bắt buộc, giá trị `minimum`/`maximum`, `enum`, và từ chối trường lạ nếu lược đồ đặt `additionalProperties: false` (trả `400 invalid_request` nếu sai lệch); hàm `_than_json` toàn cục từ chối mọi số NaN và Infinity.
+- **Làm sạch tham số bí mật:** Không dùng danh sách từ khoá đoán; tuân theo nguyên tắc khai báo: tham số được khai `bi_mat: true` trong lược đồ (kể cả thuộc tính lồng nhau hoặc phần tử mảng `items`) sẽ được che dạng `…che` khi ghi nhật ký kiểm toán. Mọi tham số không khai báo trong lược đồ sẽ chỉ được ghi tên trường và độ dài ký tự (`…che(độ dài N)`), không bao giờ ghi giá trị thô ra nhật ký.
+
+**Chống nghẽn hàng chờ và giới hạn tần suất (SEC-004):**
+- **Hàng chờ phê duyệt:** Trần số lượng mục đang chờ được giới hạn bởi `WEB2API_PHE_DUYET_TRAN_SO_MUC` (toàn cục, mặc định 100 mục) và `WEB2API_PHE_DUYET_TOI_DA_MOI_KHOA` (theo từng khoá/danh tính đề xuất, mặc định 10 mục; vượt trần trả `429`). Hàng chờ tự động loại trùng theo bộ `(khoá, thực thể, hành động)`: nếu cùng khoá đề xuất hành động trên cùng thực thể đang chờ duyệt: nếu nội dung (tham số, lý do, băm) y hệt thì trả lại mục cũ kèm mã 202; nếu nội dung thay đổi thì huỷ mục cũ và cấp ID mới nhằm chống tấn công TOCTOU / ghi đè tham số sau khi quản trị đã xem; tuyệt đối không trả ID mục duyệt của khoá A cho khoá B. Kích thước tham số có trần 8 KB.
+- **Phê duyệt an toàn:** Tại thời điểm quản trị gọi `POST /api/phe-duyet/{id}/duyet`, lõi kiểm tra lại thực thể, tính năng, hành động, lược đồ tham số và băm trạng thái lưu lúc tạo (`bam_trang_thai` gồm thực thể, tính năng, hành động, tham số): nếu thực thể bị gỡ hoặc thay đổi bất kỳ thành phần nào trong băm trạng thái, hành động bị từ chối với mã `409 conflict` và huỷ mục duyệt mà không gọi module.
+- **Trần tần suất thao tác:** Giới hạn tối đa `WEB2API_THIET_BI_TRAN_LUOT` hành động trong cửa sổ trượt 5 giây cho mỗi khoá (burst limit, mặc định 8 lệnh/5 giây) và `WEB2API_THIET_BI_TRAN_PHUT` hành động mỗi phút cho mỗi cặp (khoá/danh tính, thực thể) (mặc định 30, vượt trần trả `429`).
+
+**Ngữ cảnh gọi và MỘT cổng gọi khả năng duy nhất (SEC-002):**
+Mọi lời gọi khả năng module từ các luồng nghiệp vụ chuẩn của lõi đều đi qua cổng thống nhất: `app.goi_kha_nang.goi(module, kha_nang, *args, ngu_canh=None, **kw)`. Cổng này đảm bảo:
+1. Khả năng được gọi phải nằm trong `cung_cap` của module và thuộc tập hợp đồng `HOP_DONG_KHA_NANG` (`app/kham_pha.py`).
+2. Kiểm tra phạm vi truy cập theo ngữ cảnh (`ContextVar NGU_CANH` từ `app/ngu_canh.py`). Thiếu ngữ cảnh hoặc thiếu danh tính trong lời gọi nội bộ lập tức bị từ chối với mã `403 missing_context` (đóng khi lỗi).
+3. Mọi hành động thiết bị đi qua cổng đều dùng chung bộ kiểm soát rủi ro, giới hạn tần suất và hàng chờ phê duyệt (`thuc_hien_hanh_dong_loi`).
+4. Ghi sổ kiểm toán kênh `quan_tri`/`thiet_bi` với danh tính và `nguon` (`"nguoi"`, `"ai"`, `"tu_dong"`, `"kenh"`) do lõi đóng dấu độc quyền (các lời gọi qua API/giao diện HTTP luôn được lõi gán cứng `nguon="nguoi"`, người gọi không thể giả mạo `nguon`). Riêng kênh `goi_kha_nang` ghi nhận cảnh báo khi bị từ chối phạm vi (403) hoặc thao tác ghi/nguy hiểm (`anh_sua`, `video_tao`), không ghi từng lần gọi đọc/chat thông thường để tránh làm tràn nhật ký.
+5. **Ngoại lệ kỹ thuật được kiểm soát riêng:** Một số đường gọi đặc thù của lõi gọi trực tiếp module không qua `goi` do yêu cầu kiến trúc (đều có cơ chế xác thực/cô lập riêng): `thiet_bi.py` (~682 khi quản trị duyệt yêu cầu trong hàng chờ, gọi trực tiếp `m.thuc_hien` sau khi đã kiểm tra xác thực QT, rủi ro, băm trạng thái và lược đồ tham số); `tuyen.py` xử lý ảnh trong `/v1/responses` (`m.anh`/`m.anh_sua` sau khi đã xác thực V1_AUTH và kiểm tra phạm vi); `quy_trinh.py` fan-out tìm kiếm đa nguồn song song (`m.tim_kiem(...)` qua `asyncio.gather`) với việc kiểm tra chuẩn lỗi và đóng cờ `nguon_ngoai`; `tri_thuc.py` gọi `m.muc_luc(...)` phục vụ phân tầng tri thức; `novnc.py` gọi `m.trinh_duyet_*` gắn với tiến trình noVNC; và `combo.py` điều phối gọi module con.
+6. **Quy tắc đóng khi thiếu ngữ cảnh:** Mọi lời gọi quy trình phễu tri thức (`app/quy_trinh.py`) hay lời gọi khả năng qua cổng `goi` khi chạy thiếu ngữ cảnh thực thi (`NGU_CANH` là None) đều lập tức bị từ chối với mã `403 missing_context` (lõi không tự ý bịa ngữ cảnh nội bộ ngoài HTTP).
+
 **Bus sự kiện SSE** (`GET /api/thiet-bi/su-kien` nghe, `POST /api/thiet-bi/su-kien` gửi) được bảo vệ theo SEC-003: phạm vi đã TÁCH — `thiet_bi:su_kien` là quyền GỬI, `thiet_bi:su_kien_doc` là quyền NGHE (tương thích: khoá có `*` hoặc `thiet_bi:su_kien` vẫn nghe được). Lõi đóng dấu trường `nguon` (danh tính người gửi) vào mọi sự kiện; sự kiện phải nhắm thực thể đang tồn tại trong danh mục lõi; `gia_tri` ≤ 4 KB sau serialize và độ sâu ≤ 4; sự kiện phê duyệt (`phe_duyet*`) chỉ phát tới quản trị. Vòng phát kiểm lại khoá mỗi 15 giây (`WEB2API_SSE_KIEM_LAI_KHOA_GIAY`); trần người nghe theo danh tính 8 (`WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH`) và toàn cục 256 (`WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC`) — vượt trả `429` kèm `Retry-After`.
 
 ```mermaid
@@ -1874,7 +1894,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/thiet-bi/su-kien` | Có | Nhận luồng sự kiện thiết bị theo thời gian thực (SSE) |
 | `POST /api/thiet-bi/su-kien` | Có | Phát sự kiện thiết bị mới |
 | `GET /api/thiet-bi/{id}` | Có | Chi tiết và trạng thái của một thực thể thiết bị |
-| `PUT /api/thiet-bi/{id}/rui-ro` | Có | Quản trị đặt ghi đè mức rủi ro hiệu lực (`doc`, `ghi`, `nguy_hiem`) cho thực thể |
+| `PUT /api/thiet-bi/{id}/rui-ro` | Có | Quản trị đặt ghi đè mức rủi ro hiệu lực (`doc`, `ghi`, `nguy_hiem`) cho thực thể (đồng thời xác nhận băm tính năng) |
+| `POST /api/thiet-bi/{id}/xac-nhan` | Có (quản trị) | Quản trị xác nhận băm tính năng của thực thể mới hoặc vừa đổi tính năng, đưa rủi ro về mức tự nhiên |
 | `POST /api/thiet-bi/{id}/hanh-dong` | Có | Thực hiện hành động trên thực thể (rủi ro nguy hiểm yêu cầu xác nhận hoặc đưa vào hàng chờ) |
 | `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
 | `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
@@ -1959,6 +1980,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
+| `WEB2API_PHE_DUYET_TRAN_SO_MUC` | `100` | Trần số mục tối đa trong hàng chờ phê duyệt thiết bị (vượt trần trả `429`) |
+| `WEB2API_PHE_DUYET_TOI_DA_MOI_KHOA` | `10` | Trần số mục tối đa trong hàng chờ phê duyệt thiết bị cho mỗi khoá/danh tính đề xuất (vượt trần trả `429`) |
+| `WEB2API_THIET_BI_TRAN_LUOT` | `8` | Trần tần suất dồn tối đa theo khoá (lệnh / 5 giây, mặc định 8; vượt trần trả `429`) |
+| `WEB2API_THIET_BI_TRAN_PHUT` | `30` | Trần tần suất hành động thiết bị (lần/phút) cho mỗi cặp (khoá/danh tính, thực thể) (vượt trần trả `429`) |
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
 | `WEB2API_SSE_DEM_TOI_DA_KB` | `1024` | Trần bộ đệm tối đa của luồng stream SSE chat (KiB, mặc định 1024 = 1 MiB) trước khi phát nguyên văn chống cạn bộ nhớ; giá trị không phải số dương hữu hạn → `1024` |

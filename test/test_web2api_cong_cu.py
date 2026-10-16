@@ -152,13 +152,23 @@ def test_1_phan_quyen_va_pham_vi(moi_truong):
     assert r_chat.status_code == 403
     assert r_chat.json()["error"]["code"] == "insufficient_scope"
 
-    # 3. Khoá khách chỉ có thiet_bi:doc -> chỉ thấy tools có rui_ro == "doc"
+    # 3. Khi thực thể chưa được quản trị xác nhận -> rủi ro là nguy_hiem, khách doc không thấy
     r_tao_doc = client.post(
         "/api/khoa-khach",
         headers=QT,
         json={"nhan": "Khach Doc", "pham_vi": ["thiet_bi:doc"]},
     )
     khoa_doc = r_tao_doc.json()["khoa"]["khoa"]
+    r_doc_chua_xn = client.get("/api/cong-cu", headers={"Authorization": f"Bearer {khoa_doc}"})
+    assert r_doc_chua_xn.status_code == 200
+    assert r_doc_chua_xn.json()["data"] == []
+
+    # Quản trị xác nhận các thực thể của module (Mục 2 & SEC-004f)
+    for id_tt in ["tbcc.cam_bien_nhiet", "tbcc.den_phong_khach", "tbcc.khoa_cong"]:
+        r_xn = client.post(f"/api/thiet-bi/{id_tt}/xac-nhan", headers=QT)
+        assert r_xn.status_code == 200
+
+    # Sau khi xác nhận -> khách chỉ có thiet_bi:doc thấy tools có rui_ro == "doc"
     r_doc = client.get("/api/cong-cu", headers={"Authorization": f"Bearer {khoa_doc}"})
     assert r_doc.status_code == 200
     res_doc = r_doc.json()
@@ -633,6 +643,10 @@ def test_11_leo_thang_quyen_va_idor(moi_truong):
     assert client.get("/api/khoa-khach", headers=h_doc).status_code == 403
     assert client.get("/api/tim-kiem/nguon", headers=h_doc).status_code == 403
 
+    # Quản trị xác nhận các thực thể của module (Mục 2 & SEC-004f)
+    for id_tt in ["tbcc.cam_bien_nhiet", "tbcc.den_phong_khach", "tbcc.khoa_cong"]:
+        client.post(f"/api/thiet-bi/{id_tt}/xac-nhan", headers=QT)
+
     # 4. Lọc phạm vi theo tham số loai: khách lọc loại "cam_bien" chỉ thấy cam_bien, không lộ thực thể loại khác
     r_loc = client.get("/api/cong-cu?loai=cam_bien", headers=h_doc)
     assert r_loc.status_code == 200
@@ -656,3 +670,53 @@ def test_10_hanh_dong_khong_tu_ha_rui_ro_cua_thuc_the():
     assert co_ghi == {"mo": "nguy_hiem", "bat": "nguy_hiem", "xem": "doc"}
     chi_doc = [t["x_web2api"]["hanh_dong"] for t in cong_cu.sinh_cong_cu(ds, duoc_ghi=False)]
     assert chi_doc == ["xem"]
+
+
+def test_11_lam_sach_luoc_do_loai_bo_nan_inf_va_khong_loi_500(moi_truong):
+    """Mục E: Lược đồ module chứa minimum/maximum/enum là NaN hoặc Infinity không gây 500 cho /api/cong-cu."""
+    client, data_dir, so = moi_truong
+    mod_path = data_dir / "modules" / "thiet-bi-cong-cu"
+    ghi_thu_muc(mod_path, mau_module_cong_cu())
+    client.post("/api/modules/nap-lai", headers=QT)
+    client.post("/api/modules/thiet-bi-cong-cu/cai", headers=QT, json={"cau_hinh": {}})
+
+    m = so.dang_chay["thiet-bi-cong-cu"]
+    async def thuc_the_nan(loc=None):
+        return [
+            {
+                "id": f"{m.tien_to}.cam_bien_nan",
+                "ten": "Cảm biến số dị",
+                "loai": "cam_bien",
+                "tinh_nang": [
+                    {
+                        "hanh_dong": "do_nhiet",
+                        "tham_so": {
+                            "type": "object",
+                            "properties": {
+                                "nhiet_do": {
+                                    "type": "number",
+                                    "minimum": float("nan"),
+                                    "maximum": float("inf"),
+                                    "enum": [1.0, float("nan"), float("-inf"), 2.0],
+                                }
+                            }
+                        }
+                    }
+                ],
+                "rui_ro_mac_dinh": "doc",
+            }
+        ]
+    m.thuc_the = thuc_the_nan
+    client.post(f"/api/thiet-bi/{m.tien_to}.cam_bien_nan/xac-nhan", headers=QT)
+
+    # Gọi /api/cong-cu qua HTTP bằng TestClient -> serialize ra JSONResponse không bị lỗi 500
+    r = client.get("/api/cong-cu", headers=QT)
+    assert r.status_code == 200
+    d = r.json()
+    assert "data" in d
+    tools = [t for t in d["data"] if t["x_web2api"]["hanh_dong"] == "do_nhiet"]
+    assert len(tools) == 1
+    props = tools[0]["function"]["parameters"]["properties"]["tham_so"]["properties"]
+    assert "minimum" not in props["nhiet_do"]
+    assert "maximum" not in props["nhiet_do"]
+    assert props["nhiet_do"]["enum"] == [1.0, 2.0]
