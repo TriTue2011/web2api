@@ -22,7 +22,12 @@ main.pg{padding:32px 32px 48px;gap:24px}
 .khoa-tac-vu,.nguoi-dung-tac-vu{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-left:auto}
 .pham-vi-chon{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .the-ket-noi-moi{background:#F1F7F5;border-color:#B7DDD5}
-.acc-hop{flex:0 0 auto;margin-left:auto;display:flex;align-items:center;gap:10px}
+.acc-hop{flex:0 1 auto;margin-left:auto;display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap}
+@media (max-width:480px){
+.acc-hop{gap:4px 6px;flex-wrap:wrap}
+.acc-hop #nhan-vai-nguoi-dung{display:none}
+.acc-hop .ten-nd{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
 @media (max-width:1023px){
 main.pg{padding:12px 16px 24px}
 .khoa-tac-vu,.nguoi-dung-tac-vu{margin-left:0;width:100%;justify-content:flex-end}
@@ -49,6 +54,7 @@ main.pg{padding:12px 16px 24px}
 
 <main class="pg">
 <h1 class="an-chu">Hệ thống — Bảo mật &amp; người dùng</h1>
+<sc-if value="{{coLoiTaiTrang}}"><p role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>{{loiTaiTrang}}</span><button type="button" class="nut nut-nho" onClick="{{taiLai}}">Thử lại</button></p></sc-if>
 
 <sc-if value="{{laAdmin}}">
 
@@ -60,7 +66,7 @@ main.pg{padding:12px 16px 24px}
 <section class="the the-ket-noi-moi" aria-labelledby="h-nd-moi" id="the-thong-tin-nd-moi">
 <div class="dong-nut" style="justify-content:space-between">
 <h2 id="h-nd-moi" class="nhan-muc" style="color:#0B5A53">Thông tin tài khoản vừa tạo</h2>
-<button type="button" class="nut nut-nho" onClick="{{dongNguoiDungMoi}}">Đóng</button>
+<button type="button" class="nut nut-nho" id="nut-dong-nd-moi" onClick="{{dongNguoiDungMoi}}">Đóng</button>
 </div>
 <p class="phu" style="color:#0B5A53">Mật khẩu chỉ hiển thị <strong>MỘT LẦN DUY NHẤT</strong>. Hãy sao chép và gửi cho người dùng ngay.</p>
 <dl class="bang">
@@ -227,6 +233,12 @@ main.pg{padding:12px 16px 24px}
 <h2 id="h-ds-khoa" style="font-size:inherit;margin:0">Danh sách khoá khách</h2>
 <span class="dem-phai">{{tongSoKhoa}} khoá</span>
 </div>
+<sc-if value="{{coLoiDsKhoa}}">
+<div role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 12px">
+  <span>{{dsKhoaLoi}}</span>
+  <button type="button" class="nut nut-nho" onClick="{{taiLaiDsKhoa}}">Thử lại</button>
+</div>
+</sc-if>
 <sc-if value="{{coKhoaDs}}">
 <ul class="bang-tb-ds">
 <sc-for list="{{dsKhoaHienThi}}" as="k">
@@ -384,6 +396,12 @@ main.pg{padding:12px 16px 24px}
 <h2 id="h-ds-khoa-toi" style="font-size:inherit;margin:0">Danh sách khoá API của tôi</h2>
 <span class="dem-phai">{{tongSoKhoaToi}} / 10 khoá</span>
 </div>
+<sc-if value="{{coLoiKhoaToi}}">
+<div role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 12px">
+  <span>{{dsKhoaToiLoi}}</span>
+  <button type="button" class="nut nut-nho" onClick="{{taiLaiKhoaToi}}">Thử lại</button>
+</div>
+</sc-if>
 <sc-if value="{{coKhoaToiDs}}">
 <ul class="bang-tb-ds">
 <sc-for list="{{dsKhoaToiHienThi}}" as="k">
@@ -466,6 +484,7 @@ class Component extends DCLogic {
       toi: null,
       tn: null,
       tnLoi: '',
+      loiTaiTrang: '',
       soTb: 0,
       menuMo: null,
 
@@ -479,8 +498,10 @@ class Component extends DCLogic {
       taoNdLoi: '',
       nguoiDungMoi: null,
       chepNdMoiTin: false,
+      chepNdMoiLoi: '',
       matKhauDatLai: null,
       chepMkDatLaiTin: false,
+      chepMkDatLaiLoi: '',
       dangDoiTrangThaiNd: null,
       dangDoiVaiNd: null,
       dangDatLaiMkNd: null,
@@ -491,27 +512,34 @@ class Component extends DCLogic {
       // Khoá khách toàn hệ thống (admin)
       dsKhoa: [],
       nhanNhap: '',
-      phamViChon: ['chat'],
+      phamViChon: ['*'],
       dangTao: false,
       taoLoi: '',
       khoaMoi: null,
       diaChiV1: '',
       chepKhoaTin: false,
+      chepKhoaLoi: '',
       chepCauHinhTin: false,
+      chepCauHinhLoi: '',
       dangHoiXoa: null,
       dangXoa: null,
       dangDoi: null,
+      dsKhoaLoi: '',
+      dangTaiDsKhoa: false,
 
       // Khoá API của tôi (mọi người dùng)
       dsKhoaToi: [],
       nhanKhoaToiNhap: '',
-      phamViKhoaToiChon: ['chat'],
+      phamViKhoaToiChon: [],
       dangTaoKhoaToi: false,
       taoKhoaToiLoi: '',
       khoaToiMoi: null,
       chepKhoaToiTin: false,
+      chepKhoaToiLoi: '',
       dangHoiXoaKhoaToi: null,
       dangXoaKhoaToi: null,
+      dsKhoaToiLoi: '',
+      dangTaiKhoaToi: false,
 
       // Đổi mật khẩu cá nhân
       mkCu: '',
@@ -541,19 +569,28 @@ class Component extends DCLogic {
   }
 
   async taiLai() {
-    const toi = await K.napToi();
+    let toi;
+    try {
+      toi = await K.napToi();
+    } catch (e) {
+      // Lỗi tạm (500/503/429/mạng): giữ nguyên, báo lỗi tải, KHÔNG chuyển Đăng nhập
+      this.setState({ loiTaiTrang: (e && e.message) || 'Lỗi kết nối máy chủ.' });
+      return;
+    }
     if (!toi || !toi.id) {
       K.chuyenDangNhap();
       return;
     }
-    this.setState({ toi });
+    this.setState({ toi, loiTaiTrang: '' });
 
     const laAdmin = toi.vai === 'admin';
-    const tranUser = toi.pham_vi_toi_da || ['chat'];
+    const tranUser = toi.pham_vi_toi_da || [];
     if (!laAdmin && tranUser.length > 0) {
-      this.setState({
-        phamViKhoaToiChon: [tranUser[0]]
-      });
+      if (!this.state.phamViKhoaToiChon.length || !this.state.phamViKhoaToiChon.some((m) => tranUser.includes(m))) {
+        this.setState({
+          phamViKhoaToiChon: [tranUser[0]]
+        });
+      }
     }
 
     const [tnRes, ketNoiRes] = await Promise.allSettled([
@@ -565,8 +602,21 @@ class Component extends DCLogic {
     if (tnRes.status === 'fulfilled') {
       them.tn = tnRes.value;
       them.tnLoi = '';
+      const daCai = (tnRes.value && tnRes.value.kha_nang_da_cai) || {};
+      const dsMa = Array.from(new Set(['chat', ...Object.keys(daCai).filter((k) => k !== 'ai')]));
+      if (laAdmin && dsMa.length > 0) {
+        if (!this.state.phamViChon.includes('*') && !this.state.phamViChon.some((m) => dsMa.includes(m))) {
+          them.phamViChon = [dsMa[0]];
+        }
+        if (!this.state.phamViNdMoi.some((m) => dsMa.includes(m))) {
+          them.phamViNdMoi = ['chat'];
+        }
+        if (!this.state.phamViKhoaToiChon.includes('*') && !this.state.phamViKhoaToiChon.some((m) => dsMa.includes(m))) {
+          them.phamViKhoaToiChon = [dsMa[0]];
+        }
+      }
     } else {
-      them.tnLoi = tnRes.reason.message;
+      them.tnLoi = (tnRes.reason && tnRes.reason.message) || '';
     }
     if (ketNoiRes.status === 'fulfilled' && ketNoiRes.value.j) {
       them.diaChiV1 = ketNoiRes.value.j.base_url || (location.origin + '/v1');
@@ -614,8 +664,7 @@ class Component extends DCLogic {
     let cur = this.state.phamViNdMoi.slice();
     if (cur.includes(ma)) cur = cur.filter((x) => x !== ma);
     else cur.push(ma);
-    if (!cur.length) cur = ['chat'];
-    this.setState({ phamViNdMoi: cur });
+    this.setState({ phamViNdMoi: cur, taoNdLoi: '' });
   }
 
   async taoNdSubmit(e) {
@@ -625,7 +674,14 @@ class Component extends DCLogic {
     const ten = (this.state.tenNdMoi || '').trim();
     const mk = this.state.mkNdMoi || '';
     const vai = this.state.vaiNdMoi || 'user';
-    const pv = vai === 'admin' ? ['*'] : this.state.phamViNdMoi;
+    const daCai = (this.state.tn && this.state.tn.kha_nang_da_cai) || {};
+    const dsMa = Array.from(new Set(['chat', ...Object.keys(daCai).filter((k) => k !== 'ai')]));
+    const pv = vai === 'admin' ? ['*'] : this.state.phamViNdMoi.filter((m) => dsMa.includes(m));
+
+    if (vai !== 'admin' && (!pv || !pv.length)) {
+      this.setState({ taoNdLoi: 'Hãy chọn ít nhất một phạm vi quyền hạn khả dụng.' });
+      return;
+    }
 
     if (mk && mk.length < 12) {
       this.setState({ taoNdLoi: 'Mật khẩu phải có tối thiểu 12 ký tự.' });
@@ -652,8 +708,10 @@ class Component extends DCLogic {
           },
           tenNdMoi: '',
           mkNdMoi: '',
+          phamViNdMoi: ['chat'],
           dangTaoNd: false,
-          chepNdMoiTin: false
+          chepNdMoiTin: false,
+          chepNdMoiLoi: ''
         });
         await this.taiDsNguoiDung();
       } else {
@@ -670,13 +728,13 @@ class Component extends DCLogic {
   chepNguoiDungMoi() {
     const nd = this.state.nguoiDungMoi;
     if (!nd) return;
-    this.chepChuoi(`Tên đăng nhập: ${nd.ten}\nMật khẩu: ${nd.matKhau}\nVai: ${nd.vai}`, 'chepNdMoiTin');
+    this.chepChuoi(`Tên đăng nhập: ${nd.ten}\nMật khẩu: ${nd.matKhau}\nVai: ${nd.vai}`, 'chepNdMoiTin', 'chepNdMoiLoi');
   }
 
   chepMatKhauDatLai() {
     const mk = this.state.matKhauDatLai;
     if (!mk) return;
-    this.chepChuoi(`Tài khoản: ${mk.ten}\nMật khẩu mới: ${mk.matKhau}`, 'chepMkDatLaiTin');
+    this.chepChuoi(`Tài khoản: ${mk.ten}\nMật khẩu mới: ${mk.matKhau}`, 'chepMkDatLaiTin', 'chepMkDatLaiLoi');
   }
 
   async doiTrangThaiNd(id, batHienTai) {
@@ -721,7 +779,8 @@ class Component extends DCLogic {
       if (j && j.mat_khau_moi) {
         this.setState({
           matKhauDatLai: { ten, matKhau: j.mat_khau_moi },
-          chepMkDatLaiTin: false
+          chepMkDatLaiTin: false,
+          chepMkDatLaiLoi: ''
         });
       }
     } catch (e) {
@@ -752,11 +811,12 @@ class Component extends DCLogic {
   // ═══════════════════════════════════════════════════════════════
 
   async taiDsKhoa() {
+    this.setState({ dangTaiDsKhoa: true, dsKhoaLoi: '' });
     try {
       const { j } = await K.goi('api/khoa-khach');
-      this.setState({ dsKhoa: (j && j.khoa) || [] });
+      this.setState({ dsKhoa: (j && j.khoa) || [], dsKhoaLoi: '', dangTaiDsKhoa: false });
     } catch (e) {
-      // nuốt lỗi
+      this.setState({ dsKhoaLoi: e.message || 'Lỗi khi tải danh sách khoá khách.', dangTaiDsKhoa: false });
     }
   }
 
@@ -766,9 +826,11 @@ class Component extends DCLogic {
     if (e && e.preventDefault) e.preventDefault();
     if (this.state.dangTao) return;
 
-    const phamVi = this.state.phamViChon.includes('*') ? ['*'] : this.state.phamViChon;
+    const daCai = (this.state.tn && this.state.tn.kha_nang_da_cai) || {};
+    const dsMa = Array.from(new Set(['chat', ...Object.keys(daCai).filter((k) => k !== 'ai')]));
+    const phamVi = this.state.phamViChon.includes('*') ? ['*'] : this.state.phamViChon.filter((m) => dsMa.includes(m));
     if (!phamVi || !phamVi.length) {
-      this.setState({ taoLoi: 'Hãy chọn ít nhất một phạm vi truy cập.' });
+      this.setState({ taoLoi: 'Hãy chọn ít nhất một phạm vi truy cập khả dụng.' });
       return;
     }
 
@@ -783,10 +845,11 @@ class Component extends DCLogic {
         this.setState({
           khoaMoi: j.khoa,
           nhanNhap: '',
-          phamViChon: ['chat'],
           dangTao: false,
           chepKhoaTin: false,
-          chepCauHinhTin: false
+          chepKhoaLoi: '',
+          chepCauHinhTin: false,
+          chepCauHinhLoi: ''
         });
         await this.taiDsKhoa();
       } else {
@@ -798,30 +861,33 @@ class Component extends DCLogic {
   }
 
   async doiTrangThai(id, batHienTai) {
-    this.setState({ dangDoi: id });
+    this.setState({ dangDoi: id, dsKhoaLoi: '' });
+    let loi = '';
     try {
       await K.goi('api/khoa-khach/' + encodeURIComponent(id), {
         method: 'PATCH',
         json: { bat: !batHienTai }
       });
-      await this.taiDsKhoa();
     } catch (e) {
-      // nuốt lỗi
+      loi = e.message || 'Lỗi cập nhật trạng thái khoá.';
     } finally {
       this.setState({ dangDoi: null });
+      await this.taiDsKhoa();
+      if (loi) this.setState({ dsKhoaLoi: loi });
     }
   }
 
   async xoaKhoa(id) {
-    this.setState({ dangXoa: id });
+    this.setState({ dangXoa: id, dsKhoaLoi: '', dangHoiXoa: null });
+    let loi = '';
     try {
       await K.goi('api/khoa-khach/' + encodeURIComponent(id), { method: 'DELETE' });
-      this.setState({ dangHoiXoa: null });
-      await this.taiDsKhoa();
     } catch (e) {
-      // nuốt lỗi
+      loi = e.message || 'Lỗi thu hồi khoá.';
     } finally {
       this.setState({ dangXoa: null });
+      await this.taiDsKhoa();
+      if (loi) this.setState({ dsKhoaLoi: loi });
     }
   }
 
@@ -830,11 +896,12 @@ class Component extends DCLogic {
   // ═══════════════════════════════════════════════════════════════
 
   async taiKhoaToi() {
+    this.setState({ dangTaiKhoaToi: true, dsKhoaToiLoi: '' });
     try {
       const { j } = await K.goi('api/toi/khoa');
-      this.setState({ dsKhoaToi: (j && j.khoa) || [] });
+      this.setState({ dsKhoaToi: (j && j.khoa) || [], dsKhoaToiLoi: '', dangTaiKhoaToi: false });
     } catch (e) {
-      // nuốt lỗi
+      this.setState({ dsKhoaToiLoi: e.message || 'Lỗi khi tải danh sách khoá API của bạn.', dangTaiKhoaToi: false });
     }
   }
 
@@ -855,7 +922,14 @@ class Component extends DCLogic {
     if (e && e.preventDefault) e.preventDefault();
     if (this.state.dangTaoKhoaToi) return;
 
-    const pv = this.state.phamViKhoaToiChon;
+    const laAdmin = this.state.toi && this.state.toi.vai === 'admin';
+    const daCai = (this.state.tn && this.state.tn.kha_nang_da_cai) || {};
+    const dsMa = Array.from(new Set(['chat', ...Object.keys(daCai).filter((k) => k !== 'ai')]));
+    const dsMaToi = laAdmin ? dsMa : ((this.state.toi && this.state.toi.pham_vi_toi_da) || ['chat']);
+    const pv = laAdmin && this.state.phamViKhoaToiChon.includes('*')
+      ? ['*']
+      : this.state.phamViKhoaToiChon.filter((m) => dsMaToi.includes(m));
+
     if (!pv || !pv.length) {
       this.setState({ taoKhoaToiLoi: 'Hãy chọn ít nhất một phạm vi truy cập.' });
       return;
@@ -879,7 +953,8 @@ class Component extends DCLogic {
           },
           nhanKhoaToiNhap: '',
           dangTaoKhoaToi: false,
-          chepKhoaToiTin: false
+          chepKhoaToiTin: false,
+          chepKhoaToiLoi: ''
         });
         await this.taiKhoaToi();
       } else {
@@ -895,19 +970,20 @@ class Component extends DCLogic {
   chepKhoaToi() {
     const k = this.state.khoaToiMoi;
     if (!k) return;
-    this.chepChuoi(k.khoa, 'chepKhoaToiTin');
+    this.chepChuoi(k.khoa, 'chepKhoaToiTin', 'chepKhoaToiLoi');
   }
 
   async xoaKhoaToi(id) {
-    this.setState({ dangXoaKhoaToi: id });
+    this.setState({ dangXoaKhoaToi: id, dsKhoaToiLoi: '', dangHoiXoaKhoaToi: null });
+    let loi = '';
     try {
       await K.goi('api/toi/khoa/' + encodeURIComponent(id), { method: 'DELETE' });
-      this.setState({ dangHoiXoaKhoaToi: null });
-      await this.taiKhoaToi();
     } catch (e) {
-      // nuốt lỗi
+      loi = e.message || 'Lỗi thu hồi khoá của bạn.';
     } finally {
       this.setState({ dangXoaKhoaToi: null });
+      await this.taiKhoaToi();
+      if (loi) this.setState({ dsKhoaToiLoi: loi });
     }
   }
 
@@ -965,12 +1041,28 @@ class Component extends DCLogic {
   // SAO LƯU & KHÔI PHỤC (ADMIN)
   // ═══════════════════════════════════════════════════════════════
 
-  chepChuoi(txt, key) {
-    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(txt);
-      this.setState({ [key]: true });
-      setTimeout(() => this.setState({ [key]: false }), 2500);
+  chepChuoi(txt, key, loiKey) {
+    if (!navigator || !navigator.clipboard || !navigator.clipboard.writeText) {
+      if (loiKey) {
+        this.setState({ [loiKey]: 'Hãy bôi đen và chép tay' });
+        setTimeout(() => this.setState({ [loiKey]: '' }), 3000);
+      } else if (typeof alert === 'function') {
+        alert('Hãy bôi đen và chép tay');
+      }
+      return;
     }
+    navigator.clipboard.writeText(txt).then(() => {
+      this.setState({ [key]: true });
+      if (loiKey) this.setState({ [loiKey]: '' });
+      setTimeout(() => this.setState({ [key]: false }), 2500);
+    }).catch(() => {
+      if (loiKey) {
+        this.setState({ [loiKey]: 'Hãy bôi đen và chép tay' });
+        setTimeout(() => this.setState({ [loiKey]: '' }), 3000);
+      } else if (typeof alert === 'function') {
+        alert('Hãy bôi đen và chép tay');
+      }
+    });
   }
 
   async taiSaoLuu() {
@@ -1087,7 +1179,7 @@ class Component extends DCLogic {
       const bt = data.ban_truoc || {};
       this.boKetQuaKiem({
         dangXuLyKhoiPhuc: false,
-        khoiPhucTin: `Đã khôi phục ${soTep} tệp (${data.bi_mat}). Bản cấu hình trước khi khôi phục: <DATA>/${bt.thu_muc || '?'}/ (đang giữ ${bt.so_ban_giu || 0}/${bt.toi_da || 3} bản).`
+        khoiPhucTin: `Đã khôi phục ${soTep} tệp (${data.bi_mat}). Bản cấu hình trước khi khôi phục: <DATA>/${bt.thu_muc || '?'}/ (đang giữ ${bt.so_ban_giu || 0}/${bt.toi_da || 3} bản — chứa khoá thật, xoá tay khi không cần).`
       });
       await this.taiDsKhoa();
     } catch (err) {
@@ -1139,9 +1231,9 @@ class Component extends DCLogic {
     const coQuayLai = !!K.quayLai(tn);
     const khongQuayLai = !coQuayLai;
 
-    // Danh sách khả năng mở từ tinh-nang
+    // Danh sách khả năng mở từ tinh-nang (luôn có baseline 'chat')
     const daCai = (tn && tn.kha_nang_da_cai) || {};
-    const dsMa = Object.keys(daCai).filter((k) => k !== 'ai');
+    const dsMa = Array.from(new Set(['chat', ...Object.keys(daCai).filter((k) => k !== 'ai')]));
 
     // Phạm vi khoá khách (admin)
     const phamViList = dsMa.map((ma) => {
@@ -1174,7 +1266,7 @@ class Component extends DCLogic {
 
     // Phạm vi khoá của tôi (giới hạn bởi pham_vi_toi_da)
     const tranToi = laAdmin ? ['*'] : (toi && toi.pham_vi_toi_da) || ['chat'];
-    const dsMaToi = laAdmin ? dsMa : dsMa.filter((m) => tranToi.includes(m));
+    const dsMaToi = laAdmin ? dsMa : ((toi && toi.pham_vi_toi_da) || ['chat']);
     const phamViToiList = dsMaToi.map((ma) => {
       const chon = s.phamViKhoaToiChon.includes(ma);
       return {
@@ -1287,21 +1379,25 @@ class Component extends DCLogic {
       dongMenu: () => this.setState({ menuMo: null }),
       phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
 
-      tenNguoiDung: (toi && toi.ten_dang_nhap) || '...',
+      tenNguoiDung: K.tenNguoiDung(toi) || '...',
       nhanVai: laAdmin ? 'Quản trị (admin)' : 'Người dùng (user)',
       laAdmin,
       dangXuat: () => K.dangXuat(),
 
+      coLoiTaiTrang: !!s.loiTaiTrang,
+      loiTaiTrang: s.loiTaiTrang,
+      taiLai: () => this.taiLai(),
+
       // Quản lý người dùng
       coNguoiDungMoi: !!s.nguoiDungMoi,
       nguoiDungMoi: s.nguoiDungMoi,
-      nhanChepNdMoi: s.chepNdMoiTin ? 'Đã sao chép ✓' : 'Sao chép thông tin',
+      nhanChepNdMoi: s.chepNdMoiLoi || (s.chepNdMoiTin ? 'Đã sao chép ✓' : 'Sao chép thông tin'),
       dongNguoiDungMoi: () => this.dongNguoiDungMoi(),
       chepNguoiDungMoi: () => this.chepNguoiDungMoi(),
 
       coMatKhauDatLai: !!s.matKhauDatLai,
       matKhauDatLai: s.matKhauDatLai,
-      nhanChepMkDatLai: s.chepMkDatLaiTin ? 'Đã sao chép ✓' : 'Sao chép mật khẩu mới',
+      nhanChepMkDatLai: s.chepMkDatLaiLoi || (s.chepMkDatLaiTin ? 'Đã sao chép ✓' : 'Sao chép mật khẩu mới'),
       dongMatKhauDatLai: () => this.dongMatKhauDatLai(),
       chepMatKhauDatLai: () => this.chepMatKhauDatLai(),
 
@@ -1328,10 +1424,10 @@ class Component extends DCLogic {
       khoaMoi: khoaMoiView,
       diaChiV1: s.diaChiV1,
       dongKhoaMoi: () => this.setState({ khoaMoi: null }),
-      chepKhoa: () => this.chepChuoi((khoaMoiView && khoaMoiView.khoa) || '', 'chepKhoaTin'),
-      nhanChepKhoa: s.chepKhoaTin ? 'Đã sao chép!' : 'Sao chép khoá',
-      chepCauHinh: () => this.chepChuoi(`Base URL: ${s.diaChiV1}\nAPI Key: ${(khoaMoiView && khoaMoiView.khoa) || ''}`, 'chepCauHinhTin'),
-      nhanChepCauHinh: s.chepCauHinhTin ? 'Đã sao chép cấu hình!' : 'Sao chép cấu hình',
+      chepKhoa: () => this.chepChuoi((khoaMoiView && khoaMoiView.khoa) || '', 'chepKhoaTin', 'chepKhoaLoi'),
+      nhanChepKhoa: s.chepKhoaLoi || (s.chepKhoaTin ? 'Đã sao chép!' : 'Sao chép khoá'),
+      chepCauHinh: () => this.chepChuoi(`Base URL: ${s.diaChiV1}\nAPI Key: ${(khoaMoiView && khoaMoiView.khoa) || ''}`, 'chepCauHinhTin', 'chepCauHinhLoi'),
+      nhanChepCauHinh: s.chepCauHinhLoi || (s.chepCauHinhTin ? 'Đã sao chép cấu hình!' : 'Sao chép cấu hình'),
 
       nhanNhap: s.nhanNhap,
       goNhan: (e) => this.goNhan(e),
@@ -1343,8 +1439,11 @@ class Component extends DCLogic {
       nhanTaoKhoa: s.dangTao ? 'Đang tạo…' : 'Tạo khoá',
       taoKhoaSubmit: (e) => this.taoKhoaSubmit(e),
 
-      coKhoaDs: dsKhoaHienThi.length > 0,
-      khongCoKhoaDs: dsKhoaHienThi.length === 0,
+      coLoiDsKhoa: !!s.dsKhoaLoi,
+      dsKhoaLoi: s.dsKhoaLoi,
+      taiLaiDsKhoa: () => this.taiDsKhoa(),
+      coKhoaDs: !s.dsKhoaLoi && dsKhoaHienThi.length > 0,
+      khongCoKhoaDs: !s.dsKhoaLoi && dsKhoaHienThi.length === 0,
       tongSoKhoa: dsKhoaHienThi.length,
       dsKhoaHienThi,
 
@@ -1353,7 +1452,7 @@ class Component extends DCLogic {
       khoaToiMoi: khoaToiMoiView,
       dongKhoaToiMoi: () => this.dongKhoaToiMoi(),
       chepKhoaToi: () => this.chepKhoaToi(),
-      nhanChepKhoaToi: s.chepKhoaToiTin ? 'Đã sao chép ✓' : 'Sao chép khoá của tôi',
+      nhanChepKhoaToi: s.chepKhoaToiLoi || (s.chepKhoaToiTin ? 'Đã sao chép ✓' : 'Sao chép khoá của tôi'),
 
       nhanKhoaToiNhap: s.nhanKhoaToiNhap,
       goNhanKhoaToi: (e) => this.goNhanKhoaToi(e),
@@ -1365,8 +1464,11 @@ class Component extends DCLogic {
       taoKhoaToiLoi: s.taoKhoaToiLoi,
       taoKhoaToiSubmit: (e) => this.taoKhoaToiSubmit(e),
 
-      coKhoaToiDs: dsKhoaToiHienThi.length > 0,
-      khongCoKhoaToiDs: dsKhoaToiHienThi.length === 0,
+      coLoiKhoaToi: !!s.dsKhoaToiLoi,
+      dsKhoaToiLoi: s.dsKhoaToiLoi,
+      taiLaiKhoaToi: () => this.taiKhoaToi(),
+      coKhoaToiDs: !s.dsKhoaToiLoi && dsKhoaToiHienThi.length > 0,
+      khongCoKhoaToiDs: !s.dsKhoaToiLoi && dsKhoaToiHienThi.length === 0,
       tongSoKhoaToi: dsKhoaToiHienThi.length,
       dsKhoaToiHienThi,
 

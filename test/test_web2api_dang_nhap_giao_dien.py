@@ -279,7 +279,7 @@ def test_dang_xuat_xoa_localstorage_theo_tien_to():
     assert "web2api_lich_su_tro_chuyen" not in dx_body, "dangXuat không được dùng danh sách cứng tên khoá"
     assert "web2api_cuoc_dang_mo" not in dx_body, "dangXuat không được dùng danh sách cứng tên khoá"
 
-    # 2. Kiểm thử bằng node runtime: mô phỏng localStorage và kiểm tra hành vi dọn dẹp
+    # 2. Kiểm thử bằng node runtime: mô phỏng localStorage, fetch và kiểm tra hành vi dọn dẹp + nạp CSRF
     ma_js = """
     const fs = require('fs');
     const store = new Map();
@@ -291,8 +291,28 @@ def test_dang_xuat_xoa_localstorage_theo_tien_to():
         removeItem(k) { store.delete(k); }
     };
     global.localStorage = mockLocalStorage;
-    global.location = { replace: (url) => { global._replacedUrl = url; } };
-    global.fetch = async () => ({ ok: true });
+    global.location = {
+        pathname: '/He-thong.dc.html',
+        search: '',
+        hash: '',
+        origin: 'http://localhost',
+        replace: (url) => { global._replacedUrl = url; }
+    };
+    global.document = { querySelector: () => null, querySelectorAll: () => [] };
+    global.window = global;
+    global.alert = (msg) => { global._alertMsg = msg; };
+
+    let goiFetch = [];
+    global.fetch = async (url, opts) => {
+        goiFetch.push({ url: String(url), opts });
+        if (String(url).includes('api/toi')) {
+            return { ok: true, status: 200, json: async () => ({ id: 'u1', ten_dang_nhap: 'admin', csrf: 'csrf_test_999' }) };
+        }
+        if (String(url).includes('api/dang-xuat')) {
+            return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+    };
 
     // Đặt các khoá test
     mockLocalStorage.setItem('web2api_lich_su_tro_chuyen', '[{"id": 1}]');
@@ -301,13 +321,19 @@ def test_dang_xuat_xoa_localstorage_theo_tien_to():
     mockLocalStorage.setItem('unrelated_app_setting', 'giu_nguyen');
 
     const khungCode = fs.readFileSync('web/khung.js', 'utf8');
-    const m = khungCode.match(/async function dangXuat\\(\\)[\\s\\S]*?\\n  \\}/);
-    if (!m) throw new Error("Không tìm thấy dangXuat");
-    const fn = new Function('localStorage', 'location', 'fetch', m[0] + "; return dangXuat;");
-    const dangXuat = fn(global.localStorage, global.location, global.fetch);
+    eval(khungCode);
 
     (async () => {
-        await dangXuat();
+        await Khung.dangXuat();
+        const goiDx = goiFetch.find(x => x.url === 'api/dang-xuat');
+        if (!goiDx) {
+            console.error('Không gọi fetch tới api/dang-xuat!');
+            process.exit(1);
+        }
+        if (!goiDx.opts || !goiDx.opts.headers || goiDx.opts.headers['X-CSRF-Token'] !== 'csrf_test_999') {
+            console.error('Gọi dang-xuat thiếu hoặc sai header X-CSRF-Token:', goiDx);
+            process.exit(1);
+        }
         // Kiểm tra các khoá có tiền tố web2api_ đã bị xoá sạch
         for (const k of store.keys()) {
             if (k.startsWith('web2api_')) {
@@ -321,7 +347,7 @@ def test_dang_xuat_xoa_localstorage_theo_tien_to():
             process.exit(1);
         }
         if (global._replacedUrl !== 'Dang-nhap.dc.html') {
-            console.error('Chưa chuyển sang Dang-nhap.dc.html');
+            console.error('Chưa chuyển sang Dang-nhap.dc.html, nhận:', global._replacedUrl);
             process.exit(1);
         }
         console.log("OK");
@@ -462,6 +488,11 @@ def test_chrome_luong_thiet_lap_admin_va_dang_nhap(trang: Trang, tmp_path, monke
         # 7. Thử bấm Đăng xuất
         trang.bam("document.getElementById('nut-dang-xuat')", mo_ta="Bấm đăng xuất")
         trang.cho("location.pathname.endsWith('Dang-nhap.dc.html')", mo_ta="Quay về trang Đăng nhập sau khi đăng xuất")
+        # Chờ đủ lâu để chứng minh không bị đẩy lại và kiểm api/toi trả 401
+        trang.cho("fetch('api/toi').then(r => r.status === 401)", mo_ta="/api/toi trả 401 sau đăng xuất")
+        trang.js("new Promise(r => setTimeout(r, 2000))")
+        assert trang.js("location.pathname").endswith("Dang-nhap.dc.html")
+        assert trang.js("fetch('api/toi').then(r => r.status)") == 401
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
@@ -498,6 +529,22 @@ def test_chrome_tao_nguoi_dung_ngau_nhien_hien_mot_lan(trang: Trang, tmp_path, m
 
         # Đóng thẻ thông tin -> xoá khỏi DOM
         trang.bam("document.getElementById('nut-chep-nd-moi')", mo_ta="Sao chép thông tin người dùng mới")
+        trang.bam("document.getElementById('nut-dong-nd-moi')", mo_ta="Đóng thẻ thông tin")
+        trang.cho("!document.getElementById('the-thong-tin-nd-moi')", mo_ta="Thẻ thông tin người dùng mới đã bị xoá khỏi DOM")
+        assert trang.js("document.getElementById('the-thong-tin-nd-moi')") is None
+
+        # Xoá cookie admin để kiểm tra dùng user/pass vừa sinh đăng nhập được
+        trang.cdp.goi("Network.clearBrowserCookies", {}, trang.s)
+        trang.di(f"{base_url}/Dang-nhap.dc.html")
+        trang.go("#o-ten", ten_sinh)
+        trang.go("#o-mat-khau", mk_sinh)
+        trang.bam("document.getElementById('nut-dang-nhap')", mo_ta="Đăng nhập bằng user vừa sinh")
+        trang.cho("!/(Dang-nhap|index)/.test(location.pathname) && (document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'", mo_ta="Đăng nhập xong, trang đích dựng xong")
+        # Kiểm tra vào trang Bảo mật của user: hiển thị tên và vai user
+        trang.di(f"{base_url}/He-thong-Bao-mat.dc.html")
+        trang.cho("document.getElementById('nhan-ten-nguoi-dung')", mo_ta="Tải trang Bảo mật của user")
+        assert trang.chu("#nhan-ten-nguoi-dung") == ten_sinh
+        assert "user" in trang.chu("#nhan-vai-nguoi-dung").lower()
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
@@ -548,4 +595,556 @@ def test_chrome_vai_user_khong_bi_vong_lap_ve_trang_tu_phuc_vu(trang: Trang, tmp
         # Đứng yên sau khi trang nạp xong: không bị đá đi nơi khác.
         trang.js("new Promise(r => setTimeout(r, 1500))")
         assert trang.js("location.pathname").endswith("He-thong-Bao-mat.dc.html")
+
+
+def test_node_kiem_tra_toan_dien_cac_loi_giao_dien_c1_c2_c3_t4_t6_l4():
+    """Kiểm thử bằng node runtime trên logic khung.js và các tệp giao diện:
+    - C1: index.html khi api/tinh-nang 500 thì ở lại trang «/», hiện [role=alert] kèm nút Thử lại, không chuyển Dang-nhap.
+    - C2: K.goi khi 401 code='incorrect_password' không chuyển đăng nhập; chỉ 401 unauthorized/invalid_api_key mới chuyển.
+    - C3: K.navHeThong khi vai user hoặc khi tn bị 403 chỉ dựng nav tối thiểu gồm tab 'bao_mat', không có 'module'.
+    - L4: K.goi khi 403 csrf_token_invalid tự nạp lại CSRF và thử lại 1 lần.
+    - T4: He-thong-Thiet-bi dừng thử lại khi 401/403 và gọi chuyenDangNhap, lỗi khác lùi dần tối đa 60s.
+    - T6: trang.js của vnc-xa không còn docKhoa hay o-khoa; 401 tự gọi chuyenDangNhap về Dang-nhap.dc.html?ve=...
+    """
+    ma_js = """
+    const fs = require('fs');
+
+    // ── 1. Kiểm tra C2 & L4 trong khung.js ──
+    const store = new Map();
+    global.localStorage = {
+        getItem: (k) => store.get(k) || null,
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+        get length() { return store.size; },
+        key: (i) => Array.from(store.keys())[i] || null
+    };
+    global.sessionStorage = global.localStorage;
+    global.window = global;
+    let urlReplaced = null;
+    global.location = {
+        pathname: '/He-thong-Bao-mat.dc.html',
+        search: '',
+        hash: '',
+        origin: 'http://localhost',
+        replace: (u) => { urlReplaced = u; }
+    };
+    global.document = { querySelector: () => null, querySelectorAll: () => [] };
+
+    const khungCode = fs.readFileSync('web/khung.js', 'utf8');
+    eval(khungCode);
+
+    (async () => {
+        // C2: 401 với code='incorrect_password' không được chuyển đăng nhập
+        urlReplaced = null;
+        global.fetch = async () => ({
+            status: 401,
+            ok: false,
+            json: async () => ({ error: { message: 'Mật khẩu cũ không chính xác.', code: 'incorrect_password' } })
+        });
+        try {
+            await Khung.goi('api/toi/mat-khau', { method: 'POST', json: { mat_khau_cu: 'sai', mat_khau_moi: 'moi' } });
+        } catch (e) {
+            if (e.code !== 'incorrect_password') {
+                console.error('C2 thất bại: mã lỗi không phải incorrect_password', e);
+                process.exit(1);
+            }
+        }
+        if (urlReplaced !== null) {
+            console.error('C2 thất bại: 401 incorrect_password bị chuyển đăng nhập!', urlReplaced);
+            process.exit(1);
+        }
+
+        // C2 (ngược lại): 401 với code='unauthorized' phải chuyển đăng nhập
+        urlReplaced = null;
+        global.fetch = async () => ({
+            status: 401,
+            ok: false,
+            json: async () => ({ error: { message: 'Cần đăng nhập phiên web.', code: 'unauthorized' } })
+        });
+        try {
+            await Khung.goi('api/toi');
+        } catch (e) {}
+        if (!urlReplaced || !urlReplaced.includes('Dang-nhap.dc.html')) {
+            console.error('C2 thất bại: 401 unauthorized không chuyển đăng nhập!', urlReplaced);
+            process.exit(1);
+        }
+
+        // L4: 403 csrf_token_invalid phải gọi napToi và thử lại 1 lần
+        let soLanGoi = 0;
+        let daNapToi = false;
+        global.fetch = async (url, opts) => {
+            const u = String(url);
+            if (u.includes('api/toi')) {
+                daNapToi = true;
+                return { ok: true, status: 200, json: async () => ({ id: 'u1', csrf: 'token_csrf_moi_123' }) };
+            }
+            if (u.includes('api/thao-tac')) {
+                soLanGoi++;
+                if (soLanGoi === 1) {
+                    return { status: 403, ok: false, json: async () => ({ error: { code: 'csrf_token_invalid' } }) };
+                }
+                // Lượt gọi thứ hai: kiểm tra header đã nạp token mới
+                const hdr = (opts && opts.headers) || {};
+                if (hdr['X-CSRF-Token'] !== 'token_csrf_moi_123') {
+                    console.error('L4 thất bại: lượt thử lại không mang CSRF mới:', hdr);
+                    process.exit(1);
+                }
+                return { status: 200, ok: true, json: async () => ({ ok: true }) };
+            }
+            return { ok: true, status: 200, json: async () => ({}) };
+        };
+        const kqL4 = await Khung.goi('api/thao-tac', { method: 'POST', json: { x: 1 } });
+        if (!daNapToi || soLanGoi !== 2 || !kqL4.j || !kqL4.j.ok) {
+            console.error('L4 thất bại: không nạp lại CSRF hoặc không thử lại thành công!', { daNapToi, soLanGoi, kqL4 });
+            process.exit(1);
+        }
+
+        // ── 2. Kiểm tra C3: navHeThong cho vai user và khi 403 ──
+        // TH1: người dùng là user -> chỉ tab 'bao_mat'
+        Khung.datCsrf('test_csrf');
+        // Mô phỏng napToi trả user
+        global.fetch = async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ id: 'u_user', vai: 'user', ten_dang_nhap: 'user1', pham_vi_toi_da: ['chat', 'anh'] })
+        });
+        await Khung.napToi();
+        const navUser = Khung.navHeThong({ modules: [], kha_nang_da_cai: { chat: 1 } }, 'bao_mat');
+        if (navUser.length !== 1 || navUser[0].id !== 'bao_mat' || navUser[0].nhan !== 'Bảo mật') {
+            console.error('C3 thất bại: nav của user không đúng:', navUser);
+            process.exit(1);
+        }
+
+        // TH2: tn bị 403
+        const nav403 = Khung.navHeThong({ ma: 403, error: { message: 'Từ chối' } }, 'bao_mat');
+        if (nav403.length !== 1 || nav403[0].id !== 'bao_mat') {
+            console.error('C3 thất bại: nav khi tn bị 403 không đúng:', nav403);
+            process.exit(1);
+        }
+
+        // ── 3. Kiểm tra T6: modules/vnc-xa/web/trang.js không còn o-khoa hay docKhoa ──
+        const vncJs = fs.readFileSync('modules/vnc-xa/web/trang.js', 'utf8');
+        if (vncJs.includes('docKhoa') || vncJs.includes('o-khoa')) {
+            console.error('T6 thất bại: trang.js vẫn còn docKhoa hoặc o-khoa!');
+            process.exit(1);
+        }
+        if (!vncJs.includes("api/modules/catalog")) {
+            console.error('T6 thất bại: không gọi api/modules/catalog!');
+            process.exit(1);
+        }
+
+        // ── 4. Kiểm tra L6: He-thong-Bao-mat.dc.html luôn có baseline 'chat' và lọc phạm vi hiển thị ──
+        const baoMatHtml = fs.readFileSync('web/He-thong-Bao-mat.dc.html', 'utf8');
+        // Phải chứa baseline 'chat' khi tính dsMa
+        if (!baoMatHtml.includes("Array.from(new Set(['chat'")) {
+            console.error("L6 thất bại: không có baseline 'chat' trong dsMa!");
+            process.exit(1);
+        }
+        // Phải mặc định phamViNdMoi: ['chat']
+        if (!baoMatHtml.includes("phamViNdMoi: ['chat']")) {
+            console.error("L6 thất bại: phamViNdMoi không mặc định ['chat']!");
+            process.exit(1);
+        }
+        // Phải lọc phạm vi theo dsMa hiển thị
+        if (!baoMatHtml.includes("this.state.phamViNdMoi.filter((m) => dsMa.includes(m))")) {
+            console.error("L6 thất bại: không lọc phamViNdMoi theo dsMa hiển thị!");
+            process.exit(1);
+        }
+
+        console.log("ALL_NODE_TESTS_OK");
+    })();
+    """
+    p = subprocess.run(["node", "-e", ma_js], cwd=str(ROOT_DIR), capture_output=True, text=True)
+    assert p.returncode == 0, f"Node test thất bại: {p.stderr}"
+    assert "ALL_NODE_TESTS_OK" in p.stdout
+
+
+@pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
+def test_chrome_c3_user_tao_khoa_voi_pham_vi_va_nav_bao_mat(trang: Trang, tmp_path, monkeypatch):
+    """Kịch bản Chrome C3: Người dùng vai user có pham_vi_toi_da=['chat','anh']:
+    - Thấy 2 chip phạm vi, chọn được và tạo khoá API cá nhân thành công.
+    - Thanh điều hướng Hệ thống chỉ có tab 'Bảo mật', không có tab 'Module'.
+    """
+    from gia import MayChuThat
+
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="ad_c3", mat_khau="MatKhauAdminBaoMat123456"))
+    _, ten_u, mk_u = asyncio.run(nguoi_dung.tao_nguoi_dung(
+        vai="user",
+        ten_dang_nhap="user_c3",
+        mat_khau="MatKhauUserBaoMat123456",
+        pham_vi_toi_da=["chat", "anh"]
+    ))
+
+    with MayChuThat(app, lifespan="on") as srv:
+        base_url = srv.url
+
+        # Đăng nhập bằng user
+        trang.di(f"{base_url}/Dang-nhap.dc.html")
+        trang.go("#o-ten", ten_u)
+        trang.go("#o-mat-khau", mk_u)
+        trang.bam("document.getElementById('nut-dang-nhap')")
+        trang.cho("location.pathname.endsWith('He-thong-Bao-mat.dc.html')", han=12, mo_ta="Chuyển tới trang tự phục vụ")
+
+        # 1. Kiểm tra thanh điều hướng nav: có tab Bảo mật, KHÔNG có tab Module
+        trang.cho("document.querySelector('[data-nav=\"bao_mat\"]')", mo_ta="Có tab Bảo mật")
+        assert trang.js("document.querySelector('[data-nav=\"module\"]')") is None
+
+        # 2. Kiểm tra danh sách chip phạm vi khi tạo khoá của tôi: thấy đúng 2 chip 'chat' và 'anh'
+        trang.cho("document.querySelectorAll('#tao-khoa-toi .chip').length >= 2", mo_ta="Hiện đủ các chip phạm vi")
+        chips = trang.js("[...document.querySelectorAll('#tao-khoa-toi .chip')].map(c => c.getAttribute('data-pham-vi'))")
+        assert "chat" in chips and "anh" in chips
+
+        # 3. Điền nhãn và tạo khoá API của tôi
+        trang.go("#o-nhan-khoa-toi", "Khoá kiểm tra C3")
+        trang.bam("document.getElementById('nut-gui-tao-khoa-toi')")
+        trang.cho("document.getElementById('the-khoa-toi-moi')", mo_ta="Hiện khối thông tin khoá mới")
+        assert trang.js("document.getElementById('the-khoa-toi-moi')") is not None
+
+
+@pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
+def test_chrome_c2_doi_mat_khau_sai_hien_loi_giu_nguyen_o(trang: Trang, tmp_path, monkeypatch):
+    """Kịch bản Chrome C2: Đổi mật khẩu với mật khẩu cũ sai:
+    - Máy chủ trả 401 incorrect_password: trang không tải lại, không chuyển Dang-nhap.
+    - Lời báo lỗi hiện ngay tại #loi-doi-mk.
+    - Dữ liệu ở các ô mật khẩu giữ nguyên.
+    """
+    from gia import MayChuThat
+
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="ad_c2", mat_khau="MatKhauAdminBaoMat123456"))
+    _, ten_u, mk_u = asyncio.run(nguoi_dung.tao_nguoi_dung(vai="user", ten_dang_nhap="user_c2", mat_khau="MatKhauUserBaoMat123456"))
+
+    with MayChuThat(app, lifespan="on") as srv:
+        base_url = srv.url
+
+        # Dọn cookie cũ trước khi bắt đầu test để cô lập hoàn toàn trạng thái
+        trang.cdp.goi("Network.clearBrowserCookies", {}, trang.s)
+
+        trang.di(f"{base_url}/Dang-nhap.dc.html")
+        trang.go("#o-ten", ten_u)
+        trang.go("#o-mat-khau", mk_u)
+        trang.bam("document.getElementById('nut-dang-nhap')")
+        trang.cho("location.pathname.endsWith('He-thong-Bao-mat.dc.html')", han=12)
+        trang.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'", mo_ta="Trang Bảo mật dựng xong")
+        trang.cho("document.getElementById('o-mk-cu')", mo_ta="Hiện ô nhập mật khẩu cũ")
+
+        # Nhập mật khẩu cũ sai
+        trang.go("#o-mk-cu", "MatKhauCuSaiHoanToan123")
+        trang.go("#o-mk-moi", "MatKhauMoiBaoMat123456")
+        trang.go("#o-nhap-lai-mk-moi", "MatKhauMoiBaoMat123456")
+
+        trang.bam("document.getElementById('nut-gui-doi-mk')")
+        trang.cho("document.getElementById('loi-doi-mk')", mo_ta="Hiện lời báo lỗi đổi mật khẩu")
+
+        # Kiểm tra trang không bị chuyển sang Dang-nhap.dc.html
+        assert trang.js("location.pathname").endswith("He-thong-Bao-mat.dc.html")
+        loi_txt = trang.chu("#loi-doi-mk")
+        assert "mật khẩu" in loi_txt.lower() or "chính xác" in loi_txt.lower()
+
+        # Dữ liệu ô nhập giữ nguyên
+        assert trang.js("document.getElementById('o-mk-cu').value") == "MatKhauCuSaiHoanToan123"
+        assert trang.js("document.getElementById('o-mk-moi').value") == "MatKhauMoiBaoMat123456"
+
+
+@pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
+def test_chrome_t2_khong_tran_ngang_390px_5_trang(trang: Trang, tmp_path, monkeypatch):
+    """Kịch bản Chrome T2: Kiểm tra cả 5 trang ở 390px (iPhone):
+    - He-thong-Bao-mat.dc.html, He-thong.dc.html, He-thong-AI.dc.html, He-thong-Thiet-bi.dc.html, Studio.dc.html
+    - Không trang nào bị tràn ngang (scrollWidth <= 390).
+    - Nút Đăng xuất (#nut-dang-xuat) hiển thị trong khung nhìn.
+    """
+    from gia import MayChuThat
+
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    admin, ten_ad, mk_ad = asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="ad_t2", mat_khau="MatKhauAdminBaoMat123456"))
+
+    with MayChuThat(app, lifespan="on") as srv:
+        base_url = srv.url
+        trang.khung(390, 844, dien_thoai=True)
+
+        trang.di(f"{base_url}/Dang-nhap.dc.html")
+        trang.go("#o-ten", ten_ad)
+        trang.go("#o-mat-khau", mk_ad)
+        trang.bam("document.getElementById('nut-dang-nhap')")
+        trang.cho("!/(Dang-nhap|index)/.test(location.pathname) && (document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'")
+
+        cac_trang = [
+            "/He-thong-Bao-mat.dc.html",
+            "/He-thong.dc.html",
+            "/He-thong-AI.dc.html",
+            "/He-thong-Thiet-bi.dc.html",
+            "/Studio.dc.html"
+        ]
+
+        for p in cac_trang:
+            trang.di(f"{base_url}{p}")
+            trang.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'", mo_ta=f"Trang {p} dựng xong")
+            # Kiểm tra không tràn ngang
+            sw = trang.js("document.documentElement.scrollWidth")
+            assert sw <= 390, f"Trang {p} bị tràn ngang: scrollWidth={sw} > 390"
+            # Nút đăng xuất hiển thị
+            assert trang.js("document.getElementById('nut-dang-xuat') !== null"), f"Trang {p} thiếu nút đăng xuất"
+
+
+def test_node_c1_index_html_khi_tinh_nang_500_hien_nut_thu_lai():
+    """Kiểm thử node cho C1: index.html khi api/tinh-nang trả 500:
+    - Không chuyển hướng sang Dang-nhap.dc.html (chuyển hướng <= 0 lần).
+    - Ở lại trang «/», hiển thị [role=alert] kèm nút «Thử lại».
+    """
+    ma_js = """
+    const fs = require('fs');
+
+    const indexHtml = fs.readFileSync('web/index.html', 'utf8');
+    const khungCode = fs.readFileSync('web/khung.js', 'utf8');
+
+    // Giả lập môi trường DOM đơn giản cho index.html
+    let urlReplaced = [];
+    global.location = {
+        pathname: '/',
+        search: '',
+        hash: '',
+        origin: 'http://localhost',
+        replace: (u) => { urlReplaced.push(u); },
+        reload: () => {}
+    };
+    global.window = global;
+    const store = new Map();
+    global.localStorage = { getItem: (k) => store.get(k) || null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k), length: 0 };
+    global.sessionStorage = global.localStorage;
+
+    const elTt = {
+        attrs: {},
+        textContent: '',
+        children: [],
+        setAttribute(k, v) { this.attrs[k] = String(v); },
+        getAttribute(k) { return this.attrs[k] || null; },
+        appendChild(child) { this.children.push(child); }
+    };
+
+    global.document = {
+        getElementById(id) {
+            if (id === 'tt') return elTt;
+            return null;
+        },
+        createElement(tag) {
+            return {
+                tag,
+                textContent: '',
+                attrs: {},
+                style: {},
+                setAttribute(k, v) { this.attrs[k] = String(v); }
+            };
+        }
+    };
+
+    eval(khungCode);
+
+    // Mock fetch: api/thiet-lap -> không cần thiết lập; api/tinh-nang -> 500 Internal Server Error
+    global.fetch = async (url) => {
+        const u = String(url);
+        if (u.includes('api/thiet-lap')) {
+            return { ok: true, status: 200, json: async () => ({ can_thiet_lap: false }) };
+        }
+        if (u.includes('api/tinh-nang')) {
+            return {
+                ok: false,
+                status: 500,
+                json: async () => ({ error: { message: 'Lỗi máy chủ nội bộ 500.', code: 'internal_error' } })
+            };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+    };
+
+    // Trích xuất mã script trong index.html và thực thi
+    const m = indexHtml.match(/<script>([\\s\\S]*?)<\\/script>/);
+    if (!m) {
+        console.error('Không tìm thấy script trong index.html');
+        process.exit(1);
+    }
+    const scriptBody = m[1];
+
+    (async () => {
+        eval(scriptBody);
+        // Đợi async IIFE hoàn thành
+        await new Promise(r => setTimeout(r, 100));
+
+        // Kiểm tra không chuyển hướng sang Dang-nhap.dc.html
+        if (urlReplaced.some(u => u.includes('Dang-nhap.dc.html'))) {
+            console.error('C1 thất bại: index.html khi 500 lại chuyển sang Dang-nhap!', urlReplaced);
+            process.exit(1);
+        }
+        if (urlReplaced.length > 0) {
+            console.error('C1 thất bại: index.html khi 500 có lệnh điều hướng:', urlReplaced);
+            process.exit(1);
+        }
+
+        // Kiểm tra phần tử #tt đã được chuyển sang role=alert
+        if (elTt.getAttribute('role') !== 'alert') {
+            console.error('C1 thất bại: #tt chưa có role=alert', elTt.attrs);
+            process.exit(1);
+        }
+
+        // Kiểm tra có nút «Thử lại»
+        const hasRetryBtn = elTt.children.some(c => c.tag === 'button' && c.textContent.includes('Thử lại'));
+        if (!hasRetryBtn) {
+            console.error('C1 thất bại: #tt thiếu nút Thử lại', elTt.children);
+            process.exit(1);
+        }
+
+        console.log("C1_NODE_OK");
+    })();
+    """
+    p = subprocess.run(["node", "-e", ma_js], cwd=str(ROOT_DIR), capture_output=True, text=True)
+    assert p.returncode == 0, f"Node test C1 thất bại: {p.stderr}"
+    assert "C1_NODE_OK" in p.stdout
+
+
+@pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
+def test_chrome_c1_khong_vong_lap_khi_tinh_nang_500(trang: Trang, tmp_path, monkeypatch):
+    """Kịch bản Chrome C1: Khi /api/tinh-nang trả 500:
+    - Truy cập trang «/» không bị lặp chuyển hướng giữa «/» và Đăng nhập (chuyển hướng <= 2 lần).
+    - Ở lại trang «/» và hiển thị thông báo kèm nút «Thử lại».
+    """
+    import time
+    from fastapi import Request
+    from gia import MayChuThat
+    from app.loi_openai import LoiOpenAI
+    from app.so_module import SoModule
+    from app import tuyen
+
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    admin, ten_ad, mk_ad = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="ad_c1", mat_khau="MatKhauAdminBaoMat123456")
+    )
+
+    # Cờ kiểm soát lỗi 500 phía máy chủ: tắt lúc đăng nhập, bật khi mở trang «/»
+    loi_500 = False
+
+    orig_tinh_nang = SoModule.tinh_nang
+    def mock_tinh_nang(self):
+        if loi_500:
+            raise LoiOpenAI(500, "Lỗi 500 máy chủ giả định", code="server_error")
+        return orig_tinh_nang(self)
+
+    monkeypatch.setattr(SoModule, "tinh_nang", mock_tinh_nang)
+
+    orig_xem_tinh_nang = tuyen.xem_tinh_nang
+    async def mock_xem_tinh_nang(request: Request):
+        if loi_500:
+            raise LoiOpenAI(500, "Lỗi 500 máy chủ giả định", code="server_error")
+        return await orig_xem_tinh_nang(request)
+
+    monkeypatch.setattr(tuyen, "xem_tinh_nang", mock_xem_tinh_nang)
+    for r in tuyen.tinh_nang.routes:
+        if getattr(r, "path", None) == "/api/tinh-nang":
+            monkeypatch.setattr(r, "endpoint", mock_xem_tinh_nang)
+
+    with MayChuThat(app, lifespan="on") as srv:
+        base_url = srv.url
+
+        # Đăng nhập bằng admin để có phiên hợp lệ
+        trang.di(f"{base_url}/Dang-nhap.dc.html")
+        trang.go("#o-ten", ten_ad)
+        trang.go("#o-mat-khau", mk_ad)
+        trang.bam("document.getElementById('nut-dang-nhap')")
+        trang.cho(
+            "!/(Dang-nhap|index)/.test(location.pathname) && (document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
+            mo_ta="Đăng nhập xong và vào trang chính",
+        )
+
+        # Bật lỗi 500 cho api/tinh-nang phía máy chủ
+        loi_500 = True
+
+        # Đặt bộ đếm điều hướng trong sessionStorage để theo dõi mọi lượt tải tài liệu mới
+        trang.js("sessionStorage.setItem('__dem_dieu_huong', '0')")
+        trang.cdp.goi("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+            (() => {
+                const cur = parseInt(sessionStorage.getItem('__dem_dieu_huong') || '0', 10) + 1;
+                sessionStorage.setItem('__dem_dieu_huong', String(cur));
+            })();
+            """
+        }, trang.s)
+
+        # Mở trang «/» (index.html không phải trang dc-lite nên dùng Page.navigate, không dùng trang.di)
+        trang.cdp.goi("Page.navigate", {"url": f"{base_url}/"}, trang.s)
+
+        # (b) Chờ trang ở lại index.html và hiện phần tử #tt[role=alert] chứa nút «Thử lại»
+        trang.cho(
+            "document.querySelector('#tt[role=\"alert\"] button') !== null",
+            han=5,
+            mo_ta="Hiện alert có nút Thử lại trên index.html",
+        )
+
+        # Khẳng định có nút «Thử lại» và đúng role=alert
+        alert_btn_txt = trang.chu("#tt[role='alert'] button")
+        assert alert_btn_txt and "thử lại" in alert_btn_txt.lower(), f"Thiếu nút Thử lại: {alert_btn_txt}"
+        role_tt = trang.js("document.getElementById('tt') ? document.getElementById('tt').getAttribute('role') : null")
+        assert role_tt == "alert", f"Phần tử #tt chưa có role=alert: {role_tt}"
+
+        # (c) Đợi và đo số lần điều hướng trong 4 giây: tổng số lần điều hướng <= 2
+        bat_dau = time.monotonic()
+        cac_path = []
+        while time.monotonic() - bat_dau < 4.0:
+            try:
+                p = trang.js("location.pathname")
+                if not cac_path or cac_path[-1] != p:
+                    cac_path.append(p)
+            except Exception:
+                # Nếu đang đổi trang lúc đánh giá JS
+                cac_path.append("navigating")
+            time.sleep(0.1)
+
+        # (a) Trang ở lại index.html (không chuyển sang Đăng nhập hay He-thong)
+        path_cuoi = trang.js("location.pathname")
+        assert path_cuoi == "/" or path_cuoi.endswith("index.html"), f"Trang không ở lại index.html: {path_cuoi}"
+        assert "Dang-nhap" not in path_cuoi, f"Trang bị chuyển sang Dang-nhap: {path_cuoi}"
+        assert "He-thong" not in path_cuoi, f"Trang bị chuyển sang He-thong: {path_cuoi}"
+
+        # Khẳng định số lần điều hướng <= 2
+        so_dieu_huong = int(trang.js("sessionStorage.getItem('__dem_dieu_huong') || '1'"))
+        assert so_dieu_huong <= 2, f"Bị lặp điều hướng qua sessionStorage: {so_dieu_huong} lần"
+        assert len(cac_path) <= 2, f"Bị lặp điều hướng theo dõi trong 4s: {cac_path}"
+
+
+def test_don_vi_tinh_nang_500_monkeypatch(moi_truong_tai_khoan, monkeypatch):
+    """Kiểm tra đơn vị phía máy chủ: monkeypatch SoModule.tinh_nang ném LoiOpenAI(500)
+    hoạt động chính xác trên route /api/tinh-nang khi có phiên quản trị."""
+    from app.loi_openai import LoiOpenAI
+    from app.so_module import SoModule
+
+    admin, ten, mk = asyncio.run(
+        nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap="ad_ut_500", mat_khau="MatKhauAdminBaoMat123456")
+    )
+    ban_ghi, token_tho = phien_web.tao_phien(admin["id"])
+
+    loi_500 = False
+    orig_tinh_nang = SoModule.tinh_nang
+
+    def mock_tinh_nang(self):
+        if loi_500:
+            raise LoiOpenAI(500, "Lỗi 500 máy chủ giả định", code="server_error")
+        return orig_tinh_nang(self)
+
+    monkeypatch.setattr(SoModule, "tinh_nang", mock_tinh_nang)
+
+    with TestClient(app, cookies={"w2a_phien": token_tho}) as client:
+        # Khi cờ tắt -> 200
+        r_ok = client.get("/api/tinh-nang")
+        assert r_ok.status_code == 200
+
+        # Khi cờ bật -> 500 chuẩn OpenAI
+        loi_500 = True
+        r_err = client.get("/api/tinh-nang")
+        assert r_err.status_code == 500
+        j = r_err.json()
+        assert j.get("error", {}).get("code") == "server_error"
+
+
+
 

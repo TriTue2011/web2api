@@ -383,30 +383,19 @@ def test_go_vao_textarea_main_khong_mat_focus(may_chu):
     assert kq["thuocTinhValue"] == "abXcd", kq
 
 
+KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
+
+
 # ---------------- trang khởi đầu chạy với API THẬT ----------------
-@pytest.fixture(scope="module")
-def may_chu_web2api(tmp_path_factory):
-    import uvicorn
-
-    du_lieu = tmp_path_factory.mktemp("du-lieu")
-    os.environ["WEB2API_DATA"] = str(du_lieu)
+@pytest.fixture
+def may_chu_web2api(tmp_path, monkeypatch):
     from app.main import app
+    from gia import MayChuThat
 
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    cong = s.getsockname()[1]
-    s.close()
-    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=cong, log_level="warning"))
-    t = threading.Thread(target=srv.run, daemon=True)
-    t.start()
-    for _ in range(100):
-        if srv.started:
-            break
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{cong}"
-    srv.should_exit = True
-    t.join(5)
-    os.environ.pop("WEB2API_DATA", None)
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
+    with MayChuThat(app, lifespan="on") as srv:
+        yield srv.url
 
 
 def dom_sau_dang_nhap(trang, goc: str, duong: str) -> str:
@@ -416,6 +405,7 @@ def dom_sau_dang_nhap(trang, goc: str, duong: str) -> str:
     trang.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
               mo_ta="trang dựng xong")
     trang.cho("document.querySelectorAll('[data-nav]').length >= 2", mo_ta="thanh điều hướng")
+    trang.cho("!document.querySelector('.bao-cho')", mo_ta="danh sách module đọc xong")
     return trang.js("document.documentElement.outerHTML")
 
 
