@@ -154,18 +154,21 @@ class NguonGit:
         try:
             tt = kho.doc_json(p_trang_thai)
         except kho.KhoHong as e:
-            # Tệp hỏng: giữ lại để còn cứu/khảo sát (không lặng lẽ ghi đè),
-            # rồi bắt đầu lại trạng thái đồng bộ.
-            hong = p_trang_thai.with_name(p_trang_thai.name + ".hong")
-            dem = 0
-            while hong.exists():
-                dem += 1
-                hong = p_trang_thai.with_name(f"{p_trang_thai.name}.hong.{dem}")
-            try:
-                p_trang_thai.rename(hong)
-                log.warning("%s — đã giữ lại ở %s, bắt đầu lại trạng thái đồng bộ", e, hong.name)
-            except OSError:
-                log.warning("%s — không đổi tên được tệp hỏng, bắt đầu lại trạng thái đồng bộ", e)
+            # Tệp hỏng: chỉ giữ lại (.hong) khi nội dung thực sự hỏng cú pháp (ValueError / JSONDecodeError).
+            # Nếu là lỗi đọc đĩa tạm thời (OSError: phân quyền, hết file descriptor...), không dời tệp lành.
+            if isinstance(getattr(e, "__cause__", None), ValueError):
+                hong = p_trang_thai.with_name(p_trang_thai.name + ".hong")
+                dem = 0
+                while hong.exists():
+                    dem += 1
+                    hong = p_trang_thai.with_name(f"{p_trang_thai.name}.hong.{dem}")
+                try:
+                    p_trang_thai.rename(hong)
+                    log.warning("%s — đã giữ lại ở %s, bắt đầu lại trạng thái đồng bộ", e, hong.name)
+                except OSError:
+                    log.warning("%s — không đổi tên được tệp hỏng, bắt đầu lại trạng thái đồng bộ", e)
+            else:
+                log.warning("%s — lỗi đọc đĩa tạm thời, bắt đầu lại trạng thái đồng bộ mà không dời tệp", e)
             tt = None
         self.trang_thai: dict = tt if isinstance(tt, dict) else {}
         self._danh_thuc = asyncio.Event()
@@ -324,8 +327,9 @@ class NguonGit:
         tk = self.token()
         if tk:
             hd["Authorization"] = f"Bearer {tk}"
+        url_goc = api_github() + f"/repos/{repo}/tarball/{sha}"
         try:
-            r = await self._client().get(api_github() + f"/repos/{repo}/tarball/{sha}", headers=hd,
+            r = await self._client().get(url_goc, headers=hd,
                                          timeout=httpx.Timeout(60.0, connect=10.0))
         except httpx.HTTPError as e:
             raise LoiGit(f"lỗi mạng tới GitHub: {type(e).__name__}") from None
@@ -344,13 +348,13 @@ class NguonGit:
             loc = r.headers.get("location")
             if not loc:
                 raise LoiGit(f"GitHub trả HTTP {r.status_code} khi tải tarball nhưng thiếu Location", 502)
-            url_tiep = urljoin(str(r.url), loc)
+            url_tiep = urljoin(url_goc, loc)
             hd_tiep = {"User-Agent": "web2api"}
             # An toàn: KHÔNG gửi Authorization sang máy chủ khác khi theo chuyển hướng
-            # Chỉ gửi token tới đúng máy chủ api_github() đã cấu hình
-            goc_api = urlsplit(api_github()).netloc
-            goc_dich = urlsplit(url_tiep).netloc
-            if tk and goc_api == goc_dich:
+            # Chỉ gửi token khi scheme VÀ netloc trùng với api_github() đã cấu hình
+            sp_api = urlsplit(api_github())
+            sp_dich = urlsplit(url_tiep)
+            if tk and sp_api.scheme == sp_dich.scheme and sp_api.netloc == sp_dich.netloc:
                 hd_tiep["Authorization"] = f"Bearer {tk}"
             try:
                 r = await self._client().get(url_tiep, headers=hd_tiep,

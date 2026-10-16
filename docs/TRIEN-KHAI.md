@@ -268,11 +268,8 @@ minh hoạ, KHÔNG phải IP thật):
 ```bash
 docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://192.0.2.1:3030/ ; echo "curl exit=$?"
 docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://198.51.100.1/ ; echo "curl exit=$?"
-<<<<<<< ours
-=======
 GW=$(docker network inspect web2api-trinh-duyet -f '{{(index .IPAM.Config 0).Gateway}}')
 docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://$GW:3031/ ; echo "curl exit=$? (tới chính máy chủ qua gateway)"
->>>>>>> theirs
 ```
 (Địa chỉ `192.0.2.1`, `198.51.100.1` thuộc dải tài liệu RFC 5737, chỉ là ví dụ
 minh hoạ — thay bằng IP LAN thật khi kiểm trên máy của bạn.)
@@ -304,12 +301,6 @@ WantedBy=multi-user.target
 sudo systemctl enable --now chan-lan-trinh-duyet.service
 ```
 
-<<<<<<< ours
-**Giới hạn đã biết:**
-- Lưu lượng từ container tới CHÍNH MÁY CHỦ (ví dụ tới `<IP-máy-chủ>:3030`) đi qua
-  chuỗi `INPUT` của máy chủ, không qua `DOCKER-USER` — nếu một dịch vụ trên máy chủ
-  lắng nghe `0.0.0.0` thì cần thêm luật `INPUT -i <cầu của mạng>` riêng.
-=======
 **Trạng thái kiểm chứng:**
 - Test tĩnh: `test/test_web2api_nv27_chan_lan.py` (16 test) và
   `test/test_web2api_nv30_chan_lan_input.py` (13 test) — chạy bằng lệnh
@@ -318,7 +309,8 @@ sudo systemctl enable --now chan-lan-trinh-duyet.service
 - **CHƯA kiểm thật trên máy chủ**: cần chạy trên máy chủ thật — cài luật bằng
   `sudo`, kiểm `curl` từ trong container tới IP LAN và tới `$GW:3031` đều phải
   bị từ chối, và gắn systemd để luật tự cài lại sau khi Docker lên.
->>>>>>> theirs
+
+**Giới hạn đã biết:**
 - Container dùng DNS `127.0.0.11` của Docker không đi qua `DOCKER-USER` (Docker chặn
   ngay trong netns của container); script vẫn dự phòng ngoại lệ DNS cổng 53 tới
   gateway đề phòng container dùng gateway làm trình phân giải.

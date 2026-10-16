@@ -150,7 +150,7 @@ def _lay_bool(than: dict, ten: str, mac_dinh: bool | None = False) -> bool | Non
 
 
 def _loi_so(e: LoiSo | LoiGit) -> LoiOpenAI:
-    return LoiOpenAI(e.ma, lam_sach_thong_diep(str(e)))
+    return LoiOpenAI(e.ma, lam_sach_thong_diep(str(e)), code=getattr(e, "code", None))
 
 
 # ───────────── /v1 ─────────────
@@ -1918,6 +1918,9 @@ async def cap_nhat_combo(ten: str, request: Request):
     cb, bo_qua = await combo_mod.kiem_tra_combo(ten, than, _so(request), _phan_giai(request))
     try:
         luu = kho.luu_mot_combo(cb["ten"], cb)
+    except kho.KhoHong as e:
+        raise LoiOpenAI(500, f"Không lưu được combo: {e} — khôi phục hoặc xoá tệp combo.json hỏng",
+                        code="store_unreadable") from e
     except OSError as e:
         raise LoiOpenAI(500, f"Không lưu được combo: {type(e).__name__}") from e
     nhat_ky_mod.ghi("combo", "thong_tin", f"Lưu combo «{cb['ten']}» với {len(cb['buoc'])} bước",

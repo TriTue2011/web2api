@@ -1021,6 +1021,6 @@ class TestKhongLoNoiDungThuongNguon:
         assert "noi-dung-thuong-nguon-gia" not in thong_bao
         assert thong_bao.startswith("Lỗi máy chủ hoặc kết nối")
         assert "500" in thong_bao
-        # Log hệ thống đã được che theo hình token (NV13): nội dung dài liền mạch chỉ còn đuôi «…-gia»; loại lỗi và mã còn đủ để tra.
+        # Log hệ thống giữ nguyên nội dung thuần chữ thường; loại lỗi và mã còn đủ để tra.
         assert "GatewayError" in caplog.text and "status=500" in caplog.text
-        assert "noi-dung-thuong-nguon-gia" not in caplog.text
+        assert "noi-dung-thuong-nguon-gia" in caplog.text

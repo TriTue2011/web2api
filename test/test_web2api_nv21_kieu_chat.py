@@ -176,6 +176,48 @@ def test_pheu_gop_k_infinity_400(client):
     assert r.status_code == 400
 
 
+def test_pheu_gop_k_so_rat_lon_tra_400(client):
+    """L4: k = 10**400 không có toi_da sẽ gây OverflowError (500) ở float(k) — phải bị chặn thành 400."""
+    c, _ = client
+    pheu = [{"ten": "t1", "kha_nang": "gop", "tham_so": {"k": 10**400}}]
+    r = c.post("/api/tim-kiem", headers=QT, json={"chuoi": "x", "pheu": pheu})
+    assert r.status_code == 400
+    assert "k" in r.text and "≤" in r.text
+
+
+def test_toan_tu_gop_k_qua_lon_nem_loi_400():
+    """L4: _thuc_hien_mot_tang với k = 10**400 ném LoiOpenAI 400 thay vì OverflowError 500."""
+    import asyncio
+    du_lieu = {"danh_sach_nguon": [[{"id": "a", "diem": 1.0}], [{"id": "b", "diem": 0.5}]]}
+    with pytest.raises(LoiOpenAI) as exc_info:
+        asyncio.run(quy_trinh._thuc_hien_mot_tang("gop", None, {"k": 10**400}, du_lieu, None))
+    assert exc_info.value.ma == 400
+    assert "k" in str(exc_info.value)
+
+
+def test_cac_tham_so_so_nguyen_chat_khac_qua_lon_tra_400(client):
+    """L4: mọi nơi gọi so_nguyen_chat với số 10**400 đều bị chặn thành 400."""
+    c, data_dir = client
+    _nap_module_muc_luc(c, data_dir)
+    # 1. do_sau trong mục lục
+    r = c.post("/api/tim-kiem/muc-luc", headers=QT, json={"nguon": "ml-nv21", "tai_lieu": "doc1", "do_sau": 10**400})
+    assert r.status_code == 400
+    assert "do_sau" in r.text
+
+    # 2. so_luong trong toán tử cat
+    pheu_cat = [{"ten": "t_cat", "kha_nang": "cat", "tham_so": {"n": 10**400}}]
+    r = c.post("/api/tim-kiem", headers=QT, json={"chuoi": "x", "pheu": pheu_cat})
+    assert r.status_code == 400
+    assert "so_luong" in r.text
+
+    # 3. tran_ky_tu trong gop_ngu_canh
+    pheu_gop_nc = [{"ten": "t_nc", "kha_nang": "gop_ngu_canh", "tham_so": {"tran_ky_tu": 10**400}}]
+    r = c.post("/api/tim-kiem", headers=QT, json={"chuoi": "x", "pheu": pheu_gop_nc})
+    assert r.status_code == 400
+    assert "tran_ky_tu" in r.text
+
+
+
 # ───────────────────────── đơn vị: gemini-api durationSeconds ─────────────────────────
 
 def _tai_module_gemini():

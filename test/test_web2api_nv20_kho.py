@@ -76,3 +76,30 @@ def test_nguon_git_trang_thai_hong_duoc_giu_lai(du_lieu):
     ban_giu = sorted(du_lieu.glob(nguon_git.TEP_TRANG_THAI + ".hong*"))
     assert len(ban_giu) == 1
     assert ban_giu[0].read_text(encoding="utf-8") == noi_dung_hong
+
+
+def test_nguon_git_trang_thai_oserror_khong_doi_ten_tep(du_lieu, monkeypatch):
+    """Khi gặp OSError tạm thời (không phải lỗi cú pháp JSON), không dời tệp sang .hong."""
+    from app import nguon_git
+
+    p = du_lieu / nguon_git.TEP_TRANG_THAI
+    noi_dung_lanh = '{"dong_bo": "ok"}'
+    p.write_text(noi_dung_lanh, encoding="utf-8")
+
+    class SoGia:
+        pass
+
+    # Giả lập doc_json ném KhoHong với __cause__ là OSError (ví dụ lỗi I/O)
+    def fake_doc_json(_):
+        err = OSError("Lỗi phân quyền tạm thời")
+        kh = kho.KhoHong(f"{p} hỏng: {err}")
+        kh.__cause__ = err
+        raise kh
+
+    monkeypatch.setattr(kho, "doc_json", fake_doc_json)
+
+    ng = nguon_git.NguonGit(SoGia())
+    assert ng.trang_thai == {}
+    assert p.exists()  # Tệp lành vẫn giữ nguyên, KHÔNG bị đổi tên sang .hong
+    ban_giu = list(du_lieu.glob(nguon_git.TEP_TRANG_THAI + ".hong*"))
+    assert len(ban_giu) == 0

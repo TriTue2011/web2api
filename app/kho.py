@@ -508,7 +508,10 @@ def _p_cho_duyet_quyen() -> Path:
 def doc_cho_duyet_quyen(id_: str) -> dict | None:
     """Yêu cầu chờ duyệt quyền của module, hoặc None."""
     with _KHOA:
-        du_lieu = doc_json(_p_cho_duyet_quyen())
+        try:
+            du_lieu = doc_json(_p_cho_duyet_quyen())
+        except KhoHong:
+            return None
         if not isinstance(du_lieu, dict):
             return None
         muc = du_lieu.get(id_)
@@ -536,7 +539,10 @@ def luu_cho_duyet_quyen(id_: str, ban_ghi: dict) -> None:
 def xoa_cho_duyet_quyen(id_: str) -> bool:
     """Xoá yêu cầu chờ duyệt (đã duyệt hoặc hết hiệu lực)."""
     with _KHOA:
-        du_lieu = doc_json(_p_cho_duyet_quyen())
+        try:
+            du_lieu = doc_json(_p_cho_duyet_quyen())
+        except KhoHong:
+            return False
         if not isinstance(du_lieu, dict) or id_ not in du_lieu:
             return False
         del du_lieu[id_]
