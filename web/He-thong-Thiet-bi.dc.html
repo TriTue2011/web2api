@@ -235,6 +235,7 @@ class Component extends DCLogic {
     }
     const abort = new AbortController();
     this.sseAbort = abort;
+    let choLui = 3000;
 
     const kn = async () => {
       if (abort.signal.aborted) return;
@@ -243,7 +244,16 @@ class Component extends DCLogic {
           credentials: 'same-origin',
           signal: abort.signal,
         });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (res.status === 401 || res.status === 403) {
+          K.chuyenDangNhap();
+          return;
+        }
+        if (!res.ok) {
+          const err = new Error('HTTP ' + res.status);
+          err.status = res.status;
+          throw err;
+        }
+        choLui = 3000;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -265,8 +275,13 @@ class Component extends DCLogic {
           }
         }
       } catch (err) {
+        if (err && (err.status === 401 || err.status === 403)) {
+          K.chuyenDangNhap();
+          return;
+        }
         if (!abort.signal.aborted) {
-          setTimeout(kn, 3000);
+          setTimeout(kn, choLui);
+          choLui = Math.min(choLui * 2, 60000);
         }
       }
     };
@@ -449,9 +464,7 @@ class Component extends DCLogic {
       dongMenu: () => this.setState({ menuMo: null }),
       phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
 
-      coKhoa: true,
-      khongKhoa: false,
-      tenNguoiDung: s.nguoiDung ? s.nguoiDung.ten : '',
+      tenNguoiDung: K.tenNguoiDung(s.nguoiDung),
       nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '',
       dangXuat: () => K.dangXuat(),
 

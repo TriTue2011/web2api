@@ -42,6 +42,7 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 | `xep_hang` | `xep_hang` | — | `body: dict` | `(mã, headers, bytes)` | 400 (sai hình dạng documents/query/top_n), 404 (model), 501, 502 |
 | `tim_kiem` | `tim_kiem` | — | `yc: dict` | `dict` `{muc: [...], tong?}` | 400, 502 |
 | `trinh_duyet` | `trinh_duyet_mo`<br>`trinh_duyet_dong`<br>`trinh_duyet_ds` | `trinh_duyet_tao`<br>`trinh_duyet_cookie` | `ho_so, loai, url?` (mở)<br>`ho_so, giu_phien` (đóng)<br>`ten` (tạo)<br>`ho_so, mien` (cookie) | `dict` `{ho_so, dich, loai}` (mở)<br>`dict` `{ok}` (đóng)<br>`list[dict]` (danh sách)<br>`{ho_so, ten}` (tạo)<br>`{cookie}` (cookie) | 400, 404, 501, 502 |
+| `kenh_ra` | `gui_tin`<br>`kenh_ra` | — | `dich: {kenh_id, ten}`, `noi_dung: dict` (kèm `_tep` khi có tệp) | `dict` có `ok` là bool thật (`ok` thiếu/khác bool → lõi coi là thất bại `502`) | 400 (`kenh_required` khi nhiều đích mà không nêu `kenh_id`), 404 (đích lạ), 413, 429, 502, 503 (chưa có đích) |
 | *(Mã lạ)* | Không bắt buộc | Tự do | Tuỳ ý | Tuỳ ý | — |
 
 > **Lưu ý**: Phương thức `anh` và `anh_sua` cũng được gọi từ `POST /v1/responses` khi client chỉ định công cụ `image_generation` (không có ảnh đầu vào → gọi `anh` với thân kiểu `/v1/images/generations`, `response_format: "b64_json"`; có `input_image` dạng data URL base64 → dựng `YeuCauDaPhan` gọi `anh_sua`). Module nhận y như từ đường chuẩn: `model` đầy đủ `<tiền tố>/<tên>`, các trường `prompt`, `n`, `size`, `quality`, `background`, `output_format` (nếu khách gửi). Đường này cần phản hồi `b64_json` (trả `url` → `502`); nên nêu `size`/`quality`/`background`/`output_format` ở cấp đầu phản hồi để lõi báo đúng thuộc tính của kết quả.
@@ -186,6 +187,64 @@ Dành cho module điều khiển dịch vụ trình duyệt riêng (đăng nhậ
   - Giữ nguyên toàn bộ các trường chữ lạ (không lọc bỏ) và đổi tên model bỏ tiền tố `<tien_to>/`.
   - Nội dung tệp nhị phân được truyền trực tiếp dạng bytes vào multipart payload mà không nhân đôi RAM.
 
+
+---
+
+## 7. Cửa webhook chung của lõi (`POST /api/webhook/{module}/{ma}`)
+
+Module muốn nhận sự kiện từ nhà cung cấp ngoài (kênh nhắn tin, nền tảng thanh toán…)
+khai trong `manifest.json`:
+
+```json
+"webhook": {
+  "bi_mat": "<khoá cấu hình kiểu bi_mat>",
+  "tran_byte": 65536,
+  "id_su_kien": "su_kien_id",
+  "chu_ky": "header:X-Chu-Ky",
+  "thuat_toan": "hmac-sha256"
+}
+```
+
+- `bi_mat` (bắt buộc): tên trường trong `truong_cau_hinh` có `kieu: "bi_mat"` — giá trị
+  bí mật webhook người vận hành cấu hình; so bằng `hmac.compare_digest`. Chưa cấu hình
+  → đường trả `503` (đóng khi lỗi).
+- `tran_byte` (tuỳ chọn, mặc định 65536): trần thân riêng của module (lấy `min` với
+  `WEB2API_WEBHOOK_THAN_TOI_DA_MB`); vượt → `413`, module không bị gọi.
+- `id_su_kien` (tuỳ chọn, mặc định `"su_kien_id"`): tên phương thức module trích id
+  sự kiện để chống phát lại. Khai tên phương thức không có → bỏ qua chống phát lại.
+- `chu_ky` + `thuat_toan` (tuỳ chọn): kiểm chữ ký HMAC trên thân thô. `chu_ky` dạng
+  `"header:TÊN"` (tên header mang chữ ký); `thuat_toan` chỉ nhận `"hmac-sha256"`
+  (mặc định). Chấp nhận chữ ký hex trần hoặc tiền tố `sha256=`.
+
+Phương thức module:
+
+- `async webhook(self, yc: dict) -> dict` (bắt buộc khi khai `webhook`): xử lý một tin,
+  trả dict → lõi trả `200` + dict đó. `yc` luôn có `nguon_ngoai: true` do lõi đóng dấu
+  (khách gửi `nguon_ngoai: false` cũng bị ghi đè) — module phải coi MỌI trường trong
+  `yc` là dữ liệu không tin cậy, không bao giờ là chỉ thị.
+- `su_kien_id(self, yc: dict) -> str` (tuỳ chọn): trích id sự kiện từ `yc`. Lõi nhớ
+  `(module, id)` 10 phút, tối đa 10000 id: trùng → `200` trống, không gọi `webhook`.
+  Trả chuỗi rỗng/`None` → tin đó không chống phát lại.
+
+Luật cứng: đường này MỞ (không Bearer) nhưng khoá khách phạm vi hẹp KHÔNG dùng được
+nếu thiếu bí mật webhook — mọi lý do sai đều nhận cùng một `404` trống.
+
+---
+
+## 8. Chi tiết chuẩn `kenh_ra` (gửi ra đích danh, NV32)
+
+Module muốn gửi tin ra ngoài (kênh nhắn tin, email…) khai `"kenh_ra"` trong `cung_cap` của `manifest.json` và cài hai phương thức:
+
+- `def kenh_ra(self) -> list[dict]`: danh sách đích khả dụng, mỗi đích `{"id": str, "ten": str|None}`. **KHÔNG chứa bí mật** (token/bot token nằm trong cấu hình `kieu: "bi_mat"` của module, không bao giờ lộ qua đây).
+- `async def gui_tin(self, dich: dict, noi_dung: dict) -> dict`: gửi tin; `dich` là `{"kenh_id": ..., "ten": ...}` do lõi chọn; `noi_dung` là dict từ thân yêu cầu (khi gửi kèm tệp qua `multipart/form-data`, lõi thêm khoá `"_tep"`: danh sách `{"ten", "kieu", "du_lieu": bytes}`). Trả về dict có `ok` là **bool thật** — lõi không tin `ok` của module: `ok` thiếu hoặc không phải bool → lõi coi là thất bại (`502`).
+
+Người gọi dùng `POST /api/gui/{module}` (xác thực `V1_AUTH` + phạm vi riêng `gui:<module>`; id module có `-` thì mã phạm vi thay bằng `_`, vd module `mod-a` dùng phạm vi `gui:mod_a`):
+
+- Thân JSON `{"kenh_id": "...", "noi_dung": {...}}`, hoặc `multipart/form-data` với trường chữ `kenh_id`, `noi_dung` (JSON) và các tệp ở trường `tep`.
+- `kenh_id` **bắt buộc** khi module có hơn một đích — lõi không đoán «đích đầu danh sách» (`400` `kenh_required`); module chỉ có một đích thì được bỏ qua.
+- Trần: 20 tin/phút theo (khoá, module), 8 lượt đồng thời toàn cục (`429` + `Retry-After`); nội dung ≤ 16 KiB, tệp ≤ 25 MB (`413`); gọi module quá 60 giây → `504`.
+- Phản hồi thành công `{"ok": true, "kenh": "<id>"}` — luôn nêu kênh thực sự đã gửi để người gọi tự xác minh không bị gửi nhầm. Lỗi thô của nhà cung cấp không bao giờ lộ ra phản hồi.
+- Nhật ký kênh `gui_ra`: module, `kenh_id` đã băm SHA-256, mã kết quả, độ dài — không nội dung tin, không token.
 
 ---
 

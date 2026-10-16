@@ -386,7 +386,11 @@ class Component extends DCLogic {
     const r = await fetch(duong, { method: 'POST', headers: hd, body: JSON.stringify(than), cache: 'no-store', credentials: 'same-origin', signal });
     if (!r.ok) {
       let j = null; try { j = await r.json(); } catch (e) { j = null; }
-      const e = K.taoLoi(K.thongDiep(j, r.status), r.status, j && j.error && j.error.code);
+      const code = j && j.error && j.error.code;
+      if (r.status === 401 && (code === 'unauthorized' || code === 'invalid_api_key')) {
+        K.chuyenDangNhap();
+      }
+      const e = K.taoLoi(K.thongDiep(j, r.status), r.status, code);
       throw e;
     }
     return r;
@@ -586,14 +590,27 @@ class Component extends DCLogic {
         await new Promise((ok) => setTimeout(ok, lan ? HOI_VIDEO_MS : 1000));
         const rr = await fetch('v1/videos/' + encodeURIComponent(ma), { credentials: 'same-origin', cache: 'no-store' });
         let j = null; try { j = await rr.json(); } catch (e) { j = null; }
-        if (!rr.ok) throw K.taoLoi(K.thongDiep(j, rr.status), rr.status, j && j.error && j.error.code);
+        const code = j && j.error && j.error.code;
+        if (rr.status === 401 && (code === 'unauthorized' || code === 'invalid_api_key')) {
+          K.chuyenDangNhap();
+          return;
+        }
+        if (!rr.ok) throw K.taoLoi(K.thongDiep(j, rr.status), rr.status, code);
         v = j || {};
       }
       if (!con()) return;
       this.suaLuot(id, { tienDo: 100 });
       this.setState({ trangThai: 'Đang tải video về…' });
       const rc = await fetch('v1/videos/' + encodeURIComponent(ma) + '/content', { credentials: 'same-origin', cache: 'no-store' });
-      if (!rc.ok) { let j = null; try { j = await rc.json(); } catch (e) { j = null; } throw K.taoLoi(K.thongDiep(j, rc.status), rc.status); }
+      if (!rc.ok) {
+        let j = null; try { j = await rc.json(); } catch (e) { j = null; }
+        const code = j && j.error && j.error.code;
+        if (rc.status === 401 && (code === 'unauthorized' || code === 'invalid_api_key')) {
+          K.chuyenDangNhap();
+          return;
+        }
+        throw K.taoLoi(K.thongDiep(j, rc.status), rc.status, code);
+      }
       const b = await rc.blob();
       if (!con()) return;
       this.suaLuot(id, { video: { src: URL.createObjectURL(b), ten: 'video-' + ma.replace(/[^\w.-]+/g, '_') + '.mp4' } });
@@ -675,9 +692,8 @@ class Component extends DCLogic {
         .concat([{ id: 'he-thong', nhan: 'Hệ thống', href: 'He-thong.dc.html', d: hinh.he_thong, ac: 'false', wst: 'margin-left:auto' }]),
       navDuoi: K.navDuoi(tn, 'studio'),
       tt: Object.assign({ tieu: '' }, tt, { coLink: !!tt.href, khongLink: !tt.href }),
-      tnLoi: s.tnLoi, diaChiV1: K.diaChiV1(),
-      khongKhoa: false, khoaLoi: '',
-      tenNguoiDung: s.nguoiDung ? s.nguoiDung.ten : '',
+      tnLoi: s.tnLoi,
+      tenNguoiDung: K.tenNguoiDung(s.nguoiDung),
       nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '',
       dangXuat: () => K.dangXuat(),
       coChuaKhoa: !!ck, chuKhoa: ck ? ck.chu : '', dsChuaKhoa: ck ? ck.ds : [],

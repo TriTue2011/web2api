@@ -121,6 +121,7 @@ class Component extends DCLogic {
       nhapLaiMatKhau: '',
       thongTinSinh: null,
       chepXong: false,
+      chepLoi: '',
       dangGui: false,
       loi: '',
       coLoi: false,
@@ -158,24 +159,32 @@ class Component extends DCLogic {
       nhapLaiMatKhau: mkSinh,
       thongTinSinh: { ten: tenSinh, matKhau: mkSinh },
       chepXong: false,
+      chepLoi: '',
       loi: '',
       coLoi: false
     });
   }
 
   dongThongTinSinh() {
-    this.setState({ thongTinSinh: null, chepXong: false });
+    this.setState({ thongTinSinh: null, chepXong: false, chepLoi: '' });
   }
 
   chepThongTinSinh() {
     const tt = this.state.thongTinSinh;
     if (!tt) return;
     const txt = 'Tên admin: ' + tt.ten + '\nMật khẩu: ' + tt.matKhau;
-    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(txt);
-      this.setState({ chepXong: true });
-      setTimeout(() => this.setState({ chepXong: false }), 2500);
+    if (!navigator || !navigator.clipboard || !navigator.clipboard.writeText) {
+      this.setState({ chepLoi: 'Hãy bôi đen và chép tay' });
+      setTimeout(() => this.setState({ chepLoi: '' }), 3000);
+      return;
     }
+    navigator.clipboard.writeText(txt).then(() => {
+      this.setState({ chepXong: true, chepLoi: '' });
+      setTimeout(() => this.setState({ chepXong: false }), 2500);
+    }).catch(() => {
+      this.setState({ chepLoi: 'Hãy bôi đen và chép tay' });
+      setTimeout(() => this.setState({ chepLoi: '' }), 3000);
+    });
   }
 
   async thietLapSubmit(e) {
@@ -261,7 +270,7 @@ class Component extends DCLogic {
       nhapLaiMatKhau: this.state.nhapLaiMatKhau,
       thongTinSinh: this.state.thongTinSinh,
       coThongTinNgauNhien: !!this.state.thongTinSinh,
-      nhanChepThongTin: this.state.chepXong ? 'Đã sao chép ✓' : 'Sao chép tên và mật khẩu',
+      nhanChepThongTin: this.state.chepLoi || (this.state.chepXong ? 'Đã sao chép ✓' : 'Sao chép tên và mật khẩu'),
       dangGui: this.state.dangGui,
       nhanNutThietLap: this.state.dangGui ? 'Đang thiết lập…' : 'Thiết lập và đăng nhập',
       loi: this.state.loi,

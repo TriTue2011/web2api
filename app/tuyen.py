@@ -39,6 +39,8 @@ from app import (
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
+    webhook as webhook_mod,
+    gui_ra as gui_ra_mod,
     xac_thuc,
     cong_cu as cong_cu_mod,
 )

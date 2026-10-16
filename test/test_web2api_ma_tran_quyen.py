@@ -44,6 +44,7 @@ BANG_NGOAI_LE_MO: dict[tuple[str, str], str] = {
     ("GET", "/api/thiet-lap"): "Kiểm tra hệ thống có cần thiết lập tài khoản admin lần đầu hay không (chỉ trả cờ boolean, không chứa dữ liệu nhạy cảm)",
     ("POST", "/api/thiet-lap"): "Thiết lập tài khoản admin lần đầu (chỉ chạy khi chưa có admin, bảo vệ bằng mã thiết lập/khóa quản trị và giới hạn tần suất)",
     ("POST", "/api/dang-nhap"): "Đăng nhập giao diện web bằng mật khẩu (giới hạn tần suất IP và khóa tên tài khoản, băm giả chống dò tìm)",
+    ("POST", "/api/webhook/{module}/{ma}"): "Cửa webhook chung của lõi cho nhà cung cấp ngoài (NV31): mở không Bearer, xác thực bằng bí mật webhook so hmac.compare_digest + chữ ký HMAC tùy chọn, 404 trống duy nhất cho mọi lý do sai, 503 khi thiếu cấu hình (đóng khi lỗi), chống phát lại 10 phút/10000 id, hạn dòng 60/phút + 4 đồng thời theo module, đếm sai xác thực theo IP",
 }
 
 # Chuỗi khoá giả nằm trong allowlist của .gitleaks.toml

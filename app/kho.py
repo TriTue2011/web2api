@@ -34,8 +34,7 @@ _TEN_BI_MAT = re.compile(r"^_?[a-z0-9][a-z0-9_-]{1,40}\Z")
 _KHOA = threading.RLock()
 
 
-class KhoHong(Exception):
-    """Tệp kho hỏng: KHÔNG tự ghi đè (sẽ xoá mất dữ liệu người dùng còn cứu được)."""
+from app.ham_khoa import KhoHong
 
 
 def thu_muc_du_lieu() -> Path:
@@ -57,16 +56,22 @@ def che(gia_tri: str) -> str:
     return "…" + gia_tri[-4:] if len(gia_tri) >= 12 else "…"
 
 
-def ghi_nguyen_tu(p: Path, noi_dung: str, quyen: int = 0o644) -> None:
+def ghi_nguyen_tu(p: Path, noi_dung: str | bytes, quyen: int = 0o644) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tam = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".tam")
     try:
         # Đặt quyền TRƯỚC khi ghi nội dung: không có khoảnh khắc nào bí mật nằm trong tệp đọc được.
         os.fchmod(fd, quyen)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(noi_dung)
-            f.flush()
-            os.fsync(f.fileno())
+        if isinstance(noi_dung, bytes):
+            with os.fdopen(fd, "wb") as f:
+                f.write(noi_dung)
+                f.flush()
+                os.fsync(f.fileno())
+        else:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(noi_dung)
+                f.flush()
+                os.fsync(f.fileno())
         os.replace(tam, p)
     except BaseException:
         try:
@@ -109,15 +114,36 @@ def _duong_bi_mat(ten: str) -> Path:
 
 
 def doc_bi_mat(ten: str) -> dict:
-    du_lieu = doc_json(_duong_bi_mat(ten))
+    from app import ham_khoa
+    du_lieu = ham_khoa.doc_bi_mat_tep(_duong_bi_mat(ten))
     return du_lieu if isinstance(du_lieu, dict) else {}
 
 
 def ghi_bi_mat(ten: str, du_lieu: dict) -> None:
+    from app import ham_khoa
     p = _duong_bi_mat(ten)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(p.parent, 0o700)
-    _ghi_json(p, du_lieu, 0o600)
+    ham_khoa.ghi_bi_mat_tep(p, du_lieu, 0o600)
+
+
+luu_bi_mat = ghi_bi_mat
+
+
+def doc_bi_mat_tep(p: Path) -> dict | None:
+    """Đọc tệp bí mật qua ham_khoa (hỗ trợ giải mã tệp mã hoá)."""
+    from app import ham_khoa
+    return ham_khoa.doc_bi_mat_tep(p)
+
+
+def ghi_bi_mat_tep(p: Path, du_lieu: dict, quyen: int = 0o600) -> None:
+    """Ghi tệp bí mật qua ham_khoa (tự động mã hoá khi nghỉ)."""
+    from app import ham_khoa
+    ham_khoa.ghi_bi_mat_tep(p, du_lieu, quyen)
+
+
+def kho_rieng(module_id: str):
+    """Tay cầm kho dữ liệu riêng dành cho module (Việc F5)."""
+    from app import ham_khoa
+    return ham_khoa.KhoRieng(module_id)
 
 
 def xoa_bi_mat(ten: str) -> bool:
