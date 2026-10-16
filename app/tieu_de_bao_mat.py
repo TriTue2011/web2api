@@ -27,9 +27,10 @@ DUOI_GIAO_DIEN_TINH: tuple[str, ...] = (".html", ".js", ".css")
 def la_tep_giao_dien_tinh(path: str) -> bool:
     """Xác định đường dẫn có phải tệp giao diện tĩnh của lõi (web/ và trang gốc /) hay không.
 
-    Loại trừ các tuyến riêng biệt (/novnc, /m/, /api/, /v1/) để giữ nguyên chính sách cache của chúng.
+    Loại trừ các tuyến riêng biệt (/m/, /api/, /v1/) để giữ nguyên chính sách cache của chúng. Tuyến nào đã tự đặt
+    Cache-Control (ví dụ trình duyệt từ xa đặt no-store) thì middleware không đè — xem điều kiện ở `gui`.
     """
-    if path.startswith(("/novnc", "/m/", "/api/", "/v1/")):
+    if path.startswith(("/m/", "/api/", "/v1/")):
         return False
     return path == "/" or path.endswith(DUOI_GIAO_DIEN_TINH)
 

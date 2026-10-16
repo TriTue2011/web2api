@@ -135,15 +135,12 @@ def test_gui_lai_etag_nhan_304_va_co_cache_control(du_lieu):
         assert r2.headers.get("cache-control") == "no-cache", "Phản hồi 304 phải giữ Cache-Control: no-cache"
         _khop_ba_header(r2.headers)
 
-        # Kiểm tra thêm với trang gốc /
+        # Trang gốc / do một tuyến riêng trả FileResponse (không đi qua bộ phục vụ tĩnh) nên chưa bao giờ hỗ trợ 304;
+        # điều cần giữ ở đây là nó vẫn mang Cache-Control: no-cache để nâng cấp không lệch phiên bản.
         r_goc = c.get("/")
         assert r_goc.status_code == 200
-        etag_goc = r_goc.headers.get("etag")
-        if etag_goc:
-            r_goc_304 = c.get("/", headers={"if-none-match": etag_goc})
-            assert r_goc_304.status_code == 304
-            assert r_goc_304.headers.get("cache-control") == "no-cache"
-            _khop_ba_header(r_goc_304.headers)
+        assert r_goc.headers.get("cache-control") == "no-cache"
+        _khop_ba_header(r_goc.headers)
 
 
 def test_api_json_khong_bi_gan_no_cache(du_lieu):
