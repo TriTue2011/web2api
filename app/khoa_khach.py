@@ -50,11 +50,17 @@ CU_GIAY_MAC_DINH = 7 * 86400
 #: Trần số giây khoá cũ còn dùng được (30 ngày). 0 = hết hạn ngay.
 CU_GIAY_TOI_DA = 30 * 86400
 
+#: Trần số yêu cầu đồng thời mặc định cho mỗi khoá khách.
+MAC_DINH_KHACH_DONG_THOI = 4
+#: Trần số yêu cầu đồng thời mặc định toàn cục cho /v1.
+MAC_DINH_V1_DONG_THOI_TOAN_CUC = 32
+
 _KHOA_LUONG = threading.RLock()
 _KHOA_KHACH_CACHE: list[dict[str, Any]] = []
 _CACHE_FILE_STAT: tuple[Any, ...] | None = None
 _CO_THAY_DOI = False
 _DONG_THOI_DANG_CHAY: dict[str, int] = {}
+_V1_DONG_THOI_HIEN_TAI = 0
 _KHOA_VAN_TAY_CACHE: tuple[Path, bytes] | None = None
 
 
@@ -213,15 +219,39 @@ def giao_pham_vi(pham_vi: list[str], tran: list[str]) -> list[str]:
 
 
 def tran_dong_thoi() -> int | None:
-    """Trần yêu cầu đồng thời cho mỗi khoá khách từ biến WEB2API_KHACH_DONG_THOI. None nếu không đặt."""
-    val = os.environ.get("WEB2API_KHACH_DONG_THOI", "").strip()
+    """Trần yêu cầu đồng thời cho mỗi khoá khách. Mặc định 4.
+    Biến WEB2API_KHACH_DONG_THOI: số nguyên > 0 đặt trần; '0' = tắt tường minh (không giới hạn)."""
+    val = os.environ.get("WEB2API_KHACH_DONG_THOI")
+    if val is None:
+        return MAC_DINH_KHACH_DONG_THOI
+    val = val.strip()
     if not val:
-        return None
+        return MAC_DINH_KHACH_DONG_THOI
     try:
         n = int(val)
-        return n if n > 0 else None
+        if n == 0:
+            return None
+        return n if n > 0 else MAC_DINH_KHACH_DONG_THOI
     except ValueError:
-        return None
+        return MAC_DINH_KHACH_DONG_THOI
+
+
+def tran_dong_thoi_toan_cuc() -> int | None:
+    """Trần yêu cầu đồng thời toàn cục cho /v1. Mặc định 32.
+    Biến WEB2API_V1_DONG_THOI_TOAN_CUC: số nguyên > 0 đặt trần; '0' = tắt tường minh (không giới hạn)."""
+    val = os.environ.get("WEB2API_V1_DONG_THOI_TOAN_CUC")
+    if val is None:
+        return MAC_DINH_V1_DONG_THOI_TOAN_CUC
+    val = val.strip()
+    if not val:
+        return MAC_DINH_V1_DONG_THOI_TOAN_CUC
+    try:
+        n = int(val)
+        if n == 0:
+            return None
+        return n if n > 0 else MAC_DINH_V1_DONG_THOI_TOAN_CUC
+    except ValueError:
+        return MAC_DINH_V1_DONG_THOI_TOAN_CUC
 
 
 def _doc_tu_dia_neu_can() -> list[dict[str, Any]]:
@@ -379,12 +409,13 @@ def kiem_tep(du_lieu: Any, *, nhan_toi_da: int | None = TOI_DA_NHAN) -> list[dic
             raise ValueError(f"khoa[{i}]: «nhan» phải là chuỗi ≤ {TOI_DA_NHAN} ký tự")
         if not isinstance(so_luot, int) or isinstance(so_luot, bool) or so_luot < 0:
             raise ValueError(f"khoa[{i}]: «so_luot» phải là số nguyên ≥ 0")
-        for t in ("tao_luc", "dung_cuoi"):
+        for t in ("tao_luc", "dung_cuoi", "het_han"):
             if k.get(t) is not None and not isinstance(k[t], str):
                 raise ValueError(f"khoa[{i}]: «{t}» phải là chuỗi hoặc null")
         chu_id = k.get("chu_id")
         if chu_id is not None and (not isinstance(chu_id, str) or not _ID_KHOA.fullmatch(chu_id)):
             raise ValueError(f"khoa[{i}]: «chu_id» phải là null hoặc mã người dùng hợp lệ")
+        het_han = k.get("het_han")
         id_da_thay.add(k["id"])
         bam_da_thay.add(k["bam"])
         if bam_cu:
@@ -392,6 +423,8 @@ def kiem_tep(du_lieu: Any, *, nhan_toi_da: int | None = TOI_DA_NHAN) -> list[dic
         muc_ra = {"id": k["id"], "nhan": nhan, "bat": k["bat"], "pham_vi": pv,
                   "tao_luc": k.get("tao_luc"), "dung_cuoi": k.get("dung_cuoi"), "so_luot": so_luot,
                   "bam": k["bam"], **({"chu_id": chu_id} if chu_id else {})}
+        if het_han is not None:
+            muc_ra["het_han"] = het_han
         if bam_cu:
             muc_ra["bam_cu"] = bam_cu
             muc_ra["cu_het_han"] = cu_het_han
@@ -459,8 +492,8 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
         elif c.get("chu_id") != k.get("chu_id"):
             tt = "doi_chu"
         elif (c.get("bat", True), list(c.get("pham_vi", ["*"])), c.get("nhan"),
-              c.get("bam_cu"), c.get("cu_het_han")) != (
-                  k["bat"], k["pham_vi"], k["nhan"], k.get("bam_cu"), k.get("cu_het_han")):
+              c.get("bam_cu"), c.get("cu_het_han"), c.get("het_han")) != (
+                  k["bat"], k["pham_vi"], k["nhan"], k.get("bam_cu"), k.get("cu_het_han"), k.get("het_han")):
             tt = "doi"
         else:
             tt = "giu_nguyen"
@@ -471,7 +504,8 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
                "mo_rong_pham_vi": _rong_hon(k["pham_vi"], None if c is None else list(c.get("pham_vi", ["*"]))),
                "bat_lai": k["bat"] and any(x.get("bat", True) is False for x in dang_co),
                "canh_bao": None, "bo_chu": bo_chu, "trung_khoa_khac": trung_khoa_khac,
-               "co_khoa_cu": bool(k.get("bam_cu")), "cu_het_han": k.get("cu_het_han")}
+               "co_khoa_cu": bool(k.get("bam_cu")), "cu_het_han": k.get("cu_het_han"),
+               "het_han": k.get("het_han")}
         if c is not None:
             muc["chu_id_hien_tai"] = c.get("chu_id")
         canh_bao = []
@@ -490,11 +524,45 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
             "kho_hien_tai_hong": hong}
 
 
+def _khoa_het_han_hoac_tu_tat(k: dict[str, Any]) -> bool:
+    """Kiểm tra khoá khách hết hạn theo trường `het_han` (ISO UTC) hoặc tự tắt khi lâu không dùng
+    (`WEB2API_KHACH_TU_TAT_NGAY`). Tra cứu thời gian ĐÓNG KHI LỖI: trường thời gian hỏng → True (hết hạn).
+    """
+    het_han = k.get("het_han")
+    if het_han is not None:
+        if not _la_tuong_lai(het_han):
+            return True
+
+    env_ngay = os.environ.get("WEB2API_KHACH_TU_TAT_NGAY", "0").strip()
+    try:
+        n_ngay = int(env_ngay)
+    except ValueError:
+        n_ngay = 0
+    if n_ngay > 0:
+        moc_str = k.get("dung_cuoi") or k.get("tao_luc")
+        if not moc_str or not isinstance(moc_str, str):
+            return True
+        try:
+            dt = datetime.fromisoformat(moc_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - dt > timedelta(days=n_ngay):
+                return True
+        except Exception:
+            return True
+
+    return False
+
+
 def ap_chinh_sach_chu(k: dict[str, Any]) -> dict[str, Any]:
     """Chính sách DUY NHẤT từ bản ghi thô ra khoá hiệu lực (bản sao). Khoá không chủ → nguyên. Khoá có chủ: chủ bị
     tắt/xoá hoặc kho người dùng đọc lỗi → `bat=False` (đóng khi lỗi); còn lại `pham_vi` = GIAO(phạm vi khoá, trần
-    HIỆN TẠI của chủ) — hạ trần/hạ vai thu hẹp khoá đã cấp ngay ở lượt sau. Gọi NGOÀI _KHOA_LUONG."""
+    HIỆN TẠI của chủ) — hạ trần/hạ vai thu hẹp khoá đã cấp ngay ở lượt sau.
+    Khoá hết hạn hoặc quá hạn lâu không dùng → `bat=False`. Gọi NGOÀI _KHOA_LUONG."""
     k = dict(k)
+    if _khoa_het_han_hoac_tu_tat(k):
+        k["bat"] = False
+        return k
     chu_id = k.get("chu_id")
     if not chu_id:
         return k
@@ -598,13 +666,40 @@ def ra_dong_thoi(id_khoa: str | None) -> None:
                 _DONG_THOI_DANG_CHAY[id_khoa] = con
 
 
+def vao_dong_thoi_toan_cuc() -> None:
+    """Kiểm tra và chiếm một vị trí xử lý đồng thời toàn cục cho /v1. Vượt trần → 429 kèm Retry-After."""
+    global _V1_DONG_THOI_HIEN_TAI
+    tran = tran_dong_thoi_toan_cuc()
+    if tran is None:
+        return
+    with _KHOA_LUONG:
+        if _V1_DONG_THOI_HIEN_TAI >= tran:
+            raise LoiOpenAI(
+                429,
+                f"Cổng /v1 quá tải yêu cầu đồng thời toàn cục (tối đa {tran} yêu cầu cùng lúc).",
+                loai="rate_limit_error",
+                code="rate_limit_exceeded",
+                headers={"Retry-After": "1"},
+            )
+        _V1_DONG_THOI_HIEN_TAI += 1
+
+
+def ra_dong_thoi_toan_cuc() -> None:
+    """Giải phóng một vị trí xử lý đồng thời toàn cục cho /v1."""
+    global _V1_DONG_THOI_HIEN_TAI
+    with _KHOA_LUONG:
+        if _V1_DONG_THOI_HIEN_TAI > 0:
+            _V1_DONG_THOI_HIEN_TAI -= 1
+
+
 # ───────────── Quản trị qua API ─────────────
 
 def _sach_khoa(k: dict[str, Any]) -> dict[str, Any]:
     """Trả về bản ghi an toàn: bỏ trường `bam`, `bam_cu` và mọi thông tin bí mật.
-    Thêm `van_tay`, `cu_het_han` và `co_khoa_cu: bool`."""
+    Thêm `van_tay`, `cu_het_han`, `het_han` và `co_khoa_cu: bool`."""
     bam = k.get("bam", "")
     cu_het_han = k.get("cu_het_han")
+    het_han = k.get("het_han")
     co_khoa_cu = bool(k.get("bam_cu") and _la_tuong_lai(cu_het_han))
     return {
         "id": k.get("id"),
@@ -616,6 +711,7 @@ def _sach_khoa(k: dict[str, Any]) -> dict[str, Any]:
         "dung_cuoi": k.get("dung_cuoi"),
         "so_luot": int(k.get("so_luot", 0)),
         "van_tay": van_tay(bam) if bam else "?",
+        "het_han": het_han,
         "cu_het_han": cu_het_han,
         "co_khoa_cu": co_khoa_cu,
     }
@@ -661,14 +757,19 @@ def tao_khoa(
     nhan: str = "",
     pham_vi: list[str] | None = None,
     chu_id: str | None = None,
+    het_han: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Tạo khoá khách mới: sinh khoá ngẫu nhiên hiện MỘT LẦN, ghi nguyên tử 0600 và ghi sổ quan_tri.
 
-    `pham_vi=None` (không nêu) = «*» — hợp đồng cũ của đường quản trị. Đã nêu thì phải qua `chuan_hoa_pham_vi`
-    (danh sách rỗng → 400, KHÔNG thành «*»). Đường người dùng luôn truyền danh sách tường minh đã kiểm trần.
+    `pham_vi=None` (không nêu) = ["chat"] — mặc định hẹp nhất, an toàn khi khoá lộ. Đã nêu thì phải qua `chuan_hoa_pham_vi`
+    (danh sách rỗng → 400). Muốn toàn quyền phải nêu ["*"] tường minh.
+    `het_han`: chuỗi thời gian ISO UTC thời điểm hết hạn (tuỳ chọn). Quá hạn hoặc hỏng → 401 như khoá bị tắt.
     """
     nhan_chuan = _kiem_nhan("" if nhan is None else nhan).strip() or "Khoá khách"
-    pv = ["*"] if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
+    pv = ["chat"] if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
+    if het_han is not None:
+        if not _la_iso_hop_le(het_han):
+            raise LoiOpenAI(400, "Trường «het_han» phải là chuỗi thời gian ISO hợp lệ.", code="invalid_value")
     khoa_tho = f"w2a_{secrets.token_urlsafe(32)}"
     bam = hashlib.sha256(khoa_tho.encode("utf-8")).hexdigest()
     id_khoa = f"kk_{secrets.token_hex(6)}"
@@ -685,22 +786,24 @@ def tao_khoa(
         "so_luot": 0,
         "bam": bam,
     }
+    if het_han is not None:
+        muc["het_han"] = het_han
 
     with _KHOA_LUONG:
         _doc_tu_dia_neu_can()
         _KHOA_KHACH_CACHE.append(muc)
         _ghi_ra_dia_khoi_tao()
 
-    nhat_ky.ghi(
-        "quan_tri",
-        "thong_tin",
-        f"Tạo khoá khách «{nhan_chuan}» (id: {id_khoa})",
-        id_khoa=id_khoa,
-        khoa_van_tay=van_tay(bam),
-        nhan=nhan_chuan,
-        pham_vi=pv,
-        chu_id=chu_id,
-    )
+    nk_kwargs: dict[str, Any] = {
+        "id_khoa": id_khoa,
+        "khoa_van_tay": van_tay(bam),
+        "nhan": nhan_chuan,
+        "pham_vi": pv,
+        "chu_id": chu_id,
+    }
+    if het_han is not None:
+        nk_kwargs["het_han"] = het_han
+    nhat_ky.ghi("quan_tri", "thong_tin", f"Tạo khoá khách «{nhan_chuan}» (id: {id_khoa})", **nk_kwargs)
     ban_ghi = _sach_khoa(muc)
     return ban_ghi, khoa_tho
 
@@ -759,17 +862,26 @@ def xoay_khoa(
     return ban_ghi, khoa_tho
 
 
+_KHONG_DOI = object()
+
+
 def sua_khoa(
     id_khoa: str,
     bat: bool | None = None,
     nhan: str | None = None,
     pham_vi: list[str] | None = None,
+    het_han: Any = _KHONG_DOI,
 ) -> dict[str, Any]:
-    """Cập nhật thông tin khoá khách (bật/tắt, nhãn, phạm vi). None = giữ nguyên; `bat` phải là bool thật."""
+    """Cập nhật thông tin khoá khách (bật/tắt, nhãn, phạm vi, hạn dùng). None = giữ nguyên; `bat` phải là bool thật."""
     if bat is not None and not isinstance(bat, bool):
         raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false.", code="invalid_value")
     pv_moi = None if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
     nhan_moi = None if nhan is None else _kiem_nhan(nhan).strip()
+
+    if het_han is not _KHONG_DOI and het_han is not None and het_han != "":
+        if not _la_iso_hop_le(het_han):
+            raise LoiOpenAI(400, "Trường «het_han» phải là chuỗi thời gian ISO hợp lệ.", code="invalid_value")
+
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
         tim_thay = None
@@ -786,6 +898,11 @@ def sua_khoa(
             tim_thay["nhan"] = nhan_moi or tim_thay.get("nhan", "Khoá khách")
         if pv_moi is not None:
             tim_thay["pham_vi"] = pv_moi
+        if het_han is not _KHONG_DOI:
+            if het_han is None or het_han == "":
+                tim_thay.pop("het_han", None)
+            else:
+                tim_thay["het_han"] = het_han
 
         _ghi_ra_dia_khoi_tao()
         kq = _sach_khoa(tim_thay)
@@ -799,6 +916,7 @@ def sua_khoa(
         bat=kq["bat"],
         nhan=kq["nhan"],
         pham_vi=kq["pham_vi"],
+        het_han=kq.get("het_han"),
     )
     return kq
 

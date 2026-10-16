@@ -310,7 +310,8 @@ async def can_quan_tri(request: Request) -> dict[str, Any]:
 async def xac_thuc_v1(request: Request) -> dict[str, Any]:
     """Phụ thuộc FastAPI cho /v1/*: nhận cả quan_tri và khach.
 
-    Khách bị kiểm soát trần đồng thời WEB2API_KHACH_DONG_THOI.
+    Cả quản trị và khách đều chịu trần đồng thời toàn cục WEB2API_V1_DONG_THOI_TOAN_CUC (mặc định 32).
+    Khách bị kiểm soát trần đồng thời theo khoá WEB2API_KHACH_DONG_THOI (mặc định 4).
     Loại khác (nguoi_dung) bị 403.
     """
     nguoi = await nguoi_goi(request)
@@ -321,10 +322,21 @@ async def xac_thuc_v1(request: Request) -> dict[str, Any]:
             loai="permission_error",
             code="forbidden",
         )
+    # 1. Trần đồng thời toàn cục cho /v1 (cả quản trị và khách đều chịu)
+    if not getattr(request.state, "v1_dong_thoi", False):
+        khoa_khach.vao_dong_thoi_toan_cuc()
+        request.state.v1_dong_thoi = True
+
+    # 2. Trần đồng thời theo khoá khách (chỉ khách chịu, quản trị không chịu)
     if nguoi.get("loai") == "khach":
         id_khach = nguoi.get("id")
         if id_khach and not getattr(request.state, "khach_id", None):
-            khoa_khach.vao_dong_thoi(id_khach)
+            try:
+                khoa_khach.vao_dong_thoi(id_khach)
+            except Exception:
+                khoa_khach.ra_dong_thoi_toan_cuc()
+                request.state.v1_dong_thoi = False
+                raise
             request.state.khach_id = id_khach
     return nguoi
 
