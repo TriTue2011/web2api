@@ -26,6 +26,7 @@ Thiết kế:
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import hmac
 import logging
@@ -39,7 +40,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from app import kho, nhat_ky
+from app import kiem_bien, kho, nhat_ky
 from app.kham_pha import MA_KHA_NANG
 from app.loi_openai import LoiOpenAI
 
@@ -316,6 +317,23 @@ def _ghi_ra_dia_khoi_tao() -> None:
     _CO_THAY_DOI = False
 
 
+def _ghi_ra_dia_va_cap_nhat_cache(danh_sach_moi: list[dict[str, Any]]) -> None:
+    """Ghi đĩa TRƯỚC, chỉ khi ghi đĩa thành công mới cập nhật cache bộ nhớ (chống nhiễm độc bộ nhớ).
+    Luôn gọi khi đang giữ _KHOA_LUONG."""
+    global _CACHE_FILE_STAT, _CO_THAY_DOI, _KHOA_KHACH_CACHE
+    p = _p_khoa_khach()
+    du_lieu = {"khoa": danh_sach_moi}
+    noi_dung = kho.json.dumps(du_lieu, ensure_ascii=False, indent=2)
+    kho.ghi_nguyen_tu(p, noi_dung, quyen=0o600)
+    _KHOA_KHACH_CACHE[:] = danh_sach_moi
+    try:
+        st = os.stat(p)
+        _CACHE_FILE_STAT = (str(p), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+    except Exception:
+        _CACHE_FILE_STAT = None
+    _CO_THAY_DOI = False
+
+
 def dong_bo_dia() -> None:
     """Đồng bộ dữ liệu thay đổi từ bộ nhớ ra đĩa nếu có cờ _CO_THAY_DOI (chạy theo nhịp / shutdown)."""
     with _KHOA_LUONG:
@@ -358,9 +376,10 @@ TOI_DA_NHAN = 200
 
 
 def _kiem_nhan(nhan: Any) -> str:
-    if not isinstance(nhan, str) or len(nhan) > TOI_DA_NHAN:
-        raise LoiOpenAI(400, f"Trường «nhan» phải là chuỗi tối đa {TOI_DA_NHAN} ký tự.", code="invalid_value")
-    return nhan
+    res = kiem_bien.kiem_chuoi(nhan, toi_da=TOI_DA_NHAN, ten_truong="nhan")
+    if res is None:
+        raise LoiOpenAI(400, "Trường «nhan» phải là chuỗi.", code="invalid_value")
+    return res
 
 
 def kiem_tep(du_lieu: Any, *, nhan_toi_da: int | None = TOI_DA_NHAN) -> list[dict[str, Any]]:
@@ -745,11 +764,12 @@ def xoa_khoa_theo_chu(chu_id: str) -> int:
     """Xoá toàn bộ khoá khách thuộc về một người dùng (khi xoá người dùng)."""
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
-        ban_dau = len(ds)
-        _KHOA_KHACH_CACHE[:] = [k for k in ds if k.get("chu_id") != chu_id]
-        da_xoa = ban_dau - len(_KHOA_KHACH_CACHE)
+        _don_khoa_cu_het_han_trong_cache()
+        ban_dau = len(_KHOA_KHACH_CACHE)
+        ds_moi = [copy.deepcopy(k) for k in _KHOA_KHACH_CACHE if k.get("chu_id") != chu_id]
+        da_xoa = ban_dau - len(ds_moi)
         if da_xoa > 0:
-            _ghi_ra_dia_khoi_tao()
+            _ghi_ra_dia_va_cap_nhat_cache(ds_moi)
     return da_xoa
 
 
@@ -791,8 +811,9 @@ def tao_khoa(
 
     with _KHOA_LUONG:
         _doc_tu_dia_neu_can()
-        _KHOA_KHACH_CACHE.append(muc)
-        _ghi_ra_dia_khoi_tao()
+        _don_khoa_cu_het_han_trong_cache()
+        ds_moi = [copy.deepcopy(k) for k in _KHOA_KHACH_CACHE] + [muc]
+        _ghi_ra_dia_va_cap_nhat_cache(ds_moi)
 
     nk_kwargs: dict[str, Any] = {
         "id_khoa": id_khoa,
@@ -832,8 +853,10 @@ def xoay_khoa(
 
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
+        _don_khoa_cu_het_han_trong_cache()
+        ds_moi = [copy.deepcopy(k) for k in _KHOA_KHACH_CACHE]
         tim_thay = None
-        for k in ds:
+        for k in ds_moi:
             if k.get("id") == id_khoa:
                 tim_thay = k
                 break
@@ -848,7 +871,7 @@ def xoay_khoa(
         ban_ghi = _sach_khoa(tim_thay)
         ban_ghi["cu_het_han"] = cu_het_han
 
-        _ghi_ra_dia_khoi_tao()
+        _ghi_ra_dia_va_cap_nhat_cache(ds_moi)
 
     vt_moi = van_tay(bam_moi)
     nhat_ky.ghi(
@@ -884,8 +907,10 @@ def sua_khoa(
 
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
+        _don_khoa_cu_het_han_trong_cache()
+        ds_moi = [copy.deepcopy(k) for k in _KHOA_KHACH_CACHE]
         tim_thay = None
-        for k in ds:
+        for k in ds_moi:
             if k.get("id") == id_khoa:
                 tim_thay = k
                 break
@@ -904,7 +929,7 @@ def sua_khoa(
             else:
                 tim_thay["het_han"] = het_han
 
-        _ghi_ra_dia_khoi_tao()
+        _ghi_ra_dia_va_cap_nhat_cache(ds_moi)
         kq = _sach_khoa(tim_thay)
 
     nhat_ky.ghi(
@@ -926,15 +951,16 @@ def xoa_khoa(id_khoa: str) -> bool:
     bam_da_xoa = None
     with _KHOA_LUONG:
         ds = _doc_tu_dia_neu_can()
-        ban_dau = len(ds)
-        for k in ds:
+        _don_khoa_cu_het_han_trong_cache()
+        ban_dau = len(_KHOA_KHACH_CACHE)
+        for k in _KHOA_KHACH_CACHE:
             if k.get("id") == id_khoa:
                 bam_da_xoa = k.get("bam")
                 break
-        _KHOA_KHACH_CACHE[:] = [k for k in ds if k.get("id") != id_khoa]
-        da_xoa = len(_KHOA_KHACH_CACHE) < ban_dau
+        ds_moi = [copy.deepcopy(k) for k in _KHOA_KHACH_CACHE if k.get("id") != id_khoa]
+        da_xoa = len(ds_moi) < ban_dau
         if da_xoa:
-            _ghi_ra_dia_khoi_tao()
+            _ghi_ra_dia_va_cap_nhat_cache(ds_moi)
 
     if da_xoa:
         vt = van_tay(bam_da_xoa) if bam_da_xoa else "?"

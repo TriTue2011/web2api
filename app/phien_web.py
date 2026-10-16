@@ -242,8 +242,8 @@ def la_https(request: Request) -> bool:
                                 tin_proxy=False,
                             )
                         return True
-        except Exception:
-            pass
+        except Exception as e:
+            nhat_ky.ghi_canh_bao_bo_qua("he_thong", "Phân tích địa chỉ HTTPS trong la_https", e)
 
     return False
 

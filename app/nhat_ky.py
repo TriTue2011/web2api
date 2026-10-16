@@ -322,6 +322,12 @@ def ghi(kenh: str, muc: str, tom_tat: str, /, ms: float | int | None = None, **t
         log.warning("Không thể ghi nhật ký (bỏ qua để lõi chạy tiếp): %s: %s", type(e).__name__, che_chuoi(str(e)))
 
 
+def ghi_canh_bao_bo_qua(kenh: str, hanh_dong: str, loi: BaseException, **kwargs: Any) -> None:
+    """Ghi nhật ký cảnh báo cho các tác vụ phụ (best-effort), không nuốt lỗi âm thầm và không lộ bí mật."""
+    ten_loi = type(loi).__name__
+    ghi(kenh, "canh_bao", f"{hanh_dong} thất bại: {ten_loi}", loai_loi=ten_loi, **kwargs)
+
+
 # ───────────── đọc ─────────────
 
 def _cac_tep_doc() -> list[Path]:

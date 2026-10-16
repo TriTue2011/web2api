@@ -38,23 +38,20 @@ from pathlib import Path
 
 GOC = Path(__file__).resolve().parents[1]
 
-# (tệp, hàm) chứa 23 điểm nuốt lỗi đã kiểm toán (xem phân loại ở docstring trên).
+# (tệp, hàm) chứa 15 điểm nuốt lỗi đã kiểm toán (toàn bộ là AN TOÀN).
 DA_KIEM_TOAN = {
     ("app/che_log.py", "filter"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
+    ("app/goi_kha_nang.py", "goi"),
     ("app/gui_ra.py", "_lay_module"),
-    ("app/ham_khoa.py", "lay_khoa_chinh"),
     ("app/ham_khoa.py", "kiem_tra_khong_symlink"),
-    ("app/ham_khoa.py", "ghi_bi_mat_tep"),
-    ("app/main.py", "_vong_dong_bo_khoa"),
+    ("app/ham_khoa.py", "lay_khoa_chinh"),
+    ("app/kham_pha.py", "tao"),
     ("app/nguoi_dung.py", "giu_slot_scrypt"),
     ("app/nguoi_dung.py", "_kiem_tra_mat_khau_dong_bo"),
     ("app/novnc.py", "novnc_websocket_proxy"),
-    ("app/phien.py", "liet_ke"),
-    ("app/phien_web.py", "la_https"),
     ("app/phien_web.py", "thu_hoi_phien_nguoi_dung"),
-    ("app/thiet_bi.py", "lay_mot_thuc_the"),
     ("app/webhook.py", "_lay_webhook"),
     ("modules/muse/module.py", "_giai_ma_khoa_thiet_bi"),
     ("modules/muse2api/module.py", "bo"),
@@ -103,7 +100,6 @@ def tim_diem_nuot_loi():
     return ket
 
 
-@pytest.mark.xfail(strict=True, reason="3 điểm nuốt lỗi MỚI (goi_kha_nang.goi, kham_pha.tao, tuyen.xu_ly_duyet) chưa kiểm toán: xử lý ở việc bien-vao-an-toan rồi BỎ dấu xfail này")
 def test_danh_sach_nuot_loi_khong_tang():
     hien = tim_diem_nuot_loi()
     moi = hien - DA_KIEM_TOAN

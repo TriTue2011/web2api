@@ -991,7 +991,8 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
 
     try:
         raw_entities = await asyncio.wait_for(m.thuc_the(None), timeout=5.0)
-    except Exception:
+    except Exception as e:
+        log.warning("Lấy danh sách thực thể từ module %s thất bại: %s", mod_id, type(e).__name__)
         return None
 
     if not isinstance(raw_entities, list):
@@ -1017,8 +1018,8 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
         tt_dict = await asyncio.wait_for(m.trang_thai([id_thuc_the]), timeout=5.0)
         if isinstance(tt_dict, dict):
             trang_thai = tt_dict.get(id_thuc_the)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Lấy trạng thái thực thể %s từ module %s thất bại: %s", id_thuc_the, mod_id, type(e).__name__)
 
     return {
         "id": id_thuc_the,

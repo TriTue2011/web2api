@@ -318,17 +318,11 @@ def ghi_bi_mat_tep(p: Path, du_lieu: dict, quyen: int = 0o600) -> None:
     # Tạo thư mục và chmod 0700 toàn chuỗi cha dưới thư mục dữ liệu
     p.parent.mkdir(parents=True, exist_ok=True)
     from app import kho
-    try:
-        goc_data = kho.thu_muc_du_lieu().resolve()
-        curr = p.parent
-        while curr != goc_data and curr.parent != curr:
-            try:
-                os.chmod(curr, 0o700)
-            except OSError:
-                pass
-            curr = curr.parent
-    except Exception:
-        pass
+    goc_data = kho.thu_muc_du_lieu().resolve()
+    curr = p.parent.resolve()
+    while curr != goc_data and curr.parent != curr:
+        os.chmod(curr, 0o700)
+        curr = curr.parent
 
     raw_bytes = json.dumps(du_lieu, ensure_ascii=False, indent=2).encode("utf-8")
     aad = tinh_aad(p)
