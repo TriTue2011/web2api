@@ -26,7 +26,7 @@ import pytest
 from app import sao_luu, so_module
 from app.main import app
 from gia import MayChuThat
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 
 pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 
@@ -45,17 +45,13 @@ def loi_that(tmp_path, monkeypatch):
 
 
 def test_giao_dien_sao_luu_khoi_phuc_1280(trang, tmp_path, monkeypatch):
-    """Máy tính 1280x800: Thẻ sao lưu và khôi phục hiện đầy đủ sau khi dán khoá quản trị."""
+    """Máy tính 1280x800: Thẻ sao lưu và khôi phục hiện đầy đủ sau khi đăng nhập quản trị."""
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(1280, 800)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
 
-        # 1. Ban đầu chưa dán khoá: hiện khối nhập khoá quản trị
-        assert trang.cho("document.getElementById('khoa-quan-tri') !== null")
-        trang.go("#o-khoa", KHOA_QT)
-        trang.bam("document.getElementById('nut-luu-khoa')")
-
-        # 2. Đã dán khoá: thẻ Sao lưu & Khôi phục hiện diện
+        # Đã đăng nhập: thẻ Sao lưu & Khôi phục hiện diện
         assert trang.cho("document.getElementById('sao-luu-khoi-phuc') !== null")
 
         # 3. Các thành phần xuất sao lưu
@@ -79,11 +75,8 @@ def test_giao_dien_sao_luu_khoi_phuc_dien_thoai_390(trang, tmp_path, monkeypatch
     """Điện thoại 390x844: Không tràn ngang khi hiện thẻ sao lưu và khôi phục."""
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(390, 844)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
-
-        # Nhập khoá quản trị
-        trang.go("#o-khoa", KHOA_QT)
-        trang.bam("document.getElementById('nut-luu-khoa')")
         trang.cho("document.getElementById('sao-luu-khoi-phuc') !== null")
 
         # Kiểm tra không tràn ngang ở 390px
@@ -119,9 +112,8 @@ def _chon_tep(trang, du_lieu: bytes, ten: str = "b.w2a") -> None:
 
 def _mo_trang(trang, w):
     trang.khung(1280, 800)
+    dang_nhap_quan_tri(trang, w.url)
     trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
-    trang.go("#o-khoa", KHOA_QT)
-    trang.bam("document.getElementById('nut-luu-khoa')")
     trang.cho("document.getElementById('nut-ap-dung-khoi-phuc') !== null")
 
 

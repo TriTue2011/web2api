@@ -23,7 +23,7 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import GitHubGia, GoogleGia, MayChuThat, ghi_thu_muc, tep_kho
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 from gia import OpenAIGia
 from ui_mau import XSS_TEN, module_ai, module_khong_khoa, module_mang
 
@@ -61,11 +61,6 @@ def loi_that(tmp_path, monkeypatch, modules: dict | None = None, git: dict | Non
 def lien_ket(w, id_: str, cau_hinh: dict | None = None):
     r = httpx.post(f"{w.url}/api/modules/{id_}/cai", json={"cau_hinh": cau_hinh or {}}, headers=QT)
     assert r.status_code == 200 and r.json()["ok"], r.text
-
-
-def luu_khoa(trang, khoa: str = KHOA_QT):
-    trang.go("#o-khoa", khoa)
-    trang.bam("document.getElementById('nut-luu-khoa')")
 
 
 def nav(trang) -> list[str]:
@@ -109,6 +104,7 @@ def khong_tran(trang) -> bool:
 
 def test_ca_0_module_chi_co_module_va_go_tay_bi_chuyen(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.cdp.goi("Page.navigate", {"url": w.url + "/"}, trang.s)
         trang.cho("location.pathname.endsWith('/He-thong.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'",
                   mo_ta="địa chỉ gốc dẫn tới Hệ thống → Module")
@@ -150,9 +146,8 @@ CTRL_ENTER = ("document.getElementById('o-soan').dispatchEvent(new KeyboardEvent
 def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, monkeypatch):
     git = {"ai-gia": module_ai(), "mang-gia": module_mang()}
     with loi_that(tmp_path, monkeypatch, git=git) as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        assert trang.js("!!document.getElementById('goi-y-khoa-git')")  # chưa khoá: ô git chưa hiện, có lời nhắc
-        luu_khoa(trang)
         trang.cho(o("ai-gia"), han=15, mo_ta="ô ai-gia (Chưa cài) từ git")
         assert trang.js(o("ai-gia") + ".dataset.tt") == "chua-cai"
         # Khu mặc định là loại có loai_thu_tu nhỏ nhất (AI); ô loại «mang» chỉ hiện khi chọn chip của nó.
@@ -273,8 +268,8 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
     thêm/bớt từng khoá, gỡ → tab biến mất. Studio có từ lúc CÀI (chủ máy 11/10), không đợi liên kết."""
     with loi_that(tmp_path, monkeypatch, git={"ai-gia": module_ai()}) as w:
         assert httpx.post(f"{w.url}/api/nguon-git/cai/ai-gia", headers=QT, timeout=30).status_code == 200
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
         trang.cho(o("ai-gia") + "?.dataset.tt === 'cho-khoa'", han=15, mo_ta="ô «Đã cài — chờ khoá»")
         # Nút trên ô «Thêm khoá»: module mang mã của tab Tài khoản → dẫn tới Hệ thống → AI → Tài khoản đúng module.
         assert trang.js(nut_o("ai-gia") + ".dataset.hanhDong") == "them-khoa"
@@ -350,8 +345,8 @@ def test_them_khoa_tren_o_module_khong_co_tab_tai_khoan_mo_bang_chi_tiet(trang, 
     m.update(loai="app", loai_ten="App", loai_thu_tu=20)
     tep["manifest.json"] = json.dumps(m, ensure_ascii=False).encode()
     with loi_that(tmp_path, monkeypatch, modules={"app-khoa": tep}) as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
         trang.cho(nut_o("app-khoa"), han=15, mo_ta="nút trên ô")
         assert trang.js(nut_o("app-khoa") + ".tagName") == "BUTTON"
         assert trang.chu("[data-o-khung='app-khoa'] [data-hanh-dong]") == "Thêm khoá"
@@ -391,8 +386,7 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
     có nhóm «API 0» + nút «＋ Thêm API» + khung rỗng của demo; Provider có ngay nhà cung cấp đã cài với tab Model / Tài
     khoản rỗng chỉ chỗ thêm khoá — không gọi …/suc-khoe (404 khi chưa liên kết). Thêm khoá → dòng tài khoản + model."""
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
-        trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html")
         trang.cho("!!document.getElementById('bang-ai')", mo_ta="trang AI")
         assert con_ai(trang) == ["tai_khoan", "provider"]           # Provider có từ lúc CÀI; không Combo
@@ -459,8 +453,7 @@ def test_ai_tai_khoan_hai_nguon_thay_va_xoa_khoa(trang, tmp_path, monkeypatch):
     k3 = "AIzaSyTOT-ba--000000000000000000000003"
     with loi_that(tmp_path, monkeypatch, modules=mods) as w:
         lien_ket(w, "ai-hai", {"api_keys": [K_TOT, k3]})
-        trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html")
         trang.cho("document.querySelectorAll('[data-tai-khoan]').length === 2", mo_ta="hai dòng tài khoản")
         # Mỗi khoá đã lưu là một «tài khoản» (như dòng API của demo: tên nhà cung cấp, «khoá …abcd»); nguồn chưa khoá không có dòng.
@@ -510,8 +503,7 @@ def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypa
     mods = {"ai-gia": module_ai(), "ai-hai": module_ai("ai-hai", "AI thứ hai", "hai", ("chat",))}
     with loi_that(tmp_path, monkeypatch, modules=mods) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
-        trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
         trang.cho("document.querySelectorAll('[data-nhom-md]').length === 2", han=15, mo_ta="nhóm model của ai-gia")
         assert trang.js("document.querySelector('[data-provider]').dataset.provider") == "ai-gia"
@@ -575,8 +567,7 @@ def test_tai_khoan_suc_khoe_toi_thieu_va_het_han_muc(trang, tmp_path, monkeypatc
     monkeypatch.setenv("GIA_SK", "cu")
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT, k2]})
-        trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html")
         mo = "[data-tai-khoan='ai-gia'][data-khoa-so='0']"
         trang.cho(f"document.querySelector({json.dumps(mo + ' [data-chip-tk=suc-khoe]')})?.innerText === 'Dùng được'", han=15, mo_ta="sức khoẻ tối thiểu")
@@ -608,8 +599,8 @@ def test_tai_khoan_suc_khoe_toi_thieu_va_het_han_muc(trang, tmp_path, monkeypatc
 # ───────────── Studio ─────────────
 
 def _mo_studio(trang, w):
+    dang_nhap_quan_tri(trang, w.url)
     trang.di(w.url + "/Studio.dc.html")
-    luu_khoa(trang)
     trang.cho("document.querySelectorAll('[data-model-chon]').length > 0", han=15, mo_ta="danh sách model")
 
 
@@ -689,8 +680,7 @@ def test_model_anh_nhom_tao_anh_va_studio_ve_anh(trang, tmp_path, monkeypatch):
     monkeypatch.setenv("GIA_MODEL_ANH", "1")
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
-        trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
         trang.cho("document.querySelectorAll('[data-nhom-md]').length === 3", han=15, mo_ta="ba nhóm model")
         assert trang.js("document.querySelectorAll('[data-model]').length") == 0
@@ -1236,6 +1226,7 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
     """Thanh Hệ thống như demo: mục AI là bảng xổ chỉ gồm tab con ĐANG có (không Combo); điện thoại có thanh dưới."""
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho("document.querySelector('[data-nav=\"ai\"]')", mo_ta="mục AI")
         assert trang.js("document.querySelector('[data-nav=\"ai\"]').getAttribute('aria-expanded')") == "false"
@@ -1265,6 +1256,7 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
 def test_loai_la_tab_module_va_muc_can_cung_lat_voi_khung(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, modules={"mang-gia": module_mang()}) as w:
         lien_ket(w, "mang-gia")
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html#module-mang-gia")
         trang.cho("document.getElementById('muc-module')", mo_ta="mục của module")
         # Tab riêng của module loại lạ: «Quay lại» trỏ tab đó (chưa có Studio), đường tương đối /m/<id>/.
@@ -1275,7 +1267,6 @@ def test_loai_la_tab_module_va_muc_can_cung_lat_voi_khung(trang, tmp_path, monke
         assert not trang.js("!!document.querySelector('[data-muc=\"tu-dong\"]')")
         # Cài (CHƯA liên kết) một module chat: tab «chính» Studio của khung hiện ngay (phạm vi «đã cài»), còn mục
         # `can: ["chat"]` của module vẫn đợi chat ĐÃ LIÊN KẾT — cùng một hàm `thieu`, khác phạm vi khai trong điều kiện.
-        luu_khoa(trang)
         ghi_thu_muc(tmp_path / "modules" / "ai-gia", module_ai())
         assert httpx.post(f"{w.url}/api/modules/nap-lai", headers=QT, timeout=30).status_code == 200
         trang.di(w.url + "/He-thong.dc.html?lan=2#module-mang-gia")
@@ -1290,9 +1281,10 @@ def test_loai_la_tab_module_va_muc_can_cung_lat_voi_khung(trang, tmp_path, monke
         assert nav(trang)[:2] == ["studio", "m-mang-gia"]
 
 
-def test_chi_tiet_khong_chen_html_va_401(trang, tmp_path, monkeypatch):
+def test_chi_tiet_khong_chen_html(trang, tmp_path, monkeypatch):
     mods = {"xss-gia": module_khong_khoa("xss-gia", XSS_TEN, "ai", "xss", mo_ta="<b>đậm</b><script>window.__xss=6</script>")}
     with loi_that(tmp_path, monkeypatch, modules=mods) as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("xss-gia"), mo_ta="ô xss")
         trang.bam(o("xss-gia"))
@@ -1302,10 +1294,6 @@ def test_chi_tiet_khong_chen_html_va_401(trang, tmp_path, monkeypatch):
         # Esc đóng bảng chi tiết, focus về ô.
         trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
         trang.cho("!document.getElementById('chi-tiet') && document.activeElement?.dataset.o === 'xss-gia'", mo_ta="đóng + focus")
-        # Khoá sai → báo ngay ở khối khoá.
-        luu_khoa(trang, "khoa-sai-0000000000000000")
-        trang.cho("document.getElementById('khoa-loi')", han=10, mo_ta="báo 401")
-        assert "401" in trang.chu("#khoa-loi")
 
 
 # ───────────── điện thoại 390px, ô bằng nhau ─────────────
@@ -1319,6 +1307,7 @@ def test_khong_tran_ngang_va_o_cao_bang_nhau(trang, tmp_path, monkeypatch, rong,
     with loi_that(tmp_path, monkeypatch, modules=mods) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
         trang.khung(rong, cao, dt)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
         # Chip lọc loại chỉ có khi đã đọc xong danh sách module (lõi rỗng thì không có hàng chip loại).
         trang.cho("document.querySelector('[data-loc-loai=\"tat-ca\"]')", mo_ta="chip loại")
@@ -1352,6 +1341,7 @@ def test_moc_1023_thanh_dieu_huong_va_noi_dung_cung_moc(trang, tmp_path, monkeyp
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT]})
         trang.khung(rong, 800)
+        dang_nhap_quan_tri(trang, w.url)
         for duong in ("/He-thong.dc.html", "/He-thong-AI.dc.html"):
             trang.di(w.url + duong)
             trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang'", mo_ta=duong)
@@ -1366,8 +1356,8 @@ def test_go_tren_o_bam_hai_lan(trang, tmp_path, monkeypatch):
     """Biểu tượng xoá trên ô (như dòng Tiện ích của demo): lần đầu chỉ đổi nền đỏ nhạt và báo «bấm lần nữa», lần hai mới gỡ."""
     with loi_that(tmp_path, monkeypatch, modules={"mang-gia": module_mang()}) as w:
         lien_ket(w, "mang-gia")
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
         trang.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
         xoa = "document.querySelector('[data-go-o=\"mang-gia\"]')"
         trang.cho(xoa, han=15, mo_ta="biểu tượng xoá trên ô")
@@ -1394,8 +1384,8 @@ def test_ban_moi_tren_git_hien_cap_nhat(trang, tmp_path, monkeypatch):
         tep["manifest.json"] = json.dumps(m, ensure_ascii=False).encode()
         w.gh.day(tep_kho({"ai-gia": tep}), thong_diep="ai-gia 1.1.0")
         assert httpx.put(f"{w.url}/api/nguon-git", headers=QT, json={}).status_code == 200   # thăm dò ngay
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
         trang.cho(o("ai-gia") + "?.dataset.tt === 'ban-moi'", han=15, mo_ta="ô «Có bản mới»")
         trang.bam(o("ai-gia"))
         trang.cho("document.getElementById('nut-cai')", mo_ta="nút")
@@ -1416,8 +1406,8 @@ def test_them_module_tu_xa_va_nguon_git_qua_giao_dien(trang, tmp_path, monkeypat
     gh.day(tep_kho({"mang-gia": module_mang()}))
     with MayChuThat(o_gia.app) as s_o, MayChuThat(gh.app) as s_gh, loi_that(tmp_path, monkeypatch) as w:
         monkeypatch.setenv("WEB2API_GITHUB_API", s_gh.url)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        luu_khoa(trang)
         trang.js("window.__khongTaiLai = 1")
         trang.bam("document.getElementById('o-them')")
         trang.cho("document.getElementById('tu-xa')", mo_ta="khối Từ xa")

@@ -191,8 +191,6 @@ main.pg{padding:12px 16px 24px}
 
 <sc-if value="{{ct.laThem}}">
 <div class="chi-tiet-dau"><h2 id="chi-tiet-ten" tabindex="-1">Thêm module</h2><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
-<sc-if value="{{khongKhoa}}"><p class="rong">Dán khoá quản trị ở khối «Khoá quản trị» để thêm module.</p></sc-if>
-<sc-if value="{{coKhoa}}">
 <section class="muc-ct" id="nguon-git" aria-labelledby="h-ng">
 <h3 id="h-ng">Từ git</h3>
 <p class="phu">web2api tự kiểm repo theo chu kỳ; module trên git hiện ở lưới với trạng thái «Chưa cài» để bạn bấm cài.</p>
@@ -230,7 +228,6 @@ main.pg{padding:12px 16px 24px}
 <div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" disabled="{{dangTx}}">{{nhanTx}}</button></div>
 </form>
 </section>
-</sc-if>
 </sc-if>
 
 <sc-if value="{{ct.laModule}}">

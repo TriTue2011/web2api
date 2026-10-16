@@ -16,7 +16,7 @@ from app import so_module
 from app.main import app
 from gia import MayChuThat, ghi_thu_muc
 from test_antigravity_module import KHOA_CAU_NOI, CauNoiGia
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 
 pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 
@@ -37,11 +37,6 @@ def o(id_: str) -> str:
     return f"document.querySelector('[data-o={json.dumps(id_)}]')"
 
 
-def luu_khoa(trang):
-    trang.go("#o-khoa", KHOA_QT)
-    trang.bam("document.getElementById('nut-luu-khoa')")
-
-
 @pytest.fixture
 def loi(tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
@@ -56,6 +51,7 @@ def test_o_module_antigravity_hien_tren_trang_he_thong(loi, trang):
     """Đã cài, chưa liên kết: ô `antigravity` có trên lưới, trạng thái «chờ khoá»; `#module-antigravity` mở bảng chi
     tiết của CHÍNH module đó với tên, khả năng và phần «Cần gì để chạy» lấy từ manifest."""
     manifest = json.loads((THU_MUC_ANTIGRAVITY / "manifest.json").read_text(encoding="utf-8"))
+    dang_nhap_quan_tri(trang, loi.url)
     trang.di(f"{loi.url}/He-thong.dc.html#module-antigravity")
     trang.cho(o("antigravity"), han=15, mo_ta="ô module antigravity")
     assert trang.js(o("antigravity") + ".dataset.tt") == "cho-khoa"
@@ -70,8 +66,8 @@ def test_cau_hinh_antigravity_qua_giao_dien(loi, trang, tmp_path):
     liên kết xong; khoá cầu nối không còn trong DOM hay state của trang, chỉ nằm ở kho bí mật."""
     cn = CauNoiGia()
     with MayChuThat(cn.app) as cau_noi:
+        dang_nhap_quan_tri(trang, loi.url)
         trang.di(f"{loi.url}/He-thong.dc.html#module-antigravity")
-        luu_khoa(trang)
         o_dia_chi = "#chi-tiet [data-truong='dia_chi_cau_noi'] input[data-kieu='chuoi']"
         o_khoa = "#chi-tiet [data-truong='khoa_cau_noi'] input[type='password']"
         trang.cho(f"!!document.querySelector({json.dumps(o_dia_chi)}) && !!document.querySelector({json.dumps(o_khoa)})",

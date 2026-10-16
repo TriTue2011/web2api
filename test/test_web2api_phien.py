@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 from app import khoa_khach, nhat_ky, phien, so_module
 from app.main import app
 from gia import MayChuThat
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
 
 KHOA_QT = "khoa-quan-tri-phien-0123456789ab"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -373,6 +373,7 @@ def test_loi_chay_binh_thuong_khi_khong_co_phien(du_lieu):
 def test_giao_dien_canh_bao_can_dang_nhap(du_lieu, trang):
     """Chrome thật: phiên hết hạn thì trang Module hiện «n tài khoản cần đăng nhập lại»; không có phiên thì dòng này KHÔNG có."""
     with MayChuThat(app, lifespan="on") as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong.dc.html")
         trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang'", mo_ta="trang dựng xong")
         assert trang.js("document.getElementById('can-dang-nhap-canh-bao') === null"), "chưa có phiên nào: không được hiện cảnh báo"

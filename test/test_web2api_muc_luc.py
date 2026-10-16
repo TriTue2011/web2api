@@ -29,7 +29,7 @@ from app import so_module
 from app.main import app
 from app.so_module import SoModule
 from gia import ghi_thu_muc
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture Chrome dùng chung của kho
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture Chrome dùng chung của kho
 
 KHOA_QT = "khoa-quan-tri-test-muc-luc-0123456789ab"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -569,7 +569,7 @@ def test_7_giao_dien_chrome_muc_luc(trang, tmp_path, monkeypatch):
     ghi_thu_muc(mod_path, mau_module_muc_luc("mod-chrome-ml", "mcml", co_muc_luc=True))
 
     with MayChuThat(app, lifespan="on") as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong.dc.html")
-        trang.go("#o-khoa", KHOA_QT) if trang.js("!!document.getElementById('o-khoa')") else None
         trang.cho("document.querySelector('[data-o=\"mod-chrome-ml\"]') !== null", han=15, mo_ta="ô module mục lục")
         assert "Module mod-chrome-ml" in trang.js("document.querySelector('[data-o=\"mod-chrome-ml\"]').innerText")

@@ -20,7 +20,7 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import MayChuThat
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 
 pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 
@@ -42,14 +42,10 @@ def test_giao_dien_bao_mat_tao_va_quan_ly_khoa_1280(trang, tmp_path, monkeypatch
     """Máy tính 1280x800: Lưu khoá quản trị, tạo khoá khách, bật/tắt và thu hồi."""
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(1280, 800)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
 
-        # 1. Ban đầu chưa dán khoá: hiện khối nhập khoá quản trị
-        assert trang.cho("document.getElementById('khoa-quan-tri') !== null")
-        trang.go("#o-khoa", KHOA_QT)
-        trang.bam("document.getElementById('nut-luu-khoa')")
-
-        # 2. Đã dán khoá: hiện form tạo khoá và danh sách
+        # Đã đăng nhập quản trị: hiện form tạo khoá và danh sách
         assert trang.cho("document.getElementById('tao-khoa') !== null")
         assert trang.cho("document.getElementById('danh-sach-khoa') !== null")
 
@@ -88,11 +84,8 @@ def test_giao_dien_bao_mat_dien_thoai_390(trang, tmp_path, monkeypatch):
     """Điện thoại 390x844: Không tràn ngang, thanh điều hướng dưới."""
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(390, 844)
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
-
-        # Nhập khoá
-        trang.go("#o-khoa", KHOA_QT)
-        trang.bam("document.getElementById('nut-luu-khoa')")
         trang.cho("document.getElementById('tao-khoa') !== null")
 
         # Kiểm tra không tràn ngang ở 390px

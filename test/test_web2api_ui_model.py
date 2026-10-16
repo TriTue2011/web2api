@@ -19,7 +19,7 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import MayChuThat, ghi_thu_muc
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 
 pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 
@@ -91,11 +91,6 @@ def _khoi_tao_loi(tmp_path, monkeypatch, modules: dict[str, dict[str, bytes]]):
         ghi_thu_muc(tmp_path / "modules" / id_, tep)
 
 
-def _luu_khoa_admin(trang):
-    trang.go("#o-khoa", KHOA_QT)
-    trang.bam("document.getElementById('nut-luu-khoa')")
-
-
 def test_ui_quan_ly_model_desktop_1280(trang, tmp_path, monkeypatch):
     """Màn hình máy tính 1280px: bật/tắt, đặt mặc định, chọn/bỏ chọn tất cả, lưu thay đổi."""
     _khoi_tao_loi(tmp_path, monkeypatch, {"ai-nhom-la": _module_co_nhom_la()})
@@ -106,8 +101,7 @@ def test_ui_quan_ly_model_desktop_1280(trang, tmp_path, monkeypatch):
 
         # Kích thước màn hình 1280
         trang.khung(1280, 800)
-        trang.di(w.url + "/He-thong.dc.html")
-        _luu_khoa_admin(trang)
+        dang_nhap_quan_tri(trang, w.url)
 
         # Mở trang Hệ thống → AI, tab Provider
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
@@ -185,8 +179,7 @@ def test_ui_quan_ly_model_mobile_390(trang, tmp_path, monkeypatch):
 
         # Kích thước màn hình di động 390
         trang.khung(390, 844, dien_thoai=True)
-        trang.di(w.url + "/He-thong.dc.html")
-        _luu_khoa_admin(trang)
+        dang_nhap_quan_tri(trang, w.url)
 
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
         trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'provider'", mo_ta="vào tab Provider di động")

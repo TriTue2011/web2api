@@ -182,3 +182,31 @@ def trang(trinh_duyet):
     yield t
     cdp.goi("Target.closeTarget", {"targetId": tid})
     cdp.goi("Target.disposeBrowserContext", {"browserContextId": ctx})
+
+
+def dang_nhap_quan_tri(
+    trang: Trang,
+    base_url: str,
+    ten: str = "admin_kiem_thu",
+    mat_khau: str = "MatKhauAdminBaoMat123456",
+) -> tuple[str, str]:
+    """Đăng nhập quản trị viên qua giao diện Dang-nhap.dc.html (phiên cookie w2a_phien)."""
+    import asyncio
+    from app import nguoi_dung
+
+    try:
+        asyncio.run(nguoi_dung.tao_nguoi_dung(vai="admin", ten_dang_nhap=ten, mat_khau=mat_khau))
+    except Exception:
+        # Bỏ qua nếu tài khoản admin đã có trong kho
+        pass
+
+    trang.di(f"{base_url}/Dang-nhap.dc.html")
+    trang.go("#o-ten", ten)
+    trang.go("#o-mat-khau", mat_khau)
+    trang.bam("document.getElementById('nut-dang-nhap')", mo_ta="Bấm nút đăng nhập")
+    trang.cho(
+        "!/(Dang-nhap|index)/.test(location.pathname) && (document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
+        mo_ta="Đăng nhập xong và trang đích dựng xong",
+    )
+    return ten, mat_khau
+
