@@ -461,7 +461,7 @@ def test_5_module_gia_nhung_xep_hang_tim_kiem_va_rrf(moi_truong, monkeypatch):
     # Kiểm tra trực tiếp 504 trong quy_trinh.chay
     monkeypatch.setenv("WEB2API_QUY_TRINH_GIAY", "0.0")
     with pytest.raises(quy_trinh.LoiQuyTrinh) as exc_info:
-        asyncio.run(quy_trinh.chay([{"ten": "tang_qua_han", "kha_nang": "cat"}], {}, so))
+        asyncio.run(quy_trinh.chay([{"ten": "tang_qua_han", "kha_nang": "cat"}], {}, so, danh_tinh={"loai": "quan_tri", "pham_vi": ["*"]}))
     assert exc_info.value.ma == 504
     assert exc_info.value.tang_loi == "tang_qua_han"
     monkeypatch.undo()
