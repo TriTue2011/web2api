@@ -469,6 +469,8 @@ Chuẩn `thiet_bi` hợp nhất việc điều khiển thực thể (đèn, côn
 
 Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Theo nguyên tắc đóng khi lỗi: nếu module không khai báo hoặc khai báo mức rủi ro không hợp lệ, lõi mặc định coi là `nguy_hiem` (module chủ động khai `doc`/`ghi` để hạ). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
 
+**Bus sự kiện SSE** (`GET /api/thiet-bi/su-kien` nghe, `POST /api/thiet-bi/su-kien` gửi) được bảo vệ theo SEC-003: phạm vi đã TÁCH — `thiet_bi:su_kien` là quyền GỬI, `thiet_bi:su_kien_doc` là quyền NGHE (tương thích: khoá có `*` hoặc `thiet_bi:su_kien` vẫn nghe được). Lõi đóng dấu trường `nguon` (danh tính người gửi) vào mọi sự kiện; sự kiện phải nhắm thực thể đang tồn tại trong danh mục lõi; `gia_tri` ≤ 4 KB sau serialize và độ sâu ≤ 4; sự kiện phê duyệt (`phe_duyet*`) chỉ phát tới quản trị. Vòng phát kiểm lại khoá mỗi 15 giây (`WEB2API_SSE_KIEM_LAI_KHOA_GIAY`); trần người nghe theo danh tính 8 (`WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH`) và toàn cục 256 (`WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC`) — vượt trả `429` kèm `Retry-After`.
+
 ```mermaid
 flowchart LR
   TC["Thực thể<br/>(id, loai, rui_ro)"] --> HD["Hành động<br/>(tinh_nang)"]

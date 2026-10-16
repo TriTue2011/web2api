@@ -6,6 +6,11 @@ Nguyên tắc:
 - Ghi đè mức độ rủi ro lưu tại <DATA>/thiet_bi.json (0600).
 - Hàng chờ phê duyệt cho hành động nguy hiểm lưu tại <DATA>/phe_duyet.json (0600), tự huỷ khi quá hạn.
 - Sự kiện hỗ trợ SSE một chiều cho quản trị và khoá khách có phạm vi thiet_bi:su_kien.
+- Phạm vi sự kiện đã TÁCH (NV29/SEC-003): `thiet_bi:su_kien` = quyền GỬI sự kiện (POST /api/thiet-bi/su-kien),
+  `thiet_bi:su_kien_doc` = quyền NGHE (GET /api/thiet-bi/su-kien). Tương thích: khoá có `*` hoặc
+  `thiet_bi:su_kien` vẫn nghe được.
+- Lõi đóng dấu trường `nguon` (danh tính người gửi) vào mọi sự kiện; người gửi không đặt được.
+  Sự kiện loại phê duyệt (`phe_duyet*`) chỉ phát tới quản trị.
 - Sổ nhật ký kênh `thiet_bi`: ghi nhận hành động, phê duyệt, từ chối; KHÔNG ghi khoá hay tham số bí mật.
 """
 
@@ -15,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import unicodedata
@@ -467,31 +473,196 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
     }
 
 
+# ───────────── Bảo vệ bus sự kiện SSE (NV29/SEC-003) ─────────────
+
+#: GỬI sự kiện: POST /api/thiet-bi/su-kien. NGHE sự kiện: GET /api/thiet-bi/su-kien.
+PHAM_VI_SU_KIEN_GUI = "thiet_bi:su_kien"
+PHAM_VI_SU_KIEN_NGHE = "thiet_bi:su_kien_doc"
+#: Mọi phạm vi được coi là «có quyền đọc» khi lọc phát (tương thích khoá cũ).
+CAC_PHAM_VI_NGHE = frozenset({PHAM_VI_SU_KIEN_NGHE, PHAM_VI_SU_KIEN_GUI, "*"})
+
+#: Mẫu định danh cho trường `loai` của sự kiện.
+MAU_LOAI_SU_KIEN = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+#: Trần kích thước `gia_tri` sau khi serialize JSON (byte).
+GIA_TRI_SU_KIEN_TOI_DA_BYTE = 4096
+#: Trần độ sâu lồng nhau của `gia_tri`.
+DO_SAU_GIA_TRI_TOI_DA = 4
+#: Các loại sự kiện phê duyệt: chỉ phát tới người nghe là quản trị.
+CAC_LOAI_PHE_DUYET = ("phe_duyet_moi", "phe_duyet_xong", "phe_duyet_tu_choi")
+#: Giá trị Retry-After (giây) khi vượt trần người nghe.
+RETRY_AFTER_NGHE_QUA_TRAN = 30
+
+
+def _so_nguyen_moi_truong(ten: str, mac_dinh: int) -> int:
+    try:
+        val = int(os.environ.get(ten, mac_dinh))
+        return val if val > 0 else mac_dinh
+    except (TypeError, ValueError):
+        return mac_dinh
+
+
+def nghe_toi_da_moi_danh_tinh() -> int:
+    """Trần người nghe SSE cho MỘT danh tính (mặc định 8, env WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH)."""
+    return _so_nguyen_moi_truong("WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH", 8)
+
+
+def nghe_toi_da_toan_cuc() -> int:
+    """Trần người nghe SSE TOÀN CỤC (mặc định 256, env WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC)."""
+    return _so_nguyen_moi_truong("WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC", 256)
+
+
+def chu_ky_kiem_lai_khoa_giay() -> float:
+    """Chu kỳ kiểm lại khoá trong vòng phát SSE (giây; mặc định 15, env WEB2API_SSE_KIEM_LAI_KHOA_GIAY)."""
+    try:
+        val = float(os.environ.get("WEB2API_SSE_KIEM_LAI_KHOA_GIAY", "15"))
+        if val != val:  # NaN
+            return 15.0
+        return min(max(val, 1.0), 300.0)
+    except (TypeError, ValueError):
+        return 15.0
+
+
+def nguon_cua_danh_tinh(danh_tinh: dict | None) -> str:
+    """Danh tính người gửi để LÕI đóng dấu trường `nguon` của sự kiện.
+
+    Quản trị → "quan_tri"; khoá khách → "khach:<id>"; còn lại → "khong_ro".
+    """
+    if not isinstance(danh_tinh, dict):
+        return "khong_ro"
+    if danh_tinh.get("loai") == "quan_tri":
+        return "quan_tri"
+    id_ = danh_tinh.get("id")
+    if danh_tinh.get("loai") == "khach" and id_:
+        return f"khach:{id_}"
+    return "khong_ro"
+
+
+def _do_sau_gia_tri(obj: Any, hien: int = 0) -> int:
+    if isinstance(obj, dict):
+        if not obj:
+            return hien + 1
+        return max(_do_sau_gia_tri(v, hien + 1) for v in obj.values())
+    if isinstance(obj, (list, tuple)):
+        if not obj:
+            return hien + 1
+        return max(_do_sau_gia_tri(v, hien + 1) for v in obj)
+    return hien
+
+
+def chuan_hoa_su_kien_thiet_bi(su_kien_tho: dict, nguon: str) -> dict:
+    """Kiểm tra sự kiện thiết bị do khách gửi và ĐÓNG DẤU trường `nguon` của lõi.
+
+    - Mọi trường `nguon` trong thân đều bị ghi đè bằng `nguon` do lõi truyền vào — người gửi
+      không đặt được.
+    - `id`/`thuc_the` bắt buộc; LƯU Ý: quy tắc «id phải nhắm thực thể đang tồn tại trong danh
+      mục lõi» do ĐƯỜNG GỌI kiểm (cần tra cứu bất đồng bộ), hàm này không kiểm tồn tại.
+    - `loai` khớp ^[A-Za-z0-9_.:-]{1,64}$ (mặc định "trang_thai").
+    - `gia_tri` phải serialize được thành JSON, ≤ 4096 byte sau serialize, độ sâu lồng ≤ 4.
+
+    Ném LoiOpenAI 400/413 khi không hợp lệ. Trả dict sự kiện mới (không sửa dict gốc).
+    """
+    if not isinstance(su_kien_tho, dict):
+        raise LoiOpenAI(400, "Thân sự kiện phải là đối tượng JSON", code="invalid_request")
+    e_id = su_kien_tho.get("id") or su_kien_tho.get("thuc_the")
+    if not isinstance(e_id, str) or not e_id.strip():
+        raise LoiOpenAI(400, "Thiếu hoặc sai trường «id»", code="invalid_request")
+    loai = su_kien_tho.get("loai") or "trang_thai"
+    if not isinstance(loai, str) or not MAU_LOAI_SU_KIEN.fullmatch(loai):
+        raise LoiOpenAI(
+            400,
+            "Trường «loai» không hợp lệ (mẫu: ^[A-Za-z0-9_.:-]{1,64}$)",
+            code="invalid_request",
+        )
+    gia_tri = su_kien_tho.get("gia_tri")
+    try:
+        van_ban = json.dumps(gia_tri, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        raise LoiOpenAI(400, "Trường «gia_tri» không serialize được thành JSON",
+                        code="invalid_request") from None
+    if len(van_ban.encode("utf-8")) > GIA_TRI_SU_KIEN_TOI_DA_BYTE:
+        raise LoiOpenAI(
+            413,
+            f"Trường «gia_tri» vượt trần {GIA_TRI_SU_KIEN_TOI_DA_BYTE} byte",
+            code="payload_too_large",
+        )
+    if _do_sau_gia_tri(gia_tri) > DO_SAU_GIA_TRI_TOI_DA:
+        raise LoiOpenAI(
+            400,
+            f"Trường «gia_tri» lồng quá sâu (tối đa {DO_SAU_GIA_TRI_TOI_DA})",
+            code="invalid_request",
+        )
+    return {
+        "id": e_id.strip(),
+        "thuc_the": e_id.strip(),
+        "loai": loai,
+        "gia_tri": gia_tri,
+        "nguon": nguon,  # lõi đóng dấu — ghi đè mọi giá trị người gửi đặt
+    }
+
+
 # ───────────── Phát sự kiện SSE ─────────────
 
 class BoPhatSuKienThietBi:
-    """Bộ phân phối sự kiện SSE cho các client đang kết nối."""
+    """Bộ phân phối sự kiện SSE cho các client đang kết nối — có lọc theo danh tính (SEC-003)."""
 
     def __init__(self):
-        self._nghe: set[asyncio.Queue] = set()
+        self._nghe: list[dict] = []  # mỗi mục: {"q", "loai", "id", "pham_vi"}
         self._khoa = asyncio.Lock()
 
-    async def dang_ky(self) -> asyncio.Queue:
+    def _so_nghe_cua_danh_tinh(self, loai: str, id_: str) -> int:
+        return sum(1 for n in self._nghe if n["loai"] == loai and n["id"] == id_)
+
+    async def dang_ky(
+        self,
+        loai: str = "quan_tri",
+        id_: str = "quan_tri",
+        pham_vi: Any = (),
+    ) -> asyncio.Queue:
+        """Đăng ký một người nghe kèm danh tính. Vượt trần (theo danh tính hoặc toàn cục)
+        → LoiOpenAI 429 kèm Retry-After."""
         q: asyncio.Queue = asyncio.Queue(maxsize=100)
         async with self._khoa:
-            self._nghe.add(q)
+            if len(self._nghe) >= nghe_toi_da_toan_cuc():
+                raise LoiOpenAI(
+                    429,
+                    "Quá nhiều người nghe sự kiện, thử lại sau.",
+                    code="too_many_listeners",
+                    headers={"Retry-After": str(RETRY_AFTER_NGHE_QUA_TRAN)},
+                )
+            if self._so_nghe_cua_danh_tinh(loai, id_) >= nghe_toi_da_moi_danh_tinh():
+                raise LoiOpenAI(
+                    429,
+                    "Danh tính này đã mở quá nhiều luồng nghe sự kiện, thử lại sau.",
+                    code="too_many_listeners",
+                    headers={"Retry-After": str(RETRY_AFTER_NGHE_QUA_TRAN)},
+                )
+            try:
+                cac_pham_vi = frozenset(pham_vi or ())
+            except TypeError:
+                cac_pham_vi = frozenset()
+            self._nghe.append({"q": q, "loai": loai, "id": id_, "pham_vi": cac_pham_vi})
         return q
 
     async def huy(self, q: asyncio.Queue) -> None:
         async with self._khoa:
-            self._nghe.discard(q)
+            self._nghe = [n for n in self._nghe if n["q"] is not q]
+
+    @staticmethod
+    def _duoc_nhan(nghe: dict, su_kien: dict) -> bool:
+        """Lọc phát theo danh tính (SEC-003):
+        - sự kiện phê duyệt (loai phe_duyet*) → CHỈ quản trị;
+        - sự kiện thường → người nghe có phạm vi đọc (su_kien_doc; tương thích: su_kien hoặc *)."""
+        loai = su_kien.get("loai") if isinstance(su_kien, dict) else None
+        if isinstance(loai, str) and (loai in CAC_LOAI_PHE_DUYET or loai.startswith("phe_duyet")):
+            return nghe.get("loai") == "quan_tri"
+        return bool(nghe.get("pham_vi", frozenset()) & CAC_PHAM_VI_NGHE)
 
     async def phat(self, su_kien: dict) -> None:
         async with self._khoa:
-            cac_q = list(self._nghe)
-        for q in cac_q:
+            cac_nghe = [n for n in self._nghe if self._duoc_nhan(n, su_kien)]
+        for nghe in cac_nghe:
             try:
-                q.put_nowait(su_kien)
+                nghe["q"].put_nowait(su_kien)
             except asyncio.QueueFull:
                 pass
 

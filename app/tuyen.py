@@ -1592,18 +1592,37 @@ async def lay_thiet_bi(
 
 @thiet_bi.get("/su-kien")
 async def sse_su_kien_thiet_bi(request: Request):
-    kiem_tra_pham_vi(request, "thiet_bi:su_kien")
-    q = await thiet_bi_mod.BO_PHAT.dang_ky()
+    # NGHE sự kiện cần phạm vi thiet_bi:su_kien_doc; tương thích: khoá có "*" hoặc
+    # thiet_bi:su_kien (cũ, trước NV29) vẫn nghe được — ghi trong THAM-CHIEU.
+    kiem_tra_pham_vi(request, "thiet_bi:su_kien_doc", "thiet_bi:su_kien")
+    danh_tinh = getattr(request.state, "danh_tinh", None) or {}
+    q = await thiet_bi_mod.BO_PHAT.dang_ky(
+        loai=str(danh_tinh.get("loai", "khach")),
+        id_=str(danh_tinh.get("id", "khong_ro")),
+        pham_vi=danh_tinh.get("pham_vi", ()),
+    )
 
     async def phat_dong():
+        chu_ky = thiet_bi_mod.chu_ky_kiem_lai_khoa_giay()
         try:
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    su_kien = await asyncio.wait_for(q.get(), timeout=15.0)
+                    su_kien = await asyncio.wait_for(q.get(), timeout=chu_ky)
                     yield f"data: {json.dumps(su_kien, ensure_ascii=False)}\n\n".encode("utf-8")
                 except asyncio.TimeoutError:
+                    # SEC-003: kiểm lại khoá mỗi chu kỳ bằng cùng hàm xác thực.
+                    # Khoá bị tắt/thu hồi/hết hạn (hoặc IP bị khoá) → đóng luồng, không gửi thêm.
+                    try:
+                        try:
+                            del request.state.danh_tinh  # bỏ danh tính đã lưu để xác thực lại từ đầu
+                        except (AttributeError, KeyError):
+                            # starlette ≥1.7: State.__delattr__ ném KeyError khi thiếu
+                            pass
+                        await xac_thuc.nguoi_goi(request)
+                    except LoiOpenAI:
+                        break
                     yield b": giu_ket_noi\n\n"
         finally:
             await thiet_bi_mod.BO_PHAT.huy(q)
@@ -1621,18 +1640,22 @@ async def sse_su_kien_thiet_bi(request: Request):
 
 @thiet_bi.post("/su-kien")
 async def bao_su_kien_thiet_bi(request: Request):
+    # GỬI sự kiện giữ phạm vi thiet_bi:su_kien (quyền NGHE đã tách sang thiet_bi:su_kien_doc).
     kiem_tra_pham_vi(request, "thiet_bi:su_kien")
+    # V1_AUTH đã xác thực: nguoi_goi trả danh tính đã lưu, không tính lại.
+    danh_tinh = await xac_thuc.nguoi_goi(request)
+    nguon = thiet_bi_mod.nguon_cua_danh_tinh(danh_tinh)
     than = await _than_json(request)
-    e_id = than.get("id") or than.get("thuc_the")
-    if not isinstance(e_id, str) or not e_id.strip():
-        raise LoiOpenAI(400, "Thiếu hoặc sai trường «id»")
-    sk = {
-        "id": e_id.strip(),
-        "thuc_the": e_id.strip(),
-        "loai": str(than.get("loai") or "trang_thai"),
-        "gia_tri": than.get("gia_tri"),
-        "luc": kho.bay_gio_iso(),
-    }
+    # SEC-003: lõi kiểm tra + đóng dấu. Quy tắc tối thiểu: sự kiện phải nhắm thực thể
+    # đang tồn tại trong danh mục lõi (không có quan hệ sở hữu khoá↔thực thể trong lõi).
+    sk = thiet_bi_mod.chuan_hoa_su_kien_thiet_bi(than, nguon=nguon)
+    if await thiet_bi_mod.lay_mot_thuc_the(sk["thuc_the"], _so(request)) is None:
+        raise LoiOpenAI(
+            404,
+            f"Thực thể «{sk['thuc_the']}» không tồn tại trong danh mục lõi",
+            code="not_found",
+        )
+    sk["luc"] = kho.bay_gio_iso()
     await thiet_bi_mod.BO_PHAT.phat(sk)
     return {"ok": True}
 

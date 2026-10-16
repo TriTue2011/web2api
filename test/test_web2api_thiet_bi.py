@@ -498,6 +498,12 @@ def test_9_sse_su_kien_thiet_bi(moi_truong):
     """Điểm 9: Luồng SSE tiếp nhận và phát sự kiện thiết bị."""
     client, data_dir, so = moi_truong
 
+    # NV29/SEC-003: sự kiện phải nhắm thực thể đang tồn tại trong danh mục lõi → nạp module mẫu trước.
+    mod_path = data_dir / "modules" / "thiet-bi-gia"
+    ghi_thu_muc(mod_path, mau_module_thiet_bi("thiet-bi-gia", "tbgia"))
+    client.post("/api/modules/nap-lai", headers=QT)
+    client.post("/api/modules/thiet-bi-gia/cai", headers=QT, json={"cau_hinh": {}})
+
     # Tạo khoá khách có phạm vi thiet_bi:su_kien
     r_tao = client.post(
         "/api/khoa-khach",

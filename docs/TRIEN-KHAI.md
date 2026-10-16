@@ -218,14 +218,34 @@ compose cố ý không đặt mạng `internal`. Một trang độc/quảng cáo
 duyệt có thể gọi `http://<IP-LAN>:3030/` (Home Assistant, router, gateway Docker...)
 ngay từ TRONG mạng nhà. Chính sách Chromium chỉ chặn `file://`, không chặn theo IP.
 
-**Giải pháp:** luật iptables/ip6tables của MÁY CHỦ trong chuỗi `DOCKER-USER`, chặn theo
-DẢI ĐỊA CHỈ (không theo tên miền — không có danh sách trang nào để duy trì):
-- Chặn (REJECT): ba dải riêng tư của RFC 1918, dải link-local IPv4, dải CGNAT (RFC 6598), dải loopback
-  IPv4, và IPv6 ULA, link-local, loopback (danh sách CIDR đầy đủ nằm ở đầu `scripts/chan-lan-trinh-duyet.sh`).
-- Ngoại lệ (đứng TRƯỚC mọi luật chặn): lưu lượng trong chính mạng của dịch vụ
-  (lõi web2api được nối vào mạng này bằng `docker network connect`; docker-compose.yml
-  của dịch vụ chỉ có MỘT service nên không còn dịch vụ phụ nào khác cần ngoại lệ)
-  và DNS cổng 53 tới gateway của mạng Docker.
+**Giải pháp:** luật iptables/ip6tables của MÁY CHỦ trong HAI chuỗi, chặn theo
+DẢI ĐỊA CHỈ / GIAO DIỆN CẦU (không theo tên miền — không có danh sách trang nào
+để duy trì):
+
+- **Chuỗi `DOCKER-USER`** — lưu lượng container → mạng KHÁC (đi qua FORWARD).
+  Chặn (REJECT) các dải riêng tư (RFC 1918), link-local (RFC 3927), CGNAT
+  (RFC 6598) và loopback — danh sách đầy đủ trong `DAI_CHAN_V4`/`DAI_CHAN_V6`
+  của `scripts/chan-lan-trinh-duyet.sh`, không ghi lại ở đây để tránh lệch.
+  Ngoại lệ (đứng TRƯỚC mọi luật chặn): lưu lượng trong chính mạng của dịch vụ
+  (lõi web2api được nối vào mạng này bằng `docker network connect`;
+  docker-compose.yml của dịch vụ chỉ có MỘT service nên không còn dịch vụ phụ
+  nào khác cần ngoại lệ) và DNS cổng 53 tới gateway của mạng Docker.
+- **Chuỗi `INPUT`** (bổ sung NV30) — lưu lượng container → CHÍNH MÁY CHỦ.
+  Đường này KHÔNG đi qua `DOCKER-USER`: các cổng 3030/3031/22/8099… nghe
+  `0.0.0.0` và IP gateway của mạng Docker đều tới được từ container nếu chỉ
+  chặn ở `DOCKER-USER`. Luật gắn theo giao diện cầu `-i <cầu>` của mạng
+  `web2api-trinh-duyet` (lấy tên cầu từ `docker network inspect`: Options
+  `com.docker.network.bridge.name`, nếu trống thì `br-`<12 ký tự đầu của Id
+  mạng>; không hard-code):
+  1. `ACCEPT` lưu lượng `ESTABLISHED,RELATED` từ cầu (trả về của kết nối do
+     máy chủ khởi tạo) — đứng trước mọi luật chặn;
+  2. `ACCEPT` UDP/TCP cổng 53 tới gateway của mạng Docker;
+  3. `REJECT` mọi còn lại từ cầu tới máy chủ.
+  Luật chèn đầu chuỗi (`-I`) để đứng trước mọi luật cho phép khác có sẵn.
+- Vì sao container vẫn nói chuyện được với lõi web2api: lõi được nối vào CHÍNH
+  mạng này nên container↔container đi qua cầu ở tầng L2, KHÔNG vào chuỗi INPUT
+  của máy chủ. Luật INPUT chỉ gắn `-i <cầu>` nên không chạm lưu lượng trên các
+  giao diện khác của máy chủ.
 - Mọi luật gắn nhãn comment `web2api-trinh-duyet`; dải mạng Docker lấy từ
   `docker network inspect web2api-trinh-duyet`, không hard-code.
 
@@ -240,15 +260,25 @@ sudo ./scripts/chan-lan-trinh-duyet.sh
 `./scripts/chan-lan-trinh-duyet.sh --dry-run`.
 
 **Kiểm bằng một lệnh curl từ trong container** (phải BỊ TỪ CHỐI, curl thoát mã lỗi
-khác 0, không phải HTTP 200):
+khác 0, không phải HTTP 200) — gồm cả đường tới mạng LAN và đường tới CHÍNH
+MÁY CHỦ (qua IP gateway của mạng Docker; `<IP-gateway>` lấy từ
+`docker network inspect web2api-trinh-duyet`, ví dụ `192.0.2.1` chỉ là ví dụ
+minh hoạ, KHÔNG phải IP thật):
 
 ```bash
 docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://192.0.2.1:3030/ ; echo "curl exit=$?"
 docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://198.51.100.1/ ; echo "curl exit=$?"
+<<<<<<< ours
+=======
+GW=$(docker network inspect web2api-trinh-duyet -f '{{(index .IPAM.Config 0).Gateway}}')
+docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://$GW:3031/ ; echo "curl exit=$? (tới chính máy chủ qua gateway)"
+>>>>>>> theirs
 ```
+(Địa chỉ `192.0.2.1`, `198.51.100.1` thuộc dải tài liệu RFC 5737, chỉ là ví dụ
+minh hoạ — thay bằng IP LAN thật khi kiểm trên máy của bạn.)
 
 **Gỡ:** `sudo ./scripts/chan-lan-trinh-duyet.sh --go` — chỉ gỡ đúng các luật có nhãn
-`web2api-trinh-duyet`, không đụng luật khác.
+`web2api-trinh-duyet` (cả hai chuỗi DOCKER-USER và INPUT), không đụng luật khác.
 
 **CẢNH BÁO — luật mất khi khởi động lại:** luật iptables không lưu trữ; khởi động lại
 máy hoặc `systemctl restart docker` là mất. Gắn vào systemd để tự cài lại sau khi
@@ -274,10 +304,21 @@ WantedBy=multi-user.target
 sudo systemctl enable --now chan-lan-trinh-duyet.service
 ```
 
+<<<<<<< ours
 **Giới hạn đã biết:**
 - Lưu lượng từ container tới CHÍNH MÁY CHỦ (ví dụ tới `<IP-máy-chủ>:3030`) đi qua
   chuỗi `INPUT` của máy chủ, không qua `DOCKER-USER` — nếu một dịch vụ trên máy chủ
   lắng nghe `0.0.0.0` thì cần thêm luật `INPUT -i <cầu của mạng>` riêng.
+=======
+**Trạng thái kiểm chứng:**
+- Test tĩnh: `test/test_web2api_nv27_chan_lan.py` (16 test) và
+  `test/test_web2api_nv30_chan_lan_input.py` (13 test) — chạy bằng lệnh
+  `docker`/`iptables` GIẢ, không cần root. Đột biến xóa luật REJECT INPUT đã
+  được test bắt (đỏ).
+- **CHƯA kiểm thật trên máy chủ**: cần chạy trên máy chủ thật — cài luật bằng
+  `sudo`, kiểm `curl` từ trong container tới IP LAN và tới `$GW:3031` đều phải
+  bị từ chối, và gắn systemd để luật tự cài lại sau khi Docker lên.
+>>>>>>> theirs
 - Container dùng DNS `127.0.0.11` của Docker không đi qua `DOCKER-USER` (Docker chặn
   ngay trong netns của container); script vẫn dự phòng ngoại lệ DNS cổng 53 tới
   gateway đề phòng container dùng gateway làm trình phân giải.

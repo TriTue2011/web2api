@@ -13,6 +13,18 @@ Các khẳng định:
 - `--go` chỉ gỡ luật có nhãn, không đụng luật khác;
 - thiếu quyền (iptables -L hỏng) → thoát 2 với thông báo rõ ràng;
 - docker inspect hỏng → thoát 3 với thông báo rõ ràng.
+
+NV30 — bổ sung: chặn cả đường container -> CHÍNH MÁY CHỦ bằng luật chuỗi INPUT
+gắn theo giao diện cầu (-i <cầu>), không hard-code tên cầu (lấy từ
+`docker network inspect`: Options "com.docker.network.bridge.name", nếu không có
+thì br-<12 ký tự đầu của Id>). Các khẳng định thêm:
+- có luật INPUT -i <cầu>: ESTABLISHED,RELATED ACCEPT đứng TRƯỚC REJECT bắt tất cả;
+- ngoại lệ trong-mạng (lõi web2api nối vào cùng mạng) vẫn đứng trước mọi REJECT;
+- cài hai lần không nhân đôi luật INPUT (giả lập `iptables -I` chèn đầu);
+- `--go` gỡ cả luật INPUT có nhãn, không đụng luật khác;
+- không có tên cầu trong Options → dùng br-<12 ký tự đầu của Id>;
+- mạng bật IPv6 → có luật INPUT v6 tương ứng;
+- đột biến xóa luật REJECT của INPUT → kiểm tra phát hiện (đỏ).
 """
 
 import os
@@ -36,22 +48,41 @@ DAI_PHAI_CHAN = [
 ]
 SUBNET_GIA = "172.21.0.0/16"
 GATEWAY_GIA = "172.21.0.1"
+CAU_GIA = "br-gia-nv30"
+ID_MANG_GIA = "a1b2c3d4e5f60718293a4b5c6d7e8f901234567890abcdef1234567890abcdef"
+CAU_FALLBACK = "br-" + ID_MANG_GIA[:12]
+SUBNET_V6_GIA = "fd00:dead:beef::/64"
+GATEWAY_V6_GIA = "fd00:dead:beef::1"
 
 DOCKER_GIA = """#!/usr/bin/env python3
 # docker GIẢ: chỉ phục vụ `docker network inspect <ten> -f ...`
+# In 7 trường: subnet|gateway|enableIPv6|id|bridge.name|subnet6|gateway6
+# NV30_DOCKER_KHONG_CO_TEN_CAU=1  -> trường bridge.name rỗng (kiểm fallback)
+# NV30_DOCKER_IPV6=1              -> bật IPv6, có subnet/gateway v6
 import os, sys
 that_bai = os.environ.get("NV27_DOCKER_THAT_BAI") == "1"
 if sys.argv[1:3] == ["network", "inspect"] and not that_bai:
-    print("%s|%s|false")
+    khong_ten_cau = os.environ.get("NV30_DOCKER_KHONG_CO_TEN_CAU") == "1"
+    ipv6 = os.environ.get("NV30_DOCKER_IPV6") == "1"
+    print("|".join([
+        "%(subnet)s", "%(gateway)s", "true" if ipv6 else "false",
+        "%(id)s", "" if khong_ten_cau else "%(cau)s",
+        "%(subnet6)s" if ipv6 else "<no value>",
+        "%(gateway6)s" if ipv6 else "<no value>",
+    ]))
     sys.exit(0)
 sys.exit(1)
-""" % (SUBNET_GIA, GATEWAY_GIA)
+""" % {
+    "subnet": SUBNET_GIA, "gateway": GATEWAY_GIA, "id": ID_MANG_GIA,
+    "cau": CAU_GIA, "subnet6": SUBNET_V6_GIA, "gateway6": GATEWAY_V6_GIA,
+}
 
 IPTABLES_GIA = """#!/usr/bin/env python3
 # iptables/ip6tables GIẢ: giữ "luật" trong tệp trạng thái, ghi mọi lệnh vào nhật ký.
 # Hỗ trợ: -L CHAIN -n (0, hoặc 1 nếu NV27_IPTABLES_CAM=1),
 #          -C CHAIN <spec...> (0 nếu spec đã có, 1 nếu chưa),
-#          -A CHAIN <spec...> (thêm nếu chưa có),
+#          -A CHAIN <spec...> (thêm vào cuối nếu chưa có),
+#          -I CHAIN <spec...> (chèn vào đầu nếu chưa có),
 #          -D CHAIN <spec...> (xóa; 1 nếu không có),
 #          -S CHAIN (in các dòng `-A CHAIN <spec>`).
 import os, sys
@@ -89,6 +120,11 @@ if lenh == "-A":
         ds.append(spec)
         ghi(ds)
     sys.exit(0)
+if lenh == "-I":
+    if spec not in ds:
+        ds.insert(0, spec)
+        ghi(ds)
+    sys.exit(0)
 if lenh == "-D":
     if spec not in ds:
         sys.exit(1)
@@ -120,6 +156,8 @@ def moi_truong_gia(tmp_path, monkeypatch):
     env["NV27_IPTABLES_LOG"] = str(nhat_ky)
     env.pop("NV27_DOCKER_THAT_BAI", None)
     env.pop("NV27_IPTABLES_CAM", None)
+    env.pop("NV30_DOCKER_KHONG_CO_TEN_CAU", None)
+    env.pop("NV30_DOCKER_IPV6", None)
     script = os.environ.get("NV27_SCRIPT", str(SCRIPT_MAC_DINH))
     return {
         "env": env,
@@ -151,20 +189,34 @@ def dong_nhat_ky(moi_truong_gia):
     return moi_truong_gia["nhat_ky"].read_text(encoding="utf-8").splitlines()
 
 
+def dong_dry_run(kq):
+    return [d for d in kq.stdout.splitlines() if d and not d.startswith("#")]
+
+
+def dong_input(dong_luat):
+    return [d for d in dong_luat if "INPUT" in d]
+
+
+def dong_docker_user(dong_luat):
+    return [d for d in dong_luat if "DOCKER-USER" in d]
+
+
+# ---------- NV27: các test cũ, giữ nguyên hành vi ----------
+
 def test_dry_run_co_du_luat_reject_cho_moi_dai(moi_truong_gia):
     kq = chay_script(moi_truong_gia, "--dry-run")
     assert kq.returncode == 0, kq.stderr
-    dong_luat = [d for d in kq.stdout.splitlines() if d and not d.startswith("#")]
+    dong_luat = dong_dry_run(kq)
     assert dong_luat, "dry-run phải in ra các lệnh"
     for dai in DAI_PHAI_CHAN:
-        khop = [d for d in dong_luat if dai in d and "REJECT" in d]
+        khop = [d for d in dong_docker_user(dong_luat) if dai in d and "REJECT" in d]
         assert khop, f"thiếu luật REJECT cho dải {dai}"
 
 
 def test_moi_luat_deu_gan_nhan(moi_truong_gia):
     kq = chay_script(moi_truong_gia, "--dry-run")
     assert kq.returncode == 0, kq.stderr
-    dong_luat = [d for d in kq.stdout.splitlines() if d and not d.startswith("#")]
+    dong_luat = dong_dry_run(kq)
     assert dong_luat
     for d in dong_luat:
         assert NHAN in d, f"luật thiếu nhãn `{NHAN}`: {d}"
@@ -173,7 +225,7 @@ def test_moi_luat_deu_gan_nhan(moi_truong_gia):
 def test_ngoai_le_dns_dung_truoc_luat_reject(moi_truong_gia):
     kq = chay_script(moi_truong_gia, "--dry-run")
     assert kq.returncode == 0, kq.stderr
-    dong_luat = [d for d in kq.stdout.splitlines() if d and not d.startswith("#")]
+    dong_luat = dong_docker_user(dong_dry_run(kq))
     vi_tri_dns = [i for i, d in enumerate(dong_luat) if "--dport 53" in d]
     vi_tri_reject = [i for i, d in enumerate(dong_luat) if "REJECT" in d]
     assert vi_tri_dns, "thiếu ngoại lệ DNS cổng 53"
@@ -196,10 +248,13 @@ def test_chay_hai_lan_khong_nhan_doi_luat(moi_truong_gia):
     ds = luat_trong_trang_thai(moi_truong_gia)
     assert len(ds) == so_luat_lan1, "chạy lần 2 sinh thêm luật trùng"
     assert len(set(ds)) == len(ds), "có luật trùng lặp trong trạng thái"
-    # Lần 2 không được gọi -A thêm lần nào (mọi luật đã có, -C đều trúng).
-    so_lan_append = sum(1 for d in dong_nhat_ky(moi_truong_gia) if d.startswith("-A "))
-    assert so_lan_append == so_luat_lan1, \
-        f"lần 2 vẫn gọi -A (tổng số lần -A trong nhật ký: {so_lan_append})"
+    # Lần 2 không được gọi -A/-I thêm lần nào (mọi luật đã có, -C đều trúng).
+    so_lan_them = sum(
+        1 for d in dong_nhat_ky(moi_truong_gia)
+        if d.startswith("-A ") or d.startswith("-I ")
+    )
+    assert so_lan_them == so_luat_lan1, \
+        f"lần 2 vẫn gọi -A/-I (tổng số lần thêm trong nhật ký: {so_lan_them})"
 
 
 def test_go_chi_go_luat_co_nhan(moi_truong_gia):
@@ -241,3 +296,138 @@ def test_docker_hong_thi_loi_ro_rang(moi_truong_gia):
     kq = chay_script(moi_truong_gia, "--dry-run")
     assert kq.returncode == 3, f"phải thoát 3 khi docker hỏng, được {kq.returncode}"
     assert "web2api-trinh-duyet" in kq.stderr, kq.stderr
+
+
+# ---------- NV30: luật INPUT theo giao diện cầu ----------
+
+def kiem_input_co_reject(dong_luat):
+    """Helper dùng chung: chuỗi INPUT phải có luật REJECT gắn theo giao diện cầu."""
+    khop = [d for d in dong_input(dong_luat) if "REJECT" in d]
+    assert khop, "thiếu luật REJECT cho chuỗi INPUT"
+    assert any("-i " in d for d in khop), "luật REJECT INPUT phải gắn theo giao diện cầu (-i)"
+
+
+def test_input_luat_gan_theo_giao_dien_cau(moi_truong_gia):
+    kq = chay_script(moi_truong_gia, "--dry-run")
+    assert kq.returncode == 0, kq.stderr
+    dong = dong_input(dong_dry_run(kq))
+    assert dong, "dry-run phải in các lệnh cho chuỗi INPUT"
+    for d in dong:
+        assert f"-i {CAU_GIA}" in d, f"luật INPUT phải gắn theo cầu {CAU_GIA}: {d}"
+        assert NHAN in d, f"luật INPUT thiếu nhãn `{NHAN}`: {d}"
+        assert "-I INPUT" in d, f"luật INPUT phải cài bằng -I (đầu chuỗi): {d}"
+    kiem_input_co_reject(dong_dry_run(kq))
+
+
+def test_input_established_dung_truoc_reject(moi_truong_gia):
+    kq = chay_script(moi_truong_gia, "--dry-run")
+    assert kq.returncode == 0, kq.stderr
+    dong = dong_input(dong_dry_run(kq))
+    vi_tri_est = [i for i, d in enumerate(dong) if "ESTABLISHED,RELATED" in d]
+    vi_tri_reject = [i for i, d in enumerate(dong) if "REJECT" in d]
+    assert vi_tri_est, "thiếu luật ACCEPT ESTABLISHED,RELATED cho INPUT"
+    assert vi_tri_reject, "thiếu luật REJECT cho INPUT"
+    assert max(vi_tri_est) < min(vi_tri_reject), \
+        "ESTABLISHED,RELATED phải đứng TRƯỚC REJECT trong chuỗi INPUT"
+    for i in vi_tri_est:
+        assert "-j ACCEPT" in dong[i]
+
+
+def test_ngoai_le_trong_mang_van_dung_truoc(moi_truong_gia):
+    # Lõi web2api nối vào cùng mạng -> lưu lượng trong cầu đi qua FORWARD,
+    # được ngoại lệ "trong mạng" của DOCKER-USER chấp nhận trước mọi luật chặn.
+    kq = chay_script(moi_truong_gia, "--dry-run")
+    assert kq.returncode == 0, kq.stderr
+    dong = dong_docker_user(dong_dry_run(kq))
+    ngoai_le = [d for d in dong
+                if f"-s {SUBNET_GIA}" in d and f"-d {SUBNET_GIA}" in d and "-j ACCEPT" in d]
+    assert ngoai_le, "thiếu ngoại lệ trong-mạng cho DOCKER-USER"
+    vi_tri_reject = [i for i, d in enumerate(dong) if "REJECT" in d]
+    assert vi_tri_reject, "thiếu luật REJECT"
+    assert dong.index(ngoai_le[0]) < min(vi_tri_reject), \
+        "ngoại lệ trong-mạng phải đứng TRƯỚC mọi luật REJECT"
+
+
+def test_input_idempotent_chen_dau_dung_thu_tu(moi_truong_gia):
+    lan1 = chay_script(moi_truong_gia)
+    assert lan1.returncode == 0, lan1.stderr
+    ds = luat_trong_trang_thai(moi_truong_gia)
+    luat_input = [d for d in ds if f"-i {CAU_GIA}" in d]
+    assert len(luat_input) == 4, f"phải có 4 luật INPUT v4, được {len(luat_input)}"
+    # Thứ tự trong trạng thái: -I chèn vào đầu theo thứ tự ngược -> cuối cùng
+    # ESTABLISHED đứng đầu, REJECT đứng cuối trong nhóm INPUT.
+    assert "ESTABLISHED,RELATED" in luat_input[0], luat_input
+    assert "REJECT" in luat_input[-1], luat_input
+    lan2 = chay_script(moi_truong_gia)
+    assert lan2.returncode == 0, lan2.stderr
+    ds2 = luat_trong_trang_thai(moi_truong_gia)
+    assert len(ds2) == len(ds), "chạy lần 2 sinh thêm luật INPUT trùng"
+    assert len(set(ds2)) == len(ds2)
+    so_lan_chen = sum(1 for d in dong_nhat_ky(moi_truong_gia) if d.startswith("-I "))
+    assert so_lan_chen == len(luat_input), \
+        f"lần 2 vẫn gọi -I (tổng số lần -I trong nhật ký: {so_lan_chen})"
+
+
+def test_go_go_ca_luat_input_co_nhan(moi_truong_gia):
+    cai = chay_script(moi_truong_gia)
+    assert cai.returncode == 0, cai.stderr
+    assert any(f"-i {CAU_GIA}" in d for d in luat_trong_trang_thai(moi_truong_gia))
+    luat_la = "-i eth0 -j ACCEPT"
+    with moi_truong_gia["trang_thai"].open("a", encoding="utf-8") as f:
+        f.write(luat_la + "\n")
+    go = chay_script(moi_truong_gia, "--go")
+    assert go.returncode == 0, go.stderr
+    ds = luat_trong_trang_thai(moi_truong_gia)
+    assert ds == [luat_la], f"--go chưa gỡ hết luật INPUT có nhãn hoặc đụng luật lạ: {ds}"
+
+
+def test_ten_cau_fallback_br_id(moi_truong_gia):
+    moi_truong_gia["env"]["NV30_DOCKER_KHONG_CO_TEN_CAU"] = "1"
+    kq = chay_script(moi_truong_gia, "--dry-run")
+    assert kq.returncode == 0, kq.stderr
+    dong = dong_input(dong_dry_run(kq))
+    assert dong, "thiếu luật INPUT khi không có tên cầu trong Options"
+    for d in dong:
+        assert f"-i {CAU_FALLBACK}" in d, \
+            f"phải fallback sang br-<12 ký tự đầu của Id> ({CAU_FALLBACK}): {d}"
+
+
+def test_ipv6_co_luat_input(moi_truong_gia):
+    moi_truong_gia["env"]["NV30_DOCKER_IPV6"] = "1"
+    kq = chay_script(moi_truong_gia, "--dry-run")
+    assert kq.returncode == 0, kq.stderr
+    dong = [d for d in dong_dry_run(kq) if d.startswith("ip6tables")]
+    assert dong, "mạng bật IPv6 phải sinh luật ip6tables"
+    dong_in6 = [d for d in dong if "INPUT" in d]
+    assert dong_in6, "thiếu luật INPUT cho IPv6"
+    for d in dong_in6:
+        assert f"-i {CAU_GIA}" in d and NHAN in d, f"luật INPUT v6 thiếu cầu/nhãn: {d}"
+    vi_tri_est = [i for i, d in enumerate(dong_in6) if "ESTABLISHED,RELATED" in d]
+    vi_tri_reject = [i for i, d in enumerate(dong_in6) if "REJECT" in d]
+    assert vi_tri_est and vi_tri_reject
+    assert max(vi_tri_est) < min(vi_tri_reject), \
+        "ESTABLISHED,RELATED v6 phải đứng TRƯỚC REJECT v6"
+
+
+def test_dot_bien_xoa_reject_input_phai_do(moi_truong_gia, tmp_path):
+    # Đột biến: xóa dòng sinh luật REJECT của INPUT (v4) khỏi bản sao script.
+    # Kiểm tra phải PHÁT HIỆN (đỏ) — tức helper khẳng định phải raise AssertionError.
+    ban_goc = Path(moi_truong_gia["script"]).read_text(encoding="utf-8")
+    ban_dot_bien = tmp_path / "chan-lan-dot-bien.sh"
+    giu = []
+    trong_vao_v4 = False
+    for d in ban_goc.splitlines(keepends=True):
+        if "sinh_luat_vao_v4() {" in d:
+            trong_vao_v4 = True
+        elif trong_vao_v4 and d.startswith("}"):
+            trong_vao_v4 = False
+        if trong_vao_v4 and "-j REJECT" in d:
+            continue  # đột biến: bỏ luật REJECT của INPUT
+        giu.append(d)
+    ban_dot_bien.write_text("".join(giu), encoding="utf-8")
+    ban_dot_bien.chmod(ban_dot_bien.stat().st_mode | stat.S_IXUSR)
+    moi_truong_gia["script"] = str(ban_dot_bien)
+    kq = chay_script(moi_truong_gia, "--dry-run")
+    assert kq.returncode == 0, kq.stderr  # script đột biến vẫn chạy êm
+    with pytest.raises(AssertionError):
+        kiem_input_co_reject(dong_dry_run(kq))
