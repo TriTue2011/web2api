@@ -112,16 +112,16 @@ Mọi đường vào khả năng (kể cả gọi nội bộ giữa các module)
 - **Vì sao**: Không có danh tính ở điểm gọi thì mọi kiểm tra phạm vi sau đó đều là đoán.
 - **Cách kiểm**: Gọi khả năng qua đường vòng (không qua hàm duy nhất) → không tới được module; gọi không danh tính → bị từ chối.
 
-### 3.2. Webhook chung — kế hoạch
+### 3.2. Webhook chung — có
 
-Lõi nhận webhook thay module: đọc thân tới **trần byte trước khi phân tích** (chống bom), **so sánh chữ ký hằng thời gian**, **chống phát lại theo id sự kiện**, **hạn dòng theo module** (429 khi vượt), và trả **một mã duy nhất cho mọi lý do sai** (không cho kẻ gửi biết mình sai ở đâu).
+Lõi nhận webhook thay module (`POST /api/webhook/{module}/{ma}`, NV31): đọc thân tới **trần byte trước khi phân tích** (chống bom — vượt trần → `413`, module không bị gọi), **xác thực bằng bí mật webhook** (`hmac.compare_digest` với bí mật đã cấu hình; tuỳ chọn **chữ ký HMAC trên thân** khi module khai `chu_ky: "header:TÊN"` + `thuat_toan: "hmac-sha256"`), **chống phát lại theo id sự kiện** (nhớ `(module, id)` 10 phút, tối đa 10000 id — trùng → `200` trống, không gọi module), **hạn dòng theo module** (mặc định 60 tin/phút) và **đồng thời** (mặc định 4 — vượt → `429` + `Retry-After`), **đếm sai xác thực theo IP** (sai nhiều → khoá IP như khi đoán Bearer), và trả **một mã `404` trống duy nhất cho mọi lý do sai** (module không có/không bật/không khai webhook, mã sai, bí mật sai, chữ ký sai — thời gian tương đương nhờ so với bí mật giả khi module không tồn tại). Thiếu cấu hình bí mật → `503` **đóng khi lỗi** (không có nhánh «chỉ một bot thì cho qua»). Nội dung tới module đóng dấu `nguon_ngoai: true` (không là chỉ thị); **nhật ký kênh `webhook` chỉ ghi module, mã kết quả, độ dài, id băm — không nội dung hay bí mật**.
 
 - **Vì sao**: Mỗi module tự làm webhook là mỗi module tự tạo một lỗ hổng khác nhau.
-- **Cách kiểm**: Gửi webhook sai ký/sai id/trùng id/vượt trần/vượt hạn dòng → cùng một mã, cùng thời gian phản hồi tương đương.
+- **Cách kiểm**: Gửi webhook sai bí mật/sai mã/module lạ → cùng một `404` trống; thiếu cấu hình → `503`; vượt trần → `413` (module không bị gọi); phát lại cùng id → module gọi đúng 1 lần; vượt hạn dòng → `429`; 31 bí mật sai từ một IP → khoá IP `429` kể cả khi sau đó gửi đúng; chữ ký HMAC sai → `404`.
 
-### 3.3. Gửi ra đích danh — kế hoạch
+### 3.3. Gửi ra đích danh — có
 
-Mọi tin gửi ra ngoài (kênh nhắn tin, email, webhook đi…) phải **nêu rõ kênh** khi có nhiều kênh, tuân **phạm vi riêng cho gửi ra** (khác phạm vi đọc), chịu **trần tin/phút**, và **sổ nhật ký không ghi nội dung tin**.
+Mọi tin gửi ra ngoài (kênh nhắn tin, email, webhook đi…) qua **một cửa duy nhất** của lõi `POST /api/gui/{module}`: phải **nêu rõ kênh** (`kenh_id` bắt buộc khi module có nhiều đích — không đoán «đích đầu danh sách»), tuân **phạm vi riêng cho gửi ra** (`gui:<module>`, khác phạm vi đọc/chat; id module có `-` thì mã phạm vi thay bằng `_`), chịu **trần tin/phút theo (khoá, module)** và **trần đồng thời toàn cục** (`429` + `Retry-After`), **trần nội dung** (`413`). Lõi **không tin `ok` của module** (kết quả phải là dict có `ok` là bool thật, sai → `502`); **lỗi thô của nhà cung cấp không lộ ra phản hồi**; **sổ nhật ký kênh `gui_ra` không ghi nội dung tin** — chỉ module, `kenh_id` đã băm, mã kết quả, độ dài.
 
 - **Vì sao**: Kênh gửi ra là đường rò rỉ dữ liệu và đường spam; nội dung tin trong sổ là mỏ vàng cho kẻ đọc được đĩa.
 - **Cách kiểm**: Gửi vượt trần → 429; đọc sổ → chỉ thấy «đã gửi tới kênh X lúc Y», không thấy nội dung.
