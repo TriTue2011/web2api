@@ -91,6 +91,10 @@ class LoiOpenAI(Exception):
     def status_code(self) -> int:
         return self.ma
 
+    @property
+    def code(self) -> Any:
+        return self.than.get("error", {}).get("code")
+
 
 async def xu_ly_loi_openai(_: Request, e: LoiOpenAI) -> JSONResponse:
     return JSONResponse(e.than, status_code=e.ma, headers=e.headers)

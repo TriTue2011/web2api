@@ -71,7 +71,29 @@ Mỗi thực thể do module trả về phải có cấu trúc từ điển:
   - `"ghi"`: Thao tác thông thường (bật, tắt, đổi trạng thái công tắc/đèn).
   - `"nguy_hiem"`: Thao tác có tính chất rủi ro cao (mở khoá cửa, khởi động lại hệ thống mạng, xoá dữ liệu).
   - **Nguyên tắc ĐÓNG KHI LỖI**: Nếu module không khai `rui_ro_mac_dinh` hoặc khai mức lạ/không hợp lệ, lõi tự động coi là `"nguy_hiem"` (yêu cầu phê duyệt khi khách gọi). Module muốn hạ mức rủi ro phải chủ động khai báo tường minh `"doc"` hoặc `"ghi"`.
-- **Tính năng (`tinh_nang`)**: Danh sách tên hành động (chuỗi) hoặc đối tượng khai báo hành động kèm lược đồ tham số (`{"hanh_dong": "...", "tham_so": {...}}`); được lõi tổng hợp thành tools function-calling cho AI qua `GET /api/cong-cu`.
+- **Tính năng (`tinh_nang`) và Lược đồ tham số**:
+  - Mỗi phần tử có thể là chuỗi tên hành động (vd `"bat"`) hoặc đối tượng khai báo chi tiết kèm lược đồ tham số:
+    ```json
+    {
+      "hanh_dong": "chinh_sang",
+      "mo_ta": "Điều chỉnh mức độ sáng của đèn",
+      "tham_so": {
+        "type": "object",
+        "required": ["muc_sang"],
+        "additionalProperties": false,
+        "properties": {
+          "muc_sang": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Mức sáng từ 0 đến 100"},
+          "khoa_bi_mat": {"type": "string", "bi_mat": true, "description": "Khoá bí mật cho thiết bị"},
+          "che_do": {"type": "string", "enum": ["doc_sach", "ngu", "lam_viec"]}
+        }
+      }
+    }
+    ```
+  - **Kiểm tra tham số tại lõi (SEC-004a)**: Trước khi gọi `thuc_hien`, lõi tự động thẩm định `tham_so` theo lược đồ đã khai: kiểm tra trường bắt buộc (`required`), cấm khoá lạ nếu `additionalProperties: false`, kiểm tra đúng kiểu dữ liệu (`integer`, `number`, `string`, `boolean`), giới hạn khoảng giá trị (`minimum`, `maximum`, `minLength`, `maxLength`), và tập giá trị cho phép (`enum`). Tham số không đạt chuẩn bị từ chối ngay với mã `400` kèm thông báo lỗi cụ thể.
+  - **Tham số bí mật theo nguyên tắc (SEC-004b)**: Lõi tuyệt đối không dùng danh sách từ khoá để đoán thuộc tính nhạy cảm. Thay vào đó:
+    - Thuộc tính khai báo `"bi_mat": true` trong lược đồ sẽ được che thành `…che` khi ghi vào sổ nhật ký kiểm toán.
+    - Mọi tham số KHÔNG được khai báo trong lược đồ (hoặc khi hành động không có lược đồ) đều được ghi nhận ở dạng an toàn `…che(độ dài N)`, chỉ phản ánh tên và độ dài chuỗi mà không lộ dữ liệu thô.
+  - **Xác nhận tính năng và cách ly thực thể mới (SEC-004f)**: Lõi tính băm SHA-256 ổn định của `tinh_nang` và lưu trong kho `thiet_bi.json`. Mọi thực thể mới xuất hiện sau khi cài đặt hoặc bị thay đổi danh sách `tinh_nang` đều tự động bị áp mức rủi ro hiệu lực `"nguy_hiem"` cho tới khi quản trị viên phê duyệt xác nhận qua `POST /api/thiet-bi/{id}/xac-nhan` hoặc `PUT /api/thiet-bi/{id}/rui-ro`.
 
 ### 3.2. Trạng thái (`trang_thai`)
 Nhận danh sách `ids: list[str]` và trả về từ điển:

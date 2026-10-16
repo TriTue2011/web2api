@@ -42,6 +42,7 @@ from app import (
     xac_thuc,
     cong_cu as cong_cu_mod,
 )
+from app.goi_kha_nang import goi
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
@@ -571,7 +572,7 @@ async def v1_chat(request: Request):
     stream = _lay_bool(than, "stream", False)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "trò chuyện", "chat")
-    ma, headers, noi_dung = await m.chat(than, stream)
+    ma, headers, noi_dung = await goi(m, "chat", than, stream=stream)
     if ma == 200:
         if stream and hasattr(noi_dung, "__aiter__"):
             noi_dung = _luong_sse_chuan_hoa(noi_dung, sse_giu_giay(), sse_dem_toi_da_bytes())
@@ -587,7 +588,7 @@ async def v1_anh(request: Request):
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
     _kiem_n_anh(than.get("n"))
-    return _tra_ve(*await m.anh(than))
+    return _tra_ve(*await goi(m, "anh", than))
 
 
 @v1.post("/images/edits")
@@ -602,7 +603,7 @@ async def v1_anh_sua(request: Request):
     if not isinstance(prompt, str) or not prompt.strip():
         raise LoiOpenAI(400, "Thiếu trường «prompt» (mô tả cần sửa gì)", code="missing_prompt")
     _kiem_n_anh(yc.truong.get("n"), tu_form=True)
-    return _tra_ve(*await m.anh_sua(yc))
+    return _tra_ve(*await goi(m, "anh_sua", yc))
 
 
 def _kiem_tra_va_tach_tool_image_generation(than: dict) -> dict:
@@ -938,7 +939,7 @@ async def v1_noi(request: Request):
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
     _can_phuong_thuc(m, id_, "đọc văn bản thành giọng nói", "noi")
-    return _tra_ve(*await m.noi(than))
+    return _tra_ve(*await goi(m, "noi", than))
 
 
 @v1.post("/audio/transcriptions")
@@ -948,7 +949,7 @@ async def v1_nghe(request: Request):
     id_, m = _module_theo_model(request, yc.truong)
     _can_phuong_thuc(m, id_, "nhận dạng giọng nói", "nghe")
     _can_tep(yc, "file", toi_da=1)
-    return _tra_ve(*await m.nghe(yc))
+    return _tra_ve(*await goi(m, "nghe", yc))
 
 
 _VIDEO = ("video_tao", "video_trang_thai", "video_noi_dung")
@@ -970,7 +971,7 @@ async def v1_video_tao(request: Request):
                              f"{', '.join(sorted({t.ten_truong for t in yc.tep}))}) — tệp tham chiếu chưa hỗ trợ. "
                              "Gửi multipart chỉ có trường chữ, hoặc thân JSON với ảnh đầu vào dạng base64/data URL "
                              "theo tài liệu của module.", code="unsupported_media_type")
-    return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_tao(than))
+    return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await goi(m, "video_tao", than))
 
 
 @v1.get("/videos/{ma}")
@@ -979,7 +980,7 @@ async def v1_video_trang_thai(ma: str, request: Request):
     so = _so(request)
     id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
-    return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await m.video_trang_thai(trong))
+    return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await goi(m, "video_trang_thai", trong))
 
 
 @v1.get("/videos/{ma}/content")
@@ -987,7 +988,7 @@ async def v1_video_noi_dung(ma: str, request: Request):
     kiem_tra_pham_vi(request, "video", "video_noi_dung")
     id_, m, trong = _module_theo_ma_video(request, ma)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
-    return _tra_ve(*await m.video_noi_dung(trong))
+    return _tra_ve(*await goi(m, "video_noi_dung", trong))
 
 
 @v1.post("/embeddings")
@@ -1003,7 +1004,7 @@ async def v1_embeddings(request: Request):
     inp = than.get("input")
     if inp is None or not isinstance(inp, (str, list)):
         raise LoiOpenAI(400, "Thiếu hoặc sai trường «input» (chuỗi hoặc danh sách)", code="invalid_input")
-    return _tra_ve(*await m.nhung(than))
+    return _tra_ve(*await goi(m, "nhung", than))
 
 
 @v1.post("/rerank")
@@ -1033,7 +1034,7 @@ async def v1_rerank(request: Request):
         if isinstance(top_n, bool) or not isinstance(top_n, int) or top_n <= 0 or top_n > len(docs):
             raise LoiOpenAI(400, f"Trường «top_n» phải là số nguyên dương ≤ số tài liệu ({len(docs)})", code="invalid_top_n")
 
-    return _tra_ve(*await m.xep_hang(than))
+    return _tra_ve(*await goi(m, "xep_hang", than))
 
 
 
@@ -1148,6 +1149,24 @@ async def cai(id_: str, request: Request):
         kq = await _so(request).cai(id_, cau_hinh)
     except LoiSo as e:
         raise _loi_so(e) from None
+    if isinstance(kq, dict) and kq.get("ok"):
+        try:
+            so = _so(request)
+            m = so.dang_chay.get(id_)
+            km = so.catalog.get(id_)
+            if km and "thiet_bi" in km.manifest.get("cung_cap", []) and m and callable(getattr(m, "thuc_the", None)):
+                raw_ents = await m.thuc_the(None)
+                if isinstance(raw_ents, list):
+                    tien_to = km.tien_to
+                    da_id = set()
+                    for ent in raw_ents:
+                        if isinstance(ent, dict):
+                            e_id = ent.get("id")
+                            if isinstance(e_id, str) and e_id.startswith(f"{tien_to}.") and e_id not in da_id:
+                                da_id.add(e_id)
+                                thiet_bi_mod.xac_nhan_thuc_the(e_id, ent.get("tinh_nang", []))
+        except Exception as e:
+            log.warning("Không thể tự xác nhận thực thể khi cài module %s: %s", id_, e)
     return JSONResponse(kq, status_code=200 if kq["ok"] else 400)
 
 
@@ -1676,7 +1695,10 @@ async def dat_rui_ro_thiet_bi(id_thuc_the: str, request: Request):
     rui_ro = than.get("rui_ro")
     if rui_ro not in thiet_bi_mod.RUI_RO_HOP_LE:
         raise LoiOpenAI(400, f"Mức rủi ro không hợp lệ (chỉ nhận: {sorted(thiet_bi_mod.RUI_RO_HOP_LE)})", code="invalid_request")
-    thiet_bi_mod.luu_ghi_de_rui_ro(id_thuc_the, rui_ro)
+    so = _so(request)
+    item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
+    tn = item.get("tinh_nang") if item else None
+    thiet_bi_mod.luu_ghi_de_rui_ro(id_thuc_the, rui_ro, tinh_nang=tn)
     nhat_ky_mod.ghi(
         "thiet_bi",
         "thong_tin",
@@ -1688,113 +1710,50 @@ async def dat_rui_ro_thiet_bi(id_thuc_the: str, request: Request):
     return {"ok": True, "id": id_thuc_the, "rui_ro": rui_ro}
 
 
-@thiet_bi.post("/{id_thuc_the}/hanh-dong")
-async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
-    kiem_tra_pham_vi(request, "thiet_bi:ghi")
-    than = await _than_json(request)
-    hanh_dong = than.get("hanh_dong")
-    if not isinstance(hanh_dong, str) or not hanh_dong.strip():
-        raise LoiOpenAI(400, "Thiếu trường «hanh_dong»")
-    hanh_dong = hanh_dong.strip()
-    tham_so = than.get("tham_so") or {}
-    if not isinstance(tham_so, dict):
-        raise LoiOpenAI(400, "«tham_so» phải là đối tượng")
-    xac_nhan = _lay_bool(than, "xac_nhan", False)
-    ly_do = str(than.get("ly_do") or "")
-
+@thiet_bi.post("/{id_thuc_the}/xac-nhan", dependencies=QT)
+async def xac_nhan_thuc_the_thiet_bi(id_thuc_the: str, request: Request):
     so = _so(request)
     item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
     if not item:
         raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
-
-    if hanh_dong not in item.get("tinh_nang", []):
-        raise LoiOpenAI(
-            400,
-            f"Hành động «{hanh_dong}» không nằm trong tính năng hỗ trợ của thực thể {id_thuc_the!r} (hỗ trợ: {item.get('tinh_nang', [])})",
-            code="invalid_action",
-        )
-
-    nguoi_goi = getattr(request.state, "nguoi_goi", "khach")
-    danh_tinh = getattr(request.state, "danh_tinh", {})
-    la_quan_tri = isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "quan_tri"
-
-    # Xử lý mức rủi ro nguy_hiem
-    if item.get("rui_ro") == "nguy_hiem":
-        if la_quan_tri:
-            if not xac_nhan:
-                nhat_ky_mod.ghi(
-                    "thiet_bi",
-                    "canh_bao",
-                    f"Từ chối 409: hành động nguy hiểm «{hanh_dong}» trên «{id_thuc_the}» cần quản trị xác nhận",
-                    thuc_the=id_thuc_the,
-                    hanh_dong=hanh_dong,
-                    nguoi_goi=nguoi_goi,
-                )
-                raise LoiOpenAI(
-                    409,
-                    f"Hành động «{hanh_dong}» trên thực thể «{id_thuc_the}» có mức rủi ro nguy hiểm, cần gửi kèm «xac_nhan: true».",
-                    code="can_xac_nhan",
-                )
-        else:
-            # Khoá khách: KHÔNG thực hiện, tạo mục HÀNG CHỜ PHÊ DUYỆT và trả 202
-            pd = thiet_bi_mod.them_hang_cho_phe_duyet(
-                ai_de_xuat=nguoi_goi,
-                thuc_the=id_thuc_the,
-                hanh_dong=hanh_dong,
-                tham_so=tham_so,
-                ly_do=ly_do,
-            )
-            nhat_ky_mod.ghi(
-                "thiet_bi",
-                "thong_tin",
-                f"Tạo yêu cầu phê duyệt {pd['id']}: «{nguoi_goi}» yêu cầu «{hanh_dong}» trên «{id_thuc_the}» (nguy hiểm)",
-                phe_duyet_id=pd["id"],
-                thuc_the=id_thuc_the,
-                hanh_dong=hanh_dong,
-                nguoi_goi=nguoi_goi,
-                ly_do=ly_do,
-            )
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "phe_duyet_id": pd["id"],
-                    "trang_thai": "cho_phe_duyet",
-                    "cho_phe_duyet": True,
-                },
-                status_code=202,
-            )
-
-    # Thực hiện hành động
-    tien_to, _, _ = id_thuc_the.partition(".")
-    mod_id = so.tim_theo_tien_to(tien_to)
-    m = so.dang_chay.get(mod_id)
-    if not m or not callable(getattr(m, "thuc_hien", None)):
-        raise LoiOpenAI(502, f"Module cho thực thể {id_thuc_the!r} không sẵn sàng hoặc không hỗ trợ thuc_hien.", code="upstream_error")
-
+    than = {}
     try:
-        kq = await m.thuc_hien(id_thuc_the, hanh_dong, tham_so)
-    except Exception as e:
-        log.exception("Module %s lỗi khi thực hiện hành động %s trên %s", mod_id, hanh_dong, id_thuc_the)
-        nhat_ky_mod.ghi(
-            "thiet_bi",
-            "loi",
-            f"Module lỗi khi thực hiện «{hanh_dong}» trên «{id_thuc_the}»: {e}",
-            thuc_the=id_thuc_the,
-            hanh_dong=hanh_dong,
-            nguoi_goi=nguoi_goi,
-            loi=str(e),
-        )
-        raise LoiOpenAI(502, f"Module lỗi khi thực hiện hành động: {type(e).__name__}", code="upstream_error") from e
-
+        if int(request.headers.get("content-length", "0") or "0") > 0:
+            than = await _than_json(request)
+    except Exception:
+        pass
+    rui_ro = than.get("rui_ro")
+    thiet_bi_mod.xac_nhan_thuc_the(id_thuc_the, item.get("tinh_nang", []), rui_ro=rui_ro)
     nhat_ky_mod.ghi(
         "thiet_bi",
         "thong_tin",
-        f"Thực hiện thành công hành động «{hanh_dong}» trên «{id_thuc_the}»",
+        f"Quản trị xác nhận thực thể «{id_thuc_the}»",
         thuc_the=id_thuc_the,
-        hanh_dong=hanh_dong,
-        nguoi_goi=nguoi_goi,
-        tham_so=thiet_bi_mod.lam_sach_tham_so(tham_so),
+        nguoi_goi=getattr(request.state, "nguoi_goi", "quan_tri"),
     )
+    return {"ok": True, "id": id_thuc_the}
+
+
+@thiet_bi.post("/{id_thuc_the}/hanh-dong")
+async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
+    than = await _than_json(request)
+    hanh_dong = than.get("hanh_dong") or ""
+    tham_so = than.get("tham_so") or {}
+    xac_nhan = _lay_bool(than, "xac_nhan", False)
+    ly_do = str(than.get("ly_do") or "")
+    so = _so(request)
+
+    ma, kq = await thiet_bi_mod.thuc_hien_hanh_dong_loi(
+        id_thuc_the=id_thuc_the,
+        hanh_dong=hanh_dong,
+        tham_so=tham_so,
+        xac_nhan=xac_nhan,
+        ly_do=ly_do,
+        ngu_canh=None,
+        so=so,
+    )
+    if ma == 202:
+        return JSONResponse(kq, status_code=202)
     return kq
 
 

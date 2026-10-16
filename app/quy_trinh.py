@@ -19,6 +19,8 @@ import time
 import unicodedata
 from typing import Any
 
+from app import ngu_canh
+from app.goi_kha_nang import goi
 from app.kham_pha import HOP_DONG_KHA_NANG
 from app.kieu_chat import so_nguyen_chat
 from app.loi_openai import LoiOpenAI
@@ -665,7 +667,12 @@ async def _thuc_hien_mot_tang(
                 raise LoiOpenAI(400, f"Khả năng «tim_kiem» không được module {nguon!r} cung cấp", code="unknown_capability")
             if "tim_kiem" in getattr(km, "chuan_loi", {}):
                 raise LoiOpenAI(501, f"Khả năng «tim_kiem» của module {nguon!r} không đúng chuẩn", code="capability_not_supported")
-            kq = await m.tim_kiem(yc)
+            tok_nb = ngu_canh.dat_noi_bo(nguon="tu_dong") if ngu_canh.lay() is None else None
+            try:
+                kq = await goi(m, "tim_kiem", yc)
+            finally:
+                if tok_nb is not None:
+                    ngu_canh.khoi_phuc(tok_nb)
             if not isinstance(kq, dict):
                 kq = {"muc": []}
             muc = kq.get("muc", [])
@@ -864,9 +871,12 @@ async def _thuc_hien_mot_tang(
         docs = [str(item.get("doan") or item.get("text") or "") for item in muc_in if isinstance(item, dict)]
         model = str(tham_so.get("model") or (f"{km.tien_to}/rerank" if km else "rerank"))
         top_n = tham_so.get("top_n") or tham_so.get("n") or len(docs)
-        top_n = min(so_nguyen_chat(top_n, "top_n", toi_thieu=1, toi_da=100_000), len(docs)) if docs else 0
-
-        kq_raw = await m.xep_hang({"model": model, "query": query, "documents": docs, "top_n": top_n})
+        tok_nb = ngu_canh.dat_noi_bo(nguon="tu_dong") if ngu_canh.lay() is None else None
+        try:
+            kq_raw = await goi(m, "xep_hang", {"model": model, "query": query, "documents": docs, "top_n": top_n})
+        finally:
+            if tok_nb is not None:
+                ngu_canh.khoi_phuc(tok_nb)
         if isinstance(kq_raw, tuple) and len(kq_raw) == 3:
             ma, _, noi_dung = kq_raw
             if ma >= 400:
