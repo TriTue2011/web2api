@@ -193,13 +193,8 @@ def test_giao_dien_khong_dat_cookie_phien_bang_javascript():
 # ── 3. Chống tossing: chỉ chấp nhận đúng tên theo kênh ────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="NV53 03a: HTTPS chỉ nhận w2a_phien (không tiền tố __Host-) phải 401 — "
-    "hiện lay_token_tu_cookie vẫn dự phòng sang tên không tiền tố nên tossing lọt (200).",
-)
 def test_nv53_03a_tossing_https_chi_cookie_khong_tien_to_bi_401(moi_truong):
-    """HTTPS + chỉ cookie `w2a_phien` (kẻ tấn công đặt từ subdomain/HTTP) → 401, không phải phiên (ĐỎ)."""
+    """HTTPS + chỉ cookie `w2a_phien` (kẻ tấn công đặt từ subdomain/HTTP) → 401, không phải phiên."""
     _tao_tai_khoan("admin", "admin")
     with _lam_client(https=True) as c:
         r = _dang_nhap(c, "admin")
@@ -210,14 +205,9 @@ def test_nv53_03a_tossing_https_chi_cookie_khong_tien_to_bi_401(moi_truong):
         assert r2.status_code == 401, f"muốn 401, nhận {r2.status_code}: {r2.text[:120]}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="NV53 03b: cố định phiên qua tossing — nạn nhân mang cookie w2a_phien của kẻ tấn công "
-    "trên HTTPS phải 401, hiện bị coi là đã đăng nhập bằng phiên của kẻ tấn công (200).",
-)
 def test_nv53_03b_tossing_co_dinh_phien_https_bi_401(moi_truong):
     """Kẻ tấn công đăng nhập lấy token, đặt `w2a_phien=<token kẻ tấn công>` vào trình duyệt nạn
-    nhân → yêu cầu HTTPS của nạn nhân phải 401, không được coi là phiên kẻ tấn công (ĐỎ)."""
+    nhân → yêu cầu HTTPS của nạn nhân phải 401, không được coi là phiên kẻ tấn công."""
     _tao_tai_khoan("user", "ke-tan-cong")
     with _lam_client(https=True) as c:
         r = _dang_nhap(c, "ke-tan-cong")
