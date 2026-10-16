@@ -156,7 +156,7 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
         — kiểm RẺ, không tốn token/lượt dùng (tuỳ chọn; thiếu thì lõi coi phiên là «chua_ro» và không kiểm).
     async lam_moi_phien(du_lieu: dict) -> dict | None
         — trả `du_lieu` mới (lõi lưu đè) hoặc None nếu không làm mới được (tuỳ chọn).
-    Module lấy phiên qua `app.phien.lay(module, tai_khoan)`, không tự mở tệp.
+    Module lấy bí mật/phiên qua tay cầm do lõi trao (self.kho.phien_lay(tai_khoan), self.kho.doc(ten)), không tự mở tệp hay gọi qua id khác.
 
 Manifest khai khả năng ở trường MỞ `cung_cap` (tuỳ chọn): danh sách mã như ["chat", "anh", "video"]; quy ước
 cho các phương thức trên: "noi", "nghe", "anh_sua" (cùng tên phương thức). Lõi chỉ
