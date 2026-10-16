@@ -220,8 +220,8 @@ ngay từ TRONG mạng nhà. Chính sách Chromium chỉ chặn `file://`, khôn
 
 **Giải pháp:** luật iptables/ip6tables của MÁY CHỦ trong chuỗi `DOCKER-USER`, chặn theo
 DẢI ĐỊA CHỈ (không theo tên miền — không có danh sách trang nào để duy trì):
-- Chặn (REJECT): `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`,
-  `100.64.0.0/10`, `127.0.0.0/8` và IPv6 `fc00::/7`, `fe80::/10`, `::1/128`.
+- Chặn (REJECT): ba dải riêng tư của RFC 1918, dải link-local IPv4, dải CGNAT (RFC 6598), dải loopback
+  IPv4, và IPv6 ULA, link-local, loopback (danh sách CIDR đầy đủ nằm ở đầu `scripts/chan-lan-trinh-duyet.sh`).
 - Ngoại lệ (đứng TRƯỚC mọi luật chặn): lưu lượng trong chính mạng của dịch vụ
   (lõi web2api được nối vào mạng này bằng `docker network connect`; docker-compose.yml
   của dịch vụ chỉ có MỘT service nên không còn dịch vụ phụ nào khác cần ngoại lệ)
@@ -243,8 +243,8 @@ sudo ./scripts/chan-lan-trinh-duyet.sh
 khác 0, không phải HTTP 200):
 
 ```bash
-docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://192.168.1.1:3030/ ; echo "curl exit=$?"
-docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://10.0.0.1/ ; echo "curl exit=$?"
+docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://192.0.2.1:3030/ ; echo "curl exit=$?"
+docker exec web2api-trinh-duyet curl -s -m 5 -o /dev/null http://198.51.100.1/ ; echo "curl exit=$?"
 ```
 
 **Gỡ:** `sudo ./scripts/chan-lan-trinh-duyet.sh --go` — chỉ gỡ đúng các luật có nhãn
