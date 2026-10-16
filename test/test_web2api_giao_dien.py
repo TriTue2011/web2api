@@ -456,6 +456,10 @@ def test_ai_tai_khoan_hai_nguon_thay_va_xoa_khoa(trang, tmp_path, monkeypatch):
         lien_ket(w, "ai-hai", {"api_keys": [K_TOT, k3]})
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html")
+        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-hai\"]')", mo_ta="khối provider ai-hai")
+        # Danh sách khoá bên trong luôn thu gọn lúc mở trang — bấm tiêu đề khối mới xổ danh sách
+        assert trang.js("document.querySelectorAll('[data-tai-khoan]').length") == 0
+        trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-hai\"]')")
         trang.cho("document.querySelectorAll('[data-tai-khoan]').length === 2", mo_ta="hai dòng tài khoản")
         # Mỗi khoá đã lưu là một «tài khoản» (như dòng API của demo: tên nhà cung cấp, «khoá …abcd»); nguồn chưa khoá không có dòng.
         assert trang.js("[...document.querySelectorAll('[data-tai-khoan]')].map((d) => [d.dataset.taiKhoan, d.dataset.khoaSo])") \
@@ -544,13 +548,24 @@ def test_provider_chon_nha_cung_cap_model_va_tai_khoan(trang, tmp_path, monkeypa
         assert trang.js("document.querySelectorAll('[data-khoa-pv] [data-model]').length") == 0
         # Thanh hạn mức vẽ khi có toi_da
         assert trang.js("!!document.querySelector('[data-khoa-pv=\"0\"] [data-thanh-hm=\"chat\"]')")
-        # Chọn nhà cung cấp thứ hai qua bảng xổ (chấm màu + tên + số khoá): đã cài, chưa khoá → tab rỗng.
+        # Bảng xổ provider chỉ hiện provider ĐÃ CÓ khoá (ai-hai 0 khoá KHÔNG hiện).
         trang.bam("document.getElementById('chon-pv')")
-        trang.cho("document.querySelectorAll('[data-pv]').length === 2", mo_ta="bảng xổ provider")
+        trang.cho("document.querySelectorAll('[data-pv]').length === 1", mo_ta="bảng xổ provider chỉ hiện provider có khoá")
         assert trang.js("[...document.querySelectorAll('[data-pv]')].map((b) => [b.dataset.pv, b.innerText.replace(/\\s+/g, ' ').trim()])") \
-            == [["ai-gia", "AI giả 1"], ["ai-hai", "AI thứ hai 0"]]
+            == [["ai-gia", "AI giả 1"]]
+        trang.bam("document.getElementById('chon-pv')")
+
+        # Thêm khoá cho ai-hai: ai-hai xuất hiện trong bảng xổ provider
+        lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})
+        trang.di(w.url + "/He-thong.dc.html")
+        trang.di(w.url + "/He-thong-AI.dc.html#provider")
+        trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-gia'", mo_ta="vào lại provider")
+        trang.bam("document.getElementById('chon-pv')")
+        trang.cho("document.querySelectorAll('[data-pv]').length === 2", mo_ta="bảng xổ đủ 2 provider có khoá")
+        assert trang.js("[...document.querySelectorAll('[data-pv]')].map((b) => [b.dataset.pv, b.innerText.replace(/\\s+/g, ' ').trim()])") \
+            == [["ai-gia", "AI giả 1"], ["ai-hai", "AI thứ hai 1"]]
         trang.bam("document.querySelector('[data-pv=\"ai-hai\"]')")
-        trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-hai' && !!document.getElementById('pv-trong')", mo_ta="provider thứ hai")
+        trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-hai'", mo_ta="chọn ai-hai")
         assert not trang.js("!!document.querySelector('[role=listbox]')")
         assert trang.js("document.querySelector('[data-pv-tab=model]').getAttribute('aria-selected')") == "true"
         # Đổi lại sang ai-gia: danh sách model lại THU GỌN (không nhớ trạng thái mở cũ)
@@ -570,6 +585,8 @@ def test_tai_khoan_suc_khoe_toi_thieu_va_het_han_muc(trang, tmp_path, monkeypatc
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT, k2]})
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html")
+        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-gia\"]')", mo_ta="khối provider ai-gia")
+        trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-gia\"]')")
         mo = "[data-tai-khoan='ai-gia'][data-khoa-so='0']"
         trang.cho(f"document.querySelector({json.dumps(mo + ' [data-chip-tk=suc-khoe]')})?.innerText === 'Dùng được'", han=15, mo_ta="sức khoẻ tối thiểu")
         assert trang.js(f"[...document.querySelectorAll({json.dumps(mo + ' [data-chip-tk]')})].map((c) => c.dataset.chipTk)") == ["suc-khoe"]
