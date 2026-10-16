@@ -85,7 +85,7 @@ def test_moi_duong_api_co_trong_readme():
 
 def test_moi_bien_moi_truong_co_trong_readme():
     bien = set()
-    for p in list((GOC / "app").rglob("*.py")) + list((GOC / "modules").rglob("*.py")) + list((GOC / "scripts").glob("*")):
+    for p in list((GOC / "app").rglob("*.py")) + list((GOC / "modules").rglob("*.py")) + [f for f in (GOC / "scripts").glob("*") if f.is_file()]:
         bien |= set(re.findall(r"WEB2API_[A-Z0-9_]+", p.read_text(encoding="utf-8")))
     assert bien >= {"WEB2API_DATA", "WEB2API_ADMIN_KEY"}
     thieu = sorted(b for b in bien if b not in NOI_DUNG)
