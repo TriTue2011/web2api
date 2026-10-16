@@ -188,6 +188,12 @@ def diff_quyen(manifest_cu: dict | None, manifest_moi: dict | None) -> dict:
         return bool((m or {}).get("tab_web")) if isinstance(m, dict) else False
     if _tab_web(manifest_moi) and not _tab_web(manifest_cu):
         them.add(("tab_web", "tab_web", None))
+    # NV31: khai webhook mở một cửa vào công khai cho module — thêm mới cần duyệt;
+    # gỡ bỏ là hạ quyền, qua tự do.
+    def _webhook(m):
+        return bool((m or {}).get("webhook")) if isinstance(m, dict) else False
+    if _webhook(manifest_moi) and not _webhook(manifest_cu):
+        them.add(("webhook", "webhook", None))
     return {"them": _sap_xep(them), "bot": _sap_xep(bot)}
 
 

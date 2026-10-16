@@ -105,13 +105,14 @@ def la_duong_khoa_khach_duoc_goi(path: str) -> bool:
     """Kiểm tra đường /api/* mà khoá khách được phép đi qua middleware để vào router xác thực riêng.
 
     Các đường này có cơ chế kiểm tra phạm vi (V1_AUTH) hoặc xác thực riêng ở router:
+    - /api/gui/*: cổng gửi ra đích danh (phạm vi gui:<module> kiểm trong router).
     - /api/cong-cu*: công cụ AI chuẩn OpenAI (kiểm tra phạm vi thiet_bi:doc, thiet_bi:ghi).
     - /api/thiet-bi*: thực thể thiết bị (kiểm tra phạm vi thiet_bi:*; riêng rui-ro chặn bằng QT).
     - /api/tim-kiem*: tìm kiếm tri thức và mục lục (loại trừ /api/tim-kiem/nguon là đường quản trị).
     - /api/thiet-lap*: thiết lập ban đầu khi chưa có quản trị.
     - /api/dang-nhap*: đăng nhập bằng mật khẩu người dùng.
     """
-    if path.startswith("/api/cong-cu") or path.startswith("/api/thiet-bi"):
+    if path.startswith("/api/cong-cu") or path.startswith("/api/thiet-bi") or path.startswith("/api/gui/"):
         return True
     if path.startswith("/api/tim-kiem") and not path.startswith("/api/tim-kiem/nguon"):
         return True
@@ -368,6 +369,10 @@ app.include_router(tuyen.v1)
 app.include_router(tuyen.v1_khong_co)  # NGAY sau v1: /v1 lạ → 404 unknown_endpoint, sai phương thức → 405
 app.include_router(tuyen.modules)
 app.include_router(tuyen.tinh_nang)
+# Cửa webhook chung: ĐƯỜNG MỞ (nhà cung cấp ngoài gọi vào, xác thực bằng bí mật riêng của module) — KHÔNG gắn vào router có QT.
+app.include_router(tuyen.webhook_mod.router)
+# Cổng gửi ra đích danh: V1_AUTH (khoá khách có phạm vi gui:<module> được vào) — KHÔNG gắn vào router có QT.
+app.include_router(tuyen.gui_ra_mod.router)
 app.include_router(tuyen.nguon_git)
 app.include_router(tuyen.dia_chi)
 app.include_router(tuyen.nhat_ky)

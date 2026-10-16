@@ -39,7 +39,10 @@ def test_gioi_han_va_an_toan():
     assert _dong("user") == '"1000:1000"'
     assert _dong("restart") == "unless-stopped"
     assert _dong("mem_limit") and _dong("cpus") and _dong("pids_limit")
-    assert '"${WEB2API_PORT:-3031}:8000"' in COMPOSE
+    # Luật bảo mật số 5: mặc định CHỈ nghe trên máy chủ; mở ra mạng nhà phải tường minh (WEB2API_BIND).
+    assert '"${WEB2API_BIND:-127.0.0.1}:${WEB2API_PORT:-3031}:8000"' in COMPOSE
+    assert "cap_drop:" in COMPOSE and "- ALL" in COMPOSE
+    assert "no-new-privileges:true" in COMPOSE
     assert _dong("com.centurylinklabs.watchtower.enable") == '"false"'
     assert "healthcheck:" not in COMPOSE  # lấy HEALTHCHECK từ ảnh
     assert "HEALTHCHECK" in (GOC / "Dockerfile").read_text(encoding="utf-8")
