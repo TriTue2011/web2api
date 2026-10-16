@@ -1866,7 +1866,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PATCH /api/nguoi-dung/{id}` | Có | Cập nhật tài khoản người dùng (bật/tắt, vai, phạm vi; bảo vệ admin cuối cùng) |
 | `POST /api/nguoi-dung/{id}/dat-lai-mat-khau` | Có | Đặt lại mật khẩu tài khoản người dùng (tuỳ chọn sinh ngẫu nhiên; mật khẩu chỉ trả về một lần duy nhất, thu hồi mọi phiên cũ) |
 | `DELETE /api/nguoi-dung/{id}` | Có | Xoá tài khoản người dùng và thu hồi mọi phiên/khoá API của tài khoản đó (bảo vệ admin cuối cùng) |
-| `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên) |
+| `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên). Giao diện: trang «Phiên tài khoản» (`web/He-thong-Phien.dc.html`) — nhóm theo module (khối thu gọn, đóng mặc định), lưới thẻ (tài khoản, trạng thái, hạn, lần kiểm cuối), nút «Kiểm ngay» và «Xoá phiên» (xác nhận hai bước) |
 | `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |
 | `POST /api/phien/{module}/{tai_khoan}/kiem` | Có | Kiểm tra ngay trạng thái một phiên tài khoản qua module |
 | `GET /api/thiet-bi` | Có | Danh sách thực thể thiết bị/ứng dụng từ các module, kèm trạng thái và rủi ro hiệu lực (hỗ trợ lọc `q`, `loai`, `khu`, `module`, `rui_ro`) |
