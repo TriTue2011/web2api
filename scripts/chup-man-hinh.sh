@@ -5,9 +5,10 @@
 # GitHub GIẢ (repo có module gemini-api thật của kho + hai module mẫu khác loại) và Google GIẢ (test/gia.py) — không
 # gọi Internet, không có khoá thật nào; rồi điều khiển Chrome headless qua DevTools (test/ui_chung.py) đi đúng luồng
 # người dùng và chụp ở hai khổ: máy tính 1280×800 và điện thoại 390×844 (giả lập thiết bị bằng DevTools):
+#   thiet-lap    — màn «Thiết lập» tài khoản admin lần đầu
+#   dang-nhap    — màn «Đăng nhập» tài khoản admin
 #   trong        — lõi rỗng: Hệ thống → Module, khối «Kết nối với web2api»
-#   nhieu-o      — đã dán khoá: lưới ô nhiều loại, nhiều trạng thái (Chưa cài · Có bản mới · Đang chạy; «Ghi chú
-#                  (mẫu)» đặt tay mà cũng có trên git nên là «Có bản mới»)
+#   nhieu-o      — đã đăng nhập: lưới ô nhiều loại, nhiều trạng thái (Chưa cài · Có bản mới · Đang chạy...)
 #   chi-tiet     — bảng chi tiết «Cần gì để chạy» của gemini-api trước khi cài
 #   sau-cai      — ngay sau khi cài gemini-api (chưa khoá): Studio với ô soạn bị khoá và một dòng «Chưa có khoá
 #                  cho … — Thêm khoá» tới Hệ thống → AI → Tài khoản
@@ -16,6 +17,7 @@
 #   sau-lien-ket — sau khi liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả): Hệ thống → AI → Provider › Model (model
 #                  thật theo nhóm khả năng, nhóm thu gọn sẵn); nút «Quay lại» (về Studio), không có Combo
 #   studio       — Studio: một lượt chat stream qua /v1 thật, câu trả lời markdown (in đậm, danh sách, mã)
+#   bao-mat      — Hệ thống → Bảo mật & người dùng: danh sách người dùng, khoá khách, sổ nhật ký hệ thống
 # Lưu PNG vào docs/anh/<tên>-may-tinh.png và <tên>-dien-thoai.png, mỗi ảnh ≤ 250 KB (quá thì giảm màu).
 #
 # Dùng (từ gốc kho):  scripts/chup-man-hinh.sh
@@ -46,12 +48,13 @@ ra.mkdir(parents=True, exist_ok=True)
 du_lieu = tam / "data"
 (du_lieu / "modules").mkdir(parents=True)
 khoa_qt = "chup-" + secrets.token_hex(16)
-os.environ.update(WEB2API_DATA=str(du_lieu), WEB2API_ADMIN_KEY=khoa_qt, WEB2API_MAY_RAM_MB="8192", WEB2API_MAY_CPU="4")
+os.environ.update(WEB2API_DATA=str(du_lieu), WEB2API_ADMIN_KEY=khoa_qt, WEB2API_MAY_RAM_MB="8192", WEB2API_MAY_CPU="4",
+                  WEB2API_TEST_CHO_PHEP_LOOPBACK="1")  # chỉ cho GitHub/Google GIẢ trên 127.0.0.1 của kịch bản này
 
 import httpx
 from PIL import Image
 from gia import GitHubGia, GoogleGia, MayChuThat, ghi_thu_muc, tep_kho
-from ui_chung import CDP, CHROME, Trang, _cong_trong
+from ui_chung import CDP, CHROME, Trang, _cong_trong, dang_nhap_quan_tri
 from ui_mau import module_khong_khoa, module_mang
 
 KHOA_GIA = "AIzaSyUI-TOT-0000000000000000000000tot1"  # chuỗi GIẢ có trong allowlist .gitleaks.toml
@@ -105,58 +108,105 @@ with MayChuThat(gh.app) as s_gh, MayChuThat(g.app) as s_g:
                     tep.write_bytes(base64.b64decode(r["data"]))
                     anh.append(tep)
 
-            def mo_trang(duong: str, cho: str = "true"):
-                t.cdp.goi("Page.navigate", {"url": w.url + duong}, t.s)
-                t.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && (" + cho + ")", han=20, mo_ta=duong)
+            # 1. Màn hình Thiết lập admin lần đầu (lõi tạm CHƯA có admin; trang này không phải dc-lite nên dùng Page.navigate).
+            def chup_tl():
+                t.cdp.goi("Page.navigate", {"url": w.url + "/Thiet-lap.dc.html"}, t.s)
+                t.cho("location.pathname.includes('Thiet-lap') && !!document.getElementById('o-ma-tl') && !!document.getElementById('nut-thiet-lap')",
+                      han=20, mo_ta="Trang thiết lập admin lần đầu")
+            chup("thiet-lap", chup_tl)
 
-            # 1. Lõi rỗng.
-            chup("trong", lambda: mo_trang("/", "location.pathname.endsWith('He-thong.dc.html') && !!document.getElementById('ket-noi')"))
-            # 2. Nhiều ô nhiều loại: «Mạng (mẫu)» cài + liên kết, «Ghi chú (mẫu)» cài chưa liên kết, gemini-api chỉ trên git.
+            # Tạo tài khoản admin thật cho hệ thống chính (dùng mã thiết lập tự sinh trên đĩa hoặc khoa_qt).
+            p_ma = du_lieu / "ma_thiet_lap"
+            ma_tl = p_ma.read_text(encoding="utf-8").strip() if p_ma.is_file() else khoa_qt
+            admin_ten = "admin"
+            admin_mk = "MatKhauAdminBaoMat123456"
+            r_tl = httpx.post(f"{w.url}/api/thiet-lap", json={"ma_thiet_lap": ma_tl, "ten_dang_nhap": admin_ten, "mat_khau": admin_mk})
+            assert r_tl.status_code == 200, f"Thiết lập admin thất bại: {r_tl.text}"
+
+            # 2. Màn hình Đăng nhập (chụp KHI CHƯA CÓ PHIÊN — dùng ngữ cảnh trình duyệt mới / xoá cookie trước khi chụp).
+            def chup_dn():
+                cdp.goi("Network.clearBrowserCookies", session=t.s)
+                t.cdp.goi("Page.navigate", {"url": w.url + "/Dang-nhap.dc.html"}, t.s)
+                t.cho("location.pathname.includes('Dang-nhap') && !!document.getElementById('o-ten') && !!document.getElementById('nut-dang-nhap')",
+                      han=20, mo_ta="Trang đăng nhập chưa có phiên")
+            chup("dang-nhap", chup_dn)
+
+            # Đăng nhập admin bằng giao diện thật (tạo phiên cookie w2a_phien).
+            dang_nhap_quan_tri(t, w.url, admin_ten, admin_mk)
+
+            # 3. Lõi rỗng: Hệ thống → Module (trang dc-lite dùng trang.di).
+            def chup_trong():
+                t.di(f"{w.url}/He-thong.dc.html")
+                t.cho("location.pathname.includes('He-thong') && !document.querySelector('.bao-cho') && document.body.innerText.includes('Thêm module')", mo_ta="Lõi rỗng Hệ thống")
+            chup("trong", chup_trong)
+
+            # 4. Nhiều ô nhiều loại: «Mạng (mẫu)» cài + liên kết, «Ghi chú (mẫu)» cài chưa liên kết, gemini-api chỉ trên git.
             han = time.monotonic() + 20
             while time.monotonic() < han and len(httpx.get(f"{w.url}/api/modules/thong-bao", headers=QT).json()["danh_sach"]) < 3:
                 time.sleep(0.2)
             assert httpx.post(f"{w.url}/api/nguon-git/cai/mang-gia", headers=QT, timeout=30).status_code == 200
             ghi_thu_muc(du_lieu / "modules" / "ghi-chu", ghi_chu)  # đặt tay (không .nguon.json) → «Có bản mới»
             httpx.post(f"{w.url}/api/modules/nap-lai", headers=QT, timeout=30).raise_for_status()
-            t.js(f"localStorage.setItem('web2api_khoa', {json.dumps(khoa_qt)})")
 
             def nhieu_o():
-                mo_trang("/He-thong.dc.html", "document.querySelectorAll('[data-loc-loai]').length >= 4")
+                t.di(f"{w.url}/He-thong.dc.html")
+                t.cho("location.pathname.includes('He-thong') && document.querySelectorAll('[data-loc-loai]').length >= 4", mo_ta="Đủ loại module")
                 t.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
                 t.cho("document.querySelectorAll('[data-o]').length >= 3", mo_ta="ba ô")
                 t.js("document.getElementById('loc-loai').scrollIntoView({block: 'start'}); window.scrollBy(0, -70)")
             chup("nhieu-o", nhieu_o)
 
-            # 3. Bảng chi tiết «Cần gì để chạy» của gemini-api (trước khi cài).
+            # 5. Bảng chi tiết «Cần gì để chạy» của gemini-api (trước khi cài).
             def chi_tiet():
-                mo_trang("/He-thong.dc.html?c=1#module-gemini-api", "!!document.getElementById('can-gi')")
+                t.di(f"{w.url}/He-thong.dc.html?c=1#module-gemini-api")
+                t.cho("location.pathname.includes('He-thong') && !!document.getElementById('can-gi')", mo_ta="Chi tiết module")
                 t.js("document.getElementById('chi-tiet').scrollIntoView({block: 'start'}); window.scrollBy(0, -70)")
             chup("chi-tiet", chi_tiet)
 
-            # 4. Cài gemini-api (chưa khoá) → trang Module chuyển sang Studio?da_cai=… : trạng thái rỗng «Chưa có khoá …».
+            # 6. Cài gemini-api (chưa khoá) → trang Module chuyển sang Studio?da_cai=… : trạng thái rỗng «Chưa có khoá …».
             assert httpx.post(f"{w.url}/api/nguon-git/cai/gemini-api", headers=QT, timeout=30).status_code == 200
-            chup("sau-cai", lambda: mo_trang("/Studio.dc.html?da_cai=gemini-api", "!!document.getElementById('studio-chua-khoa')"))
-            # 4b. Hệ thống → AI ngay sau khi cài: Tài khoản (biểu mẫu Thêm API của đúng module) và Provider rỗng.
+            def sau_cai():
+                t.di(f"{w.url}/Studio.dc.html?da_cai=gemini-api")
+                t.cho("location.pathname.includes('Studio') && !!document.getElementById('studio-chua-khoa')", mo_ta="Studio chưa có khoá")
+            chup("sau-cai", sau_cai)
+
+            # 6b. Hệ thống → AI ngay sau khi cài: Tài khoản (biểu mẫu Thêm API của đúng module) và Provider rỗng.
             def ai_sau_cai():
-                mo_trang("/He-thong-AI.dc.html?a=1#tk-gemini-api", "!!document.querySelector('#form-them input')")
+                t.di(f"{w.url}/He-thong-AI.dc.html?a=1#tk-gemini-api")
+                t.cho("location.pathname.includes('He-thong-AI') && !!document.querySelector('#form-them input')", mo_ta="Thêm API")
                 t.js("document.activeElement.blur()")
             chup("ai-sau-cai", ai_sau_cai)
-            chup("provider-rong", lambda: mo_trang("/He-thong-AI.dc.html?a=2#provider", "!!document.getElementById('pv-trong')"))
 
-            # 5. Liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả) → Hệ thống → AI → Provider.
+            def provider_rong():
+                t.di(f"{w.url}/He-thong-AI.dc.html?a=2#provider")
+                t.cho("location.pathname.includes('He-thong-AI') && !!document.getElementById('pv-trong')", mo_ta="Provider rỗng")
+            chup("provider-rong", provider_rong)
+
+            # 7. Liên kết nguồn AI đầu tiên (khoá GIẢ, Google giả) → Hệ thống → AI → Provider.
             r = httpx.post(f"{w.url}/api/modules/gemini-api/cai", headers=QT, timeout=30,
                            json={"cau_hinh": {"api_keys": [KHOA_GIA], "base_url": s_g.url}})
             assert r.json()["ok"], r.text
-            chup("sau-lien-ket", lambda: mo_trang("/He-thong-AI.dc.html?a=3#provider", "document.querySelectorAll('[data-mo-nhom]').length > 0"))
+            def sau_lien_ket():
+                t.di(f"{w.url}/He-thong-AI.dc.html?a=3#provider")
+                t.cho("location.pathname.includes('He-thong-AI') && document.querySelectorAll('[data-mo-nhom]').length > 0", mo_ta="Provider sau liên kết")
+            chup("sau-lien-ket", sau_lien_ket)
 
-            # 6. Studio: một lượt chat stream.
+            # 8. Studio: một lượt chat stream.
             def studio():
-                mo_trang("/Studio.dc.html", "document.querySelectorAll('[data-model-chon]').length > 0")
+                t.di(f"{w.url}/Studio.dc.html")
+                t.cho("location.pathname.includes('Studio') && document.querySelectorAll('[data-model-chon]').length > 0", mo_ta="Studio chọn model")
                 t.go("#o-soan", "Chào bạn, bạn là ai?")
                 t.bam("document.getElementById('nut-gui')")
                 t.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=20, mo_ta="chat xong")
                 t.js("document.activeElement.blur()")
             chup("studio", studio)
+
+            # 9. Hệ thống → Bảo mật & người dùng.
+            def bao_mat():
+                t.di(f"{w.url}/He-thong-Bao-mat.dc.html")
+                t.cho("location.pathname.includes('He-thong-Bao-mat') && !!document.getElementById('danh-sach-nguoi-dung')", mo_ta="Trang bảo mật")
+                t.js("window.scrollTo(0, 0)")
+            chup("bao-mat", bao_mat)
         finally:
             cdp.dong()
             p.kill()

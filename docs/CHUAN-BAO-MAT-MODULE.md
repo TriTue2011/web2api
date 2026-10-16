@@ -145,26 +145,26 @@ Lõi làm OAuth thay module: `state` **một lần** (chống CSRF), **PKCE** ch
 - **Vì sao**: OAuth tự chế sai một chi tiết là mất tài khoản; làm một lần ở lõi thì mọi module được hưởng.
 - **Cách kiểm**: Đổi `redirect_uri`/dùng lại `state`/bỏ PKCE → luồng bị từ chối.
 
-### 3.6. Bộ tải URL không tin — kế hoạch
+### 3.6. Bộ tải URL không tin — thư viện có, chưa mount route
 
-Bộ tải duy nhất hạng A được dùng: **chặn dải riêng/loopback/link-local**, **kiểm lại tên miền sau mỗi chặng chuyển hướng** (chống redirect sang LAN — SSRF), **trần byte và trần thời gian**. Khác với chính sách URL do **quản trị khai** (được phép chạm LAN — ví dụ thiết bị nhà thông minh), áp cho URL của module theo `mang_ra`.
+Bộ tải duy nhất hạng A được dùng: **chặn dải riêng/loopback/link-local/site-local**, **kiểm lại tên miền sau mỗi chặng chuyển hướng** (chống redirect sang LAN — SSRF), **cấm hạ scheme https→http**, **bỏ tiêu đề khi đổi origin**, **chống bom gzip bằng Accept-Encoding: identity**, **trần byte và trần thời gian** (thư viện `app/tai_url_khong_tin.py` có sẵn, chưa mount route công khai). Khác với chính sách URL do **quản trị khai** (được phép chạm LAN — ví dụ thiết bị nhà thông minh), áp cho URL của module theo `mang_ra`.
 
 - **Vì sao**: SSRF qua chuyển hướng là cách chiếm mạng nội bộ phổ biến nhất từ module gọi URL ngoài.
 - **Cách kiểm**: URL chuyển hướng sang địa chỉ LAN → bị chặn ở chặng đó; URL vượt trần byte/thời gian → bị cắt.
 
-### 3.7. Bộ kiểm tệp tải lên — kế hoạch
+### 3.7. Bộ kiểm tệp tải lên — thư viện có, chưa mount route
 
-Mọi tệp module nhận từ ngoài đi qua bộ kiểm: **nhận loại theo nội dung** (không tin phần mở rộng/MIME do khách khai), **trần kích thước giải nén** (chống bom zip), **chống zip-slip** (đường dẫn trong archive không thoát được thư mục đích).
+Mọi tệp module nhận từ ngoài đi qua bộ kiểm: **nhận loại theo nội dung** (không tin phần mở rộng/MIME do khách khai), **trần kích thước giải nén** (chống bom zip, kiểm tra CRC thực tế và kích thước giải nén thật, cấm zip lồng), **chống zip-slip** (đường dẫn trong archive không thoát được thư mục đích, coi symlink và reparse point là vi phạm), **trần điểm ảnh và kích thước khung ảnh** (duyệt toàn bộ Image Descriptor GIF/APNG/WebP) (thư viện `app/tep_an_toan.py` có sẵn, chưa mount route công khai).
 
 - **Vì sao**: Tệp tải lên là đường đưa mã độc vào máy chủ; kiểm ở một chỗ thì không module nào quên.
 - **Cách kiểm**: Gửi tệp đội lốt loại khác/zip bom/zip-slip → bị từ chối trước khi module thấy nội dung.
 
-### 3.8. URL ký cho media — kế hoạch
+### 3.8. URL ký cho media — thư viện có, chưa mount route
 
-Media phục vụ qua **URL có chữ ký**: HMAC phủ **phương thức + đường dẫn chuẩn hoá + thời hạn**; đường dẫn đi qua `resolve()` + `is_relative_to` (không `../` ra ngoài); hết hạn → từ chối.
+Media phục vụ qua **URL có chữ ký**: HMAC phủ **phương thức + đường dẫn chuẩn hoá nghiêm ngặt + query đã sắp xếp + thời hạn** (trần hạn tối đa 7 ngày, bỏ fragment, từ chối `..`/`//`/`.`); đường dẫn đi qua `resolve()` + `is_relative_to` (không `../` ra ngoài); hết hạn/đổi tham số/sai chữ ký → từ chối (thư viện `app/url_ky.py` có sẵn, chưa mount route công khai). Quản lý khoá HMAC qua tệp chia sẻ an toàn giữa các worker.
 
 - **Vì sao**: URL media không ký là đường đọc trộm ảnh camera/tài liệu của người khác bằng cách đoán đường dẫn.
-- **Cách kiểm**: Sửa một ký tự trong URL/đổi phương thức/dùng URL hết hạn/`../` → 403.
+- **Cách kiểm**: Sửa một ký tự trong URL/đổi phương thức/dùng URL hết hạn/đổi tham số/`../` → 403/False.
 
 ### 3.9. Hàng chờ phê duyệt + mức rủi ro + mức tự chủ — đang làm
 
