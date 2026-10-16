@@ -53,7 +53,7 @@ async def lay_danh_sach_nguon(so: SoModule) -> list[dict[str, Any]]:
     return ds
 
 
-async def thuc_hien_tim_kiem(than: dict, so: SoModule) -> dict[str, Any]:
+async def thuc_hien_tim_kiem(than: dict, so: SoModule, danh_tinh: dict | None = None) -> dict[str, Any]:
     """Thực hiện tìm kiếm tri thức qua quy trình hoặc phễu mặc định."""
     chuoi = than.get("chuoi")
     chuoi_log = str(chuoi or "")[:200]
@@ -63,7 +63,7 @@ async def thuc_hien_tim_kiem(than: dict, so: SoModule) -> dict[str, Any]:
         if pheu is not None:
             if not isinstance(pheu, list):
                 raise LoiOpenAI(400, "«pheu» phải là danh sách các tầng quy trình", code="invalid_pipeline")
-            res = await quy_trinh.chay(pheu, than, so)
+            res = await quy_trinh.chay(pheu, than, so, danh_tinh=danh_tinh)
         else:
             # Phễu mặc định: truy_hoi -> gop (RRF) -> loc -> cay -> muc_luc (nếu có) -> chi_muc (nếu có) -> cat
             pheu_mac_dinh: list[dict] = [
@@ -78,7 +78,7 @@ async def thuc_hien_tim_kiem(than: dict, so: SoModule) -> dict[str, Any]:
                 pheu_mac_dinh.append({"ten": "chi_muc", "kha_nang": "chi_muc", "tham_so": than["chi_muc"]})
             pheu_mac_dinh.append({"ten": "cat", "kha_nang": "cat", "tham_so": {"so_luong": than.get("so_luong", 10)}})
 
-            res = await quy_trinh.chay(pheu_mac_dinh, than, so)
+            res = await quy_trinh.chay(pheu_mac_dinh, than, so, danh_tinh=danh_tinh)
 
         ket_qua = res.get("ket_qua", {})
         bao_cao = res.get("bao_cao", [])

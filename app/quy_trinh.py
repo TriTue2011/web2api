@@ -19,6 +19,7 @@ import time
 import unicodedata
 from typing import Any
 
+from app.kham_pha import HOP_DONG_KHA_NANG
 from app.kieu_chat import so_nguyen_chat
 from app.loi_openai import LoiOpenAI
 from app.so_module import SoModule
@@ -27,6 +28,58 @@ log = logging.getLogger("web2api.quy_trinh")
 
 TRAN_SO_TANG = 8
 MAC_DINH_THOI_GIAN_GIAY = 60.0
+
+#: Các toán tử dữ liệu thuần của lõi (không gọi module)
+TOAN_TU_THUAN = frozenset({"gop", "loc", "cat", "gop_ngu_canh", "cay", "muc_luc", "chi_muc"})
+
+#: Tập khả năng của module được phép gọi từ phễu theo chuẩn tri thức (docs/CHUAN-MODULE.md §4, app/kham_pha.py)
+KHA_NANG_PHEU_MODULE = frozenset({"tim_kiem", "xep_hang", "nhung"})
+
+#: Mọi toán tử hợp lệ của phễu: toán tử thuần + khả năng module có trong HOP_DONG_KHA_NANG
+TOAN_TU_PHEU_HOP_LE = TOAN_TU_THUAN | (KHA_NANG_PHEU_MODULE & HOP_DONG_KHA_NANG.keys())
+
+#: Danh tính nội bộ của lõi cho các lời gọi nội bộ có chủ đích
+DANH_TINH_NOI_BO = {"loai": "noi_bo", "id": "noi_bo", "pham_vi": ["*"]}
+
+
+def kiem_tra_pham_vi_tang(danh_tinh: dict | None, kha_nang: str) -> None:
+    """Kiểm tra phạm vi quyền hạn của người gọi cho từng tầng của quy trình.
+
+    - Thiếu danh tính (None) -> 403 insufficient_scope (đóng khi lỗi, fail-closed).
+    - Quản trị hoặc lời gọi nội bộ -> cho phép.
+    - Khách có khoá '*' -> cho phép.
+    - Toán tử thuần: cần phạm vi 'tim_kiem'.
+    - Tầng module: cần đúng phạm vi của chính khả năng đó ('tim_kiem', 'xep_hang', 'nhung'...).
+    - Khả năng lạ ngoài phễu: kiểm phạm vi của chính khả năng đó (thiếu -> 403; có -> sẽ bị từ chối 400 ở tầng hợp đồng).
+    """
+    if danh_tinh is None or not isinstance(danh_tinh, dict):
+        raise LoiOpenAI(
+            403,
+            "Thiếu danh tính phạm vi khi thực thi quy trình.",
+            loai="insufficient_scope",
+            code="insufficient_scope",
+        )
+    if danh_tinh.get("loai") in ("quan_tri", "noi_bo"):
+        return
+    pham_vi = danh_tinh.get("pham_vi", [])
+    if "*" in pham_vi:
+        return
+
+    # Xác định phạm vi cần thiết cho khả năng này
+    if kha_nang in TOAN_TU_THUAN:
+        can = "tim_kiem"
+    else:
+        can = kha_nang
+
+    if can in pham_vi:
+        return
+
+    raise LoiOpenAI(
+        403,
+        f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can}»).",
+        loai="insufficient_scope",
+        code="insufficient_scope",
+    )
 
 
 class LoiQuyTrinh(LoiOpenAI):
@@ -606,9 +659,11 @@ async def _thuc_hien_mot_tang(
         if nguon:
             m = so.dang_chay.get(nguon)
             km = so.catalog.get(nguon)
-            if not m or not callable(getattr(m, "tim_kiem", None)):
+            if not m or not km or not callable(getattr(m, "tim_kiem", None)):
                 raise LoiOpenAI(404, f"Module {nguon!r} không sẵn sàng hoặc không hỗ trợ tim_kiem", code="module_not_ready")
-            if km and "tim_kiem" in getattr(km, "chuan_loi", {}):
+            if "tim_kiem" not in km.manifest.get("cung_cap", []):
+                raise LoiOpenAI(400, f"Khả năng «tim_kiem» không được module {nguon!r} cung cấp", code="unknown_capability")
+            if "tim_kiem" in getattr(km, "chuan_loi", {}):
                 raise LoiOpenAI(501, f"Khả năng «tim_kiem» của module {nguon!r} không đúng chuẩn", code="capability_not_supported")
             kq = await m.tim_kiem(yc)
             if not isinstance(kq, dict):
@@ -787,9 +842,11 @@ async def _thuc_hien_mot_tang(
         if nguon:
             m = so.dang_chay.get(nguon)
             km = so.catalog.get(nguon)
-            if not m or not callable(getattr(m, "xep_hang", None)):
+            if not m or not km or not callable(getattr(m, "xep_hang", None)):
                 raise LoiOpenAI(404, f"Module {nguon!r} không sẵn sàng hoặc không hỗ trợ xep_hang", code="module_not_ready")
-            if km and "xep_hang" in getattr(km, "chuan_loi", {}):
+            if "xep_hang" not in km.manifest.get("cung_cap", []):
+                raise LoiOpenAI(400, f"Khả năng «xep_hang» không được module {nguon!r} cung cấp", code="unknown_capability")
+            if "xep_hang" in getattr(km, "chuan_loi", {}):
                 raise LoiOpenAI(501, f"Khả năng «xep_hang» của module {nguon!r} không đúng chuẩn", code="capability_not_supported")
         else:
             for mid, mod in list(so.dang_chay.items()):
@@ -843,19 +900,59 @@ async def _thuc_hien_mot_tang(
 
         return {**du_lieu_vao, "muc": muc_sap_xep}
 
-    # 8. Khả năng khác do module khai
+    # 8. Khả năng khác do module khai: CHỈ cho phép các khả năng thuộc chuẩn phễu tri thức
+    # theo HOP_DONG_KHA_NANG (tim_kiem, xep_hang, nhung). Tuyệt đối không gọi phương thức
+    # vòng đời (nap, cai, dung, suc_khoe...) hay khả năng ngoài phễu (anh, noi, video_tao...).
+    if kha_nang not in KHA_NANG_PHEU_MODULE or kha_nang not in HOP_DONG_KHA_NANG:
+        raise LoiOpenAI(400, f"Khả năng «{kha_nang}» không hợp lệ hoặc không có module nào hỗ trợ", code="unknown_capability")
+
+    cac_pt_hop_dong = HOP_DONG_KHA_NANG.get(kha_nang, ())
+
     if nguon:
         m = so.dang_chay.get(nguon)
-        if m and callable(getattr(m, kha_nang, None)):
-            yc = {**du_lieu_vao, **tham_so}
-            kq = await getattr(m, kha_nang)(yc)
-            return {**du_lieu_vao, **kq} if isinstance(kq, dict) else du_lieu_vao
+        km = so.catalog.get(nguon)
+        if not m or not km:
+            raise LoiOpenAI(404, f"Module {nguon!r} không sẵn sàng hoặc không hỗ trợ {kha_nang}", code="module_not_ready")
+        if kha_nang not in km.manifest.get("cung_cap", []):
+            raise LoiOpenAI(400, f"Khả năng «{kha_nang}» không được module {nguon!r} cung cấp", code="unknown_capability")
+        if kha_nang in getattr(km, "chuan_loi", {}):
+            raise LoiOpenAI(501, f"Khả năng «{kha_nang}» của module {nguon!r} không đúng chuẩn", code="capability_not_supported")
+        pt = getattr(m, kha_nang, None)
+        if kha_nang not in cac_pt_hop_dong or not callable(pt):
+            raise LoiOpenAI(501, f"Module {nguon!r} thiếu phương thức «{kha_nang}»", code="capability_not_supported")
+
+        yc = {**du_lieu_vao, **tham_so}
+        kq = await pt(yc)
+        if isinstance(kq, tuple) and len(kq) == 3:
+            ma, _, noi_dung = kq
+            if ma >= 400:
+                raise LoiOpenAI(ma, f"Module {nguon!r} trả mã lỗi {ma}")
+            if isinstance(noi_dung, (bytes, bytearray)):
+                noi_dung = json.loads(noi_dung)
+            kq_dict = noi_dung if isinstance(noi_dung, dict) else {}
+            return {**du_lieu_vao, **kq_dict}
+        return {**du_lieu_vao, **kq} if isinstance(kq, dict) else du_lieu_vao
 
     for mid, m in list(so.dang_chay.items()):
         km = so.catalog.get(mid)
-        if km and kha_nang in km.manifest.get("cung_cap", []) and callable(getattr(m, kha_nang, None)):
+        if (
+            km
+            and kha_nang in km.manifest.get("cung_cap", [])
+            and kha_nang not in getattr(km, "chuan_loi", {})
+            and kha_nang in cac_pt_hop_dong
+            and callable(getattr(m, kha_nang, None))
+        ):
+            pt = getattr(m, kha_nang)
             yc = {**du_lieu_vao, **tham_so}
-            kq = await getattr(m, kha_nang)(yc)
+            kq = await pt(yc)
+            if isinstance(kq, tuple) and len(kq) == 3:
+                ma, _, noi_dung = kq
+                if ma >= 400:
+                    raise LoiOpenAI(ma, f"Module {mid!r} trả mã lỗi {ma}")
+                if isinstance(noi_dung, (bytes, bytearray)):
+                    noi_dung = json.loads(noi_dung)
+                kq_dict = noi_dung if isinstance(noi_dung, dict) else {}
+                return {**du_lieu_vao, **kq_dict}
             return {**du_lieu_vao, **kq} if isinstance(kq, dict) else du_lieu_vao
 
     # Khả năng lạ không thuộc toán tử và không có module khai
@@ -865,7 +962,12 @@ async def _thuc_hien_mot_tang(
 # ───────────── Hàm điều phối quy trình chính ─────────────
 
 
-async def chay(tang: list, du_lieu_vao: dict, so: SoModule) -> dict:
+async def chay(
+    tang: list,
+    du_lieu_vao: dict,
+    so: SoModule,
+    danh_tinh: dict | None = None,
+) -> dict:
     """Chạy quy trình nối tầng với danh sách tầng có thứ tự.
 
     Trả về: {"ket_qua": ..., "bao_cao": [{ten, vao, ra, ms, loi?}]}
@@ -916,6 +1018,7 @@ async def chay(tang: list, du_lieu_vao: dict, so: SoModule) -> dict:
 
         t0 = time.monotonic()
         try:
+            kiem_tra_pham_vi_tang(danh_tinh, kha_nang)
             du_lieu_moi = await asyncio.wait_for(
                 _thuc_hien_mot_tang(kha_nang, nguon, tham_so, du_lieu_hien_tai, so),
                 timeout=con_lai,

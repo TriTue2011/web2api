@@ -1818,7 +1818,8 @@ async def goi_tim_kiem(request: Request):
     kiem_tra_pham_vi(request, "tim_kiem")
     than = await _than_json(request)
     so = _so(request)
-    return await tri_thuc_mod.thuc_hien_tim_kiem(than, so)
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    return await tri_thuc_mod.thuc_hien_tim_kiem(than, so, danh_tinh=danh_tinh)
 
 
 @tim_kiem.post("/muc-luc", dependencies=V1_AUTH)
