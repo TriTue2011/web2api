@@ -435,8 +435,14 @@ def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch, t
     from app.main import app
 
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    # Nguồn «chinh» phải được cấu hình thì mới có danh sách module trên git để báo (NV59): trên server thật compose
+    # luôn đặt WEB2API_GIT_REPO mặc định; test dựng tệp trạng thái giả nên phải khai nguồn tương ứng.
+    monkeypatch.setenv("WEB2API_GIT_REPO", "chu-may/c2a")
     monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
+    # `dinh_danh` = (repo, nhánh, thư mục) của nguồn đã đồng bộ ra tệp này; thiếu hoặc lệch thì lõi coi tệp là của nguồn khác
+    # và đặt lại (không trộn trạng thái giữa các repo). Tệp trạng thái thật luôn có trường này.
     (tmp_path / "nguon_git_trang_thai.json").write_text(_json.dumps({
+        "dinh_danh": ["chu-may/c2a", "main", "modules"],
         "commit": {"sha": "a" * 40, "tac_gia": "x", "thong_diep": "y", "cay": "b" * 40},
         "modules": [{"id": "dich", "ten": "Dịch", "tree_sha": "c" * 40, "loi": None}]}))
     # Một module ĐÃ LIÊN KẾT có tab_web → hiện thành tab trên thanh Hệ thống (sau Module, trước Bảo mật & người dùng).
