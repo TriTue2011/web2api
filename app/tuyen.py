@@ -1,7 +1,7 @@
 """Các tuyến API của lõi: /v1 (chuẩn OpenAI), /api/modules, /api/tinh-nang, /api/nguon-git, /m/<id>/.
 
-Quyền: MỞ cho GET /api/modules, /api/modules/catalog và /api/tinh-nang (không chứa bí mật, không lộ repo);
-mọi tuyến khác ở đây đòi khoá quản trị (xác thực theo từng tuyến bằng `dependencies`).
+Quyền: MỞ cho GET/POST /api/thiet-lap, POST /api/dang-nhap;
+mọi tuyến API khác (/api/modules, /api/tinh-nang...) đòi khoá/phiên quản trị (QT) hoặc phiên web (PW).
 """
 
 from __future__ import annotations
@@ -68,8 +68,8 @@ v1 = APIRouter(prefix="/v1", dependencies=V1_AUTH)
 #: Bắt mọi đường /v1 mà router `v1` không có — main.py include NGAY SAU `v1` (route đăng ký sau vào `v1` vẫn đứng
 #: trước nó). Thiếu nó thì mount StaticFiles ở gốc nuốt mất và trả 405 {"detail"} cho mọi POST lạ.
 v1_khong_co = APIRouter(prefix="/v1", dependencies=V1_AUTH)
-modules = APIRouter(prefix="/api/modules")
-tinh_nang = APIRouter()
+modules = APIRouter(prefix="/api/modules", dependencies=QT)
+tinh_nang = APIRouter(dependencies=QT)
 nguon_git = APIRouter(prefix="/api/nguon-git", dependencies=QT)
 dia_chi = APIRouter(prefix="/api", dependencies=QT)
 nhat_ky = APIRouter(prefix="/api/nhat-ky", dependencies=QT)

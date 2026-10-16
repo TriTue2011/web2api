@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Đăng nhập</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Be Vietnam Pro",system-ui,sans-serif}
+.hop-giua{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;box-sizing:border-box}
+.khung-dang-nhap{width:100%;max-width:400px;display:flex;flex-direction:column;gap:20px}
+.dau-trang{display:flex;align-items:center;gap:12px;justify-content:center}
+.form-dn{display:flex;flex-direction:column;gap:14px}
+.o-va-nut-doc{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+</style>
+</helmet>
+
+<div class="hop-giua">
+  <main class="khung-dang-nhap">
+    <div class="dau-trang">
+      <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div>
+      <span class="ten-web">web2api</span>
+    </div>
+
+    <section class="the" aria-labelledby="h-dang-nhap" id="khung-dn">
+      <h1 id="h-dang-nhap" class="nhan-muc" style="font-size:20px;margin:0 0 4px">Đăng nhập</h1>
+      <p class="phu" style="margin:0 0 12px">Nhập tên đăng nhập và mật khẩu để tiếp tục.</p>
+
+      <form class="form-dn" novalidate onSubmit="{{dangNhapSubmit}}">
+        <div class="truong">
+          <label for="o-ten">Tên đăng nhập</label>
+          <input id="o-ten" class="o" type="text" autocomplete="username" spellcheck="false" placeholder="Tên đăng nhập" value="{{tenDangNhap}}" onInput="{{goTen}}" autofocus>
+        </div>
+
+        <div class="truong">
+          <label for="o-mat-khau">Mật khẩu</label>
+          <input id="o-mat-khau" class="o" type="password" autocomplete="current-password" spellcheck="false" placeholder="Mật khẩu" value="{{matKhau}}" onInput="{{goMatKhau}}">
+        </div>
+
+        <sc-if value="{{coLoi}}">
+          <p role="alert" class="bao bao-loi" id="thong-bao-loi" style="margin:4px 0 0">{{loi}}</p>
+        </sc-if>
+
+        <div class="o-va-nut-doc">
+          <button type="submit" class="nut nut-chinh" id="nut-dang-nhap" disabled="{{dangGui}}" style="width:100%;height:44px;font-size:15px">{{nhanNutDangNhap}}</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{}'>
+const K = window.Khung;
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tenDangNhap: '',
+      matKhau: '',
+      dangGui: false,
+      loi: '',
+      coLoi: false,
+      hinh: K.BIEU_TUONG
+    };
+  }
+
+  async didMount() {
+    try {
+      const res = await fetch('api/thiet-lap', { cache: 'no-store' });
+      if (res.ok) {
+        const j = await res.json();
+        if (j && j.can_thiet_lap) {
+          location.replace('Thiet-lap.dc.html');
+          return;
+        }
+      }
+    } catch (e) {
+      // Bỏ qua lỗi kết nối ban đầu
+    }
+
+    try {
+      const toi = await K.napToi();
+      if (toi && toi.id) {
+        location.replace(this.layDuongVe());
+      }
+    } catch (e) {
+      // Chưa có phiên
+    }
+  }
+
+  layDuongVe() {
+    const p = new URLSearchParams(location.search).get('ve');
+    return K.duongVeHopLe(p) || 'index.html';
+  }
+
+  goTen(e) {
+    this.setState({ tenDangNhap: e.target.value, loi: '', coLoi: false });
+  }
+
+  goMatKhau(e) {
+    this.setState({ matKhau: e.target.value, loi: '', coLoi: false });
+  }
+
+  async dangNhapSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.dangGui) return;
+
+    const ten = (this.state.tenDangNhap || '').trim();
+    const mk = this.state.matKhau || '';
+
+    if (!ten || !mk) {
+      this.setState({
+        loi: 'Sai tên đăng nhập hoặc mật khẩu.',
+        coLoi: true
+      });
+      return;
+    }
+
+    this.setState({ dangGui: true, loi: '', coLoi: false });
+
+    try {
+      const res = await fetch('api/dang-nhap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ten_dang_nhap: ten, mat_khau: mk }),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+
+      let j = null;
+      try { j = await res.json(); } catch (err) { j = null; }
+
+      if (res.ok && j && j.ok) {
+        if (j.csrf) K.datCsrf(j.csrf);
+        location.replace(this.layDuongVe());
+        return;
+      }
+
+      let thongBaoLoi = 'Sai tên đăng nhập hoặc mật khẩu.';
+      if (res.status === 503) {
+        thongBaoLoi = (j && j.error && j.error.message) || 'Kho tài khoản hoặc phiên không đọc được. Hãy khôi phục từ bản sao lưu.';
+      } else if (res.status === 429) {
+        thongBaoLoi = (j && j.error && j.error.message) || 'Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.';
+      } else if (j && j.error && j.error.code === 'account_locked') {
+        thongBaoLoi = j.error.message || 'Tài khoản đang bị khoá tạm thời do đăng nhập sai nhiều lần.';
+      } else if (j && j.error && j.error.message) {
+        thongBaoLoi = j.error.message;
+      }
+
+      this.setState({
+        dangGui: false,
+        loi: thongBaoLoi,
+        coLoi: true,
+        matKhau: ''
+      });
+    } catch (err) {
+      this.setState({
+        dangGui: false,
+        loi: 'Lỗi kết nối tới máy chủ. Vui lòng thử lại.',
+        coLoi: true
+      });
+    }
+  }
+
+  renderVals() {
+    return {
+      tenDangNhap: this.state.tenDangNhap,
+      matKhau: this.state.matKhau,
+      dangGui: this.state.dangGui,
+      nhanNutDangNhap: this.state.dangGui ? 'Đang đăng nhập…' : 'Đăng nhập',
+      loi: this.state.loi,
+      coLoi: this.state.coLoi,
+      hinh: this.state.hinh,
+      goTen: (e) => this.goTen(e),
+      goMatKhau: (e) => this.goMatKhau(e),
+      dangNhapSubmit: (e) => this.dangNhapSubmit(e)
+    };
+  }
+}
+</script>
+</body>
+</html>

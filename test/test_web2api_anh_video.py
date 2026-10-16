@@ -114,7 +114,7 @@ def test_manifest_gemini_khai_cung_cap_va_catalog_tra_ra(client):
     assert m["phien_ban"] == "0.2.0"
     # Không đổi phần quyền: đổi là bản cập nhật bị coi «xin thêm quyền» và không tự cập nhật được.
     assert m["yeu_cau_goi"] == ["httpx"] and m["tai_nguyen"]["mang_ra"] == ["generativelanguage.googleapis.com"]
-    cat = next(x for x in client.get("/api/modules/catalog").json()["modules"] if x["id"] == "gemini-api")
+    cat = next(x for x in client.get("/api/modules/catalog", headers=QT).json()["modules"] if x["id"] == "gemini-api")
     assert cat["cung_cap"] == ["chat", "anh", "video"]
 
 
@@ -126,7 +126,7 @@ def test_cung_cap_sai_mau_bi_tu_choi(du_lieu, sai):
     tep["manifest.json"] = json.dumps(m).encode()
     ghi_thu_muc(du_lieu / "modules" / "echo", tep)
     with TestClient(app) as c:
-        j = c.get("/api/modules/catalog").json()
+        j = c.get("/api/modules/catalog", headers=QT).json()
     loi = {x["thu_muc"].rsplit("/", 1)[-1]: x["ly_do"] for x in j["loi"]}
     assert "cung_cap" in loi["echo"]
 

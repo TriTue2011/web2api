@@ -28,6 +28,7 @@ h1,h2,h3,p,ol,dl,dd,ul,pre{margin:0}
 .quay-lai{flex:0 0 auto;display:flex;align-items:center;gap:6px;height:40px;padding:0 16px 0 12px;box-sizing:border-box;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--ink);font-size:14px;font-weight:500;white-space:nowrap;text-decoration:none}
 /* Ô avatar «C» của demo: chưa có tài khoản người dùng → không vẽ, nhưng GIỮ chỗ 36px để các phần còn lại đứng đúng chỗ. */
 .acc-cho{flex:0 0 auto;margin-left:auto;width:36px;height:36px}
+.acc-hop{flex:0 0 auto;margin-left:auto;display:flex;align-items:center;gap:10px}
 /* Bảng xổ của mục có mục con (Hệ thống → AI: Tài khoản, Provider) — role=menu của demo */
 .menu-xo{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:30;width:200px;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(24,24,22,0.14);padding:4px;display:flex;flex-direction:column;gap:1px}
 .menu-xo a{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;height:auto;min-height:38px;padding:0 10px;border:0;border-radius:9px;text-align:left;font:inherit;font-size:14px;text-decoration:none;cursor:pointer;color:#181816;background:transparent;font-weight:400}

@@ -8,13 +8,35 @@
 <script src="./khung.js"></script>
 </head>
 <body>
-<!-- Địa chỉ gốc «/»: chọn trang đầu theo «tính năng đang có» — có module chat ĐÃ CÀI (kể cả chưa khoá) thì Studio,
-     chưa thì Hệ thống → Module (trang đầu khi chưa cài gì). Đường TƯƠNG ĐỐI: chạy được sau proxy ở thư mục con. -->
+<!-- Địa chỉ gốc «/»: kiểm tra thiết lập ban đầu (chưa có admin → Thiết lập), kiểm tra phiên
+     (chưa đăng nhập → Đăng nhập), đã đăng nhập → trang đầu theo tính năng đang có. -->
 <main class="goc" style="align-items:center;justify-content:center;padding:24px;box-sizing:border-box">
-<p role="status" id="tt">Đang mở web2api… Nếu trang không tự chuyển, mở <a href="He-thong.dc.html">Hệ thống → Module</a>.</p>
+<p role="status" id="tt">Đang mở web2api… Nếu trang không tự chuyển, mở <a href="Dang-nhap.dc.html">Đăng nhập</a>.</p>
 </main>
 <script>
-Khung.taiTinhNang().then((tn) => location.replace(Khung.trangDau(tn)), () => location.replace('He-thong.dc.html'));
+(async () => {
+  try {
+    const resTl = await fetch('api/thiet-lap', { cache: 'no-store' });
+    if (resTl.ok) {
+      const jTl = await resTl.json();
+      if (jTl && jTl.can_thiet_lap) {
+        location.replace('Thiet-lap.dc.html');
+        return;
+      }
+    }
+  } catch (e) {
+    // Tiếp tục kiểm tra phiên
+  }
+
+  try {
+    const tn = await Khung.taiTinhNang();
+    location.replace(Khung.trangDau(tn));
+  } catch (err) {
+    // 403 = đã đăng nhập nhưng không phải quản trị: đưa tới trang tự phục vụ (khoá/mật khẩu của chính mình).
+    // Đưa về Đăng nhập sẽ vòng lặp vô tận vì trang đó chuyển ngược người đã có phiên về «/».
+    location.replace(err && err.ma === 403 ? 'He-thong-Bao-mat.dc.html' : 'Dang-nhap.dc.html');
+  }
+})();
 </script>
 </body>
 </html>

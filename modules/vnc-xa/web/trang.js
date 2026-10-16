@@ -1,10 +1,9 @@
 // Trang «Workspace trình duyệt» của module vnc-xa — bố cục, nhãn, nút theo thẻ Workspace trình duyệt + mục «Tái dùng»
 // của c2a, viết bằng JS thuần. Chống XSS: dữ liệu từ máy chủ CHỈ đi qua textContent / createElement / thuộc tính đã
-// kiểm; không gán HTML thô, không chèn chuỗi thành thẻ. Khoá quản trị đọc từ localStorage['web2api_khoa'] (cùng khoá với web/khung.js),
-// chỉ gửi trong tiêu đề Authorization, không bao giờ lên URL. Cookie không bao giờ đi qua trang này.
+// kiểm; không gán HTML thô, không chèn chuỗi thành thẻ. Hỗ trợ xác thực bằng cookie phiên cùng nguồn và CSRF token,
+// hoặc khoá quản trị trong phiên trang nếu cần. Cookie không bao giờ đi qua trang này.
 'use strict';
 (() => {
-  const KHOA_LUU = 'web2api_khoa';
   const MODULE = 'vnc-xa';
   const MAU_HO_SO = /^[a-f0-9]{16,64}$/;
   const KIEU_BI_MAT = ['bi_mat', 'danh_sach_bi_mat'];
@@ -14,6 +13,7 @@
   const GOC = new URL('../../', location.href);
   const $ = (id) => document.getElementById(id);
 
+  let csrfToken = '';
   let khoaTrang = '';
   let ban = false;
   let dsWs = [];
@@ -23,8 +23,20 @@
   const lienKet = {}; // ho_so → {url: URL vé đã kiểm, het: mốc hết hạn (ms)}
   let henVe = 0;
 
-  function docKhoa() { try { return localStorage.getItem(KHOA_LUU) || khoaTrang; } catch (e) { return khoaTrang; } }
-  function luuKhoa(k) { khoaTrang = k; try { localStorage.setItem(KHOA_LUU, k); } catch (e) { /* chỉ giữ trong trang */ } }
+  function docKhoa() { return khoaTrang; }
+  function luuKhoa(k) { khoaTrang = k; }
+
+  async function layCsrf() {
+    if (csrfToken) return csrfToken;
+    try {
+      const r = await fetch(new URL('api/toi', GOC), { credentials: 'same-origin', cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.csrf) { csrfToken = j.csrf; return csrfToken; }
+      }
+    } catch (e) {}
+    return '';
+  }
 
   function the(ten, lop, chu) {
     const e = document.createElement(ten);
@@ -43,11 +55,24 @@
   function loiDanhSach(chu) { const o = $('loi'); o.textContent = chu || ''; o.hidden = !chu; }
 
   async function goi(duong, than) {
+    const method = than === undefined ? 'GET' : 'POST';
+    const hd = {};
     const khoa = docKhoa();
-    if (!khoa) { $('o-khoa').hidden = false; throw new Error('Cần khoá quản trị.'); }
-    const tuyChon = { method: than === undefined ? 'GET' : 'POST', cache: 'no-store', credentials: 'same-origin',
-      headers: { Authorization: 'Bearer ' + khoa } };
-    if (than !== undefined) { tuyChon.headers['Content-Type'] = 'application/json'; tuyChon.body = JSON.stringify(than); }
+    if (khoa) hd.Authorization = 'Bearer ' + khoa;
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      hd['Content-Type'] = 'application/json';
+      const csrf = await layCsrf();
+      if (csrf) hd['X-CSRF-Token'] = csrf;
+    }
+    const tuyChon = {
+      method,
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: hd
+    };
+    if (than !== undefined) {
+      tuyChon.body = JSON.stringify(than);
+    }
     const r = await fetch(new URL(duong, GOC), tuyChon);
     let du = null;
     try { du = await r.json(); } catch (e) { du = null; }
@@ -200,10 +225,14 @@
   }
 
   async function napDich() {
-    // Danh mục module là đường MỞ (không bí mật). Chỉ liệt kê trường mà CHÍNH module đích khai nhận cookie
+    // Danh mục module (yêu cầu quản trị). Chỉ liệt kê trường mà CHÍNH module đích khai nhận cookie
     // (`nhan_cookie: {mien}` trong manifest) — không ghi nhầm vào khoá API của module khác; tên miền theo bản khai.
-    const r = await fetch(new URL('api/modules/catalog', GOC), { cache: 'no-store' });
+    const hd = {};
+    const khoa = docKhoa();
+    if (khoa) hd.Authorization = 'Bearer ' + khoa;
+    const r = await fetch(new URL('api/modules/catalog', GOC), { headers: hd, credentials: 'same-origin', cache: 'no-store' });
     const du = await r.json().catch(() => null);
+    if (r.status === 401) $('o-khoa').hidden = false;
     dsDich = [];
     for (const m of (du && Array.isArray(du.modules) ? du.modules : [])) {
       if (!m || typeof m.id !== 'string' || m.id === MODULE || !Array.isArray(m.truong_cau_hinh)) continue;
@@ -311,7 +340,6 @@
     });
     veDichVu();
     veTaiDung();
-    if (!docKhoa()) { $('o-khoa').hidden = false; napDich().catch(() => {}); veWs(); return; }
     napTatCa();
   });
 })();

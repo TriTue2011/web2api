@@ -24,9 +24,10 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import MayChuThat, ghi_thu_muc
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
 
 pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
+
 
 KHOA_QT = "khoa-quan-tri-test-ui-thiet-bi-0123"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -105,11 +106,6 @@ def loi_that_ui(tmp_path, monkeypatch, modules: dict | None = None):
         yield w
 
 
-def luu_khoa(trang, khoa: str = KHOA_QT):
-    trang.go("#o-khoa", khoa)
-    trang.bam("document.getElementById('nut-luu-khoa')")
-
-
 def nav(trang) -> list[str]:
     return trang.js("[...document.querySelectorAll('[data-nav]')].map((a) => a.dataset.nav)")
 
@@ -117,8 +113,7 @@ def nav(trang) -> list[str]:
 def test_ui_thiet_bi_chua_cai_module(trang, tmp_path, monkeypatch):
     """Khi chưa có module thiết bị: tab thiet_bi không hiện trong thanh điều hướng."""
     with loi_that_ui(tmp_path, monkeypatch) as w:
-        trang.di(w.url)
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
         # Tab thiet_bi chưa có trong DOM
         assert "thiet_bi" not in nav(trang)
 
@@ -131,8 +126,7 @@ def test_ui_thiet_bi_khi_da_cai_module(trang, tmp_path, monkeypatch):
         r_cai = httpx.post(f"{w.url}/api/modules/thiet-bi-ui/cai", json={"cau_hinh": {}}, headers=QT)
         assert r_cai.status_code == 200
 
-        trang.di(w.url)
-        luu_khoa(trang)
+        dang_nhap_quan_tri(trang, w.url)
 
         # Tab thiet_bi xuất hiện trong nav
         assert "thiet_bi" in nav(trang)

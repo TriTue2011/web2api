@@ -36,10 +36,6 @@ from app.xac_thuc import can_phien_web, can_quan_tri, xac_thuc_v1
 # ─────────────────────────────────────────────────────────────────────────────
 BANG_NGOAI_LE_MO: dict[tuple[str, str], str] = {
     ("GET", "/health"): "Kiểm tra sức khỏe hệ thống (mở cho orchestrator/docker healthcheck, không chứa dữ liệu nhạy cảm)",
-    ("GET", "/api/he-thong"): "Thông tin cấu hình máy và phiên bản hệ thống (chỉ đọc, không chứa bí mật hay thông tin nhạy cảm)",
-    ("GET", "/api/modules"): "Danh sách các module đã cài đặt (chỉ đọc, không chứa bí mật hay kho mã nguồn)",
-    ("GET", "/api/modules/catalog"): "Danh mục module có sẵn từ nguồn cấu hình (chỉ đọc, không chứa bí mật)",
-    ("GET", "/api/tinh-nang"): "Danh sách cờ tính năng và khả năng của lõi (chỉ đọc, không chứa bí mật)",
     ("GET", "/m/{id_}/{duong:path}"): "Tệp tĩnh giao diện web của module đã cài (công khai, kiểm tra an toàn đường dẫn)",
     ("GET", "/novnc/dang-nhap"): "Trang nút mở phiên trình duyệt từ xa (chỉ GET form, không script, không tiêu thụ vé)",
     ("POST", "/novnc/dang-nhap"): "Đổi vé sử dụng một lần (60 giây) trong thân form urlencoded lấy phiên noVNC ngắn hạn",

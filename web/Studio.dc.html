@@ -73,7 +73,11 @@ main.st.co-luot .hang-viec > button{padding:0 12px !important}
 <div class="thanh-tab" id="thanh-tab">
 <sc-for list="{{nav}}" as="n"><div class="muc-nav" style="{{n.wst}}"><a href="{{n.href}}" data-nav="{{n.id}}" aria-current="{{n.ac}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"></path></svg><span>{{n.nhan}}</span></a></div></sc-for>
 </div>
-<div class="acc-cho" aria-hidden="true"></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
 </nav>
 
 <main class="st{{lopLuot}}" style="flex:1 1 0;min-width:0;min-height:0;overflow-x:hidden;display:flex;flex-direction:column">
@@ -156,14 +160,6 @@ main.st.co-luot .hang-viec > button{padding:0 12px !important}
 </sc-if>
 
 <sc-if value="{{tnLoi}}"><p role="alert" class="bao bao-loi" style="width:100%;box-sizing:border-box">Không đọc được dữ liệu: {{tnLoi}}</p></sc-if>
-<sc-if value="{{khongKhoa}}">
-<section class="the" aria-labelledby="h-khoa" id="khoa-quan-tri" style="width:100%;gap:10px">
-<h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2>
-<p class="phu">Studio gọi {{diaChiV1}} bằng khoá quản trị — y như ứng dụng của bạn sẽ gọi. Lấy trên máy chủ bằng <code class="ma">docker exec web2api cat /data/admin_key</code>. Khoá chỉ lưu trong trình duyệt này.</p>
-<div class="o-va-nut"><label for="o-khoa" class="an-chu">Khoá quản trị</label><input id="o-khoa" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}"><button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button></div>
-</section>
-</sc-if>
-<sc-if value="{{khoaLoi}}"><p role="alert" class="bao bao-loi" id="khoa-loi" style="width:100%;box-sizing:border-box">{{khoaLoi}}</p></sc-if>
 <sc-if value="{{modelsLoi}}"><div role="alert" class="bao bao-loi dong-nut" style="width:100%;box-sizing:border-box"><span style="flex:1 1 200px;min-width:0">Không đọc được danh sách model: {{modelsLoi}}</span><button type="button" class="nut nut-nho nut-nguy" onClick="{{taiModels}}">Thử lại</button></div></sc-if>
 <sc-if value="{{loiDuoi}}"><div role="alert" class="bao bao-loi" id="loi-studio" style="width:100%;box-sizing:border-box"><sc-if value="{{loiThanThien}}"><strong style="display:block">{{loiThanThien}}</strong></sc-if><span>{{loi}}</span></div></sc-if>
 <sc-if value="{{coChuaKhoa}}"><div id="studio-chua-khoa" role="status" style="display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:4px 8px;max-width:100%;box-sizing:border-box;min-height:32px;padding:4px 12px;border:1px solid #EBD38F;border-radius:16px;background:#FDF6E3;color:#6B4E00;font-size:13px;overflow-wrap:anywhere;text-align:center"><span>{{chuKhoa}}</span><sc-for list="{{dsChuaKhoa}}" as="x"><a href="{{x.href}}" data-them-khoa="{{x.id}}" aria-label="{{x.aria}}" title="{{x.aria}}" style="color:#6B4E00;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap">{{x.nhanNut}}</a></sc-for></div></sc-if>
@@ -302,7 +298,7 @@ const tenCuoc = (s) => { const x = s.replace(/\s+/g, ' ').trim(); return x.lengt
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { khoa: K.docKhoa(), khoaNhap: '', khoaLoi: '', tn: null, tnLoi: '', dangTai: true,
+    this.state = { nguoiDung: null, tn: null, tnLoi: '', dangTai: true,
       cheDo: 'chat', models: [], modelsLoi: '', chon: {}, nhap: '', luot: [], dangGui: false, moM: false,
       trangThai: '', loi: '', loiCode: '', loiLuot: false,
       chatId: null, lsMo: false, lsQ: '', lichSu: docLichSu() };
@@ -313,6 +309,7 @@ class Component extends DCLogic {
   }
 
   async didMount() {
+    K.napToi().then((nd) => { if (nd) this.setState({ nguoiDung: nd }); });
     let tn;
     try { tn = await K.taiTinhNang(); } catch (e) { this.setState({ tnLoi: e.message, dangTai: false }); return; }
     // Gõ tay /Studio.dc.html khi chưa có module chat đã cài → về trang Module kèm lời giải thích.
@@ -345,21 +342,12 @@ class Component extends DCLogic {
       : 'Chưa có module nào đã liên kết cho chế độ này.' };
   }
   async taiModels() {
-    if (!this.state.khoa) return;
     // Chưa chế độ nào gọi được /v1 (chưa khoá) → không hỏi /v1/models: chắc chắn rỗng.
     if (!CHE_DO.some(([, dk]) => K.dungDuoc(dk, this.state.tn))) { this.setState({ models: [], modelsLoi: '' }); return; }
     try {
       const { j } = await K.goi('v1/models');
       this.setState({ models: ((j && j.data) || []).filter((m) => m && typeof m.id === 'string'), modelsLoi: '' });
-    } catch (e) { this.bao401(e); this.setState({ models: [], modelsLoi: e.message }); }
-  }
-  bao401(e) { if (e && e.ma === 401) this.setState({ khoaLoi: 'Khoá quản trị sai hoặc thiếu (HTTP 401). Dán lại khoá đúng.', khoa: '' }); }
-  luuKhoa() {
-    const k = (this.state.khoaNhap || '').trim();
-    if (!k) return;
-    K.luuKhoa(k);
-    this.setState({ khoa: k, khoaNhap: '', khoaLoi: '' });
-    setTimeout(() => this.taiModels(), 0);
+    } catch (e) { this.setState({ models: [], modelsLoi: e.message }); }
   }
 
   // Module đã liên kết khai mã chế độ `ma`.
@@ -387,12 +375,16 @@ class Component extends DCLogic {
 
   async goiV1(duong, than, signal) {
     const hd = { 'Content-Type': 'application/json' };
-    if (this.state.khoa) hd.Authorization = 'Bearer ' + this.state.khoa;
-    const r = await fetch(duong, { method: 'POST', headers: hd, body: JSON.stringify(than), cache: 'no-store', signal });
+    let csrf = K.layCsrf();
+    if (!csrf) {
+      const toi = await K.napToi();
+      if (toi && toi.csrf) csrf = toi.csrf;
+    }
+    if (csrf) hd['X-CSRF-Token'] = csrf;
+    const r = await fetch(duong, { method: 'POST', headers: hd, body: JSON.stringify(than), cache: 'no-store', credentials: 'same-origin', signal });
     if (!r.ok) {
       let j = null; try { j = await r.json(); } catch (e) { j = null; }
-      const e = K.taoLoi(r.status === 401 ? 'Khoá quản trị sai hoặc thiếu (HTTP 401).' : K.thongDiep(j, r.status), r.status, j && j.error && j.error.code);
-      this.bao401(e);
+      const e = K.taoLoi(K.thongDiep(j, r.status), r.status, j && j.error && j.error.code);
       throw e;
     }
     return r;
@@ -590,7 +582,7 @@ class Component extends DCLogic {
         this.suaLuot(id, { tienDo: typeof v.progress === 'number' ? v.progress : null });
         this.setState({ trangThai: 'Video đang được tạo (' + (v.status || '…') + (v.progress != null ? ', ' + v.progress + '%' : '') + ')… hỏi lại sau mỗi ' + (HOI_VIDEO_MS / 1000) + ' giây.' });
         await new Promise((ok) => setTimeout(ok, lan ? HOI_VIDEO_MS : 1000));
-        const rr = await fetch('v1/videos/' + encodeURIComponent(ma), { headers: { Authorization: 'Bearer ' + this.state.khoa }, cache: 'no-store' });
+        const rr = await fetch('v1/videos/' + encodeURIComponent(ma), { credentials: 'same-origin', cache: 'no-store' });
         let j = null; try { j = await rr.json(); } catch (e) { j = null; }
         if (!rr.ok) throw K.taoLoi(K.thongDiep(j, rr.status), rr.status, j && j.error && j.error.code);
         v = j || {};
@@ -598,7 +590,7 @@ class Component extends DCLogic {
       if (!con()) return;
       this.suaLuot(id, { tienDo: 100 });
       this.setState({ trangThai: 'Đang tải video về…' });
-      const rc = await fetch('v1/videos/' + encodeURIComponent(ma) + '/content', { headers: { Authorization: 'Bearer ' + this.state.khoa }, cache: 'no-store' });
+      const rc = await fetch('v1/videos/' + encodeURIComponent(ma) + '/content', { credentials: 'same-origin', cache: 'no-store' });
       if (!rc.ok) { let j = null; try { j = await rc.json(); } catch (e) { j = null; } throw K.taoLoi(K.thongDiep(j, rc.status), rc.status); }
       const b = await rc.blob();
       if (!con()) return;
@@ -682,8 +674,10 @@ class Component extends DCLogic {
       navDuoi: K.navDuoi(tn, 'studio'),
       tt: Object.assign({ tieu: '' }, tt, { coLink: !!tt.href, khongLink: !tt.href }),
       tnLoi: s.tnLoi, diaChiV1: K.diaChiV1(),
-      khongKhoa: !s.khoa, khoaNhap: s.khoaNhap, khoaLoi: s.khoaLoi, goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
-      luuKhoa: () => this.luuKhoa(), phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
+      khongKhoa: false, khoaLoi: '',
+      tenNguoiDung: s.nguoiDung ? s.nguoiDung.ten : '',
+      nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '',
+      dangXuat: () => K.dangXuat(),
       coChuaKhoa: !!ck, chuKhoa: ck ? ck.chu : '', dsChuaKhoa: ck ? ck.ds : [],
       tonTien: !!tn && !laChat,
       noTurns: s.luot.length === 0, hasTurns: s.luot.length > 0, turns, lopLuot: s.luot.length ? ' co-luot' : '',
@@ -705,8 +699,8 @@ class Component extends DCLogic {
       toggleModel: () => this.setState({ moM: !this.state.moM, lsMo: false }),
       phimModel: (e) => { if (e.key === 'Escape') { this.setState({ moM: false }); const o = document.getElementById('chon-model'); if (o) o.focus(); } },
       modelsLoi: s.modelsLoi, taiModels: () => this.taiModels(),
-      modelsRong: !ck && !!s.khoa && !s.modelsLoi && s.models.length > 0 && dsM.length === 0,
-      gui: (e) => this.gui(e), khongGui: s.dangGui || !s.khoa || !!ck,
+      modelsRong: !ck && !s.modelsLoi && s.models.length > 0 && dsM.length === 0,
+      gui: (e) => this.gui(e), khongGui: s.dangGui || !!ck,
       nhanGui: laChat ? 'Gửi' : s.cheDo === 'anh' ? 'Vẽ ảnh' : 'Tạo video',
       coDung: s.dangGui && laChat, khongDung: !(s.dangGui && laChat), dung: () => { if (this._ac) this._ac.abort(); },
       loi: s.loi, loiDuoi: !!s.loi && !loiTrongLuot,

@@ -117,8 +117,8 @@ def test_cai_khoa_tot_xau_lan_lon(client, google, du_lieu, caplog):
     google.hanh_vi.update({K1: {"kieu": "tot"}, KSAI: {"kieu": "401"}})
     with caplog.at_level(logging.DEBUG):
         r = cai(client, google, [K1, KSAI])
-        ds = client.get("/api/modules").text
-        catalog = client.get("/api/modules/catalog").text
+        ds = client.get("/api/modules", headers=QT).text
+        catalog = client.get("/api/modules/catalog", headers=QT).text
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["ok"] is True and j["loi"] is None

@@ -4,8 +4,8 @@ Lõi KHÔNG chứa module nào: module có mã được cài lúc chạy vào <W
 của dự án) và nạp nóng; module từ xa đăng ký bằng URL. Thêm module không cần dựng lại ảnh
 hay khởi động lại tiến trình.
 
-Xác thực: /v1/* và mọi API đổi trạng thái/lộ cấu hình đòi khoá quản trị (app/xac_thuc.py);
-/health, /api/he-thong, GET /api/modules(/catalog), GET /api/tinh-nang và tệp tĩnh để mở (không chứa bí mật).
+Xác thực: /v1/*, /api/* (kể cả /api/he-thong, /api/modules, /api/tinh-nang) đòi khoá/phiên quản trị;
+chỉ còn mở: /health, GET/POST /api/thiet-lap, POST /api/dang-nhap và tệp tĩnh giao diện.
 """
 
 import asyncio
@@ -185,7 +185,7 @@ def health():
     return {"ok": True, "phien_ban": PHIEN_BAN}
 
 
-@app.get("/api/he-thong")
+@app.get("/api/he-thong", dependencies=tuyen.QT)
 def api_he_thong():
     return he_thong.tong_hop(thu_muc_du_lieu(), PHIEN_BAN)
 

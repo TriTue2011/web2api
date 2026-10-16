@@ -76,7 +76,7 @@ def test_kham_pha_hai_nguon_module_hong_chi_hong_rieng(du_lieu, caplog):
     (vol(du_lieu, ".tam-echo-1234")).mkdir()
     with caplog.at_level(logging.WARNING):
         with TestClient(app) as c:
-            j = c.get("/api/modules/catalog").json()
+            j = c.get("/api/modules/catalog", headers=QT).json()
             assert c.get("/health").status_code == 200  # lõi vẫn sống
     ids = {(x["id"], x["nguon"]) for x in j["modules"]}
     assert ids == {("mau", "anh"), ("echo", "du_lieu")}
@@ -113,7 +113,7 @@ def test_tha_thu_muc_moi_nap_lai_khong_khoi_dong(du_lieu):
         assert r.status_code == 200 and r.json()["ok"]
         assert [x["id"] for x in c.get("/v1/models", headers=QT).json()["data"]] == ["echo/lap-lai"]
         assert tra_loi(c) == "echo v1: chào"
-        ds = c.get("/api/modules").json()["modules"]
+        ds = c.get("/api/modules", headers=QT).json()["modules"]
         assert ds[0]["tab_web"] == {"nhan": "Echo", "duong": "/m/echo/echo.dc.html"}
         r = c.get("/m/echo/echo.dc.html")
         assert r.status_code == 200 and "echo v1" in r.text
@@ -176,7 +176,7 @@ def test_delete_module_volume_xoa_ca_thu_muc(du_lieu):
         assert r.status_code == 200 and r.json()["nap_lai"]["go"] == ["echo"]
         assert not vol(du_lieu, "echo").exists()
         assert [p.name for p in (du_lieu / "data" / "modules").iterdir()] == []
-        assert c.get("/api/modules/catalog").json()["modules"] == []
+        assert c.get("/api/modules/catalog", headers=QT).json()["modules"] == []
         assert c.delete("/api/modules/echo", headers=QT).status_code == 404
 
 
@@ -195,5 +195,5 @@ def test_delete_module_di_kem_anh(du_lieu):
 def test_id_trung_ten_tuyen_bi_tu_choi(du_lieu):
     ghi_thu_muc(vol(du_lieu, "tu-xa"), tep_echo(id_="tu-xa", tien_to="tx"))
     with TestClient(app) as c:
-        j = c.get("/api/modules/catalog").json()
+        j = c.get("/api/modules/catalog", headers=QT).json()
     assert j["modules"] == [] and "không hợp lệ" in j["loi"][0]["ly_do"]

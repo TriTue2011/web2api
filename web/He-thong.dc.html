@@ -107,7 +107,11 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
 <sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
 </div></sc-for></div>
-<div class="acc-cho" aria-hidden="true"></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
 </nav>
 <sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
 
@@ -129,22 +133,6 @@ main.pg{padding:12px 16px 24px}
 </section>
 </sc-if>
 
-<section class="{{lopKhoa}}" aria-labelledby="h-khoa" id="khoa-quan-tri">
-<div class="dong-nut" style="justify-content:space-between"><h2 id="h-khoa" class="nhan-muc">Khoá quản trị</h2><sc-if value="{{coKhoa}}"><span class="{{lopHuyKhoa}}" data-co-khoa="">{{nhanHuyKhoa}}</span></sc-if><sc-if value="{{khongKhoa}}"><span class="huy huy-vang">Chưa có khoá</span></sc-if></div>
-<sc-if value="{{moOKhoa}}">
-<p class="phu">Cài, gỡ, thêm khoá API và xem module trên git đều cần khoá này. Khoá chỉ lưu trong trình duyệt này.</p>
-<div class="o-va-nut">
-<label for="o-khoa" class="an-chu">Khoá quản trị</label>
-<input id="o-khoa" class="o" type="{{kieuKhoa}}" autocomplete="off" spellcheck="false" placeholder="Dán khoá quản trị vào đây" value="{{khoaNhap}}" onInput="{{goKhoa}}" onKeyDown="{{phimKhoa}}">
-<button type="button" class="nut" id="nut-hien-khoa" onClick="{{doiHienKhoa}}" aria-pressed="{{hienKhoa}}">{{nhanHienKhoa}}</button>
-<button type="button" class="nut nut-chinh" id="nut-luu-khoa" onClick="{{luuKhoa}}">Lưu</button>
-</div>
-</sc-if>
-<sc-if value="{{thuGonKhoa}}"><div class="dong-nut"><button type="button" class="nut nut-nho" id="nut-doi-khoa" onClick="{{moDoiKhoa}}">Đổi khoá</button></div></sc-if>
-<sc-if value="{{khoaLoi}}"><p id="khoa-loi" role="alert" class="bao bao-loi">{{khoaLoi}}</p></sc-if>
-<sc-if value="{{khoaTin}}"><p role="status" class="bao bao-tot">{{khoaTin}}</p></sc-if>
-</section>
-
 <sc-if value="{{coLoiKhamPha}}">
 <div role="alert" class="bao bao-vang"><strong>Có module không nạp được:</strong>
 <ul style="margin:6px 0 0;padding-left:18px"><sc-for list="{{loiKhamPha}}" as="l"><li><span class="ma">{{l.thu_muc}}</span> — {{l.ly_do}}</li></sc-for></ul>
@@ -163,7 +151,6 @@ main.pg{padding:12px 16px 24px}
 <div class="loc" role="group" aria-label="Lọc theo trạng thái" id="loc-tt"><sc-for list="{{chipTT}}" as="c"><button type="button" class="chip" data-loc-tt="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
 </div>
 <p class="mo-ta-trang">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. Bấm một ô để xem module cần gì để chạy, rồi bấm biểu tượng tải về để cài — cài không cần khoá API; khoá thêm sau ở Hệ thống → AI → Tài khoản.</p>
-<sc-if value="{{canKhoaGit}}"><p class="phu" id="goi-y-khoa-git">Module có trên git (chưa cài) chỉ hiện sau khi dán khoá quản trị.{{chuSoTb}}</p></sc-if>
 </div>
 
 <div class="bo-cuc">
@@ -204,8 +191,6 @@ main.pg{padding:12px 16px 24px}
 
 <sc-if value="{{ct.laThem}}">
 <div class="chi-tiet-dau"><h2 id="chi-tiet-ten" tabindex="-1">Thêm module</h2><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
-<sc-if value="{{khongKhoa}}"><p class="rong">Dán khoá quản trị ở khối «Khoá quản trị» để thêm module.</p></sc-if>
-<sc-if value="{{coKhoa}}">
 <section class="muc-ct" id="nguon-git" aria-labelledby="h-ng">
 <h3 id="h-ng">Từ git</h3>
 <p class="phu">web2api tự kiểm repo theo chu kỳ; module trên git hiện ở lưới với trạng thái «Chưa cài» để bạn bấm cài.</p>
@@ -243,7 +228,6 @@ main.pg{padding:12px 16px 24px}
 <div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" disabled="{{dangTx}}">{{nhanTx}}</button></div>
 </form>
 </section>
-</sc-if>
 </sc-if>
 
 <sc-if value="{{ct.laModule}}">
@@ -360,10 +344,9 @@ const MB = 1024 * 1024;
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    const khoa = K.docKhoa();
     const q = new URLSearchParams(location.search);
     this.state = {
-      khoa, khoaNhap: khoa, hienKhoa: false, suaKhoa: false, khoaLoi: '', khoaTin: '',
+      nguoiDung: null,
       tn: null, tnLoi: '', cat: [], loiKhamPha: [], mods: [], he: null, tb: null, ng: null,
       dangTai: true, thieu: q.get('thieu') || '',
       tim: '', locLoai: null, menuMo: null, locTT: 'tat-ca', chon: (location.hash.match(/^#module-(.+)$/) || [])[1] || null,
@@ -377,6 +360,7 @@ class Component extends DCLogic {
   }
 
   didMount() {
+    K.napToi().then((nd) => { if (nd) this.setState({ nguoiDung: nd }); });
     this.taiLai();
     window.addEventListener('hashchange', () => {
       const m = location.hash.match(/^#module-(.+)$/);
@@ -386,8 +370,8 @@ class Component extends DCLogic {
 
   // ---------- dữ liệu ----------
   async taiCoBan() {
-    const [tn, cat, mods, he] = await Promise.allSettled([K.taiTinhNang(), K.goi('api/modules/catalog', { khoa: '' }),
-      K.goi('api/modules', { khoa: '' }), K.goi('api/he-thong', { khoa: '' })]);
+    const [tn, cat, mods, he] = await Promise.allSettled([K.taiTinhNang(), K.goi('api/modules/catalog'),
+      K.goi('api/modules'), K.goi('api/he-thong')]);
     const them = { dangTai: false };
     if (tn.status === 'fulfilled') { them.tn = tn.value; them.tnLoi = ''; } else them.tnLoi = tn.reason.message;
     if (cat.status === 'fulfilled') { them.cat = (cat.value.j && cat.value.j.modules) || []; them.loiKhamPha = (cat.value.j && cat.value.j.loi) || []; }
@@ -396,11 +380,10 @@ class Component extends DCLogic {
     this.setState(them);
   }
   async taiQuanTri() {
-    if (!this.state.khoa) return;
     this.setState({ dangTaiNg: true, ngLoiTai: '' });
     const [tb, ng] = await Promise.allSettled([K.goi('api/modules/thong-bao'), K.goi('api/nguon-git')]);
     const them = { dangTaiNg: false };
-    if (tb.status === 'fulfilled') them.tb = tb.value.j; else { them.tb = null; this.loiKhoa(tb.reason); }
+    if (tb.status === 'fulfilled') them.tb = tb.value.j; else { them.tb = null; }
     if (ng.status === 'fulfilled') {
       const j = ng.value.j || {};
       them.ng = j;
@@ -409,31 +392,14 @@ class Component extends DCLogic {
         them.ngForm = { repo: cfg.repo || '', nhanh: cfg.nhanh || 'main', thu_muc: cfg.thu_muc || '',
           chu_ky_giay: cfg.chu_ky_giay != null ? String(cfg.chu_ky_giay) : '300', tu_dong: !!cfg.tu_dong, yeu_cau_chu_ky: !!cfg.yeu_cau_chu_ky };
       }
-    } else { them.ng = null; them.ngLoiTai = ng.reason.ma === 401 ? '' : ng.reason.message; this.loiKhoa(ng.reason); }
+    } else { them.ng = null; them.ngLoiTai = ng.reason.ma === 401 ? '' : ng.reason.message; }
     this.setState(them);
   }
   taiLai() {
     const p = Promise.all([this.taiCoBan(), this.taiQuanTri()]);
     const id = this.state.chon;
-    if (id && id !== '+them' && this.state.khoa) K.cauHinh.tai(this, id);
+    if (id && id !== '+them') K.cauHinh.tai(this, id);
     return p;
-  }
-  loiKhoa(e) {
-    if (e && e.ma === 401) {
-      this.setState({ khoaLoi: this.state.khoa
-        ? 'Khoá sai hoặc thiếu: máy chủ từ chối khoá quản trị đang lưu (HTTP 401). Dán lại khoá đúng rồi bấm Lưu.'
-        : 'Khoá sai hoặc thiếu: chưa có khoá quản trị.', khoaTin: '', suaKhoa: true });
-    }
-  }
-
-  // ---------- khoá quản trị ----------
-  luuKhoa() {
-    const k = (this.state.khoaNhap || '').trim();
-    if (!k) { this.setState({ khoaLoi: 'Khoá sai hoặc thiếu: ô khoá đang trống.', khoaTin: '' }); return; }
-    const ok = K.luuKhoa(k);
-    this.setState({ khoa: k, khoaNhap: k, khoaLoi: '', suaKhoa: false, hienKhoa: false,
-      khoaTin: ok ? 'Đã lưu khoá trong trình duyệt này.' : 'Trình duyệt chặn lưu trữ: khoá chỉ dùng được đến khi đóng trang.' });
-    setTimeout(() => this.taiLai(), 0);
   }
 
   // ---------- chọn ô ----------
@@ -441,7 +407,7 @@ class Component extends DCLogic {
   // nhập đầu tiên của nó.
   chonO(id, denForm) {
     this.setState({ chon: id, hoiGo: null, tin: '', xoaO: null });
-    const tai = id !== '+them' && this.state.khoa ? K.cauHinh.tai(this, id) : Promise.resolve();
+    const tai = id !== '+them' ? K.cauHinh.tai(this, id) : Promise.resolve();
     setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth > 1023 }); }, 30);
     if (denForm) tai.then(() => setTimeout(() => {
       const f = document.getElementById('lien-ket');
@@ -634,7 +600,7 @@ class Component extends DCLogic {
       if (t.length) mucThieu.push({ id: u.id, nhan: u.nhan, can: t.join('; ') }); else mucDu.push({ id: u.id, nhan: u.nhan });
     }
     const cg = s.caiGit[x.id] || {};
-    const coKhoa = !!s.khoa;
+    const coKhoa = true;
     const coNutCai = coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi');
     const coForm = coKhoa && x.daCai && !x.tuXa;
     const moi = s.tabMoi[x.id] || [];
@@ -699,7 +665,7 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const tn = s.tn;
-    const coKhoa = !!s.khoa;
+    const coKhoa = true;
     const tatCa = this.dungO();
 
     // Khu theo loại có trong dữ liệu, xếp theo loai_thu_tu (khai trong manifest) rồi mã — không danh sách loại nào ở đây.
@@ -762,24 +728,17 @@ class Component extends DCLogic {
       coQuayLai: !!ql, khongQuayLai: !ql, quayLai: ql || {},
       thieuChu: tn && s.thieu ? K.loiThieu(s.thieu, tn) : '', tnLoi: s.tnLoi, taiLai: () => this.taiLai(),
       hienKetNoi: !!tn && !coLienKet, diaChiV1,
-      lenhMau: 'curl ' + diaChiV1 + '/models \\\n  -H "Authorization: Bearer <KHOÁ_QUẢN_TRỊ>"',
-      // khoá
-      coKhoa, khongKhoa: !coKhoa, moOKhoa: !coKhoa || s.suaKhoa, thuGonKhoa: coKhoa && !s.suaKhoa,
-      // Đã có khoá và không đang sửa/lỗi: khối thu thành một hàng gọn (không chiếm cả thẻ như lúc cần dán khoá).
-      lopKhoa: coKhoa && !s.suaKhoa && !s.khoaLoi ? 'khoa-gon' : 'the',
-      lopHuyKhoa: 'huy ' + (s.khoaLoi ? 'huy-do' : 'huy-xanh'),
-      nhanHuyKhoa: (s.khoaLoi ? 'Khoá bị từ chối ' : 'Đã có khoá ') + (s.khoa ? '…' + s.khoa.slice(-4) : ''),
-      khoaNhap: s.khoaNhap, kieuKhoa: s.hienKhoa ? 'text' : 'password', hienKhoa: s.hienKhoa, nhanHienKhoa: s.hienKhoa ? 'Ẩn' : 'Hiện',
-      goKhoa: (e) => this.setState({ khoaNhap: e.target.value }),
-      phimKhoa: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.luuKhoa(); } },
-      doiHienKhoa: () => this.setState({ hienKhoa: !this.state.hienKhoa }), luuKhoa: () => this.luuKhoa(),
-      moDoiKhoa: () => this.setState({ suaKhoa: true, khoaTin: '' }), khoaLoi: s.khoaLoi, khoaTin: s.khoaTin,
+      lenhMau: 'curl ' + diaChiV1 + '/models \\\n  -H "Authorization: Bearer <KHOÁ_API>"',
+      // tài khoản
+      tenNguoiDung: s.nguoiDung ? s.nguoiDung.ten : '',
+      nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '',
+      dangXuat: () => K.dangXuat(),
       coLoiKhamPha: (s.loiKhamPha || []).length > 0, loiKhamPha: s.loiKhamPha || [],
       coCanDangNhap: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0,
       canDangNhapChu: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0 ? (((tn && tn.phien && tn.phien.can_dang_nhap) || 0) + ' tài khoản cần đăng nhập lại') : '',
       // lưới
       tim: s.tim, goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT, coLoai: dsKhu.length > 0,
-      canKhoaGit: !coKhoa, chuSoTb: s.soTb ? ' Đang có ' + s.soTb + ' module mới hoặc có bản mới trên git.' : '', dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
+      canKhoaGit: false, chuSoTb: s.soTb ? ' Đang có ' + s.soTb + ' module mới hoặc có bản mới trên git.' : '', dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
       khu, chiOThem: !s.dangTai && khu.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
       // chi tiết
       coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(),

@@ -275,7 +275,7 @@ def test_kenh_cuoc_goi_moi_luot_v1_dung_mot_dong_va_tieu_de(client):
 
     # 1. Gọi /health và /api/he-thong KHÔNG sinh dòng cuoc_goi
     client.get("/health")
-    client.get("/api/he-thong")
+    client.get("/api/he-thong", headers=QT)
     assert len(nhat_ky.doc(kenh="cuoc_goi")) == 0
 
     # 2. Gọi /v1/models không khoá -> 401

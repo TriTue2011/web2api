@@ -17,7 +17,7 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import GitHubGia, GoogleGia, MayChuThat, tep_kho
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401 — fixture
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 
 GOC_GEMINI = Path(__file__).resolve().parents[1] / "modules" / "gemini-api"
 KHOA_QT = "khoa-quan-tri-ui-that-0123456789abcd"
@@ -46,11 +46,10 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
         monkeypatch.setenv("WEB2API_GIT_REPO", REPO)  # như docker-compose.yml: không cấu hình tay
         monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
         with MayChuThat(app, lifespan="on") as w:
+            dang_nhap_quan_tri(trang, w.url)
             trang.cdp.goi("Page.navigate", {"url": w.url + "/"}, trang.s)
             trang.cho("location.pathname.endsWith('/He-thong.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'",
                       mo_ta="địa chỉ gốc → Hệ thống → Module")
-            trang.go("#o-khoa", KHOA_QT)
-            trang.bam("document.getElementById('nut-luu-khoa')")
             o = "document.querySelector('[data-o=\"gemini-api\"]')"
             trang.cho(o, han=15, mo_ta="ô gemini-api từ git")
             assert trang.js(o + ".dataset.tt") == "chua-cai"

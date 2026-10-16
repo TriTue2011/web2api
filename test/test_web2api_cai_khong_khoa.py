@@ -93,7 +93,7 @@ def cho(dieu_kien, giay=10, mo_ta=""):
 
 
 def muc(c, id_):
-    return next((m for m in c.get("/api/modules").json()["modules"] if m.get("id") == id_), None)
+    return next((m for m in c.get("/api/modules", headers=QT).json()["modules"] if m.get("id") == id_), None)
 
 
 def tin(model="gemini/gemini-2.5-flash"):
@@ -127,9 +127,9 @@ def test_cai_tu_git_khong_khoa_hien_trong_danh_sach_nhung_chua_phuc_vu(du_lieu, 
         assert m["da_cau_hinh"] is False and m["can_cau_hinh"] is True and m["nguon"] == "du_lieu"
         # Gemini không khai tab riêng → tab trỏ tới thẻ cấu hình của nó trên trang Module (đường tương đối).
         assert m["tab_web"] == {"nhan": m["ten"], "duong": "He-thong.dc.html#module-gemini-api"}
-        mo = c.get("/api/modules").text + c.get("/api/modules/catalog").text
+        mo = c.get("/api/modules", headers=QT).text + c.get("/api/modules/catalog", headers=QT).text
         assert REPO not in mo
-        cat = next(x for x in c.get("/api/modules/catalog").json()["modules"] if x["id"] == "gemini-api")
+        cat = next(x for x in c.get("/api/modules/catalog", headers=QT).json()["modules"] if x["id"] == "gemini-api")
         assert cat["da_cau_hinh"] is False and "da_cai" not in cat
         # Không vào /v1/models, chat nói rõ chưa có khoá và chỉ chỗ thêm.
         assert c.get("/v1/models", headers=QT).json()["data"] == []
@@ -218,7 +218,7 @@ def test_them_bot_khoa_tung_cai_khong_lo_khoa(du_lieu, google, caplog):
             assert r.status_code == 400, (sai, r.text)
         assert json.loads((du_lieu / "bi_mat" / "gemini-api.json").read_text())["api_keys"] == [K3]
 
-        phan_hoi += [c.get("/api/modules").text, c.get("/api/modules/catalog").text,
+        phan_hoi += [c.get("/api/modules", headers=QT).text, c.get("/api/modules/catalog", headers=QT).text,
                      (du_lieu / "modules.json").read_text()]
     khong_ro_khoa(*phan_hoi, caplog.text)
 

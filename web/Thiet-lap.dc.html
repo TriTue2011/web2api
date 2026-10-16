@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Thiết lập ban đầu</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Be Vietnam Pro",system-ui,sans-serif}
+.hop-giua{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px;box-sizing:border-box}
+.khung-thiet-lap{width:100%;max-width:480px;display:flex;flex-direction:column;gap:20px}
+.dau-trang{display:flex;align-items:center;gap:12px;justify-content:center}
+.form-tl{display:flex;flex-direction:column;gap:14px}
+.lenh-hop{display:flex;align-items:center;background:#181816;color:#FAF9F5;padding:8px 12px;border-radius:8px;font-family:monospace;font-size:13px;overflow-x:auto;word-break:break-all}
+.khoi-sinh-ngau-nhien{background:#F1F7F5;border:1px solid #B7DDD5;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+</style>
+</helmet>
+
+<div class="hop-giua">
+  <main class="khung-thiet-lap">
+    <div class="dau-trang">
+      <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div>
+      <span class="ten-web">web2api</span>
+    </div>
+
+    <section class="the" aria-labelledby="h-thiet-lap" id="khung-tl">
+      <h1 id="h-thiet-lap" class="nhan-muc" style="font-size:20px;margin:0 0 4px">Thiết lập quản trị viên lần đầu</h1>
+      <p class="phu" style="margin:0 0 10px">Hệ thống chưa có tài khoản quản trị. Hãy nhập mã thiết lập và tạo tài khoản admin đầu tiên.</p>
+
+      <div style="margin-bottom:12px">
+        <span class="phu" style="display:block;margin-bottom:6px;font-weight:500">Lấy mã thiết lập từ máy chủ:</span>
+        <div class="lenh-hop">
+          <code>docker exec &lt;tên-container&gt; cat /data/ma_thiet_lap</code>
+        </div>
+      </div>
+
+      <sc-if value="{{coThongTinNgauNhien}}">
+        <section class="khoi-sinh-ngau-nhien" aria-labelledby="h-tt-sinh" id="thong-tin-sinh">
+          <div class="dong-nut" style="justify-content:space-between">
+            <h2 id="h-tt-sinh" style="font-size:14px;font-weight:600;color:#0B5A53;margin:0">Thông tin tài khoản vừa sinh</h2>
+            <button type="button" class="nut nut-nho" onClick="{{dongThongTinSinh}}">Đóng</button>
+          </div>
+          <p class="phu" style="color:#0B5A53;margin:0"><strong>CẢNH BÁO: HÃY LƯU NGAY!</strong> Thông tin này chỉ hiển thị MỘT LẦN DUY NHẤT.</p>
+          <dl class="bang" style="margin:4px 0">
+            <div class="bang-dong"><dt>Tên admin</dt><dd><span class="ma" id="ten-sinh-chep">{{thongTinSinh.ten}}</span></dd></div>
+            <div class="bang-dong"><dt>Mật khẩu</dt><dd><span class="ma" id="mk-sinh-chep">{{thongTinSinh.matKhau}}</span></dd></div>
+          </dl>
+          <div class="dong-nut">
+            <button type="button" class="nut nut-chinh nut-nho" id="nut-chep-thong-tin-sinh" onClick="{{chepThongTinSinh}}">{{nhanChepThongTin}}</button>
+          </div>
+        </section>
+      </sc-if>
+
+      <form class="form-tl" novalidate onSubmit="{{thietLapSubmit}}">
+        <div class="truong">
+          <label for="o-ma-tl">Mã thiết lập</label>
+          <input id="o-ma-tl" class="o" type="password" autocomplete="off" spellcheck="false" placeholder="Dán mã thiết lập hoặc khoá quản trị" value="{{maThietLap}}" onInput="{{goMaThietLap}}" autofocus>
+        </div>
+
+        <div class="dong-nut" style="justify-content:space-between;align-items:center;margin-top:4px">
+          <span style="font-size:14px;font-weight:600">Tài khoản quản trị</span>
+          <button type="button" class="nut nut-nho" id="nut-sinh-ngau-nhien" onClick="{{sinhNgauNhien}}">Tạo ngẫu nhiên (20 ký tự)</button>
+        </div>
+
+        <div class="truong">
+          <label for="o-ten-admin">Tên đăng nhập admin (3–32 ký tự: chữ thường, số, ., _, -)</label>
+          <input id="o-ten-admin" class="o" type="text" autocomplete="username" spellcheck="false" placeholder="Ví dụ: admin" value="{{tenDangNhap}}" onInput="{{goTen}}">
+        </div>
+
+        <div class="truong">
+          <label for="o-mat-khau-tl">Mật khẩu (tối thiểu 12 ký tự)</label>
+          <input id="o-mat-khau-tl" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Mật khẩu admin" value="{{matKhau}}" onInput="{{goMatKhau}}">
+        </div>
+
+        <div class="truong">
+          <label for="o-nhap-lai-mk">Nhập lại mật khẩu</label>
+          <input id="o-nhap-lai-mk" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Nhập lại mật khẩu" value="{{nhapLaiMatKhau}}" onInput="{{goNhapLai}}">
+        </div>
+
+        <sc-if value="{{coLoi}}">
+          <p role="alert" class="bao bao-loi" id="thong-bao-loi" style="margin:4px 0 0">{{loi}}</p>
+        </sc-if>
+
+        <div style="margin-top:8px">
+          <button type="submit" class="nut nut-chinh" id="nut-thiet-lap" disabled="{{dangGui}}" style="width:100%;height:44px;font-size:15px">{{nhanNutThietLap}}</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{}'>
+const K = window.Khung;
+
+function sinhChuoiNgauNhien(doDai, bangKyTu) {
+  bangKyTu = bangKyTu || '23456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
+  const mang = new Uint8Array(doDai);
+  window.crypto.getRandomValues(mang);
+  let kq = '';
+  for (let i = 0; i < doDai; i++) {
+    kq += bangKyTu[mang[i] % bangKyTu.length];
+  }
+  return kq;
+}
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      maThietLap: '',
+      tenDangNhap: '',
+      matKhau: '',
+      nhapLaiMatKhau: '',
+      thongTinSinh: null,
+      chepXong: false,
+      dangGui: false,
+      loi: '',
+      coLoi: false,
+      hinh: K.BIEU_TUONG
+    };
+  }
+
+  async didMount() {
+    try {
+      const res = await fetch('api/thiet-lap', { cache: 'no-store' });
+      if (res.ok) {
+        const j = await res.json();
+        if (j && j.can_thiet_lap === false) {
+          location.replace('Dang-nhap.dc.html');
+        }
+      }
+    } catch (e) {
+      // nuốt lỗi
+    }
+  }
+
+  goMaThietLap(e) { this.setState({ maThietLap: e.target.value, loi: '', coLoi: false }); }
+  goTen(e) { this.setState({ tenDangNhap: e.target.value, loi: '', coLoi: false }); }
+  goMatKhau(e) { this.setState({ matKhau: e.target.value, loi: '', coLoi: false }); }
+  goNhapLai(e) { this.setState({ nhapLaiMatKhau: e.target.value, loi: '', coLoi: false }); }
+
+  sinhNgauNhien() {
+    const bangTen = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const tenSinh = 'admin_' + sinhChuoiNgauNhien(14, bangTen);
+    const mkSinh = sinhChuoiNgauNhien(20);
+
+    this.setState({
+      tenDangNhap: tenSinh,
+      matKhau: mkSinh,
+      nhapLaiMatKhau: mkSinh,
+      thongTinSinh: { ten: tenSinh, matKhau: mkSinh },
+      chepXong: false,
+      loi: '',
+      coLoi: false
+    });
+  }
+
+  dongThongTinSinh() {
+    this.setState({ thongTinSinh: null, chepXong: false });
+  }
+
+  chepThongTinSinh() {
+    const tt = this.state.thongTinSinh;
+    if (!tt) return;
+    const txt = 'Tên admin: ' + tt.ten + '\nMật khẩu: ' + tt.matKhau;
+    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt);
+      this.setState({ chepXong: true });
+      setTimeout(() => this.setState({ chepXong: false }), 2500);
+    }
+  }
+
+  async thietLapSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.dangGui) return;
+
+    const ma = (this.state.maThietLap || '').trim();
+    const ten = (this.state.tenDangNhap || '').trim();
+    const mk = this.state.matKhau || '';
+    const nhapLai = this.state.nhapLaiMatKhau || '';
+
+    if (!ma) {
+      this.setState({ loi: 'Vui lòng nhập mã thiết lập.', coLoi: true });
+      return;
+    }
+    if (!ten) {
+      this.setState({ loi: 'Vui lòng nhập tên đăng nhập admin.', coLoi: true });
+      return;
+    }
+    if (mk.length < 12) {
+      this.setState({ loi: 'Mật khẩu phải có tối thiểu 12 ký tự.', coLoi: true });
+      return;
+    }
+    if (mk !== nhapLai) {
+      this.setState({ loi: 'Mật khẩu nhập lại không khớp.', coLoi: true });
+      return;
+    }
+
+    this.setState({ dangGui: true, loi: '', coLoi: false });
+
+    try {
+      const res = await fetch('api/thiet-lap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ma_thiet_lap: ma,
+          ten_dang_nhap: ten,
+          mat_khau: mk
+        }),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+
+      let j = null;
+      try { j = await res.json(); } catch (err) { j = null; }
+
+      if (res.ok && j && j.ok) {
+        if (j.csrf) K.datCsrf(j.csrf);
+        location.replace('index.html');
+        return;
+      }
+
+      let thongBaoLoi = 'Thiết lập không thành công.';
+      if (res.status === 403 && j && j.error && j.error.code === 'ip_not_allowed') {
+        thongBaoLoi = 'Hãy thiết lập từ mạng nhà (địa chỉ IP hiện tại không nằm trong danh sách được phép).';
+      } else if (res.status === 409) {
+        thongBaoLoi = 'Hệ thống đã có tài khoản quản trị viên. Không thể thiết lập lại.';
+      } else if (res.status === 503) {
+        thongBaoLoi = (j && j.error && j.error.message) || 'Kho tài khoản hoặc phiên không đọc được. Hãy khôi phục từ bản sao lưu.';
+      } else if (j && j.error && j.error.message) {
+        thongBaoLoi = j.error.message;
+      }
+
+      this.setState({
+        dangGui: false,
+        loi: thongBaoLoi,
+        coLoi: true
+      });
+    } catch (err) {
+      this.setState({
+        dangGui: false,
+        loi: 'Lỗi kết nối tới máy chủ. Vui lòng thử lại.',
+        coLoi: true
+      });
+    }
+  }
+
+  renderVals() {
+    return {
+      maThietLap: this.state.maThietLap,
+      tenDangNhap: this.state.tenDangNhap,
+      matKhau: this.state.matKhau,
+      nhapLaiMatKhau: this.state.nhapLaiMatKhau,
+      thongTinSinh: this.state.thongTinSinh,
+      coThongTinNgauNhien: !!this.state.thongTinSinh,
+      nhanChepThongTin: this.state.chepXong ? 'Đã sao chép ✓' : 'Sao chép tên và mật khẩu',
+      dangGui: this.state.dangGui,
+      nhanNutThietLap: this.state.dangGui ? 'Đang thiết lập…' : 'Thiết lập và đăng nhập',
+      loi: this.state.loi,
+      coLoi: this.state.coLoi,
+      hinh: this.state.hinh,
+      goMaThietLap: (e) => this.goMaThietLap(e),
+      goTen: (e) => this.goTen(e),
+      goMatKhau: (e) => this.goMatKhau(e),
+      goNhapLai: (e) => this.goNhapLai(e),
+      sinhNgauNhien: () => this.sinhNgauNhien(),
+      dongThongTinSinh: () => this.dongThongTinSinh(),
+      chepThongTinSinh: () => this.chepThongTinSinh(),
+      thietLapSubmit: (e) => this.thietLapSubmit(e)
+    };
+  }
+}
+</script>
+</body>
+</html>

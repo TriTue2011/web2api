@@ -64,7 +64,7 @@ def tep_gemini() -> dict[str, bytes]:
 
 
 def tn(c) -> dict:
-    r = c.get("/api/tinh-nang")  # MỞ: không cần khoá quản trị
+    r = c.get("/api/tinh-nang", headers=QT)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -188,7 +188,7 @@ def test_khong_lo_bi_mat(du_lieu, monkeypatch):
     with MayChuThat(o.app) as s, TestClient(app) as c:
         c.post("/api/modules/tu-xa", headers=QT, json={"id": "may-gpu", "ten": "Máy GPU", "tien_to": "gpu",
                                                        "base_url": s.url + "/v1", "api_key": "sk-khoa-tu-xa-RIENG-7777"})
-        van_ban = c.get("/api/tinh-nang").text
+        van_ban = c.get("/api/tinh-nang", headers=QT).text
     assert "sk-khoa" not in van_ban and "7777" not in van_ban and "base_url" not in van_ban
 
 

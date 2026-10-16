@@ -109,7 +109,7 @@ def test_dang_ky_dung_va_khong_ro_khoa(du_lieu, xa):
         assert nhan["than"] == dict(than, model="qwen-3b") and nhan["auth"] == f"Bearer {KHOA_XA}"
         s = c.post("/v1/chat/completions", json=dict(than, stream=True), headers=QT)
         assert s.status_code == 200 and "data: [DONE]" in s.text
-        ds = c.get("/api/modules").text
+        ds = c.get("/api/modules", headers=QT).text
         sk = c.get("/api/modules/gpu-lan/suc-khoe", headers=QT).text
         for vb in (r.text, ds, sk, (du_lieu / "tu_xa.json").read_text()):
             assert KHOA_XA not in vb

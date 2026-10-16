@@ -28,7 +28,7 @@ from app import kho, nhat_ky, quy_trinh, so_module, tri_thuc
 from app.main import app
 from app.so_module import SoModule
 from gia import ghi_thu_muc
-from ui_chung import CO_CHROME, trang, trinh_duyet  # noqa: F401
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
 
 KHOA_QT = "khoa-quan-tri-test-tri-thuc-0123456789ab"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -650,8 +650,8 @@ def test_10_giao_dien_module_tri_thuc_chrome(trang, tmp_path, monkeypatch):
     ghi_thu_muc(mod_path, mau_module_tri_thuc("tri-thuc-gia", "ttgia"))
 
     with MayChuThat(app, lifespan="on") as w:
+        dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong.dc.html")
-        trang.go("#o-khoa", KHOA_QT) if trang.js("!!document.getElementById('o-khoa')") else None
         trang.cho("document.querySelector('[data-o=\"tri-thuc-gia\"]') !== null", han=15, mo_ta="ô module tri thức")
         assert "Tri thức giả lập" in trang.js("document.querySelector('[data-o=\"tri-thuc-gia\"]').innerText")
 

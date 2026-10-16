@@ -105,7 +105,7 @@ def test_loi_chay_dung_khi_khong_co_module(du_lieu):
         assert r_health.json() == {"ok": True, "phien_ban": PHIEN_BAN}
 
         # GET /api/tinh-nang
-        r_tn = c.get("/api/tinh-nang")
+        r_tn = c.get("/api/tinh-nang", headers=QT)
         assert r_tn.status_code == 200
         j_tn = r_tn.json()
         assert j_tn["modules"] == []
@@ -116,7 +116,7 @@ def test_loi_chay_dung_khi_khong_co_module(du_lieu):
         assert j_tn["muc"] == []
 
         # GET /api/modules
-        r_mod = c.get("/api/modules")
+        r_mod = c.get("/api/modules", headers=QT)
         assert r_mod.status_code == 200
         assert r_mod.json()["modules"] == []
 
@@ -136,7 +136,7 @@ def test_loi_chay_dung_khi_khong_co_module(du_lieu):
 def test_them_go_module_giua_chung_khong_sua_ma_loi(du_lieu):
     """Thêm và gỡ module qua nạp lại nóng, phản ánh đầy đủ trên API mà không sửa mã lõi."""
     with TestClient(app) as c:
-        assert c.get("/api/tinh-nang").json()["modules"] == []
+        assert c.get("/api/tinh-nang", headers=QT).json()["modules"] == []
 
         # Tạo module giả với giá trị lạ
         mod_id = "module-gia-doc-lap-123"
@@ -186,13 +186,13 @@ def test_them_go_module_giua_chung_khong_sua_ma_loi(du_lieu):
         assert r_nap.json()["loi"] == []
 
         # /api/tinh-nang và /api/modules phản ánh module mới
-        tn = c.get("/api/tinh-nang").json()
+        tn = c.get("/api/tinh-nang", headers=QT).json()
         assert any(m["id"] == mod_id for m in tn["modules"])
         assert any(l["ma"] == "loai_la_doc_lap" and l["ten"] == "Loại Lạ Độc Lập" for l in tn["loai"])
         assert tn["kha_nang_da_cai"].get("loai_la_doc_lap") == 1
         assert tn["kha_nang_da_cai"].get("cung_cap_la_xyz") == 1
 
-        ds_mod = c.get("/api/modules").json()["modules"]
+        ds_mod = c.get("/api/modules", headers=QT).json()["modules"]
         assert any(m["id"] == mod_id and m["loai"] == "loai_la_doc_lap" for m in ds_mod)
 
         # Gỡ thư mục rồi nạp lại nóng
@@ -202,12 +202,12 @@ def test_them_go_module_giua_chung_khong_sua_ma_loi(du_lieu):
         assert r_nap_xoa.json()["go"] == [mod_id]
 
         # Kiểm tra biến mất hoàn toàn
-        tn_sau = c.get("/api/tinh-nang").json()
+        tn_sau = c.get("/api/tinh-nang", headers=QT).json()
         assert tn_sau["modules"] == []
         assert tn_sau["loai"] == []
         assert tn_sau["kha_nang_da_cai"] == {}
 
-        ds_sau = c.get("/api/modules").json()["modules"]
+        ds_sau = c.get("/api/modules", headers=QT).json()["modules"]
         assert ds_sau == []
 
 
@@ -297,7 +297,7 @@ def test_ma_mo_loai_la_va_kha_nang_la(du_lieu):
         assert r_nap.status_code == 200
 
         # Lõi không lỗi, /api/tinh-nang đếm mã lạ nguyên văn
-        r_tn = c.get("/api/tinh-nang")
+        r_tn = c.get("/api/tinh-nang", headers=QT)
         assert r_tn.status_code == 200
         tn = r_tn.json()
         assert tn["kha_nang_da_cai"]["loai_la_xyz"] == 1
@@ -309,7 +309,7 @@ def test_ma_mo_loai_la_va_kha_nang_la(du_lieu):
         r_cai = c.post(f"/api/modules/{mod_id}/cai", json={"cau_hinh": {}}, headers=QT)
         assert r_cai.status_code == 200 and r_cai.json()["ok"] is True
 
-        tn_lk = c.get("/api/tinh-nang").json()
+        tn_lk = c.get("/api/tinh-nang", headers=QT).json()
         assert tn_lk["kha_nang_lien_ket"]["loai_la_xyz"] == 1
         assert tn_lk["kha_nang_lien_ket"]["kha_nang_la_abc"] == 1
         assert tn_lk["kha_nang_lien_ket"]["kha_nang_la_def"] == 1

@@ -17,7 +17,10 @@
  */
 (() => {
   'use strict';
-  const KHOA_LUU = 'web2api_khoa'; // cùng tên với trang cũ: khoá đã lưu trước đây vẫn dùng được
+  // Biến bộ nhớ phiên: csrfToken và thông tin người dùng nạp từ GET /api/toi.
+  // KHÔNG lưu vào localStorage/sessionStorage/cookie (luật cứng bảo mật).
+  let csrfToken = '';
+  let nguoiDungHienTai = null;
 
   // Mã khả năng mà các trang «AI» của khung xoay quanh. Đây là điều kiện của KHUNG (theo tính năng — bảng ở
   // KE-HOACH-GIAO-DIEN-MODULE.md mục 3), không phải tên module: module nào khai `loai`/`cung_cap` chứa mã này
@@ -118,37 +121,121 @@
   // Module đã cài, CHƯA liên kết, đáp ứng dòng `ma` (vd chế độ Chat) — ai cần khoá để chế độ đó gọi được /v1.
   const chuaKhoaCho = (ma, tn) => ((tn && tn.modules) || []).filter((m) => m && !m.da_lien_ket && moduleDapUng(m, ma));
 
-  // ---------- khoá quản trị ----------
-  // localStorage: cách trang cũ đã lưu (cùng tên khoá). Có thể bị chặn (ẩn danh, chặn dữ liệu trang) → khoá chỉ sống
-  // trong bộ nhớ của trang tới khi đóng trang: `khoaTrang` giữ nó, để MỌI lời gọi đọc khoá qua docKhoa (goi() mặc
-  // định) vẫn mang đúng khoá vừa dán — không thì lời gọi đi không khoá, nhận 401 và trang tưởng khoá sai.
-  let khoaTrang = '';
-  function docKhoa() { try { return localStorage.getItem(KHOA_LUU) || khoaTrang; } catch (e) { return khoaTrang; } }
-  function luuKhoa(k) { khoaTrang = k; try { localStorage.setItem(KHOA_LUU, k); return true; } catch (e) { return false; } }
+  // ---------- phiên đăng nhập & CSRF ----------
+  function datCsrf(token) {
+    if (typeof token === 'string') csrfToken = token;
+  }
+  function layCsrf() { return csrfToken; }
+  function layNguoiDung() { return nguoiDungHienTai; }
+
+  async function napToi() {
+    try {
+      const r = await fetch('api/toi', { credentials: 'same-origin', cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.csrf) csrfToken = j.csrf;
+        nguoiDungHienTai = j;
+        return j;
+      }
+    } catch (e) { /* nuốt lỗi */ }
+    return null;
+  }
+
+  // Chống chuyển hướng mở (Open Redirect): CHỈ chấp nhận đường dẫn tương đối cùng nguồn
+  // bắt đầu bằng '/' và không phải '//', không chứa '\' và không chứa ':'.
+  function duongVeHopLe(u) {
+    if (typeof u !== 'string') return '';
+    const s = u.trim();
+    if (s.startsWith('/') && !s.startsWith('//') && !s.includes('\\') && !s.includes(':')) {
+      return s;
+    }
+    return '';
+  }
+
+  function chuyenDangNhap() {
+    if (typeof location === 'undefined') return;
+    const pathHienTai = location.pathname || '';
+    const trangHienTai = pathHienTai.split('/').pop() || '';
+    if (trangHienTai === 'Dang-nhap.dc.html' || trangHienTai === 'Thiet-lap.dc.html') return;
+    const duongHienTai = location.pathname + location.search + location.hash;
+    const ve = duongVeHopLe(duongHienTai);
+    location.replace('Dang-nhap.dc.html' + (ve ? '?ve=' + encodeURIComponent(ve) : ''));
+  }
+
+  async function dangXuat() {
+    try {
+      await fetch('api/dang-xuat', {
+        method: 'POST',
+        headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+    } catch (e) { /* nuốt lỗi */ }
+    csrfToken = '';
+    nguoiDungHienTai = null;
+    location.replace('Dang-nhap.dc.html');
+  }
+
+  // Tương thích giao diện cũ nếu còn gọi, không lưu đĩa
+  function docKhoa() { return ''; }
+  function luuKhoa() { return false; }
 
   // ---------- gọi API ----------
   // Lỗi kiểu OpenAI {"error":{"message","code"}} là chuẩn của web2api; {"detail"} phòng khi FastAPI tự trả.
   const thongDiep = (j, ma) => (j && j.error && j.error.message) || (j && typeof j.detail === 'string' && j.detail)
     || ('máy chủ trả HTTP ' + ma);
   function taoLoi(tin, ma, code) { const e = new Error(tin); e.ma = ma; e.code = code || null; return e; }
-  // `khoa`: khoá dùng cho lời gọi (mặc định khoá đã lưu); `chapNhan`: mã lỗi mà thân vẫn mang kết quả nghiệp vụ.
+
   async function goi(duong, tc) {
     tc = tc || {};
-    const hd = {};
-    const khoa = tc.khoa !== undefined ? tc.khoa : docKhoa();
-    if (khoa) hd.Authorization = 'Bearer ' + khoa;
+    const method = (tc.method || 'GET').toUpperCase();
+    const hd = Object.assign({}, tc.headers || {});
+
+    // Tự đính X-CSRF-Token cho phương thức không an toàn khi dùng cookie phiên
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      if (!csrfToken && !hd['X-CSRF-Token']) {
+        await napToi();
+      }
+      if (csrfToken && !hd['X-CSRF-Token']) {
+        hd['X-CSRF-Token'] = csrfToken;
+      }
+    }
+
+    if (tc.khoa) {
+      hd.Authorization = 'Bearer ' + tc.khoa;
+    }
+
     let than;
-    if (tc.json !== undefined) { hd['Content-Type'] = 'application/json'; than = JSON.stringify(tc.json); }
-    const r = await fetch(duong, { method: tc.method || 'GET', headers: hd, body: than, cache: 'no-store' });
+    if (tc.json !== undefined) {
+      hd['Content-Type'] = 'application/json';
+      than = JSON.stringify(tc.json);
+    } else if (tc.body !== undefined) {
+      than = tc.body;
+    }
+
+    const r = await fetch(duong, {
+      method,
+      headers: hd,
+      body: than,
+      cache: 'no-store',
+      credentials: 'same-origin'
+    });
+
     let j = null;
     try { j = await r.json(); } catch (e) { j = null; }
+
+    // 401 từ khoá do trang truyền tường minh (kiểm khoá nhà cung cấp…) không phải phiên hết hạn.
+    if (r.status === 401 && !tc.khoa) {
+      chuyenDangNhap();
+    }
+
     if (!r.ok && !(tc.chapNhan || []).includes(r.status)) {
-      throw taoLoi(r.status === 401 ? 'khoá quản trị sai hoặc thiếu (máy chủ trả 401)' : thongDiep(j, r.status), r.status,
-        j && j.error && j.error.code);
+      throw taoLoi(thongDiep(j, r.status), r.status, j && j.error && j.error.code);
     }
     return { ma: r.status, j };
   }
-  const taiTinhNang = () => goi('api/tinh-nang', { khoa: '' }).then(({ j }) => j);
+
+  const taiTinhNang = () => goi('api/tinh-nang').then(({ j }) => j);
 
   // ---------- điều hướng ----------
   // Hình nét (path SVG 24×24, nét 1.6) của thanh điều hướng — chép từ bản demo. Đây là HÌNH của khung, không phải
@@ -726,5 +813,6 @@
 
   window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
     BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, tuongDoi, boDau, diaChiV1,
-    dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom };
+    dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom,
+    datCsrf, layCsrf, napToi, layNguoiDung, dangXuat, duongVeHopLe, chuyenDangNhap };
 })();
