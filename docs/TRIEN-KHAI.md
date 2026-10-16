@@ -84,6 +84,7 @@ Lõi web2api tích hợp sẵn cơ chế chống dò đoán khoá (brute-force):
 - Mỗi lần khách gửi sai khoá xác thực (HTTP 401), hệ thống đếm số lần sai theo IP của khách.
 - Vượt ngưỡng `WEB2API_RL_LOI_XAC_THUC` (mặc định 30 lần trong cửa sổ `WEB2API_RL_CUA_SO_GIAY` 60 giây), IP đó sẽ bị khoá tạm thời trong `WEB2API_RL_KHOA_GIAY` (mặc định 60 giây).
 - Mọi yêu cầu từ IP bị khoá sẽ nhận mã lỗi `429 Too Many Requests` kèm tiêu đề `Retry-After`.
+- **Lưu ý cấu hình:** Đặt `WEB2API_RL_LOI_XAC_THUC=0` sẽ TẮT toàn bộ cơ chế giới hạn lỗi xác thực (không đếm và không khoá IP ở mọi đường Bearer, đăng nhập hay noVNC) — **tuyệt đối KHÔNG đặt khi máy chủ mở ra Internet** vì sẽ vô hiệu hoá hàng rào chống đoán khoá, dò vé và dò quét mật khẩu.
 
 **Nếu KHÔNG khai báo `WEB2API_TRUST_PROXY`:**
 - web2api coi kết nối từ proxy là không tin cậy và bỏ qua tiêu đề `X-Forwarded-For`.

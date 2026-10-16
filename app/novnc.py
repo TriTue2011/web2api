@@ -61,7 +61,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import kho, nhat_ky
+from app import gioi_han, kho, nhat_ky
 from app.kham_pha import ID_HOP_LE, MAU_MIEN
 from app.loi_openai import LoiOpenAI, than_loi
 from app.so_module import LoiSo, SoModule
@@ -76,6 +76,7 @@ _LOG_WS_DICH = logging.getLogger("web2api.novnc.ws_dich")
 _LOG_WS_DICH.setLevel(logging.INFO)
 QT = [Depends(can_quan_tri)]
 
+TOI_DA_VE = 10000
 THOI_HAN_VE_GIAY = 60
 THOI_HAN_PHIEN_GIAY = 8 * 3600  # 8 giờ
 MAC_DINH_PHIEN_TOI_DA = 16
@@ -242,6 +243,15 @@ def cap_ve(module: str, ho_so: str) -> str:
     with _KHOA:
         now = _bay_gio()
         _don_het_han_khoa(now)
+        while len(_VE) >= TOI_DA_VE:
+            het_han_keys = [k for k, v in _VE.items() if now > v["het_han"]]
+            if het_han_keys:
+                for k in het_han_keys:
+                    _VE.pop(k, None)
+                    if len(_VE) < TOI_DA_VE:
+                        break
+            else:
+                _VE.pop(next(iter(_VE)), None)
         _VE[_bam(ve)] = {"module": module, "ho_so": ho_so, "het_han": now + THOI_HAN_VE_GIAY}
     return ve
 
@@ -738,6 +748,7 @@ async def novnc_trang_ve(request: Request):
 
 @novnc_router.post("/dang-nhap")
 async def novnc_doi_ve(request: Request):
+    gioi_han.kiem_tra_truoc_xac_thuc(request)
     # Không dùng request.form(): với multipart, phần TỆP không có trần và bị ghi ra tệp tạm trước khi kịp từ chối
     # (cùng lý do ở app/yeu_cau_da_phan.py). Chỉ nhận urlencoded, kiểm loại TRƯỚC khi đọc, đọc có trần.
     loai = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
@@ -765,6 +776,8 @@ async def novnc_doi_ve(request: Request):
                     ho_so=tt["ho_so"], hanh_dong="doi_ve", ket_qua="that_bai")
         return _loi_json(429, "Đã đủ số phiên noVNC cho phép; đóng bớt phiên rồi thử lại trong hạn của vé.")
     if ma != 200:
+        gioi_han.ghi_loi_xac_thuc(request)
+        gioi_han.kiem_tra_truoc_xac_thuc(request)
         nhat_ky.ghi("trinh_duyet", "canh_bao", "Từ chối đổi vé: vé không hợp lệ hoặc đã hết hạn",
                     hanh_dong="doi_ve", ket_qua="that_bai")
         return _loi_json(401, "Vé không hợp lệ hoặc đã hết hạn.")
