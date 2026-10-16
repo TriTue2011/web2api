@@ -50,7 +50,7 @@ from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
-from app.xac_thuc import can_phien_web, can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
+from app.xac_thuc import can_phien_web, can_quan_tri, kiem_tra_pham_vi, kiem_tra_step_up, xac_thuc_v1
 from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
@@ -1379,9 +1379,11 @@ async def dat_dia_chi(request: Request):
     url = than["url"]
     if url is None:
         kho.xoa_dia_chi_da_dat()
+        nhat_ky_mod.ghi("quan_tri", "thong_tin", "Xoá địa chỉ truy cập đã đặt (đặt lại về tự động)")
     elif isinstance(url, str):
         url_chuan = dia_chi_mod.kiem_tra_va_chuan_hoa_url(url)
         kho.luu_dia_chi_da_dat(url_chuan)
+        nhat_ky_mod.ghi("quan_tri", "thong_tin", f"Đổi địa chỉ truy cập thành công: {url_chuan}", url=url_chuan)
     else:
         raise LoiOpenAI(400, "Trường «url» phải là chuỗi hoặc null", loai="invalid_request_error")
     return dia_chi_mod.lay_thong_tin_dia_chi(request)
@@ -1476,6 +1478,7 @@ async def tao_khoa_khach(request: Request):
 
 @khoa_khach.post("/{id_}/xoay", dependencies=KHONG_LUU)
 async def xoay_khoa_khach(id_: str, request: Request):
+    kiem_tra_step_up(request)
     raw = await doc_het(request, THAN_JSON)
     if raw.strip():
         try:
@@ -1760,6 +1763,7 @@ async def danh_sach_phe_duyet(request: Request):
 
 @phe_duyet.post("/{pd_id}/duyet")
 async def xu_ly_duyet(pd_id: str, request: Request):
+    kiem_tra_step_up(request)
     so = _so(request)
     nguoi_duyet = getattr(request.state, "nguoi_goi", "quan_tri")
     bam_mong_doi = None
@@ -2237,6 +2241,72 @@ def xoa_khoa_toi(id: str, request: Request):
     return {"ok": True}
 
 
+@toi.post("/xac-nhan-lai", dependencies=KHONG_LUU)
+async def xac_nhan_lai_toi(request: Request):
+    """Xác nhận lại (step-up) cho phiên web quản trị để thực hiện thao tác nguy hiểm."""
+    nd = getattr(request.state, "nguoi_dung", {})
+    vai = nd.get("vai", "user")
+    if vai != "admin":
+        raise LoiOpenAI(
+            403,
+            "Chỉ quản trị viên mới có thể xác nhận lại quyền thao tác nguy hiểm.",
+            loai="permission_error",
+            code="forbidden",
+        )
+    phien = getattr(request.state, "phien_web", {})
+    bam = phien.get("bam")
+    if not bam:
+        raise LoiOpenAI(401, "Cần phiên đăng nhập hợp lệ.", loai="invalid_request_error", code="unauthorized")
+
+    than = await _than_json(request)
+    mat_khau = _chuoi_tuy_chon(than, "mat_khau")
+    khoa_qt = _chuoi_tuy_chon(than, "khoa_quan_tri")
+    if not mat_khau and not khoa_qt:
+        raise LoiOpenAI(400, "Cần cung cấp «mat_khau» hoặc «khoa_quan_tri» để xác nhận lại.", loai="invalid_request_error")
+
+    ip_khach = gioi_han_mod.lay_ip_an_toan(request)
+    hop_le = False
+    if mat_khau:
+        ten = str(nd.get("ten_dang_nhap", ""))
+        try:
+            nguoi_dung_mod.kiem_tra_khoa_ten(ten, ip=ip_khach)
+        except LoiOpenAI:
+            await nguoi_dung_mod.chay_bam_gia()
+            raise LoiOpenAI(401, "Xác nhận lại thất bại: mật khẩu không chính xác.", loai="invalid_request_error", code="invalid_credentials") from None
+        u = nguoi_dung_mod.tim_theo_id(nd["id"])
+        if u:
+            bam_cu = str(u.get("bam_mat_khau", ""))
+            hop_le = await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, bam_cu)
+        if not hop_le:
+            nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten, ip=ip_khach)
+        else:
+            nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten, ip=ip_khach)
+    elif khoa_qt:
+        from app import xac_thuc
+        hop_le = hmac.compare_digest(khoa_qt.encode("utf-8"), xac_thuc.khoa_quan_tri().encode("utf-8"))
+
+    if not hop_le:
+        gioi_han_mod.ghi_loi_xac_thuc(request)
+        nhat_ky_mod.ghi(
+            "quan_tri",
+            "canh_bao",
+            f"Xác nhận lại (step-up) thất bại cho quản trị viên «{nd.get('ten_dang_nhap', '')}»",
+            id_nguoi_dung=nd.get("id"),
+        )
+        raise LoiOpenAI(401, "Thông tin xác nhận lại không chính xác.", loai="invalid_request_error", code="invalid_credentials")
+
+    phien_web_mod.xac_nhan_lai_phien(bam)
+    cua_so = phien_web_mod.stepup_cua_so_giay()
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Quản trị viên «{nd.get('ten_dang_nhap', '')}» xác nhận lại (step-up) thành công",
+        id_nguoi_dung=nd.get("id"),
+        cua_so_giay=cua_so,
+    )
+    return {"ok": True, "cua_so_giay": cua_so}
+
+
 # ───────────── QUẢN TRỊ NGƯỜI DÙNG (QT) ─────────────
 
 @nguoi_dung.get("")
@@ -2248,6 +2318,8 @@ def lay_danh_sach_nguoi_dung():
 async def tao_nguoi_dung_moi(request: Request):
     than = await _than_json(request)
     vai = than.get("vai", "user")  # kiểu kiểm trong tao_nguoi_dung (kiem_vai), trần trong chuan_hoa_pham_vi
+    if vai == "admin":
+        kiem_tra_step_up(request)
     ten_dang_nhap = _chuoi_tuy_chon(than, "ten_dang_nhap")
     mat_khau = _chuoi_tuy_chon(than, "mat_khau")
     pham_vi_toi_da = than.get("pham_vi_toi_da")
@@ -2271,9 +2343,11 @@ async def tao_nguoi_dung_moi(request: Request):
 @nguoi_dung.patch("/{id}")
 async def cap_nhat_nguoi_dung(id: str, request: Request):
     than = await _than_json(request)
-    phien_web_mod.kiem_tra_kho()  # thu hồi phiên khi tắt phải chạy được — kiểm TRƯỚC khi sửa bản ghi
     vai = than.get("vai")
     bat = than.get("bat")
+    if vai is not None or bat is not None:
+        kiem_tra_step_up(request)
+    phien_web_mod.kiem_tra_kho()  # thu hồi phiên khi tắt phải chạy được — kiểm TRƯỚC khi sửa bản ghi
     pham_vi_toi_da = than.get("pham_vi_toi_da")
 
     ban_ghi = nguoi_dung_mod.sua_nguoi_dung(
@@ -2298,7 +2372,8 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
 
 
 @nguoi_dung.post("/{id}/dat-lai-mat-khau", dependencies=KHONG_LUU)
-async def dat_lai_mat_khau(id: str):
+async def dat_lai_mat_khau(id: str, request: Request):
+    kiem_tra_step_up(request)
     phien_web_mod.kiem_tra_kho()  # không đặt mật khẩu mới rồi mới 503 (mật khẩu mất, không ai biết)
     ban_ghi, mat_khau_moi = await nguoi_dung_mod.dat_lai_mat_khau_nguoi_dung(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)

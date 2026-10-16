@@ -1886,6 +1886,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/toi/khoa` | Phiên web | Danh sách khoá API của chính người dùng hiện tại |
 | `POST /api/toi/khoa` | Phiên web | Tự tạo khoá API mới cho chính mình (phạm vi: danh sách không rỗng trong `pham_vi_toi_da`, không nêu = bằng trần; tối đa 10 khoá; trả về khoá thô một lần duy nhất) |
 | `DELETE /api/toi/khoa/{id}` | Phiên web | Thu hồi khoá API của chính mình (`404` đồng nhất nếu không tìm thấy hoặc không thuộc về mình) |
+| `POST /api/toi/xac-nhan-lai` | Phiên web (admin) | Xác nhận lại quyền quản trị (step-up) cho phiên web để thực hiện thao tác nguy hiểm (cửa sổ `WEB2API_STEPUP_GIAY`, mặc định 15 phút) |
 | `GET /api/nguoi-dung` | Có | Danh sách tài khoản người dùng (`id`, `ten_dang_nhap`, `vai`, `bat`, `pham_vi_toi_da`, `tao_luc`) |
 | `POST /api/nguoi-dung` | Có | Tạo tài khoản người dùng mới (tuỳ chọn sinh ngẫu nhiên tên/mật khẩu nếu để trống; mật khẩu chỉ trả về một lần duy nhất) |
 | `PATCH /api/nguoi-dung/{id}` | Có | Cập nhật tài khoản người dùng (bật/tắt, vai, phạm vi; bảo vệ admin cuối cùng) |
@@ -1975,6 +1976,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` | `16` | Trần số lượt yêu cầu đăng nhập đang chờ và đang băm scrypt đồng thời; vượt trần trả `429` kèm `Retry-After` ngay lập tức để bỏ tải |
 | `WEB2API_SCRYPT_HANG_CHO_TOI_DA` | `16` | Bí danh của `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` cấu hình trần hàng chờ băm mật khẩu scrypt |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
+| `WEB2API_STEPUP_GIAY` | `900` | Thời gian hiệu lực (giây) của xác nhận lại (step-up) cho thao tác nguy hiểm của quản trị; mặc định 15 phút |
 | `WEB2API_WEBHOOK_THAN_TOI_DA_MB` | `1.0` | Trần thân (MB) cho cửa webhook `POST /api/webhook/{module}/{ma}` (lấy `min` với `webhook.tran_byte` của module); vượt là `413`. Đọc mỗi lượt; đếm byte thật, không tin `Content-Length` |
 | `WEB2API_WEBHOOK_TIN_PHUT` | `60` | Hạn dòng webhook: số tin tối đa mỗi module mỗi phút; vượt trả `429` kèm `Retry-After` |
 | `WEB2API_WEBHOOK_DONG_THOI` | `4` | Số webhook đang xử lý đồng thời tối đa mỗi module; vượt trả `429` kèm `Retry-After`, không chờ |
