@@ -1962,6 +1962,9 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
 | `WEB2API_SSE_DEM_TOI_DA_KB` | `1024` | Trần bộ đệm tối đa của luồng stream SSE chat (KiB, mặc định 1024 = 1 MiB) trước khi phát nguyên văn chống cạn bộ nhớ; giá trị không phải số dương hữu hạn → `1024` |
+| `WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH` | `8` | Số nguyên (>0): trần người nghe luồng sự kiện thiết bị SSE (`GET /api/thiet-bi/su-kien`) đồng thời cho một danh tính (quản trị hoặc từng khoá khách); vượt trần trả `429` kèm `Retry-After: 30`. Không phải số nguyên > 0 → `8`. Đọc mỗi lượt gọi |
+| `WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC` | `256` | Số nguyên (>0): trần người nghe luồng sự kiện thiết bị SSE (`GET /api/thiet-bi/su-kien`) đồng thời TOÀN CỤC; vượt trần trả `429` kèm `Retry-After: 30`. Không phải số nguyên > 0 → `256`. Đọc mỗi lượt gọi |
+| `WEB2API_SSE_KIEM_LAI_KHOA_GIAY` | `15` | Số thực: chu kỳ kiểm tra lại hiệu lực khoá xác thực trong vòng phát SSE thiết bị (giây, kẹp trong `[1.0, 300.0]`); khoá bị thu hồi/tắt giữa chừng thì ngắt luồng; sai/NaN → `15.0`. Đọc mỗi lượt gọi trong vòng phát |
 | `WEB2API_PHAN_HOI_TOI_DA_MB` | `32` | Trần dung lượng phản hồi tối đa (MB) từ dịch vụ ngược dòng khi đọc trọn vào RAM; vượt trần ngắt ngay và trả `502 upstream_too_large` chống OOM; chữ/≤0/nan/inf → `32` (không tắt được) |
 | `WEB2API_PHAN_HOI_TOI_DA_GIAY` | `300` | Trần thời gian tổng tối đa (giây) cho việc đọc toàn bộ phản hồi từ dịch vụ ngược dòng; vượt quá ngắt và trả `504 upstream_timeout`; chữ/≤0/nan/inf → `300` (không tắt được) |
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
@@ -1982,7 +1985,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
 | `WEB2API_DEMO_DIR` | không | Chỉ cho test dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |
 | `WEB2API_CHROME` | `/usr/bin/google-chrome` | Chỉ cho test giao diện và `scripts/chup-man-hinh.sh`: đường tới Chrome |
-| `WEB2API_PORT`, `WEB2API_DATA_DIR` | `3031`, volume | Chỉ đọc bởi `docker-compose.yml` (mục 5) |
+| `WEB2API_PORT`, `WEB2API_DATA_DIR`, `WEB2API_BIND` | `3031`, volume, `127.0.0.1` | Chỉ đọc bởi `docker-compose.yml` (mục 5; địa chỉ IP máy chủ để container lắng nghe) |
 
 ## 9. Phát triển
 
