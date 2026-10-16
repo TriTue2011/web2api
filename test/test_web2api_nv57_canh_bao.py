@@ -94,7 +94,6 @@ def _so_canh_bao() -> int:
 # A. Cảnh báo đăng nhập bất thường
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="NV57 01a: chưa có cảnh báo khi đăng nhập từ thiết bị/IP mới")
 def test_01a_dang_nhap_tu_thiet_bi_moi_ghi_canh_bao(moi_truong):
     """Đăng nhập thành công từ (IP, User-Agent) chưa từng thấy → có bản ghi
     quan_tri/canh_bao về thiết bị mới (hợp đồng đề xuất ở đầu tệp)."""
@@ -119,7 +118,6 @@ def test_01b_dang_nhap_lai_thiet_bi_da_biet_khong_canh_bao(moi_truong):
     assert _so_canh_bao() == giua
 
 
-@pytest.mark.xfail(strict=True, reason="NV57 01c: chưa có cảnh báo khi đăng nhập đúng sau nhiều lần sai")
 def test_01c_dang_nhap_dung_sau_nhieu_lan_sai_ghi_canh_bao(moi_truong):
     """3 lần sai rồi đăng nhập đúng → bản ghi cảnh báo cho lần đăng nhập thành công
     nêu rõ có lần thất bại trước đó (hợp đồng đề xuất ở đầu tệp)."""
@@ -198,7 +196,6 @@ def _tieu_de_qt(client):
     return {"authorization": f"Bearer {KHOA_QT}"}
 
 
-@pytest.mark.xfail(strict=True, reason="NV57 02a: chưa có route /api/bao-mat/trang-thai")
 def test_02a_cong_ip_trong_bao_trong(moi_truong, monkeypatch):
     """WEB2API_QT_IP_CHO_PHEP trống → trang-thai báo cong_ip_quan_tri_trong=true + băng rôn."""
     client, _ = moi_truong
@@ -210,7 +207,6 @@ def test_02a_cong_ip_trong_bao_trong(moi_truong, monkeypatch):
     assert isinstance(du_lieu.get("bang_ron"), str) and du_lieu["bang_ron"]
 
 
-@pytest.mark.xfail(strict=True, reason="NV57 02b: chưa có route /api/bao-mat/trang-thai")
 def test_02b_cong_ip_da_cau_hinh_bao_khong_trong(moi_truong, monkeypatch):
     """WEB2API_QT_IP_CHO_PHEP đã đặt → trong=false, không có băng rôn."""
     client, _ = moi_truong
@@ -222,7 +218,6 @@ def test_02b_cong_ip_da_cau_hinh_bao_khong_trong(moi_truong, monkeypatch):
     assert du_lieu.get("bang_ron") is None
 
 
-@pytest.mark.xfail(strict=True, reason="NV57 02c: chưa có route /api/bao-mat/trang-thai")
 def test_02c_bang_ron_khong_chen_noi_dung_ngoai(moi_truong, monkeypatch):
     """Băng rôn là chuỗi tĩnh do server định — không phản chiếu nội dung từ ngoài."""
     client, _ = moi_truong
@@ -233,7 +228,6 @@ def test_02c_bang_ron_khong_chen_noi_dung_ngoai(moi_truong, monkeypatch):
     assert "<script>alert('nv57')</script>" not in r.text
 
 
-@pytest.mark.xfail(strict=True, reason="NV57 02d: chưa có route /api/bao-mat/trang-thai")
 def test_02d_duong_bao_mat_doi_xac_thuc(moi_truong):
     """Không khoá gọi /api/bao-mat/trang-thai → 401."""
     client, _ = moi_truong
@@ -242,7 +236,6 @@ def test_02d_duong_bao_mat_doi_xac_thuc(moi_truong):
     assert r.status_code == 401
 
 
-@pytest.mark.xfail(strict=True, reason="NV57 02e: chưa có route /api/bao-mat/trang-thai")
 def test_02e_duong_bao_mat_chan_khach_va_user(moi_truong):
     """Khoá khách hoặc phiên user gọi /api/bao-mat/trang-thai → 403."""
     client, _ = moi_truong
