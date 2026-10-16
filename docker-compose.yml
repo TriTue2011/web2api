@@ -53,7 +53,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 256m
+    # Giới hạn tài nguyên (KHÔNG bắt buộc — bỏ đi vẫn chạy; xem README, mục «Giới hạn tài nguyên»): chặn một module lỗi
+    # ăn hết RAM/CPU của máy chủ và kéo các dịch vụ khác chết theo. Dùng thực tế khoảng 100 MB RAM, gần 0% CPU.
+    mem_limit: 1g
     cpus: 0.5
     pids_limit: 100
     # Healthcheck lấy từ ảnh (HEALTHCHECK trong Dockerfile hỏi /health mỗi 30 giây) — không khai lại ở đây.
