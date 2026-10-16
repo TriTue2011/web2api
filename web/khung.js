@@ -324,16 +324,12 @@
     quay_lai: 'M19 12H5 M11 6l-6 6 6 6',
     xuong: 'M6 9l6 6 6-6'
   };
-  // Thanh trên của trang chính: các dòng `trang` của DIEU_KIEN đủ điều kiện (Studio…) + tab riêng của module đã liên
-  // kết có `tab_web`. Mỗi mục: {id, nhan, href, d (hình), ac (aria-current)}.
+  // Thanh trên của trang chính: các dòng `trang` của DIEU_KIEN đủ điều kiện (Studio…).
+  // Mỗi mục: {id, nhan, href, d (hình), ac (aria-current)}.
   function navChinh(tn, hienTai) {
     const ra = [];
     for (const [ma, dk] of Object.entries(DIEU_KIEN)) {
       if (dk.trang && du(ma, tn)) ra.push({ id: ma, nhan: dk.nhan, href: dk.trang, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module });
-    }
-    for (const t of (tn && tn.tab) || []) {
-      const href = lienKetAnToan(t.duong);
-      if (href) ra.push({ id: 'm-' + t.module, nhan: t.nhan, href, d: BIEU_TUONG.module });
     }
     return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false' }));
   }
@@ -343,7 +339,8 @@
   }
   // Mục của trang Hệ thống, theo thứ tự thanh Hệ thống của demo (Tổng quan, AI ▾, Tiện ích, Nhật ký ▾, Cấu hình…):
   // chỉ vẽ mục có thật — «AI ▾» (khi có module mang mã «ai» đã cài) rồi «Module» ở đúng chỗ ô «Tiện ích» của demo
-  // (chủ máy 11/10: tab quản lý module mang nhãn «Module»). Mục còn lại của demo chưa có backend → không vẽ.
+  // (chủ máy 11/10: tab quản lý module mang nhãn «Module»), tiếp theo là các tab riêng của module đã liên kết (tab_web),
+  // và cuối cùng là «Bảo mật & người dùng». Mục còn lại của demo chưa có backend → không vẽ.
   // `soTb`: số module mới/có bản mới trên git (GET /api/modules → thong_bao_so) → chấm đỏ ở mục Module.
   // Mục AI có danh sách con — chỉ các dòng DIEU_KIEN `thuoc: 'ai'` ĐANG đủ điều kiện; dòng `chua_co` (Combo) không vào.
   function navHeThong(tn, hienTai, soTb) {
@@ -367,6 +364,10 @@
       ra.push({ id: 'thiet_bi', nhan: 'Thiết bị', href: 'He-thong-Thiet-bi.dc.html', d: BIEU_TUONG.thiet_bi, cham: false, nhanCham: '', con: [] });
     }
     ra.push({ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.phich, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] });
+    for (const t of (tn && tn.tab) || []) {
+      const href = lienKetAnToan(t.duong);
+      if (href) ra.push({ id: 'm-' + t.module, nhan: t.nhan, href, d: BIEU_TUONG.module, cham: false, nhanCham: '', con: [] });
+    }
     if (!tn || du('bao_mat', tn)) {
       ra.push({ id: 'bao_mat', nhan: 'Bảo mật & người dùng', href: 'He-thong-Bao-mat.dc.html', d: BIEU_TUONG.bao_mat, cham: false, nhanCham: '', con: [] });
     }

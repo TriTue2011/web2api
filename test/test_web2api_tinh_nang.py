@@ -435,3 +435,145 @@ def test_khung_giao_dien_khong_mang_ten_module():
             if t in noi_dung:
                 pham.append(f"{p.name}: «{t}»")
     assert not pham, "khung giao diện chứa tên module/nhà cung cấp:\n" + "\n".join(pham)
+
+
+# ───────────── NV65: tab_web nằm trong thanh Hệ thống, không ở thanh chính ─────────────
+
+@pytest.mark.skipif(not shutil.which("node"), reason="cần node")
+def test_tab_web_thanh_he_thong_khong_o_thanh_chinh_va_dung_thu_tu():
+    """Hợp đồng mới (NV65): tab_web của module đã liên kết nằm trong thanh Hệ thống,
+    không đứng ở thanh trên cùng (navChinh) hay thanh dưới (navDuoi).
+    (a) thanh trên cùng và thanh dưới không chứa mục `m-…`;
+    (b) thanh Hệ thống chứa mục `m-<module>` đúng thứ tự (sau Module, trước Bảo mật & người dùng);
+    (d) vai thường (user) và 403 không thấy tab module."""
+    tn_co_tab = {
+        "modules": [{"id": "mod-demo", "ten": "Demo", "da_lien_ket": True}],
+        "kha_nang_da_cai": {"chat": 1},
+        "kha_nang_lien_ket": {"chat": 1},
+        "tab": [{"module": "mod-demo", "nhan": "Bàn điều khiển", "duong": "m/mod-demo/index.html"}],
+    }
+    # (a) Kiểm tra thanh trên và thanh dưới không chứa mục m-...
+    kq_chinh = _khung(tn_co_tab, "K.navChinh(tn, '').map((x) => x.id)")
+    assert not any(x.startswith("m-") for x in kq_chinh), f"navChinh chứa m-*: {kq_chinh}"
+    assert "m-mod-demo" not in kq_chinh
+
+    kq_duoi = _khung(tn_co_tab, "K.navDuoi(tn, '').map((x) => x.id)")
+    assert not any(x.startswith("m-") for x in kq_duoi), f"navDuoi chứa m-*: {kq_duoi}"
+    assert "m-mod-demo" not in kq_duoi
+
+    # (b) Kiểm tra thanh Hệ thống chứa m-mod-demo đúng thứ tự: sau 'module', trước 'bao_mat'
+    kq_ht = _khung(tn_co_tab, "K.navHeThong(tn, '', 0)")
+    ids_ht = [x["id"] for x in kq_ht]
+    assert "m-mod-demo" in ids_ht, f"navHeThong thiếu m-mod-demo: {ids_ht}"
+    idx_mod = ids_ht.index("module")
+    idx_tab = ids_ht.index("m-mod-demo")
+    idx_bm = ids_ht.index("bao_mat")
+    assert idx_mod < idx_tab < idx_bm, f"Thứ tự navHeThong sai: {ids_ht}"
+
+    # Kiểm tra chi tiết mục m-mod-demo
+    muc_tab = next(x for x in kq_ht if x["id"] == "m-mod-demo")
+    assert muc_tab["nhan"] == "Bàn điều khiển"
+    assert "m/mod-demo/index.html" in muc_tab["href"]
+    assert muc_tab["cham"] is False
+    assert muc_tab["con"] == []
+    assert muc_tab["ac"] == "false"
+
+    # Aria-current chỉ là 'page' khi hienTai khớp
+    kq_ht_active = _khung(tn_co_tab, "K.navHeThong(tn, 'm-mod-demo', 0)")
+    muc_active = next(x for x in kq_ht_active if x["id"] == "m-mod-demo")
+    assert muc_active["ac"] == "page"
+    muc_mod_active = next(x for x in kq_ht_active if x["id"] == "module")
+    assert muc_mod_active["ac"] == "false"
+
+    # (d) Vai thường (user) và 403 không thấy tab module
+    # TH1: vai user
+    ma_user = (
+        "const fs = require('fs'), vm = require('vm');"
+        "const fn = async () => ({ ok: true, status: 200, json: async () => ({ id: 'u1', vai: 'user' }) });"
+        "const sb = {fetch: fn, window: {}, location: {href: 'http://may/', replace() {}}, URL, console};"
+        "vm.createContext(sb);"
+        f"vm.runInContext(fs.readFileSync({json.dumps(str(GOC / 'web' / 'khung.js'))}, 'utf8'), sb);"
+        f"const K = sb.window.Khung, tn = {json.dumps(tn_co_tab)};"
+        "K.napToi().then(() => {"
+        "  const ht = K.navHeThong(tn, '', 0);"
+        "  process.stdout.write(JSON.stringify(ht));"
+        "});"
+    )
+    r_u = subprocess.run(["node", "-e", ma_user], capture_output=True, text=True, timeout=15)
+    assert r_u.returncode == 0, r_u.stderr
+    ht_user = json.loads(r_u.stdout)
+    assert [x["id"] for x in ht_user] == ["bao_mat"], f"Vai user phải chỉ thấy bao_mat: {ht_user}"
+
+    # TH2: tn bị 403
+    tn_403 = dict(tn_co_tab, ma=403, error={"message": "Từ chối"})
+    kq_403 = _khung(tn_403, "K.navHeThong(tn, '', 0)")
+    assert [x["id"] for x in kq_403] == ["bao_mat"], f"Khi 403 phải chỉ thấy bao_mat: {kq_403}"
+
+
+def test_module_tab_web_la_tu_hien_va_go_bien_mat(du_lieu):
+    """(c) Thả module mẫu mang tab_web LẠ vào → tab tự hiện trong Hệ thống;
+    gỡ module → tab biến mất. Lõi không sửa dòng nào."""
+    mod_id = "mod-la-nv65"
+    mod_dir = du_lieu / "modules" / mod_id
+    mod_dir.mkdir(parents=True)
+    manifest = {
+        "id": mod_id,
+        "ten": "Module Lạ NV65",
+        "mo_ta": "Mô tả module lạ NV65",
+        "phien_ban": "1.0.0",
+        "loai": "tien_ich",
+        "giao_thuc": "openai",
+        "tien_to": "la65",
+        "truong_cau_hinh": [],
+        "tai_nguyen": {"mang_ra": []},
+        "tab_web": {"nhan": "Tab Lạ 65", "trang": "web/trang.html"},
+    }
+    (mod_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    ma_code = """class Module:
+    def __init__(self, m): self.manifest = m; self.tien_to = m["tien_to"]
+    def nap(self, cfg): pass
+    async def cai(self, cfg): return {"ok": True, "ket_qua_tung_khoa": [], "loi": None, "cau_hinh_luu": {}}
+    async def suc_khoe(self): return {"ok": True}
+    async def dung(self): pass
+"""
+    (mod_dir / "module.py").write_text(ma_code, encoding="utf-8")
+
+    with TestClient(app) as c:
+        assert c.post("/api/modules/nap-lai", headers=QT).status_code == 200
+
+        # Khi chưa liên kết: tab chưa hiện trong tn.tab
+        tn_chua_lk = c.get("/api/tinh-nang", headers=QT).json()
+        assert not any(t["module"] == mod_id for t in tn_chua_lk.get("tab", []))
+
+        # Liên kết module
+        r_cai = c.post(f"/api/modules/{mod_id}/cai", json={"cau_hinh": {}}, headers=QT)
+        assert r_cai.status_code == 200 and r_cai.json()["ok"] is True
+
+        tn_da_lk = c.get("/api/tinh-nang", headers=QT).json()
+        assert any(t["module"] == mod_id and t["nhan"] == "Tab Lạ 65" for t in tn_da_lk.get("tab", []))
+
+        if shutil.which("node"):
+            # Thanh trên cùng không có m-mod-la-nv65
+            kq_chinh = _khung(tn_da_lk, "K.navChinh(tn, '').map((x) => x.id)")
+            assert f"m-{mod_id}" not in kq_chinh
+
+            # Thanh Hệ thống tự hiện m-mod-la-nv65
+            kq_ht = _khung(tn_da_lk, "K.navHeThong(tn, '', 0)")
+            ids_ht = [x["id"] for x in kq_ht]
+            assert f"m-{mod_id}" in ids_ht
+            assert ids_ht.index("module") < ids_ht.index(f"m-{mod_id}") < ids_ht.index("bao_mat")
+            tab_obj = next(x for x in kq_ht if x["id"] == f"m-{mod_id}")
+            assert tab_obj["nhan"] == "Tab Lạ 65"
+
+        # Gỡ module -> tab biến mất hoàn toàn
+        r_del = c.delete(f"/api/modules/{mod_id}", headers=QT)
+        assert r_del.status_code == 200
+
+        tn_sau_go = c.get("/api/tinh-nang", headers=QT).json()
+        assert not any(t["module"] == mod_id for t in tn_sau_go.get("tab", []))
+
+        if shutil.which("node"):
+            kq_ht_sau = _khung(tn_sau_go, "K.navHeThong(tn, '', 0)")
+            ids_ht_sau = [x["id"] for x in kq_ht_sau]
+            assert f"m-{mod_id}" not in ids_ht_sau
+
