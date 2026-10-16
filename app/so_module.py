@@ -373,6 +373,7 @@ class SoModule:
             log.warning("Module %s: cấu hình đã lưu thiếu trường bắt buộc %s — coi như chưa liên kết", km.id, thieu)
             return None
         the = km.tao()
+        the.kho = kho.kho_rieng(km.id)
         the.nap(cau_hinh)
         return the
 
@@ -420,6 +421,7 @@ class SoModule:
 
     async def _cai(self, km: ModuleKhamPha, cau_hinh: dict) -> dict:
         moi = km.tao()
+        moi.kho = kho.kho_rieng(km.id)
         try:
             kq = await moi.cai(cau_hinh)
         finally:
@@ -434,6 +436,7 @@ class SoModule:
         except kho.KhoHong as e:
             raise LoiSo(500, f"Không lưu được cấu hình: {e}") from e
         the = km.tao()
+        the.kho = kho.kho_rieng(km.id)
         the.nap(sach)
         cu = self.dang_chay.get(km.id)
         self.dang_chay[km.id] = the

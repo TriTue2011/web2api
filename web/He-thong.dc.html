@@ -730,7 +730,7 @@ class Component extends DCLogic {
       hienKetNoi: !!tn && !coLienKet, diaChiV1,
       lenhMau: 'curl ' + diaChiV1 + '/models \\\n  -H "Authorization: Bearer <KHOÁ_API>"',
       // tài khoản
-      tenNguoiDung: s.nguoiDung ? s.nguoiDung.ten : '',
+      tenNguoiDung: K.tenNguoiDung(s.nguoiDung),
       nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '',
       dangXuat: () => K.dangXuat(),
       coLoiKhamPha: (s.loiKhamPha || []).length > 0, loiKhamPha: s.loiKhamPha || [],
@@ -738,7 +738,7 @@ class Component extends DCLogic {
       canDangNhapChu: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0 ? (((tn && tn.phien && tn.phien.can_dang_nhap) || 0) + ' tài khoản cần đăng nhập lại') : '',
       // lưới
       tim: s.tim, goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT, coLoai: dsKhu.length > 0,
-      canKhoaGit: false, chuSoTb: s.soTb ? ' Đang có ' + s.soTb + ' module mới hoặc có bản mới trên git.' : '', dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
+      dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
       khu, chiOThem: !s.dangTai && khu.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
       // chi tiết
       coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(),

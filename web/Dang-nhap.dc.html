@@ -93,7 +93,8 @@ class Component extends DCLogic {
         location.replace(this.layDuongVe());
       }
     } catch (e) {
-      // Chưa có phiên
+      // Lỗi tạm (500/503/429/mạng): giữ nguyên trang đăng nhập và hiển thị thông báo
+      this.setState({ loi: (e && e.message) || 'Lỗi kiểm tra phiên đăng nhập.', coLoi: true });
     }
   }
 

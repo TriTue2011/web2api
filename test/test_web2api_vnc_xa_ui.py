@@ -146,7 +146,7 @@ def test_vong_workspace_va_tai_dung_chrome(trang, moi_truong):
     _mo_trang(trang, f"{w.url}/m/vnc-xa/index.html")
     trang.cho(f"!!({_hang(TEN_XSS)})", mo_ta="danh sách workspace")
     assert trang.js("localStorage.getItem('web2api_khoa')") is None
-    assert trang.js("getComputedStyle(document.getElementById('o-khoa')).display") == "none"
+    assert trang.js("document.getElementById('o-khoa')") is None
     assert trang.js(f"{_hang(TEN_XSS)}.querySelector('.ws-tt').textContent") == "Đã đóng · giữ phiên"
 
     # Tạo workspace: nút tắt khi ô trống
@@ -271,6 +271,7 @@ def test_csp_chan_script_inline_va_ket_noi_ngoai_chrome(trang, moi_truong):
     """CSP của /m/ có tác dụng THẬT trong Chrome: script inline chèn vào trang không chạy; fetch tới origin khác
     (dịch vụ giả, kể cả no-cors) bị chặn."""
     w, dv = moi_truong
+    dang_nhap_quan_tri(trang, w.url)
     _mo_trang(trang, f"{w.url}/m/vnc-xa/index.html")
     trang.js("""(() => { window.__vi_pham = [];
         document.addEventListener('securitypolicyviolation', (e) => window.__vi_pham.push(e.violatedDirective));

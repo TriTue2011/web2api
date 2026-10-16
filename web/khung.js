@@ -133,18 +133,29 @@
   }
   function layCsrf() { return csrfToken; }
   function layNguoiDung() { return nguoiDungHienTai; }
+  const tenNguoiDung = (nd) => (nd && (nd.ten || nd.ten_dang_nhap)) || '';
 
   async function napToi() {
+    let r;
     try {
-      const r = await fetch('api/toi', { credentials: 'same-origin', cache: 'no-store' });
-      if (r.ok) {
-        const j = await r.json();
-        if (j && j.csrf) csrfToken = j.csrf;
-        nguoiDungHienTai = j;
-        return j;
-      }
-    } catch (e) { /* nuốt lỗi */ }
-    return null;
+      r = await fetch('api/toi', { credentials: 'same-origin', cache: 'no-store' });
+    } catch (e) {
+      throw e;
+    }
+    let j = null;
+    try { j = await r.json(); } catch (e) { j = null; }
+    if (r.ok) {
+      if (j && j.csrf) csrfToken = j.csrf;
+      if (j && !j.ten && j.ten_dang_nhap) j.ten = j.ten_dang_nhap;
+      nguoiDungHienTai = j;
+      return j;
+    }
+    if (r.status === 401) {
+      csrfToken = '';
+      nguoiDungHienTai = null;
+      return null;
+    }
+    throw taoLoi(thongDiep(j, r.status), r.status, j && j.error && j.error.code);
   }
 
   // Chống chuyển hướng mở (Open Redirect): chuỗi phải bắt đầu '/', rồi phân tích bằng
@@ -173,14 +184,30 @@
   }
 
   async function dangXuat() {
+    if (!csrfToken) {
+      try { await napToi(); } catch (e) {}
+    }
+    let res;
     try {
-      await fetch('api/dang-xuat', {
+      res = await fetch('api/dang-xuat', {
         method: 'POST',
         headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
         credentials: 'same-origin',
         cache: 'no-store'
       });
-    } catch (e) { /* nuốt lỗi */ }
+    } catch (e) {
+      if (typeof alert === 'function') alert('Không thể kết nối máy chủ để đăng xuất.');
+      return;
+    }
+    if (!res || !res.ok) {
+      let msg = 'Đăng xuất thất bại.';
+      try {
+        const j = await res.json();
+        msg = (j && j.error && j.error.message) || (j && j.detail) || msg;
+      } catch (_) {}
+      if (typeof alert === 'function') alert(msg);
+      return;
+    }
     try {
       if (typeof localStorage !== 'undefined') {
         const cacKhoa = [];
@@ -214,7 +241,7 @@
     // Tự đính X-CSRF-Token cho phương thức không an toàn khi dùng cookie phiên
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       if (!csrfToken && !hd['X-CSRF-Token']) {
-        await napToi();
+        try { await napToi(); } catch (e) {}
       }
       if (csrfToken && !hd['X-CSRF-Token']) {
         hd['X-CSRF-Token'] = csrfToken;
@@ -244,13 +271,32 @@
     let j = null;
     try { j = await r.json(); } catch (e) { j = null; }
 
-    // 401 từ khoá do trang truyền tường minh (kiểm khoá nhà cung cấp…) không phải phiên hết hạn.
-    if (r.status === 401 && !tc.khoa) {
+    const code = j && j.error && j.error.code;
+
+    // L4: CSRF cũ không tự làm mới (403 csrf_token_invalid) ⇒ napToi() rồi thử lại MỘT lần
+    if (r.status === 403 && code === 'csrf_token_invalid' && !tc._daThuLaiCsrf) {
+      tc._daThuLaiCsrf = true;
+      try {
+        await napToi();
+        if (tc.headers) {
+          delete tc.headers['X-CSRF-Token'];
+          delete tc.headers['x-csrf-token'];
+        }
+        if (hd['X-CSRF-Token']) delete hd['X-CSRF-Token'];
+        return await goi(duong, tc);
+      } catch (_) {}
+    }
+
+    // C2: Chỉ chuyển Đăng nhập khi mã lỗi cho thấy PHIÊN không hợp lệ (unauthorized / invalid_api_key)
+    // 401 từ khoá do trang truyền tường minh (tc.khoa) hoặc lỗi khác như sai mật khẩu cũ (incorrect_password)
+    // KHÔNG được chuyển đăng nhập.
+    const laLoiPhien = r.status === 401 && !tc.khoa && (code === 'unauthorized' || code === 'invalid_api_key');
+    if (laLoiPhien) {
       chuyenDangNhap();
     }
 
     if (!r.ok && !(tc.chapNhan || []).includes(r.status)) {
-      throw taoLoi(thongDiep(j, r.status), r.status, j && j.error && j.error.code);
+      throw taoLoi(thongDiep(j, r.status), r.status, code);
     }
     return { ma: r.status, j };
   }
@@ -301,6 +347,15 @@
   // `soTb`: số module mới/có bản mới trên git (GET /api/modules → thong_bao_so) → chấm đỏ ở mục Module.
   // Mục AI có danh sách con — chỉ các dòng DIEU_KIEN `thuoc: 'ai'` ĐANG đủ điều kiện; dòng `chua_co` (Combo) không vào.
   function navHeThong(tn, hienTai, soTb) {
+    const nd = layNguoiDung();
+    const laUser = nd && nd.vai !== 'admin';
+    const biChan403 = tn && (tn.ma === 403 || tn.status === 403 || (tn.error && tn.error.code === 'permission_error'));
+    if (laUser || biChan403) {
+      const ra = [
+        { id: 'bao_mat', nhan: 'Bảo mật', href: 'He-thong-Bao-mat.dc.html', d: BIEU_TUONG.bao_mat, cham: false, nhanCham: '', con: [] }
+      ];
+      return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false', coCon: false }));
+    }
     const n = Number(soTb) || 0;
     const ra = [];
     if (du('ai', tn)) {
@@ -312,7 +367,7 @@
       ra.push({ id: 'thiet_bi', nhan: 'Thiết bị', href: 'He-thong-Thiet-bi.dc.html', d: BIEU_TUONG.thiet_bi, cham: false, nhanCham: '', con: [] });
     }
     ra.push({ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.phich, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] });
-    if (du('bao_mat', tn)) {
+    if (!tn || du('bao_mat', tn)) {
       ra.push({ id: 'bao_mat', nhan: 'Bảo mật & người dùng', href: 'He-thong-Bao-mat.dc.html', d: BIEU_TUONG.bao_mat, cham: false, nhanCham: '', con: [] });
     }
     return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false', coCon: x.con.length > 0 }));
@@ -834,5 +889,5 @@
   window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
     BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, tuongDoi, boDau, diaChiV1,
     dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom,
-    datCsrf, layCsrf, napToi, layNguoiDung, dangXuat, duongVeHopLe, chuyenDangNhap };
+    datCsrf, layCsrf, napToi, layNguoiDung, tenNguoiDung, dangXuat, duongVeHopLe, chuyenDangNhap };
 })();
