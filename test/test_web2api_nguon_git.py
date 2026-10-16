@@ -13,11 +13,11 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app import nguon_git, so_module
+from app import kho, nguon_git, so_module
 from app.main import app
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
-from gia import GitHubGia, MayChuThat, bam_blob, tep_echo, tep_kho
+from gia import GitHubGia, MayChuThat, bam_blob, ghi_thu_muc, tep_echo, tep_kho
 
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -236,9 +236,60 @@ def test_tu_dong_chi_khi_co_chu_ky_va_khong_doi_quyen(gh, du_lieu):
         assert await tra_loi(so) == "echo v1b: a"
         x = ng.thong_bao()["danh_sach"][0]
         assert x["trang_thai"] == "co_ban_moi" and "THÊM QUYỀN" in x["ghi_chu"] and "2 mục" in x["ghi_chu"]
+        # NV49 R-1: bản mới CHỈ ĐỔI MÃ (quyền như v1b) của module đã cài cũng KHÔNG tự cài dù đã ký —
+        # giữ lại chờ duyệt, ghi chú nói rõ; quản trị duyệt (danh sách «them» rỗng + SHA) thì mới chạy.
         gh.day(tep_kho({"echo": tep_echo("echo v3")}), xac_minh=True)
         await vong()
+        assert await tra_loi(so) == "echo v1b: a"
+        assert b"echo v3" not in (du_lieu / "modules" / "echo" / "module.py").read_bytes()
+        x = ng.thong_bao()["danh_sach"][0]
+        assert x["trang_thai"] == "co_ban_moi" and "THÊM QUYỀN" not in x["ghi_chu"]
+        assert "ĐỔI MÃ" in x["ghi_chu"] and "không tự cập nhật" in x["ghi_chu"]
+        sha_v3 = gh.nhanh["main"]
+        cho = kho.doc_cho_duyet_quyen("echo")
+        assert cho is not None and cho["sha_commit"] == sha_v3 and cho["diff"]["them"] == []
+        await ng.cai("echo", chap_nhan_quyen_them=[], sha_commit=sha_v3)
         assert await tra_loi(so) == "echo v3: a"
+        assert kho.doc_cho_duyet_quyen("echo") is None and khong_rac(du_lieu) == []
+    chay(ham)
+
+
+def test_lan_dau_khong_tu_cap_nhat_ma_module_da_cai(gh, du_lieu):
+    # NV49 R-1, đường `_lan_dau`: tu_dong TẮT, module đã cài (đặt tay), git có mã khác → KHÔNG tự cập nhật,
+    # giữ chờ duyệt; quản trị bấm «Cập nhật» (cài thường) thì mới chạy, yêu cầu chờ cũ được dọn.
+    ghi_thu_muc(du_lieu / "modules" / "echo", tep_echo("echo tay"))
+    gh.day(tep_kho({"echo": tep_echo("echo git")}), xac_minh=True)
+
+    async def ham(so, ng):
+        await so.cai("echo", {})
+        assert await tra_loi(so) == "echo tay: a"
+        cfg = ng.luu_cau_hinh(CAU_HINH)["cau_hinh"]
+        assert cfg["tu_dong"] is False
+        await ng.mot_lan()
+        assert ng._lan_dau is True  # tiền đề: đúng là lần đồng bộ đầu (không thì _tu_dong không làm gì)
+        await ng._tu_dong()
+        assert await tra_loi(so) == "echo tay: a"
+        assert not (du_lieu / "modules" / "echo" / ".nguon.json").exists()
+        x = ng.thong_bao()["danh_sach"][0]
+        assert x["trang_thai"] == "co_ban_moi" and "ĐỔI MÃ" in x["ghi_chu"] and "không tự cập nhật" in x["ghi_chu"]
+        assert kho.doc_cho_duyet_quyen("echo") is not None  # cổng đã chạy, không phải bị bỏ qua
+        await ng.cai("echo")  # quản trị bấm «Cập nhật»
+        assert await tra_loi(so) == "echo git: a"
+        assert kho.doc_cho_duyet_quyen("echo") is None and khong_rac(du_lieu) == []
+    chay(ham)
+
+
+def test_tu_dong_van_cai_module_moi(gh, du_lieu):
+    # NV49 R-1 không chạm cài MỚI: tu_dong bật, module chưa có trên máy → vẫn tự cài, không tạo yêu cầu chờ.
+    gh.day(tep_kho({"echo": tep_echo("echo v1")}), xac_minh=False)
+
+    async def ham(so, ng):
+        ng.luu_cau_hinh({**CAU_HINH, "tu_dong": True})
+        await ng.mot_lan()
+        await ng._tu_dong()
+        assert await tra_loi(so) == "echo v1: a"
+        assert ng.thong_bao()["moi_nhat"] == ["echo"]
+        assert kho.doc_cho_duyet_quyen("echo") is None and khong_rac(du_lieu) == []
     chay(ham)
 
 

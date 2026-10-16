@@ -72,14 +72,16 @@ async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
 
 
 class LoiCanDuyetQuyen(LoiSo):
-    """409 khi bản mới của module đã cài xin thêm quyền: chưa kích hoạt, chờ quản trị duyệt.
+    """409 khi bản mới của module đã cài xin thêm quyền, hoặc vòng tự cài tải về bản đổi mã (NV49 R-1):
+    chưa kích hoạt, chờ quản trị duyệt.
 
     Thuộc tính: id_, diff {"them": [...], "bot": [...]}, sha_commit, tree_sha của bản mới.
     """
 
     def __init__(self, id_: str, diff: dict, sha_commit: str | None, tree_sha: str | None):
-        super().__init__(409, f"Module {id_!r} có bản mới xin thêm {len(diff.get('them') or [])} quyền — "
-                              f"cần quản trị duyệt trước khi kích hoạt")
+        viec = (f"xin thêm {len(diff['them'])} quyền" if diff.get("them")
+                else "đổi mã (không xin thêm quyền), do vòng tự cài tải về")
+        super().__init__(409, f"Module {id_!r} có bản mới {viec} — cần quản trị duyệt trước khi kích hoạt")
         self.id_ = id_
         self.diff = diff
         self.sha_commit = sha_commit
@@ -580,9 +582,10 @@ class SoModule:
                 shutil.rmtree(cho, ignore_errors=True)
             raise LoiSo(500, f"Không lưu được yêu cầu chờ duyệt quyền: {e} — khôi phục hoặc xoá tệp cho_duyet_quyen.json hỏng",
                         code="store_unreadable") from e
+        viec = f"xin thêm {len(diff['them'])} quyền" if diff["them"] else "đổi mã (không xin thêm quyền)"
         nhat_ky.ghi("he_thong", "canh_bao",
                     f"Module {id_} có bản mới (commit {str(nguon.get('sha_commit'))[:12]}) "
-                    f"xin thêm {len(diff['them'])} quyền — chưa kích hoạt, chờ quản trị duyệt",
+                    f"{viec} — chưa kích hoạt, chờ quản trị duyệt",
                     module=id_)
 
     @staticmethod
@@ -600,7 +603,8 @@ class SoModule:
         if cac_muc_chuan(chap_nhan) != cac_muc_chuan((pending.get("diff") or {}).get("them")):
             raise LoiSo(409, "Danh sách chấp nhận phải khớp chính xác phần «them» đã xem")
 
-    async def cai_thu_muc(self, id_: str, tam: Path, chap_nhan_quyen_them: list | None = None) -> dict:
+    async def cai_thu_muc(self, id_: str, tam: Path, chap_nhan_quyen_them: list | None = None,
+                          tu_dong: bool = False) -> dict:
         """Đổi tên NGUYÊN TỬ `tam` → `<WEB2API_DATA>/modules/<id>/`, nạp lại; bản mới nạp hỏng →
         hoàn về bản cũ (bản cũ không ngừng phục vụ lúc nào) và LoiSo. Module chưa cần cấu hình
         bắt buộc thì tự cài cấu hình rỗng để dùng được ngay.
@@ -609,6 +613,9 @@ class SoModule:
         thì KHÔNG kích hoạt — `chap_nhan_quyen_them=None` → lưu yêu cầu chờ duyệt và ném
         LoiCanDuyetQuyen(409); duyệt thì truyền đúng danh sách «them» đã xem (kèm SHA khớp).
         Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ quyền module xin.
+
+        NV49 R-1: `tu_dong=True` (vòng tự cài, không người bấm) mà module ĐÃ cài → mọi bản mới (đổi mã dù quyền
+        giữ nguyên) cũng giữ lại chờ duyệt như trên; chỉ quản trị cài/duyệt tay mới kích hoạt được.
         """
         if not ID_HOP_LE.match(id_):
             raise LoiSo(400, f"id {id_!r} không hợp lệ")
@@ -632,6 +639,12 @@ class SoModule:
                     self._cho_duyet_quyen(id_, tam, mf_moi, nguon, diff)
                     raise LoiCanDuyetQuyen(id_, diff, nguon.get("sha_commit"), nguon.get("tree_sha"))
                 self._kiem_duyet_quyen(id_, nguon, diff, chap_nhan_quyen_them)
+            elif km_cu is not None and tu_dong:
+                # Không người bấm mà đổi mã module đang được tin → giữ chờ duyệt (diff rỗng hoặc chỉ bớt quyền).
+                nguon = self._nguon_cua_tam(tam)
+                self._cho_duyet_quyen(id_, tam, mf_moi, nguon, diff or {"them": [], "bot": []})
+                raise LoiCanDuyetQuyen(id_, diff or {"them": [], "bot": []}, nguon.get("sha_commit"),
+                                       nguon.get("tree_sha"))
             sao_luu = None
             if dich.exists():
                 sao_luu = dich.parent / f".cu-{id_}-{secrets.token_hex(4)}"
@@ -651,8 +664,9 @@ class SoModule:
                             + ": " + ("; ".join(ly_do) or "module không được nạp"))
             if sao_luu is not None:
                 shutil.rmtree(sao_luu, ignore_errors=True)
-            if chap_nhan_quyen_them is not None:
-                kho.xoa_cho_duyet_quyen(id_)
+            # Đã kích hoạt (duyệt, hoặc quản trị cập nhật tay) → yêu cầu chờ duyệt nào còn lại đều hết hiệu lực.
+            kho.xoa_cho_duyet_quyen(id_)
+            shutil.rmtree(self.thu_muc_cho_duyet(id_), ignore_errors=True)
             cai = None
             if not km.can_cau_hinh and id_ not in self.dang_chay:
                 cai = await self._cai(km, {})

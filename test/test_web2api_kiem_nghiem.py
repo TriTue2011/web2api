@@ -137,7 +137,8 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
             assert noi("gemini/gemini-2.5-flash") == "chào từ Google giả"
             assert g.nhat_ky[-1]["than"]["model"] == "gemini-2.5-flash"
 
-            # (d) tự cài + yêu cầu chữ ký: commit chưa ký không tự cài, commit đã ký thì tự cài.
+            # (d) tự cài + yêu cầu chữ ký: commit chưa ký không tự cài; commit đã ký đổi mã module ĐÃ cài cũng không
+            # tự chạy (NV49 R-1) — giữ chờ duyệt, quản trị duyệt (danh sách «them» rỗng + SHA) thì mới chạy.
             assert h.put("/api/nguon-git", json={"repo": REPO, "chu_ky_giay": 1, "tu_dong": True,
                                                  "yeu_cau_chu_ky": True}).status_code == 200
             gh.day(tep_kho({"echo": tep_echo("echo v4", "4.0.0"), "gemini-api": tep_gemini()}), xac_minh=False)
@@ -145,7 +146,12 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
                             for x in tb()["danh_sach"]), mo_ta="ghi chú thiếu chữ ký")
             assert noi() == "echo v2: ơi"
             gh.day(tep_kho({"echo": tep_echo("echo v5", "5.0.0"), "gemini-api": tep_gemini()}), xac_minh=True)
-            cho(lambda: noi() == "echo v5: ơi", mo_ta="tự cài bản đã ký")
+            x5 = cho(lambda: next((x for x in tb()["danh_sach"] if x["phien_ban_moi"] == "5.0.0" and x["ghi_chu"]
+                                   and "ĐỔI MÃ" in x["ghi_chu"]), None), mo_ta="bản đã ký được giữ chờ duyệt")
+            assert noi() == "echo v2: ơi"
+            r = h.post("/api/nguon-git/cai/echo", json={"chap_nhan_quyen_them": [], "sha_commit": x5["commit"]["sha"]})
+            assert r.status_code == 200, r.text
+            assert noi() == "echo v5: ơi"
             assert tb()["so_moi"] == 0
 
             # (e) gỡ từng module → mất khỏi /v1/models, /m/<id>/ 404.

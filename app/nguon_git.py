@@ -581,7 +581,8 @@ class NguonGit:
                     id_, str(sha_commit)[:12])
         return {"ok": True, "id": id_, "duyet_quyen": True, **kq}
 
-    async def _cai(self, id_: str) -> dict:
+    async def _cai(self, id_: str, tu_dong: bool = False) -> dict:
+        """`tu_dong=True` chỉ từ vòng tự cài: bản mới của module ĐÃ cài thì giữ chờ duyệt (cai_thu_muc, NV49 R-1)."""
         cfg = self.cau_hinh()
         if not cfg:
             raise LoiGit("chưa cấu hình nguồn git (PUT /api/nguon-git)", 400)
@@ -634,7 +635,7 @@ class NguonGit:
                      "phien_ban": manifest.get("phien_ban"), "cai_luc": kho.bay_gio_iso()}
             (tam / ".nguon.json").write_text(json.dumps(nguon, ensure_ascii=False, indent=2), encoding="utf-8")
             viec = self.viec(id_)  # đọc TRƯỚC khi cài: cài xong thì module đã nằm trong catalog
-            kq = await self.so.cai_thu_muc(id_, tam)
+            kq = await self.so.cai_thu_muc(id_, tam, tu_dong=tu_dong)
         except BaseException:
             if tam.exists():
                 shutil.rmtree(tam, ignore_errors=True)
@@ -736,11 +737,13 @@ class NguonGit:
 
     async def _tu_dong(self) -> None:
         """Tự cài sau một vòng thăm dò, hai trường hợp, cùng mọi chốt bên dưới (chữ ký, bản vừa gỡ,
-        bản đã tự cài hỏng; xin thêm quyền do cổng trong `cai_thu_muc` chặn và giữ lại chờ duyệt):
-          - `tu_dong` bật: module mới và bản mới;
-          - lần đồng bộ ĐẦU của nguồn git (`_lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, cập nhật module
-            đã có mã mà git có bản khác (`co_ban_moi`, kể cả module đặt tay không có .nguon.json) dù
-            `tu_dong` tắt — không cài module mới, việc đó chủ máy bấm."""
+        bản đã tự cài hỏng):
+          - `tu_dong` bật: module MỚI thì cài thẳng; bản mới của module đã cài thì tải về giữ chờ duyệt;
+          - lần đồng bộ ĐẦU của nguồn git (`_lan_dau`, KE-HOACH-CAI-MODULE.md 3.4): MỘT lần, module đã có mã mà
+            git có bản khác (`co_ban_moi`, kể cả module đặt tay không có .nguon.json) được tải về giữ chờ duyệt
+            dù `tu_dong` tắt — không cài module mới, việc đó chủ máy bấm.
+        NV49 R-1: mọi bản mới của module ĐÃ cài (đổi mã dù quyền giữ nguyên, hay xin thêm quyền) đều do cổng
+        trong `cai_thu_muc` giữ lại chờ duyệt — mã mới chỉ chạy khi quản trị bấm «Cập nhật» hoặc duyệt."""
         cfg = self.cau_hinh()
         lan_dau, self._lan_dau = self._lan_dau, False
         if not cfg:
@@ -768,15 +771,22 @@ class NguonGit:
                 self._ghi_chu[x["id"]] = (m["tree_sha"], ly_do)
                 continue
             try:
-                await self._cai(x["id"])
+                await self._cai(x["id"], tu_dong=True)
             except LoiCanDuyetQuyen as e:
-                # Bản mới xin thêm quyền: cổng trong cai_thu_muc đã lưu yêu cầu chờ duyệt —
-                # giữ lại, đánh dấu để không tải lại mỗi vòng (quản trị duyệt tay khi sẵn sàng).
+                # Bản mới xin thêm quyền hoặc đổi mã module đã cài: cổng trong cai_thu_muc đã lưu yêu cầu chờ
+                # duyệt — giữ lại, đánh dấu để không tải lại mỗi vòng (quản trị duyệt tay khi sẵn sàng).
                 self._tu_dong_hong[x["id"]] = m["tree_sha"]
-                self._ghi_chu[x["id"]] = (m["tree_sha"],
-                    f"bản mới XIN THÊM QUYỀN ({len(e.diff['them'])} mục) — không tự {viec}, "
-                    f"chờ quản trị duyệt (POST /api/nguon-git/cai/{x['id']})")
-                log.warning("Tự %s module %s: bản mới xin thêm quyền, chờ quản trị duyệt", viec, x["id"])
+                if e.diff["them"]:
+                    self._ghi_chu[x["id"]] = (m["tree_sha"],
+                        f"bản mới XIN THÊM QUYỀN ({len(e.diff['them'])} mục) — không tự {viec}, "
+                        f"chờ quản trị duyệt (POST /api/nguon-git/cai/{x['id']})")
+                    log.warning("Tự %s module %s: bản mới xin thêm quyền, chờ quản trị duyệt", viec, x["id"])
+                else:
+                    self._ghi_chu[x["id"]] = (m["tree_sha"],
+                        f"bản mới ĐỔI MÃ module đã cài (không xin thêm quyền) — "
+                        f"không tự {viec}, chờ quản trị duyệt: bấm «Cập nhật» hoặc POST /api/nguon-git/cai/{x['id']} "
+                        f"với {{\"chap_nhan_quyen_them\": [], \"sha_commit\": \"{e.sha_commit}\"}}")
+                    log.warning("Tự %s module %s: bản mới đổi mã, chờ quản trị duyệt", viec, x["id"])
             except (LoiGit, LoiSo) as e:
                 self._tu_dong_hong[x["id"]] = m["tree_sha"]
                 self._ghi_chu[x["id"]] = (m["tree_sha"], f"tự {viec} hỏng: {e}")

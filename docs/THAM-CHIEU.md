@@ -41,7 +41,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
-| Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
+| Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
@@ -641,11 +641,11 @@ Module đã cài nhưng chưa có cấu hình thì liên kết bằng `POST /api
 3. Quản trị bấm «Cài» ở ô của module (hoặc `POST /api/nguon-git/cai/<id>`) — **không cần khoá API**. web2api tải
    đúng phiên bản đã báo, kiểm toàn vẹn từng tệp, đặt vào `/data/modules/<id>/` và nạp nóng.
 
-**Lần đầu thêm nguồn git thì cập nhật luôn module đang có**: ở lần đồng bộ thành công đầu tiên của một nguồn,
-web2api **cập nhật** một lần mọi module đã có mã trên máy mà git có bản khác — dù `tu_dong` tắt. Module **mới**
-trên git không tự cài. Giữ mọi chốt: bản mới xin thêm quyền hoặc commit chưa ký khi bật
-`yeu_cau_chu_ky` thì không cập nhật và ghi lý do vào `ghi_chu`; bản vừa gỡ không cài lại; cập nhật hỏng thì giữ
-bản cũ. Dấu «đã đồng bộ» là commit lưu trong `nguon_git_trang_thai.json`.
+**Lần đầu thêm nguồn git thì soạn sẵn yêu cầu duyệt cho module đang có**: ở lần đồng bộ thành công đầu tiên của
+một nguồn, web2api tải về một lần mọi module đã có mã trên máy mà git có bản khác — dù `tu_dong` tắt — nhưng
+**không chạy** bản đó: giữ lại chờ quản trị duyệt (xem «Cập nhật module và duyệt quyền») và ghi lý do vào `ghi_chu`.
+Module **mới** trên git không tự cài. Giữ mọi chốt: commit chưa ký khi bật `yeu_cau_chu_ky` thì không tải; bản vừa
+gỡ không cài lại. Dấu «đã đồng bộ» là commit lưu trong `nguon_git_trang_thai.json`.
 
 Kho `TriTue2011/web2api` đang **public** nên web2api đọc **ẩn danh**. `docker-compose.yml` đặt sẵn kho này; các
 biến môi trường chỉ được dùng khi **chưa** lưu cấu hình qua trang hoặc API. Sửa ở Hệ thống → Module → «＋ Thêm
@@ -665,13 +665,14 @@ curl -s -H "Authorization: Bearer $K" $W/api/nguon-git      # cấu hình + tr�
 | `thu_muc` | `modules` | Thư mục chứa module trong kho. |
 | `chu_ky_giay` | `300` | Khoảng thăm dò. 300 giây/lần chỉ tốn 12 yêu cầu/giờ. |
 | `token` | không có | Chỉ cho kho riêng tư hoặc nâng hạn mức; lưu 0600, không trả lại; gửi `""` để xoá. |
-| `tu_dong` | `false` | Bật thì web2api tự cài module mới/bản mới. |
+| `tu_dong` | `false` | Bật thì web2api tự cài module **mới**; bản mới của module đã cài chỉ được tải về giữ chờ duyệt. |
 | `yeu_cau_chu_ky` | `false` | Bật thì chỉ **tự** cài khi commit được GitHub xác minh chữ ký. |
 
 Gửi lại `PUT /api/nguon-git` (thân `{}`) để thăm dò **ngay**. Hạn mức GitHub ẩn danh là 60 yêu cầu/giờ/IP;
 web2api đọc số còn lại sau mỗi phản hồi, còn dưới 10 thì giãn nhịp tới giờ đặt lại (`han_muc_con`, `reset_luc`).
-**Tự cài** (`tu_dong: true`) không chạy khi commit chưa ký (nếu bật `yeu_cau_chu_ky`) hoặc khi bản mới xin thêm
-quyền — các trường hợp này hiện trong `ghi_chu` để quản trị xem và cài tay (xem «Cập nhật module và duyệt quyền»).
+**Tự cài** (`tu_dong: true`) không chạy khi commit chưa ký (nếu bật `yeu_cau_chu_ky`), và không bao giờ thay mã
+module **đã cài**: bản mới (xin thêm quyền hay chỉ đổi mã) được giữ chờ duyệt — các trường hợp này hiện trong
+`ghi_chu` để quản trị xem và cài tay (xem «Cập nhật module và duyệt quyền»).
 
 ### Cập nhật module và duyệt quyền (chống «rug-pull»)
 
@@ -697,8 +698,10 @@ Chỉ phần **thêm** mới cần duyệt; bớt quyền được qua tự do.
 - Quản trị duyệt bằng **chính đường cài**, thân JSON `{"chap_nhan_quyen_them": [<đúng danh sách «them» đã xem>],
   "sha_commit": "<đúng SHA đã xem>"}`. Duyệt phải **khớp chính xác**: SHA đổi (kho đẩy tiếp commit mới sau khi bạn
   xem diff) hoặc diff đổi → duyệt cũ mất hiệu lực, trả 409, không áp dụng gì (chống TOCTOU).
-- Đường `tu_dong`: bản mới xin thêm quyền thì **giữ lại chờ duyệt**, không tự cài (tự cài chỉ áp cho bản không
-  thêm quyền).
+- Đường `tu_dong` (và lần đồng bộ đầu): mọi bản mới của module **đã cài** đều **giữ lại chờ duyệt**, kể cả bản
+  chỉ đổi mã, không xin thêm quyền — mã chạy trong tiến trình lõi, nên đổi mã là đổi điều module làm được. Duyệt bằng
+  nút «Cập nhật» (cài thường) hoặc thân `{"chap_nhan_quyen_them": [], "sha_commit": "<SHA>"}`; kích hoạt xong thì
+  yêu cầu chờ duyệt cũ được dọn. Tự cài chỉ áp cho module **mới**.
 - `GET /api/modules` nêu cờ boolean `cho_duyet_quyen` cho mỗi module — chi tiết diff chỉ có ở phản
   hồi 409 của đường quản trị.
 - Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ module xin những quyền gì (`diff_quyen.them`).
@@ -1744,7 +1747,7 @@ Web2api cung cấp API xuất và nhập toàn bộ cấu hình hệ thống tro
    - Định dạng + toàn vẹn (`400 sao_luu_khong_hop_le`): nhận dạng và phiên bản đầu tệp, phiên bản manifest; tham số scrypt phải đúng bộ ứng dụng dùng — lạ thì từ chối TRƯỚC khi băm (header giả không được bắt máy chủ cấp 1 GiB RAM); giải mã AEAD (sai mật khẩu hoặc bị sửa byte → lỗi chung, không để lộ lý do); chỉ tar không nén (gzip/bz2/xz là đường bom nén); trần kiểm theo header ngay khi thấy, trước khi đọc nội dung (chọn theo RAM sau khi đọc JSON — JSON đối kháng nở ~26 lần): mỗi tệp ≤ 1 MiB, tổng ≤ 2 MiB, ≤ 256 tệp; từ chối symlink, hardlink, thiết bị, đường dẫn `../`, tuyệt đối, tên trùng; sha256 và kích thước khớp manifest. KDF, giải mã, đọc tar và ghi đĩa chạy ở luồng phụ.
    - **Mỗi tệp qua bộ kiểm của CHÍNH module sở hữu** (`_BO_KIEM` trong `app/sao_luu.py`; tệp không có bộ kiểm thì không khôi phục được): `nguon_git.json` → `nguon_git.kiem_cau_hinh` (cùng bộ kiểm của `PUT /api/nguon-git` và của lượt đọc tệp); `tu_xa.json` → `so_module.kiem_ban_ghi_tu_xa` (cùng bộ kiểm của đăng ký, base_url qua `kiem_url_lan`); `modules.json` → `kho.kiem_tep_modules` + `kho.kiem_cau_hinh_cong_khai` theo manifest module; `khoa_khach.json` → `khoa_khach.kiem_tep` (`bam` 64 hex, `bat`, `pham_vi` bắt buộc đúng kiểu); `combo.json` → `combo.kiem_hinh_dang`; `dia_chi.json` → `dia_chi.kiem_tra_va_chuan_hoa_url`; `model.json` → `kho.kiem_cai_dat_model`; `bi_mat/*` phải là đối tượng JSON. Sai → `400` nêu tệp và quy tắc. Thứ được ghi là bản ĐÃ KIỂM (chuẩn hoá), không phải bytes thô.
    - **Đối chiếu với trạng thái đang có** — không nới an toàn, không đổi hướng khoá:
-     * `nguon_git.json`: `tu_dong` và `yeu_cau_chu_ky` GIỮ giá trị đang có (chưa cấu hình = tắt) — khôi phục không bật tự cài, không tắt bắt chữ ký. Đổi `repo`/`nhanh`/`thu_muc` so với nguồn đang có (hoặc đặt nguồn mới khi `<DATA>/modules/` đã có module) thì GIỮ NGUYÊN cả tệp (lần đồng bộ đầu của nguồn mới tự cập nhật module đã cài) — đổi nguồn làm tay ở Hệ thống → Module.
+     * `nguon_git.json`: `tu_dong` và `yeu_cau_chu_ky` GIỮ giá trị đang có (chưa cấu hình = tắt) — khôi phục không bật tự cài, không tắt bắt chữ ký. Đổi `repo`/`nhanh`/`thu_muc` so với nguồn đang có (hoặc đặt nguồn mới khi `<DATA>/modules/` đã có module) thì GIỮ NGUYÊN cả tệp (lần đồng bộ đầu của nguồn mới tải bản của nguồn đó cho module đã cài, chờ quản trị duyệt) — đổi nguồn làm tay ở Hệ thống → Module.
      * `khoa_khach.json`: khoá ĐANG có chủ (`chu_id`; khớp theo id HOẶC theo băm — đổi id/hoán đổi băm không lách được) mà bản sao lưu bỏ hoặc đổi chủ → TỪ CHỐI (`409 khoi_phuc_xung_dot`) — khoá sẽ thoát trần của chủ và không còn tắt theo chủ. Gán chủ cho khoá chưa có chủ (thu hẹp) chỉ được đánh dấu `doi_chu`. `nguoi_dung.json` KHÔNG nằm trong bản sao lưu (chứa băm mật khẩu): khoá có chủ mà chủ không tồn tại/đang tắt trên máy đích vẫn khôi phục được nhưng bị đóng (`401`) — `kiem` nêu `canh_bao` «sẽ bị đóng sau khôi phục» ở khoá đó.
      * `tu_xa.json` / `modules.json`: id mà khoá `bi_mat/<id>.json` đang có trên máy và bản sao lưu KHÔNG mang khoá thay thế, nếu `base_url` (module từ xa) hoặc cấu hình công khai (module có mã) khác hiện tại → TỪ CHỐI (`409 khoi_phuc_xung_dot`): khoá cũ sẽ bị gửi tới địa chỉ mới. Gỡ module đó rồi khôi phục, hoặc dùng bản sao lưu có mật khẩu (mang khoá của chính nó). Module từ xa trùng id/tiền tố module có mã, combo trùng tiền tố module → từ chối.
    - Chế độ `"kiem"`: không ghi gì; trả `sha256`, `se_ap_dung`, `se_bo`, `giu_lai`, `tu_choi`, `co_the_ap_dung` và `khac_biet` — nguồn git (hiện tại / bản sao lưu / sẽ ghi), từng module từ xa (`base_url` đã bỏ userinfo, so với hiện tại), từng module (trường công khai đổi), khoá khách (số khoá, phạm vi và `chu_id` từng khoá, `trang_thai` `moi`/`doi_bam`/`doi_chu`/`doi`/`giu_nguyen`, cờ `mo_rong_pham_vi` khi khoá mới có `*` hoặc phạm vi rộng hơn bản đang có, cờ `bat_lai` khi khoá thô đang tắt sẽ được bật lại, `canh_bao` cho khoá mới/đổi có `*`, khoá bật lại và khoá có chủ không dùng được, khoá sẽ mất, `kho_hien_tai_hong` — không trả băm), tệp bí mật. Giao diện Hệ thống → Bảo mật chỉ bật «Áp dụng» sau khi kiểm tra đạt với chính tệp đó và hỏi xác nhận.

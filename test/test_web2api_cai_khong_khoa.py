@@ -4,7 +4,8 @@ Ba trạng thái suy ra từ cấu trúc, không từ danh sách gõ tay:
   đã cài       — mã nằm trong <WEB2API_DATA>/modules/<id>/ (catalog) → có trong GET /api/modules, có tab;
   đã liên kết  — có cấu hình hợp lệ và đang phục vụ /v1 (`da_cau_hinh`);
   module có trường `bat_buoc` mà chưa có cấu hình thì KHÔNG được tạo thể hiện.
-Và: lần đầu thêm nguồn git thì cập nhật một lần các module đã có mã mà git có bản khác.
+Và: lần đầu thêm nguồn git thì module đã có mã mà git có bản khác được tải về GIỮ CHỜ DUYỆT (NV49 R-1: không tự
+chạy mã mới khi chưa ai bấm).
 
 GitHub và Google đều là máy chủ GIẢ cục bộ (gia.py); khoá là chuỗi giả đã có trong allowlist gitleaks.
 """
@@ -286,7 +287,7 @@ def test_ban_moi_them_truong_bat_buoc_thi_thanh_chua_lien_ket(du_lieu):
         assert "chưa có khoá" in c.post("/v1/chat/completions", json=tin("echo/x"), headers=QT).json()["error"]["message"]
 
 
-# ───────────── ca 4: lần đầu thêm nguồn git thì cập nhật module đang có ─────────────
+# ───────────── ca 4: lần đầu thêm nguồn git thì module đang có được giữ chờ duyệt (NV49 R-1) ─────────────
 
 def chay(ham):
     async def _():
@@ -302,24 +303,34 @@ def chay(ham):
 
 
 def test_lan_dau_them_git_cap_nhat_module_dat_tay_qua_vong_nen(du_lieu, gh):
+    # NV49 R-1: lần đồng bộ đầu (qua vòng nền thật) KHÔNG chạy mã git thay mã đang có — giữ chờ duyệt, ghi chú rõ;
+    # quản trị bấm «Cập nhật» thì mới chạy bản git.
     ghi_thu_muc(du_lieu / "modules" / "echo", tep_echo("echo tay", "0.9.0"))
     gh.day(tep_kho({"echo": tep_echo("echo git", "1.0.0"), "dich": tep_echo("dich", id_="dich", tien_to="dich")}))
     with TestClient(app) as c:
         assert c.post("/api/modules/echo/cai", json={"cau_hinh": {}}, headers=QT).status_code == 200
         assert c.put("/api/nguon-git", json=CAU_HINH_GIT, headers=QT).status_code == 200
-        cho(lambda: (du_lieu / "modules" / "echo" / ".nguon.json").exists(), mo_ta="echo được cập nhật từ git")
+        cho(lambda: (muc(c, "echo") or {}).get("cho_duyet_quyen"), mo_ta="bản git của echo được giữ chờ duyệt")
+        x = next(x for x in c.get("/api/modules/thong-bao", headers=QT).json()["danh_sach"] if x["id"] == "echo")
+        assert x["trang_thai"] == "co_ban_moi" and "ĐỔI MÃ" in x["ghi_chu"] and "không tự cập nhật" in x["ghi_chu"]
+        assert not (du_lieu / "modules" / "echo" / ".nguon.json").exists()
         r = c.post("/v1/chat/completions", json=tin("echo/x"), headers=QT)
-        assert r.json()["choices"][0]["message"]["content"] == "echo git: xin chào"
+        assert r.json()["choices"][0]["message"]["content"] == "echo tay: xin chào"
         assert c.get("/api/nguon-git", headers=QT).json()["cau_hinh"]["tu_dong"] is False
         assert "dich" not in c.app.state.so.catalog  # module MỚI trên git thì chờ chủ máy bấm Cài
-        # Lần đồng bộ sau (bản mới trên git) KHÔNG tự cập nhật lặp lại.
+        # Lần đồng bộ sau (bản mới trên git) không còn là lần đầu: không tải, không tự cập nhật.
         gh.day(tep_kho({"echo": tep_echo("echo git 2", "2.0.0"), "dich": tep_echo("dich", id_="dich", tien_to="dich")}))
         c.put("/api/nguon-git", json={}, headers=QT)  # đánh thức thăm dò ngay
-        cho(lambda: any(x["id"] == "echo" and x["trang_thai"] == "co_ban_moi"
+        cho(lambda: any(x["id"] == "echo" and x["phien_ban_moi"] == "2.0.0"
                         for x in c.get("/api/modules/thong-bao", headers=QT).json()["danh_sach"]), mo_ta="thấy bản 2")
         time.sleep(1.5)
         r = c.post("/v1/chat/completions", json=tin("echo/x"), headers=QT)
-        assert r.json()["choices"][0]["message"]["content"] == "echo git: xin chào"
+        assert r.json()["choices"][0]["message"]["content"] == "echo tay: xin chào"
+        # Quản trị bấm «Cập nhật» (cài thường) → chạy bản git mới nhất, yêu cầu chờ cũ được dọn.
+        assert c.post("/api/nguon-git/cai/echo", headers=QT).status_code == 200
+        r = c.post("/v1/chat/completions", json=tin("echo/x"), headers=QT)
+        assert r.json()["choices"][0]["message"]["content"] == "echo git 2: xin chào"
+        assert muc(c, "echo")["cho_duyet_quyen"] is False
 
 
 def test_lan_dau_khong_cap_nhat_ban_xin_them_quyen(du_lieu, gh):
@@ -410,6 +421,8 @@ def test_nguon_tu_bien_moi_truong_cung_la_lan_dau(du_lieu, gh, monkeypatch):
     async def ham(so, ng):
         await ng.mot_lan()
         await ng._tu_dong()
-        assert (du_lieu / "modules" / "echo" / ".nguon.json").exists()
+        # NV49 R-1: lần đầu không tự cập nhật mã — bản git được giữ chờ duyệt (cổng đã chạy, có ghi chú).
+        assert not (du_lieu / "modules" / "echo" / ".nguon.json").exists()
+        assert "ĐỔI MÃ" in ng.thong_bao()["danh_sach"][0]["ghi_chu"]
         assert ng.cau_hinh()["tu_dong"] is False
     chay(ham)
