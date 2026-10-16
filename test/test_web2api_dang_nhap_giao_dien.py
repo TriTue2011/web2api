@@ -785,10 +785,23 @@ def test_chrome_c3_user_tao_khoa_voi_pham_vi_va_nav_bao_mat(trang: Trang, tmp_pa
         trang.go("#o-ten", ten_u)
         trang.go("#o-mat-khau", mk_u)
         trang.bam("document.getElementById('nut-dang-nhap')")
-        trang.cho("location.pathname.endsWith('He-thong-Bao-mat.dc.html')", han=12, mo_ta="Chuyển tới trang tự phục vụ")
+        trang.cho(
+            "location.pathname.endsWith('He-thong-Bao-mat.dc.html') && (document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
+            han=12,
+            mo_ta="Chuyển tới trang tự phục vụ và trang dựng xong",
+        )
+        trang.cho(
+            f"document.getElementById('nhan-ten-nguoi-dung')?.innerText === {json.dumps(ten_u)}",
+            han=10,
+            mo_ta="Đã nạp xong thông tin người dùng vào trang",
+        )
 
         # 1. Kiểm tra thanh điều hướng nav: có tab Bảo mật, KHÔNG có tab Module
-        trang.cho("document.querySelector('[data-nav=\"bao_mat\"]')", mo_ta="Có tab Bảo mật")
+        trang.cho(
+            "document.querySelector('[data-nav=\"bao_mat\"]') && !document.querySelector('[data-nav=\"module\"]')",
+            han=10,
+            mo_ta="Có tab Bảo mật và không có tab Module",
+        )
         assert trang.js("document.querySelector('[data-nav=\"module\"]')") is None
 
         # 2. Kiểm tra danh sách chip phạm vi khi tạo khoá của tôi: thấy đúng 2 chip 'chat' và 'anh'
@@ -797,7 +810,9 @@ def test_chrome_c3_user_tao_khoa_voi_pham_vi_va_nav_bao_mat(trang: Trang, tmp_pa
         assert "chat" in chips and "anh" in chips
 
         # 3. Điền nhãn và tạo khoá API của tôi
+        trang.cho("!!document.getElementById('o-nhan-khoa-toi')", han=5, mo_ta="ô nhập nhãn khoá sẵn sàng")
         trang.go("#o-nhan-khoa-toi", "Khoá kiểm tra C3")
+        trang.cho("!!document.getElementById('nut-gui-tao-khoa-toi')", han=5)
         trang.bam("document.getElementById('nut-gui-tao-khoa-toi')")
         trang.cho("document.getElementById('the-khoa-toi-moi')", mo_ta="Hiện khối thông tin khoá mới")
         assert trang.js("document.getElementById('the-khoa-toi-moi')") is not None
