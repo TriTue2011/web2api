@@ -599,10 +599,11 @@ class GitHubGia:
 
 def tep_echo(loi_chao: str = "echo v1", phien_ban: str = "1.0.0", hong: bool = False,
              tien_to: str = "echo", id_: str = "echo", yeu_cau_goi: list | None = None,
-             mang_ra: list | None = None) -> dict[str, bytes]:
+             mang_ra: list | None = None, hang: str = "A") -> dict[str, bytes]:
     """Các tệp của module «echo» giả: không cần cấu hình, có tab web. `hong` = lỗi cú pháp."""
     manifest = {
         "id": id_, "ten": f"Echo {phien_ban}", "mo_ta": "Lặp lại câu cuối — module giả cho test",
+        "hang": hang,
         "loai": "ai", "giao_thuc": "openai", "tien_to": tien_to, "phien_ban": phien_ban,
         "truong_cau_hinh": [],
         "tai_nguyen": {"ram_them_mb": None, "dia_mb": None, "gpu": False, "mang_ra": mang_ra or [], "ghi_chu": ""},

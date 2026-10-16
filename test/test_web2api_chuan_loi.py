@@ -315,6 +315,7 @@ def test_module_la_nap_nong_tich_hop(tmp_path, monkeypatch, may_la):
     # Module lạ với manifest và module.py tự định nghĩa hook phan_loai_loi
     manifest = {
         "id": "la-api", "ten": "Dịch vụ Lạ", "tien_to": "la", "phien_ban": "1.0.0",
+        "hang": "A",
         "mo_ta": "Module test chuẩn lỗi với các mã khác thường",
         "giao_thuc": "openai",
         "tac_gia": "test", "giay_phep": "MIT", "loai": "ai", "cung_cap": ["chat"],

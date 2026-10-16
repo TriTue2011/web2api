@@ -25,7 +25,7 @@ K1 = "AIzaSyTOT-mot-000000000000000000000001"
 BI_MAT_NOI_BO = "/opt/noi-bo/duong-dan-bi-mat.py dòng 42"
 
 MANIFEST_BIEN = {
-    "id": "bien", "ten": "Biên giả", "mo_ta": "Module giả cho test biên lỗi", "loai": "ai",
+    "id": "bien", "ten": "Biên giả", "mo_ta": "Module giả cho test biên lỗi", "loai": "ai", "hang": "A",
     "giao_thuc": "openai", "tien_to": "bien", "phien_ban": "0.1.0", "cung_cap": ["chat", "anh", "noi", "video"],
     "truong_cau_hinh": [{"khoa": "api_key", "nhan": "Khoá", "kieu": "bi_mat", "bat_buoc": True}],
     "tai_nguyen": {"ram_them_mb": None, "dia_mb": None, "gpu": False, "mang_ra": [], "ghi_chu": ""},

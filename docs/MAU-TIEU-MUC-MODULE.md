@@ -11,7 +11,7 @@ Xong thì làm đủ các bước ở docs/THAM-CHIEU.md, mục 9 «Cách bổ s
 ### Module <id> — <Tên hiển thị>
 
 **Mô tả.** <Module làm gì, gọi tới đâu, khác gì so với gọi thẳng dịch vụ gốc.> Mã nguồn:
-`modules/<id>/`. Tiền tố model: `<tien_to>`.
+`modules/<id>/`. Tiền tố model: `<tien_to>`. Hạng: `<"A" hoặc "B">` (trường `hang` là bắt buộc trong `manifest.json`: "A" = chủ máy đã đọc hết mã + ghim SHA; "B" = mã của người khác, chạy ngoài lõi; hang là lời khai của tác giả; máy chủ có quyền coi module bên thứ ba là B bất kể lời khai).
 
 **Cần gì.**
 - <Khoá/tài khoản cần có và lấy ở đâu (đường dẫn trang lấy khoá).>

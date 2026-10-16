@@ -42,6 +42,7 @@ def mau_module_cong_cu(
         "ten": "Module Công Cụ Giả",
         "mo_ta": "Module phục vụ test GET /api/cong-cu",
         "loai": "ung_dung",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["thiet_bi"],

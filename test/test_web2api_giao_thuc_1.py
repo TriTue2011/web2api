@@ -54,6 +54,7 @@ def _tao_module_gia(
         "ten": f"Module {id_}",
         "mo_ta": "Module test giao thức",
         "phien_ban": "1.0.0",
+        "hang": "A",
         "loai": "ai",
         "giao_thuc": "openai",
         "tien_to": tien_to,
@@ -121,6 +122,7 @@ def test_finish_reason_khi_co_tool_calls_chat_thuong(du_lieu):
         "ten": "Tool Test",
         "mo_ta": "Test finish reason",
         "phien_ban": "1.0.0",
+        "hang": "A",
         "loai": "ai",
         "giao_thuc": "openai",
         "tien_to": tien_to,
@@ -195,6 +197,7 @@ def test_finish_reason_khi_co_tool_calls_stream(du_lieu):
         "ten": "Tool Stream",
         "mo_ta": "Test stream finish reason",
         "phien_ban": "1.0.0",
+        "hang": "A",
         "loai": "ai",
         "giao_thuc": "openai",
         "tien_to": tien_to,
@@ -255,6 +258,7 @@ def test_finish_reason_khong_phai_json_chuyen_nguyen_van(du_lieu):
         "ten": "Raw Stream",
         "mo_ta": "Test raw stream",
         "phien_ban": "1.0.0",
+        "hang": "A",
         "loai": "ai",
         "giao_thuc": "openai",
         "tien_to": tien_to,
@@ -312,6 +316,7 @@ def test_sse_keep_alive_khi_im_lang(du_lieu, monkeypatch):
         "ten": "Slow Stream",
         "mo_ta": "Test keep-alive",
         "phien_ban": "1.0.0",
+        "hang": "A",
         "loai": "ai",
         "giao_thuc": "openai",
         "tien_to": tien_to,
@@ -600,7 +605,7 @@ def _module_tu_ma(goc: Path, id_: str, tien_to: str, cung_cap: list[str], than_l
     """Module giả: vòng đời tối thiểu + `than_lop` (các phương thức thêm, viết ở cột 0)."""
     thu_muc = goc / id_
     thu_muc.mkdir(parents=True, exist_ok=True)
-    manifest = {"id": id_, "ten": f"Module {id_}", "mo_ta": "giả", "phien_ban": "1.0.0", "loai": loai,
+    manifest = {"id": id_, "ten": f"Module {id_}", "mo_ta": "giả", "phien_ban": "1.0.0", "hang": "A", "loai": loai,
                 "giao_thuc": "openai", "tien_to": tien_to, "cung_cap": cung_cap, "truong_cau_hinh": [],
                 "tai_nguyen": {"mang_ra": []}}
     (thu_muc / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

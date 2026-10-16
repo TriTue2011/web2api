@@ -25,7 +25,7 @@ GIA_TRI_SAI = ["false", "0", "no", 1, 1.5, [], {}, ""]
 
 def mau_module_thiet_bi(id_="thiet-bi-gia", tien_to="tbgia") -> dict[str, bytes]:
     manifest = {
-        "id": id_, "ten": "Thiết bị giả", "mo_ta": "giả", "loai": "ung_dung",
+        "id": id_, "ten": "Thiết bị giả", "mo_ta": "giả", "loai": "ung_dung", "hang": "A",
         "giao_thuc": "cuc_bo", "tien_to": tien_to, "cung_cap": ["thiet_bi"],
         "truong_cau_hinh": [],
         "tai_nguyen": {"ram_them_mb": None, "dia_mb": None, "gpu": False,

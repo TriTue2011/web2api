@@ -232,6 +232,7 @@ def mau_module_thiet_bi_dong_khi_loi():
         "ten": "Thiết bị an toàn",
         "mo_ta": "Mô tả thiết bị an toàn",
         "phien_ban": "0.1.0",
+        "hang": "A",
         "giao_thuc": "0.1",
         "loai": "thiet_bi",
         "loai_ten": "Thiết bị",

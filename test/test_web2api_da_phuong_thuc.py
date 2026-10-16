@@ -27,6 +27,7 @@ K1 = "AIzaSyTOT-mot-000000000000000000000001"
 
 MANIFEST_GIONG = {
     "id": "giong", "ten": "Giọng giả", "mo_ta": "Module giả cho test đa phương thức", "loai": "ai",
+    "hang": "A",
     "giao_thuc": "openai", "tien_to": "giong", "phien_ban": "0.1.0",
     "cung_cap": ["noi", "nghe", "anh_sua", "video"],
     "truong_cau_hinh": [{"khoa": "api_key", "nhan": "Khoá", "kieu": "bi_mat", "bat_buoc": True}],

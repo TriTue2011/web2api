@@ -28,6 +28,7 @@ def _tao_module_gia(goc: Path, id_: str, tien_to: str, models: list[dict], cung_
         "ten": f"Module {id_}",
         "mo_ta": "Module test model",
         "phien_ban": "1.0.0",
+        "hang": "A",
         "loai": "ai",
         "giao_thuc": "openai",
         "tien_to": tien_to,

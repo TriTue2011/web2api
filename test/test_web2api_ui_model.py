@@ -38,6 +38,7 @@ def _module_co_nhom_la(id_: str = "ai-nhom-la", tien_to: str = "anl") -> dict[st
         "loai": "ai",
         "loai_ten": "AI",
         "loai_thu_tu": 10,
+        "hang": "A",
         "giao_thuc": "openai",
         "tien_to": tien_to,
         "cung_cap": ["chat", "anh", "suy_luan_dac_biet"],

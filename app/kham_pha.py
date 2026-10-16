@@ -200,6 +200,7 @@ KIEU_BI_MAT_TRUONG = {"bi_mat", "danh_sach_bi_mat"}
 #: một đuôi tên miền (cookie của mọi trang dưới nó). Dùng cho `nhan_cookie.mien` và đường cookie của lõi.
 MAU_MIEN = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 TRUONG_CHUOI_BAT_BUOC = ("id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to")
+HANG_HOP_LE = frozenset({"A", "B"})
 #: Phương thức BẮT BUỘC chung: chỉ vòng đời. Khả năng (chat, ảnh, …) theo `cung_cap` — xem HOP_DONG_KHA_NANG.
 PHUONG_THUC = ("nap", "cai", "suc_khoe", "dung")
 _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
@@ -338,6 +339,10 @@ def kiem_manifest(m) -> str | None:
     for k in TRUONG_CHUOI_BAT_BUOC:
         if not isinstance(m.get(k), str) or not m[k].strip():
             return f"thiếu hoặc sai trường «{k}» (cần chuỗi khác rỗng)"
+    if "hang" not in m:
+        return "thiếu «hang» (chỉ nhận \"A\" hoặc \"B\")"
+    if m["hang"] not in HANG_HOP_LE:
+        return f"hang {m['hang']!r} không hợp lệ (chỉ nhận \"A\" hoặc \"B\")"
     if not ID_HOP_LE.match(m["id"]) or m["id"] in ID_DANH_RIENG:
         return f"id {m['id']!r} không hợp lệ (cần ^[a-z0-9][a-z0-9_-]{{1,40}}$, không trùng tên tuyến)"
     if not MA_KHA_NANG.match(m["loai"]):

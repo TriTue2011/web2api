@@ -52,6 +52,7 @@ def mau_module_nang_cao(id_="mod-nang-cao", tien_to="mnc") -> dict[str, bytes]:
         "ten": "Module Nâng Cao",
         "mo_ta": "Module kiểm thử SEC-002 và SEC-004",
         "loai": "ung_dung",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["thiet_bi", "chat", "tim_kiem", "xep_hang"],

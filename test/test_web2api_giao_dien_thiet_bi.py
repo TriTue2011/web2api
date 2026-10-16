@@ -39,6 +39,7 @@ def mau_module_thiet_bi_ui(id_="thiet-bi-ui", tien_to="tbui") -> dict[str, bytes
         "ten": "Thiết bị UI Mẫu",
         "mo_ta": "Module thiết bị cho test giao diện",
         "loai": "ung_dung",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["thiet_bi"],

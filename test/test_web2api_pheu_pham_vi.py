@@ -46,6 +46,7 @@ def mau_module_gia(
         "ten": "Module Giả Kiểm Tra Bảo Mật",
         "mo_ta": "Module phục vụ kiểm thử leo thang quyền qua phễu quy trình",
         "loai": "ai",
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": ["tim_kiem", "xep_hang", "nhung", "chat", "anh", "noi", "video"],

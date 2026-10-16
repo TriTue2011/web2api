@@ -49,6 +49,7 @@ def mau_module_tri_thuc(
         "ten": "Tri thức giả lập",
         "mo_ta": "Module tri thức giả để kiểm thử",
         "loai": loai,
+        "hang": "A",
         "giao_thuc": "cuc_bo",
         "tien_to": tien_to,
         "cung_cap": cung_cap,

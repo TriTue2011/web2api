@@ -165,6 +165,7 @@ def test_nap_module_chuan_loi_vao_so(tmp_path, monkeypatch):
         "id": "mod-lech-chuan",
         "ten": "Module lệch chuẩn",
         "mo_ta": "Thiếu thuc_hien",
+        "hang": "A",
         "loai": "ung_dung",
         "giao_thuc": "cuc_bo",
         "tien_to": "mlc",

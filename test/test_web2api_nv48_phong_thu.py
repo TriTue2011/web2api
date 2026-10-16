@@ -15,7 +15,7 @@ from app.quyen_module import diff_quyen
 
 
 def _manifest_co_ban(**ghi_de) -> dict:
-    m = {"id": "nv48-phong-thu", "ten": "Phong thu", "mo_ta": "gia", "loai": "ai",
+    m = {"id": "nv48-phong-thu", "ten": "Phong thu", "mo_ta": "gia", "loai": "ai", "hang": "A",
          "giao_thuc": "local", "tien_to": "nv48pt", "truong_cau_hinh": [], "tai_nguyen": {}}
     m.update(ghi_de)
     return m

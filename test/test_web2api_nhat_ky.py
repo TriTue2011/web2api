@@ -330,6 +330,7 @@ def test_tieu_de_x_web2api_module_khi_co_module(client, tmp_path):
         "ten": "Module Giả",
         "mo_ta": "Module giả để kiểm tra",
         "loai": "ai",
+        "hang": "A",
         "giao_thuc": "openai",
         "tien_to": "modgia",
         "truong_cau_hinh": [],
@@ -569,7 +570,7 @@ def test_module_gia_ghi_kenh_la_qua_hop_dong_import(client, tmp_path):
     thu_muc_mod = tmp_path / "modules" / "mod-kenh"
     thu_muc_mod.mkdir(parents=True)
     (thu_muc_mod / "manifest.json").write_text(json.dumps({
-        "id": "mod-kenh", "ten": "Module kênh", "mo_ta": "giả", "loai": "loai_la_x", "giao_thuc": "openai",
+        "id": "mod-kenh", "ten": "Module kênh", "mo_ta": "giả", "loai": "loai_la_x", "hang": "A", "giao_thuc": "openai",
         "tien_to": "mkenh", "truong_cau_hinh": [], "tai_nguyen": {}}))
     (thu_muc_mod / "module.py").write_text("""
 import json
