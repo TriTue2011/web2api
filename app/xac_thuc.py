@@ -159,15 +159,14 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             if thu_hep:
                 cac_yeu_cau = [s.strip() for s in thu_hep.split(",") if s.strip()]
                 if cac_yeu_cau:
-                    if "*" not in pham_vi_goc:
-                        for s in cac_yeu_cau:
-                            if s not in pham_vi_goc:
-                                raise LoiOpenAI(
-                                    403,
-                                    f"Không thể mở rộng phạm vi vượt quá phạm vi của khoá (thiếu «{s}»).",
-                                    loai="insufficient_scope",
-                                    code="insufficient_scope",
-                                )
+                    for s in cac_yeu_cau:
+                        if not khoa_khach.pham_vi_nam_trong_tran(s, pham_vi_goc):
+                            raise LoiOpenAI(
+                                403,
+                                f"Không thể mở rộng phạm vi vượt quá phạm vi của khoá (thiếu «{s}»).",
+                                loai="insufficient_scope",
+                                code="insufficient_scope",
+                            )
                     pham_vi_hieu_luc = cac_yeu_cau
 
             request.state.nguoi_goi = f"khach:{id_khach}"
@@ -351,16 +350,207 @@ async def xac_thuc_v1(request: Request) -> dict[str, Any]:
     return nguoi
 
 
-def kiem_tra_pham_vi(request: Request | None, *cac_kha_nang: str) -> None:
+_NGUON_SO_FN: Any = None
+_TRA_MANIFEST_FN: Any = None
+
+
+def dat_nguon_so(fn: Any) -> None:
+    """Điểm tiêm do lõi đăng ký để cung cấp sổ module (SoModule) mà không import ngược app.main."""
+    global _NGUON_SO_FN
+    _NGUON_SO_FN = fn
+
+
+def dat_ham_tra_manifest(fn: Any) -> None:
+    """Điểm tiêm tra cứu manifest module (dùng khi tuỳ biến hoặc kiểm thử)."""
+    global _TRA_MANIFEST_FN
+    _TRA_MANIFEST_FN = fn
+
+
+def lay_manifest_module(mod_id: str) -> dict[str, Any] | None:
+    """Tra cứu manifest của module theo id qua điểm tiêm hoặc sổ module."""
+    if _TRA_MANIFEST_FN is not None:
+        return _TRA_MANIFEST_FN(mod_id)
+    if _NGUON_SO_FN is not None:
+        so = _NGUON_SO_FN()
+        if so is not None:
+            km = getattr(so, "catalog", {}).get(mod_id)
+            if km is not None:
+                return getattr(km, "manifest", None)
+            tx = getattr(so, "tu_xa", {}).get(mod_id)
+            if isinstance(tx, dict):
+                if "cung_cap" in tx:
+                    return tx
+                m = getattr(so, "dang_chay", {}).get(mod_id)
+                kns = [k for k in ("chat", "anh", "anh_sua", "noi", "nghe", "nhung", "xep_hang") if hasattr(m, k)]
+                if hasattr(m, "video_tao") or hasattr(m, "video"):
+                    kns.append("video")
+                return {"id": mod_id, "cung_cap": kns or ["chat", "anh", "noi", "video"], "nguy_hiem": []}
+            m = getattr(so, "dang_chay", {}).get(mod_id)
+            if m is not None:
+                if hasattr(m, "manifest") and isinstance(m.manifest, dict):
+                    return m.manifest
+                kns = [k for k in ("chat", "anh", "anh_sua", "noi", "nghe", "nhung", "xep_hang") if hasattr(m, k)]
+                if hasattr(m, "video_tao") or hasattr(m, "video"):
+                    kns.append("video")
+                return {"id": mod_id, "cung_cap": kns or ["chat"], "nguy_hiem": []}
+    return None
+
+
+#: Danh mục các khả năng an toàn chuẩn của lõi (chỉ đọc/suy luận, không thay đổi trạng thái ngoài)
+KHA_NANG_AN_TOAN_LOI = frozenset({
+    "chat",
+    "anh",
+    "anh_sua",
+    "video",
+    "video_tao",
+    "video_trang_thai",
+    "video_noi_dung",
+    "noi",
+    "nghe",
+    "nhung",
+    "xep_hang",
+    "tim_kiem",
+    "thiet_bi:doc",
+    "thiet_bi:su_kien_doc",
+})
+
+
+def la_kha_nang_nguy_hiem(kn: str, module: str | None = None, manifest: dict | None = None) -> bool:
+    """Kiểm tra xem một khả năng có thuộc nhóm nguy hiểm hay không (nguyên tắc fail-closed)."""
+    from app.kham_pha import KHA_NANG_NGUY_HIEM
+
+    # 1. Các nhóm khả năng luôn được coi là nguy hiểm tĩnh
+    if kn in KHA_NANG_NGUY_HIEM:
+        return True
+    if kn.endswith(":ghi"):
+        return True
+    if kn.startswith("gui:") or kn.startswith("gui_ra:"):
+        return True
+    if kn.startswith("trinh_duyet:") or kn.startswith("trinh_duyet_"):
+        return True
+    if kn == "chay_ma" or kn.startswith("chay_ma:"):
+        return True
+
+    # 2. Tra cứu manifest nếu chưa có và có chỉ định module
+    man = manifest
+    if man is None and module:
+        try:
+            man = lay_manifest_module(module)
+        except Exception as e:
+            nhat_ky.ghi(
+                "he_thong",
+                "canh_bao",
+                f"Lỗi khi tra catalog xác định mức độ nguy hiểm của khả năng «{kn}» (module={module}): {e}",
+                kha_nang=kn,
+                module=module,
+                loi=str(e),
+            )
+            return True  # Fail-closed: tra catalog bị lỗi -> coi là nguy hiểm
+
+    # 3. Khi có thông tin manifest của module
+    if isinstance(man, dict):
+        ds_nguy_hiem = man.get("nguy_hiem")
+        if isinstance(ds_nguy_hiem, (list, tuple, set)) and kn in ds_nguy_hiem:
+            return True
+
+        cung_cap = man.get("cung_cap")
+        if not isinstance(cung_cap, (list, tuple, set)):
+            cung_cap = man.get("kha_nang")
+        cung_cap_set = set(cung_cap) if isinstance(cung_cap, (list, tuple, set)) else set()
+
+        goc_kn = kn.partition(":")[0]
+        co_trong_catalog = (kn in cung_cap_set) or (goc_kn in cung_cap_set)
+        if co_trong_catalog:
+            return False
+
+        nhat_ky.ghi(
+            "he_thong",
+            "canh_bao",
+            f"Khả năng «{kn}» không có trong catalog của module «{module}»",
+            kha_nang=kn,
+            module=module,
+        )
+        return True  # Fail-closed: khả năng lạ không có trong catalog của module
+
+    # 4. Có module nhưng không tìm thấy trong catalog
+    if module:
+        nhat_ky.ghi(
+            "he_thong",
+            "canh_bao",
+            f"Không tìm thấy module «{module}» trong catalog khi kiểm tra khả năng «{kn}»",
+            kha_nang=kn,
+            module=module,
+        )
+        return True  # Fail-closed: module không có trong catalog
+
+    # 5. Kiểm tra khả năng không gắn với module
+    if kn in KHA_NANG_AN_TOAN_LOI:
+        return False
+
+    nhat_ky.ghi(
+        "he_thong",
+        "canh_bao",
+        f"Khả năng «{kn}» chưa xác định và không có module trong catalog để đối chiếu",
+        kha_nang=kn,
+    )
+    return True  # Fail-closed: khả năng lạ chưa xác định
+
+
+def khop_pham_vi(pv: str, kn: str, module: str | None = None, manifest: dict | None = None) -> bool:
+    """Kiểm tra quyền `pv` có thoả mãn khả năng `kn` trên `module` hay không.
+
+    - `pv == "*"`: chỉ khớp nếu `kn` là AN TOÀN (không nguy hiểm).
+    - `pv == <kn>`: khớp cho mọi module (kể cả nguy hiểm vì đã cấp đích danh).
+    - `pv == <kn>@<mod>`: chỉ khớp khi module == mod. Nếu module mod đã bị gỡ -> không khớp.
+    """
+    nguy_hiem = la_kha_nang_nguy_hiem(kn, module=module, manifest=manifest)
+    if pv == "*":
+        return not nguy_hiem
+
+    pv_kn, co_at, pv_mod = pv.partition("@")
+    if co_at:
+        if module is not None and pv_mod != module:
+            return False
+        if not khoa_khach.module_ton_tai(pv_mod):
+            return False
+        if pv_kn == "*":
+            return not nguy_hiem
+        return pv_kn == kn or kn.startswith(f"{pv_kn}:")
+    else:
+        return pv == kn or kn.startswith(f"{pv}:")
+
+
+def kiem_tra_pham_vi(
+    request: Request | None,
+    *cac_kha_nang: str,
+    module: str | None = None,
+    manifest: dict | None = None,
+    ngu_canh: Any = None,
+    danh_tinh: dict | None = None,
+) -> None:
     """Kiểm tra phạm vi quyền hạn cho đường gọi /v1/* và gọi nội bộ.
 
-    Khách thiếu phạm vi → LoiOpenAI(403 insufficient_scope).
-    Thiếu danh tính trong ngữ cảnh gọi nội bộ → LoiOpenAI(403 missing_context).
+    MỘT hàm duy nhất kiểm tra phạm vi cho mọi đường API và nội bộ:
+    - Hỗ trợ cú pháp mở rộng «<kha_nang>@<module>».
+    - Khả năng nguy hiểm (thiet_bi:ghi, trinh_duyet, gui_ra...) đòi hỏi cấp ĐÍCH DANH,
+      khoá «*» không còn bao gồm nhóm nguy hiểm.
+    - Module bị gỡ sau khi tạo khoá => quyền trên module đó bị đóng (403).
+    - Khách thiếu phạm vi → LoiOpenAI(403 insufficient_scope).
+    - Thiếu danh tính trong ngữ cảnh gọi nội bộ → LoiOpenAI(403 missing_context).
     """
-    danh_tinh = getattr(request.state, "danh_tinh", None) if request and hasattr(request, "state") else None
-    from app import ngu_canh
+    if danh_tinh is None and request and hasattr(request, "state"):
+        danh_tinh = getattr(request.state, "danh_tinh", None)
+
+    if ngu_canh is not None:
+        if danh_tinh is None and hasattr(ngu_canh, "danh_tinh"):
+            danh_tinh = ngu_canh.danh_tinh
+        pham_vi = getattr(ngu_canh, "pham_vi_hieu_luc", None)
+    else:
+        pham_vi = None
+
     if not isinstance(danh_tinh, dict):
-        nc = ngu_canh.lay()
+        from app import ngu_canh as ngu_canh_mod
+        nc = ngu_canh_mod.lay()
         if nc is not None and isinstance(nc.danh_tinh, dict):
             danh_tinh = nc.danh_tinh
             pham_vi = nc.pham_vi_hieu_luc
@@ -371,19 +561,34 @@ def kiem_tra_pham_vi(request: Request | None, *cac_kha_nang: str) -> None:
                 loai="permission_error",
                 code="missing_context",
             )
-    else:
+    elif pham_vi is None:
         pham_vi = danh_tinh.get("pham_vi", [])
 
     if danh_tinh.get("loai") in ("quan_tri", "noi_bo"):
         return
-    if "*" in pham_vi:
-        return
-    if any(kn in pham_vi for kn in cac_kha_nang):
-        return
+
+    # Kiểm tra xem có quyền nào trong pham_vi khớp với ít nhất một trong cac_kha_nang không
+    for kn in cac_kha_nang:
+        for pv in pham_vi:
+            if khop_pham_vi(pv, kn, module=module, manifest=manifest):
+                return
+
     can_kn = cac_kha_nang[0] if cac_kha_nang else "chuc_nang"
+    co_sao = "*" in pham_vi or any(p.split("@")[0] == "*" for p in pham_vi)
+    la_nguy_hiem = any(la_kha_nang_nguy_hiem(kn, module=module, manifest=manifest) for kn in cac_kha_nang)
+    if co_sao and la_nguy_hiem:
+        thong_diep = (
+            f"Khoá không có quyền thực hiện thao tác này (khả năng nguy hiểm «{can_kn}» "
+            f"cần được cấp quyền đích danh, không bao gồm trong «*»)."
+        )
+    elif module:
+        thong_diep = f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can_kn}» hoặc «{can_kn}@{module}»)."
+    else:
+        thong_diep = f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can_kn}»)."
+
     raise LoiOpenAI(
         403,
-        f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can_kn}»).",
+        thong_diep,
         loai="insufficient_scope",
         code="insufficient_scope",
     )

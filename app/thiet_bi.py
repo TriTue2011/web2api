@@ -1086,15 +1086,14 @@ async def thuc_hien_hanh_dong_loi(
 
     # 1. Kiểm tra phạm vi
     danh_tinh = ngu_canh.danh_tinh
-    pv = ngu_canh.pham_vi_hieu_luc
     la_quan_tri = danh_tinh.get("loai") in ("quan_tri", "noi_bo")
-    if not la_quan_tri and "*" not in pv and "thiet_bi:ghi" not in pv:
-        raise LoiOpenAI(
-            403,
-            "Khoá không có quyền thực hiện thao tác này (cần phạm vi «thiet_bi:ghi»).",
-            loai="insufficient_scope",
-            code="insufficient_scope",
-        )
+    if not la_quan_tri:
+        from app.xac_thuc import kiem_tra_pham_vi
+        mod_id = getattr(module, "id", None) if module else None
+        if not mod_id and "." in id_thuc_the and so:
+            tien_to, _, _ = id_thuc_the.partition(".")
+            mod_id = so.tim_theo_tien_to(tien_to)
+        kiem_tra_pham_vi(None, "thiet_bi:ghi", module=mod_id, ngu_canh=ngu_canh, danh_tinh=danh_tinh)
 
     # 2. Định dạng đầu vào
     if not isinstance(id_thuc_the, str) or not id_thuc_the.strip():

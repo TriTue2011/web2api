@@ -211,6 +211,8 @@ async def gui_ra(request: Request, module: str):
     so = request.app.state.so
     danh_tinh = getattr(request.state, "danh_tinh", None) or {}
     # Phạm vi RIÊNG cho gửi ra — không dùng chung với phạm vi chat/đọc.
+    from app.xac_thuc import kiem_tra_pham_vi
+    kiem_tra_pham_vi(request, "gui_tin", f"gui:{module}", f"gui:{module.replace('-', '_')}", module=module)
     if not _co_pham_vi_gui(danh_tinh, module):
         raise LoiOpenAI(
             403,

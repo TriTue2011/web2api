@@ -596,6 +596,7 @@ async def tao_nguoi_dung(
     mat_khau: str | None = None,
     pham_vi_toi_da: list[str] | None = None,
     chi_khi_chua_co_admin: bool = False,
+    so: Any = None,
 ) -> tuple[dict[str, Any], str, str]:
     """Tạo người dùng mới. Nếu thiếu tên hoặc mật khẩu thì tự sinh ngẫu nhiên (chỉ đường admin tạo người dùng dùng).
     Trả về (bản_ghi_sạch, tên_đăng_nhập, mật_khẩu_thô). Mật khẩu thô chỉ hiện một lần duy nhất.
@@ -605,7 +606,7 @@ async def tao_nguoi_dung(
     """
     vai_chuan = kiem_vai(vai)
     pv = (list(PHAM_VI_MAC_DINH_USER) if vai_chuan == "user" else ["*"]) if pham_vi_toi_da is None else \
-        _chuan_hoa_tran(pham_vi_toi_da)
+        _chuan_hoa_tran(pham_vi_toi_da, so=so)
 
     with _KHOA_LUONG:
         ds = _doc_nguoi_dung()
@@ -652,9 +653,9 @@ async def tao_nguoi_dung(
     return ban_ghi_sach(ban_ghi), ten_chuan, mat_khau_tho
 
 
-def _chuan_hoa_tran(pham_vi_toi_da: Any) -> list[str]:
+def _chuan_hoa_tran(pham_vi_toi_da: Any, so: Any = None) -> list[str]:
     from app.khoa_khach import chuan_hoa_pham_vi
-    return chuan_hoa_pham_vi(pham_vi_toi_da, cho_phep_rong=True, ten_truong="pham_vi_toi_da")
+    return chuan_hoa_pham_vi(pham_vi_toi_da, cho_phep_rong=True, ten_truong="pham_vi_toi_da", kiem_tra_module=True, so=so)
 
 
 def sua_nguoi_dung(
@@ -662,6 +663,7 @@ def sua_nguoi_dung(
     vai: str | None = None,
     bat: bool | None = None,
     pham_vi_toi_da: list[str] | None = None,
+    so: Any = None,
 ) -> dict[str, Any]:
     """Sửa vai/bật-tắt/trần. None = giữ nguyên. Kiểm KIỂU trước khi đọc kho: `bat` phải là bool thật, `vai` là chuỗi
     hợp lệ, `pham_vi_toi_da` là danh sách mã hợp lệ (rỗng được) → sai → 400 invalid_value.
@@ -672,7 +674,7 @@ def sua_nguoi_dung(
     if bat is not None and not isinstance(bat, bool):
         raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false.", code="invalid_value")
     vai_moi = None if vai is None else kiem_vai(vai)
-    tran_moi = None if pham_vi_toi_da is None else _chuan_hoa_tran(pham_vi_toi_da)
+    tran_moi = None if pham_vi_toi_da is None else _chuan_hoa_tran(pham_vi_toi_da, so=so)
     with _KHOA_LUONG:
         ds = _doc_nguoi_dung()
         tim = None
