@@ -1,1 +1,60 @@
-{"cung_cap":["chat"],"giao_thuc":"claude-web","hang":"A","id":"claude-web","loai":"ai","loai_ten":"AI","loai_thu_tu":21,"mo_ta":"Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng cookie/sessionKey do người dùng đưa — miễn phí, không cần API key, không browser.","muc":[{"can":["chat"],"id":"chat","nhan":"Trò chuyện"}],"phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Dùng giao thức web nội bộ của claude.ai (đã reverse-engineer từ web app, không chính thức). Anthropic đổi web app có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro.","gpu":false,"mang_ra":["claude.ai"],"ram_them_mb":null},"ten":"Claude Web (claude.ai)","tien_to":"clw","truong_cau_hinh":[{"bat_buoc":true,"khoa":"cookies","kieu":"danh_sach_bi_mat","mac_dinh":null,"mo_ta":"Một hoặc nhiều bộ cookie từ tab claude.ai đã đăng nhập (DevTools F12 → Application → Cookies), dạng 'k1=v1; k2=v2', hoặc chỉ dán giá trị sessionKey. Nhiều bộ thì xoay vòng khi hết hạn mức/lỗi; cookie hết hạn thì đăng nhập lại và dán lại.","nhan":"Cookie claude.ai","nhan_cookie":{"mien":"claude.ai"}},{"bat_buoc":false,"khoa":"base_url","kieu":"chuoi","mac_dinh":"https://claude.ai","mo_ta":"Để trống dùng claude.ai thật. Chỉ đổi khi trỏ máy chủ giả để kiểm thử.","nhan":"Địa chỉ dịch vụ"}],"yeu_cau_goi":["httpx"]}
+{
+  "can_module": [
+    "vnc-xa"
+  ],
+  "cung_cap": [
+    "chat"
+  ],
+  "giao_thuc": "claude-web",
+  "hang": "A",
+  "id": "claude-web",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 21,
+  "mo_ta": "Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng cookie/sessionKey do người dùng đưa — miễn phí, không cần API key, không browser.",
+  "muc": [
+    {
+      "can": [
+        "chat"
+      ],
+      "id": "chat",
+      "nhan": "Trò chuyện"
+    }
+  ],
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Dùng giao thức web nội bộ của claude.ai (đã reverse-engineer từ web app, không chính thức). Anthropic đổi web app có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro.",
+    "gpu": false,
+    "mang_ra": [
+      "claude.ai"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "Claude Web (claude.ai)",
+  "tien_to": "clw",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "cookies",
+      "kieu": "danh_sach_bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Một hoặc nhiều bộ cookie từ tab claude.ai đã đăng nhập (DevTools F12 → Application → Cookies), dạng 'k1=v1; k2=v2', hoặc chỉ dán giá trị sessionKey. Nhiều bộ thì xoay vòng khi hết hạn mức/lỗi; cookie hết hạn thì đăng nhập lại và dán lại.",
+      "nhan": "Cookie claude.ai",
+      "nhan_cookie": {
+        "mien": "claude.ai"
+      }
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "base_url",
+      "kieu": "chuoi",
+      "mac_dinh": "https://claude.ai",
+      "mo_ta": "Để trống dùng claude.ai thật. Chỉ đổi khi trỏ máy chủ giả để kiểm thử.",
+      "nhan": "Địa chỉ dịch vụ"
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

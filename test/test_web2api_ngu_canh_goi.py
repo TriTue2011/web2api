@@ -642,8 +642,21 @@ def test_sec004b_che_tham_so_bi_mat_va_khong_khai(moi_truong):
         assert "status_code" not in r_pd.json()
 
         # Kiểm tra sự kiện SSE phát ra: tham số PHẢI ĐƯỢC CHE ĐỆ QUY (H.4 & I)
-        evt = q_sse.get_nowait()
-        assert evt["loai"] == "phe_duyet_moi"
+        # phat_dong_bo() đưa sự kiện vào hàng đợi qua loop.create_task khi có loop
+        # đang chạy -> đến nơi BẤT ĐỒNG BỘ; get_nowait() đọc trước khi ghi nên đỏ
+        # chập chờn. Chờ có điều kiện thay vì get_nowait/ngủ cố định.
+        evt = None
+        han_cho = time.monotonic() + 5.0
+        while time.monotonic() < han_cho:
+            try:
+                ung_vien = q_sse.get_nowait()
+            except asyncio.QueueEmpty:
+                time.sleep(0.02)
+                continue
+            if ung_vien.get("loai") == "phe_duyet_moi":
+                evt = ung_vien
+                break
+        assert evt is not None, "không nhận được sự kiện phe_duyet_moi trong 5 giây"
         evt_ts = evt["muc"]["tham_so"]
         assert evt_ts["ma_pin"] == "…che"
         assert evt_ts["ma_the_tu"] == ["…che", "…che"]

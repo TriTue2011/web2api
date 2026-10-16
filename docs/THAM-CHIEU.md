@@ -39,14 +39,14 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
-| Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; **chưa kiểm với claude.ai thật** | 17/10/2026 |
+| Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; gắn danh tính chung (NV80, cùng khuôn NV77); **chưa kiểm với claude.ai thật** | 17/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
 | Phụ thuộc module (`can_module` + đếm tham chiếu): cài thì đề nghị cài cái thiếu (không tự cài lén), gỡ cái đang được cần → `409`, gỡ provider cuối thì hỏi giữ hay gỡ cái chung | Có — kiểm bằng test NV73 | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
-| Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
+| Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -1508,6 +1508,15 @@ https://grok.com`) → `session.create` (phiên tạm, không lưu lịch sử) 
   dạng `k1=v1; k2=v2`; bắt buộc có cookie `sso`, nên kèm `x-userid` (thiếu thì module hỏi
   `https://grok.com/api/auth/session` để lấy uid).
 - Mạng ra tới `grok.com`.
+
+**Gắn danh tính chung (NV80, cùng khuôn NV77 của gemini-web).** Mỗi tài khoản có thể gắn một danh tính trong sổ
+danh tính của lõi bằng khoá phụ `danh_tinh` gửi kèm khi cài — danh sách cùng thứ tự với `tai_khoan`, mỗi phần tử
+là id danh tính (`dt-…`) hoặc `null` (không gắn). Tài khoản chưa gắn chạy y như trước. Gắn rồi thì tên hiển thị theo
+danh tính (nhãn, không thì email che dạng `b***@gmail.com`) và module đăng ký tham chiếu với lõi: xoá danh tính còn
+tài khoản trỏ tới bị chặn `409 con_tai_khoan`. Liên kết được nhớ trong kho riêng của module theo hash cookie nên
+bền qua khởi động mà không cần gửi lại; gửi `danh_tinh` kèm `null` để gỡ gắn. Module khai
+`can_module: ["vnc-xa"]` (dùng chung trình duyệt từ xa khi cần đăng nhập tay qua noVNC).
+
 ### Module claude-web — Claude Web (claude.ai)
 
 **Mô tả.** Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng
@@ -1630,6 +1639,14 @@ dùng model mặc định; bí danh `flash`/`pro`/`flash-lite` cũng dùng đư�
 - Chưa hỗ trợ ảnh/video (yêu cầu có ảnh → `400`).
 - Không tự đăng nhập lại khi cookie hết hạn, không đọc Gmail.
 - Cookie chính là tài khoản của bạn: không commit, không chia sẻ.
+
+**Gắn danh tính chung (NV80, cùng khuôn NV77 của gemini-web).** Mỗi tài khoản có thể gắn một danh tính trong sổ
+danh tính của lõi bằng khoá phụ `danh_tinh` gửi kèm khi cài — danh sách cùng thứ tự với `cookies`, mỗi phần tử
+là id danh tính (`dt-…`) hoặc `null` (không gắn). Tài khoản chưa gắn chạy y như trước. Gắn rồi thì tên hiển thị theo
+danh tính (nhãn, không thì email che dạng `b***@gmail.com`) và module đăng ký tham chiếu với lõi: xoá danh tính còn
+tài khoản trỏ tới bị chặn `409 con_tai_khoan`. Liên kết được nhớ trong kho riêng của module theo hash cookie nên
+bền qua khởi động mà không cần gửi lại; gửi `danh_tinh` kèm `null` để gỡ gắn. Module khai
+`can_module: ["vnc-xa"]` (dùng chung trình duyệt từ xa khi cần đăng nhập tay qua noVNC).
 
 ---
 

@@ -11,6 +11,7 @@ phản hồi API chỉ nêu dạng che «…abcd», không bao giờ mang giá t
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -18,6 +19,8 @@ import uuid
 from urllib.parse import urlsplit
 
 import httpx
+
+from app import danh_tinh
 
 from . import converter as cv
 from .client import BASE_MAC_DINH, LoiClaudeWeb, MayKhachClaudeWeb
@@ -73,13 +76,23 @@ def ds_cookie(gia_tri) -> list[str]:
 
 
 class _TaiKhoan:
-    """Một bộ cookie claude.ai + máy khách riêng."""
+    """Một bộ cookie claude.ai + máy khách riêng.
+
+    Có thể gắn một danh tính chung của lõi (``danh_tinh_id``): gắn rồi thì hiển
+    thị tên theo danh tính thay vì dạng che của cookie. Tài khoản không gắn
+    chạy y như trước (tương thích ngược).
+    """
 
     def __init__(self, cookie: str, base_url: str):
         self.cookie = cookie
         self.ten_che = _che(cookie)
         self.may_khach = MayKhachClaudeWeb(cookie, base_url)
         self.khoe = True
+        self.danh_tinh_id: str | None = None
+        self.ten_danh_tinh: str | None = None
+
+    def ten_hien_thi(self) -> str:
+        return self.ten_danh_tinh or self.ten_che
 
 
 def phan_loai_ma(ma: int) -> str:
@@ -91,6 +104,20 @@ def phan_loai_ma(ma: int) -> str:
     return "tam_thoi"
 
 
+def _hash_cookie(chuoi: str) -> str:
+    """Dấu vân tay ổn định của một bộ cookie — khoá để nhớ liên kết danh tính
+    qua các lần nạp mà không phải lưu cookie hai nơi."""
+    return hashlib.sha256(str(chuoi or "").strip().encode("utf-8")).hexdigest()
+
+
+def _che_email(email: str) -> str:
+    """Che email khi hiển thị theo danh tính: giữ ký tự đầu + miền."""
+    email = str(email or "")
+    cuc_bo, _, mien = email.partition("@")
+    dau = (cuc_bo[:1] + "***") if cuc_bo else "***"
+    return f"{dau}@{mien}" if mien else dau
+
+
 class Module:
     """Module claude-web: nap / cai / models / chat / suc_khoe / dung."""
 
@@ -99,16 +126,143 @@ class Module:
         self._tien_to = str(self.manifest.get("tien_to") or "clw")
         self._accs: list[_TaiKhoan] = []
         self._base_url = BASE_MAC_DINH
+        self.kho = None  # lõi gán sau khi tạo (kho riêng của module)
+
+    # ── gắn danh tính chung (khuôn NV77) ──────────────────────────────────
+
+    def _doc_lien_ket(self) -> dict:
+        """Ánh xạ hash cookie → danh_tinh_id trong kho riêng của module. Đọc hỏng
+        thì coi như chưa gắn (tài khoản cũ vẫn chạy), không vỡ module."""
+        try:
+            if self.kho is None:
+                return {}
+            du_lieu = self.kho.doc("danh_tinh") or {}
+            anh_xa = du_lieu.get("anh_xa") or {}
+            return {str(k): v for k, v in anh_xa.items() if isinstance(v, str)}
+        except Exception as e:
+            LOG.warning("claude-web: không đọc được liên kết danh tính: %s",
+                        type(e).__name__)
+            return {}
+
+    def _luu_lien_ket(self, anh_xa: dict) -> None:
+        if self.kho is None:
+            return
+        try:
+            cu = self.kho.doc("danh_tinh") or {}
+        except Exception:
+            cu = {}
+        try:
+            self.kho.luu("danh_tinh", {"anh_xa": anh_xa,
+                                       "gan": cu.get("gan") or [],
+                                       "chu_so_huu": cu.get("chu_so_huu")})
+        except Exception as e:
+            LOG.warning("claude-web: không lưu được liên kết danh tính: %s",
+                        type(e).__name__)
+
+    def _ten_theo_danh_tinh(self, dt_id: str) -> str | None:
+        """Tên hiển thị theo danh tính: nhãn do người dùng đặt, không thì email che."""
+        try:
+            dt = danh_tinh.lay(dt_id)
+        except Exception as e:
+            LOG.warning("claude-web: không đọc được danh tính %s: %s",
+                        dt_id, type(e).__name__)
+            return None
+        if not dt:
+            return None
+        nhan = str(dt.get("nhan") or "").strip()
+        if nhan:
+            return nhan
+        return _che_email(dt.get("email") or "")
+
+    def _dong_bo_tham_chieu(self, tap_moi: set[str]) -> None:
+        """Đăng ký/gỡ tham chiếu với kho danh tính của lõi theo chênh lệch tuyệt đối.
+
+        Lõi chặn xoá danh tính còn tài khoản trỏ tới (409 con_tai_khoan) dựa trên
+        chính các tham chiếu này. Trạng thái đã gắn + chủ sở hữu được nhớ trong
+        kho riêng để dung() của thể hiện cũ không gỡ nhầm của thể hiện mới.
+        """
+        cu: set[str] = set()
+        if self.kho is not None:
+            try:
+                cu = set((self.kho.doc("danh_tinh") or {}).get("gan") or [])
+            except Exception as e:
+                LOG.warning("claude-web: không đọc được trạng thái gắn danh tính: %s",
+                            type(e).__name__)
+        for dt_id in sorted(cu - tap_moi):
+            try:
+                danh_tinh.go(dt_id, "claude-web")
+            except Exception as e:
+                LOG.warning("claude-web: gỡ tham chiếu danh tính %s: %s",
+                            dt_id, type(e).__name__)
+        for dt_id in sorted(tap_moi - cu):
+            # Đã kiểm tồn tại ở nap(); kho danh tính hỏng lúc này thì để 503 lan ra
+            # (đóng khi lỗi) thay vì âm thầm chạy không tham chiếu.
+            danh_tinh.gan(dt_id, "claude-web")
+        if self.kho is not None:
+            try:
+                du_lieu = self.kho.doc("danh_tinh") or {}
+                self.kho.luu("danh_tinh", {"anh_xa": du_lieu.get("anh_xa") or {},
+                                           "gan": sorted(tap_moi),
+                                           "chu_so_huu": id(self)})
+            except Exception as e:
+                LOG.warning("claude-web: không lưu được trạng thái gắn danh tính: %s",
+                            type(e).__name__)
 
     # ── vòng đời ─────────────────────────────────────────────────────
 
     def nap(self, cau_hinh: dict) -> None:
+        """Nạp cấu hình ĐÃ KIỂM.
+
+        Khoá phụ «danh_tinh» (không khai trong manifest, lõi cho qua): danh sách
+        cùng thứ tự với «cookies», mỗi phần tử là id danh tính hoặc null. id lạ
+        → ValueError rõ ràng, chưa gắn gì. Không có khoá này thì tra liên kết đã
+        nhớ trong kho riêng theo hash cookie (bền qua khởi động); tài khoản không
+        gắn chạy y như trước.
+        """
         cau_hinh = cau_hinh or {}
         try:
             self._base_url = chuan_hoa_base_url(cau_hinh.get("base_url"))
         except ValueError:
             self._base_url = BASE_MAC_DINH
-        self._accs = [_TaiKhoan(c, self._base_url) for c in ds_cookie(cau_hinh.get("cookies"))]
+        ds = ds_cookie(cau_hinh.get("cookies"))
+        gan_moi = cau_hinh.get("danh_tinh")
+        if gan_moi is not None:
+            if not isinstance(gan_moi, list) or len(gan_moi) != len(ds):
+                raise ValueError(
+                    "«danh_tinh» phải là danh sách cùng độ dài với «cookies» "
+                    f"(nhận {len(gan_moi) if isinstance(gan_moi, list) else type(gan_moi).__name__}, "
+                    f"cần {len(ds)}); mỗi phần tử là id danh tính hoặc null.")
+            for dt_id in gan_moi:
+                if dt_id is None:
+                    continue
+                if not isinstance(dt_id, str) or danh_tinh.lay(dt_id) is None:
+                    raise ValueError(
+                        f"danh_tinh_id {dt_id!r} không tồn tại trong sổ danh tính "
+                        "(tạo trước ở «Hệ thống → AI → Danh tính»).")
+        lien_ket = self._doc_lien_ket()
+        accs = []
+        for i, c in enumerate(ds):
+            acc = _TaiKhoan(c, self._base_url)
+            if gan_moi is not None:
+                acc.danh_tinh_id = gan_moi[i]
+            else:
+                acc.danh_tinh_id = lien_ket.get(_hash_cookie(c))
+            if acc.danh_tinh_id:
+                acc.ten_danh_tinh = self._ten_theo_danh_tinh(acc.danh_tinh_id)
+            accs.append(acc)
+        if gan_moi is not None:
+            for i, c in enumerate(ds):
+                h = _hash_cookie(c)
+                if accs[i].danh_tinh_id:
+                    lien_ket[h] = accs[i].danh_tinh_id
+                else:
+                    lien_ket.pop(h, None)
+            self._luu_lien_ket(lien_ket)
+        self._accs = accs
+        self._dong_bo_tham_chieu({a.danh_tinh_id for a in accs
+                                  if a.danh_tinh_id})
+        LOG.info("claude-web: đã nạp %d tài khoản (%d gắn danh tính)",
+                 len(accs), sum(1 for a in accs if a.danh_tinh_id))
 
     async def cai(self, cau_hinh: dict) -> dict:
         """Kiểm từng bộ cookie bằng một lượt GET /api/organizations (không tốn tiền).
@@ -160,6 +314,25 @@ class Module:
         }
 
     async def dung(self) -> None:
+        """Gỡ tham chiếu danh tính mà CHÍNH thể hiện này đã đăng ký (khuôn NV77),
+        rồi đóng máy khách. Thể hiện thay thế (nap sau) đã ghi đè chu_so_huu
+        nên không bị gỡ nhầm."""
+        try:
+            if self.kho is not None:
+                du_lieu = self.kho.doc("danh_tinh") or {}
+                if du_lieu.get("chu_so_huu") == id(self):
+                    for dt_id in du_lieu.get("gan") or []:
+                        try:
+                            danh_tinh.go(dt_id, "claude-web")
+                        except Exception as e:
+                            LOG.warning("claude-web: gỡ tham chiếu danh tính %s khi dừng: %s",
+                                        dt_id, type(e).__name__)
+                    self.kho.luu("danh_tinh",
+                                 {"anh_xa": du_lieu.get("anh_xa") or {},
+                                  "gan": [], "chu_so_huu": id(self)})
+        except Exception as e:
+            LOG.warning("claude-web: dọn tham chiếu danh tính khi dừng: %s",
+                        type(e).__name__)
         for a in self._accs:
             await a.may_khach.dong()
         self._accs = []

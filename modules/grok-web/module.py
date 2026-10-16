@@ -18,6 +18,7 @@ Cookie không bao giờ vào log hay phản hồi — log chỉ ghi chỉ số t
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import logging
@@ -25,6 +26,7 @@ import time
 from typing import AsyncIterator
 from urllib.parse import urlsplit
 
+from app import danh_tinh
 from app.chuyen_tiep import ds_khoa
 
 from .client import (
@@ -99,6 +101,20 @@ def _loi_openai(thong_diep: str, loai: str, ma: str) -> bytes:
     ).encode("utf-8")
 
 
+def _hash_cookie(chuoi: str) -> str:
+    """Dấu vân tay ổn định của một bộ cookie — khoá để nhớ liên kết danh tính
+    qua các lần nạp mà không phải lưu cookie hai nơi."""
+    return hashlib.sha256(str(chuoi or "").strip().encode("utf-8")).hexdigest()
+
+
+def _che_email(email: str) -> str:
+    """Che email khi hiển thị theo danh tính: giữ ký tự đầu + miền."""
+    email = str(email or "")
+    cuc_bo, _, mien = email.partition("@")
+    dau = (cuc_bo[:1] + "***") if cuc_bo else "***"
+    return f"{dau}@{mien}" if mien else dau
+
+
 class Module:
     """Điểm vào của module theo hợp đồng CHUAN-MODULE."""
 
@@ -110,11 +126,101 @@ class Module:
         self._ws_co_so = ""
         self._goc_https = GOC_HTTPS_MAC_DINH
         self._nghi_den: dict[int, float] = {}  # chỉ số tài khoản → mốc hết nghỉ
+        self.kho = None  # lõi gán sau khi tạo (kho riêng của module)
+        self._dt_id: list[str | None] = []   # danh_tinh_id từng tài khoản
+        self._dt_ten: list[str | None] = []  # tên hiển thị theo danh tính
+
+    # ── Gắn danh tính chung (khuôn NV77) ──────────────────────────────────
+
+    def _doc_lien_ket(self) -> dict:
+        """Ánh xạ hash cookie → danh_tinh_id trong kho riêng của module. Đọc hỏng
+        thì coi như chưa gắn (tài khoản cũ vẫn chạy), không vỡ module."""
+        try:
+            if self.kho is None:
+                return {}
+            du_lieu = self.kho.doc("danh_tinh") or {}
+            anh_xa = du_lieu.get("anh_xa") or {}
+            return {str(k): v for k, v in anh_xa.items() if isinstance(v, str)}
+        except Exception as e:
+            log.warning("grok-web: không đọc được liên kết danh tính: %s",
+                        type(e).__name__)
+            return {}
+
+    def _luu_lien_ket(self, anh_xa: dict) -> None:
+        if self.kho is None:
+            return
+        try:
+            cu = self.kho.doc("danh_tinh") or {}
+        except Exception:
+            cu = {}
+        try:
+            self.kho.luu("danh_tinh", {"anh_xa": anh_xa,
+                                       "gan": cu.get("gan") or [],
+                                       "chu_so_huu": cu.get("chu_so_huu")})
+        except Exception as e:
+            log.warning("grok-web: không lưu được liên kết danh tính: %s",
+                        type(e).__name__)
+
+    def _ten_theo_danh_tinh(self, dt_id: str) -> str | None:
+        """Tên hiển thị theo danh tính: nhãn do người dùng đặt, không thì email che."""
+        try:
+            dt = danh_tinh.lay(dt_id)
+        except Exception as e:
+            log.warning("grok-web: không đọc được danh tính %s: %s",
+                        dt_id, type(e).__name__)
+            return None
+        if not dt:
+            return None
+        nhan = str(dt.get("nhan") or "").strip()
+        if nhan:
+            return nhan
+        return _che_email(dt.get("email") or "")
+
+    def _dong_bo_tham_chieu(self, tap_moi: set[str]) -> None:
+        """Đăng ký/gỡ tham chiếu với kho danh tính của lõi theo chênh lệch tuyệt đối.
+
+        Lõi chặn xoá danh tính còn tài khoản trỏ tới (409 con_tai_khoan) dựa trên
+        chính các tham chiếu này. Trạng thái đã gắn + chủ sở hữu được nhớ trong
+        kho riêng để dung() của thể hiện cũ không gỡ nhầm của thể hiện mới.
+        """
+        cu: set[str] = set()
+        if self.kho is not None:
+            try:
+                cu = set((self.kho.doc("danh_tinh") or {}).get("gan") or [])
+            except Exception as e:
+                log.warning("grok-web: không đọc được trạng thái gắn danh tính: %s",
+                            type(e).__name__)
+        for dt_id in sorted(cu - tap_moi):
+            try:
+                danh_tinh.go(dt_id, "grok-web")
+            except Exception as e:
+                log.warning("grok-web: gỡ tham chiếu danh tính %s: %s",
+                            dt_id, type(e).__name__)
+        for dt_id in sorted(tap_moi - cu):
+            # Đã kiểm tồn tại ở nap(); kho danh tính hỏng lúc này thì để 503 lan ra
+            # (đóng khi lỗi) thay vì âm thầm chạy không tham chiếu.
+            danh_tinh.gan(dt_id, "grok-web")
+        if self.kho is not None:
+            try:
+                du_lieu = self.kho.doc("danh_tinh") or {}
+                self.kho.luu("danh_tinh", {"anh_xa": du_lieu.get("anh_xa") or {},
+                                           "gan": sorted(tap_moi),
+                                           "chu_so_huu": id(self)})
+            except Exception as e:
+                log.warning("grok-web: không lưu được trạng thái gắn danh tính: %s",
+                            type(e).__name__)
 
     # ── Nạp / cài đặt ──────────────────────────────────────────────────
 
     def _nap_tu(self, cau_hinh: dict) -> str | None:
-        """Nạp cấu hình vào bộ nhớ; trả về thông điệp lỗi hoặc None nếu ổn."""
+        """Nạp cấu hình vào bộ nhớ; trả về thông điệp lỗi hoặc None nếu ổn.
+
+        Khoá phụ «danh_tinh» (không khai trong manifest, lõi cho qua): danh sách
+        cùng thứ tự với «tai_khoan», mỗi phần tử là id danh tính hoặc null. id lạ
+        → thông điệp lỗi rõ ràng, chưa gắn gì. Không có khoá này thì tra liên kết
+        đã nhớ trong kho riêng theo hash cookie (bền qua khởi động); tài khoản
+        không gắn chạy y như trước.
+        """
         ds = ds_khoa(cau_hinh.get("tai_khoan"))
         tai_khoan = []
         for chuoi in ds:
@@ -122,6 +228,38 @@ class Module:
             if not jar.get("sso"):
                 return "mỗi tài khoản phải có cookie «sso»"
             tai_khoan.append(jar)
+        gan_moi = cau_hinh.get("danh_tinh")
+        if gan_moi is not None:
+            if not isinstance(gan_moi, list) or len(gan_moi) != len(ds):
+                return (
+                    "«danh_tinh» phải là danh sách cùng độ dài với «tai_khoan» "
+                    f"(nhận {len(gan_moi) if isinstance(gan_moi, list) else type(gan_moi).__name__}, "
+                    f"cần {len(ds)}); mỗi phần tử là id danh tính hoặc null.")
+            for dt_id in gan_moi:
+                if dt_id is None:
+                    continue
+                if not isinstance(dt_id, str) or danh_tinh.lay(dt_id) is None:
+                    return (
+                        f"danh_tinh_id {dt_id!r} không tồn tại trong sổ danh tính "
+                        "(tạo trước ở «Hệ thống → AI → Danh tính»).")
+        lien_ket = self._doc_lien_ket()
+        dt_id_ds: list[str | None] = []
+        dt_ten_ds: list[str | None] = []
+        for i, chuoi in enumerate(ds):
+            if gan_moi is not None:
+                dt_id = gan_moi[i]
+            else:
+                dt_id = lien_ket.get(_hash_cookie(chuoi))
+            dt_id_ds.append(dt_id)
+            dt_ten_ds.append(self._ten_theo_danh_tinh(dt_id) if dt_id else None)
+        if gan_moi is not None:
+            for i, chuoi in enumerate(ds):
+                h = _hash_cookie(chuoi)
+                if dt_id_ds[i]:
+                    lien_ket[h] = dt_id_ds[i]
+                else:
+                    lien_ket.pop(h, None)
+            self._luu_lien_ket(lien_ket)
         ws_url = str(cau_hinh.get("ws_url") or "").strip()
         ws_co_so = WS_DUONG_MAC_DINH
         goc_https = GOC_HTTPS_MAC_DINH
@@ -135,9 +273,15 @@ class Module:
             if phan.port:
                 goc_https += f":{phan.port}"
         self._tai_khoan = tai_khoan
+        self._dt_id = dt_id_ds
+        self._dt_ten = dt_ten_ds
         self._ws_co_so = ws_co_so
         self._goc_https = goc_https
         self._nghi_den = {}
+        self._dong_bo_tham_chieu({d for d in dt_id_ds if d})
+        n_gan = sum(1 for d in dt_id_ds if d)
+        log.info("grok-web: đã nạp %d tài khoản (%d gắn danh tính)",
+                 len(tai_khoan), n_gan)
         return None
 
     async def nap(self, cau_hinh: dict) -> None:
@@ -352,5 +496,22 @@ class Module:
     # ── Dừng ───────────────────────────────────────────────────────────
 
     async def dung(self) -> None:
-        """Không có kết nối nền cần dọn."""
+        """Gỡ tham chiếu danh tính mà CHÍNH thể hiện này đã đăng ký (khuôn NV77).
+        Thể hiện thay thế (nap sau) đã ghi đè chu_so_huu nên không bị gỡ nhầm."""
+        try:
+            if self.kho is not None:
+                du_lieu = self.kho.doc("danh_tinh") or {}
+                if du_lieu.get("chu_so_huu") == id(self):
+                    for dt_id in du_lieu.get("gan") or []:
+                        try:
+                            danh_tinh.go(dt_id, "grok-web")
+                        except Exception as e:
+                            log.warning("grok-web: gỡ tham chiếu danh tính %s khi dừng: %s",
+                                        dt_id, type(e).__name__)
+                    self.kho.luu("danh_tinh",
+                                 {"anh_xa": du_lieu.get("anh_xa") or {},
+                                  "gan": [], "chu_so_huu": id(self)})
+        except Exception as e:
+            log.warning("grok-web: dọn tham chiếu danh tính khi dừng: %s",
+                        type(e).__name__)
         self._nghi_den = {}
