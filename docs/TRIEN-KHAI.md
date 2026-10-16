@@ -210,6 +210,11 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - **Nguyên nhân:** web2api chạy sau proxy nhận kết nối nội bộ là HTTP (`request.url.scheme == "http"`). Khi chưa bật `WEB2API_TIN_PROXY=1`, hệ thống không tin tiêu đề `X-Forwarded-Proto: https` từ proxy nên coi yêu cầu là HTTP thường (`la_https(request)` trả về `False`), khiến cookie phiên bị phát hành ở chế độ không `Secure`.
 - **Cách sửa:** Thêm biến `WEB2API_TIN_PROXY=1` vào tệp `.env` và khởi động lại container (chỉ bật khi mọi đường vào web2api đều đi qua proxy).
 
+### 5. Kết nối ra ngoài (Outbound) và biến môi trường HTTP_PROXY / HTTPS_PROXY
+- **Triệu chứng / Hành vi:** Khi máy chủ đặt trong môi trường mạng chỉ cho phép ra ngoài qua proxy HTTP/HTTPS (khai báo `HTTP_PROXY`, `HTTPS_PROXY` hoặc `ALL_PROXY`), các kết nối ngược dòng của lõi (chuyển tiếp tới nhà cung cấp AI, tải tarball/thăm dò GitHub) không đi qua proxy đó mà kết nối trực tiếp.
+- **Nguyên nhân:** Để chống tấn công SSRF và DNS-rebinding («kiểm lúc đăng ký, dùng lúc kết nối»), web2api sử dụng cơ chế vận chuyển tuỳ biến `TransportGhimIp` ở tầng socket (phân giải và ghim IP ngay trước khi mở kết nối). Cơ chế này tạo socket trực tiếp tới IP đã kiểm và bỏ qua việc tự động nạp cấu hình proxy từ các biến môi trường của thư viện `httpx`.
+- **Lưu ý triển khai:** Nếu môi trường triển khai bắt buộc mọi kết nối ra ngoài phải qua proxy, cần mở trực tiếp tuyến mạng (routing / firewall) cho container web2api kết nối ra các đích cần thiết (API GitHub, dịch vụ AI), hoặc thiết lập mạng ở tầng hệ điều hành (chẳng hạn qua VPN / iptables REDIRECT / transparent proxy) thay vì dựa vào biến môi trường `HTTP_PROXY`/`HTTPS_PROXY`.
+
 ## 9. Chặn trình duyệt từ xa chạm mạng nhà
 
 **Vì sao:** container `web2api-trinh-duyet` (`dich-vu/trinh-duyet/`) chạy Chromium/Firefox,
