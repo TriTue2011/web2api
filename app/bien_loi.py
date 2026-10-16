@@ -40,6 +40,9 @@ log = logging.getLogger("web2api.loi")
 #: Chuỗi liền mạch dạng token (khoá API, token, khoá quản trị sinh tự động đều thuộc dạng này) — che hết khi ghi
 #: nhật ký. Nguyên tắc theo HÌNH chuỗi, không theo tiền tố nhà cung cấp; che thừa một định danh dài còn hơn sót khoá.
 _DANG_TOKEN = re.compile(r"[A-Za-z0-9_\-]{20,}")
+#: Tên biến môi trường (`WEB2API_THAN_TOI_DA_MB`): toàn chữ HOA/số có gạch dưới — HÌNH của định danh, không phải của khoá
+#: ngẫu nhiên (khoá ngẫu nhiên lẫn chữ thường). Che nó làm log vận hành vô dụng («…_MB không hợp lệ»).
+_TEN_BIEN_MOI_TRUONG = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")
 
 
 def la_duong_v1(duong: str) -> bool:
@@ -61,7 +64,8 @@ def che_chuoi(van_ban: str) -> str:
         khoa = ""
     if khoa:
         van_ban = van_ban.replace(khoa, kho.che(khoa))
-    return _DANG_TOKEN.sub(lambda m: kho.che(m.group()), van_ban)
+    return _DANG_TOKEN.sub(
+        lambda m: m.group() if _TEN_BIEN_MOI_TRUONG.fullmatch(m.group()) else kho.che(m.group()), van_ban)
 
 
 def thoat_dieu_khien(van_ban: str) -> str:

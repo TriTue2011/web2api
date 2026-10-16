@@ -53,7 +53,8 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
         env = {k: v for k, v in os.environ.items() if not k.startswith("WEB2API_") and "proxy" not in k.lower()}
         env.update(MOI_TRUONG_CHAN_MANG)
         env.update({"WEB2API_DATA": str(tmp_path / "data"), "WEB2API_ADMIN_KEY": KHOA_QT,
-                    "WEB2API_GITHUB_API": s_gh.url, "WEB2API_GIT_REPO": REPO})
+                    "WEB2API_GITHUB_API": s_gh.url, "WEB2API_GIT_REPO": REPO,
+                    "WEB2API_TEST_CHO_PHEP_LOOPBACK": "1"})  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
         nhat_ky = tmp_path / "loi.log"
         with open(nhat_ky, "wb") as f:
             p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", str(GOC_WEB2API),

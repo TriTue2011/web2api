@@ -41,9 +41,10 @@ from urllib.parse import quote, urljoin, urlsplit
 import httpx
 
 from app import kho
-from app.chuyen_tiep import iso
+from app.chuyen_tiep import TransportGhimIp, iso
 from app.kham_pha import ID_HOP_LE, doc_manifest, kiem_manifest
 from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
+from app.tu_xa import _dia_chi_bi_chan
 
 log = logging.getLogger("web2api.nguon_git")
 
@@ -149,10 +150,22 @@ class NguonGit:
 
     def __init__(self, so: SoModule):
         self.so = so
+        p_trang_thai = kho.thu_muc_du_lieu() / TEP_TRANG_THAI
         try:
-            tt = kho.doc_json(kho.thu_muc_du_lieu() / TEP_TRANG_THAI)
+            tt = kho.doc_json(p_trang_thai)
         except kho.KhoHong as e:
-            log.warning("%s — bắt đầu lại trạng thái đồng bộ", e)
+            # Tệp hỏng: giữ lại để còn cứu/khảo sát (không lặng lẽ ghi đè),
+            # rồi bắt đầu lại trạng thái đồng bộ.
+            hong = p_trang_thai.with_name(p_trang_thai.name + ".hong")
+            dem = 0
+            while hong.exists():
+                dem += 1
+                hong = p_trang_thai.with_name(f"{p_trang_thai.name}.hong.{dem}")
+            try:
+                p_trang_thai.rename(hong)
+                log.warning("%s — đã giữ lại ở %s, bắt đầu lại trạng thái đồng bộ", e, hong.name)
+            except OSError:
+                log.warning("%s — không đổi tên được tệp hỏng, bắt đầu lại trạng thái đồng bộ", e)
             tt = None
         self.trang_thai: dict = tt if isinstance(tt, dict) else {}
         self._danh_thuc = asyncio.Event()
@@ -242,7 +255,10 @@ class NguonGit:
     def _client(self) -> httpx.AsyncClient:
         if self._khach is None:
             # follow_redirects=False: chuyển hướng (repo đổi tên…) KHÔNG được mang token sang chỗ khác.
-            self._khach = httpx.AsyncClient(follow_redirects=False)
+            # NV16: TransportGhimIp + _dia_chi_bi_chan — chặn SSRF/DNS-rebinding cho cả URL gốc
+            # và redirect thủ công (tarball 302 sang codeload.github.com), dùng bộ kiểm chung.
+            self._khach = httpx.AsyncClient(follow_redirects=False,
+                                            transport=TransportGhimIp(_dia_chi_bi_chan))
         return self._khach
 
     def _che(self, van_ban: str) -> str:

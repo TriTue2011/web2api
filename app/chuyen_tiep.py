@@ -110,7 +110,7 @@ import httpx
 
 from app.kham_pha import LOAI_LOI_CHUAN, phan_loai_loi_mac_dinh
 from app.kho import che
-from app.loi_openai import loai_theo_ma
+from app.loi_openai import loai_theo_ma, nhac_lai
 from app.yeu_cau_da_phan import YeuCauDaPhan
 
 MAU_CONTENT_TYPE = re.compile(r"^[a-zA-Z0-9!#$&^_.+-]+/[a-zA-Z0-9!#$&^_.+-]+$")
@@ -311,6 +311,13 @@ NGHI_429_TRAN = 600.0
 NGHI_KHOA_HONG = 3600.0
 NGHI_KHA_NANG = 24 * 3600.0
 NGHI_MODEL_KHONG_CO = 6 * 3600.0  # (khoá, model) bị 404 trong khi khoá khác phục vụ được model đó
+# NV12: trần số mục cho sổ «model không có» và tập «model đã có» — khoá chứa tên model do khách
+# gửi, không trần sẽ phình theo dữ liệu khách. Đầy thì bỏ mục cũ nhất (dict giữ thứ tự chèn).
+KHONG_CO_TOI_DA = 1000
+MODEL_DUOC_TOI_DA = 1000
+# NV12: trần độ dài tên model trước khi dùng làm khoá dict — thân JSON tới 25 MB, tên model
+# hàng MB sẽ thành khoá khổng lồ.
+MODEL_KHOA_TOI_DA = 256
 
 class LoiDichBiChan(httpx.ConnectError):
     """Tên máy của base_url lúc KẾT NỐI phân giải ra IP bị chặn (DNS rebinding: kiểm lúc đăng ký thấy IP sạch, lúc gọi
@@ -446,7 +453,8 @@ class ChuyenTiepOpenAI:
         self._chat_duoc: set[str] = set()
         # Căn cứ phân xử 404 (cùng chỗ): cặp (khoá, model) đã trả 200 cho chat, và sổ «model không có ở khoá này»
         # {(khoá, model): hết hạn (epoch)}.
-        self._model_duoc: set[tuple[str, str]] = set()
+        # NV12: dict (thay vì set) để giữ thứ tự chèn và đẩy bớt mục cũ nhất khi chạm trần.
+        self._model_duoc: dict[tuple[str, str], None] = {}
         self._khong_co: dict[tuple[str, str], float] = {}
         # Khả năng tốn tiền (ảnh, video…) mà suc_khoe báo theo từng khoá; trạng thái theo (khoá, khả năng):
         # {"dung_duoc": bool, "ma": mã HTTP nhà cung cấp trả, "den": hết nghỉ (epoch, 0 = không nghỉ)}.
@@ -541,6 +549,22 @@ class ChuyenTiepOpenAI:
             than["model"] = model[len(self.tien_to) + 1:]
         return than
 
+    def _ghi_model_duoc(self, khoa: str, model: str) -> None:
+        """NV12: ghi (khoá, model) đã trả 200 — có trần, đầy thì bỏ mục cũ nhất."""
+        if (khoa, model) not in self._model_duoc and len(self._model_duoc) >= MODEL_DUOC_TOI_DA:
+            self._model_duoc.pop(next(iter(self._model_duoc)))
+        self._model_duoc[(khoa, model)] = None
+
+    def _ghi_khong_co(self, khoa: str, model: str, het_han: float) -> None:
+        """NV12: ghi (khoá, model) vào sổ «không có» — dọn mục hết hạn trước, có trần,
+        đầy thì bỏ mục cũ nhất (khuôn _LAN_GHI_CUOI ở app/ip_cho_phep.py)."""
+        bay_gio = self._dong_ho()
+        for k in [k for k, h in self._khong_co.items() if h <= bay_gio]:
+            self._khong_co.pop(k, None)
+        if (khoa, model) not in self._khong_co and len(self._khong_co) >= KHONG_CO_TOI_DA:
+            self._khong_co.pop(next(iter(self._khong_co)))
+        self._khong_co[(khoa, model)] = het_han
+
     def _ghi_dung(self, khoa: str, viec: str, ma: int) -> None:
         """Chỗ ghi DUY NHẤT của bộ đếm dùng từng khoá: `viec` = "chat" hoặc mã khả năng, `ma` = mã HTTP nhà cung cấp trả."""
         d = self._dem.setdefault(khoa, {"luot": {}, "so_429": 0, "dung_cuoi": None, "lan_429_cuoi": None})
@@ -594,6 +618,12 @@ class ChuyenTiepOpenAI:
                 "type": "rate_limit_error", "code": "rate_limit_exceeded"}}, {"retry-after": str(con)})
 
         model = str(than.get("model"))
+        # NV12: trần độ dài tên model TRƯỚC khi dùng làm khoá dict — thân JSON tới 25 MB,
+        # tên model hàng MB sẽ thành khoá khổng lồ trong _khong_co/_model_duoc.
+        if len(model) > MODEL_KHOA_TOI_DA:
+            return tra_loi_json(400, {"error": {
+                "message": f"Tên model quá dài ({len(model)} ký tự, tối đa {MODEL_KHOA_TOI_DA}).",
+                "type": "invalid_request_error", "code": "invalid_request"}})
         # Cặp (khoá, model) trong sổ «model không có» bị bỏ qua — trừ khi chỉ còn chúng (đừng chết cứng).
         ung_vien = [k for k in ung_vien if self._khong_co.get((k, model), 0.0) <= bay_gio] or ung_vien
 
@@ -625,7 +655,7 @@ class ChuyenTiepOpenAI:
                     # Mã 200 đã tới, chưa byte nào gửi khách: đủ để kết luận về khoá, kể cả khi stream.
                     self._chat_duoc.add(khoa)
                     self._ghi_dung(khoa, "chat", 200)
-                    self._model_duoc.add((khoa, model))
+                    self._ghi_model_duoc(khoa, model)
                     self._khong_co.pop((khoa, model), None)
                     for k in nghi_ngo:
                         self._nghi[k] = bay_gio + NGHI_KHOA_HONG
@@ -634,10 +664,11 @@ class ChuyenTiepOpenAI:
                         self.log.warning("%s: khoá %s bị coi là hỏng (400 trong khi khoá khác trả 200), nghỉ %.0f s",
                                          self.ten, self.nhan_khoa(k), NGHI_KHOA_HONG)
                     for k in khong_co:
-                        self._khong_co[(k, model)] = bay_gio + NGHI_MODEL_KHONG_CO
+                        self._ghi_khong_co(k, model, bay_gio + NGHI_MODEL_KHONG_CO)
+                        # NV12: cắt tên model trong log bằng nhac_lai — model tới 25 MB sẽ thành một dòng log khổng lồ.
                         self.log.warning("%s: khoá %s không có model %s (404 trong khi khoá khác trả 200), bỏ qua "
-                                         "khoá này cho model đó %.0f s", self.ten, self.nhan_khoa(k), model,
-                                         NGHI_MODEL_KHONG_CO)
+                                         "khoá này cho model đó %.0f s", self.ten, self.nhan_khoa(k),
+                                         nhac_lai(model), NGHI_MODEL_KHONG_CO)
                     hd = tieu_de_cho_khach(r, "application/json")
                     if stream:
                         return 200, hd, self._chuyen_dong(r)
@@ -679,9 +710,10 @@ class ChuyenTiepOpenAI:
                                      self.ten, self.nhan_khoa(khoa), ma, NGHI_KHOA_HONG, tin[:200])
                     continue
                 if loai == "khong_co_o_khoa":
-                    self._khong_co[(khoa, model)] = bay_gio + NGHI_MODEL_KHONG_CO
+                    self._ghi_khong_co(khoa, model, bay_gio + NGHI_MODEL_KHONG_CO)
+                    # NV12: cắt tên model trong log bằng nhac_lai.
                     self.log.warning("%s: khoá %s không có model %s, bỏ qua %.0f s",
-                                     self.ten, self.nhan_khoa(khoa), model, NGHI_MODEL_KHONG_CO)
+                                     self.ten, self.nhan_khoa(khoa), nhac_lai(model), NGHI_MODEL_KHONG_CO)
                     continue
                 if loai == "yeu_cau_sai":
                     return loi_cuoi
@@ -699,7 +731,7 @@ class ChuyenTiepOpenAI:
                             loi_so_sanh = loi_cuoi
                             continue
                         # Cặp từng chạy tốt → lỗi của yêu cầu; về «chưa rõ» để lần 404 sau được phân xử.
-                        self._model_duoc.discard((khoa, model))
+                        self._model_duoc.pop((khoa, model), None)
                     elif ma < 500:
                         return loi_cuoi
                 if loai != "may_chu_loi" and ma < 500:

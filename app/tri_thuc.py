@@ -15,6 +15,7 @@ from typing import Any
 
 from app import nhat_ky, quy_trinh
 from app.bien_loi import che_chuoi
+from app.kieu_chat import so_nguyen_chat
 from app.loi_openai import LoiOpenAI
 from app.quy_trinh import LoiQuyTrinh
 from app.so_module import SoModule
@@ -278,12 +279,8 @@ async def lay_muc_luc(than: dict, so: SoModule) -> dict[str, Any]:
 
     do_sau_hieu_luc = tran_do_sau
     if "do_sau" in than and than["do_sau"] is not None:
-        try:
-            do_sau_in = int(than["do_sau"])
-        except (ValueError, TypeError):
-            raise LoiOpenAI(400, "«do_sau» phải là số nguyên", code="invalid_request")
-        if do_sau_in <= 0:
-            raise LoiOpenAI(400, "«do_sau» phải là số nguyên dương", code="invalid_request")
+        # Số nguyên chặt (loại bool/float/chuỗi; int(inf) từng lọt OverflowError thành 500).
+        do_sau_in = so_nguyen_chat(than["do_sau"], "do_sau", toi_thieu=1)
         do_sau_hieu_luc = min(do_sau_in, tran_do_sau)
 
     yc_module = {"tai_lieu": tai_lieu, "do_sau": do_sau_hieu_luc}

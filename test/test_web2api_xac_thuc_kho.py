@@ -73,7 +73,9 @@ def test_khoa_tu_sinh_lan_dau_0600_khong_in_ra_log(tmp_path, monkeypatch, caplog
             assert stat.S_IMODE(p.stat().st_mode) == 0o600
             assert c.get("/v1/models", headers={"Authorization": f"Bearer {khoa}"}).status_code == 200
     assert khoa not in caplog.text
-    assert str(p) in caplog.text  # chỉ báo ĐƯỜNG DẪN để người vận hành tìm được
+    # chỉ báo ĐƯỜNG DẪN để người vận hành tìm được (log hệ thống che mọi chuỗi liền mạch ≥20 ký tự theo hình token,
+    # nên thư mục tạm dài của pytest bị rút gọn «…»; tên tệp và đuôi đường dẫn vẫn còn)
+    assert p.name in caplog.text
     assert xac_thuc.khoa_quan_tri() == khoa  # lần sau đọc lại đúng khoá cũ, không sinh mới
 
 

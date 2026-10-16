@@ -266,9 +266,14 @@ class Module:
             tham_so.setdefault("durationSeconds", body["seconds"])
         if "durationSeconds" in tham_so:
             # Gửi SỐ: mã c2a ghi Veo trả 400 khi là chuỗi ("8"), dù bảng tham số trên trang Veo viết "4"/"6"/"8".
+            # Nhận chuỗi chữ số có chủ đích; OverflowError (int(inf)) phải bắt như ValueError kẻo thành 500;
+            # bool (True→1) và float không nguyên (4.5→4) bị loại — int() lặng lẽ ép kiểu là sai.
+            ds = tham_so["durationSeconds"]
+            if isinstance(ds, bool) or (isinstance(ds, float) and not ds.is_integer()):
+                raise ValueError(f"thời lượng {ds!r} phải là số giây (4, 6 hoặc 8)")
             try:
-                tham_so["durationSeconds"] = int(tham_so["durationSeconds"])
-            except (TypeError, ValueError):
+                tham_so["durationSeconds"] = int(ds)
+            except (TypeError, ValueError, OverflowError):
                 raise ValueError(f"thời lượng {tham_so['durationSeconds']!r} phải là số giây (4, 6 hoặc 8)") from None
         size = body.get("size")
         if isinstance(size, str) and "aspectRatio" not in tham_so:  # kích thước OpenAI «RỘNGxCAO» → tỉ lệ khung
