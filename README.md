@@ -348,6 +348,7 @@ Bản quyền (c) 2026 `TriTue2011`. **Giữ toàn quyền** (*All rights reserv
 - [docs/THAM-CHIEU.md](docs/THAM-CHIEU.md): Tài liệu tham chiếu kỹ thuật chi tiết toàn diện.
 - [docs/TRIEN-KHAI.md](docs/TRIEN-KHAI.md): Hướng dẫn triển khai an toàn ra Internet (Cloudflare Tunnel, SSH, cổng mạng).
 - [docs/CHUAN-MODULE.md](docs/CHUAN-MODULE.md): Chuẩn hợp đồng và thông số kỹ thuật viết module mới.
+- [docs/TU-THEM-MODULE.md](docs/TU-THEM-MODULE.md): Tự thêm module từ GitHub của bạn trong 5 bước (cho người không biết lập trình).
 - [docs/CHUAN-BAO-MAT-MODULE.md](docs/CHUAN-BAO-MAT-MODULE.md): Quy chuẩn bảo mật khi xây dựng module.
 - [SECURITY.md](SECURITY.md): Chính sách bảo mật và kênh báo cáo lỗ hổng riêng tư.
 - [CONTRIBUTING.md](CONTRIBUTING.md): Hướng dẫn đóng góp cho dự án.
