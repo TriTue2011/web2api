@@ -60,6 +60,8 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
 | Chữ ký số cho module | Chưa có (chỉ kiểm chữ ký commit của GitHub, tuỳ chọn) | — |
 | Kho danh tính + API danh tính (`GET`/`POST /api/danh-tinh`, `GET`/`DELETE /api/danh-tinh/{id}`, `POST …/{id}/gan|go`): một email một lần, gắn nhiều provider, xoá bị chặn khi còn tài khoản trỏ tới, kho mã hoá AES-256-GCM quyền 0600 | Có — kiểm với máy chủ giả (NV67 nhóm 1, việc 1–2); **chưa có giao diện** | 17/10/2026 |
+| Sao lưu gồm danh tính: `bi_mat/danh_tinh.json` có bộ kiểm riêng (id đúng khuôn `dt-<16hex>`, email đúng khuôn, không trùng id/email; sai → `400` `sao_luu_khong_hop_le` nêu tên tệp, không ghi đè); bản không mật khẩu không chứa bí mật | Có — kiểm với máy chủ giả (NV67 nhóm 5, việc 11) | 17/10/2026 |
+| Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -1558,6 +1560,26 @@ curl -s -H "Authorization: Bearer $KHOA" $W/api/danh-tinh | python3 -m json.tool
   của module sở hữu — di chuyển sang danh tính chung ở nhóm 4.
 - Email chỉ kiểm khuôn (có `@`), không xác minh sở hữu — việc đó của luồng đăng nhập (nhóm 3).
 
+### Công cụ khôi phục quản trị dòng lệnh (lõi)
+
+**Mô tả.** Tầng khôi phục cuối cùng khi mất mật khẩu quản trị hoặc mất 2FA (NV67 nhóm 5, việc 13):
+công cụ dòng lệnh chạy **trực tiếp trên máy chủ** — ai chạm được vào máy mới đặt lại được. Cố ý
+**không có đường web tương đương** (đó sẽ là cửa hậu).
+
+- Mã: `app/khoi_phuc_quan_tri.py`; yêu cầu quyền đọc thư mục dữ liệu (`WEB2API_DATA`) — không đọc
+  được → `500` `khong_doc_du_lieu`, không chạm gì.
+- `python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau [--ten <ten>] [--mat-khau <mk>]`: đặt lại mật khẩu
+  admin — đồng thời bật lại tài khoản, tắt 2FA (xoá mọi trường `totp_*`), xoá khoá đăng nhập sai theo tên.
+  Không truyền `--mat-khau` → sinh ngẫu nhiên, in ra stdout **một lần** (không bao giờ vào log/nhật ký).
+- `python3 -m app.khoi_phuc_quan_tri tat-2fa [--ten <ten>]`: chỉ tắt 2FA, không đổi mật khẩu.
+- Nhiều admin mà không chỉ `--ten` → `400` `nhieu_admin`; không có admin → `404`.
+- Mỗi lần dùng ghi một dòng nhật ký kênh `quan_tri` (mật khẩu mới không xuất hiện ở bất kỳ tệp log nào).
+
+**Giới hạn.**
+- Mất 2FA theo thiết kế chỉ khôi phục bằng công cụ này (không có đường web) — xem thêm
+  `docs/TRIEN-KHAI.md` mục vận hành.
+- Mật khẩu sinh ngẫu nhiên hiện trên stdout của phiên SSH; người vận hành tự bảo quản.
+
 ---
 
 ## 5. Triển khai
@@ -2021,7 +2043,8 @@ Web2api cung cấp API xuất và nhập toàn bộ cấu hình hệ thống tro
    - Xác thực: chỉ quản trị viên. Đọc thân multipart/form-data qua `app/yeu_cau_da_phan.py` tuân trần `WEB2API_TEP_TOI_DA_MB`. Một lượt khôi phục tại một thời điểm (lượt thứ hai → `429 khoi_phuc_dang_chay`).
    - Trường: `tep` (đúng 1 tệp .w2a), `mat_khau` (nếu bản sao lưu mã hoá), `che_do` (`"kiem"` mặc định hoặc `"ap_dung"`; giá trị khác → `400`), `sha256` (bắt buộc với `"ap_dung"`: đúng sha256 mà `"kiem"` trả cho CHÍNH tệp đó; thiếu/lệch → `409 chua_kiem_dung_tep`).
    - Định dạng + toàn vẹn (`400 sao_luu_khong_hop_le`): nhận dạng và phiên bản đầu tệp, phiên bản manifest; tham số scrypt phải đúng bộ ứng dụng dùng — lạ thì từ chối TRƯỚC khi băm (header giả không được bắt máy chủ cấp 1 GiB RAM); giải mã AEAD (sai mật khẩu hoặc bị sửa byte → lỗi chung, không để lộ lý do); chỉ tar không nén (gzip/bz2/xz là đường bom nén); trần kiểm theo header ngay khi thấy, trước khi đọc nội dung (chọn theo RAM sau khi đọc JSON — JSON đối kháng nở ~26 lần): mỗi tệp ≤ 1 MiB, tổng ≤ 2 MiB, ≤ 256 tệp; từ chối symlink, hardlink, thiết bị, đường dẫn `../`, tuyệt đối, tên trùng; sha256 và kích thước khớp manifest. KDF, giải mã, đọc tar và ghi đĩa chạy ở luồng phụ.
-   - **Mỗi tệp qua bộ kiểm của CHÍNH module sở hữu** (`_BO_KIEM` trong `app/sao_luu.py`; tệp không có bộ kiểm thì không khôi phục được): `nguon_git.json` → `nguon_git.kiem_cau_hinh` (cùng bộ kiểm của `PUT /api/nguon-git` và của lượt đọc tệp); `tu_xa.json` → `so_module.kiem_ban_ghi_tu_xa` (cùng bộ kiểm của đăng ký, base_url qua `kiem_url_lan`); `modules.json` → `kho.kiem_tep_modules` + `kho.kiem_cau_hinh_cong_khai` theo manifest module; `khoa_khach.json` → `khoa_khach.kiem_tep` (`bam` 64 hex, `bat`, `pham_vi` bắt buộc đúng kiểu); `combo.json` → `combo.kiem_hinh_dang`; `dia_chi.json` → `dia_chi.kiem_tra_va_chuan_hoa_url`; `model.json` → `kho.kiem_cai_dat_model`; `bi_mat/*` phải là đối tượng JSON. Sai → `400` nêu tệp và quy tắc. Thứ được ghi là bản ĐÃ KIỂM (chuẩn hoá), không phải bytes thô.
+   - **Mỗi tệp qua bộ kiểm của CHÍNH module sở hữu** (`_BO_KIEM` trong `app/sao_luu.py`; tệp không có bộ kiểm thì không khôi phục được): `nguon_git.json` → `nguon_git.kiem_cau_hinh` (cùng bộ kiểm của `PUT /api/nguon-git` và của lượt đọc tệp); `tu_xa.json` → `so_module.kiem_ban_ghi_tu_xa` (cùng bộ kiểm của đăng ký, base_url qua `kiem_url_lan`); `modules.json` → `kho.kiem_tep_modules` + `kho.kiem_cau_hinh_cong_khai` theo manifest module; `khoa_khach.json` → `khoa_khach.kiem_tep` (`bam` 64 hex, `bat`, `pham_vi` bắt buộc đúng kiểu); `combo.json` → `combo.kiem_hinh_dang`; `dia_chi.json` → `dia_chi.kiem_tra_va_chuan_hoa_url`; `model.json` → `kho.kiem_cai_dat_model`; `bi_mat/*` phải là đối tượng JSON (`bi_mat/danh_tinh.json` có bộ kiểm riêng: id đúng khuôn, email đúng khuôn, không trùng — NV79). Sai → `400` nêu tệp và quy tắc. Thứ được ghi là bản ĐÃ KIỂM (chuẩn hoá), không phải bytes thô.
+   - Bản KHÔNG mật khẩu: không chứa `bi_mat/` (kể cả danh tính) — chỉ cấu trúc công khai; bản có mật khẩu chứa `bi_mat/` gồm `danh_tinh.json`.
    - **Đối chiếu với trạng thái đang có** — không nới an toàn, không đổi hướng khoá:
      * `nguon_git.json`: `tu_dong` và `yeu_cau_chu_ky` GIỮ giá trị đang có (chưa cấu hình = tắt) — khôi phục không bật tự cài, không tắt bắt chữ ký. Đổi `repo`/`nhanh`/`thu_muc` so với nguồn đang có (hoặc đặt nguồn mới khi `<DATA>/modules/` đã có module) thì GIỮ NGUYÊN cả tệp (lần đồng bộ đầu của nguồn mới tải bản của nguồn đó cho module đã cài, chờ quản trị duyệt) — đổi nguồn làm tay ở Hệ thống → Module.
      * `khoa_khach.json`: khoá ĐANG có chủ (`chu_id`; khớp theo id HOẶC theo băm — đổi id/hoán đổi băm không lách được) mà bản sao lưu bỏ hoặc đổi chủ → TỪ CHỐI (`409 khoi_phuc_xung_dot`) — khoá sẽ thoát trần của chủ và không còn tắt theo chủ. Gán chủ cho khoá chưa có chủ (thu hẹp) chỉ được đánh dấu `doi_chu`. `nguoi_dung.json` KHÔNG nằm trong bản sao lưu (chứa băm mật khẩu): khoá có chủ mà chủ không tồn tại/đang tắt trên máy đích vẫn khôi phục được nhưng bị đóng (`401`) — `kiem` nêu `canh_bao` «sẽ bị đóng sau khôi phục» ở khoá đó.

@@ -215,6 +215,22 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - **Nguyên nhân:** Để chống tấn công SSRF và DNS-rebinding («kiểm lúc đăng ký, dùng lúc kết nối»), web2api sử dụng cơ chế vận chuyển tuỳ biến `TransportGhimIp` ở tầng socket (phân giải và ghim IP ngay trước khi mở kết nối). Cơ chế này tạo socket trực tiếp tới IP đã kiểm và bỏ qua việc tự động nạp cấu hình proxy từ các biến môi trường của thư viện `httpx`.
 - **Lưu ý triển khai:** Nếu môi trường triển khai bắt buộc mọi kết nối ra ngoài phải qua proxy, cần mở trực tiếp tuyến mạng (routing / firewall) cho container web2api kết nối ra các đích cần thiết (API GitHub, dịch vụ AI), hoặc thiết lập mạng ở tầng hệ điều hành (chẳng hạn qua VPN / iptables REDIRECT / transparent proxy) thay vì dựa vào biến môi trường `HTTP_PROXY`/`HTTPS_PROXY`.
 
+### 6. Mất mật khẩu quản trị hoặc mất 2FA (khôi phục bằng dòng lệnh trên máy chủ)
+
+- **Triệu chứng / Hành vi:** Không còn tài khoản quản trị nào đăng nhập được — quên mật khẩu, mất thiết bị TOTP, hoặc tài khoản bị tắt khoá.
+- **Giải pháp:** Dùng công cụ dòng lệnh `app.khoi_phuc_quan_tri` chạy TRỰC TIẾP trên máy chủ (SSH vào máy chủ, chạy trong thư mục mã nguồn web2api). CỐ Ý không có đường web tương đương cho việc này (đó sẽ là cửa hậu):
+  ```bash
+  cd /opt/web2api   # thư mục chứa app/
+
+  # Đặt lại mật khẩu admin (đồng thời bật lại tài khoản, tắt 2FA, xoá khoá đăng nhập sai).
+  # Không truyền --mat-khau → công cụ sinh mật khẩu ngẫu nhiên và in RA MÀN HÌNH MỘT LẦN.
+  python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau --ten admin
+
+  # Chỉ tắt 2FA mà không đổi mật khẩu (mất thiết bị TOTP):
+  python3 -m app.khoi_phuc_quan_tri tat-2fa --ten admin
+  ```
+- **Yêu cầu và dấu vết:** tiến trình chạy lệnh phải đọc được thư mục dữ liệu `WEB2API_DATA` (không đọc được → lỗi `khong_doc_du_lieu`, không chạm gì); mỗi lần dùng ghi một dòng nhật ký kênh `quan_tri` (không nêu mật khẩu); mật khẩu sinh ngẫu nhiên chỉ hiện trên stdout của lệnh, không vào log/nhật ký/ngoại lệ. Mã thoát: `0` = xong; `2` = lỗi dự kiến (không admin, nhiều admin mà không chỉ `--ten`, mật khẩu yếu); `1` = lỗi bất ngờ.
+
 ## 9. Chặn trình duyệt từ xa chạm mạng nhà
 
 **Vì sao:** container `web2api-trinh-duyet` (`dich-vu/trinh-duyet/`) chạy Chromium/Firefox,

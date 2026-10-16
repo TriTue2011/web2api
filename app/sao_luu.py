@@ -58,7 +58,7 @@ from urllib.parse import urlsplit
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
-from app import combo, dia_chi, kho, khoa_khach, nguon_git, nhat_ky, phien
+from app import combo, danh_tinh, dia_chi, kho, khoa_khach, nguon_git, nhat_ky, phien
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI, nhac_lai
 from app.so_module import LoiSo, kiem_ban_ghi_tu_xa
@@ -232,6 +232,65 @@ def _kiem_doi_tuong(du_lieu: Any) -> dict:
     return du_lieu
 
 
+#: id danh tính sinh từ email đã chuẩn hoá: «dt-» + 16 ký tự hex của SHA-256.
+_ID_DANH_TINH = re.compile(r"^dt-[0-9a-f]{16}\Z")
+
+
+def _kiem_danh_tinh(du_lieu: Any) -> dict:
+    """Bộ kiểm của module sở hữu cho bi_mat/danh_tinh.json (NV79, NV67 nhóm 5 việc 11).
+
+    Tái dùng chính quy tắc của app/danh_tinh: id đúng khuôn, email hợp lệ và ĐÃ ở dạng
+    chuẩn hoá (email trong kho luôn được chuẩn hoá khi tạo), không trùng email/id giữa
+    các bản ghi, nhan không chứa ký tự điều khiển, gan là danh sách id module hợp lệ.
+    Trả bản đã chuẩn hoá — thứ SẼ được ghi (không ghi bytes thô của người tải lên)."""
+    if not isinstance(du_lieu, dict):
+        raise ValueError('cần dạng đối tượng {"danh_tinh": [...]}')
+    ds = du_lieu.get("danh_tinh")
+    if not isinstance(ds, list):
+        raise ValueError('cần dạng đối tượng {"danh_tinh": [...]}')
+    sach: list[dict] = []
+    id_thay: set[str] = set()
+    email_thay: set[str] = set()
+    for i, d in enumerate(ds):
+        vi_tri = f"danh_tinh[{i}]"
+        if not isinstance(d, dict):
+            raise ValueError(f"{vi_tri}: phải là đối tượng")
+        id_ = d.get("id")
+        if not isinstance(id_, str) or not _ID_DANH_TINH.match(id_):
+            raise ValueError(f"{vi_tri}: «id» phải có dạng dt-<16 ký tự hex>")
+        email = d.get("email")
+        try:
+            email_chuan = danh_tinh.chuan_hoa_email(email)
+        except LoiOpenAI:
+            raise ValueError(f"{vi_tri}: «email» không hợp lệ") from None
+        if email != email_chuan:
+            raise ValueError(f"{vi_tri}: «email» phải ở dạng đã chuẩn hoá (không khoảng trắng, chữ thường)")
+        if email in email_thay:
+            raise ValueError(f"{vi_tri}: «email» trùng với bản ghi trước")
+        if id_ in id_thay:
+            raise ValueError(f"{vi_tri}: «id» trùng với bản ghi trước")
+        id_thay.add(id_)
+        email_thay.add(email)
+        try:
+            nhan = danh_tinh.kiem_nhan(d.get("nhan"))
+        except LoiOpenAI:
+            raise ValueError(f"{vi_tri}: «nhan» không hợp lệ") from None
+        gan = d.get("gan")
+        if not isinstance(gan, list):
+            raise ValueError(f"{vi_tri}: «gan» phải là danh sách id module")
+        gan_sach = []
+        for m in gan:
+            try:
+                gan_sach.append(danh_tinh.kiem_module_id(m))
+            except LoiOpenAI:
+                raise ValueError(f"{vi_tri}: «gan» chứa id module không hợp lệ") from None
+        ngay_tao = d.get("ngay_tao")
+        if ngay_tao is not None and not isinstance(ngay_tao, str):
+            raise ValueError(f"{vi_tri}: «ngay_tao» phải là chuỗi hoặc null")
+        sach.append({"id": id_, "email": email, "nhan": nhan, "ngay_tao": ngay_tao, "gan": gan_sach})
+    return {"danh_tinh": sach}
+
+
 #: Tệp công khai → bộ kiểm của module sở hữu. Tệp không có ở đây (và không thuộc bi_mat/) thì KHÔNG khôi phục được.
 _BO_KIEM: dict[str, Callable[[Any], Any]] = {
     "modules.json": _kiem_modules,          # kho.kiem_tep_modules (+ manifest module ở _doi_chieu)
@@ -250,6 +309,9 @@ def _bo_kiem_cua(duong_rel: str) -> Callable[[Any], Any] | None:
     """Bộ kiểm cho một đường trong bản sao lưu; None = ngoài phạm vi khôi phục."""
     if duong_rel in _BO_KIEM:
         return _BO_KIEM[duong_rel]
+    if duong_rel == "bi_mat/danh_tinh.json":
+        # Kho danh tính có bộ kiểm riêng của module sở hữu (NV79), không dùng bộ kiểm đối tượng chung.
+        return _kiem_danh_tinh
     parts = duong_rel.split("/")
     if len(parts) == 2 and parts[0] == "bi_mat" and parts[1].endswith(".json"):
         return _kiem_doi_tuong if kho.ten_bi_mat_hop_le(parts[1][:-5]) else None
