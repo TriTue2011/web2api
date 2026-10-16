@@ -50,7 +50,7 @@ from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
-from app.xac_thuc import can_phien_web, can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
+from app.xac_thuc import can_phien_web, can_quan_tri, dinh_danh_nguoi_thuc_hien, kiem_tra_pham_vi, xac_thuc_v1
 from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
@@ -1155,8 +1155,9 @@ async def cai(id_: str, request: Request):
 
 @modules.delete("/{id_}", dependencies=QT)
 async def go(id_: str, request: Request):
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     try:
-        kq = await _so(request).go(id_)
+        kq = await _so(request).go(id_, nguoi_thuc_hien=nguoi_thuc_hien)
     except LoiSo as e:
         raise _loi_so(e) from None
     _ng(request).da_go(id_)  # đang bật tự cài thì không được cài lại ngay bản vừa gỡ
@@ -1450,6 +1451,7 @@ def xoa_nhat_ky(request: Request, truoc_ngay: float | None = None):
         f"Xoá nhật ký kiểm toán cũ hơn {truoc_ngay} ngày: đã xoá {da_xoa} dòng",
         da_xoa=da_xoa,
         nguoi_goi=nguoi_goi,
+        nguoi_thuc_hien=nguoi_goi,
         ip=ip_khach,
         truoc_ngay=truoc_ngay,
     )
@@ -1470,6 +1472,7 @@ async def tao_khoa_khach(request: Request):
         nhan=than.get("nhan", ""),
         pham_vi=than.get("pham_vi"),
         het_han=than.get("het_han"),
+        nguoi_thuc_hien=dinh_danh_nguoi_thuc_hien(request),
     )
     return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
 
@@ -1490,6 +1493,7 @@ async def xoay_khoa_khach(id_: str, request: Request):
     ban_ghi, khoa_tho = khoa_khach_mod.xoay_khoa(
         id_khoa=id_,
         cu_giay=cu_giay,
+        nguoi_thuc_hien=dinh_danh_nguoi_thuc_hien(request),
     )
     return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
 
@@ -1502,6 +1506,7 @@ async def sua_khoa_khach(id_: str, request: Request):
         "bat": _lay_bool(than, "bat", None),
         "nhan": than.get("nhan"),
         "pham_vi": than.get("pham_vi"),
+        "nguoi_thuc_hien": dinh_danh_nguoi_thuc_hien(request),
     }
     if "het_han" in than:
         kwargs["het_han"] = than.get("het_han")
@@ -1520,6 +1525,7 @@ async def sua_khoa_khach_khong_path(request: Request):
         "bat": _lay_bool(than, "bat", None),
         "nhan": than.get("nhan"),
         "pham_vi": than.get("pham_vi"),
+        "nguoi_thuc_hien": dinh_danh_nguoi_thuc_hien(request),
     }
     if "het_han" in than:
         kwargs["het_han"] = than.get("het_han")
@@ -1528,8 +1534,8 @@ async def sua_khoa_khach_khong_path(request: Request):
 
 
 @khoa_khach.delete("/{id_}")
-def xoa_khoa_khach(id_: str):
-    da_xoa = khoa_khach_mod.xoa_khoa(id_khoa=id_)
+def xoa_khoa_khach(id_: str, request: Request):
+    da_xoa = khoa_khach_mod.xoa_khoa(id_khoa=id_, nguoi_thuc_hien=dinh_danh_nguoi_thuc_hien(request))
     return {"ok": True, "da_xoa": da_xoa}
 
 
@@ -2258,12 +2264,14 @@ async def tao_nguoi_dung_moi(request: Request):
         mat_khau=mat_khau,
         pham_vi_toi_da=pham_vi_toi_da,
     )
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     nhat_ky_mod.ghi(
         "quan_tri",
         "thong_tin",
         f"Quản trị viên tạo người dùng «{_nhac_lai(ten_chuan)}» (vai: {ban_ghi['vai']})",
         id_nguoi_dung=ban_ghi["id"],
         vai=ban_ghi["vai"],
+        nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"nguoi_dung": ban_ghi, "ten_dang_nhap": ten_chuan, "mat_khau": mat_khau_tho}
 
@@ -2282,10 +2290,11 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
         bat=bat,
         pham_vi_toi_da=pham_vi_toi_da,
     )
-    if not ban_ghi["bat"]:  # trạng thái sau thao tác là TẮT → thu hồi mọi phiên (bật lại không sống lại phiên cũ)
+    if not ban_ghi["bat"] or vai is not None:  # trạng thái sau thao tác là TẮT hoặc ĐỔI VAI → thu hồi mọi phiên
         phien_web_mod.thu_hoi_phien_nguoi_dung(id)
         novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
 
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     nhat_ky_mod.ghi(
         "quan_tri",
         "thong_tin",
@@ -2293,38 +2302,43 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
         id_nguoi_dung=id,
         bat=ban_ghi["bat"],
         vai=ban_ghi["vai"],
+        nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"nguoi_dung": ban_ghi}
 
 
 @nguoi_dung.post("/{id}/dat-lai-mat-khau", dependencies=KHONG_LUU)
-async def dat_lai_mat_khau(id: str):
+async def dat_lai_mat_khau(id: str, request: Request):
     phien_web_mod.kiem_tra_kho()  # không đặt mật khẩu mới rồi mới 503 (mật khẩu mất, không ai biết)
     ban_ghi, mat_khau_moi = await nguoi_dung_mod.dat_lai_mat_khau_nguoi_dung(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)
     novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     nhat_ky_mod.ghi(
         "quan_tri",
         "thong_tin",
         f"Đặt lại mật khẩu cho người dùng (id: {_nhac_lai(id)})",
         id_nguoi_dung=id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"nguoi_dung": ban_ghi, "mat_khau_moi": mat_khau_moi}
 
 
 @nguoi_dung.delete("/{id}")
-def xoa_tai_khoan(id: str):
+def xoa_tai_khoan(id: str, request: Request):
     phien_web_mod.kiem_tra_kho()  # kiểm trước khi xoá: không để xoá xong người dùng rồi 503 bỏ dở khoá/phiên
     khoa_khach_mod.kiem_tra_kho()  # cùng lý do: kho khoá hỏng → 503 TRƯỚC khi xoá người dùng
     nguoi_dung_mod.xoa_nguoi_dung(id)
     khoa_khach_mod.xoa_khoa_theo_chu(id)
     phien_web_mod.thu_hoi_phien_nguoi_dung(id)
     novnc_mod.thu_hoi_phien_theo_nguoi_dung(id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     nhat_ky_mod.ghi(
         "quan_tri",
         "thong_tin",
         f"Xoá tài khoản người dùng (id: {_nhac_lai(id)})",
         id_nguoi_dung=id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"ok": True}
 

@@ -132,7 +132,6 @@ def test_go_module_da_go_chan_tu_cai_lai_ban_cu(moi_truong):
     assert (ng.trang_thai.get("da_go") or {}).get("echo") != "sha-ban-moi"
 
 
-@pytest.mark.xfail(strict=True, reason="NV55 MOD-LOG: gỡ module chưa ghi kênh nhật ký quản trị")
 def test_go_module_ghi_nhat_ky_quan_tri(moi_truong):
     """Thu hồi module phải để lại dấu vết ở kênh quản trị (đối tượng bị gỡ)."""
     client, data_dir = moi_truong
@@ -202,7 +201,6 @@ def test_thu_hoi_khoa_khach_ghi_nhat_ky_quan_tri(moi_truong):
     ), "kênh quản trị phải ghi việc thu hồi khoá khách kèm id khoá"
 
 
-@pytest.mark.xfail(strict=True, reason="NV55 KEY-ACTOR: nhật ký thu hồi khoá chưa ghi người thực hiện")
 def test_thu_hoi_khoa_khach_ghi_nguoi_thuc_hien(moi_truong):
     """Dòng nhật ký thu hồi phải ghi người thực hiện (phân biệt quản trị thật
     với kẻ chiếm phiên — xem NV46)."""
@@ -290,11 +288,11 @@ def test_tat_tai_khoan_thu_hoi_phien(moi_truong):
     assert r.status_code == 401, f"phiên của tài khoản đã tắt phải 401, nhận {r.status_code}"
 
 
-@pytest.mark.xfail(strict=True, reason="NV55 SES-ROLE: hạ vai admin→user chưa thu hồi phiên web")
 def test_ha_vai_admin_thu_hoi_phien(moi_truong):
     """Hạ vai admin→user (tài khoản vẫn bật): mọi phiên web của tài khoản đó phải
     mất hiệu lực ở yêu cầu kế tiếp — kẻ chiếm phiên không được dùng tiếp."""
     client, _ = moi_truong
+    _tao_nguoi_dung("nv55adm_goc", MK_ADMIN, vai="admin")
     nd = _tao_nguoi_dung("nv55adm", MK_ADMIN, vai="admin")
     ck1, _ = _dang_nhap_web(client, "nv55adm", MK_ADMIN)
     ck2, _ = _dang_nhap_web(client, "nv55adm", MK_ADMIN)

@@ -758,6 +758,7 @@ def tao_khoa(
     pham_vi: list[str] | None = None,
     chu_id: str | None = None,
     het_han: str | None = None,
+    nguoi_thuc_hien: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Tạo khoá khách mới: sinh khoá ngẫu nhiên hiện MỘT LẦN, ghi nguyên tử 0600 và ghi sổ quan_tri.
 
@@ -794,12 +795,17 @@ def tao_khoa(
         _KHOA_KHACH_CACHE.append(muc)
         _ghi_ra_dia_khoi_tao()
 
+    if nguoi_thuc_hien is None:
+        from app.xac_thuc import dinh_danh_nguoi_thuc_hien
+        nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien()
+
     nk_kwargs: dict[str, Any] = {
         "id_khoa": id_khoa,
         "khoa_van_tay": van_tay(bam),
         "nhan": nhan_chuan,
         "pham_vi": pv,
         "chu_id": chu_id,
+        "nguoi_thuc_hien": nguoi_thuc_hien,
     }
     if het_han is not None:
         nk_kwargs["het_han"] = het_han
@@ -811,6 +817,7 @@ def tao_khoa(
 def xoay_khoa(
     id_khoa: str,
     cu_giay: Any = CU_GIAY_MAC_DINH,
+    nguoi_thuc_hien: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Xoay khoá khách: sinh khoá mới, đẩy bam hiện tại thành bam_cu, đặt cu_het_han.
 
@@ -850,6 +857,10 @@ def xoay_khoa(
 
         _ghi_ra_dia_khoi_tao()
 
+    if nguoi_thuc_hien is None:
+        from app.xac_thuc import dinh_danh_nguoi_thuc_hien
+        nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien()
+
     vt_moi = van_tay(bam_moi)
     nhat_ky.ghi(
         "quan_tri",
@@ -858,6 +869,7 @@ def xoay_khoa(
         id_khoa=id_khoa,
         khoa_van_tay=vt_moi,
         cu_het_han=cu_het_han,
+        nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return ban_ghi, khoa_tho
 
@@ -871,6 +883,7 @@ def sua_khoa(
     nhan: str | None = None,
     pham_vi: list[str] | None = None,
     het_han: Any = _KHONG_DOI,
+    nguoi_thuc_hien: str | None = None,
 ) -> dict[str, Any]:
     """Cập nhật thông tin khoá khách (bật/tắt, nhãn, phạm vi, hạn dùng). None = giữ nguyên; `bat` phải là bool thật."""
     if bat is not None and not isinstance(bat, bool):
@@ -907,6 +920,10 @@ def sua_khoa(
         _ghi_ra_dia_khoi_tao()
         kq = _sach_khoa(tim_thay)
 
+    if nguoi_thuc_hien is None:
+        from app.xac_thuc import dinh_danh_nguoi_thuc_hien
+        nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien()
+
     nhat_ky.ghi(
         "quan_tri",
         "thong_tin",
@@ -917,11 +934,12 @@ def sua_khoa(
         nhan=kq["nhan"],
         pham_vi=kq["pham_vi"],
         het_han=kq.get("het_han"),
+        nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return kq
 
 
-def xoa_khoa(id_khoa: str) -> bool:
+def xoa_khoa(id_khoa: str, nguoi_thuc_hien: str | None = None) -> bool:
     """Thu hồi khoá khách (xoá khỏi danh sách, ghi đĩa ngay, các lượt sau lập tức 401)."""
     bam_da_xoa = None
     with _KHOA_LUONG:
@@ -938,11 +956,15 @@ def xoa_khoa(id_khoa: str) -> bool:
 
     if da_xoa:
         vt = van_tay(bam_da_xoa) if bam_da_xoa else "?"
+        if nguoi_thuc_hien is None:
+            from app.xac_thuc import dinh_danh_nguoi_thuc_hien
+            nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien()
         nhat_ky.ghi(
             "quan_tri",
             "thong_tin",
             f"Thu hồi khoá khách (id: {id_khoa})",
             id_khoa=id_khoa,
             khoa_van_tay=vt,
+            nguoi_thuc_hien=nguoi_thuc_hien,
         )
     return da_xoa

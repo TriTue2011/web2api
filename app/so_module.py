@@ -444,8 +444,12 @@ class SoModule:
             await self._dung_an_toan(km.id, cu)
         return cong_khai
 
-    async def go(self, id_: str) -> dict:
+    async def go(self, id_: str, nguoi_thuc_hien: str | None = None) -> dict:
         async with self.khoa:
+            nguoi = nguoi_thuc_hien
+            if nguoi is None:
+                from app.xac_thuc import dinh_danh_nguoi_thuc_hien
+                nguoi = dinh_danh_nguoi_thuc_hien()
             if id_ in self.tu_xa:
                 m = self.dang_chay.pop(id_, None)
                 try:
@@ -458,6 +462,13 @@ class SoModule:
                 self._vt_tu_xa.pop(id_, None)
                 if m is not None:
                     await self._dung_an_toan(id_, m)
+                nhat_ky.ghi(
+                    "quan_tri",
+                    "thong_tin",
+                    f"Gỡ module «{id_}» (từ xa)",
+                    id_module=id_,
+                    nguoi_thuc_hien=nguoi,
+                )
                 return {"ok": True, "id": id_, "loai": "tu_xa"}
             km = self.catalog.get(id_)
             if km is None:
@@ -475,12 +486,26 @@ class SoModule:
             except kho.KhoHong as e:
                 raise LoiSo(500, str(e), code="store_unreadable") from e
             if km.nguon == "anh":
+                nhat_ky.ghi(
+                    "quan_tri",
+                    "thong_tin",
+                    f"Gỡ module «{id_}» (gỡ cấu hình)",
+                    id_module=id_,
+                    nguoi_thuc_hien=nguoi,
+                )
                 return {"ok": True, "id": id_, "ghi_chu": "đã gỡ cấu hình; mã đi kèm ảnh vẫn còn"}
             # Đổi tên trước rồi mới xoá: thư mục biến mất khỏi khám phá NGAY, xoá dở cũng không nạp lại nửa module.
             rac = km.thu_muc.parent / f".xoa-{id_}-{secrets.token_hex(4)}"
             os.rename(km.thu_muc, rac)
             shutil.rmtree(rac, ignore_errors=True)
             kq = await self._nap_lai()
+            nhat_ky.ghi(
+                "quan_tri",
+                "thong_tin",
+                f"Gỡ module «{id_}»",
+                id_module=id_,
+                nguoi_thuc_hien=nguoi,
+            )
             return {"ok": True, "id": id_, "nap_lai": kq}
 
     # ───────────── module từ xa ─────────────
