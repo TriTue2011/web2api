@@ -193,8 +193,19 @@ def test_quet_tinh_khong_con_localstorage_luu_khoa_hay_csrf():
     tep_kiem = list(web_dir.glob("*.js")) + list(web_dir.glob("*.html"))
     for p in tep_kiem:
         noi_dung = p.read_text(encoding="utf-8")
-        # Kiểm tra không có localStorage lưu khoá quản trị
-        assert "web2api_khoa" not in noi_dung, f"{p.name} vẫn còn chuỗi web2api_khoa"
+        # SEC-002: Cấm đọc/lưu khoá quản trị web2api_khoa (getItem, setItem, hoặc truy cập mảng/thuộc tính).
+        # CHO PHÉP duy nhất removeItem('web2api_khoa') để dọn sạch dữ liệu cũ còn sót lại.
+        for idx, line in enumerate(noi_dung.splitlines(), 1):
+            if "web2api_khoa" in line:
+                s = line.strip()
+                if s.startswith("//") or s.startswith("/*") or s.startswith("*"):
+                    continue
+                assert "removeItem('web2api_khoa')" in line or 'removeItem("web2api_khoa")' in line, (
+                    f"{p.name}:{idx} chứa web2api_khoa nhưng không phải removeItem: {line}"
+                )
+                assert "getItem" not in line and "setItem" not in line and "[" not in line, (
+                    f"{p.name}:{idx} đọc hoặc ghi web2api_khoa: {line}"
+                )
         # Kiểm tra không lưu csrfToken / khoá / mật khẩu vào storage
         for tu_nhay_cam in ["web2api_khoa", "csrf", "csrfToken", "X-CSRF-Token", "mat_khau", "password"]:
             assert f"setItem('{tu_nhay_cam}'" not in noi_dung, f"{p.name} lưu {tu_nhay_cam} vào storage"
@@ -209,14 +220,16 @@ def test_quet_tinh_khong_con_localstorage_luu_khoa_hay_csrf():
 
 
 def test_chong_chuyen_huong_mo_duong_ve_hop_le():
-    """Hàm duongVeHopLe trong khung.js phải từ chối mọi dạng URL mở / độc hại."""
+    """Hàm duongVeHopLe trong khung.js phải từ chối mọi dạng URL mở / độc hại theo nguyên tắc origin."""
     ma_js = """
     const fs = require('fs');
+    global.location = { origin: 'http://127.0.0.1:3031' };
+    const location = global.location;
     const khungCode = fs.readFileSync('web/khung.js', 'utf8');
     const m = khungCode.match(/function duongVeHopLe\\(u\\)[\\s\\S]*?\\n  \\}/);
     if (!m) throw new Error("Không tìm thấy duongVeHopLe");
-    const fn = new Function(m[0] + "; return duongVeHopLe;");
-    const duongVeHopLe = fn();
+    const fn = new Function('location', m[0] + "; return duongVeHopLe;");
+    const duongVeHopLe = fn(location);
 
     const cac_mau = [
         ['/He-thong.dc.html', '/He-thong.dc.html'],
@@ -228,7 +241,12 @@ def test_chong_chuyen_huong_mo_duong_ve_hop_le():
         ['javascript:alert(1)', ''],
         ['/\\\\evil.com', ''],
         ['\\\\evil.com', ''],
-        ['/test:123', ''],
+        ['/test:123', '/test:123'],
+        ['/%2F/x', '/%2F/x'],
+        ['/\\t/evil.example', ''],
+        ['/\\n/evil.example', ''],
+        ['/\\r/evil.example', ''],
+        ['/\\\\evil.example', ''],
         ['evil.com', ''],
         ['', ''],
         [null, ''],
@@ -238,7 +256,7 @@ def test_chong_chuyen_huong_mo_duong_ve_hop_le():
     for (const [dau_vao, mong_doi] of cac_mau) {
         const kq = duongVeHopLe(dau_vao);
         if (kq !== mong_doi) {
-            console.error(`Lỗi với đầu vào: ${dau_vao} -> Nhận: ${kq}, Mong đợi: ${mong_doi}`);
+            console.error(`Lỗi với đầu vào: ${JSON.stringify(dau_vao)} -> Nhận: ${JSON.stringify(kq)}, Mong đợi: ${JSON.stringify(mong_doi)}`);
             process.exit(1);
         }
     }
@@ -247,6 +265,140 @@ def test_chong_chuyen_huong_mo_duong_ve_hop_le():
     p = subprocess.run(["node", "-e", ma_js], cwd=str(ROOT_DIR), capture_output=True, text=True)
     assert p.returncode == 0, f"Kiểm tra duongVeHopLe thất bại: {p.stderr}"
     assert "OK" in p.stdout
+
+
+def test_dang_xuat_xoa_localstorage_theo_tien_to():
+    """SEC-005: dangXuat() phải xoá mọi khoá trong localStorage có tiền tố web2api_ (nguyên tắc tiền tố, không danh sách cố định)."""
+    # 1. Quét tĩnh: xác nhận dangXuat duyệt qua localStorage và kiểm tra tiền tố web2api_ thay vì danh sách tên cố định
+    khung_path = ROOT_DIR / "web" / "khung.js"
+    khung_code = khung_path.read_text(encoding="utf-8")
+    m_dx = re.search(r"async function dangXuat\(\)[\s\S]*?\n  \}", khung_code)
+    assert m_dx is not None, "Không tìm thấy hàm dangXuat trong khung.js"
+    dx_body = m_dx.group(0)
+    assert "startsWith('web2api_')" in dx_body or 'startsWith("web2api_")' in dx_body, "dangXuat phải kiểm tra tiền tố web2api_"
+    assert "web2api_lich_su_tro_chuyen" not in dx_body, "dangXuat không được dùng danh sách cứng tên khoá"
+    assert "web2api_cuoc_dang_mo" not in dx_body, "dangXuat không được dùng danh sách cứng tên khoá"
+
+    # 2. Kiểm thử bằng node runtime: mô phỏng localStorage và kiểm tra hành vi dọn dẹp
+    ma_js = """
+    const fs = require('fs');
+    const store = new Map();
+    const mockLocalStorage = {
+        get length() { return store.size; },
+        key(i) { return Array.from(store.keys())[i] || null; },
+        getItem(k) { return store.get(k) || null; },
+        setItem(k, v) { store.set(k, String(v)); },
+        removeItem(k) { store.delete(k); }
+    };
+    global.localStorage = mockLocalStorage;
+    global.location = { replace: (url) => { global._replacedUrl = url; } };
+    global.fetch = async () => ({ ok: true });
+
+    // Đặt các khoá test
+    mockLocalStorage.setItem('web2api_lich_su_tro_chuyen', '[{"id": 1}]');
+    mockLocalStorage.setItem('web2api_cuoc_dang_mo', 'cuoc_123');
+    mockLocalStorage.setItem('web2api_tuy_chinh_khac', 'gia_tri_khac');
+    mockLocalStorage.setItem('unrelated_app_setting', 'giu_nguyen');
+
+    const khungCode = fs.readFileSync('web/khung.js', 'utf8');
+    const m = khungCode.match(/async function dangXuat\\(\\)[\\s\\S]*?\\n  \\}/);
+    if (!m) throw new Error("Không tìm thấy dangXuat");
+    const fn = new Function('localStorage', 'location', 'fetch', m[0] + "; return dangXuat;");
+    const dangXuat = fn(global.localStorage, global.location, global.fetch);
+
+    (async () => {
+        await dangXuat();
+        // Kiểm tra các khoá có tiền tố web2api_ đã bị xoá sạch
+        for (const k of store.keys()) {
+            if (k.startsWith('web2api_')) {
+                console.error(`Khoá ${k} vẫn còn sau khi đăng xuất!`);
+                process.exit(1);
+            }
+        }
+        // Khoá không thuộc web2api_ phải giữ nguyên
+        if (mockLocalStorage.getItem('unrelated_app_setting') !== 'giu_nguyen') {
+            console.error('Khoá khác bị xoá nhầm!');
+            process.exit(1);
+        }
+        if (global._replacedUrl !== 'Dang-nhap.dc.html') {
+            console.error('Chưa chuyển sang Dang-nhap.dc.html');
+            process.exit(1);
+        }
+        console.log("OK");
+    })();
+    """
+    p = subprocess.run(["node", "-e", ma_js], cwd=str(ROOT_DIR), capture_output=True, text=True)
+    assert p.returncode == 0, f"Kiểm tra dangXuat localStorage thất bại: {p.stderr}"
+    assert "OK" in p.stdout
+
+
+def test_chong_login_csrf_content_type_dang_nhap_va_thiet_lap(moi_truong_tai_khoan):
+    """N1: /api/dang-nhap và /api/thiet-lap CHỈ nhận Content-Type: application/json, sai -> 415 unsupported_media_type, không tạo phiên."""
+    import json
+    with TestClient(app) as client:
+        body_dang_nhap = json.dumps({"ten_dang_nhap": "admin", "mat_khau": "MatKhau123456"})
+
+        # 1. /api/dang-nhap với Content-Type: text/plain (form enctype=text/plain từ site lạ)
+        r = client.post("/api/dang-nhap", content=body_dang_nhap, headers={"Content-Type": "text/plain"})
+        assert r.status_code == 415, f"text/plain phải bị 415 nhưng nhận {r.status_code}"
+        j = r.json()
+        assert j.get("error", {}).get("code") == "unsupported_media_type"
+        assert "w2a_phien" not in client.cookies and "__Host-w2a_phien" not in client.cookies
+
+        # 2. /api/dang-nhap với Content-Type: application/x-www-form-urlencoded
+        r = client.post("/api/dang-nhap", content=body_dang_nhap, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        assert r.status_code == 415, f"urlencoded phải bị 415 nhưng nhận {r.status_code}"
+        j = r.json()
+        assert j.get("error", {}).get("code") == "unsupported_media_type"
+        assert "w2a_phien" not in client.cookies and "__Host-w2a_phien" not in client.cookies
+
+        # 3. /api/dang-nhap không có header Content-Type
+        r = client.post("/api/dang-nhap", content=body_dang_nhap, headers={})
+        assert r.status_code == 415, f"thiếu Content-Type phải bị 415 nhưng nhận {r.status_code}"
+        j = r.json()
+        assert j.get("error", {}).get("code") == "unsupported_media_type"
+        assert "w2a_phien" not in client.cookies and "__Host-w2a_phien" not in client.cookies
+
+        # 4. /api/dang-nhap với Content-Type: application/json; charset=utf-8 -> hợp lệ
+        r = client.post("/api/dang-nhap", content=body_dang_nhap, headers={"Content-Type": "application/json; charset=utf-8"})
+        # Chấp nhận Content-Type (trả về 401 do sai mật khẩu hoặc 200, nhưng KHÔNG phải 415)
+        assert r.status_code != 415, f"application/json; charset=utf-8 không được bị 415"
+
+        # 5. /api/thiet-lap từ chối text/plain, urlencoded và thiếu Content-Type
+        body_tl = json.dumps({"ma_thiet_lap": "123", "ten_dang_nhap": "admin", "mat_khau": "MatKhau123456"})
+        r_tl1 = client.post("/api/thiet-lap", content=body_tl, headers={"Content-Type": "text/plain"})
+        assert r_tl1.status_code == 415
+        assert r_tl1.json().get("error", {}).get("code") == "unsupported_media_type"
+
+        r_tl2 = client.post("/api/thiet-lap", content=body_tl, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        assert r_tl2.status_code == 415
+        assert r_tl2.json().get("error", {}).get("code") == "unsupported_media_type"
+
+        r_tl3 = client.post("/api/thiet-lap", content=body_tl, headers={})
+        assert r_tl3.status_code == 415
+        assert r_tl3.json().get("error", {}).get("code") == "unsupported_media_type"
+
+        # 6. Kiểm tra lỗi 415 kiểm TRƯỚC khi đếm lỗi xác thực (không làm tăng bộ đếm sai mật khẩu)
+        for _ in range(10):
+            r_sai_ct = client.post("/api/dang-nhap", content=body_dang_nhap, headers={"Content-Type": "text/plain"})
+            assert r_sai_ct.status_code == 415
+
+
+def test_sec_006_tai_lieu_tin_proxy_co_mo_ta_secure_cookie():
+    """SEC-006: Tài liệu TRIEN-KHAI.md và THAM-CHIEU.md phải mô tả chính xác WEB2API_TIN_PROXY quyết định cờ Secure và tiền tố __Host- của cookie phiên."""
+    trien_khai = (ROOT_DIR / "docs" / "TRIEN-KHAI.md").read_text(encoding="utf-8")
+    tham_chieu = (ROOT_DIR / "docs" / "THAM-CHIEU.md").read_text(encoding="utf-8")
+
+    # 1. TRIEN-KHAI.md mục 7 (checklist) phải nêu cờ Secure và tiền tố __Host-
+    assert "WEB2API_TIN_PROXY=1" in trien_khai
+    assert "Secure" in trien_khai
+    assert "__Host-w2a_phien" in trien_khai
+
+    # 2. TRIEN-KHAI.md mục 8.4 phải nêu việc cookie thiếu Secure / __Host- khi chưa bật TIN_PROXY
+    assert "cookie phiên thiếu cờ Secure" in trien_khai
+
+    # 3. THAM-CHIEU.md bảng biến môi trường phải nêu cờ Secure / __Host-
+    assert "__Host-" in tham_chieu
 
 
 # ─────────────────────────────────────────────────────────────────────────────

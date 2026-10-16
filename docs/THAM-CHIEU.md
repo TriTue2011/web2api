@@ -1841,7 +1841,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DATA` | `/data` | Thư mục dữ liệu (khoá, cấu hình, module cài thêm) |
 | `WEB2API_ADMIN_KEY` | tự sinh | Khoá quản trị; không đặt thì sinh và lưu `<WEB2API_DATA>/admin_key` |
 | `WEB2API_PUBLIC_URL` | không | Địa chỉ URL công khai chính thức (ví dụ `https://<tên-miền>`), ưu tiên sau giá trị đã đặt qua API |
-| `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai; chỉ bật khi mọi đường vào đều qua proxy |
+| `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai và kích hoạt cờ `Secure` / tiền tố `__Host-` cho cookie phiên qua HTTPS; chỉ bật khi mọi đường vào đều qua proxy |
 | `WEB2API_NOVNC_PHIEN_TOI_DA` | `16` | Trần TOÀN CỤC số phiên noVNC đồng thời (RAM); vượt trần thì phiên MỚI bị từ chối `429`, phiên đang dùng không bị đẩy ra. Riêng mỗi (module, hồ sơ) tối đa 4 phiên |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |

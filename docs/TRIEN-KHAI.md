@@ -175,7 +175,7 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - [ ] **Khoá quản trị đã đổi:** Không dùng khoá mặc định hay ngắn. Đã đặt khoá mạnh ngẫu nhiên trong biến `WEB2API_ADMIN_KEY` tại `.env`, hoặc kiểm tra tệp `/data/admin_key` do hệ thống tự sinh với quyền 0600.
 - [ ] **Cổng web2api không công bố toàn cục:** Cổng container chỉ lắng nghe trên `127.0.0.1:3031` hoặc kết nối qua mạng nội bộ Docker với `cloudflared`, không mở `0.0.0.0:3031`.
 - [ ] **`WEB2API_TRUST_PROXY` cấu hình đúng và đã thử:** Đã khai báo địa chỉ cổng/dải mạng Docker (kiểu A) hoặc dải IP Cloudflare (kiểu B), rồi làm đúng bước kiểm tra ở mục 3: nhật ký ghi IP công khai của máy thử, không phải địa chỉ nội bộ của Docker hay của Cloudflare.
-- [ ] **Bật `WEB2API_TIN_PROXY=1`:** Giúp giao diện nhận diện đúng giao thức HTTPS từ proxy để tạo liên kết kết nối chuẩn xác.
+- [ ] **Bật `WEB2API_TIN_PROXY=1`:** Nhận diện đúng giao thức HTTPS từ tiêu đề `X-Forwarded-Proto` của proxy ngược; bắt buộc để cookie phiên có cờ bảo mật `Secure` và tiền tố `__Host-w2a_phien` (nếu thiếu, cookie bị coi là HTTP thường, dùng tên `w2a_phien` không có cờ `Secure`), đồng thời tạo liên kết kết nối chuẩn xác trên giao diện.
 - [ ] **SSH an toàn:** Đã tắt đăng nhập bằng mật khẩu (`PasswordAuthentication no`), chỉ cho phép đăng nhập bằng SSH Key.
 - [ ] **Cổng SSH không mở thẳng ra Internet:** Chỉ kết nối SSH qua Tunnel, VPN hoặc mạng nội bộ.
 - [ ] **Quản trị chỉ từ mạng nhà:** Đã đặt `WEB2API_QT_IP_CHO_PHEP` bằng dải LAN (mục 4) và đã thử: từ ngoài Internet gọi đường quản trị nhận `403`, từ mạng nhà vẫn vào được.
@@ -202,7 +202,7 @@ Trước khi mở tên miền cho người ngoài truy cập, hãy kiểm tra t�
 - **Nguyên nhân:** Chế độ mã hoá SSL/TLS trên Cloudflare đang đặt là **Flexible**. Cloudflare gửi yêu cầu HTTP tới máy chủ, trong khi proxy trên máy chủ lại ép chuyển hướng ngược về HTTPS.
 - **Cách sửa:** Đổi chế độ SSL/TLS trên trang quản trị Cloudflare thành **Full** hoặc **Full (strict)**.
 
-### 4. Giao diện web2api hiển thị liên kết HTTP thay vì HTTPS
-- **Triệu chứng:** Hướng dẫn kết nối và địa chỉ mẫu trên giao diện web2api hiển thị dạng `http://example.com` thay vì `https://example.com`.
-- **Nguyên nhân:** web2api chưa được hướng dẫn tin cậy tiêu đề giao thức từ proxy chuyển vào.
-- **Cách sửa:** Thêm biến `WEB2API_TIN_PROXY=1` vào tệp `.env` và khởi động lại container.
+### 4. Giao diện hiển thị liên kết HTTP thay vì HTTPS hoặc cookie phiên thiếu cờ Secure
+- **Triệu chứng:** Hướng dẫn kết nối và địa chỉ mẫu trên giao diện web2api hiển thị dạng `http://example.com` thay vì `https://example.com`, hoặc cookie phiên không có cờ `Secure` và không mang tiền tố `__Host-` (`w2a_phien` thay vì `__Host-w2a_phien`) dù đã chạy qua HTTPS.
+- **Nguyên nhân:** web2api chạy sau proxy nhận kết nối nội bộ là HTTP (`request.url.scheme == "http"`). Khi chưa bật `WEB2API_TIN_PROXY=1`, hệ thống không tin tiêu đề `X-Forwarded-Proto: https` từ proxy nên coi yêu cầu là HTTP thường (`la_https(request)` trả về `False`), khiến cookie phiên bị phát hành ở chế độ không `Secure`.
+- **Cách sửa:** Thêm biến `WEB2API_TIN_PROXY=1` vào tệp `.env` và khởi động lại container (chỉ bật khi mọi đường vào web2api đều đi qua proxy).
