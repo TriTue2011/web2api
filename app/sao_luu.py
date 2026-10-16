@@ -601,6 +601,7 @@ def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str)
     if "khoa_khach.json" in sach:
         kb_khoa = khoa_khach.khac_biet(sach["khoa_khach.json"]["khoa"])
         khac_biet["khoa_khach"] = kb_khoa
+        now = datetime.now(timezone.utc)
         for m in kb_khoa["khoa"]:
             # Khoá ĐANG có chủ mà bản sao lưu bỏ/đổi chủ: thành khoá không chủ (hết trần chủ, sống khi chủ bị tắt) hoặc
             # sang trần người khác — là leo thang quyền, không phải khôi phục. Gán chủ cho khoá không chủ (thu hẹp)
@@ -610,6 +611,22 @@ def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str)
                                 "ly_do": "khoá đang có chủ mà bản sao lưu bỏ hoặc đổi chủ (khoá sẽ thoát trần của chủ "
                                          "và không còn tắt theo chủ) — thu hồi khoá này rồi khôi phục, hoặc sửa bản "
                                          "sao lưu giữ đúng chủ"})
+            if m.get("trung_khoa_khac"):
+                tu_choi.append({"tep": "khoa_khach.json", "id": m["id"],
+                                "ly_do": "khoá mang băm (bam hoặc bam_cu) trùng với khoá khác đang có trên máy"})
+            cu_hh = m.get("cu_het_han")
+            if cu_hh:
+                try:
+                    dt = datetime.fromisoformat(cu_hh)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if (dt - now).total_seconds() > khoa_khach.CU_GIAY_TOI_DA:
+                        tu_choi.append({"tep": "khoa_khach.json", "id": m["id"],
+                                        "ly_do": f"cu_het_han vượt quá trần {khoa_khach.CU_GIAY_TOI_DA // 86400} ngày "
+                                                 "tính từ lúc khôi phục"})
+                except Exception:
+                    tu_choi.append({"tep": "khoa_khach.json", "id": m["id"],
+                                    "ly_do": "cu_het_han không phải chuỗi thời gian ISO hợp lệ"})
 
     bi_mat = sorted(k for k in sach if k.startswith("bi_mat/"))
     if bi_mat:
@@ -789,9 +806,16 @@ def _kiem_chung(ghi: dict[str, Any], so: Any) -> str | None:
         if (r is None or r.get("id") != k["id"] or r.get("bat", True) != k["bat"]
                 or list(r.get("pham_vi", ["*"])) != k["pham_vi"] or r.get("chu_id") != k.get("chu_id")):
             return f"khoá khách {k['id']} không đọc lại được đúng như bản sao lưu"
+        if k.get("bam_cu"):
+            if r.get("bam_cu") != k.get("bam_cu") or r.get("cu_het_han") != k.get("cu_het_han"):
+                return f"khoá khách {k['id']} không giữ đúng bam_cu hoặc cu_het_han"
         t = khoa_khach.tim_theo_bam(k["bam"])
         if t is None or t.get("id") != k["id"]:
             return f"khoá khách {k['id']} không tra được qua đường xác thực"
+        if k.get("bam_cu") and khoa_khach._la_tuong_lai(k.get("cu_het_han")):
+            t_cu = khoa_khach.tim_theo_bam(k["bam_cu"])
+            if t_cu is None or t_cu.get("id") != k["id"]:
+                return f"khoá khách cũ {k['id']} không tra được qua đường xác thực"
     if so is not None:
         for rec in (ghi.get("tu_xa.json") or {}).get("modules", []):
             if rec["id"] not in so.dang_chay:
