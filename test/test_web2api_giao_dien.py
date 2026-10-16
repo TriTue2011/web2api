@@ -1366,9 +1366,10 @@ def test_loai_la_tab_module_va_muc_can_cung_lat_voi_khung(trang, tmp_path, monke
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html#module-mang-gia")
         trang.cho("document.getElementById('muc-module')", mo_ta="mục của module")
-        # Tab riêng của module loại lạ: «Quay lại» trỏ tab đó (chưa có Studio), đường tương đối /m/<id>/.
-        ql = trang.js("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href')")
-        assert ql and ql.endswith("/m/mang-gia/index.html"), ql
+        # Tab riêng của module loại lạ nằm TRONG thanh Hệ thống (không ngang hàng Studio); chưa có Studio thì không có «Quay lại».
+        assert trang.js("!document.querySelector('[data-nav=\"quay-lai\"]')")
+        tab_md = trang.js("document.querySelector('[data-nav=\"m-mang-gia\"]')?.getAttribute('href')")
+        assert tab_md and tab_md.endswith("/m/mang-gia/index.html"), tab_md
         assert trang.js("[...document.querySelectorAll('#muc-module [data-muc]')].map((x) => x.dataset.muc)") == ["bang"]
         assert "«Tự động điều chỉnh» chưa mở" in trang.chu("#muc-module") and "chat" in trang.chu("#muc-module")
         assert not trang.js("!!document.querySelector('[data-muc=\"tu-dong\"]')")
@@ -1385,7 +1386,8 @@ def test_loai_la_tab_module_va_muc_can_cung_lat_voi_khung(trang, tmp_path, monke
         trang.di(w.url + "/He-thong.dc.html?lan=3#module-mang-gia")
         trang.cho("document.querySelectorAll('#muc-module [data-muc]').length === 2", mo_ta="mục tu-dong mở")
         trang.di(w.url + "/Studio.dc.html")
-        assert nav(trang)[:2] == ["studio", "m-mang-gia"]
+        # Thanh trên cùng chỉ có Studio: tab riêng của module đã chuyển vào thanh Hệ thống.
+        assert nav(trang)[:1] == ["studio"] and "m-mang-gia" not in nav(trang), nav(trang)
 
 
 def test_chi_tiet_khong_chen_html(trang, tmp_path, monkeypatch):

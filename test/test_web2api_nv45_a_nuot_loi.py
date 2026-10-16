@@ -48,11 +48,15 @@ DA_KIEM_TOAN = {
     ("app/ham_khoa.py", "kiem_tra_khong_symlink"),
     ("app/ham_khoa.py", "lay_khoa_chinh"),
     ("app/kham_pha.py", "tao"),
+    # Đã duyệt 17/10 (điều phối đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
+    ("app/khoa_khach.py", "module_ton_tai"),        # lỗi tra cứu → coi là «không có module» → phạm vi đích danh không khớp
     ("app/nguoi_dung.py", "giu_slot_scrypt"),
     ("app/nguoi_dung.py", "_kiem_tra_mat_khau_dong_bo"),
     ("app/novnc.py", "novnc_websocket_proxy"),
     ("app/phien_web.py", "thu_hoi_phien_nguoi_dung"),
+    ("app/phien_web.py", "la_phien_da_xac_nhan_lai"),  # ngày giờ hỏng → coi là CHƯA xác nhận lại (fail-closed)
     ("app/webhook.py", "_lay_webhook"),
+    ("modules/gemini-web/module.py", "dung"),       # đóng kết nối khi tắt module: lỗi đóng không làm hỏng việc tắt
     ("modules/muse/module.py", "_giai_ma_khoa_thiet_bi"),
     ("modules/muse2api/module.py", "bo"),
 }

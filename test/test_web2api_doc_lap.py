@@ -355,6 +355,7 @@ def test_module_mang_tab_web_la_doc_lap(du_lieu):
     mod_dir.mkdir(parents=True)
     manifest = {
         "id": mod_id,
+        "hang": "A",
         "ten": "Module Tab Lạ Độc Lập",
         "mo_ta": "Mô tả tính năng tab web lạ",
         "loai": "loai_la_uvw",

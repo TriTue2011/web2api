@@ -518,6 +518,7 @@ def test_module_tab_web_la_tu_hien_va_go_bien_mat(du_lieu):
     mod_dir.mkdir(parents=True)
     manifest = {
         "id": mod_id,
+        "hang": "A",
         "ten": "Module Lạ NV65",
         "mo_ta": "Mô tả module lạ NV65",
         "phien_ban": "1.0.0",
