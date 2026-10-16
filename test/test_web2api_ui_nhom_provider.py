@@ -219,6 +219,7 @@ def test_d_tab_provider_danh_sach_chon_chi_co_nguon_co_khoa_thu_gon_luc_dau(tran
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
         trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'provider'", han=15, mo_ta="vào tab Provider")
+        trang.cho("!!document.getElementById('chon-pv')", han=15, mo_ta="nút chọn provider")
 
         # Danh sách chọn ban đầu THU GỌN (menu listbox chưa mở, aria-expanded=false)
         assert trang.js("document.getElementById('chon-pv').getAttribute('aria-expanded')") == "false"
@@ -249,10 +250,12 @@ def test_e_xoa_khoa_cuoi_provider_bien_khoi_danh_sach_va_tu_chuyen_provider(tran
 
         # Chuyển sang tab Tài khoản để xoá khoá duy nhất của ai-hai
         trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+        trang.cho("!!document.querySelector('[data-nav-con=\"tai_khoan\"]')", han=5, mo_ta="menu con tai_khoan")
         trang.bam("document.querySelector('[data-nav-con=\"tai_khoan\"]')")
         trang.cho("document.querySelectorAll('[data-khoi-pv]').length === 2", han=15, mo_ta="2 khối tài khoản")
 
         # Mở khối ai-hai
+        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-hai\"]')", han=15, mo_ta="khối ai-hai")
         trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-hai\"]')")
         trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-hai\"]').length === 1", mo_ta="1 dòng khoá ai-hai")
 
@@ -269,9 +272,11 @@ def test_e_xoa_khoa_cuoi_provider_bien_khoi_danh_sach_va_tu_chuyen_provider(tran
 
         # Chuyển sang tab Provider: ai-hai biến khỏi danh sách chọn và provider đang chọn tự chuyển sang ai-mot
         trang.bam("document.querySelector('[data-nav=\"ai\"]')")
+        trang.cho("!!document.querySelector('[data-nav-con=\"provider\"]')", han=5, mo_ta="menu con provider")
         trang.bam("document.querySelector('[data-nav-con=\"provider\"]')")
         trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-mot'", han=15, mo_ta="tự chuyển sang ai-mot")
 
+        trang.cho("!!document.getElementById('chon-pv')", han=15, mo_ta="nút chọn provider")
         trang.bam("document.getElementById('chon-pv')")
         trang.cho("!!document.querySelector('[role=listbox]')", mo_ta="menu provider")
         ds_pv = trang.js("[...document.querySelectorAll('[data-pv]')].map(b => b.dataset.pv)")
@@ -396,6 +401,7 @@ def test_thu_tu_on_dinh_khong_phu_thuoc_thu_tu_them_khoa(trang, tmp_path, monkey
         # 2. Kiểm tra ở tab Provider: danh sách chọn provider cũng luôn là ai-hai rồi ai-mot
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
         trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'provider'", han=15, mo_ta="vào tab Provider")
+        trang.cho("!!document.getElementById('chon-pv')", han=15, mo_ta="nút chọn provider")
         trang.bam("document.getElementById('chon-pv')")
         trang.cho("!!document.querySelector('[role=listbox]')", mo_ta="menu provider")
         ds_pv = trang.js("[...document.querySelectorAll('[data-pv]')].map(b => b.dataset.pv)")
@@ -481,6 +487,13 @@ def lien_ket_khoa_nhieu(w, id_: str, keys: list[str]):
     assert r.status_code == 200 and r.json()["ok"], r.text
 
 
+def mo_nhom_model(trang, nhom: str = "chat", so_model: int = 52):
+    """Chờ nhóm model xuất hiện trên tab Provider, bấm mở và chờ đủ số model dựng xong."""
+    trang.cho(f"!!document.querySelector('[data-mo-nhom=\"{nhom}\"]')", han=15, mo_ta=f"nhóm {nhom} xuất hiện")
+    trang.bam(f"document.querySelector('[data-mo-nhom=\"{nhom}\"]')")
+    trang.cho(f"document.querySelectorAll('[data-model]').length === {so_model}", han=15, mo_ta=f"đủ {so_model} model")
+
+
 def test_bo_cuc_a_so_cot_dung_nguong_cac_kho(trang, tmp_path, monkeypatch):
     """(a) số cột đúng ngưỡng ở mỗi khổ: >= 4 ở 1900px, >= 3 ở 1280px, == 1 ở 390px (không cuộn ngang)."""
     with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
@@ -488,8 +501,7 @@ def test_bo_cuc_a_so_cot_dung_nguong_cac_kho(trang, tmp_path, monkeypatch):
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
         trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-haieu'", han=15)
-        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
-        trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15)
+        mo_nhom_model(trang, "chat", 52)
 
         # 1900x900: >= 4 cột
         trang.khung(1900, 900)
@@ -530,10 +542,15 @@ def test_bo_cuc_b_chieu_cao_o_model_gon(trang, tmp_path, monkeypatch):
         lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
-        trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15)
+        mo_nhom_model(trang, "chat", 52)
 
         trang.khung(1900, 900)
+        trang.cho("""(() => {
+            const els = [...document.querySelectorAll('[data-model]')];
+            if (els.length !== 52) return false;
+            const hs = els.map(e => e.getBoundingClientRect().height);
+            return Math.min(...hs) >= 24 && Math.max(...hs) <= 44;
+        })()""", han=5, mo_ta="kích thước ô model ổn định trong khoảng 24-44px")
         cao_max = trang.js("""(() => {
             const els = [...document.querySelectorAll('[data-model]')];
             return Math.max(...els.map(e => e.getBoundingClientRect().height));
@@ -552,8 +569,7 @@ def test_bo_cuc_c_khoang_cach_ten_va_cong_tac_trong_o(trang, tmp_path, monkeypat
         lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
-        trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15)
+        mo_nhom_model(trang, "chat", 52)
 
         trang.khung(1900, 900)
         kq = trang.js("""(() => {
@@ -584,16 +600,18 @@ def test_bo_cuc_d_dien_thoai_390px_khong_cuon_ngang(trang, tmp_path, monkeypatch
         trang.khung(390, 844, True)
         # Tab Provider có danh sách 52 model mở
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
-        trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15)
+        mo_nhom_model(trang, "chat", 52)
+        trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="bố cục 390px không tràn ngang ở Provider")
         scroll_pv = trang.js("document.documentElement.scrollWidth")
         inner_w = trang.js("window.innerWidth")
         assert scroll_pv <= inner_w, f"Tab Provider bị tràn ngang ở 390px: scrollWidth={scroll_pv} > innerWidth={inner_w}"
 
         # Tab Tài khoản có khối mở
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
+        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-haieu\"]')", han=15, mo_ta="khối ai-haieu xuất hiện")
         trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-haieu\"]')")
         trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-haieu\"]').length === 2", han=15)
+        trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="bố cục 390px không tràn ngang ở Tài khoản")
         scroll_tk = trang.js("document.documentElement.scrollWidth")
         assert scroll_tk <= inner_w, f"Tab Tài khoản bị tràn ngang ở 390px: scrollWidth={scroll_tk} > innerWidth={inner_w}"
 
@@ -606,26 +624,30 @@ def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatc
         lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
-        trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15)
+        mo_nhom_model(trang, "chat", 52)
 
         # 1. Ban đầu có 52 model
+        trang.cho("document.getElementById('dem-loc-md')?.innerText?.includes('52')", han=5, mo_ta="bộ đếm lọc ban đầu hiện 52")
         dem_dau = trang.chu("#dem-loc-md")
         assert "52" in dem_dau
 
         # 2. Gõ "05" vào ô lọc
+        trang.cho("!!document.getElementById('loc-md')", han=5, mo_ta="ô lọc sẵn sàng")
         trang.go("#loc-md", "05")
         trang.cho("document.querySelectorAll('[data-model]').length === 1", han=15, mo_ta="lọc chỉ còn model 05")
+        trang.cho("document.getElementById('dem-loc-md')?.innerText?.includes('1')", han=5, mo_ta="bộ đếm cập nhật sau khi lọc")
         dem_sau = trang.chu("#dem-loc-md")
         assert "1/52" in dem_sau or ("1" in dem_sau and "52" in dem_sau)
 
         # 3. Tắt model 05 đang hiển thị
+        trang.cho("!!document.querySelector('[data-cong-tac=\"nhieu/model-tro-chuyen-05\"]')", han=5)
         trang.bam("document.querySelector('[data-cong-tac=\"nhieu/model-tro-chuyen-05\"]')")
         trang.cho("document.querySelector('[data-cong-tac=\"nhieu/model-tro-chuyen-05\"]').getAttribute('aria-checked') === 'false'")
 
         # 4. Xoá lọc
         trang.js("(() => { const inp = document.getElementById('loc-md'); inp.value = ''; inp.dispatchEvent(new Event('input', {bubbles: true})); })()")
         trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15, mo_ta="xoá lọc trở lại 52 model")
+        trang.cho("document.getElementById('dem-loc-md')?.innerText?.includes('52')", han=5, mo_ta="bộ đếm cập nhật lại 52")
         dem_xoa = trang.chu("#dem-loc-md")
         assert "52" in dem_xoa
 
@@ -634,6 +656,7 @@ def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatc
         assert trang.js("document.querySelector('[data-cong-tac=\"nhieu/model-tro-chuyen-01\"]').getAttribute('aria-checked')") == "true"
 
         # 6. Thử tắt tất cả bằng «Bỏ chọn tất cả»
+        trang.cho("!!document.querySelector('[data-bo-chon-tat-ca=\"chat\"]')", han=5)
         trang.bam("document.querySelector('[data-bo-chon-tat-ca=\"chat\"]')")
         trang.cho("document.querySelectorAll('[data-cong-tac][aria-checked=\"false\"]').length === 52")
 
@@ -642,6 +665,7 @@ def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatc
         trang.cho("document.querySelectorAll('[data-model]').length === 9", han=15)
 
         # 8. Bấm «Chọn tất cả» trong khi đang lọc
+        trang.cho("!!document.querySelector('[data-chon-tat-ca=\"chat\"]')", han=5)
         trang.bam("document.querySelector('[data-chon-tat-ca=\"chat\"]')")
         trang.cho("document.querySelectorAll('[data-cong-tac][aria-checked=\"true\"]').length === 9")
 
@@ -671,6 +695,7 @@ def test_bo_cuc_f_tab_tai_khoan_so_cot_va_chi_tiet_full_hang_va_tom_tat(trang, t
         assert "1 lỗi" in tieu_de, f"Phải có '1 lỗi', thực tế: {tieu_de}"
 
         # Mở khối provider
+        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-haieu\"]')", han=15)
         trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-haieu\"]')")
         trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-haieu\"]').length === 3", han=15)
 
@@ -710,10 +735,15 @@ def test_bo_cuc_g_giam_chieu_cao_52_model_o_1900px(trang, tmp_path, monkeypatch)
         lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
-        trang.bam("document.querySelector('[data-mo-nhom=\"chat\"]')")
-        trang.cho("document.querySelectorAll('[data-model]').length === 52", han=15)
+        mo_nhom_model(trang, "chat", 52)
 
         trang.khung(1900, 900)
+        trang.cho("""(() => {
+            const el = document.querySelector('[data-danh-sach-md="chat"]');
+            if (!el || window.innerWidth !== 1900) return false;
+            const h = el.scrollHeight;
+            return h >= 300 && h <= 850;
+        })()""", han=5, mo_ta="chiều cao danh sách 52 model ở 1900px ổn định trong khoảng 300-850px")
         scroll_height = trang.js("document.querySelector('[data-danh-sach-md=\"chat\"]').scrollHeight")
         # Bố cục cũ: 52 x 65 px = 3380 px. Yêu cầu <= 25% là <= 850 px.
         assert scroll_height <= 850, f"Chiều cao danh sách 52 model ({scroll_height}px) phải <= 850px (25% của 3380px)"
