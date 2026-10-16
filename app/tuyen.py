@@ -37,6 +37,7 @@ from app import (
     phien as phien_mod,
     phien_web as phien_web_mod,
     sao_luu as sao_luu_mod,
+    tai_khoan_hang_loat as tai_khoan_hang_loat_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
@@ -98,6 +99,7 @@ toi = APIRouter(prefix="/api/toi", dependencies=PW)
 nguoi_dung = APIRouter(prefix="/api/nguoi-dung", dependencies=QT)
 danh_tinh = APIRouter(prefix="/api/danh-tinh", dependencies=QT)
 bao_mat = APIRouter(prefix="/api/bao-mat", dependencies=QT)
+tai_khoan = APIRouter(prefix="/api/tai-khoan", dependencies=QT)
 
 
 def _nhac_lai(chuoi: str) -> str:
@@ -2579,6 +2581,119 @@ async def go_danh_tinh_khoi_provider(id: str, request: Request):
         nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"danh_tinh": ban_ghi}
+
+
+# ───────────── TÀI KHOẢN HÀNG LOẠT (QT) — NV67 nhóm 3, việc 7 ─────────────
+#
+# Dán hàng loạt + đăng nhập lần lượt (chỉ phần máy chủ, chưa có giao diện web).
+# Bí mật thô (mật khẩu/TOTP/cookie) KHÔNG BAO GIỜ xuất hiện trong phản hồi, log
+# hay nhật ký: `dan-hang-loat` chỉ trả dong/email/loai; lượt chạy xoá bí mật
+# ngay sau khi từng tài khoản đăng nhập xong (xem app/tai_khoan_hang_loat.py).
+
+def _kiem_module_da_cai_tai_khoan(request: Request, module_id: str) -> None:
+    """module_id phải là module đã cài; chưa cài → 404 module_chua_cai."""
+    if request.app.state.so.tien_to_cua(module_id) is None:
+        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa được cài.", code="module_chua_cai")
+
+
+def _ham_dang_nhap_cua_module(request: Request, module_id: str):
+    """Hàm `dang_nhap` theo hợp đồng KetQuaDangNhap của module; None nếu module
+    chưa triển khai (dòng đó sẽ bo_qua, không phải lỗi)."""
+    mod = request.app.state.so.dang_chay.get(module_id)
+    ham = getattr(mod, "dang_nhap", None) if mod is not None else None
+    return ham if callable(ham) else None
+
+
+@tai_khoan.post("/dan-hang-loat")
+async def dan_hang_loat(request: Request):
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    van_ban = _chuoi_tuy_chon(than, "van_ban") or ""
+    danh_sach, loi, bo_trung = tai_khoan_hang_loat_mod.tach_dong(van_ban)
+    try:
+        tai_khoan = [
+            {"dong": tk.dong, "email": tk.email, "loai": tk.loai} for tk in danh_sach
+        ]
+    finally:
+        # Văn bản dán không dùng nữa sau bước tách — xoá bí mật khỏi bộ nhớ ngay.
+        for tk in danh_sach:
+            tk.xoa_bi_mat()
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Tách danh sách dán hàng loạt cho module «{_nhac_lai(module_id)}»: "
+        f"{len(tai_khoan)} dòng đúng, {len(loi)} dòng lỗi",
+        module=module_id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {
+        "tai_khoan": tai_khoan,
+        "loi": [{"dong": l.dong, "loi": l.loi} for l in loi],
+        "bo_trung": [{"dong": b.dong, "email": b.email} for b in bo_trung],
+    }
+
+
+@tai_khoan.post("/dang-nhap-hang-loat/bat-dau")
+async def bat_dau_dang_nhap_hang_loat(request: Request):
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    van_ban = _chuoi_tuy_chon(than, "van_ban") or ""
+    bo_qua_email = than.get("bo_qua_email", [])
+    if not isinstance(bo_qua_email, list) or any(not isinstance(e, str) for e in bo_qua_email):
+        raise LoiOpenAI(400, "«bo_qua_email» phải là danh sách chuỗi.", code="invalid_value")
+    bo_qua = {e.strip().lower() for e in bo_qua_email}
+
+    danh_sach, _loi, _trung = tai_khoan_hang_loat_mod.tach_dong(van_ban)
+    giu = [tk for tk in danh_sach if tk.email.strip().lower() not in bo_qua]
+    giu_id = {id(tk) for tk in giu}
+    for tk in danh_sach:
+        if id(tk) not in giu_id:
+            tk.xoa_bi_mat()
+    if not giu:
+        raise LoiOpenAI(400, "Không có tài khoản hợp lệ nào để chạy.", code="khong_co_tai_khoan")
+
+    ham_dang_nhap = _ham_dang_nhap_cua_module(request, module_id)
+    quan_ly = request.app.state.quan_ly_luot_chay
+    try:
+        thong_tin = quan_ly.bat_dau(giu, ham_dang_nhap, module_id)
+    except tai_khoan_hang_loat_mod.DaCoLuotChay:
+        raise LoiOpenAI(409, "Đã có một lượt đăng nhập hàng loạt đang chạy.", code="da_co_luot_chay") from None
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Bắt đầu lượt đăng nhập hàng loạt cho module «{_nhac_lai(module_id)}»: "
+        f"{thong_tin['tong']} tài khoản",
+        module=module_id,
+        luot_id=thong_tin["luot_id"],
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return thong_tin
+
+
+@tai_khoan.get("/dang-nhap-hang-loat/trang-thai")
+def trang_thai_dang_nhap_hang_loat(request: Request):
+    tt = request.app.state.quan_ly_luot_chay.trang_thai()
+    if tt is None:
+        raise LoiOpenAI(404, "Chưa có lượt đăng nhập hàng loạt nào.", code="luot_khong_co")
+    return tt
+
+
+@tai_khoan.post("/dang-nhap-hang-loat/dung")
+def dung_dang_nhap_hang_loat(request: Request):
+    if not request.app.state.quan_ly_luot_chay.dung():
+        raise LoiOpenAI(404, "Không có lượt đăng nhập hàng loạt nào đang chạy.", code="luot_khong_chay")
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        "Dừng lượt đăng nhập hàng loạt theo yêu cầu",
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"ok": True}
 
 
 # ───────────── Sao lưu và khôi phục (/api/sao-luu, /api/khoi-phuc) ─────────────

@@ -63,6 +63,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Kho danh tính + API danh tính (`GET`/`POST /api/danh-tinh`, `GET`/`DELETE /api/danh-tinh/{id}`, `POST …/{id}/gan|go`): một email một lần, gắn nhiều provider, xoá bị chặn khi còn tài khoản trỏ tới, kho mã hoá AES-256-GCM quyền 0600 | Có — kiểm với máy chủ giả (NV67 nhóm 1, việc 1–2); **chưa có giao diện** | 17/10/2026 |
 | Sao lưu gồm danh tính: `bi_mat/danh_tinh.json` có bộ kiểm riêng (id đúng khuôn `dt-<16hex>`, email đúng khuôn, không trùng id/email; sai → `400` `sao_luu_khong_hop_le` nêu tên tệp, không ghi đè); bản không mật khẩu không chứa bí mật | Có — kiểm với máy chủ giả (NV67 nhóm 5, việc 11) | 17/10/2026 |
 | Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
+| API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -420,6 +421,24 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
   luot = LuotChay(ds, module.dang_nhap)  # module triển khai hợp đồng KetQuaDangNhap
   tom_tat = await luot.chay()  # TomTatLuotChay(tong, xong, loi, bo_qua, ket_qua)
   ```
+
+- **API việc 7** (`app/tuyen.py`, router `/api/tai-khoan`, chỉ quản trị; `QuanLyLuotChay`
+  giữ lượt đang chạy / vừa xong trong `app.state.quan_ly_luot_chay`):
+  - `POST /api/tai-khoan/dan-hang-loat` (`module_id`, `van_ban`) → `{tai_khoan:
+    [{dong, email, loai}], loi: [{dong, loi}], bo_trung}` — KHÔNG trả mật khẩu/TOTP/cookie;
+    bí mật bị xoá khỏi bộ nhớ ngay sau khi tách.
+  - `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau` (`module_id`, `van_ban`,
+    `bo_qua_email` tuỳ chọn) → `{luot_id, module_id, tong}`; lượt chạy trong task nền.
+    Đang có lượt chạy → `409` `da_co_luot_chay`. Module chưa triển khai `dang_nhap`
+    → mọi dòng `bo_qua` với mã `module_chua_ho_tro_dang_nhap_tu_dong` (không phải lỗi).
+  - `GET /api/tai-khoan/dang-nhap-hang-loat/trang-thai` → `{luot_id, trang_thai_luot:
+    dang_chay|hoan_thanh, ket_qua: [{dong, email, trang_thai, ma_loi, ma_trang_thai}],
+    tom_tat}`; chưa có lượt nào → `404` `luot_khong_co`.
+  - `POST /api/tai-khoan/dang-nhap-hang-loat/dung` → dừng sau tài khoản đang chạy,
+    giữ kết quả đã xong; không có lượt đang chạy → `404` `luot_khong_chay`.
+  - «Chạy tiếp sau lỗi/dừng»: gọi `bat-dau` lại với cùng `van_ban` + `bo_qua_email`
+    (email đã xong, lấy từ `trang-thai`) — bí mật không lưu giữa các lượt nên văn bản
+    dán phải gửi lại.
 
 ### Giao diện (`web/`)
 
@@ -2287,6 +2306,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `DELETE /api/danh-tinh/{id}` | Có | Xoá danh tính; còn tài khoản provider trỏ tới → `409` `con_tai_khoan` |
 | `POST /api/danh-tinh/{id}/gan` | Có | Gắn danh tính vào một module provider đã cài (`module_id`); lũy đẳng |
 | `POST /api/danh-tinh/{id}/go` | Có | Gỡ danh tính khỏi một module provider (chưa gắn → `404` `khong_gan`) |
+| `POST /api/tai-khoan/dan-hang-loat` | Có | Tách văn bản dán hàng loạt theo provider (`module_id`, `van_ban`) → dòng đúng/sai kèm số dòng; KHÔNG trả mật khẩu/TOTP/cookie (NV67 nhóm 3, việc 7) |
+| `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau` | Có | Khởi động lượt đăng nhập lần lượt (`module_id`, `van_ban`, `bo_qua_email` tuỳ chọn); đang có lượt chạy → `409` `da_co_luot_chay`; module chưa hỗ trợ → dòng `bo_qua` |
+| `GET /api/tai-khoan/dang-nhap-hang-loat/trang-thai` | Có | Tiến độ từng dòng (`trang_thai_luot`, `ket_qua`, `tom_tat`); chưa có lượt nào → `404` `luot_khong_co` |
+| `POST /api/tai-khoan/dang-nhap-hang-loat/dung` | Có | Dừng lượt đang chạy (giữ kết quả đã xong); không có lượt đang chạy → `404` `luot_khong_chay` |
 | `GET /api/bao-mat/trang-thai` | Có | Trạng thái bảo mật cho trang quản trị: cờ cổng IP quản trị bật/tắt (`cong_ip_quan_tri_trong`), chuỗi băng rôn tĩnh (`bang_ron`) và số mạng cấu hình (`so_mang`); không lộ IP nội bộ |
 | `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên). Giao diện: trang «Phiên tài khoản» (`web/He-thong-Phien.dc.html`) — nhóm theo module (khối thu gọn, đóng mặc định), lưới thẻ (tài khoản, trạng thái, hạn, lần kiểm cuối), nút «Kiểm ngay» và «Xoá phiên» (xác nhận hai bước) |
 | `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |

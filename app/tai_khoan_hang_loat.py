@@ -422,3 +422,153 @@ class LuotChay:
             bo_qua=bo_qua,
             ket_qua=list(self._ket_qua),
         )
+
+
+# ── Quản lý lượt chạy cho API (NV67 nhóm 3, việc 7) ────────────────────────────
+
+#: Mã «dòng» khi module chưa triển khai hợp đồng `dang_nhap` — KHÔNG phải lỗi:
+#: không tính vào hỏng liên tiếp, người dùng vẫn dán cookie hoặc đăng nhập tay
+#: qua trình duyệt từ xa dùng chung cho dòng đó.
+MA_CHUA_HO_TRO_TU_DONG = "module_chua_ho_tro_dang_nhap_tu_dong"
+
+_TRANG_THAI_LUOT_DANG_CHAY = "dang_chay"
+_TRANG_THAI_LUOT_HOAN_THANH = "hoan_thanh"
+
+
+def _ban_ghi_thanh_dict(ban_ghi: BanGhiKetQua) -> dict:
+    """BanGhiKetQua → dict JSON được (không bao giờ chứa bí mật)."""
+    return {
+        "dong": ban_ghi.dong,
+        "email": ban_ghi.email,
+        "trang_thai": ban_ghi.trang_thai,
+        "ma_loi": ban_ghi.ma_loi,
+        "ma_trang_thai": ban_ghi.ma_trang_thai,
+    }
+
+
+def _tom_tat_tu_ket_qua(ket_qua: list[BanGhiKetQua]) -> dict:
+    return {
+        "tong": len(ket_qua),
+        "xong": sum(1 for b in ket_qua if b.trang_thai == _TRANG_THAI_XONG),
+        "loi": sum(1 for b in ket_qua if b.trang_thai == _TRANG_THAI_LOI),
+        "bo_qua": sum(1 for b in ket_qua if b.trang_thai == _TRANG_THAI_BO_QUA),
+    }
+
+
+class QuanLyLuotChay:
+    """Giữ lượt đăng nhập hàng loạt đang chạy / vừa xong cho tầng API.
+
+    Chỉ MỘT lượt chạy nền một lúc (quyết định của chủ kho NV67): `bat_dau` trong
+    lúc lượt cũ còn chạy → `DaCoLuotChay`. «Tiếp tục sau lỗi/dừng» không cần giữ
+    bí mật giữa các lượt: client gọi `bat_dau` lại kèm `bo_qua_email` (email đã
+    xong, lấy từ `trang_thai`) cùng văn bản dán gốc.
+
+    `tao_luot`: factory `(tai_khoan, ham_dang_nhap) -> LuotChay` — mặc định là
+    `LuotChay`; test truyền factory với đồng hồ giả để đo giãn cách mà không
+    chờ thật.
+    """
+
+    def __init__(self, tao_luot=None):
+        self._khoa = threading.Lock()
+        self._tao_luot = tao_luot or LuotChay
+        self._hien_tai: dict | None = None
+        self._dem = 0
+
+    async def _chay_nen(self, luot: LuotChay, ket_thuc: list) -> None:
+        """Chạy lượt trong task nền; ghi mốc kết thúc để `trang_thai` biết đã xong."""
+        try:
+            await luot.chay()
+        except DaCoLuotChay:
+            # Không thể xảy ra qua bat_dau (đã kiểm task.done), nhưng không để
+            # task nền nổ tung nếu có race.
+            pass
+        finally:
+            ket_thuc.append(time.monotonic())
+
+    def bat_dau(self, tai_khoan: list[DongDaTach], ham_dang_nhap,
+                module_id: str) -> dict:
+        """Khởi động lượt chạy nền. Phải gọi trong vòng sự kiện đang chạy.
+
+        `ham_dang_nhap=None` (module chưa triển khai hợp đồng) → mọi dòng
+        `bo_qua` ngay với `MA_CHUA_HO_TRO_TU_DONG`, không tạo task nền.
+        Bí mật của các dòng không được chạy bị xoá ngay tại đây.
+        """
+        with self._khoa:
+            if self._hien_tai is not None:
+                task = self._hien_tai["task"]
+                if task is not None and not task.done():
+                    # Đừng giữ bí mật của lượt mới khi từ chối.
+                    for tk in tai_khoan:
+                        tk.xoa_bi_mat()
+                    raise DaCoLuotChay("đã có một lượt đăng nhập hàng loạt đang chạy")
+            self._dem += 1
+            luot_id = f"luot-{self._dem}"
+            bat_dau_luc = time.monotonic()
+
+            if ham_dang_nhap is None or not tai_khoan:
+                ket_qua_rieng = [
+                    BanGhiKetQua(
+                        tk.dong, tk.email, _TRANG_THAI_BO_QUA,
+                        ma_loi=MA_CHUA_HO_TRO_TU_DONG if ham_dang_nhap is None else "",
+                    )
+                    for tk in tai_khoan
+                ]
+                for tk in tai_khoan:
+                    tk.xoa_bi_mat()
+                self._hien_tai = {
+                    "luot_id": luot_id,
+                    "module_id": module_id,
+                    "luot": None,
+                    "task": None,
+                    "ket_qua_rieng": ket_qua_rieng,
+                    "bat_dau_luc": bat_dau_luc,
+                    "ket_thuc_luc": [bat_dau_luc],
+                }
+            else:
+                luot = self._tao_luot(list(tai_khoan), ham_dang_nhap)
+                ket_thuc: list = []
+                task = asyncio.create_task(self._chay_nen(luot, ket_thuc))
+                self._hien_tai = {
+                    "luot_id": luot_id,
+                    "module_id": module_id,
+                    "luot": luot,
+                    "task": task,
+                    "ket_qua_rieng": None,
+                    "bat_dau_luc": bat_dau_luc,
+                    "ket_thuc_luc": ket_thuc,
+                }
+            return {"luot_id": luot_id, "module_id": module_id, "tong": len(tai_khoan)}
+
+    def trang_thai(self) -> dict | None:
+        """Tiến độ lượt hiện tại; None nếu chưa từng có lượt nào."""
+        with self._khoa:
+            ht = self._hien_tai
+            if ht is None:
+                return None
+            if ht["luot"] is not None:
+                ket_qua = ht["luot"].ket_qua
+                xong_chua = ht["task"].done()
+            else:
+                ket_qua = list(ht["ket_qua_rieng"])
+                xong_chua = True
+            ket_thuc = ht["ket_thuc_luc"][0] if ht["ket_thuc_luc"] else None
+            return {
+                "luot_id": ht["luot_id"],
+                "module_id": ht["module_id"],
+                "trang_thai_luot": _TRANG_THAI_LUOT_HOAN_THANH if xong_chua else _TRANG_THAI_LUOT_DANG_CHAY,
+                "bat_dau_luc": ht["bat_dau_luc"],
+                "ket_thuc_luc": ket_thuc,
+                "ket_qua": [_ban_ghi_thanh_dict(b) for b in ket_qua],
+                "tom_tat": _tom_tat_tu_ket_qua(ket_qua),
+            }
+
+    def dung(self) -> bool:
+        """Yêu cầu dừng lượt đang chạy. Trả False nếu không có lượt nào đang chạy."""
+        with self._khoa:
+            ht = self._hien_tai
+            if ht is None or ht["luot"] is None:
+                return False
+            if ht["task"].done():
+                return False
+            ht["luot"].dung()
+            return True

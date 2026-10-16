@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tai_khoan_hang_loat, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -77,6 +77,7 @@ async def lifespan(app: FastAPI):
     so = SoModule()
     app.state.so = so
     await so.khoi_dong()
+    app.state.quan_ly_luot_chay = tai_khoan_hang_loat.QuanLyLuotChay()
     ng = NguonGit(so)
     app.state.nguon_git = ng
     ng.bat_dau()
@@ -397,6 +398,7 @@ app.include_router(tuyen.dang_xuat)
 app.include_router(tuyen.toi)
 app.include_router(tuyen.nguoi_dung)
 app.include_router(tuyen.danh_tinh)
+app.include_router(tuyen.tai_khoan)
 app.include_router(tuyen.bao_mat)
 
 
