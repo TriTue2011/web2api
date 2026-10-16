@@ -1443,6 +1443,7 @@ async def tao_khoa_khach(request: Request):
     ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
         nhan=than.get("nhan", ""),
         pham_vi=than.get("pham_vi"),
+        het_han=than.get("het_han"),
     )
     return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
 
@@ -1470,12 +1471,15 @@ async def xoay_khoa_khach(id_: str, request: Request):
 @khoa_khach.patch("/{id_}")
 async def sua_khoa_khach(id_: str, request: Request):
     than = await _than_json(request)
-    kq = khoa_khach_mod.sua_khoa(
-        id_khoa=id_,
-        bat=_lay_bool(than, "bat", None),
-        nhan=than.get("nhan"),
-        pham_vi=than.get("pham_vi"),
-    )
+    kwargs: dict[str, Any] = {
+        "id_khoa": id_,
+        "bat": _lay_bool(than, "bat", None),
+        "nhan": than.get("nhan"),
+        "pham_vi": than.get("pham_vi"),
+    }
+    if "het_han" in than:
+        kwargs["het_han"] = than.get("het_han")
+    kq = khoa_khach_mod.sua_khoa(**kwargs)
     return {"ok": True, "khoa": kq}
 
 
@@ -1485,12 +1489,15 @@ async def sua_khoa_khach_khong_path(request: Request):
     id_ = than.get("id")
     if not id_:
         raise LoiOpenAI(400, "Thiếu trường «id» trong thân yêu cầu.")
-    kq = khoa_khach_mod.sua_khoa(
-        id_khoa=id_,
-        bat=_lay_bool(than, "bat", None),
-        nhan=than.get("nhan"),
-        pham_vi=than.get("pham_vi"),
-    )
+    kwargs: dict[str, Any] = {
+        "id_khoa": id_,
+        "bat": _lay_bool(than, "bat", None),
+        "nhan": than.get("nhan"),
+        "pham_vi": than.get("pham_vi"),
+    }
+    if "het_han" in than:
+        kwargs["het_han"] = than.get("het_han")
+    kq = khoa_khach_mod.sua_khoa(**kwargs)
     return {"ok": True, "khoa": kq}
 
 
@@ -2198,7 +2205,8 @@ async def tao_khoa_toi(request: Request):
                 raise LoiOpenAI(403, f"Không thể yêu cầu phạm vi vượt quá giới hạn (thiếu «{_nhac_lai(s)}»).",
                                 loai="insufficient_scope", code="insufficient_scope")
 
-    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(nhan=nhan, pham_vi=pv_yc, chu_id=nd["id"])
+    het_han = than.get("het_han")
+    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(nhan=nhan, pham_vi=pv_yc, chu_id=nd["id"], het_han=het_han)
     return {"khoa": ban_ghi, "khoa_tho": khoa_tho}
 
 

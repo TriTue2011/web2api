@@ -629,6 +629,9 @@ class MiddlewareNhatKyCuocGoi:
                 if trang_thai.get("khach_id"):
                     from app.khoa_khach import ra_dong_thoi
                     ra_dong_thoi(trang_thai.get("khach_id"))
+                if trang_thai.get("v1_dong_thoi"):
+                    from app.khoa_khach import ra_dong_thoi_toan_cuc
+                    ra_dong_thoi_toan_cuc()
             return
 
         bat_dau = time.perf_counter()
@@ -678,6 +681,9 @@ class MiddlewareNhatKyCuocGoi:
             if trang_thai.get("khach_id"):
                 from app.khoa_khach import ra_dong_thoi
                 ra_dong_thoi(trang_thai.get("khach_id"))
+            if trang_thai.get("v1_dong_thoi"):
+                from app.khoa_khach import ra_dong_thoi_toan_cuc
+                ra_dong_thoi_toan_cuc()
             ms_chay = round((time.perf_counter() - bat_dau) * 1000, 1)
             dut = ma_http is not None and not xong  # đã gửi đầu phản hồi mà luồng không trọn
             ma = ma_http if ma_http is not None else (500 if loi else 499)

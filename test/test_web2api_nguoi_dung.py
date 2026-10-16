@@ -692,10 +692,10 @@ def test_25_tao_khoa_toi_thieu_truong_bang_tran_va_tran_rong(moi_truong):
 
 
 def test_26_duong_quan_tri_khoa_khach_rong_khong_thanh_tat_ca(moi_truong):
-    """Điểm 1 (đường quản trị): không nêu pham_vi vẫn là «*» (hợp đồng cũ), nhưng [] / phần tử sai → 400, bat phải là bool."""
+    """Điểm 1 (đường quản trị): không nêu pham_vi mặc định là ["chat"], nhưng [] / phần tử sai → 400, bat phải là bool."""
     client, _ = moi_truong
     r = client.post("/api/khoa-khach", headers=QT_HDR, json={"nhan": "k"})
-    assert r.status_code == 200 and r.json()["khoa"]["pham_vi"] == ["*"]
+    assert r.status_code == 200 and r.json()["khoa"]["pham_vi"] == ["chat"]
     id_k = r.json()["khoa"]["id"]
     for pv in ([], ["", " "], [1], "chat", ["CHAT"]):
         r = client.post("/api/khoa-khach", headers=QT_HDR, json={"nhan": "k", "pham_vi": pv})
