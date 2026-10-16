@@ -45,6 +45,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Phụ thuộc module (`can_module` + đếm tham chiếu): cài thì đề nghị cài cái thiếu (không tự cài lén), gỡ cái đang được cần → `409`, gỡ provider cuối thì hỏi giữ hay gỡ cái chung | Có — kiểm bằng test NV73 | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
+| Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
@@ -1374,6 +1375,14 @@ không có trong ảnh web2api nên module tự cài đặt luồng đó bằng 
 - Mạng ra tới `gemini.google.com` (khớp `tai_nguyen.mang_ra` trong manifest).
 - RAM/đĩa: chưa đo.
 
+**Gắn danh tính chung (NV77).** Mỗi tài khoản có thể gắn một danh tính trong sổ danh tính của lõi bằng khoá phụ
+`danh_tinh` gửi kèm khi cài — danh sách cùng thứ tự với `cookies`, mỗi phần tử là id danh tính (`dt-…`) hoặc
+`null` (không gắn). Tài khoản chưa gắn chạy y như trước. Gắn rồi thì tên hiển thị theo danh tính (nhãn, không thì
+email che dạng `b***@gmail.com`) và module đăng ký tham chiếu với lõi: xoá danh tính còn tài khoản trỏ tới bị
+chặn `409 con_tai_khoan`. Liên kết được nhớ trong kho riêng của module theo hash cookie nên bền qua khởi động mà
+không cần gửi lại; gửi `danh_tinh` kèm `null` để gỡ gắn. Module khai `can_module: ["vnc-xa"]` (dùng chung trình
+duyệt từ xa khi cần đăng nhập tay qua noVNC).
+
 **Cách cài.**
 
 1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "gemini-web"`.
@@ -1384,6 +1393,83 @@ không có trong ảnh web2api nên module tự cài đặt luồng đó bằng 
      -d '{"cau_hinh": {"cookies": ["__Secure-1PSID=<dán cookie>; __Secure-1PSIDTS=<dán cookie>"]}}' \
      $W/api/modules/gemini-web/cai
    ```
+
+---
+
+### Module chatgpt-web — ChatGPT Web (chatgpt.com, Bearer token)
+
+**Mô tả.** Trò chuyện với ChatGPT bản web qua API web nội bộ của chatgpt.com
+(`POST /backend-api/f/conversation`, SSE), xác thực bằng Bearer access token do
+người dùng dán — **miễn phí, không cần API key, không browser, không tự đăng
+nhập**. Luồng giao tiếp học từ kho tham khảo `chatgpt2api`
+(`services/openai_backend_api.py`, tự cài đặt bằng `httpx`): kiểm token bằng
+`GET /backend-api/me` → POST hội thoại với payload `{action: "next", messages,
+model, parent_message_id, …}` → bóc SSE lấy `message.content.parts` của
+assistant; stream tính delta giữa các sự kiện. Mã nguồn: `modules/chatgpt-web/`.
+Tiền tố model: `chatgpt-web` (`chatgpt-web/4o`, `chatgpt-web/4o-mini`,
+`chatgpt-web/4.1`, `chatgpt-web/4.1-mini`, `chatgpt-web/o3`, `chatgpt-web/o4-mini`).
+
+**KHÁC các module web trước:** mỗi cấu hình có thể gắn `danh_tinh_id` (id `dt-…`
+trong kho danh tính lõi) — một Gmail nhập một lần ở lõi, module chỉ giữ token
+của mình trỏ về danh tính đó. Lúc cài, module kiểm danh tính tồn tại (không có
+→ lỗi rõ ràng) và tự ghi mình vào sổ `gan` của danh tính (lũy đẳng) để lõi chặn
+xoá danh tính còn tài khoản trỏ tới; hiển thị theo danh tính với email đã che.
+Tài khoản cũ chưa gắn danh tính vẫn chạy y như trước.
+
+**Cần gì.**
+- Một hoặc nhiều Bearer access token của tab chatgpt.com đã đăng nhập (DevTools
+  F12 → Application → Local Storage/cookie phiên). Token hết hạn thì dán lại
+  (module chưa tự làm mới token).
+- (Tuỳ chọn) một danh tính trong kho danh tính lõi (`/api/danh-tinh`).
+- Mạng ra tới `chatgpt.com` (khớp `tai_nguyen.mang_ra` trong manifest).
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "chatgpt-web"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/chatgpt-web`
+3. Cài đặt cấu hình:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"tai_khoan": ["<dán token>"], "danh_tinh_id": "dt-<id nếu có>"}}' \
+     $W/api/modules/chatgpt-web/cai
+   ```
+
+   Token lưu riêng trong kho bí mật (quyền 0600), chỉ hiện dạng che `…abcd`,
+   không bao giờ hiện lại hay vào log. Lúc cài, module kiểm từng token bằng
+   `GET /backend-api/me` (rẻ, không tốn lượt chat); token bị 401/403 bị đánh dấu
+   hỏng, token lỗi tạm (5xx/mạng) vẫn được thử lại ở lượt sau.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `tai_khoan` | Có | Danh sách Bearer token — mỗi phần tử là một tài khoản (tự xoay vòng khi lỗi); lưu riêng trong kho bí mật, chỉ hiện dạng che |
+| `danh_tinh_id` | Không | ID danh tính (`dt-…`) trong kho danh tính lõi; gắn để hiển thị theo danh tính (email che) và để lõi chặn xoá danh tính còn tài khoản trỏ tới |
+| `co_so_url` | Không | Địa chỉ gốc thay cho `https://chatgpt.com` — CHỈ dùng cho kiểm thử với máy chủ giả; bị kiểm chống SSRF |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "chatgpt-web/4o", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+Model: `chatgpt-web/4o` (mặc định), `chatgpt-web/4o-mini`, `chatgpt-web/4.1`,
+`chatgpt-web/4.1-mini`, `chatgpt-web/o3`, `chatgpt-web/o4-mini`. Tên `auto`
+(hoặc bỏ trống) dùng model mặc định; tên lạ bị chỉ đích danh → `400` (không âm
+thầm chạy model khác).
+
+**Sự cố thường gặp.**
+- `401` «Mọi tài khoản chatgpt-web đều bị từ chối» — token hết hạn hoặc không
+  hợp lệ: dán lại token mới. Có nhiều token thì module tự chuyển sang token kế
+  khi tài khoản hiện tại bị 401/403/429/5xx; tài khoản từng lỗi vẫn được thử lại
+  ở lượt sau (không bao giờ chặn lựa chọn cuối) và khoẻ lại ngay khi trả lời được.
+- `429` «bị giới hạn lượt» — đợi một lúc rồi thử lại.
+- `502`/`504` — phía chatgpt.com lỗi hoặc chậm: thử lại sau. Thông báo chỉ nêu
+  mã và kiểu lỗi; nội dung đáp án thô của OpenAI và token không bao giờ lộ.
 
 ---
 
