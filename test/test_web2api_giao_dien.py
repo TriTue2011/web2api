@@ -701,6 +701,94 @@ def test_model_anh_nhom_tao_anh_va_studio_ve_anh(trang, tmp_path, monkeypatch):
         trang.cho(f"JSON.stringify({chon}) === JSON.stringify(['gia/ve-1'])", mo_ta="Vẽ ảnh chỉ liệt kê model ảnh")
 
 
+def _module_gia_model(id_: str, tien_to: str, cung_cap: tuple[str, ...], cac_model: list[dict]) -> dict[str, bytes]:
+    manifest = {
+        "id": id_,
+        "ten": f"AI {id_}",
+        "mo_ta": f"Module giả {id_}",
+        "phien_ban": "1.0.0",
+        "loai": "ai",
+        "loai_ten": "AI",
+        "loai_thu_tu": 10,
+        "giao_thuc": "openai",
+        "tien_to": tien_to,
+        "cung_cap": list(cung_cap),
+        "truong_cau_hinh": [
+            {
+                "khoa": "api_keys",
+                "nhan": "Khoá API",
+                "kieu": "danh_sach_bi_mat",
+                "bat_buoc": True,
+                "mac_dinh": None,
+            }
+        ],
+        "tai_nguyen": {"ram_them_mb": 64, "dia_mb": None, "gpu": False, "mang_ra": [], "ghi_chu": ""},
+    }
+    phuong_thuc_anh = """
+    async def anh(self, body):
+        return 200, {"content-type": "application/json"}, b'{"created": 1, "data": []}'
+""" if "anh" in cung_cap else ""
+    ma = f"""
+class Module:
+    def __init__(self, manifest):
+        self.manifest = manifest
+        self.tien_to = manifest["tien_to"]
+        self.khoa = []
+    def nap(self, cau_hinh):
+        self.khoa = list(cau_hinh.get("api_keys") or [])
+    async def cai(self, cau_hinh):
+        return {{"ok": True, "ket_qua_tung_khoa": [{{"khoa": "…1111", "ok": True, "do_tre_ms": 5, "so_model": len({cac_model!r}), "loi": None}}], "cau_hinh_luu": cau_hinh}}
+    async def chat(self, body, stream):
+        return 200, {{"content-type": "application/json"}}, b'{{"choices": [{{"message": {{"content": "ok"}}}}]}}'
+{phuong_thuc_anh}
+    async def models(self):
+        return {cac_model!r}
+    async def suc_khoe(self):
+        return {{"ok": True, "khoa": [{{"khoa": "…1111", "ok": True, "do_tre_ms": 5, "so_model": len({cac_model!r}), "loi": None}}]}}
+    async def dung(self):
+        pass
+"""
+    return {
+        "manifest.json": json.dumps(manifest, ensure_ascii=False).encode(),
+        "module.py": ma.encode(),
+    }
+
+
+def test_studio_hien_model_ca_hai_module_khi_mot_module_khai_mot_khong(trang, tmp_path, monkeypatch):
+    """Khi có hai module đã liên kết:
+    - Module A (chat + anh): không khai `kha_nang` cho model chat, model ảnh khai `["anh"]`;
+    - Module B (chat): model chat khai `["chat"]`.
+    Studio không được để module B làm mất model chat của module A:
+    - Chế độ Trò chuyện hiện model của CẢ HAI (A lẫn B), model ảnh của A không lọt vào Trò chuyện;
+    - Chế độ Vẽ ảnh hiện model ảnh của A."""
+    mod_a = _module_gia_model("ai-a", "a", ("chat", "anh"), [
+        {"id": "a/chat-1", "object": "model"},
+        {"id": "a/ve-1", "object": "model", "kha_nang": ["anh"]},
+    ])
+    mod_b = _module_gia_model("ai-b", "b", ("chat",), [
+        {"id": "b/chat-1", "object": "model", "kha_nang": ["chat"]},
+    ])
+    with loi_that(tmp_path, monkeypatch, modules={"ai-a": mod_a, "ai-b": mod_b}) as w:
+        lien_ket(w, "ai-a", {"api_keys": [K_TOT]})
+        lien_ket(w, "ai-b", {"api_keys": [K_TOT]})
+        _mo_studio(trang, w)
+
+        # Chế độ Trò chuyện (mặc định): hiện model chat của cả A lẫn B, model ảnh của A không lọt vào.
+        chon = "[...document.querySelectorAll('[data-model-chon]')].map((x) => x.dataset.modelChon)"
+        ds_chat = trang.js(chon)
+        assert "a/chat-1" in ds_chat
+        assert "b/chat-1" in ds_chat
+        assert "a/ve-1" not in ds_chat
+
+        # Chế độ Vẽ ảnh: hiện model ảnh của A, không lẫn model chat của A hay B.
+        trang.bam("document.querySelector('[data-che-do=\"anh\"]')")
+        trang.cho(f"{chon}.includes('a/ve-1')", han=15, mo_ta="chế độ Vẽ ảnh hiện model ảnh của A")
+        ds_anh = trang.js(chon)
+        assert "a/ve-1" in ds_anh
+        assert "a/chat-1" not in ds_anh
+        assert "b/chat-1" not in ds_anh
+
+
 def test_studio_chi_hien_che_do_module_khai(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, modules={"ai-hai": module_ai("ai-hai", "AI chỉ chat", "hai", ("chat",))}) as w:
         lien_ket(w, "ai-hai", {"api_keys": [K_TOT]})

@@ -355,14 +355,16 @@ class Component extends DCLogic {
     const tn = this.state.tn || {};
     return (tn.modules || []).filter((m) => m.da_lien_ket && (m.loai === ma || (m.cung_cap || []).includes(ma)));
   }
-  // Model của một chế độ: tiền tố của module đã liên kết khai mã đó. Model nào có trường `kha_nang` (module tự khai
-  // theo dữ liệu thật của nhà cung cấp) mà chứa mã chế độ thì chỉ những model đó; không model nào khai thì mọi model
-  // KHÔNG mang `kha_nang` (model khai khả năng khác — vd chỉ video — không lọt vào chat).
+  // Model của một chế độ: gom theo từng module đã liên kết khai mã đó. Trong mỗi module: nếu có model khai
+  // `kha_nang` chứa mã chế độ thì chỉ những model đó; nếu không thì giữ model KHÔNG mang `kha_nang` (model khai
+  // khả năng khác — vd chỉ video — không lọt vào chat; module không khai kha_nang vẫn giữ model chat bình thường).
   dsModel(ma) {
-    const tienTo = this.moduleCho(ma).map((m) => m.tien_to + '/');
-    const ung = this.state.models.filter((m) => tienTo.some((t) => m.id.startsWith(t)));
-    const khai = ung.filter((m) => Array.isArray(m.kha_nang) && m.kha_nang.includes(ma));
-    return khai.length ? khai : ung.filter((m) => !Array.isArray(m.kha_nang));
+    return this.moduleCho(ma).flatMap((m) => {
+      const t = m.tien_to + '/';
+      const ung = this.state.models.filter((x) => x.id.startsWith(t));
+      const khai = ung.filter((x) => Array.isArray(x.kha_nang) && x.kha_nang.includes(ma));
+      return khai.length ? khai : ung.filter((x) => !Array.isArray(x.kha_nang));
+    });
   }
   modelChon() {
     const dsObj = this.dsModel(this.state.cheDo);
