@@ -53,6 +53,7 @@ Một lệnh hỏng là **DỪNG**: không cam kết, không đẩy. Test giao d
   `docs/THAM-CHIEU.md`. `test/test_web2api_readme.py` bắt lệch và báo đỏ.
   Làm đủ các bước ở `docs/THAM-CHIEU.md` mục 9 (tài liệu không giữ nhật ký thay đổi — lịch sử nằm trong git).
 - Việc dùng một lần không cần helper; không refactor ngoài yêu cầu.
+- **Hỏi advisor đúng ba lúc:** trước khi chốt kế hoạch; sau khi cùng một lỗi xảy ra hai lần; và trước khi tuyên bố một việc đã xong.
 
 ## Quy tắc chủ kho đã chốt (tóm tắt — bộ đầy đủ ở `/opt/claude-c2a/web2api-thiet-ke/QUY-TAC-CHU-MAY.md`, ngoài kho vì có dữ liệu nhà)
 
