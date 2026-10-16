@@ -249,8 +249,10 @@ def la_https(request: Request) -> bool:
 
 
 def lay_token_tu_cookie(request: Request) -> str | None:
-    """Đọc token từ cookie (ưu tiên __Host-w2a_phien rồi đến w2a_phien)."""
-    return request.cookies.get("__Host-w2a_phien") or request.cookies.get("w2a_phien")
+    """Đọc token từ cookie: trên HTTPS chỉ nhận __Host-w2a_phien (chống tossing); trên HTTP nhận w2a_phien."""
+    if la_https(request):
+        return request.cookies.get("__Host-w2a_phien")
+    return request.cookies.get("w2a_phien")
 
 
 def xac_thuc_cookie(request: Request) -> dict[str, Any] | None:
