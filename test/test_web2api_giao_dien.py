@@ -49,6 +49,7 @@ def loi_that(tmp_path, monkeypatch, modules: dict | None = None, git: dict | Non
         gh.day(tep_kho(git), thong_diep="thêm module")
         with MayChuThat(gh.app) as s_gh:
             monkeypatch.setenv("WEB2API_GITHUB_API", s_gh.url)
+            monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
             monkeypatch.setenv("WEB2API_GIT_REPO", REPO)
             with MayChuThat(app, lifespan="on") as w:
                 w.gh = gh  # test đẩy commit mới (bản mới) lên GitHub giả
@@ -1416,6 +1417,7 @@ def test_them_module_tu_xa_va_nguon_git_qua_giao_dien(trang, tmp_path, monkeypat
     gh.day(tep_kho({"mang-gia": module_mang()}))
     with MayChuThat(o_gia.app) as s_o, MayChuThat(gh.app) as s_gh, loi_that(tmp_path, monkeypatch) as w:
         monkeypatch.setenv("WEB2API_GITHUB_API", s_gh.url)
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
         trang.di(w.url + "/He-thong.dc.html")
         luu_khoa(trang)
         trang.js("window.__khongTaiLai = 1")

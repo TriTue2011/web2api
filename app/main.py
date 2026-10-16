@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import gioi_han, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
+from app import che_log, gioi_han, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -34,6 +34,7 @@ WEB = GOC / "web"
 PHIEN_BAN = (GOC / "VERSION").read_text().strip()
 
 log = logging.getLogger("web2api")
+che_log.cai_dat()  # che khoá/token trong MỌI dòng log hệ thống (lỗi httpx hay chứa URL có token)
 
 
 async def _vong_dong_bo_khoa():

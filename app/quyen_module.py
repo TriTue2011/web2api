@@ -6,9 +6,10 @@ theo CẤU TRÚC từ hợp đồng manifest (đầu `app/kham_pha.py`):
 - `truong_cau_hinh[].nhan_cookie`: mỗi tên miền là một quyền;
 - `yeu_cau_goi`: mỗi gói Python là một quyền;
 - `tai_nguyen.mang_ra`: mỗi mục mạng ra là một quyền;
-- `tai_nguyen`: phân ba loại theo cấu trúc giá trị (NV9) —
+- `tai_nguyen`: phân bốn loại theo cấu trúc giá trị (NV9, NV15) —
   (1) ghi chú cho người đọc (`ghi_chu`, chuỗi): không phải quyền, không so sánh;
   (2) số tài nguyên không âm (RAM/đĩa…): chỉ TĂNG so với bản cũ mới là quyền thêm;
+  (2b) bool (vd `gpu`): chỉ false→true mới là quyền thêm, true→false là hạ quyền;
   (3) mọi khoá khác chưa biết: quyền (mặc định ĐÓNG), đổi giá trị cũng tính;
 - khoá cấp cao LẠ chưa biết → quyền (mặc định ĐÓNG, không danh sách trắng tên).
 
@@ -24,9 +25,11 @@ import math
 #: Khoá cấp cao của manifest KHÔNG mang quyền (mô tả, hiển thị, cấu hình do quản trị nhập).
 #: Mọi khoá khác → quyền. `truong_cau_hinh`/`tai_nguyen`/`yeu_cau_goi`/`cung_cap` có mặt ở đây
 #: vì khía cạnh quyền của chúng được rút theo cấu trúc riêng, không phải vì khoá vô hại.
+#: NV15b: `tab_web` KHÔNG còn ở đây — false→true cho module chạy JS ở origin lõi
+#: (đọc được localStorage khoá quản trị) nên là quyền, chỉ tăng mới cần duyệt.
 _TRUONG_KHONG_QUYEN = frozenset({
     "id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to",
-    "loai_ten", "loai_thu_tu", "muc", "tab_web",
+    "loai_ten", "loai_thu_tu", "muc",
     "truong_cau_hinh", "tai_nguyen", "phien_ban",
     "yeu_cau_goi", "cung_cap",
 })
@@ -54,9 +57,11 @@ def _la_so_tai_nguyen(gia_tri) -> bool:
 
 
 def _loai_tai_nguyen(khoa: str, gia_tri) -> str:
-    """Phân loại giá trị trong `tai_nguyen`: "ghi_chu" | "so" | "la"."""
+    """Phân loại giá trị trong `tai_nguyen`: "ghi_chu" | "so" | "bool" | "la"."""
     if khoa in _TAI_NGUYEN_GHI_CHU:
         return "ghi_chu" if isinstance(gia_tri, str) else "la"
+    if isinstance(gia_tri, bool):
+        return "bool"
     return "so" if _la_so_tai_nguyen(gia_tri) else "la"
 
 
@@ -68,6 +73,17 @@ def _so_tai_nguyen(manifest: dict | None) -> dict[str, int | float]:
         return {}
     return {str(k): v for k, v in tai_nguyen.items()
             if k != "mang_ra" and _loai_tai_nguyen(k, v) == "so"}
+
+
+def _bool_tai_nguyen(manifest: dict | None) -> dict[str, bool]:
+    """Bool trong `tai_nguyen` (vd `gpu`): {ten: bool}. NV15: chỉ false→true mới là
+    quyền thêm (tăng); true→false là hạ quyền, qua tự do — khuôn theo NV9 cho số."""
+    m = manifest if isinstance(manifest, dict) else {}
+    tai_nguyen = m.get("tai_nguyen")
+    if not isinstance(tai_nguyen, dict):
+        return {}
+    return {str(k): v for k, v in tai_nguyen.items()
+            if k != "mang_ra" and _loai_tai_nguyen(k, v) == "bool"}
 
 
 def _bam_gia_tri(gia_tri) -> str:
@@ -96,8 +112,9 @@ def tap_quyen(manifest: dict | None) -> set[tuple]:
         for khoa, gia_tri in tai_nguyen.items():
             if khoa == "mang_ra":
                 continue
-            # Loại (1) ghi_chu: không phải quyền. Loại (2) số: so theo tăng ở diff_quyen.
-            # Chỉ loại (3) lạ mới vào tập quyền tuyệt đối.
+            # Loại (1) ghi_chu: không phải quyền. Loại (2) số và bool: so theo tăng ở
+            # diff_quyen (NV9 cho số, NV15 cho bool). Chỉ loại (3) lạ mới vào tập quyền
+            # tuyệt đối.
             if _loai_tai_nguyen(khoa, gia_tri) == "la":
                 q.add(("tai_nguyen", str(khoa), _bam_gia_tri(gia_tri)))
     for truong in m.get("truong_cau_hinh") or []:
@@ -111,7 +128,9 @@ def tap_quyen(manifest: dict | None) -> set[tuple]:
             if k not in _TRUONG_CAU_HINH_KHONG_QUYEN and k != "nhan_cookie":
                 q.add(("truong_cau_hinh", f"{khoa}.{k}", _bam_gia_tri(gia_tri)))
     for khoa, gia_tri in m.items():
-        if khoa not in _TRUONG_KHONG_QUYEN:
+        if khoa not in _TRUONG_KHONG_QUYEN and khoa != "tab_web":
+            # NV15b: tab_web xử lý riêng như bool ở diff_quyen (chỉ false→true mới là quyền thêm),
+            # không cho vào truong_la (băm giá trị sẽ khiến true→false cũng bị coi là thêm).
             q.add(("truong_la", str(khoa), _bam_gia_tri(gia_tri)))
     return q
 
@@ -144,7 +163,8 @@ def diff_quyen(manifest_cu: dict | None, manifest_moi: dict | None) -> dict:
 
     Sắp xếp xác định để quản trị gửi lại đúng danh sách khi duyệt và để băm ổn định.
     Số tài nguyên (loại 2): chỉ TĂNG so với bản cũ (thiếu/null coi như 0) mới vào "them";
-    giảm/bằng/không đổi thì không.
+    giảm/bằng/không đổi thì không. Bool (NV15, vd `gpu`): chỉ false→true mới vào "them";
+    true→false là hạ quyền, qua tự do.
     """
     cu = tap_quyen(manifest_cu)
     moi = tap_quyen(manifest_moi)
@@ -156,6 +176,18 @@ def diff_quyen(manifest_cu: dict | None, manifest_moi: dict | None) -> dict:
         cu_so = so_cu.get(ten, 0)
         if moi_so > cu_so:
             them.add(("tai_nguyen", ten, ("tang", cu_so, moi_so)))
+    bool_cu = _bool_tai_nguyen(manifest_cu)
+    bool_moi = _bool_tai_nguyen(manifest_moi)
+    for ten, moi_bool in bool_moi.items():
+        # Thiếu/null coi như False: chỉ bật từ tắt/mới thêm mới là quyền thêm.
+        if moi_bool and not bool_cu.get(ten, False):
+            them.add(("tai_nguyen", ten, None))
+    # NV15b: tab_web là quyền bool ở cấp manifest — false→true cho module chạy JS ở origin
+    # lõi (đọc được localStorage khoá quản trị) nên cần duyệt; true→false là hạ quyền.
+    def _tab_web(m):
+        return bool((m or {}).get("tab_web")) if isinstance(m, dict) else False
+    if _tab_web(manifest_moi) and not _tab_web(manifest_cu):
+        them.add(("tab_web", "tab_web", None))
     return {"them": _sap_xep(them), "bot": _sap_xep(bot)}
 
 

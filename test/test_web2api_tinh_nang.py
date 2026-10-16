@@ -332,6 +332,7 @@ def test_tom_tat_git_co_loai_cung_cap_va_dung_luong(du_lieu, monkeypatch):
     co = sum(len(v) for v in tep.values())
     with MayChuThat(gh.app) as s:
         monkeypatch.setenv("WEB2API_GITHUB_API", s.url)
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
         with TestClient(app) as c:
             assert c.put("/api/nguon-git", headers=QT, json=CFG_GIT).status_code == 200
             ds = _cho_danh_sach(c)
@@ -350,6 +351,7 @@ def test_trang_thai_git_cu_thieu_truong_moi_duoc_doc_lai(du_lieu, monkeypatch):
     gh.day(tep_kho({"mang-gia": tep_gia("mang-gia", loai="mang")}))
     with MayChuThat(gh.app) as s:
         monkeypatch.setenv("WEB2API_GITHUB_API", s.url)
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
         with TestClient(app) as c:
             c.put("/api/nguon-git", headers=QT, json=CFG_GIT)
             assert _cho_danh_sach(c)

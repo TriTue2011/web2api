@@ -42,6 +42,8 @@ def gh(_gh, monkeypatch):
     _gh.han_muc = None
     _gh.cat_cay = False
     monkeypatch.setenv("WEB2API_GITHUB_API", _gh.url)
+    # NV16: NguonGit giờ dùng TransportGhimIp — cho phép loopback cho máy chủ giả trong test
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
     return _gh
 
 

@@ -42,6 +42,7 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
         monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
         monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
         monkeypatch.setenv("WEB2API_GITHUB_API", s_gh.url)
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
         monkeypatch.setenv("WEB2API_GIT_REPO", REPO)  # như docker-compose.yml: không cấu hình tay
         monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
         with MayChuThat(app, lifespan="on") as w:

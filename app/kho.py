@@ -423,12 +423,13 @@ def doc_cai_dat_model_module(id_: str) -> dict:
 
 
 def luu_cai_dat_model_module(id_: str, tat: list[str], mac_dinh: dict[str, str]) -> dict:
-    """Lưu cấu hình model của module vào model.json (ghi nguyên tử, khoá luồng)."""
+    """Lưu cấu hình model của module vào model.json (ghi nguyên tử, khoá luồng).
+
+    Tệp hỏng → KhoHong (KHÔNG coi như rỗng rồi ghi đè — sẽ xoá mất cài đặt model
+    của các module khác còn cứu được).
+    """
     with _KHOA:
-        try:
-            tat_ca = doc_cai_dat_model()
-        except KhoHong:
-            tat_ca = {}
+        tat_ca = doc_cai_dat_model()
         muc = {
             "tat": list(dict.fromkeys(tat)),
             "mac_dinh": dict(mac_dinh),
@@ -471,12 +472,12 @@ def doc_cai_dat_combo() -> dict:
 
 
 def luu_mot_combo(ten: str, thong_tin: dict) -> dict:
-    """Lưu hoặc cập nhật một combo vào combo.json quyền 0600 (nguyên tử, khoá luồng)."""
+    """Lưu hoặc cập nhật một combo vào combo.json quyền 0600 (nguyên tử, khoá luồng).
+
+    Tệp hỏng → KhoHong (KHÔNG coi như rỗng rồi ghi đè — sẽ xoá mất các combo khác).
+    """
     with _KHOA:
-        try:
-            tat_ca = doc_cai_dat_combo()
-        except KhoHong:
-            tat_ca = {}
+        tat_ca = doc_cai_dat_combo()
         muc = dict(thong_tin)
         muc["ten"] = ten
         tat_ca[ten] = muc
@@ -515,12 +516,21 @@ def doc_cho_duyet_quyen(id_: str) -> dict | None:
 
 
 def luu_cho_duyet_quyen(id_: str, ban_ghi: dict) -> None:
-    """Lưu yêu cầu chờ duyệt (nguyên tử, quyền 0600)."""
+    """Lưu yêu cầu chờ duyệt (nguyên tử, quyền 0600).
+
+    Tệp hỏng hoặc không phải đối tượng JSON → KhoHong (không coi như rỗng rồi ghi đè).
+    """
     with _KHOA:
-        du_lieu = doc_json(_p_cho_duyet_quyen())
-        tat_ca = du_lieu if isinstance(du_lieu, dict) else {}
+        p = _p_cho_duyet_quyen()
+        du_lieu = doc_json(p)
+        if du_lieu is None:
+            tat_ca: dict = {}
+        elif not isinstance(du_lieu, dict):
+            raise KhoHong(f"{p} hỏng: cần dạng đối tượng JSON")
+        else:
+            tat_ca = du_lieu
         tat_ca[id_] = dict(ban_ghi)
-        _ghi_json(_p_cho_duyet_quyen(), tat_ca, quyen=0o600)
+        _ghi_json(p, tat_ca, quyen=0o600)
 
 
 def xoa_cho_duyet_quyen(id_: str) -> bool:

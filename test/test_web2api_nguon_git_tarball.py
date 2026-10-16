@@ -51,6 +51,7 @@ def gh(_gh, monkeypatch):
     _gh.tarball_tuy_chinh = None
     _gh.kho_rieng_tu = False
     monkeypatch.setenv("WEB2API_GITHUB_API", _gh.url)
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
     return _gh
 
 

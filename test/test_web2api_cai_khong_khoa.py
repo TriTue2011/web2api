@@ -54,6 +54,7 @@ def gh(_gh, monkeypatch):
     for k in ("nhanh", "commits", "trees", "blobs", "blob_sai", "nhat_ky", "loi_commit"):
         getattr(_gh, k).clear()
     monkeypatch.setenv("WEB2API_GITHUB_API", _gh.url)
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")  # NV16: NguonGit ghim IP, máy chủ giả ở loopback
     return _gh
 
 
