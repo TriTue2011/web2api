@@ -96,6 +96,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="web2api", version=PHIEN_BAN, docs_url=None, redoc_url=None, openapi_url=None,
               lifespan=lifespan)
+xac_thuc.dat_nguon_so(lambda: getattr(app.state, "so", None))
+khoa_khach.dat_nguon_so(lambda: getattr(app.state, "so", None))
 app.add_exception_handler(LoiOpenAI, xu_ly_loi_openai)
 cai_bien_loi(app)  # /v1: mọi lỗi khác cũng ra khuôn OpenAI; lỗi chưa bắt không lộ chi tiết/khoá
 app.add_middleware(MiddlewareNhatKyCuocGoi)  # /v1: ghi đúng một dòng cuoc_goi, thêm x-request-id và X-Web2api-Module

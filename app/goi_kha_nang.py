@@ -138,8 +138,9 @@ async def goi(
         so_obj = kw.get("so") or getattr(module, "so", None)
         if so_obj is None:
             try:
-                from app.main import app as main_app
-                so_obj = getattr(getattr(main_app, "state", None), "so", None)
+                from app.xac_thuc import _NGUON_SO_FN
+                if _NGUON_SO_FN is not None:
+                    so_obj = _NGUON_SO_FN()
             except Exception:
                 pass
         if so_obj is not None:
@@ -197,29 +198,24 @@ async def goi(
     # 5. Kiểm tra phạm vi quyền hạn theo ngữ cảnh gọi
     can_pv = PHAM_VI_YEU_CAU.get(phuong_thuc) or PHAM_VI_YEU_CAU.get(cap) or (cap,)
     danh_tinh = ngu_canh.danh_tinh
-    pv_hieu_luc = ngu_canh.pham_vi_hieu_luc
 
-    la_quan_tri = danh_tinh.get("loai") in ("quan_tri", "noi_bo")
-    if not la_quan_tri and "*" not in pv_hieu_luc:
-        if not any(p in pv_hieu_luc for p in can_pv):
-            can_p = can_pv[0] if can_pv else cap
-            nhat_ky.ghi(
-                "goi_kha_nang",
-                "canh_bao",
-                f"Từ chối lời gọi khả năng «{cap}» (phương thức «{phuong_thuc}»): thiếu phạm vi «{can_p}»",
-                module=mod_id,
-                kha_nang=cap,
-                phuong_thuc=phuong_thuc,
-                nguon=ngu_canh.nguon,
-                danh_tinh_loai=danh_tinh.get("loai"),
-                danh_tinh_id=danh_tinh.get("id"),
-            )
-            raise LoiOpenAI(
-                403,
-                f"Khoá không có quyền thực hiện thao tác này (cần phạm vi «{can_p}»).",
-                loai="insufficient_scope",
-                code="insufficient_scope",
-            )
+    from app.xac_thuc import kiem_tra_pham_vi
+    try:
+        kiem_tra_pham_vi(None, *can_pv, module=mod_id, manifest=manifest, ngu_canh=ngu_canh, danh_tinh=danh_tinh)
+    except LoiOpenAI:
+        can_p = can_pv[0] if can_pv else cap
+        nhat_ky.ghi(
+            "goi_kha_nang",
+            "canh_bao",
+            f"Từ chối lời gọi khả năng «{cap}» (phương thức «{phuong_thuc}»): thiếu phạm vi «{can_p}»",
+            module=mod_id,
+            kha_nang=cap,
+            phuong_thuc=phuong_thuc,
+            nguon=ngu_canh.nguon,
+            danh_tinh_loai=danh_tinh.get("loai"),
+            danh_tinh_id=danh_tinh.get("id"),
+        )
+        raise
 
     # 6. Với khả năng thiết bị / hành động (thiet_bi: thuc_hien): qua cổng lõi chung
     if cap == "thiet_bi" and phuong_thuc == "thuc_hien":

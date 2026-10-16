@@ -174,24 +174,96 @@ def _p_khoa_khach() -> Path:
 #: Trần số phần tử một danh sách phạm vi (chặn thân yêu cầu nhồi danh sách khổng lồ vào tệp).
 TOI_DA_PHAN_TU_PHAM_VI = 64
 
+_NGUON_SO_FN: Any = None
+
+
+def dat_nguon_so(fn: Any) -> None:
+    """Điểm tiêm do lõi đăng ký để cung cấp sổ module (SoModule) mà không import ngược app.main."""
+    global _NGUON_SO_FN
+    _NGUON_SO_FN = fn
+
+
+def module_ton_tai(mod_id: str, so: Any = None) -> bool:
+    """Kiểm tra module có tồn tại trên máy (trong catalog, tu_xa, trên đĩa)."""
+    if not isinstance(mod_id, str) or not mod_id:
+        return False
+    so_hien_tai = so
+    if so_hien_tai is None and _NGUON_SO_FN is not None:
+        try:
+            so_hien_tai = _NGUON_SO_FN()
+        except Exception:
+            pass
+    if so_hien_tai is not None:
+        if mod_id in getattr(so_hien_tai, "catalog", {}) or mod_id in getattr(so_hien_tai, "tu_xa", {}):
+            return True
+    try:
+        from app.so_module import THU_MUC_ANH
+        if (THU_MUC_ANH / mod_id / "manifest.json").is_file():
+            return True
+    except Exception:
+        pass
+    try:
+        p_du_lieu = kho.thu_muc_du_lieu() / "modules" / mod_id / "manifest.json"
+        if p_du_lieu.is_file():
+            return True
+    except Exception:
+        pass
+    try:
+        goc = Path(__file__).resolve().parent.parent / "modules" / mod_id / "manifest.json"
+        if goc.is_file():
+            return True
+    except Exception:
+        pass
+    try:
+        p_tx = kho.thu_muc_du_lieu() / "tu_xa.json"
+        if p_tx.is_file():
+            ds_tx = kho.doc_json(p_tx)
+            if isinstance(ds_tx, list) and any(isinstance(m, dict) and m.get("id") == mod_id for m in ds_tx):
+                return True
+    except Exception:
+        pass
+    return False
+
 
 def la_ma_pham_vi(x: Any) -> bool:
-    """Một phần tử phạm vi hợp lệ: `*` hoặc mã khả năng mẫu MA_KHA_NANG, có thể kèm hậu tố `:<mã>`
-    (vd `thiet_bi:ghi` — đúng dạng các đường /api/thiet-bi kiểm). Mã MỞ: kiểm MẪU, không giữ danh sách mã."""
-    if not isinstance(x, str):
+    """Một phần tử phạm vi hợp lệ: `*`, mã khả năng mẫu MA_KHA_NANG (có thể kèm hậu tố `:<mã>`),
+    hoặc phạm vi giới hạn theo module «<kha_nang>@<module>» (vd `chat@module-a`).
+    Mã MỞ: kiểm MẪU, không giữ danh sách mã."""
+    if not isinstance(x, str) or not x:
         return False
     if x == "*":
         return True
+    if "@" in x:
+        if x.count("@") != 1:
+            return False
+        phan_kn, _, phan_mod = x.partition("@")
+        if not phan_kn or not phan_mod:
+            return False
+        from app.kham_pha import ID_DANH_RIENG, ID_HOP_LE
+        if not ID_HOP_LE.match(phan_mod) or phan_mod in ID_DANH_RIENG:
+            return False
+        if phan_kn == "*":
+            return True
+        phan = phan_kn.split(":")
+        return len(phan) <= 2 and all(bool(MA_KHA_NANG.match(m)) for m in phan)
     phan = x.split(":")
-    return len(phan) <= 2 and all(MA_KHA_NANG.match(m) for m in phan)
+    return len(phan) <= 2 and all(bool(MA_KHA_NANG.match(m)) for m in phan)
 
 
-def chuan_hoa_pham_vi(gia_tri: Any, *, cho_phep_rong: bool, ten_truong: str = "pham_vi") -> list[str]:
+def chuan_hoa_pham_vi(
+    gia_tri: Any,
+    *,
+    cho_phep_rong: bool,
+    ten_truong: str = "pham_vi",
+    kiem_tra_module: bool = False,
+    so: Any = None,
+) -> list[str]:
     """Bộ kiểm DUY NHẤT cho danh sách phạm vi do khách gửi (khoá khách và trần của người dùng).
 
     Phải là list các chuỗi hợp lệ (`la_ma_pham_vi`), không phần tử rỗng/khoảng trắng/sai kiểu, bỏ trùng giữ thứ tự.
     KHÔNG BAO GIỜ đổi danh sách rỗng thành «*»: rỗng nghĩa là KHÔNG có quyền nào — `cho_phep_rong=False`
     (phạm vi một khoá) thì rỗng → 400; `cho_phep_rong=True` (trần của người dùng) thì rỗng hợp lệ.
+    `kiem_tra_module=True`: kiểm tra sự tồn tại của module cho phạm vi có `@<module>` (module lạ → 400).
     """
     if not isinstance(gia_tri, list) or len(gia_tri) > TOI_DA_PHAN_TU_PHAM_VI:
         raise LoiOpenAI(400, f"Trường «{ten_truong}» phải là danh sách mã phạm vi (tối đa {TOI_DA_PHAN_TU_PHAM_VI} phần tử).",
@@ -199,8 +271,12 @@ def chuan_hoa_pham_vi(gia_tri: Any, *, cho_phep_rong: bool, ten_truong: str = "p
     ket_qua: list[str] = []
     for x in gia_tri:
         if not la_ma_pham_vi(x):
-            raise LoiOpenAI(400, f"Trường «{ten_truong}» chỉ nhận «*» hoặc mã khả năng [a-z][a-z0-9_] (có thể kèm «:<mã>»).",
+            raise LoiOpenAI(400, f"Trường «{ten_truong}» chỉ nhận «*», mã khả năng [a-z][a-z0-9_] (có thể kèm «:<mã>») hoặc «<kha_nang>@<module>».",
                             code="invalid_value")
+        if kiem_tra_module and "@" in x:
+            _, _, phan_mod = x.partition("@")
+            if not module_ton_tai(phan_mod, so=so):
+                raise LoiOpenAI(400, f"Module «{phan_mod}» không tồn tại trên hệ thống.", code="module_not_found")
         if x not in ket_qua:
             ket_qua.append(x)
     if not ket_qua and not cho_phep_rong:
@@ -209,13 +285,37 @@ def chuan_hoa_pham_vi(gia_tri: Any, *, cho_phep_rong: bool, ten_truong: str = "p
     return ket_qua
 
 
+def pham_vi_nam_trong_tran(pv: str, tran: list[str]) -> bool:
+    """Kiểm tra quyền `pv` có nằm trong trần `tran` hay không (không vượt trần)."""
+    if "*" in tran:
+        from app.xac_thuc import la_kha_nang_nguy_hiem
+        kn = pv.split("@")[0]
+        if la_kha_nang_nguy_hiem(kn):
+            return pv in tran
+        return True
+    if pv in tran:
+        return True
+    if "@" in pv:
+        kn, _, mod = pv.partition("@")
+        if kn in tran:
+            return True
+        if "*@" + mod in tran:
+            from app.xac_thuc import la_kha_nang_nguy_hiem
+            return not la_kha_nang_nguy_hiem(kn)
+    return False
+
+
 def giao_pham_vi(pham_vi: list[str], tran: list[str]) -> list[str]:
-    """Phạm vi hiệu lực = GIAO của phạm vi khoá với trần. «*» ở một bên nghĩa là bên kia quyết."""
+    """Phạm vi hiệu lực = GIAO của phạm vi khoá với trần."""
     if "*" in tran:
         return list(pham_vi)
     if "*" in pham_vi:
         return list(tran)
-    return [x for x in pham_vi if x in tran]
+    ket_qua = []
+    for p in pham_vi:
+        if pham_vi_nam_trong_tran(p, tran):
+            ket_qua.append(p)
+    return ket_qua
 
 
 def tran_dong_thoi() -> int | None:
@@ -436,7 +536,16 @@ def _rong_hon(moi: list[str], cu: list[str] | None) -> bool:
     """Phạm vi `moi` cho quyền mà `cu` không cho (khoá mới: `cu=None`, chỉ «*» mới là cờ đỏ)."""
     if cu is None:
         return "*" in moi
-    return "*" not in cu and ("*" in moi or any(x not in cu for x in moi))
+    if "*" in cu:
+        from app.xac_thuc import la_kha_nang_nguy_hiem
+        for x in moi:
+            kn = x.split("@")[0]
+            if la_kha_nang_nguy_hiem(kn) and x not in cu:
+                return True
+        return False
+    if "*" in moi:
+        return True
+    return any(not pham_vi_nam_trong_tran(x, cu) for x in moi)
 
 
 def _chu_cua(chu_id: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -510,7 +619,7 @@ def khac_biet(moi: list[dict[str, Any]]) -> dict[str, Any]:
             muc["chu_id_hien_tai"] = c.get("chu_id")
         canh_bao = []
         if tt != "giu_nguyen" and "*" in k["pham_vi"]:
-            canh_bao.append("phạm vi «*» — mọi khả năng, kể cả khả năng của module cài sau này")
+            canh_bao.append("phạm vi «*» — chỉ bao gồm khả năng đọc/suy luận an toàn; các khả năng nguy hiểm (điều khiển thiết bị, trình duyệt, gửi ra) cần cấp đích danh")
         if muc["bat_lai"]:
             canh_bao.append("khoá đang TẮT sẽ được BẬT LẠI")
         if k.get("chu_id"):
@@ -758,6 +867,7 @@ def tao_khoa(
     pham_vi: list[str] | None = None,
     chu_id: str | None = None,
     het_han: str | None = None,
+    so: Any = None,
 ) -> tuple[dict[str, Any], str]:
     """Tạo khoá khách mới: sinh khoá ngẫu nhiên hiện MỘT LẦN, ghi nguyên tử 0600 và ghi sổ quan_tri.
 
@@ -766,7 +876,7 @@ def tao_khoa(
     `het_han`: chuỗi thời gian ISO UTC thời điểm hết hạn (tuỳ chọn). Quá hạn hoặc hỏng → 401 như khoá bị tắt.
     """
     nhan_chuan = _kiem_nhan("" if nhan is None else nhan).strip() or "Khoá khách"
-    pv = ["chat"] if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
+    pv = ["chat"] if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False, kiem_tra_module=True, so=so)
     if het_han is not None:
         if not _la_iso_hop_le(het_han):
             raise LoiOpenAI(400, "Trường «het_han» phải là chuỗi thời gian ISO hợp lệ.", code="invalid_value")
@@ -871,11 +981,12 @@ def sua_khoa(
     nhan: str | None = None,
     pham_vi: list[str] | None = None,
     het_han: Any = _KHONG_DOI,
+    so: Any = None,
 ) -> dict[str, Any]:
     """Cập nhật thông tin khoá khách (bật/tắt, nhãn, phạm vi, hạn dùng). None = giữ nguyên; `bat` phải là bool thật."""
     if bat is not None and not isinstance(bat, bool):
         raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false.", code="invalid_value")
-    pv_moi = None if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False)
+    pv_moi = None if pham_vi is None else chuan_hoa_pham_vi(pham_vi, cho_phep_rong=False, kiem_tra_module=True, so=so)
     nhan_moi = None if nhan is None else _kiem_nhan(nhan).strip()
 
     if het_han is not _KHONG_DOI and het_han is not None and het_han != "":

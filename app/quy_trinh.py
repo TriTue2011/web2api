@@ -49,7 +49,7 @@ def kiem_tra_pham_vi_tang(danh_tinh: dict | None, kha_nang: str) -> None:
 
     - Thiếu danh tính (None) -> 403 insufficient_scope (đóng khi lỗi, fail-closed).
     - Quản trị hoặc lời gọi nội bộ -> cho phép.
-    - Khách có khoá '*' -> cho phép.
+    - Khách: kiểm theo khop_pham_vi (khoá '*' không cho phép khả năng nguy hiểm).
     - Toán tử thuần: cần phạm vi 'tim_kiem'.
     - Tầng module: cần đúng phạm vi của chính khả năng đó ('tim_kiem', 'xep_hang', 'nhung'...).
     - Khả năng lạ ngoài phễu: kiểm phạm vi của chính khả năng đó (thiếu -> 403; có -> sẽ bị từ chối 400 ở tầng hợp đồng).
@@ -64,8 +64,6 @@ def kiem_tra_pham_vi_tang(danh_tinh: dict | None, kha_nang: str) -> None:
     if danh_tinh.get("loai") in ("quan_tri", "noi_bo"):
         return
     pham_vi = danh_tinh.get("pham_vi", [])
-    if "*" in pham_vi:
-        return
 
     # Xác định phạm vi cần thiết cho khả năng này
     if kha_nang in TOAN_TU_THUAN:
@@ -73,8 +71,10 @@ def kiem_tra_pham_vi_tang(danh_tinh: dict | None, kha_nang: str) -> None:
     else:
         can = kha_nang
 
-    if can in pham_vi:
-        return
+    from app.xac_thuc import khop_pham_vi
+    for pv in pham_vi:
+        if khop_pham_vi(pv, can):
+            return
 
     raise LoiOpenAI(
         403,

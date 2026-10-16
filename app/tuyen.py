@@ -50,7 +50,7 @@ from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
-from app.xac_thuc import can_phien_web, can_quan_tri, kiem_tra_pham_vi, xac_thuc_v1
+from app.xac_thuc import can_phien_web, can_quan_tri, khop_pham_vi, kiem_tra_pham_vi, xac_thuc_v1
 from app.yeu_cau_da_phan import TepTai, YeuCauDaPhan, doc_multipart, la_multipart
 
 log = logging.getLogger("web2api.tuyen")
@@ -199,11 +199,15 @@ async def _danh_sach_models(request: Request) -> list[dict]:
     danh_tinh = getattr(request.state, "danh_tinh", None)
     if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
         pham_vi = danh_tinh.get("pham_vi", [])
-        if "*" not in pham_vi:
-            data = [
-                m for m in data
-                if any(kn in pham_vi for kn in (m.get("kha_nang") or ["chat"]))
-            ]
+        data_loc = []
+        for m in data:
+            m_id = m.get("id", "")
+            tien_to, _, _ = m_id.partition("/")
+            mod_id = so.tim_theo_tien_to(tien_to)
+            m_kns = m.get("kha_nang") or ["chat"]
+            if any(any(khop_pham_vi(pv, kn, module=mod_id) for pv in pham_vi) for kn in m_kns):
+                data_loc.append(m)
+        data = data_loc
     return data
 
 
@@ -572,6 +576,7 @@ async def v1_chat(request: Request):
     than = await _than_json(request)
     stream = _lay_bool(than, "stream", False)
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "chat", module=id_)
     _can_phuong_thuc(m, id_, "trò chuyện", "chat")
     ma, headers, noi_dung = await goi(m, "chat", than, stream=stream)
     if ma == 200:
@@ -587,6 +592,7 @@ async def v1_anh(request: Request):
     kiem_tra_pham_vi(request, "anh")
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "anh", module=id_)
     _can_phuong_thuc(m, id_, "tạo ảnh", "anh")
     _kiem_n_anh(than.get("n"))
     return _tra_ve(*await goi(m, "anh", than))
@@ -597,6 +603,7 @@ async def v1_anh_sua(request: Request):
     kiem_tra_pham_vi(request, "anh_sua")
     yc = await doc_multipart(request)
     id_, m = _module_theo_model(request, yc.truong)
+    kiem_tra_pham_vi(request, "anh_sua", module=id_)
     _can_phuong_thuc(m, id_, "sửa ảnh", "anh_sua")
     _can_tep(yc, "image")
     _can_tep(yc, "mask", toi_thieu=0, toi_da=1)
@@ -895,6 +902,7 @@ async def v1_responses(request: Request):
                         code="invalid_value")
 
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "anh_sua" if sua_anh else "anh", module=id_)
     model_khach = request.state.model_khach
     # Thân/yêu cầu cho module dựng y như đường chuẩn tương ứng: model ĐẦY ĐỦ (module tự bỏ tiền tố như với
     # /v1/images/*; combo tự thay model của từng bước), cùng bộ tham số.
@@ -939,6 +947,7 @@ async def v1_noi(request: Request):
     kiem_tra_pham_vi(request, "noi")
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "noi", module=id_)
     _can_phuong_thuc(m, id_, "đọc văn bản thành giọng nói", "noi")
     return _tra_ve(*await goi(m, "noi", than))
 
@@ -948,6 +957,7 @@ async def v1_nghe(request: Request):
     kiem_tra_pham_vi(request, "nghe")
     yc = await doc_multipart(request)
     id_, m = _module_theo_model(request, yc.truong)
+    kiem_tra_pham_vi(request, "nghe", module=id_)
     _can_phuong_thuc(m, id_, "nhận dạng giọng nói", "nghe")
     _can_tep(yc, "file", toi_da=1)
     return _tra_ve(*await goi(m, "nghe", yc))
@@ -965,6 +975,7 @@ async def v1_video_tao(request: Request):
     than = dict(yc.truong) if yc else await _than_json(request)
     so = _so(request)
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "video", "video_tao", module=id_)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     if yc and yc.tep:
         # video_tao nhận thân JSON; chưa có hợp đồng đưa tệp cho nó — từ chối rõ ràng thay vì lặng lẽ bỏ tệp.
@@ -980,6 +991,7 @@ async def v1_video_trang_thai(ma: str, request: Request):
     kiem_tra_pham_vi(request, "video", "video_trang_thai")
     so = _so(request)
     id_, m, trong = _module_theo_ma_video(request, ma)
+    kiem_tra_pham_vi(request, "video", "video_trang_thai", module=id_)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _gan_tien_to_ma_video(so.tien_to_cua(id_), *await goi(m, "video_trang_thai", trong))
 
@@ -988,6 +1000,7 @@ async def v1_video_trang_thai(ma: str, request: Request):
 async def v1_video_noi_dung(ma: str, request: Request):
     kiem_tra_pham_vi(request, "video", "video_noi_dung")
     id_, m, trong = _module_theo_ma_video(request, ma)
+    kiem_tra_pham_vi(request, "video", "video_noi_dung", module=id_)
     _can_phuong_thuc(m, id_, "tạo video", *_VIDEO)
     return _tra_ve(*await goi(m, "video_noi_dung", trong))
 
@@ -997,6 +1010,7 @@ async def v1_embeddings(request: Request):
     kiem_tra_pham_vi(request, "nhung")
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "nhung", module=id_)
     so = _so(request)
     km = so.catalog.get(id_)
     if km and "nhung" in getattr(km, "chuan_loi", {}):
@@ -1013,6 +1027,7 @@ async def v1_rerank(request: Request):
     kiem_tra_pham_vi(request, "xep_hang")
     than = await _than_json(request)
     id_, m = _module_theo_model(request, than)
+    kiem_tra_pham_vi(request, "xep_hang", module=id_)
     so = _so(request)
     km = so.catalog.get(id_)
     if km and "xep_hang" in getattr(km, "chuan_loi", {}):
@@ -1466,10 +1481,12 @@ def ds_khoa_khach():
 @khoa_khach.post("", dependencies=KHONG_LUU)
 async def tao_khoa_khach(request: Request):
     than = await _than_json(request)
+    so = _so(request)
     ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
         nhan=than.get("nhan", ""),
         pham_vi=than.get("pham_vi"),
         het_han=than.get("het_han"),
+        so=so,
     )
     return {"ok": True, "khoa": {**ban_ghi, "khoa": khoa_tho}}
 
@@ -1497,11 +1514,13 @@ async def xoay_khoa_khach(id_: str, request: Request):
 @khoa_khach.patch("/{id_}")
 async def sua_khoa_khach(id_: str, request: Request):
     than = await _than_json(request)
+    so = _so(request)
     kwargs: dict[str, Any] = {
         "id_khoa": id_,
         "bat": _lay_bool(than, "bat", None),
         "nhan": than.get("nhan"),
         "pham_vi": than.get("pham_vi"),
+        "so": so,
     }
     if "het_han" in than:
         kwargs["het_han"] = than.get("het_han")
@@ -1515,11 +1534,13 @@ async def sua_khoa_khach_khong_path(request: Request):
     id_ = than.get("id")
     if not id_:
         raise LoiOpenAI(400, "Thiếu trường «id» trong thân yêu cầu.")
+    so = _so(request)
     kwargs: dict[str, Any] = {
         "id_khoa": id_,
         "bat": _lay_bool(than, "bat", None),
         "nhan": than.get("nhan"),
         "pham_vi": than.get("pham_vi"),
+        "so": so,
     }
     if "het_han" in than:
         kwargs["het_han"] = than.get("het_han")
@@ -1574,11 +1595,22 @@ async def lay_thiet_bi(
     module: str | None = None,
     rui_ro: str | None = None,
 ):
-    kiem_tra_pham_vi(request, "thiet_bi:doc", "thiet_bi:ghi")
+    kiem_tra_pham_vi(request, "thiet_bi:doc", "thiet_bi:ghi", module=module)
     so = _so(request)
     ds, loi = await thiet_bi_mod.lay_danh_sach_thuc_the(
         so, loc_q=q, loc_loai=loai, loc_khu=khu, loc_module=module, loc_rui_ro=rui_ro
     )
+    danh_tinh = getattr(request.state, "danh_tinh", None)
+    if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
+        pham_vi = danh_tinh.get("pham_vi", [])
+        ds = [
+            e for e in ds
+            if any(
+                khop_pham_vi(pv, "thiet_bi:doc", module=e.get("module")) or
+                khop_pham_vi(pv, "thiet_bi:ghi", module=e.get("module"))
+                for pv in pham_vi
+            )
+        ]
     loai_set = sorted(set(e.get("loai") for e in ds if e.get("loai")))
     khu_set = sorted(set(e.get("khu") for e in ds if e.get("khu")))
     module_set = sorted(set(e.get("module") for e in ds if e.get("module")))
@@ -1669,6 +1701,8 @@ async def lay_chi_tiet_thiet_bi(id_thuc_the: str, request: Request):
     item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
     if not item:
         raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
+    mod_id = item.get("module")
+    kiem_tra_pham_vi(request, "thiet_bi:doc", "thiet_bi:ghi", module=mod_id)
     return {"thuc_the": item, "trang_thai": item.get("trang_thai")}
 
 
@@ -1728,6 +1762,7 @@ async def xac_nhan_thuc_the_thiet_bi(id_thuc_the: str, request: Request):
 
 @thiet_bi.post("/{id_thuc_the}/hanh-dong")
 async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
+    kiem_tra_pham_vi(request, "thiet_bi:ghi")
     than = await _than_json(request)
     hanh_dong = than.get("hanh_dong") or ""
     tham_so = than.get("tham_so") or {}
@@ -1736,6 +1771,11 @@ async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
     if len(ly_do) > 500:
         raise LoiOpenAI(400, "Độ dài «ly_do» vượt quá giới hạn cho phép (tối đa 500 ký tự)", code="invalid_request")
     so = _so(request)
+    item = await thiet_bi_mod.lay_mot_thuc_the(id_thuc_the, so)
+    if not item:
+        raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
+    mod_id = item.get("module")
+    kiem_tra_pham_vi(request, "thiet_bi:ghi", module=mod_id)
 
     ma, kq = await thiet_bi_mod.thuc_hien_hanh_dong_loi(
         id_thuc_the=id_thuc_the,
@@ -1803,12 +1843,22 @@ async def lay_danh_sach_cong_cu(
             duoc_ghi = True
         else:
             pv = danh_tinh.get("pham_vi", [])
-            if "*" in pv or "thiet_bi:ghi" in pv:
+            if any(khop_pham_vi(p, "thiet_bi:ghi") for p in pv):
                 duoc_ghi = True
     elif getattr(request.state, "nguoi_goi", "") == "quan_tri":
         duoc_ghi = True
 
     ds, _ = await thiet_bi_mod.lay_danh_sach_thuc_the(so, loc_q=q, loc_loai=loai)
+    if isinstance(danh_tinh, dict) and danh_tinh.get("loai") == "khach":
+        pv = danh_tinh.get("pham_vi", [])
+        ds = [
+            e for e in ds
+            if any(
+                khop_pham_vi(p, "thiet_bi:doc", module=e.get("module")) or
+                khop_pham_vi(p, "thiet_bi:ghi", module=e.get("module"))
+                for p in pv
+            )
+        ]
     tools = cong_cu_mod.sinh_cong_cu(ds, duoc_ghi=duoc_ghi)
     return {
         "object": "list",
@@ -1829,8 +1879,9 @@ async def lay_nguon_tim_kiem(request: Request):
 
 @tim_kiem.post("", dependencies=V1_AUTH)
 async def goi_tim_kiem(request: Request):
-    kiem_tra_pham_vi(request, "tim_kiem")
     than = await _than_json(request)
+    mod_id = str(than.get("nguon") or "").strip() or None
+    kiem_tra_pham_vi(request, "tim_kiem", module=mod_id)
     so = _so(request)
     danh_tinh = getattr(request.state, "danh_tinh", None)
     return await tri_thuc_mod.thuc_hien_tim_kiem(than, so, danh_tinh=danh_tinh)
@@ -1838,8 +1889,9 @@ async def goi_tim_kiem(request: Request):
 
 @tim_kiem.post("/muc-luc", dependencies=V1_AUTH)
 async def lay_muc_luc(request: Request):
-    kiem_tra_pham_vi(request, "tim_kiem")
     than = await _than_json(request)
+    mod_id = str(than.get("nguon") or "").strip() or None
+    kiem_tra_pham_vi(request, "tim_kiem", module=mod_id)
     so = _so(request)
     return await tri_thuc_mod.lay_muc_luc(than, so)
 
@@ -2211,17 +2263,22 @@ async def tao_khoa_toi(request: Request):
     if len(ds_khoa) >= 10:
         raise LoiOpenAI(400, "Mỗi người dùng chỉ được tạo tối đa 10 khoá API.", code="max_keys_reached")
 
+    so = _so(request)
     tran = nguoi_dung_mod.tran_pham_vi(nd)  # admin → «*», user → pham_vi_toi_da
     # Không nêu trường → bằng đúng trần. Đã nêu (kể cả null) → danh sách KHÔNG rỗng gồm mã hợp lệ; rỗng KHÔNG là «tất cả».
-    pv_yc = khoa_khach_mod.chuan_hoa_pham_vi(than["pham_vi"] if "pham_vi" in than else tran, cho_phep_rong=False)
-    if "*" not in tran:
-        for s in pv_yc:
-            if s not in tran:
-                raise LoiOpenAI(403, f"Không thể yêu cầu phạm vi vượt quá giới hạn (thiếu «{_nhac_lai(s)}»).",
-                                loai="insufficient_scope", code="insufficient_scope")
+    pv_yc = khoa_khach_mod.chuan_hoa_pham_vi(
+        than["pham_vi"] if "pham_vi" in than else tran,
+        cho_phep_rong=False,
+        kiem_tra_module=True,
+        so=so,
+    )
+    for s in pv_yc:
+        if not khoa_khach_mod.pham_vi_nam_trong_tran(s, tran):
+            raise LoiOpenAI(403, f"Không thể yêu cầu phạm vi vượt quá giới hạn (thiếu «{_nhac_lai(s)}»).",
+                            loai="insufficient_scope", code="insufficient_scope")
 
     het_han = than.get("het_han")
-    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(nhan=nhan, pham_vi=pv_yc, chu_id=nd["id"], het_han=het_han)
+    ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(nhan=nhan, pham_vi=pv_yc, chu_id=nd["id"], het_han=het_han, so=so)
     return {"khoa": ban_ghi, "khoa_tho": khoa_tho}
 
 
@@ -2251,12 +2308,14 @@ async def tao_nguoi_dung_moi(request: Request):
     ten_dang_nhap = _chuoi_tuy_chon(than, "ten_dang_nhap")
     mat_khau = _chuoi_tuy_chon(than, "mat_khau")
     pham_vi_toi_da = than.get("pham_vi_toi_da")
+    so = _so(request)
 
     ban_ghi, ten_chuan, mat_khau_tho = await nguoi_dung_mod.tao_nguoi_dung(
         vai=vai,
         ten_dang_nhap=ten_dang_nhap,
         mat_khau=mat_khau,
         pham_vi_toi_da=pham_vi_toi_da,
+        so=so,
     )
     nhat_ky_mod.ghi(
         "quan_tri",
@@ -2275,12 +2334,14 @@ async def cap_nhat_nguoi_dung(id: str, request: Request):
     vai = than.get("vai")
     bat = than.get("bat")
     pham_vi_toi_da = than.get("pham_vi_toi_da")
+    so = _so(request)
 
     ban_ghi = nguoi_dung_mod.sua_nguoi_dung(
         id_=id,
         vai=vai,
         bat=bat,
         pham_vi_toi_da=pham_vi_toi_da,
+        so=so,
     )
     if not ban_ghi["bat"]:  # trạng thái sau thao tác là TẮT → thu hồi mọi phiên (bật lại không sống lại phiên cũ)
         phien_web_mod.thu_hoi_phien_nguoi_dung(id)

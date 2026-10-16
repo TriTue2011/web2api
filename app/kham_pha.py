@@ -245,6 +245,25 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
 KHA_NANG_CO_MODEL = frozenset({"chat", "anh", "anh_sua", "video", "noi", "nghe", "nhung", "xep_hang"})
 
 
+#: Bảng mức rủi ro theo khả năng (nguyên tắc: thay đổi thế giới ngoài/chạy mã/mở mạng ra ngoài cần cấp đích danh).
+#: Khoá «*» KHÔNG bao gồm các khả năng nguy hiểm này (chỉ bao gồm khả năng đọc/suy luận an toàn):
+KHA_NANG_NGUY_HIEM = frozenset({
+    "thiet_bi:ghi",
+    "thiet_bi",
+    "thiet_bi:su_kien",
+    "trinh_duyet",
+    "trinh_duyet_mo",
+    "trinh_duyet_dong",
+    "trinh_duyet_ds",
+    "trinh_duyet_tao",
+    "trinh_duyet_cookie",
+    "gui_ra",
+    "gui_tin",
+    "kenh_ra",
+    "webhook",
+})
+
+
 def kiem_chuan_module(cung_cap: list[str], lop: type) -> dict[str, list[str]]:
     """Kiểm tra các khả năng đã khai trong cung_cap so với bảng HOP_DONG_KHA_NANG.
 
@@ -382,6 +401,12 @@ def kiem_manifest(m) -> str | None:
     if (not isinstance(cung_cap, list) or not all(isinstance(x, str) and MA_KHA_NANG.match(x) for x in cung_cap)
             or len(set(cung_cap)) != len(cung_cap)):
         return 'cung_cap phải là danh sách mã khả năng không trùng (chữ thường, số, _; ví dụ ["chat", "anh"])'
+    nguy_hiem = m.get("nguy_hiem")
+    if nguy_hiem is not None:
+        if (not isinstance(nguy_hiem, list)
+                or not all(isinstance(x, str) and (MA_KHA_NANG.match(x) or (len(x.split(":")) <= 2 and all(MA_KHA_NANG.match(p) for p in x.split(":")))) for x in nguy_hiem)
+                or len(set(nguy_hiem)) != len(nguy_hiem)):
+            return 'nguy_hiem phải là danh sách mã khả năng không trùng (chữ thường, số, _; ví dụ ["thiet_bi:ghi"])'
     muc = m.get("muc", [])
     if not isinstance(muc, list):
         return 'muc phải là danh sách [{"id", "nhan", "can": [mã…]}]'
