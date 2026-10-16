@@ -357,3 +357,27 @@ def test_get_modules_mo_chi_boolean(gh, du_lieu):
         echo = next(m for m in r.json()["modules"] if m["id"] == "echo")
         assert echo["cho_duyet_quyen"] is True
         assert "diff" not in echo and "them" not in echo
+
+
+def test_cho_duyet_quyen_khi_tep_cho_duyet_hong_khong_mo_coi_thu_muc(du_lieu, tmp_path):
+    """T3: cho_duyet_quyen.json hỏng → ném LoiSo có code='store_unreadable', thư mục chờ duyệt bị dọn (không mồ côi)."""
+    from app.so_module import SoModule, LoiSo
+    from pathlib import Path
+    import os
+    p_data = Path(os.environ["WEB2API_DATA"])
+    (p_data / "modules").mkdir(parents=True, exist_ok=True)
+    (p_data / "cho_duyet_quyen.json").write_text("{hong json", encoding="utf-8")
+
+    so = SoModule()
+    tam = tmp_path / "tam_mod"
+    tam.mkdir()
+    (tam / "manifest.json").write_text('{"id": "echo", "ten": "Echo"}')
+
+    cho = so.thu_muc_cho_duyet("echo")
+    with pytest.raises(LoiSo) as exc_info:
+        so._cho_duyet_quyen("echo", tam, {"phien_ban": "1"}, {"sha_commit": "abc"}, {"them": [{"loai": "x"}]})
+
+    assert exc_info.value.ma == 500
+    assert exc_info.value.code == "store_unreadable"
+    assert not cho.exists(), f"Thư mục chờ duyệt {cho} bị mồ côi trên đĩa!"
+

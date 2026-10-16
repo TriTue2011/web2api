@@ -308,6 +308,18 @@ def test_combo_json_hong_khong_lam_sap(moi_truong, noi_dung):
         assert chat(client, "combo/tot").headers["x-web2api-route"] == "pa/m1"
 
 
+def test_put_combo_khi_combo_json_hong_tra_500_openai(moi_truong):
+    """T3: combo.json hỏng → PUT /api/combo/{ten} trả 500 dạng OpenAI kèm code='store_unreadable'."""
+    client, data_dir, _ = moi_truong
+    (data_dir / "combo.json").write_text("{không phải json", encoding="utf-8")
+    r = put(client, "cb_moi", [{"model": "pa/m1"}])
+    assert r.status_code == 500
+    loi = r.json().get("error", {})
+    assert loi.get("code") == "store_unreadable"
+    assert "combo.json" in loi.get("message", "")
+
+
+
 # ───────────── định tuyến bước theo tiền tố (id ≠ tiền tố) ─────────────
 
 def test_dinh_tuyen_id_khac_tien_to_khop_goi_thang(moi_truong):

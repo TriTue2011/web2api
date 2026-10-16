@@ -146,7 +146,7 @@ Lõi giữ đúng giao thức cho khách ở `/v1/chat/completions` (không đ�
   khai URL, dịch vụ trình duyệt) khi đọc trọn vào RAM (chat không stream, gọi khả năng, kiểm khoá, lấy model, API
   quản trị trình duyệt) đều được đọc từng khúc qua luồng có trần dung lượng `WEB2API_PHAN_HOI_TOI_DA_MB` (mặc định 32 MB)
   và trần thời gian tổng `WEB2API_PHAN_HOI_TOI_DA_GIAY` (mặc định 300 giây). Vượt trần dung lượng ngắt ngay và trả
-  `502 upstream_too_large` (chống OOM-kill container 256 MB); quá giờ đọc ngắt và trả `504 upstream_timeout`. Các luồng
+  `502 upstream_too_large` (chống OOM-kill container bị giới hạn RAM); quá giờ đọc ngắt và trả `504 upstream_timeout`. Các luồng
   phát (`LuongSSE`, `LuongNhiPhan`) dùng lớp có phương thức `aclose()` bảo đảm đóng phản hồi ngược dòng ngay cả khi
   chưa kịp nhận byte đầu.
 
@@ -468,6 +468,8 @@ Thư mục `modules/<id>/` gồm:
 Chuẩn `thiet_bi` hợp nhất việc điều khiển thực thể (đèn, công tắc, cảm biến, camera, máy chủ, cổng mạng…) từ nhiều module khác nhau vào một giao thức duy nhất. Lõi không chứa tên phần cứng hay dịch vụ cụ thể nào; quy chuẩn chi tiết cho người viết module được quy định tại [CHUAN-MODULE.md](CHUAN-MODULE.md).
 
 Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Theo nguyên tắc đóng khi lỗi: nếu module không khai báo hoặc khai báo mức rủi ro không hợp lệ, lõi mặc định coi là `nguy_hiem` (module chủ động khai `doc`/`ghi` để hạ). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
+
+**Bus sự kiện SSE** (`GET /api/thiet-bi/su-kien` nghe, `POST /api/thiet-bi/su-kien` gửi) được bảo vệ theo SEC-003: phạm vi đã TÁCH — `thiet_bi:su_kien` là quyền GỬI, `thiet_bi:su_kien_doc` là quyền NGHE (tương thích: khoá có `*` hoặc `thiet_bi:su_kien` vẫn nghe được). Lõi đóng dấu trường `nguon` (danh tính người gửi) vào mọi sự kiện; sự kiện phải nhắm thực thể đang tồn tại trong danh mục lõi; `gia_tri` ≤ 4 KB sau serialize và độ sâu ≤ 4; sự kiện phê duyệt (`phe_duyet*`) chỉ phát tới quản trị. Vòng phát kiểm lại khoá mỗi 15 giây (`WEB2API_SSE_KIEM_LAI_KHOA_GIAY`); trần người nghe theo danh tính 8 (`WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH`) và toàn cục 256 (`WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC`) — vượt trả `429` kèm `Retry-After`.
 
 ```mermaid
 flowchart LR
@@ -1196,7 +1198,7 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 - **Docker** có `docker compose` 2.24 trở lên. Không cần Python trên máy chủ.
 - **RAM**: lõi rỗng chạy ổn định khoảng **32 MB**, gần như không tốn CPU lúc rảnh (đo thật 0,14% ngày
-  10/10/2026). Giới hạn **256 MB** là đủ cho lõi và module Gemini API (module chỉ chuyển tiếp).
+  10/10/2026). Dùng thực tế khoảng 100 MB với vài module (đo 16/10/2026); `docker-compose.yml` đặt giới hạn **1 GB** cho dư địa khi nhiều module hoặc ảnh/video lớn — giới hạn này KHÔNG bắt buộc (xem «Giới hạn tài nguyên» bên dưới).
 - **Đĩa**: ảnh lõi **198 MB** (đo 10/10/2026, trước khi thêm gói `httpx` — khoảng 1,8 MB nữa; ảnh mới chưa đo
   lại), cộng vài MB dữ liệu.
 - **Mạng ra Internet** tới nhà cung cấp mà module gọi (ví dụ `generativelanguage.googleapis.com`) và tới
@@ -1220,8 +1222,10 @@ Dữ liệu (khoá quản trị, cấu hình, module đã cài) nằm trong **vo
 mới quyền của người dùng trong ảnh (uid 1000), không phải tạo thư mục hay đổi quyền. Mở `http://<IP-máy-chủ>:3031/`
 rồi làm tiếp mục 6.
 
-`docker-compose.yml` đặt sẵn: tên container `web2api`; cổng `3031 → 8000`; giới hạn 256 MB RAM, 0,5 nhân CPU, 100
-tiến trình; chạy bằng uid 1000; tự khởi động lại trừ khi bạn dừng; kiểm sức khoẻ `/health` mỗi 30 giây; nguồn
+**Giới hạn tài nguyên (không bắt buộc).** Ba dòng `mem_limit`, `cpus`, `pids_limit` trong `docker-compose.yml` chỉ là hàng rào, không phải điều kiện để web2api chạy: bỏ đi (xoá dòng) vẫn chạy bình thường. Chúng chặn một module lỗi (rò bộ nhớ, vòng lặp, sinh tiến trình vô hạn) ăn hết RAM/CPU của máy chủ và kéo các dịch vụ khác trên cùng máy chết theo — vì module cài từ git chạy ngay trong tiến trình lõi nên đây là lớp bảo vệ cuối. Gợi ý: máy chỉ chạy web2api thì bỏ cũng được; máy dùng chung với dịch vụ khác thì nên giữ. `mem_limit` tăng thoải mái (`2g`, `4g`…) nếu dùng nhiều module hoặc ảnh/video lớn; muốn đổi ngay không khởi động lại: `docker update --memory 2g --memory-swap 2g web2api` (và sửa cả tệp compose để lần tạo lại sau không quay về giá trị cũ). `cpus: 0.5` chỉ làm băm mật khẩu và đăng nhập chậm hơn khi nhiều người cùng đăng nhập; `pids_limit: 100` là rào chống sinh tiến trình vô hạn — nên giữ.
+
+`docker-compose.yml` đặt sẵn: tên container `web2api`; cổng `3031 → 8000`; giới hạn 1 GB RAM, 0,5 nhân CPU, 100
+tiến trình (ba giới hạn này không bắt buộc, xem ngay dưới); chạy bằng uid 1000; tự khởi động lại trừ khi bạn dừng; kiểm sức khoẻ `/health` mỗi 30 giây; nguồn
 module git của dự án (`WEB2API_GIT_REPO=TriTue2011/web2api`, `WEB2API_GIT_NHANH=main`, `WEB2API_GIT_THU_MUC=modules`
 — đọc ẩn danh, chỉ báo, không tự cài); nhãn không cho Watchtower tự cập nhật.
 
@@ -1248,7 +1252,7 @@ WEB2API_MAY_CPU=8
 ```bash
 docker build -t web2api:latest .
 docker run -d --name web2api \
-  --memory 256m \
+  --memory 1g \
   -p 3031:8000 \
   -v web2api-data:/data \
   -e WEB2API_GIT_REPO=TriTue2011/web2api \
@@ -1782,6 +1786,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/thiet-lap` | Không | Kiểm tra trạng thái cần thiết lập tài khoản admin ban đầu (`{"can_thiet_lap": bool}`) |
 | `POST /api/thiet-lap` | Không | Thiết lập admin ban đầu (`{"ma_thiet_lap": "<mã hoặc khoá quản trị>", "ten_dang_nhap": "...", "mat_khau": "..."}`, cả ba bắt buộc); chỉ khi chưa có admin (`409`), qua cổng `WEB2API_QT_IP_CHO_PHEP`, kho người dùng hỏng → `503` |
 | `POST /api/dang-nhap` | Không | Đăng nhập web bằng tên đăng nhập và mật khẩu, trả cookie phiên `w2a_phien` (hoặc `__Host-w2a_phien`) và `csrf_token` |
+| `POST /api/webhook/{module}/{ma}` | Không (bí mật webhook trong đường dẫn) | Cửa webhook chung của lõi cho nhà cung cấp ngoài (NV31). Xác thực bằng bí mật webhook của module so `hmac.compare_digest` (+ chữ ký HMAC trên thân nếu module khai `chu_ky: "header:TÊN"` và `thuat_toan: "hmac-sha256"`). MỌI lý do sai (module không có/không bật/không khai webhook, mã sai, bí mật sai, chữ ký sai, thân không phải JSON) → cùng một `404` trống (thời gian tương đương nhờ so với bí mật giả khi module không tồn tại). Khai webhook nhưng chưa cấu hình bí mật → `503` (đóng khi lỗi, không có nhánh «chỉ một bot thì cho qua»). Thân vượt trần → `413` (module không bị gọi); module xử lý quá lâu → `504`; vượt hạn dòng/đồng thời hoặc IP bị khoá → `429` + `Retry-After`. Chống phát lại theo `(module, id_su_kien)` (id do module trích qua `su_kien_id`, mặc định 10 phút/10000 id): trùng → `200` trống, không gọi module. Nội dung tới module đóng dấu `nguon_ngoai: true` (lõi ghi đè, không là chỉ thị). Nhật ký kênh `webhook` chỉ ghi module, mã kết quả, độ dài, id băm — KHÔNG nội dung hay bí mật |
 | `POST /api/dang-xuat` | Phiên web | Đăng xuất phiên web hiện tại, vô hiệu hoá cookie phiên |
 | `GET /api/toi` | Phiên web | Thông tin người dùng hiện tại (`id`, `ten_dang_nhap`, `vai`, `pham_vi_toi_da`) |
 | `POST /api/toi/mat-khau` | Phiên web | Tự đổi mật khẩu người dùng hiện tại (thu hồi mọi phiên khác) |
@@ -1840,6 +1845,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /novnc/s/{phien}/{duong:path}` | Không (phiên trong đường dẫn) | Proxy ngược HTTP (chỉ GET/HEAD, khác → `405`) tới đích đã ghim của hồ sơ suy ra từ phiên; mọi phản hồi mang CSP `sandbox` (origin mờ) |
 | `GET /novnc/s/{phien}/websockify` | Không (phiên trong đường dẫn) | Proxy WebSocket hai chiều tới đích; bị đóng khi thu hồi/đóng hồ sơ/phiên hết hạn |
 | `* /v1/{duong:path}` | Có | Bắt mọi đường `/v1` chưa có: `404` `unknown_endpoint` đúng khuôn OpenAI; sai phương thức thì `405` kèm `Allow` suy từ router; thừa `/` cuối mà bỏ đi thì khớp một đường có thật (cả phương thức) thì `307` sang đường đó, giữ query |
+| `POST /api/gui/{module}` | Có (khoá quản trị/khách + phạm vi `gui:<module>`) | Cổng gửi ra đích danh của lõi: module khai `cung_cap: ["kenh_ra"]`, liệt kê đích qua `kenh_ra()` (`[{id, ten}]`), gửi qua `gui_tin(dich, noi_dung)`. `kenh_id` BẮT BUỘC khi module có > 1 đích (`400` `kenh_required`, không đoán đích đầu); đích lạ → `404`. Trần 20 tin/phút theo (khoá, module) và 8 lượt đồng thời toàn cục (vượt → `429` + `Retry-After`); nội dung ≤ 16 KiB (`413`). Kết quả module phải là dict có `ok` là bool thật (sai → `502`); lỗi thô nhà cung cấp không lộ ra phản hồi. Phản hồi `{"ok": true, "kenh": "<id>"}`; nhật ký kênh `gui_ra` chỉ ghi module, `kenh_id` đã băm, mã kết quả, độ dài — không nội dung, không token |
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -1848,6 +1854,11 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PUBLIC_URL` | không | Địa chỉ URL công khai chính thức (ví dụ `https://<tên-miền>`), ưu tiên sau giá trị đã đặt qua API |
 | `WEB2API_TIN_PROXY` | không | Đặt `1` để tin header `X-Forwarded-Proto` / `X-Forwarded-Host` từ proxy ngược (Cloudflare Tunnel, Nginx) khi đoán địa chỉ công khai và kích hoạt cờ `Secure` / tiền tố `__Host-` cho cookie phiên qua HTTPS; chỉ bật khi mọi đường vào đều qua proxy |
 | `WEB2API_NOVNC_PHIEN_TOI_DA` | `16` | Trần TOÀN CỤC số phiên noVNC đồng thời (RAM); vượt trần thì phiên MỚI bị từ chối `429`, phiên đang dùng không bị đẩy ra. Riêng mỗi (module, hồ sơ) tối đa 4 phiên |
+| `WEB2API_GUI_TIN_PHUT` | `20` | Trần tin/phút của cổng gửi ra (`POST /api/gui/{module}`) tính theo từng (khoá, module); vượt → `429` kèm `Retry-After` |
+| `WEB2API_GUI_DONG_THOI` | `8` | Trần số lượt gửi ra đang xử lý đồng thời (toàn cục); vượt → `429` kèm `Retry-After` |
+| `WEB2API_GUI_NOI_DUNG_TOI_DA_BYTE` | `16384` | Trần nội dung gửi ra (byte) cho thân JSON; vượt → `413` |
+| `WEB2API_GUI_TEP_TOI_DA_MB` | `25` | Trần tổng byte tệp đính kèm gửi ra (MB, theo cơ chế `app/than_co_tran.py`); vượt → `413` |
+| `WEB2API_GUI_THOI_GIAN_GIAY` | `60` | Trần thời gian (giây) một lượt gọi `gui_tin` của module; vượt → `504` |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
@@ -1865,6 +1876,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` | `16` | Trần số lượt yêu cầu đăng nhập đang chờ và đang băm scrypt đồng thời; vượt trần trả `429` kèm `Retry-After` ngay lập tức để bỏ tải |
 | `WEB2API_SCRYPT_HANG_CHO_TOI_DA` | `16` | Bí danh của `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` cấu hình trần hàng chờ băm mật khẩu scrypt |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
+| `WEB2API_WEBHOOK_THAN_TOI_DA_MB` | `1.0` | Trần thân (MB) cho cửa webhook `POST /api/webhook/{module}/{ma}` (lấy `min` với `webhook.tran_byte` của module); vượt là `413`. Đọc mỗi lượt; đếm byte thật, không tin `Content-Length` |
+| `WEB2API_WEBHOOK_TIN_PHUT` | `60` | Hạn dòng webhook: số tin tối đa mỗi module mỗi phút; vượt trả `429` kèm `Retry-After` |
+| `WEB2API_WEBHOOK_DONG_THOI` | `4` | Số webhook đang xử lý đồng thời tối đa mỗi module; vượt trả `429` kèm `Retry-After`, không chờ |
+| `WEB2API_WEBHOOK_THOI_GIAN_GIAY` | `30` | Trần thời gian (giây) một lượt module xử lý webhook; quá trả `504` |
 | `WEB2API_PHIEN_WEB_TOI_DA_NGAY` | `7` | Thời gian sống tuyệt đối tối đa (ngày) của một phiên web kể từ lúc tạo |
 | `WEB2API_QT_IP_CHO_PHEP` | không | Danh sách CIDR (cách nhau bằng dấu phẩy, vd `192.0.2.0/24`) được phép gọi đường QUẢN TRỊ (`can_quan_tri`) và `POST /api/thiet-lap` (đường tạo admin lần đầu). Trống/không đặt = tắt, không hạn chế. Có giá trị: IP hiệu lực (tính như `WEB2API_TRUST_PROXY`) ngoài danh sách → `403 ip_not_allowed`, ghi cảnh báo kênh `quan_tri` (tối đa một dòng mỗi IP mỗi phút), không đếm vào giới hạn sai khoá. Loopback trực tiếp không kèm `X-Forwarded-For` luôn được phép (healthcheck/khôi phục); peer không phải IP bị từ chối. Đọc mỗi lượt — đổi không cần khởi động lại. Mục CIDR hỏng bị bỏ qua; tất cả đều hỏng → chặn hết trừ loopback. Xem `docs/TRIEN-KHAI.md` mục «Chỉ cho mạng nhà gọi đường quản trị» |
 | `WEB2API_TRUST_PROXY` | không | Danh sách CIDR (cách nhau bằng dấu phẩy) của proxy ngược được tin để xác định IP khách cho giới hạn sai khoá. Lõi duyệt `X-Forwarded-For` từ PHẢI sang TRÁI, bỏ qua proxy tin cậy, lấy địa chỉ đầu tiên không tin cậy (proxy nối IP kết nối vào cuối nên phần trái do khách gõ, không tin). Peer loopback kèm `X-Forwarded-For` được coi là proxy — nhưng qua cổng công bố của Docker, nguồn mà container thấy là **địa chỉ cổng (gateway) của mạng Docker**, KHÔNG phải loopback, nên phải khai nó (hoặc dải của mạng compose) vào biến này. Nếu proxy nối vào qua địa chỉ LAN của máy chủ thì nguồn là IP LAN của máy chạy proxy: khai đúng IP đó dạng `/32`, đừng khai cả dải LAN (mọi thiết bị trong nhà sẽ được coi là proxy và giả được `X-Forwarded-For`). **Sau Cloudflare:** khai dải IP của Cloudflare (cloudflare.com/ips) nếu proxy ngược công bố cổng, hoặc địa chỉ cổng mạng Docker nếu dùng tunnel; xem `docs/TRIEN-KHAI.md`. Để trống = chỉ loopback là proxy, mọi khách ngoài bị tính theo IP của peer trực tiếp |

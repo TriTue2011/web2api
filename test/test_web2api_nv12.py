@@ -41,18 +41,24 @@ def test_model_qua_dai_bi_tu_choi_truoc_khi_lam_khoa():
 
 
 def test_khong_co_khong_vuot_tran_50000_model_la():
-    """50 000 model lạ khác nhau → số mục _khong_co không vượt trần."""
+    """Model lạ vượt trần → số mục _khong_co dừng ở đúng trần và dọn mục cũ nhất."""
     ct = _ct_mock()
 
     async def chay():
         try:
-            for i in range(50000):
+            for i in range(1050):
                 await ct.chat({"model": f"x/model-la-{i:05d}"}, stream=False)
-            return len(ct._khong_co)  # noqa: SLF001
+            return ct._khong_co  # noqa: SLF001
         finally:
             await ct.dung()
 
-    assert asyncio.run(chay()) <= KHONG_CO_TOI_DA
+    khong_co = asyncio.run(chay())
+    assert len(khong_co) == KHONG_CO_TOI_DA, f"Phải chạm trần {KHONG_CO_TOI_DA}, hiện tại {len(khong_co)}"
+    # Mục cũ đầu tiên đã bị pop khỏi dict (FIFO khi đầy)
+    assert ("k1", "model-la-00000") not in khong_co
+    assert ("k1", "model-la-00049") not in khong_co
+    # Các mục mới nhất còn nguyên
+    assert ("k1", "model-la-01049") in khong_co
 
 
 def test_khong_co_don_muc_het_han_khi_ghi():
@@ -74,11 +80,14 @@ def test_khong_co_don_muc_het_han_khi_ghi():
 
 
 def test_model_duoc_khong_vuot_tran():
-    """_model_duoc có trần số mục."""
+    """_model_duoc có trần số mục, chạm trần và dọn mục cũ nhất."""
     ct = _ct_mock()
     for i in range(MODEL_DUOC_TOI_DA + 500):
         ct._ghi_model_duoc("k1", f"m-{i}")  # noqa: SLF001
-    assert len(ct._model_duoc) <= MODEL_DUOC_TOI_DA  # noqa: SLF001
+    assert len(ct._model_duoc) == MODEL_DUOC_TOI_DA  # noqa: SLF001
+    assert ("k1", "m-0") not in ct._model_duoc  # noqa: SLF001
+    assert ("k1", "m-499") not in ct._model_duoc  # noqa: SLF001
+    assert ("k1", f"m-{MODEL_DUOC_TOI_DA + 499}") in ct._model_duoc  # noqa: SLF001
 
 
 def test_log_cat_model_dai():

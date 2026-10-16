@@ -404,7 +404,7 @@ def toan_tu_cay(du_lieu_vao: dict, cay_cfg: dict) -> dict:
     goc_tho = str(cay_cfg.get("goc") or "").strip()
     goc = goc_tho.strip("/")
     do_sau = cay_cfg.get("do_sau")
-    do_sau_int = so_nguyen_chat(do_sau, "do_sau", toi_thieu=1) if do_sau is not None else None
+    do_sau_int = so_nguyen_chat(do_sau, "do_sau", toi_thieu=1, toi_da=100) if do_sau is not None else None
 
     ket_qua = []
     for item in muc_in:
@@ -613,7 +613,7 @@ async def _thuc_hien_mot_tang(
     """Thực thi một tầng đơn lẻ của quy trình."""
     # 1. Toán tử gộp RRF
     if kha_nang == "gop":
-        k = so_nguyen_chat(tham_so.get("k", 60), "k", toi_thieu=1)
+        k = so_nguyen_chat(tham_so.get("k", 60), "k", toi_thieu=1, toi_da=100_000)
         return toan_tu_gop(du_lieu_vao, k=k)
 
     # 2. Toán tử lọc
@@ -624,7 +624,7 @@ async def _thuc_hien_mot_tang(
     # 3. Toán tử cắt (top N)
     if kha_nang == "cat":
         n = tham_so.get("n") or tham_so.get("so_luong") or tham_so.get("top_n") or du_lieu_vao.get("so_luong", 10)
-        return toan_tu_cat(du_lieu_vao, so_nguyen_chat(n, "so_luong", toi_thieu=0))
+        return toan_tu_cat(du_lieu_vao, so_nguyen_chat(n, "so_luong", toi_thieu=0, toi_da=100_000))
 
     # 4. Toán tử gộp ngữ cảnh
     if kha_nang == "gop_ngu_canh":
@@ -632,7 +632,7 @@ async def _thuc_hien_mot_tang(
         if tran is None and isinstance(du_lieu_vao.get("ngu_canh"), dict):
             tran = du_lieu_vao["ngu_canh"].get("tran_ky_tu")
         return toan_tu_gop_ngu_canh(du_lieu_vao, so_nguyen_chat(
-            tran if tran is not None else 2000, "tran_ky_tu", toi_thieu=0))
+            tran if tran is not None else 2000, "tran_ky_tu", toi_thieu=0, toi_da=10_000_000))
 
     # 5. Toán tử cây
     if kha_nang == "cay":
@@ -864,7 +864,7 @@ async def _thuc_hien_mot_tang(
         docs = [str(item.get("doan") or item.get("text") or "") for item in muc_in if isinstance(item, dict)]
         model = str(tham_so.get("model") or (f"{km.tien_to}/rerank" if km else "rerank"))
         top_n = tham_so.get("top_n") or tham_so.get("n") or len(docs)
-        top_n = min(so_nguyen_chat(top_n, "top_n", toi_thieu=1), len(docs)) if docs else 0
+        top_n = min(so_nguyen_chat(top_n, "top_n", toi_thieu=1, toi_da=100_000), len(docs)) if docs else 0
 
         kq_raw = await m.xep_hang({"model": model, "query": query, "documents": docs, "top_n": top_n})
         if isinstance(kq_raw, tuple) and len(kq_raw) == 3:
