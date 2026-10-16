@@ -361,3 +361,97 @@ def test_tai_url_chan_dns_rebinding(monkeypatch):
                 assert exc.value.ma == "ip_bi_chan"
     finally:
         loop.close()
+
+
+def test_tu1_gui_accept_encoding_identity(monkeypatch):
+    """TU1: Luôn gửi Accept-Encoding: identity để chống bom nén gzip; đột biến {} phải đỏ."""
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    da_nhan_headers = {}
+
+    async def endpoint(req: Request):
+        da_nhan_headers.clear()
+        da_nhan_headers.update(dict(req.headers))
+        return PlainTextResponse("NOI_DUNG", media_type="text/plain")
+
+    app = Starlette(routes=[Route("/test-tu1", endpoint)])
+    with MayChuThat(app) as srv:
+        url = f"{srv.url}/test-tu1"
+
+        # 1. Mặc định không truyền tieu_de -> phải gửi accept-encoding: identity
+        data, ct = asyncio.run(tai_url(url, tran_byte=1024, tran_giay=5.0))
+        assert data == b"NOI_DUNG"
+        assert da_nhan_headers.get("accept-encoding") == "identity"
+
+        # 2. Người gọi cố tình truyền accept-encoding: gzip -> lõi phải loại bỏ và vẫn gửi identity
+        data, ct = asyncio.run(
+            tai_url(
+                url,
+                tran_byte=1024,
+                tran_giay=5.0,
+                tieu_de={"Accept-Encoding": "gzip, deflate, br"},
+            )
+        )
+        assert data == b"NOI_DUNG"
+        assert da_nhan_headers.get("accept-encoding") == "identity"
+
+
+def test_tu3_chan_dns_va_ip_sau_chuyen_huong(monkeypatch):
+    """TU3: Kiểm tra DNS và IP sau mỗi lần chuyển hướng; bỏ dòng kiem_dns_va_ip phải đỏ."""
+    import urllib.parse
+    from unittest.mock import patch
+
+    so_ket_noi_dich = 0
+
+    async def ep_dich(req: Request):
+        nonlocal so_ket_noi_dich
+        so_ket_noi_dich += 1
+        return PlainTextResponse("DU_LIEU_NOI_BO")
+
+    app_dich = Starlette(routes=[Route("/bi-mat", ep_dich)])
+
+    with MayChuThat(app_dich) as srv_dich:
+        async def ep_dau(req: Request):
+            return RedirectResponse(url=f"{srv_dich.url}/bi-mat")
+
+        app_dau = Starlette(routes=[Route("/chuyen", ep_dau)])
+
+        with MayChuThat(app_dau) as srv_dau:
+            cong_dau = urllib.parse.urlsplit(srv_dau.url).port
+            # Transport sẵn sàng chuyển tiếp tới đích nếu logic ứng dụng không chặn
+            transport_that = httpx.AsyncHTTPTransport()
+
+            # DNS chỉ cho phép srv_dau, đích chuyển hướng srv_dich bị chặn
+            async def mock_kiem_dns(hostname: str, port: int):
+                if port == cong_dau:
+                    return [ipaddress.ip_address("127.0.0.1")]
+                raise LoiTaiUrl("ip_bi_chan", f"IP của {hostname} bị chặn: loopback")
+
+            with patch("app.tai_url_khong_tin.kiem_dns_va_ip", side_effect=mock_kiem_dns):
+                with patch("app.tai_url_khong_tin.TransportGhimIp", return_value=transport_that):
+                    with pytest.raises(LoiTaiUrl) as exc:
+                        asyncio.run(
+                            tai_url(f"{srv_dau.url}/chuyen", tran_byte=1000, tran_giay=5.0)
+                        )
+                    assert exc.value.ma == "ip_bi_chan"
+                    assert so_ket_noi_dich == 0, "Máy chủ đích không được nhận bất kỳ kết nối nào"
+
+
+@pytest.mark.parametrize("dich_url,ma_loi", [
+    ("file:///etc/passwd", "scheme_khong_hop_le"),
+    ("gopher://127.0.0.1:70/", "scheme_khong_hop_le"),
+    ("http://127.0.0.1:99999/", "url_khong_hop_le"),
+    ("http://192.0.2.1/bi-mat", "ip_bi_chan"),
+])
+def test_tu3_chuyen_huong_sang_scheme_cong_la_va_ip_rieng(dich_url, ma_loi, monkeypatch):
+    """TU3: Chuyển hướng sang file://, gopher://, cổng lạ, hoặc IP riêng 192.0.2.1 phải bị chặn."""
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+
+    async def ep_chuyen(req: Request):
+        return RedirectResponse(url=dich_url)
+
+    app = Starlette(routes=[Route("/redirect", ep_chuyen)])
+    with MayChuThat(app) as srv:
+        with pytest.raises(LoiTaiUrl) as exc:
+            asyncio.run(tai_url(f"{srv.url}/redirect", tran_byte=1000, tran_giay=5.0))
+        assert exc.value.ma == ma_loi
+

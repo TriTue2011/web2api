@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Hệ thống · Trợ giúp</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+main.pg{padding:32px 32px 48px;gap:24px;box-sizing:border-box}
+.thanh-loc{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.thanh-loc input{flex:1 1 240px;min-width:0;max-width:480px;box-sizing:border-box}
+.khoi{border:1px solid var(--line);border-radius:10px;overflow:hidden;box-sizing:border-box}
+.khoi + .khoi{margin-top:12px}
+.khoi-tieu-de{width:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:14px 16px;background:none;border:0;cursor:pointer;font-size:15px;font-weight:600;text-align:left;color:inherit}
+.khoi-tieu-de:hover{background:var(--nen-nhat)}
+.khoi-tieu-de span{overflow-wrap:anywhere}
+.khoi-tieu-de .mui{margin-left:auto;flex:0 0 auto;transition:transform .15s}
+.khoi-tieu-de[aria-expanded="true"] .mui{transform:rotate(180deg)}
+.khoi-noi-dung{padding:4px 16px 16px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+.khoi-noi-dung p{margin:0;line-height:1.6;overflow-wrap:anywhere}
+.ma-mau{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--nen-ma,#0f172a);overflow:hidden;min-width:0}
+.ma-mau pre{margin:0;padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.55;color:#e2e8f0}
+.ma-mau .nut-sao-chep{position:absolute;top:8px;right:8px}
+.lien-ket-trang{font-weight:600}
+.khong-thay{color:var(--mute);padding:24px;text-align:center}
+@media (max-width:1023px){
+main.pg{padding:12px 16px 24px}
+}
+</style>
+</helmet>
+<div class="goc">
+
+<nav aria-label="Điều hướng Hệ thống" class="tb tb-ht" onKeyDown="{{phimNav}}">
+<sc-if value="{{coQuayLai}}"><div style="display:flex;align-items:center;gap:12px;flex:0 0 auto"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}" title="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.quay_lai}}"></path></svg><span>Quay lại</span></a></div></sc-if>
+<sc-if value="{{khongQuayLai}}"><div class="thuong-hieu"><div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div><span class="ten-web">web2api</span></div></sc-if>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><div class="muc-nav">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
+</nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
+
+<main class="pg">
+<h1 class="an-chu">Hệ thống — Trợ giúp</h1>
+<sc-if value="{{coLoiTaiTrang}}"><p role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>{{loiTaiTrang}}</span><button type="button" class="nut nut-nho" onClick="{{taiLai}}">Thử lại</button></p></sc-if>
+
+<div class="thanh-loc">
+  <input type="search" id="o-loc-tro-giup" placeholder="Lọc mục trợ giúp…" aria-label="Lọc mục trợ giúp" value="{{tuKhoaLoc}}" onInput="{{goTuKhoaLoc}}">
+  <span class="dem" aria-live="polite">{{demMuc}}</span>
+</div>
+
+<div id="danh-sach-muc">
+<sc-for list="{{mucHienThi}}" as="m">
+<section class="khoi">
+  <h2 style="margin:0;font-size:inherit;font-weight:inherit"><button type="button" class="khoi-tieu-de" id="tieu-de-{{m.id}}" aria-expanded="{{m.moChu}}" aria-controls="noi-dung-{{m.id}}" onClick="{{m.chuyen}}"><span>{{m.tieuDe}}</span><svg class="mui" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button></h2>
+  <sc-if value="{{m.mo}}"><div class="khoi-noi-dung" id="noi-dung-{{m.id}}" role="region" aria-labelledby="tieu-de-{{m.id}}">
+    <sc-for list="{{m.doan}}" as="d">
+      <sc-if value="{{d.laVan}}"><p>{{d.vanBan}}</p></sc-if>
+      <sc-if value="{{d.laMa}}"><div class="ma-mau"><pre>{{d.ma}}</pre><button type="button" class="nut nut-nho nut-sao-chep" onClick="{{d.saoChep}}">{{d.nhanSaoChep}}</button></div></sc-if>
+      <sc-if value="{{d.laLienKet}}"><p><a class="lien-ket-trang" href="{{d.href}}">{{d.nhan}}</a></p></sc-if>
+    </sc-for>
+  </div></sc-if>
+</section>
+</sc-for>
+</div>
+<sc-if value="{{khongCoMuc}}"><p class="khong-thay">Không có mục nào khớp với từ khoá.</p></sc-if>
+
+</main>
+
+<nav aria-label="Điều hướng Hệ thống (điện thoại)" class="bn"><sc-for list="{{navHT}}" as="t">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" aria-hidden="true"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" aria-label="{{t.nhan}}" onClick="{{t.bat}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></button>
+<sc-if value="{{t.mo}}"><div class="bn-mui" aria-hidden="true" style="{{t.viTriMui}}"></div><div class="bn-menu" role="menu" aria-label="Mục trong {{t.nhan}}" style="{{t.viTri}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con-duoi="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</sc-for></nav>
+
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{}'>
+const K = window.Khung;
+
+// Nội dung trợ giúp. Mỗi mục: id, tieuDe, admin (true = chỉ admin thấy),
+// doan: [{k:'van', t:'…'} | {k:'ma', t:'…'} | {k:'lk', t:'nhãn', href:'…'}].
+// Chỉ viết điều mã làm thật (đối chiếu app/*.py, docs/TRIEN-KHAI.md, docs/THAM-CHIEU.md).
+const MUC = [
+  {
+    id: 'bat-dau', tieuDe: 'Bắt đầu: thiết lập quản trị lần đầu', admin: true,
+    doan: [
+      { k: 'van', t: 'Khi khởi động lần đầu mà chưa có tài khoản admin nào, web2api tự sinh một mã thiết lập và ghi vào tệp ma_thiet_lap trong thư mục dữ liệu (mặc định /data/ma_thiet_lap, quyền 0600). Mã này KHÔNG bao giờ hiện trên trang web.' },
+      { k: 'van', t: 'Đọc mã trên máy chủ (thay web2api bằng tên container thật của bạn):' },
+      { k: 'ma', t: 'docker exec web2api cat /data/ma_thiet_lap' },
+      { k: 'van', t: 'Mở trang Thiết lập, nhập mã rồi đặt mật khẩu cho tài khoản admin đầu tiên. Sau khi thiết lập xong, mã tự bị xoá.' },
+      { k: 'lk', t: 'Mở trang Thiết lập', href: 'Thiet-lap.dc.html' },
+    ],
+  },
+  {
+    id: 'ket-noi', tieuDe: 'Kết nối ứng dụng khách (OpenAI SDK, curl)', admin: false,
+    doan: [
+      { k: 'van', t: 'web2api nói chuẩn API OpenAI. Địa chỉ gốc là <địa-chỉ-máy-chủ>/v1, ví dụ http://<địa-chỉ-máy-chủ>:3031/v1/chat/completions khi chạy trong mạng nhà.' },
+      { k: 'van', t: 'Xác thực bằng khoá khách trong tiêu đề Authorization: Bearer <khoá>. Khoá khách do quản trị tạo, có dạng w2a_… và chỉ hiện ĐÚNG MỘT LẦN lúc tạo.' },
+      { k: 'ma', t: 'curl -s http://<địa-chỉ-máy-chủ>:3031/v1/models \\\n  -H "Authorization: Bearer w2a_<khoá-khách-của-bạn>"' },
+      { k: 'ma', t: 'from openai import OpenAI\n\nclient = OpenAI(\n    base_url="http://<địa-chỉ-máy-chủ>:3031/v1",\n    api_key="w2a_<khoá-khách-của-bạn>",\n)\nprint(client.models.list())' },
+      { k: 'van', t: 'Chuỗi w2a_… ở trên là GIẢ để minh hoạ — thay bằng khoá thật do quản trị cấp. Danh sách model lấy từ /v1/models.' },
+    ],
+  },
+  {
+    id: 'khoa-khach', tieuDe: 'Khoá khách và người dùng', admin: true,
+    doan: [
+      { k: 'van', t: 'Khoá khách quyết định ai được gọi API nào: trường phạm vi là danh sách mã khả năng (ví dụ ["chat"]), "*" nghĩa là mọi quyền. Phạm vi của khoá không bao giờ vượt quá phạm vi tối đa của người tạo.' },
+      { k: 'van', t: 'Mỗi khoá có thể đặt thời hạn (trường het_han). Hết hạn thì khoá tự bị từ chối, phải tạo khoá mới.' },
+      { k: 'van', t: 'Khoá thô chỉ hiện ĐÚNG MỘT LẦN khi tạo — không lưu lại ở đâu, mất thì phải xoay. Xoay khoá bằng POST /api/khoa-khach/{id}/xoay: khoá cũ vẫn dùng được thêm 7 ngày để kịp đổi phía ứng dụng, sau đó tự hết hiệu lực.' },
+      { k: 'lk', t: 'Mở trang Bảo mật & người dùng', href: 'He-thong-Bao-mat.dc.html' },
+    ],
+  },
+  {
+    id: 'them-module', tieuDe: 'Thêm module / nguồn AI', admin: true,
+    doan: [
+      { k: 'van', t: 'Nguồn AI nằm trong các module. Cài module mới từ kho git ở trang Hệ thống → Module (thêm nguồn git, hệ thống báo module mới; module mới cài mặc định TẮT, phải bật thủ công).' },
+      { k: 'van', t: 'Khoá API của nhà cung cấp nhập ở trang Hệ thống → AI, theo từng provider. Khoá lưu mã hoá với quyền 0600 và không bao giờ hiện lại dạng rõ.' },
+      { k: 'lk', t: 'Mở trang Module', href: 'He-thong.dc.html' },
+      { k: 'lk', t: 'Mở trang AI', href: 'He-thong-AI.dc.html' },
+    ],
+  },
+  {
+    id: 'doi-khoa-qt', tieuDe: 'Đổi khoá quản trị', admin: true,
+    doan: [
+      { k: 'van', t: 'Bản hiện tại CHƯA đổi được khoá quản trị trên trình duyệt (trang Cài đặt hệ thống chưa nằm trong main — điều phối sẽ cập nhật mục này khi trang Cài đặt vào). Khoá quản trị lấy từ biến môi trường WEB2API_ADMIN_KEY, nếu không đặt thì web2api tự sinh một lần và lưu vào tệp <thư-mục-dữ-liệu>/admin_key (mặc định /data/admin_key, quyền 0600).' },
+      { k: 'van', t: 'Cách 1 — đặt khoá cố định trong tệp .env rồi khởi động lại:' },
+      { k: 'ma', t: 'WEB2API_ADMIN_KEY=<khoá-mới-do-bạn-tự-sinh>\ndocker compose up -d' },
+      { k: 'van', t: 'Cách 2 — xoá tệp admin_key để web2api sinh khoá mới khi khởi động lại, rồi đọc khoá mới:' },
+      { k: 'ma', t: 'docker exec web2api rm /data/admin_key\ndocker compose restart web2api\ndocker exec web2api cat /data/admin_key' },
+      { k: 'van', t: 'Khoá mới có hiệu lực ngay sau khi khởi động lại; khoá cũ bị từ chối.' },
+    ],
+  },
+  {
+    id: 'quen-mat-khau', tieuDe: 'Quên mật khẩu admin / mất khoá', admin: true,
+    doan: [
+      { k: 'van', t: 'Quên mật khẩu nhưng còn khoá quản trị: gọi POST /api/nguoi-dung/{id}/dat-lai-mat-khau với tiêu đề Authorization: Bearer <khoá-quản-trị>. Hệ thống trả về mật khẩu mới (hiện một lần) và thu hồi mọi phiên của người đó.' },
+      { k: 'ma', t: 'curl -s -X POST -H "Authorization: Bearer <khoá-quản-trị>" \\\n  http://127.0.0.1:3031/api/nguoi-dung/<id-người-dùng>/dat-lai-mat-khau' },
+      { k: 'van', t: 'Mất khoá quản trị: đọc lại từ tệp /data/admin_key bằng lệnh docker exec (xem mục "Đổi khoá quản trị"). Nếu khoá do biến WEB2API_ADMIN_KEY quản lý thì xem lại tệp .env.' },
+    ],
+  },
+  {
+    id: 'sao-luu', tieuDe: 'Sao lưu và khôi phục', admin: true,
+    doan: [
+      { k: 'van', t: 'Sao lưu xuất ra một tệp mã hoá bằng mật khẩu do bạn đặt (kèm tuỳ chọn gói cả phiên đăng nhập). Giữ kỹ mật khẩu này — mất thì không mở được bản sao lưu.' },
+      { k: 'ma', t: 'curl -X POST -H "Authorization: Bearer <khoá-quản-trị>" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"mat_khau": "<mật-khẩu-sao-lưu>", "kem_phien": true}\' \\\n  http://127.0.0.1:3031/api/sao-luu -o ban_sao_luu.tar.enc' },
+      { k: 'van', t: 'Khôi phục làm hai bước: bước kiểm trả về mã băm sha256 của bản sao lưu, bước áp dụng cần đúng mã băm đó để chống ghi nhầm tệp.' },
+      { k: 'lk', t: 'Mở trang Bảo mật & người dùng (mục Sao lưu)', href: 'He-thong-Bao-mat.dc.html' },
+    ],
+  },
+  {
+    id: 'dia-chi-cong-khai', tieuDe: 'Địa chỉ truy cập công khai và sau Cloudflare', admin: true,
+    doan: [
+      { k: 'van', t: 'Đặt địa chỉ công khai bằng biến WEB2API_PUBLIC_URL hoặc PUT /api/dia-chi. Địa chỉ này dùng để soạn hướng dẫn kết nối và làm địa chỉ gọi lại.' },
+      { k: 'van', t: 'Khi chạy sau Cloudflare Tunnel hoặc proxy ngược, bắt buộc khai WEB2API_TRUST_PROXY (địa chỉ/dải của proxy, ví dụ 192.0.2.10/32) để web2api nhận đúng IP khách — nếu không, một người gõ sai khoá có thể làm cả nhà bị khoá 429. Đồng thời bật WEB2API_TIN_PROXY=1 để nhận đúng https từ X-Forwarded-Proto.' },
+      { k: 'van', t: 'Chi tiết từng bước triển khai an toàn (cổng, SSH, HSTS, danh sách kiểm trước khi mở ra Internet) xem tài liệu docs/TRIEN-KHAI.md trong kho mã.' },
+    ],
+  },
+  {
+    id: 'su-co', tieuDe: 'Xử lý sự cố thường gặp', admin: false,
+    doan: [
+      { k: 'van', t: '401 (sai khoá): kiểm tra lại khoá trong Authorization: Bearer <khoá>; khoá khách hết hạn hoặc bị tắt cũng trả 401.' },
+      { k: 'van', t: '403 (không được phép): khoá thiếu phạm vi cần thiết, hoặc IP của bạn không nằm trong danh sách cho phép của đường quản trị (WEB2API_QT_IP_CHO_PHEP).' },
+      { k: 'van', t: '429 (bị giới hạn): gõ sai khoá quá nhiều lần trong thời gian ngắn — đợi hết thời gian trong tiêu đề Retry-After rồi thử lại. Nếu cả nhà cùng bị 429, xem lại WEB2API_TRUST_PROXY (mục "Địa chỉ truy cập công khai").' },
+      { k: 'van', t: 'Phiên web hết hạn: đăng nhập lại ở trang Đăng nhập. Đổi mật khẩu sẽ thu hồi mọi phiên hiện có.' },
+      { k: 'van', t: 'Module báo lỗi: xem nhật ký theo kênh của module để biết chi tiết; lỗi 502 từ module nghĩa là nhà cung cấp trả lỗi, kiểm tra khoá API và hạn mức.' },
+      { k: 'lk', t: 'Mở trang Đăng nhập', href: 'Dang-nhap.dc.html' },
+    ],
+  },
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      toi: null,
+      tn: null,
+      tnLoi: '',
+      loiTaiTrang: '',
+      soTb: 0,
+      menuMo: null,
+      tuKhoaLoc: '',
+      mucMo: {},
+      tinSaoChep: {},
+    };
+  }
+
+  async didMount() {
+    await this.taiLai();
+  }
+
+  async taiLai() {
+    let toi;
+    try {
+      toi = await K.napToi();
+    } catch (e) {
+      this.setState({ loiTaiTrang: (e && e.message) || 'Lỗi kết nối máy chủ.' });
+      return;
+    }
+    if (!toi || !toi.id) {
+      K.chuyenDangNhap();
+      return;
+    }
+    this.setState({ toi, loiTaiTrang: '' });
+    try {
+      const tn = await K.taiTinhNang();
+      this.setState({ tn, tnLoi: '' });
+    } catch (e) {
+      this.setState({ tnLoi: (e && e.message) || '' });
+    }
+  }
+
+  dangXuat() {
+    return K.dangXuat();
+  }
+
+  goTuKhoaLoc(e) {
+    this.setState({ tuKhoaLoc: e.target.value });
+  }
+
+  chuyenMuc(id) {
+    const mucMo = Object.assign({}, this.state.mucMo);
+    mucMo[id] = !mucMo[id];
+    this.setState({ mucMo });
+  }
+
+  async saoChep(ma, id) {
+    const key = 'saoChep' + id;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(ma);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = ma;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      const tinSaoChep = Object.assign({}, this.state.tinSaoChep);
+      tinSaoChep[key] = true;
+      this.setState({ tinSaoChep });
+      setTimeout(() => {
+        const t2 = Object.assign({}, this.state.tinSaoChep);
+        t2[key] = false;
+        this.setState({ tinSaoChep: t2 });
+      }, 1500);
+    } catch (e) {
+      /* bỏ qua: nút giữ nguyên nhãn */
+    }
+  }
+
+  mucHienThi(laAdmin, tuKhoa) {
+    const kw = (K.boDau ? K.boDau(tuKhoa || '') : String(tuKhoa || '')).toLowerCase().trim();
+    return MUC.filter((m) => {
+      if (m.admin && !laAdmin) return false;
+      if (!kw) return true;
+      const td = (K.boDau ? K.boDau(m.tieuDe) : m.tieuDe).toLowerCase();
+      return td.indexOf(kw) !== -1;
+    }).map((m, i) => {
+      const mo = !!this.state.mucMo[m.id];
+      return {
+        id: m.id,
+        tieuDe: m.tieuDe,
+        mo,
+        moChu: mo ? 'true' : 'false',
+        chuyen: () => this.chuyenMuc(m.id),
+        doan: m.doan.map((d, j) => {
+          const did = m.id + '-' + j;
+          if (d.k === 'ma') {
+            const daChep = !!this.state.tinSaoChep['saoChep' + did];
+            return {
+              laMa: true,
+              ma: d.t,
+              nhanSaoChep: daChep ? 'Đã sao chép ✓' : 'Sao chép',
+              saoChep: () => this.saoChep(d.t, did),
+            };
+          }
+          if (d.k === 'lk') return { laLienKet: true, nhan: d.t, href: d.href };
+          return { laVan: true, vanBan: d.t };
+        }),
+      };
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const toi = s.toi;
+    const laAdmin = !!(toi && toi.vai === 'admin');
+    const tn = s.tn;
+    const navHT = K.menuNav(this, K.navHeThong(tn, 'tro_giup', s.soTb), null);
+    const coQuayLai = !!K.quayLai(tn);
+    const khongQuayLai = !coQuayLai;
+    const mucHienThi = this.mucHienThi(laAdmin, s.tuKhoaLoc);
+    return {
+      hinh: K.BIEU_TUONG,
+      navHT,
+      coQuayLai, khongQuayLai,
+      quayLai: coQuayLai ? K.quayLai(tn) : {},
+      phimNav: (e) => K.phimNav ? K.phimNav(e) : null,
+      menuMo: s.menuMo,
+      dongMenu: () => this.setState({ menuMo: null }),
+      tenNguoiDung: K.tenNguoiDung ? K.tenNguoiDung(toi) : '',
+      nhanVai: laAdmin ? 'admin' : 'user',
+      dangXuat: () => this.dangXuat(),
+      coLoiTaiTrang: !!s.loiTaiTrang,
+      loiTaiTrang: s.loiTaiTrang,
+      taiLai: () => this.taiLai(),
+      tuKhoaLoc: s.tuKhoaLoc,
+      goTuKhoaLoc: (e) => this.goTuKhoaLoc(e),
+      mucHienThi,
+      khongCoMuc: mucHienThi.length === 0,
+      demMuc: mucHienThi.length + ' mục',
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -236,6 +236,7 @@ flowchart LR
 - Các khả năng chuẩn: `nhung` (`POST /v1/embeddings`), `xep_hang` (`POST /v1/rerank`), và `tim_kiem` (`GET /api/tim-kiem/nguon`, `POST /api/tim-kiem`).
 - Toán tử dữ liệu thuần: `gop` (RRF k=60), `loc` (lọc nhiều mặt), `cay` (tiền tố, độ sâu, duyệt cây), `cat` (top n), `gop_ngu_canh` (trần tổng ký tự đoạn văn bản).
 - An toàn nội dung: kết quả luôn đánh dấu `nguon_ngoai: true`, đầu vào không tin cậy, không tự đưa vào chỉ thị hệ thống; kênh nhật ký `tri_thuc` không ghi nội dung tài liệu.
+- **Giao diện**: khối «Tìm kiếm» ở trang `He-thong-Tich-hop.dc.html` (Hệ thống → Tích hợp & công cụ) liệt kê nguồn, ô tìm thử (kết quả hiện dạng chữ thuần như dữ liệu không tin được) và lấy cây mục lục (`POST /api/tim-kiem/muc-luc`, xác nhận hai bước).
 
 ### Cài → vào Studio → thêm khoá (không tải lại trang)
 
@@ -389,7 +390,9 @@ vẫn chạy.
 | `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Lưới ô bàn cờ theo loại, trình bày theo trang Tiện ích của demo: khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm có kính lúp + chip lọc loại + lọc trạng thái, lưới ô, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
 | `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng: thứ tự «#n» trong danh sách đã lưu (xoay vòng), nhãn nổi bật «Đang dùng» ở khoá vừa phục vụ yêu cầu gần nhất, số lượt đã dùng, lần dùng cuối tương đối, nhãn sức khoẻ («Dùng được» / «Hết hạn mức, hồi lúc …» / «Bị từ chối, thử lại lúc …» / «Lỗi»); mở dòng xem chi tiết: địa chỉ gốc (Chép), khoá dạng che …abcd, bộ đếm số lượt thành công và số lần 429 kể từ lần khởi động hoặc lưu khoá gần nhất, trạng thái hạn mức từng việc, thanh hạn mức chỉ khi module báo trần thật (`toi_da`); nút «Thay khoá» và «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n». Model: `/v1/models` theo tiền tố, chia BA nhóm tách bạch «Trò chuyện», «Tạo ảnh», «Video» (suy từ `kha_nang` mà module khai cho từng model; mã lạ hiện nguyên mã; nhóm chưa có model nào thì không hiện); danh sách model luôn thu gọn (ẩn) khi vào trang (bấm tiêu đề nhóm để mở, đổi provider thì thu gọn lại, không nhớ trạng thái mở giữa các lần vào trang); nút «Làm mới danh sách». Tài khoản: tình trạng từng khoá theo thứ tự «#n», nhãn «Đang dùng» cho khoá phục vụ gần nhất, số lượt dùng, lần dùng cuối, độ trễ ms, số model (dòng tài khoản mở ra không liệt kê danh sách model), trạng thái hạn mức từng việc và thanh hạn mức khi có trần thật. Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Không có nút «Đặt #1» vì web2api giữ chiến lược xoay vòng khoá (lỗi → khoá kế, không dùng hàng đợi ưu tiên cố định). Phần demo chưa có backend (TOTP, «Xem» khoá, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
 | `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chép bố cục `Main.dc.html` của bản demo (một trang cho máy tính và điện thoại): viên trạng thái góc phải, tiêu đề «Bạn muốn làm gì hôm nay?», ô soạn lớn dính đáy với «Vẽ ảnh» / «Tạo video» (khi có module **đã cài** khai `anh` / `video`), chip model (bảng «Model trả lời» với model thật từ `/v1/models`) và nút gửi tròn; dưới ô soạn «Trò chuyện» · «＋ Tạo mới» · «Lịch sử». Gửi rồi thì các lượt hội thoại hiện bên trên (chat stream, markdown an toàn; ảnh; video kèm thanh tiến độ), có hai nút nhảy lên lượt đầu / xuống lượt mới nhất. «Tạo mới» lưu cuộc đang nói vào Lịch sử rồi về màn đầu; «Lịch sử» mở bảng tìm và chọn một cuộc để nói tiếp — lưu ở localStorage của **trình duyệt này** (khoá `web2api_lich_su_tro_chuyen`, tối đa 50 cuộc và 1 triệu ký tự, chỉ lượt chữ; không có khoá nào hay tin giờ), cuộc đang mở được mở lại khi quay lại trang; trình duyệt chặn lưu trữ thì không có nút này. Chế độ chưa có module **đã liên kết** khoá ô soạn và hiện một dòng «Chưa có khoá cho … — Thêm khoá» tới đúng thẻ ở Hệ thống → AI → Tài khoản — không gọi `/v1`. Phần demo chưa có chức năng thật (đính kèm, loa, micro, Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, ô tài khoản) không được vẽ |
+| `He-thong-Tro-giup.dc.html` — Hệ thống → Trợ giúp | mọi vai đã đăng nhập | Hướng dẫn sử dụng trên trình duyệt cho người không rành lệnh: 9 mục (thiết lập lần đầu, kết nối ứng dụng khách, khoá khách, thêm module, đổi khoá quản trị, quên mật khẩu, sao lưu, địa chỉ công khai, xử lý sự cố); mọi mục là khối thu gọn ĐÓNG mặc định, ô lọc chữ ở đầu trang; mục quản trị chỉ hiện cho admin; nội dung trong mảng dữ liệu trang, hiện bằng liên kết dữ liệu/textContent, mã mẫu trong `<pre>` có nút «Sao chép» |
 | Tab riêng của module (`/m/<id>/…`) | module đã liên kết và khai `tab_web` | Giao diện riêng của module |
+| `He-thong-Tich-hop.dc.html` — Hệ thống → Tích hợp & công cụ | luôn (chỉ quản trị viên; trang tự kiểm phiên) | Bốn khối thu gọn đóng mặc định. **Công cụ cho AI**: chỉ xem danh sách `GET /api/cong-cu` (tên, mô tả, mức rủi ro). **Tìm kiếm**: danh sách nguồn `GET /api/tim-kiem/nguon`, ô tìm thử `POST /api/tim-kiem` (kết quả hiện như dữ liệu không tin được — chữ thuần, cắt 500 ký tự/trường), lấy mục lục `POST /api/tim-kiem/muc-luc` (xác nhận hai bước, chống bấm đôi). **Nạp lại module**: `POST /api/modules/nap-lai`. **Webhook & gửi ra**: chỉ xem — bảng cổng gửi ra suy từ `GET /api/modules/catalog` (module nào khai `kenh_ra` trong `cung_cap`); khai báo webhook không có đường đọc nào trả về nên không liệt kê (xem báo cáo NV39); không bao giờ hiện bí mật. **Gửi sự kiện thử**: `POST /api/thiet-bi/su-kien` (thực thể phải tồn tại, `loai` theo mẫu `^[A-Za-z0-9_.:-]{1,64}$`). |
 
 Tab/mục không đạt điều kiện **không có trong DOM**; gõ tay đường dẫn tới đó thì trang chuyển về Hệ thống → Module
 kèm một dòng «… chưa mở được: cần …». Thanh trên của trang chính chép từ demo (logo, tab đang có, «Hệ thống» bên phải);
@@ -456,6 +459,7 @@ curl -s $W/api/tinh-nang
 | AI → Combo | `can: ["ai"]`, `toi_thieu: 2`, chưa có giao diện (`chua_co`) → không hiện; backend ở `/api/combo` |
 | Studio (trang chính) và chế độ Chat | `can: ["chat"]`, `da_cai` |
 | Chế độ Ảnh / Video | `can: ["anh"]` / `["video"]`, `da_cai` |
+| Hệ thống → Tích hợp & công cụ | luôn (chỉ quản trị viên; cần thêm dòng `tich_hop` vào `navHeThong` trong `web/khung.js` — xem báo cáo NV39) |
 
 Tab «chính» và chế độ của nó hiện khi module **đã cài**; **gọi được `/v1`** hay chưa là đúng dòng đó xét lại ở phạm
 vi đã liên kết (`dungDuoc` trong `khung.js`, cùng hàm `thieu`) — chưa đủ thì trang hiện trạng thái rỗng chỉ chỗ thêm
@@ -537,6 +541,26 @@ Chuẩn `thiet_bi` hợp nhất việc điều khiển thực thể (đèn, côn
 
 Mỗi thực thể mang định danh `<tien_to>.<tên>`, danh sách tính năng hỗ trợ (`tinh_nang`), và mức rủi ro hiệu lực (`doc`, `ghi`, hoặc `nguy_hiem`). Theo nguyên tắc đóng khi lỗi: nếu module không khai báo hoặc khai báo mức rủi ro không hợp lệ, lõi mặc định coi là `nguy_hiem` (module chủ động khai `doc`/`ghi` để hạ). Các hành động có mức độ nguy hiểm được kiểm soát chặt chẽ: quản trị gọi cần xác nhận (`xac_nhan: true`), trong khi ứng dụng khách (khoá khách có phạm vi `thiet_bi:ghi`) sẽ được đưa vào hàng chờ phê duyệt (`/api/phe-duyet`) để quản trị duyệt trước khi thực thi.
 
+**Cách ly thực thể mới và thay đổi tính năng (SEC-004):** Khi một thực thể mới xuất hiện, thực thể cũ chưa có trong `da_xac_nhan`, hoặc thay đổi danh sách/cấu trúc `tinh_nang` (so sánh qua chuỗi băm SHA-256 `bam_tinh_nang`), lõi tự động nâng mức rủi ro hiệu lực lên `nguy_hiem` cho tới khi quản trị viên xác nhận thực thể qua `POST /api/thiet-bi/{id}/xac-nhan` hoặc đặt lại rủi ro qua `PUT /api/thiet-bi/{id}/rui-ro`. Danh sách thực thể đã xác nhận cùng mã băm được lưu bền vững tại `<WEB2API_DATA>/thiet_bi.json`.
+
+**Kiểm soát tham số và bảo mật thông tin (SEC-004):**
+- **Lược đồ tham số:** Lõi kiểm tra nghiêm ngặt `tham_so` của hành động trước khi gọi module (`kiem_tra_tham_so`): kiểm tra kiểu, trường bắt buộc, giá trị `minimum`/`maximum`, `enum`, và từ chối trường lạ nếu lược đồ đặt `additionalProperties: false` (trả `400 invalid_request` nếu sai lệch); hàm `_than_json` toàn cục từ chối mọi số NaN và Infinity.
+- **Làm sạch tham số bí mật:** Không dùng danh sách từ khoá đoán; tuân theo nguyên tắc khai báo: tham số được khai `bi_mat: true` trong lược đồ (kể cả thuộc tính lồng nhau hoặc phần tử mảng `items`) sẽ được che dạng `…che` khi ghi nhật ký kiểm toán. Mọi tham số không khai báo trong lược đồ sẽ chỉ được ghi tên trường và độ dài ký tự (`…che(độ dài N)`), không bao giờ ghi giá trị thô ra nhật ký.
+
+**Chống nghẽn hàng chờ và giới hạn tần suất (SEC-004):**
+- **Hàng chờ phê duyệt:** Trần số lượng mục đang chờ được giới hạn bởi `WEB2API_PHE_DUYET_TRAN_SO_MUC` (toàn cục, mặc định 100 mục) và `WEB2API_PHE_DUYET_TOI_DA_MOI_KHOA` (theo từng khoá/danh tính đề xuất, mặc định 10 mục; vượt trần trả `429`). Hàng chờ tự động loại trùng theo bộ `(khoá, thực thể, hành động)`: nếu cùng khoá đề xuất hành động trên cùng thực thể đang chờ duyệt: nếu nội dung (tham số, lý do, băm) y hệt thì trả lại mục cũ kèm mã 202; nếu nội dung thay đổi thì huỷ mục cũ và cấp ID mới nhằm chống tấn công TOCTOU / ghi đè tham số sau khi quản trị đã xem; tuyệt đối không trả ID mục duyệt của khoá A cho khoá B. Kích thước tham số có trần 8 KB.
+- **Phê duyệt an toàn:** Tại thời điểm quản trị gọi `POST /api/phe-duyet/{id}/duyet`, lõi kiểm tra lại thực thể, tính năng, hành động, lược đồ tham số và băm trạng thái lưu lúc tạo (`bam_trang_thai` gồm thực thể, tính năng, hành động, tham số): nếu thực thể bị gỡ hoặc thay đổi bất kỳ thành phần nào trong băm trạng thái, hành động bị từ chối với mã `409 conflict` và huỷ mục duyệt mà không gọi module.
+- **Trần tần suất thao tác:** Giới hạn tối đa `WEB2API_THIET_BI_TRAN_LUOT` hành động trong cửa sổ trượt 5 giây cho mỗi khoá (burst limit, mặc định 8 lệnh/5 giây) và `WEB2API_THIET_BI_TRAN_PHUT` hành động mỗi phút cho mỗi cặp (khoá/danh tính, thực thể) (mặc định 30, vượt trần trả `429`).
+
+**Ngữ cảnh gọi và MỘT cổng gọi khả năng duy nhất (SEC-002):**
+Mọi lời gọi khả năng module từ các luồng nghiệp vụ chuẩn của lõi đều đi qua cổng thống nhất: `app.goi_kha_nang.goi(module, kha_nang, *args, ngu_canh=None, **kw)`. Cổng này đảm bảo:
+1. Khả năng được gọi phải nằm trong `cung_cap` của module và thuộc tập hợp đồng `HOP_DONG_KHA_NANG` (`app/kham_pha.py`).
+2. Kiểm tra phạm vi truy cập theo ngữ cảnh (`ContextVar NGU_CANH` từ `app/ngu_canh.py`). Thiếu ngữ cảnh hoặc thiếu danh tính trong lời gọi nội bộ lập tức bị từ chối với mã `403 missing_context` (đóng khi lỗi).
+3. Mọi hành động thiết bị đi qua cổng đều dùng chung bộ kiểm soát rủi ro, giới hạn tần suất và hàng chờ phê duyệt (`thuc_hien_hanh_dong_loi`).
+4. Ghi sổ kiểm toán kênh `quan_tri`/`thiet_bi` với danh tính và `nguon` (`"nguoi"`, `"ai"`, `"tu_dong"`, `"kenh"`) do lõi đóng dấu độc quyền (các lời gọi qua API/giao diện HTTP luôn được lõi gán cứng `nguon="nguoi"`, người gọi không thể giả mạo `nguon`). Riêng kênh `goi_kha_nang` ghi nhận cảnh báo khi bị từ chối phạm vi (403) hoặc thao tác ghi/nguy hiểm (`anh_sua`, `video_tao`), không ghi từng lần gọi đọc/chat thông thường để tránh làm tràn nhật ký.
+5. **Ngoại lệ kỹ thuật được kiểm soát riêng:** Một số đường gọi đặc thù của lõi gọi trực tiếp module không qua `goi` do yêu cầu kiến trúc (đều có cơ chế xác thực/cô lập riêng): `thiet_bi.py` (~682 khi quản trị duyệt yêu cầu trong hàng chờ, gọi trực tiếp `m.thuc_hien` sau khi đã kiểm tra xác thực QT, rủi ro, băm trạng thái và lược đồ tham số); `tuyen.py` xử lý ảnh trong `/v1/responses` (`m.anh`/`m.anh_sua` sau khi đã xác thực V1_AUTH và kiểm tra phạm vi); `quy_trinh.py` fan-out tìm kiếm đa nguồn song song (`m.tim_kiem(...)` qua `asyncio.gather`) với việc kiểm tra chuẩn lỗi và đóng cờ `nguon_ngoai`; `tri_thuc.py` gọi `m.muc_luc(...)` phục vụ phân tầng tri thức; `novnc.py` gọi `m.trinh_duyet_*` gắn với tiến trình noVNC; và `combo.py` điều phối gọi module con.
+6. **Quy tắc đóng khi thiếu ngữ cảnh:** Mọi lời gọi quy trình phễu tri thức (`app/quy_trinh.py`) hay lời gọi khả năng qua cổng `goi` khi chạy thiếu ngữ cảnh thực thi (`NGU_CANH` là None) đều lập tức bị từ chối với mã `403 missing_context` (lõi không tự ý bịa ngữ cảnh nội bộ ngoài HTTP).
+
 **Bus sự kiện SSE** (`GET /api/thiet-bi/su-kien` nghe, `POST /api/thiet-bi/su-kien` gửi) được bảo vệ theo SEC-003: phạm vi đã TÁCH — `thiet_bi:su_kien` là quyền GỬI, `thiet_bi:su_kien_doc` là quyền NGHE (tương thích: khoá có `*` hoặc `thiet_bi:su_kien` vẫn nghe được). Lõi đóng dấu trường `nguon` (danh tính người gửi) vào mọi sự kiện; sự kiện phải nhắm thực thể đang tồn tại trong danh mục lõi; `gia_tri` ≤ 4 KB sau serialize và độ sâu ≤ 4; sự kiện phê duyệt (`phe_duyet*`) chỉ phát tới quản trị. Vòng phát kiểm lại khoá mỗi 15 giây (`WEB2API_SSE_KIEM_LAI_KHOA_GIAY`); trần người nghe theo danh tính 8 (`WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH`) và toàn cục 256 (`WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC`) — vượt trả `429` kèm `Retry-After`.
 
 ```mermaid
@@ -591,6 +615,7 @@ Biến các thực thể và hành động của chuẩn `thiet_bi` thành danh 
   }
   ```
 - **Trần số lượng**: Tối đa 128 công cụ; nếu vượt trần, danh sách sẽ được cắt còn 128 và phản hồi trả về `bi_cat: true`. Hỗ trợ tham số truy vấn `?loai=` để lọc công cụ theo loại thực thể cụ thể.
+- **Giao diện**: khối «Công cụ cho AI» ở trang `He-thong-Tich-hop.dc.html` (Hệ thống → Tích hợp & công cụ) liệt kê chỉ xem theo module (tên, mô tả, mức rủi ro).
 
 
 Module cần gói Python mà ảnh lõi không có thì bị **từ chối nạp** với thông báo nêu tên gói — lõi không tự cài gói
@@ -1866,7 +1891,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PATCH /api/nguoi-dung/{id}` | Có | Cập nhật tài khoản người dùng (bật/tắt, vai, phạm vi; bảo vệ admin cuối cùng) |
 | `POST /api/nguoi-dung/{id}/dat-lai-mat-khau` | Có | Đặt lại mật khẩu tài khoản người dùng (tuỳ chọn sinh ngẫu nhiên; mật khẩu chỉ trả về một lần duy nhất, thu hồi mọi phiên cũ) |
 | `DELETE /api/nguoi-dung/{id}` | Có | Xoá tài khoản người dùng và thu hồi mọi phiên/khoá API của tài khoản đó (bảo vệ admin cuối cùng) |
-| `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên) |
+| `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên). Giao diện: trang «Phiên tài khoản» (`web/He-thong-Phien.dc.html`) — nhóm theo module (khối thu gọn, đóng mặc định), lưới thẻ (tài khoản, trạng thái, hạn, lần kiểm cuối), nút «Kiểm ngay» và «Xoá phiên» (xác nhận hai bước) |
 | `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |
 | `POST /api/phien/{module}/{tai_khoan}/kiem` | Có | Kiểm tra ngay trạng thái một phiên tài khoản qua module |
 | `GET /api/thiet-bi` | Có | Danh sách thực thể thiết bị/ứng dụng từ các module, kèm trạng thái và rủi ro hiệu lực (hỗ trợ lọc `q`, `loai`, `khu`, `module`, `rui_ro`) |
@@ -1874,7 +1899,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/thiet-bi/su-kien` | Có | Nhận luồng sự kiện thiết bị theo thời gian thực (SSE) |
 | `POST /api/thiet-bi/su-kien` | Có | Phát sự kiện thiết bị mới |
 | `GET /api/thiet-bi/{id}` | Có | Chi tiết và trạng thái của một thực thể thiết bị |
-| `PUT /api/thiet-bi/{id}/rui-ro` | Có | Quản trị đặt ghi đè mức rủi ro hiệu lực (`doc`, `ghi`, `nguy_hiem`) cho thực thể |
+| `PUT /api/thiet-bi/{id}/rui-ro` | Có | Quản trị đặt ghi đè mức rủi ro hiệu lực (`doc`, `ghi`, `nguy_hiem`) cho thực thể (đồng thời xác nhận băm tính năng) |
+| `POST /api/thiet-bi/{id}/xac-nhan` | Có (quản trị) | Quản trị xác nhận băm tính năng của thực thể mới hoặc vừa đổi tính năng, đưa rủi ro về mức tự nhiên |
 | `POST /api/thiet-bi/{id}/hanh-dong` | Có | Thực hiện hành động trên thực thể (rủi ro nguy hiểm yêu cầu xác nhận hoặc đưa vào hàng chờ) |
 | `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
 | `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
@@ -1959,9 +1985,16 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_PHIEN_CHU_KY_PHUT` | `180` | Chu kỳ quét kiểm phiên tài khoản định kỳ (phút, thêm nhiễu ±10%) |
 | `WEB2API_PHIEN_TOI_DA_MOI_VONG` | `2` | Số phiên tối đa được kiểm tra trong mỗi vòng quét nền |
 | `WEB2API_PHE_DUYET_PHUT` | `10` | Thời gian hết hạn của yêu cầu trong hàng chờ phê duyệt (phút), quá hạn tự huỷ khi đọc |
+| `WEB2API_PHE_DUYET_TRAN_SO_MUC` | `100` | Trần số mục tối đa trong hàng chờ phê duyệt thiết bị (vượt trần trả `429`) |
+| `WEB2API_PHE_DUYET_TOI_DA_MOI_KHOA` | `10` | Trần số mục tối đa trong hàng chờ phê duyệt thiết bị cho mỗi khoá/danh tính đề xuất (vượt trần trả `429`) |
+| `WEB2API_THIET_BI_TRAN_LUOT` | `8` | Trần tần suất dồn tối đa theo khoá (lệnh / 5 giây, mặc định 8; vượt trần trả `429`) |
+| `WEB2API_THIET_BI_TRAN_PHUT` | `30` | Trần tần suất hành động thiết bị (lần/phút) cho mỗi cặp (khoá/danh tính, thực thể) (vượt trần trả `429`) |
 | `WEB2API_QUY_TRINH_GIAY` | `60` | Trần thời gian tối đa cho một quy trình nối tầng (giây), vượt trần trả `504` |
 | `WEB2API_SSE_GIU_GIAY` | `15` | Số giây im lặng tối đa trước khi stream SSE gửi dòng chú thích `: keep-alive` (chỉ chen giữa hai sự kiện) chống proxy ngắt kết nối; không phải số dương hữu hạn → `15` |
 | `WEB2API_SSE_DEM_TOI_DA_KB` | `1024` | Trần bộ đệm tối đa của luồng stream SSE chat (KiB, mặc định 1024 = 1 MiB) trước khi phát nguyên văn chống cạn bộ nhớ; giá trị không phải số dương hữu hạn → `1024` |
+| `WEB2API_SSE_NGHE_TOI_DA_MOI_DANH_TINH` | `8` | Số nguyên (>0): trần người nghe luồng sự kiện thiết bị SSE (`GET /api/thiet-bi/su-kien`) đồng thời cho một danh tính (quản trị hoặc từng khoá khách); vượt trần trả `429` kèm `Retry-After: 30`. Không phải số nguyên > 0 → `8`. Đọc mỗi lượt gọi |
+| `WEB2API_SSE_NGHE_TOI_DA_TOAN_CUC` | `256` | Số nguyên (>0): trần người nghe luồng sự kiện thiết bị SSE (`GET /api/thiet-bi/su-kien`) đồng thời TOÀN CỤC; vượt trần trả `429` kèm `Retry-After: 30`. Không phải số nguyên > 0 → `256`. Đọc mỗi lượt gọi |
+| `WEB2API_SSE_KIEM_LAI_KHOA_GIAY` | `15` | Số thực: chu kỳ kiểm tra lại hiệu lực khoá xác thực trong vòng phát SSE thiết bị (giây, kẹp trong `[1.0, 300.0]`); khoá bị thu hồi/tắt giữa chừng thì ngắt luồng; sai/NaN → `15.0`. Đọc mỗi lượt gọi trong vòng phát |
 | `WEB2API_PHAN_HOI_TOI_DA_MB` | `32` | Trần dung lượng phản hồi tối đa (MB) từ dịch vụ ngược dòng khi đọc trọn vào RAM; vượt trần ngắt ngay và trả `502 upstream_too_large` chống OOM; chữ/≤0/nan/inf → `32` (không tắt được) |
 | `WEB2API_PHAN_HOI_TOI_DA_GIAY` | `300` | Trần thời gian tổng tối đa (giây) cho việc đọc toàn bộ phản hồi từ dịch vụ ngược dòng; vượt quá ngắt và trả `504 upstream_timeout`; chữ/≤0/nan/inf → `300` (không tắt được) |
 | `WEB2API_MUC_LUC_TRAN_DO_SAU` | `6` | Trần độ sâu tối đa của cây mục lục tài liệu (chương → mục → tiểu mục) |
@@ -1982,7 +2015,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
 | `WEB2API_DEMO_DIR` | không | Chỉ cho test dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |
 | `WEB2API_CHROME` | `/usr/bin/google-chrome` | Chỉ cho test giao diện và `scripts/chup-man-hinh.sh`: đường tới Chrome |
-| `WEB2API_PORT`, `WEB2API_DATA_DIR` | `3031`, volume | Chỉ đọc bởi `docker-compose.yml` (mục 5) |
+| `WEB2API_PORT`, `WEB2API_DATA_DIR`, `WEB2API_BIND` | `3031`, volume, `127.0.0.1` | Chỉ đọc bởi `docker-compose.yml` (mục 5; địa chỉ IP máy chủ để container lắng nghe) |
 
 ## 9. Phát triển
 

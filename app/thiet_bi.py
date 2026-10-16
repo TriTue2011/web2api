@@ -17,12 +17,15 @@ Nguyên tắc:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import math
 import os
 import re
 import secrets
 import threading
+import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,7 +39,6 @@ log = logging.getLogger("web2api.thiet_bi")
 
 _KHOA_LUONG = threading.RLock()
 RUI_RO_HOP_LE = {"doc", "ghi", "nguy_hiem"}
-TU_KHOA_NHAY_CAM = {"mat_khau", "password", "pass", "token", "secret", "key", "api_key", "khoa"}
 
 
 def _luu_json(p: Path, du_lieu: Any, quyen: int = 0o600) -> None:
@@ -53,20 +55,298 @@ def bo_dau(s: str) -> str:
     return khong_dau.replace("đ", "d").replace("Đ", "d").lower()
 
 
-def lam_sach_tham_so(ts: dict) -> dict:
-    """Che các giá trị có khả năng là bí mật trong tham số trước khi ghi nhật ký."""
+def lay_luoc_do_tham_so(tinh_nang: Any, hanh_dong: str) -> dict | None:
+    """Trích xuất lược đồ tham số của hành động từ danh sách tinh_nang của thực thể."""
+    if not isinstance(tinh_nang, (list, tuple)):
+        return None
+    for tn in tinh_nang:
+        if isinstance(tn, dict):
+            ten_hd = str(tn.get("hanh_dong") or tn.get("ten") or tn.get("name") or "").strip()
+            if ten_hd == hanh_dong:
+                ld = tn.get("tham_so") or tn.get("parameters") or tn.get("luoc_do") or tn.get("schema")
+                if isinstance(ld, dict):
+                    return ld
+    return None
+
+
+def _lam_sach_gia_tri(val: Any, spec: dict | None = None) -> Any:
+    """Che giá trị đệ quy theo lược đồ hoặc che độ dài nếu chưa khai báo/ngoài lược đồ."""
+    if not isinstance(spec, dict):
+        if isinstance(val, dict):
+            return {str(k): f"…che(độ dài {len(str(v))})" for k, v in val.items()}
+        elif isinstance(val, (list, tuple)):
+            return [f"…che(độ dài {len(str(x))})" for x in val]
+        else:
+            return f"…che(độ dài {len(str(val))})"
+
+    if spec.get("bi_mat") is True:
+        if isinstance(val, (list, tuple)):
+            return ["…che" for _ in val]
+        return "…che"
+
+    if isinstance(val, dict):
+        props = spec.get("properties")
+        if isinstance(props, dict):
+            kq = {}
+            for k, v in val.items():
+                if k in props:
+                    p_s = props[k]
+                    kq[k] = _lam_sach_gia_tri(v, p_s if isinstance(p_s, dict) else None)
+                else:
+                    kq[k] = f"…che(độ dài {len(str(v))})"
+            return kq
+        return {str(k): f"…che(độ dài {len(str(v))})" for k, v in val.items()}
+
+    if isinstance(val, (list, tuple)):
+        items_spec = spec.get("items")
+        if isinstance(items_spec, dict):
+            return [_lam_sach_gia_tri(x, items_spec) for x in val]
+        return [f"…che(độ dài {len(str(x))})" for x in val]
+
+    return val
+
+
+def lam_sach_tham_so(ts: dict, luoc_do_tham_so: dict | None = None) -> dict:
+    """Làm sạch tham số theo NGUYÊN TẮC (SEC-004b):
+    - Tham số khai «bi_mat: true» trong lược đồ -> che thành «…che».
+    - Tham số KHÔNG khai trong lược đồ (hoặc khi không có lược đồ) -> chỉ ghi tên + độ dài, không ghi giá trị.
+    - Tham số khai bình thường (không bí mật) -> giữ nguyên giá trị.
+    - Hỗ trợ đệ quy cho object con và mảng (items) theo lược đồ.
+    """
     if not isinstance(ts, dict):
         return {}
+    props = luoc_do_tham_so.get("properties") if isinstance(luoc_do_tham_so, dict) else None
+    if not isinstance(props, dict):
+        return {str(k): f"…che(độ dài {len(str(v))})" for k, v in ts.items()}
+
     sach = {}
     for k, v in ts.items():
-        ten_k = str(k).lower()
-        if any(tu in ten_k for tu in TU_KHOA_NHAY_CAM):
-            sach[k] = "…che"
-        elif isinstance(v, dict):
-            sach[k] = lam_sach_tham_so(v)
+        if k in props:
+            p_spec = props[k]
+            sach[k] = _lam_sach_gia_tri(v, p_spec if isinstance(p_spec, dict) else None)
         else:
-            sach[k] = v
+            # Tham số KHÔNG khai trong lược đồ: chỉ ghi tên + độ dài, không ghi giá trị
+            do_dai = len(str(v))
+            sach[k] = f"…che(độ dài {do_dai})"
     return sach
+
+
+def _kiem_tra_non_finite(val: Any, ten: str = "", do_sau: int = 0, toi_da_do_sau: int = 10) -> None:
+    if do_sau > toi_da_do_sau:
+        raise LoiOpenAI(400, f"Độ sâu tham số «{ten or 'gốc'}» vượt quá mức cho phép (tối đa {toi_da_do_sau} tầng)", code="invalid_request")
+    if isinstance(val, float) and not math.isfinite(val):
+        raise LoiOpenAI(400, f"Tham số «{ten or 'số'}» không được là NaN hoặc Infinity", code="invalid_request")
+    if isinstance(val, dict):
+        for k, v in val.items():
+            _kiem_tra_non_finite(v, f"{ten}.{k}" if ten else k, do_sau + 1, toi_da_do_sau)
+    elif isinstance(val, (list, tuple)):
+        for i, item in enumerate(val):
+            _kiem_tra_non_finite(item, f"{ten}[{i}]", do_sau + 1, toi_da_do_sau)
+
+
+def _kiem_tra_gia_tri_theo_luoc_do(val: Any, spec: dict, ten: str, do_sau: int = 0) -> None:
+    if do_sau > 6:
+        raise LoiOpenAI(400, f"Độ sâu tham số «{ten}» vượt quá mức cho phép (tối đa 6 tầng)", code="invalid_request")
+    if not isinstance(spec, dict):
+        return
+
+    # 1. Kiểm tra type (hỗ trợ cả str lẫn list[str])
+    p_type = spec.get("type")
+    if p_type:
+        danh_sach_type = p_type if isinstance(p_type, (list, tuple)) else [p_type]
+        hop_le = False
+        for t in danh_sach_type:
+            if t == "string" and isinstance(val, str):
+                hop_le = True
+                break
+            elif t == "integer" and isinstance(val, int) and not isinstance(val, bool):
+                hop_le = True
+                break
+            elif t == "number" and isinstance(val, (int, float)) and not isinstance(val, bool):
+                if math.isfinite(val):
+                    hop_le = True
+                    break
+            elif t == "boolean" and isinstance(val, bool):
+                hop_le = True
+                break
+            elif t == "null" and val is None:
+                hop_le = True
+                break
+            elif t == "array" and isinstance(val, (list, tuple)):
+                hop_le = True
+                break
+            elif t == "object" and isinstance(val, dict):
+                hop_le = True
+                break
+        if not hop_le:
+            raise LoiOpenAI(400, f"Tham số «{ten}» không đúng kiểu (mong muốn {p_type!r}, nhận {type(val).__name__})", code="invalid_request")
+
+    # 2. Số: bắt buộc math.isfinite, minimum, maximum, exclusiveMinimum, exclusiveMaximum
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        if not math.isfinite(val):
+            raise LoiOpenAI(400, f"Tham số «{ten}» không được là NaN hoặc Infinity", code="invalid_request")
+        if "minimum" in spec and val < spec["minimum"]:
+            raise LoiOpenAI(400, f"Tham số «{ten}» ({val}) nhỏ hơn mức tối thiểu ({spec['minimum']})", code="invalid_request")
+        if "maximum" in spec and val > spec["maximum"]:
+            raise LoiOpenAI(400, f"Tham số «{ten}» ({val}) vượt quá mức tối đa ({spec['maximum']})", code="invalid_request")
+        if "exclusiveMinimum" in spec:
+            ex_min = spec["exclusiveMinimum"]
+            if isinstance(ex_min, bool):
+                if ex_min and "minimum" in spec and val <= spec["minimum"]:
+                    raise LoiOpenAI(400, f"Tham số «{ten}» ({val}) phải lớn hơn ({spec['minimum']})", code="invalid_request")
+            elif isinstance(ex_min, (int, float)) and val <= ex_min:
+                raise LoiOpenAI(400, f"Tham số «{ten}» ({val}) phải lớn hơn ({ex_min})", code="invalid_request")
+        if "exclusiveMaximum" in spec:
+            ex_max = spec["exclusiveMaximum"]
+            if isinstance(ex_max, bool):
+                if ex_max and "maximum" in spec and val >= spec["maximum"]:
+                    raise LoiOpenAI(400, f"Tham số «{ten}» ({val}) phải nhỏ hơn ({spec['maximum']})", code="invalid_request")
+            elif isinstance(ex_max, (int, float)) and val >= ex_max:
+                raise LoiOpenAI(400, f"Tham số «{ten}» ({val}) phải nhỏ hơn ({ex_max})", code="invalid_request")
+
+    # 3. Chuỗi: minLength, maxLength
+    if isinstance(val, str):
+        if "minLength" in spec and len(val) < spec["minLength"]:
+            raise LoiOpenAI(400, f"Độ dài tham số «{ten}» nhỏ hơn mức tối thiểu ({spec['minLength']})", code="invalid_request")
+        if "maxLength" in spec and len(val) > spec["maxLength"]:
+            raise LoiOpenAI(400, f"Độ dài tham số «{ten}» vượt quá mức tối đa ({spec['maxLength']})", code="invalid_request")
+
+    # 4. Enum
+    if "enum" in spec and isinstance(spec["enum"], (list, tuple)):
+        if val not in spec["enum"]:
+            raise LoiOpenAI(400, f"Giá trị tham số «{ten}» không nằm trong enum cho phép: {spec['enum']}", code="invalid_request")
+
+    # 5. Đệ quy array
+    if isinstance(val, (list, tuple)):
+        if "minItems" in spec and len(val) < spec["minItems"]:
+            raise LoiOpenAI(400, f"Số phần tử của «{ten}» nhỏ hơn tối thiểu ({spec['minItems']})", code="invalid_request")
+        if "maxItems" in spec and len(val) > spec["maxItems"]:
+            raise LoiOpenAI(400, f"Số phần tử của «{ten}» vượt quá tối đa ({spec['maxItems']})", code="invalid_request")
+        items_spec = spec.get("items")
+        if isinstance(items_spec, dict):
+            for i, item_val in enumerate(val):
+                _kiem_tra_gia_tri_theo_luoc_do(item_val, items_spec, f"{ten}[{i}]", do_sau + 1)
+
+    # 6. Đệ quy object
+    if isinstance(val, dict):
+        required = spec.get("required")
+        if isinstance(required, (list, tuple)):
+            for req in required:
+                if req not in val:
+                    ten_hien = f"{ten}.{req}" if ten else req
+                    raise LoiOpenAI(400, f"Thiếu tham số bắt buộc: «{ten_hien}»", code="invalid_request")
+        props = spec.get("properties")
+        if isinstance(props, dict):
+            additional = spec.get("additionalProperties", True)
+            if additional is False:
+                for k in val:
+                    if k not in props:
+                        ten_k = f"{ten}.{k}" if ten else k
+                        raise LoiOpenAI(400, f"Tham số «{ten_k}» không được phép theo lược đồ", code="invalid_request")
+            for k, sub_v in val.items():
+                if k in props and isinstance(props[k], dict):
+                    _kiem_tra_gia_tri_theo_luoc_do(sub_v, props[k], f"{ten}.{k}" if ten else k, do_sau + 1)
+
+
+def kiem_tra_tham_so(tinh_nang: Any, hanh_dong: str, tham_so: dict) -> None:
+    """Kiểm tra tham số đầu vào so với lược đồ được khai báo trong tinh_nang (SEC-004a).
+
+    Ném LoiOpenAI(400) nếu:
+    - Tham số không phải dict hoặc vượt trần kích thước 8 KB.
+    - Chứa số non-finite (NaN hoặc Infinity).
+    - Thiếu trường bắt buộc (required).
+    - Có trường lạ khi additionalProperties là False.
+    - Sai kiểu dữ liệu (kể cả type danh sách), vi phạm mảng/đối tượng lồng nhau.
+    - Vượt khoảng giá trị (minimum, maximum, exclusiveMinimum, exclusiveMaximum, minLength, maxLength).
+    - Không nằm trong enum cho phép.
+    """
+    if not isinstance(tham_so, dict):
+        raise LoiOpenAI(400, "«tham_so» phải là đối tượng từ điển", code="invalid_request")
+
+    # Kiểm tra độ sâu và non-finite TRƯỚC khi gọi json.dumps (chống RecursionError 500 khi lồng sâu)
+    _kiem_tra_non_finite(tham_so, "", do_sau=0, toi_da_do_sau=10)
+
+    # Trần kích thước 8 KB sau khi tuần tự hoá
+    raw = json.dumps(tham_so, ensure_ascii=False)
+    if len(raw.encode("utf-8")) > 8192:
+        raise LoiOpenAI(400, "Kích thước tham số vượt quá giới hạn 8 KB", code="invalid_request")
+
+    luoc_do = lay_luoc_do_tham_so(tinh_nang, hanh_dong)
+    if not luoc_do:
+        return
+
+    _kiem_tra_gia_tri_theo_luoc_do(tham_so, luoc_do, "", do_sau=0)
+
+
+# ───────────── Trần tần suất lệnh thiết bị (SEC-004e) ─────────────
+
+_KHOA_TAN_SUAT = threading.Lock()
+_LICH_SU_KHOA_THUC_THE: dict[tuple[str, str], list[float]] = {}
+_LICH_SU_BURST: dict[str, list[float]] = {}
+
+
+def tran_luot_thiet_bi() -> int:
+    val = os.environ.get("WEB2API_THIET_BI_TRAN_LUOT", "").strip()
+    if val:
+        try:
+            n = int(val)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+    return 8
+
+
+def tran_phut_thiet_bi() -> int:
+    val = os.environ.get("WEB2API_THIET_BI_TRAN_PHUT", "").strip()
+    if val:
+        try:
+            n = int(val)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+    return 30
+
+
+def kiem_tra_tan_suat(id_khoa: str, id_thuc_the: str) -> None:
+    """Kiểm tra trần tần suất theo SEC-004(e):
+    - Tần suất dồn (burst): WEB2API_THIET_BI_TRAN_LUOT (mặc định 8 lệnh / 5 giây theo khoá).
+    - Theo (khoá, thực thể): WEB2API_THIET_BI_TRAN_PHUT (mặc định 30 lệnh/phút).
+    Vượt -> 429 kèm Retry-After.
+    """
+    now = time.time()
+    tran_luot = tran_luot_thiet_bi()
+    tran_phut = tran_phut_thiet_bi()
+
+    with _KHOA_TAN_SUAT:
+        # 1. Kiểm tra trần burst theo khoá (5 giây)
+        burst = _LICH_SU_BURST.setdefault(id_khoa, [])
+        burst[:] = [t for t in burst if now - t < 5.0]
+        if len(burst) >= tran_luot:
+            raise LoiOpenAI(
+                429,
+                f"Vượt quá giới hạn tần suất lệnh dồn ({tran_luot} lệnh/5 giây).",
+                code="rate_limit_exceeded",
+                headers={"Retry-After": "5"},
+            )
+        burst.append(now)
+
+        # 2. Kiểm tra trần theo (khoá, thực thể) trong 60s
+        key_kt = (id_khoa, id_thuc_the)
+        lich_su = _LICH_SU_KHOA_THUC_THE.setdefault(key_kt, [])
+        lich_su[:] = [t for t in lich_su if now - t < 60.0]
+
+        if len(lich_su) >= tran_phut:
+            oldest = lich_su[0]
+            cho = int(max(1.0, 60.0 - (now - oldest)))
+            raise LoiOpenAI(
+                429,
+                f"Vượt quá giới hạn tần suất ({tran_phut} lệnh/phút) cho thực thể «{id_thuc_the}».",
+                code="rate_limit_exceeded",
+                headers={"Retry-After": str(cho)},
+            )
+        lich_su.append(now)
 
 
 def _p_thiet_bi() -> Path:
@@ -77,7 +357,69 @@ def _p_phe_duyet() -> Path:
     return kho.thu_muc_du_lieu() / "phe_duyet.json"
 
 
-# ───────────── Ghi đè rủi ro ─────────────
+# ───────────── Quản trị xác nhận & Ghi đè rủi ro (SEC-004f) ─────────────
+
+def bam_tinh_nang(tinh_nang: Any, rui_ro_mac_dinh: str | None = None) -> str:
+    """Tính băm SHA-256 ổn định của tinh_nang và rui_ro_mac_dinh để phát hiện thực thể mới, đổi tính năng hoặc đổi rủi ro mặc định (SEC-004f)."""
+    du_lieu = {
+        "tinh_nang": tinh_nang or [],
+        "rui_ro_mac_dinh": str(rui_ro_mac_dinh or "nguy_hiem"),
+    }
+    chuoi = json.dumps(du_lieu, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(chuoi.encode("utf-8")).hexdigest()[:16]
+
+
+def doc_da_xac_nhan() -> dict[str, str]:
+    """Đọc từ điển {id_thuc_the: bam_tinh_nang} các thực thể đã được quản trị xác nhận mức rủi ro."""
+    with _KHOA_LUONG:
+        p = _p_thiet_bi()
+        try:
+            du_lieu = kho.doc_json(p)
+            if isinstance(du_lieu, dict) and isinstance(du_lieu.get("da_xac_nhan"), dict):
+                return {str(k): str(v) for k, v in du_lieu["da_xac_nhan"].items()}
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.warning("Lỗi khi đọc %s: %s", p, e)
+        return {}
+
+
+def xac_nhan_thuc_the(
+    id_thuc_the: str,
+    tinh_nang: Any,
+    rui_ro: str | None = None,
+    rui_ro_mac_dinh: str | None = None,
+) -> None:
+    """Quản trị xác nhận rủi ro cho thực thể và lưu băm tính năng + rủi ro mặc định vào kho thiết bị (0600, nguyên tử)."""
+    with _KHOA_LUONG:
+        p = _p_thiet_bi()
+        du_lieu: dict[str, Any] = {}
+        try:
+            doc = kho.doc_json(p)
+            if isinstance(doc, dict):
+                du_lieu = doc
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.warning("Lỗi khi đọc %s để xác nhận: %s", p, e)
+
+        ghi_de = du_lieu.get("ghi_de_rui_ro")
+        if not isinstance(ghi_de, dict):
+            ghi_de = {}
+        da_xn = du_lieu.get("da_xac_nhan")
+        if not isinstance(da_xn, dict):
+            da_xn = {}
+
+        if rui_ro is not None:
+            if rui_ro not in RUI_RO_HOP_LE:
+                raise LoiOpenAI(400, f"Mức rủi ro không hợp lệ: {rui_ro!r} (hợp lệ: {sorted(RUI_RO_HOP_LE)})", code="invalid_request")
+            ghi_de[id_thuc_the] = rui_ro
+
+        da_xn[id_thuc_the] = bam_tinh_nang(tinh_nang, rui_ro_mac_dinh=rui_ro_mac_dinh)
+        du_lieu["ghi_de_rui_ro"] = ghi_de
+        du_lieu["da_xac_nhan"] = da_xn
+        _luu_json(p, du_lieu)
+
 
 def doc_ghi_de_rui_ro() -> dict[str, str]:
     """Đọc từ điển ghi đè rủi ro {id_thuc_the: "doc" | "ghi" | "nguy_hiem"}.
@@ -99,14 +441,43 @@ def doc_ghi_de_rui_ro() -> dict[str, str]:
         return {}
 
 
-def luu_ghi_de_rui_ro(id_thuc_the: str, rui_ro: str) -> None:
-    """Lưu ghi đè rủi ro cho một thực thể (0600, nguyên tử)."""
+def luu_ghi_de_rui_ro(
+    id_thuc_the: str,
+    rui_ro: str,
+    tinh_nang: Any = None,
+    rui_ro_mac_dinh: str | None = None,
+) -> None:
+    """Lưu ghi đè rủi ro và xác nhận thực thể (0600, nguyên tử)."""
     if rui_ro not in RUI_RO_HOP_LE:
-        raise ValueError(f"Mức rủi ro không hợp lệ: {rui_ro!r} (chỉ nhận: {sorted(RUI_RO_HOP_LE)})")
+        raise LoiOpenAI(400, f"Mức rủi ro không hợp lệ: {rui_ro!r} (chỉ nhận: {sorted(RUI_RO_HOP_LE)})", code="invalid_request")
     with _KHOA_LUONG:
-        hien_tai = doc_ghi_de_rui_ro()
-        hien_tai[id_thuc_the] = rui_ro
-        _luu_json(_p_thiet_bi(), {"ghi_de_rui_ro": hien_tai})
+        p = _p_thiet_bi()
+        du_lieu: dict[str, Any] = {}
+        try:
+            doc = kho.doc_json(p)
+            if isinstance(doc, dict):
+                du_lieu = doc
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.warning("Lỗi khi đọc %s: %s", p, e)
+            raise LoiOpenAI(503, f"Không đọc được kho thiết bị ({p.name}), không ghi đè.",
+                            code="store_unreadable") from None
+
+        ghi_de = du_lieu.get("ghi_de_rui_ro")
+        if not isinstance(ghi_de, dict):
+            ghi_de = {}
+        ghi_de[id_thuc_the] = rui_ro
+        du_lieu["ghi_de_rui_ro"] = ghi_de
+
+        if tinh_nang is not None:
+            da_xn = du_lieu.get("da_xac_nhan")
+            if not isinstance(da_xn, dict):
+                da_xn = {}
+            da_xn[id_thuc_the] = bam_tinh_nang(tinh_nang, rui_ro_mac_dinh=rui_ro_mac_dinh)
+            du_lieu["da_xac_nhan"] = da_xn
+
+        _luu_json(p, du_lieu)
 
 
 # ───────────── Hàng chờ phê duyệt ─────────────
@@ -171,47 +542,152 @@ def doc_hang_cho_phe_duyet() -> list[dict[str, Any]]:
         return con_han
 
 
+def tran_phe_duyet_moi_khoa() -> int:
+    """Trần số mục chờ phê duyệt của một khoá, mặc định 10 từ WEB2API_PHE_DUYET_TOI_DA_MOI_KHOA."""
+    val = os.environ.get("WEB2API_PHE_DUYET_TOI_DA_MOI_KHOA", "").strip()
+    if val:
+        try:
+            n = int(val)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+    return 10
+
+
+def tran_so_muc_phe_duyet() -> int:
+    """Trần số mục trong hàng chờ phê duyệt, mặc định 100 từ WEB2API_PHE_DUYET_TRAN_SO_MUC."""
+    val = os.environ.get("WEB2API_PHE_DUYET_TRAN_SO_MUC", "").strip()
+    if val:
+        try:
+            n = int(val)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+    return 100
+
+
+def _bam_trang_thai_phe_duyet(thuc_the: str, tinh_nang: Any, hanh_dong: str, tham_so: dict) -> str:
+    raw = json.dumps({
+        "thuc_the": thuc_the,
+        "tinh_nang": tinh_nang if tinh_nang is not None else [],
+        "hanh_dong": hanh_dong,
+        "tham_so": tham_so or {},
+    }, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def them_hang_cho_phe_duyet(
     ai_de_xuat: str,
     thuc_the: str,
     hanh_dong: str,
     tham_so: dict,
     ly_do: str = "",
+    tinh_nang: Any = None,
 ) -> dict[str, Any]:
-    """Thêm một yêu cầu vào hàng chờ phê duyệt, lưu nguyên tử và phát sự kiện SSE."""
-    phut = thoi_han_phe_duyet_phut()
-    bay_gio = datetime.now(timezone.utc)
-    het_han = bay_gio.timestamp() + phut * 60
-    het_han_iso = datetime.fromtimestamp(het_han, timezone.utc).isoformat()
-    pd_id = f"pd_{secrets.token_hex(6)}"
+    """Thêm một yêu cầu vào hàng chờ phê duyệt, loại trùng và áp dụng trần số mục (SEC-004c)."""
+    ai_de_xuat = str(ai_de_xuat or "").strip()
+    if len(ai_de_xuat) > 128:
+        raise LoiOpenAI(400, "Độ dài «ai_de_xuat» vượt quá giới hạn 128 ký tự", code="invalid_request")
+    thuc_the = str(thuc_the or "").strip()
+    if len(thuc_the) > 256:
+        raise LoiOpenAI(400, "Độ dài «thuc_the» vượt quá giới hạn 256 ký tự", code="invalid_request")
+    hanh_dong = str(hanh_dong or "").strip()
+    if len(hanh_dong) > 128:
+        raise LoiOpenAI(400, "Độ dài «hanh_dong» vượt quá giới hạn 128 ký tự", code="invalid_request")
+    ly_do = str(ly_do or "")
+    if len(ly_do) > 500:
+        raise LoiOpenAI(400, "Độ dài «ly_do» vượt quá giới hạn cho phép (tối đa 500 ký tự)", code="invalid_request")
 
-    muc = {
-        "id": pd_id,
-        "ai_de_xuat": ai_de_xuat,
-        "thuc_the": thuc_the,
-        "hanh_dong": hanh_dong,
-        "tham_so": dict(tham_so or {}),
-        "ly_do": str(ly_do or ""),
-        "luc": kho.bay_gio_iso(),
-        "het_han": het_han_iso,
-    }
+    if not isinstance(tham_so, dict):
+        raise LoiOpenAI(400, "«tham_so» phải là đối tượng từ điển", code="invalid_request")
+
+    # Kiểm tra độ sâu và non-finite TRƯỚC khi gọi json.dumps
+    _kiem_tra_non_finite(tham_so, "", do_sau=0, toi_da_do_sau=10)
+
+    # Trần kích thước tham số 8 KB
+    raw_ts = json.dumps(tham_so or {}, ensure_ascii=False)
+    if len(raw_ts.encode("utf-8")) > 8192:
+        raise LoiOpenAI(400, "Kích thước tham số vượt quá giới hạn 8 KB", code="invalid_request")
 
     with _KHOA_LUONG:
         ds = doc_hang_cho_phe_duyet()
+        # Loại trùng theo (khoá, thực thể, hành động) - KHÔNG trả pd_id của khoá A cho khoá B
+        ds_moi = []
+        for muc_cu in ds:
+            if (muc_cu.get("ai_de_xuat") == ai_de_xuat
+                and muc_cu.get("thuc_the") == thuc_the
+                and muc_cu.get("hanh_dong") == hanh_dong):
+                ts_moi = dict(tham_so or {})
+                ly_do_moi = str(ly_do or "")
+                bam_moi = _bam_trang_thai_phe_duyet(thuc_the, tinh_nang, hanh_dong, ts_moi)
+                if (muc_cu.get("tham_so") == ts_moi
+                    and muc_cu.get("ly_do") == ly_do_moi
+                    and muc_cu.get("bam") == bam_moi):
+                    return muc_cu
+                # Nội dung khác mục đang chờ: huỷ mục cũ (không đưa vào ds_moi) và cấp ID MỚI
+                continue
+            ds_moi.append(muc_cu)
+        ds = ds_moi
+
+        # Kiểm tra trần theo khoá
+        tran_khoa = tran_phe_duyet_moi_khoa()
+        so_muc_khoa = sum(1 for m in ds if m.get("ai_de_xuat") == ai_de_xuat)
+        if so_muc_khoa >= tran_khoa:
+            raise LoiOpenAI(429, f"Khoá «{ai_de_xuat}» đã đạt trần số mục phê duyệt chờ xử lý ({tran_khoa}).", code="queue_full_per_key")
+
+        # Kiểm tra trần toàn cục
+        tran_muc = tran_so_muc_phe_duyet()
+        if len(ds) >= tran_muc:
+            raise LoiOpenAI(429, f"Hàng chờ phê duyệt đã đạt trần số mục ({tran_muc}).", code="queue_full")
+
+        phut = thoi_han_phe_duyet_phut()
+        bay_gio = datetime.now(timezone.utc)
+        het_han = bay_gio.timestamp() + phut * 60
+        het_han_iso = datetime.fromtimestamp(het_han, timezone.utc).isoformat()
+        pd_id = f"pd_{secrets.token_hex(6)}"
+
+        bam_luc_tao = _bam_trang_thai_phe_duyet(thuc_the, tinh_nang, hanh_dong, tham_so)
+
+        muc = {
+            "id": pd_id,
+            "ai_de_xuat": ai_de_xuat,
+            "thuc_the": thuc_the,
+            "hanh_dong": hanh_dong,
+            "tham_so": dict(tham_so or {}),
+            "ly_do": str(ly_do or ""),
+            "luc": kho.bay_gio_iso(),
+            "het_han": het_han_iso,
+            "bam": bam_luc_tao,
+        }
+
         ds.append(muc)
         _luu_json(_p_phe_duyet(), {"hang_cho": ds})
 
-    BO_PHAT.phat_dong_bo({"loai": "phe_duyet_moi", "muc": muc})
+    # Phát sự kiện SSE duy nhất ở đây, làm sạch tham số trước khi phát
+    luoc_do = lay_luoc_do_tham_so(tinh_nang, hanh_dong) if tinh_nang else None
+    muc_phat = dict(muc)
+    muc_phat["tham_so"] = lam_sach_tham_so(muc.get("tham_so", {}), luoc_do)
+    BO_PHAT.phat_dong_bo({"loai": "phe_duyet_moi", "muc": muc_phat})
     return muc
 
 
-async def duyet_phe_duyet(pd_id: str, so: SoModule, nguoi_duyet: str = "quan_tri") -> dict:
-    """Quản trị duyệt mục phê duyệt: thực hiện hành động trên module rồi xoá mục khỏi hàng chờ."""
+async def duyet_phe_duyet(
+    pd_id: str,
+    so: SoModule,
+    nguoi_duyet: str = "quan_tri",
+    bam_mong_doi: str | None = None,
+) -> dict:
+    """Quản trị duyệt mục phê duyệt: kiểm tra LẠI trước khi thực hiện (SEC-004d), xoá mục và thực thi."""
     with _KHOA_LUONG:
         ds = doc_hang_cho_phe_duyet()
         tim_thay = next((m for m in ds if m.get("id") == pd_id), None)
         if tim_thay is None:
             raise LoiOpenAI(404, f"Không tìm thấy mục phê duyệt {pd_id!r} hoặc mục đã quá hạn.", code="not_found")
+        if bam_mong_doi and tim_thay.get("bam") != bam_mong_doi:
+            raise LoiOpenAI(409, "Băm nội dung phê duyệt không khớp với phiên bản quản trị đã xem.", code="conflict")
+        # Xoá ngay trong khoá trước mọi await để chống đua lệnh (race condition / TOCTOU)
         con_lai = [m for m in ds if m.get("id") != pd_id]
         _luu_json(_p_phe_duyet(), {"hang_cho": con_lai})
 
@@ -219,6 +695,46 @@ async def duyet_phe_duyet(pd_id: str, so: SoModule, nguoi_duyet: str = "quan_tri
     hanh_dong = tim_thay["hanh_dong"]
     tham_so = tim_thay.get("tham_so", {})
     ai_de_xuat = tim_thay.get("ai_de_xuat", "khach")
+    bam_cu = tim_thay.get("bam")
+
+    # SEC-004(d): Kiểm tra lại trước khi thực hiện:
+    # 1. Thực thể còn tồn tại
+    item = await lay_mot_thuc_the(thuc_the_id, so)
+    if not item:
+        nhat_ky.ghi("thiet_bi", "loi", f"Duyệt thất bại (409): Thực thể «{thuc_the_id}» không còn tồn tại.", nguoi_duyet=nguoi_duyet, ai_de_xuat=ai_de_xuat, thuc_the=thuc_the_id, hanh_dong=hanh_dong)
+        raise LoiOpenAI(409, f"Thực thể «{thuc_the_id}» không còn tồn tại.", code="conflict")
+
+    # 2. Hành động còn trong tinh_nang
+    tinh_nang = item.get("tinh_nang", [])
+    cac_hd = []
+    for tn in tinh_nang:
+        if isinstance(tn, str):
+            cac_hd.append(tn.strip())
+        elif isinstance(tn, dict):
+            cac_hd.append(str(tn.get("hanh_dong") or tn.get("ten") or tn.get("name") or "").strip())
+    if hanh_dong not in cac_hd:
+        nhat_ky.ghi("thiet_bi", "loi", f"Duyệt thất bại (409): Hành động «{hanh_dong}» không còn trong tính năng của «{thuc_the_id}».", nguoi_duyet=nguoi_duyet, ai_de_xuat=ai_de_xuat, thuc_the=thuc_the_id, hanh_dong=hanh_dong)
+        raise LoiOpenAI(409, f"Hành động «{hanh_dong}» không còn trong tính năng hỗ trợ của thực thể.", code="conflict")
+
+    # 3. Mức rủi ro vẫn nguy_hiem
+    rr_hien_tai = item.get("rui_ro")
+    if rr_hien_tai != "nguy_hiem":
+        nhat_ky.ghi("thiet_bi", "loi", f"Duyệt thất bại (409): Mức rủi ro của «{hanh_dong}» trên «{thuc_the_id}» không còn là «nguy_hiem».", nguoi_duyet=nguoi_duyet, ai_de_xuat=ai_de_xuat, thuc_the=thuc_the_id, hanh_dong=hanh_dong)
+        raise LoiOpenAI(409, f"Mức rủi ro của hành động «{hanh_dong}» đã thay đổi (không còn «nguy_hiem»).", code="conflict")
+
+    # 4. Kiểm tra băm tính năng so với lúc tạo (Mục 5)
+    if bam_cu:
+        bam_moi = _bam_trang_thai_phe_duyet(thuc_the_id, tinh_nang, hanh_dong, tham_so)
+        if bam_moi != bam_cu:
+            nhat_ky.ghi("thiet_bi", "loi", f"Duyệt thất bại (409): Tính năng hoặc tham số của «{thuc_the_id}» đã thay đổi so với lúc yêu cầu.", nguoi_duyet=nguoi_duyet, ai_de_xuat=ai_de_xuat, thuc_the=thuc_the_id, hanh_dong=hanh_dong)
+            raise LoiOpenAI(409, "Tính năng hoặc tham số của thực thể đã thay đổi so với thời điểm yêu cầu phê duyệt.", code="conflict")
+
+    # 5. Kiểm tra lại tham số theo lược đồ hiện tại (Mục 3)
+    try:
+        kiem_tra_tham_so(tinh_nang, hanh_dong, tham_so)
+    except LoiOpenAI as e:
+        nhat_ky.ghi("thiet_bi", "loi", f"Duyệt thất bại (409): Tham số không còn phù hợp với lược đồ hiện tại của «{thuc_the_id}»: {e.than.get('error', {}).get('message')}", nguoi_duyet=nguoi_duyet, ai_de_xuat=ai_de_xuat, thuc_the=thuc_the_id, hanh_dong=hanh_dong)
+        raise LoiOpenAI(409, f"Tham số không còn phù hợp với lược đồ tính năng hiện tại: {e.than.get('error', {}).get('message')}", code="conflict") from e
 
     # Thực hiện hành động
     tien_to, _, _ = thuc_the_id.partition(".")
@@ -247,6 +763,7 @@ async def duyet_phe_duyet(pd_id: str, so: SoModule, nguoi_duyet: str = "quan_tri
         )
         raise LoiOpenAI(502, f"Module lỗi khi thực hiện: {type(e).__name__}", code="upstream_error") from e
 
+    luoc_do = lay_luoc_do_tham_so(item.get("tinh_nang", []), hanh_dong)
     nhat_ky.ghi(
         "thiet_bi",
         "thong_tin",
@@ -255,10 +772,44 @@ async def duyet_phe_duyet(pd_id: str, so: SoModule, nguoi_duyet: str = "quan_tri
         ai_de_xuat=ai_de_xuat,
         thuc_the=thuc_the_id,
         hanh_dong=hanh_dong,
-        tham_so=lam_sach_tham_so(tham_so),
+        tham_so=lam_sach_tham_so(tham_so, luoc_do),
     )
     BO_PHAT.phat_dong_bo({"loai": "phe_duyet_xong", "id": pd_id, "thuc_the": thuc_the_id, "hanh_dong": hanh_dong})
     return {"ok": True, "id": pd_id, "ket_qua": kq}
+
+
+async def lay_hang_cho_hien_thi(so: SoModule) -> list[dict[str, Any]]:
+    """Đọc hàng chờ phê duyệt và che các tham số bí mật / chưa khai theo SEC-004b trước khi trả ra API.
+    Tra cứu thực thể song song (khống chế Semaphore(10) và timeout 3s) để không bị nghẽn khi có nhiều mục hoặc module chậm."""
+    raw_list = doc_hang_cho_phe_duyet()
+    if not raw_list:
+        return []
+
+    cac_id = list({item.get("thuc_the") for item in raw_list if item.get("thuc_the")})
+    sem = asyncio.Semaphore(10)
+
+    async def _lay_an_toan(eid: str) -> tuple[str, dict[str, Any] | None]:
+        async with sem:
+            try:
+                ent = await asyncio.wait_for(lay_mot_thuc_the(eid, so), timeout=3.0)
+                return eid, ent
+            except Exception:
+                return eid, None
+
+    cac_thuc_the = await asyncio.gather(*[_lay_an_toan(eid) for eid in cac_id])
+    ban_do_thuc_the = dict(cac_thuc_the)
+
+    res = []
+    for item in raw_list:
+        m_copy = dict(item)
+        thuc_the_id = m_copy.get("thuc_the", "")
+        hanh_dong = m_copy.get("hanh_dong", "")
+        ts = m_copy.get("tham_so", {})
+        ent = ban_do_thuc_the.get(thuc_the_id)
+        luoc_do = lay_luoc_do_tham_so(ent.get("tinh_nang", []), hanh_dong) if ent else None
+        m_copy["tham_so"] = lam_sach_tham_so(ts, luoc_do)
+        res.append(m_copy)
+    return res
 
 
 def tu_choi_phe_duyet(pd_id: str, nguoi_tu_choi: str = "quan_tri") -> dict:
@@ -321,6 +872,7 @@ async def lay_danh_sach_thuc_the(
     """Gộp thực thể mọi module đang chạy có chuẩn thiet_bi, kèm rủi ro hiệu lực và trạng thái."""
     modules = _module_thiet_bi_hop_le(so)
     ghi_de = doc_ghi_de_rui_ro()
+    da_xn = doc_da_xac_nhan()
     danh_sach_thuc_the: list[dict[str, Any]] = []
     loi_module: list[dict[str, str]] = []
     id_da_co: set[str] = set()
@@ -362,8 +914,12 @@ async def lay_danh_sach_thuc_the(
             if rr_mac_dinh not in RUI_RO_HOP_LE:
                 rr_mac_dinh = "nguy_hiem"
 
-            # Rủi ro hiệu lực: người dùng ghi đè > mặc định > "nguy_hiem"
-            rr_hieu_luc = ghi_de.get(e_id, rr_mac_dinh)
+            # Rủi ro hiệu lực (SEC-004f): Thực thể mới hoặc đổi tinh_nang coi là nguy_hiem cho tới khi quản trị xác nhận
+            b_tn = bam_tinh_nang(item.get("tinh_nang"), rr_mac_dinh)
+            if e_id not in da_xn or da_xn.get(e_id) != b_tn:
+                rr_hieu_luc = "nguy_hiem"
+            else:
+                rr_hieu_luc = ghi_de.get(e_id, rr_mac_dinh)
 
             muc = {
                 "id": e_id,
@@ -446,10 +1002,15 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
         return None
 
     ghi_de = doc_ghi_de_rui_ro()
+    da_xn = doc_da_xac_nhan()
     rr_mac_dinh = tim_thay.get("rui_ro_mac_dinh")
     if rr_mac_dinh not in RUI_RO_HOP_LE:
         rr_mac_dinh = "nguy_hiem"
-    rr_hieu_luc = ghi_de.get(id_thuc_the, rr_mac_dinh)
+    b_tn = bam_tinh_nang(tim_thay.get("tinh_nang"), rr_mac_dinh)
+    if id_thuc_the not in da_xn or da_xn.get(id_thuc_the) != b_tn:
+        rr_hieu_luc = "nguy_hiem"
+    else:
+        rr_hieu_luc = ghi_de.get(id_thuc_the, rr_mac_dinh)
 
     trang_thai = None
     try:
@@ -471,6 +1032,241 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
         "module": mod_id,
         "trang_thai": trang_thai,
     }
+
+
+# ───────────── Cổng thực hiện hành động thiết bị lõi (SEC-002, SEC-004) ─────────────
+
+async def thuc_hien_hanh_dong_loi(
+    id_thuc_the: str,
+    hanh_dong: str,
+    tham_so: dict[str, Any] | None = None,
+    xac_nhan: bool = False,
+    ly_do: str = "",
+    ngu_canh: Any = None,
+    so: SoModule | None = None,
+    module: Any = None,
+) -> tuple[int, dict[str, Any]]:
+    """Cổng thực hiện hành động thiết bị dùng chung cho cả HTTP và gọi nội bộ (SEC-002, SEC-004).
+
+    Quy trình:
+    1. Kiểm tra ngữ cảnh gọi và phạm vi thiet_bi:ghi (đóng khi thiếu ngữ cảnh).
+    2. Kiểm tra tính hợp lệ của tham số đầu vào.
+    3. Tra cứu thực thể (qua SoModule hoặc module trực tiếp).
+    4. Kiểm tra hành động thuộc tính năng hỗ trợ của thực thể.
+    5. Kiểm tra tham số theo lược đồ (min/max, kiểu, required, additionalProperties... SEC-004a).
+    6. Kiểm tra giới hạn tần suất lệnh cho khoá khách (8/lượt, 30/phút/khoá/thực thể SEC-004e).
+    7. Xử lý mức độ rủi ro:
+       - nguy_hiem + quan_tri: cần xac_nhan: true (thiếu -> 409).
+       - nguy_hiem + khach: vào hàng chờ phê duyệt và trả 202 (SEC-004c).
+    8. Thực hiện hành động qua module.
+    9. Ghi sổ kiểm toán kênh thiet_bi với danh tính và nguon do LÕI đóng dấu, tham số làm sạch (SEC-004b).
+    """
+    from app import ngu_canh as ngu_canh_mod
+
+    if ngu_canh is None:
+        ngu_canh = ngu_canh_mod.lay()
+    if ngu_canh is None:
+        raise LoiOpenAI(
+            403,
+            "Thiếu ngữ cảnh gọi hợp lệ (missing context).",
+            loai="permission_error",
+            code="missing_context",
+        )
+
+    # 1. Kiểm tra phạm vi
+    danh_tinh = ngu_canh.danh_tinh
+    pv = ngu_canh.pham_vi_hieu_luc
+    la_quan_tri = danh_tinh.get("loai") in ("quan_tri", "noi_bo")
+    if not la_quan_tri and "*" not in pv and "thiet_bi:ghi" not in pv:
+        raise LoiOpenAI(
+            403,
+            "Khoá không có quyền thực hiện thao tác này (cần phạm vi «thiet_bi:ghi»).",
+            loai="insufficient_scope",
+            code="insufficient_scope",
+        )
+
+    # 2. Định dạng đầu vào
+    if not isinstance(id_thuc_the, str) or not id_thuc_the.strip():
+        raise LoiOpenAI(400, "Thiếu hoặc sai trường «id_thuc_the»", code="invalid_request")
+    id_thuc_the = id_thuc_the.strip()
+
+    if not isinstance(hanh_dong, str) or not hanh_dong.strip():
+        raise LoiOpenAI(400, "Thiếu trường «hanh_dong»", code="invalid_request")
+    hanh_dong = hanh_dong.strip()
+
+    if tham_so is None:
+        tham_so = {}
+    if not isinstance(tham_so, dict):
+        raise LoiOpenAI(400, "«tham_so» phải là đối tượng từ điển", code="invalid_request")
+
+    if ly_do and len(str(ly_do)) > 500:
+        raise LoiOpenAI(400, "Độ dài «ly_do» vượt quá giới hạn cho phép (tối đa 500 ký tự)", code="invalid_request")
+
+    # 3. Tra cứu thực thể
+    item: dict[str, Any] | None = None
+    target_module: Any = None
+    mod_id_log: str = ""
+
+    if so is not None:
+        item = await lay_mot_thuc_the(id_thuc_the, so)
+        if item:
+            tien_to, _, _ = id_thuc_the.partition(".")
+            mod_id = so.tim_theo_tien_to(tien_to)
+            if mod_id and mod_id in so.dang_chay:
+                target_module = so.dang_chay[mod_id]
+                mod_id_log = mod_id
+    elif module is not None:
+        target_module = module
+        manifest = getattr(module, "manifest", {})
+        mod_id_log = manifest.get("id", getattr(module, "id", "module"))
+        if callable(getattr(module, "thuc_the", None)):
+            try:
+                raw_ents = await asyncio.wait_for(module.thuc_the(None), timeout=5.0)
+                if isinstance(raw_ents, list):
+                    for e in raw_ents:
+                        if isinstance(e, dict) and e.get("id") == id_thuc_the:
+                            ghi_de = doc_ghi_de_rui_ro()
+                            da_xn = doc_da_xac_nhan()
+                            rr_mac_dinh = e.get("rui_ro_mac_dinh")
+                            if rr_mac_dinh not in RUI_RO_HOP_LE:
+                                rr_mac_dinh = "nguy_hiem"
+                            b_tn = bam_tinh_nang(e.get("tinh_nang"), rr_mac_dinh)
+                            if id_thuc_the not in da_xn or da_xn.get(id_thuc_the) != b_tn:
+                                rr_hieu_luc = "nguy_hiem"
+                            else:
+                                rr_hieu_luc = ghi_de.get(id_thuc_the, rr_mac_dinh)
+                            item = {
+                                "id": id_thuc_the,
+                                "ten": str(e.get("ten") or id_thuc_the),
+                                "loai": str(e.get("loai") or "thiet_bi"),
+                                "khu": e.get("khu"),
+                                "thuoc_tinh": dict(e.get("thuoc_tinh") or {}),
+                                "tinh_nang": list(e.get("tinh_nang") or []),
+                                "rui_ro_mac_dinh": rr_mac_dinh,
+                                "rui_ro": rr_hieu_luc,
+                                "module": mod_id_log,
+                                "trang_thai": None,
+                            }
+                            break
+            except Exception as e:
+                log.warning("Lỗi tra cứu thực thể từ module %s: %s", mod_id_log, e)
+
+    if not item:
+        raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
+
+    # 4. Kiểm tra hành động có trong tính năng
+    tinh_nang = item.get("tinh_nang", [])
+    cac_hd = []
+    for tn in tinh_nang:
+        if isinstance(tn, str):
+            cac_hd.append(tn.strip())
+        elif isinstance(tn, dict):
+            ten = tn.get("hanh_dong") or tn.get("ten") or tn.get("name") or ""
+            cac_hd.append(str(ten).strip())
+
+    if hanh_dong not in cac_hd:
+        raise LoiOpenAI(
+            400,
+            f"Hành động «{hanh_dong}» không nằm trong tính năng hỗ trợ của thực thể {id_thuc_the!r} (hỗ trợ: {cac_hd})",
+            code="invalid_action",
+        )
+
+    # 5. SEC-004(a): Kiểm tra tham số theo lược đồ
+    kiem_tra_tham_so(tinh_nang, hanh_dong, tham_so)
+
+    # 6. SEC-004(e): Giới hạn tần suất cho khoá khách
+    nguoi_goi = str(danh_tinh.get("id") or danh_tinh.get("loai") or "khach")
+    if danh_tinh.get("loai") == "khach":
+        kiem_tra_tan_suat(id_khoa=nguoi_goi, id_thuc_the=id_thuc_the)
+
+    # 7. Xử lý mức độ rủi ro (nguy_hiem)
+    if item.get("rui_ro") == "nguy_hiem":
+        if la_quan_tri:
+            if not xac_nhan:
+                nhat_ky.ghi(
+                    "thiet_bi",
+                    "canh_bao",
+                    f"Từ chối 409: hành động nguy hiểm «{hanh_dong}» trên «{id_thuc_the}» cần quản trị xác nhận",
+                    thuc_the=id_thuc_the,
+                    hanh_dong=hanh_dong,
+                    nguoi_goi=nguoi_goi,
+                    nguon=ngu_canh.nguon,
+                )
+                raise LoiOpenAI(
+                    409,
+                    f"Hành động «{hanh_dong}» trên thực thể «{id_thuc_the}» có mức rủi ro nguy hiểm, cần gửi kèm «xac_nhan: true».",
+                    code="can_xac_nhan",
+                )
+        else:
+            pd = them_hang_cho_phe_duyet(
+                ai_de_xuat=nguoi_goi,
+                thuc_the=id_thuc_the,
+                hanh_dong=hanh_dong,
+                tham_so=tham_so,
+                ly_do=ly_do,
+                tinh_nang=tinh_nang,
+            )
+            nhat_ky.ghi(
+                "thiet_bi",
+                "thong_tin",
+                f"Tạo yêu cầu phê duyệt {pd['id']}: «{nguoi_goi}» yêu cầu «{hanh_dong}» trên «{id_thuc_the}» (nguy hiểm)",
+                phe_duyet_id=pd["id"],
+                thuc_the=id_thuc_the,
+                hanh_dong=hanh_dong,
+                nguoi_goi=nguoi_goi,
+                nguon=ngu_canh.nguon,
+                ly_do=ly_do,
+            )
+            res_202 = {
+                "ok": True,
+                "phe_duyet_id": pd["id"],
+                "trang_thai": "cho_phe_duyet",
+                "cho_phe_duyet": True,
+            }
+            return 202, res_202
+
+    # 8. Thực hiện qua module
+    if not target_module or not callable(getattr(target_module, "thuc_hien", None)):
+        raise LoiOpenAI(
+            502,
+            f"Module cho thực thể {id_thuc_the!r} không sẵn sàng hoặc không hỗ trợ thuc_hien.",
+            code="upstream_error",
+        )
+
+    try:
+        kq = await target_module.thuc_hien(id_thuc_the, hanh_dong, tham_so)
+    except Exception as e:
+        log.exception("Module %s lỗi khi thực hiện hành động %s trên %s", mod_id_log, hanh_dong, id_thuc_the)
+        nhat_ky.ghi(
+            "thiet_bi",
+            "loi",
+            f"Module lỗi khi thực hiện «{hanh_dong}» trên «{id_thuc_the}»: {e}",
+            thuc_the=id_thuc_the,
+            hanh_dong=hanh_dong,
+            nguoi_goi=nguoi_goi,
+            nguon=ngu_canh.nguon,
+            loi=str(e),
+        )
+        raise LoiOpenAI(502, f"Module lỗi khi thực hiện hành động: {type(e).__name__}", code="upstream_error") from e
+
+    # 9. Ghi sổ kiểm toán thành công (làm sạch tham số theo nguyên tắc)
+    luoc_do = lay_luoc_do_tham_so(tinh_nang, hanh_dong)
+    ts_sach = lam_sach_tham_so(tham_so, luoc_do)
+    nhat_ky.ghi(
+        "thiet_bi",
+        "thong_tin",
+        f"Thực hiện thành công hành động «{hanh_dong}» trên «{id_thuc_the}»",
+        thuc_the=id_thuc_the,
+        hanh_dong=hanh_dong,
+        nguoi_goi=nguoi_goi,
+        nguon=ngu_canh.nguon,
+        tham_so=ts_sach,
+    )
+    if isinstance(kq, dict):
+        kq_tra = dict(kq)
+    else:
+        kq_tra = kq
+    return 200, kq_tra
 
 
 # ───────────── Bảo vệ bus sự kiện SSE (NV29/SEC-003) ─────────────
@@ -602,26 +1398,45 @@ def chuan_hoa_su_kien_thiet_bi(su_kien_tho: dict, nguon: str) -> dict:
 
 # ───────────── Phát sự kiện SSE ─────────────
 
+class HangDoiSuKien(asyncio.Queue):
+    """Hàng đợi sự kiện SSE, hỗ trợ cả gọi đồng bộ lẫn await khi đăng ký."""
+    def __await__(self):
+        async def _self():
+            return self
+        return _self().__await__()
+
+
+class KetQuaHuy:
+    """Kết quả huỷ hàng đợi sự kiện, hỗ trợ cả gọi đồng bộ lẫn await."""
+    def __await__(self):
+        async def _none():
+            return None
+        return _none().__await__()
+
+
 class BoPhatSuKienThietBi:
     """Bộ phân phối sự kiện SSE cho các client đang kết nối — có lọc theo danh tính (SEC-003)."""
 
     def __init__(self):
         self._nghe: list[dict] = []  # mỗi mục: {"q", "loai", "id", "pham_vi"}
-        self._khoa = asyncio.Lock()
+        self._khoa_dong_bo = threading.Lock()
 
     def _so_nghe_cua_danh_tinh(self, loai: str, id_: str) -> int:
         return sum(1 for n in self._nghe if n["loai"] == loai and n["id"] == id_)
 
-    async def dang_ky(
+    def dang_ky(
         self,
         loai: str = "quan_tri",
         id_: str = "quan_tri",
         pham_vi: Any = (),
-    ) -> asyncio.Queue:
-        """Đăng ký một người nghe kèm danh tính. Vượt trần (theo danh tính hoặc toàn cục)
-        → LoiOpenAI 429 kèm Retry-After."""
-        q: asyncio.Queue = asyncio.Queue(maxsize=100)
-        async with self._khoa:
+        la_quan_tri: bool | None = None,
+    ) -> HangDoiSuKien:
+        """Đăng ký một người nghe kèm danh tính (hỗ trợ cả sync lẫn async await).
+        Vượt trần (theo danh tính hoặc toàn cục) → LoiOpenAI 429 kèm Retry-After."""
+        if la_quan_tri is True:
+            loai = "quan_tri"
+        q = HangDoiSuKien(maxsize=100)
+        with self._khoa_dong_bo:
             if len(self._nghe) >= nghe_toi_da_toan_cuc():
                 raise LoiOpenAI(
                     429,
@@ -643,9 +1458,11 @@ class BoPhatSuKienThietBi:
             self._nghe.append({"q": q, "loai": loai, "id": id_, "pham_vi": cac_pham_vi})
         return q
 
-    async def huy(self, q: asyncio.Queue) -> None:
-        async with self._khoa:
+    def huy(self, q: asyncio.Queue) -> KetQuaHuy:
+        """Huỷ một người nghe sự kiện (hỗ trợ cả sync lẫn async await)."""
+        with self._khoa_dong_bo:
             self._nghe = [n for n in self._nghe if n["q"] is not q]
+        return KetQuaHuy()
 
     @staticmethod
     def _duoc_nhan(nghe: dict, su_kien: dict) -> bool:
@@ -658,7 +1475,7 @@ class BoPhatSuKienThietBi:
         return bool(nghe.get("pham_vi", frozenset()) & CAC_PHAM_VI_NGHE)
 
     async def phat(self, su_kien: dict) -> None:
-        async with self._khoa:
+        with self._khoa_dong_bo:
             cac_nghe = [n for n in self._nghe if self._duoc_nhan(n, su_kien)]
         for nghe in cac_nghe:
             try:
@@ -667,11 +1484,18 @@ class BoPhatSuKienThietBi:
                 pass
 
     def phat_dong_bo(self, su_kien: dict) -> None:
+        """Phát sự kiện đồng bộ hoặc qua loop đang chạy; nếu không có loop thì gửi thẳng vào queue."""
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(self.phat(su_kien))
         except RuntimeError:
-            pass
+            with self._khoa_dong_bo:
+                cac_nghe = [n for n in self._nghe if self._duoc_nhan(n, su_kien)]
+            for nghe in cac_nghe:
+                try:
+                    nghe["q"].put_nowait(su_kien)
+                except asyncio.QueueFull:
+                    pass
 
 
 BO_PHAT = BoPhatSuKienThietBi()
