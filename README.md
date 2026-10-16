@@ -65,7 +65,7 @@ volumes:
 
 ## Portainer và NAS
 
-Cổng dịch vụ là `3031` (ánh xạ `3031:8000`), dữ liệu lưu ngoài container gắn vào `/data`.
+Cổng dịch vụ là `3031` (ánh xạ `3031:8000`), dữ liệu lưu ngoài container gắn vào `/data`. Tệp `docker-compose.yml` mặc định chỉ nghe trên máy chủ (`127.0.0.1`); muốn vào từ máy khác trong mạng nhà, đặt `WEB2API_BIND=<IP LAN của máy chủ>` trong `.env`.
 
 ### Portainer
 1. Vào **Stacks** → **Add stack**, đặt tên stack (ví dụ `web2api`).

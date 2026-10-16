@@ -13,7 +13,10 @@ services:
     container_name: web2api
     restart: unless-stopped
     ports:
-      - "${WEB2API_PORT:-3031}:8000"
+      # Mặc định CHỈ nghe trên máy chủ (127.0.0.1): không công bố cổng ra mạng nhà/Internet (luật bảo mật số 5).
+      # Muốn truy cập từ máy khác trong mạng nhà: đặt WEB2API_BIND=<IP LAN của máy chủ> trong .env
+      # (hoặc 0.0.0.0 nếu đã có tường lửa/VPN chặn đúng — Docker đi vòng ufw nên đừng tin ufw một mình).
+      - "${WEB2API_BIND:-127.0.0.1}:${WEB2API_PORT:-3031}:8000"
     environment:
       WEB2API_DATA: /data
       # Nguồn module mặc định = git của dự án: module ở modules/<id>/ của kho TriTue2011/web2api (nhánh
@@ -31,7 +34,7 @@ services:
     #   WEB2API_MAY_RAM_MB, WEB2API_MAY_CPU   số RAM/nhân CỦA MÁY: trong container bị giới hạn không đọc
     #                                         được số thật (README, mục «Chạy trong LXC/Proxmox»)
     #   WEB2API_GIT_TOKEN                     token GitHub chỉ-đọc, chỉ cần cho kho riêng tư
-    #   WEB2API_PORT, WEB2API_DATA_DIR        cổng trên máy chủ (mặc định 3031), nơi giữ dữ liệu (dưới)
+    #   WEB2API_PORT, WEB2API_BIND, WEB2API_DATA_DIR  cổng trên máy chủ (mặc định 3031), địa chỉ nghe (mặc định 127.0.0.1), nơi giữ dữ liệu (dưới)
     env_file:
       - path: .env
         required: false
@@ -44,6 +47,12 @@ services:
       # (hoặc đường tuyệt đối) trong .env, rồi `mkdir -p data && sudo chown 1000:1000 data` trước.
       - ${WEB2API_DATA_DIR:-web2api-data}:/data
     user: "1000:1000"
+    # Cứng hoá: bỏ mọi đặc quyền Linux (cap_drop) và không cho tiến trình leo thêm đặc quyền; module chạy trong
+    # tiến trình lõi nên đây là lớp chặn cuối nếu một module có lỗi.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 100
