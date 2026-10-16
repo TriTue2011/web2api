@@ -235,8 +235,9 @@ const vSt = (x) => 'min-width:0;overflow-wrap:anywhere;font-size:14px;' + (x.mon
 // Màu chấm của provider: demo tô màu thương hiệu từng nhà; provider không có trong bảng của demo thì dùng #6B7280 —
 // manifest không khai màu nên mọi provider thật dùng màu mặc định ấy (không lập bảng tên → màu).
 const CHAM = 'display:inline-block;width:9px;height:9px;border-radius:50%;background:#6B7280';
-// Nhóm tài khoản: demo có Gmail / ChatGPT / Grok / API theo LOẠI thông tin đăng nhập. web2api chỉ lưu một loại — trường
-// bí mật (`bi_mat`, `danh_sach_bi_mat`) của manifest, tức khoá API — nên chỉ có nhóm «API». Loại mới thì thêm dòng.
+// Nhóm tài khoản: demo chia nhiều nhóm theo LOẠI thông tin đăng nhập (mỗi nhà cung cấp một loại).
+// web2api chỉ lưu một loại — trường bí mật (`bi_mat`, `danh_sach_bi_mat`) của manifest, tức khoá API —
+// nên chỉ có nhóm «API». Loại mới thì thêm dòng.
 const NHOM = [['api', 'API']];
 // Nhãn nhóm model theo mã khả năng (chat / anh / video — cùng bộ mã `cung_cap` của module), đúng ba nhóm chủ máy nêu
 // («Trò chuyện», «Tạo ảnh», «Video»); mã khác hiện nguyên mã nên module mới không phải sửa trang. Demo ghi «Trò chuyện và

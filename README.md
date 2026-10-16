@@ -163,8 +163,11 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 | `gemini-api` | Chat stream, tạo ảnh, video Veo | OpenAI HTTP | Có sẵn (chat đã kiểm với Google thật; ảnh và video Veo chưa kiểm với Google thật, cần khoá trả phí Google AI Studio) |
 | `muse` | Trò chuyện | Noise XX WebSocket | Thử nghiệm, chưa kiểm với dịch vụ thật (cần khoá thiết bị X25519) |
 | `muse2api` | Trò chuyện miễn phí bằng cookie | WebSocket + Noise XX | Có sẵn (giao thức web trực tiếp muse.ai, không cần API key; chưa kiểm với dịch vụ thật) |
+| `claude-web` | Trò chuyện miễn phí bằng cookie | HTTPS (API web claude.ai) | Có sẵn (cookie/sessionKey do người dùng dán, xoay nhiều tài khoản; chưa kiểm với claude.ai thật) |
 | `antigravity` | Trò chuyện đa mô hình qua CLI | HTTP Bridge | Có khung, chưa kiểm với `agy` thật (cần dịch vụ cầu nối ngoài container) |
 | `vnc-xa` | Workspace trình duyệt từ xa noVNC | HTTP / WebSocket | Có sẵn (cần dịch vụ trình duyệt riêng `dich-vu/trinh-duyet`, cấu hình `dich_vu_url` và `khoa_dich_vu`; chưa kiểm với Firefox thật; đăng nhập tay, trích xuất cookie sang module khác) |
+| `gemini-web` | Trò chuyện miễn phí bằng cookie Google | HTTP (batchexecute nội bộ) | Thử nghiệm, chưa kiểm với dịch vụ thật (giao thức web không chính thức; ảnh/video chưa làm) |
+| `grok-web` | Trò chuyện miễn phí bằng cookie | WebSocket tới grok.com | Thử nghiệm, chưa kiểm với grok.com thật (cần cookie tài khoản thật) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.

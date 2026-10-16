@@ -39,9 +39,13 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
+| Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; **chưa kiểm với claude.ai thật** | 17/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
+| Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
+| Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
+| Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
@@ -1288,6 +1292,175 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 - noVNC phải dựng đường WebSocket tương đối theo trang (noVNC ≥ 1.5 mặc định vậy); bản cũ dựng theo gốc máy sẽ không nối được.
 - Trang bắt đầu (`url`) chỉ áp dụng khi trình duyệt mở MỚI; workspace đang mở thì gõ địa chỉ trong noVNC (không có cổng
   điều khiển trình duyệt).
+
+### Module gemini-web — Gemini Web (gemini.google.com, cookie)
+
+**Mô tả.** Trò chuyện với Gemini bản web qua giao thức nội bộ của web app (`batchexecute`), xác thực bằng cookie Google —
+miễn phí, không cần API key, không browser. Luồng giao tiếp học từ kho tham khảo `chatgpt2api` (`api/gemini_web.py`,
+dùng gói `gemini_webapi`): cookie → GET trang chủ lấy mã phiên `SNlM0e` → POST `/_/BardChatUi/data/batchexecute`
+(`f.req` + `at`) → bóc khung `["wrb.fr", …]` lấy văn bản; stream tính delta giữa các khung. Gói `gemini_webapi`
+không có trong ảnh web2api nên module tự cài đặt luồng đó bằng `httpx` (`modules/gemini-web/client.py`). Mã nguồn:
+`modules/gemini-web/`. Tiền tố model: `gemini-web`.
+
+**Cần gì.**
+- Một hoặc nhiều bộ cookie từ tab gemini.google.com đã đăng nhập (DevTools F12 → Application → Cookies), dạng
+  `k1=v1; k2=v2`. Cần ít nhất `__Secure-1PSID`; `__Secure-1PSIDTS` giúp phiên bền hơn. Cookie hết hạn thì export lại.
+- Mạng ra tới `gemini.google.com` (khớp `tai_nguyen.mang_ra` trong manifest).
+- RAM/đĩa: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "gemini-web"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/gemini-web`
+3. Cài và kiểm cấu hình:
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"cookies": ["__Secure-1PSID=<dán cookie>; __Secure-1PSIDTS=<dán cookie>"]}}' \
+     $W/api/modules/gemini-web/cai
+   ```
+
+---
+
+### Module grok-web — Grok Web (grok.com, giao thức web)
+
+**Mô tả.** Trò chuyện với Grok qua **giao thức WebSocket của web app grok.com** — **miễn phí, không cần
+API key**, xác thực bằng cookie của người dùng đã đăng nhập. Mã nguồn: `modules/grok-web/`. Tiền tố model:
+`grok` (bốn chế độ của web app: `grok/fast`, `grok/auto`, `grok/expert`, `grok/heavy`; `fast` là chế độ miễn
+phí). Luồng một lượt chat: mở WebSocket `wss://grok.com/ws/mgw/?uid=<uid>` (cookie, `Origin:
+https://grok.com`) → `session.create` (phiên tạm, không lưu lịch sử) → đợi `session.created` +
+`conversation.attached` → `conversation.item.create` → `response.create` → đọc `response.chunk` /
+`response.output_text.delta` tới `response.done`. Mọi đặc thù protocol nằm trong module; lõi chỉ định tuyến.
+
+**Cần gì.**
+- Gói Python `websockets`, `httpx` phải có trong ảnh (đã nằm trong `requirements.txt`).
+- Một hoặc nhiều chuỗi cookie từ tab grok.com đã đăng nhập (DevTools F12 → Application → Cookies),
+  dạng `k1=v1; k2=v2`; bắt buộc có cookie `sso`, nên kèm `x-userid` (thiếu thì module hỏi
+  `https://grok.com/api/auth/session` để lấy uid).
+- Mạng ra tới `grok.com`.
+### Module claude-web — Claude Web (claude.ai)
+
+**Mô tả.** Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng
+cookie/sessionKey do người dùng dán — **miễn phí, không cần API key, không
+browser, không tự đăng nhập**. Mã nguồn: `modules/claude-web/`. Tiền tố model:
+`clw` (vd `clw/sonnet`, `clw/opus`, `clw/haiku`, `clw/auto`). Luồng mỗi lượt:
+`GET /api/organizations` → chọn tổ chức có khả năng «chat» → tạo hội thoại mới
+→ `POST …/chat_conversations/{id}/completion` đọc SSE. Mọi đặc thù giao thức nằm
+trong module; lõi chỉ định tuyến.
+
+**Cần gì.**
+- Một hoặc nhiều bộ cookie từ tab claude.ai đã đăng nhập (DevTools F12 →
+  Application → Cookies), dạng `k1=v1; k2=v2`, hoặc chỉ giá trị `sessionKey`.
+- Mạng ra tới `claude.ai`.
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "grok-web"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/grok-web`
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "claude-web"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/claude-web`
+3. Cài đặt cấu hình:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"tai_khoan": ["sso=...; x-userid=..."]}}' \
+     $W/api/modules/grok-web/cai
+   ```
+
+   Cookie được lưu riêng trong kho bí mật (quyền 0600), chỉ hiện dạng che `…abcd`, không bao giờ hiện
+   lại hay vào log. Trường `tai_khoan` khai `nhan_cookie` cho `grok.com` nên cũng nhận cookie trích từ
+   trình duyệt của module `vnc-xa` (thêm vào cuối danh sách, khử trùng).
+     -d '{"cau_hinh": {"cookies": ["sessionKey=..."]}}' \
+     $W/api/modules/claude-web/cai
+   ```
+
+   Lúc cài, module kiểm từng bộ cookie bằng một lượt `GET /api/organizations`
+   (không tốn tiền). Cookie bị từ chối (401/403) bị loại; cookie lỗi tạm
+   (5xx/mạng) được giữ lại để thử sau.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `cookies` | Có | Một hoặc nhiều bộ cookie Google, dạng `k1=v1; k2=v2`. Trường bí mật: lưu tại kho bí mật (0600), chỉ hiện dạng che `…abcd`, không vào log hay phản hồi. Nhiều bộ thì xoay vòng khi lỗi. |
+| `co_so_url` | Không | Địa chỉ gốc thay cho `https://gemini.google.com` — CHỈ dùng cho kiểm thử với máy chủ giả; bị kiểm chống SSRF. |
+
+Manifest khai `"nhan_cookie": {"mien": "gemini.google.com"}` trên trường `cookies` nên dùng được đường «Lấy cookie
+sang module» của module `vnc-xa` (đăng nhập tay trên server rồi đưa cookie sang, không chép bằng tay).
+
+Lúc **Cài đặt**, module kiểm từng bộ cookie bằng `init()` (GET trang chủ lấy mã phiên `SNlM0e`) — rẻ, không tốn lượt
+chat. Bộ nào bị 401/403 thì đánh dấu hỏng (`khoa_hong`), bộ lỗi tạm thời vẫn được thử lại ở lượt sau.
+| `tai_khoan` | Có | Danh sách chuỗi cookie — mỗi phần tử là một tài khoản (tự xoay vòng khi lỗi); lưu riêng trong kho bí mật |
+| `ws_url` | Không | Ghi đè địa chỉ WebSocket (mặc định `wss://grok.com/ws/mgw/`); chỉ dùng cho kiểm thử hoặc qua proxy |
+| `cookies` | Có | Danh sách bộ cookie (xoay vòng), lưu riêng trong kho bí mật. Cookie hết hạn thì đăng nhập lại claude.ai và dán lại. |
+| `base_url` | Không | Mặc định `https://claude.ai`; chỉ đổi khi trỏ máy chủ giả để kiểm thử. |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "gemini-web/3.5-flash", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+Model: `gemini-web/3.5-flash` (mặc định), `gemini-web/3.1-pro`, `gemini-web/3.5-flash-lite`. Tên `auto` (hoặc bỏ trống)
+dùng model mặc định; bí danh `flash`/`pro`/`flash-lite` cũng dùng được; tên lạ bị chỉ đích danh → `400`
+(không âm thầm chạy model khác).
+
+**Sự cố thường gặp.**
+- `401` «Mọi tài khoản gemini-web đều bị từ chối» — cookie hết hạn hoặc không hợp lệ: đăng nhập lại
+  gemini.google.com trên trình duyệt rồi export lại cookie. Có nhiều bộ cookie thì module tự chuyển sang bộ kế khi
+  tài khoản hiện tại bị 401/403/429/5xx; tài khoản từng lỗi vẫn được thử lại ở lượt sau (không bao giờ chặn lựa
+  chọn cuối) và khoẻ lại ngay khi trả lời được.
+- `429` «bị giới hạn lượt» — đợi một lúc rồi thử lại.
+- `502`/`504` — phía Google lỗi hoặc chậm: thử lại sau. Thông báo chỉ nêu mã và kiểu lỗi; nội dung đáp án thô của
+  Google và cookie **không bao giờ** xuất hiện trong phản hồi hay nhật ký.
+- `400` «model … không có» — chọn trong danh sách `GET /v1/models`.
+
+**Giới hạn.**
+- **Chưa kiểm với dịch vụ thật** — chỉ kiểm với máy chủ giả trong `test/test_web2api_gemini-web.py` (38 test).
+  Giao thức web của Google không chính thức và có thể đổi bất cứ lúc nào; Google đổi web có thể làm module ngừng
+  hoạt động — dùng cá nhân, tự chịu rủi ro.
+- Ảnh/video chưa làm ở giai đoạn này: phần ảnh trong `messages` bị bỏ qua, chỉ gửi văn bản.
+- Không tự xoay `__Secure-1PSIDTS` bền vững qua restart (kho tham khảo xoay ~600s và ghi cache ra đĩa): cookie mới
+  do Google đặt qua `Set-Cookie` chỉ sống trong RAM của phiên client hiện tại; cookie trong kho cấu hình không tự
+  làm mới — hết hạn thì export lại bằng tay.
+  -d '{"model": "grok/fast", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  -d '{"model": "clw/sonnet", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+**Sự cố thường gặp.**
+- `401` «Phiên Grok hết hạn hoặc cookie bị từ chối»: đăng nhập lại grok.com trên trình duyệt rồi cập nhật
+  cookie. Có nhiều tài khoản thì module tự chuyển sang tài khoản kế khi lỗi xảy ra trước khi có chữ nào;
+  tài khoản bị từ chối vẫn được thử lại ở lượt sau.
+- `429` «hết lượt»: tài khoản đã hết lượt cho chế độ này — module cho tài khoản đó nghỉ một lúc rồi chuyển
+  sang tài khoản kế (kèm `Retry-After`).
+- `502`: grok.com lỗi giữa chừng hoặc kết thúc phiên với trạng thái lỗi.
+- Lỗi giữa stream kết thúc không có `[DONE]`: đã có chữ thì module không xoay tài khoản để khỏi hỏi Grok
+  hai lần.
+
+**Giới hạn.**
+- Giao thức nội bộ đã reverse-engineer, không chính thức — grok.com đổi web app có thể làm module ngừng
+  hoạt động.
+- Chưa kiểm với grok.com thật (cần cookie tài khoản thật); mới kiểm với máy chủ giả lập WebSocket.
+- Ảnh/video chưa hỗ trợ (phần media trong tin nhắn bị bỏ qua ở giai đoạn này).
+- Chế độ trong tên model (`grok/fast`…) được giữ nguyên theo lựa chọn của người gọi — hết lượt thì module
+  chuyển tài khoản, không tự hạ chế độ.
+- Điều khoản của Grok cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.
+- `401` «Cookie claude.ai không hợp lệ hoặc hết hạn»: đăng nhập lại claude.ai trên trình duyệt rồi dán lại cookie ở Hệ thống → AI.
+- `429` «hết hạn mức»: mọi tài khoản đều bị claude.ai giới hạn — đợi hạn mức hồi rồi thử lại.
+- `502` «Dịch vụ claude.ai lỗi»: lỗi tạm thời phía claude.ai — thử lại sau.
+- Lỗi giữa stream kết thúc bằng sự kiện `error`, không có `[DONE]`.
+
+**Giới hạn.**
+- Giao thức nội bộ đã reverse-engineer, không chính thức — Anthropic đổi web app có thể làm module ngừng hoạt động.
+- Chưa kiểm với claude.ai thật (chỉ máy chủ giả lập).
+- Chưa hỗ trợ ảnh/video (yêu cầu có ảnh → `400`).
+- Không tự đăng nhập lại khi cookie hết hạn, không đọc Gmail.
+- Cookie chính là tài khoản của bạn: không commit, không chia sẻ.
+
+---
 
 ## 5. Triển khai
 
