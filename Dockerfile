@@ -4,7 +4,7 @@
 # Vì sao một tầng, không đa tầng: chỉ có hai gói Python thuần (fastapi, uvicorn) và các tệp
 # tĩnh, không có bước biên dịch nào để tách. Nền trùng DIGEST với Dockerfile gốc của c2a để
 # hai ảnh chung lớp nền, không kéo thêm một bản Python nữa.
-FROM python:3.13-slim@sha256:9662417aace5ae7b8e2609cce472b72a8958e134ba372808abe9cc1a0c0125e6
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
