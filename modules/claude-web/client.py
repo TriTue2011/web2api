@@ -195,3 +195,66 @@ class MayKhachClaudeWeb:
             LOG.warning("Kiểm tra cookie claude-web lỗi lạ: %s", type(e).__name__)
             return False, "lỗi kết nối tạm thời", False
         return True, None, False
+
+
+class ClaudeWebClient:
+    """Client NHẸ cho luồng tái dùng hồ sơ (NV93): kiểm ``sessionKey`` qua
+    ``GET /api/organizations`` và lấy org có capability «chat».
+
+    Chỉ dùng sessionKey đọc từ hồ sơ Google (không đoán thêm cookie nào);
+    claude.ai thật có thể cần thêm cookie — CHƯA KIỂM với dịch vụ thật.
+    """
+
+    def __init__(self, session_key: str,
+                 base_url: str = BASE_MAC_DINH,
+                 transport: httpx.AsyncBaseTransport | None = None,
+                 timeout: float = 30.0):
+        self._session_key = str(session_key or "")
+        self._goc = (base_url or BASE_MAC_DINH).rstrip("/")
+        self._client = httpx.AsyncClient(
+            base_url=self._goc,
+            cookies={"sessionKey": self._session_key},
+            transport=transport,
+            timeout=httpx.Timeout(connect=10.0, read=timeout, write=10.0,
+                                  pool=10.0),
+            headers={"User-Agent": UA, "Accept": "*/*"},
+        )
+
+    async def lay_org(self) -> str:
+        """GET /api/organizations → uuid của org có khả năng «chat».
+
+        401/403 → LoiClaudeWeb (phiên không dùng được); JSON hỏng/thiếu org →
+        LoiClaudeWeb rõ ràng (không đoán).
+        """
+        try:
+            r = await self._client.get("/api/organizations")
+        except httpx.HTTPError as e:
+            raise LoiClaudeWeb(
+                502, f"không nối được claude.ai ({type(e).__name__})") from e
+        if r.status_code in (401, 403):
+            raise LoiClaudeWeb(r.status_code,
+                               "sessionKey không hợp lệ hoặc hết hạn")
+        if r.status_code != 200:
+            raise LoiClaudeWeb(r.status_code, "lấy danh sách tổ chức thất bại")
+        try:
+            ds = r.json()
+        except ValueError as e:
+            raise LoiClaudeWeb(
+                502, "claude.ai trả JSON hỏng ở bước lấy tổ chức") from e
+        org_id = ""
+        if isinstance(ds, list) and ds:
+            co_chat = [o for o in ds
+                       if isinstance(o, dict)
+                       and "chat" in (o.get("capabilities") or [])]
+            org_id = str((co_chat[0] if co_chat else ds[0]).get("uuid") or "")
+        elif isinstance(ds, dict):
+            org_id = str(ds.get("uuid") or "")
+        if not org_id:
+            raise LoiClaudeWeb(401, "không tìm thấy tổ chức (phiên hết hạn?)")
+        return org_id
+
+    async def dong(self) -> None:
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass

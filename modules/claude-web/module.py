@@ -1,7 +1,9 @@
 """Module claude-web — trò chuyện với Claude qua API web nội bộ của claude.ai.
 
-Xác thực bằng cookie/sessionKey do NGƯỜI DÙNG dán (không tự đăng nhập, không
-browser automation). Hỗ trợ nhiều tài khoản: xoay vòng khi gặp 429/529 (hết hạn
+Hai đường xác thực: (1) cookie/sessionKey do NGƯỜI DÙNG dán (đường cũ, khoá
+«cl-…»); (2) tái dùng hồ sơ Google đã đăng nhập qua ``tai_dung_ho_so``
+(NV93 — «Continue with Google» trong hồ sơ, khoá «tk-<băm>», đi tắt nếu hồ sơ
+đã có phiên). Hỗ trợ nhiều tài khoản: xoay vòng khi gặp 429/529 (hết hạn
 mức), 401/403 (cookie hỏng), hoặc lỗi tạm thời 5xx/mạng — phân loại bằng mã
 trạng thái HTTP, không dò chữ trong thân phản hồi.
 
@@ -11,6 +13,7 @@ phản hồi API chỉ nêu dạng che «…abcd», không bao giờ mang giá t
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -27,7 +30,7 @@ from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
 
 from . import converter as cv
-from .client import BASE_MAC_DINH, LoiClaudeWeb, MayKhachClaudeWeb
+from .client import BASE_MAC_DINH, ClaudeWebClient, LoiClaudeWeb, MayKhachClaudeWeb
 
 LOG = logging.getLogger("web2api.module.claude-web")
 
@@ -99,6 +102,68 @@ class _TaiKhoan:
         return self.ten_danh_tinh or self.ten_che
 
 
+class _TaiKhoanNV93:
+    """Tài khoản claude-web từ đường tái dùng hồ sơ Google (NV93).
+
+    ``session_key`` là BÍ MẬT — chỉ đi trong cookie tới claude.ai, không bao
+    giờ vào log, phản hồi API, nhật ký hay thông điệp lỗi. Bản ghi lưu kho
+    riêng KHÔNG mang giá trị thô (chỉ siêu dữ liệu làm giàu).
+    """
+
+    def __init__(self, session_key: str):
+        self.session_key = str(session_key)
+        self.org: str = ""
+        self.email: str = ""
+        self.ho_so: str | None = None
+        #: CHƯA KIỂM: chưa có cấu trúc suy gói Free/Pro từ claude.ai thật —
+        #: /api/organizations (máy chủ giả) không mang thông tin gói.
+        self.goi: str = "khong_ro"
+        self.trang_thai: str = "hoat_dong"
+        self.lan_dung_cuoi: str | None = None
+        #: Mã model tài khoản này dùng được (CHƯA KIỂM theo tài khoản thật —
+        #: mặc định bảng tĩnh đầy đủ của converter).
+        self.model: list[str] = sorted(set(cv.MO_HINH_BI_DANH) | {"auto"})
+
+    def ban_ghi(self, khoa: str) -> dict:
+        """Bản ghi làm giàu lưu kho riêng (KHÔNG bí mật thô)."""
+        return {
+            "khoa": khoa,
+            "email": self.email,
+            "ho_so": self.ho_so,
+            "org": self.org,
+            "goi": self.goi,
+            "trang_thai": self.trang_thai,
+            "lan_dung_cuoi": self.lan_dung_cuoi,
+            "model": list(self.model),
+        }
+
+    def ap_dung_ban_ghi(self, bg: dict | None) -> None:
+        if not isinstance(bg, dict):
+            return
+        for truong in ("email", "org", "goi", "trang_thai", "lan_dung_cuoi"):
+            v = bg.get(truong)
+            if isinstance(v, str) and v:
+                setattr(self, truong, v)
+        hs = bg.get("ho_so")
+        if isinstance(hs, str) and hs:
+            self.ho_so = hs
+        md = bg.get("model")
+        if isinstance(md, list):
+            self.model = [str(m) for m in md if isinstance(m, str) and m]
+
+
+def _session_key_tu_cookie(cookie: str) -> str | None:
+    """Trích sessionKey khỏi chuỗi cookie đã chuẩn hoá «sessionKey=…».
+
+    Không phải dạng đó → None (tài khoản dán cookie cũ không thuộc NV93).
+    """
+    s = str(cookie or "").strip()
+    if s.startswith("sessionKey="):
+        v = s[len("sessionKey="):].split(";")[0].strip()
+        return v or None
+    return None
+
+
 def phan_loai_ma(ma: int) -> str:
     """Mã HTTP → nhóm lỗi: chỉ dùng mã trạng thái, không dò chữ."""
     if ma in (401, 403):
@@ -138,6 +203,9 @@ class Module:
         self._tao_trinh_duyet = None
         # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
         self._trinh_duyet_da_dung = None
+        # Tài khoản từ đường tái dùng hồ sơ Google (NV93): khoá «tk-<băm>»,
+        # độc lập khoá «cl-…» của tài khoản dán cookie cũ (giữ để test NV89 xanh).
+        self._tai_khoan_nv93: list[_TaiKhoanNV93] = []
 
     # ── gắn danh tính chung (khuôn NV77) ──────────────────────────────────
 
@@ -405,6 +473,249 @@ class Module:
         finally:
             tai_khoan.xoa_bi_mat()
 
+    # ── tái dùng hồ sơ Google (NV93 — đường chính) ────────────────────────
+
+    _URL_GOC = "https://claude.ai/"
+    _BO_CHON_GOOGLE = ('button:has-text("Continue with Google"), '
+                       'a:has-text("Continue with Google")')
+    _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
+                           "cloudflare"}
+
+    def _tao_client(self, session_key: str) -> ClaudeWebClient:
+        """Mối nối để test chích máy chủ giả (NV93).
+
+        Mặc định: ClaudeWebClient thật tới base_url của module.
+        """
+        return ClaudeWebClient(session_key, base_url=self._base_url)
+
+    @staticmethod
+    def _khoa_tu_session_key(session_key: str) -> str:
+        """Khoá mờ ổn định của một tài khoản NV93: «tk-» + 12 hex SHA-256.
+
+        Hợp đồng NV93: khoá mọi module web đều dạng ``tk-<băm>``. Tài khoản cũ
+        dán cookie vẫn giữ khoá «cl-…» của _khoa_tu_cookie (không đổi để test
+        NV89 xanh).
+        """
+        return "tk-" + hashlib.sha256(
+            str(session_key or "").encode("utf-8")).hexdigest()[:12]
+
+    def _khoa_nv93_tu_cookie(self, cookie: str) -> str | None:
+        """Khoá NV93 của một chuỗi cookie đã chuẩn hoá; không phải dạng
+        sessionKey → None."""
+        sk = _session_key_tu_cookie(cookie)
+        return self._khoa_tu_session_key(sk) if sk else None
+
+    async def tai_dung_ho_so(self, ho_so, trinh_duyet) -> KetQuaDangNhap:
+        """Đăng nhập bằng Google TRONG hồ sơ đã đăng nhập Google (NV93).
+
+        Hợp đồng NV92-P3: module tự làm bước «Continue with Google» của nó
+        trong hồ sơ, lấy cookie ``sessionKey``, kiểm phiên + đọc org qua
+        GET /api/organizations (org có capability «chat»), thêm tài khoản vào
+        kho của CHÍNH mình, trả ``KetQuaDangNhap`` với ``cookie`` là chuỗi
+        cookie đã chuẩn hoá. Không nhập lại email/mật khẩu/2FA — KHÔNG BAO
+        GIỜ ``dien()``. Gặp CAPTCHA/Cloudflare/2FA/xác minh → can_nguoi NGAY
+        (không cố vượt, không thử lại).
+
+        HỌC TỪ c2a (chỉ đọc lấy hiểu, tự viết lại): TriTue2011/chatgpt2api,
+        ``captcha-solver/src/claude_web_login.py`` — các bước: mở claude.ai
+        (đi tắt nếu hồ sơ đã có phiên) → /login → «Continue with Google»
+        (popup) → chọn tài khoản Google trong hồ sơ → về claude.ai → đọc
+        sessionKey → kiểm bằng /api/organizations.
+
+        CHƯA KIỂM trên claude.ai thật: luồng SSO Google tay có thể cần thêm
+        bước mà chỉ kiểm thật mới thấy; suy gói Free/Pro từ cấu trúc hiện
+        chưa có dữ liệu nên để «khong_ro».
+        """
+        hs_id = ho_so.get("id") if isinstance(ho_so, dict) else str(ho_so or "")
+        hs_id = str(hs_id or "").strip() or None
+        email = str(ho_so.get("email") or "") if isinstance(ho_so, dict) else ""
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            # Bước 1 — đi tắt: hồ sơ đã có phiên claude.ai còn hiệu lực.
+            await trinh_duyet.mo_trang(self._URL_GOC)
+            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
+                return KetQuaDangNhap(False, ma_loi="can_nguoi")
+            if "da_dang_nhap" not in tin_hieu:
+                # Bước 2 — bấm «Continue with Google» trong hồ sơ (SSO).
+                await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+                tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                    return KetQuaDangNhap(False, ma_loi="can_nguoi")
+                if "da_dang_nhap" not in tin_hieu:
+                    await trinh_duyet.bam(self._BO_CHON_GOOGLE)
+                    # Bước 3 — chờ phiên hình thành sau SSO (hết lượt chờ rõ).
+                    da_vao = False
+                    for _ in range(20):
+                        tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                        if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+                        if "da_dang_nhap" in tin_hieu:
+                            da_vao = True
+                            break
+                        await asyncio.sleep(1)
+                    if not da_vao:
+                        return KetQuaDangNhap(False,
+                                             ma_loi="khong_lay_duoc_phien")
+            try:
+                cookie = trinh_duyet.doc_cookie("claude.ai")
+            except Exception:
+                cookie = {}
+            session_key = (cookie.get("sessionKey")
+                           if isinstance(cookie, dict) else None)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if not session_key:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        session_key = str(session_key)
+        # Bước 4 — kiểm phiên + đọc org (bằng cấu trúc; không đoán cookie khác).
+        khach = self._tao_client(session_key)
+        try:
+            org = await khach.lay_org()
+        except LoiClaudeWeb as e:
+            if e.ma in (401, 403):
+                return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                      ma_trang_thai=401)
+            return KetQuaDangNhap(False, ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_mang")
+        finally:
+            try:
+                await khach.dong()
+            except Exception as e:
+                # Dọn dẹp best-effort: chỉ ghi nhật ký, không vỡ lượt tái dùng.
+                LOG.warning("claude-web: đóng client kiểm phiên: %s",
+                            type(e).__name__)
+        khoa = self._khoa_tu_session_key(session_key)
+        self._them_tai_khoan_nv93(session_key, org, hs_id, email)
+        # Log chỉ khoá mờ — KHÔNG BAO GIỜ log session_key/org thô.
+        LOG.info("claude-web: tái dùng hồ sơ %s → tài khoản %s", hs_id, khoa)
+        return KetQuaDangNhap(True, cookie="sessionKey=" + session_key)
+
+    def _them_tai_khoan_nv93(self, session_key: str, org: str,
+                             hs_id: str | None, email: str) -> _TaiKhoanNV93:
+        """Thêm/cập nhật tài khoản NV93 (chống trùng session_key).
+
+        Đồng thời thêm vào _accs để chat() xoay được; lưu bản ghi làm giàu
+        (không bí mật thô) vào kho riêng.
+        """
+        session_key = str(session_key)
+        tk = next((t for t in self._tai_khoan_nv93
+                   if t.session_key == session_key), None)
+        if tk is None:
+            tk = _TaiKhoanNV93(session_key)
+            self._tai_khoan_nv93.append(tk)
+        if org:
+            tk.org = str(org)
+        if email:
+            tk.email = str(email)
+        if hs_id:
+            tk.ho_so = hs_id
+        tk.trang_thai = "hoat_dong"
+        tk.lan_dung_cuoi = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        khoa = self._khoa_tu_session_key(session_key)
+        self._xoa_khoi_go_bo_nv93(khoa)
+        self._them_cookie("sessionKey=" + session_key)
+        self._luu_ban_ghi_nv93()
+        return tk
+
+    # -- liệt kê / gỡ tài khoản (NV93) ------------------------------------------
+
+    def liet_ke_tai_khoan(self) -> list[dict]:
+        """Danh sách tài khoản NV93 KHÔNG bí mật: khoa/email/ho_so/goi/trạng thái.
+
+        Tài khoản dán cookie cũ (khoá «cl-…») vẫn quản lý qua Hệ thống → AI
+        (đường cai()/nap() có sẵn); hàm này theo hợp đồng NV93 mới.
+        """
+        return [{
+            "khoa": self._khoa_tu_session_key(tk.session_key),
+            "email": tk.email,
+            "ho_so": tk.ho_so,
+            "goi": tk.goi,
+            "trang_thai": tk.trang_thai,
+            "lan_dung_cuoi": tk.lan_dung_cuoi,
+        } for tk in list(self._tai_khoan_nv93)]
+
+    def go_tai_khoan(self, khoa: str) -> bool:
+        """Gỡ đúng MỘT tài khoản NV93 của module này; ghi sổ gỡ bỏ vào kho riêng
+        để khởi động lại không dựng lại. Không động module khác, không động hồ sơ."""
+        khoa = str(khoa or "")
+        bi_go = [tk for tk in self._tai_khoan_nv93
+                 if self._khoa_tu_session_key(tk.session_key) == khoa]
+        if not bi_go:
+            return False
+        self._tai_khoan_nv93 = [tk for tk in self._tai_khoan_nv93
+                                if self._khoa_tu_session_key(tk.session_key)
+                                != khoa]
+        # Gỡ khỏi _accs (chat) để không dùng phiên đã gỡ.
+        for tk in bi_go:
+            chuoi = "sessionKey=" + tk.session_key
+            self._accs = [a for a in self._accs if a.cookie != chuoi]
+        tap = self._doc_go_bo_nv93()
+        tap.add(khoa)
+        self._luu_go_bo_nv93(tap)
+        self._luu_ban_ghi_nv93()
+        LOG.info("claude-web: đã gỡ tài khoản %s", khoa)
+        return True
+
+    # -- kho riêng: bản ghi làm giàu + sổ gỡ bỏ (NV93) -------------------------
+
+    def _doc_ban_ghi_nv93(self) -> dict:
+        """{khoa: bản ghi} từ kho riêng; kho chưa gán/hỏng → {} (không vỡ)."""
+        if self.kho is None:
+            return {}
+        try:
+            du_lieu = self.kho.doc("tai_khoan_nv93") or {}
+        except Exception as e:
+            LOG.warning("claude-web: không đọc được bản ghi NV93: %s",
+                        type(e).__name__)
+            return {}
+        bg = du_lieu.get("ban_ghi") if isinstance(du_lieu, dict) else None
+        return bg if isinstance(bg, dict) else {}
+
+    def _luu_ban_ghi_nv93(self) -> None:
+        """Lưu bản ghi làm giàu NV93 (không bí mật thô). Không vỡ."""
+        if self.kho is None:
+            return
+        try:
+            ban_ghi = {}
+            for tk in self._tai_khoan_nv93:
+                khoa = self._khoa_tu_session_key(tk.session_key)
+                ban_ghi[khoa] = tk.ban_ghi(khoa)
+            self.kho.luu("tai_khoan_nv93", {"ban_ghi": ban_ghi})
+        except Exception as e:
+            LOG.warning("claude-web: không lưu được bản ghi NV93: %s",
+                        type(e).__name__)
+
+    def _doc_go_bo_nv93(self) -> set:
+        """Tập khoá NV93 đã bị go_tai_khoan gỡ (để nap() không dựng lại)."""
+        if self.kho is None:
+            return set()
+        try:
+            du_lieu = self.kho.doc("go_bo_nv93") or {}
+        except Exception:
+            return set()
+        ds = du_lieu.get("khoa") if isinstance(du_lieu, dict) else None
+        return {str(k) for k in ds} if isinstance(ds, list) else set()
+
+    def _luu_go_bo_nv93(self, tap: set) -> None:
+        if self.kho is None:
+            return
+        try:
+            self.kho.luu("go_bo_nv93", {"khoa": sorted(tap)})
+        except Exception as e:
+            LOG.warning("claude-web: không lưu được sổ gỡ bỏ NV93: %s",
+                        type(e).__name__)
+
+    def _xoa_khoi_go_bo_nv93(self, khoa: str) -> None:
+        tap = self._doc_go_bo_nv93()
+        if khoa in tap:
+            tap.discard(khoa)
+            self._luu_go_bo_nv93(tap)
+
     # -- các tầng khôi phục NV89 ----------------------------------------------
 
     async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
@@ -497,8 +808,16 @@ class Module:
                         f"danh_tinh_id {dt_id!r} không tồn tại trong sổ danh tính "
                         "(tạo trước ở «Hệ thống → AI → Danh tính»).")
         lien_ket = self._doc_lien_ket()
+        # NV93: cookie đã bị go_tai_khoan gỡ thì không dựng lại; bản ghi làm
+        # giàu (email/hồ sơ/gói) được khôi phục từ kho riêng, không cần mạng.
+        go_bo_nv93 = self._doc_go_bo_nv93()
+        ban_ghi_nv93 = self._doc_ban_ghi_nv93()
         accs = []
+        tai_khoan_nv93 = []
         for i, c in enumerate(ds):
+            khoa93 = self._khoa_nv93_tu_cookie(c)
+            if khoa93 is not None and khoa93 in go_bo_nv93:
+                continue  # đã bị gỡ tường minh — không dựng lại
             acc = _TaiKhoan(c, self._base_url)
             if gan_moi is not None:
                 acc.danh_tinh_id = gan_moi[i]
@@ -507,6 +826,14 @@ class Module:
             if acc.danh_tinh_id:
                 acc.ten_danh_tinh = self._ten_theo_danh_tinh(acc.danh_tinh_id)
             accs.append(acc)
+            if khoa93 is not None:
+                bg = ban_ghi_nv93.get(khoa93)
+                if isinstance(bg, dict):
+                    sk = _session_key_tu_cookie(c)
+                    if sk:
+                        tk93 = _TaiKhoanNV93(sk)
+                        tk93.ap_dung_ban_ghi(bg)
+                        tai_khoan_nv93.append(tk93)
         if gan_moi is not None:
             for i, c in enumerate(ds):
                 h = _hash_cookie(c)
@@ -516,6 +843,7 @@ class Module:
                     lien_ket.pop(h, None)
             self._luu_lien_ket(lien_ket)
         self._accs = accs
+        self._tai_khoan_nv93 = tai_khoan_nv93
         self._dong_bo_tham_chieu({a.danh_tinh_id for a in accs
                                   if a.danh_tinh_id})
         LOG.info("claude-web: đã nạp %d tài khoản (%d gắn danh tính)",
@@ -571,7 +899,38 @@ class Module:
                 "cau_hinh_luu": {"cookies": giu, "base_url": base_url}}
 
     async def models(self) -> list[dict]:
-        return cv.danh_sach_model(self._tien_to)
+        """Hợp các model theo TÀI KHOẢN NV93 (NV91-P3 cho Claude).
+
+        id ổn định + nhãn «nhan» tách riêng; mỗi model kèm «goi» và
+        «available_cho» (khoá tài khoản dùng được). Chưa có tài khoản NV93 →
+        bảng tĩnh đầy đủ (CHƯA KIỂM thật: chưa đo model theo gói Free/Pro
+        trên claude.ai thật; định tuyến theo model chờ khám phá thật).
+        """
+        co_ban = cv.danh_sach_model(self._tien_to)
+        ten = sorted(set(cv.MO_HINH_BI_DANH) | {"auto"})
+        nhan = {m["id"].split("/", 1)[1]: m["id"].split("/", 1)[1]
+                for m in co_ban if "/" in m["id"]}
+        ds93 = list(self._tai_khoan_nv93)
+        if not ds93:
+            return [{**m, "nhan": nhan.get(m["id"].split("/", 1)[1], m["id"]),
+                     "goi": "khong_ro", "available_cho": []} for m in co_ban]
+        hop: dict[str, dict] = {}
+        for tk in ds93:
+            khoa = self._khoa_tu_session_key(tk.session_key)
+            for m in tk.model or ten:
+                muc = hop.setdefault(m, {"khoa": [], "goi": []})
+                if khoa not in muc["khoa"]:
+                    muc["khoa"].append(khoa)
+                    muc["goi"].append(tk.goi)
+        ra = []
+        for m in ten:
+            v = hop.get(m, {"khoa": [], "goi": []})
+            goi_can = ("pro" if "pro" in v["goi"]
+                       else "free" if "free" in v["goi"] else "khong_ro")
+            ra.append({"id": f"{self._tien_to}/{m}", "object": "model",
+                       "owned_by": "claude-web", "nhan": nhan.get(m, m),
+                       "goi": goi_can, "available_cho": list(v["khoa"])})
+        return ra
 
     async def suc_khoe(self) -> dict:
         return {
