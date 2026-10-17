@@ -828,21 +828,55 @@ class QuanLyHoSo:
                 detail="loi_dieu_khien",
             ) from None
 
-    async def gianh_dieu_khien(self, ho_so_id: str) -> dict[str, bool]:
-        """Máy giành quyền điều khiển hồ sơ Firefox đã mở (NV92 P1).
+    @staticmethod
+    def _loai_ho_so_tren_dia(ho_so_id: str, thu_muc_goc: Path) -> str | None:
+        """Loại trình duyệt của hồ sơ trên đĩa (đọc ``.thong_tin.json``).
 
-        404 hồ sơ chưa mở; 501 hồ sơ Chromium; 409 đang bận hoặc đang có người
-        dùng noVNC; 502 nối Marionette hỏng. Người và máy KHÔNG dùng chung hồ
-        sơ cùng lúc.
+        Không thấy/không đọc được → None. Không ném (đường gọi tự quyết 404).
+        """
+        try:
+            du_lieu = json.loads(
+                (thu_muc_goc / ho_so_id / ".thong_tin.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        loai = du_lieu.get("loai") if isinstance(du_lieu, dict) else None
+        return loai if loai in LOAI_HOP_LE else None
+
+    async def gianh_dieu_khien(self, ho_so_id: str) -> dict[str, bool]:
+        """Máy giành quyền điều khiển hồ sơ Firefox (NV92 P1, NV94-a).
+
+        NV94-a: hồ sơ Firefox tồn tại trên đĩa nhưng chưa mở → TỰ MỞ rồi giành
+        (đường /api/danh-tinh/dang-nhap, /tai-dung, /ma-2fa không phải mở tay
+        trước). Hồ sơ Chromium/không tồn tại → 404 như cũ.
+
+        501 hồ sơ Chromium đang mở; 409 đang bận hoặc đang có người dùng noVNC;
+        502 nối Marionette hỏng. Người và máy KHÔNG dùng chung hồ sơ cùng lúc.
+
+        NV94-P3: không giữ khoá toàn cục trong lúc nối Marionette (tới 40 s);
+        nhánh lỗi nào cũng đóng socket trước khi trả lỗi.
         """
         kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
-        async with self.khoa:
-            ho_so_mo = self.danh_sach_mo.get(ho_so_id)
-            if ho_so_mo is None:
+
+        async def _trang_thai() -> ThongTinHoSoMo | None:
+            async with self.khoa:
+                return self.danh_sach_mo.get(ho_so_id)
+
+        ho_so_mo = await _trang_thai()
+        if ho_so_mo is None:
+            # NV94-a: tự mở nếu là hồ sơ Firefox trên đĩa.
+            if self._loai_ho_so_tren_dia(ho_so_id, self.thu_muc_goc) != "firefox":
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Không thấy hồ sơ đang mở: '{ho_so_id}'.",
                 )
+            await self.mo(ho_so_id, "firefox")
+            ho_so_mo = await _trang_thai()
+            if ho_so_mo is None:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Tự mở hồ sơ không thành công.",
+                )
+        async with self.khoa:
             if ho_so_mo.loai != "firefox":
                 raise HTTPException(
                     status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -866,28 +900,47 @@ class QuanLyHoSo:
                     detail="Hồ sơ mở trước khi có điều khiển tự động — "
                            "đóng rồi mở lại.",
                 )
-            khach = _tao_marionette(ho_so_mo.cong_marionette)
-            try:
-                await asyncio.to_thread(khach.ket_noi)
-                await asyncio.to_thread(khach.phien_moi)
-            except LoiMarionette as e:
+            cong = ho_so_mo.cong_marionette
+        # Nối Marionette NGOÀI khoá toàn cục (NV94-P3): nối có thể treo tới
+        # 40 s, giữ khoá sẽ chặn mọi đường khác của dịch vụ.
+        khach = _tao_marionette(cong)
+        try:
+            await asyncio.to_thread(khach.ket_noi)
+            await asyncio.to_thread(khach.phien_moi)
+        except LoiMarionette as e:
+            await self._dong_khach_an_toan(khach)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=e.ma_loi,
+            ) from None
+        except Exception:
+            await self._dong_khach_an_toan(khach)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="loi_noi_dieu_khien",
+            ) from None
+        async with self.khoa:
+            # Nối xong mới giành: có lượt khác chen giữa lúc nối thì 409.
+            if ho_so_mo.dang_ban:
+                await self._dong_khach_an_toan(khach)
                 raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=e.ma_loi,
-                ) from None
-            except Exception:
-                try:
-                    await asyncio.to_thread(khach.dong)
-                except Exception:
-                    pass
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="loi_noi_dieu_khien",
-                ) from None
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Hồ sơ vừa bị lượt khác giành trong lúc nối — "
+                           "nhả quyền rồi giành lại.",
+                )
             ho_so_mo.marionette = khach
             ho_so_mo.dang_ban = True
+            ho_so_mo.lan_hoat_dong_cuoi = self.dong_ho()
             log.info("Đã giành quyền điều khiển máy cho hồ sơ %s", ho_so_id)
             return {"ok": True}
+
+    @staticmethod
+    async def _dong_khach_an_toan(khach: Any) -> None:
+        """Đóng socket máy khách Marionette, không ném (mọi nhánh lỗi)."""
+        try:
+            await asyncio.to_thread(khach.dong)
+        except Exception:
+            pass
 
     async def nha_dieu_khien(self, ho_so_id: str) -> dict[str, bool]:
         """Nhả quyền điều khiển máy (luỹ đẳng)."""

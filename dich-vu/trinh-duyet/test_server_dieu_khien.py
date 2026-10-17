@@ -272,11 +272,33 @@ def test_gianh_khi_co_nguoi_dung_novnc_thi_409(mt_dk):
         assert "người" in res.json()["detail"] or "noVNC" in res.json()["detail"]
 
 
-def test_gianh_ho_so_chua_mo_thi_404(mt_dk):
+def test_gianh_tu_mo_firefox_chua_mo(mt_dk):
+    """NV94-a: hồ sơ Firefox tồn tại trên đĩa nhưng chưa mở → giành TỰ MỞ rồi ok."""
     with TestClient(app) as client:
         res = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "x", "loai": "firefox"})
         ho_so = res.json()["ho_so"]
+        ql = mt_dk["quan_ly"]
+        assert ho_so not in ql.danh_sach_mo
         res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
+        assert res.status_code == 200, res.text
+        assert res.json() == {"ok": True}
+        assert ho_so in ql.danh_sach_mo
+        assert any("firefox" in l[0] for l in mt_dk["bo_chay"].lich_su_lenh)
+
+
+def test_gianh_chromium_chua_mo_van_404(mt_dk):
+    """Hồ sơ Chromium chưa mở: không tự mở được (không có Marionette) → 404 như cũ."""
+    with TestClient(app) as client:
+        res = client.post("/ho-so", headers=HEADER_AUTH, json={"ten": "c", "loai": "chromium"})
+        ho_so = res.json()["ho_so"]
+        res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
+        assert res.status_code == 404
+
+
+def test_gianh_id_khong_ton_tai_van_404(mt_dk):
+    """ID không có trên đĩa → 404."""
+    with TestClient(app) as client:
+        res = client.post("/ho-so/deadbeefdeadbeef01/dieu-khien/gianh", headers=HEADER_AUTH)
         assert res.status_code == 404
 
 
