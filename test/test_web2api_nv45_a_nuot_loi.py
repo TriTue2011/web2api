@@ -59,6 +59,9 @@ DA_KIEM_TOAN = {
     ("modules/gemini-web/module.py", "dung"),       # đóng kết nối khi tắt module: lỗi đóng không làm hỏng việc tắt
     ("modules/muse/module.py", "_giai_ma_khoa_thiet_bi"),
     ("modules/muse2api/module.py", "bo"),
+    # Đã duyệt NV88 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
+    ("modules/chatgpt-web/module.py", "_kiem_token"),  # lỗi mạng lạ → coi token hỏng (fail-closed)
+    ("modules/chatgpt-web/module.py", "mat_khau_da_luu"),  # kho hỏng → coi như chưa lưu mật khẩu
 }
 
 

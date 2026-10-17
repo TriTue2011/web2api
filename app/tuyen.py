@@ -38,6 +38,7 @@ from app import (
     phien_web as phien_web_mod,
     sao_luu as sao_luu_mod,
     tai_khoan_hang_loat as tai_khoan_hang_loat_mod,
+    khoi_phuc_phien as khoi_phuc_phien_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
@@ -2895,6 +2896,129 @@ def dung_dang_nhap_hang_loat(request: Request):
         "thong_tin",
         "Dừng lượt đăng nhập hàng loạt theo yêu cầu",
         nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"ok": True}
+
+
+# ───────────── ĐĂNG NHẬP TỰ ĐỘNG + KHÔI PHỤC NHIỀU TẦNG (QT) — NV88 ─────────────
+#
+# Thêm tài khoản → TỰ ĐĂNG NHẬP → TỰ LẤY COOKIE → TỰ KHÔI PHỤC NHIỀU TẦNG.
+# Bước đăng nhập nằm TRONG MODULE (`dang_nhap`/`dang_nhap_tu_dong`); lõi chỉ
+# điều phối qua app/khoi_phuc_phien.py (tầng a→d) và tái dùng LuotChay
+# (giãn cách 30s, dừng sớm). Không có tên nhà cung cấp nào ở tầng này.
+# Mật khẩu/cookie KHÔNG BAO GIỜ xuất hiện trong phản hồi, log hay nhật ký.
+
+_MA_400_KHOA = "khoa_khong_hop_le"
+
+
+def _module_khoi_phuc(request: Request, module_id: str):
+    """Module đã cài cho khôi phục; chưa cài → 404."""
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    module = request.app.state.so.dang_chay.get(module_id)
+    if module is None:
+        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa chạy.", code="module_chua_chay")
+    return module
+
+
+def _kiem_khoa_thuoc_module(module, module_id: str, khoa: str) -> None:
+    """IDOR: khoá phải đúng khuôn và thuộc module này; không thì 404 (không lộ)."""
+    try:
+        khoa_hop_le = khoi_phuc_phien_mod.kiem_khoa(khoa)
+    except ValueError:
+        raise LoiOpenAI(400, "Trường «khoa» không hợp lệ.", code=_MA_400_KHOA)
+    biet = getattr(module, "co_tai_khoan", None)
+    if callable(biet) and not biet(khoa_hop_le):
+        # Lỗi của module KHÔNG được nuốt: bỏ qua bước này khi module hỏng là «mở cửa khi lỗi» (thao tác chạy trên khoá chưa kiểm).
+        raise LoiOpenAI(404, "Không có tài khoản này trong module.", code="tai_khoan_khong_co")
+
+
+@tai_khoan.post("/dang-nhap-tu-dong/bat-dau")
+async def bat_dau_dang_nhap_tu_dong(request: Request):
+    """Đăng nhập tự động hàng loạt: tái dùng LuotChay, gọi `mod.dang_nhap`."""
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    module = _module_khoi_phuc(request, module_id)
+    if not callable(getattr(module, "dang_nhap", None)):
+        raise LoiOpenAI(400, f"Module «{_nhac_lai(module_id)}» chưa hỗ trợ đăng nhập.",
+                        code="module_chua_ho_tro")
+    van_ban = _chuoi_tuy_chon(than, "van_ban") or ""
+    bo_qua_email = than.get("bo_qua_email", [])
+    if not isinstance(bo_qua_email, list) or any(not isinstance(e, str) for e in bo_qua_email):
+        raise LoiOpenAI(400, "«bo_qua_email» phải là danh sách chuỗi.", code="invalid_value")
+    bo_qua = {e.strip().lower() for e in bo_qua_email}
+
+    danh_sach, _loi, _trung = tai_khoan_hang_loat_mod.tach_dong(van_ban)
+    giu = [tk for tk in danh_sach if tk.email.strip().lower() not in bo_qua]
+    giu_id = {id(tk) for tk in giu}
+    for tk in danh_sach:
+        if id(tk) not in giu_id:
+            tk.xoa_bi_mat()
+    if not giu:
+        raise LoiOpenAI(400, "Không có tài khoản hợp lệ nào để chạy.", code="khong_co_tai_khoan")
+
+    quan_ly = request.app.state.quan_ly_luot_chay
+    try:
+        thong_tin = quan_ly.bat_dau(giu, module.dang_nhap, module_id)
+    except tai_khoan_hang_loat_mod.DaCoLuotChay:
+        for tk in giu:
+            tk.xoa_bi_mat()
+        raise LoiOpenAI(409, "Đã có một lượt đăng nhập hàng loạt đang chạy.", code="da_co_luot_chay") from None
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Bắt đầu lượt đăng nhập TỰ ĐỘNG cho module «{_nhac_lai(module_id)}»: "
+        f"{thong_tin['tong']} tài khoản",
+        module=module_id, luot_id=thong_tin["luot_id"],
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return thong_tin
+
+
+@tai_khoan.post("/khoi-phuc")
+async def khoi_phuc_tai_khoan_route(request: Request):
+    """Chạy khôi phục nhiều tầng (a)→(d) cho một tài khoản của một module."""
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    module = _module_khoi_phuc(request, module_id)
+    khoa = _chuoi_bat_buoc(than, "khoa")
+    _kiem_khoa_thuoc_module(module, module_id, khoa)
+    email = _chuoi_tuy_chon(than, "email") or ""
+    tai_khoan = khoi_phuc_phien_mod.TaiKhoanCanKhoiPhuc(khoa=khoa, email=email)
+    kq = await khoi_phuc_phien_mod.khoi_phuc(module, tai_khoan)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Khôi phục tài khoản {khoa} ({_nhac_lai(module_id)}): tầng {kq.tang}",
+        module=module_id, nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return kq.sang_dict()
+
+
+@tai_khoan.get("/khoi-phuc/trang-thai")
+def trang_thai_khoi_phuc_route(request: Request, module_id: str = "", khoa: str = ""):
+    """Trạng thái khôi phục của một tài khoản (không chứa bí mật)."""
+    if not module_id or not khoa:
+        raise LoiOpenAI(400, "Thiếu «module_id» hoặc «khoa».", code="invalid_value")
+    module = _module_khoi_phuc(request, module_id)
+    _kiem_khoa_thuoc_module(module, module_id, khoa)
+    tt = khoi_phuc_phien_mod.lay_trang_thai(module_id, khoa)
+    return {"module_id": module_id, "khoa": khoa, **tt}
+
+
+@tai_khoan.post("/khoi-phuc/xoa-can-nguoi")
+async def xoa_can_nguoi_route(request: Request):
+    """Người đã xử lý tay xong → xoá trạng thái can_nguoi và bộ đếm."""
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    module = _module_khoi_phuc(request, module_id)
+    khoa = _chuoi_bat_buoc(than, "khoa")
+    _kiem_khoa_thuoc_module(module, module_id, khoa)
+    khoi_phuc_phien_mod.xoa_can_nguoi(module_id, khoa)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Xoá trạng thái cần-người của {khoa} ({_nhac_lai(module_id)})",
+        module=module_id, nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"ok": True}
 

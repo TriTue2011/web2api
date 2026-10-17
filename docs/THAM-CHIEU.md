@@ -440,6 +440,30 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     (email đã xong, lấy từ `trang-thai`) — bí mật không lưu giữa các lượt nên văn bản
     dán phải gửi lại.
 
+- **Đăng nhập tự động + khôi phục nhiều tầng — NV88** (`app/khoi_phuc_phien.py`;
+  bước đăng nhập nằm TRONG MODULE, lõi không chứa tên nhà cung cấp):
+  - Khả năng module (tuỳ chọn): `dang_nhap(tai_khoan: DongDaTach) -> KetQuaDangNhap`
+    (hợp đồng NV67); `lam_moi_phien(khoa)` (tầng a); `dang_nhap_tu_dong(tai_khoan,
+    trinh_duyet)` (tầng b); `tai_khoan_ke(khoa)`/`danh_dau_hong(khoa, ma_loi)` (tầng c);
+    `mat_khau_da_luu(khoa)`, `co_tai_khoan(khoa)`, `ho_so_trinh_duyet(khoa)`.
+  - `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` (`module_id`, `van_ban`,
+    `bo_qua_email` tuỳ chọn) → lượt `LuotChay` gọi `mod.dang_nhap` (giãn cách 30s,
+    dừng sau 2 hỏng liên tiếp); module chưa có `dang_nhap` → `400`.
+  - `POST /api/tai-khoan/khoi-phuc` (`module_id`, `khoa`, `email` tuỳ chọn) →
+    `KetQuaKhoiPhuc.sang_dict()` (tầng `a`/`b`/`c`/`d`; không chứa bí mật).
+    Khoá lạ/không thuộc module → `404` (chống IDOR); khoá sai khuôn → `400`.
+  - `GET /api/tai-khoan/khoi-phuc/trang-thai` (`module_id`, `khoa`) → trạng thái
+    khôi phục (`hong_b_lien_tiep`, `ngung_tu_dang_nhap`, `can_nguoi`…).
+  - `POST /api/tai-khoan/khoi-phuc/xoa-can-nguoi` (`module_id`, `khoa`) → người
+    bấm tiếp sau khi xử lý tay (xoá chốt dừng).
+  - Tầng (b) chốt dừng: 2 lần hỏng liên tiếp → ngừng tự đăng nhập tài khoản đó.
+    Gặp CAPTCHA/2FA/xác minh thiết bị ở tầng nào → dừng ngay ở `can_nguoi`
+    (mở noVNC đúng workspace), KHÔNG cố vượt.
+  - Trạng thái lưu ở `bi_mat/khoi_phuc_phien.json` (0600, mã hoá khi nghỉ);
+    đường hồ sơ trình duyệt ghép từ ID đã kiểm, resolve() dưới thư mục gốc.
+  - **Chưa có**: bộ điều khiển trình duyệt thật nối workspace vnc-xa (CDP);
+    kiểm với dịch vụ thật/Chrome.
+
 ### Giao diện (`web/`)
 
 Trang `.dc.html` chạy trên **dc-lite** (`web/support.js`, runtime mã nguồn mở đọc nguyên văn các trang của bản
@@ -2377,6 +2401,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau` | Có | Khởi động lượt đăng nhập lần lượt (`module_id`, `van_ban`, `bo_qua_email` tuỳ chọn); đang có lượt chạy → `409` `da_co_luot_chay`; module chưa hỗ trợ → dòng `bo_qua` |
 | `GET /api/tai-khoan/dang-nhap-hang-loat/trang-thai` | Có | Tiến độ từng dòng (`trang_thai_luot`, `ket_qua`, `tom_tat`); chưa có lượt nào → `404` `luot_khong_co` |
 | `POST /api/tai-khoan/dang-nhap-hang-loat/dung` | Có | Dừng lượt đang chạy (giữ kết quả đã xong); không có lượt đang chạy → `404` `luot_khong_chay` |
+| `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` | Có | Lượt đăng nhập TỰ ĐỘNG hàng loạt (`module_id`, `van_ban`, `bo_qua_email` tuỳ chọn): tái dùng `LuotChay` gọi `mod.dang_nhap`; module chưa hỗ trợ → `400`; đang có lượt chạy → `409` (NV88) |
+| `POST /api/tai-khoan/khoi-phuc` | Có | Khôi phục nhiều tầng (a)→(d) cho một tài khoản (`module_id`, `khoa`, `email` tuỳ chọn) → `{thanh_cong, tang, ma_loi, can_nguoi, huong_dan, khoa_moi, url_novnc}`; khoá lạ/không thuộc module → `404`; sai khuôn → `400` (NV88) |
+| `GET /api/tai-khoan/khoi-phuc/trang-thai` | Có | Trạng thái khôi phục của tài khoản (`hong_b_lien_tiep`, `ngung_tu_dang_nhap`, `can_nguoi`…) — không chứa bí mật (NV88) |
+| `POST /api/tai-khoan/khoi-phuc/xoa-can-nguoi` | Có | Người bấm tiếp sau khi xử lý tay: xoá trạng thái `can_nguoi` và bộ đếm hỏng (NV88) |
 | `GET /api/bao-mat/trang-thai` | Có | Trạng thái bảo mật cho trang quản trị: cờ cổng IP quản trị bật/tắt (`cong_ip_quan_tri_trong`), chuỗi băng rôn tĩnh (`bang_ron`) và số mạng cấu hình (`so_mang`); không lộ IP nội bộ |
 | `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên). Giao diện: trang «Phiên tài khoản» (`web/He-thong-Phien.dc.html`) — nhóm theo module (khối thu gọn, đóng mặc định), lưới thẻ (tài khoản, trạng thái, hạn, lần kiểm cuối), nút «Kiểm ngay» và «Xoá phiên» (xác nhận hai bước) |
 | `DELETE /api/phien/{module}/{tai_khoan}` | Có | Xoá một phiên tài khoản đã lưu |

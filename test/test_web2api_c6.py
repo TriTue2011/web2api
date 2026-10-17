@@ -1024,12 +1024,15 @@ def test_module_trinh_duyet_chuan(du_lieu, backend_gia):
 
 
 def test_grep_tu_khoa_trong_app_va_web():
-    """grep chromium|firefox|novnc trong app và web chỉ ở novnc.py, chỗ nối router và chú thích hợp đồng."""
+    """grep chromium|firefox|novnc trong app và web chỉ ở novnc.py, chỗ nối router,
+    chú thích hợp đồng, và app/khoi_phuc_phien.py (gọi novnc.cap_ve để mở noVNC
+    khi khôi phục cần người — tích hợp chính đáng, đã duyệt NV88)."""
     goc = Path(__file__).resolve().parents[1]
     res = subprocess.run(["grep", "-rniE", "chromium|firefox|novnc", "app", "web"], cwd=goc, capture_output=True,
                          text=True)
     for line in (x for x in res.stdout.splitlines() if x.strip()):
-        assert any(cho in line for cho in ("app/novnc.py", "app/tuyen.py", "app/main.py", "app/kham_pha.py")), line
+        assert any(cho in line for cho in ("app/novnc.py", "app/tuyen.py", "app/main.py", "app/kham_pha.py",
+                                           "app/khoi_phuc_phien.py")), line
 
 
 # ───────────────────────────── Chrome thật ─────────────────────────────

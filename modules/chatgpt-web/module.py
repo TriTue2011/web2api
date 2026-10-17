@@ -18,13 +18,16 @@ CHƯA KIỂM với dịch vụ thật.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import threading
 import time
 
 from app.kho import che
+from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
+from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
 
 from .client import (
@@ -101,6 +104,218 @@ class Module:
         self._tai_khoan: list[_TaiKhoan] = []
         self._co_so_url: str | None = None
         self._danh_tinh_id: str | None = None
+        # Khoá tài khoản đã đánh dấu hỏng (tầng c bỏ qua khi chọn kế).
+        self._hong: set[str] = set()
+        # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV88):
+        # test gán; triển khai thật nối workspace vnc-xa (chưa có trong lượt này).
+        self._tao_trinh_duyet = None
+        # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
+        self._trinh_duyet_da_dung = None
+
+    # -- khoá tài khoản mờ (NV88) -------------------------------------------
+
+    @staticmethod
+    def _khoa_tu_token(token: str) -> str:
+        """Khoá mờ của một token: «tk-» + 12 ký tự hex của SHA-256."""
+        return "tk-" + hashlib.sha256(str(token).encode("utf-8")).hexdigest()[:12]
+
+    def _tim_token(self, khoa: str) -> str | None:
+        with self._khoa:
+            for tk in self._tai_khoan:
+                if self._khoa_tu_token(tk.token) == khoa:
+                    return tk.token
+        return None
+
+    def _them_token(self, token: str) -> None:
+        with self._khoa:
+            if not any(t.token == token for t in self._tai_khoan):
+                self._tai_khoan.append(_TaiKhoan(token))
+
+    # -- mật khẩu đã lưu (NV88) ----------------------------------------------
+
+    def mat_khau_da_luu(self, khoa: str) -> BiMatTam | None:
+        """Mật khẩu đã lưu cho một khoá/email (kho riêng mã hoá của module)."""
+        if self.kho is None:
+            return None
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+        except Exception:
+            return None
+        mk = ds.get(str(khoa or "").strip().lower()) if isinstance(ds, dict) else None
+        return BiMatTam(mk) if isinstance(mk, str) and mk else None
+
+    def _luu_mat_khau(self, khoa: str, email: str, mat_khau: BiMatTam) -> None:
+        """Lưu mật khẩu theo cả khoá-token và email (dang_nhap_lai chỉ có email)."""
+        if self.kho is None:
+            return
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+            if not isinstance(ds, dict):
+                ds = {}
+            gia_tri = mat_khau.lay()
+            ds[str(khoa).strip().lower()] = gia_tri
+            if email:
+                ds[str(email).strip().lower()] = gia_tri
+            self.kho.luu("mat_khau", ds)
+        except Exception as e:
+            log.warning("chatgpt-web: không lưu được mật khẩu: %s", type(e).__name__)
+
+    def co_tai_khoan(self, khoa: str) -> bool:
+        """Module có biết khoá/email này không?"""
+        khoa = str(khoa or "").strip().lower()
+        if self._tim_token(khoa) is not None:
+            return True
+        return self.mat_khau_da_luu(khoa) is not None
+
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
+        """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
+        bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
+        return f"chatgpt-web-{bam}"
+
+    # -- đăng nhập theo hợp đồng NV67 (NV88 mở rộng) ---------------------------
+
+    _URL_DANG_NHAP = "https://chatgpt.com/auth/login"
+
+    async def _kiem_token(self, token: str) -> dict | None:
+        """Kiểm token qua /backend-api/me; hỏng → None (không ném)."""
+        try:
+            me = await self._tao_client(token).init()
+        except LoiXacThuc:
+            return None
+        except LoiChatGPTWeb:
+            return None
+        except Exception:
+            return None
+        return me if isinstance(me, dict) else {}
+
+    async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
+                                          trinh_duyet) -> KetQuaDangNhap:
+        """Điền form đăng nhập trên trình duyệt; đọc access_token từ cookie."""
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+            tin_hieu = trinh_duyet.tin_hieu()
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
+            # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        mat_khau_tho = mat_khau.lay()
+        try:
+            await trinh_duyet.dien("email", email)
+            await trinh_duyet.dien("mat_khau", mat_khau_tho)
+            await trinh_duyet.bam("dang_nhap")
+        finally:
+            mat_khau_tho = None  # noqa: F841
+        try:
+            cookie = trinh_duyet.doc_cookie("chatgpt.com")
+        except Exception:
+            cookie = {}
+        token = cookie.get("access_token") if isinstance(cookie, dict) else None
+        if not token:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        me = await self._kiem_token(token)
+        if me is None:
+            return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                  ma_trang_thai=401)
+        self._them_token(token)
+        khoa = self._khoa_tu_token(token)
+        self._luu_mat_khau(khoa, email, mat_khau)
+        return KetQuaDangNhap(True, cookie=token)
+
+    async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
+        """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
+        mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        loai = tai_khoan.loai
+        try:
+            if loai == "cookie":
+                token = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
+                if not token:
+                    return KetQuaDangNhap(False, ma_loi="thieu_cookie")
+                me = await self._kiem_token(token)
+                if me is None:
+                    return KetQuaDangNhap(False, ma_trang_thai=401)
+                self._them_token(token)
+                return KetQuaDangNhap(True, cookie=token)
+            if loai == "mat_khau":
+                if tai_khoan.mat_khau is None:
+                    return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, tai_khoan.mat_khau, td)
+            if loai == "dang_nhap_lai":
+                bm = self.mat_khau_da_luu(tai_khoan.email)
+                if bm is None:
+                    return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, bm, td)
+            return KetQuaDangNhap(False, ma_loi="loai_khong_ho_tro")
+        finally:
+            tai_khoan.xoa_bi_mat()
+
+    # -- các tầng khôi phục NV88 ------------------------------------------------
+
+    async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
+        """Tầng (a): kiểm token còn sống bằng /backend-api/me.
+
+        chatgpt.com không có endpoint làm mới token công khai (kho tham khảo
+        cũng phải đăng nhập lại khi token chết) — tầng này chỉ kiểm tra.
+        """
+        token = self._tim_token(khoa)
+        if token is None:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="khoa_khong_co")
+        try:
+            me = await self._tao_client(token).init()
+        except LoiXacThuc:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
+                                  ma_trang_thai=401)
+        except LoiChatGPTWeb as e:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_mang")
+        if not isinstance(me, dict):
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_module")
+        return KetQuaKhoiPhuc(True, tang="a")
+
+    async def dang_nhap_tu_dong(self, tai_khoan: TaiKhoanCanKhoiPhuc,
+                                trinh_duyet) -> KetQuaKhoiPhuc:
+        """Tầng (b): đăng nhập lại bằng mật khẩu đã lưu qua trình duyệt."""
+        try:
+            bm = tai_khoan.mat_khau
+            if bm is None:
+                return KetQuaKhoiPhuc(False, tang="b", ma_loi="thieu_mat_khau")
+            kq = await self._dang_nhap_bang_trinh_duyet(
+                tai_khoan.email, bm, trinh_duyet)
+            if kq.thanh_cong:
+                return KetQuaKhoiPhuc(True, tang="b")
+            return KetQuaKhoiPhuc(False, tang="b", ma_loi=kq.ma_loi or "loi_module",
+                                  ma_trang_thai=kq.ma_trang_thai,
+                                  can_nguoi=(kq.ma_loi == "can_nguoi"))
+        finally:
+            if tai_khoan.mat_khau is not None:
+                tai_khoan.mat_khau.xoa()
+
+    def tai_khoan_ke(self, khoa: str) -> str | None:
+        """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""
+        with self._khoa:
+            ds = [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
+        khoa = str(khoa)
+        con_khoe = [k for k in ds if k != khoa and k not in self._hong]
+        if con_khoe:
+            return con_khoe[0]
+        # Chỉ còn chính nó và nó khoẻ → không có «kế».
+        return None
+
+    def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
+        """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
+        self._hong.add(str(khoa))
 
     # -- tạo client: mối nối để test chích máy chủ giả ---------------------
 
