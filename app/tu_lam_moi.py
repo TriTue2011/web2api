@@ -219,7 +219,12 @@ async def _chay_khoi_phuc(module: Any, module_id: str, khoa: str, ma_loi: str) -
         trinh_duyet = await _lay_trinh_duyet(module_id)
         tai_khoan = kp.TaiKhoanCanKhoiPhuc(khoa=khoa)
         kq = await kp.khoi_phuc(module, tai_khoan, trinh_duyet=trinh_duyet)
-        if kq.thanh_cong:
+        if kq.thanh_cong and kq.khoa_moi:
+            # Tầng (c): tài khoản cũ vừa bị đánh dấu hỏng và đã chuyển sang khoá
+            # kế — KHÔNG bỏ dấu hỏng, kẻo lần chọn sau lại quay về khoá hỏng.
+            log.info("tu-lam-moi: %s/%s chuyển sang khoá kế ở tầng %s",
+                     module_id, khoa, kq.tang)
+        elif kq.thanh_cong:
             _danh_dau_khoe(module, khoa)
             log.info("tu-lam-moi: %s/%s tự khôi phục xong ở tầng %s",
                      module_id, khoa, kq.tang)
@@ -454,7 +459,10 @@ class QuanLyTuLamMoi:
         dang_chay = dang_chay or {}
         for module_id in list(self._vong):
             module = dang_chay.get(module_id)
-            if module is None or not callable(getattr(module, "lam_moi_phien", None)):
+            # Thể hiện module bị thay (lưu cấu hình/cập nhật → thể hiện cũ đã dừng):
+            # bỏ vòng cũ để dựng lại trên thể hiện mới, không bám vào cái đã dừng.
+            if module is None or not callable(getattr(module, "lam_moi_phien", None)) \
+                    or self._vong[module_id]._module is not module:
                 self.go_vong(module_id)
         for module_id, module in dang_chay.items():
             if module_id not in self._vong and \

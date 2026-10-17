@@ -7,7 +7,7 @@ nằm trong kho RIÊNG của từng module (quyết định 1.2), nên gỡ/hỏ
 không ảnh hưởng module kia.
 
 Hợp đồng lõi (không tên nhà cung cấp):
-  * `danh_tinh.khai_dang_nhap_bang_email(manifest)` — module khai
+  * module khai
     `dang_nhap_bang` ∈ {"gmail", "email"} trong manifest;
   * `danh_tinh.chua_gan(module_id)` — liệt kê danh tính chưa gắn vào module;
   * `danh_tinh.tao_va_gan(email, nhan, module_id)` — tạo-nếu-chưa-có + gắn
@@ -80,17 +80,6 @@ def moi_truong(tmp_path, monkeypatch):
         yield client
 
 
-# ───────────── khai báo trong manifest ─────────────
-
-def test_khai_dang_nhap_bang_email_manifest():
-    assert danh_tinh.khai_dang_nhap_bang_email({"dang_nhap_bang": "gmail"}) is True
-    assert danh_tinh.khai_dang_nhap_bang_email({"dang_nhap_bang": "Email"}) is True
-    assert danh_tinh.khai_dang_nhap_bang_email({"dang_nhap_bang": "mat_khau"}) is False
-    assert danh_tinh.khai_dang_nhap_bang_email({}) is False
-    assert danh_tinh.khai_dang_nhap_bang_email(None) is False
-    assert danh_tinh.khai_dang_nhap_bang_email("gmail") is False
-
-
 # ───────────── tao_va_gan: lũy đẳng, không trùng ─────────────
 
 def test_tao_va_gan_idempotent(moi_truong):
@@ -125,7 +114,9 @@ def test_cung_email_hai_module_doc_lap(moi_truong):
     dt = r2.json()["danh_tinh"]
     assert dt["gan"] == ["mod-gia-a", "mod-gia-b"]
     # Bản ghi công khai không bao giờ chứa cookie/mật khẩu (quyết định 1.2).
-    assert set(dt) == {"id", "email", "nhan", "ngay_tao", "gan"}
+    # NV92 thêm trạng thái đăng nhập + tên hồ sơ trình duyệt (không phải bí mật).
+    assert set(dt) == {"id", "email", "nhan", "ngay_tao", "gan",
+                       "trang_thai_dang_nhap", "ho_so_trinh_duyet"}
 
     # Gỡ module A → danh tính vẫn còn, chỉ mất gắn của A.
     r = client.post("/api/danh-tinh/go-theo-module", headers=QT,

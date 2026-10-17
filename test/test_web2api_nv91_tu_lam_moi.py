@@ -324,3 +324,59 @@ def test_tat_cau_hinh_thi_khong_tu_kich_hoat(sach_trang_thai, monkeypatch):
     mod.tai_khoan = {"k1": {"khoe": False}}
     assert tlm.bao_loi_phien(mod, "k1") is None
     assert mod.so_lan_lam_moi == 0
+
+
+# ───────────── Sửa lỗi sau soát độc lập (NV91–93) ─────────────
+
+def test_chuyen_khoa_ke_o_tang_c_khong_bo_dau_hong(sach_trang_thai):
+    """Tầng (c) đánh dấu khoá cũ hỏng rồi chuyển sang khoá kế: lõi KHÔNG được
+    gọi danh_dau_khoe cho khoá cũ (nếu không, lần chọn sau quay lại khoá hỏng)."""
+    mod = ModuleGia91()
+    mod.tai_khoan = {"k1": {"khoe": False}, "k2": {"khoe": True}}
+    mod.kich_ban["a"] = kp.KetQuaKhoiPhuc(False, ma_loi="het_han")
+    mod.khoa_ke = {"k1": "k2"}
+
+    chay(tlm._chay_khoi_phuc(mod, "mod-gia-nv91", "k1", ""))
+
+    assert [k for k, _ in mod.da_danh_dau_hong] == ["k1"]
+    assert mod.da_danh_dau_khoe == []
+    assert mod.tai_khoan["k1"]["khoe"] is False
+
+
+def test_dong_hoa_dung_lai_vong_khi_the_hien_module_bi_thay(sach_trang_thai):
+    """Lưu cấu hình → sổ thay thể hiện module (cái cũ đã dừng). Vòng định kỳ phải
+    chuyển sang thể hiện mới, không bám vào cái đã dừng."""
+    cu, moi = ModuleGia91(), ModuleGia91()
+
+    async def _chay():
+        ql = tlm.QuanLyTuLamMoi()
+        ql.dong_hoa({"mod-gia-nv91": cu})
+        assert ql._vong["mod-gia-nv91"]._module is cu
+        ql.dong_hoa({"mod-gia-nv91": moi})
+        assert ql._vong["mod-gia-nv91"]._module is moi
+        await ql.dung()
+
+    chay(_chay())
+
+
+def test_khoi_phuc_khong_nem_khi_giành_trinh_duyet_loi(sach_trang_thai, monkeypatch):
+    """Giành quyền trình duyệt lỗi (hồ sơ đang bận) → tầng (b) hỏng, khoi_phuc
+    vẫn trả kết quả thay vì ném ngoại lệ ra đường API."""
+    class TDBan(kp.TrinhDuyetGia):
+        async def gianh(self):
+            raise RuntimeError("ho so dang ban")
+
+        async def nha(self):
+            return None
+
+    mod = ModuleGia91()
+    mod.mat_khau_luu = "mat-khau-gia-nv91"
+    mod.kich_ban["a"] = kp.KetQuaKhoiPhuc(False, ma_loi="het_han")
+    td = TDBan()
+    monkeypatch.setattr(kp, "lay_trinh_duyet_that", lambda ho_so, dang_chay: td)
+
+    kq = chay(kp.khoi_phuc(mod, kp.TaiKhoanCanKhoiPhuc(khoa="k1"),
+                           dang_chay={"x": object()}))
+
+    assert isinstance(kq, kp.KetQuaKhoiPhuc)
+    assert kq.thanh_cong is False

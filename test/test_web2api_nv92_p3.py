@@ -237,7 +237,7 @@ class SoGia:
 
 class ModProviderGia:
     def __init__(self, ket_qua, co_tai_dung=True):
-        self.manifest = {"id": "mod-provider-gia", "cung_cap": ["chat"]}
+        self.manifest = {"id": "mod-provider-gia", "cung_cap": ["chat"], "truong_cau_hinh": [{"khoa": "tai_khoan", "kieu": "danh_sach_bi_mat"}]}
         self._kq = ket_qua
         self._co_tai_dung = co_tai_dung
 
@@ -373,8 +373,8 @@ def test_tai_dung_hai_module_doc_lap_tren_mot_ho_so(api):
     dt_id = _lap_ho_so_lien_ket()
     mod_a = ModProviderGia(KetQuaDangNhap(True, cookie="cookie=<redacted>"))
     mod_b = ModProviderGia(KetQuaDangNhap(True, cookie="cookie=<redacted>"))
-    mod_a.manifest = {"id": "mod-a", "cung_cap": ["chat"]}
-    mod_b.manifest = {"id": "mod-b", "cung_cap": ["chat"]}
+    mod_a.manifest = {"id": "mod-a", "cung_cap": ["chat"], "truong_cau_hinh": [{"khoa": "tai_khoan", "kieu": "danh_sach_bi_mat"}]}
+    mod_b.manifest = {"id": "mod-b", "cung_cap": ["chat"], "truong_cau_hinh": [{"khoa": "tai_khoan", "kieu": "danh_sach_bi_mat"}]}
     so.dang_chay["mod-a"] = mod_a
     so.dang_chay["mod-b"] = mod_b
     so.dang_chay["mod-trinh-duyet-gia"] = ModTrinhDuyetGiaAPI(_DieuKhien())
@@ -522,7 +522,7 @@ def test_tai_dung_gianh_va_nha_quyen(api):
     client, so = api
     _lap_ho_so_lien_ket()
     mod_p = ModProviderGia(KetQuaDangNhap(True, cookie="cookie=<redacted>"))
-    mod_p.manifest = {"id": "mod-provider-gia", "cung_cap": ["chat"]}
+    mod_p.manifest = {"id": "mod-provider-gia", "cung_cap": ["chat"], "truong_cau_hinh": [{"khoa": "tai_khoan", "kieu": "danh_sach_bi_mat"}]}
     td = _DieuKhienCoGianh()
     so.dang_chay["mod-provider-gia"] = mod_p
     so.dang_chay["mod-trinh-duyet-gia"] = ModTrinhDuyetGiaAPI(td)
@@ -550,10 +550,45 @@ def test_tai_dung_ho_so_dang_ban_409(api):
     client, so = api
     _lap_ho_so_lien_ket()
     mod_p = ModProviderGia(KetQuaDangNhap(True, cookie="cookie=<redacted>"))
-    mod_p.manifest = {"id": "mod-provider-gia", "cung_cap": ["chat"]}
+    mod_p.manifest = {"id": "mod-provider-gia", "cung_cap": ["chat"], "truong_cau_hinh": [{"khoa": "tai_khoan", "kieu": "danh_sach_bi_mat"}]}
     so.dang_chay["mod-provider-gia"] = mod_p
     so.dang_chay["mod-trinh-duyet-gia"] = ModTrinhDuyetGiaAPI(_DieuKhienBan())
     r = client.post("/api/tai-khoan/tai-dung", headers=QT,
                     json={"module_id": "mod-provider-gia", "ho_so": HO_SO})
     assert r.status_code == 409, r.text
     assert r.json()["error"]["code"] == "ho_so_dang_ban"
+
+
+def test_tai_dung_dung_ten_truong_theo_manifest(api):
+    """Tên trường bí mật do manifest module quyết (module dùng «cookies» chứ
+    không phải «tai_khoan»): lõi không được ghi cứng tên trường."""
+    client, so = api
+    _lap_ho_so_lien_ket()
+    cookie = "cookie=<redacted>"
+    mod = ModProviderGia(KetQuaDangNhap(True, cookie=cookie))
+    mod.manifest["truong_cau_hinh"] = [{"khoa": "cookies", "kieu": "danh_sach_bi_mat"}]
+    so.dang_chay["mod-provider-gia"] = mod
+    so.dang_chay["mod-trinh-duyet-gia"] = ModTrinhDuyetGiaAPI(_DieuKhien())
+    r = client.post("/api/tai-khoan/tai-dung", headers=QT,
+                    json={"module_id": "mod-provider-gia", "ho_so": HO_SO})
+    assert r.status_code == 200, r.text
+    assert so.cai_goi == [("mod-provider-gia", {"cookies": {"them": [cookie]}})]
+
+
+def test_tai_dung_luu_that_bai_khong_bao_thanh_cong(api):
+    """Module từ chối lưu (cai trả ok False) → không báo thành công, không gắn
+    danh tính vào module."""
+    client, so = api
+    dt_id = _lap_ho_so_lien_ket()
+    so.dang_chay["mod-provider-gia"] = ModProviderGia(
+        KetQuaDangNhap(True, cookie="cookie=<redacted>"))
+    so.dang_chay["mod-trinh-duyet-gia"] = ModTrinhDuyetGiaAPI(_DieuKhien())
+
+    async def tu_choi(id_, cau_hinh):
+        return {"ok": False, "ket_qua_tung_khoa": [], "loi": "khoa sai"}
+    so.cai = tu_choi
+    r = client.post("/api/tai-khoan/tai-dung", headers=QT,
+                    json={"module_id": "mod-provider-gia", "ho_so": HO_SO})
+    assert r.status_code == 200, r.text
+    assert r.json()["thanh_cong"] is False
+    assert "mod-provider-gia" not in danh_tinh.lay(dt_id)["gan"]

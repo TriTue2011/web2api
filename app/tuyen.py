@@ -2731,7 +2731,7 @@ async def tao_danh_tinh_moi(request: Request):
 
 @danh_tinh.get("/chua-gan")
 def lay_danh_tinh_chua_gan(module_id: str, request: Request):
-    """Danh tính chưa gắn vào module này — giao diện hiện «Gmail có sẵn» để
+    """Danh tính chưa gắn vào module này — giao diện hiện «email có sẵn» để
     tái dùng thay vì nhập lại email. (NV91-P1)"""
     module_id = (module_id or "").strip()
     danh_tinh_mod.kiem_module_id(module_id)
@@ -2797,9 +2797,11 @@ async def xoa_danh_tinh(id: str, request: Request):
     if ban_ghi is None:
         raise LoiOpenAI(404, "Không tìm thấy danh tính.", code="danh_tinh_khong_co")
     ho_so = ban_ghi["ho_so_trinh_duyet"]
+    # Xoá bản ghi TRƯỚC: còn tài khoản provider trỏ tới thì xoa() ném 409 và
+    # hồ sơ trình duyệt (phiên đăng nhập) còn nguyên; đóng hồ sơ sau khi xoá thành công.
+    danh_tinh_mod.xoa(id)
     if ho_so:
-        # Đóng + nhả hồ sơ trình duyệt trước khi xoá (lỗi thì chỉ ghi log,
-        # không chặn xoá danh tính).
+        # Lỗi đóng hồ sơ chỉ ghi log, không làm hỏng việc xoá đã xong.
         mod_td = _tim_module_trinh_duyet(request)
         if mod_td is not None:
             try:
@@ -2807,7 +2809,6 @@ async def xoa_danh_tinh(id: str, request: Request):
             except Exception as e:
                 log.warning("danh-tinh: đóng hồ sơ trình duyệt %s lỗi: %s",
                             ho_so, type(e).__name__)
-    danh_tinh_mod.xoa(id)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     nhat_ky_mod.ghi(
         "quan_tri",
@@ -2942,6 +2943,21 @@ def _danh_tinh_theo_ho_so(ho_so: str) -> dict:
     return ban_ghi
 
 
+async def _don_danh_tinh_do_dang(request: Request, mod_td, dt_id: str,
+                                 ho_so: str | None) -> None:
+    """Dọn danh tính (và hồ sơ trình duyệt nếu đã tạo) khi /dang-nhap hỏng trước
+    lúc lượt chạy bắt đầu — thử lại cùng email không bị 400 «email_ton_tai»."""
+    try:
+        danh_tinh_mod.xoa(dt_id)
+    except Exception as e:
+        log.warning("danh-tinh: dọn bản ghi dở %s lỗi: %s", dt_id, type(e).__name__)
+    if ho_so:
+        try:
+            await mod_td.trinh_duyet_dong(ho_so, giu_phien=False)
+        except Exception as e:
+            log.warning("danh-tinh: đóng hồ sơ dở %s lỗi: %s", ho_so, type(e).__name__)
+
+
 @danh_tinh.post("/dang-nhap", status_code=201)
 async def dang_nhap_danh_tinh_qua_trinh_duyet(request: Request):
     """Tạo danh tính + tự đăng nhập trong hồ sơ trình duyệt (chạy nền).
@@ -2966,14 +2982,20 @@ async def dang_nhap_danh_tinh_qua_trinh_duyet(request: Request):
     except Exception as e:
         log.warning("danh-tinh: tạo hồ sơ trình duyệt cho %s lỗi: %s",
                     dt_id, type(e).__name__)
+        await _don_danh_tinh_do_dang(request, mod_td, dt_id, None)
         raise LoiOpenAI(502, f"Không tạo được hồ sơ trình duyệt ({type(e).__name__}).",
                         code="loi_dich_vu_trinh_duyet") from None
     ho_so = ws.get("ho_so") if isinstance(ws, dict) else None
     if not isinstance(ho_so, str) or not _MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
+        await _don_danh_tinh_do_dang(request, mod_td, dt_id, None)
         raise LoiOpenAI(502, "Dịch vụ trình duyệt trả mã hồ sơ không hợp lệ.",
                         code="loi_dich_vu_trinh_duyet")
-    danh_tinh_mod.cap_nhat_trang_thai(dt_id, ho_so=ho_so)
-    td = _dieu_khien_that(request, ho_so)
+    try:
+        danh_tinh_mod.cap_nhat_trang_thai(dt_id, ho_so=ho_so)
+        td = _dieu_khien_that(request, ho_so)
+    except Exception:
+        await _don_danh_tinh_do_dang(request, mod_td, dt_id, ho_so)
+        raise
 
     tk = tai_khoan_hang_loat_mod.DongDaTach(
         dong=1, email=email_chuan, loai="mat_khau",
@@ -3002,6 +3024,7 @@ async def dang_nhap_danh_tinh_qua_trinh_duyet(request: Request):
         thong_tin = quan_ly.bat_dau([tk], ham_dang_nhap, "dang-nhap-danh-tinh")
     except tai_khoan_hang_loat_mod.DaCoLuotChay:
         tk.xoa_bi_mat()
+        await _don_danh_tinh_do_dang(request, mod_td, dt_id, ho_so)
         raise LoiOpenAI(409, "Đã có một lượt đăng nhập đang chạy.",
                         code="da_co_luot_chay") from None
     mat_khau = None
@@ -3208,6 +3231,17 @@ def dung_dang_nhap_hang_loat(request: Request):
 _MA_400_KHOA = "khoa_khong_hop_le"
 
 
+def _truong_bi_mat_cua_module(module) -> tuple[str, bool] | None:
+    """Trường bí mật đầu tiên mà manifest module khai (ưu tiên danh sách bí mật).
+    Trả (khoá trường, là_danh_sách) hoặc None."""
+    truong = (getattr(module, "manifest", None) or {}).get("truong_cau_hinh") or []
+    for kieu, la_ds in (("danh_sach_bi_mat", True), ("bi_mat", False)):
+        for t in truong:
+            if isinstance(t, dict) and t.get("kieu") == kieu and isinstance(t.get("khoa"), str):
+                return t["khoa"], la_ds
+    return None
+
+
 def _module_khoi_phuc(request: Request, module_id: str):
     """Module đã cài cho khôi phục; chưa cài → 404."""
     _kiem_module_da_cai_tai_khoan(request, module_id)
@@ -3379,9 +3413,16 @@ async def tai_dung_ho_so_provider(request: Request):
         return {"thanh_cong": False, "can_nguoi": False,
                 "ma_loi": kq.ma_loi or "loi_module"}
     chung_chi = kq.cookie
+    # Tên trường bí mật do manifest của module quyết (không ghi cứng trong lõi).
+    truong_dich = _truong_bi_mat_cua_module(module)
+    if truong_dich is None:
+        chung_chi = None
+        raise LoiOpenAI(501, f"Module «{_nhac_lai(module_id)}» không khai trường "
+                             "bí mật để nhận tài khoản.", code="module_chua_ho_tro")
+    khoa_truong, la_danh_sach = truong_dich
     try:
         kq_cai = await _so(request).cai(
-            module_id, {"tai_khoan": {"them": [chung_chi]}})
+            module_id, {khoa_truong: {"them": [chung_chi]} if la_danh_sach else chung_chi})
     except (LoiSo, kho.KhoHong) as e:
         raise _loi_so(e) from None
     except Exception as e:
@@ -3393,6 +3434,11 @@ async def tai_dung_ho_so_provider(request: Request):
         chung_chi = None  # noqa: F841 — không giữ chuỗi thô
     khoa_che = "…" + hashlib.sha256(
         str(kq.cookie or "").encode("utf-8")).hexdigest()[-4:]
+    if not kq_cai.get("ok"):
+        # Module từ chối lưu (khoá sai/không hợp lệ): không báo thành công,
+        # không gắn danh tính, không ghi «đã thêm».
+        return {"thanh_cong": False, "can_nguoi": False,
+                "ma_loi": "luu_that_bai", "da_luu": False}
     try:
         danh_tinh_mod.gan(ban_ghi["id"], module_id)
     except Exception as e:

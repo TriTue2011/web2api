@@ -308,7 +308,7 @@ class Module:
 
     _URL_TAI_DUNG = "https://chatgpt.com/auth/login"
     _BO_CHON_DANG_NHAP = 'button[data-testid="login-button"], a[href*="auth/login"]'
-    _BO_CHON_GOOGLE = 'button[data-provider="google"], button:has-text("Google")'
+    _BO_CHON_GOOGLE = 'button[data-provider="google"], button[aria-label*="Google" i]'
 
     async def tai_dung_ho_so(self, ho_so: str,
                              trinh_duyet) -> KetQuaDangNhap:

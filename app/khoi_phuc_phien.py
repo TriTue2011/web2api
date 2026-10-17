@@ -199,7 +199,7 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
     `trang`: {url: {"tin_hieu": [...], "cookie": {ten: gia_tri}, ...}}.
     `tin_hieu()` trả hợp các tín hiệu của trang hiện tại, ví dụ {"captcha"},
     {"2fa"}, {"thanh_cong"}, {"thu_thach_truy_cap"} (thử thách truy cập kiểu
-    Cloudflare — mã mở, lõi không biết tên nhà cung cấp nào). Nhật ký
+    trang chặn truy cập — mã mở, lõi không biết tên nhà cung cấp nào). Nhật ký
     `hanh_dong` chỉ ghi TÊN hành động (không ghi giá trị điền vào — tránh lộ
     bí mật nếu ai đó log nó).
     """
@@ -275,7 +275,7 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
     ĐIỂM CẮM CHO NV92: helper chỉ dùng hợp đồng BoDieuKhienTrinhDuyet
     (tin_hieu/vuot_thu_thach). Khi NV92 thay TrinhDuyetGia bằng TrinhDuyetThat
     (dịch vụ trình duyệt thật qua CDP), helper này vẫn chạy không đổi — chỉ
-    cần TrinhDuyetThat hiện thực vuot_thu_thach() thật (thử bấm ô Turnstile
+    cần TrinhDuyetThat hiện thực vuot_thu_thach() thật (thử bấm ô xác nhận của trang chặn
     trên trang hiện tại, không che dấu vết, không gọi dịch vụ giải hộ).
     """
     try:
@@ -599,9 +599,16 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                 if td_tu_cau_noi:
                     # Bộ điều khiển do lõi tự lấy → lõi giành/nhả quyền cho
                     # đúng lượt này; người gọi tự đưa thì tự quản vòng đời.
-                    async with phien_dieu_khien_that(trinh_duyet):
-                        kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b,
-                                               trinh_duyet)
+                    try:
+                        async with phien_dieu_khien_that(trinh_duyet):
+                            kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b,
+                                                   trinh_duyet)
+                    except Exception as e:
+                        # Giành quyền lỗi (hồ sơ đang bận/không mở): hỏng tầng này,
+                        # sang tầng kế — khoi_phuc không bao giờ ném ra ngoài.
+                        log.warning("khoi-phuc: không giành được trình duyệt: %s",
+                                    type(e).__name__)
+                        kq = KetQuaKhoiPhuc(False, tang=TANG_B, ma_loi="trinh_duyet_ban")
                 else:
                     kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b, trinh_duyet)
                 if kq.can_nguoi:

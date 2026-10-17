@@ -20,7 +20,6 @@ CHƯA KIỂM với api.x.ai thật (cần khoá xAI thật).
 
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import urlsplit
 
 from app.chuyen_tiep import ChuyenTiepOpenAI, ds_khoa

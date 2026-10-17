@@ -275,26 +275,17 @@ def xoa(id_: str) -> bool:
         return True
 
 
-# ── Hợp đồng «danh tính dùng chung» cho module đăng nhập bằng Gmail/email (NV91-P1)
+# ── Hợp đồng «danh tính dùng chung» cho module đăng nhập bằng email (NV91-P1)
 #
-# Mô hình (chốt 17/10 theo c2a + NV92): «danh tính dùng chung» = HỒ SƠ GOOGLE —
-# một hồ sơ trình duyệt = một Gmail đã đăng nhập sống. Mỗi provider gắn tài khoản
+# Mô hình (chốt 17/10 theo c2a + NV92): «danh tính dùng chung» = HỒ SƠ ĐĂNG NHẬP —
+# một hồ sơ trình duyệt = một email đã đăng nhập sống. Mỗi provider gắn tài khoản
 # ĐỘC LẬP của nó vào hồ sơ đó («tái dùng» ở tab Provider). Lõi chỉ giữ email +
 # nhãn; cookie/phiên/mật khẩu nằm trong kho RIÊNG của từng module (quyết định
 # 1.2 — xem docs/THAM-CHIEU.md), nên gỡ/hỏng module này không ảnh hưởng module kia.
 
 
-def khai_dang_nhap_bang_email(manifest: Any) -> bool:
-    """Module khai «đăng nhập bằng Gmail/email» qua manifest: trường
-    `dang_nhap_bang` ∈ {"gmail", "email"}. Lõi dùng để biết module nào dùng
-    được hợp đồng danh tính chung mà không cần biết tên nhà cung cấp."""
-    if not isinstance(manifest, dict):
-        return False
-    return str(manifest.get("dang_nhap_bang") or "").strip().lower() in ("gmail", "email")
-
-
 def chua_gan(module_id: str) -> list[dict[str, Any]]:
-    """Danh tính CHƯA gắn vào module này (để giao diện hiện «Gmail có sẵn»).
+    """Danh tính CHƯA gắn vào module này (để giao diện hiện «email có sẵn»).
     module_id sai khuôn → 400 (qua `kiem_module_id`)."""
     module_id = kiem_module_id(module_id)
     with _KHOA_LUONG:

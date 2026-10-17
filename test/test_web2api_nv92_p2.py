@@ -499,3 +499,38 @@ def test_hsg_xoa_khong_ho_so_tra_dung_khuon_cu(api):
     r = client.delete(f"/api/danh-tinh/{dt['id']}", headers=QT)
     assert r.status_code == 200
     assert r.json() == {"ok": True}
+
+
+def test_hsg_xoa_409_khi_con_gan_khong_dong_ho_so(api):
+    """Danh tính còn gắn module → 409 và hồ sơ trình duyệt (phiên đăng nhập)
+    còn nguyên: KHÔNG được đóng/xoá hồ sơ trước khi biết việc xoá bị từ chối."""
+    client, so = api
+    _, mod_td = _nap_dang_nhap_va_trinh_duyet(so)
+    dt = danh_tinh.tao("con-gan@example.com")
+    danh_tinh.cap_nhat_trang_thai(dt["id"], ho_so=HO_SO_GIA)
+    danh_tinh.gan(dt["id"], "mod-provider-gia")
+    r = client.delete(f"/api/danh-tinh/{dt['id']}", headers=QT)
+    assert r.status_code == 409, r.text
+    assert mod_td.da_dong == []
+    assert danh_tinh.lay(dt["id"]) is not None
+
+
+def test_hsg_dang_nhap_loi_giua_chung_khong_de_danh_tinh_mo_coi(api):
+    """Dịch vụ trình duyệt hỏng lúc tạo hồ sơ → 502 và KHÔNG còn danh tính dở;
+    thử lại cùng email sau khi dịch vụ khoẻ lại thì thành công (không 400)."""
+    client, so = api
+    _, mod_td = _nap_dang_nhap_va_trinh_duyet(so)
+    tao_that = mod_td.trinh_duyet_tao
+
+    async def hong(ten):
+        raise RuntimeError("dich vu chet")
+    mod_td.trinh_duyet_tao = hong
+    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
+                    json={"email": "dolang@example.com", "mat_khau": MAT_KHAU_GIA})
+    assert r.status_code == 502, r.text
+    assert danh_tinh.danh_sach() == []
+
+    mod_td.trinh_duyet_tao = tao_that
+    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
+                    json={"email": "dolang@example.com", "mat_khau": MAT_KHAU_GIA})
+    assert r.status_code == 201, r.text
