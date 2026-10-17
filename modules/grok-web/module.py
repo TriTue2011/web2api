@@ -1,29 +1,34 @@
 """Module Grok Web — trò chuyện với Grok qua giao thức WebSocket của grok.com.
 
-Xác thực bằng cookie của người dùng đã đăng nhập (trường cấu hình ``tai_khoan``,
-danh sách — mỗi phần tử là một tài khoản). Đăng nhập tự động qua trình duyệt
-theo hợp đồng NV67/NV88 (NV89): trước khi bó tay với thử thách truy cập
-(Cloudflare), bước trình duyệt CỐ VƯỢT tối đa 3 lượt (patch bổ sung NV90 —
-CHƯA KIỂM trên grok.com thật; vượt không được → ``can_nguoi`` như cũ).
-Hai chế độ đăng nhập (cấu hình ``che_do_dang_nhap``): ``truc_tiep`` (email +
-mật khẩu trên x.com, mặc định) và ``google`` (SSO Google, lưu phiên Google để
-lần sau chỉ bấm «tiếp tục với Google»). Hỗ trợ nhiều tài khoản và tự chuyển
-tài khoản khi:
+Xác thực bằng cookie của người dùng đã đăng nhập: DÁN cookie (trường cấu hình
+``tai_khoan``, danh sách — mỗi phần tử là một tài khoản), đăng nhập bằng MẬT
+KHẨU qua trình duyệt (đường phụ NV89), hoặc TÁI DÙNG hồ sơ Google đã đăng
+nhập (``tai_dung_ho_so``, NV93 — đường chính: «Sign in with Google» trong hồ
+sơ). Đăng nhập tự động qua trình duyệt theo hợp đồng NV67/NV88 (NV89): trước
+khi bó tay với thử thách truy cập (Cloudflare), bước trình duyệt CỐ VƯỢT tối
+đa 3 lượt (patch bổ sung NV90 — CHƯA KIỂM trên grok.com thật; vượt không
+được → ``can_nguoi`` như cũ). Hỗ trợ nhiều tài khoản và tự chuyển tài khoản
+khi:
 
 - lỗi phiên (bắt tay 401/403, sự kiện ``error`` có mã thuộc nhóm phiên),
 - hết lượt (``stream_error`` có kind thuộc nhóm hạn mức),
 - phiên xong nhưng không trả chữ nào.
+
+Cloudflare của grok.com → NHẬN BẰNG CẤU TRÚC (403/503 + ``cf-mitigated:
+challenge``) → can_nguoi NGAY, KHÔNG tự tích/giải (NV90-A). KHÔNG đoán tên
+cookie phiên: «đã đăng nhập» = phiên dùng được; chỗ chưa chắc ghi «CHƯA KIỂM».
 
 Phân loại lỗi bằng mã trạng thái/cấu trúc sự kiện, không dò chữ trong thông điệp.
 Chỉ chuyển tài khoản khi CHƯA có chữ nào được gửi — đã stream dở thì dừng tại
 đó để khỏi hỏi Grok hai lần. Tài khoản vừa hết lượt được nghỉ một lúc; nhưng
 không bao giờ chặn lựa chọn cuối: hết đường thì vẫn dùng tài khoản ít lỗi nhất.
 
-Cookie không bao giờ vào log hay phản hồi — log chỉ ghi chỉ số tài khoản.
+Cookie không bao giờ vào log hay phản hồi — log chỉ ghi khoá mờ ``tk-…``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import ipaddress
 import json
@@ -48,12 +53,14 @@ from app.tu_xa import kiem_url_lan
 from .client import (
     GOC_HTTPS_MAC_DINH,
     WS_DUONG_MAC_DINH,
+    GrokWebClient,
     KhachGrokWeb,
     LoiGrokWeb,
     LoiGrokWebRong,
     LoiHanMucGrokWeb,
     LoiMayChuGrokWeb,
     LoiPhienGrokWeb,
+    LoiThuThachCloudflare,
     LoiThuThachTruyCap,
     lay_uid_tu_phien,
 )
@@ -70,6 +77,11 @@ log = logging.getLogger("web2api.module.grok_web")
 
 #: Tài khoản vừa hết lượt thì nghỉ chừng này trước khi được thử lại.
 NGHI_SAU_HET_LUOT = 120.0
+
+
+def _gio_utc() -> str:
+    """Giờ hiện tại UTC dạng ISO-8601 gọn (cho lan_dung_cuoi)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _tach_cookie(chuoi: str) -> dict[str, str]:
@@ -155,6 +167,8 @@ class Module:
         # Chế độ đăng nhập: "truc_tiep" (email+mật khẩu trên x.com) hoặc
         # "google" (SSO Google, lưu phiên). Mặc định "truc_tiep".
         self._che_do_dang_nhap = "truc_tiep"
+        # Làm giàu NV93: khoa -> {email, ho_so, goi, trang_thai, lan_dung_cuoi}
+        self._lam_giau: dict[str, dict] = {}
 
     # ── Gắn danh tính chung (khuôn NV77) ──────────────────────────────────
 
@@ -303,16 +317,31 @@ class Module:
             return ("che_do_dang_nhap phải là «truc_tiep» (email+mật khẩu trên "
                     f"x.com) hoặc «google» (SSO Google), nhận {che_do!r}.")
         self._che_do_dang_nhap = che_do
-        self._tai_khoan = tai_khoan
-        self._dt_id = dt_id_ds
-        self._dt_ten = dt_ten_ds
+        # NV93: bỏ tài khoản đã bị go_tai_khoan gỡ tường minh; khôi phục bản
+        # ghi làm giàu từ kho riêng (khởi động lại không mất).
+        self._tai_khoan = []
+        self._dt_id = []
+        self._dt_ten = []
+        go_bo = self._doc_go_bo()
+        ban_ghi = self._doc_ban_ghi()
+        self._lam_giau = {}
+        for jar, dt_id, dt_ten in zip(tai_khoan, dt_id_ds, dt_ten_ds):
+            khoa = self._khoa_tu_jar(jar)
+            if khoa in go_bo:
+                continue  # đã bị go_tai_khoan gỡ tường minh — không dựng lại
+            self._tai_khoan.append(jar)
+            self._dt_id.append(dt_id)
+            self._dt_ten.append(dt_ten)
+            g = ban_ghi.get(khoa)
+            if isinstance(g, dict):
+                self._lam_giau[khoa] = g
         self._ws_co_so = ws_co_so
         self._goc_https = goc_https
         self._nghi_den = {}
-        self._dong_bo_tham_chieu({d for d in dt_id_ds if d})
-        n_gan = sum(1 for d in dt_id_ds if d)
+        self._dong_bo_tham_chieu({d for d in self._dt_id if d})
+        n_gan = sum(1 for d in self._dt_id if d)
         log.info("grok-web: đã nạp %d tài khoản (%d gắn danh tính)",
-                 len(tai_khoan), n_gan)
+                 len(self._tai_khoan), n_gan)
         return None
 
     async def nap(self, cau_hinh: dict) -> None:
@@ -361,6 +390,244 @@ class Module:
             "ghi_chu": f"Đã nhận {len(self._tai_khoan)} tài khoản Grok.",
         }
 
+    # ── Tái dùng hồ sơ Google (NV93 — đường chính) ─────────────────────────
+
+    _URL_TAI_DUNG = "https://grok.com/"
+    _BO_CHON_GOOGLE = ('button[aria-label*="Sign in with Google" i], '
+                       'button[aria-label*="Google" i]')
+    _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
+                           "cloudflare"}
+
+    def _tao_client(self, jar) -> GrokWebClient:
+        """Mối nối để test chích máy chủ giả (probe thử thách Cloudflare)."""
+        return GrokWebClient(jar, base_url=self._goc_https or GOC_HTTPS_MAC_DINH)
+
+    @staticmethod
+    def _loc_cookie(cookie: dict) -> dict[str, str]:
+        """Lọc cookie đọc từ grok.com: BỎ tên bắt đầu «cf_» TRỪ «cf_clearance».
+
+        Giữ ``cf_clearance`` (cần cho phiên sau khi người qua thử thách),
+        ``__cf_bm`` (không bắt đầu bằng «cf_» nên được giữ), ``sso`` và mọi
+        cookie khác. KHÔNG đoán tên cookie phiên — giữ tất cả còn lại.
+        """
+        jar: dict[str, str] = {}
+        for k, v in (cookie or {}).items():
+            k, v = str(k), str(v)
+            if not k or not v:
+                continue
+            if k.startswith("cf_") and k != "cf_clearance":
+                continue  # cookie thử thách (vd cf_chl_*) — không lưu
+            jar[k] = v
+        return jar
+
+    async def _co_thu_thach(self, jar=None) -> bool:
+        """Probe HTTP có gặp thử thách Cloudflare không (nhận bằng cấu trúc).
+
+        Lỗi probe (mạng…) → False: probe không quyết định thay tín hiệu trình
+        duyệt, chỉ bổ sung phát hiện sớm.
+        """
+        try:
+            await self._tao_client(jar or {}).kiem_tra_thu_thach()
+        except LoiThuThachCloudflare:
+            return True
+        except Exception as e:
+            # Probe chỉ phát hiện sớm: lỗi probe → coi như không thấy thử thách,
+            # tín hiệu trình duyệt ở dưới vẫn bắt và trả can_nguoi (an toàn).
+            log.warning("grok-web: probe thử thách lỗi: %s", type(e).__name__)
+            return False
+        return False
+
+    async def tai_dung_ho_so(self, ho_so, trinh_duyet) -> KetQuaDangNhap:
+        """«Sign in with Google» TRONG hồ sơ đã đăng nhập Google (NV93).
+
+        Hợp đồng NV92-P3: module tự làm bước Google SSO của nó trong hồ sơ,
+        đọc TẤT CẢ cookie grok.com (lọc bỏ cookie thử thách ``cf_*``), thêm tài
+        khoản vào kho của CHÍNH mình, trả ``KetQuaDangNhap`` với ``cookie`` là
+        chuỗi cookie đã lọc (route tái dùng lưu qua đường cai() có sẵn). Không
+        nhập lại email/mật khẩu/2FA — KHÔNG BAO GIỜ ``dien()``.
+
+        Cloudflare → NHẬN BẰNG CẤU TRÚC (403/503 + ``cf-mitigated: challenge``,
+        qua probe HTTP sớm, NV90-A) → can_nguoi NGAY, KHÔNG tự tích/giải.
+        KHÔNG đoán tên cookie phiên: «đã đăng nhập» = có cookie + không bị
+        chặn; kiểm phiên thật đầy đủ là CHƯA KIỂM (endpoint thật chưa xác định).
+
+        HỌC TỪ c2a (chỉ đọc lấy hiểu, tự viết lại): TriTue2011/chatgpt2api,
+        ``captcha-solver/src/grok_web_login.py`` — các bước: mở grok.com → bấm
+        «Sign in with Google» → SSO trong hồ sơ → về grok.com đã đăng nhập.
+        """
+        hs_id = ho_so.get("id") if isinstance(ho_so, dict) else str(ho_so or "")
+        hs_id = str(hs_id or "").strip() or None
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
+            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+            # CAPTCHA/Cloudflare/2FA/xác minh: dừng, KHÔNG cố vượt.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        # Probe HTTP sớm: phát hiện thử thách bằng cấu trúc NGAY, không chờ
+        # hết vòng (c2a đo 20/09: grok.com không tự qua được).
+        if await self._co_thu_thach():
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            if "da_dang_nhap" not in tin_hieu:
+                # Bước «bấm Google»: SSO trong hồ sơ, không nhập lại gì.
+                await trinh_duyet.bam(self._BO_CHON_GOOGLE)
+                da_vao = False
+                for _ in range(20):
+                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                        return KetQuaDangNhap(False, ma_loi="can_nguoi")
+                    if "da_dang_nhap" in tin_hieu:
+                        da_vao = True
+                        break
+                    await asyncio.sleep(1)
+                if not da_vao:
+                    return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+            try:
+                cookie = trinh_duyet.doc_cookie("grok.com")
+            except Exception:
+                cookie = {}
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        jar = self._loc_cookie(cookie if isinstance(cookie, dict) else {})
+        if not jar:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        if await self._co_thu_thach(jar):
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        chuoi = self._chuoi_tu_jar(jar)
+        email = str(ho_so.get("email") or "") if isinstance(ho_so, dict) else ""
+        khoa = self._them_tai_khoan_tu_ho_so(jar, hs_id, email)
+        # Log chỉ khoá mờ — KHÔNG BAO GIỜ log cookie.
+        log.info("grok-web: tái dùng hồ sơ %s → tài khoản %s", hs_id, khoa)
+        return KetQuaDangNhap(True, cookie=chuoi)
+
+    def _them_tai_khoan_tu_ho_so(self, jar: dict[str, str],
+                                 hs_id: str | None, email: str) -> str:
+        """Thêm/cập nhật tài khoản từ phiên tái dùng (chống trùng theo khoá)."""
+        khoa = self._khoa_tu_jar(jar)
+        idx = next((i for i, j in enumerate(self._tai_khoan)
+                    if self._khoa_tu_jar(j) == khoa), None)
+        if idx is None:
+            self._tai_khoan.append(dict(jar))
+            self._dt_id.append(None)
+            self._dt_ten.append(None)
+        else:
+            self._tai_khoan[idx] = dict(jar)
+        self._lam_giau[khoa] = {
+            "email": email,
+            "ho_so": hs_id,
+            "goi": "khong_ro",  # CHƯA KIỂM: chưa xác định cách suy gói grok
+            "trang_thai": "hoat_dong",
+            "lan_dung_cuoi": _gio_utc(),
+        }
+        self._xoa_khoi_go_bo(khoa)
+        self._luu_ban_ghi_tai_khoan()
+        return khoa
+
+    # ── Liệt kê / gỡ tài khoản (NV93) ──────────────────────────────────────
+
+    def liet_ke_tai_khoan(self) -> list[dict]:
+        """Danh sách tài khoản KHÔNG bí mật: khoa/email/ho_so/goi/trạng thái."""
+        ds = []
+        for jar in self._tai_khoan:
+            khoa = self._khoa_tu_jar(jar)
+            g = self._lam_giau.get(khoa) or {}
+            ds.append({
+                "khoa": khoa,
+                "email": g.get("email", ""),
+                "ho_so": g.get("ho_so"),
+                "goi": g.get("goi", "khong_ro"),
+                "trang_thai": g.get("trang_thai", "hoat_dong"),
+                "lan_dung_cuoi": g.get("lan_dung_cuoi"),
+            })
+        return ds
+
+    def go_tai_khoan(self, khoa: str) -> bool:
+        """Gỡ đúng MỘT tài khoản của module này; ghi sổ gỡ bỏ vào kho riêng để
+        khởi động lại không dựng lại. Không động module khác, không động hồ sơ."""
+        khoa = str(khoa or "")
+        idx = next((i for i, j in enumerate(self._tai_khoan)
+                    if self._khoa_tu_jar(j) == khoa), None)
+        if idx is None:
+            return False
+        del self._tai_khoan[idx]
+        for lst in (self._dt_id, self._dt_ten):
+            if idx < len(lst):
+                del lst[idx]
+        self._lam_giau.pop(khoa, None)
+        tap = self._doc_go_bo()
+        tap.add(khoa)
+        self._luu_go_bo(tap)
+        self._luu_ban_ghi_tai_khoan()
+        log.info("grok-web: đã gỡ tài khoản %s", khoa)
+        return True
+
+    # ── Kho riêng: bản ghi làm giàu + sổ gỡ bỏ (NV93) ──────────────────────
+
+    def _doc_ban_ghi(self) -> dict:
+        """{khoa: bản ghi} từ kho riêng; kho chưa gán/hỏng → {} (không vỡ)."""
+        if self.kho is None:
+            return {}
+        try:
+            du_lieu = self.kho.doc("tai_khoan") or {}
+        except Exception as e:
+            log.warning("grok-web: không đọc được bản ghi tài khoản: %s",
+                        type(e).__name__)
+            return {}
+        ban_ghi = du_lieu.get("ban_ghi") if isinstance(du_lieu, dict) else None
+        return ban_ghi if isinstance(ban_ghi, dict) else {}
+
+    def _luu_ban_ghi_tai_khoan(self) -> None:
+        """Lưu bản ghi làm giàu (không bí mật thô). Không vỡ."""
+        if self.kho is None:
+            return
+        try:
+            ban_ghi = {}
+            for jar in self._tai_khoan:
+                khoa = self._khoa_tu_jar(jar)
+                g = self._lam_giau.get(khoa) or {}
+                ban_ghi[khoa] = {
+                    "khoa": khoa,
+                    "email": g.get("email", ""),
+                    "ho_so": g.get("ho_so"),
+                    "goi": g.get("goi", "khong_ro"),
+                    "trang_thai": g.get("trang_thai", "hoat_dong"),
+                    "lan_dung_cuoi": g.get("lan_dung_cuoi"),
+                }
+            self.kho.luu("tai_khoan", {"ban_ghi": ban_ghi})
+        except Exception as e:
+            log.warning("grok-web: không lưu được bản ghi tài khoản: %s",
+                        type(e).__name__)
+
+    def _doc_go_bo(self) -> set:
+        """Tập khoá đã bị go_tai_khoan gỡ (để nap() không dựng lại)."""
+        if self.kho is None:
+            return set()
+        try:
+            du_lieu = self.kho.doc("go_bo") or {}
+        except Exception:
+            return set()
+        ds = du_lieu.get("khoa") if isinstance(du_lieu, dict) else None
+        return {str(k) for k in ds} if isinstance(ds, list) else set()
+
+    def _luu_go_bo(self, tap: set) -> None:
+        if self.kho is None:
+            return
+        try:
+            self.kho.luu("go_bo", {"khoa": sorted(tap)})
+        except Exception as e:
+            log.warning("grok-web: không lưu được sổ gỡ bỏ: %s",
+                        type(e).__name__)
+
+    def _xoa_khoi_go_bo(self, khoa: str) -> None:
+        tap = self._doc_go_bo()
+        if khoa in tap:
+            tap.discard(khoa)
+            self._luu_go_bo(tap)
+
     # ── Đăng nhập + khôi phục theo hợp đồng NV67/NV88 (NV89) ──────────
 
     # Đăng nhập grok.com qua SSO của X (không có form đăng nhập riêng trên
@@ -370,10 +637,18 @@ class Module:
     # -- khoá tài khoản mờ -------------------------------------------------
 
     @staticmethod
+    def _chuoi_tu_jar(jar: dict[str, str]) -> str:
+        """Dạng chuẩn của jar để băm khoá (sắp xếp theo tên cho ổn định)."""
+        return "; ".join(f"{k}={v}" for k, v in sorted(jar.items()))
+
+    @staticmethod
     def _khoa_tu_jar(jar: dict[str, str]) -> str:
-        """Khoá mờ của một cookie-jar: «gr-» + 12 ký tự hex của SHA-256."""
-        canonical = "; ".join(f"{k}={v}" for k, v in sorted(jar.items()))
-        return "gr-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+        """Khoá mờ ổn định của một cookie-jar: «tk-» + 12 hex SHA-256.
+
+        Hợp đồng NV93: khoá mọi module web đều dạng ``tk-<băm>``.
+        """
+        return "tk-" + hashlib.sha256(
+            Module._chuoi_tu_jar(jar).encode("utf-8")).hexdigest()[:12]
 
     def _tim_jar(self, khoa: str) -> tuple[int, dict[str, str]] | None:
         """(chỉ số, jar) của tài khoản khớp khoá; None nếu không có."""
@@ -896,9 +1171,16 @@ class Module:
     # ── Danh sách model ────────────────────────────────────────────────
 
     async def models(self) -> list[dict]:
-        """Bốn chế độ của web app Grok dưới dạng model ``grok/<chế độ>``."""
+        """Các chế độ của web app Grok dưới dạng model ``grok/<chế độ>``.
+
+        NV93: id ổn định + nhãn tách riêng; mỗi model kèm gói/tài khoản dùng
+        được (grok chưa phân biệt gói theo tài khoản — CHƯA KIỂM thật).
+        """
+        ds_khoa = [self._khoa_tu_jar(j) for j in self._tai_khoan]
         return [
-            {"id": f"{self._tien_to}/{m}", "object": "model", "owned_by": "grok-web"}
+            {"id": f"{self._tien_to}/{m}", "object": "model",
+             "owned_by": "grok-web", "nhan": f"Grok {m}",
+             "goi": "khong_ro", "available_cho": list(ds_khoa)}
             for m in CAC_CHE_DO
         ]
 

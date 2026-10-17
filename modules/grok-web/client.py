@@ -99,6 +99,76 @@ def _la_thu_thach_truy_cap(dap) -> bool:
     return (dap.headers.get("cf-mitigated") or "").strip().lower() == "challenge"
 
 
+class LoiThuThachCloudflare(LoiThuThachTruyCap):
+    """grok.com trả thử thách Cloudflare (403/503 + ``cf-mitigated: challenge``).
+
+    Gặp thì DỪNG và báo «cần người» (qua noVNC tích ô rồi chạy tiếp) — TUYỆT
+    ĐỐI KHÔNG tự tích/giải, không dịch vụ giải hộ, không né phát hiện.
+    """
+
+
+def _jar_tu(chuoi_hoac_jar) -> dict[str, str]:
+    """dict cookie hoặc chuỗi «k=v; k2=v2» → dict[str, str] (bỏ cặp rỗng)."""
+    if isinstance(chuoi_hoac_jar, dict):
+        return {str(k): str(v) for k, v in chuoi_hoac_jar.items()
+                if str(k) and str(v)}
+    jar: dict[str, str] = {}
+    for phan in str(chuoi_hoac_jar or "").split(";"):
+        phan = phan.strip()
+        if not phan or "=" not in phan:
+            continue
+        k, _, v = phan.partition("=")
+        k, v = k.strip(), v.strip()
+        if k and v:
+            jar[k] = v
+    return jar
+
+
+class GrokWebClient:
+    """Client NHẸ cho luồng tái dùng hồ sơ (NV93): chỉ probe thử thách
+    Cloudflare bằng một GET trang chủ — không chat, không đoán phiên.
+
+    Kết luận «đã đăng nhập» bằng PHIÊN DÙNG ĐƯỢC (không bị chặn + có cookie);
+    tên cookie phiên của grok.com KHÔNG đoán — chỗ chưa chắc ghi «CHƯA KIỂM».
+    """
+
+    def __init__(self, cookies=None,
+                 base_url: str = "https://grok.com",
+                 transport: httpx.AsyncBaseTransport | None = None,
+                 timeout: float = 30.0):
+        jar = _jar_tu(cookies)
+        self._client = httpx.AsyncClient(
+            base_url=(base_url or "https://grok.com").rstrip("/"),
+            cookies=jar,
+            transport=transport,
+            timeout=httpx.Timeout(connect=10.0, read=timeout, write=10.0,
+                                  pool=10.0),
+            headers={"User-Agent": UA_FIREFOX,
+                     "Accept": "text/html,application/xhtml+xml"},
+        )
+
+    async def kiem_tra_thu_thach(self) -> None:
+        """GET /; gặp thử thách Cloudflare (403/503 + ``cf-mitigated:
+        challenge``) → ném ``LoiThuThachCloudflare``. Các mã khác → trả về
+        bình thường: probe này CHỈ phát hiện thử thách, không kết luận phiên
+        hỏng (máy chủ giả trong test trả 404 cho mọi đường không phải thử
+        thách — đó KHÔNG phải thử thách)."""
+        try:
+            r = await self._client.get("/")
+        except httpx.HTTPError as e:
+            raise LoiGrokWeb(f"không probe được grok.com: {type(e).__name__}") from e
+        if r.status_code in (403, 503) and \
+                r.headers.get("cf-mitigated") == "challenge":
+            raise LoiThuThachCloudflare(
+                "grok.com đang thử thách Cloudflare — cần người qua noVNC")
+
+    async def dong(self) -> None:
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass
+
+
 def _kiem_ip_phien(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped

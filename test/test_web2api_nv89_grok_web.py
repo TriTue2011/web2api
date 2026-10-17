@@ -144,7 +144,8 @@ def test_khoa_tu_jar_dung_khuon_va_on_dinh_thu_tu(mod):
     khoa1 = mod._khoa_tu_jar({"b": "2-gia", "a": "1-gia"})
     khoa2 = mod._khoa_tu_jar({"a": "1-gia", "b": "2-gia"})
     assert khoa1 == khoa2
-    assert re.fullmatch(r"gr-[0-9a-f]{12}", khoa1)
+    # NV93: khoá mọi module web đều dạng «tk-<băm>».
+    assert re.fullmatch(r"tk-[0-9a-f]{12}", khoa1)
     assert mod._khoa_tu_jar({"sso": SSO_GIA_OK}) != khoa1
     assert mod._tim_jar(khoa1) is None
 
