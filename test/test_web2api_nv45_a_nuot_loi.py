@@ -76,6 +76,13 @@ DA_KIEM_TOAN = {
     ("app/tu_lam_moi.py", "huy_cua_module"),  # dọn tác vụ nền của module bị gỡ: nuốt lỗi tác vụ đã huỷ
     ("app/tu_lam_moi.py", "huy_tat_ca"),  # dọn mọi tác vụ khi tắt máy/cuối test: nuốt lỗi tác vụ đã huỷ
     ("app/tu_lam_moi.py", "dung"),  # QuanLyTuLamMoi.dung: chờ tác vụ đồng bộ đã huỷ; lỗi không được chặn tắt máy
+    # Đã duyệt NV94 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
+    ("app/khoi_phuc_phien.py", "khoi_phuc"),  # giành trình duyệt lỗi (409 bận/không mở) → log.warning + tầng (b) hỏng mã trinh_duyet_ban → sang tầng kế; finally dong() best-effort
+    ("app/tu_lam_moi.py", "_dang_chay_hien_tai"),  # registry dang_chay hỏng → None → khoi_phuc chạy không cầu nối (đường cũ)
+    ("modules/chatgpt-web/module.py", "danh_tinh_id_cua"),  # kho danh tính hỏng → "" → không qua cầu nối trình duyệt thật → đường cũ
+    ("modules/claude-web/module.py", "danh_tinh_id_cua"),  # như trên
+    ("modules/gemini-web/module.py", "danh_tinh_id_cua"),  # như trên
+    ("modules/grok-web/module.py", "danh_tinh_id_cua"),  # như trên
 }
 
 

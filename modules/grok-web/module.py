@@ -398,7 +398,7 @@ class Module:
     _BO_CHON_GOOGLE = ('button[aria-label*="Sign in with Google" i], '
                        'button[aria-label*="Google" i]')
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
-                           "cloudflare"}
+                           "cloudflare", "thu_thach_truy_cap"}
 
     def _tao_client(self, jar) -> GrokWebClient:
         """Mối nối để test chích máy chủ giả (probe thử thách Cloudflare)."""

@@ -410,7 +410,7 @@ class Module:
     _BO_CHON_DANG_NHAP = 'a[href*="accounts.google.com"]'
     _BO_CHON_GOOGLE = '[data-identifier]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
-                           "cloudflare"}
+                           "cloudflare", "thu_thach_truy_cap"}
 
     @staticmethod
     def _suy_goi(models: list[str]) -> str:

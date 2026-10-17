@@ -498,7 +498,7 @@ class Module:
     # NV94-c: chỉ CSS chuẩn (Marionette không hiểu :has-text của Playwright).
     _BO_CHON_GOOGLE = 'a[href*="accounts.google.com"]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
-                           "cloudflare"}
+                           "cloudflare", "thu_thach_truy_cap"}
 
     def _tao_client(self, session_key: str) -> ClaudeWebClient:
         """Mối nối để test chích máy chủ giả (NV93).

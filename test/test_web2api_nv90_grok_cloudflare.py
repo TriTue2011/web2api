@@ -353,13 +353,17 @@ def test_che_do_dang_nhap_sai_thi_bao_loi(mod):
     assert loi is not None and "che_do_dang_nhap" in loi
 
 
-def test_che_do_google_lan_dau_nhap_va_luu_phien(mod):
-    """Chế độ google: lần đầu nhập qua Google rồi LƯU phiên Google vào kho riêng."""
+def test_che_do_google_dung_tai_dung_ho_so_khong_luu_phien_rieng(mod, may_chu_phien):
+    """NV94-P3: chế độ google dùng tai_dung_ho_so (hồ sơ đã đăng nhập Google).
+
+    KHÔNG tự đăng nhập Google riêng, KHÔNG lưu cookie accounts.google.com vào
+    kho module. Hồ sơ đã có phiên (cookie sso) → thành công, không nhập lại,
+    mật khẩu bị xoá."""
+    mod._goc_https = may_chu_phien
     mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {"tin_hieu": ["thanh_cong"], "cookie": {}},
-        "https://accounts.google.com/": {
-            "tin_hieu": ["thanh_cong"],
+        "https://grok.com/": {
+            "tin_hieu": ["da_dang_nhap"],
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
         }})
     mod._tao_trinh_duyet = lambda: td
@@ -367,42 +371,36 @@ def test_che_do_google_lan_dau_nhap_va_luu_phien(mod):
                     mat_khau=BiMatTam(MAT_KHAU_GIA))
     kq = chay(mod.dang_nhap(tk))
     assert kq.thanh_cong, kq.ma_loi
-    assert ("bam", "dang_nhap_google") in td.hanh_dong
-    assert mod._doc_phien_google().get("sso") == SSO_GIA_OK
-    assert tk.mat_khau.da_xoa()
-
-
-def test_che_do_google_lan_2_chi_bam_tiep_tuc_khong_nhap_lai(mod):
-    """Đã có phiên Google lưu → chỉ bấm «tiếp tục với Google», không nhập lại."""
-    mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
-    mod._luu_phien_google({"sso": SSO_GIA_OK, "x-userid": UID_GIA})
-    td = TrinhDuyetGia(trang={
-        "https://x.com/login": {"tin_hieu": ["thanh_cong"], "cookie": {}},
-        "https://accounts.google.com/": {
-            "tin_hieu": ["thanh_cong"],
-            "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
-        }})
-    mod._tao_trinh_duyet = lambda: td
-    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
-                    mat_khau=BiMatTam(MAT_KHAU_GIA))
-    kq = chay(mod.dang_nhap(tk))
-    assert kq.thanh_cong, kq.ma_loi
-    assert ("bam", "tiep_tuc_google") in td.hanh_dong
+    # Đã đăng nhập trong hồ sơ → không bấm lại nút Google, không nhập lại gì.
     assert not any(hd[0] == "dien" for hd in td.hanh_dong)
+    assert not any(hd == ("bam", mod_module.Module._BO_CHON_GOOGLE)
+                   for hd in td.hanh_dong)
+    assert tk.mat_khau.da_xoa()
+    assert not hasattr(mod, "_doc_phien_google")
+    assert not hasattr(mod, "_luu_phien_google")
+
+
+def test_che_do_google_gap_thu_thach_thi_can_nguoi(mod, may_chu_phien):
+    """Chế độ google: hồ sơ gặp thử thách → can_nguoi, không tự vượt."""
+    mod._goc_https = may_chu_phien
+    mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
+    td = TrinhDuyetGia(trang={
+        "https://grok.com/": {"tin_hieu": ["thu_thach_truy_cap"], "cookie": {}}})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    kq = chay(mod.dang_nhap(tk))
+    assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
     assert tk.mat_khau.da_xoa()
 
 
-def test_mat_khau_khong_vao_log_khi_vuot_va_google(mod, caplog):
+def test_mat_khau_khong_vao_log_khi_vuot_va_google(mod, caplog, may_chu_phien):
     """Mật khẩu không lọt vào log ở cả bước vượt thử thách và chế độ google."""
+    mod._goc_https = may_chu_phien
     mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
-            "tin_hieu": ["thu_thach_truy_cap"],
-            "vuot_thu_thach_thanh_cong": True,
-            "cookie": {},
-        },
-        "https://accounts.google.com/": {
-            "tin_hieu": ["thanh_cong"],
+        "https://grok.com/": {
+            "tin_hieu": ["da_dang_nhap"],
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
         }})
     mod._tao_trinh_duyet = lambda: td
@@ -413,4 +411,5 @@ def test_mat_khau_khong_vao_log_khi_vuot_va_google(mod, caplog):
     assert kq.thanh_cong, kq.ma_loi
     ban_log = "\n".join(r.getMessage() for r in caplog.records)
     assert MAT_KHAU_GIA not in ban_log
+    assert SSO_GIA_OK not in ban_log
     assert SSO_GIA_OK not in ban_log

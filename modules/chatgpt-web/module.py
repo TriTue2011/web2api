@@ -257,7 +257,7 @@ class Module:
     _BO_CHON_DANG_NHAP = 'button[data-testid="login-button"], a[href*="auth/login"]'
     _BO_CHON_GOOGLE = 'button[data-provider="google"], button[aria-label*="Google" i]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
-                           "cloudflare"}
+                           "cloudflare", "thu_thach_truy_cap"}
 
     async def tai_dung_ho_so(self, ho_so, trinh_duyet) -> KetQuaDangNhap:
         """Đăng nhập bằng Google TRONG hồ sơ đã đăng nhập Google (NV93).
