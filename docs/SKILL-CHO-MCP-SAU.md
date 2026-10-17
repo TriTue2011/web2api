@@ -47,3 +47,14 @@ Danh sách chờ, xếp theo ưu tiên. Chưa có nội dung chi tiết của c�
 web-frameworks, frontend-\*:** kho là cổng API/proxy đa mô hình, không bán hàng,
 không làm giao diện web riêng hay đồ hoạ 3D, xác thực đã có cơ chế riêng —
 các skill này không khớp phạm vi nên bỏ.
+
+## Đã chọn và nhập (NV97, từ nguồn ecc)
+
+**fastapi-patterns, python-testing, security-review, verification-loop, api-design**
+(đã nhập vào `.claude/skills/`, Việt hoá + rút gọn, xem `THIRD_PARTY_NOTICES.md`):
+chỉ 5 skill này khớp kho — FastAPI chuẩn OpenAI, pytest với máy chủ giả chặn mạng,
+luật cứng bảo mật ở CLAUDE.md, vòng kiểm pytest/bandit/docker/curl — còn lại của
+nguồn ecc (**613 skill, 71 agent, 26 hook**) KHÔNG nhập: phần lớn viết cho ngăn xếp
+khác (Next.js/npm/Supabase/Vercel, bán hàng, đồ hoạ, 3D), gây thêm bề mặt rủi ro
+chuỗi cung ứng mà kho không dùng đến; ràng buộc NV97 cũng cấm thêm hook, agent,
+lệnh và cấu hình MCP.
