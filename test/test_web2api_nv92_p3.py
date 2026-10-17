@@ -58,8 +58,8 @@ class _DieuKhien(khoi_phuc_phien.BoDieuKhienTrinhDuyet):
     async def mo_trang(self, url): pass
     async def dien(self, bo_chon, gia_tri): pass
     async def bam(self, bo_chon): pass
-    def doc_cookie(self, mien): return {}
-    def tin_hieu(self): return set()
+    async def doc_cookie(self, mien): return {}
+    async def tin_hieu(self, quy_tac=None): return set()
 
 
 def test_cau_noi_tim_theo_kha_nang_khong_theo_ten():
@@ -118,10 +118,10 @@ class TrinhDuyetGiaP3:
         if bo_chon in self._sau_bam:
             self._tin_hieu = set(self._sau_bam[bo_chon])
 
-    def doc_cookie(self, mien):
+    async def doc_cookie(self, mien):
         return dict(self._cookie)
 
-    def tin_hieu(self):
+    async def tin_hieu(self, quy_tac=None):
         return set(self._tin_hieu)
 
     async def dong(self):
@@ -403,6 +403,10 @@ class ModProviderKP:
     def ho_so_trinh_duyet(self, khoa):
         return HO_SO_KP
 
+    def danh_tinh_id_cua(self, khoa):
+        # NV94-d: cầu nối trình duyệt thật đi qua danh tính → ho_so hex.
+        return getattr(self, "_dt_id", None)
+
     async def lam_moi_phien(self, khoa):
         return khoi_phuc_phien.KetQuaKhoiPhuc(False, ma_loi="het_han")
 
@@ -427,10 +431,19 @@ def _tk_kp():
         khoa="tk-kp", mat_khau=BiMatTam("mat-khau-gia-nv92-kp"))
 
 
-def test_khoi_phuc_dung_cau_noi_khi_khong_truyen_trinh_duyet():
+def test_khoi_phuc_dung_cau_noi_khi_khong_truyen_trinh_duyet(tmp_path, monkeypatch):
     """khoi_phuc(..., dang_chay=...) tự lấy bộ điều khiển thật qua cầu nối
-    khi trinh_duyet=None; tầng (b) nhận đúng bộ điều khiển đó."""
+    khi trinh_duyet=None; tầng (b) nhận đúng bộ điều khiển đó.
+
+    NV94-d: cầu nối đi tài khoản → danh_tinh_id_cua → bản ghi danh tính
+    (ho_so hex), không đoán từ ho_so_trinh_duyet.
+    """
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path / "data"))
+    from app import danh_tinh
+    dt = danh_tinh.tao("kp@example.com", "kp")
+    danh_tinh.cap_nhat_trang_thai(dt["id"], ho_so=HO_SO_KP)
     mod = ModProviderKP()
+    mod._dt_id = dt["id"]
     td = ModTrinhDuyetKP()
     kq = asyncio.run(khoi_phuc_phien.khoi_phuc(
         mod, _tk_kp(), dang_chay={"mod-kp": mod, "td-kp": td}))
@@ -506,10 +519,15 @@ class ModTrinhDuyetKPCoGianh(ModTrinhDuyetKP):
         self.dieu_khien = _DieuKhienCoGianh()
 
 
-def test_khoi_phuc_cau_noi_gianh_va_nha_quyen():
+def test_khoi_phuc_cau_noi_gianh_va_nha_quyen(tmp_path, monkeypatch):
     """Cầu nối trong khoi_phuc: giành trước tầng (b), nhả sau — hồ sơ thật
     không bao giờ kẹt «đang bận»."""
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path / "data"))
+    from app import danh_tinh
+    dt = danh_tinh.tao("kp2@example.com", "kp2")
+    danh_tinh.cap_nhat_trang_thai(dt["id"], ho_so=HO_SO_KP)
     mod = ModProviderKP()
+    mod._dt_id = dt["id"]
     td = ModTrinhDuyetKPCoGianh()
     kq = asyncio.run(khoi_phuc_phien.khoi_phuc(
         mod, _tk_kp(), dang_chay={"mod-kp": mod, "td-kp": td}))

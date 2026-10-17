@@ -187,7 +187,7 @@ class Module:
             # Bước 1 — «đi tắt»: hồ sơ đã đăng nhập sẵn thì xong ngay.
             self._dat_tien_do(ho_so, giai_doan="kiem_tra_phien")
             await trinh_duyet.mo_trang(URL_KIEM_TRA)
-            if "da_dang_nhap" in (trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
+            if "da_dang_nhap" in (await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
                 self._dat_tien_do(ho_so, giai_doan="xong", buoc=BUOC_DI_TAT)
                 return KetQuaDangNhapGoogle(True, buoc=BUOC_DI_TAT)
             if mat_khau is None:
@@ -202,7 +202,7 @@ class Module:
             # Bước 2 — «bấm Google»: điền email/mật khẩu.
             self._dat_tien_do(ho_so, giai_doan="dien_email", buoc=BUOC_BAM_GOOGLE)
             await trinh_duyet.mo_trang(URL_DANG_NHAP)
-            if TIN_HIEU_CAN_NGUOI & set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
+            if TIN_HIEU_CAN_NGUOI & set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
                 return self._dung_can_nguoi(ho_so, url_novnc)
             mat_khau_tho = mat_khau.lay()
             try:
@@ -214,7 +214,7 @@ class Module:
             finally:
                 mat_khau_tho = None  # noqa: F841 — không giữ chuỗi thô
 
-            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+            tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
             if TIN_HIEU_CAN_NGUOI & tin_hieu:
                 return self._dung_can_nguoi(ho_so, url_novnc)
             # Bước 3 — «chờ phiên»: Google đòi mã 2FA.
@@ -273,7 +273,7 @@ class Module:
         finally:
             ma_tho = None  # noqa: F841
             ma.xoa()
-        tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+        tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         if TIN_HIEU_CAN_NGUOI & tin_hieu:
             return self._dung_can_nguoi(ho_so, url_novnc)
         if "da_dang_nhap" in tin_hieu:

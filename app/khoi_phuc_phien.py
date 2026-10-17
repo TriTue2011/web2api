@@ -182,10 +182,10 @@ class BoDieuKhienTrinhDuyet(abc.ABC):
     async def bam(self, bo_chon: str) -> None: ...
 
     @abc.abstractmethod
-    def doc_cookie(self, mien: str) -> dict: ...
+    async def doc_cookie(self, mien: str) -> dict: ...
 
     @abc.abstractmethod
-    def tin_hieu(self, quy_tac: list | None = None) -> set:
+    async def tin_hieu(self, quy_tac: list | None = None) -> set:
         """Tín hiệu trang hiện tại: script cấu trúc chung (mã mở) ∪ quy tắc của module.
 
         `quy_tac`: danh sách quy tắc CẤU TRÚC do module khai (kiểu
@@ -235,11 +235,11 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
     async def bam(self, bo_chon: str) -> None:
         self.hanh_dong.append(("bam", bo_chon))
 
-    def doc_cookie(self, mien: str) -> dict:
+    async def doc_cookie(self, mien: str) -> dict:
         cau_hinh = self._trang.get(self._hien_tai or "", {})
         return dict(cau_hinh.get("cookie") or {})
 
-    def tin_hieu(self, quy_tac: list | None = None) -> set:
+    async def tin_hieu(self, quy_tac: list | None = None) -> set:
         cau_hinh = self._trang.get(self._hien_tai or "", {})
         ra = set(cau_hinh.get("tin_hieu") or [])
         url = self._hien_tai or ""
@@ -326,15 +326,18 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
     except Exception:
         so_luot = SO_LUOT_VUOT_THU_THACH_TOI_DA
 
-    def _doc() -> set:
+    async def _doc() -> set:
         try:
-            return set(trinh_duyet.tin_hieu(quy_tac) or [])
+            return set(await trinh_duyet.tin_hieu(quy_tac) or [])
         except TypeError:
-            return set(trinh_duyet.tin_hieu() or [])
+            r = trinh_duyet.tin_hieu()
+            if asyncio.iscoroutine(r):
+                r = await r
+            return set(r or [])
 
     for _ in range(so_luot):
         try:
-            if "thu_thach_truy_cap" not in _doc():
+            if "thu_thach_truy_cap" not in await _doc():
                 return True
         except Exception:
             return False
@@ -343,7 +346,7 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
         except Exception:
             return False
     try:
-        return "thu_thach_truy_cap" not in _doc()
+        return "thu_thach_truy_cap" not in await _doc()
     except Exception:
         return False
 
@@ -367,13 +370,16 @@ def _quy_tac_cua(module: Any) -> list:
     return list(q) if isinstance(q, list) else []
 
 
-def _tin_hieu_an_toan(trinh_duyet: Any, quy_tac: list) -> set:
+async def _tin_hieu_an_toan(trinh_duyet: Any, quy_tac: list) -> set:
     """Đọc tín hiệu, tương thích bộ điều khiển cũ chưa nhận `quy_tac`."""
     try:
-        return set(trinh_duyet.tin_hieu(quy_tac) or [])
+        return set(await trinh_duyet.tin_hieu(quy_tac) or [])
     except TypeError:
         try:
-            return set(trinh_duyet.tin_hieu() or [])
+            r = trinh_duyet.tin_hieu()
+            if asyncio.iscoroutine(r):
+                r = await r
+            return set(r or [])
         except Exception:
             return set()
     except Exception:
@@ -588,9 +594,9 @@ async def _vao_can_nguoi(module_id: str, khoa: str, ly_do: str,
                          huong_dan_module: str = "") -> KetQuaKhoiPhuc:
     """Tầng (d): ghi trạng thái can_nguoi, mở noVNC, trả hướng dẫn tiếng Việt."""
     ho_so = ho_so or f"{module_id}-{khoa}"
-    try:
-        duong_ho_so_trinh_duyet(ho_so)
-    except ValueError:
+    # NV94-d: workspace noVNC ("<module>-<khoa>") dùng khuôn RỘNG tương thích
+    # ngược — khuôn hex thuần chỉ áp cho đường điều khiển trình duyệt thật.
+    if not isinstance(ho_so, str) or not _MAU_ID_WORKSPACE_NOVNC.fullmatch(ho_so):
         ho_so = f"{module_id}-mac-dinh"
     mo = mo_novnc or mo_novnc_mac_dinh
     try:
@@ -646,7 +652,7 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
             trinh_duyet = td
             td_tu_cau_noi = True
             log.info("khoi-phuc: %s/%s dùng cầu nối trình duyệt thật (hồ sơ …%s)",
-                     module_id, khoa, ho_so[-8:])
+                     module_id, khoa, (ho_so or "")[-8:])
     email_che = _che_email(tai_khoan.email)
     log.info("khoi-phuc: bắt đầu module=%s khoa=%s (%s)", module_id, khoa, email_che)
     ma_loi_cuoi = ""
@@ -694,7 +700,7 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                     """Còn tín hiệu thử thách truy cập không (đọc an toàn)."""
                     if trinh_duyet is None:
                         return False
-                    return "thu_thach_truy_cap" in _tin_hieu_an_toan(
+                    return "thu_thach_truy_cap" in await _tin_hieu_an_toan(
                         trinh_duyet, quy_tac_b)
 
                 async def _can_nguoi_thu_thach():

@@ -463,7 +463,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+            tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
@@ -479,7 +479,7 @@ class Module:
                 await trinh_duyet.bam(self._BO_CHON_GOOGLE)
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+                    tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
@@ -489,7 +489,7 @@ class Module:
                 if not da_vao:
                     return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
             try:
-                cookie = trinh_duyet.doc_cookie("grok.com")
+                cookie = await trinh_duyet.doc_cookie("grok.com")
             except Exception:
                 cookie = {}
         except Exception:
@@ -780,7 +780,7 @@ class Module:
         cấm dịch vụ giải hộ).
         """
         try:
-            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
@@ -826,7 +826,7 @@ class Module:
             # ô tay qua noVNC ở tầng d, rồi xoa-can-nguoi để chạy tiếp).
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
-            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
@@ -869,7 +869,7 @@ class Module:
                 trinh_duyet, self._SO_LUOT_VUOT_THU_THACH_TOI_DA):
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
-            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
@@ -891,7 +891,7 @@ class Module:
             finally:
                 mat_khau_tho = None  # noqa: F841
             try:
-                jar_google = trinh_duyet.doc_cookie("accounts.google.com")
+                jar_google = await trinh_duyet.doc_cookie("accounts.google.com")
             except Exception:
                 jar_google = {}
             # Lưu hỏng → _luu_phien_google chỉ ghi nhật ký, lần sau nhập lại.
@@ -906,7 +906,7 @@ class Module:
         kiểm phiên), KHÔNG bằng tên cookie đoán mò — chỉ yêu cầu cookie «sso»
         vì đó là điều kiện module đã khai ở _nap_tu."""
         try:
-            jar = trinh_duyet.doc_cookie("grok.com")
+            jar = await trinh_duyet.doc_cookie("grok.com")
         except Exception:
             jar = {}
         if not isinstance(jar, dict) or not jar.get("sso"):

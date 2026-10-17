@@ -214,8 +214,9 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
             self._post, "/cho", {"bo_chon": bo_chon, "giay": giay})
         return bool(kq.get("thay"))
 
-    def doc_cookie(self, mien: str) -> dict:
-        kq = self._post("/cookie-truc-tiep", {"mien": mien})
+    async def doc_cookie(self, mien: str) -> dict:
+        kq = await asyncio.to_thread(
+            self._post, "/cookie-truc-tiep", {"mien": mien})
         chuoi = kq.get("cookie") or ""
         ra: dict[str, str] = {}
         if isinstance(chuoi, str):
@@ -225,13 +226,14 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
                     ra[ten] = gt
         return ra
 
-    def tin_hieu(self, quy_tac: list | None = None) -> set:
+    async def tin_hieu(self, quy_tac: list | None = None) -> set:
         """Tín hiệu qua dịch vụ: gửi quy tắc cấu trúc của module (NV94-b).
 
         Dịch vụ thực thi quy tắc bằng cấu trúc (cookie có/không, URL/tiêu đề
         chứa, bộ chọn) — mã mở, không dò chữ (xem server.doc_tin_hieu).
         """
-        kq = self._post("/tin-hieu", {"quy_tac": list(quy_tac or [])})
+        kq = await asyncio.to_thread(
+            self._post, "/tin-hieu", {"quy_tac": list(quy_tac or [])})
         ds = kq.get("tin_hieu") or []
         return {s for s in ds if isinstance(s, str)}
 

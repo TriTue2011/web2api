@@ -116,11 +116,10 @@ def test_gianh_va_nguyen_thuy(vnc):
             await td.dien("#identifierId", "nguoi@example.com")
             await td.bam("#identifierNext")
             assert await td.cho("#xac-nhan", 2) is True
-            # doc_cookie/tin_hieu là đồng bộ theo hợp đồng; dịch vụ giả chạy
-            # cùng vòng sự kiện nên phải gọi chúng trên luồng khác (tránh
-            # nghẽn: vòng sự kiện vẫn phục vụ dịch vụ giả trong lúc chờ HTTP).
-            assert await asyncio.to_thread(td.tin_hieu) == {"da_dang_nhap"}
-            assert await asyncio.to_thread(td.doc_cookie, "google.com") == {"SID": "bi-mat"}
+            # NV94-P3: tin_hieu/doc_cookie là async, tự chạy trên to_thread
+            # trong TrinhDuyetThat — không chặn vòng sự kiện.
+            assert await td.tin_hieu([]) == {"da_dang_nhap"}
+            assert await td.doc_cookie("google.com") == {"SID": "bi-mat"}
             await td.dong()
             duong = [d for _, d, _, _ in dv.goi]
             assert f"/ho-so/{HO_SO}/dieu-khien/gianh" in duong
@@ -139,9 +138,8 @@ def test_moi_loi_goi_mang_bearer(vnc):
         async with DichVuGia() as dv:
             td = _that(vnc, dv)
             await td.gianh()
-            # Mọi lời gọi đều qua client của thể hiện — kiểm gián tiếp qua cookie
-            # (gọi đồng bộ trên luồng khác vì dịch vụ giả cùng vòng sự kiện).
-            await asyncio.to_thread(td.doc_cookie, "google.com")
+            # Mọi lời gọi đều qua client của thể hiện — kiểm gián tiếp qua cookie.
+            await td.doc_cookie("google.com")
             assert dv.goi, "không có lời gọi nào tới dịch vụ"
             for _, _, _, auth in dv.goi:
                 assert auth == "Bearer " + KHOA_DV, "thiếu/sai Bearer"

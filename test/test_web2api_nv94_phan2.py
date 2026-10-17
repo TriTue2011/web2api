@@ -141,7 +141,7 @@ class TestTinHieuTheoQuyTac:
 
         async def chay():
             await td.mo_trang("https://myaccount.google.com/")
-            return td.tin_hieu(QUY_TAC_MAU)
+            return await td.tin_hieu(QUY_TAC_MAU)
 
         import asyncio
         assert "da_dang_nhap" in asyncio.run(chay())
@@ -152,7 +152,7 @@ class TestTinHieuTheoQuyTac:
 
         async def chay():
             await td.mo_trang("https://accounts.google.com/challenge/abc")
-            return td.tin_hieu(QUY_TAC_MAU)
+            return await td.tin_hieu(QUY_TAC_MAU)
 
         import asyncio
         assert "thu_thach_truy_cap" in asyncio.run(chay())
@@ -226,3 +226,40 @@ class TestBoChonCssChuan:
                             if cam in h.value:
                                 loi.append((cam, h.value[:60]))
         assert not loi, f"{module_ten}: bộ chọn không phải CSS chuẩn: {loi}"
+
+
+# ── P3: tin_hieu/doc_cookie async (không chặn vòng lặp) ───────────────────
+
+class TestTinHieuDocCookieAsync:
+    """httpx đồng bộ trong hàm async treo mọi yêu cầu chat → hợp đồng async."""
+
+    def test_hop_dong_async(self):
+        import inspect
+        from app.khoi_phuc_phien import BoDieuKhienTrinhDuyet
+        assert inspect.iscoroutinefunction(BoDieuKhienTrinhDuyet.tin_hieu)
+        assert inspect.iscoroutinefunction(BoDieuKhienTrinhDuyet.doc_cookie)
+
+    def test_trinh_duyet_that_async(self):
+        import inspect
+        import importlib.util
+        from pathlib import Path
+        duong = Path("modules/vnc-xa/module.py").resolve()
+        spec = importlib.util.spec_from_file_location("nv94_vnc_xa_mod", duong)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert inspect.iscoroutinefunction(mod.TrinhDuyetThat.tin_hieu)
+        assert inspect.iscoroutinefunction(mod.TrinhDuyetThat.doc_cookie)
+
+    def test_trinh_duyet_gia_async(self):
+        import asyncio, inspect
+        from app.khoi_phuc_phien import TrinhDuyetGia
+        assert inspect.iscoroutinefunction(TrinhDuyetGia.tin_hieu)
+        assert inspect.iscoroutinefunction(TrinhDuyetGia.doc_cookie)
+
+        async def chay():
+            td = TrinhDuyetGia({"https://x/": {"cookie": {"a": "b"}}})
+            await td.mo_trang("https://x/")
+            assert await td.tin_hieu([]) == set()
+            assert await td.doc_cookie("x") == {"a": "b"}
+
+        asyncio.run(chay())

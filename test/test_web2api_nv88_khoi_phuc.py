@@ -263,7 +263,8 @@ def test_khong_co_phuong_thuc_nao_thi_thang_vao_d(du_lieu):
 # ───────────── đường tới hồ sơ trình duyệt (chống SSRF/đường dẫn) ─────────────
 
 def test_duong_ho_so_hop_le_nam_duoi_goc(du_lieu, tmp_path):
-    p = kp.duong_ho_so_trinh_duyet("chatgpt-web-tk-a1b2c3")
+    # NV94-d: đường điều khiển trình duyệt thật chỉ nhận mã hex của danh tính.
+    p = kp.duong_ho_so_trinh_duyet("a1b2c3d4e5f6a1b2c3d4")
     goc = (tmp_path / "data" / "ho-so-trinh-duyet").resolve()
     assert p.resolve().is_relative_to(goc)
 
@@ -284,7 +285,7 @@ def test_trinh_duyet_gia_ghi_hanh_dong_va_doc_cookie():
     chay(td.mo_trang("https://dang-nhap.gia/"))
     chay(td.dien("email", "ban@example.com"))
     chay(td.bam("tiep-tuc"))
-    assert td.doc_cookie("dang-nhap.gia") == {"phien": COOKIE_GIA}
+    assert chay(td.doc_cookie("dang-nhap.gia")) == {"phien": COOKIE_GIA}
     assert [h[0] for h in td.hanh_dong] == ["mo_trang", "dien", "bam"]
     # giá trị điền vào không nằm trong nhật ký hành động ở dạng thô
     assert "ban@example.com" not in json.dumps([h[0] for h in td.hanh_dong])

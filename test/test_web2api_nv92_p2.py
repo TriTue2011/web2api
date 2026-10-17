@@ -102,11 +102,18 @@ class TrinhDuyetGiaNV92(khoi_phuc_phien.BoDieuKhienTrinhDuyet):
         for trang, tin_hieu in self.sau_bam.get(bo_chon, {}).items():
             self.tin_hieu_trang[trang] = set(tin_hieu)
 
-    def doc_cookie(self, mien: str) -> dict:
+    async def doc_cookie(self, mien: str) -> dict:
         return dict(self.cookie)
 
-    def tin_hieu(self) -> set:
-        return set(self.tin_hieu_trang.get(self.trang, ()))
+    async def tin_hieu(self, quy_tac=None) -> set:
+        # NV94: hợp đồng async + quy tắc cấu trúc; giả P2 giữ kịch bản cũ
+        # (đánh giá quy tắc cookie theo self.cookie khi được truyền).
+        ra = set(self.tin_hieu_trang.get(self.trang, ()))
+        for q in (quy_tac or []):
+            if isinstance(q, dict) and q.get("loai") == "cookie" \
+                    and q.get("ten") in self.cookie:
+                ra.add(q.get("tin_hieu"))
+        return ra
 
     async def dong(self) -> None:
         pass

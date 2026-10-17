@@ -281,7 +281,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+            tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
@@ -295,7 +295,7 @@ class Module:
                 # Bước «chờ phiên»: Google chuyển về với phiên đã đăng nhập.
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+                    tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
@@ -305,7 +305,7 @@ class Module:
                 if not da_vao:
                     return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
             try:
-                cookie = trinh_duyet.doc_cookie("chatgpt.com")
+                cookie = await trinh_duyet.doc_cookie("chatgpt.com")
             except Exception:
                 cookie = {}
             token = cookie.get("access_token") if isinstance(cookie, dict) else None
@@ -535,7 +535,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
@@ -549,7 +549,7 @@ class Module:
         finally:
             mat_khau_tho = None  # noqa: F841
         try:
-            cookie = trinh_duyet.doc_cookie("chatgpt.com")
+            cookie = await trinh_duyet.doc_cookie("chatgpt.com")
         except Exception:
             cookie = {}
         token = cookie.get("access_token") if isinstance(cookie, dict) else None

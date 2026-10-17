@@ -450,7 +450,7 @@ class Module:
         try:
             # Đi tắt: hồ sơ đã có phiên muse.ai còn hiệu lực.
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+            tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
             if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                 # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
                 return KetQuaDangNhap(False, ma_loi="can_nguoi")
@@ -459,7 +459,7 @@ class Module:
                 await trinh_duyet.bam(self._BO_CHON_GOOGLE)
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+                    tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
@@ -470,7 +470,7 @@ class Module:
                     # NV90-C: không qua được Google SSO (SSO Meta?) → ghi rõ.
                     return KetQuaDangNhap(False, ma_loi="khong_ho_tro")
             try:
-                cookie = trinh_duyet.doc_cookie("muse.ai")
+                cookie = await trinh_duyet.doc_cookie("muse.ai")
             except Exception:
                 cookie = {}
             hatch_sess = (cookie.get("hatch_sess")

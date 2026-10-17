@@ -327,7 +327,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
@@ -341,7 +341,7 @@ class Module:
         finally:
             mat_khau_tho = None  # noqa: F841
         try:
-            cookie = trinh_duyet.doc_cookie("google.com")
+            cookie = await trinh_duyet.doc_cookie("google.com")
         except Exception:
             # Không đọc được cookie thì coi như chưa lấy được phiên (fail-closed).
             return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
@@ -463,7 +463,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+            tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
@@ -477,7 +477,7 @@ class Module:
                 # Bước «chờ phiên»: SSO chuyển về trang đã đăng nhập.
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+                    tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
@@ -487,7 +487,7 @@ class Module:
                 if not da_vao:
                     return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
             try:
-                cookie = trinh_duyet.doc_cookie("gemini.google.com")
+                cookie = await trinh_duyet.doc_cookie("gemini.google.com")
             except Exception:
                 cookie = {}
             psid = cookie.get("__Secure-1PSID") if isinstance(cookie, dict) else None

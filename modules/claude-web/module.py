@@ -418,7 +418,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
@@ -431,7 +431,7 @@ class Module:
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         try:
-            cookie = trinh_duyet.doc_cookie("claude.ai")
+            cookie = await trinh_duyet.doc_cookie("claude.ai")
         except Exception:
             cookie = {}
         phien = cookie.get("sessionKey") if isinstance(cookie, dict) else None
@@ -553,14 +553,14 @@ class Module:
         try:
             # Bước 1 — đi tắt: hồ sơ đã có phiên claude.ai còn hiệu lực.
             await trinh_duyet.mo_trang(self._URL_GOC)
-            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+            tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
             if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                 # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
                 return KetQuaDangNhap(False, ma_loi="can_nguoi")
             if "da_dang_nhap" not in tin_hieu:
                 # Bước 2 — bấm «Continue with Google» trong hồ sơ (SSO).
                 await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-                tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+                tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                 if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                     return KetQuaDangNhap(False, ma_loi="can_nguoi")
                 if "da_dang_nhap" not in tin_hieu:
@@ -568,7 +568,7 @@ class Module:
                     # Bước 3 — chờ phiên hình thành sau SSO (hết lượt chờ rõ).
                     da_vao = False
                     for _ in range(20):
-                        tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
+                        tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                             return KetQuaDangNhap(False, ma_loi="can_nguoi")
                         if "da_dang_nhap" in tin_hieu:
@@ -579,7 +579,7 @@ class Module:
                         return KetQuaDangNhap(False,
                                              ma_loi="khong_lay_duoc_phien")
             try:
-                cookie = trinh_duyet.doc_cookie("claude.ai")
+                cookie = await trinh_duyet.doc_cookie("claude.ai")
             except Exception:
                 cookie = {}
             session_key = (cookie.get("sessionKey")
