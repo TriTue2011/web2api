@@ -255,7 +255,10 @@ class Module:
 
     _URL_TAI_DUNG = "https://chatgpt.com/auth/login"
     _BO_CHON_DANG_NHAP = 'button[data-testid="login-button"], a[href*="auth/login"]'
-    _BO_CHON_GOOGLE = 'button[data-provider="google"], button[aria-label*="Google" i]'
+    # Đo trên trang đăng nhập THẬT (18/10/2026): nút Google là <button type="button"> KHÔNG có data-provider/aria-label, nằm đầu tiên trong
+    # form của [data-testid="login-form"] (trước Apple, điện thoại). CSS không chọn theo chữ nên dùng vị trí cấu trúc làm dự phòng.
+    _BO_CHON_GOOGLE = ('button[data-provider="google"], button[aria-label*="Google" i], '
+                       '[data-testid="login-form"] form > div > button:first-of-type')
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare", "thu_thach_truy_cap"}
 

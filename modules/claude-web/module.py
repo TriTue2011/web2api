@@ -496,7 +496,8 @@ class Module:
 
     _URL_GOC = "https://claude.ai/"
     # NV94-c: chỉ CSS chuẩn (Marionette không hiểu :has-text của Playwright).
-    _BO_CHON_GOOGLE = 'a[href*="accounts.google.com"]'
+    # Đo trên trang đăng nhập THẬT (18/10/2026): nút Google là <button data-testid="login-with-google"> (không phải liên kết); bấm → accounts.google.com.
+    _BO_CHON_GOOGLE = 'button[data-testid="login-with-google"], a[href*="accounts.google.com"]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare", "thu_thach_truy_cap"}
 

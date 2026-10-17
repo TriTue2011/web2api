@@ -407,7 +407,9 @@ class Module:
 
     _URL_TAI_DUNG = "https://gemini.google.com/"
     # NV94-c: chỉ CSS chuẩn (Marionette không hiểu :has-text của Playwright).
-    _BO_CHON_DANG_NHAP = 'a[href*="accounts.google.com"]'
+    # Đo trên trang khách THẬT (18/10/2026): «Sign in» là <a href="#" data-test-id="sidenav-error-action-link"> (không có href tới accounts.google.com);
+    # bấm vào thì chuyển tới accounts.google.com/v3/signin/identifier.
+    _BO_CHON_DANG_NHAP = 'a[data-test-id="sidenav-error-action-link"], a[href*="accounts.google.com"]'
     _BO_CHON_GOOGLE = '[data-identifier]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare", "thu_thach_truy_cap"}

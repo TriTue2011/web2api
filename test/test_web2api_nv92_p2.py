@@ -597,3 +597,14 @@ def test_khong_co_o_mat_khau_va_khong_ro_ly_do_thi_dong_cua():
     kq = chay(mod.dang_nhap(HO_SO_GIA, "ban@gmail.com", bm, td))
     assert not kq.thanh_cong and not kq.can_nguoi and kq.ma_loi == "loi_module", kq.sang_dict()
     assert _bi_mat_da_xoa(bm)
+
+
+def test_bo_chon_dang_nhap_cua_chatgpt_va_gemini_khop_trang_that():
+    """Đo trên trang thật 18/10/2026 (bấm thử đều chuyển tới accounts.google.com): bộ chọn cũ không khớp trang hiện tại."""
+    import importlib.util
+    from pathlib import Path
+    goc = Path(__file__).resolve().parents[1] / "modules"
+    nguon = {m: (goc / m / "module.py").read_text(encoding="utf-8") for m in ("chatgpt-web", "gemini-web", "claude-web")}
+    assert '[data-testid="login-form"] form > div > button:first-of-type' in nguon["chatgpt-web"]
+    assert 'a[data-test-id="sidenav-error-action-link"]' in nguon["gemini-web"]
+    assert 'button[data-testid="login-with-google"]' in nguon["claude-web"]
