@@ -28,7 +28,8 @@
     "gpu": false,
     "mang_ra": [
       "grok.com",
-      "x.com"
+      "x.com",
+      "accounts.google.com"
     ],
     "ram_them_mb": null
   },
@@ -53,6 +54,14 @@
       "mac_dinh": "",
       "mo_ta": "Ghi đè địa chỉ WebSocket (mặc định wss://grok.com/ws/mgw/). Chỉ dùng cho kiểm thử hoặc khi đi qua proxy; máy phải là grok.com hoặc địa chỉ loopback.",
       "nhan": "Địa chỉ WebSocket ghi đè"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "che_do_dang_nhap",
+      "kieu": "chuoi",
+      "mac_dinh": "truc_tiep",
+      "mo_ta": "Chế độ đăng nhập tự động: «truc_tiep» (email + mật khẩu trên x.com, như OpenAI) hoặc «google» (đăng nhập qua Google SSO; phiên Google được lưu để lần sau chỉ cần bấm «tiếp tục với Google», không nhập lại).",
+      "nhan": "Chế độ đăng nhập tự động"
     }
   ],
   "yeu_cau_goi": [

@@ -178,6 +178,16 @@ class BoDieuKhienTrinhDuyet(abc.ABC):
     @abc.abstractmethod
     def tin_hieu(self) -> set: ...
 
+    async def vuot_thu_thach(self) -> None:
+        """Cố vượt thử thách truy cập trên trang hiện tại (mặc định: không hỗ trợ).
+
+        Cài đặt thật nối CDP sau này sẽ thử các bước hợp lệ với trang (không
+        che dấu vết, không gọi dịch vụ giải hộ). Module KHÔNG được coi việc gọi
+        hàm này là đã vượt — sau mỗi lượt vẫn phải đọc lại tin_hieu() để chắc.
+        Mặc định không làm gì: tín hiệu thử thách còn nguyên, module sẽ bó tay
+        theo đúng luồng «cần người».
+        """
+
     async def dong(self) -> None:
         """Đóng phiên điều khiển (mặc định không làm gì)."""
 
@@ -215,6 +225,76 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
     def tin_hieu(self) -> set:
         cau_hinh = self._trang.get(self._hien_tai or "", {})
         return set(cau_hinh.get("tin_hieu") or [])
+
+    async def vuot_thu_thach(self) -> None:
+        """Cố vượt thử thách trên trang hiện tại (giả lập theo kịch bản).
+
+        Page config «vuot_thu_thach_thanh_cong»: True → xoá tín hiệu
+        thu_thach_truy_cap khỏi trang hiện tại (giả lập vượt thành công);
+        thiếu/False → tín hiệu còn nguyên (giả lập vượt thất bại)."""
+        self.hanh_dong.append(("vuot_thu_thach",))
+        cau_hinh = self._trang.get(self._hien_tai or "", {})
+        if cau_hinh.get("vuot_thu_thach_thanh_cong"):
+            cau_hinh["tin_hieu"] = [t for t in (cau_hinh.get("tin_hieu") or [])
+                                    if t != "thu_thach_truy_cap"]
+
+
+#: Số lượt tối đa cố vượt thử thách truy cập trước khi bó tay (patch bổ sung
+#: NV90). Mọi module và tầng (b) của khoi_phuc dùng chung hằng này.
+SO_LUOT_VUOT_THU_THACH_TOI_DA = 3
+
+
+def la_captcha_chu(tin_hieu) -> bool:
+    """Nhận diện captcha chữ (hình ảnh chữ méo cần đọc) bằng CẤU TRÚC.
+
+    Mã MỞ, không tên nhà cung cấp: chỉ kiểm tín hiệu «captcha» trong tập tín
+    hiệu do trình duyệt báo. Trả True → bên gọi PHẢI trả «cần người» NGAY,
+    KHÔNG được cố giải: (a) ràng buộc cấm thêm gói mới nên không có OCR;
+    (b) cấm dịch vụ giải hộ. «Phát hiện được, không giải được — cần người».
+    """
+    try:
+        return "captcha" in set(tin_hieu or [])
+    except Exception:
+        return False
+
+
+async def vuot_thu_thach_toi_da(trinh_duyet,
+                                so_luot: int = SO_LUOT_VUOT_THU_THACH_TOI_DA) -> bool:
+    """Cố vượt thử thách truy cập qua hợp đồng BoDieuKhienTrinhDuyet.
+
+    Mã MỞ, không tên nhà cung cấp — dùng chung cho mọi module web và cho tầng
+    (b) «đăng nhập lại tự động» của khoi_phuc (NV91 phần 2): khi đăng nhập lại
+    gặp thử thách thì gọi helper này thay vì bỏ cuộc ngay.
+
+    Trả True = tín hiệu «thu_thach_truy_cap» đã hết (được phép tiếp tục);
+    False = vẫn còn sau N lượt → bên gọi báo «cần người». Lỗi lạ khi đọc tín
+    hiệu hay khi cố vượt → False (ĐÓNG CỬA). Không bao giờ coi việc gọi
+    vuot_thu_thach() là đã vượt — sau mỗi lượt đều đọc lại tin_hieu() để chắc.
+
+    ĐIỂM CẮM CHO NV92: helper chỉ dùng hợp đồng BoDieuKhienTrinhDuyet
+    (tin_hieu/vuot_thu_thach). Khi NV92 thay TrinhDuyetGia bằng TrinhDuyetThat
+    (dịch vụ trình duyệt thật qua CDP), helper này vẫn chạy không đổi — chỉ
+    cần TrinhDuyetThat hiện thực vuot_thu_thach() thật (thử bấm ô Turnstile
+    trên trang hiện tại, không che dấu vết, không gọi dịch vụ giải hộ).
+    """
+    try:
+        so_luot = max(1, int(so_luot))
+    except Exception:
+        so_luot = SO_LUOT_VUOT_THU_THACH_TOI_DA
+    for _ in range(so_luot):
+        try:
+            if "thu_thach_truy_cap" not in trinh_duyet.tin_hieu():
+                return True
+        except Exception:
+            return False
+        try:
+            await trinh_duyet.vuot_thu_thach()
+        except Exception:
+            return False
+    try:
+        return "thu_thach_truy_cap" not in trinh_duyet.tin_hieu()
+    except Exception:
+        return False
 
 
 # ── Đường tới hồ sơ trình duyệt (chống đi ngược thư mục) ─────────────────────
@@ -424,6 +504,24 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                     mat_khau_dung = mat_khau_kho
             dang_nhap_td = getattr(module, "dang_nhap_tu_dong", None)
             if mat_khau_dung is not None and callable(dang_nhap_td):
+                # Patch bổ sung NV90: trước khi gọi module đăng nhập lại, nếu
+                # trình duyệt đang báo thử thách truy cập (mã mở
+                # «thu_thach_truy_cap») thì cố vượt bằng helper lõi dùng chung
+                # thay vì bỏ cuộc ngay (NV91 tầng b dùng luôn). Không qua được
+                # → can_nguoi ngay, khỏi gọi module. Lõi không biết tên nhà
+                # cung cấp nào; helper chạy qua hợp đồng BoDieuKhienTrinhDuyet
+                # nên NV92 thay TrinhDuyetGia bằng TrinhDuyetThat vẫn dùng được.
+                if trinh_duyet is not None:
+                    try:
+                        th_b = trinh_duyet.tin_hieu()
+                    except Exception:
+                        th_b = set()
+                    if "thu_thach_truy_cap" in th_b:
+                        if not await vuot_thu_thach_toi_da(trinh_duyet):
+                            return await _vao_can_nguoi(
+                                module_id, khoa, "gặp thử thách truy cập, không vượt được",
+                                mo_novnc, nguoi_dung_id,
+                                _ho_so_cua(module, module_id, khoa), "")
                 tk_b = TaiKhoanCanKhoiPhuc(khoa=khoa, email=tai_khoan.email,
                                            mat_khau=mat_khau_dung)
                 kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b, trinh_duyet)

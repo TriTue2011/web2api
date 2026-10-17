@@ -214,11 +214,13 @@ def test_manifest_hop_le(bo_module):
     assert manifest["id"] == "grok-web"
     assert manifest["tien_to"] == "grok"
     assert manifest["hang"] == "A"
-    assert manifest["tai_nguyen"]["mang_ra"] == ["grok.com", "x.com"]  # NV89: miền trang đăng nhập
+    assert manifest["tai_nguyen"]["mang_ra"] == ["grok.com", "x.com", "accounts.google.com"]  # NV89: miền trang đăng nhập; bổ sung NV90: accounts.google.com cho chế độ google
     assert "chat" in manifest["cung_cap"]
     truong = {t["khoa"]: t for t in manifest["truong_cau_hinh"]}
     assert truong["tai_khoan"]["kieu"] == "danh_sach_bi_mat"
     assert truong["tai_khoan"]["bat_buoc"] is True
+    assert truong["che_do_dang_nhap"]["kieu"] == "chuoi"  # bổ sung NV90: truc_tiep | google
+    assert truong["che_do_dang_nhap"]["mac_dinh"] == "truc_tiep"
 
 
 # ── Chat không stream ─────────────────────────────────────────────────

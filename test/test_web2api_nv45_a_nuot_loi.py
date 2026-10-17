@@ -67,6 +67,10 @@ DA_KIEM_TOAN = {
     ("modules/gemini-web/module.py", "mat_khau_da_luu"),
     ("modules/grok-web/module.py", "mat_khau_da_luu"),
     ("modules/claude-web/module.py", "mat_khau_da_luu"),
+    # Đã duyệt patch bổ sung NV90 (đọc từng hàm): fail-closed, không mở quyền.
+    # Logic vượt thử thách tách ra lõi dùng chung (NV91 tầng b, NV92 dùng luôn).
+    ("app/khoi_phuc_phien.py", "vuot_thu_thach_toi_da"),  # lỗi lạ khi đọc tín hiệu/cố vượt → False = không vượt được → can_nguoi
+    ("app/khoi_phuc_phien.py", "la_captcha_chu"),  # đọc tín hiệu hỏng → False; bên gọi đã fail-closed trước đó nếu tin_hieu() ném
 }
 
 

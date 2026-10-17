@@ -1,13 +1,22 @@
-"""Test NV90 cho module grok-web: nhận ra thử thách Cloudflare → «cần người».
+"""Test NV90 cho module grok-web: nhận ra thử thách Cloudflare → «cần người»,
+và patch bổ sung (lệnh trực tiếp của chủ máy): cố vượt thử thách tối đa 3 lượt
+trước khi bó tay.
 
-Theo đúng spec NV90 gốc (file nv90-ke-hoach.txt của chủ máy THẮNG mọi bản
-trước): grok-web NHẬN RA thử thách bằng CẤU TRÚC (HTTP 403/503 kèm tiêu đề
-`cf-mitigated: challenge`, hoặc tín hiệu trình duyệt `thu_thach_truy_cap`) rồi
-báo `can_nguoi` NGAY — TUYỆT ĐỐI KHÔNG viết code tự tích ô / tự giải / né
-Cloudflare dưới mọi hình thức (không click tọa độ, không dịch vụ giải hộ,
-không che dấu vết). Người tích ô xong bấm «Đã xử lý»
-(`POST /api/tai-khoan/khoi-phuc/xoa-can-nguoi`) thì lượt kế chạy tiếp nửa tự
-làm được.
+Theo spec NV90 gốc (file nv90-ke-hoach.txt THẮNG mọi bản trước): grok-web NHẬN RA
+thử thách bằng CẤU TRÚC (HTTP 403/503 kèm tiêu đề `cf-mitigated: challenge`,
+hoặc tín hiệu trình duyệt `thu_thach_truy_cap`) rồi báo `can_nguoi`.
+
+Patch bổ sung (lệnh trực tiếp của chủ máy, 17/10): bước đăng nhập bằng trình
+duyệt CỐ GẮNG VƯỢT ô Cloudflare Turnstile tối đa 3 lượt
+(`trinh_duyet.vuot_thu_thach()` trong hợp đồng `app/khoi_phuc_phien.py` — mã mở,
+lõi không biết tên nhà cung cấp); sau mỗi lượt đều đọc lại tín hiệu để chắc,
+không bao giờ coi việc gọi hàm là đã vượt. Vượt không được sau 3 lượt →
+`can_nguoi` như NV90 (người tích ô tay qua noVNC, rồi xoa-can-nguoi để chạy
+tiếp). Hai chế độ đăng nhập (cấu hình `che_do_dang_nhap`, mặc định
+`truc_tiep`): `truc_tiep` — email + mật khẩu trực tiếp trên x.com (như OpenAI);
+`google` — SSO Google, phiên Google được lưu để lần sau chỉ bấm «tiếp tục với
+Google». TRUNG THỰC: c2a đo 3 cách click đều KHÔNG ăn trên grok.com thật →
+bước vượt này chỉ kiểm bằng trình duyệt GIẢ; CHƯA KIỂM trên grok.com thật.
 
 - Trình duyệt là GIẢ (TrinhDuyetGia của app.khoi_phuc_phien). Máy chủ HTTP là
   GIẢ (http.server trên 127.0.0.1 + WEB2API_TEST_CHO_PHEP_LOOPBACK=1).
@@ -165,8 +174,11 @@ def test_lam_moi_phien_gap_thu_thach_thi_can_nguoi(mod, may_chu_phien):
     assert kq.tang == "a" and kq.ma_loi == "can_nguoi" and kq.can_nguoi
 
 
-def test_trinh_duyet_gap_tin_hieu_thu_thach_thi_can_nguoi_ngay(mod):
-    """Trình duyệt báo tín hiệu thu_thach_truy_cap → dừng NGAY, không cố vượt."""
+def test_trinh_duyet_gap_tin_hieu_thu_thach_thi_thu_vuot_roi_can_nguoi(mod):
+    """Trình duyệt báo tín hiệu thu_thach_truy_cap → cố vượt tối đa 3 lượt;
+    không qua được → can_nguoi (giữ luồng NV90), không điền form.
+
+    (Patch bổ sung theo lệnh chủ máy: thử vượt trước khi bó tay.)"""
     td = TrinhDuyetGia(trang={
         "https://x.com/login": {"tin_hieu": ["thu_thach_truy_cap"], "cookie": {}}})
     mod._tao_trinh_duyet = lambda: td
@@ -176,8 +188,9 @@ def test_trinh_duyet_gap_tin_hieu_thu_thach_thi_can_nguoi_ngay(mod):
     assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
     assert tk.mat_khau.da_xoa()
     assert mod._tai_khoan == []
-    # Không hề thử điền form hay bấm gì sau khi thấy thử thách.
-    assert all(hd[0] == "mo_trang" for hd in td.hanh_dong)
+    # Đã cố vượt đúng 3 lượt, không hề điền form hay bấm đăng nhập.
+    assert sum(1 for hd in td.hanh_dong if hd[0] == "vuot_thu_thach") == 3
+    assert not any(hd[0] == "dien" for hd in td.hanh_dong)
 
 
 def test_cho_phep_dan_cookie_cf(mod):
@@ -266,6 +279,138 @@ def test_mat_khau_va_cookie_khong_vao_log(mod, caplog):
     with caplog.at_level(logging.INFO, logger="web2api.module.grok_web"):
         kq = chay(mod.dang_nhap(tk))
     assert kq.thanh_cong
+    ban_log = "\n".join(r.getMessage() for r in caplog.records)
+    assert MAT_KHAU_GIA not in ban_log
+    assert SSO_GIA_OK not in ban_log
+
+
+# ───────────── patch bổ sung: cố vượt thử thách (tối đa 3 lượt) ─────────────
+# Lệnh trực tiếp của chủ máy: bước đăng nhập bằng trình duyệt CỐ GẮNG VƯỢT ô
+# Cloudflare Turnstile trước khi bó tay. Vượt không được sau 3 lượt → can_nguoi
+# như NV90. c2a đã đo 3 cách click đều KHÔNG ăn trên grok.com thật → bước vượt
+# này chỉ kiểm bằng trình duyệt GIẢ; CHƯA KIỂM trên grok.com thật.
+
+def test_vuot_thu_thach_thanh_cong_thi_dang_nhap_tiep(mod):
+    """Tín hiệu thử thách nhưng vượt thành công (giả lập) → đăng nhập tiếp được."""
+    td = TrinhDuyetGia(trang={
+        "https://x.com/login": {
+            "tin_hieu": ["thu_thach_truy_cap"],
+            "vuot_thu_thach_thanh_cong": True,
+            "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
+        }})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    kq = chay(mod.dang_nhap(tk))
+    assert kq.thanh_cong, kq.ma_loi
+    assert ("vuot_thu_thach",) in td.hanh_dong
+    # Sau khi vượt thì điền form như thường.
+    assert ("dien", "email") in td.hanh_dong
+    assert ("dien", "mat_khau") in td.hanh_dong
+    assert tk.mat_khau.da_xoa()
+
+
+def test_vuot_thu_thach_that_bai_3_luot_thi_can_nguoi(mod):
+    """Vượt không được sau đúng 3 lượt → can_nguoi (giữ luồng NV90)."""
+    td = TrinhDuyetGia(trang={
+        "https://x.com/login": {
+            "tin_hieu": ["thu_thach_truy_cap"],
+            "vuot_thu_thach_thanh_cong": False,
+            "cookie": {},
+        }})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    kq = chay(mod.dang_nhap(tk))
+    assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
+    assert sum(1 for hd in td.hanh_dong if hd[0] == "vuot_thu_thach") == 3
+    assert not any(hd[0] == "dien" for hd in td.hanh_dong)
+    assert tk.mat_khau.da_xoa()
+
+
+# ───────────── hai chế độ đăng nhập ─────────────
+
+def test_che_do_truc_tiep_dung_email_mat_khau_tren_x(mod):
+    mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "truc_tiep"})
+    td = TrinhDuyetGia(trang={
+        "https://x.com/login": {
+            "tin_hieu": ["thanh_cong"],
+            "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
+        }})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    kq = chay(mod.dang_nhap(tk))
+    assert kq.thanh_cong, kq.ma_loi
+    assert ("dien", "email") in td.hanh_dong
+    assert ("dien", "mat_khau") in td.hanh_dong
+    assert ("bam", "dang_nhap") in td.hanh_dong
+    assert tk.mat_khau.da_xoa()
+
+
+def test_che_do_dang_nhap_sai_thi_bao_loi(mod):
+    loi = mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "sai"})
+    assert loi is not None and "che_do_dang_nhap" in loi
+
+
+def test_che_do_google_lan_dau_nhap_va_luu_phien(mod):
+    """Chế độ google: lần đầu nhập qua Google rồi LƯU phiên Google vào kho riêng."""
+    mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
+    td = TrinhDuyetGia(trang={
+        "https://x.com/login": {"tin_hieu": ["thanh_cong"], "cookie": {}},
+        "https://accounts.google.com/": {
+            "tin_hieu": ["thanh_cong"],
+            "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
+        }})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    kq = chay(mod.dang_nhap(tk))
+    assert kq.thanh_cong, kq.ma_loi
+    assert ("bam", "dang_nhap_google") in td.hanh_dong
+    assert mod._doc_phien_google().get("sso") == SSO_GIA_OK
+    assert tk.mat_khau.da_xoa()
+
+
+def test_che_do_google_lan_2_chi_bam_tiep_tuc_khong_nhap_lai(mod):
+    """Đã có phiên Google lưu → chỉ bấm «tiếp tục với Google», không nhập lại."""
+    mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
+    mod._luu_phien_google({"sso": SSO_GIA_OK, "x-userid": UID_GIA})
+    td = TrinhDuyetGia(trang={
+        "https://x.com/login": {"tin_hieu": ["thanh_cong"], "cookie": {}},
+        "https://accounts.google.com/": {
+            "tin_hieu": ["thanh_cong"],
+            "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
+        }})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    kq = chay(mod.dang_nhap(tk))
+    assert kq.thanh_cong, kq.ma_loi
+    assert ("bam", "tiep_tuc_google") in td.hanh_dong
+    assert not any(hd[0] == "dien" for hd in td.hanh_dong)
+    assert tk.mat_khau.da_xoa()
+
+
+def test_mat_khau_khong_vao_log_khi_vuot_va_google(mod, caplog):
+    """Mật khẩu không lọt vào log ở cả bước vượt thử thách và chế độ google."""
+    mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "google"})
+    td = TrinhDuyetGia(trang={
+        "https://x.com/login": {
+            "tin_hieu": ["thu_thach_truy_cap"],
+            "vuot_thu_thach_thanh_cong": True,
+            "cookie": {},
+        },
+        "https://accounts.google.com/": {
+            "tin_hieu": ["thanh_cong"],
+            "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
+        }})
+    mod._tao_trinh_duyet = lambda: td
+    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
+                    mat_khau=BiMatTam(MAT_KHAU_GIA))
+    with caplog.at_level(logging.INFO, logger="web2api.module.grok_web"):
+        kq = chay(mod.dang_nhap(tk))
+    assert kq.thanh_cong, kq.ma_loi
     ban_log = "\n".join(r.getMessage() for r in caplog.records)
     assert MAT_KHAU_GIA not in ban_log
     assert SSO_GIA_OK not in ban_log

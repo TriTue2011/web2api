@@ -1626,6 +1626,40 @@ ngừng tự đăng nhập (người xử lý được thì không phải lỗi 
 «cần người», không thành «cookie sai». Kiểm bằng máy chủ + trình duyệt giả trong
 `test/test_web2api_nv90_grok_cloudflare.py`; **chưa thử trên grok.com thật**.
 
+**Đăng nhập tự động cố vượt thử thách (patch bổ sung NV90, theo lệnh chủ máy).** Logic
+«nhận ra thử thách bằng cấu trúc + cố vượt tối đa 3 lượt + bó tay thì `can_nguoi`»
+nằm ở LÕI dùng chung (`app/khoi_phuc_phien.py`: `vuot_thu_thach_toi_da`,
+`la_captcha_chu`, hằng `SO_LUOT_VUOT_THU_THACH_TOI_DA` — mã mở, lõi không biết
+tên nhà cung cấp) để NV91 tầng (b) «đăng nhập lại tự động» dùng luôn và mọi
+module web dùng được. Tầng (b) của `khoi_phuc`: trước khi gọi module, nếu trình
+duyệt báo tín hiệu `thu_thach_truy_cap` thì gọi helper lõi thay vì bỏ cuộc ngay;
+không qua được → `can_nguoi` mà không gọi module. Sau mỗi lượt vượt đều đọc lại
+tín hiệu để chắc chắn, không bao giờ coi việc gọi hàm là đã vượt; lỗi lạ khi cố
+vượt → đóng cửa (`can_nguoi`).
+
+grok-web chỉ giữ phần riêng: hai chế độ đăng nhập (cấu hình `che_do_dang_nhap`,
+mặc định `truc_tiep`): `truc_tiep` — email + mật khẩu trực tiếp trên `x.com`
+(như OpenAI); `google` — đăng nhập qua Google SSO, **phiên Google được lưu vào
+kho riêng của module** để lần sau chỉ cần bấm «tiếp tục với Google», không nhập
+lại. Trước mỗi lượt cố vượt đều kiểm captcha chữ / 2FA / xác minh bằng cấu trúc
+(`la_captcha_chu`): gặp thì trả `can_nguoi` NGAY, KHÔNG cố vượt/giải — captcha
+chữ «phát hiện được, không giải được» (cấm thêm gói mới nên không có OCR; cấm
+dịch vụ giải hộ).
+
+**Điểm cắm cho NV92:** helper lõi chỉ dùng hợp đồng `BoDieuKhienTrinhDuyet`
+(`tin_hieu`/`vuot_thu_thach`). Khi NV92 thay `TrinhDuyetGia` bằng
+`TrinhDuyetThat` (dịch vụ trình duyệt thật qua CDP), helper vẫn chạy không đổi —
+chỉ cần `TrinhDuyetThat` hiện thực `vuot_thu_thach()` thật (thử bấm ô Turnstile
+trên trang hiện tại, không che dấu vết, không gọi dịch vụ giải hộ).
+
+**TRUNG THỰC: đo trên kho tham khảo (captcha-solver của chatgpt2api, 20/09/2026)
+cho thấy 3 cách click ô Turnstile đều không ăn trên grok.com thật — bước vượt
+này mới chỉ kiểm bằng trình duyệt giả, CHƯA KIỂM trên grok.com thật, chạy thật
+có thể cần chỉnh.** Kiểm trong `test/test_web2api_nv90_grok_cloudflare.py`
+(vượt thành công giả lập → đăng nhập tiếp; thất bại 3 lượt → `can_nguoi`; google
+lần 2 không nhập lại; captcha chữ → `can_nguoi` ngay không vượt; bí mật không
+vào log) và `test/test_web2api_nv90_bo_sung.py` (helper lõi, tầng (b), captcha).
+
 ### Module claude-web — Claude Web (claude.ai)
 
 **Mô tả.** Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng

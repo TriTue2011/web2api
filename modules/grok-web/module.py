@@ -1,8 +1,14 @@
 """Module Grok Web — trò chuyện với Grok qua giao thức WebSocket của grok.com.
 
 Xác thực bằng cookie của người dùng đã đăng nhập (trường cấu hình ``tai_khoan``,
-danh sách — mỗi phần tử là một tài khoản). Không tự đăng nhập, không tự động
-hoá trình duyệt. Hỗ trợ nhiều tài khoản và tự chuyển tài khoản khi:
+danh sách — mỗi phần tử là một tài khoản). Đăng nhập tự động qua trình duyệt
+theo hợp đồng NV67/NV88 (NV89): trước khi bó tay với thử thách truy cập
+(Cloudflare), bước trình duyệt CỐ VƯỢT tối đa 3 lượt (patch bổ sung NV90 —
+CHƯA KIỂM trên grok.com thật; vượt không được → ``can_nguoi`` như cũ).
+Hai chế độ đăng nhập (cấu hình ``che_do_dang_nhap``): ``truc_tiep`` (email +
+mật khẩu trên x.com, mặc định) và ``google`` (SSO Google, lưu phiên Google để
+lần sau chỉ bấm «tiếp tục với Google»). Hỗ trợ nhiều tài khoản và tự chuyển
+tài khoản khi:
 
 - lỗi phiên (bắt tay 401/403, sự kiện ``error`` có mã thuộc nhóm phiên),
 - hết lượt (``stream_error`` có kind thuộc nhóm hạn mức),
@@ -28,7 +34,13 @@ from urllib.parse import urlsplit
 
 from app import danh_tinh
 from app.chuyen_tiep import ds_khoa
-from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
+from app.khoi_phuc_phien import (
+    SO_LUOT_VUOT_THU_THACH_TOI_DA,
+    KetQuaKhoiPhuc,
+    TaiKhoanCanKhoiPhuc,
+    la_captcha_chu,
+    vuot_thu_thach_toi_da,
+)
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
 
@@ -139,6 +151,9 @@ class Module:
         self._tao_trinh_duyet = None
         # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
         self._trinh_duyet_da_dung = None
+        # Chế độ đăng nhập: "truc_tiep" (email+mật khẩu trên x.com) hoặc
+        # "google" (SSO Google, lưu phiên). Mặc định "truc_tiep".
+        self._che_do_dang_nhap = "truc_tiep"
 
     # ── Gắn danh tính chung (khuôn NV77) ──────────────────────────────────
 
@@ -282,6 +297,11 @@ class Module:
             goc_https = f"{'https' if phan.scheme == 'wss' else 'http'}://{phan.hostname}"
             if phan.port:
                 goc_https += f":{phan.port}"
+        che_do = str(cau_hinh.get("che_do_dang_nhap") or "truc_tiep").strip().lower()
+        if che_do not in ("truc_tiep", "google"):
+            return ("che_do_dang_nhap phải là «truc_tiep» (email+mật khẩu trên "
+                    f"x.com) hoặc «google» (SSO Google), nhận {che_do!r}.")
+        self._che_do_dang_nhap = che_do
         self._tai_khoan = tai_khoan
         self._dt_id = dt_id_ds
         self._dt_ten = dt_ten_ds
@@ -417,27 +437,100 @@ class Module:
 
     # -- đăng nhập theo hợp đồng NV67 --------------------------------------
 
+    # -- đăng nhập theo hợp đồng NV67 --------------------------------------
+
+    #: Số lượt tối đa cố vượt thử thách truy cập trước khi bó tay → can_nguoi.
+    #: Dùng chung hằng của lõi (NV91 tầng b và NV92 dùng luôn).
+    _SO_LUOT_VUOT_THU_THACH_TOI_DA = SO_LUOT_VUOT_THU_THACH_TOI_DA
+
+    #: Trang SSO của Google (chế độ "google"). CHƯA KIỂM với X/Google thật —
+    #: luồng thật bấm nút «đăng nhập bằng Google» trên x.com rồi chuyển tới đây.
+    _URL_SSO_GOOGLE = "https://accounts.google.com/"
+
     async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
                                           trinh_duyet) -> KetQuaDangNhap:
         """BƯỚC ĐĂNG NHẬP DUY NHẤT NẰM TRONG MODULE: lõi chỉ đưa bộ điều khiển.
 
-        Mở https://x.com/login (grok.com đăng nhập qua SSO của X), điền email
-        + mật khẩu, bấm đăng nhập, đọc cookie của grok.com (bắt buộc có «sso»),
-        rồi kiểm phiên bằng mã trạng thái/cấu trúc qua lay_uid_tu_phien
-        (không dò chữ trong thông điệp).
+        Hai chế độ (cấu hình ``che_do_dang_nhap``): ``truc_tiep`` — email +
+        mật khẩu trên x.com/login; ``google`` — SSO Google, lưu phiên Google
+        để lần sau chỉ bấm «tiếp tục với Google». Cả hai đều cố vượt thử thách
+        truy cập (tối đa 3 lượt, bằng helper lõi dùng chung
+        ``vuot_thu_thach_toi_da``) trước khi bó tay → ``can_nguoi``.
+
+        CAPTCHA chữ / 2FA / xác minh thiết bị: nhận diện bằng CẤU TRÚC qua
+        tin_hieu() sau mỗi lần chuyển trang, trả ``can_nguoi`` NGAY trước khi
+        cố vượt — captcha chữ «phát hiện được, không giải được» (cấm thêm gói
+        nên không OCR; cấm dịch vụ giải hộ).
         """
         if trinh_duyet is None:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        if self._che_do_dang_nhap == "google":
+            return await self._dang_nhap_che_do_google(email, mat_khau,
+                                                       trinh_duyet)
+        return await self._dang_nhap_che_do_truc_tiep(email, mat_khau,
+                                                     trinh_duyet)
+
+    async def _kiem_captcha_som(
+            self, trinh_duyet) -> KetQuaDangNhap | None:
+        """Đọc tín hiệu trang HIỆN TẠI; captcha chữ / 2FA / xác minh thiết bị →
+        ``can_nguoi`` NGAY (không cố vượt/giải). Trả None nếu được phép tiếp tục.
+
+        Gọi sau mỗi ``mo_trang`` và TRƯỚC mỗi lượt cố vượt thử thách: captcha
+        chữ «phát hiện được, không giải được» (cấm thêm gói nên không OCR;
+        cấm dịch vụ giải hộ).
+        """
         try:
-            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
             tin_hieu = trinh_duyet.tin_hieu()
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
-        if "thu_thach_truy_cap" in tin_hieu:
-            # Thử thách truy cập (Cloudflare): DỪNG NGAY, không cố vượt dưới
-            # mọi hình thức — lõi mở noVNC để người tích ô tay (tầng d).
+        if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
+                or "xac_minh" in tin_hieu):
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
-        if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
+        return None
+
+    def _doc_phien_google(self) -> dict:
+        """Phiên Google đã lưu (kho riêng của module); hỏng/không có → {}."""
+        if self.kho is None:
+            return {}
+        try:
+            ds = self.kho.doc("phien_google") or {}
+        except Exception:
+            return {}
+        return dict(ds) if isinstance(ds, dict) else {}
+
+    def _luu_phien_google(self, jar: dict) -> None:
+        """Lưu cookie phiên Google vào kho riêng (0600) để lần sau chỉ cần bấm
+        «tiếp tục với Google». Lưu hỏng → chỉ ghi nhật ký (lần sau nhập lại)."""
+        if self.kho is None or not isinstance(jar, dict) or not jar:
+            return
+        try:
+            self.kho.luu("phien_google",
+                         {str(k): str(v) for k, v in jar.items()})
+        except Exception as e:
+            log.warning("grok-web: không lưu được phiên Google: %s",
+                        type(e).__name__)
+
+    async def _dang_nhap_che_do_truc_tiep(self, email: str, mat_khau: BiMatTam,
+                                          trinh_duyet) -> KetQuaDangNhap:
+        """Đăng nhập trực tiếp bằng email/mật khẩu trên x.com (như OpenAI)."""
+        try:
+            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        kiem_som = await self._kiem_captcha_som(trinh_duyet)
+        if kiem_som is not None:
+            return kiem_som
+        if not await vuot_thu_thach_toi_da(
+                trinh_duyet, self._SO_LUOT_VUOT_THU_THACH_TOI_DA):
+            # Vượt không được sau 3 lượt → «cần người» như NV90 (người tích
+            # ô tay qua noVNC ở tầng d, rồi xoa-can-nguoi để chạy tiếp).
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            tin_hieu = trinh_duyet.tin_hieu()
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
+                or "xac_minh" in tin_hieu):
             # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         mat_khau_tho = mat_khau.lay()
@@ -447,6 +540,71 @@ class Module:
             await trinh_duyet.bam("dang_nhap")
         finally:
             mat_khau_tho = None  # noqa: F841
+        return await self._doc_va_kiem_phien(trinh_duyet, email, mat_khau)
+
+    async def _dang_nhap_che_do_google(self, email: str, mat_khau: BiMatTam,
+                                       trinh_duyet) -> KetQuaDangNhap:
+        """Đăng nhập qua Google SSO; lưu phiên Google để lần sau không nhập lại.
+
+        CHƯA KIỂM với X/Google thật — luồng thật có thể cần thêm bước."""
+        try:
+            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        kiem_som = await self._kiem_captcha_som(trinh_duyet)
+        if kiem_som is not None:
+            return kiem_som
+        if not await vuot_thu_thach_toi_da(
+                trinh_duyet, self._SO_LUOT_VUOT_THU_THACH_TOI_DA):
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.bam("dang_nhap_google")
+            await trinh_duyet.mo_trang(self._URL_SSO_GOOGLE)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        kiem_som = await self._kiem_captcha_som(trinh_duyet)
+        if kiem_som is not None:
+            return kiem_som
+        if not await vuot_thu_thach_toi_da(
+                trinh_duyet, self._SO_LUOT_VUOT_THU_THACH_TOI_DA):
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            tin_hieu = trinh_duyet.tin_hieu()
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
+                or "xac_minh" in tin_hieu):
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        if self._doc_phien_google():
+            # Đã có phiên Google lưu → chỉ bấm «tiếp tục với Google»,
+            # không nhập lại email/mật khẩu.
+            try:
+                await trinh_duyet.bam("tiep_tuc_google")
+            except Exception:
+                return KetQuaDangNhap(False, ma_loi="loi_module")
+        else:
+            mat_khau_tho = mat_khau.lay()
+            try:
+                await trinh_duyet.dien("email", email)
+                await trinh_duyet.dien("mat_khau", mat_khau_tho)
+                await trinh_duyet.bam("dang_nhap")
+            finally:
+                mat_khau_tho = None  # noqa: F841
+            try:
+                jar_google = trinh_duyet.doc_cookie("accounts.google.com")
+            except Exception:
+                jar_google = {}
+            # Lưu hỏng → _luu_phien_google chỉ ghi nhật ký, lần sau nhập lại.
+            self._luu_phien_google(jar_google)
+        return await self._doc_va_kiem_phien(trinh_duyet, email, mat_khau)
+
+    async def _doc_va_kiem_phien(self, trinh_duyet, email: str,
+                                 mat_khau: BiMatTam) -> KetQuaDangNhap:
+        """Đọc cookie grok.com sau bước trình duyệt, kiểm phiên bằng cấu trúc.
+
+        «Đã đăng nhập» được kết luận bằng cấu trúc (phiên dùng được khi gọi
+        kiểm phiên), KHÔNG bằng tên cookie đoán mò — chỉ yêu cầu cookie «sso»
+        vì đó là điều kiện module đã khai ở _nap_tu."""
         try:
             jar = trinh_duyet.doc_cookie("grok.com")
         except Exception:
