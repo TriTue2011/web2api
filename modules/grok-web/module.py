@@ -707,6 +707,19 @@ class Module:
         return self.mat_khau_da_luu(khoa) is not None
 
     def ho_so_trinh_duyet(self, khoa: str) -> str:
+    def danh_tinh_id_cua(self, khoa: str) -> str | None:
+        """id danh tính của tài khoản (NV94-d)."""
+        try:
+            tim = self._tim_jar(str(khoa or "").strip().lower())
+        except Exception:
+            return None
+        if tim is None:
+            return None
+        i = tim[0]
+        if 0 <= i < len(self._dt_id):
+            return self._dt_id[i]
+        return None
+
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"grok-web-{bam}"

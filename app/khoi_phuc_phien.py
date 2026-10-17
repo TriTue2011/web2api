@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from app import kho
+from app import danh_tinh as danh_tinh_mod
 from app.tai_khoan_hang_loat import BiMatTam, phan_loai_loi
 
 log = logging.getLogger("web2api.khoi_phuc_phien")
@@ -53,8 +54,15 @@ HONG_B_TOI_DA = 2
 #: Mã lỗi an toàn: ngắn, chỉ chữ thường/số/gạch dưới (giống tai_khoan_hang_loat).
 _MAU_MA_LOI = re.compile(r"[a-z0-9_]{1,64}")
 
-#: ID hồ sơ trình duyệt: hẹp, không dấu gạch chéo — ghép đường dẫn an toàn.
-_MAU_ID_HO_SO = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+#: Khuôn mã hồ sơ trình duyệt: THỐNG NHẤT ở app/danh_tinh.MAU_HO_SO_TRINH_DUYET
+#: (hex 16–64, do novnc.sinh_ho_so_id sinh). Mọi nơi khác dùng chung, không
+#: định nghĩa riêng (NV94-d: từng có 3 regex khác nhau ở 3 file).
+MAU_HO_SO_TRINH_DUYET = danh_tinh_mod.MAU_HO_SO_TRINH_DUYET
+
+#: noVNC cũ (người mở tay): workspace "<module>-<hex>" giữ nguyên khuôn
+#: rộng để tương thích ngược (NV94-d: chỉ đường điều khiển thật mới
+#: bắt buộc hex thuần của danh tính).
+_MAU_ID_WORKSPACE_NOVNC = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 
 #: Khoá tài khoản trong API: mờ (opaque), không chứa bí mật, không dấu gạch chéo.
 _MAU_KHOA = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
@@ -300,6 +308,35 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
 
 # ── Cầu nối lõi: bộ điều khiển trình duyệt thật (NV92 P1) ────────────────────
 
+def _ho_so_that_cua(module: Any, khoa: str) -> str | None:
+    """Mã hồ sơ Firefox THẬT (hex) của một tài khoản (NV94-d).
+
+    Đi đúng nguyên tắc: tài khoản → danh tính (module khai
+    ``danh_tinh_id_cua(khoa)``) → bản ghi danh tính → ``ho_so_trinh_duyet``
+    (hex, đã qua kiểm khuôn ở app/danh_tinh). Không có → None, KHÔNG đoán từ
+    ``ho_so_trinh_duyet(khoa)`` kiểu "<module>-<hex>" (noVNC cũ giữ riêng).
+    """
+    lay_dt = getattr(module, "danh_tinh_id_cua", None)
+    if not callable(lay_dt):
+        return None
+    try:
+        dt_id = lay_dt(khoa)
+    except Exception as e:
+        log.warning("khoi-phuc: danh_tinh_id_cua lỗi: %s", type(e).__name__)
+        return None
+    if not dt_id:
+        return None
+    try:
+        ban_ghi = danh_tinh_mod.lay(dt_id)
+    except Exception as e:
+        log.warning("khoi-phuc: đọc danh tính lỗi: %s", type(e).__name__)
+        return None
+    ho_so = (ban_ghi or {}).get("ho_so_trinh_duyet") or ""
+    if isinstance(ho_so, str) and MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
+        return ho_so
+    return None
+
+
 def lay_trinh_duyet_that(ho_so: str, dang_chay: dict | None = None,
                          ) -> BoDieuKhienTrinhDuyet | None:
     """Xin bộ điều khiển trình duyệt THẬT cho một hồ sơ (NV92 P1).
@@ -313,7 +350,7 @@ def lay_trinh_duyet_that(ho_so: str, dang_chay: dict | None = None,
     nào có khả năng ``trinh_duyet``; module chưa cấu hình dịch vụ; module ném
     ngoại lệ. Người gọi tự quyết mã lỗi trả ra (thường 503).
     """
-    if not isinstance(ho_so, str) or not _MAU_ID_HO_SO.fullmatch(ho_so):
+    if not isinstance(ho_so, str) or not MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
         return None
     for mod in (dang_chay or {}).values():
         try:
@@ -359,7 +396,7 @@ async def phien_dieu_khien_that(td: BoDieuKhienTrinhDuyet):
 def duong_ho_so_trinh_duyet(ten_id: str) -> Path:
     """Đường tới hồ sơ trình duyệt của một workspace: ghép từ ID đã kiểm,
     sau resolve() phải nằm dưới thư mục gốc. Sai khuôn/vượt gốc → ValueError."""
-    if not isinstance(ten_id, str) or not _MAU_ID_HO_SO.fullmatch(ten_id):
+    if not isinstance(ten_id, str) or not MAU_HO_SO_TRINH_DUYET.fullmatch(ten_id):
         raise ValueError(f"id hồ sơ trình duyệt không hợp lệ: {ten_id!r}")
     goc = (kho.thu_muc_du_lieu() / "ho-so-trinh-duyet").resolve()
     p = (goc / ten_id).resolve()
@@ -520,17 +557,19 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
       quyết (thường → can_nguoi kèm hướng dẫn mở noVNC).
     - `dang_chay`: ánh xạ id → thể hiện module đang chạy (NV92 P1). Khi
       `trinh_duyet` là None mà có `dang_chay`, lõi TỰ lấy bộ điều khiển thật
-      qua cầu nối `lay_trinh_duyet_that` (hồ sơ lấy từ `ho_so_trinh_duyet`
-      của module); không lấy được → giữ None (đóng cửa, không đoán).
+      qua cầu nối `lay_trinh_duyet_that` (hồ sơ hex lấy từ bản ghi danh tính
+      qua `danh_tinh_id_cua(khoa)` — NV94-d); không lấy được → giữ None
+      (đóng cửa, không đoán).
     - Không ném ngoại lệ của module ra ngoài: tầng hỏng thì sang tầng kế.
     """
     module_id = _id_cua_module(module)
     khoa = kiem_khoa(tai_khoan.khoa)
     td_tu_cau_noi = False  # NV92 P1: bộ điều khiển do lõi tự lấy → lõi tự giành/nhả
     if trinh_duyet is None and dang_chay is not None:
-        # NV92 P1: người gọi chưa có bộ điều khiển → thử cầu nối lõi.
-        ho_so = _ho_so_cua(module, module_id, khoa)
-        td = lay_trinh_duyet_that(ho_so, dang_chay)
+        # NV92 P1 + NV94-d: người gọi chưa có bộ điều khiển → thử cầu nối lõi.
+        # Hồ sơ THẬT (hex) đi qua danh tính, không đoán từ "<module>-<hex>".
+        ho_so = _ho_so_that_cua(module, khoa)
+        td = lay_trinh_duyet_that(ho_so or "", dang_chay)
         if td is not None:
             trinh_duyet = td
             td_tu_cau_noi = True
@@ -679,7 +718,7 @@ def _ho_so_cua(module: Any, module_id: str, khoa: str) -> str:
     if callable(fn):
         try:
             hs = fn(khoa)
-            if isinstance(hs, str) and _MAU_ID_HO_SO.fullmatch(hs):
+            if isinstance(hs, str) and _MAU_ID_WORKSPACE_NOVNC.fullmatch(hs):
                 return hs
         except Exception as e:
             log.warning("khoi-phuc: ho_so_trinh_duyet lỗi: %s", type(e).__name__)

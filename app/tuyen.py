@@ -2881,7 +2881,9 @@ async def go_danh_tinh_khoi_provider(id: str, request: Request):
 KHA_NANG_DANG_NHAP_DANH_TINH = "dang_nhap_danh_tinh"
 
 #: Khuôn mã hồ sơ trình duyệt do dịch vụ trình duyệt cấp.
-_MAU_HO_SO_TRINH_DUYET = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,64}")
+#: Khuôn mã hồ sơ trình duyệt: dùng chung app/danh_tinh.MAU_HO_SO_TRINH_DUYET
+#: (NV94-d: từng định nghĩa riêng, lệch với danh_tinh).
+MAU_HO_SO_TRINH_DUYET = danh_tinh_mod.MAU_HO_SO_TRINH_DUYET
 
 
 def _module_dang_nhap_danh_tinh(request: Request, bat_buoc: bool = True):
@@ -2986,7 +2988,7 @@ async def dang_nhap_danh_tinh_qua_trinh_duyet(request: Request):
         raise LoiOpenAI(502, f"Không tạo được hồ sơ trình duyệt ({type(e).__name__}).",
                         code="loi_dich_vu_trinh_duyet") from None
     ho_so = ws.get("ho_so") if isinstance(ws, dict) else None
-    if not isinstance(ho_so, str) or not _MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
+    if not isinstance(ho_so, str) or not MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
         await _don_danh_tinh_do_dang(request, mod_td, dt_id, None)
         raise LoiOpenAI(502, "Dịch vụ trình duyệt trả mã hồ sơ không hợp lệ.",
                         code="loi_dich_vu_trinh_duyet")
@@ -3376,7 +3378,7 @@ async def tai_dung_ho_so_provider(request: Request):
     if not callable(tai_dung):
         raise LoiOpenAI(501, f"Module «{_nhac_lai(module_id)}» chưa hỗ trợ tái "
                              "dùng hồ sơ.", code="module_chua_ho_tro")
-    if not _MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
+    if not MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
         raise LoiOpenAI(400, "«ho_so» không hợp lệ.", code="invalid_value")
     ban_ghi = _danh_tinh_theo_ho_so(ho_so)
     dang_chay = (getattr(request.app.state, "so", None) is not None

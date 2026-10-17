@@ -487,6 +487,16 @@ class Module:
         return self.mat_khau_da_luu(khoa) is not None
 
     def ho_so_trinh_duyet(self, khoa: str) -> str:
+    def danh_tinh_id_cua(self, khoa: str) -> str | None:
+        """id danh tính của tài khoản (NV94-d). Module gắn một danh tính cho
+        toàn bộ tài khoản trong cấu hình; tài khoản lạ → None."""
+        try:
+            if self._tim_token(str(khoa or "").strip().lower()) is None:
+                return None
+        except Exception:
+            return None
+        return self._danh_tinh_id
+
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"chatgpt-web-{bam}"

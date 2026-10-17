@@ -312,6 +312,10 @@ class Module:
         return self._tim_acc(khoa) is not None
 
     def ho_so_trinh_duyet(self, khoa: str) -> str:
+    def danh_tinh_id_cua(self, khoa: str) -> str | None:
+        """muse.ai không qua SSO Google nên không có danh tính hồ sơ (NV94-d)."""
+        return None
+
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"muse2api-{bam}"

@@ -270,6 +270,15 @@ class Module:
         return self.mat_khau_da_luu(khoa) is not None
 
     def ho_so_trinh_duyet(self, khoa: str) -> str:
+    def danh_tinh_id_cua(self, khoa: str) -> str | None:
+        """id danh tính của tài khoản (NV94-d: cầu nối trình duyệt thật đi qua
+        danh tính → ho_so hex, không đoán từ ho_so_trinh_duyet)."""
+        try:
+            tk = self._tim_tai_khoan(str(khoa or "").strip().lower())
+        except Exception:
+            return None
+        return tk.danh_tinh_id if tk is not None else None
+
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"gemini-web-{bam}"
