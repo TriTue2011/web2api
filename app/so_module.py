@@ -162,8 +162,12 @@ class SoModule:
         def ghi(id_: str, man: dict, tu_xa: bool) -> None:
             lk = id_ in self.dang_chay
             cc = list(man.get("cung_cap", []))
+            # `dang_nhap_tu_dong`: suy từ CẤU TRÚC (module đang chạy khai hàm `dang_nhap`), không từ tên nhà cung cấp —
+            # giao diện chỉ hiện chế độ «Tự đăng nhập» cho module thật sự làm được.
+            dn = lk and callable(getattr(self.dang_chay.get(id_), "dang_nhap", None))
             modules.append({"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
-                            "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk})
+                            "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk,
+                            "dang_nhap_tu_dong": bool(dn)})
             l = loai.setdefault(man["loai"], {"ma": man["loai"], "ten": None, "thu_tu": None,
                                               "so_da_cai": 0, "so_da_lien_ket": 0})
             l["so_da_cai"] += 1

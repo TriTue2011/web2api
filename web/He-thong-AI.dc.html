@@ -65,8 +65,25 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <span style="font-weight:600">{{them.tieu}}</span>
 <div role="group" aria-label="Nhà cung cấp API" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.apis}}" as="c"><button type="button" data-chon-module="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}">{{c.nhan}}</button></sc-for></div><span style="font-size:12px;color:var(--mute)">{{them.mota}}</span>
 <sc-if value="{{them.canKhoaQt}}"><span style="font-size:12px;color:var(--mute)">Dán khoá quản trị ở khối «Khoá quản trị» phía trên để thêm khoá.</span></sc-if>
+<sc-if value="{{them.coTuDong}}"><div role="group" aria-label="Cách thêm tài khoản" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" data-che-do="khoa" aria-pressed="{{them.cheKhoa.on}}" onClick="{{them.cheKhoa.pick}}" style="{{them.cheKhoa.st}}">Dán cookie / khoá</button><button type="button" data-che-do="gmail" aria-pressed="{{them.cheGmail.on}}" onClick="{{them.cheGmail.pick}}" style="{{them.cheGmail.st}}">Tự đăng nhập bằng Gmail</button></div></sc-if>
+<sc-if value="{{them.laGmail}}"><div id="khung-tu-dong" style="display:flex;flex-direction:column;gap:10px;min-width:0">
+<span style="font-size:12px;color:var(--mute);line-height:1.5">Mỗi dòng một tài khoản: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu</span>, có mã 2FA thì thêm <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu|mã2fa</span>, hoặc dùng cookie <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|cookie=…</span>. Hệ thống đăng nhập LẦN LƯỢT, cách nhau khoảng 30 giây. Gặp CAPTCHA hoặc bước xác minh thì dừng tài khoản đó và báo bạn mở trình duyệt xử lý — không cố vượt. Mật khẩu chỉ nằm trong ô này tới khi bấm đăng nhập rồi bị xoá khỏi trang.</span>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Danh sách tài khoản<textarea id="o-tu-dong" rows="5" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="ten@gmail.com|mat-khau&#10;ten2@gmail.com|mat-khau|123456" value="{{them.td.vanBan}}" onInput="{{them.td.goVanBan}}" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px ui-monospace,Menlo,Consolas,monospace;resize:vertical"></textarea></label>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-xem-truoc" disabled="{{them.td.dangXem}}" onClick="{{them.td.xem}}" style="{{them.td.xemSt}}">Xem trước</button></div>
+<sc-if value="{{them.td.coLoi}}"><p role="alert" id="loi-tu-dong" style="margin:0;font-size:13px;color:#8A2A1E">{{them.td.loi}}</p></sc-if>
+<sc-if value="{{them.td.coXem}}"><div id="xem-truoc-tu-dong" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
+<div style="padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)">{{them.td.tomTat}}</div>
+<sc-for list="{{them.td.hang}}" as="h"><label data-tk-tu-dong="{{h.email}}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;border-top:1px solid var(--line);cursor:pointer;min-width:0"><input type="checkbox" checked="{{h.on}}" onChange="{{h.doi}}" aria-label="Đăng nhập {{h.email}}"><span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{h.email}}</span><span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:var(--mute)">{{h.loai}}</span></label></sc-for>
+<sc-for list="{{them.td.canhBao}}" as="c"><div style="padding:8px 14px;border-top:1px solid var(--line);font-size:12px;color:#8A2A1E">{{c.t}}</div></sc-for>
+<div style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)"><button type="button" id="nut-chay-tu-dong" disabled="{{them.td.dangChay}}" onClick="{{them.td.chay}}" style="{{them.td.chaySt}}">{{them.td.chayNhan}}</button></div>
+</div></sc-if>
+<sc-if value="{{them.td.coLuot}}"><div id="tien-do-tu-dong" role="status" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)"><span id="tom-tat-tu-dong">{{them.td.luotTomTat}}</span><sc-if value="{{them.td.dangChayLuot}}"><button type="button" id="nut-dung-tu-dong" onClick="{{them.td.dung}}" style="{{them.td.dungSt}}">Dừng</button></sc-if></div>
+<sc-for list="{{them.td.luotHang}}" as="h"><div data-ket-qua-tu-dong="{{h.email}}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;border-top:1px solid var(--line);min-width:0"><span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{h.email}}</span><span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:{{h.mau}}">{{h.nhan}}</span></div></sc-for>
+</div></sc-if>
+</div></sc-if>
 <sc-if value="{{them.coFields}}"><div style="display:flex;flex-wrap:wrap;gap:10px"><sc-for list="{{them.fields}}" as="f"><label data-truong="{{f.khoa}}" style="flex:1 1 240px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{f.nhan}}<sc-if value="{{f.biMat}}"><input id="{{f.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.onIn}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"></sc-if><sc-if value="{{f.chu}}"><input id="{{f.idO}}" type="text" autocomplete="off" spellcheck="false" placeholder="{{f.ph}}" value="{{f.val}}" onInput="{{f.onIn}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"></sc-if></label></sc-for></div></sc-if>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" id="nut-them-luu" disabled="{{them.dang}}" style="{{them.ok.st}}">{{them.ok.nhan}}</button><button type="button" onClick="{{them.huy.pick}}" style="{{them.huy.st}}">{{them.huy.nhan}}</button></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" id="nut-them-luu" hidden="{{them.anNutThem}}" disabled="{{them.dang}}" style="{{them.ok.st}}">{{them.ok.nhan}}</button><button type="button" onClick="{{them.huy.pick}}" style="{{them.huy.st}}">{{them.huy.nhan}}</button></div>
 </form></sc-if>
 
 <sc-if value="{{tkTrong}}"><div id="tk-trong" style="border:1px dashed #CFCCC3;border-radius:14px;padding:32px 16px;text-align:center;color:var(--mute)">{{tkTrongGhi}}</div></sc-if>
@@ -303,7 +320,9 @@ class Component extends DCLogic {
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
       mdLoc: '',
-      tkPvMo: den ? { [den]: true } : {} };
+      tkPvMo: den ? { [den]: true } : {},
+      // Tự đăng nhập bằng Gmail (td*): chế độ thêm, văn bản dán (CHỈ trong bộ nhớ trang), xem trước, bỏ chọn, lượt chạy
+      tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdDangXem: false, tdDangChay: false, tdLoi: '', tdLuot: null };
     this._den = den;
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
@@ -465,6 +484,44 @@ class Component extends DCLogic {
     }
   }
   loi(e) {}
+  // ══ Tự đăng nhập bằng Gmail: dán danh sách → xem trước (tách dòng ở máy chủ) → tick → chạy LẦN LƯỢT → theo dõi ══
+  tdDatLoi(chu) { this.setState({ tdLoi: chu || '' }); }
+  async tdXemTruoc(m) {
+    const van_ban = this.state.tdVanBan;
+    if (!van_ban.trim()) { this.tdDatLoi('Dán ít nhất một dòng tài khoản.'); return; }
+    this.setState({ tdDangXem: true, tdLoi: '' });
+    try {
+      const { j } = await K.goi('api/tai-khoan/dan-hang-loat', { method: 'POST', json: { module_id: m.id, van_ban } });
+      this.setState({ tdXem: j || { tai_khoan: [], loi: [], bo_trung: [] }, tdBo: {}, tdDangXem: false });
+    } catch (e) { this.setState({ tdDangXem: false, tdXem: null, tdLoi: (e && e.message) || 'Không tách được danh sách.' }); }
+  }
+  async tdChay(m) {
+    const { tdVanBan: van_ban, tdXem: xem, tdBo: bo } = this.state;
+    const giu = ((xem && xem.tai_khoan) || []).filter((t) => !bo[t.email.toLowerCase()]);
+    if (!giu.length) { this.tdDatLoi('Chưa chọn tài khoản nào để đăng nhập.'); return; }
+    const bo_qua_email = Object.keys(bo).filter((e) => bo[e]);
+    // Mật khẩu rời state NGAY (không giữ trong trang) — chỉ còn bản đang gửi đi.
+    this.setState({ tdVanBan: '', tdXem: null, tdDangChay: true, tdLoi: '', lan: this.state.lan + 1 });
+    try {
+      await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', { method: 'POST', json: { module_id: m.id, van_ban, bo_qua_email } });
+      this.setState({ tdDangChay: false, tdLuot: { trang_thai_luot: 'dang_chay', ket_qua: [], tom_tat: { tong: giu.length, xong: 0, loi: 0, bo_qua: 0 } } });
+      this.tdTheoDoi();
+    } catch (e) { this.setState({ tdDangChay: false, tdLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' }); }
+  }
+  tdTheoDoi() {
+    clearTimeout(this._tdHen);
+    const vong = async () => {
+      let tt = null;
+      try { ({ j: tt } = await K.goi('api/tai-khoan/dang-nhap-hang-loat/trang-thai')); } catch (e) { tt = null; }
+      if (tt) this.setState({ tdLuot: tt });
+      if (tt && tt.trang_thai_luot === 'hoan_thanh') { await this.taiLai(); return; }
+      this._tdHen = setTimeout(vong, 2000);
+    };
+    this._tdHen = setTimeout(vong, 800);
+  }
+  async tdDung() {
+    try { await K.goi('api/tai-khoan/dang-nhap-hang-loat/dung', { method: 'POST' }); } catch (e) { this.tdDatLoi((e && e.message) || 'Không dừng được.'); }
+  }
   dsAi() { return ((this.state.tn && this.state.tn.modules) || []).filter((m) => K.coMa(m, K.AI)); }
   async kiem(id) {
     this.setState((s) => ({ sk: Object.assign({}, s.sk, { [id]: Object.assign({}, s.sk[id], { dang: true }) }) }));
@@ -572,19 +629,50 @@ class Component extends DCLogic {
     const trChon = chon ? ((catId.get(chon.id) || {}).truong_cau_hinh || []) : [];
     const ckChon = chon ? ((s.mods.find((x) => x && x.id === chon.id) || {}).cau_hinh_cong_khai || {}) : {};
     const trBm = trChon.find(laBiMat);
+    // Module khai hàm `dang_nhap` (suy từ cấu trúc, /api/tinh-nang → dang_nhap_tu_dong) mới có chế độ «Tự đăng nhập».
+    const coTuDong = !!chon && !!chon.dang_nhap_tu_dong;
+    const laGmail = coTuDong && s.tkCheDo === 'gmail';
+    const cheSt = (on) => chipSt(on);
+    const NHAN_LOAI = { mat_khau: 'mật khẩu', cookie: 'cookie', dang_nhap_lai: 'đăng nhập lại' };
+    const NHAN_TT = { cho: ['Đang chờ', 'var(--mute)'], dang_chay: ['Đang đăng nhập…', 'var(--mute)'], xong: ['Xong', '#0B5A53'], loi: ['Lỗi', '#8A2A1E'], bo_qua: ['Bỏ qua', 'var(--mute)'] };
+    const NHAN_LOI = { can_nguoi: 'Cần bạn xử lý (CAPTCHA/xác minh)', sai_mat_khau: 'Sai mật khẩu' };  // mã lạ hiện nguyên mã
+    const xem = s.tdXem;
+    const tdHang = ((xem && xem.tai_khoan) || []).map((t) => ({ email: t.email, loai: NHAN_LOAI[t.loai] || t.loai, on: !s.tdBo[t.email.toLowerCase()],
+      doi: (e) => { const on = !!e.target.checked; this.setState((st) => ({ tdBo: Object.assign({}, st.tdBo, { [t.email.toLowerCase()]: !on }) })); } }));
+    const tdChon = tdHang.filter((h) => h.on).length;
+    const luot = s.tdLuot;
+    const td = {
+      vanBan: s.tdVanBan, goVanBan: (e) => { const v = e.target.value; this.setState({ tdVanBan: v, tdXem: null, tdBo: {}, tdLoi: '' }); },
+      dangXem: s.tdDangXem, xem: () => { if (chon) this.tdXemTruoc(chon); }, xemSt: btnSt({}),
+      coLoi: !!s.tdLoi, loi: s.tdLoi,
+      coXem: !!xem, hang: tdHang,
+      tomTat: xem ? (xem.tai_khoan.length + ' tài khoản hợp lệ · ' + xem.loi.length + ' dòng lỗi · ' + xem.bo_trung.length + ' dòng trùng email') : '',
+      canhBao: xem ? xem.loi.map((l) => ({ t: 'Dòng ' + l.dong + ': ' + l.loi })).concat(xem.bo_trung.map((b) => ({ t: 'Dòng ' + b.dong + ': email trùng, bỏ (' + b.email + ')' }))) : [],
+      dangChay: s.tdDangChay || tdChon === 0, chay: () => { if (chon) this.tdChay(chon); }, chaySt: btnSt({ pri: true }),
+      chayNhan: s.tdDangChay ? 'Đang bắt đầu…' : 'Đăng nhập tự động ' + tdChon + ' tài khoản',
+      coLuot: !!luot, dangChayLuot: !!luot && luot.trang_thai_luot === 'dang_chay',
+      luotTomTat: luot ? ((luot.trang_thai_luot === 'dang_chay' ? 'Đang chạy' : 'Đã xong') + ': xong ' + ((luot.tom_tat || {}).xong || 0) + ' · lỗi ' + ((luot.tom_tat || {}).loi || 0)
+        + ' · bỏ qua ' + ((luot.tom_tat || {}).bo_qua || 0) + ' / tổng ' + ((luot.tom_tat || {}).tong || 0)) : '',
+      luotHang: luot ? (luot.ket_qua || []).map((b) => { const t = NHAN_TT[b.trang_thai] || [b.trang_thai, 'var(--mute)'];
+        return { email: b.email, mau: t[1], nhan: b.trang_thai === 'loi' ? (NHAN_LOI[b.ma_loi] || ('Lỗi' + (b.ma_loi ? ' (' + b.ma_loi + ')' : ''))) : t[0] }; }) : [],
+      dung: () => this.tdDung(), dungSt: btnSt({})
+    };
     const them = {
       co: s.tkThem, chonId: chon ? chon.id : '', tieu: 'Thêm API', dang: s.dangThem,
       nut: { nhan: s.tkThem ? 'Đóng' : '＋ Thêm API', st: btnSt({ pri: !s.tkThem }), pick: () => this.setState({ tkThem: !s.tkThem, f: {}, chonMod: null }) },
       apis: ungVien.map((m) => ({ id: m.id, nhan: m.ten, on: !!chon && chon.id === m.id, st: chipSt(!!chon && chon.id === m.id),
-        pick: () => this.setState({ chonMod: m.id, f: {} }) })),
+        pick: () => this.setState({ chonMod: m.id, f: {}, tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '' }) })),
       mota: chon ? ((trBm && trBm.mo_ta) || (catId.get(chon.id) || {}).mo_ta || '') : 'Chọn một nguồn AI đã cài.',
-      canKhoaQt: !!chon && !coKhoaQt, coFields: !!chon && coKhoaQt && trChon.length > 0,
+      canKhoaQt: !!chon && !coKhoaQt, coFields: !!chon && coKhoaQt && trChon.length > 0 && !laGmail,
+      coTuDong, laGmail, anNutThem: laGmail, td,
+      cheKhoa: { on: !laGmail, st: cheSt(!laGmail), pick: () => this.setState({ tkCheDo: 'khoa' }) },
+      cheGmail: { on: laGmail, st: cheSt(laGmail), pick: () => this.setState({ tkCheDo: 'gmail' }) },
       fields: trChon.map((t, j) => ({ khoa: t.khoa, nhan: t.nhan || t.khoa, biMat: laBiMat(t), chu: !laBiMat(t), idO: 'them-' + j + '-' + s.lan,
         ph: laBiMat(t) ? 'Dán ' + chuThuong(t.nhan || 'khoá') : (t.mac_dinh != null ? String(t.mac_dinh) : ''),
         val: laBiMat(t) ? '' : (s.f[t.khoa] != null ? String(s.f[t.khoa]) : (ckChon[t.khoa] == null ? '' : String(ckChon[t.khoa]))),
         onIn: (e) => { const v = e.target.value; this.setState((st) => ({ f: Object.assign({}, st.f, { [t.khoa]: v }) })); } })),
       luu: (e) => { if (e) e.preventDefault(); if (!chon) { this.msg('Chọn một nguồn AI trước.', true); return; } if (!coKhoaQt) { this.msg('Cần khoá quản trị để thêm khoá.', true); return; } this.themKhoa(e, chon, trChon, ckChon); },
-      ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Thêm API', st: btnSt({ pri: true }) }, huy: { nhan: 'Huỷ', st: btnSt(), pick: () => this.setState({ tkThem: false, f: {}, chonMod: null }) }
+      ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Thêm API', st: btnSt({ pri: true }) + (laGmail ? 'display:none;' : '') }, huy: { nhan: 'Huỷ', st: btnSt(), pick: () => this.setState({ tkThem: false, f: {}, chonMod: null }) }
     };
     // Quy tắc sắp xếp ổn định cho khối provider (tab Tài khoản) và ô chọn (tab Provider):
     // theo TÊN HIỂN THỊ (localeCompare 'vi'), hòa thì theo id.

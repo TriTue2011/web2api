@@ -449,6 +449,7 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
   - `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` (`module_id`, `van_ban`,
     `bo_qua_email` tuỳ chọn) → lượt `LuotChay` gọi `mod.dang_nhap` (giãn cách 30s,
     dừng sau 2 hỏng liên tiếp); module chưa có `dang_nhap` → `400`.
+  - **Giao diện «Tự đăng nhập bằng Gmail»** (Hệ thống → AI → Tài khoản → Thêm API): hiện cho module mà `GET /api/tinh-nang` báo `dang_nhap_tu_dong: true` (cờ suy từ CẤU TRÚC — module đang chạy khai hàm `dang_nhap` — không từ tên nhà cung cấp). Dán danh sách (`email|mật khẩu`, `email|mật khẩu|mã2fa`, `email|cookie=…`) → «Xem trước» (`POST /api/tai-khoan/dan-hang-loat`, tách dòng ở máy chủ) → tick/bỏ tick → chạy LẦN LƯỢT (`POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` với `bo_qua_email` là các dòng bỏ tick) → theo dõi `GET …/dang-nhap-hang-loat/trang-thai`, dừng bằng `POST …/dung`. Mật khẩu chỉ nằm trong ô dán tới khi bấm chạy rồi bị xoá khỏi trang; không lưu vào trình duyệt.
   - `POST /api/tai-khoan/khoi-phuc` (`module_id`, `khoa`, `email` tuỳ chọn) →
     `KetQuaKhoiPhuc.sang_dict()` (tầng `a`/`b`/`c`/`d`; không chứa bí mật).
     Khoá lạ/không thuộc module → `404` (chống IDOR); khoá sai khuôn → `400`.
