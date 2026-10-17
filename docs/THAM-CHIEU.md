@@ -1262,6 +1262,16 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 - Điều khoản của Muse cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.
 - Cookie chính là tài khoản của bạn: không commit, không chia sẻ.
 
+**Tự đăng nhập + khôi phục (NV90).** Module triển khai đủ 8 hàm hợp đồng như chatgpt-web (NV88):
+`dang_nhap` (cookie → kiểm bằng bootstrap; mật khẩu/`dang_nhap_lai` → `can_nguoi`),
+`lam_moi_phien` (tầng a — kiểm lại cookie), `dang_nhap_tu_dong` (tầng b),
+`tai_khoan_ke`/`danh_dau_hong` (tầng c), `mat_khau_da_luu`, `co_tai_khoan`,
+`ho_so_trinh_duyet`. Lưu ý trung thực: muse.ai đăng nhập qua SSO của Meta, **không có form
+mật khẩu để tự điền** — tầng (b) luôn trả `can_nguoi` kèm hướng dẫn mở noVNC để đăng nhập tay;
+đường làm mới/đăng nhập lại khả thi duy nhất là kiểm lại cookie (tầng a). Cookie phiên giữ nguyên
+cơ chế hiện có. Kiểm với `_kiem_cookie` chích giả trong `test/test_web2api_nv90_muse2api.py`;
+**chưa kiểm với dịch vụ thật**.
+
 ---
 
 ### Module antigravity — Antigravity (Google AGY CLI)

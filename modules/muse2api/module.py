@@ -10,11 +10,21 @@ của repo TriTue2011/muse2api).
 Khả năng: chat (stream / không stream). Giao thức nội bộ của web app đã
 được reverse-engineer, không chính thức — Meta đổi web có thể làm module
 ngừng hoạt động.
+
+Tự đăng nhập + khôi phục (NV90, theo mẫu chatgpt-web/NV88): hợp đồng 8 hàm
+`dang_nhap`, `lam_moi_phien`, `dang_nhap_tu_dong`, `tai_khoan_ke`,
+`danh_dau_hong`, `mat_khau_da_luu`, `co_tai_khoan`, `ho_so_trinh_duyet`.
+muse.ai đăng nhập qua SSO của Meta — KHÔNG có form email/mật khẩu để tự
+điền, nên đường làm mới/đăng nhập lại khả thi duy nhất là kiểm lại cookie
+(tầng a); tầng (b) trả `can_nguoi` kèm hướng dẫn mở noVNC (trung thực, không
+đoán luồng không có). Cookie phiên giữ nguyên cơ chế hiện có (chuỗi cookie
+trong `_TaiKhoan`, kiểm bằng bootstrap).
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import secrets
@@ -22,6 +32,9 @@ import threading
 import time
 import uuid
 from typing import AsyncIterator
+
+from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
+from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 
 from .chat import ChatSession, build_prompt
 from .protocol import AuthError, Gateway, GatewayError, fetch_access_token, fetch_session_info
@@ -117,6 +130,8 @@ class Module:
         self._accs: list[_TaiKhoan] = []
         self._vi_tri = 0
         self._khoa_chon = threading.Lock()
+        self.kho = None  # lõi gán sau khi tạo (kho riêng của module)
+        self._hong: set[str] = set()  # khoá tài khoản tầng (c) đã đánh dấu hỏng
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
         return phan_loai_loi(ma, loi, boi_canh)
@@ -184,6 +199,108 @@ class Module:
     async def dung(self) -> None:
         for acc in self._accs:
             acc.bo()
+
+    # ── Tự đăng nhập + khôi phục theo hợp đồng NV67/NV88 (NV90) ──────────
+
+    @staticmethod
+    def _khoa_tu_cookies(cookies: str) -> str:
+        """Khoá mờ của một bộ cookie: «ms-» + 12 ký tự hex của SHA-256."""
+        return "ms-" + hashlib.sha256(str(cookies or "").encode("utf-8")).hexdigest()[:12]
+
+    def _tim_acc(self, khoa: str) -> _TaiKhoan | None:
+        """Tài khoản khớp khoá mờ; None nếu không có."""
+        khoa = str(khoa or "")
+        for acc in self._accs:
+            if self._khoa_tu_cookies(acc.cookies) == khoa:
+                return acc
+        return None
+
+    def mat_khau_da_luu(self, khoa: str) -> BiMatTam | None:
+        """muse.ai đăng nhập qua SSO của Meta — không có form mật khẩu nên
+        module không lưu mật khẩu: luôn None (fail-closed, lõi báo cần người)."""
+        return None
+
+    def co_tai_khoan(self, khoa: str) -> bool:
+        """Module có biết khoá này không?"""
+        return self._tim_acc(khoa) is not None
+
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
+        """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
+        bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
+        return f"muse2api-{bam}"
+
+    async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
+        """Hợp đồng NV67: cookie → kiểm bằng bootstrap; mat_khau/dang_nhap_lai
+        → can_nguoi (muse.ai không có form mật khẩu để tự điền — cần người đăng
+        nhập tay qua noVNC). BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        loai = tai_khoan.loai
+        try:
+            if loai == "cookie":
+                cookies = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
+                if not cookies:
+                    return KetQuaDangNhap(False, ma_loi="thieu_cookie")
+                ok, _loi, bi_tu_choi = await asyncio.to_thread(
+                    self._kiem_cookie, cookies)
+                if ok:
+                    if self._tim_acc(self._khoa_tu_cookies(cookies)) is None:
+                        self._accs.append(
+                            _TaiKhoan(f"acc{len(self._accs) + 1}", cookies))
+                    return KetQuaDangNhap(True, cookie=cookies)
+                if bi_tu_choi:
+                    return KetQuaDangNhap(False, ma_trang_thai=401)
+                return KetQuaDangNhap(False, ma_loi="loi_may_chu")
+            if loai in ("mat_khau", "dang_nhap_lai"):
+                return KetQuaDangNhap(False, ma_loi="can_nguoi")
+            return KetQuaDangNhap(False, ma_loi="loai_khong_ho_tro")
+        finally:
+            tai_khoan.xoa_bi_mat()
+
+    async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
+        """Tầng (a): kiểm lại cookie bằng bootstrap (rẻ, không tốn tiền)."""
+        acc = self._tim_acc(khoa)
+        if acc is None:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="khoa_khong_co")
+        try:
+            ok, _loi, bi_tu_choi = await asyncio.to_thread(
+                self._kiem_cookie, acc.cookies)
+        except Exception as e:
+            # Lỗi lạ khi kiểm → thất bại đóng (không coi như còn sống).
+            log.warning("muse2api: kiểm lại cookie lỗi không ngờ: %s",
+                        type(e).__name__)
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_mang")
+        if ok:
+            acc.khoe = True
+            return KetQuaKhoiPhuc(True, tang="a")
+        acc.khoe = False
+        if bi_tu_choi:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
+                                  ma_trang_thai=401)
+        return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_may_chu")
+
+    async def dang_nhap_tu_dong(self, tai_khoan: TaiKhoanCanKhoiPhuc,
+                                trinh_duyet) -> KetQuaKhoiPhuc:
+        """Tầng (b): muse.ai đăng nhập qua SSO của Meta — không có form mật
+        khẩu để tự điền → can_nguoi kèm hướng dẫn mở noVNC."""
+        try:
+            return KetQuaKhoiPhuc(
+                False, tang="b", ma_loi="can_nguoi", can_nguoi=True,
+                huong_dan=("muse.ai đăng nhập qua tài khoản Meta (SSO), không có "
+                            "form mật khẩu để tự điền. Hãy mở noVNC của workspace "
+                            "rồi đăng nhập tay; xong bấm «Đã xử lý xong»."))
+        finally:
+            if tai_khoan.mat_khau is not None:
+                tai_khoan.mat_khau.xoa()
+
+    def tai_khoan_ke(self, khoa: str) -> str | None:
+        """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""
+        ds = [self._khoa_tu_cookies(a.cookies) for a in self._accs]
+        khoa = str(khoa)
+        con_khoe = [k for k in ds if k != khoa and k not in self._hong]
+        return con_khoe[0] if con_khoe else None
+
+    def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
+        """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
+        self._hong.add(str(khoa))
 
     # ── Khả năng chat ────────────────────────────────────────────────────
 
