@@ -1611,10 +1611,14 @@ class QuanLyHoSo:
             het_han: list[str] = []
 
             for ho_so_id, ho_so in list(self.danh_sach_mo.items()):
-                if ho_so.dang_ban:
-                    # NV94-P3: máy đang điều khiển — không dọn giữa chừng
-                    # (kể cả quá hạn tuyệt đối; lượt chạy xong nhả quyền rồi
-                    # vòng sau mới dọn).
+                if ho_so.dang_ban and \
+                        bay_gio - ho_so.lan_hoat_dong_cuoi < nguong_idle_giay:
+                    # Máy đang điều khiển VÀ còn hoạt động gần đây (mọi thao tác
+                    # điều khiển đều làm mới lan_hoat_dong_cuoi): không dọn giữa
+                    # chừng. Quyền giành mà quá hạn idle không còn thao tác nào là
+                    # quyền mồ côi (web2api chết/khởi động lại mà chưa nhả) — để
+                    # rơi xuống dọn bình thường, kẻo hồ sơ kẹt «bận» vĩnh viễn và
+                    # noVNC bị từ chối 409.
                     continue
                 if bay_gio - ho_so.luc_mo_don_dieu >= nguong_tuyet_doi_giay:
                     # Kết nối treo (hay khách quên đóng tab) không giữ hồ sơ sống mãi

@@ -575,11 +575,27 @@ def test_don_idle_bo_qua_ho_so_dang_ban(mt_dk):
         ql = mt_dk["quan_ly"]
         ho_so_mo = ql.danh_sach_mo[ho_so]
         assert ho_so_mo.dang_ban is True
-        # Giả vờ idle rất lâu nhưng máy đang điều khiển
-        ho_so_mo.lan_hoat_dong_cuoi = ql.dong_ho() - 10 * 3600
+        # Máy đang điều khiển và vừa có thao tác gần đây: không dọn giữa chừng.
+        ho_so_mo.lan_hoat_dong_cuoi = ql.dong_ho()
         da_dong = asyncio.run(ql.don_idle())
         assert ho_so not in da_dong, "dọn mất hồ sơ máy đang điều khiển"
         assert ho_so in ql.danh_sach_mo
+
+
+def test_don_idle_don_quyen_mo_coi_khi_dang_ban_qua_han_idle(mt_dk):
+    """Quyền điều khiển giành rồi không còn thao tác nào quá hạn idle (web2api chết
+    mà chưa nhả) phải bị dọn — hồ sơ không được kẹt «bận» vĩnh viễn."""
+    import asyncio
+    with TestClient(app) as client:
+        ho_so = _mo_firefox(mt_dk, client)
+        _gianh(mt_dk, client, ho_so)
+        ql = mt_dk["quan_ly"]
+        ho_so_mo = ql.danh_sach_mo[ho_so]
+        assert ho_so_mo.dang_ban is True
+        ho_so_mo.lan_hoat_dong_cuoi = ql.dong_ho() - 10 * 3600
+        da_dong = asyncio.run(ql.don_idle())
+        assert ho_so in da_dong, "quyền mồ côi không bị dọn: hồ sơ kẹt bận vĩnh viễn"
+        assert ho_so not in ql.danh_sach_mo
 
 
 def test_nguyen_thuy_cap_nhat_lan_hoat_dong_cuoi(mt_dk):
