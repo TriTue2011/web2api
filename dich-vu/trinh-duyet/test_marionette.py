@@ -35,7 +35,11 @@ def _doc_khung(conn: socket.socket):
             raise ConnectionError("đóng giữa chừng")
         if b == b":":
             break
+        if not b.isdigit() or len(chu_so) >= 10:
+            raise ConnectionError("tiền tố độ dài sai định dạng")
         chu_so += b
+    if not chu_so:
+        raise ConnectionError("tiền tố độ dài rỗng")
     dai = int(chu_so)
     du_lieu = b""
     while len(du_lieu) < dai:

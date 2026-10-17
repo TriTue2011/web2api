@@ -70,6 +70,7 @@ class MarionetteGia:
         self.da_noi = False
         self.loi_tiep_theo: str | None = None
         self.loi_la_tiep_theo: bool = False
+        self._moz_profile: str | None = None
 
     # ── nối/phiên ──
     def ket_noi(self) -> None:
@@ -113,6 +114,8 @@ class MarionetteGia:
 
     def thuc_thi(self, script: str, doi_so: list | None = None) -> Any:
         self._co_the_loi()
+        if not script or not isinstance(script, str):
+            raise LoiMarionette("javascript error")
         cfg = self.kich_ban.get(self.url, {})
         return list(cfg.get("tin_hieu_script") or [])
 
