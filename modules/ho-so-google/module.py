@@ -41,15 +41,19 @@ URL_DANG_NHAP = "https://accounts.google.com/"
 URL_KIEM_TRA = "https://myaccount.google.com/"
 
 #: Bộ chọn CSS trên trang đăng nhập Google (cấu trúc DOM công khai).
-BO_CHON_EMAIL = 'input[type="email"]'
+# Đo trên trang đăng nhập Google THẬT (18/10/2026): ô email là <input type="text" name="identifier" id="identifierId"> (KHÔNG phải type="email"),
+# và trang có sẵn một ô type="password" ẨN tên "hiddenPassword" (chỉ để đánh lừa) — bộ chọn mật khẩu phải loại nó ra.
+BO_CHON_EMAIL = '#identifierId, input[name="identifier"], input[type="email"]'
 BO_CHON_TIEP_EMAIL = "#identifierNext"
-BO_CHON_MAT_KHAU = 'input[type="password"]'
+BO_CHON_MAT_KHAU = 'input[name="Passwd"], input[type="password"]:not([name="hiddenPassword"])'
 BO_CHON_TIEP_MAT_KHAU = "#passwordNext"
 BO_CHON_MA_2FA = 'input[type="tel"]'
 BO_CHON_TIEP_MA_2FA = "#idvPreregisteredPhoneNext"
 
 #: Tín hiệu «cần người» từ tin_hieu() của bộ điều khiển (mã mở theo hợp đồng).
-TIN_HIEU_CAN_NGUOI = frozenset({"captcha", "xac_minh_thiet_bi", "xac_minh"})
+# `thu_thach_truy_cap` (trang challenge/rejected của Google) cũng PHẢI dừng ở «cần người»: bản đầu có quy tắc phát tín hiệu này nhưng tập này thiếu nó,
+# nên thử thách bị bỏ qua và lượt chạy rơi sang «khong_lay_duoc_phien» thay vì mời người đăng nhập tay (không bao giờ tự vượt).
+TIN_HIEU_CAN_NGUOI = frozenset({"captcha", "xac_minh_thiet_bi", "xac_minh", "thu_thach_truy_cap"})
 
 #: Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): cookie đặc trưng có/không, URL đích.
 #: Mã mở — không dò chữ trên trang, không tên nhà cung cấp trong mã lõi.
@@ -60,6 +64,11 @@ QUY_TAC_TIN_HIEU = [
     {"loai": "cookie", "mien": "google.com", "ten": "__Secure-1PSID",
      "tin_hieu": "da_dang_nhap"},
     {"loai": "url_chua", "gia_tri": "accounts.google.com/challenge",
+     "tin_hieu": "thu_thach_truy_cap"},
+    # Đo bằng Firefox thật 18/10/2026: Google từ chối trình duyệt tự động bằng /v3/signin/rejected («Couldn’t sign you in»).
+    {"loai": "url_chua", "gia_tri": "accounts.google.com/v3/signin/rejected",
+     "tin_hieu": "thu_thach_truy_cap"},
+    {"loai": "url_chua", "gia_tri": "accounts.google.com/signin/rejected",
      "tin_hieu": "thu_thach_truy_cap"},
     {"loai": "url_chua", "gia_tri": "accounts.google.com/signin",
      "tin_hieu": "chua_dang_nhap"},
@@ -209,7 +218,14 @@ class Module:
                 await trinh_duyet.dien(BO_CHON_EMAIL, str(email or ""))
                 await trinh_duyet.bam(BO_CHON_TIEP_EMAIL)
                 self._dat_tien_do(ho_so, giai_doan="dien_mat_khau")
-                await trinh_duyet.dien(BO_CHON_MAT_KHAU, mat_khau_tho)
+                try:
+                    await trinh_duyet.dien(BO_CHON_MAT_KHAU, mat_khau_tho)
+                except Exception:
+                    # Không có ô mật khẩu: Google thường từ chối trình duyệt tự động (/signin/rejected, challenge) hoặc email không tồn tại.
+                    # Gặp thử thách → «cần người» (không tự vượt); không rõ lý do → ném tiếp để vòng ngoài ĐÓNG CỬA (báo hỏng, không báo thành công).
+                    if TIN_HIEU_CAN_NGUOI & set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
+                        return self._dung_can_nguoi(ho_so, url_novnc)
+                    raise
                 await trinh_duyet.bam(BO_CHON_TIEP_MAT_KHAU)
             finally:
                 mat_khau_tho = None  # noqa: F841 — không giữ chuỗi thô

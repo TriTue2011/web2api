@@ -541,3 +541,59 @@ def test_hsg_dang_nhap_loi_giua_chung_khong_de_danh_tinh_mo_coi(api):
     r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
                     json={"email": "dolang@example.com", "mat_khau": MAT_KHAU_GIA})
     assert r.status_code == 201, r.text
+
+
+# ───────────── Đo bằng Firefox thật (18/10/2026): bộ chọn và trang từ chối ─────────────
+
+def test_bo_chon_khop_cau_truc_trang_google_that():
+    """Ô email thật: <input type="text" name="identifier" id="identifierId"> (không phải type=email).
+    Trang có ô type=password ẨN tên hiddenPassword: bộ chọn mật khẩu phải loại nó."""
+    assert "#identifierId" in mod_hsg.BO_CHON_EMAIL and 'name="identifier"' in mod_hsg.BO_CHON_EMAIL
+    assert 'name="Passwd"' in mod_hsg.BO_CHON_MAT_KHAU
+    assert ':not([name="hiddenPassword"])' in mod_hsg.BO_CHON_MAT_KHAU
+
+
+def test_trang_rejected_cua_google_la_can_nguoi_khong_phai_loi_phien():
+    """Google chặn trình duyệt tự động bằng /signin/rejected: phải DỪNG ở «cần người», không báo khong_lay_duoc_phien."""
+    quy_tac = mod_hsg.QUY_TAC_TIN_HIEU
+    assert any(q.get("loai") == "url_chua" and "signin/rejected" in q.get("gia_tri", "")
+               and q.get("tin_hieu") == "thu_thach_truy_cap" for q in quy_tac)
+    assert "thu_thach_truy_cap" in mod_hsg.TIN_HIEU_CAN_NGUOI
+    class TdTuChoi(TrinhDuyetGiaNV92):
+        """Như Firefox thật khi Google từ chối: bấm Tiếp xong mà không có ô mật khẩu → điền mật khẩu thất bại."""
+        async def dien(self, bo_chon, gia_tri):
+            if bo_chon == mod_hsg.BO_CHON_MAT_KHAU:
+                raise RuntimeError("no such element")
+            await super().dien(bo_chon, gia_tri)
+
+        async def bam(self, bo_chon):
+            await super().bam(bo_chon)
+            if bo_chon == mod_hsg.BO_CHON_TIEP_EMAIL:
+                self.tin_hieu_trang[self.trang] = {"thu_thach_truy_cap"}
+
+    mod = ModuleHSG(MANIFEST_HSG)
+    td = TdTuChoi()
+    td.tin_hieu_trang[mod_hsg.URL_KIEM_TRA] = set()
+    td.tin_hieu_trang[mod_hsg.URL_DANG_NHAP] = set()
+    bm = BiMatTam(MAT_KHAU_GIA)
+    kq = chay(mod.dang_nhap(HO_SO_GIA, "ban@gmail.com", bm, td))
+    assert not kq.thanh_cong and kq.can_nguoi and kq.ma_loi == "can_nguoi", kq.sang_dict()
+    assert _bi_mat_da_xoa(bm)
+
+
+def test_khong_co_o_mat_khau_va_khong_ro_ly_do_thi_dong_cua():
+    """Không có ô mật khẩu mà cũng không có tín hiệu thử thách (ví dụ email không tồn tại): báo HỎNG, không bao giờ báo thành công."""
+    class TdThieuO(TrinhDuyetGiaNV92):
+        async def dien(self, bo_chon, gia_tri):
+            if bo_chon == mod_hsg.BO_CHON_MAT_KHAU:
+                raise RuntimeError("no such element")
+            await super().dien(bo_chon, gia_tri)
+
+    mod = ModuleHSG(MANIFEST_HSG)
+    td = TdThieuO()
+    td.tin_hieu_trang[mod_hsg.URL_KIEM_TRA] = set()
+    td.tin_hieu_trang[mod_hsg.URL_DANG_NHAP] = set()
+    bm = BiMatTam(MAT_KHAU_GIA)
+    kq = chay(mod.dang_nhap(HO_SO_GIA, "ban@gmail.com", bm, td))
+    assert not kq.thanh_cong and not kq.can_nguoi and kq.ma_loi == "loi_module", kq.sang_dict()
+    assert _bi_mat_da_xoa(bm)

@@ -87,6 +87,10 @@ class MayChuMarionetteGia:
                 self.da_nhan.append(yeu_cau)
                 _loai, msg_id, lenh, tham_so = yeu_cau
                 tra_loi = self.kich_ban.get(lenh)
+                if lenh not in self.kich_ban:
+                    # Firefox thật báo «unknown command» cho tên lệnh không có (bản đầu dùng tên kiểu Selenium
+                    # ClickElement/SendKeysToElement mà máy chủ giả im lặng chấp nhận → test xanh, ngoài đời hỏng).
+                    tra_loi = ({"error": "unknown command", "message": "", "stacktrace": ""}, None)
                 if callable(tra_loi):
                     loi, ket_qua = tra_loi(tham_so)
                 elif tra_loi is None:
@@ -110,9 +114,9 @@ def _may_chu_co_ban() -> MayChuMarionetteGia:
         "WebDriver:GetTitle": (None, {"value": "Đăng nhập"}),
         "WebDriver:GetPageSource": (None, {"value": "<html></html>"}),
         "WebDriver:FindElement": (None, {"value": phan_tu}),
-        "WebDriver:ClickElement": (None, None),
-        "WebDriver:SendKeysToElement": (None, None),
-        "WebDriver:ClearElement": (None, None),
+        "WebDriver:ElementClick": (None, None),
+        "WebDriver:ElementSendKeys": (None, None),
+        "WebDriver:ElementClear": (None, None),
         # Firefox thật trả DANH SÁCH trực tiếp cho GetCookies (không bọc {"value": …}); đo 18/10/2026.
         "WebDriver:GetCookies": (None, [
             {"name": "SID", "value": "bi-mat-gia", "domain": ".google.com"}]),
@@ -161,11 +165,11 @@ def test_dien_bam_gui_dung_tham_chieu_phan_tu():
             kh.bam("#tiep-tuc")
             tim = [y for y in may_chu.da_nhan if y[2] == "WebDriver:FindElement"]
             assert tim[0][3] == {"using": "css selector", "value": "input[type=email]"}
-            gui_phim = [y for y in may_chu.da_nhan if y[2] == "WebDriver:SendKeysToElement"]
+            gui_phim = [y for y in may_chu.da_nhan if y[2] == "WebDriver:ElementSendKeys"]
             assert gui_phim[0][3]["text"] == "a@example.com"
-            assert gui_phim[0][3]["id"] == {KHOA_PHAN_TU: "uuid-phan-tu-1"}
-            bam = [y for y in may_chu.da_nhan if y[2] == "WebDriver:ClickElement"]
-            assert bam[0][3]["id"] == {KHOA_PHAN_TU: "uuid-phan-tu-1"}
+            assert gui_phim[0][3]["id"] == "uuid-phan-tu-1"          # CHUỖI định danh, không phải đối tượng tham chiếu
+            bam = [y for y in may_chu.da_nhan if y[2] == "WebDriver:ElementClick"]
+            assert bam[0][3]["id"] == "uuid-phan-tu-1"
         finally:
             kh.dong()
 
@@ -416,3 +420,17 @@ def test_do_dai_tinh_theo_byte_utf8_khong_theo_ky_tu():
     c.ket_noi()
     c.dong()
     t.join(2)
+
+
+def test_lenh_la_bi_tu_choi_nhu_firefox_that():
+    """Tên lệnh kiểu Selenium (ClickElement…) KHÔNG tồn tại trong Marionette: máy chủ giả phải trả «unknown command»."""
+    with _may_chu_co_ban() as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            kh.phien_moi()
+            with pytest.raises(LoiMarionette) as e:
+                kh.lenh("WebDriver:ClickElement", {"id": "x"})
+            assert e.value.ma_loi == "unknown command"
+        finally:
+            kh.dong()

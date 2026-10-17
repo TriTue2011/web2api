@@ -288,7 +288,9 @@ class MarionetteClient:
 
     def bam(self, bo_chon: str, timeout: float = 10.0) -> None:
         phan_tu = self.tim_phan_tu(bo_chon, timeout=timeout)
-        self.lenh("WebDriver:ClickElement", {"id": phan_tu})
+        # Tên lệnh THẬT của Marionette là ElementClick/ElementClear/ElementSendKeys (không phải ClickElement… kiểu Selenium: «unknown command»),
+        # và `id` là CHUỖI định danh phần tử, không phải cả đối tượng tham chiếu (đo bằng Firefox thật 18/10/2026).
+        self.lenh("WebDriver:ElementClick", {"id": phan_tu[KHOA_PHAN_TU]})
 
     def dien(self, bo_chon: str, van_ban: str, timeout: float = 10.0,
              xoa_truoc: bool = True) -> None:
@@ -296,8 +298,8 @@ class MarionetteClient:
         phan_tu = self.tim_phan_tu(bo_chon, timeout=timeout)
         if xoa_truoc:
             try:
-                self.lenh("WebDriver:ClearElement", {"id": phan_tu})
+                self.lenh("WebDriver:ElementClear", {"id": phan_tu[KHOA_PHAN_TU]})
             except LoiMarionette:
                 pass  # ô không xoá được (vd chỉ đọc) thì cứ gõ tiếp
-        self.lenh("WebDriver:SendKeysToElement",
-                  {"id": phan_tu, "text": van_ban})
+        self.lenh("WebDriver:ElementSendKeys",
+                  {"id": phan_tu[KHOA_PHAN_TU], "text": van_ban})
