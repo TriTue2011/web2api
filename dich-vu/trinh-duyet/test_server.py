@@ -884,7 +884,10 @@ def test_khoa_bi_xoa_khoi_proc_environ_sau_khi_nap(tmp_path: Path):
         server.main()
         """
     )
-    env = {"PATH": os.environ.get("PATH", ""), "TRINH_DUYET_KHOA": KHOA_TEST, "PYTHONDONTWRITEBYTECODE": "1",
+    # HOME: uvicorn có thể nằm ở user site (~/.local/...) mà Python chỉ thấy
+    # khi biết HOME; thiếu nó là lỗi môi trường, không phải lỗi server.
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""),
+           "TRINH_DUYET_KHOA": KHOA_TEST, "PYTHONDONTWRITEBYTECODE": "1",
            "TRINH_DUYET_THU_MUC_GOC": str(tmp_path)}
     p = subprocess.Popen([sys.executable, "-c", ma], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:

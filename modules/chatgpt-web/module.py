@@ -18,6 +18,7 @@ CHƯA KIỂM với dịch vụ thật.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -302,6 +303,70 @@ class Module:
         finally:
             if tai_khoan.mat_khau is not None:
                 tai_khoan.mat_khau.xoa()
+
+    # -- tái dùng hồ sơ Google (NV92 P3) --------------------------------------
+
+    _URL_TAI_DUNG = "https://chatgpt.com/auth/login"
+    _BO_CHON_DANG_NHAP = 'button[data-testid="login-button"], a[href*="auth/login"]'
+    _BO_CHON_GOOGLE = 'button[data-provider="google"], button:has-text("Google")'
+
+    async def tai_dung_ho_so(self, ho_so: str,
+                             trinh_duyet) -> KetQuaDangNhap:
+        """Đăng nhập bằng Google TRONG hồ sơ đã đăng nhập Google (NV92 P3, mẫu).
+
+        Hợp đồng module mới: ``tai_dung_ho_so(ho_so, trinh_duyet)`` — provider
+        tự làm bước «Đăng nhập bằng Google» của nó trong hồ sơ, lấy phiên,
+        trả ``KetQuaDangNhap`` (``cookie`` = chứng chỉ phiên mới dạng thô; route
+        tái dùng lưu nó qua đường cai() có sẵn rồi chỉ trả khoá che ra ngoài).
+        Không nhập lại email/mật khẩu/2FA. Gặp CAPTCHA/2FA/xác minh → can_nguoi.
+
+        HỌC TỪ c2a (chỉ đọc lấy hiểu, tự viết lại): TriTue2011/chatgpt2api,
+        ``captcha-solver/src/chatgpt_login.py`` — các bước: mở trang đăng nhập
+        → bấm «Log in» → bấm «Continue with Google» → chờ phiên → đọc token.
+        """
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
+            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if tin_hieu & {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi"}:
+            # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            if "da_dang_nhap" not in tin_hieu:
+                # Bước «bấm Google»: đăng nhập bằng Google trong hồ sơ.
+                await trinh_duyet.bam(self._BO_CHON_DANG_NHAP)
+                await trinh_duyet.bam(self._BO_CHON_GOOGLE)
+                # Bước «chờ phiên»: Google chuyển về với phiên đã đăng nhập.
+                da_vao = False
+                for _ in range(20):
+                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    if tin_hieu & {"captcha", "2fa", "xac_minh",
+                                   "xac_minh_thiet_bi"}:
+                        return KetQuaDangNhap(False, ma_loi="can_nguoi")
+                    if "da_dang_nhap" in tin_hieu:
+                        da_vao = True
+                        break
+                    await asyncio.sleep(1)
+                if not da_vao:
+                    return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+            try:
+                cookie = trinh_duyet.doc_cookie("chatgpt.com")
+            except Exception:
+                cookie = {}
+            token = cookie.get("access_token") if isinstance(cookie, dict) else None
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if not token:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        me = await self._kiem_token(token)
+        if me is None:
+            return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                  ma_trang_thai=401)
+        self._them_token(token)
+        return KetQuaDangNhap(True, cookie=token)
 
     def tai_khoan_ke(self, khoa: str) -> str | None:
         """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import ipaddress
 import hmac
 import json
 import logging
@@ -53,6 +54,8 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+from marionette import LoiMarionette
 
 # ── Nhật ký & Mẫu kiểm tra ────────────────────────────────────────────────────
 
@@ -116,6 +119,53 @@ NGUONG_MILI_GIAY = 10**11
 TEN_TEP_WORKSPACE = ".workspace.json"
 TRAN_TEN_WORKSPACE = 100
 TRAN_URL_BAT_DAU = 2048
+
+# ── Điều khiển tự động qua Marionette (NV92 P1, Cách B) ────────────────────────
+#: Dải cổng Marionette trên 127.0.0.1 — mỗi hồ sơ Firefox một cổng, do dịch vụ
+#: cấp phát. Firefox KHÔNG có cờ dòng lệnh đổi cổng (đã kiểm --help ở Firefox
+#: 158: chỉ có `--marionette`), nên cổng được đặt qua `user.js` của hồ sơ
+#: (`marionette.port`) + cờ `--marionette` khi khởi động.
+#: Trần độ dài bộ chọn CSS / văn bản điền / số quy tắc tín hiệu / tên tín hiệu.
+TRAN_BO_CHON = 1000
+TRAN_VAN_BAN = 100_000
+TRAN_QUY_TAC = 10
+TRAN_TEN_TIN_HIEU = 64
+#: Các loại quy tắc «dấu hiệu» mà lời gọi /tin-hieu được phép gửi (dữ liệu do
+#: module cung cấp — dịch vụ không biết tên nhà cung cấp nào).
+LOAI_QUY_TAC = frozenset({"url_chua", "tieu_de_chua", "bo_chon", "cookie"})
+#: Mẫu tên tín hiệu (mã mở, do module đặt — vd "da_dang_nhap", "can_nguoi").
+MAU_TEN_TIN_HIEU = re.compile(r"[a-z0-9_]{1,64}\Z")
+#: Script nhận tín hiệu CHUNG bằng cấu trúc DOM (mã mở — không né phát hiện):
+#: iframe của các tiện ích captcha phổ biến, tiêu đề thử thách Cloudflare,
+#: ô nhập mã xác minh một lần. Không che cờ navigator.webdriver.
+SCRIPT_TIN_HIEU = """(() => {
+  const ra = [];
+  try {
+    const srcs = Array.from(document.querySelectorAll('iframe'),
+                            f => f.src || '').join('\\n');
+    if (/recaptcha|hcaptcha|challenges\\.cloudflare|turnstile/i.test(srcs))
+      ra.push('captcha');
+  } catch (e) {}
+  try {
+    if (/^\\s*just a moment\\s*$/i.test(document.title)) ra.push('captcha');
+  } catch (e) {}
+  try {
+    if (document.querySelector(
+          'input[type="tel"], input[autocomplete="one-time-code"]'))
+      ra.push('2fa');
+  } catch (e) {}
+  return ra;
+})()"""
+
+
+def _tao_marionette(cong: int):
+    """Dựng máy khách Marionette cho cổng đã cấp phát (NV92 P1).
+
+    Điểm vá cho kiểm thử: test monkeypatch ``server._tao_marionette`` bằng
+    máy khách giả, không cần Firefox thật.
+    """
+    from marionette import MarionetteClient
+    return MarionetteClient(port=cong)
 
 
 # ── Cấu hình ──────────────────────────────────────────────────────────────────
@@ -198,6 +248,9 @@ def lay_cau_hinh() -> dict[str, Any]:
         "cong_den": _so("TRINH_DUYET_CONG_DEN", 6199),
         "toi_da": max(1, _so("TRINH_DUYET_TOI_DA", 3)),
         "idle_phut": max(1, _so("TRINH_DUYET_IDLE_PHUT", 120)),
+        # NV92 P1: dải cổng Marionette trên 127.0.0.1 cho hồ sơ Firefox.
+        "marionette_tu": _so("TRINH_DUYET_MARIONETTE_TU", 32000),
+        "marionette_den": _so("TRINH_DUYET_MARIONETTE_DEN", 32099),
         "toi_da_ho_so": max(1, _so("TRINH_DUYET_TOI_DA_HO_SO", 20)),
         "toi_da_phut": max(1, _so("TRINH_DUYET_TOI_DA_PHUT", 480)),
         # Chờ ngắn sau khi dựng rồi kiểm cả bộ tiến trình còn sống (chết ngay -> 502, không để hồ sơ ma).
@@ -615,6 +668,13 @@ class ThongTinHoSoMo:
     bi_mat: str = field(default="", repr=False)
     #: Thư mục dấu kết nối đã xác thực do plugin ghi.
     thu_muc_ket_noi: Path | None = None
+    #: Cổng Marionette trên 127.0.0.1 của hồ sơ Firefox (None với Chromium).
+    cong_marionette: int | None = None
+    #: Máy khách Marionette đã nối — chỉ tồn tại khi dang_ban (không repr).
+    marionette: Any = field(default=None, repr=False)
+    #: Cờ «đang bận»: True khi máy đang giữ quyền điều khiển — người không mở
+    #: noVNC cùng lúc và máy khác không giành được (mở/giành lúc đang bận → 409).
+    dang_ban: bool = False
 
 
 class _LoiKhoiDong(Exception):
@@ -643,6 +703,11 @@ class QuanLyHoSo:
         self.host_noi_bo: str = self.cau_hinh["host_noi_bo"]
         self.bo_chay: BoChayTienTrinh = bo_chay or BoChayThucTe()
         self.bo_kiem_tra: BoKiemTraKetNoi = bo_kiem_tra or BoKiemTraKetNoiDaXacThuc()
+        #: Dải cổng Marionette trên 127.0.0.1 (NV92 P1, Cách B).
+        self.marionette_tu: int = self.cau_hinh["marionette_tu"]
+        self.marionette_den: int = self.cau_hinh["marionette_den"]
+        #: Cổng Marionette đang cấp cho các hồ sơ đang mở.
+        self._cong_marionette_dang_dung: set[int] = set()
         #: Đồng hồ đơn điệu (thay được bằng đồng hồ giả trong kiểm thử).
         self.dong_ho = time.monotonic
 
@@ -672,6 +737,358 @@ class QuanLyHoSo:
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Hết cổng khả dụng trong dải cấp phát.",
         )
+
+    # ── Điều khiển tự động qua Marionette (NV92 P1, Cách B) ──
+
+    def _cap_cong_marionette(self) -> int:
+        """Cấp cổng Marionette rảnh trên 127.0.0.1 cho một hồ sơ Firefox."""
+        for cong in range(self.marionette_tu, self.marionette_den + 1):
+            if cong not in self._cong_marionette_dang_dung:
+                self._cong_marionette_dang_dung.add(cong)
+                return cong
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Hết cổng Marionette khả dụng trong dải cấp phát.",
+        )
+
+    def _nha_cong_marionette(self, cong: int | None) -> None:
+        if cong is not None:
+            self._cong_marionette_dang_dung.discard(cong)
+
+    @staticmethod
+    def _ghi_user_js_marionette(duong_dan: Path, cong: int) -> None:
+        """Ghi cổng Marionette vào ``user.js`` của hồ sơ (giữ lại pref khác đã có).
+
+        Firefox không có cờ dòng lệnh đổi cổng Marionette (đã kiểm --help ở
+        Firefox 158) nên cổng đi qua pref ``marionette.port``; cờ ``--marionette``
+        vẫn được thêm ở dòng lệnh khi khởi động để bật rõ ràng.
+        """
+        tep = duong_dan / "user.js"
+        try:
+            dong_cu = tep.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            dong_cu = []
+        giu = [d for d in dong_cu if 'user_pref("marionette.' not in d]
+        giu.append('user_pref("marionette.enabled", true);')
+        giu.append(f'user_pref("marionette.port", {int(cong)});')
+        fd = mo_tep_thuong(tep, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(giu) + "\n")
+
+    async def _dong_marionette_noi_bo(self, ho_so_mo: ThongTinHoSoMo) -> None:
+        """Ngắt máy khách Marionette và nhả cờ bận (không ném)."""
+        khach = ho_so_mo.marionette
+        ho_so_mo.marionette = None
+        ho_so_mo.dang_ban = False
+        if khach is not None:
+            for fn in (khach.xoa_phien, khach.dong):
+                try:
+                    await asyncio.to_thread(fn)
+                except Exception:
+                    pass
+
+    def _lay_dieu_khien(self, ho_so_id: str) -> tuple[ThongTinHoSoMo, Any]:
+        """Hồ sơ + máy khách Marionette đã giành; chưa giành → 409, chưa mở → 404."""
+        kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
+        ho_so_mo = self.danh_sach_mo.get(ho_so_id)
+        if ho_so_mo is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không thấy hồ sơ đang mở: '{ho_so_id}'.",
+            )
+        if (ho_so_mo.loai != "firefox" or ho_so_mo.marionette is None
+                or not ho_so_mo.dang_ban):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Chưa giành quyền điều khiển máy cho hồ sơ này — "
+                       "gọi /dieu-khien/gianh trước.",
+            )
+        return ho_so_mo, ho_so_mo.marionette
+
+    async def _goi_marionette(self, ho_so_mo: ThongTinHoSoMo,
+                              fn: Any, *doi_so: Any) -> Any:
+        """Gọi máy khách (blocking) trong to_thread.
+
+        Lỗi giao thức → 502 chỉ mang MÃ lỗi (không nội dung trang); lỗi lạ →
+        ĐÓNG CỬA: ngắt máy khách + nhả quyền rồi 500.
+        """
+        try:
+            return await asyncio.to_thread(fn, *doi_so)
+        except LoiMarionette as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=e.ma_loi,
+            ) from None
+        except Exception:
+            log.warning("Điều khiển hồ sơ %s lỗi lạ — đóng cửa, nhả quyền.",
+                        ho_so_mo.ho_so_id)
+            await self._dong_marionette_noi_bo(ho_so_mo)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="loi_dieu_khien",
+            ) from None
+
+    async def gianh_dieu_khien(self, ho_so_id: str) -> dict[str, bool]:
+        """Máy giành quyền điều khiển hồ sơ Firefox đã mở (NV92 P1).
+
+        404 hồ sơ chưa mở; 501 hồ sơ Chromium; 409 đang bận hoặc đang có người
+        dùng noVNC; 502 nối Marionette hỏng. Người và máy KHÔNG dùng chung hồ
+        sơ cùng lúc.
+        """
+        kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
+        async with self.khoa:
+            ho_so_mo = self.danh_sach_mo.get(ho_so_id)
+            if ho_so_mo is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Không thấy hồ sơ đang mở: '{ho_so_id}'.",
+                )
+            if ho_so_mo.loai != "firefox":
+                raise HTTPException(
+                    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                    detail="Điều khiển tự động chỉ hỗ trợ hồ sơ Firefox.",
+                )
+            if ho_so_mo.dang_ban:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Hồ sơ đang được máy điều khiển (lượt khác) — "
+                           "nhả quyền rồi giành lại.",
+                )
+            if self.bo_kiem_tra.dem_ket_noi(ho_so_mo) > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Đang có người dùng noVNC trong hồ sơ — người và "
+                           "máy không điều khiển cùng lúc.",
+                )
+            if ho_so_mo.cong_marionette is None:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Hồ sơ mở trước khi có điều khiển tự động — "
+                           "đóng rồi mở lại.",
+                )
+            khach = _tao_marionette(ho_so_mo.cong_marionette)
+            try:
+                await asyncio.to_thread(khach.ket_noi)
+                await asyncio.to_thread(khach.phien_moi)
+            except LoiMarionette as e:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=e.ma_loi,
+                ) from None
+            except Exception:
+                try:
+                    await asyncio.to_thread(khach.dong)
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="loi_noi_dieu_khien",
+                ) from None
+            ho_so_mo.marionette = khach
+            ho_so_mo.dang_ban = True
+            log.info("Đã giành quyền điều khiển máy cho hồ sơ %s", ho_so_id)
+            return {"ok": True}
+
+    async def nha_dieu_khien(self, ho_so_id: str) -> dict[str, bool]:
+        """Nhả quyền điều khiển máy (luỹ đẳng)."""
+        kiem_tra_duong_dan_ho_so(ho_so_id, self.thu_muc_goc)
+        async with self.khoa:
+            ho_so_mo = self.danh_sach_mo.get(ho_so_id)
+            if ho_so_mo is not None:
+                await self._dong_marionette_noi_bo(ho_so_mo)
+            log.info("Đã nhả quyền điều khiển máy cho hồ sơ %s", ho_so_id)
+            return {"ok": True}
+
+    @staticmethod
+    def _kiem_bo_chon(bo_chon: Any) -> str:
+        if not isinstance(bo_chon, str) or not 1 <= len(bo_chon) <= TRAN_BO_CHON:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«bo_chon» phải là chuỗi CSS 1-1000 ký tự.",
+            )
+        return bo_chon
+
+    @staticmethod
+    def _kiem_quy_tac(quy_tac: Any) -> list[dict[str, Any]]:
+        """Kiểm cấu trúc quy tắc tín hiệu (dữ liệu do module cung cấp)."""
+        if not isinstance(quy_tac, list) or len(quy_tac) > TRAN_QUY_TAC:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«quy_tac» phải là danh sách tối đa 10 quy tắc.",
+            )
+        for q in quy_tac:
+            if not isinstance(q, dict):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="Mỗi quy tắc phải là một đối tượng.")
+            if q.get("loai") not in LOAI_QUY_TAC:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"«loai» quy tắc không hợp lệ: {q.get('loai')!r}.",
+                )
+            ten = q.get("tin_hieu")
+            if not isinstance(ten, str) or not MAU_TEN_TIN_HIEU.fullmatch(ten):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="«tin_hieu» phải khớp [a-z0-9_]{1,64}.",
+                )
+            loai = q["loai"]
+            if loai in ("url_chua", "tieu_de_chua"):
+                gt = q.get("gia_tri")
+                if not isinstance(gt, str) or not 1 <= len(gt) <= 500:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="«gia_tri» phải là chuỗi 1-500 ký tự.",
+                    )
+            elif loai == "bo_chon":
+                QuanLyHoSo._kiem_bo_chon(q.get("bo_chon"))
+            else:  # cookie
+                mien = q.get("mien")
+                ten_ck = q.get("ten")
+                if not isinstance(mien, str) or not 1 <= len(mien) <= 253:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="«mien» phải là chuỗi 1-253 ký tự.",
+                    )
+                if not isinstance(ten_ck, str) or not 1 <= len(ten_ck) <= 100:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="«ten» cookie phải là chuỗi 1-100 ký tự.",
+                    )
+        return quy_tac
+
+    async def dieu_huong(self, ho_so_id: str, url: Any) -> dict[str, bool]:
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        url_sach = _kiem_url_bat_dau(url)
+        if url_sach is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«url» phải là http/https hợp lệ, không trỏ metadata/LAN.",
+            )
+        # Chặn IP chữ (metadata/LAN): máy điều khiển không được lái trình duyệt
+        # vào dịch vụ nội bộ. Tên máy chữ để Firefox tự phân giải.
+        try:
+            ten_may = urlsplit(url_sach).hostname or ""
+            ip = ipaddress.ip_address(ten_may)
+        except ValueError:
+            ip = None
+        if ip is not None and not ip.is_global:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«url» không được trỏ địa chỉ IP nội bộ/metadata.",
+            )
+        await self._goi_marionette(ho_so_mo, khach.dieu_huong, url_sach)
+        return {"ok": True}
+
+    async def dien_vao(self, ho_so_id: str, bo_chon: Any, van_ban: Any) -> dict[str, bool]:
+        bo_chon = self._kiem_bo_chon(bo_chon)
+        if not isinstance(van_ban, str) or len(van_ban) > TRAN_VAN_BAN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«van_ban» phải là chuỗi tối đa 100000 ký tự.",
+            )
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        await self._goi_marionette(ho_so_mo, khach.dien, bo_chon, van_ban)
+        # Giá trị điền KHÔNG bao giờ vào log.
+        log.info("dien: hồ sơ %s, bộ chọn %d ký tự", ho_so_id, len(bo_chon))
+        return {"ok": True}
+
+    async def bam_vao(self, ho_so_id: str, bo_chon: Any) -> dict[str, bool]:
+        bo_chon = self._kiem_bo_chon(bo_chon)
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        await self._goi_marionette(ho_so_mo, khach.bam, bo_chon)
+        return {"ok": True}
+
+    async def cho_phan_tu(self, ho_so_id: str, bo_chon: Any, giay: Any) -> dict[str, bool]:
+        bo_chon = self._kiem_bo_chon(bo_chon)
+        try:
+            giay_f = float(giay)
+        except (TypeError, ValueError):
+            giay_f = -1.0
+        if not 0 <= giay_f <= 60:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«giay» phải trong khoảng 0-60.",
+            )
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        thay = await self._goi_marionette(ho_so_mo, khach.cho_phan_tu, bo_chon, giay_f)
+        return {"thay": bool(thay)}
+
+    async def doc_tin_hieu(self, ho_so_id: str, quy_tac: Any) -> dict[str, list[str]]:
+        """Tín hiệu = script cấu trúc chung (mã mở) ∪ quy tắc của module."""
+        quy_tac = self._kiem_quy_tac(quy_tac)
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        ra: set[str] = set()
+        script_ra = await self._goi_marionette(ho_so_mo, khach.thuc_thi, SCRIPT_TIN_HIEU, [])
+        for s in script_ra or []:
+            if isinstance(s, str) and MAU_TEN_TIN_HIEU.fullmatch(s):
+                ra.add(s)
+        url = await self._goi_marionette(ho_so_mo, khach.url_hien_tai)
+        tieu_de = await self._goi_marionette(ho_so_mo, khach.tieu_de)
+        url = url if isinstance(url, str) else ""
+        tieu_de = tieu_de if isinstance(tieu_de, str) else ""
+        for q in quy_tac:
+            loai = q["loai"]
+            if loai == "url_chua":
+                if q["gia_tri"] in url:
+                    ra.add(q["tin_hieu"])
+            elif loai == "tieu_de_chua":
+                if q["gia_tri"] in tieu_de:
+                    ra.add(q["tin_hieu"])
+            elif loai == "bo_chon":
+                if await self._goi_marionette(ho_so_mo, khach.cho_phan_tu,
+                                              q["bo_chon"], 0.5):
+                    ra.add(q["tin_hieu"])
+            else:  # cookie
+                cookies = await self._goi_marionette(ho_so_mo, khach.cookie) or []
+                for c in cookies:
+                    if (isinstance(c, dict)
+                            and _khop_mien(str(c.get("domain") or ""), q["mien"])
+                            and c.get("name") == q["ten"]):
+                        ra.add(q["tin_hieu"])
+                        break
+        return {"tin_hieu": sorted(ra)}
+
+    async def doc_cookie_truc_tiep(self, ho_so_id: str, mien: Any) -> dict[str, Any]:
+        """Cookie từ phiên Marionette (nhanh, cho máy) — lọc theo miền, có trần."""
+        if not isinstance(mien, str) or not 1 <= len(mien) <= 253:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="«mien» phải là chuỗi 1-253 ký tự.",
+            )
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        cookies = await self._goi_marionette(ho_so_mo, khach.cookie) or []
+        chon: list[tuple[str, str]] = []
+        for c in cookies:
+            if not isinstance(c, dict):
+                continue
+            ten = c.get("name")
+            gt = c.get("value")
+            if not isinstance(ten, str) or not MAU_TEN_COOKIE.fullmatch(ten):
+                continue
+            if not isinstance(gt, str) or not MAU_GIA_TRI_COOKIE.fullmatch(gt):
+                continue
+            if _khop_mien(str(c.get("domain") or ""), mien):
+                chon.append((ten, gt))
+            if len(chon) >= TRAN_SO_COOKIE:
+                break
+        chuoi = "; ".join(f"{t}={g}" for t, g in chon)
+        if len(chuoi) > TRAN_CHUOI_COOKIE:
+            chuoi = chuoi[:TRAN_CHUOI_COOKIE]
+        return {"cookie": chuoi, "so_cookie": len(chon)}
+
+    async def chup_trang_thai(self, ho_so_id: str) -> dict[str, Any]:
+        """Trạng thái trang để chẩn đoán: url + tiêu đề + tín hiệu (KHÔNG ảnh)."""
+        ho_so_mo, khach = self._lay_dieu_khien(ho_so_id)
+        url = await self._goi_marionette(ho_so_mo, khach.url_hien_tai)
+        tieu_de = await self._goi_marionette(ho_so_mo, khach.tieu_de)
+        ra = await self._goi_marionette(ho_so_mo, khach.thuc_thi, SCRIPT_TIN_HIEU, [])
+        tin_hieu = sorted(s for s in (ra or [])
+                          if isinstance(s, str) and MAU_TEN_TIN_HIEU.fullmatch(s))
+        return {
+            "url": url if isinstance(url, str) else "",
+            "tieu_de": tieu_de if isinstance(tieu_de, str) else "",
+            "tin_hieu": tin_hieu,
+        }
 
     def _dem_ho_so_tren_dia(self) -> int:
         goc = self.thu_muc_goc.resolve()
@@ -745,6 +1162,9 @@ class QuanLyHoSo:
         """Bỏ hồ sơ khỏi danh sách, đợi cả bộ tiến trình chết, rồi xoá tệp bí mật."""
         ho_so_mo = self.danh_sach_mo.pop(ho_so_id, None)
         if ho_so_mo is not None:
+            # NV92 P1: ngắt máy khách điều khiển máy (nếu còn) và trả cổng Marionette.
+            await self._dong_marionette_noi_bo(ho_so_mo)
+            self._nha_cong_marionette(ho_so_mo.cong_marionette)
             await self._dung_bo(ho_so_mo.tien_trinh)
             self._xoa_tep_bi_mat(ho_so_id)
             self._thu_don_xac_song()
@@ -801,6 +1221,16 @@ class QuanLyHoSo:
         async with self.khoa:
             await self._don_ho_so_chet()
 
+            # NV92 P1: hồ sơ đang được MÁY điều khiển thì người không mở noVNC
+            # cùng lúc — lỗi rõ ràng, không làm hỏng hồ sơ.
+            ho_so_dang_mo = self.danh_sach_mo.get(ho_so_id)
+            if ho_so_dang_mo is not None and ho_so_dang_mo.dang_ban:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Hồ sơ đang được máy điều khiển tự động — hãy đợi lượt "
+                           "chạy xong (hoặc dừng nó) rồi mở noVNC.",
+                )
+
             # Hồ sơ đang mở VÀ cả bộ tiến trình còn sống: trả lại đích cũ, không mở trùng
             if ho_so_id in self.danh_sach_mo:
                 ho_so_cu = self.danh_sach_mo[ho_so_id]
@@ -832,6 +1262,10 @@ class QuanLyHoSo:
             bi_mat = secrets.token_hex(32)
             #: Thư mục hồ sơ do CHÍNH lần mở này tạo — dựng hỏng thì xoá, không để hồ sơ mồ côi chiếm trần.
             tao_moi = not duong_dan.exists()
+            #: NV92 P1: cổng Marionette riêng cho hồ sơ Firefox (Chromium: None).
+            cong_marionette: int | None = None
+            if loai == "firefox":
+                cong_marionette = self._cap_cong_marionette()
 
             cac_tien_trinh: list[TienTrinhHandle] = []
             try:
@@ -875,11 +1309,15 @@ class QuanLyHoSo:
                         trang_dau,
                     ]
                 else:
+                    # NV92 P1: bật máy chủ điều khiển Marionette trên 127.0.0.1
+                    # (cổng qua user.js — xem _ghi_user_js_marionette).
+                    self._ghi_user_js_marionette(duong_dan, cong_marionette)
                     lenh_browser = [
                         self.cau_hinh["firefox_bin"],
                         "--profile",
                         str(duong_dan),
                         "--no-remote",
+                        "--marionette",
                         "-width",
                         "1280",
                         "-height",
@@ -935,6 +1373,7 @@ class QuanLyHoSo:
                 # giải phóng vì hồ sơ chưa vào danh_sach_mo.
                 await self._dung_bo(cac_tien_trinh)
                 self._xoa_tep_bi_mat(ho_so_id)
+                self._nha_cong_marionette(cong_marionette)
                 if tao_moi:
                     await self._xoa_thu_muc_ho_so(duong_dan)
                 if not isinstance(e, Exception):
@@ -959,6 +1398,7 @@ class QuanLyHoSo:
                 luc_mo_don_dieu=bay_gio,
                 bi_mat=bi_mat,
                 thu_muc_ket_noi=thu_muc_dau,
+                cong_marionette=cong_marionette,
             )
             self.danh_sach_mo[ho_so_id] = ho_so_mo
 
@@ -1117,6 +1557,35 @@ class DongHoSoYeuCau(BaseModel):
     giu_phien: bool = Field(True, description="Giữ lại dữ liệu hồ sơ hay xoá sạch")
 
 
+# ── Điều khiển tự động qua Marionette (NV92 P1, Cách B) ──
+
+
+class DieuHuongYeuCau(BaseModel):
+    url: Any = Field(..., description="URL http/https cần điều hướng tới")
+
+
+class DienYeuCau(BaseModel):
+    bo_chon: Any = Field(..., description="Bộ chọn CSS 1-1000 ký tự")
+    van_ban: Any = Field(..., description="Văn bản điền (tối đa 100000 ký tự, không vào log)")
+
+
+class BamYeuCau(BaseModel):
+    bo_chon: Any = Field(..., description="Bộ chọn CSS 1-1000 ký tự")
+
+
+class ChoYeuCau(BaseModel):
+    bo_chon: Any = Field(..., description="Bộ chọn CSS 1-1000 ký tự")
+    giay: Any = Field(10, description="Hết giờ chờ, 0-60 giây")
+
+
+class TinHieuYeuCau(BaseModel):
+    quy_tac: Any = Field(..., description="Danh sách tối đa 10 quy tắc {loai, tin_hieu, ...}")
+
+
+class CookieTrucTiepYeuCau(BaseModel):
+    mien: Any = Field(..., description="Miền cần lọc cookie (1-253 ký tự)")
+
+
 #: Đường duy nhất không cần khoá (lý do ở đầu tệp).
 DUONG_MO = frozenset({"/suc-khoe"})
 
@@ -1255,6 +1724,65 @@ async def dong_ho_so(id: str, req: DongHoSoYeuCau | None = None) -> dict[str, bo
     giu_phien = True if req is None else req.giu_phien
     await _quan_ly().dong(id, giu_phien=giu_phien)
     return {"ok": True, "session_preserved": giu_phien}
+
+
+# ── Điều khiển tự động qua Marionette (NV92 P1, Cách B) ──
+# Mọi đường dưới đây đều qua xác thực Bearer <redacted> dịch vụ (middleware toàn cục).
+# Người và máy KHÔNG dùng chung hồ sơ cùng lúc (cờ đang-bận → 409).
+
+
+@app.post("/ho-so/{id}/dieu-khien/gianh")
+async def gianh_dieu_khien(id: str) -> dict[str, bool]:
+    """Máy giành quyền điều khiển hồ sơ Firefox đã mở."""
+    return await _quan_ly().gianh_dieu_khien(id)
+
+
+@app.post("/ho-so/{id}/dieu-khien/nha")
+async def nha_dieu_khien(id: str) -> dict[str, bool]:
+    """Nhả quyền điều khiển máy (luỹ đẳng)."""
+    return await _quan_ly().nha_dieu_khien(id)
+
+
+@app.post("/ho-so/{id}/dieu-huong")
+async def dieu_huong(id: str, req: DieuHuongYeuCau) -> dict[str, bool]:
+    """Điều hướng trang trong hồ sơ (đã giành quyền)."""
+    return await _quan_ly().dieu_huong(id, req.url)
+
+
+@app.post("/ho-so/{id}/dien")
+async def dien_vao(id: str, req: DienYeuCau) -> dict[str, bool]:
+    """Điền văn bản vào ô (đã giành quyền). Giá trị KHÔNG vào log."""
+    return await _quan_ly().dien_vao(id, req.bo_chon, req.van_ban)
+
+
+@app.post("/ho-so/{id}/bam")
+async def bam_vao(id: str, req: BamYeuCau) -> dict[str, bool]:
+    """Bấm phần tử (đã giành quyền)."""
+    return await _quan_ly().bam_vao(id, req.bo_chon)
+
+
+@app.post("/ho-so/{id}/cho")
+async def cho_phan_tu(id: str, req: ChoYeuCau) -> dict[str, bool]:
+    """Chờ phần tử xuất hiện (đã giành quyền)."""
+    return await _quan_ly().cho_phan_tu(id, req.bo_chon, req.giay)
+
+
+@app.post("/ho-so/{id}/tin-hieu")
+async def doc_tin_hieu(id: str, req: TinHieuYeuCau) -> dict[str, list[str]]:
+    """Đọc tín hiệu trang: script cấu trúc chung (mã mở) ∪ quy tắc của module."""
+    return await _quan_ly().doc_tin_hieu(id, req.quy_tac)
+
+
+@app.post("/ho-so/{id}/cookie-truc-tiep")
+async def cookie_truc_tiep(id: str, req: CookieTrucTiepYeuCau) -> dict[str, Any]:
+    """Cookie từ phiên Marionette, lọc theo miền (đã giành quyền)."""
+    return await _quan_ly().doc_cookie_truc_tiep(id, req.mien)
+
+
+@app.post("/ho-so/{id}/chup-trang-thai")
+async def chup_trang_thai(id: str) -> dict[str, Any]:
+    """Trạng thái trang để chẩn đoán: url + tiêu đề + tín hiệu (KHÔNG ảnh)."""
+    return await _quan_ly().chup_trang_thai(id)
 
 
 def main() -> None:

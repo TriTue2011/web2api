@@ -15,14 +15,23 @@ Module này đóng vai trò cầu nối HTTP tới một dịch vụ trình duy�
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import json
 import logging
 import re
+import socket
 from typing import Any
 
 import httpx
 
-from app.chuyen_tiep import PhanHoiQuaLon, TransportGhimIp, doc_phan_hoi_co_tran
+from app.chuyen_tiep import (
+    LoiDichBiChan,
+    PhanHoiQuaLon,
+    TransportGhimIp,
+    doc_phan_hoi_co_tran,
+)
+from app.khoi_phuc_phien import BoDieuKhienTrinhDuyet
 from app.tu_xa import _dia_chi_bi_chan, kiem_url_lan
 
 log = logging.getLogger("web2api.module.vnc_xa")
@@ -58,6 +67,175 @@ def phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None:
     if 400 <= ma < 500:
         return "yeu_cau_sai"
     return "khong_ro"
+
+
+class _VanChuyenGhimIpDongBo(httpx.BaseTransport):
+    """Bản đồng bộ của TransportGhimIp (app/chuyen_tiep.py).
+
+    Hai phương thức đồng bộ của hợp đồng BoDieuKhienTrinhDuyet (doc_cookie,
+    tin_hieu) phải gọi HTTP mà không có vòng sự kiện chạy ở chỗ gọi — nên cần
+    vận chuyển đồng bộ vẫn ghim IP lúc KẾT NỐI (chống DNS rebinding) y như bản
+    bất đồng bộ: phân giải ngay trước khi gửi, kiểm MỌI IP, nối thẳng IP đã
+    kiểm, giữ Host/SNI gốc.
+    """
+
+    def __init__(self, kiem_ip, goc: httpx.BaseTransport | None = None):
+        self._kiem_ip = kiem_ip
+        self._goc = goc or httpx.HTTPTransport()
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        may = request.url.host
+        cong = request.url.port or (443 if request.url.scheme == "https" else 80)
+        try:
+            ds = [ipaddress.ip_address(may)]
+            la_ip_chu = True
+        except ValueError:
+            la_ip_chu = False
+            try:
+                tt = socket.getaddrinfo(may, cong, type=socket.SOCK_STREAM)
+            except OSError:
+                raise httpx.ConnectError("không phân giải được tên máy",
+                                         request=request) from None
+            ds = []
+            for x in tt:
+                ip = ipaddress.ip_address(x[4][0])
+                if ip not in ds:
+                    ds.append(ip)
+        chon = None
+        ly_do = None
+        for ip in ds:
+            ly_do = self._kiem_ip(ip)
+            if ly_do is None:
+                chon = ip
+                break
+        if chon is None:
+            log.warning("Chặn kết nối tới %s: phân giải ra %s — %s",
+                        may, ds[0] if ds else "?", ly_do)
+            raise LoiDichBiChan("đích trỏ vào dải bị chặn lúc kết nối", request=request)
+        if not la_ip_chu:
+            request.url = request.url.copy_with(host=str(chon))
+            if request.url.scheme == "https":
+                request.extensions = {**request.extensions, "sni_hostname": may}
+        return self._goc.handle_request(request)
+
+    def close(self) -> None:
+        self._goc.close()
+
+
+class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
+    """Bộ điều khiển trình duyệt THẬT qua dịch vụ trình duyệt (NV92 P1).
+
+    Thực hiện hợp đồng BoDieuKhienTrinhDuyet (app/khoi_phuc_phien.py) bằng các
+    đường điều khiển của dịch vụ (giành → nguyên thuỷ → nhả). Mỗi thể hiện gắn
+    MỘT hồ sơ:
+
+    - ``gianh()`` trước khi dùng; ``dong()`` (hoặc ``nha()``) để nhả.
+    - Lỗi dịch vụ → LoiDichVu chỉ mang mã trạng thái (không chép nội dung phản
+      hồi — có thể chứa cookie).
+    - Giá trị điền không vào log.
+    - Mọi lời gọi mang Bearer <redacted> vụ và qua kiểm IP lúc kết nối
+      (chống DNS rebinding) như các phương thức khác của module này.
+    """
+
+    def __init__(self, dich_vu_url: str, khoa: str, ho_so: str,
+                 kiem_ip=None, timeout: float = 30.0):
+        if not isinstance(ho_so, str) or not MAU_HO_SO.fullmatch(ho_so):
+            raise ValueError("Mã hồ sơ không hợp lệ (hex 16-64 ký tự).")
+        if not dich_vu_url or not khoa:
+            raise ValueError("Thiếu dich_vu_url hoặc khoa dịch vụ.")
+        self._goc = dich_vu_url.rstrip("/")
+        self._ho_so = ho_so
+        self._khoa = khoa
+        self._kiem_ip = kiem_ip or _dia_chi_bi_chan
+        self._client = httpx.Client(
+            timeout=float(timeout),
+            transport=_VanChuyenGhimIpDongBo(self._kiem_ip),
+        )
+        self._da_gianh = False
+
+    # ── gọi dịch vụ ──
+
+    def _duong(self, duoi: str) -> str:
+        return f"{self._goc}/ho-so/{self._ho_so}{duoi}"
+
+    def _post(self, duoi: str, than: dict) -> dict:
+        try:
+            r = self._client.post(
+                self._duong(duoi), json=than,
+                headers={"Authorization": f"Bearer {self._khoa}"},
+            )
+        except httpx.HTTPError as e:
+            raise LoiDichVu(
+                f"Dịch vụ trình duyệt không trả lời ({type(e).__name__}).") from None
+        if r.status_code >= 400:
+            raise LoiDichVu(
+                f"Dịch vụ trình duyệt trả mã lỗi {r.status_code}.",
+                ma=r.status_code)
+        try:
+            kq = r.json()
+        except ValueError:
+            raise LoiDichVu("Dịch vụ trình duyệt trả JSON hỏng.",
+                            ma=r.status_code) from None
+        if not isinstance(kq, dict):
+            raise LoiDichVu("Dịch vụ trình duyệt trả cấu trúc lạ.",
+                            ma=r.status_code)
+        return kq
+
+    async def gianh(self) -> None:
+        """Giành quyền điều khiển máy cho hồ sơ (409 nếu đang bận/có người)."""
+        await asyncio.to_thread(self._post, "/dieu-khien/gianh", {})
+        self._da_gianh = True
+
+    async def nha(self) -> None:
+        """Nhả quyền điều khiển (luỹ đẳng, không ném khi dịch vụ lỗi)."""
+        try:
+            await asyncio.to_thread(self._post, "/dieu-khien/nha", {})
+        except LoiDichVu as e:
+            log.warning("trinh-duyet-that: nhả quyền lỗi (%s)", e.ma)
+        finally:
+            self._da_gianh = False
+
+    # ── hợp đồng BoDieuKhienTrinhDuyet ──
+
+    async def mo_trang(self, url: str) -> None:
+        await asyncio.to_thread(self._post, "/dieu-huong", {"url": url})
+
+    async def dien(self, bo_chon: str, gia_tri: str) -> None:
+        await asyncio.to_thread(
+            self._post, "/dien", {"bo_chon": bo_chon, "van_ban": gia_tri})
+        # Giá trị KHÔNG vào log — chỉ ghi độ dài bộ chọn.
+        log.info("trinh-duyet-that: dien (bo_chon %d ky tu)", len(str(bo_chon)))
+
+    async def bam(self, bo_chon: str) -> None:
+        await asyncio.to_thread(self._post, "/bam", {"bo_chon": bo_chon})
+
+    async def cho(self, bo_chon: str, giay: float = 10.0) -> bool:
+        kq = await asyncio.to_thread(
+            self._post, "/cho", {"bo_chon": bo_chon, "giay": giay})
+        return bool(kq.get("thay"))
+
+    def doc_cookie(self, mien: str) -> dict:
+        kq = self._post("/cookie-truc-tiep", {"mien": mien})
+        chuoi = kq.get("cookie") or ""
+        ra: dict[str, str] = {}
+        if isinstance(chuoi, str):
+            for muc in chuoi.split(";"):
+                ten, _, gt = muc.strip().partition("=")
+                if ten:
+                    ra[ten] = gt
+        return ra
+
+    def tin_hieu(self) -> set:
+        kq = self._post("/tin-hieu", {"quy_tac": []})
+        ds = kq.get("tin_hieu") or []
+        return {s for s in ds if isinstance(s, str)}
+
+    async def dong(self) -> None:
+        """Nhả quyền và đóng client HTTP."""
+        try:
+            await self.nha()
+        finally:
+            await asyncio.to_thread(self._client.close)
 
 
 class Module:
@@ -309,6 +487,17 @@ class Module:
             raise LoiDichVu(f"Khoá xác thực dịch vụ bị từ chối (HTTP {r.status_code})")
         ma = r.status_code if r.status_code in MA_CHUYEN_TIEP else None
         raise LoiDichVu(f"Dịch vụ trình duyệt trả mã lỗi {r.status_code}", ma=ma)
+
+    def trinh_duyet_that(self, ho_so: str) -> TrinhDuyetThat:
+        """Dựng bộ điều khiển thật cho một hồ sơ (NV92 P1).
+
+        Lõi (app/khoi_phuc_phien.lay_trinh_duyet_that) tìm module có khả năng
+        `trinh_duyet` rồi gọi phương thức này — KHÔNG gọi tên module.
+        """
+        if not self._dich_vu_url or not self._khoa:
+            raise LoiDichVu("Module chưa được cấu hình (dich_vu_url/khoa_dich_vu).")
+        return TrinhDuyetThat(self._dich_vu_url, self._khoa, ho_so,
+                              kiem_ip=self._kiem_ip)
 
     async def suc_khoe(self) -> dict[str, Any]:
         if not self._dich_vu_url or not self._khoa:

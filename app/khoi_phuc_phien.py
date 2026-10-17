@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import contextlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -297,6 +298,62 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
         return False
 
 
+# ── Cầu nối lõi: bộ điều khiển trình duyệt thật (NV92 P1) ────────────────────
+
+def lay_trinh_duyet_that(ho_so: str, dang_chay: dict | None = None,
+                         ) -> BoDieuKhienTrinhDuyet | None:
+    """Xin bộ điều khiển trình duyệt THẬT cho một hồ sơ (NV92 P1).
+
+    Tìm trong `dang_chay` (ánh xạ id → thể hiện module đang chạy) module đầu
+    tiên khai khả năng ``trinh_duyet`` trong ``manifest["cung_cap"]`` và gọi
+    ``trinh_duyet_that(ho_so)`` của nó — KHÔNG gọi tên module cụ thể nào, lõi
+    không biết module đó là module nào.
+
+    Trả None (đóng cửa, không đoán) khi: `ho_so` sai khuôn; không có module
+    nào có khả năng ``trinh_duyet``; module chưa cấu hình dịch vụ; module ném
+    ngoại lệ. Người gọi tự quyết mã lỗi trả ra (thường 503).
+    """
+    if not isinstance(ho_so, str) or not _MAU_ID_HO_SO.fullmatch(ho_so):
+        return None
+    for mod in (dang_chay or {}).values():
+        try:
+            cung_cap = (getattr(mod, "manifest", None) or {}).get("cung_cap") or []
+            lay = getattr(mod, "trinh_duyet_that", None)
+            if "trinh_duyet" not in cung_cap or not callable(lay):
+                continue
+            td = lay(ho_so)
+        except Exception as e:
+            log.warning("lay-trinh-duyet-that: module lỗi: %s", type(e).__name__)
+            return None
+        if isinstance(td, BoDieuKhienTrinhDuyet):
+            return td
+        log.warning("lay-trinh-duyet-that: module trả kiểu lạ (%s) — đóng cửa",
+                    type(td).__name__)
+        return None
+    return None
+
+
+@contextlib.asynccontextmanager
+async def phien_dieu_khien_that(td: BoDieuKhienTrinhDuyet):
+    """Phiên dùng bộ điều khiển trình duyệt thật: giành quyền trước, NHẢ LUÔN sau.
+
+    `td` có `gianh`/`nha` (TrinhDuyetThat gọi dịch vụ qua HTTP) → gọi chúng;
+    bộ điều khiển GIẢ trong test (không có hai phương thức này) → dùng trực
+    tiếp. Ngoại lệ ở bất kỳ bước nào (kể cả khi giành lỗi) cũng phải nhả quyền
+    trước khi lan ra — hồ sơ không bao giờ kẹt ở trạng thái «đang bận» làm
+    noVNC/người khác không mở được.
+    """
+    gianh = getattr(td, "gianh", None)
+    nha = getattr(td, "nha", None)
+    if callable(gianh):
+        await gianh()
+    try:
+        yield td
+    finally:
+        if callable(nha):
+            await nha()
+
+
 # ── Đường tới hồ sơ trình duyệt (chống đi ngược thư mục) ─────────────────────
 
 def duong_ho_so_trinh_duyet(ten_id: str) -> Path:
@@ -450,7 +507,8 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                     trinh_duyet: BoDieuKhienTrinhDuyet | None = None,
                     dung_mat_khau_luu: bool = True,
                     mo_novnc=None,
-                    nguoi_dung_id: str | None = None) -> KetQuaKhoiPhuc:
+                    nguoi_dung_id: str | None = None,
+                    dang_chay: dict | None = None) -> KetQuaKhoiPhuc:
     """Chạy các tầng khôi phục rẻ → đắt cho một tài khoản.
 
     - `tai_khoan.mat_khau`: mật khẩu tạm của lần gọi này (BiMatTam) — bị engine
@@ -460,10 +518,24 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
       tắt/bỏ qua.
     - `trinh_duyet`: bộ điều khiển trình duyệt cho tầng (b); None thì module tự
       quyết (thường → can_nguoi kèm hướng dẫn mở noVNC).
+    - `dang_chay`: ánh xạ id → thể hiện module đang chạy (NV92 P1). Khi
+      `trinh_duyet` là None mà có `dang_chay`, lõi TỰ lấy bộ điều khiển thật
+      qua cầu nối `lay_trinh_duyet_that` (hồ sơ lấy từ `ho_so_trinh_duyet`
+      của module); không lấy được → giữ None (đóng cửa, không đoán).
     - Không ném ngoại lệ của module ra ngoài: tầng hỏng thì sang tầng kế.
     """
     module_id = _id_cua_module(module)
     khoa = kiem_khoa(tai_khoan.khoa)
+    td_tu_cau_noi = False  # NV92 P1: bộ điều khiển do lõi tự lấy → lõi tự giành/nhả
+    if trinh_duyet is None and dang_chay is not None:
+        # NV92 P1: người gọi chưa có bộ điều khiển → thử cầu nối lõi.
+        ho_so = _ho_so_cua(module, module_id, khoa)
+        td = lay_trinh_duyet_that(ho_so, dang_chay)
+        if td is not None:
+            trinh_duyet = td
+            td_tu_cau_noi = True
+            log.info("khoi-phuc: %s/%s dùng cầu nối trình duyệt thật (hồ sơ …%s)",
+                     module_id, khoa, ho_so[-8:])
     email_che = _che_email(tai_khoan.email)
     log.info("khoi-phuc: bắt đầu module=%s khoa=%s (%s)", module_id, khoa, email_che)
     ma_loi_cuoi = ""
@@ -524,7 +596,14 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                                 _ho_so_cua(module, module_id, khoa), "")
                 tk_b = TaiKhoanCanKhoiPhuc(khoa=khoa, email=tai_khoan.email,
                                            mat_khau=mat_khau_dung)
-                kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b, trinh_duyet)
+                if td_tu_cau_noi:
+                    # Bộ điều khiển do lõi tự lấy → lõi giành/nhả quyền cho
+                    # đúng lượt này; người gọi tự đưa thì tự quản vòng đời.
+                    async with phien_dieu_khien_that(trinh_duyet):
+                        kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b,
+                                               trinh_duyet)
+                else:
+                    kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b, trinh_duyet)
                 if kq.can_nguoi:
                     return await _vao_can_nguoi(module_id, khoa, "gặp màn hình cần người xử lý",
                                                 mo_novnc, nguoi_dung_id,

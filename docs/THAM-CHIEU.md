@@ -48,6 +48,8 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
 | Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
+| Module `ho-so-google` + API hồ sơ Google (`GET`/`POST /api/danh-tinh`, `GET …/{id}/trang-thai`, `POST …/{id}/ma-2fa`, `DELETE …/{id}`) và tái dùng provider (`POST /api/tai-khoan/tai-dung`): một hồ sơ = một tài khoản Google đã đăng nhập sống; provider «Đăng nhập bằng Google» trong hồ sơ; CAPTCHA/xác minh → «cần người» + noVNC | Có — kiểm với dịch vụ trình duyệt giả + trình duyệt giả (NV92); **chưa kiểm với Google/dịch vụ thật** | 17/10/2026 |
+| Dịch vụ trình duyệt: các đường điều khiển có khoá (`/ho-so/{id}/dieu-khien/gianh|nha`, `/dieu-huong`, `/dien`, `/bam`, `/cho`, `/tin-hieu`, `/cookie-truc-tiep`, `/chup-trang-thai`) qua máy khách Marionette thư viện chuẩn (`dich-vu/trinh-duyet/marionette.py`); cổng Marionette chỉ loopback trong container; `TrinhDuyetThat` trong module `vnc-xa`; cầu nối lõi `app/khoi_phuc_phien.lay_trinh_duyet_that` | Có — kiểm với máy chủ giả (NV92); **chưa kiểm với Firefox thật** | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -1969,6 +1971,78 @@ công cụ dòng lệnh chạy **trực tiếp trên máy chủ** — ai chạm 
   `docs/TRIEN-KHAI.md` mục vận hành.
 - Mật khẩu sinh ngẫu nhiên hiện trên stdout của phiên SSH; người vận hành tự bảo quản.
 
+### Module ho-so-google — Hồ sơ Google (đăng nhập tự động)
+
+**Mô tả.** Thủ tục đăng nhập Google trong hồ sơ trình duyệt bền: MỘT hồ sơ = MỘT tài khoản
+Google đã đăng nhập sống. Đăng nhập Google một lần ở đây; các module provider tái dùng hồ sơ
+này bằng «Đăng nhập bằng Google» (`tai_dung_ho_so`) mà không nhập lại mật khẩu/2FA. Gặp
+CAPTCHA/2FA không có mã/xác minh thiết bị → dừng, trạng thái «cần người» + noVNC; KHÔNG tự
+giải thử thách, KHÔNG che dấu tự động (`navigator.webdriver` giữ nguyên). Mã nguồn:
+`modules/ho-so-google/`. Hạng: `A` (mã của dự án). Tiền tố model: không có (module tiện ích,
+không trò chuyện).
+
+**Cần gì.**
+- Một module có khả năng `trinh_duyet` đang chạy (hiện tại: `vnc-xa`) trỏ tới dịch vụ trình
+  duyệt `dich-vu/trinh-duyet` đã bật các đường điều khiển.
+- Tài khoản Google thật để đăng nhập (email + mật khẩu + mã 2FA tuỳ chọn, dạng `BiMatTam`,
+  xoá ngay sau khi dùng; không vào log/phản hồi/nhật ký).
+- Mạng ra tới `accounts.google.com`, `myaccount.google.com` (qua trình duyệt của dịch vụ).
+- RAM/đĩa: chưa đo (trình duyệt chạy ở dịch vụ riêng).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "ho-so-google"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/ho-so-google`
+3. Không có trường cấu hình bắt buộc (không cần `POST /api/modules/ho-so-google/cai`).
+
+**Cấu hình.** Không có trường cấu hình.
+
+**Ví dụ dùng.**
+
+```bash
+# Tạo hồ sơ + tự đăng nhập (chạy nền, lần lượt, dừng được)
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"email": "ban@gmail.com", "mat_khau": "<mat-khau>"}' \
+  $W/api/danh-tinh
+# Trạng thái/tiến độ
+curl -s -H "Authorization: Bearer $K" $W/api/danh-tinh/dt-0123456789abcdef/trang-thai
+# Gửi mã 2FA khi đang chờ
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"ma": "123456"}' $W/api/danh-tinh/dt-0123456789abcdef/ma-2fa
+# Provider tái dùng hồ sơ (đăng nhập bằng Google trong hồ sơ đó)
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"module_id": "chatgpt-web", "ho_so": "ab0123456789abcdef"}' \
+  $W/api/tai-khoan/tai-dung
+```
+
+**API hồ sơ Google (đều cần khoá quản trị).**
+- `GET /api/danh-tinh` — liệt kê hồ sơ (trạng thái đăng nhập, hồ sơ trình duyệt, module đã gắn).
+- `POST /api/danh-tinh` — tạo hồ sơ + tự đăng nhập nền (`email` bắt buộc, `mat_khau`/`ma_2fa`/`nhan`
+  tuỳ chọn); không mật khẩu → chỉ kiểm «đi tắt», chưa đăng nhập thì «cần người».
+- `GET /api/danh-tinh/{id}/trang-thai` — bản ghi danh tính + tiến độ đăng nhập (không bí mật).
+- `POST /api/danh-tinh/{id}/ma-2fa` — gửi mã 2FA khi hồ sơ đang chờ (`{"ma": "..."}`).
+- `DELETE /api/danh-tinh/{id}` — xoá hồ sơ (đóng workspace trình duyệt, xoá danh tính; kèm cảnh
+  báo: mọi tài khoản provider dùng chung hồ sơ coi như đã đăng xuất).
+- `POST /api/tai-khoan/tai-dung` — một provider tái dùng hồ sơ (`{"module_id", "ho_so"}`) → tài
+  khoản mới (khoá dạng che `…abcd`) hoặc `can_nguoi`; hai provider cùng một hồ sơ → tài khoản
+  độc lập (lưu riêng từng module).
+
+**Dịch vụ trình duyệt — các đường điều khiển mới (NV92, đều cần `Authorization: Bearer <khoa_dich_vu>`).**
+Dịch vụ (`dich-vu/trinh-duyet/server.py`) giữ nguyên `/suc-khoe`, `/ho-so`, `/ho-so/mo`,
+`/ho-so/{id}/cookie`, `/ho-so/{id}/dong`; thêm (máy khách Marionette trong `marionette.py`,
+thư viện chuẩn, cổng Marionette chỉ loopback trong container dịch vụ):
+- `POST /ho-so/{id}/dieu-khien/gianh` — giành quyền điều khiển (đang bận/người dùng noVNC → `409`).
+- `POST /ho-so/{id}/dieu-khien/nha` — nhả quyền (luỹ đẳng).
+- `POST /ho-so/{id}/dieu-huong` `{"url"}` — điều hướng (URL qua kiểm SSRF của `app/tu_xa.py`).
+- `POST /ho-so/{id}/dien` `{"bo_chon", "van_ban"}` — điền (giá trị không vào log).
+- `POST /ho-so/{id}/bam` `{"bo_chon"}` — bấm.
+- `POST /ho-so/{id}/cho` `{"bo_chon", "giay"}` — chờ phần tử → `{"thay": bool}`.
+- `POST /ho-so/{id}/tin-hieu` `{"quy_tac": [...]}` — đọc tín hiệu CAPTCHA/2FA/xác minh/đã đăng
+  nhập bằng cấu trúc DOM/HTTP (mã mở, không dò chuỗi bí mật).
+- `POST /ho-so/{id}/cookie-truc-tiep` `{"mien"}` — đọc cookie theo miền (máy gọi, không qua lõi).
+- `POST /ho-so/{id}/chup-trang-thai` — chụp trạng thái chẩn đoán (không lưu ảnh chứa bí mật).
+Lỗi Marionette → `502` chỉ mang mã; lỗi lạ ở chỗ quyết định → đóng cửa (nhả quyền).
+
 ---
 
 ## 5. Triển khai
@@ -2616,6 +2690,12 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` | Có | Lượt đăng nhập TỰ ĐỘNG hàng loạt (`module_id`, `van_ban`, `bo_qua_email` tuỳ chọn): tái dùng `LuotChay` gọi `mod.dang_nhap`; module chưa hỗ trợ → `400`; đang có lượt chạy → `409` (NV88) |
 | `POST /api/tai-khoan/khoi-phuc` | Có | Khôi phục nhiều tầng (a)→(d) cho một tài khoản (`module_id`, `khoa`, `email` tuỳ chọn) → `{thanh_cong, tang, ma_loi, can_nguoi, huong_dan, khoa_moi, url_novnc}`; khoá lạ/không thuộc module → `404`; sai khuôn → `400` (NV88) |
 | `GET /api/tai-khoan/khoi-phuc/trang-thai` | Có | Trạng thái khôi phục của tài khoản (`hong_b_lien_tiep`, `ngung_tu_dang_nhap`, `can_nguoi`…) — không chứa bí mật (NV88) |
+| `GET /api/danh-tinh` | Có | Liệt kê hồ sơ Google (trạng thái đăng nhập, hồ sơ trình duyệt, module đã gắn) — sổ danh tính của lõi (NV92) |
+| `POST /api/danh-tinh` | Có | Tạo hồ sơ Google + tự đăng nhập nền (`email` bắt buộc; `mat_khau`/`ma_2fa`/`nhan` tuỳ chọn; không mật khẩu → chỉ kiểm «đi tắt»); chạy lần lượt, dừng được (`LuotChay`); đang có lượt chạy → `409` (NV92) |
+| `GET /api/danh-tinh/{id}/trang-thai` | Có | Bản ghi danh tính + tiến độ đăng nhập của hồ sơ (không bí mật); id lạ → `404` (NV92) |
+| `POST /api/danh-tinh/{id}/ma-2fa` | Có | Gửi mã 2FA khi hồ sơ đang chờ (`{"ma": "..."}`); chưa gắn workspace → `400`; mã không vào phản hồi/log/nhật ký (NV92) |
+| `DELETE /api/danh-tinh/{id}` | Có | Xoá hồ sơ Google (đóng workspace trình duyệt, xoá danh tính); kèm `canh_bao`: tài khoản provider dùng chung coi như đã đăng xuất (NV92) |
+| `POST /api/tai-khoan/tai-dung` | Có | Một provider tái dùng hồ sơ Google (`{"module_id", "ho_so"}`) → chạy `tai_dung_ho_so` → tài khoản mới (khoá dạng che `…abcd`) hoặc `can_nguoi` + `url_novnc`; module chưa cài → `404`, chưa hỗ trợ → `501`, chưa có trình duyệt → `503` (NV92) |
 | `POST /api/tai-khoan/khoi-phuc/xoa-can-nguoi` | Có | Người bấm tiếp sau khi xử lý tay: xoá trạng thái `can_nguoi` và bộ đếm hỏng (NV88) |
 | `GET /api/bao-mat/trang-thai` | Có | Trạng thái bảo mật cho trang quản trị: cờ cổng IP quản trị bật/tắt (`cong_ip_quan_tri_trong`), chuỗi băng rôn tĩnh (`bang_ron`) và số mạng cấu hình (`so_mang`); không lộ IP nội bộ |
 | `GET /api/phien` | Có | Danh sách phiên tài khoản dạng che (`module`, `tai_khoan`, `luc_luu`, `luc_kiem`, `het_han`, `trang_thai`, `so_lan_loi`), `tong`, `can_dang_nhap_tong` (không lộ dữ liệu phiên). Giao diện: trang «Phiên tài khoản» (`web/He-thong-Phien.dc.html`) — nhóm theo module (khối thu gọn, đóng mặc định), lưới thẻ (tài khoản, trạng thái, hạn, lần kiểm cuối), nút «Kiểm ngay» và «Xoá phiên» (xác nhận hai bước) |

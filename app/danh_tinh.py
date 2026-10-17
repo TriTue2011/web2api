@@ -34,6 +34,18 @@ EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{1,63}\Z")
 EMAIL_TOI_DA = 254
 NHAN_TOI_DA = 100
 
+#: Trạng thái đăng nhập của danh tính gắn hồ sơ trình duyệt (NV92).
+#: - "chua_dang_nhap": mới tạo, chưa thử đăng nhập;
+#: - "dang_nhap": phiên đăng nhập còn sống trong hồ sơ trình duyệt;
+#: - "can_nguoi": gặp CAPTCHA/2FA/xác minh — cần người mở trình duyệt xử lý tay;
+#: - "het_han": phiên chết, chờ đăng nhập lại.
+TRANG_THAI_DANG_NHAP = frozenset(
+    {"chua_dang_nhap", "dang_nhap", "can_nguoi", "het_han"})
+
+#: Tên hồ sơ trình duyệt: ID workspace của dịch vụ trình duyệt (16–64 ký tự hex),
+#: hoặc "" khi chưa gắn hồ sơ nào.
+MAU_HO_SO_TRINH_DUYET = re.compile(r"[a-f0-9]{16,64}\Z")
+
 _KHOA_LUONG = threading.RLock()
 
 
@@ -88,13 +100,25 @@ def kiem_module_id(module_id: Any) -> str:
 
 def ban_ghi_cong_khai(d: dict[str, Any]) -> dict[str, Any]:
     """Bản ghi trả ra API: chỉ bốn trường lõi hiểu + danh sách đã gắn. Không bí mật ở đây
-    (cookie/phiên của từng tài khoản nằm trong kho riêng của module sở hữu — nhóm 4)."""
+    (cookie/phiên của từng tài khoản nằm trong kho riêng của module sở hữu — nhóm 4).
+
+    NV92: thêm `trang_thai_dang_nhap` và `ho_so_trinh_duyet` (bản ghi cũ thiếu
+    thì nhận giá trị mặc định, không vỡ).
+    """
+    trang_thai = d.get("trang_thai_dang_nhap")
+    if trang_thai not in TRANG_THAI_DANG_NHAP:
+        trang_thai = "chua_dang_nhap"
+    ho_so = d.get("ho_so_trinh_duyet")
+    if not isinstance(ho_so, str) or (ho_so and not MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so)):
+        ho_so = ""
     return {
         "id": d.get("id"),
         "email": d.get("email"),
         "nhan": d.get("nhan", ""),
         "ngay_tao": d.get("ngay_tao"),
         "gan": sorted(m for m in (d.get("gan") or []) if isinstance(m, str)),
+        "trang_thai_dang_nhap": trang_thai,
+        "ho_so_trinh_duyet": ho_so,
     }
 
 
@@ -143,6 +167,8 @@ def tao(email: Any, nhan: Any = None) -> dict[str, Any]:
             "nhan": nhan_chuan,
             "ngay_tao": kho.bay_gio_iso(),
             "gan": [],
+            "trang_thai_dang_nhap": "chua_dang_nhap",
+            "ho_so_trinh_duyet": "",
         }
         ds.append(ban_ghi)
         _ghi(ds)
@@ -191,6 +217,39 @@ def go(id_: str, module_id: str) -> dict[str, Any]:
         if module_id not in gan_ds:
             raise LoiOpenAI(404, "Danh tính chưa gắn với module này.", code="khong_gan")
         tim["gan"] = [m for m in gan_ds if m != module_id]
+        _ghi(ds)
+        return ban_ghi_cong_khai(tim)
+
+
+def tim_theo_ho_so(ho_so: str) -> dict[str, Any] | None:
+    """Tìm danh tính theo tên hồ sơ trình duyệt đã gắn; không thấy → None."""
+    if not isinstance(ho_so, str) or not ho_so:
+        return None
+    with _KHOA_LUONG:
+        for d in _doc():
+            if d.get("ho_so_trinh_duyet") == ho_so:
+                return ban_ghi_cong_khai(d)
+    return None
+
+
+def cap_nhat_trang_thai(id_: str, trang_thai: str | None = None,
+                        ho_so: str | None = None) -> dict[str, Any]:
+    """Cập nhật trạng thái đăng nhập / tên hồ sơ trình duyệt của một danh tính (NV92).
+
+    `trang_thai` phải thuộc TRANG_THAI_DANG_NHAP; `ho_so` phải đúng khuôn ID
+    workspace hoặc "" (gỡ gắn). Không thấy id → 404. Trả bản ghi công khai mới.
+    """
+    with _KHOA_LUONG:
+        ds = _doc()
+        tim = _tim(ds, id_)
+        if trang_thai is not None:
+            if trang_thai not in TRANG_THAI_DANG_NHAP:
+                raise LoiOpenAI(400, "«trang_thai» không hợp lệ.", code="invalid_value")
+            tim["trang_thai_dang_nhap"] = trang_thai
+        if ho_so is not None:
+            if ho_so and not MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
+                raise LoiOpenAI(400, "«ho_so» không hợp lệ.", code="invalid_value")
+            tim["ho_so_trinh_duyet"] = ho_so
         _ghi(ds)
         return ban_ghi_cong_khai(tim)
 

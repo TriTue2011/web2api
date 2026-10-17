@@ -1,0 +1,238 @@
+"""Kiểm thử máy khách Marionette tối thiểu (marionette.py) — NV92 P1.
+
+Máy chủ Marionette GIẢ nói đúng giao thức khung (4 byte big-endian + JSON),
+không cần Firefox thật, không Internet.
+"""
+
+from __future__ import annotations
+
+import json
+import socket
+import struct
+import sys
+import threading
+from pathlib import Path
+
+import pytest
+
+GOC_DICH_VU = Path(__file__).resolve().parent
+if str(GOC_DICH_VU) not in sys.path:
+    sys.path.insert(0, str(GOC_DICH_VU))
+
+from marionette import KHOA_PHAN_TU, LoiMarionette, MarionetteClient
+
+
+def _gui_khung(conn: socket.socket, obj) -> None:
+    du_lieu = json.dumps(obj).encode("utf-8")
+    conn.sendall(struct.pack("!I", len(du_lieu)) + du_lieu)
+
+
+def _doc_khung(conn: socket.socket):
+    dau = b""
+    while len(dau) < 4:
+        khuc = conn.recv(4 - len(dau))
+        if not khuc:
+            raise ConnectionError("đóng giữa chừng")
+        dau += khuc
+    (dai,) = struct.unpack("!I", dau)
+    du_lieu = b""
+    while len(du_lieu) < dai:
+        khuc = conn.recv(min(65536, dai - len(du_lieu)))
+        if not khuc:
+            raise ConnectionError("đóng giữa chừng")
+        du_lieu += khuc
+    return json.loads(du_lieu.decode("utf-8"))
+
+
+class MayChuMarionetteGia:
+    """Máy chủ giả: lời chào + kịch bản phản hồi theo tên lệnh."""
+
+    def __init__(self, kich_ban: dict | None = None):
+        self.kich_ban = kich_ban or {}
+        self.da_nhan: list = []
+        self._sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sk.bind(("127.0.0.1", 0))
+        self._sk.listen(1)
+        self.port = self._sk.getsockname()[1]
+        self._luong = threading.Thread(target=self._phuc_vu, daemon=True)
+
+    def __enter__(self):
+        self._luong.start()
+        return self
+
+    def __exit__(self, *a):
+        try:
+            self._sk.close()
+        except OSError:
+            pass
+        self._luong.join(timeout=5)
+
+    def _phuc_vu(self):
+        try:
+            conn, _ = self._sk.accept()
+        except OSError:
+            return
+        with conn:
+            conn.settimeout(10)
+            _gui_khung(conn, [0, 1, None, {"applicationType": "gecko",
+                                           "marionetteProtocol": 3}])
+            while True:
+                try:
+                    yeu_cau = _doc_khung(conn)
+                except (ConnectionError, OSError):
+                    break
+                self.da_nhan.append(yeu_cau)
+                _loai, msg_id, lenh, tham_so = yeu_cau
+                tra_loi = self.kich_ban.get(lenh)
+                if callable(tra_loi):
+                    loi, ket_qua = tra_loi(tham_so)
+                elif tra_loi is None:
+                    loi, ket_qua = None, None
+                else:
+                    loi, ket_qua = tra_loi
+                try:
+                    _gui_khung(conn, [1, msg_id, loi, ket_qua])
+                except OSError:
+                    break
+
+
+def _may_chu_co_ban() -> MayChuMarionetteGia:
+    phan_tu = {KHOA_PHAN_TU: "uuid-phan-tu-1"}
+    return MayChuMarionetteGia({
+        "WebDriver:NewSession": (None, {"sessionId": "phien-1",
+                                        "capabilities": {"browserName": "firefox"}}),
+        "WebDriver:Navigate": (None, None),
+        "WebDriver:GetCurrentURL": (None, {"value": "https://accounts.google.com/"}),
+        "WebDriver:GetTitle": (None, {"value": "Đăng nhập"}),
+        "WebDriver:GetPageSource": (None, {"value": "<html></html>"}),
+        "WebDriver:FindElement": (None, {"value": phan_tu}),
+        "WebDriver:ClickElement": (None, None),
+        "WebDriver:SendKeysToElement": (None, None),
+        "WebDriver:ClearElement": (None, None),
+        "WebDriver:GetCookies": (None, {"value": [
+            {"name": "SID", "value": "bi-mat-gia", "domain": ".google.com"}]}),
+        "WebDriver:DeleteSession": (None, None),
+    })
+
+
+def test_ket_noi_va_phien_moi():
+    with _may_chu_co_ban() as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            phien = kh.phien_moi()
+            assert phien == "phien-1"
+            # lệnh gửi đi đúng khung [0, id, tên, tham số]
+            lenh_moi = [y for y in may_chu.da_nhan if y[2] == "WebDriver:NewSession"]
+            assert len(lenh_moi) == 1 and lenh_moi[0][0] == 0
+        finally:
+            kh.dong()
+    assert not kh.da_noi
+
+
+def test_dieu_huong_va_doc_trang():
+    with _may_chu_co_ban() as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            kh.phien_moi()
+            kh.dieu_huong("https://accounts.google.com/")
+            assert kh.url_hien_tai() == "https://accounts.google.com/"
+            assert kh.tieu_de() == "Đăng nhập"
+            assert kh.nguon_trang() == "<html></html>"
+            dieu_huong = [y for y in may_chu.da_nhan if y[2] == "WebDriver:Navigate"]
+            assert dieu_huong[0][3] == {"url": "https://accounts.google.com/"}
+        finally:
+            kh.dong()
+
+
+def test_dien_bam_gui_dung_tham_chieu_phan_tu():
+    with _may_chu_co_ban() as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            kh.phien_moi()
+            kh.dien("input[type=email]", "a@example.com")
+            kh.bam("#tiep-tuc")
+            tim = [y for y in may_chu.da_nhan if y[2] == "WebDriver:FindElement"]
+            assert tim[0][3] == {"using": "css selector", "value": "input[type=email]"}
+            gui_phim = [y for y in may_chu.da_nhan if y[2] == "WebDriver:SendKeysToElement"]
+            assert gui_phim[0][3]["text"] == "a@example.com"
+            assert gui_phim[0][3]["id"] == {KHOA_PHAN_TU: "uuid-phan-tu-1"}
+            bam = [y for y in may_chu.da_nhan if y[2] == "WebDriver:ClickElement"]
+            assert bam[0][3]["id"] == {KHOA_PHAN_TU: "uuid-phan-tu-1"}
+        finally:
+            kh.dong()
+
+
+def test_doc_cookie():
+    with _may_chu_co_ban() as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            kh.phien_moi()
+            ck = kh.cookie()
+            assert ck == [{"name": "SID", "value": "bi-mat-gia",
+                           "domain": ".google.com"}]
+        finally:
+            kh.dong()
+
+
+def test_loi_no_such_element_thanh_loi_co_ma():
+    def _khong_thay(tham_so):
+        return ({"error": "no such element", "message": "không thấy",
+                 "stacktrace": ""}, None)
+
+    with MayChuMarionetteGia({
+        "WebDriver:NewSession": (None, {"sessionId": "s", "capabilities": {}}),
+        "WebDriver:FindElement": _khong_thay,
+        "WebDriver:DeleteSession": (None, None),
+    }) as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            kh.phien_moi()
+            with pytest.raises(LoiMarionette) as exc:
+                kh.tim_phan_tu("input#khong-co", timeout=0.2)
+            assert exc.value.ma_loi == "no such element"
+            # câu lỗi thô của trang không lọt vào ngoại lệ
+            assert "không thấy" not in str(exc.value)
+        finally:
+            kh.dong()
+
+
+def test_cho_phan_tu_het_gio_tra_false():
+    def _khong_thay(tham_so):
+        return ({"error": "no such element", "message": "", "stacktrace": ""}, None)
+
+    with MayChuMarionetteGia({
+        "WebDriver:NewSession": (None, {"sessionId": "s", "capabilities": {}}),
+        "WebDriver:FindElement": _khong_thay,
+        "WebDriver:DeleteSession": (None, None),
+    }) as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        try:
+            kh.phien_moi()
+            assert kh.cho_phan_tu("#mai-khong-co", giay=0.3) is False
+        finally:
+            kh.dong()
+
+
+def test_ket_noi_that_bai_nem_loi():
+    kh = MarionetteClient(port=1)  # cổng đóng
+    with pytest.raises(LoiMarionette) as exc:
+        kh.ket_noi()
+    assert exc.value.ma_loi == "ket_noi_that_bai"
+
+
+def test_xoa_phien_gui_delete_session():
+    with _may_chu_co_ban() as may_chu:
+        kh = MarionetteClient(port=may_chu.port)
+        kh.ket_noi()
+        kh.phien_moi()
+        kh.xoa_phien()
+        kh.dong()
+        xoa = [y for y in may_chu.da_nhan if y[2] == "WebDriver:DeleteSession"]
+        assert len(xoa) == 1

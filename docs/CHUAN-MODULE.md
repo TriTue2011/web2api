@@ -167,6 +167,22 @@ Dành cho module điều khiển dịch vụ trình duyệt riêng (đăng nhậ
 - TUỲ CHỌN `async trinh_duyet_cookie(ho_so: str, mien: str) -> dict`: `{"cookie": "tên=giá trị; …"}` — cookie CÒN HẠN của `mien` và tên miền con trong hồ sơ (lõi đã kiểm `mien`: chữ thường, ≥ 2 nhãn). Thiếu → `501`. Lỗi có cấu trúc qua thuộc tính `ma` của ngoại lệ: `400`/`404`/`409`/`501` được lõi chuyển tiếp kèm câu của LÕI; lỗi khác → `502` chỉ nêu tên kiểu lỗi. Module không log giá trị cookie.
 - Lõi dùng `trinh_duyet_cookie` ở `POST /api/trinh-duyet/{module}/{ho_so}/cookie-sang-module` thân `{"module_dich", "truong", "mien"?}` (chỉ quản trị): `truong` phải là trường mà CHÍNH module đích khai nhận cookie trong `truong_cau_hinh` — `"nhan_cookie": {"mien": "<tên miền chặt, ≥ 2 nhãn>"}`, chỉ đặt được trên trường `kieu` `bi_mat` (thay) hoặc `danh_sach_bi_mat` (THÊM vào cuối, khử trùng); `kiem_manifest` từ chối hình dạng sai. Trường bí mật không khai (khoá API…) → `400`, giá trị cũ giữ nguyên. Tên miền là tên miền ĐÃ KHAI: `mien` trong thân bỏ trống hoặc phải bằng nó, khác → `400` (người gọi không chọn tên miền, nên cũng không chạm được đuôi tên miền công cộng như `co.uk`). Cookie đi vào cấu hình QUA ĐÚNG đường cài có sẵn (`cai()` của module đích kiểm rồi lõi mới lưu, bí mật vào kho 0600). Phản hồi chỉ `{"ok", "ket_qua_tung_khoa" ([{khoa (đúng dạng che «…abcd», sai dạng → «…»), ok, loi (câu của LÕI)}]), "da_them", "loi"? (câu của LÕI)}`: lõi KHÔNG chuyển tiếp chuỗi tự do nào của module đích (có thể chứa cookie mới/cũ ở dạng mã hoá bất kỳ).
 - Nội dung `dich` phục vụ (noVNC) bị coi là không tin được: lõi phục vụ nó dưới `/novnc/s/<phien>/` với CSP `sandbox` (origin mờ) và header theo danh sách cho phép; module không cần và không được tự proxy.
+- TUỲ CHỌN `trinh_duyet_that(ho_so: str) -> BoDieuKhienTrinhDuyet` (đồng bộ, NV92): trả bộ điều khiển
+  trình duyệt THẬT cho hồ sơ (điều khiển qua các đường `/ho-so/{id}/dieu-khien/*`… của dịch vụ).
+  Lõi tìm module có khả năng `trinh_duyet` qua `app/khoi_phuc_phien.lay_trinh_duyet_that(ho_so,
+  dang_chay)` — KHÔNG gọi tên module nào; module ném lỗi/trả kiểu lạ/`ho_so` sai khuôn → lõi
+  nhận `None` (đóng cửa). Thể hiện phải thực hiện đúng giao diện `BoDieuKhienTrinhDuyet`
+  (`mo_trang`, `dien`, `bam`, `cho`, `doc_cookie`, `tin_hieu`, `gianh`/`nha`/`dong`); lỗi dịch
+  vụ chỉ mang mã trạng thái (không chép nội dung phản hồi — có thể chứa cookie); giá trị điền
+  không vào log; mọi lời gọi mang Bearer <redacted> vụ và qua kiểm IP lúc kết nối (chống DNS rebinding).
+- TUỲ CHỌN (provider web) `async tai_dung_ho_so(ho_so: str, trinh_duyet: BoDieuKhienTrinhDuyet | None)
+  -> KetQuaDangNhap` (NV92): «Đăng nhập bằng Google» trong hồ sơ đã đăng nhập sẵn, lấy phiên và
+  thêm tài khoản của CHÍNH module (qua `cai()` của lõi ở tầng API, module chỉ trả `KetQuaDangNhap`).
+  Quy tắc: có phiên sẵn (`tin_hieu()` có `da_dang_nhap`) thì ĐI TẮT (không bấm/điền thêm); chưa thì
+  bấm nút «Đăng nhập bằng Google» của provider; gặp CAPTCHA/Cloudflare/2FA không có mã/xác minh
+  thiết bị → `can_nguoi` (KHÔNG tự giải, KHÔNG che dấu); KHÔNG BAO GIỜ điền email/mật khẩu
+  (mật khẩu thuộc về module `ho-so-google`); `trinh_duyet is None` → `can_nguoi`. Kết quả và mọi
+  phản hồi/log không chứa bí mật thô.
 
 ---
 
