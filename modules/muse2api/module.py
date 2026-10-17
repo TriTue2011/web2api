@@ -1,8 +1,13 @@
 """Module muse2api — Muse (muse.ai) qua giao thức trực tiếp.
 
 Xác thực bằng cookie của tab muse.ai đã đăng nhập — miễn phí, không cần
-API key, không browser. Luồng: cookie → access_token → hatch token →
+API key. Luồng: cookie → access_token → hatch token →
 WebSocket Noise XX tới máy ảo → POST /chat/stream + poll /chat/history.
+
+Hai đường lấy cookie: (1) NGƯỜI DÙNG dán (đường cũ); (2) tái dùng hồ sơ
+Google đã đăng nhập qua ``tai_dung_ho_so`` (NV93 — thử «Đăng nhập bằng
+Google» trong hồ sơ; NV90-C: muse.ai dùng SSO Meta nên có thể không có
+Google SSO → ghi rõ «khong_ho_tro», giữ đường cookie/làm mới hiện có).
 
 Thay thế bản Model API trả phí trước đây (giữ lại ở branch `model-api`
 của repo TriTue2011/muse2api).
@@ -123,6 +128,58 @@ class _TaiKhoan:
                 pass
 
 
+def _hatch_sess_tu_cookie(cookies: str) -> str | None:
+    """Trích giá trị cookie ``hatch_sess`` khỏi chuỗi cookie header.
+
+    Không có → None (cookie dán cũ không thuộc đường NV93).
+    """
+    for phan in str(cookies or "").split(";"):
+        ten, _, gia_tri = phan.partition("=")
+        if ten.strip() == "hatch_sess" and gia_tri.strip():
+            return gia_tri.strip()
+    return None
+
+
+class _TaiKhoanNV93:
+    """Tài khoản muse2api từ đường tái dùng hồ sơ Google (NV93).
+
+    ``hatch_sess`` là BÍ MẬT — chỉ đi trong cookie tới muse.ai, không bao giờ
+    vào log, phản hồi API, nhật ký hay thông điệp lỗi. Bản ghi lưu kho riêng
+    KHÔNG mang giá trị thô (chỉ siêu dữ liệu làm giàu).
+    """
+
+    def __init__(self, hatch_sess: str):
+        self.hatch_sess = str(hatch_sess)
+        self.email: str = ""
+        self.ho_so: str | None = None
+        #: muse.ai miễn phí — chưa có khái niệm gói trong giao thức hiện tại.
+        self.goi: str = "khong_ro"
+        self.trang_thai: str = "hoat_dong"
+        self.lan_dung_cuoi: str | None = None
+
+    def ban_ghi(self, khoa: str) -> dict:
+        """Bản ghi làm giàu lưu kho riêng (KHÔNG bí mật thô)."""
+        return {
+            "khoa": khoa,
+            "email": self.email,
+            "ho_so": self.ho_so,
+            "goi": self.goi,
+            "trang_thai": self.trang_thai,
+            "lan_dung_cuoi": self.lan_dung_cuoi,
+        }
+
+    def ap_dung_ban_ghi(self, bg: dict | None) -> None:
+        if not isinstance(bg, dict):
+            return
+        for truong in ("email", "goi", "trang_thai", "lan_dung_cuoi"):
+            v = bg.get(truong)
+            if isinstance(v, str) and v:
+                setattr(self, truong, v)
+        hs = bg.get("ho_so")
+        if isinstance(hs, str) and hs:
+            self.ho_so = hs
+
+
 class Module:
     def __init__(self, manifest: dict):
         self.manifest = manifest
@@ -132,6 +189,8 @@ class Module:
         self._khoa_chon = threading.Lock()
         self.kho = None  # lõi gán sau khi tạo (kho riêng của module)
         self._hong: set[str] = set()  # khoá tài khoản tầng (c) đã đánh dấu hỏng
+        # Tài khoản từ đường tái dùng hồ sơ Google (NV93): khoá «tk-<băm>».
+        self._tai_khoan_nv93: list[_TaiKhoanNV93] = []
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
         return phan_loai_loi(ma, loi, boi_canh)
@@ -139,9 +198,31 @@ class Module:
     # ── Vòng đời ────────────────────────────────────────────────────────
 
     def nap(self, cau_hinh: dict) -> None:
-        """Nạp cấu hình ĐÃ KIỂM (lúc khởi động/cài xong) — không gọi mạng."""
+        """Nạp cấu hình ĐÃ KIỂM (lúc khởi động/cài xong) — không gọi mạng.
+
+        NV93: bỏ qua cookie đã bị go_tai_khoan gỡ (sổ go_bo trong kho riêng);
+        khôi phục email/hồ sơ đã làm giàu từ bản ghi kho riêng.
+        """
         cookies = _ds_cookie(cau_hinh.get("cookies"))
-        self._accs = [_TaiKhoan(f"acc{i + 1}", c) for i, c in enumerate(cookies)]
+        go_bo = self._doc_go_bo_nv93()
+        ban_ghi = self._doc_ban_ghi_nv93()
+        accs = []
+        tai_khoan_nv93 = []
+        for i, c in enumerate(cookies):
+            khoa93 = self._khoa_nv93_tu_cookie(c)
+            if khoa93 is not None and khoa93 in go_bo:
+                continue  # đã bị gỡ tường minh — không dựng lại
+            accs.append(_TaiKhoan(f"acc{i + 1}", c))
+            if khoa93 is not None:
+                bg = ban_ghi.get(khoa93)
+                if isinstance(bg, dict):
+                    hs = _hatch_sess_tu_cookie(c)
+                    if hs:
+                        tk93 = _TaiKhoanNV93(hs)
+                        tk93.ap_dung_ban_ghi(bg)
+                        tai_khoan_nv93.append(tk93)
+        self._accs = accs
+        self._tai_khoan_nv93 = tai_khoan_nv93
         self._vi_tri = 0
 
     async def cai(self, cau_hinh: dict) -> dict:
@@ -185,8 +266,14 @@ class Module:
             return False, f"{type(e).__name__}: {e}", False
 
     async def models(self) -> list[dict]:
+        """Model duy nhất của muse.ai, kèm nhãn/goi/available_cho theo tài
+        khoản NV93 (mã id ổn định, nhãn tách riêng — NV91-P3)."""
+        khoa_ds = [self._khoa_tu_hatch_sess(tk.hatch_sess)
+                   for tk in self._tai_khoan_nv93]
         return [{"id": f"{self.tien_to}/{MODEL_ID}", "object": "model",
-                 "owned_by": "muse2api", "kha_nang": ["chat"]}]
+                 "owned_by": "muse2api", "kha_nang": ["chat"],
+                 "nhan": "Muse", "goi": "khong_ro",
+                 "available_cho": khoa_ds}]
 
     async def suc_khoe(self) -> dict:
         async def _kiem(acc: _TaiKhoan):
@@ -301,6 +388,209 @@ class Module:
     def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
         """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
         self._hong.add(str(khoa))
+    # ── tái dùng hồ sơ Google (NV93) ─────────────────────────────────────
+
+    _URL_TAI_DUNG = "https://muse.ai/"
+    _BO_CHON_GOOGLE = ('button[aria-label*="Google" i], '
+                       'a[href*="google" i]')
+    _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
+                           "cloudflare"}
+
+    @staticmethod
+    def _khoa_tu_hatch_sess(hatch_sess: str) -> str:
+        """Khoá mờ ổn định của một tài khoản NV93: «tk-» + 12 hex SHA-256.
+
+        Hợp đồng NV93: khoá mọi module web đều dạng ``tk-<băm>``.
+        """
+        return "tk-" + hashlib.sha256(
+            str(hatch_sess or "").encode("utf-8")).hexdigest()[:12]
+
+    def _khoa_nv93_tu_cookie(self, cookies: str) -> str | None:
+        """Khoá NV93 của một chuỗi cookie; không có hatch_sess → None."""
+        hs = _hatch_sess_tu_cookie(cookies)
+        return self._khoa_tu_hatch_sess(hs) if hs else None
+
+    async def tai_dung_ho_so(self, ho_so, trinh_duyet) -> KetQuaDangNhap:
+        """Đăng nhập bằng Google TRONG hồ sơ đã đăng nhập Google (NV93).
+
+        Hợp đồng NV92-P3: module thử bước «Đăng nhập bằng Google» của nó trong
+        hồ sơ, lấy cookie ``hatch_sess``, thêm tài khoản vào kho của CHÍNH
+        mình, trả ``KetQuaDangNhap`` với ``cookie`` là chuỗi cookie đã chuẩn
+        hoá. Không nhập lại email/mật khẩu/2FA — KHÔNG BAO GIỜ ``dien()``.
+        Gặp CAPTCHA/Cloudflare/2FA/xác minh → can_nguoi NGAY (không cố vượt).
+
+        NV90-C: muse.ai dùng SSO Meta — có thể KHÔNG có Google SSO. Hết lượt
+        chờ mà không vào được → «khong_ho_tro» rõ ràng (không đoán, không thử
+        lại); giữ nguyên đường cookie dán + làm mới/đăng nhập lại hiện có.
+
+        CHƯA KIỂM trên muse.ai thật: chưa rõ nút Google SSO có tồn tại không;
+        phiên hatch_sess đọc được kiểm thực ở lượt chat đầu (đường _kiem_cookie
+        có sẵn), chưa kiểm trong lượt tái dùng này.
+        """
+        hs_id = ho_so.get("id") if isinstance(ho_so, dict) else str(ho_so or "")
+        hs_id = str(hs_id or "").strip() or None
+        email = str(ho_so.get("email") or "") if isinstance(ho_so, dict) else ""
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            # Đi tắt: hồ sơ đã có phiên muse.ai còn hiệu lực.
+            await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
+            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
+                return KetQuaDangNhap(False, ma_loi="can_nguoi")
+            if "da_dang_nhap" not in tin_hieu:
+                # Thử «Đăng nhập bằng Google» trong hồ sơ (có thể không có).
+                await trinh_duyet.bam(self._BO_CHON_GOOGLE)
+                da_vao = False
+                for _ in range(20):
+                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                        return KetQuaDangNhap(False, ma_loi="can_nguoi")
+                    if "da_dang_nhap" in tin_hieu:
+                        da_vao = True
+                        break
+                    await asyncio.sleep(1)
+                if not da_vao:
+                    # NV90-C: không qua được Google SSO (SSO Meta?) → ghi rõ.
+                    return KetQuaDangNhap(False, ma_loi="khong_ho_tro")
+            try:
+                cookie = trinh_duyet.doc_cookie("muse.ai")
+            except Exception:
+                cookie = {}
+            hatch_sess = (cookie.get("hatch_sess")
+                          if isinstance(cookie, dict) else None)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if not hatch_sess:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        hatch_sess = str(hatch_sess)
+        khoa = self._khoa_tu_hatch_sess(hatch_sess)
+        self._them_tai_khoan_nv93(hatch_sess, hs_id, email)
+        # Log chỉ khoá mờ — KHÔNG BAO GIỜ log hatch_sess thô.
+        log.info("muse2api: tái dùng hồ sơ %s → tài khoản %s", hs_id, khoa)
+        return KetQuaDangNhap(True, cookie="hatch_sess=" + hatch_sess)
+
+    def _them_tai_khoan_nv93(self, hatch_sess: str, hs_id: str | None,
+                             email: str) -> _TaiKhoanNV93:
+        """Thêm/cập nhật tài khoản NV93 (chống trùng hatch_sess).
+
+        Đồng thời thêm vào _accs để chat() xoay được; lưu bản ghi làm giàu
+        (không bí mật thô) vào kho riêng.
+        """
+        hatch_sess = str(hatch_sess)
+        tk = next((t for t in self._tai_khoan_nv93
+                   if t.hatch_sess == hatch_sess), None)
+        if tk is None:
+            tk = _TaiKhoanNV93(hatch_sess)
+            self._tai_khoan_nv93.append(tk)
+        if email:
+            tk.email = str(email)
+        if hs_id:
+            tk.ho_so = hs_id
+        tk.trang_thai = "hoat_dong"
+        tk.lan_dung_cuoi = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        khoa = self._khoa_tu_hatch_sess(hatch_sess)
+        self._xoa_khoi_go_bo_nv93(khoa)
+        chuoi = "hatch_sess=" + hatch_sess
+        if not any(a.cookies == chuoi for a in self._accs):
+            self._accs.append(_TaiKhoan(f"nv93-{khoa}", chuoi))
+        self._luu_ban_ghi_nv93()
+        return tk
+
+    # -- liệt kê / gỡ tài khoản (NV93) ------------------------------------------
+
+    def liet_ke_tai_khoan(self) -> list[dict]:
+        """Danh sách tài khoản NV93 KHÔNG bí mật: khoa/email/ho_so/goi/trạng thái.
+
+        Tài khoản dán cookie cũ vẫn quản lý qua Hệ thống → AI (đường cai()/
+        nap() có sẵn); hàm này theo hợp đồng NV93 mới.
+        """
+        return [{
+            "khoa": self._khoa_tu_hatch_sess(tk.hatch_sess),
+            "email": tk.email,
+            "ho_so": tk.ho_so,
+            "goi": tk.goi,
+            "trang_thai": tk.trang_thai,
+            "lan_dung_cuoi": tk.lan_dung_cuoi,
+        } for tk in list(self._tai_khoan_nv93)]
+
+    def go_tai_khoan(self, khoa: str) -> bool:
+        """Gỡ đúng MỘT tài khoản NV93 của module này; ghi sổ gỡ bỏ vào kho riêng
+        để khởi động lại không dựng lại. Không động module khác, không động hồ sơ."""
+        khoa = str(khoa or "")
+        bi_go = [tk for tk in self._tai_khoan_nv93
+                 if self._khoa_tu_hatch_sess(tk.hatch_sess) == khoa]
+        if not bi_go:
+            return False
+        self._tai_khoan_nv93 = [tk for tk in self._tai_khoan_nv93
+                                if self._khoa_tu_hatch_sess(tk.hatch_sess)
+                                != khoa]
+        # Gỡ khỏi _accs (chat) để không dùng phiên đã gỡ.
+        for tk in bi_go:
+            chuoi = "hatch_sess=" + tk.hatch_sess
+            self._accs = [a for a in self._accs if a.cookies != chuoi]
+        tap = self._doc_go_bo_nv93()
+        tap.add(khoa)
+        self._luu_go_bo_nv93(tap)
+        self._luu_ban_ghi_nv93()
+        log.info("muse2api: đã gỡ tài khoản %s", khoa)
+        return True
+
+    # -- kho riêng: bản ghi làm giàu + sổ gỡ bỏ (NV93) -------------------------
+
+    def _doc_ban_ghi_nv93(self) -> dict:
+        """{khoa: bản ghi} từ kho riêng; kho chưa gán/hỏng → {} (không vỡ)."""
+        if self.kho is None:
+            return {}
+        try:
+            du_lieu = self.kho.doc("tai_khoan_nv93") or {}
+        except Exception as e:
+            log.warning("muse2api: không đọc được bản ghi NV93: %s",
+                        type(e).__name__)
+            return {}
+        bg = du_lieu.get("ban_ghi") if isinstance(du_lieu, dict) else None
+        return bg if isinstance(bg, dict) else {}
+
+    def _luu_ban_ghi_nv93(self) -> None:
+        """Lưu bản ghi làm giàu NV93 (không bí mật thô). Không vỡ."""
+        if self.kho is None:
+            return
+        try:
+            ban_ghi = {}
+            for tk in self._tai_khoan_nv93:
+                khoa = self._khoa_tu_hatch_sess(tk.hatch_sess)
+                ban_ghi[khoa] = tk.ban_ghi(khoa)
+            self.kho.luu("tai_khoan_nv93", {"ban_ghi": ban_ghi})
+        except Exception as e:
+            log.warning("muse2api: không lưu được bản ghi NV93: %s",
+                        type(e).__name__)
+
+    def _doc_go_bo_nv93(self) -> set:
+        """Tập khoá NV93 đã bị go_tai_khoan gỡ (để nap() không dựng lại)."""
+        if self.kho is None:
+            return set()
+        try:
+            du_lieu = self.kho.doc("go_bo_nv93") or {}
+        except Exception:
+            return set()
+        ds = du_lieu.get("khoa") if isinstance(du_lieu, dict) else None
+        return {str(k) for k in ds} if isinstance(ds, list) else set()
+
+    def _luu_go_bo_nv93(self, tap: set) -> None:
+        if self.kho is None:
+            return
+        try:
+            self.kho.luu("go_bo_nv93", {"khoa": sorted(tap)})
+        except Exception as e:
+            log.warning("muse2api: không lưu được sổ gỡ bỏ NV93: %s",
+                        type(e).__name__)
+
+    def _xoa_khoi_go_bo_nv93(self, khoa: str) -> None:
+        tap = self._doc_go_bo_nv93()
+        if khoa in tap:
+            tap.discard(khoa)
+            self._luu_go_bo_nv93(tap)
 
     # ── Khả năng chat ────────────────────────────────────────────────────
 
