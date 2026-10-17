@@ -113,8 +113,9 @@ def _may_chu_co_ban() -> MayChuMarionetteGia:
         "WebDriver:ClickElement": (None, None),
         "WebDriver:SendKeysToElement": (None, None),
         "WebDriver:ClearElement": (None, None),
-        "WebDriver:GetCookies": (None, {"value": [
-            {"name": "SID", "value": "bi-mat-gia", "domain": ".google.com"}]}),
+        # Firefox thật trả DANH SÁCH trực tiếp cho GetCookies (không bọc {"value": …}); đo 18/10/2026.
+        "WebDriver:GetCookies": (None, [
+            {"name": "SID", "value": "bi-mat-gia", "domain": ".google.com"}]),
         "WebDriver:DeleteSession": (None, None),
     })
 

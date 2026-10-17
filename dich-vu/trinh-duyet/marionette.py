@@ -250,7 +250,9 @@ class MarionetteClient:
     def cookie(self) -> list[dict]:
         """Toàn bộ cookie của ngữ cảnh hiện tại (dạng danh sách dict)."""
         ket_qua = self.lenh("WebDriver:GetCookies")
-        ds = (ket_qua or {}).get("value") or []
+        # Firefox thật trả DANH SÁCH trực tiếp (khác mọi lệnh khác bọc trong {"value": …}); đo 18/10/2026. Bản đầu giả định bọc
+        # `value` nên AttributeError ('list' has no attribute 'get') khi trang có cookie → dịch vụ trả 500 loi_dieu_khien.
+        ds = ket_qua if isinstance(ket_qua, list) else ((ket_qua or {}).get("value") or [])
         return [c for c in ds if isinstance(c, dict)]
 
     def thuc_thi(self, script: str, doi_so: list | None = None) -> Any:
