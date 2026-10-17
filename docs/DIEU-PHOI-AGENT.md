@@ -1,8 +1,11 @@
 # Điều phối agent trong kho web2api
 
 Tài liệu này rút ý điều phối từ ag-kit cho đúng cách làm của kho:
-Claude chính giao việc viết mã cho subagent (agy/Muse), rồi tự chạy test và soát diff —
-không tin báo cáo miệng. Muse chỉ nhận được tệp nén, không thấy kho, nên brief cho
+Claude chính giao việc viết mã cho subagent (agy/Muse), rồi soát diff tìm lỗi. Báo cáo của
+agent đáng tin (Opus/subagent) mà kèm dòng tổng kết test và mã thoát thì Claude chính không
+chạy lại pytest/bandit (ngoại lệ chủ kho chốt 13/10, đỡ tốn token); báo cáo thiếu hai thứ đó
+hoặc từ agent kém tin cậy (Muse, agy báo «xong» mà không có số đo) thì không tin miệng — bắt chạy
+lại. Bản vá của Muse luôn coi là mã bên thứ ba chưa kiểm chứng. Muse chỉ nhận được tệp nén, không thấy kho, nên brief cho
 Muse phải tự đầy đủ: toàn bộ spec cộng tarball nền.
 
 ## 1. Ranh giới tin cậy

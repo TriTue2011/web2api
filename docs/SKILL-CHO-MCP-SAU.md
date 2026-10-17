@@ -24,7 +24,9 @@ Danh sách chờ, xếp theo ưu tiên. Chưa có nội dung chi tiết của c�
   Rủi ro: di trú dữ liệu sai, thêm phụ thuộc nặng (Mongo/Postgres); chưa đọc mã.
   Trước khi cài: đánh giá xem SQLite/FTS5 có thật sự không đủ không.
 - **ai-multimodal** — Dùng khi: xử lý ảnh/âm thanh qua Gemini; kho đã có module gemini.
-  Rủi ro: khoá API đi ra mạng, chi phí gọi; chưa đọc mã.
+  Rủi ro: khoá API đi ra mạng, chi phí gọi. ĐÃ ĐỌC MỘT TỆP (17/10): `scripts/media_optimizer.py:107` gọi `eval()` trên
+  giá trị `r_frame_rate` do ffprobe đọc từ tệp media — tệp media độc có thể chạy mã. KHÔNG cài khi chưa thay bằng phân tích
+  an toàn (tách `a/b` rồi chia); các tệp khác chưa đọc.
   Trước khi cài: đọc mã, kiểm tra phạm vi quyền của khoá.
 
 ## Ưu tiên thấp
