@@ -1334,7 +1334,10 @@ async def dat_nguon_git(request: Request):
 @nguon_git.post("/cai/{id_}")
 async def cai_tu_git(id_: str, request: Request):
     """Cài module từ git. Thân JSON tuỳ chọn {"chap_nhan_quyen_them": [...], "sha_commit": "..."}
-    để DUYỆT bản đang chờ (phải khớp chính xác diff đã xem); không có thân → cài thường."""
+    để DUYỆT bản đang chờ (phải khớp chính xác diff đã xem); không có thân → cài thường.
+
+    NV50: duyệt hạng B cần thêm "xac_nhan_lan_2": true (xác nhận lại lần 2) — thiếu → 409.
+    """
     than = {}
     if (request.headers.get("content-type") or "").split(";")[0].strip().lower() == "application/json":
         try:
@@ -1345,8 +1348,11 @@ async def cai_tu_git(id_: str, request: Request):
         than = {}
     try:
         if than.get("chap_nhan_quyen_them") is not None or than.get("sha_commit") is not None:
+            danh_tinh = getattr(request.state, "danh_tinh", None) or {}
             return await _ng(request).cai(id_, chap_nhan_quyen_them=than.get("chap_nhan_quyen_them"),
-                                         sha_commit=than.get("sha_commit"))
+                                         sha_commit=than.get("sha_commit"),
+                                         xac_nhan_lan_2=bool(than.get("xac_nhan_lan_2")),
+                                         nguoi_thuc_hien=danh_tinh.get("id"))
         return await _ng(request).cai(id_)
     except LoiCanDuyetQuyen as e:
         return JSONResponse({"ok": False, "ma": "can_duyet_quyen", "id": e.id_,

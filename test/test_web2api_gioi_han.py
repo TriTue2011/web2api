@@ -182,11 +182,18 @@ def test_nguoi_goi_dung_khoa_khong_cham(bo):
     assert nguoi["loai"] == "quan_tri"
 
 
-def test_nguoi_goi_ip_bi_khoa_thi_ca_khoa_dung_cung_429(bo):
-    _sai(bo, "192.0.2.12", 4)
+def test_nguoi_goi_khoa_sai_bi_khoa_khoa_dung_khong_anh_huong(bo):
+    """NV47 (sửa hành vi cũ «IP bị khoá thì cả khoá đúng cũng 429»): sai khoá nhiều lần
+    chỉ khoá cặp (IP, khoá sai) — khoá đúng cùng IP KHÔNG bị 429 (chống DoS qua trạng thái dùng chung)."""
+    from app.gioi_han import _bam_khoa_thu
+    bam_sai = _bam_khoa_thu(f"Bearer {KHOA_SAI}")
+    for _ in range(4):
+        bo.ghi_loi("192.0.2.12", bam_sai)
     with pytest.raises(LoiOpenAI) as e:
-        asyncio.run(xac_thuc.nguoi_goi(_yeu_cau("192.0.2.12", khoa=KHOA_QT)))
-    assert e.value.ma == 429  # mọi yêu cầu từ IP bị khoá đều 429
+        asyncio.run(xac_thuc.nguoi_goi(_yeu_cau("192.0.2.12", khoa=KHOA_SAI)))
+    assert e.value.ma == 429  # kẻ dùng đúng khoá sai đã bị khoá vẫn 429
+    nguoi = asyncio.run(xac_thuc.nguoi_goi(_yeu_cau("192.0.2.12", khoa=KHOA_QT)))
+    assert nguoi["loai"] == "quan_tri"  # khoá đúng không bị chặn bởi bộ đếm của khoá sai
 
 
 def test_khong_dem_403(bo, tmp_path, monkeypatch):

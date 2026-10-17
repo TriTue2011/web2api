@@ -35,12 +35,13 @@ import shutil
 import tarfile
 import time
 import unicodedata
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
-from app import kho
+from app import kho, nhat_ky
 from app.chuyen_tiep import TransportGhimIp, iso
 from app.kham_pha import ID_HOP_LE, doc_manifest, kiem_manifest
 from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
@@ -79,6 +80,11 @@ def bam_blob(du_lieu: bytes) -> str:
     """Mã đối tượng git của một tệp. SHA-1 vì đó là ĐỊNH DẠNG của git/GitHub (sha trong cây là SHA-1),
     không phải ta chọn: phải băm đúng thuật toán đó mới so được với sha trong cây."""
     return hashlib.sha1(b"blob %d\0" % len(du_lieu) + du_lieu).hexdigest()  # nosec B324 — định dạng git
+
+
+#: Kỳ hạn quyền duyệt hạng B sau khi duyệt (ngày) — NV50 CG3. Hết hạn → bản mới
+#: lại phải qua cổng duyệt (mọi cập nhật A→B trên main đều đã phải duyệt).
+KY_HAN_DUYET_HANG_B_NGAY = 30
 
 
 class LoiGit(Exception):
@@ -830,22 +836,40 @@ class NguonGit:
         return "cập nhật" if id_ in self.so.catalog else "cài"
 
     async def cai(self, id_: str, chap_nhan_quyen_them: list | None = None,
-                sha_commit: str | None = None) -> dict:
+                sha_commit: str | None = None, xac_nhan_lan_2: bool = False,
+                nguoi_thuc_hien: str | None = None) -> dict:
         """Cài module từ git (nguồn chính). Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
         (phải khớp chính xác diff đã xem); không có → cài thường (bản mới xin thêm quyền
-        thì 409 chờ duyệt thay vì kích hoạt)."""
+        thì 409 chờ duyệt thay vì kích hoạt).
+
+        NV50: duyệt hạng B cần `xac_nhan_lan_2` (xác nhận lại lần 2, chống bấm nhầm) —
+        thiếu → 409, chưa kích hoạt.
+        """
         async with self._khoa:
             if chap_nhan_quyen_them is not None or sha_commit is not None:
-                return await self._cai_duyet(id_, chap_nhan_quyen_them, sha_commit)
+                return await self._cai_duyet(id_, chap_nhan_quyen_them, sha_commit,
+                                            xac_nhan_lan_2=xac_nhan_lan_2,
+                                            nguoi_thuc_hien=nguoi_thuc_hien)
             nguon, tt = self._nguon_chinh()
             if nguon is None:
                 raise LoiGit("chưa cấu hình nguồn git (PUT /api/nguon-git)", 400)
             return await self._cai_tu(nguon, tt, id_)
 
-    async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None) -> dict:
-        """Duyệt bản đang chờ: không tải lại, kích hoạt đúng thư mục đã chốt khi xem diff."""
+    async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None,
+                        xac_nhan_lan_2: bool = False,
+                        nguoi_thuc_hien: str | None = None) -> dict:
+        """Duyệt bản đang chờ: không tải lại, kích hoạt đúng thư mục đã chốt khi xem diff.
+
+        NV50 CG1: hạng B là hành động nguy hiểm — thiếu xác nhận lần 2 → 409, chưa
+        kích hoạt (chống bấm nhầm / CSRF một chạm).
+        NV50 CG2: mỗi lần duyệt ghi nhật ký quản trị (người thực hiện + module).
+        NV50 CG3: quyền duyệt được cấp có kỳ hạn (het_han trong tương lai).
+        """
         if not isinstance(chap_nhan_quyen_them, list) or not sha_commit:
             raise LoiGit("duyệt cần thân {\"chap_nhan_quyen_them\": [...], \"sha_commit\": \"...\"}", 400)
+        if not xac_nhan_lan_2:
+            raise LoiGit("duyệt hạng B cần xác nhận lần 2: gửi lại với "
+                         "{\"xac_nhan_lan_2\": true} cùng chap_nhan_quyen_them và sha_commit", 409)
         pending = kho.doc_cho_duyet_quyen(id_)
         if pending is None:
             raise LoiGit(f"module {id_!r} không có yêu cầu chờ duyệt quyền", 409)
@@ -859,9 +883,14 @@ class NguonGit:
             kho.xoa_cho_duyet_quyen(id_)
             raise LoiGit(f"module {id_!r} hiện không cài — cài mới thay vì duyệt", 409)
         kq = await self.so.cai_thu_muc(id_, thu_muc, chap_nhan_quyen_them=chap_nhan_quyen_them)
-        log.warning("Đã duyệt và kích hoạt bản mới của module %s (commit %s)",
-                    id_, str(sha_commit)[:12])
-        return {"ok": True, "id": id_, "duyet_quyen": True, **kq}
+        het_han = (datetime.now(timezone.utc) + timedelta(days=KY_HAN_DUYET_HANG_B_NGAY)).isoformat()
+        nhat_ky.ghi("quan_tri", "thong_tin",
+                    f"Đã duyệt và kích hoạt bản mới của module {id_} (commit {str(sha_commit)[:12]})",
+                    module=id_, nguoi_thuc_hien=nguoi_thuc_hien or "?",
+                    het_han_quyen_duyet=het_han)
+        return {"ok": True, "id": id_, "duyet_quyen": True,
+                "duyet_hang_b": {"nguoi_duyet": nguoi_thuc_hien or "?", "het_han": het_han},
+                **kq}
 
     async def _cai_tu(self, nguon: dict, tt: dict, id_: str, tu_dong: bool = False) -> dict:
         """Cài module từ ĐÚNG một nguồn. NV59: trùng id với module đã cài từ nguồn KHÁC → 409

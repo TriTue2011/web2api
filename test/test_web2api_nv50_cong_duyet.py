@@ -193,7 +193,6 @@ def test_duyet_hang_b_co_xac_nhan_lan_2_thi_kich_hoat(gh, du_lieu):
 
 # ── Hành vi mới: đỏ trên main ─────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="NV50 CG1: duyệt hạng B thiếu xác nhận lần 2 phải 409")
 def test_duyet_hang_b_thieu_xac_nhan_lan_2_409(gh, du_lieu):
     """Duyệt hạng B chỉ một lần (không có xac_nhan_lan_2) → 409, chưa kích hoạt."""
     sha_commit, them = chuan_bi_cho_duyet_hang_b(gh, du_lieu)
@@ -207,7 +206,6 @@ def test_duyet_hang_b_thieu_xac_nhan_lan_2_409(gh, du_lieu):
         assert r2.json()["ma"] == "can_duyet_quyen"
 
 
-@pytest.mark.xfail(strict=True, reason="NV50 CG2: mỗi lần duyệt hạng B phải ghi nhật ký quản trị")
 def test_duyet_hang_b_ghi_nhat_ky(gh, du_lieu):
     """Duyệt xong hạng B → có bản ghi mới ở kênh nhật ký quan_tri."""
     sha_commit, them = chuan_bi_cho_duyet_hang_b(gh, du_lieu)
@@ -221,7 +219,6 @@ def test_duyet_hang_b_ghi_nhat_ky(gh, du_lieu):
     assert len(sau) > len(truoc), "duyệt hạng B phải ghi nhật ký quản trị"
 
 
-@pytest.mark.xfail(strict=True, reason="NV50 CG3: quyền duyệt hạng B phải có kỳ hạn")
 def test_quyen_duyet_hang_b_co_ky_han(gh, du_lieu):
     """Duyệt xong → quyền duyệt hạng B được cấp có kỳ hạn (het_han trong tương lai)."""
     sha_commit, them = chuan_bi_cho_duyet_hang_b(gh, du_lieu)

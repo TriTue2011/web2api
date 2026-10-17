@@ -31,7 +31,6 @@ def client(monkeypatch, tmp_path):
         yield c
 
 
-@pytest.mark.xfail(strict=True, reason="NV47: kẻ cùng IP gửi sai khoá nhiều lần khoá luôn IP của admin (429) — DoS qua trạng thái dùng chung")
 def test_khoa_ip_chung_khoa_luon_admin(client, monkeypatch):
     """Kẻ tấn công và admin cùng IP (sau NAT/proxy): sai khoá nhiều → admin khoá đúng cũng 429."""
     from app import gioi_han
@@ -41,6 +40,16 @@ def test_khoa_ip_chung_khoa_luon_admin(client, monkeypatch):
     r = client.get("/v1/models", headers=QT)
     # mong muốn: admin dùng khoá ĐÚNG không bị ảnh hưởng bởi sai khoá của kẻ khác
     assert r.status_code == 200
+
+
+def test_ke_do_khoa_nhieu_khoa_rieng_biet_van_bi_chan(client, monkeypatch):
+    """Kẻ dò khoá (mỗi lần một khoá sai khác nhau) vẫn bị khoá IP — chống brute-force không nới lỏng (NV47)."""
+    from app import gioi_han
+    monkeypatch.setattr(gioi_han.GioiHanSaiKhoa, "ip_hieu_luc", lambda self, h, x: "203.0.113.7")
+    for i in range(11):
+        client.get("/v1/models", headers={"Authorization": f"Bearer sai-{i:03d}"})
+    r = client.get("/v1/models", headers={"Authorization": "Bearer sai-xxx"})
+    assert r.status_code == 429, r.text
 
 
 def test_hang_cho_phe_duyet_co_tran(client, monkeypatch):
