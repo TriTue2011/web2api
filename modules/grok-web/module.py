@@ -28,6 +28,9 @@ from urllib.parse import urlsplit
 
 from app import danh_tinh
 from app.chuyen_tiep import ds_khoa
+from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
+from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
+from app.tu_xa import kiem_url_lan
 
 from .client import (
     GOC_HTTPS_MAC_DINH,
@@ -129,6 +132,12 @@ class Module:
         self.kho = None  # lõi gán sau khi tạo (kho riêng của module)
         self._dt_id: list[str | None] = []   # danh_tinh_id từng tài khoản
         self._dt_ten: list[str | None] = []  # tên hiển thị theo danh tính
+        self._hong: set[str] = set()  # khoá tài khoản tầng (c) đã đánh dấu hỏng
+        # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV89):
+        # test gán; triển khai thật nối workspace vnc-xa (chưa có trong lượt này).
+        self._tao_trinh_duyet = None
+        # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
+        self._trinh_duyet_da_dung = None
 
     # ── Gắn danh tính chung (khuôn NV77) ──────────────────────────────────
 
@@ -305,6 +314,14 @@ class Module:
                 "loi": "Chưa có tài khoản nào: nhập cookie của ít nhất một tài khoản grok.com đã đăng nhập.",
             }
         if str((cau_hinh or {}).get("ws_url") or "").strip():
+            # URL do người dùng ghi đè (kiểm thử/trỏ proxy): bắt buộc qua
+            # app/tu_xa.py như mọi URL cấu hình được — chặn SSRF (loopback,
+            # link-local, IPv4 nhúng trong 6to4/Teredo). goc_https cùng máy/cổng
+            # với ws_url nên kiểm nó là đủ (kiem_url_lan chỉ nhận http/https).
+            try:
+                self._goc_https = await kiem_url_lan(self._goc_https)
+            except ValueError as e:
+                return {"ok": False, "loi": f"ws_url không hợp lệ: {e}"}
             try:
                 khach = KhachGrokWeb(self._ws_co_so, self._tai_khoan[0], uid="kiem_tra")
                 ws = await khach._mo_ws()
@@ -321,6 +338,224 @@ class Module:
             "ok": True,
             "ghi_chu": f"Đã nhận {len(self._tai_khoan)} tài khoản Grok.",
         }
+
+    # ── Đăng nhập + khôi phục theo hợp đồng NV67/NV88 (NV89) ──────────
+
+    # Đăng nhập grok.com qua SSO của X (không có form đăng nhập riêng trên
+    # grok.com). CHƯA KIỂM với trình duyệt thật / X thật.
+    _URL_DANG_NHAP = "https://x.com/login"
+
+    # -- khoá tài khoản mờ -------------------------------------------------
+
+    @staticmethod
+    def _khoa_tu_jar(jar: dict[str, str]) -> str:
+        """Khoá mờ của một cookie-jar: «gr-» + 12 ký tự hex của SHA-256."""
+        canonical = "; ".join(f"{k}={v}" for k, v in sorted(jar.items()))
+        return "gr-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+
+    def _tim_jar(self, khoa: str) -> tuple[int, dict[str, str]] | None:
+        """(chỉ số, jar) của tài khoản khớp khoá; None nếu không có."""
+        khoa = str(khoa or "")
+        for i, jar in enumerate(self._tai_khoan):
+            if self._khoa_tu_jar(jar) == khoa:
+                return i, jar
+        return None
+
+    def _them_jar(self, jar: dict[str, str]) -> None:
+        """Thêm jar vào danh sách (lũy đẳng), giữ _dt_id/_dt_ten song song."""
+        if jar not in self._tai_khoan:
+            self._tai_khoan.append(dict(jar))
+            self._dt_id.append(None)
+            self._dt_ten.append(None)
+
+    # -- mật khẩu đã lưu ----------------------------------------------------
+
+    def mat_khau_da_luu(self, khoa: str) -> BiMatTam | None:
+        """Mật khẩu đã lưu cho một khoá/email (kho riêng mã hoá của module).
+
+        Kho đọc hỏng → None (fail-closed: coi như chưa lưu, lõi báo cần người)."""
+        if self.kho is None:
+            return None
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+        except Exception:
+            return None
+        mk = ds.get(str(khoa or "").strip().lower()) if isinstance(ds, dict) else None
+        return BiMatTam(mk) if isinstance(mk, str) and mk else None
+
+    def _luu_mat_khau(self, khoa: str, email: str, mat_khau: BiMatTam) -> None:
+        """Lưu mật khẩu theo cả khoá-jar và email (dang_nhap_lai chỉ có email).
+
+        Lưu hỏng → chỉ ghi nhật ký: lần dang_nhap_lai sau sẽ fail-closed với
+        «khong_co_mat_khau_luu», không bao giờ thành công âm thầm."""
+        if self.kho is None:
+            return
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+            if not isinstance(ds, dict):
+                ds = {}
+            gia_tri = mat_khau.lay()
+            ds[str(khoa).strip().lower()] = gia_tri
+            if email:
+                ds[str(email).strip().lower()] = gia_tri
+            self.kho.luu("mat_khau", ds)
+        except Exception as e:
+            log.warning("grok-web: không lưu được mật khẩu: %s", type(e).__name__)
+
+    def co_tai_khoan(self, khoa: str) -> bool:
+        """Module có biết khoá/email này không?"""
+        khoa = str(khoa or "").strip().lower()
+        if self._tim_jar(khoa) is not None:
+            return True
+        return self.mat_khau_da_luu(khoa) is not None
+
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
+        """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
+        bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
+        return f"grok-web-{bam}"
+
+    # -- đăng nhập theo hợp đồng NV67 --------------------------------------
+
+    async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
+                                          trinh_duyet) -> KetQuaDangNhap:
+        """BƯỚC ĐĂNG NHẬP DUY NHẤT NẰM TRONG MODULE: lõi chỉ đưa bộ điều khiển.
+
+        Mở https://x.com/login (grok.com đăng nhập qua SSO của X), điền email
+        + mật khẩu, bấm đăng nhập, đọc cookie của grok.com (bắt buộc có «sso»),
+        rồi kiểm phiên bằng mã trạng thái/cấu trúc qua lay_uid_tu_phien
+        (không dò chữ trong thông điệp).
+        """
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+            tin_hieu = trinh_duyet.tin_hieu()
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
+            # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        mat_khau_tho = mat_khau.lay()
+        try:
+            await trinh_duyet.dien("email", email)
+            await trinh_duyet.dien("mat_khau", mat_khau_tho)
+            await trinh_duyet.bam("dang_nhap")
+        finally:
+            mat_khau_tho = None  # noqa: F841
+        try:
+            jar = trinh_duyet.doc_cookie("grok.com")
+        except Exception:
+            jar = {}
+        if not isinstance(jar, dict) or not jar.get("sso"):
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        try:
+            await lay_uid_tu_phien(jar, self._goc_https)
+        except LoiPhienGrokWeb:
+            return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                  ma_trang_thai=401)
+        except LoiGrokWeb:
+            return KetQuaDangNhap(False, ma_loi="loi_may_chu")
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_mang")
+        chuoi_cookie = "; ".join(f"{k}={v}" for k, v in jar.items())
+        self._them_jar(jar)
+        khoa = self._khoa_tu_jar(jar)
+        self._luu_mat_khau(khoa, email, mat_khau)
+        return KetQuaDangNhap(True, cookie=chuoi_cookie)
+
+    async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
+        """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
+        mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        loai = tai_khoan.loai
+        try:
+            if loai == "cookie":
+                chuoi = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
+                jar = _tach_cookie(chuoi)
+                if not jar.get("sso"):
+                    return KetQuaDangNhap(False, ma_loi="thieu_cookie")
+                try:
+                    await lay_uid_tu_phien(jar, self._goc_https)
+                except LoiPhienGrokWeb:
+                    return KetQuaDangNhap(False, ma_trang_thai=401)
+                except LoiGrokWeb:
+                    return KetQuaDangNhap(False, ma_loi="loi_may_chu")
+                except Exception:
+                    return KetQuaDangNhap(False, ma_loi="loi_mang")
+                self._them_jar(jar)
+                chuoi_cookie = "; ".join(f"{k}={v}" for k, v in jar.items())
+                return KetQuaDangNhap(True, cookie=chuoi_cookie)
+            if loai == "mat_khau":
+                if tai_khoan.mat_khau is None:
+                    return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, tai_khoan.mat_khau, td)
+            if loai == "dang_nhap_lai":
+                bm = self.mat_khau_da_luu(tai_khoan.email)
+                if bm is None:
+                    return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, bm, td)
+            return KetQuaDangNhap(False, ma_loi="loai_khong_ho_tro")
+        finally:
+            tai_khoan.xoa_bi_mat()
+
+    # -- các tầng khôi phục -------------------------------------------------
+
+    async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
+        """Tầng (a): kiểm phiên còn sống bằng /api/auth/session (lay_uid_tu_phien).
+
+        grok.com không có endpoint làm mới cookie công khai — tầng này chỉ kiểm
+        tra; hỏng thì lõi sang tầng (b)/(c)."""
+        tim = self._tim_jar(khoa)
+        if tim is None:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="khoa_khong_co")
+        _, jar = tim
+        try:
+            await lay_uid_tu_phien(jar, self._goc_https)
+        except LoiPhienGrokWeb:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
+                                  ma_trang_thai=401)
+        except LoiGrokWeb as e:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_may_chu",
+                                  ma_trang_thai=getattr(e, "ma", None))
+        except Exception:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_mang")
+        return KetQuaKhoiPhuc(True, tang="a")
+
+    async def dang_nhap_tu_dong(self, tai_khoan: TaiKhoanCanKhoiPhuc,
+                                trinh_duyet) -> KetQuaKhoiPhuc:
+        """Tầng (b): đăng nhập lại bằng mật khẩu đã lưu qua trình duyệt."""
+        try:
+            bm = tai_khoan.mat_khau
+            if bm is None:
+                return KetQuaKhoiPhuc(False, tang="b", ma_loi="thieu_mat_khau")
+            kq = await self._dang_nhap_bang_trinh_duyet(
+                tai_khoan.email, bm, trinh_duyet)
+            if kq.thanh_cong:
+                return KetQuaKhoiPhuc(True, tang="b")
+            return KetQuaKhoiPhuc(False, tang="b", ma_loi=kq.ma_loi or "loi_module",
+                                  ma_trang_thai=kq.ma_trang_thai,
+                                  can_nguoi=(kq.ma_loi == "can_nguoi"))
+        finally:
+            if tai_khoan.mat_khau is not None:
+                tai_khoan.mat_khau.xoa()
+
+    def tai_khoan_ke(self, khoa: str) -> str | None:
+        """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""
+        ds = [self._khoa_tu_jar(jar) for jar in self._tai_khoan]
+        khoa = str(khoa)
+        con_khoe = [k for k in ds if k != khoa and k not in self._hong]
+        return con_khoe[0] if con_khoe else None
+
+    def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
+        """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
+        self._hong.add(str(khoa))
 
     # ── Xoay tài khoản ──────────────────────────────────────────────────
 

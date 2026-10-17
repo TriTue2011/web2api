@@ -151,7 +151,8 @@ class TestManifestVaChuan:
         assert MANIFEST["id"] == "gemini-web"
         assert MANIFEST["tien_to"] == "gemini-web"
         assert MANIFEST["hang"] == "A"
-        assert MANIFEST["tai_nguyen"]["mang_ra"] == ["gemini.google.com"]
+        assert MANIFEST["tai_nguyen"]["mang_ra"] == ["gemini.google.com",
+                                                         "accounts.google.com"]  # NV89: miền trang đăng nhập
         truong = {t["khoa"]: t for t in MANIFEST["truong_cau_hinh"]}
         assert truong["cookies"]["kieu"] == "danh_sach_bi_mat"
         assert truong["cookies"]["nhan_cookie"] == {"mien": "gemini.google.com"}

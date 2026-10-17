@@ -21,6 +21,9 @@ from urllib.parse import urlsplit
 import httpx
 
 from app import danh_tinh
+from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
+from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
+from app.tu_xa import kiem_url_lan
 
 from . import converter as cv
 from .client import BASE_MAC_DINH, LoiClaudeWeb, MayKhachClaudeWeb
@@ -127,6 +130,13 @@ class Module:
         self._accs: list[_TaiKhoan] = []
         self._base_url = BASE_MAC_DINH
         self.kho = None  # lõi gán sau khi tạo (kho riêng của module)
+        # Khoá tài khoản đã đánh dấu hỏng (tầng c bỏ qua khi chọn kế).
+        self._hong: set[str] = set()
+        # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV89):
+        # test gán; triển khai thật nối workspace vnc-xa (chưa có trong lượt này).
+        self._tao_trinh_duyet = None
+        # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
+        self._trinh_duyet_da_dung = None
 
     # ── gắn danh tính chung (khuôn NV77) ──────────────────────────────────
 
@@ -208,6 +218,244 @@ class Module:
                 LOG.warning("claude-web: không lưu được trạng thái gắn danh tính: %s",
                             type(e).__name__)
 
+    # ── đăng nhập + khôi phục (NV89, hợp đồng NV67/NV88) ────────────────
+
+    @staticmethod
+    def _khoa_tu_cookie(cookie: str) -> str:
+        """Khoá mờ của một bộ cookie: «cl-» + 12 ký tự hex của SHA-256."""
+        return "cl-" + hashlib.sha256(str(cookie).strip().encode("utf-8")).hexdigest()[:12]
+
+    def _tim_acc(self, khoa: str) -> _TaiKhoan | None:
+        for a in self._accs:
+            if self._khoa_tu_cookie(a.cookie) == khoa:
+                return a
+        return None
+
+    def _them_cookie(self, cookie: str) -> _TaiKhoan:
+        """Chuẩn hoá rồi thêm vào _accs nếu chưa có (lũy đẳng); trả _Acc."""
+        cookie = chuan_hoa_cookie(cookie)
+        acc = self._tim_acc(self._khoa_tu_cookie(cookie))
+        if acc is None:
+            acc = _TaiKhoan(cookie, self._base_url)
+            self._accs.append(acc)
+        return acc
+
+    def mat_khau_da_luu(self, khoa: str) -> BiMatTam | None:
+        """Mật khẩu đã lưu cho một khoá/email (kho riêng mã hoá của module).
+
+        Đọc hỏng → None (coi như chưa lưu): tầng (b)/dang_nhap_lai trả thất bại
+        chứ không cho phép — fail-closed.
+        """
+        if self.kho is None:
+            return None
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+        except Exception:
+            return None
+        mk = ds.get(str(khoa or "").strip().lower()) if isinstance(ds, dict) else None
+        return BiMatTam(mk) if isinstance(mk, str) and mk else None
+
+    def _luu_mat_khau(self, khoa: str, email: str, mat_khau: BiMatTam) -> None:
+        """Lưu mật khẩu theo cả khoá-cookie và email (dang_nhap_lai chỉ có email).
+
+        Lưu hỏng → chỉ ghi nhật ký, KHÔNG vỡ lượt đăng nhập đang thành công
+        (mật khẩu lần này đơn giản không được nhớ cho tầng (b) sau).
+        """
+        if self.kho is None:
+            return
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+            if not isinstance(ds, dict):
+                ds = {}
+            gia_tri = mat_khau.lay()
+            ds[str(khoa).strip().lower()] = gia_tri
+            if email:
+                ds[str(email).strip().lower()] = gia_tri
+            self.kho.luu("mat_khau", ds)
+        except Exception as e:
+            LOG.warning("claude-web: không lưu được mật khẩu: %s", type(e).__name__)
+
+    def co_tai_khoan(self, khoa: str) -> bool:
+        """Module có biết khoá/email này không?"""
+        khoa = str(khoa or "").strip().lower()
+        if self._tim_acc(khoa) is not None:
+            return True
+        return self.mat_khau_da_luu(khoa) is not None
+
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
+        """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
+        bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
+        return f"claude-web-{bam}"
+
+    _URL_DANG_NHAP = "https://claude.ai/login"
+
+    async def _loi_kiem_cookie(self, cookie: str) -> KetQuaDangNhap | None:
+        """Kiểm một bộ cookie bằng GET /api/organizations (phải có capability
+        «chat»): sống → None; hỏng → kết quả THẤT BẠI đã phân loại.
+
+        Fail-closed: lỗi lạ → «loi_mang», không bao giờ trả thành công; phân
+        loại chỉ bằng mã HTTP, không dò chữ.
+        """
+        khach = MayKhachClaudeWeb(cookie, self._base_url)
+        try:
+            await khach.lay_org_id()
+        except LoiClaudeWeb as e:
+            if e.ma in (401, 403):
+                return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                      ma_trang_thai=401)
+            return KetQuaDangNhap(False, ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_mang")
+        finally:
+            await khach.dong()
+        return None
+
+    async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
+                                          trinh_duyet) -> KetQuaDangNhap:
+        """BƯỚC ĐĂNG NHẬP DUY NHẤT NẰM TRONG MODULE.
+
+        Luồng khung: mở https://claude.ai/login → đọc tín hiệu → điền email +
+        mật khẩu → bấm đăng nhập → đọc cookie «sessionKey» → kiểm phiên bằng
+        GET /api/organizations.
+
+        LƯU Ý THỰC TẾ: claude.ai đăng nhập bằng mã gửi qua email hoặc «Continue
+        with Google» (SSO) — KHÔNG có ô mật khẩu của Anthropic. Đường điền
+        email + mật khẩu ở đây là khuôn dành cho tài khoản Google ĐÃ LIÊN KẾT
+        (đi qua SSO); chi tiết SSO Google thật CHƯA KIỂM — cần trình duyệt thật
+        + tài khoản thật mới xác nhận được. Kiểm phiên chỉ bằng mã trạng thái
+        HTTP (không dò chữ trong thân phản hồi).
+        """
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+            tin_hieu = trinh_duyet.tin_hieu()
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
+            # CAPTCHA/2FA/xác minh thiết bị: DỪNG ngay, không cố vượt, không né bot.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.dien("email", email)
+            await trinh_duyet.dien("mat_khau", mat_khau.lay())
+            await trinh_duyet.bam("dang_nhap")
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        try:
+            cookie = trinh_duyet.doc_cookie("claude.ai")
+        except Exception:
+            cookie = {}
+        phien = cookie.get("sessionKey") if isinstance(cookie, dict) else None
+        if not phien:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        chuoi_cookie = "sessionKey=" + str(phien)
+        khach = MayKhachClaudeWeb(chuoi_cookie, self._base_url)
+        try:
+            await khach.lay_org_id()
+        except LoiClaudeWeb as e:
+            if e.ma in (401, 403):
+                return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                      ma_trang_thai=401)
+            return KetQuaDangNhap(False, ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_mang")
+        finally:
+            await khach.dong()
+        acc = self._them_cookie(chuoi_cookie)
+        khoa = self._khoa_tu_cookie(acc.cookie)
+        self._luu_mat_khau(khoa, email, mat_khau)
+        return KetQuaDangNhap(True, cookie=acc.cookie)
+
+    async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
+        """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
+        mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        loai = tai_khoan.loai
+        try:
+            if loai == "cookie":
+                cookie_tho = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
+                if not cookie_tho:
+                    return KetQuaDangNhap(False, ma_loi="thieu_cookie")
+                cookie = chuan_hoa_cookie(cookie_tho)
+                loi = await self._loi_kiem_cookie(cookie)
+                if loi is not None:
+                    return loi
+                acc = self._them_cookie(cookie)
+                return KetQuaDangNhap(True, cookie=acc.cookie)
+            if loai == "mat_khau":
+                if tai_khoan.mat_khau is None:
+                    return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, tai_khoan.mat_khau, td)
+            if loai == "dang_nhap_lai":
+                bm = self.mat_khau_da_luu(tai_khoan.email)
+                if bm is None:
+                    return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, bm, td)
+            return KetQuaDangNhap(False, ma_loi="loai_khong_ho_tro")
+        finally:
+            tai_khoan.xoa_bi_mat()
+
+    # -- các tầng khôi phục NV89 ----------------------------------------------
+
+    async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
+        """Tầng (a): kiểm phiên còn sống bằng GET /api/organizations.
+
+        claude.ai không có endpoint làm mới session công khai — tầng này chỉ
+        kiểm tra; hỏng thì để tầng (b)/(c) xử lý.
+        """
+        acc = self._tim_acc(khoa)
+        if acc is None:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="khoa_khong_co")
+        try:
+            await acc.may_khach.lay_org_id()
+        except LoiClaudeWeb as e:
+            if e.ma in (401, 403):
+                return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
+                                      ma_trang_thai=401)
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_mang")
+        return KetQuaKhoiPhuc(True, tang="a")
+
+    async def dang_nhap_tu_dong(self, tai_khoan: TaiKhoanCanKhoiPhuc,
+                                trinh_duyet) -> KetQuaKhoiPhuc:
+        """Tầng (b): đăng nhập lại bằng mật khẩu đã lưu qua trình duyệt."""
+        try:
+            bm = tai_khoan.mat_khau
+            if bm is None:
+                return KetQuaKhoiPhuc(False, tang="b", ma_loi="thieu_mat_khau")
+            kq = await self._dang_nhap_bang_trinh_duyet(
+                tai_khoan.email, bm, trinh_duyet)
+            if kq.thanh_cong:
+                return KetQuaKhoiPhuc(True, tang="b")
+            return KetQuaKhoiPhuc(False, tang="b", ma_loi=kq.ma_loi or "loi_module",
+                                  ma_trang_thai=kq.ma_trang_thai,
+                                  can_nguoi=(kq.ma_loi == "can_nguoi"))
+        finally:
+            if tai_khoan.mat_khau is not None:
+                tai_khoan.mat_khau.xoa()
+
+    def tai_khoan_ke(self, khoa: str) -> str | None:
+        """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""
+        ds = [self._khoa_tu_cookie(a.cookie) for a in self._accs]
+        khoa = str(khoa)
+        con_khoe = [k for k in ds if k != khoa and k not in self._hong]
+        return con_khoe[0] if con_khoe else None
+
+    def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
+        """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
+        self._hong.add(str(khoa))
+
     # ── vòng đời ─────────────────────────────────────────────────────
 
     def nap(self, cau_hinh: dict) -> None:
@@ -277,6 +525,16 @@ class Module:
         except ValueError as e:
             return {"ok": False, "loi": str(e), "ket_qua_tung_khoa": [],
                     "cau_hinh_luu": {}}
+        if str(cau_hinh.get("base_url") or "").strip():
+            # base_url do người dùng ghi đè (kiểm thử/trỏ proxy): bắt buộc qua
+            # app/tu_xa.py như mọi URL cấu hình được — chặn SSRF (loopback,
+            # link-local, IPv4 nhúng trong 6to4/Teredo). Giá trị mặc định
+            # claude.ai không cần kiểm (hằng số trong mã).
+            try:
+                base_url = await kiem_url_lan(base_url)
+            except ValueError as e:
+                return {"ok": False, "loi": f"base_url không hợp lệ: {e}",
+                        "ket_qua_tung_khoa": [], "cau_hinh_luu": {}}
         cookies = ds_cookie(cau_hinh.get("cookies"))
         if not cookies:
             return {"ok": False, "loi": "Chưa có cookie nào — dán cookie từ tab claude.ai đã đăng nhập.",

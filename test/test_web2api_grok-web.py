@@ -214,7 +214,7 @@ def test_manifest_hop_le(bo_module):
     assert manifest["id"] == "grok-web"
     assert manifest["tien_to"] == "grok"
     assert manifest["hang"] == "A"
-    assert manifest["tai_nguyen"]["mang_ra"] == ["grok.com"]
+    assert manifest["tai_nguyen"]["mang_ra"] == ["grok.com", "x.com"]  # NV89: miền trang đăng nhập
     assert "chat" in manifest["cung_cap"]
     truong = {t["khoa"]: t for t in manifest["truong_cau_hinh"]}
     assert truong["tai_khoan"]["kieu"] == "danh_sach_bi_mat"
@@ -462,7 +462,10 @@ def test_khong_co_tai_khoan_nao(bo_module, may_chu):
 
 # ── Cài đặt / kiểm tra cấu hình ───────────────────────────────────────
 
-def test_cai_kiem_dinh_dang(bo_module, may_chu):
+def test_cai_kiem_dinh_dang(bo_module, may_chu, monkeypatch):
+    # NV89: ws_url do người dùng ghi đè đi qua app/tu_xa.py — loopback phải được
+    # test cho phép rõ bằng WEB2API_TEST_CHO_PHEP_LOOPBACK.
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
     mod, manifest = bo_module
     md = mod.Module(manifest)
     # Thiếu cookie sso → từ chối.

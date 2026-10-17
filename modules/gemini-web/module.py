@@ -19,7 +19,9 @@ import time
 
 from app import danh_tinh
 from app.kho import che
+from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
+from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
 
 from .client import (
@@ -115,12 +117,261 @@ class Module:
         self._khoa = threading.Lock()
         self._tai_khoan: list[_TaiKhoan] = []
         self._co_so_url: str | None = None
+        # Khoá tài khoản đã đánh dấu hỏng (tầng c bỏ qua khi chọn kế).
+        self._hong: set[str] = set()
+        # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV89):
+        # test gán; triển khai thật nối workspace vnc-xa (chưa có trong lượt này).
+        self._tao_trinh_duyet = None
+        # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
+        self._trinh_duyet_da_dung = None
 
     # -- tạo client: mối nối để test chích máy chủ giả ---------------------
 
     def _tao_client(self, psid: str, psidts: str | None) -> GeminiWebClient:
         return GeminiWebClient(psid, psidts,
                                base_url=self._co_so_url or MAY_CHU_MAC_DINH)
+
+    # -- đăng nhập tự động + khôi phục nhiều tầng (NV89) -----------------------
+    # Sao chép hợp đồng của chatgpt-web (NV88): dang_nhap(DongDaTach),
+    # lam_moi_phien (tầng a), dang_nhap_tu_dong (tầng b), tai_khoan_ke/
+    # danh_dau_hong (tầng c), mat_khau_da_luu, co_tai_khoan, ho_so_trinh_duyet.
+    # CHƯA KIỂM với dịch vụ thật: luồng đăng nhập Google tay trên web thật có
+    # thể cần thêm bước (chọn tài khoản, nhập số điện thoại, ...) mà chỉ kiểm
+    # thật mới thấy.
+
+    @staticmethod
+    def _khoa_tu_chuoi(chuoi: str) -> str:
+        """Khoá mờ của một chuỗi cookie: «gk-» + 12 ký tự hex của SHA-256."""
+        return "gk-" + hashlib.sha256(str(chuoi or "").strip().encode("utf-8")).hexdigest()[:12]
+
+    def _tim_tai_khoan(self, khoa: str) -> _TaiKhoan | None:
+        """Tìm tài khoản theo khoá mờ (có lock); không thấy → None."""
+        with self._khoa:
+            for tk in self._tai_khoan:
+                if self._khoa_tu_chuoi(tk.chuoi_goc) == khoa:
+                    return tk
+        return None
+
+    def _them_chuoi_cookie(self, chuoi: str) -> _TaiKhoan:
+        """Tách psid/psidts khỏi chuỗi, thêm vào danh sách nếu chưa có.
+
+        Trả _TaiKhoan tương ứng. Thiếu __Secure-1PSID → ValueError (người gọi
+        chỉ gọi sau khi đã đọc được PSID từ trình duyệt hoặc cấu hình đã kiểm).
+        """
+        psid, psidts = _tach_psid(chuoi)
+        if not psid:
+            raise ValueError("chuỗi cookie thiếu __Secure-1PSID")
+        with self._khoa:
+            for tk in self._tai_khoan:
+                if tk.chuoi_goc == chuoi:
+                    return tk
+            tk = _TaiKhoan(psid, psidts)
+            tk.chuoi_goc = chuoi
+            self._tai_khoan.append(tk)
+            return tk
+
+    # -- mật khẩu đã lưu (NV89) ------------------------------------------------
+
+    def mat_khau_da_luu(self, khoa: str) -> BiMatTam | None:
+        """Mật khẩu đã lưu cho một khoá/email (kho riêng mã hoá của module)."""
+        if self.kho is None:
+            return None
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+        except Exception:
+            return None
+        mk = ds.get(str(khoa or "").strip().lower()) if isinstance(ds, dict) else None
+        return BiMatTam(mk) if isinstance(mk, str) and mk else None
+
+    def _luu_mat_khau(self, khoa: str, email: str, mat_khau: BiMatTam) -> None:
+        """Lưu mật khẩu theo cả khoá-chuỗi-cookie và email (dang_nhap_lai chỉ có email)."""
+        if self.kho is None:
+            return
+        try:
+            ds = self.kho.doc("mat_khau") or {}
+            if not isinstance(ds, dict):
+                ds = {}
+            gia_tri = mat_khau.lay()
+            ds[str(khoa).strip().lower()] = gia_tri
+            if email:
+                ds[str(email).strip().lower()] = gia_tri
+            self.kho.luu("mat_khau", ds)
+        except Exception as e:
+            log.warning("gemini-web: không lưu được mật khẩu: %s", type(e).__name__)
+
+    def co_tai_khoan(self, khoa: str) -> bool:
+        """Module có biết khoá/email này không?"""
+        khoa = str(khoa or "").strip().lower()
+        if self._tim_tai_khoan(khoa) is not None:
+            return True
+        return self.mat_khau_da_luu(khoa) is not None
+
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
+        """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
+        bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
+        return f"gemini-web-{bam}"
+
+    # -- đăng nhập bằng trình duyệt -------------------------------------------
+
+    _URL_DANG_NHAP = ("https://accounts.google.com/signin/v2/identifier"
+                      "?flowName=GlifWebSignIn&flowEntry=ServiceLogin")
+
+    async def _kiem_chuoi_cookie(self, chuoi: str) -> tuple[bool, int | None]:
+        """Kiểm chuỗi cookie qua client.init(); hỏng → (False, mã trạng thái)."""
+        psid, psidts = _tach_psid(chuoi)
+        if not psid:
+            return False, None
+        try:
+            await self._tao_client(psid, psidts).init()
+        except LoiXacThuc:
+            return False, 401
+        except LoiGeminiWeb as e:
+            return False, e.ma
+        except Exception:
+            return False, None
+        return True, None
+
+    async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
+                                          trinh_duyet) -> KetQuaDangNhap:
+        """Bước đăng nhập DUY NHẤT của module: điền form Google, đọc
+        __Secure-1PSID/__Secure-1PSIDTS từ cookie, kiểm phiên bằng init().
+
+        CAPTCHA/2FA/xác minh thiết bị → dừng với can_nguoi, KHÔNG cố vượt,
+        không né phát hiện bot. Kiểm phiên bằng mã trạng thái/cấu trúc, không
+        dò chữ trong thân phản hồi. CHƯA KIỂM với trang đăng nhập Google thật.
+        """
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
+            tin_hieu = trinh_duyet.tin_hieu()
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
+            # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        mat_khau_tho = mat_khau.lay()
+        try:
+            await trinh_duyet.dien("email", email)
+            await trinh_duyet.dien("mat_khau", mat_khau_tho)
+            await trinh_duyet.bam("dang_nhap")
+        finally:
+            mat_khau_tho = None  # noqa: F841
+        try:
+            cookie = trinh_duyet.doc_cookie("google.com")
+        except Exception:
+            # Không đọc được cookie thì coi như chưa lấy được phiên (fail-closed).
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        psid = cookie.get("__Secure-1PSID") if isinstance(cookie, dict) else None
+        psidts = cookie.get("__Secure-1PSIDTS") if isinstance(cookie, dict) else None
+        if not psid:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        chuoi = f"__Secure-1PSID={psid}"
+        if psidts:
+            chuoi += f"; __Secure-1PSIDTS={psidts}"
+        try:
+            await self._tao_client(psid, psidts).init()
+        except LoiXacThuc:
+            return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                  ma_trang_thai=401)
+        except LoiGeminiWeb as e:
+            return KetQuaDangNhap(False, ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_mang")
+        self._them_chuoi_cookie(chuoi)
+        khoa_moi = self._khoa_tu_chuoi(chuoi)
+        self._luu_mat_khau(khoa_moi, email, mat_khau)
+        return KetQuaDangNhap(True, cookie=chuoi)
+
+    async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
+        """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
+        mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        loai = tai_khoan.loai
+        try:
+            if loai == "cookie":
+                chuoi = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
+                if not chuoi:
+                    return KetQuaDangNhap(False, ma_loi="thieu_cookie")
+                ok, ma = await self._kiem_chuoi_cookie(chuoi)
+                if not ok:
+                    return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                          ma_trang_thai=ma or 401)
+                self._them_chuoi_cookie(chuoi)
+                return KetQuaDangNhap(True, cookie=chuoi)
+            if loai == "mat_khau":
+                if tai_khoan.mat_khau is None:
+                    return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, tai_khoan.mat_khau, td)
+            if loai == "dang_nhap_lai":
+                bm = self.mat_khau_da_luu(tai_khoan.email)
+                if bm is None:
+                    return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self._dang_nhap_bang_trinh_duyet(
+                    tai_khoan.email, bm, td)
+            return KetQuaDangNhap(False, ma_loi="loai_khong_ho_tro")
+        finally:
+            tai_khoan.xoa_bi_mat()
+
+    # -- các tầng khôi phục ---------------------------------------------------
+
+    async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
+        """Tầng (a): gemini.google.com không có endpoint làm mới cookie công
+        khai — tầng này chỉ kiểm cookie còn sống bằng init()."""
+        tk = self._tim_tai_khoan(khoa)
+        if tk is None:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="khoa_khong_co")
+        try:
+            await self._tao_client(tk.psid, tk.psidts).init()
+        except LoiXacThuc:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
+                                  ma_trang_thai=401)
+        except LoiGeminiWeb as e:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_may_chu",
+                                  ma_trang_thai=e.ma)
+        except Exception:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_mang")
+        return KetQuaKhoiPhuc(True, tang="a")
+
+    async def dang_nhap_tu_dong(self, tai_khoan: TaiKhoanCanKhoiPhuc,
+                                trinh_duyet) -> KetQuaKhoiPhuc:
+        """Tầng (b): đăng nhập lại bằng mật khẩu đã lưu qua trình duyệt."""
+        try:
+            bm = tai_khoan.mat_khau
+            if bm is None:
+                return KetQuaKhoiPhuc(False, tang="b", ma_loi="thieu_mat_khau")
+            kq = await self._dang_nhap_bang_trinh_duyet(
+                tai_khoan.email, bm, trinh_duyet)
+            if kq.thanh_cong:
+                return KetQuaKhoiPhuc(True, tang="b")
+            return KetQuaKhoiPhuc(False, tang="b", ma_loi=kq.ma_loi or "loi_module",
+                                  ma_trang_thai=kq.ma_trang_thai,
+                                  can_nguoi=(kq.ma_loi == "can_nguoi"))
+        finally:
+            if tai_khoan.mat_khau is not None:
+                tai_khoan.mat_khau.xoa()
+
+    def tai_khoan_ke(self, khoa: str) -> str | None:
+        """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""
+        with self._khoa:
+            ds = [self._khoa_tu_chuoi(tk.chuoi_goc) for tk in self._tai_khoan]
+        khoa = str(khoa)
+        con_khoe = [k for k in ds if k != khoa and k not in self._hong]
+        if con_khoe:
+            return con_khoe[0]
+        # Chỉ còn chính nó và nó khoẻ → không có «kế».
+        return None
+
+    def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
+        """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
+        self._hong.add(str(khoa))
 
     # -- gắn danh tính chung (NV77) -------------------------------------------
 

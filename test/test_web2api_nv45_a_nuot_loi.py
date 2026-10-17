@@ -62,6 +62,11 @@ DA_KIEM_TOAN = {
     # Đã duyệt NV88 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
     ("modules/chatgpt-web/module.py", "_kiem_token"),  # lỗi mạng lạ → coi token hỏng (fail-closed)
     ("modules/chatgpt-web/module.py", "mat_khau_da_luu"),  # kho hỏng → coi như chưa lưu mật khẩu
+    # Đã duyệt NV89 (đọc từng hàm, cùng mẫu chatgpt-web): kho đọc hỏng → coi
+    # như chưa lưu mật khẩu → dang_nhap_lai/tầng (b) trả THẤT BẠI (fail-closed).
+    ("modules/gemini-web/module.py", "mat_khau_da_luu"),
+    ("modules/grok-web/module.py", "mat_khau_da_luu"),
+    ("modules/claude-web/module.py", "mat_khau_da_luu"),
 }
 
 

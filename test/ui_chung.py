@@ -104,8 +104,14 @@ class Trang:
         """Bấm mở mọi mục thu gọn đang đóng (mục có nút `[data-mo-muc]`); không có mục nào thì không làm gì. Mục dựng
         muộn (sau khi dữ liệu về) cũng được mở: lặp tới khi không còn mục đóng."""
         for _ in range(8):
-            n = self.js("(() => { const ds = [...document.querySelectorAll('[data-mo-muc][aria-expanded=\"false\"]')];"
-                        " ds.forEach(b => b.click()); return ds.length; })()")
+            try:
+                n = self.js("(() => { const ds = [...document.querySelectorAll('[data-mo-muc][aria-expanded=\"false\"]')];"
+                            " ds.forEach(b => b.click()); return ds.length; })()")
+            except RuntimeError as e:
+                # Trang TỰ chuyển đi đúng lúc hỏi (vd 401 → trang đăng nhập): không còn mục nào để mở, giống `cho()`.
+                if "navigated or closed" not in str(e):
+                    raise
+                return
             if not n:
                 return
             time.sleep(0.15)

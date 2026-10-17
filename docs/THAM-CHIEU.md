@@ -464,6 +464,14 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     đường hồ sơ trình duyệt ghép từ ID đã kiểm, resolve() dưới thư mục gốc.
   - **Chưa có**: bộ điều khiển trình duyệt thật nối workspace vnc-xa (CDP);
     kiểm với dịch vụ thật/Chrome.
+  - **NV89** mở rộng đúng hợp đồng này cho `gemini-web`, `grok-web`,
+    `claude-web` (mẫu là `chatgpt-web` ở NV88): mỗi module có các hàm
+    `dang_nhap`, `lam_moi_phien` (a), `dang_nhap_tu_dong` (b),
+    `tai_khoan_ke`/`danh_dau_hong` (c), `mat_khau_da_luu`, `co_tai_khoan`,
+    `ho_so_trinh_duyet`; bước đăng nhập là MỘT HÀM TRONG MODULE (lõi không
+    biết tên nhà cung cấp). Kiểm phiên bằng mã trạng thái HTTP, không dò chữ;
+    CAPTCHA/2FA/xác minh thiết bị → `can_nguoi` (dừng, không cố vượt); mật khẩu
+    lưu kho riêng mã hoá, không log; lỗi lạ → đóng cửa (fail-closed).
 
 ### Giao diện (`web/`)
 
@@ -1458,6 +1466,15 @@ chặn `409 con_tai_khoan`. Liên kết được nhớ trong kho riêng của mo
 không cần gửi lại; gửi `danh_tinh` kèm `null` để gỡ gắn. Module khai `can_module: ["vnc-xa"]` (dùng chung trình
 duyệt từ xa khi cần đăng nhập tay qua noVNC).
 
+**Đăng nhập tự động + khôi phục nhiều tầng (NV89, cùng hợp đồng NV88 của chatgpt-web).** Module có đủ các hàm:
+`dang_nhap` (cookie → kiểm bằng `init()` lấy `SNlM0e`; mật khẩu → đăng nhập qua trình duyệt rồi đọc cookie
+`__Secure-1PSID` từ `google.com`; `dang_nhap_lai` dùng mật khẩu đã lưu), `lam_moi_phien` (tầng a — Google không có
+endpoint làm mới công khai nên chỉ kiểm phiên), `dang_nhap_tu_dong` (tầng b — 2 lần hỏng liên tiếp thì ngừng, tránh
+bị khoá), `tai_khoan_ke`/`danh_dau_hong` (tầng c), `mat_khau_da_luu`, `co_tai_khoan`, `ho_so_trinh_duyet`. Chế độ
+«chỉ cookie» thì tầng (b) bị bỏ qua. CAPTCHA/2FA/xác minh thiết bị → `can_nguoi`, dừng ngay, không cố vượt. Kiểm với
+máy chủ giả trong `test/test_web2api_nv89_gemini_web.py`; **chưa kiểm với dịch vụ thật/Chrome** — luồng đăng nhập
+Google thật có thể có thêm bước (chọn tài khoản, thử thách xác minh) mà khung hiện tại chưa mô phỏng.
+
 **Cách cài.**
 
 1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "gemini-web"`.
@@ -1572,6 +1589,14 @@ danh tính (nhãn, không thì email che dạng `b***@gmail.com`) và module đ�
 tài khoản trỏ tới bị chặn `409 con_tai_khoan`. Liên kết được nhớ trong kho riêng của module theo hash cookie nên
 bền qua khởi động mà không cần gửi lại; gửi `danh_tinh` kèm `null` để gỡ gắn. Module khai
 `can_module: ["vnc-xa"]` (dùng chung trình duyệt từ xa khi cần đăng nhập tay qua noVNC).
+
+**Đăng nhập tự động + khôi phục nhiều tầng (NV89, cùng hợp đồng NV88 của chatgpt-web).** Module có đủ các hàm:
+`dang_nhap` (cookie → kiểm bằng `lay_uid_tu_phien`; mật khẩu → đăng nhập qua X tại `x.com/login` (SSO) rồi đọc cookie
+`sso`/`x-userid` từ `grok.com`; `dang_nhap_lai` dùng mật khẩu đã lưu), `lam_moi_phien` (tầng a),
+`dang_nhap_tu_dong` (tầng b — 2 lần hỏng liên tiếp thì ngừng), `tai_khoan_ke`/`danh_dau_hong` (tầng c),
+`mat_khau_da_luu`, `co_tai_khoan`, `ho_so_trinh_duyet`. CAPTCHA/2FA/xác minh thiết bị → `can_nguoi`, dừng ngay,
+không cố vượt. Kiểm với máy chủ giả trong `test/test_web2api_nv89_grok_web.py`; **chưa kiểm với dịch vụ
+thật/Chrome** — luồng SSO X thật chưa kiểm.
 
 ### Module claude-web — Claude Web (claude.ai)
 
@@ -1693,7 +1718,7 @@ dùng model mặc định; bí danh `flash`/`pro`/`flash-lite` cũng dùng đư�
 - Giao thức nội bộ đã reverse-engineer, không chính thức — Anthropic đổi web app có thể làm module ngừng hoạt động.
 - Chưa kiểm với claude.ai thật (chỉ máy chủ giả lập).
 - Chưa hỗ trợ ảnh/video (yêu cầu có ảnh → `400`).
-- Không tự đăng nhập lại khi cookie hết hạn, không đọc Gmail.
+- Không đọc Gmail. Đăng nhập lại tự động khi cookie hết hạn: có (NV89, qua trình duyệt + mật khẩu đã lưu) — chưa kiểm với claude.ai thật.
 - Cookie chính là tài khoản của bạn: không commit, không chia sẻ.
 
 **Gắn danh tính chung (NV80, cùng khuôn NV77 của gemini-web).** Mỗi tài khoản có thể gắn một danh tính trong sổ
@@ -1705,6 +1730,14 @@ bền qua khởi động mà không cần gửi lại; gửi `danh_tinh` kèm `n
 `can_module: ["vnc-xa"]` (dùng chung trình duyệt từ xa khi cần đăng nhập tay qua noVNC).
 
 ---
+
+**Đăng nhập tự động + khôi phục nhiều tầng (NV89, cùng hợp đồng NV88 của chatgpt-web).** Module có đủ các hàm:
+`dang_nhap` (cookie → kiểm bằng `lay_org_id()`; mật khẩu → mở `claude.ai/login` qua trình duyệt rồi đọc cookie
+`sessionKey`; `dang_nhap_lai` dùng mật khẩu đã lưu), `lam_moi_phien` (tầng a), `dang_nhap_tu_dong` (tầng b — 2 lần
+hỏng liên tiếp thì ngừng), `tai_khoan_ke`/`danh_dau_hong` (tầng c), `mat_khau_da_luu`, `co_tai_khoan`,
+`ho_so_trinh_duyet`. CAPTCHA/2FA/xác minh thiết bị → `can_nguoi`, dừng ngay, không cố vượt. Kiểm với máy chủ giả
+trong `test/test_web2api_nv89_claude_web.py`; **chưa kiểm với dịch vụ thật/Chrome** — claude.ai không có ô mật khẩu
+Anthropic (chỉ mã email hoặc «Continue with Google» SSO) nên chi tiết SSO thật chưa kiểm.
 
 ### Kho danh tính và API danh tính (lõi)
 
