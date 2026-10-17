@@ -41,7 +41,8 @@ def test_trang_html_co_header_bao_mat(du_lieu):
         r = c.get("/")
         assert r.status_code == 200 and "text/html" in r.headers["content-type"]
         _khop_ba_header(r.headers)
-        assert "content-security-policy" not in r.headers
+        assert "content-security-policy" in r.headers
+        assert "sha256-" in r.headers["content-security-policy"]
 
 
 def test_loi_401_co_header_bao_mat(du_lieu):

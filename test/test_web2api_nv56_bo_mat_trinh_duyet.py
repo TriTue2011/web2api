@@ -85,10 +85,6 @@ def _dang_nhap_cookie(client):
 
 # ── 1. Header bảo mật trên mọi trang HTML ─────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="NV56 CSP-ALL: 0/12 trang HTML có Content-Security-Policy (chỉ /m/* và /novnc/* có)",
-)
 def test_csp_tren_moi_trang_html(moi_truong):
     """Mọi trang HTML trả về phải có Content-Security-Policy."""
     client, _ = moi_truong
