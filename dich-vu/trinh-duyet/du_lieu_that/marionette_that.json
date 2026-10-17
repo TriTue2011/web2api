@@ -1,0 +1,129 @@
+{
+ "nguồn": "Firefox ESR 153 thật trong container web2api-trinh-duyet, đo 18/10/2026: trang https://example.com/ và https://www.google.com/ (công khai, không đăng nhập). Khung ĐẦY ĐỦ, tiền tố độ dài = số byte thật; các trường nhạy cảm đã che và tiền tố đã tính lại.",
+ "đã_che": [
+  "WebDriver:NewSession: moz:buildID, moz:platformVersion, moz:processID, moz:profile",
+  "WebDriver:GetPageSource: value (rút gọn)",
+  "WebDriver:FindElement: stacktrace",
+  "WebDriver:ElementClear: stacktrace",
+  "WebDriver:ClickElement: stacktrace",
+  "WebDriver:ElementClick: stacktrace",
+  "WebDriver:GetCookies: value của từng cookie"
+ ],
+ "khung": [
+  {
+   "huong": "firefox→khách",
+   "thô": "50:{\"applicationType\":\"gecko\",\"marionetteProtocol\":3}"
+  },
+  {
+   "lệnh": "WebDriver:NewSession",
+   "tham_số": {},
+   "phản_hồi_thô": "710:[1,1,null,{\"sessionId\":\"f31fe1aa-375e-4462-aa21-ed663dc7ebbe\",\"capabilities\":{\"acceptInsecureCerts\":false,\"browserName\":\"firefox\",\"browserVersion\":\"153.5.0\",\"platformName\":\"linux\",\"setWindowRect\":true,\"unhandledPromptBehavior\":\"dismiss and notify\",\"userAgent\":\"Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0\",\"moz:buildID\":\"<đã-che>\",\"moz:headless\":false,\"moz:platformVersion\":\"<đã-che>\",\"moz:processID\":0,\"moz:profile\":\"/hoso/<đã-che>\",\"moz:shutdownTimeout\":60000,\"pageLoadStrategy\":\"normal\",\"timeouts\":{\"implicit\":0,\"pageLoad\":300000,\"script\":30000},\"strictFileInteractability\":false,\"moz:accessibilityChecks\":false,\"moz:webdriverClick\":true,\"moz:windowless\":false,\"proxy\":{}}}]"
+  },
+  {
+   "lệnh": "WebDriver:Navigate",
+   "tham_số": {
+    "url": "https://example.com/"
+   },
+   "phản_hồi_thô": "25:[1,2,null,{\"value\":null}]"
+  },
+  {
+   "lệnh": "WebDriver:GetCurrentURL",
+   "tham_số": {},
+   "phản_hồi_thô": "43:[1,3,null,{\"value\":\"https://example.com/\"}]"
+  },
+  {
+   "lệnh": "WebDriver:GetTitle",
+   "tham_số": {},
+   "phản_hồi_thô": "37:[1,4,null,{\"value\":\"Example Domain\"}]"
+  },
+  {
+   "lệnh": "WebDriver:GetPageSource",
+   "tham_số": {},
+   "phản_hồi_thô": "161:[1,5,null,{\"value\":\"<html lang=\\\"en\\\"><head><meta charset=\\\"utf-8\\\"><title>Example Domain</title></head><body><div><h1>Example Domain</h1></div></body></html>\"}]"
+  },
+  {
+   "lệnh": "WebDriver:GetCookies",
+   "tham_số": {},
+   "phản_hồi_thô": "13:[1,6,null,[]]"
+  },
+  {
+   "lệnh": "WebDriver:ExecuteScript",
+   "tham_số": {
+    "script": "return ['a', 1, null]",
+    "args": []
+   },
+   "phản_hồi_thô": "33:[1,7,null,{\"value\":[\"a\",1,null]}]"
+  },
+  {
+   "lệnh": "WebDriver:FindElement",
+   "tham_số": {
+    "using": "css selector",
+    "value": "body"
+   },
+   "phản_hồi_thô": "99:[1,8,null,{\"value\":{\"element-6066-11e4-a52e-4f735466cecf\":\"35ccc44d-98eb-4193-bfa8-9332402fff43\"}}]"
+  },
+  {
+   "lệnh": "WebDriver:FindElement",
+   "tham_số": {
+    "using": "css selector",
+    "value": "div.khong-co-that"
+   },
+   "phản_hồi_thô": "138:[1,9,{\"error\":\"no such element\",\"message\":\"Unable to locate element: div.khong-co-that\",\"stacktrace\":\"<stacktrace-đã-rút-gọn>\"},null]"
+  },
+  {
+   "lệnh": "WebDriver:ElementClick",
+   "tham_số": {
+    "id": "35ccc44d-98eb-4193-bfa8-9332402fff43"
+   },
+   "phản_hồi_thô": "26:[1,10,null,{\"value\":null}]"
+  },
+  {
+   "lệnh": "WebDriver:ElementClear",
+   "tham_số": {
+    "id": "35ccc44d-98eb-4193-bfa8-9332402fff43"
+   },
+   "phản_hồi_thô": "155:[1,11,{\"error\":\"invalid element state\",\"message\":\"Unable to clear element that cannot be edited: <body>\",\"stacktrace\":\"<stacktrace-đã-rút-gọn>\"},null]"
+  },
+  {
+   "lệnh": "WebDriver:ElementSendKeys",
+   "tham_số": {
+    "id": "35ccc44d-98eb-4193-bfa8-9332402fff43",
+    "text": "x"
+   },
+   "phản_hồi_thô": "26:[1,12,null,{\"value\":null}]"
+  },
+  {
+   "lệnh": "WebDriver:ClickElement",
+   "tham_số": {
+    "id": "35ccc44d-98eb-4193-bfa8-9332402fff43"
+   },
+   "phản_hồi_thô": "118:[1,13,{\"error\":\"unknown command\",\"message\":\"WebDriver:ClickElement\",\"stacktrace\":\"<stacktrace-đã-rút-gọn>\"},null]"
+  },
+  {
+   "lệnh": "WebDriver:ElementClick",
+   "tham_số": {
+    "id": {
+     "element-6066-11e4-a52e-4f735466cecf": "35ccc44d-98eb-4193-bfa8-9332402fff43"
+    }
+   },
+   "phản_hồi_thô": "231:[1,14,{\"error\":\"invalid argument\",\"message\":\"Expected \\\"id\\\" to be a string, got [object Object] {\\\"element-6066-11e4-a52e-4f735466cecf\\\":\\\"35ccc44d-98eb-4193-bfa8-9332402fff43\\\"}\",\"stacktrace\":\"<stacktrace-đã-rút-gọn>\"},null]"
+  },
+  {
+   "lệnh": "WebDriver:Navigate",
+   "tham_số": {
+    "url": "https://www.google.com/"
+   },
+   "phản_hồi_thô": "26:[1,15,null,{\"value\":null}]"
+  },
+  {
+   "lệnh": "WebDriver:GetCookies",
+   "tham_số": {},
+   "phản_hồi_thô": "593:[1,16,null,[{\"name\":\"SEARCH_SAMESITE\",\"value\":\"<đã-che>\",\"path\":\"/\",\"domain\":\".google.com\",\"secure\":false,\"httpOnly\":false,\"expiry\":1807830229,\"sameSite\":\"Strict\"},{\"name\":\"AEC\",\"value\":\"<đã-che>\",\"path\":\"/\",\"domain\":\".google.com\",\"secure\":true,\"httpOnly\":true,\"expiry\":1807830229,\"sameSite\":\"Lax\"},{\"name\":\"__Secure-STRP\",\"value\":\"<đã-che>\",\"path\":\"/\",\"domain\":\".google.com\",\"secure\":true,\"httpOnly\":false,\"expiry\":1792278529,\"sameSite\":\"Strict\"},{\"name\":\"NID\",\"value\":\"<đã-che>\",\"path\":\"/\",\"domain\":\".google.com\",\"secure\":true,\"httpOnly\":true,\"expiry\":1808089429,\"sameSite\":\"None\"}]]"
+  },
+  {
+   "lệnh": "WebDriver:DeleteSession",
+   "tham_số": {},
+   "phản_hồi_thô": "26:[1,17,null,{\"value\":null}]"
+  }
+ ]
+}
