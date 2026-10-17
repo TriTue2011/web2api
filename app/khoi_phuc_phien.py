@@ -187,8 +187,10 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
 
     `trang`: {url: {"tin_hieu": [...], "cookie": {ten: gia_tri}, ...}}.
     `tin_hieu()` trả hợp các tín hiệu của trang hiện tại, ví dụ {"captcha"},
-    {"2fa"}, {"thanh_cong"}. Nhật ký `hanh_dong` chỉ ghi TÊN hành động (không
-    ghi giá trị điền vào — tránh lộ bí mật nếu ai đó log nó).
+    {"2fa"}, {"thanh_cong"}, {"thu_thach_truy_cap"} (thử thách truy cập kiểu
+    Cloudflare — mã mở, lõi không biết tên nhà cung cấp nào). Nhật ký
+    `hanh_dong` chỉ ghi TÊN hành động (không ghi giá trị điền vào — tránh lộ
+    bí mật nếu ai đó log nó).
     """
 
     def __init__(self, trang: dict | None = None):

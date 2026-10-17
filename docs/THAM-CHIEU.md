@@ -1599,6 +1599,23 @@ bền qua khởi động mà không cần gửi lại; gửi `danh_tinh` kèm `n
 không cố vượt. Kiểm với máy chủ giả trong `test/test_web2api_nv89_grok_web.py`; **chưa kiểm với dịch vụ
 thật/Chrome** — luồng SSO X thật chưa kiểm.
 
+**Thử thách Cloudflare → «cần người» (NV90).** grok.com đặt Cloudflare Turnstile trước trang đăng nhập;
+đo trên kho tham khảo (captcha-solver của chatgpt2api, 20/09/2026) cho thấy không cách tự động nào qua được —
+nửa «tích ô» chỉ người làm được. Module **không** viết bộ tự tích/tự giải, không click vào iframe thử thách,
+không gọi dịch vụ giải hộ, không che dấu vết tự động. Nhận ra thử thách bằng **cấu trúc, không dò chữ**:
+phản hồi HTTP `403`/`503` kèm tiêu đề `cf-mitigated: challenge`, hoặc tín hiệu trình duyệt
+`thu_thach_truy_cap` (mã mở trong hợp đồng `app/khoi_phuc_phien.py` — lõi không biết tên nhà cung cấp nào).
+Gặp thử thách ở `dang_nhap`/`dang_nhap_tu_dong`/`lam_moi_phien` → báo `can_nguoi` **ngay** (không thử lại cho
+hết giờ); lõi mở noVNC đúng workspace ở tầng (d). Người tích ô xong bấm «Đã xử lý»
+(`POST /api/tai-khoan/khoi-phuc/xoa-can-nguoi`) thì lượt kế chạy tiếp nửa tự làm được (điền email/mật khẩu
+hoặc dùng hồ sơ có sẵn, đọc cookie phiên) — «đã đăng nhập» được kết luận bằng cấu trúc (phiên dùng được khi
+gọi kiểm phiên), không bằng tên cookie đoán mò. Thử thách **không** làm tăng bộ đếm «hỏng liên tiếp» tới mức
+ngừng tự đăng nhập (người xử lý được thì không phải lỗi tài khoản). Chế độ dán cookie cho phép dán cả cookie
+`cf_*` (vd `cf_clearance`) lấy từ trình duyệt thường — lưu ý: `cf_clearance` thường gắn với IP + trình duyệt
+đã lấy nó, cookie lấy ở máy khác có thể không dùng được trên máy chủ; khi đó `403` thử thách vẫn hiện thành
+«cần người», không thành «cookie sai». Kiểm bằng máy chủ + trình duyệt giả trong
+`test/test_web2api_nv90_grok_cloudflare.py`; **chưa thử trên grok.com thật**.
+
 ### Module claude-web — Claude Web (claude.ai)
 
 **Mô tả.** Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng

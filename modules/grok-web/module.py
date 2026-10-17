@@ -41,6 +41,7 @@ from .client import (
     LoiHanMucGrokWeb,
     LoiMayChuGrokWeb,
     LoiPhienGrokWeb,
+    LoiThuThachTruyCap,
     lay_uid_tu_phien,
 )
 from .converter import (
@@ -432,6 +433,10 @@ class Module:
             tin_hieu = trinh_duyet.tin_hieu()
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
+        if "thu_thach_truy_cap" in tin_hieu:
+            # Thử thách truy cập (Cloudflare): DỪNG NGAY, không cố vượt dưới
+            # mọi hình thức — lõi mở noVNC để người tích ô tay (tầng d).
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
             # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
@@ -475,6 +480,10 @@ class Module:
                     return KetQuaDangNhap(False, ma_loi="thieu_cookie")
                 try:
                     await lay_uid_tu_phien(jar, self._goc_https)
+                except LoiThuThachTruyCap:
+                    # 403/503 + cf-mitigated: challenge → «cần người»,
+                    # KHÔNG phải «cookie sai».
+                    return KetQuaDangNhap(False, ma_loi="can_nguoi")
                 except LoiPhienGrokWeb:
                     return KetQuaDangNhap(False, ma_trang_thai=401)
                 except LoiGrokWeb:
@@ -518,6 +527,9 @@ class Module:
         _, jar = tim
         try:
             await lay_uid_tu_phien(jar, self._goc_https)
+        except LoiThuThachTruyCap:
+            return KetQuaKhoiPhuc(False, tang="a", ma_loi="can_nguoi",
+                                  can_nguoi=True)
         except LoiPhienGrokWeb:
             return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
                                   ma_trang_thai=401)

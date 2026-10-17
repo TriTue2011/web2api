@@ -84,6 +84,21 @@ class LoiMayChuGrokWeb(LoiGrokWeb):
     """grok.com kết thúc phiên với trạng thái lỗi — lớp trên nên đổi tài khoản."""
 
 
+class LoiThuThachTruyCap(LoiGrokWeb):
+    """Máy chủ trả thử thách truy cập (Cloudflare Turnstile).
+
+    KHÔNG phải lỗi tài khoản: module gặp thì báo «cần người» ngay, không thử
+    lại, không tự giải thử thách dưới mọi hình thức."""
+
+
+def _la_thu_thach_truy_cap(dap) -> bool:
+    """Nhận ra thử thách bằng CẤU TRÚC, không dò chữ: mã 403/503 kèm tiêu đề
+    ``cf-mitigated: challenge``."""
+    if dap.status_code not in (403, 503):
+        return False
+    return (dap.headers.get("cf-mitigated") or "").strip().lower() == "challenge"
+
+
 def _kiem_ip_phien(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
@@ -123,6 +138,8 @@ async def lay_uid_tu_phien(cookies: dict[str, str], goc_https: str) -> str:
         raise LoiPhienGrokWeb(
             "không lấy được uid (thiếu cookie x-userid và gọi phiên thất bại)"
         ) from e
+    if _la_thu_thach_truy_cap(dap):
+        raise LoiThuThachTruyCap("grok.com trả thử thách truy cập (Cloudflare)")
     if dap.status_code in (401, 403):
         raise LoiPhienGrokWeb("cookie bị grok.com từ chối khi lấy uid")
     try:
