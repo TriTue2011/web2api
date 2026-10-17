@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 # Môi trường ảo (uv venv / python -m venv)
 .venv/
+.venv
 venv/
 # Bí mật và dữ liệu chạy thử: KHÔNG bao giờ đưa lên git (kho public)
 .env
