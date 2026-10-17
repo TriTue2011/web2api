@@ -195,3 +195,34 @@ class TestTinHieuTheoQuyTac:
                 "quy tắc cấu trúc chưa được truyền qua tin_hieu"
         finally:
             sys.path.remove("modules/ho-so-google")
+
+
+# ── (c) bộ chọn chỉ CSS chuẩn ─────────────────────────────────────────────
+
+class TestBoChonCssChuan:
+    """Marionette không hiểu :has-text/:contains của Playwright."""
+
+    MAU_CAM = (":has-text", ":contains", ":has(", ">>", "xpath", "XPath")
+
+    @pytest.mark.parametrize("module_ten", [
+        "chatgpt-web", "gemini-web", "claude-web", "grok-web", "muse2api",
+        "ho-so-google",
+    ])
+    def test_khong_bo_chon_playwright(self, module_ten):
+        import ast
+        from pathlib import Path
+        p = Path("modules") / module_ten / "module.py"
+        cay = ast.parse(p.read_text(encoding="utf-8"))
+        loi = []
+        for nut in ast.walk(cay):
+            if isinstance(nut, (ast.Assign, ast.AnnAssign)):
+                muc = [getattr(t, "id", "") for t in ast.walk(nut)
+                       if isinstance(t, ast.Name)]
+                if not any("BO_CHON" in m for m in muc):
+                    continue
+                for h in ast.walk(nut):
+                    if isinstance(h, ast.Constant) and isinstance(h.value, str):
+                        for cam in self.MAU_CAM:
+                            if cam in h.value:
+                                loi.append((cam, h.value[:60]))
+        assert not loi, f"{module_ten}: bộ chọn không phải CSS chuẩn: {loi}"

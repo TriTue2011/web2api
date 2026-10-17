@@ -406,9 +406,9 @@ class Module:
     # -- tái dùng hồ sơ Google (NV93 — đường chính) -----------------------------
 
     _URL_TAI_DUNG = "https://gemini.google.com/"
-    _BO_CHON_DANG_NHAP = ('a[href*="accounts.google.com"], '
-                          'button:has-text("Đăng nhập"), button:has-text("Sign in")')
-    _BO_CHON_GOOGLE = '[data-identifier], button:has-text("@gmail.com")'
+    # NV94-c: chỉ CSS chuẩn (Marionette không hiểu :has-text của Playwright).
+    _BO_CHON_DANG_NHAP = 'a[href*="accounts.google.com"]'
+    _BO_CHON_GOOGLE = '[data-identifier]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare"}
 

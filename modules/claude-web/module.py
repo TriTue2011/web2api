@@ -495,8 +495,8 @@ class Module:
     # ── tái dùng hồ sơ Google (NV93 — đường chính) ────────────────────────
 
     _URL_GOC = "https://claude.ai/"
-    _BO_CHON_GOOGLE = ('button:has-text("Continue with Google"), '
-                       'a:has-text("Continue with Google")')
+    # NV94-c: chỉ CSS chuẩn (Marionette không hiểu :has-text của Playwright).
+    _BO_CHON_GOOGLE = 'a[href*="accounts.google.com"]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare"}
 
