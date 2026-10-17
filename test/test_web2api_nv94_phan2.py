@@ -263,3 +263,66 @@ class TestTinHieuDocCookieAsync:
             assert await td.doc_cookie("x") == {"a": "b"}
 
         asyncio.run(chay())
+
+
+# ── P3: grok-web bỏ lưu phiên Google; chế độ google dùng tai_dung_ho_so ──
+
+def _nap_grok_web():
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+    ten_goi = "grok_web_nv94_p3"
+    for t in [t for t in list(sys.modules)
+              if t == ten_goi or t.startswith(ten_goi + ".")]:
+        del sys.modules[t]
+    thu_muc = Path("modules/grok-web").resolve()
+    goi = types.ModuleType(ten_goi)
+    goi.__path__ = [str(thu_muc)]
+    sys.modules[ten_goi] = goi
+    for ten_tep in ("client", "converter", "module"):
+        spec = importlib.util.spec_from_file_location(
+            f"{ten_goi}.{ten_tep}", thu_muc / f"{ten_tep}.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[f"{ten_goi}.{ten_tep}"] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[f"{ten_goi}.module"]
+
+
+class TestGrokWebBoLuuPhienGoogle:
+    def test_khong_con_ham_luu_phien_google(self):
+        mod = _nap_grok_web()
+        assert not hasattr(mod.Module, "_luu_phien_google"), \
+            "còn lưu cookie accounts.google.com (bí mật giá trị cao vô ích)"
+        assert not hasattr(mod.Module, "_doc_phien_google")
+        assert "phien_google" not in open("modules/grok-web/module.py",
+                                          encoding="utf-8").read(), \
+            "mã còn tham chiếu kho 'phien_google'"
+
+    def test_che_do_google_dung_tai_dung_ho_so(self):
+        import asyncio
+        mod = _nap_grok_web()
+        from app.khoi_phuc_phien import TrinhDuyetGia
+        from app.tai_khoan_hang_loat import BiMatTam
+
+        m = mod.Module({})
+        m._che_do_dang_nhap = "google"
+        da_goi = {}
+
+        async def tai_dung_gia(ho_so, trinh_duyet):
+            da_goi["tai_dung"] = True
+            return mod.KetQuaDangNhap(True)
+
+        m.tai_dung_ho_so = tai_dung_gia
+        td = TrinhDuyetGia({"https://grok.com/": {"cookie": {"sso": "x"}}})
+
+        async def chay():
+            return await m._dang_nhap_bang_trinh_duyet(
+                "a@b.c", BiMatTam("mk"), td)
+
+        kq = asyncio.run(chay())
+        assert da_goi.get("tai_dung"), \
+            "chế độ 'google' chưa dùng tai_dung_ho_so (hồ sơ Google)"
+        assert kq.thanh_cong
+        assert all(h[0] != "dien" for h in td.hanh_dong), \
+            "chế độ 'google' không được tự điền form"

@@ -788,28 +788,6 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         return None
 
-    def _doc_phien_google(self) -> dict:
-        """Phiên Google đã lưu (kho riêng của module); hỏng/không có → {}."""
-        if self.kho is None:
-            return {}
-        try:
-            ds = self.kho.doc("phien_google") or {}
-        except Exception:
-            return {}
-        return dict(ds) if isinstance(ds, dict) else {}
-
-    def _luu_phien_google(self, jar: dict) -> None:
-        """Lưu cookie phiên Google vào kho riêng (0600) để lần sau chỉ cần bấm
-        «tiếp tục với Google». Lưu hỏng → chỉ ghi nhật ký (lần sau nhập lại)."""
-        if self.kho is None or not isinstance(jar, dict) or not jar:
-            return
-        try:
-            self.kho.luu("phien_google",
-                         {str(k): str(v) for k, v in jar.items()})
-        except Exception as e:
-            log.warning("grok-web: không lưu được phiên Google: %s",
-                        type(e).__name__)
-
     async def _dang_nhap_che_do_truc_tiep(self, email: str, mat_khau: BiMatTam,
                                           trinh_duyet) -> KetQuaDangNhap:
         """Đăng nhập trực tiếp bằng email/mật khẩu trên x.com (như OpenAI)."""
@@ -844,59 +822,18 @@ class Module:
 
     async def _dang_nhap_che_do_google(self, email: str, mat_khau: BiMatTam,
                                        trinh_duyet) -> KetQuaDangNhap:
-        """Đăng nhập qua Google SSO; lưu phiên Google để lần sau không nhập lại.
+        """Chế độ "google": dùng `tai_dung_ho_so` (hồ sơ Google đã đăng nhập).
 
-        CHƯA KIỂM với X/Google thật — luồng thật có thể cần thêm bước."""
+        NV94-P3: KHÔNG tự đăng nhập Google riêng, KHÔNG lưu cookie
+        accounts.google.com vào kho module (bí mật giá trị cao mà không bao giờ
+        nạp lại). Mật khẩu (nếu có) bị xoá sau khi dùng.
+        """
         try:
-            await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-        except Exception:
-            return KetQuaDangNhap(False, ma_loi="loi_module")
-        kiem_som = await self._kiem_captcha_som(trinh_duyet)
-        if kiem_som is not None:
-            return kiem_som
-        if not await vuot_thu_thach_toi_da(
-                trinh_duyet, self._SO_LUOT_VUOT_THU_THACH_TOI_DA):
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
-        try:
-            await trinh_duyet.bam("dang_nhap_google")
-            await trinh_duyet.mo_trang(self._URL_SSO_GOOGLE)
-        except Exception:
-            return KetQuaDangNhap(False, ma_loi="loi_module")
-        kiem_som = await self._kiem_captcha_som(trinh_duyet)
-        if kiem_som is not None:
-            return kiem_som
-        if not await vuot_thu_thach_toi_da(
-                trinh_duyet, self._SO_LUOT_VUOT_THU_THACH_TOI_DA):
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
-        try:
-            tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
-        except Exception:
-            return KetQuaDangNhap(False, ma_loi="loi_module")
-        if (la_captcha_chu(tin_hieu) or "2fa" in tin_hieu
-                or "xac_minh" in tin_hieu):
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
-        if self._doc_phien_google():
-            # Đã có phiên Google lưu → chỉ bấm «tiếp tục với Google»,
-            # không nhập lại email/mật khẩu.
-            try:
-                await trinh_duyet.bam("tiep_tuc_google")
-            except Exception:
-                return KetQuaDangNhap(False, ma_loi="loi_module")
-        else:
-            mat_khau_tho = mat_khau.lay()
-            try:
-                await trinh_duyet.dien("email", email)
-                await trinh_duyet.dien("mat_khau", mat_khau_tho)
-                await trinh_duyet.bam("dang_nhap")
-            finally:
-                mat_khau_tho = None  # noqa: F841
-            try:
-                jar_google = await trinh_duyet.doc_cookie("accounts.google.com")
-            except Exception:
-                jar_google = {}
-            # Lưu hỏng → _luu_phien_google chỉ ghi nhật ký, lần sau nhập lại.
-            self._luu_phien_google(jar_google)
-        return await self._doc_va_kiem_phien(trinh_duyet, email, mat_khau)
+            return await self.tai_dung_ho_so("", trinh_duyet)
+        finally:
+            if mat_khau is not None:
+                mat_khau.xoa()
+
 
     async def _doc_va_kiem_phien(self, trinh_duyet, email: str,
                                  mat_khau: BiMatTam) -> KetQuaDangNhap:
