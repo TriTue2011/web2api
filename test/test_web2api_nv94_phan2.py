@@ -326,3 +326,62 @@ class TestGrokWebBoLuuPhienGoogle:
         assert kq.thanh_cong
         assert all(h[0] != "dien" for h in td.hanh_dong), \
             "chế độ 'google' không được tự điền form"
+
+
+# ── P3: dong() mọi nơi tạo TrinhDuyetThat ────────────────────────────────
+
+class TestDongTrinhDuyetThat:
+    """Mỗi lời gọi tạo một TrinhDuyetThat + httpx.Client rồi không đóng →
+    rò rỉ socket. Lõi/tuyến phải dong() sau khi dùng."""
+
+    def test_khoi_phuc_dong_sau_tang_b(self, tmp_path, monkeypatch):
+        import asyncio
+        from app import danh_tinh, khoi_phuc_phien as kp
+        from app.tai_khoan_hang_loat import BiMatTam
+
+        monkeypatch.setenv("WEB2API_DATA", str(tmp_path / "data"))
+        dt = danh_tinh.tao("dong@example.com", "dong")
+        danh_tinh.cap_nhat_trang_thai(dt["id"], ho_so="d" * 16)
+
+        co = {"gianh": 0, "nha": 0, "dong": 0}
+
+        class DieuKhien(kp.BoDieuKhienTrinhDuyet):
+            async def mo_trang(self, url): pass
+            async def dien(self, b, g): pass
+            async def bam(self, b): pass
+            async def doc_cookie(self, m): return {}
+            async def tin_hieu(self, q=None): return set()
+            async def gianh(self): co["gianh"] += 1
+            async def nha(self): co["nha"] += 1
+            async def dong(self): co["dong"] += 1
+
+        td = DieuKhien()
+
+        class ModTD:
+            manifest = {"id": "td", "cung_cap": ["trinh_duyet"]}
+
+            def trinh_duyet_that(self, ho_so):
+                assert ho_so == "d" * 16
+                return td
+
+        class Mod:
+            manifest = {"id": "m", "cung_cap": ["chat"]}
+
+            def danh_tinh_id_cua(self, khoa):
+                return dt["id"]
+
+            async def lam_moi_phien(self, khoa):
+                return kp.KetQuaKhoiPhuc(False, ma_loi="het_han")
+
+            async def dang_nhap_tu_dong(self, tai_khoan, trinh_duyet):
+                return kp.KetQuaKhoiPhuc(True)
+
+        async def chay():
+            return await kp.khoi_phuc(
+                Mod(), kp.TaiKhoanCanKhoiPhuc(khoa="k", mat_khau=BiMatTam("mk")),
+                dang_chay={"m": Mod(), "td": ModTD()})
+
+        kq = asyncio.run(chay())
+        assert kq.thanh_cong
+        assert co["gianh"] == 1 and co["nha"] == 1
+        assert co["dong"] == 1, "khoi_phuc chưa dong() bộ điều khiển tự lấy"

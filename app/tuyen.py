@@ -2924,6 +2924,17 @@ def _doi_module_trinh_duyet(request: Request):
     return mod
 
 
+async def _dong_trinh_duyet_that(td: Any) -> None:
+    """Đóng bộ điều khiển trình duyệt thật (NV94-P3): nhả quyền (luỹ đẳng)
+    + đóng httpx.Client. Không ném — đường gọi đã có xử lý lỗi riêng."""
+    dong = getattr(td, "dong", None)
+    if callable(dong):
+        try:
+            await dong()
+        except Exception as e:
+            log.warning("trinh-duyet-that: dong() lỗi: %s", type(e).__name__)
+
+
 def _dieu_khien_that(request: Request, ho_so: str):
     """Bộ điều khiển trình duyệt thật qua CẦU NỐI LÕI (NV92 P1):
     lõi tìm module có khả năng «trinh_duyet» rồi gọi `trinh_duyet_that(ho_so)`
@@ -3007,9 +3018,13 @@ async def dang_nhap_danh_tinh_qua_trinh_duyet(request: Request):
     async def ham_dang_nhap(dong):
         # Giành quyền điều khiển máy cho đúng lượt này rồi NHẢ LUÔN
         # (kể cả khi lỗi) — hồ sơ không kẹt «đang bận».
-        async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
-            kq = await mod_dn.dang_nhap(
-                ho_so, dong.email, dong.mat_khau, td, ma_2fa=dong.totp)
+        # NV94-P3: xong thì DONG (đóng httpx.Client của TrinhDuyetThat).
+        try:
+            async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
+                kq = await mod_dn.dang_nhap(
+                    ho_so, dong.email, dong.mat_khau, td, ma_2fa=dong.totp)
+        finally:
+            await _dong_trinh_duyet_that(td)
         try:
             if kq.thanh_cong:
                 danh_tinh_mod.cap_nhat_trang_thai(dt_id, trang_thai="dang_nhap")
@@ -3077,8 +3092,12 @@ async def gui_ma_2fa_danh_tinh(id: str, request: Request):
     bm = tai_khoan_hang_loat_mod.BiMatTam(ma)
     ma = None  # noqa: F841 — không giữ chuỗi thô
     try:
-        async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
-            kq = await mod_dn.nhap_ma_2fa(ho_so, bm, td)
+        # NV94-P3: xong thì DONG (đóng httpx.Client của TrinhDuyetThat).
+        try:
+            async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
+                kq = await mod_dn.nhap_ma_2fa(ho_so, bm, td)
+        finally:
+            await _dong_trinh_duyet_that(td)
     except Exception as e:
         # Giành quyền lỗi → nhap_ma_2fa chưa chạy → tự xoá mã ở đây
         # (xoa() luỹ đẳng; các nhánh trong nhap_ma_2fa đã tự xoá).
@@ -3387,11 +3406,15 @@ async def tai_dung_ho_so_provider(request: Request):
     if td is None:
         raise LoiOpenAI(503, "Không lấy được bộ điều khiển trình duyệt thật.",
                         code="chua_co_trinh_duyet_that")
+    # NV94-P3: xong thì DONG (đóng httpx.Client của TrinhDuyetThat).
     try:
         # Giành quyền điều khiển máy cho đúng lượt này rồi NHẢ LUÔN
         # (kể cả khi lỗi) — hồ sơ không kẹt «đang bận».
-        async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
-            kq = await tai_dung(ho_so, td)
+        try:
+            async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
+                kq = await tai_dung(ho_so, td)
+        finally:
+            await _dong_trinh_duyet_that(td)
     except Exception as e:
         if getattr(e, "ma", None) == 409:
             raise LoiOpenAI(409, "Hồ sơ trình duyệt đang bận (có người hoặc "

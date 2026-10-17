@@ -714,6 +714,8 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                 if td_tu_cau_noi:
                     # Bộ điều khiển do lõi tự lấy → lõi giành/nhả quyền cho
                     # đúng lượt này; người gọi tự đưa thì tự quản vòng đời.
+                    # NV94-P3: dùng xong DONG luôn (đóng httpx.Client, chống
+                    # rò rỉ socket — mỗi lượt một thể hiện mới).
                     try:
                         async with phien_dieu_khien_that(trinh_duyet):
                             # NV94-P3: kiểm tín hiệu SAU khi đã giành quyền.
@@ -731,6 +733,13 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                         log.warning("khoi-phuc: không giành được trình duyệt: %s",
                                     type(e).__name__)
                         kq = KetQuaKhoiPhuc(False, tang=TANG_B, ma_loi="trinh_duyet_ban")
+                    finally:
+                        dong = getattr(trinh_duyet, "dong", None)
+                        if callable(dong):
+                            try:
+                                await dong()
+                            except Exception:
+                                pass
                 else:
                     # Người gọi tự quản vòng đời trình duyệt: kiểm trước khi
                     # gọi module như cũ (không có giành/409 ở đây).
