@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -161,6 +162,17 @@ def mt_dk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TRINH_DUYET_TOI_DA_HO_SO", "20")
     monkeypatch.setenv("TRINH_DUYET_TOI_DA_PHUT", "480")
     monkeypatch.setattr(server, "_khoa_dich_vu", KHOA_TEST, raising=False)
+    # NV94-P3: sandbox không có DNS thật (mọi hostname phân giải về dải
+    # benchmark 198.18/15) — giả lập DNS cho hostname hợp lệ trong test.
+    _that_getaddrinfo = socket.getaddrinfo
+
+    def _getaddrinfo_gia(host, *a, **k):
+        if host == "accounts.google.com":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("142.250.72.14", 0))]
+        return _that_getaddrinfo(host, *a, **k)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _getaddrinfo_gia)
 
     gia: MarionetteGia | None = None
 
@@ -551,3 +563,46 @@ def test_gianh_moz_profile_sai_thi_502(mt_dk):
         res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
         assert res.status_code == 502
         assert mt_dk["quan_ly"].danh_sach_mo[ho_so].dang_ban is False
+
+
+# ── NV94-P3: dọn idle tôn trọng dang_ban; thao tác cập nhật hoạt động ──────
+
+def test_don_idle_bo_qua_ho_so_dang_ban(mt_dk):
+    import asyncio
+    with TestClient(app) as client:
+        ho_so = _mo_firefox(mt_dk, client)
+        _gianh(mt_dk, client, ho_so)
+        ql = mt_dk["quan_ly"]
+        ho_so_mo = ql.danh_sach_mo[ho_so]
+        assert ho_so_mo.dang_ban is True
+        # Giả vờ idle rất lâu nhưng máy đang điều khiển
+        ho_so_mo.lan_hoat_dong_cuoi = ql.dong_ho() - 10 * 3600
+        da_dong = asyncio.run(ql.don_idle())
+        assert ho_so not in da_dong, "dọn mất hồ sơ máy đang điều khiển"
+        assert ho_so in ql.danh_sach_mo
+
+
+def test_nguyen_thuy_cap_nhat_lan_hoat_dong_cuoi(mt_dk):
+    with TestClient(app) as client:
+        ho_so = _mo_firefox(mt_dk, client)
+        _gianh(mt_dk, client, ho_so)
+        ql = mt_dk["quan_ly"]
+        ho_so_mo = ql.danh_sach_mo[ho_so]
+        ho_so_mo.lan_hoat_dong_cuoi = 0.0
+        res = client.post(f"/ho-so/{ho_so}/dieu-huong", headers=HEADER_AUTH,
+                          json={"url": "https://accounts.google.com/"})
+        assert res.status_code == 200, res.text
+        assert ho_so_mo.lan_hoat_dong_cuoi > 0.0, \
+            "thao tác điều khiển không cập nhật lan_hoat_dong_cuoi"
+
+
+def test_dieu_huong_chan_hostname_noi_bo(mt_dk):
+    """NV94-P3: hostname phân giải vào loopback/dải riêng cũng bị chặn,
+    không chỉ IP dạng số."""
+    with TestClient(app) as client:
+        ho_so = _mo_firefox(mt_dk, client)
+        _gianh(mt_dk, client, ho_so)
+        for url in ("http://localhost/", "http://127.0.0.1/"):
+            res = client.post(f"/ho-so/{ho_so}/dieu-huong", headers=HEADER_AUTH,
+                              json={"url": url})
+            assert res.status_code == 400, (url, res.text)

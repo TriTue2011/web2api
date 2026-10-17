@@ -39,6 +39,7 @@ import re
 import secrets
 import shutil
 import signal
+import socket
 import sqlite3
 import stat
 import sys
@@ -821,7 +822,11 @@ class QuanLyHoSo:
 
         Lỗi giao thức → 502 chỉ mang MÃ lỗi (không nội dung trang); lỗi lạ →
         ĐÓNG CỬA: ngắt máy khách + nhả quyền rồi 500.
+
+        NV94-P3: mọi thao tác điều khiển đều cập nhật `lan_hoat_dong_cuoi`
+        (vòng dọn idle không đóng nhầm hồ sơ máy đang dùng).
         """
+        ho_so_mo.lan_hoat_dong_cuoi = self.dong_ho()
         try:
             return await asyncio.to_thread(fn, *doi_so)
         except LoiMarionette as e:
@@ -1035,7 +1040,7 @@ class QuanLyHoSo:
                 detail="«url» phải là http/https hợp lệ, không trỏ metadata/LAN.",
             )
         # Chặn IP chữ (metadata/LAN): máy điều khiển không được lái trình duyệt
-        # vào dịch vụ nội bộ. Tên máy chữ để Firefox tự phân giải.
+        # vào dịch vụ nội bộ.
         try:
             ten_may = urlsplit(url_sach).hostname or ""
             ip = ipaddress.ip_address(ten_may)
@@ -1046,6 +1051,27 @@ class QuanLyHoSo:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="«url» không được trỏ địa chỉ IP nội bộ/metadata.",
             )
+        if ip is None and ten_may:
+            # NV94-P3: hostname chữ cũng phải phân giải rồi kiểm — chặn tên
+            # phân giải vào dải riêng/loopback/link-local/metadata (kẻo lách
+            # bằng DNS). Không phân giải được → để Firefox tự báo lỗi.
+            try:
+                ket_qua = await asyncio.to_thread(
+                    socket.getaddrinfo, ten_may, None, socket.AF_UNSPEC,
+                    socket.SOCK_STREAM)
+            except OSError:
+                ket_qua = []
+            for muc in ket_qua:
+                try:
+                    ip_phan_giai = ipaddress.ip_address(muc[4][0])
+                except ValueError:
+                    continue
+                if not ip_phan_giai.is_global:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="«url» phân giải vào địa chỉ nội bộ/metadata — "
+                               "không được phép.",
+                    )
         await self._goi_marionette(ho_so_mo, khach.dieu_huong, url_sach)
         return {"ok": True}
 
@@ -1585,6 +1611,11 @@ class QuanLyHoSo:
             het_han: list[str] = []
 
             for ho_so_id, ho_so in list(self.danh_sach_mo.items()):
+                if ho_so.dang_ban:
+                    # NV94-P3: máy đang điều khiển — không dọn giữa chừng
+                    # (kể cả quá hạn tuyệt đối; lượt chạy xong nhả quyền rồi
+                    # vòng sau mới dọn).
+                    continue
                 if bay_gio - ho_so.luc_mo_don_dieu >= nguong_tuyet_doi_giay:
                     # Kết nối treo (hay khách quên đóng tab) không giữ hồ sơ sống mãi
                     het_han.append(ho_so_id)
