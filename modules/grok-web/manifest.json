@@ -67,5 +67,6 @@
   "yeu_cau_goi": [
     "websockets",
     "httpx"
-  ]
+  ],
+  "dang_nhap_bang": "gmail"
 }

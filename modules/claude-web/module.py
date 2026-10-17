@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app import danh_tinh
+from app import tu_lam_moi
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
@@ -456,6 +457,14 @@ class Module:
         """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
         self._hong.add(str(khoa))
 
+    def khoa_tai_khoan(self) -> list[str]:
+        """NV91-P2: khoá mờ mọi tài khoản (vòng làm mới định kỳ của lõi liệt kê)."""
+        return [self._khoa_tu_cookie(a.cookie) for a in self._accs]
+
+    def danh_dau_khoe(self, khoa: str) -> None:
+        """NV91-P2: tài khoản khoẻ lại sau tự khôi phục → bỏ đánh dấu hỏng."""
+        self._hong.discard(str(khoa))
+
     # ── vòng đời ─────────────────────────────────────────────────────
 
     def nap(self, cau_hinh: dict) -> None:
@@ -636,6 +645,11 @@ class Module:
                 nhom = phan_loai_ma(e.ma)
                 if nhom in ("xac_thuc", "han_muc"):
                     acc.khoe = False
+                    if nhom == "xac_thuc":
+                        # NV91-P2: lỗi phiên nhận ra bằng CẤU TRÚC (mã HTTP, không
+                        # dò chữ) → tự khôi phục MỘT lần cho đúng tài khoản
+                        # (single-flight); vòng lặp vẫn chuyển tài khoản kế ngay.
+                        tu_lam_moi.bao_loi_phien(self, self._khoa_tu_cookie(acc.cookie))
                 LOG.warning("claude-web: tài khoản %s lỗi HTTP %s (%s), chuyển tài khoản",
                             acc.ten_che, e.ma, nhom)
         return self._loi_tong(loi_cuoi)

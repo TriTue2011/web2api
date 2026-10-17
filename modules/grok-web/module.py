@@ -33,6 +33,7 @@ from typing import AsyncIterator
 from urllib.parse import urlsplit
 
 from app import danh_tinh
+from app import tu_lam_moi
 from app.chuyen_tiep import ds_khoa
 from app.khoi_phuc_phien import (
     SO_LUOT_VUOT_THU_THACH_TOI_DA,
@@ -727,6 +728,14 @@ class Module:
         """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
         self._hong.add(str(khoa))
 
+    def khoa_tai_khoan(self) -> list[str]:
+        """NV91-P2: khoá mờ mọi tài khoản (vòng làm mới định kỳ của lõi liệt kê)."""
+        return [self._khoa_tu_jar(jar) for jar in self._tai_khoan]
+
+    def danh_dau_khoe(self, khoa: str) -> None:
+        """NV91-P2: tài khoản khoẻ lại sau tự khôi phục → bỏ đánh dấu hỏng."""
+        self._hong.discard(str(khoa))
+
     # ── Xoay tài khoản ──────────────────────────────────────────────────
 
     def _thu_tu_tai_khoan(self) -> list[int]:
@@ -748,6 +757,15 @@ class Module:
         else:
             log.info("grok-web: tài khoản #%d lỗi %s",
                      idx, type(loi).__name__)
+            if isinstance(loi, LoiPhienGrokWeb):
+                # NV91-P2: lỗi phiên nhận ra bằng CẤU TRÚC (không dò chữ) → tự
+                # khôi phục MỘT lần cho đúng tài khoản (single-flight).
+                try:
+                    khoa = self._khoa_tu_jar(self._tai_khoan[idx])
+                except (IndexError, TypeError, AttributeError):
+                    khoa = None
+                if khoa:
+                    tu_lam_moi.bao_loi_phien(self, khoa)
 
     def _danh_dau_khoe(self, idx: int) -> None:
         self._nghi_den.pop(idx, None)

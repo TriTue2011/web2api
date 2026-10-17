@@ -18,6 +18,7 @@ import threading
 import time
 
 from app import danh_tinh
+from app import tu_lam_moi
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
@@ -373,6 +374,14 @@ class Module:
         """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
         self._hong.add(str(khoa))
 
+    def khoa_tai_khoan(self) -> list[str]:
+        """NV91-P2: khoá mờ mọi tài khoản (vòng làm mới định kỳ của lõi liệt kê)."""
+        return [self._khoa_tu_chuoi(tk.chuoi_goc) for tk in self._tai_khoan]
+
+    def danh_dau_khoe(self, khoa: str) -> None:
+        """NV91-P2: tài khoản khoẻ lại sau tự khôi phục → bỏ đánh dấu hỏng."""
+        self._hong.discard(str(khoa))
+
     # -- gắn danh tính chung (NV77) -------------------------------------------
 
     def _doc_lien_ket(self) -> dict:
@@ -613,6 +622,10 @@ class Module:
         tk.loai_loi = loai
         log.warning("gemini-web: tài khoản #%d (%s) lỗi %s, chuyển tài khoản",
                     chi_so, tk.ten_che(), loai)
+        if loai == "khoa_hong":
+            # NV91-P2: lỗi phiên nhận ra bằng CẤU TRÚC → tự khôi phục MỘT lần cho
+            # đúng tài khoản (single-flight); module vẫn chuyển tài khoản kế ngay.
+            tu_lam_moi.bao_loi_phien(self, self._khoa_tu_chuoi(tk.chuoi_goc))
 
     async def chat(self, body: dict, stream: bool):
         body = dict(body or {})

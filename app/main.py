@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tai_khoan_hang_loat, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -81,6 +81,9 @@ async def lifespan(app: FastAPI):
     ng = NguonGit(so)
     app.state.nguon_git = ng
     ng.bat_dau()
+    # NV91-P2: vòng tự làm mới phiên định kỳ (đồng bộ với sổ module mỗi 60s;
+    # tắt gọn khi dừng máy — không tác vụ nền mồ côi).
+    tu_lam_moi.quan_ly().bat_dau(lambda: so.dang_chay)
     task_dong_bo = asyncio.create_task(_vong_dong_bo_khoa())
     task_quet_phien = asyncio.create_task(_vong_quet_phien(app))
     nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
@@ -91,6 +94,8 @@ async def lifespan(app: FastAPI):
         task_dong_bo.cancel()
         task_quet_phien.cancel()
         khoa_khach.dong_bo_dia()
+        await tu_lam_moi.quan_ly().dung()
+        await tu_lam_moi.huy_tat_ca()
         await ng.dung()
         await so.dung_het()
 

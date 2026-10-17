@@ -214,3 +214,77 @@ def xoa(id_: str) -> bool:
         ds = [d for d in ds if d.get("id") != id_]
         _ghi(ds)
         return True
+
+
+# ── Hợp đồng «danh tính dùng chung» cho module đăng nhập bằng Gmail/email (NV91-P1)
+#
+# Mô hình (chốt 17/10 theo c2a + NV92): «danh tính dùng chung» = HỒ SƠ GOOGLE —
+# một hồ sơ trình duyệt = một Gmail đã đăng nhập sống. Mỗi provider gắn tài khoản
+# ĐỘC LẬP của nó vào hồ sơ đó («tái dùng» ở tab Provider). Lõi chỉ giữ email +
+# nhãn; cookie/phiên/mật khẩu nằm trong kho RIÊNG của từng module (quyết định
+# 1.2 — xem docs/THAM-CHIEU.md), nên gỡ/hỏng module này không ảnh hưởng module kia.
+
+
+def khai_dang_nhap_bang_email(manifest: Any) -> bool:
+    """Module khai «đăng nhập bằng Gmail/email» qua manifest: trường
+    `dang_nhap_bang` ∈ {"gmail", "email"}. Lõi dùng để biết module nào dùng
+    được hợp đồng danh tính chung mà không cần biết tên nhà cung cấp."""
+    if not isinstance(manifest, dict):
+        return False
+    return str(manifest.get("dang_nhap_bang") or "").strip().lower() in ("gmail", "email")
+
+
+def chua_gan(module_id: str) -> list[dict[str, Any]]:
+    """Danh tính CHƯA gắn vào module này (để giao diện hiện «Gmail có sẵn»).
+    module_id sai khuôn → 400 (qua `kiem_module_id`)."""
+    module_id = kiem_module_id(module_id)
+    with _KHOA_LUONG:
+        return [ban_ghi_cong_khai(d) for d in _doc()
+                if module_id not in (d.get("gan") or [])]
+
+
+def tao_va_gan(email: Any, nhan: Any, module_id: str) -> tuple[dict[str, Any], bool]:
+    """Tạo-nếu-chưa-có + gắn vào module, trong một vùng găng (không tạo trùng
+    khi hai yêu cầu đồng thời). Email đã có → chỉ gắn thêm, KHÔNG tạo trùng.
+    Trả (bản ghi công khai, da_co_san)."""
+    email_chuan = chuan_hoa_email(email)
+    nhan_chuan = kiem_nhan(nhan)
+    module_id = kiem_module_id(module_id)
+    with _KHOA_LUONG:
+        ds = _doc()
+        for d in ds:
+            if d.get("email") == email_chuan:
+                gan_ds = d.get("gan")
+                if not isinstance(gan_ds, list):
+                    gan_ds = d["gan"] = []
+                if module_id not in gan_ds:
+                    gan_ds.append(module_id)
+                    _ghi(ds)
+                return ban_ghi_cong_khai(d), True
+        ban_ghi = {
+            "id": _id_tu_email(email_chuan),
+            "email": email_chuan,
+            "nhan": nhan_chuan,
+            "ngay_tao": kho.bay_gio_iso(),
+            "gan": [module_id],
+        }
+        ds.append(ban_ghi)
+        _ghi(ds)
+        return ban_ghi_cong_khai(ban_ghi), False
+
+
+def go_theo_module(module_id: str) -> int:
+    """Gỡ module khỏi MỌI danh tính (gọi khi gỡ module/tài khoản — không để
+    «gắn» mồ côi chặn xoá danh tính sau này). Trả số danh tính đã gỡ."""
+    module_id = kiem_module_id(module_id)
+    with _KHOA_LUONG:
+        ds = _doc()
+        dem = 0
+        for d in ds:
+            gan_ds = [m for m in (d.get("gan") or []) if isinstance(m, str)]
+            if module_id in gan_ds:
+                d["gan"] = [m for m in gan_ds if m != module_id]
+                dem += 1
+        if dem:
+            _ghi(ds)
+        return dem

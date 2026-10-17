@@ -28,6 +28,7 @@ from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
+from app import tu_lam_moi
 from app.tu_xa import kiem_url_lan
 
 from .client import (
@@ -317,6 +318,15 @@ class Module:
         """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
         self._hong.add(str(khoa))
 
+    def khoa_tai_khoan(self) -> list[str]:
+        """NV91-P2: khoá mờ mọi tài khoản (vòng làm mới định kỳ của lõi liệt kê)."""
+        with self._khoa:
+            return [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
+
+    def danh_dau_khoe(self, khoa: str) -> None:
+        """NV91-P2: tài khoản khoẻ lại sau tự khôi phục → bỏ đánh dấu hỏng."""
+        self._hong.discard(str(khoa))
+
     # -- tạo client: mối nối để test chích máy chủ giả ---------------------
 
     def _tao_client(self, token: str) -> ChatGPTWebClient:
@@ -473,6 +483,11 @@ class Module:
         tk.loai_loi = loai
         log.warning("chatgpt-web: tài khoản #%d (%s) lỗi %s, chuyển tài khoản",
                     chi_so, tk.ten_che(), loai)
+        if loai == "khoa_hong":
+            # NV91-P2: lỗi phiên nhận ra bằng CẤU TRÚC (LoiXacThuc = 401/403, không
+            # dò chữ) → kích hoạt tự khôi phục MỘT lần cho ĐÚNG tài khoản này
+            # (single-flight trong app/tu_lam_moi; module vẫn chuyển tài khoản kế ngay).
+            tu_lam_moi.bao_loi_phien(self, self._khoa_tu_token(tk.token))
 
     async def chat(self, body: dict, stream: bool):
         body = dict(body or {})

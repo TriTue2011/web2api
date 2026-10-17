@@ -484,6 +484,22 @@ class SoModule:
             await self._dung_an_toan(km.id, cu)
         return cong_khai
 
+    async def _don_dep_sau_go(self, id_: str) -> None:
+        """Dọn sau khi gỡ module (NV91): huỷ tác vụ tự khôi phục/làm mới còn chạy
+        (không để tác vụ nền mồ côi) và gỡ «gắn» danh tính của module (không để
+        chặn xoá danh tính sau này). Không ném: dọn dẹp không được làm hỏng bước gỡ."""
+        try:
+            from app import tu_lam_moi
+            await tu_lam_moi.huy_cua_module(id_)
+            tu_lam_moi.quan_ly().go_vong(id_)
+        except Exception as e:
+            log.warning("go: dọn tác vụ tự làm mới của %s lỗi: %s", id_, type(e).__name__)
+        try:
+            from app import danh_tinh
+            danh_tinh.go_theo_module(id_)
+        except Exception as e:
+            log.warning("go: gỡ gắn danh tính của %s lỗi: %s", id_, type(e).__name__)
+
     async def go(self, id_: str, nguoi_thuc_hien: str | None = None) -> dict:
         async with self.khoa:
             nguoi = nguoi_thuc_hien
@@ -507,6 +523,7 @@ class SoModule:
                 self._vt_tu_xa.pop(id_, None)
                 if m is not None:
                     await self._dung_an_toan(id_, m)
+                await self._don_dep_sau_go(id_)  # NV91: không tác vụ mồ côi, gỡ «gắn» danh tính
                 nhat_ky.ghi(
                     "quan_tri",
                     "thong_tin",
@@ -532,6 +549,7 @@ class SoModule:
             except kho.KhoHong as e:
                 raise LoiSo(500, str(e), code="store_unreadable") from e
             if km.nguon == "anh":
+                await self._don_dep_sau_go(id_)  # NV91: không tác vụ mồ côi, gỡ «gắn» danh tính
                 nhat_ky.ghi(
                     "quan_tri",
                     "thong_tin",
@@ -544,6 +562,7 @@ class SoModule:
             rac = km.thu_muc.parent / f".xoa-{id_}-{secrets.token_hex(4)}"
             os.rename(km.thu_muc, rac)
             shutil.rmtree(rac, ignore_errors=True)
+            await self._don_dep_sau_go(id_)  # NV91: không tác vụ mồ côi, gỡ «gắn» danh tính
             kq = await self._nap_lai()
             # NV73: module chung mà module vừa gỡ cần, nay không còn ai cần nữa → KHÔNG tự gỡ lén,
             # trả cờ để giao diện hỏi quản trị «giữ hay gỡ theo».

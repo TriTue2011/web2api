@@ -71,6 +71,11 @@ DA_KIEM_TOAN = {
     # Logic vượt thử thách tách ra lõi dùng chung (NV91 tầng b, NV92 dùng luôn).
     ("app/khoi_phuc_phien.py", "vuot_thu_thach_toi_da"),  # lỗi lạ khi đọc tín hiệu/cố vượt → False = không vượt được → can_nguoi
     ("app/khoi_phuc_phien.py", "la_captcha_chu"),  # đọc tín hiệu hỏng → False; bên gọi đã fail-closed trước đó nếu tin_hieu() ném
+    # Đã duyệt NV91 (đọc từng hàm): dọn dẹp best-effort khi gỡ module/tắt máy —
+    # chờ tác vụ đã huỷ xong; lỗi của tác vụ không được làm hỏng bước dọn.
+    ("app/tu_lam_moi.py", "huy_cua_module"),  # dọn tác vụ nền của module bị gỡ: nuốt lỗi tác vụ đã huỷ
+    ("app/tu_lam_moi.py", "huy_tat_ca"),  # dọn mọi tác vụ khi tắt máy/cuối test: nuốt lỗi tác vụ đã huỷ
+    ("app/tu_lam_moi.py", "dung"),  # QuanLyTuLamMoi.dung: chờ tác vụ đồng bộ đã huỷ; lỗi không được chặn tắt máy
 }
 
 

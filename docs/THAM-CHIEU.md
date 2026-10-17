@@ -474,6 +474,38 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     CAPTCHA/2FA/xác minh thiết bị → `can_nguoi` (dừng, không cố vượt); mật khẩu
     lưu kho riêng mã hoá, không log; lỗi lạ → đóng cửa (fail-closed).
 
+- **Tự động khôi phục/làm mới nối vào đường chạy thật — NV91-P2** (`app/tu_lam_moi.py`;
+  lõi không chứa tên nhà cung cấp; module tham gia bằng hợp đồng NV88 + hai phương thức
+  tuỳ chọn mới `khoa_tai_khoan()` / `danh_dau_khoe(khoa)`):
+  - Khi đường chat của module gặp LỖI PHIÊN nhận ra bằng CẤU TRÚC (mã 401/403 theo nhóm
+    phiên module đã khai — module tự phát hiện, không dò chữ), module gọi
+    `tu_lam_moi.bao_loi_phien(module, khoa)` cho ĐÚNG tài khoản đó (fire-and-forget),
+    rồi vẫn chuyển tài khoản/khoá kế ngay theo quy tắc chuyển tài khoản (chỉ đổi TRƯỚC
+    byte đầu stream; không chặn lựa chọn cuối; không bịa hạn mức).
+  - Single-flight: nhiều yêu cầu cùng lúc chỉ kích hoạt MỘT lượt `khoi_phuc` cho một
+    (module, tài khoản); có thời gian nghỉ `WEB2API_TU_LAM_MOI_NGHI_GIAY` giữa các lượt.
+  - Vòng làm mới ĐỊNH KỲ nền (`VongTuLamMoi`, một vòng mỗi module, đồng bộ với sổ module
+    mỗi 60s qua `QuanLyTuLamMoi`): gọi `lam_moi_phien` cho tài khoản «lâu chưa kiểm»;
+    bỏ qua tài khoản đang `can_nguoi` hoặc đã `ngung_tu_dang_nhap` (tôn trọng chốt dừng);
+    giãn cách `WEB2API_TU_LAM_MOI_GIAN_CACH_TAI_KHOAN_GIAY` giữa các tài khoản;
+    không vòng lặp bận. Tắt gọn khi module dừng/gỡ (không tác vụ nền mồ côi) và khi tắt máy.
+  - Hỏng tới tầng (d) `can_nguoi` → ghi nhật ký quản trị (kênh `quan_tri`, mức `canh_bao`)
+    + trạng thái «cần người»; KHÔNG tự thử lại mãi (lượt sau bị chặn bởi chốt dừng/nghỉ).
+  - Cấu hình (đọc mỗi lần gọi, đổi không cần khởi động lại):
+    `WEB2API_TU_LAM_MOI_BAT` (`1`/`0`, mặc định `1` — tắt thì không tự kích hoạt gì;
+    đường API thủ công `/api/tai-khoan/khoi-phuc` vẫn chạy);
+    `WEB2API_TU_LAM_MOI_KHOANG_GIAY` (chu kỳ vòng định kỳ, mặc định `1800`, tối thiểu `60`);
+    `WEB2API_TU_LAM_MOI_NGHI_GIAY` (nghỉ giữa hai lượt khôi phục của cùng tài khoản,
+    mặc định `300`); `WEB2API_TU_LAM_MOI_GIAN_CACH_TAI_KHOAN_GIAY` (giãn cách giữa các
+    tài khoản trong một vòng, mặc định `30`).
+  - Bốn module web (`chatgpt-web`, `gemini-web`, `grok-web`, `claude-web`) đã nối:
+    phát hiện lỗi phiên bằng cấu trúc ở nhánh lỗi của đường chat → `bao_loi_phien`;
+    lỗi khác (hết hạn mức, máy chủ) không kích hoạt. Kiểm bằng máy chủ GIẢ + đồng hồ GIẢ
+    (`test/test_web2api_nv91_tu_lam_moi.py`, `test/test_web2api_nv91_noi_duong_chay.py`).
+  - **Chưa kiểm**: trên dịch vụ thật (cần tài khoản + phiên thật); bộ điều khiển trình duyệt
+    thật cho tầng (b) do NV92 điền qua `tu_lam_moi.dang_ky_trinh_duyet` — hiện tầng (b)
+    nhận `trinh_duyet=None` và module tự quyết (thường → `can_nguoi`).
+
 ### Giao diện (`web/`)
 
 Trang `.dc.html` chạy trên **dc-lite** (`web/support.js`, runtime mã nguồn mở đọc nguyên văn các trang của bản
@@ -1875,6 +1907,33 @@ và danh sách id module đã gắn (`gan`).
 - Mọi đường chỉ quản trị; id lạ → `404` đồng nhất (không lộ tồn tại).
 - Mọi thao tác đổi trạng thái ghi vào sổ thao tác quản trị (`quan_tri`).
 
+**Danh tính dùng chung cho module đăng nhập bằng Gmail/email — NV91-P1.**
+Mô hình (chốt 17/10 theo c2a + NV92): «danh tính dùng chung» = HỒ SƠ GOOGLE — một hồ sơ
+trình duyệt = một Gmail đã đăng nhập sống; mỗi provider gắn tài khoản ĐỘC LẬP của nó vào hồ sơ
+đó («tái dùng» ở tab Provider). Không có hai kho danh tính song song.
+
+- Module khai trong `manifest.json`: `"dang_nhap_bang": "gmail"` (hoặc `"email"`).
+  Lõi đọc qua `danh_tinh.khai_dang_nhap_bang_email(manifest)` mà không cần biết tên nhà cung cấp.
+  Bốn module web hiện có (`chatgpt-web`, `gemini-web`, `grok-web`, `claude-web`) đều khai `"gmail"`.
+- Lõi cung cấp (mã: `app/danh_tinh.py`, đều sau xác thực quản trị):
+  - `GET /api/danh-tinh/chua-gan?module_id=…` → danh tính CHƯA gắn vào module này
+    (giao diện hiện «Gmail có sẵn» để tái dùng thay vì nhập lại email);
+  - `POST /api/danh-tinh/tao-va-gan` (`email`, `nhan` tuỳ chọn, `module_id`) →
+    tạo-nếu-chưa-có + gắn trong MỘT vùng găng (hai yêu cầu đồng thời không tạo trùng);
+    `201` khi tạo mới, `200` + `da_co_san: true` khi gắn vào danh tính đã có;
+  - `POST /api/danh-tinh/go-theo-module` (`module_id`) → gỡ module khỏi MỌI danh tính
+    (dọn «gắn» mồ côi; lõi tự gọi khi gỡ module).
+- Quy tắc an toàn: `module_id` sai khuôn → `400`; module chưa cài → `404` `module_chua_cai`
+  (IDOR: không đoán được); không khoá → `401`; khoá khách → `403`.
+- **Quyết định 1.2 (NV91): mật khẩu vẫn do TỪNG MODULE giữ trong kho riêng của nó**
+  (như `mat_khau_da_luu` hiện nay); danh tính chung chỉ giữ email + nhãn. Lý do: tránh biến lõi
+  thành «môi giới bí mật» xuyên ranh giới module — mỗi module giữ bí mật của chính nó trong kho
+  mã hoá 0600 của mình, luồng tầng (b) đã xoá `BiMatTam` ngay sau dùng; «dùng chung mật khẩu» chỉ
+  cần khi có luồng đăng nhập lại xuyên module thật sự, hiện chưa có (tái dùng hồ sơ Google ở tầng
+  a2 không cần mật khẩu). Gỡ/hỏng ở module này không ảnh hưởng module kia — đã kiểm:
+  cùng email gắn hai module, gỡ gắn một bên, bên kia còn nguyên; bản ghi công khai không bao giờ
+  chứa cookie/mật khẩu.
+
 Ví dụ:
 
 ```bash
@@ -1886,8 +1945,8 @@ curl -s -H "Authorization: Bearer $KHOA" $W/api/danh-tinh | python3 -m json.tool
 ```
 
 **Giới hạn.**
-- Chưa có giao diện (việc của agy sau); cookie/phiên của từng tài khoản vẫn nằm trong kho riêng
-  của module sở hữu — di chuyển sang danh tính chung ở nhóm 4.
+- Chưa có giao diện (việc của agy sau); cookie/phiên/mật khẩu của từng tài khoản vẫn nằm trong kho
+  riêng của module sở hữu theo quyết định 1.2 NV91 (xem trên).
 - Email chỉ kiểm khuôn (có `@`), không xác minh sở hữu — việc đó của luồng đăng nhập (nhóm 3).
 
 ### Công cụ khôi phục quản trị dòng lệnh (lõi)
@@ -2643,6 +2702,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` | `16` | Trần số lượt yêu cầu đăng nhập đang chờ và đang băm scrypt đồng thời; vượt trần trả `429` kèm `Retry-After` ngay lập tức để bỏ tải |
 | `WEB2API_SCRYPT_HANG_CHO_TOI_DA` | `16` | Bí danh của `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` cấu hình trần hàng chờ băm mật khẩu scrypt |
 | `WEB2API_DANG_NHAP_GIAN_CACH_GIAY` | `30` | Giãn cách (giây) giữa hai lần đăng nhập tự động liên tiếp trong lượt đăng nhập hàng loạt (`app/tai_khoan_hang_loat.py`); số thực, kẹp trong `[0, 3600]`, sai → `30`. Đọc mỗi lượt chạy (đổi không cần khởi động lại) |
+| `WEB2API_TU_LAM_MOI_BAT` | `1` | Tự khôi phục/làm mới phiên nhiều tầng nối vào đường chạy (NV91-P2): `1` = bật, `0` = tắt (đường API thủ công `/api/tai-khoan/khoi-phuc` vẫn chạy). Đọc mỗi lần gọi |
+| `WEB2API_TU_LAM_MOI_KHOANG_GIAY` | `1800` | Chu kỳ (giây) vòng làm mới phiên định kỳ nền; tối thiểu `60` để không thành vòng lặp bận. Đọc mỗi vòng |
+| `WEB2API_TU_LAM_MOI_NGHI_GIAY` | `300` | Thời gian nghỉ (giây) giữa hai lượt tự khôi phục của cùng một tài khoản. Đọc mỗi lần kích hoạt |
+| `WEB2API_TU_LAM_MOI_GIAN_CACH_TAI_KHOAN_GIAY` | `30` | Giãn cách (giây) giữa các tài khoản trong một vòng làm mới định kỳ. Đọc mỗi vòng |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
 | `WEB2API_STEPUP_GIAY` | `900` | Thời gian hiệu lực (giây) của xác nhận lại (step-up) cho thao tác nguy hiểm của quản trị; mặc định 15 phút |
 | `WEB2API_WEBHOOK_THAN_TOI_DA_MB` | `1.0` | Trần thân (MB) cho cửa webhook `POST /api/webhook/{module}/{ma}` (lấy `min` với `webhook.tran_byte` của module); vượt là `413`. Đọc mỗi lượt; đếm byte thật, không tin `Content-Length` |

@@ -2728,6 +2728,60 @@ async def tao_danh_tinh_moi(request: Request):
     return {"danh_tinh": ban_ghi}
 
 
+@danh_tinh.get("/chua-gan")
+def lay_danh_tinh_chua_gan(module_id: str, request: Request):
+    """Danh tính chưa gắn vào module này — giao diện hiện «Gmail có sẵn» để
+    tái dùng thay vì nhập lại email. (NV91-P1)"""
+    module_id = (module_id or "").strip()
+    danh_tinh_mod.kiem_module_id(module_id)
+    if request.app.state.so.tien_to_cua(module_id) is None:
+        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa được cài.", code="module_chua_cai")
+    return {"module_id": module_id, "danh_tinh": danh_tinh_mod.chua_gan(module_id)}
+
+
+@danh_tinh.post("/tao-va-gan")
+async def tao_va_gan_danh_tinh(request: Request):
+    """Tạo-nếu-chưa-có + gắn vào module (idempotent: email đã có thì chỉ gắn,
+    không trùng). 201 khi tạo mới, 200 khi gắn vào danh tính đã có. (NV91-P1)"""
+    than = await _than_json(request)
+    email = _chuoi_bat_buoc(than, "email")
+    nhan = _chuoi_tuy_chon(than, "nhan")
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    danh_tinh_mod.kiem_module_id(module_id)
+    if request.app.state.so.tien_to_cua(module_id) is None:
+        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa được cài.", code="module_chua_cai")
+    ban_ghi, da_co_san = danh_tinh_mod.tao_va_gan(email, nhan, module_id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"{'Gắn' if da_co_san else 'Tạo và gắn'} danh tính «{_nhac_lai(ban_ghi['email'])}» "
+        f"vào module «{_nhac_lai(module_id)}»",
+        id_danh_tinh=ban_ghi["id"],
+        module=module_id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return JSONResponse({"danh_tinh": ban_ghi, "da_co_san": da_co_san},
+                        status_code=200 if da_co_san else 201)
+
+
+@danh_tinh.post("/go-theo-module")
+async def go_danh_tinh_theo_module(request: Request):
+    """Gỡ module khỏi mọi danh tính (dọn «gắn» mồ côi khi gỡ module/tài khoản). (NV91-P1)"""
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    dem = danh_tinh_mod.go_theo_module(module_id)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Gỡ module «{_nhac_lai(module_id)}» khỏi {dem} danh tính",
+        module=module_id,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return {"ok": True, "da_go": dem}
+
+
 @danh_tinh.get("/{id}")
 def lay_mot_danh_tinh(id: str):
     ban_ghi = danh_tinh_mod.lay(id)
