@@ -34,15 +34,35 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:"Be Vietnam Pro"
       <p class="phu" style="margin:0 0 12px">Nhập tên đăng nhập và mật khẩu để tiếp tục.</p>
 
       <form class="form-dn" novalidate onSubmit="{{dangNhapSubmit}}">
-        <div class="truong">
-          <label for="o-ten">Tên đăng nhập</label>
-          <input id="o-ten" class="o" type="text" autocomplete="username" spellcheck="false" placeholder="Tên đăng nhập" value="{{tenDangNhap}}" onInput="{{goTen}}" autofocus>
-        </div>
+        <sc-if value="{{khongCanMa2fa}}">
+          <div class="truong">
+            <label for="o-ten">Tên đăng nhập</label>
+            <input id="o-ten" class="o" type="text" autocomplete="username" spellcheck="false" placeholder="Tên đăng nhập" value="{{tenDangNhap}}" onInput="{{goTen}}" autofocus>
+          </div>
 
-        <div class="truong">
-          <label for="o-mat-khau">Mật khẩu</label>
-          <input id="o-mat-khau" class="o" type="password" autocomplete="current-password" spellcheck="false" placeholder="Mật khẩu" value="{{matKhau}}" onInput="{{goMatKhau}}">
-        </div>
+          <div class="truong">
+            <label for="o-mat-khau">Mật khẩu</label>
+            <input id="o-mat-khau" class="o" type="password" autocomplete="current-password" spellcheck="false" placeholder="Mật khẩu" value="{{matKhau}}" onInput="{{goMatKhau}}">
+          </div>
+
+        </sc-if>
+
+        <sc-if value="{{canMa2fa}}">
+          <div class="truong" id="khung-ma-2fa">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <label for="o-ma-2fa">{{nhanO2fa}}</label>
+              <button type="button" id="nut-chuyen-kieu-2fa" onClick="{{chuyenKieu2fa}}" style="background:none;border:none;color:#0B5A53;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">{{nhanNutChuyen2fa}}</button>
+            </div>
+            <sc-if value="{{dungTotp}}">
+              <input id="o-ma-2fa" class="o" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" spellcheck="false" placeholder="Mã 6 chữ số" value="{{ma2fa}}" onInput="{{goMa2fa}}" autofocus>
+              <p class="phu" style="margin:4px 0 0;font-size:12px">Nhập mã 6 chữ số từ ứng dụng xác thực trên điện thoại.</p>
+            </sc-if>
+            <sc-if value="{{dungKhoiPhuc}}">
+              <input id="o-ma-khoi-phuc" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="Mã khôi phục (16 ký tự)" value="{{ma2fa}}" onInput="{{goMa2fa}}" autofocus>
+              <p class="phu" style="margin:4px 0 0;font-size:12px">Nhập một trong 10 mã khôi phục đã lưu (dùng một lần).</p>
+            </sc-if>
+          </div>
+        </sc-if>
 
         <sc-if value="{{coLoi}}">
           <p role="alert" class="bao bao-loi" id="thong-bao-loi" style="margin:4px 0 0">{{loi}}</p>
@@ -50,6 +70,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:"Be Vietnam Pro"
 
         <div class="o-va-nut-doc">
           <button type="submit" class="nut nut-chinh" id="nut-dang-nhap" disabled="{{dangGui}}" style="width:100%;height:44px;font-size:15px">{{nhanNutDangNhap}}</button>
+          <sc-if value="{{canMa2fa}}">
+            <button type="button" class="nut nut-phu" id="nut-quay-lai-dn" onClick="{{quayLaiBuoc1}}" style="width:100%;height:36px;font-size:13px">Quay lại đăng nhập</button>
+          </sc-if>
         </div>
       </form>
     </section>
@@ -66,6 +89,10 @@ class Component extends DCLogic {
     this.state = {
       tenDangNhap: '',
       matKhau: '',
+      canMa2fa: false,
+      ve2fa: '',
+      ma2fa: '',
+      dungMaKhoiPhuc: false,
       dangGui: false,
       loi: '',
       coLoi: false,
@@ -111,10 +138,92 @@ class Component extends DCLogic {
     this.setState({ matKhau: e.target.value, loi: '', coLoi: false });
   }
 
+  goMa2fa(e) {
+    this.setState({ ma2fa: e.target.value, loi: '', coLoi: false });
+  }
+
+  chuyenKieu2fa() {
+    this.setState({ dungMaKhoiPhuc: !this.state.dungMaKhoiPhuc, ma2fa: '', loi: '', coLoi: false });
+  }
+
+  quayLaiBuoc1() {
+    this.setState({ canMa2fa: false, ve2fa: '', ma2fa: '', dangGui: false, loi: '', coLoi: false });
+  }
+
   async dangNhapSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (this.state.dangGui) return;
 
+    // Luồng bước 2: Xác thực mã 2FA
+    if (this.state.canMa2fa) {
+      const ma = (this.state.ma2fa || '').trim();
+      if (!ma) {
+        this.setState({
+          loi: this.state.dungMaKhoiPhuc ? 'Vui lòng nhập mã khôi phục.' : 'Vui lòng nhập mã 6 chữ số.',
+          coLoi: true
+        });
+        return;
+      }
+
+      this.setState({ dangGui: true, loi: '', coLoi: false });
+      const veGui = this.state.ve2fa;
+      // Luôn xoá mã khỏi ô nhập sau khi gửi để bảo mật
+      this.setState({ ma2fa: '' });
+
+      try {
+        const res = await fetch('api/dang-nhap/2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ve: veGui, ma: ma }),
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+
+        let j = null;
+        try { j = await res.json(); } catch (err) { j = null; }
+
+        if (res.ok && j && j.ok) {
+          if (j.csrf) K.datCsrf(j.csrf);
+          this.setState({ ve2fa: '', ma2fa: '', matKhau: '' });
+          location.replace(this.layDuongVe());
+          return;
+        }
+
+        let thongBaoLoi = 'Mã xác thực không chính xác.';
+        if (j && j.error && j.error.code === 've_khong_hop_le') {
+          thongBaoLoi = 'Vé xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.';
+          this.setState({
+            dangGui: false,
+            canMa2fa: false,
+            ve2fa: '',
+            ma2fa: '',
+            loi: thongBaoLoi,
+            coLoi: true
+          });
+          return;
+        } else if (j && j.error && j.error.message) {
+          thongBaoLoi = j.error.message;
+        }
+
+        this.setState({
+          dangGui: false,
+          loi: thongBaoLoi,
+          coLoi: true,
+          ma2fa: ''
+        });
+        return;
+      } catch (err) {
+        this.setState({
+          dangGui: false,
+          loi: 'Lỗi kết nối tới máy chủ. Vui lòng thử lại.',
+          coLoi: true,
+          ma2fa: ''
+        });
+        return;
+      }
+    }
+
+    // Luồng bước 1: Mật khẩu (+ khoá quản trị nếu máy lạ)
     const ten = (this.state.tenDangNhap || '').trim();
     const mk = this.state.matKhau || '';
 
@@ -129,10 +238,12 @@ class Component extends DCLogic {
     this.setState({ dangGui: true, loi: '', coLoi: false });
 
     try {
+      const thanYeuCau = { ten_dang_nhap: ten, mat_khau: mk };
+
       const res = await fetch('api/dang-nhap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ten_dang_nhap: ten, mat_khau: mk }),
+        body: JSON.stringify(thanYeuCau),
         credentials: 'same-origin',
         cache: 'no-store'
       });
@@ -142,7 +253,24 @@ class Component extends DCLogic {
 
       if (res.ok && j && j.ok) {
         if (j.csrf) K.datCsrf(j.csrf);
+        this.setState({ matKhau: '' });
         location.replace(this.layDuongVe());
+        return;
+      }
+
+      // Xử lý các mã phản hồi đặc biệt
+      if (j && j.error && j.error.code === 'can_ma_2fa') {
+        const ve = (j.error && j.error.ve) || (j && j.ve) || '';
+        this.setState({
+          dangGui: false,
+          canMa2fa: true,
+          ve2fa: ve,
+          ma2fa: '',
+          matKhau: '',
+          loi: '',
+          coLoi: false,
+          dungMaKhoiPhuc: false
+        });
         return;
       }
 
@@ -176,13 +304,23 @@ class Component extends DCLogic {
     return {
       tenDangNhap: this.state.tenDangNhap,
       matKhau: this.state.matKhau,
+      canMa2fa: this.state.canMa2fa,
+      khongCanMa2fa: !this.state.canMa2fa,
+      ma2fa: this.state.ma2fa,
+      dungTotp: !this.state.dungMaKhoiPhuc,
+      dungKhoiPhuc: this.state.dungMaKhoiPhuc,
+      nhanO2fa: this.state.dungMaKhoiPhuc ? 'Mã khôi phục dự phòng' : 'Mã xác thực hai bước (TOTP)',
+      nhanNutChuyen2fa: this.state.dungMaKhoiPhuc ? 'Dùng mã 6 chữ số' : 'Dùng mã khôi phục',
       dangGui: this.state.dangGui,
-      nhanNutDangNhap: this.state.dangGui ? 'Đang đăng nhập…' : 'Đăng nhập',
+      nhanNutDangNhap: this.state.dangGui ? 'Đang xác thực…' : (this.state.canMa2fa ? 'Xác thực' : 'Đăng nhập'),
       loi: this.state.loi,
       coLoi: this.state.coLoi,
       hinh: this.state.hinh,
       goTen: (e) => this.goTen(e),
       goMatKhau: (e) => this.goMatKhau(e),
+      goMa2fa: (e) => this.goMa2fa(e),
+      chuyenKieu2fa: () => this.chuyenKieu2fa(),
+      quayLaiBuoc1: () => this.quayLaiBuoc1(),
       dangNhapSubmit: (e) => this.dangNhapSubmit(e)
     };
   }

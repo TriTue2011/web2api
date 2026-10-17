@@ -515,7 +515,7 @@ def test_chrome_tao_nguoi_dung_ngau_nhien_hien_mot_lan(trang: Trang, tmp_path, m
         trang.cho("!/(Dang-nhap|index)/.test(location.pathname) && (document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'", mo_ta="Đăng nhập xong, trang đích dựng xong")
 
         # Vào trang Bảo mật
-        trang.di(f"{base_url}/He-thong-Bao-mat.dc.html")
+        trang.di(f"{base_url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung")
         trang.cho("document.getElementById('nut-tao-nd')")
 
         # Để trống tên đăng nhập và mật khẩu, bấm tạo người dùng để lõi tự sinh

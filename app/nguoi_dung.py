@@ -550,6 +550,55 @@ def ghi_nhan_dang_nhap_dung(ten: str, ip: str | None = None) -> int:
         return max(so_sai_cap, so_sai_ten)
 
 
+def liet_ke_khoa_dang_nhap() -> list[dict[str, Any]]:
+    """Các khoá đăng nhập ĐANG hiệu lực (cho quản trị xem ở tab Bảo mật): khoá theo tên (mọi IP) và theo cặp (IP, tên).
+
+    Khoá cặp có dạng «<ip>:<tên>»; tên chỉ gồm [a-z0-9._-] nên tách ở dấu «:» CUỐI là đúng cả với IPv6.
+    Chỉ liệt kê mục còn hạn; không trả số lần sai hay bất kỳ bí mật nào.
+    """
+    bay_gio = time.monotonic()
+    ra: list[dict[str, Any]] = []
+    with _KHOA_THEO_DOI:
+        for khoa, muc in _THEO_DOI_SAI.items():
+            den = muc.get("khoa_den")
+            if not den or den <= bay_gio:
+                continue
+            if ":" in khoa:
+                ip, ten = khoa.rsplit(":", 1)
+                ra.append({"loai": "cap", "ten": ten, "ip": ip, "con_lai_giay": int(den - bay_gio) + 1})
+            else:
+                ra.append({"loai": "ten", "ten": khoa, "ip": None, "con_lai_giay": int(den - bay_gio) + 1})
+    return sorted(ra, key=lambda m: (m["ten"], m["ip"] or ""))
+
+
+def bo_chan_dang_nhap(ten: str | None = None, ip: str | None = None) -> int:
+    """Bỏ chặn đăng nhập: xoá khoá VÀ bộ đếm sai tương ứng. Trả số mục đã xoá.
+
+    - `ten`: bỏ khoá tên toàn cục và mọi khoá cặp (IP, tên) của tên đó;
+    - `ip`: bỏ mọi khoá cặp của IP đó;
+    - cả hai: chỉ cặp (IP, tên) đó;
+    - không truyền gì: bỏ MỌI khoá đăng nhập.
+    Tên không hợp lệ (không thể là tài khoản) thì không khớp mục nào → 0.
+    """
+    ten_chuan = ten_co_the_ton_tai(ten) if ten is not None else None
+    if ten is not None and ten_chuan is None:
+        return 0
+    ip_chuan = ip.strip()[:45] if isinstance(ip, str) and ip.strip() else None
+    xoa = []
+    with _KHOA_THEO_DOI:
+        for khoa in list(_THEO_DOI_SAI.keys()):
+            if ":" in khoa:
+                k_ip, k_ten = khoa.rsplit(":", 1)
+                khop = ((ten_chuan is None or k_ten == ten_chuan) and (ip_chuan is None or k_ip == ip_chuan))
+            else:
+                khop = ip_chuan is None and (ten_chuan is None or khoa == ten_chuan)
+            if khop:
+                xoa.append(khoa)
+        for khoa in xoa:
+            _THEO_DOI_SAI.pop(khoa, None)
+    return len(xoa)
+
+
 def kiem_va_ghi_nhan_thiet_bi(ten: str, ip: str, ua: str) -> bool:
     """Kiểm tra và ghi nhận dấu thiết bị = sha256(ip|ua) cho tài khoản.
 

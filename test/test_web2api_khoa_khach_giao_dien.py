@@ -43,7 +43,7 @@ def test_giao_dien_bao_mat_tao_va_quan_ly_khoa_1280(trang, tmp_path, monkeypatch
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(1280, 800)
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
+        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung")
 
         # Đã đăng nhập quản trị: hiện form tạo khoá và danh sách
         assert trang.cho("document.getElementById('tao-khoa') !== null")
@@ -85,7 +85,7 @@ def test_giao_dien_bao_mat_dien_thoai_390(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(390, 844)
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
+        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung")
         trang.cho("document.getElementById('tao-khoa') !== null")
 
         # Kiểm tra không tràn ngang ở 390px

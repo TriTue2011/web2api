@@ -67,7 +67,7 @@ def test_khach_chat_khong_cham_duoc_duong_quan_tri(client):
         if not p.startswith("/api/"):
             continue
         # ngoại lệ có chủ đích: mở không xác thực / xác thực khác
-        if p in ("/api/thiet-lap", "/api/dang-nhap") or p.startswith("/api/toi"):
+        if p in ("/api/thiet-lap", "/api/dang-nhap", "/api/dang-nhap/2fa") or p.startswith("/api/toi"):  # 2fa: mở CÓ VÉ tạm
             continue
         pp = p
         for a, b in [("{id_}", "x"), ("{ten:path}", "x"), ("{model:path}", "x"),

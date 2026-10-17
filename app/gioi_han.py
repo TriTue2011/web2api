@@ -141,6 +141,25 @@ class GioiHanSaiKhoa:
                 headers={"Retry-After": str(max(1, math.ceil(con_lai)))},
             )
 
+    def liet_ke_khoa(self) -> list[dict]:
+        """IP đang bị khoá (còn hạn) kèm số giây còn lại — cho quản trị xem."""
+        bay_gio = self._dong_ho()
+        with self._khoa_luong:
+            return sorted(({"ip": ip, "con_lai_giay": int(b["khoa_den"] - bay_gio) + 1}
+                           for ip, b in self._ip.items() if b["khoa_den"] and b["khoa_den"] > bay_gio),
+                          key=lambda m: m["ip"])
+
+    def bo_chan(self, ip: str | None = None) -> int:
+        """Bỏ khoá + xoá bộ đếm lỗi của một IP (hoặc mọi IP khi `ip` None). Trả số IP đã bỏ chặn."""
+        with self._khoa_luong:
+            muc_tieu = [ip] if ip is not None else list(self._ip.keys())
+            so = 0
+            for k in muc_tieu:
+                ban_ghi = self._ip.pop(k, None)
+                if ban_ghi is not None and ban_ghi["khoa_den"]:
+                    so += 1
+            return so
+
     def ghi_loi(self, ip: str) -> None:
         """Đếm một lần xác thực sai (401). Vượt ngưỡng → khoá tạm thời (ghi nhật ký một dòng)."""
         if not self.bat:
@@ -203,6 +222,14 @@ def khoi_dong() -> None:
     """Đọc lại cấu hình từ biến môi trường — gọi một lần lúc khởi động (lifespan)."""
     global _BO
     _BO = GioiHanSaiKhoa.tu_moi_truong()
+
+
+def liet_ke_ip_bi_khoa() -> list[dict]:
+    return _bo().liet_ke_khoa()
+
+
+def bo_chan_ip(ip: str | None = None) -> int:
+    return _bo().bo_chan(ip)
 
 
 def _lay_ip(request) -> str | None:

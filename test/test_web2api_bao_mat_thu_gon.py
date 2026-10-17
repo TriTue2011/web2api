@@ -35,14 +35,16 @@ def loi_that(tmp_path, monkeypatch):
         yield w
 
 
-def _cho_dung_xong(trang):
-    trang.cho("document.querySelectorAll('[data-mo-muc]').length === 8", mo_ta="8 mục thu gọn của tab Bảo mật")
+def _cho_dung_xong(trang, so=4):
+    """Tab Người dùng có 4 mục thu gọn (tạo tài khoản, danh sách, tạo khoá khách, danh sách khoá khách);
+    tab Bảo mật có 6 (2FA, khoá đăng nhập, sao lưu, tạo khoá của tôi, danh sách khoá của tôi, đổi mật khẩu)."""
+    trang.cho(f"document.querySelectorAll('[data-mo-muc]').length === {so}", mo_ta=f"{so} mục thu gọn")
 
 
 def test_moi_muc_dong_mac_dinh_bam_moi_mo_escape_dong(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html", mo_muc=False)
+        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung", mo_muc=False)
         _cho_dung_xong(trang)
         assert trang.js("document.querySelectorAll('[data-mo-muc][aria-expanded=\"true\"]').length") == 0
         assert trang.js("document.querySelectorAll('.muc-gap-nd').length") == 0, "mục đóng không dựng nội dung"
@@ -61,7 +63,7 @@ def test_moi_muc_dong_mac_dinh_bam_moi_mo_escape_dong(trang, tmp_path, monkeypat
 
         # tải lại: không nhớ trạng thái
         trang.bam("document.querySelector('[data-mo-muc=\"tao-khoa\"]')")
-        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html", mo_muc=False)
+        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung", mo_muc=False)
         _cho_dung_xong(trang)
         assert trang.js("document.querySelectorAll('[data-mo-muc][aria-expanded=\"true\"]').length") == 0
 
@@ -70,7 +72,7 @@ def test_hang_danh_sach_mot_dong_co_gach_phan_cach(trang, tmp_path, monkeypatch)
     with loi_that(tmp_path, monkeypatch) as w:
         asyncio.run(nguoi_dung.tao_nguoi_dung(vai="user", ten_dang_nhap=TEN_DAI, mat_khau="MatKhauNguoiDung123456"))
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html", mo_muc=False)
+        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung", mo_muc=False)
         _cho_dung_xong(trang)
         trang.khung(1280, 900)
         trang.bam("document.querySelector('[data-mo-muc=\"danh-sach-nguoi-dung\"]')")
@@ -93,7 +95,7 @@ def test_dien_thoai_390px_mo_het_khong_tran_ngang(trang, tmp_path, monkeypatch):
         asyncio.run(nguoi_dung.tao_nguoi_dung(vai="user", ten_dang_nhap=TEN_DAI, mat_khau="MatKhauNguoiDung123456"))
         dang_nhap_quan_tri(trang, w.url)
         trang.khung(390, 844, dien_thoai=True)
-        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html", mo_muc=False)
+        trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung", mo_muc=False)
         _cho_dung_xong(trang)
         trang.mo_het_muc()
         trang.cho("document.querySelectorAll('.nguoi-dung-hang').length >= 2")

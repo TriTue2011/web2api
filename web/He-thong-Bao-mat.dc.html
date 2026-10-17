@@ -24,6 +24,11 @@ main.pg{padding:32px 32px 48px;gap:24px}
 .khoa-nhan > span:first-child,.nguoi-dung-nhan > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .khoa-nhan .huy,.nguoi-dung-nhan .huy{flex:0 0 auto}
 .khoa-nhan,.nguoi-dung-nhan{min-width:0;flex:0 1 auto !important}
+.tab-con{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:4px 0 12px}
+.tab-con-nut{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 16px;font:inherit;font-weight:500;color:var(--mute);cursor:pointer;min-height:44px}
+.tab-con-nut:hover{color:var(--ink)}
+.tab-con-nut[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+#vung-tab-con{display:flex;flex-direction:column;gap:24px;min-width:0}
 .muc-gap{padding:0 !important;gap:0 !important}
 .muc-gap-tieu{margin:0;font-size:inherit;font-weight:inherit}
 .muc-gap-nut{width:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 16px;min-height:44px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;text-align:left}
@@ -78,6 +83,12 @@ main.pg{padding:12px 16px 24px}
 <h1 class="an-chu">Hệ thống — Bảo mật &amp; người dùng</h1>
 <sc-if value="{{coLoiTaiTrang}}"><p role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>{{loiTaiTrang}}</span><button type="button" class="nut nut-nho" onClick="{{taiLai}}">Thử lại</button></p></sc-if>
 
+<div class="tab-con" role="tablist" aria-label="Bảo mật và người dùng" id="tab-con" onKeyDown="{{phimTabCon}}">
+<button type="button" role="tab" class="tab-con-nut" id="tab-bao-mat" data-tab-con="bao-mat" aria-selected="{{tabBM.chon}}" aria-controls="vung-tab-con" onClick="{{tabBM.bat}}">Bảo mật</button>
+<sc-if value="{{laAdmin}}"><button type="button" role="tab" class="tab-con-nut" id="tab-nguoi-dung" data-tab-con="nguoi-dung" aria-selected="{{tabND.chon}}" aria-controls="vung-tab-con" onClick="{{tabND.bat}}">Người dùng</button></sc-if>
+</div>
+<div id="vung-tab-con" role="tabpanel">
+<sc-if value="{{tabNguoiDung}}">
 <sc-if value="{{laAdmin}}">
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -173,6 +184,7 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{u.laUser}}"><span class="huy huy-xam">user</span></sc-if>
 <sc-if value="{{u.bat}}"><span class="huy huy-xanh">Đang bật</span></sc-if>
 <sc-if value="{{u.tat}}"><span class="huy huy-vang">Đã tắt</span></sc-if>
+<sc-if value="{{u.bat2fa}}"><span class="huy huy-lam" title="Đang dùng xác thực hai bước">2FA</span></sc-if>
 </div>
 <div class="nguoi-dung-phu">
 <span class="ma">{{u.id}}</span>
@@ -187,6 +199,7 @@ main.pg{padding:12px 16px 24px}
 <div class="nguoi-dung-tac-vu">
 <button type="button" class="nut nut-nho" data-hd="doi-trang-thai-nd" onClick="{{u.doiTrangThai}}" disabled="{{u.dangDoi}}">{{u.nhanDoi}}</button>
 <button type="button" class="nut nut-nho" data-hd="doi-vai-nd" onClick="{{u.doiVai}}" disabled="{{u.dangDoiVai}}">{{u.nhanDoiVai}}</button>
+<sc-if value="{{u.bat2fa}}"><button type="button" class="nut nut-nho" data-hd="tat-2fa-nd" onClick="{{u.tat2fa}}">{{u.nhanTat2fa}}</button></sc-if>
 <button type="button" class="nut nut-nho" data-hd="dat-lai-mk-nd" onClick="{{u.datLaiMk}}" disabled="{{u.dangDatLaiMk}}">Đặt lại mật khẩu</button>
 <sc-if value="{{u.chuaXacNhanXoa}}">
 <button type="button" class="nut nut-nho nut-nguy" data-hd="xoa-nd" onClick="{{u.hoiXoa}}">Xoá</button>
@@ -300,6 +313,76 @@ main.pg{padding:12px 16px 24px}
 </sc-if>
 </div></sc-if>
 </section>
+</sc-if>
+</sc-if>
+<sc-if value="{{tabBaoMat}}">
+<!-- ═══ XÁC THỰC HAI BƯỚC (2FA) — tuỳ chọn, mặc định TẮT ═══ -->
+<section class="the muc-gap" aria-labelledby="h-hai-buoc" id="hai-buoc">
+<h2 id="h-hai-buoc" class="nhan-muc muc-gap-tieu"><button type="button" class="muc-gap-nut" data-mo-muc="hai-buoc" aria-expanded="{{m.hai.moChu}}" aria-controls="nd-hai-buoc" onClick="{{m.hai.bat}}" onKeyDown="{{m.hai.phim}}"><span>Xác thực hai bước (2FA)</span><span class="dem-phai">{{h2Nhan}}</span><span class="mui" aria-hidden="true"></span></button></h2>
+<sc-if value="{{m.hai.mo}}"><div class="muc-gap-nd" id="nd-hai-buoc">
+<p class="phu">Tuỳ chọn, mặc định tắt. Khi bật, đăng nhập cần thêm mã 6 số từ ứng dụng xác thực trên điện thoại ngoài mật khẩu.</p>
+
+<sc-if value="{{h2HienMa}}">
+<div class="the the-ket-noi-moi" id="the-ma-khoi-phuc" role="status">
+<p class="phu" style="color:#0B5A53"><strong>Lưu ngay 10 mã khôi phục này.</strong> Mỗi mã dùng một lần khi mất điện thoại; chỉ hiển thị MỘT LẦN DUY NHẤT, không xem lại được.</p>
+<div class="hang-chip" id="ds-ma-khoi-phuc"><sc-for list="{{h2MaKP}}" as="mk"><span class="ma" style="padding:2px 8px;background:#fff;border-radius:6px">{{mk.ma}}</span></sc-for></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="nut nut-nho" id="chep-ma-khoi-phuc" onClick="{{h2ChepMa}}">{{h2NhanChep}}</button><button type="button" class="nut nut-chinh nut-nho" id="da-luu-ma-khoi-phuc" onClick="{{h2DaLuu}}">Tôi đã lưu</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{h2Tat}}">
+<label for="o-2fa-mk">Mật khẩu hiện tại</label>
+<input id="o-2fa-mk" class="o" type="password" autocomplete="current-password" spellcheck="false" placeholder="Nhập mật khẩu để bắt đầu" value="{{h2Mk}}" onInput="{{goH2Mk}}">
+<div><button type="button" class="nut nut-chinh" id="bat-dau-2fa" onClick="{{h2BatDau}}" disabled="{{h2DangGui}}">Bật 2FA</button></div>
+</sc-if>
+
+<sc-if value="{{h2DangKy}}">
+<p class="phu"><strong>Bước 1.</strong> Thêm khoá này vào ứng dụng xác thực (chọn «nhập khoá thủ công», loại theo thời gian):</p>
+<div class="ma" id="bi-mat-2fa" style="word-break:break-all;user-select:all;padding:8px 10px;background:var(--nen-nhat,#FBFAF8);border:1px solid var(--line);border-radius:8px">{{h2BiMat}}</div>
+<sc-if value="{{h2CoUri}}"><p class="phu"><a id="mo-ung-dung-2fa" href="{{h2Uri}}">Mở trong ứng dụng xác thực trên điện thoại này</a></p></sc-if>
+<p class="phu"><strong>Bước 2.</strong> Nhập mã 6 số ứng dụng đang hiện để xác nhận:</p>
+<input id="o-2fa-ma" class="o" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" spellcheck="false" placeholder="123456" value="{{h2Ma}}" onInput="{{goH2Ma}}">
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="nut nut-chinh" id="xac-nhan-2fa" onClick="{{h2XacNhan}}" disabled="{{h2DangGui}}">Xác nhận và bật</button><button type="button" class="nut" id="huy-2fa" onClick="{{h2Huy}}">Huỷ</button></div>
+</sc-if>
+
+<sc-if value="{{h2Bat}}">
+<div class="bang-tb-dong" style="border-top:0;padding:0"><span>Còn lại</span><span class="dem-phai" id="so-ma-khoi-phuc">{{h2ConLai}} mã khôi phục</span></div>
+<label for="o-2fa-mk2">Mật khẩu hiện tại</label>
+<input id="o-2fa-mk2" class="o" type="password" autocomplete="current-password" spellcheck="false" value="{{h2Mk}}" onInput="{{goH2Mk}}">
+<label for="o-2fa-ma2">Mã 2FA (hoặc một mã khôi phục)</label>
+<input id="o-2fa-ma2" class="o" type="text" autocomplete="one-time-code" spellcheck="false" value="{{h2Ma}}" onInput="{{goH2Ma}}">
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="nut" id="tao-lai-ma-khoi-phuc" onClick="{{h2TaoLai}}" disabled="{{h2DangGui}}">Tạo lại mã khôi phục</button><button type="button" class="nut nut-nguy" id="tat-2fa" onClick="{{h2Tat2fa}}" disabled="{{h2DangGui}}">Tắt 2FA</button></div>
+</sc-if>
+
+<sc-if value="{{h2Tin}}"><p class="bao bao-tot" id="thong-bao-2fa">{{h2Tin}}</p></sc-if>
+<sc-if value="{{h2Loi}}"><p role="alert" class="bao bao-loi" id="loi-2fa">{{h2Loi}}</p></sc-if>
+</div></sc-if>
+</section>
+
+<sc-if value="{{laAdmin}}">
+<!-- ═══ KHOÁ ĐĂNG NHẬP (ADMIN): bỏ chặn khi người dùng quên mật khẩu ═══ -->
+<section class="bang-tb muc-gap" aria-labelledby="h-khoa-dn" id="khoa-dang-nhap">
+<h2 id="h-khoa-dn" class="muc-gap-tieu"><button type="button" class="muc-gap-nut bang-tb-dau" data-mo-muc="khoa-dang-nhap" aria-expanded="{{m.khoaDn.moChu}}" aria-controls="nd-khoa-dang-nhap" onClick="{{m.khoaDn.bat}}" onKeyDown="{{m.khoaDn.phim}}"><span>Khoá đăng nhập</span><span class="dem-phai" id="dem-khoa-dn">{{kdSo}} đang chặn</span><span class="mui" aria-hidden="true"></span></button></h2>
+<sc-if value="{{m.khoaDn.mo}}"><div id="nd-khoa-dang-nhap">
+<p class="phu" style="margin:8px 16px">Đăng nhập sai nhiều lần thì tài khoản (hoặc địa chỉ IP) bị chặn tạm thời. Màn hình đăng nhập cố ý không báo «đang bị chặn», nên người quên mật khẩu không tự biết — bỏ chặn ở đây rồi đặt lại mật khẩu cho họ ở tab Người dùng.</p>
+<sc-if value="{{kdLoi}}"><p role="alert" class="bao bao-loi" id="loi-khoa-dn" style="margin:8px 16px">{{kdLoi}}</p></sc-if>
+<sc-if value="{{kdTin}}"><p class="bao bao-tot" id="tin-khoa-dn" style="margin:8px 16px">{{kdTin}}</p></sc-if>
+<sc-if value="{{kdCoDs}}">
+<ul class="bang-tb-ds">
+<sc-for list="{{kdHang}}" as="k">
+<li class="nguoi-dung-hang hang-mo" data-khoa-dn="{{k.khoa}}">
+<div class="nguoi-dung-thong-tin">
+<div class="nguoi-dung-nhan"><span>{{k.nhan}}</span><span class="huy huy-vang">{{k.loai}}</span></div>
+</div>
+<div class="nguoi-dung-tac-vu"><button type="button" class="nut nut-nho" data-hd="bo-chan" onClick="{{k.boChan}}" disabled="{{k.dangBo}}">Bỏ chặn</button></div>
+</li>
+</sc-for>
+</ul>
+</sc-if>
+<sc-if value="{{kdKhongDs}}"><div class="bang-tb-rong" id="khong-khoa-dn">Không có tài khoản hay địa chỉ nào đang bị chặn.</div></sc-if>
+<div style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 16px 12px"><button type="button" class="nut nut-nho" id="lam-moi-khoa-dn" onClick="{{kdLamMoi}}">Làm mới</button><sc-if value="{{kdCoDs}}"><button type="button" class="nut nut-nho nut-nguy" id="bo-chan-tat-ca" onClick="{{kdBoTatCa}}">Bỏ chặn tất cả</button></sc-if></div>
+</div></sc-if>
+</section>
 
 <!-- ═══════════════════════════════════════════════════════════════
      KHỐI QUẢN TRỊ VIÊN: SAO LƯU & KHÔI PHỤC CẤU HÌNH
@@ -364,7 +447,6 @@ main.pg{padding:12px 16px 24px}
 </div>
 </div></sc-if>
 </section>
-
 </sc-if>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -492,6 +574,8 @@ main.pg{padding:12px 16px 24px}
 </div></sc-if>
 </section>
 
+</div>
+</sc-if>
 </main>
 
 <nav aria-label="Điều hướng Hệ thống (điện thoại)" class="bn"><sc-for list="{{navHT}}" as="t">
@@ -518,6 +602,13 @@ class Component extends DCLogic {
       menuMo: null,
       // Mục thu gọn: mã mục → true khi đang mở. Luôn đóng mỗi lần tải (quy ước giao diện 17/10).
       mucMo: {},
+      // Tab con của trang: 'bao-mat' | 'nguoi-dung' (?tab=nguoi-dung mở thẳng tab Người dùng; user thường chỉ có Bảo mật)
+      tabCon: (new URLSearchParams(location.search).get('tab') === 'nguoi-dung') ? 'nguoi-dung' : 'bao-mat',
+      // 2FA của chính tôi (h2*)
+      h2Bat: false, h2ConLai: 0, h2Pha: 'nghi', h2Mk: '', h2Ma: '', h2BiMat: '', h2Uri: '', h2MaKP: [], h2HienMa: false,
+      h2Loi: '', h2Tin: '', h2DangGui: false, h2ChepTin: false,
+      // Khoá đăng nhập (kd*) và nút «Tắt 2FA» hai lần bấm trong danh sách người dùng
+      kdDs: [], kdLoi: '', kdTin: '', kdDangBo: '', hoiTat2faId: null,
       // Hàng danh sách đang mở chi tiết (điện thoại: hàng thu về MỘT dòng, bấm hàng mới hiện phụ + nút). 'nd:<id>' …
       hangMo: null,
 
@@ -660,8 +751,9 @@ class Component extends DCLogic {
 
     // Tải dữ liệu người dùng và khoá
     await this.taiKhoaToi();
+    await this.tai2fa();
     if (laAdmin) {
-      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa()]);
+      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa(), this.taiKhoaDn()]);
     }
   }
 
@@ -1259,6 +1351,143 @@ class Component extends DCLogic {
     const mucMo = Object.assign({}, this.state.mucMo);
     mucMo[k] = !mucMo[k];
     this.setState({ mucMo });
+    if (mucMo[k] && k === 'khoaDn') this.taiKhoaDn();
+  }
+
+  // ══ Tab con (Bảo mật | Người dùng) ══
+  // Giá trị cho mẫu: tab con, 2FA của tôi, khoá đăng nhập.
+  giaTriTabVa2fa(laAdmin) {
+    const s = this.state;
+    const tab = laAdmin && s.tabCon === 'nguoi-dung' ? 'nguoi-dung' : 'bao-mat';
+    const pha = s.h2Pha === 'dang_ky' ? 'dang_ky' : (s.h2Bat ? 'bat' : 'tat');
+    const nhanThoiGian = (g) => (g < 60 ? g + ' giây' : Math.ceil(g / 60) + ' phút');
+    const NHAN_LOAI = { tai_khoan: 'Tài khoản', cap_ip_ten: 'Tài khoản từ IP', ip: 'Địa chỉ IP' };
+    const kdHang = (s.kdDs || []).map((m, i) => {
+      const khoa = m.loai + ':' + (m.ten || '') + ':' + (m.ip || '') + ':' + i;
+      const json = m.loai === 'ip' ? { loai: 'ip', ip: m.ip } : { loai: 'tai_khoan', ten: m.ten };
+      return {
+        khoa, loai: (NHAN_LOAI[m.loai] || m.loai) + ' · còn ' + nhanThoiGian(m.con_lai_giay || 0),
+        nhan: m.loai === 'ip' ? m.ip : (m.loai === 'cap_ip_ten' ? m.ten + ' · ' + m.ip : m.ten),
+        conLai: nhanThoiGian(m.con_lai_giay || 0), dangBo: s.kdDangBo === khoa,
+        boChan: () => this.boChan(json, khoa)
+      };
+    });
+    return {
+      tabBM: { chon: tab === 'bao-mat' ? 'true' : 'false', bat: () => this.chonTab('bao-mat') },
+      tabND: { chon: tab === 'nguoi-dung' ? 'true' : 'false', bat: () => this.chonTab('nguoi-dung') },
+      tabBaoMat: tab === 'bao-mat', tabNguoiDung: tab === 'nguoi-dung',
+      phimTabCon: (e) => {
+        if (!laAdmin || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+        this.chonTab(tab === 'bao-mat' ? 'nguoi-dung' : 'bao-mat');
+      },
+      h2Nhan: s.h2Bat ? 'Đang bật' : 'Tắt',
+      h2Tat: pha === 'tat', h2DangKy: pha === 'dang_ky', h2Bat: pha === 'bat',
+      h2ConLai: s.h2ConLai, h2BiMat: s.h2BiMat, h2Uri: s.h2Uri,
+      h2CoUri: typeof s.h2Uri === 'string' && s.h2Uri.startsWith('otpauth://'),
+      h2Mk: s.h2Mk, h2Ma: s.h2Ma, h2Loi: s.h2Loi, h2Tin: s.h2Tin, h2DangGui: s.h2DangGui,
+      h2HienMa: s.h2HienMa && s.h2MaKP.length > 0, h2MaKP: s.h2MaKP.map((ma) => ({ ma })),
+      h2NhanChep: s.h2ChepTin ? 'Đã chép ✓' : 'Chép tất cả',
+      goH2Mk: (e) => this.setState({ h2Mk: e.target.value, h2Loi: '' }),
+      goH2Ma: (e) => this.setState({ h2Ma: e.target.value, h2Loi: '' }),
+      h2BatDau: () => this.h2BatDau(), h2XacNhan: () => this.h2XacNhan(), h2Huy: () => this.h2Huy(),
+      h2DaLuu: () => this.h2DaLuu(), h2Tat2fa: () => this.h2Tat(), h2TaoLai: () => this.h2TaoLai(),
+      h2ChepMa: () => this.chepChuoi(s.h2MaKP.join('\n'), 'h2ChepTin', 'h2Loi'),
+      kdSo: kdHang.length, kdHang, kdCoDs: kdHang.length > 0, kdKhongDs: kdHang.length === 0,
+      kdLoi: s.kdLoi, kdTin: s.kdTin,
+      kdLamMoi: () => this.taiKhoaDn(),
+      kdBoTatCa: () => this.boChan({ loai: 'tat_ca' }, 'tat_ca')
+    };
+  }
+
+  chonTab(ten) {
+    this.setState({ tabCon: ten });
+    try { history.replaceState(null, '', ten === 'nguoi-dung' ? '?tab=nguoi-dung' : location.pathname); } catch (e) { /* bỏ qua */ }
+  }
+
+  // ══ 2FA của chính tôi ══
+  async tai2fa() {
+    try {
+      const { j } = await K.goi('api/toi/2fa');
+      this.setState({ h2Bat: !!(j && j.bat), h2ConLai: (j && j.so_ma_khoi_phuc_con_lai) || 0 });
+    } catch (e) { /* không có 2FA thì thôi: mục hiện «Tắt» */ }
+  }
+
+  async goiH2(duong, json, khiXong) {
+    this.setState({ h2DangGui: true, h2Loi: '', h2Tin: '' });
+    try {
+      const { j } = await K.goi(duong, { method: 'POST', json });
+      this.setState({ h2DangGui: false });
+      khiXong(j || {});
+    } catch (err) {
+      this.setState({ h2DangGui: false, h2Loi: (err && err.message) || 'Không thực hiện được. Thử lại.' });
+    }
+  }
+
+  h2BatDau() {
+    if (!this.state.h2Mk) { this.setState({ h2Loi: 'Nhập mật khẩu hiện tại để bắt đầu.' }); return; }
+    this.goiH2('api/toi/2fa/bat-dau', { mat_khau: this.state.h2Mk }, (j) =>
+      this.setState({ h2Pha: 'dang_ky', h2BiMat: j.bi_mat || '', h2Uri: j.uri || '', h2Mk: '', h2Ma: '' }));
+  }
+
+  h2XacNhan() {
+    const ma = (this.state.h2Ma || '').replace(/\s+/g, '');
+    if (!ma) { this.setState({ h2Loi: 'Nhập mã 6 số từ ứng dụng.' }); return; }
+    this.goiH2('api/toi/2fa/xac-nhan', { ma }, (j) => this.setState({
+      h2Bat: true, h2Pha: 'nghi', h2BiMat: '', h2Uri: '', h2Ma: '', h2Mk: '',
+      h2MaKP: j.ma_khoi_phuc || [], h2HienMa: true, h2ConLai: (j.ma_khoi_phuc || []).length,
+      h2Tin: 'Đã bật xác thực hai bước.'
+    }));
+  }
+
+  h2Huy() { this.setState({ h2Pha: 'nghi', h2BiMat: '', h2Uri: '', h2Ma: '', h2Mk: '', h2Loi: '' }); }
+
+  h2DaLuu() { this.setState({ h2MaKP: [], h2HienMa: false }); }
+
+  h2Tat() {
+    const { h2Mk: mk, h2Ma: ma } = this.state;
+    if (!mk || !ma) { this.setState({ h2Loi: 'Nhập mật khẩu và mã 2FA (hoặc mã khôi phục) để tắt.' }); return; }
+    this.goiH2('api/toi/2fa/tat', { mat_khau: mk, ma: ma.trim() }, () =>
+      this.setState({ h2Bat: false, h2ConLai: 0, h2Mk: '', h2Ma: '', h2MaKP: [], h2HienMa: false, h2Tin: 'Đã tắt xác thực hai bước.' }));
+  }
+
+  h2TaoLai() {
+    const { h2Mk: mk, h2Ma: ma } = this.state;
+    if (!mk || !ma) { this.setState({ h2Loi: 'Nhập mật khẩu và mã 2FA để tạo lại mã khôi phục.' }); return; }
+    this.goiH2('api/toi/2fa/tao-lai-ma-khoi-phuc', { mat_khau: mk, ma: ma.trim() }, (j) =>
+      this.setState({ h2Mk: '', h2Ma: '', h2MaKP: j.ma_khoi_phuc || [], h2HienMa: true, h2ConLai: (j.ma_khoi_phuc || []).length }));
+  }
+
+  // ══ Khoá đăng nhập (admin) ══
+  async taiKhoaDn() {
+    try {
+      const { j } = await K.goi('api/bao-mat/khoa-dang-nhap');
+      this.setState({ kdDs: (j && j.khoa) || [], kdLoi: '' });
+    } catch (e) {
+      if (!(e && e.ma === 403)) this.setState({ kdLoi: (e && e.message) || 'Không tải được danh sách khoá đăng nhập.' });
+    }
+  }
+
+  async boChan(json, khoa) {
+    this.setState({ kdDangBo: khoa, kdLoi: '', kdTin: '' });
+    try {
+      const { j } = await K.goi('api/bao-mat/khoa-dang-nhap/bo-chan', { method: 'POST', json });
+      this.setState({ kdDangBo: '', kdTin: 'Đã bỏ chặn (' + ((j && j.da_bo) || 0) + ' mục).' });
+      await this.taiKhoaDn();
+    } catch (err) {
+      this.setState({ kdDangBo: '', kdLoi: (err && err.message) || 'Không bỏ chặn được.' });
+    }
+  }
+
+  // ══ Admin tắt 2FA hộ người dùng (bấm hai lần) ══
+  async tat2faNd(id) {
+    if (this.state.hoiTat2faId !== id) { this.setState({ hoiTat2faId: id }); return; }
+    this.setState({ hoiTat2faId: null, ndThaoTacLoi: '' });
+    try {
+      await K.goi('api/nguoi-dung/' + encodeURIComponent(id) + '/tat-2fa', { method: 'POST' });
+      await this.taiDsNguoiDung();
+    } catch (err) {
+      this.setState({ ndThaoTacLoi: (err && err.message) || 'Không tắt được 2FA.' });
+    }
   }
 
   // Trường dùng chung cho một hàng danh sách: lớp mở, thuộc tính a11y, bấm/phím (Enter/Space/Escape).
@@ -1277,7 +1506,7 @@ class Component extends DCLogic {
   // Mỗi mục thu gọn: {mo, moChu, bat, phim} cho mẫu ({{m.<mã>.…}}). Enter/Space là của chính nút; Escape đóng mục.
   bangMuc() {
     const ra = {};
-    for (const k of ['taoNd', 'dsNd', 'taoKhoa', 'dsKhoa', 'saoLuu', 'taoKhoaToi', 'dsKhoaToi', 'doiMk']) {
+    for (const k of ['taoNd', 'dsNd', 'taoKhoa', 'dsKhoa', 'saoLuu', 'taoKhoaToi', 'dsKhoaToi', 'doiMk', 'hai', 'khoaDn']) {
       const mo = !!this.state.mucMo[k];
       ra[k] = {
         mo, moChu: mo ? 'true' : 'false',
@@ -1368,6 +1597,9 @@ class Component extends DCLogic {
         doiVai: () => this.doiVaiNd(uId, u.vai),
         dangDatLaiMk: s.dangDatLaiMkNd === uId,
         datLaiMk: () => this.datLaiMkNd(uId, u.ten_dang_nhap || uId),
+        bat2fa: !!u.bat_2fa,
+        tat2fa: () => this.tat2faNd(uId),
+        nhanTat2fa: this.state.hoiTat2faId === uId ? 'Xác nhận tắt 2FA?' : 'Tắt 2FA',
         chuaXacNhanXoa: s.dangHoiXoaNd !== uId,
         dangXacNhanXoa: s.dangHoiXoaNd === uId,
         dangXoa: s.dangXoaNd === uId,
@@ -1447,6 +1679,7 @@ class Component extends DCLogic {
       menuMo: !!s.menuMo,
       dongMenu: () => this.setState({ menuMo: null }),
       m: this.bangMuc(),
+      ...this.giaTriTabVa2fa(laAdmin),
       phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
 
       tenNguoiDung: K.tenNguoiDung(toi) || '...',
