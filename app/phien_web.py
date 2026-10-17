@@ -336,13 +336,12 @@ def thu_hoi_phien_nguoi_dung(nguoi_dung_id: str, tru_bam: str | None = None) -> 
         da_xoa = truoc - len(ds)
         if da_xoa > 0:
             _ghi_phien(ds)
-    # Thu hồi luôn mọi phiên phụ của người dùng này (đóng WebSocket đang mở)
-    if tru_bam is None:
-        for moc in list(_MOC_THU_HOI):
-            try:
-                moc(nguoi_dung_id)
-            except Exception:
-                pass
+    # Thu hồi luôn mọi phiên phụ của người dùng này (đóng WebSocket đang mở) — các móc luôn chạy
+    for moc in list(_MOC_THU_HOI):
+        try:
+            moc(nguoi_dung_id)
+        except Exception:
+            pass
     return da_xoa
 
 

@@ -228,6 +228,7 @@ def test_novnc_gioi_han_ve_sai_va_tran_kho_ve(moi_truong, monkeypatch):
             headers={
                 "content-type": "application/x-www-form-urlencoded",
                 "x-forwarded-for": ip_test,
+                "Origin": "http://testserver",
             },
         )
         assert r.status_code == 401, f"Lần {i + 1} phải là 401"
@@ -239,6 +240,7 @@ def test_novnc_gioi_han_ve_sai_va_tran_kho_ve(moi_truong, monkeypatch):
         headers={
             "content-type": "application/x-www-form-urlencoded",
             "x-forwarded-for": ip_test,
+            "Origin": "http://testserver",
         },
     )
     assert r_31.status_code == 429
@@ -267,6 +269,7 @@ def test_novnc_gioi_han_ve_sai_va_tran_kho_ve(moi_truong, monkeypatch):
         headers={
             "content-type": "application/x-www-form-urlencoded",
             "x-forwarded-for": ip_khac,
+            "Origin": "http://testserver",
         },
         follow_redirects=False,
     )

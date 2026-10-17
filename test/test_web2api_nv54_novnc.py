@@ -80,9 +80,8 @@ def _qt() -> dict:
     return {"Authorization": f"Bearer {KHOA_QT_GIA}"}
 
 
-# ───────────── Đỏ: thu hồi theo tài khoản ─────────────
+# ───────────── Đã xanh: thu hồi theo tài khoản ─────────────
 
-@pytest.mark.xfail(strict=True, reason="NV54 P3b: vé của khoá Bearer quản trị (nguoi_dung_id=None) không thu hồi theo tài khoản được")
 def test_nv54_ve_bearer_khong_bi_thu_hoi_theo_tai_khoan(moi_truong):
     """Vé cấp bằng khoá Bearer quản trị phải mất hiệu lực khi thu hồi theo tài khoản."""
     ve = novnc.cap_ve(MODULE_GIA, HO_SO_GIA, nguoi_dung_id=None)
@@ -91,7 +90,6 @@ def test_nv54_ve_bearer_khong_bi_thu_hoi_theo_tai_khoan(moi_truong):
     assert not _ve_con(ve), "vé của Bearer quản trị vẫn sống sau thu hồi theo tài khoản"
 
 
-@pytest.mark.xfail(strict=True, reason="NV54: tự đổi mật khẩu gọi thu_hoi_phien_nguoi_dung(uid, tru_bam=...) nên mốc noVNC bị bỏ qua")
 def test_nv54_tu_doi_mat_khau_thu_hoi_ve_novnc(moi_truong):
     """Mô phỏng app/tuyen.py doi_mat_khau_toi: tự đổi mật khẩu phải thu hồi vé noVNC của chính tài khoản."""
     uid = _tao_tai_khoan("admin", "nv54-doi-mk")["id"]
@@ -114,9 +112,8 @@ def test_nv54_ha_vai_thu_hoi_ve_novnc(moi_truong):
     assert not _ve_con(ve), "vé noVNC vẫn sống sau khi tài khoản bị hạ vai admin→user"
 
 
-# ───────────── Đỏ: kiểm Origin ─────────────
+# ───────────── Đã xanh: kiểm Origin ─────────────
 
-@pytest.mark.xfail(strict=True, reason="NV54 P4: /novnc/dang-nhap không kiểm Origin — Origin lạ vẫn 200")
 def test_nv54_origin_la_trang_ve_bi_tu_choi(moi_truong):
     """GET trang vé với Origin không thuộc danh sách cho phép → 403."""
     ve = novnc.cap_ve(MODULE_GIA, HO_SO_GIA, nguoi_dung_id="uid-nv54")
@@ -125,7 +122,6 @@ def test_nv54_origin_la_trang_ve_bi_tu_choi(moi_truong):
     assert r.status_code == 403, f"Origin lạ không bị chặn ở trang vé: {r.status_code}"
 
 
-@pytest.mark.xfail(strict=True, reason="NV54 P4: POST đổi vé không kiểm Origin — Origin lạ vẫn đi tiếp (303)")
 def test_nv54_origin_la_doi_ve_bi_tu_choi(moi_truong):
     """POST đổi vé với Origin không thuộc danh sách cho phép → 403, vé không bị tiêu thụ."""
     _chen_ho_so_gia()
@@ -140,7 +136,6 @@ def test_nv54_origin_la_doi_ve_bi_tu_choi(moi_truong):
     assert _ve_con(ve), "vé bị tiêu thụ dù Origin không hợp lệ"
 
 
-@pytest.mark.xfail(strict=True, reason="NV54 P4: đổi vé thiếu Origin khi vé có phải bị từ chối")
 def test_nv54_thieu_origin_khi_doi_ve_bi_tu_choi(moi_truong):
     """POST đổi vé không có Origin trong khi vé được gửi → 403."""
     _chen_ho_so_gia()
@@ -169,14 +164,14 @@ def test_nv54_ve_dung_mot_lan(moi_truong):
         r1 = c.post(
             "/novnc/dang-nhap",
             data={"ve": ve},
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://testserver"},
         )
         assert r1.status_code == 303, r1.text
         assert not _ve_con(ve), "vé phải bị tiêu thụ sau khi đổi"
         r2 = c.post(
             "/novnc/dang-nhap",
             data={"ve": ve},
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://testserver"},
         )
         assert r2.status_code == 401, f"dùng lại vé phải 401, được {r2.status_code}"
 

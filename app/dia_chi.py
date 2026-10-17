@@ -158,6 +158,78 @@ def suy_ra_dia_chi(request: Request) -> str:
     return f"{scheme}://{host}{root_path}"
 
 
+def _chuan_hoa_origin(origin: str | None) -> str | None:
+    """Chuẩn hoá Origin theo RFC 6454: scheme://host[:port] chữ thường, bỏ cổng mặc định (:80, :443).
+
+    Từ chối null, rỗng, không phải chuỗi, có username/password, có query, fragment, hoặc path khác rỗng/gạch chéo.
+    """
+    if not isinstance(origin, str):
+        return None
+    s = origin.strip()
+    if not s or s.lower() == "null":
+        return None
+    try:
+        tach = urllib.parse.urlsplit(s)
+    except ValueError:
+        return None
+    scheme = tach.scheme.lower()
+    if scheme not in ("http", "https"):
+        return None
+    if tach.username is not None or tach.password is not None or "@" in tach.netloc:
+        return None
+    if tach.query or tach.fragment:
+        return None
+    if tach.path not in ("", "/"):
+        return None
+    hostname = tach.hostname
+    if not hostname:
+        return None
+    ten = _chuan_hoa_ten_may(hostname)
+    if ten is None:
+        return None
+    try:
+        cong = tach.port
+    except ValueError:
+        return None
+    if cong == 0:
+        return None
+    if (scheme == "http" and cong == 80) or (scheme == "https" and cong == 443):
+        cong = None
+    return f"{scheme}://{ten}" + (f":{cong}" if cong is not None else "")
+
+
+def origin_cua_may_chu(request: Request) -> str:
+    """Origin của chính máy chủ phục vụ yêu cầu: scheme://host[:port] (bỏ cổng mặc định và root_path).
+
+    Scheme lấy theo phien_web.la_https(request) để máy chủ sau proxy TLS khớp đúng https.
+    Authority lấy từ suy_ra_dia_chi (tôn trọng WEB2API_TIN_PROXY).
+    """
+    from app import phien_web
+    dung_https = phien_web.la_https(request)
+    dia_chi_goc = suy_ra_dia_chi(request)
+    tach = urllib.parse.urlsplit(dia_chi_goc)
+    scheme = "https" if dung_https else tach.scheme.lower()
+    hostname = tach.hostname
+    ten = _chuan_hoa_ten_may(hostname) or "localhost"
+    try:
+        cong = tach.port
+    except ValueError:
+        cong = None
+    if (scheme == "http" and cong == 80) or (scheme == "https" and cong == 443):
+        cong = None
+    return f"{scheme}://{ten}" + (f":{cong}" if cong is not None else "")
+
+
+def origin_hop_le(request: Request, origin: str | None) -> bool:
+    """So khớp Origin của khách với Origin của máy chủ bằng so sánh bằng (==) sau khi chuẩn hoá."""
+    chuan = _chuan_hoa_origin(origin)
+    if chuan is None:
+        return False
+    mc = origin_cua_may_chu(request)
+    return chuan == mc
+
+
+
 def _la_dia_chi_internet(host: str) -> bool:
     """Tên máy có phải địa chỉ Internet công khai không — phân loại bằng `ipaddress` (is_global), không bảng tên.
     `localhost`/`*.localhost` (RFC 6761) và `*.local` (mDNS, RFC 6762) là tên đặc biệt không ra Internet. Dạng IPv4

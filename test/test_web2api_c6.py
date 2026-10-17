@@ -309,7 +309,8 @@ def _mo(client, ten: str = "gia-browser", **them) -> tuple[str, str]:
 
 def _vao(client, ve: str) -> str:
     """Đổi vé (POST) → trả phiên trong đường dẫn."""
-    r = client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False)
+    goc = str(getattr(client, "base_url", "http://testserver")).rstrip("/")
+    r = client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": goc})
     assert r.status_code == 303, r.text
     m = MAU_PHIEN.match(r.headers["location"])
     assert m, r.headers["location"]
@@ -357,15 +358,15 @@ def test_ve_va_xac_thuc_quyen(du_lieu, backend_gia):
             r_get = client.get(data["url"], follow_redirects=False)
             assert r_get.status_code == 200
             assert "set-cookie" not in r_get.headers
-        r1 = client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False)
+        r1 = client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": "http://testserver"})
         assert r1.status_code == 303
         assert "set-cookie" not in r1.headers, "không còn cookie phiên"
         assert MAU_PHIEN.match(r1.headers["location"])
 
-        r2 = client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False)
+        r2 = client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": "http://testserver"})
         assert r2.status_code == 401
         assert "Vé không hợp lệ hoặc đã hết hạn" in r2.json()["error"]["message"]
-        r_sai = client.post("/novnc/dang-nhap", data={"ve": "ve_hoan_toan_sai_123"}, follow_redirects=False)
+        r_sai = client.post("/novnc/dang-nhap", data={"ve": "ve_hoan_toan_sai_123"}, follow_redirects=False, headers={"Origin": "http://testserver"})
         assert r_sai.status_code == 401
         assert client.post("/novnc/dang-nhap", follow_redirects=False).status_code == 415  # không Content-Type
         assert client.post("/novnc/dang-nhap", content=b"", follow_redirects=False,
@@ -373,7 +374,7 @@ def test_ve_va_xac_thuc_quyen(du_lieu, backend_gia):
 
         ve_moi = client.post(f"/api/trinh-duyet/gia-browser/{ho_so}/ve", headers=QT).json()["ve"]
         novnc._VE[hashlib.sha256(ve_moi.encode()).hexdigest()]["het_han"] = time.time() - 10
-        assert client.post("/novnc/dang-nhap", data={"ve": ve_moi}, follow_redirects=False).status_code == 401
+        assert client.post("/novnc/dang-nhap", data={"ve": ve_moi}, follow_redirects=False, headers={"Origin": "http://testserver"}).status_code == 401
 
 
 def test_get_dang_nhap_la_trang_nut_khong_phan_xa_xss(du_lieu, backend_gia):
@@ -388,7 +389,7 @@ def test_get_dang_nhap_la_trang_nut_khong_phan_xa_xss(du_lieu, backend_gia):
         assert f'value="{ve}"' in r.text and "<button" in r.text and "<script" not in r.text
         csp = r.headers["content-security-policy"]
         assert "default-src 'none'" in csp and "form-action 'self'" in csp and "frame-ancestors 'none'" in csp
-        assert r.headers["referrer-policy"] == "no-referrer"
+        assert r.headers["referrer-policy"] == "same-origin"
         assert r.headers["cache-control"] == "no-store"
         assert r.headers["x-frame-options"] == "DENY"
         assert len(novnc._VE) == 1 and not novnc._PHIEN
@@ -409,7 +410,7 @@ def test_32_post_dong_thoi_cung_mot_ve_chi_mot_phien(du_lieu, backend_gia):
         def mot_lan(_):
             with httpx.Client(base_url=w.url, timeout=15) as hh:
                 rao.wait()
-                return hh.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False).status_code
+                return hh.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": w.url}).status_code
 
         with ThreadPoolExecutor(32) as ex:
             ma = list(ex.map(mot_lan, range(32)))
@@ -694,7 +695,7 @@ def test_dong_khi_module_loi_van_thu_hoi(du_lieu, backend_gia):
                 ws.receive_bytes()
             assert dong_ws.value.code == 1008  # thu hồi, không phải kết thúc bình thường 1000
         assert client.get(f"/novnc/s/{p}/vnc.html").status_code == 401
-        assert client.post("/novnc/dang-nhap", data={"ve": ve_cho}, follow_redirects=False).status_code == 401
+        assert client.post("/novnc/dang-nhap", data={"ve": ve_cho}, follow_redirects=False, headers={"Origin": "http://testserver"}).status_code == 401
         assert not novnc._PHIEN and not novnc._VE and not novnc._HO_SO and not novnc._WS
         dong = [d for d in nhat_ky.doc(kenh="trinh_duyet", gioi_han=100) if "dong" in json.dumps(d)]
         assert dong and "chi-tiet-noi-bo" not in json.dumps(dong, ensure_ascii=False)
@@ -727,7 +728,7 @@ def test_ws_dong_ho_so_giua_luc_bat_tay(du_lieu, backend_gia):
     with MayChuThat(app, lifespan="on") as w, httpx.Client(base_url=w.url, timeout=15) as h:
         _cai(app, backend_gia.url)
         ho_so, ve = _mo(h)
-        r = h.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False)
+        r = h.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": w.url})
         p = MAU_PHIEN.match(r.headers["location"]).group(1)
         kq: dict[str, Any] = {}
 
@@ -841,7 +842,7 @@ def test_tran_phien_theo_ho_so_va_toan_cuc_429(du_lieu, backend_gia, monkeypatch
         for _ in range(novnc.TRAN_PHIEN_MOI_HO_SO - 1):
             phien.append(_vao(client, client.post(f"/api/trinh-duyet/gia-browser/{ho_so}/ve", headers=QT).json()["ve"]))
         ve_thua = client.post(f"/api/trinh-duyet/gia-browser/{ho_so}/ve", headers=QT).json()["ve"]
-        r = client.post("/novnc/dang-nhap", data={"ve": ve_thua}, follow_redirects=False)
+        r = client.post("/novnc/dang-nhap", data={"ve": ve_thua}, follow_redirects=False, headers={"Origin": "http://testserver"})
         assert r.status_code == 429
         for p in phien:  # không phiên nào bị đẩy ra
             assert client.get(f"/novnc/s/{p}/vnc.html").status_code == 200
@@ -851,12 +852,12 @@ def test_tran_phien_theo_ho_so_va_toan_cuc_429(du_lieu, backend_gia, monkeypatch
         phien.append(_vao(client, ve2))
         phien.append(_vao(client, client.post(f"/api/trinh-duyet/gia-browser/{ho_so2}/ve", headers=QT).json()["ve"]))
         ve3 = client.post(f"/api/trinh-duyet/gia-browser/{ho_so2}/ve", headers=QT).json()["ve"]
-        assert client.post("/novnc/dang-nhap", data={"ve": ve3}, follow_redirects=False).status_code == 429
+        assert client.post("/novnc/dang-nhap", data={"ve": ve3}, follow_redirects=False, headers={"Origin": "http://testserver"}).status_code == 429
         for p in phien:
             assert client.get(f"/novnc/s/{p}/vnc.html").status_code == 200
         # 429 không đốt vé: thu hồi bớt rồi dùng lại vé đó được
         client.post(f"/api/trinh-duyet/gia-browser/{ho_so}/dong", headers=QT)
-        assert client.post("/novnc/dang-nhap", data={"ve": ve3}, follow_redirects=False).status_code == 303
+        assert client.post("/novnc/dang-nhap", data={"ve": ve3}, follow_redirects=False, headers={"Origin": "http://testserver"}).status_code == 303
 
 
 # ───────────────────────────── #10: chức năng ─────────────────────────────
@@ -937,7 +938,7 @@ def test_log_uvicorn_that_khi_noi_ws(du_lieu, backend_gia):
         try:
             _cai(app, backend_gia.url)
             _, ve = _mo(h)
-            r = h.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False)
+            r = h.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": w.url})
             p = MAU_PHIEN.match(r.headers["location"]).group(1)
             with ws_connect(f"{w.url.replace('http', 'ws')}/novnc/s/{p}/websockify", proxy=None) as ws:
                 ws.send(b"a")
@@ -1130,7 +1131,7 @@ def test_dang_nhap_chi_nhan_urlencoded_co_tran(du_lieu, backend_gia, monkeypatch
                            headers={"Content-Type": "text/plain"}, follow_redirects=False).status_code == 415
         # vé vẫn còn nguyên sau các lần bị từ chối; đường hợp lệ (có charset) vẫn đổi được
         r = client.post("/novnc/dang-nhap", content=f"ve={ve}".encode(),
-                        headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+                        headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "Origin": "http://testserver"},
                         follow_redirects=False)
         assert r.status_code == 303 and MAU_PHIEN.match(r.headers["location"])
         assert ve not in r.text
@@ -1193,7 +1194,7 @@ def test_access_log_uvicorn_that_giu_hinh_dang_args(du_lieu, backend_gia):
             _cai(app, backend_gia.url)
             _, ve = _mo(h)
             assert h.get(f"/novnc/dang-nhap?ve={ve}").status_code == 200
-            r = h.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False)
+            r = h.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": w.url})
             p = MAU_PHIEN.match(r.headers["location"]).group(1)
             assert h.get(f"/novnc/s/{p}/vnc.html?a=1").status_code == 200
         finally:
@@ -1224,8 +1225,8 @@ def test_mau_ve_ho_so_khong_nhan_xuong_dong_cuoi(du_lieu, backend_gia):
         assert client.post(f"/api/trinh-duyet/gia-browser/{ho_so}%0A/ve", headers=QT).status_code == 400
         assert client.post(f"/api/trinh-duyet/gia-browser/{ho_so}%0A/dong", headers=QT).status_code == 400
         assert client.get("/novnc/dang-nhap", params={"ve": ve + "\n"}).status_code == 400
-        assert client.post("/novnc/dang-nhap", data={"ve": ve + "\n"}, follow_redirects=False).status_code == 401
-        assert client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False).status_code == 303
+        assert client.post("/novnc/dang-nhap", data={"ve": ve + "\n"}, follow_redirects=False, headers={"Origin": "http://testserver"}).status_code == 401
+        assert client.post("/novnc/dang-nhap", data={"ve": ve}, follow_redirects=False, headers={"Origin": "http://testserver"}).status_code == 303
 
 
 def test_proxy_khong_theo_chuyen_huong_cua_dich(du_lieu, backend_gia, backend_gia2):

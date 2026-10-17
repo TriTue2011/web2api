@@ -61,7 +61,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import gioi_han, kho, nhat_ky, phien_web
+from app import dia_chi, gioi_han, kho, nhat_ky, phien_web
 from app.kham_pha import ID_HOP_LE, MAU_MIEN
 from app.loi_openai import LoiOpenAI, than_loi
 from app.so_module import LoiSo, SoModule
@@ -136,7 +136,7 @@ HEADER_BAO_VE_TRANG_VE: tuple[tuple[bytes, bytes], ...] = (
     (b"content-security-policy",
      b"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"),
     (b"x-content-type-options", b"nosniff"),
-    (b"referrer-policy", b"no-referrer"),
+    (b"referrer-policy", b"same-origin"),
     (b"cache-control", b"no-store"),
     (b"x-frame-options", b"DENY"),
 )
@@ -311,13 +311,16 @@ def doi_ve_lay_phien(ve: str) -> tuple[int, str | None, dict[str, Any] | None]:
 
 
 def thu_hoi_phien_theo_nguoi_dung(nguoi_dung_id: str) -> int:
-    """Thu hồi toàn bộ vé và phiên noVNC của một người dùng, đóng WebSocket đang mở."""
-    if not nguoi_dung_id:
+    """Thu hồi toàn bộ vé và phiên noVNC của một người dùng, và mọi vé/phiên không gắn tài khoản cụ thể.
+
+    Đóng WebSocket đang mở.
+    """
+    if not isinstance(nguoi_dung_id, str) or not nguoi_dung_id.strip():
         return 0
     with _KHOA:
-        for k in [k for k, v in _VE.items() if v.get("nguoi_dung_id") == nguoi_dung_id]:
+        for k in [k for k, v in _VE.items() if v.get("nguoi_dung_id") == nguoi_dung_id or not v.get("nguoi_dung_id")]:
             _VE.pop(k, None)
-        cac_phien = [k for k, v in _PHIEN.items() if v.get("nguoi_dung_id") == nguoi_dung_id]
+        cac_phien = [k for k, v in _PHIEN.items() if v.get("nguoi_dung_id") == nguoi_dung_id or not v.get("nguoi_dung_id")]
         _thu_hoi_phien_khoa(cac_phien)
         return len(cac_phien)
 
@@ -780,6 +783,11 @@ def _loi_json(ma: int, thong_diep: str) -> JSONResponse:
 @novnc_router.get("/dang-nhap")
 async def novnc_trang_ve(request: Request):
     """Trang nút, KHÔNG tiêu thụ vé (bot xem trước liên kết chỉ GET)."""
+    if "origin" in request.headers:
+        if not dia_chi.origin_hop_le(request, request.headers.get("origin")):
+            nhat_ky.ghi("trinh_duyet", "canh_bao", "Origin không hợp lệ khi truy cập trang vé",
+                        hanh_dong="trang_ve", ket_qua="that_bai")
+            return _loi_json(403, "Truy cập bị từ chối.")
     ve = request.query_params.get("ve", "")
     if not MAU_VE.fullmatch(ve):
         return HTMLResponse("<!doctype html><p>Liên kết không hợp lệ.</p>", status_code=400)
@@ -810,7 +818,21 @@ async def novnc_doi_ve(request: Request):
     except (UnicodeDecodeError, ValueError):
         truong = {}
     ds_ve = truong.get("ve", [])
-    ma, phien, tt = doi_ve_lay_phien(ds_ve[0] if len(ds_ve) == 1 else "")
+    ve_raw = ds_ve[0] if len(ds_ve) == 1 else ""
+    co_ve = bool(ve_raw)
+    co_origin = "origin" in request.headers
+
+    if co_origin:
+        if not dia_chi.origin_hop_le(request, request.headers.get("origin")):
+            nhat_ky.ghi("trinh_duyet", "canh_bao", "Origin không hợp lệ",
+                        hanh_dong="doi_ve", ket_qua="that_bai")
+            return _loi_json(403, "Truy cập bị từ chối.")
+    elif co_ve:
+        nhat_ky.ghi("trinh_duyet", "canh_bao", "Thiếu Origin khi đổi vé",
+                    hanh_dong="doi_ve", ket_qua="that_bai")
+        return _loi_json(403, "Truy cập bị từ chối.")
+
+    ma, phien, tt = doi_ve_lay_phien(ve_raw)
     if ma == 429:
         nhat_ky.ghi("trinh_duyet", "canh_bao", "Từ chối đổi vé: chạm trần số phiên", module=tt["module"],
                     ho_so=tt["ho_so"], hanh_dong="doi_ve", ket_qua="that_bai")

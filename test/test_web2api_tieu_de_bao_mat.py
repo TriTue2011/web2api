@@ -66,7 +66,9 @@ def test_novnc_giu_header_rieng_khong_bi_de(du_lieu):
         assert "default-src 'none'" in r.headers.get("content-security-policy", "")
         # header đã có thì không thêm trùng
         assert r.headers.get_list("x-frame-options") == ["DENY"]
-        _khop_ba_header(r.headers)
+        assert r.headers.get_list("x-content-type-options") == ["nosniff"]
+        # trang vé đổi sang same-origin (NV98: để form POST gửi Origin thật, không phải «null»)
+        assert r.headers.get_list("referrer-policy") == ["same-origin"]
 
 
 def test_luong_streaming_co_header_ngay_tu_dau():
