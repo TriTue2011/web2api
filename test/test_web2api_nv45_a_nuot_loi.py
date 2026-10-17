@@ -53,7 +53,6 @@ DA_KIEM_TOAN = {
     ("app/nguoi_dung.py", "giu_slot_scrypt"),
     ("app/nguoi_dung.py", "_kiem_tra_mat_khau_dong_bo"),
     ("app/novnc.py", "novnc_websocket_proxy"),
-    ("app/phien_web.py", "thu_hoi_phien_nguoi_dung"),
     ("app/phien_web.py", "la_phien_da_xac_nhan_lai"),  # ngày giờ hỏng → coi là CHƯA xác nhận lại (fail-closed)
     ("app/webhook.py", "_lay_webhook"),
     ("modules/gemini-web/module.py", "dung"),       # đóng kết nối khi tắt module: lỗi đóng không làm hỏng việc tắt

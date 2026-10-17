@@ -340,8 +340,9 @@ def thu_hoi_phien_nguoi_dung(nguoi_dung_id: str, tru_bam: str | None = None) -> 
     for moc in list(_MOC_THU_HOI):
         try:
             moc(nguoi_dung_id)
-        except Exception:
-            pass
+        except Exception as e:
+            # Không nuốt im lặng: móc hỏng nghĩa là phiên phụ (ví dụ WebSocket trình duyệt từ xa) CÓ THỂ còn sống sau khi thu hồi. Chỉ ghi tên móc và loại lỗi (không ghi dữ liệu).
+            log.warning("phien_web: móc thu hồi %s lỗi (%s) — phiên phụ có thể còn sống", getattr(moc, "__name__", "?"), type(e).__name__)
     return da_xoa
 
 
