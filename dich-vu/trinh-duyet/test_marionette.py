@@ -1,6 +1,7 @@
 """Kiểm thử máy khách Marionette tối thiểu (marionette.py) — NV92 P1.
 
-Máy chủ Marionette GIẢ nói đúng giao thức khung (4 byte big-endian + JSON),
+Máy chủ Marionette GIẢ nói đúng giao thức khung THẬT của Firefox (``<độ dài thập phân>:<JSON>``,
+đã đo bằng Firefox thật: lời chào ``50:{"applicationType":"gecko","marionetteProtocol":3}``),
 không cần Firefox thật, không Internet.
 """
 
@@ -8,7 +9,6 @@ from __future__ import annotations
 
 import json
 import socket
-import struct
 import sys
 import threading
 from pathlib import Path
@@ -24,17 +24,19 @@ from marionette import KHOA_PHAN_TU, LoiMarionette, MarionetteClient
 
 def _gui_khung(conn: socket.socket, obj) -> None:
     du_lieu = json.dumps(obj).encode("utf-8")
-    conn.sendall(struct.pack("!I", len(du_lieu)) + du_lieu)
+    conn.sendall(str(len(du_lieu)).encode("ascii") + b":" + du_lieu)
 
 
 def _doc_khung(conn: socket.socket):
-    dau = b""
-    while len(dau) < 4:
-        khuc = conn.recv(4 - len(dau))
-        if not khuc:
+    chu_so = b""
+    while True:
+        b = conn.recv(1)
+        if not b:
             raise ConnectionError("đóng giữa chừng")
-        dau += khuc
-    (dai,) = struct.unpack("!I", dau)
+        if b == b":":
+            break
+        chu_so += b
+    dai = int(chu_so)
     du_lieu = b""
     while len(du_lieu) < dai:
         khuc = conn.recv(min(65536, dai - len(du_lieu)))
@@ -355,3 +357,61 @@ def test_phien_moi_doc_moz_profile():
                 f"không đọc được moz:profile: {khach.moz_profile!r}"
         finally:
             khach.dong()
+
+
+# ── Giao thức khung THẬT của Firefox (đo bằng Firefox thật 18/10/2026) ──
+
+def _may_chu_tho(byte_gui: bytes):
+    """Mở cổng, chấp nhận một kết nối, gửi nguyên `byte_gui` rồi đóng. Trả (cổng, luồng)."""
+    sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sk.bind(("127.0.0.1", 0))
+    sk.listen(1)
+
+    def chay():
+        try:
+            conn, _ = sk.accept()
+            conn.sendall(byte_gui)
+            conn.close()
+        finally:
+            sk.close()
+
+    t = threading.Thread(target=chay, daemon=True)
+    t.start()
+    return sk.getsockname()[1], t
+
+
+def test_loi_chao_that_cua_firefox_doc_duoc():
+    """Đúng chuỗi byte Firefox thật gửi khi nối: «50:{...}». Bản đầu đọc «50:{» như số nguyên 892353147."""
+    port, t = _may_chu_tho(b'50:{"applicationType":"gecko","marionetteProtocol":3}')
+    c = MarionetteClient(port=port)
+    c.ket_noi()                                  # không ném lỗi
+    assert c.da_noi
+    c.dong()
+    t.join(2)
+
+
+@pytest.mark.parametrize("byte_gui,ma_loi", [
+    (b"\x00\x00\x00\x32" + b"x" * 50, "khung_sai_dinh_dang"),      # tiền tố nhị phân kiểu cũ
+    (b"abc:{}", "khung_sai_dinh_dang"),                              # độ dài không phải số
+    (b":{}", "khung_sai_dinh_dang"),                                 # thiếu độ dài
+    (b"12345678901:{}", "khung_sai_dinh_dang"),                      # quá nhiều chữ số (rác vô hạn)
+    (b"99999999:{}", "khung_qua_lon"),                               # vượt trần 64 MiB
+])
+def test_khung_sai_bi_tu_choi_bang_ma_loi(byte_gui, ma_loi):
+    port, t = _may_chu_tho(byte_gui)
+    c = MarionetteClient(port=port)
+    with pytest.raises(LoiMarionette) as e:
+        c.ket_noi()
+    assert e.value.ma_loi == ma_loi
+    t.join(2)
+
+
+def test_do_dai_tinh_theo_byte_utf8_khong_theo_ky_tu():
+    """Độ dài là số BYTE UTF-8: «Tiếng Việt» dài hơn số ký tự."""
+    nd = json.dumps({"ten": "Tiếng Việt"}, ensure_ascii=False).encode("utf-8")
+    port, t = _may_chu_tho(str(len(nd)).encode() + b":" + nd)
+    c = MarionetteClient(port=port)
+    c.ket_noi()
+    c.dong()
+    t.join(2)

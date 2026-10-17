@@ -1,8 +1,12 @@
 """Máy khách Marionette tối thiểu cho dich-vu/trinh-duyet — NV92 P1 (Cách B).
 
 Giao thức điều khiển TÍCH HỢP của Firefox (không thêm gói bên thứ ba):
-TCP tới 127.0.0.1:<cổng>, mỗi thông điệp là JSON có tiền tố độ dài
-4 byte big-endian::
+TCP tới 127.0.0.1:<cổng>, mỗi thông điệp là ``<độ dài>:<JSON>`` — độ dài là
+SỐ THẬP PHÂN viết bằng chữ số ASCII (đếm BYTE UTF-8 của JSON), rồi dấu hai chấm
+(ví dụ lời chào thật của Firefox: ``50:{"applicationType":"gecko","marionetteProtocol":3}``).
+KHÔNG phải tiền tố nhị phân: bản đầu (NV92) giả định 4 byte big-endian, test xanh vì
+máy chủ giả cũng giả định thế, nhưng Firefox thật làm «50:{» thành số 892353147 → lỗi
+``khung_qua_lon`` (đo bằng Firefox thật 18/10/2026)::
 
     lệnh     [0, id, "WebDriver:TênLệnh", {tham số}]
     phản hồi [1, id, loi, ket_qua]      (loi = null khi thành công)
@@ -26,7 +30,6 @@ from __future__ import annotations
 import json
 import logging
 import socket
-import struct
 import time
 from typing import Any
 
@@ -41,6 +44,8 @@ HET_GIO_LENH_MAC_DINH = 30.0
 HET_GIO_KET_NOI = 10.0
 #: Trần độ dài một khung (chụp nguồn trang rất lớn vẫn trong mức này).
 TRAN_KHUNG_BYTE = 64 * 1024 * 1024
+#: Số chữ số tối đa của tiền tố độ dài (64 MiB cần 8 chữ số; chừa dư, chặn rác vô hạn).
+TOI_DA_CHU_SO_DO_DAI = 10
 
 #: Số phản hồi cũ tối đa bỏ qua khi chờ đúng id (chống phản hồi muộn của
 #: lệnh trước bị đọc nhầm làm kết quả lệnh kế — NV94-P3).
@@ -131,8 +136,19 @@ class MarionetteClient:
 
     def _doc_khung(self, het_gio: float) -> Any:
         assert self._sk is not None
-        dau = _doc_du(self._sk, 4, het_gio)
-        (dai,) = struct.unpack("!I", dau)
+        # Tiền tố độ dài: chữ số thập phân ASCII tới dấu «:» (tối đa 10 chữ số, đọc từng byte).
+        chu_so = bytearray()
+        han = time.monotonic() + het_gio
+        while True:
+            b = _doc_du(self._sk, 1, max(0.0, han - time.monotonic()))
+            if b == b":":
+                break
+            if not b.isdigit() or len(chu_so) >= TOI_DA_CHU_SO_DO_DAI:
+                raise LoiMarionette("khung_sai_dinh_dang")
+            chu_so += b
+        if not chu_so:
+            raise LoiMarionette("khung_sai_dinh_dang")
+        dai = int(chu_so)
         if dai > TRAN_KHUNG_BYTE:
             raise LoiMarionette("khung_qua_lon")
         try:
@@ -144,7 +160,7 @@ class MarionetteClient:
         assert self._sk is not None
         du_lieu = json.dumps(obj).encode("utf-8")
         try:
-            self._sk.sendall(struct.pack("!I", len(du_lieu)) + du_lieu)
+            self._sk.sendall(str(len(du_lieu)).encode("ascii") + b":" + du_lieu)
         except OSError:
             raise LoiMarionette("gui_that_bai") from None
 
