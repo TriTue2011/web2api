@@ -101,7 +101,8 @@ def _may_chu_co_ban() -> MayChuMarionetteGia:
     phan_tu = {KHOA_PHAN_TU: "uuid-phan-tu-1"}
     return MayChuMarionetteGia({
         "WebDriver:NewSession": (None, {"sessionId": "phien-1",
-                                        "capabilities": {"browserName": "firefox"}}),
+                                        "capabilities": {"browserName": "firefox",
+                                                         "moz:profile": "/tmp/ho-so-gia"}}),
         "WebDriver:Navigate": (None, None),
         "WebDriver:GetCurrentURL": (None, {"value": "https://accounts.google.com/"}),
         "WebDriver:GetTitle": (None, {"value": "Đăng nhập"}),
@@ -236,3 +237,121 @@ def test_xoa_phien_gui_delete_session():
         kh.dong()
         xoa = [y for y in may_chu.da_nhan if y[2] == "WebDriver:DeleteSession"]
         assert len(xoa) == 1
+
+
+# ── NV94-P3: khớp id phản hồi / bỏ phản hồi cũ / đóng khi hết giờ ──────────
+
+class MayChuTraLoiCu:
+    """Máy chủ gửi TRƯỚC một phản hồi muộn (id cũ) rồi mới phản hồi đúng."""
+
+    def __init__(self):
+        self._sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sk.bind(("127.0.0.1", 0))
+        self._sk.listen(1)
+        self.port = self._sk.getsockname()[1]
+        self._luong = threading.Thread(target=self._phuc_vu, daemon=True)
+
+    def __enter__(self):
+        self._luong.start()
+        return self
+
+    def __exit__(self, *a):
+        try:
+            self._sk.close()
+        except OSError:
+            pass
+        self._luong.join(timeout=5)
+
+    def _phuc_vu(self):
+        try:
+            conn, _ = self._sk.accept()
+        except OSError:
+            return
+        with conn:
+            conn.settimeout(10)
+            _gui_khung(conn, [0, 1, None, {"applicationType": "gecko",
+                                           "marionetteProtocol": 3}])
+            try:
+                yeu_cau = _doc_khung(conn)
+            except (ConnectionError, OSError):
+                return
+            _loai, msg_id, _lenh, _ts = yeu_cau
+            # Phản hồi muộn của lệnh cũ (id không khớp) rồi mới phản hồi đúng.
+            _gui_khung(conn, [1, msg_id + 1000, None, {"value": "CU"}])
+            _gui_khung(conn, [1, msg_id, None, {"value": "MOI"}])
+
+
+def test_lenh_bo_qua_phan_hoi_cu_va_khop_id():
+    with MayChuTraLoiCu() as may_chu:
+        khach = MarionetteClient(port=may_chu.port)
+        khach.ket_noi()
+        try:
+            kq = khach.lenh("WebDriver:GetTitle")
+            assert (kq or {}).get("value") == "MOI", \
+                "đọc nhầm phản hồi muộn của lệnh cũ"
+        finally:
+            khach.dong()
+
+
+class MayChuImLang:
+    """Máy chủ chào rồi im lặng — lệnh phải hết giờ và ĐÓNG socket."""
+
+    def __init__(self):
+        self._sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sk.bind(("127.0.0.1", 0))
+        self._sk.listen(1)
+        self.port = self._sk.getsockname()[1]
+        self._luong = threading.Thread(target=self._phuc_vu, daemon=True)
+
+    def __enter__(self):
+        self._luong.start()
+        return self
+
+    def __exit__(self, *a):
+        try:
+            self._sk.close()
+        except OSError:
+            pass
+        self._luong.join(timeout=5)
+
+    def _phuc_vu(self):
+        try:
+            conn, _ = self._sk.accept()
+        except OSError:
+            return
+        with conn:
+            conn.settimeout(10)
+            _gui_khung(conn, [0, 1, None, {"applicationType": "gecko",
+                                           "marionetteProtocol": 3}])
+            try:
+                _doc_khung(conn)  # đọc lệnh rồi im lặng
+                threading.Event().wait(10)
+            except (ConnectionError, OSError):
+                pass
+
+
+def test_lenh_het_gio_thi_dong_socket():
+    with MayChuImLang() as may_chu:
+        khach = MarionetteClient(port=may_chu.port)
+        khach.ket_noi()
+        with pytest.raises(LoiMarionette):
+            khach.lenh("WebDriver:GetTitle", het_gio=0.5)
+        assert not khach.da_noi, "hết giờ mà socket vẫn mở"
+
+
+# ── NV94-P3: xác minh moz:profile trong NewSession ─────────────────────────
+
+def test_phien_moi_doc_moz_profile():
+    """NewSession trả capabilities có moz:profile — client đọc ra để dịch vụ
+    xác minh phiên đúng là hồ sơ đã yêu cầu."""
+    with _may_chu_co_ban() as may_chu:
+        khach = MarionetteClient(port=may_chu.port)
+        khach.ket_noi()
+        try:
+            khach.phien_moi()
+            assert khach.moz_profile == "/tmp/ho-so-gia", \
+                f"không đọc được moz:profile: {khach.moz_profile!r}"
+        finally:
+            khach.dong()

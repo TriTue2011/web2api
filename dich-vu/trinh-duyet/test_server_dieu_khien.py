@@ -82,6 +82,10 @@ class MarionetteGia:
     def phien_moi(self) -> str:
         return "phien-gia"
 
+    @property
+    def moz_profile(self):
+        return self._moz_profile
+
     def xoa_phien(self) -> None:
         pass
 
@@ -171,6 +175,7 @@ def mt_dk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             },
         }
         gia = MarionetteGia(kich_ban)
+        gia._moz_profile = None  # test đặt sau khi biết đường dẫn hồ sơ
         return gia
 
     monkeypatch.setattr(server, "_tao_marionette", tao_gia)
@@ -187,6 +192,7 @@ def mt_dk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "bo_kiem_tra": bo_kiem_tra,
         "quan_ly": quan_ly,
         "lay_gia": lambda: gia,
+        "tao_gia": tao_gia,
         "monkeypatch": monkeypatch,
     }
 
@@ -247,9 +253,7 @@ def test_mo_lai_giu_cong_cu(mt_dk):
 def test_gianh_nha_luy_dang(mt_dk):
     with TestClient(app) as client:
         ho_so = _mo_firefox(mt_dk, client)
-        res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
-        assert res.status_code == 200, res.text
-        assert res.json() == {"ok": True}
+        _gianh(mt_dk, client, ho_so)
         assert mt_dk["quan_ly"].danh_sach_mo[ho_so].dang_ban is True
         # Giành lần hai → 409
         res2 = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
@@ -259,7 +263,7 @@ def test_gianh_nha_luy_dang(mt_dk):
         assert client.post(f"/ho-so/{ho_so}/dieu-khien/nha", headers=HEADER_AUTH).status_code == 200
         assert mt_dk["quan_ly"].danh_sach_mo[ho_so].dang_ban is False
         # Giành lại được sau khi nhả
-        assert client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH).status_code == 200
+        _gianh(mt_dk, client, ho_so)
 
 
 def test_gianh_khi_co_nguoi_dung_novnc_thi_409(mt_dk):
@@ -279,9 +283,8 @@ def test_gianh_tu_mo_firefox_chua_mo(mt_dk):
         ho_so = res.json()["ho_so"]
         ql = mt_dk["quan_ly"]
         assert ho_so not in ql.danh_sach_mo
-        res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
-        assert res.status_code == 200, res.text
-        assert res.json() == {"ok": True}
+        _gianh(mt_dk, client, ho_so)
+        ql = mt_dk["quan_ly"]
         assert ho_so in ql.danh_sach_mo
         assert any("firefox" in l[0] for l in mt_dk["bo_chay"].lich_su_lenh)
 
@@ -316,7 +319,7 @@ def test_gianh_chromium_thi_501(mt_dk):
 def test_mo_novnc_khi_may_dang_giu_thi_409(mt_dk):
     with TestClient(app) as client:
         ho_so = _mo_firefox(mt_dk, client)
-        client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
+        _gianh(mt_dk, client, ho_so)
         res = client.post("/ho-so/mo", headers=HEADER_AUTH,
                           json={"ho_so": ho_so, "loai": "firefox"})
         assert res.status_code == 409
@@ -325,7 +328,7 @@ def test_mo_novnc_khi_may_dang_giu_thi_409(mt_dk):
 def test_dong_nha_quyen_va_dong_marionette(mt_dk):
     with TestClient(app) as client:
         ho_so = _mo_firefox(mt_dk, client)
-        client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
+        _gianh(mt_dk, client, ho_so)
         gia = mt_dk["lay_gia"]()
         assert gia is not None and gia.da_noi
         client.post(f"/ho-so/{ho_so}/dieu-khien/nha", headers=HEADER_AUTH)
@@ -335,6 +338,15 @@ def test_dong_nha_quyen_va_dong_marionette(mt_dk):
 # ── Nguyên thuỷ ────────────────────────────────────────────────────────────────
 
 def _gianh(mt_dk, client: TestClient, ho_so: str):
+    """Giành với moz:profile đúng (NV94-P3: dịch vụ xác minh phiên)."""
+    tao_goc = mt_dk["tao_gia"]
+
+    def tao(cong):
+        gia = tao_goc(cong)
+        gia._moz_profile = str(mt_dk["thu_muc_hoso"] / ho_so)
+        return gia
+
+    mt_dk["monkeypatch"].setattr(server, "_tao_marionette", tao)
     res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
     assert res.status_code == 200, res.text
 
@@ -522,3 +534,20 @@ def test_xac_thuc_duong_dieu_khien(mt_dk):
     with TestClient(app) as client:
         res = client.post("/ho-so/0123456789abcdef/dieu-khien/gianh")
         assert res.status_code == 401
+
+
+def test_gianh_moz_profile_sai_thi_502(mt_dk):
+    """NV94-P3: phiên Marionette trỏ profile khác hồ sơ yêu cầu → 502, nhả."""
+    tao_goc = mt_dk["tao_gia"]
+
+    def tao_sai(cong):
+        gia = tao_goc(cong)
+        gia._moz_profile = "/tmp/ho-so-khac"
+        return gia
+
+    mt_dk["monkeypatch"].setattr(server, "_tao_marionette", tao_sai)
+    with TestClient(app) as client:
+        ho_so = _mo_firefox(mt_dk, client)
+        res = client.post(f"/ho-so/{ho_so}/dieu-khien/gianh", headers=HEADER_AUTH)
+        assert res.status_code == 502
+        assert mt_dk["quan_ly"].danh_sach_mo[ho_so].dang_ban is False

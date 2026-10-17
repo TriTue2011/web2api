@@ -42,6 +42,11 @@ HET_GIO_KET_NOI = 10.0
 #: Trần độ dài một khung (chụp nguồn trang rất lớn vẫn trong mức này).
 TRAN_KHUNG_BYTE = 64 * 1024 * 1024
 
+#: Số phản hồi cũ tối đa bỏ qua khi chờ đúng id (chống phản hồi muộn của
+#: lệnh trước bị đọc nhầm làm kết quả lệnh kế — NV94-P3).
+TRAN_BO_QUA_PHAN_HOI_CU = 8
+
+
 
 class LoiMarionette(RuntimeError):
     """Lỗi giao thức Marionette. Chỉ mang ``ma_loi`` (mã của giao thức),
@@ -84,6 +89,13 @@ class MarionetteClient:
         self._sk: socket.socket | None = None
         self._id_tiep = 1
         self._phien: str | None = None
+        #: Đường dẫn profile Firefox mà phiên đang dùng (từ moz:profile).
+        self._moz_profile: str | None = None
+
+    @property
+    def moz_profile(self) -> str | None:
+        """Đường dẫn profile của phiên (None nếu chưa mở phiên)."""
+        return self._moz_profile
 
     @property
     def da_noi(self) -> bool:
@@ -108,6 +120,7 @@ class MarionetteClient:
     def dong(self) -> None:
         sk, self._sk = self._sk, None
         self._phien = None
+        self._moz_profile = None
         if sk is not None:
             try:
                 sk.close()
@@ -137,17 +150,38 @@ class MarionetteClient:
 
     def lenh(self, ten: str, tham_so: dict | None = None,
              het_gio: float | None = None) -> Any:
-        """Gửi một lệnh WebDriver; lỗi giao thức → LoiMarionette (chỉ mã lỗi)."""
+        """Gửi một lệnh WebDriver; lỗi giao thức → LoiMarionette (chỉ mã lỗi).
+
+        NV94-P3: (1) KHỚP id phản hồi — bỏ qua tối đa TRAN_BO_QUA_PHAN_HOI_CU
+        khung có id không khớp (phản hồi muộn của lệnh cũ), không đọc nhầm;
+        (2) hết giờ/gãy nối → ĐÓNG socket trước khi ném (không giữ socket nửa
+        vời để phản hồi muộn chui vào lệnh kế).
+        """
         if self._sk is None:
             raise LoiMarionette("chua_ket_noi")
         msg_id = self._id_tiep
         self._id_tiep += 1
         self._gui_khung([0, msg_id, ten, tham_so or {}])
-        tra_loi = self._doc_khung(HET_GIO_LENH_MAC_DINH if het_gio is None else het_gio)
+        han = HET_GIO_LENH_MAC_DINH if het_gio is None else het_gio
         try:
-            _loai, _id_ve, loi, ket_qua = tra_loi
-        except (TypeError, ValueError):
-            raise LoiMarionette("tra_loi_sai_dinh_dang") from None
+            ket_qua = None
+            for _ in range(TRAN_BO_QUA_PHAN_HOI_CU):
+                tra_loi = self._doc_khung(han)
+                try:
+                    _loai, id_ve, loi, ket_qua = tra_loi
+                except (TypeError, ValueError):
+                    raise LoiMarionette("tra_loi_sai_dinh_dang") from None
+                if id_ve == msg_id:
+                    break
+                # id không khớp: phản hồi muộn của lệnh cũ → bỏ qua, đọc tiếp.
+                log.warning("marionette: bỏ phản hồi id lạ (chờ %d, gặp %r)",
+                            msg_id, id_ve)
+            else:
+                raise LoiMarionette("khong_thay_phan_hoi_dung_id")
+        except LoiMarionette as e:
+            if e.ma_loi in ("het_gio_doc", "doc_that_bai", "ket_noi_dong"):
+                self.dong()
+            raise
         if loi:
             ma = loi.get("error") if isinstance(loi, dict) else None
             raise LoiMarionette(str(ma) if ma else "loi_khong_ro")
@@ -157,10 +191,17 @@ class MarionetteClient:
 
     def phien_moi(self) -> str:
         ket_qua = self.lenh("WebDriver:NewSession", {"capabilities": {}})
-        phien = ket_qua.get("sessionId") if isinstance(ket_qua, dict) else None
+        if not isinstance(ket_qua, dict):
+            raise LoiMarionette("khong_lay_duoc_phien")
+        phien = ket_qua.get("sessionId")
         if not phien:
             raise LoiMarionette("khong_lay_duoc_phien")
         self._phien = str(phien)
+        # NV94-P3: đọc moz:profile để dịch vụ xác minh phiên đúng hồ sơ yêu cầu.
+        nang_luc = ket_qua.get("capabilities")
+        if isinstance(nang_luc, dict):
+            mp = nang_luc.get("moz:profile")
+            self._moz_profile = str(mp) if mp else None
         return self._phien
 
     def xoa_phien(self) -> None:

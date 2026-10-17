@@ -708,6 +708,8 @@ class QuanLyHoSo:
         self.marionette_den: int = self.cau_hinh["marionette_den"]
         #: Cổng Marionette đang cấp cho các hồ sơ đang mở.
         self._cong_marionette_dang_dung: set[int] = set()
+        #: Con trỏ cấp cổng Marionette theo vòng (NV94-P3).
+        self._con_tro_marionette = 0
         #: Đồng hồ đơn điệu (thay được bằng đồng hồ giả trong kiểm thử).
         self.dong_ho = time.monotonic
 
@@ -741,10 +743,18 @@ class QuanLyHoSo:
     # ── Điều khiển tự động qua Marionette (NV92 P1, Cách B) ──
 
     def _cap_cong_marionette(self) -> int:
-        """Cấp cổng Marionette rảnh trên 127.0.0.1 cho một hồ sơ Firefox."""
-        for cong in range(self.marionette_tu, self.marionette_den + 1):
+        """Cấp cổng Marionette rảnh trên 127.0.0.1 cho một hồ sơ Firefox.
+
+        NV94-P3: cấp theo VÒNG như cổng VNC — cổng vừa giải phóng không bị
+        cấp lại ngay (tránh phiên Marionette cũ của hồ sơ A còn sót nối nhầm
+        vào hồ sơ B).
+        """
+        so_cong = self.marionette_den - self.marionette_tu + 1
+        for i in range(so_cong):
+            cong = self.marionette_tu + (self._con_tro_marionette + i) % so_cong
             if cong not in self._cong_marionette_dang_dung:
                 self._cong_marionette_dang_dung.add(cong)
+                self._con_tro_marionette = (cong - self.marionette_tu + 1) % so_cong
                 return cong
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -907,6 +917,13 @@ class QuanLyHoSo:
         try:
             await asyncio.to_thread(khach.ket_noi)
             await asyncio.to_thread(khach.phien_moi)
+            # NV94-P3: xác minh phiên đúng là hồ sơ đã yêu cầu (chống nối
+            # nhầm vào Firefox/profile khác khi cổng bị tái dùng).
+            duong_mong = kiem_tra_duong_dan_ho_so(
+                ho_so_id, self.thu_muc_goc).resolve()
+            mp = getattr(khach, "moz_profile", None)
+            if not isinstance(mp, str) or Path(mp).resolve() != duong_mong:
+                raise LoiMarionette("sai_ho_so_phien")
         except LoiMarionette as e:
             await self._dong_khach_an_toan(khach)
             raise HTTPException(
