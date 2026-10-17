@@ -163,12 +163,13 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 |---|---|---|---|
 | `gemini-api` | Chat stream, tạo ảnh, video Veo | OpenAI HTTP | Có sẵn (chat đã kiểm với Google thật; ảnh và video Veo chưa kiểm với Google thật, cần khoá trả phí Google AI Studio) |
 | `muse` | Trò chuyện | Noise XX WebSocket | Thử nghiệm, chưa kiểm với dịch vụ thật (cần khoá thiết bị X25519) |
-| `muse2api` | Trò chuyện miễn phí bằng cookie | WebSocket + Noise XX | Có sẵn (giao thức web trực tiếp muse.ai, không cần API key; chưa kiểm với dịch vụ thật) |
-| `claude-web` | Trò chuyện miễn phí bằng cookie | HTTPS (API web claude.ai) | Có sẵn (cookie/sessionKey do người dùng dán, xoay nhiều tài khoản; đăng nhập lại tự động + khôi phục nhiều tầng NV89; chưa kiểm với claude.ai thật) |
+| `muse2api` | Trò chuyện miễn phí bằng cookie | WebSocket + Noise XX | Có sẵn (giao thức web trực tiếp muse.ai, không cần API key; tái dùng hồ sơ Google NV93 — NV90-C: có thể không có Google SSO do SSO Meta; chưa kiểm với dịch vụ thật) |
+| `chatgpt-web` | Trò chuyện miễn phí bằng token | HTTPS (API web chatgpt.com) | Thử nghiệm (tái dùng hồ sơ Google NV93: «Continue with Google» trong hồ sơ, gói Free/Plus/Pro suy từ cấu trúc, model theo gói; chưa kiểm với dịch vụ thật) |
+| `claude-web` | Trò chuyện miễn phí bằng cookie | HTTPS (API web claude.ai) | Có sẵn (cookie/sessionKey do người dùng dán, xoay nhiều tài khoản; đăng nhập lại tự động + khôi phục nhiều tầng NV89; tái dùng hồ sơ Google NV93; chưa kiểm với claude.ai thật) |
 | `antigravity` | Trò chuyện đa mô hình qua CLI | HTTP Bridge | Có khung, chưa kiểm với `agy` thật (cần dịch vụ cầu nối ngoài container) |
 | `vnc-xa` | Workspace trình duyệt từ xa noVNC | HTTP / WebSocket | Có sẵn (cần dịch vụ trình duyệt riêng `dich-vu/trinh-duyet`, cấu hình `dich_vu_url` và `khoa_dich_vu`; chưa kiểm với Firefox thật; đăng nhập tay, trích xuất cookie sang module khác) |
-| `gemini-web` | Trò chuyện miễn phí bằng cookie Google | HTTP (batchexecute nội bộ) | Thử nghiệm, chưa kiểm với dịch vụ thật (giao thức web không chính thức; ảnh/video chưa làm; đăng nhập lại tự động + khôi phục nhiều tầng NV89) |
-| `grok-web` | Trò chuyện miễn phí bằng cookie | WebSocket tới grok.com | Thử nghiệm, chưa kiểm với grok.com thật (cần cookie tài khoản thật; đăng nhập lại tự động + khôi phục nhiều tầng NV89) |
+| `gemini-web` | Trò chuyện miễn phí bằng cookie Google | HTTP (batchexecute nội bộ) | Thử nghiệm, chưa kiểm với dịch vụ thật (giao thức web không chính thức; ảnh/video chưa làm; đăng nhập lại tự động + khôi phục nhiều tầng NV89; tái dùng hồ sơ Google NV93 + model theo tài khoản NV91-P3) |
+| `grok-web` | Trò chuyện miễn phí bằng cookie | WebSocket tới grok.com | Thử nghiệm, chưa kiểm với grok.com thật (cần cookie tài khoản thật; đăng nhập lại tự động + khôi phục nhiều tầng NV89; tái dùng hồ sơ Google NV93 — Cloudflare → `can_nguoi`, không tự tích/giải) |
 | `grok-api` | Trò chuyện bằng khoá API xAI | OpenAI HTTP | Có sẵn (API chính thức xAI, xoay nhiều khoá, cho khoá nghỉ khi hết hạn mức; chưa kiểm với api.x.ai thật) |
 | `ho-so-google` | Đăng nhập Google một lần trong hồ sơ trình duyệt bền, tái dùng cho mọi provider | Điều khiển trình duyệt (Marionette) | Có sẵn (gặp CAPTCHA/xác minh → «cần người» + noVNC, không tự giải; chưa kiểm với Google thật) |
 

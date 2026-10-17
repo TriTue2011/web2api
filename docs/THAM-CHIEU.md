@@ -39,14 +39,15 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
-| Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; gắn danh tính chung (NV80, cùng khuôn NV77); **chưa kiểm với claude.ai thật** | 17/10/2026 |
+| Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; gắn danh tính chung (NV80, cùng khuôn NV77); tái dùng hồ sơ Google NV93 (đi tắt sessionKey / «Continue with Google», org qua `/api/organizations`); **chưa kiểm với claude.ai thật** | 17/10/2026 |
+| Module `muse2api` (Muse Web, muse.ai direct protocol) | Có — chat qua giao thức web trực tiếp (WebSocket + Noise XX), kiểm với máy chủ giả; tái dùng hồ sơ Google NV93 (NV90-C: có thể không có Google SSO do SSO Meta → `khong_ho_tro` rõ); **chưa kiểm với muse.ai thật** | 17/10/2026 |
 | Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
 | Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
 | Phụ thuộc module (`can_module` + đếm tham chiếu): cài thì đề nghị cài cái thiếu (không tự cài lén), gỡ cái đang được cần → `409`, gỡ provider cuối thì hỏi giữ hay gỡ cái chung | Có — kiểm bằng test NV73 | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
-| Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
-| Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
-| Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
+| Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; tái dùng hồ sơ Google NV93 + model theo tài khoản (NV91-P3: mã ổn định, `available_cho`, định tuyến theo model); **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
+| Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; tái dùng hồ sơ Google NV93 (gói Free/Plus/Pro suy từ `/backend-api/accounts/check`, model theo gói); **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
+| Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); tái dùng hồ sơ Google NV93 (Cloudflare → nhận bằng cấu trúc → `can_nguoi`, không tự tích/giải); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
 | Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
 | Module `ho-so-google` + API hồ sơ Google (`GET`/`POST /api/danh-tinh`, `GET …/{id}/trang-thai`, `POST …/{id}/ma-2fa`, `DELETE …/{id}`) và tái dùng provider (`POST /api/tai-khoan/tai-dung`): một hồ sơ = một tài khoản Google đã đăng nhập sống; provider «Đăng nhập bằng Google» trong hồ sơ; CAPTCHA/xác minh → «cần người» + noVNC | Có — kiểm với dịch vụ trình duyệt giả + trình duyệt giả (NV92); **chưa kiểm với Google/dịch vụ thật** | 17/10/2026 |
 | Dịch vụ trình duyệt: các đường điều khiển có khoá (`/ho-so/{id}/dieu-khien/gianh|nha`, `/dieu-huong`, `/dien`, `/bam`, `/cho`, `/tin-hieu`, `/cookie-truc-tiep`, `/chup-trang-thai`) qua máy khách Marionette thư viện chuẩn (`dich-vu/trinh-duyet/marionette.py`); cổng Marionette chỉ loopback trong container; `TrinhDuyetThat` trong module `vnc-xa`; cầu nối lõi `app/khoi_phuc_phien.lay_trinh_duyet_that` | Có — kiểm với máy chủ giả (NV92); **chưa kiểm với Firefox thật** | 17/10/2026 |
@@ -1248,6 +1249,15 @@ chưa dùng được). Mã nguồn: `modules/muse2api/`. Tiền tố model: `mus
 `POST /api/hatch/token` → handshake Noise XX → `POST /chat/stream` + poll
 `/chat/history`. Mọi đặc thù protocol nằm trong module; lõi chỉ định tuyến.
 
+**Tái dùng hồ sơ Google (NV93).** Ngoài đường dán cookie, module có
+`tai_dung_ho_so(ho_so, trinh_duyet)`: thử «Đăng nhập bằng Google» TRONG hồ sơ
+Google đã đăng nhập → đọc cookie `hatch_sess` → thêm tài khoản RIÊNG của module
+(khoá `tk-<băm>`). NV90-C: muse.ai dùng **SSO Meta** nên có thể KHÔNG có Google
+SSO → hết lượt chờ mà không vào được thì trả `khong_ho_tro` rõ ràng (không đoán,
+không thử lại); giữ nguyên đường cookie dán + làm mới/đăng nhập lại hiện có.
+**Chưa kiểm với muse.ai thật** (chưa rõ nút Google SSO có tồn tại không; phiên
+đọc được kiểm thực ở lượt chat đầu, chưa kiểm trong lượt tái dùng).
+
 **Cần gì.**
 - Gói Python `curl_cffi`, `noiseprotocol`, `protobuf` phải có trong ảnh (đã nằm trong `requirements.txt`).
 - Một hoặc nhiều bộ cookie từ tab muse.ai đã đăng nhập (DevTools F12 →
@@ -1497,6 +1507,19 @@ dùng gói `gemini_webapi`): cookie → GET trang chủ lấy mã phiên `SNlM0e
 không có trong ảnh web2api nên module tự cài đặt luồng đó bằng `httpx` (`modules/gemini-web/client.py`). Mã nguồn:
 `modules/gemini-web/`. Tiền tố model: `gemini-web`.
 
+**Tái dùng hồ sơ Google (NV93).** Ngoài đường dán cookie, module có
+`tai_dung_ho_so(ho_so, trinh_duyet)`: mở gemini.google.com TRONG hồ sơ Google
+đã đăng nhập → bấm «Đăng nhập» → chọn tài khoản Google trong hồ sơ (SSO, không
+nhập lại email/mật khẩu) → đọc `__Secure-1PSID`/`__Secure-1PSIDTS` → kiểm phiên
++ khám phá model theo tài khoản → thêm tài khoản RIÊNG của module (khoá
+`tk-<băm>`, kho riêng, không động module khác/hồ sơ). CAPTCHA/Cloudflare/2FA →
+`can_nguoi` ngay, không cố vượt. Model theo tài khoản (NV91-P3): mã ổn định,
+nhãn hiển thị tách riêng; `/v1/models` hợp các tài khoản, mỗi model kèm
+`available_cho` (gói/tài khoản dùng được); định tuyến chỉ chọn tài khoản có
+model đó, thiếu → lỗi rõ 400/404, không âm thầm chạy model khác. Học bước đăng
+nhập từ kho công khai TriTue2011/chatgpt2api (`captcha-solver/src/gemini_web_login.py`,
+chỉ đọc lấy hiểu, tự viết lại). **Chưa kiểm với gemini.google.com thật.**
+
 **Cần gì.**
 - Một hoặc nhiều bộ cookie từ tab gemini.google.com đã đăng nhập (DevTools F12 → Application → Cookies), dạng
   `k1=v1; k2=v2`. Cần ít nhất `__Secure-1PSID`; `__Secure-1PSIDTS` giúp phiên bền hơn. Cookie hết hạn thì export lại.
@@ -1545,6 +1568,16 @@ model, parent_message_id, …}` → bóc SSE lấy `message.content.parts` của
 assistant; stream tính delta giữa các sự kiện. Mã nguồn: `modules/chatgpt-web/`.
 Tiền tố model: `chatgpt-web` (`chatgpt-web/4o`, `chatgpt-web/4o-mini`,
 `chatgpt-web/4.1`, `chatgpt-web/4.1-mini`, `chatgpt-web/o3`, `chatgpt-web/o4-mini`).
+
+**Tái dùng hồ sơ Google (NV93).** Ngoài đường dán token, module có
+`tai_dung_ho_so(ho_so, trinh_duyet)`: mở trang đăng nhập TRONG hồ sơ Google đã
+đăng nhập → bấm «Continue with Google» (không nhập lại gì) → lấy access_token
+từ `/api/auth/session` → kiểm qua `/backend-api/me` → suy gói Free/Plus/Pro từ
+`/backend-api/accounts/check` → thêm tài khoản RIÊNG của module (khoá
+`tk-<băm>`). Model theo gói; CAPTCHA/Cloudflare/2FA → `can_nguoi` ngay. Học
+bước đăng nhập từ kho công khai TriTue2011/chatgpt2api
+(`captcha-solver/src/chatgpt_login.py`, chỉ đọc lấy hiểu, tự viết lại).
+**Chưa kiểm với chatgpt.com thật.**
 
 **KHÁC các module web trước:** mỗi cấu hình có thể gắn `danh_tinh_id` (id `dt-…`
 trong kho danh tính lõi) — một Gmail nhập một lần ở lõi, module chỉ giữ token
@@ -1619,6 +1652,17 @@ phí). Luồng một lượt chat: mở WebSocket `wss://grok.com/ws/mgw/?uid=<u
 https://grok.com`) → `session.create` (phiên tạm, không lưu lịch sử) → đợi `session.created` +
 `conversation.attached` → `conversation.item.create` → `response.create` → đọc `response.chunk` /
 `response.output_text.delta` tới `response.done`. Mọi đặc thù protocol nằm trong module; lõi chỉ định tuyến.
+
+**Tái dùng hồ sơ Google (NV93).** Ngoài đường dán cookie, module có
+`tai_dung_ho_so(ho_so, trinh_duyet)`: «Sign in with Google» TRONG hồ sơ Google
+đã đăng nhập → đọc TẤT CẢ cookie grok.com trừ `cf_*` (giữ `cf_clearance`,
+`__cf_bm`) → thêm tài khoản RIÊNG của module (khoá `tk-<băm>`). Cloudflare của
+grok.com → NHẬN BẰNG CẤU TRÚC (403/503 + `cf-mitigated: challenge`) → `can_nguoi`
+NGAY (NV90-A), KHÔNG tự tích/giải, không dịch vụ giải hộ, không che dấu vết.
+KHÔNG đoán tên cookie phiên: «đã đăng nhập» = phiên dùng được. Học bước đăng
+nhập từ kho công khai TriTue2011/chatgpt2api
+(`captcha-solver/src/grok_web_login.py`, chỉ đọc lấy hiểu, tự viết lại).
+**Chưa kiểm với grok.com thật.**
 
 **Cần gì.**
 - Gói Python `websockets`, `httpx` phải có trong ảnh (đã nằm trong `requirements.txt`).
@@ -1703,6 +1747,17 @@ browser, không tự đăng nhập**. Mã nguồn: `modules/claude-web/`. Tiền
 `GET /api/organizations` → chọn tổ chức có khả năng «chat» → tạo hội thoại mới
 → `POST …/chat_conversations/{id}/completion` đọc SSE. Mọi đặc thù giao thức nằm
 trong module; lõi chỉ định tuyến.
+
+**Tái dùng hồ sơ Google (NV93).** Ngoài đường dán cookie, module có
+`tai_dung_ho_so(ho_so, trinh_duyet)`: mở claude.ai (đi tắt nếu hồ sơ đã có cookie
+`sessionKey` còn hiệu lực) → `/login` → «Continue with Google» (popup, chọn tài
+khoản Google trong hồ sơ, không nhập lại gì) → đọc `sessionKey` → kiểm phiên +
+đọc org qua `GET /api/organizations` (org có capability «chat») → thêm tài khoản
+RIÊNG của module (khoá `tk-<băm>`, kho riêng). CAPTCHA/2FA/xác minh → `can_nguoi`
+ngay. Suy gói Free/Pro: `khong_ro` (**CHƯA KIỂM** — chưa có cấu trúc suy gói từ
+claude.ai thật). Học bước đăng nhập từ kho công khai TriTue2011/chatgpt2api
+(`captcha-solver/src/claude_web_login.py`, chỉ đọc lấy hiểu, tự viết lại).
+**Chưa kiểm với claude.ai thật.**
 
 **Cần gì.**
 - Một hoặc nhiều bộ cookie từ tab claude.ai đã đăng nhập (DevTools F12 →
