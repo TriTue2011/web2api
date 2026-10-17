@@ -75,6 +75,13 @@ def lam_gia(che_do):
             if hv == "me_401":
                 return httpx.Response(401, text="het han")
             return httpx.Response(200, json={"email": f"{token}@example.com"})
+        if duong == "/backend-api/accounts/check":
+            # Gói theo chế độ giả: che_do[token] == "free" → free, còn lại plus.
+            if hv in ("401", "me_401"):
+                return httpx.Response(401, text="het han")
+            goi = "free" if hv == "free" else "plus"
+            return httpx.Response(
+                200, json={"accounts": {"default": {"plan_type": goi}}})
         if duong == "/backend-api/f/conversation":
             if hv == "401" or hv == "me_401":
                 return httpx.Response(401, text="het han")
@@ -391,11 +398,28 @@ class TestCaiVaSucKhoe:
         assert "token-tot" not in json.dumps(sk["khoa"])
 
     def test_models(self, monkeypatch):
-        mod = nap_module(monkeypatch, {}, [])
+        """NV93: models() là HỢP theo tài khoản — id ổn định có tiền tố,
+        nhãn «nhan» tách riêng, kèm «goi» và «available_cho»."""
+        mod = nap_module(monkeypatch,
+                         {"token-plus": "plus", "token-free": "free"},
+                         ["token-plus", "token-free"])
+        kq = chay(mod.cai({"tai_khoan": ["token-plus", "token-free"]}))
+        assert kq["ok"] is True
         ds = chay(mod.models())
-        assert [m["id"] for m in ds] == ["chatgpt-web/4o", "chatgpt-web/4o-mini",
-                                        "chatgpt-web/4.1", "chatgpt-web/4.1-mini",
+        assert [m["id"] for m in ds] == ["chatgpt-web/4o-mini", "chatgpt-web/4.1-mini",
+                                        "chatgpt-web/4o", "chatgpt-web/4.1",
                                         "chatgpt-web/o3", "chatgpt-web/o4-mini"]
+        for m in ds:
+            assert m["nhan"]  # nhãn hiển thị tách khỏi id ổn định
+            assert m["goi"] in ("free", "plus", "pro")
+            assert m["available_cho"]  # khoá mờ các tài khoản có model này
+        # model chỉ Plus có → chỉ tài khoản plus «available»
+        o3 = next(m for m in ds if m["id"] == "chatgpt-web/o3")
+        assert o3["goi"] == "plus"
+        assert len(o3["available_cho"]) == 1
+        mini = next(m for m in ds if m["id"] == "chatgpt-web/4o-mini")
+        assert mini["goi"] == "free"
+        assert len(mini["available_cho"]) == 2
 
     def test_dung(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, ["token-tot"])
@@ -416,7 +440,8 @@ class TestKhongCoTaiKhoan:
 
     def test_models_va_suc_khoe_khong_tai_khoan(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [])
-        assert len(chay(mod.models())) == 6
+        # NV93: models() là hợp theo tài khoản — không tài khoản thì rỗng.
+        assert chay(mod.models()) == []
         sk = chay(mod.suc_khoe())
         assert sk["ok"] is False
         assert sk["khoa"] == []

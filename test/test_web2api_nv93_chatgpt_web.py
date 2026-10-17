@@ -170,7 +170,7 @@ def test_tai_dung_ho_so_luong_day_du(mod):
 
 def test_tai_dung_ho_so_gap_captcha_thi_can_nguoi(mod):
     td = TrinhDuyetGia(trang={
-        "https://auth.openai.com/u/login": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["captcha"],
             "cookie": {},
         }})
@@ -182,7 +182,7 @@ def test_tai_dung_ho_so_gap_captcha_thi_can_nguoi(mod):
 
 def test_tai_dung_ho_so_gap_cloudflare_thi_can_nguoi(mod):
     td = TrinhDuyetGia(trang={
-        "https://auth.openai.com/u/login": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["cloudflare"],
             "cookie": {},
         }})
@@ -194,15 +194,16 @@ def test_tai_dung_ho_so_gap_cloudflare_thi_can_nguoi(mod):
 # ───────────── go_tai_khoan ─────────────
 
 def test_go_tai_khoan_chi_go_mot(mod):
+    # Nhất quán: tai_dung_ho_so mở trang đăng nhập rồi đọc tín hiệu ở đó.
     td = TrinhDuyetGia(trang={
-        "https://chatgpt.com/": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["da_dang_nhap"],
             "cookie": {"access_token": TOKEN_GIA_OK},
         }})
     chay(mod.tai_dung_ho_so(_ho_so_gia(), td))
     # thêm tài khoản thứ hai (giả lập bằng token khác)
     td2 = TrinhDuyetGia(trang={
-        "https://chatgpt.com/": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["da_dang_nhap"],
             "cookie": {"access_token": TOKEN_GIA_FREE},
         }})
@@ -219,7 +220,7 @@ def test_go_tai_khoan_chi_go_mot(mod):
 
 def test_liet_ke_tai_khoan_khong_lo_bi_mat(mod):
     td = TrinhDuyetGia(trang={
-        "https://chatgpt.com/": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["da_dang_nhap"],
             "cookie": {"access_token": TOKEN_GIA_OK},
         }})
@@ -244,13 +245,13 @@ def test_models_theo_goi_plus_va_free(tmp_path, monkeypatch):
     mod = _mod_moi(tmp_path, monkeypatch,
                    goi_theo_token={TOKEN_GIA_OK: "plus", TOKEN_GIA_FREE: "free"})
     td = TrinhDuyetGia(trang={
-        "https://chatgpt.com/": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["da_dang_nhap"],
             "cookie": {"access_token": TOKEN_GIA_OK},
         }})
     chay(mod.tai_dung_ho_so(_ho_so_gia(), td))
     td2 = TrinhDuyetGia(trang={
-        "https://chatgpt.com/": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["da_dang_nhap"],
             "cookie": {"access_token": TOKEN_GIA_FREE},
         }})
@@ -271,7 +272,7 @@ def test_dinh_tuyen_chi_chon_tai_khoan_co_model(tmp_path, monkeypatch):
                    goi_theo_token={TOKEN_GIA_OK: "plus", TOKEN_GIA_FREE: "free"})
     # chỉ thêm tài khoản Free
     td = TrinhDuyetGia(trang={
-        "https://chatgpt.com/": {
+        "https://chatgpt.com/auth/login": {
             "tin_hieu": ["da_dang_nhap"],
             "cookie": {"access_token": TOKEN_GIA_FREE},
         }})

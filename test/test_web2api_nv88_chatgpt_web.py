@@ -122,42 +122,11 @@ def test_dang_nhap_cookie_het_han(mod):
 
 
 # ───────────── dang_nhap: mật khẩu qua trình duyệt giả ─────────────
-
-def test_dang_nhap_mat_khau_thanh_cong_va_luu_mat_khau(mod):
-    mod._tao_trinh_duyet = _trinh_duyet_thanh_cong
-    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
-                    mat_khau=BiMatTam(MAT_KHAU_GIA))
-    kq = chay(mod.dang_nhap(tk))
-    assert kq.thanh_cong, kq.ma_loi
-    assert tk.mat_khau.da_xoa()
-    # mật khẩu đã lưu NHƯ BÍ MẬT để tầng (b) dùng lại sau
-    bm = mod.mat_khau_da_luu(mod._khoa_tu_token(kq.cookie))
-    assert bm is not None and bm.lay() == MAT_KHAU_GIA
-    bm.xoa()
-    # thứ tự bước đăng nhập trên trình duyệt giả
-    ten_buoc = [h[0] for h in mod._trinh_duyet_da_dung.hanh_dong]
-    assert ten_buoc[0] == "mo_trang"
-    assert "dien" in ten_buoc and "bam" in ten_buoc
-
-
-def test_dang_nhap_gap_captcha_thi_can_nguoi(mod):
-    td = TrinhDuyetGia(trang={
-        "https://chatgpt.com/auth/login": {"tin_hieu": ["captcha"], "cookie": {}}})
-    mod._tao_trinh_duyet = lambda: td
-    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
-                    mat_khau=BiMatTam(MAT_KHAU_GIA))
-    kq = chay(mod.dang_nhap(tk))
-    assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
-    assert tk.mat_khau.da_xoa()
-
-
-def test_dang_nhap_khong_co_trinh_duyet_thi_can_nguoi(mod):
-    """Không có bộ điều khiển trình duyệt → không đoán mò, báo cần người."""
-    mod._tao_trinh_duyet = lambda: None
-    tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
-                    mat_khau=BiMatTam(MAT_KHAU_GIA))
-    kq = chay(mod.dang_nhap(tk))
-    assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
+# (NV93: đường chính nay là tai_dung_ho_so — 3 test cũ đã CHUYỂN sang
+# test/test_web2api_nv93_chatgpt_web.py: test_tai_dung_ho_so_luong_day_du,
+# test_tai_dung_ho_so_gap_captcha_thi_can_nguoi,
+# test_tai_dung_ho_so_khong_co_trinh_duyet_thi_can_nguoi.
+# Đường mật khẩu giữ làm đường phụ: dang_nhap_lai + dang_nhap_tu_dong ở dưới.)
 
 
 def test_dang_nhap_lai_dung_mat_khau_da_luu(mod):

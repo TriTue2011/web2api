@@ -46,6 +46,7 @@ log = logging.getLogger("web2api.module.chatgpt-web")
 MAY_CHU_MAC_DINH = "https://chatgpt.com"
 
 _DUONG_ME = "/backend-api/me"
+_DUONG_GOI = "/backend-api/accounts/check"
 _DUONG_HOI_THOAI = "/backend-api/f/conversation"
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -321,6 +322,35 @@ class ChatGPTWebClient:
             return r.json() if isinstance(r.json(), dict) else {}
         except ValueError:
             return {}
+
+    async def thong_tin_goi(self) -> str | None:
+        """Gói tài khoản qua /backend-api/accounts/check.
+
+        Trả ``accounts.default.plan_type`` (free/plus/pro…) suy từ CẤU TRÚC
+        JSON — không dò chữ. Không đọc được / mã lạ → None (module coi như
+        "khong_ro", tài khoản vẫn dùng được). CHƯA KIỂM trên dịch vụ thật.
+        """
+        try:
+            r = await self._client.get(_DUONG_GOI)
+        except httpx.HTTPError:
+            return None
+        if r.status_code != 200:
+            return None
+        try:
+            du_lieu = r.json()
+        except ValueError:
+            return None
+        if not isinstance(du_lieu, dict):
+            return None
+        tai_khoan = du_lieu.get("accounts")
+        if not isinstance(tai_khoan, dict):
+            return None
+        mac_dinh = tai_khoan.get("default")
+        if not isinstance(mac_dinh, dict):
+            return None
+        goi = mac_dinh.get("plan_type")
+        goi = str(goi).strip().lower() if goi else ""
+        return goi or None
 
     def _tieu_de_hoi_thoai(self) -> dict:
         return {

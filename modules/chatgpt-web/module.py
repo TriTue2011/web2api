@@ -1,8 +1,13 @@
 """Module chatgpt-web: trò chuyện với ChatGPT bản web (chatgpt.com).
 
-Xác thực bằng Bearer access token do NGƯỜI DÙNG dán vào (trường ``tai_khoan``) —
-không tự đăng nhập, không tự động hoá trình duyệt. Hỗ trợ nhiều token và tự
-chuyển tài khoản khi lỗi, phân loại lỗi bằng mã HTTP (không dò chữ).
+Xác thực bằng Bearer access token: NGƯỜI DÙNG dán vào (trường ``tai_khoan``)
+hoặc tái dùng hồ sơ Google đã đăng nhập qua ``tai_dung_ho_so`` (NV93: mở trang
+đăng nhập trong hồ sơ → bấm «Đăng nhập bằng Google» → đọc access_token từ
+cookie; không nhập lại email/mật khẩu/2FA; CAPTCHA/Cloudflare → can_nguoi).
+Hỗ trợ nhiều token và tự chuyển tài khoản khi lỗi, phân loại lỗi bằng mã HTTP
+(không dò chữ). Model định tuyến theo GÓI tài khoản (bảng MO_HINH_THEO_GOI —
+CHƯA KIỂM trên dịch vụ thật); model không tài khoản nào có → lỗi rõ, không
+fallback âm thầm.
 
 KHÁC các module web trước: mỗi cấu hình có thể gắn ``danh_tinh_id`` của kho
 danh tính lõi (``app/danh_tinh.py``) — một Gmail nhập một lần ở lõi, module chỉ
@@ -24,6 +29,7 @@ import json
 import logging
 import threading
 import time
+from datetime import datetime, timezone
 
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
@@ -34,6 +40,7 @@ from app.tu_xa import kiem_url_lan
 
 from .client import (
     MAY_CHU_MAC_DINH,
+    MODEL_MAC_DINH,
     MO_HINH_HO_TRO,
     ChatGPTWebClient,
     LoiChatGPTWeb,
@@ -83,16 +90,131 @@ def _che_email(email: str) -> str:
 
 
 class _TaiKhoan:
-    """Một Bearer token: client tạo lười, trạng thái sức khoẻ do module giữ."""
+    """Một Bearer token: client tạo lười, trạng thái sức khoẻ do module giữ.
+
+    NV93: bản ghi làm giàu thêm email/gói/hồ sơ (từ phiên), lưu vào kho riêng
+    của module để khởi động lại không mất (xem Module._luu_ban_ghi_tai_khoan).
+    """
 
     def __init__(self, token: str):
         self.token = token
         self.client: ChatGPTWebClient | None = None
         self.khoe = True
         self.loai_loi: str | None = None  # khoa_hong | het_han_muc | may_chu_loi | None
+        # -- bản ghi NV93 (làm giàu từ phiên; không mạng thì trống) -----------
+        self.email: str = ""
+        self.ho_so: str | None = None
+        self.goi: str = "khong_ro"  # free | plus | pro | khong_ro | ...
+        self.trang_thai: str = "hoat_dong"
+        self.lan_dung_cuoi: str | None = None
 
     def ten_che(self) -> str:
         return che(self.token)
+
+    def model_duoc(self) -> list[str]:
+        """Tên thân thiện các model tài khoản này dùng được (theo gói)."""
+        return _model_theo_goi(self.goi)
+
+    def ban_ghi(self, khoa: str) -> dict:
+        """Bản ghi đầy đủ để lưu kho riêng (gồm phien — kho đã mã hoá, 0600)."""
+        return {
+            "khoa": khoa,
+            "email": self.email,
+            "ho_so": self.ho_so,
+            "phien": self.token,
+            "goi": self.goi,
+            "trang_thai": self.trang_thai,
+            "lan_dung_cuoi": self.lan_dung_cuoi,
+        }
+
+    def ap_dung_ban_ghi(self, ban_ghi: dict) -> None:
+        """Khôi phục trường làm giàu từ kho (không đụng token/client)."""
+        if not isinstance(ban_ghi, dict):
+            return
+        email = ban_ghi.get("email")
+        if isinstance(email, str) and email:
+            self.email = email
+        ho_so = ban_ghi.get("ho_so")
+        if isinstance(ho_so, str) and ho_so:
+            self.ho_so = ho_so
+        goi = ban_ghi.get("goi")
+        if isinstance(goi, str) and goi:
+            self.goi = goi
+        trang_thai = ban_ghi.get("trang_thai")
+        if isinstance(trang_thai, str) and trang_thai:
+            self.trang_thai = trang_thai
+        lan = ban_ghi.get("lan_dung_cuoi")
+        if isinstance(lan, str) and lan:
+            self.lan_dung_cuoi = lan
+
+
+def _gio_utc() -> str:
+    """Giờ hiện tại dạng ISO UTC (cho lan_dung_cuoi)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---------------------------------------------------------------------------
+# Bảng model theo gói — CHƯA KIỂM trên dịch vụ thật.
+#
+# Suy từ web app công khai của ChatGPT (không dò chữ trong đáp án, chỉ là bảng
+# tĩnh trong mã). OpenAI đổi gói/model bất cứ lúc nào — cập nhật bảng khi có
+# đo thật. Gói lạ hoặc không rõ → cho phép toàn bộ (tài khoản vẫn dùng được
+# khi cai() không có mạng; định tuyến lúc đó dựa vào lỗi 4xx thực tế).
+# ---------------------------------------------------------------------------
+
+MO_HINH_THEO_GOI: dict[str, tuple[tuple[str, str], ...]] = {
+    "free": (
+        ("4o-mini", "GPT-4o mini"),
+        ("4.1-mini", "GPT-4.1 mini"),
+    ),
+    "plus": (
+        ("4o-mini", "GPT-4o mini"),
+        ("4.1-mini", "GPT-4.1 mini"),
+        ("4o", "GPT-4o"),
+        ("4.1", "GPT-4.1"),
+        ("o3", "o3"),
+        ("o4-mini", "o4-mini"),
+    ),
+    "pro": (
+        ("4o-mini", "GPT-4o mini"),
+        ("4.1-mini", "GPT-4.1 mini"),
+        ("4o", "GPT-4o"),
+        ("4.1", "GPT-4.1"),
+        ("o3", "o3"),
+        ("o4-mini", "o4-mini"),
+    ),
+}
+_THU_TU_GOI = ("free", "plus", "pro")
+
+
+def _model_theo_goi(goi: str | None) -> list[str]:
+    """Tên thân thiện các model theo gói; gói lạ/không rõ → toàn bộ."""
+    goi = str(goi or "").strip().lower()
+    if goi in MO_HINH_THEO_GOI:
+        return [ten for ten, _nhan in MO_HINH_THEO_GOI[goi]]
+    thay = []
+    for g in _THU_TU_GOI:
+        for ten, _nhan in MO_HINH_THEO_GOI[g]:
+            if ten not in thay:
+                thay.append(ten)
+    return thay
+
+
+def _nhan_model(ten: str) -> str:
+    """Nhãn hiển thị của model (tách khỏi id ổn định)."""
+    for g in _THU_TU_GOI:
+        for t, nhan in MO_HINH_THEO_GOI[g]:
+            if t == ten:
+                return nhan
+    return ten
+
+
+def _goi_toi_thieu(ten: str) -> str:
+    """Gói rẻ nhất có model này (theo bảng tĩnh)."""
+    for g in _THU_TU_GOI:
+        if any(t == ten for t, _nhan in MO_HINH_THEO_GOI[g]):
+            return g
+    return "plus"
 
 
 class Module:
@@ -114,6 +236,124 @@ class Module:
         # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
         self._trinh_duyet_da_dung = None
 
+    async def _lay_goi(self, token: str) -> str:
+        """Gói tài khoản qua /backend-api/accounts/check (accounts.default.plan_type).
+
+        Suy từ CẤU TRÚC JSON, không dò chữ. Không đọc được → "khong_ro"
+        (tài khoản vẫn dùng được, định tuyến lúc đó cho phép toàn bộ).
+        """
+        try:
+            goi = await self._tao_client(token).thong_tin_goi()
+        except Exception:
+            return "khong_ro"
+        goi = str(goi or "").strip().lower()
+        return goi or "khong_ro"
+
+    # -- tái dùng hồ sơ Google (NV92 P3 → NV93) ---------------------------------
+
+    _URL_TAI_DUNG = "https://chatgpt.com/auth/login"
+    _BO_CHON_DANG_NHAP = 'button[data-testid="login-button"], a[href*="auth/login"]'
+    _BO_CHON_GOOGLE = 'button[data-provider="google"], button[aria-label*="Google" i]'
+    _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
+                           "cloudflare"}
+
+    async def tai_dung_ho_so(self, ho_so, trinh_duyet) -> KetQuaDangNhap:
+        """Đăng nhập bằng Google TRONG hồ sơ đã đăng nhập Google (NV93).
+
+        Hợp đồng NV92-P3: ``tai_dung_ho_so(ho_so, trinh_duyet)`` — module tự làm
+        bước «Đăng nhập bằng Google» của nó trong hồ sơ, lấy phiên, làm giàu
+        email/gói/hồ sơ, thêm tài khoản vào kho của CHÍNH mình, trả
+        ``KetQuaDangNhap`` với ``cookie`` là chuỗi phiên thô (route tái dùng
+        lưu nó qua đường cai() có sẵn). Không nhập lại email/mật khẩu/2FA —
+        KHÔNG BAO GIỜ ``dien()``. Gặp CAPTCHA/Cloudflare/2FA/xác minh →
+        can_nguoi NGAY (không cố vượt, không thử lại).
+
+        HỌC TỪ c2a (chỉ đọc lấy hiểu, tự viết lại): TriTue2011/chatgpt2api,
+        ``captcha-solver/src/chatgpt_login.py`` — các bước: mở trang đăng nhập
+        → bấm «Log in» → bấm «Continue with Google» → chờ phiên hình thành →
+        đọc access_token từ cookie chatgpt.com → kiểm qua /backend-api/me.
+        """
+        hs_id = ho_so.get("id") if isinstance(ho_so, dict) else str(ho_so or "")
+        hs_id = str(hs_id or "").strip() or None
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
+            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+            # CAPTCHA/Cloudflare/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        try:
+            if "da_dang_nhap" not in tin_hieu:
+                # Bước «bấm Google»: đăng nhập bằng Google trong hồ sơ.
+                await trinh_duyet.bam(self._BO_CHON_DANG_NHAP)
+                await trinh_duyet.bam(self._BO_CHON_GOOGLE)
+                # Bước «chờ phiên»: Google chuyển về với phiên đã đăng nhập.
+                da_vao = False
+                for _ in range(20):
+                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                        return KetQuaDangNhap(False, ma_loi="can_nguoi")
+                    if "da_dang_nhap" in tin_hieu:
+                        da_vao = True
+                        break
+                    await asyncio.sleep(1)
+                if not da_vao:
+                    return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+            try:
+                cookie = trinh_duyet.doc_cookie("chatgpt.com")
+            except Exception:
+                cookie = {}
+            token = cookie.get("access_token") if isinstance(cookie, dict) else None
+        except Exception:
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+        if not token:
+            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
+        me = await self._kiem_token(token)
+        if me is None:
+            return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
+                                  ma_trang_thai=401)
+        email = str(me.get("email") or "") if isinstance(me, dict) else ""
+        goi = await self._lay_goi(token)
+        await self._them_tai_khoan_tu_ho_so(token, hs_id, email, goi)
+        log.info("chatgpt-web: tái dùng hồ sơ %s → tài khoản %s (gói %s)",
+                 hs_id, self._khoa_tu_token(token), goi)
+        return KetQuaDangNhap(True, cookie=token)
+
+    # -- liệt kê / gỡ tài khoản (NV93) ------------------------------------------
+
+    def liet_ke_tai_khoan(self) -> list[dict]:
+        """Danh sách tài khoản KHÔNG bí mật: khoa/email/ho_so/goi/trạng thái."""
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        return [{
+            "khoa": self._khoa_tu_token(tk.token),
+            "email": tk.email,
+            "ho_so": tk.ho_so,
+            "goi": tk.goi,
+            "trang_thai": tk.trang_thai,
+            "lan_dung_cuoi": tk.lan_dung_cuoi,
+        } for tk in ds]
+
+    def go_tai_khoan(self, khoa: str) -> bool:
+        """Gỡ đúng MỘT tài khoản của module này; ghi sổ gỡ bỏ vào kho riêng để
+        khởi động lại không dựng lại. Không động module khác, không động hồ sơ."""
+        khoa = str(khoa or "")
+        with self._khoa:
+            con_lai = [tk for tk in self._tai_khoan
+                       if self._khoa_tu_token(tk.token) != khoa]
+            da_go = len(con_lai) != len(self._tai_khoan)
+            self._tai_khoan = con_lai
+        if da_go:
+            tap = self._doc_go_bo()
+            tap.add(khoa)
+            self._luu_go_bo(tap)
+            self._luu_ban_ghi_tai_khoan()
+            log.info("chatgpt-web: đã gỡ tài khoản %s", khoa)
+        return da_go
+
     # -- khoá tài khoản mờ (NV88) -------------------------------------------
 
     @staticmethod
@@ -132,6 +372,83 @@ class Module:
         with self._khoa:
             if not any(t.token == token for t in self._tai_khoan):
                 self._tai_khoan.append(_TaiKhoan(token))
+        # Thêm tường minh = người dùng muốn dùng lại → xoá khỏi sổ gỡ bỏ.
+        self._xoa_khoi_go_bo(self._khoa_tu_token(token))
+
+    # -- kho riêng: bản ghi làm giàu + sổ gỡ bỏ (NV93) -------------------------
+
+    def _doc_ban_ghi(self) -> dict:
+        """{khoa: bản ghi} từ kho riêng; kho chưa gán/hỏng → {} (không vỡ)."""
+        if self.kho is None:
+            return {}
+        try:
+            du_lieu = self.kho.doc("tai_khoan") or {}
+        except Exception as e:
+            log.warning("chatgpt-web: không đọc được bản ghi tài khoản: %s",
+                        type(e).__name__)
+            return {}
+        ban_ghi = du_lieu.get("ban_ghi") if isinstance(du_lieu, dict) else None
+        return ban_ghi if isinstance(ban_ghi, dict) else {}
+
+    def _luu_ban_ghi_tai_khoan(self) -> None:
+        """Lưu bản ghi (kèm phien — kho riêng đã mã hoá, 0600). Không vỡ."""
+        if self.kho is None:
+            return
+        try:
+            with self._khoa:
+                ban_ghi = {self._khoa_tu_token(tk.token): tk.ban_ghi(self._khoa_tu_token(tk.token))
+                           for tk in self._tai_khoan}
+            self.kho.luu("tai_khoan", {"ban_ghi": ban_ghi})
+        except Exception as e:
+            log.warning("chatgpt-web: không lưu được bản ghi tài khoản: %s",
+                        type(e).__name__)
+
+    def _doc_go_bo(self) -> set:
+        """Tập khoá đã bị go_tai_khoan gỡ (để nap() không dựng lại)."""
+        if self.kho is None:
+            return set()
+        try:
+            du_lieu = self.kho.doc("go_bo") or {}
+        except Exception:
+            return set()
+        ds = du_lieu.get("khoa") if isinstance(du_lieu, dict) else None
+        return {str(k) for k in ds} if isinstance(ds, list) else set()
+
+    def _luu_go_bo(self, tap: set) -> None:
+        if self.kho is None:
+            return
+        try:
+            self.kho.luu("go_bo", {"khoa": sorted(tap)})
+        except Exception as e:
+            log.warning("chatgpt-web: không lưu được sổ gỡ bỏ: %s",
+                        type(e).__name__)
+
+    def _xoa_khoi_go_bo(self, khoa: str) -> None:
+        tap = self._doc_go_bo()
+        if khoa in tap:
+            tap.discard(khoa)
+            self._luu_go_bo(tap)
+
+    async def _them_tai_khoan_tu_ho_so(self, token: str, hs_id: str | None,
+                                       email: str, goi: str) -> _TaiKhoan:
+        """Thêm/cập nhật bản ghi từ phiên tái dùng hồ sơ (chống trùng token)."""
+        with self._khoa:
+            tk = next((t for t in self._tai_khoan if t.token == token), None)
+            if tk is None:
+                tk = _TaiKhoan(token)
+                self._tai_khoan.append(tk)
+            if email:
+                tk.email = email
+            if hs_id:
+                tk.ho_so = hs_id
+            tk.goi = goi or "khong_ro"
+            tk.trang_thai = "hoat_dong"
+            tk.khoe = True
+            tk.loai_loi = None
+            tk.lan_dung_cuoi = _gio_utc()
+        self._xoa_khoi_go_bo(self._khoa_tu_token(token))
+        self._luu_ban_ghi_tai_khoan()
+        return tk
 
     # -- mật khẩu đã lưu (NV88) ----------------------------------------------
 
@@ -304,70 +621,6 @@ class Module:
             if tai_khoan.mat_khau is not None:
                 tai_khoan.mat_khau.xoa()
 
-    # -- tái dùng hồ sơ Google (NV92 P3) --------------------------------------
-
-    _URL_TAI_DUNG = "https://chatgpt.com/auth/login"
-    _BO_CHON_DANG_NHAP = 'button[data-testid="login-button"], a[href*="auth/login"]'
-    _BO_CHON_GOOGLE = 'button[data-provider="google"], button[aria-label*="Google" i]'
-
-    async def tai_dung_ho_so(self, ho_so: str,
-                             trinh_duyet) -> KetQuaDangNhap:
-        """Đăng nhập bằng Google TRONG hồ sơ đã đăng nhập Google (NV92 P3, mẫu).
-
-        Hợp đồng module mới: ``tai_dung_ho_so(ho_so, trinh_duyet)`` — provider
-        tự làm bước «Đăng nhập bằng Google» của nó trong hồ sơ, lấy phiên,
-        trả ``KetQuaDangNhap`` (``cookie`` = chứng chỉ phiên mới dạng thô; route
-        tái dùng lưu nó qua đường cai() có sẵn rồi chỉ trả khoá che ra ngoài).
-        Không nhập lại email/mật khẩu/2FA. Gặp CAPTCHA/2FA/xác minh → can_nguoi.
-
-        HỌC TỪ c2a (chỉ đọc lấy hiểu, tự viết lại): TriTue2011/chatgpt2api,
-        ``captcha-solver/src/chatgpt_login.py`` — các bước: mở trang đăng nhập
-        → bấm «Log in» → bấm «Continue with Google» → chờ phiên → đọc token.
-        """
-        if trinh_duyet is None:
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
-        try:
-            await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu() or set())
-        except Exception:
-            return KetQuaDangNhap(False, ma_loi="loi_module")
-        if tin_hieu & {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi"}:
-            # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
-        try:
-            if "da_dang_nhap" not in tin_hieu:
-                # Bước «bấm Google»: đăng nhập bằng Google trong hồ sơ.
-                await trinh_duyet.bam(self._BO_CHON_DANG_NHAP)
-                await trinh_duyet.bam(self._BO_CHON_GOOGLE)
-                # Bước «chờ phiên»: Google chuyển về với phiên đã đăng nhập.
-                da_vao = False
-                for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
-                    if tin_hieu & {"captcha", "2fa", "xac_minh",
-                                   "xac_minh_thiet_bi"}:
-                        return KetQuaDangNhap(False, ma_loi="can_nguoi")
-                    if "da_dang_nhap" in tin_hieu:
-                        da_vao = True
-                        break
-                    await asyncio.sleep(1)
-                if not da_vao:
-                    return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
-            try:
-                cookie = trinh_duyet.doc_cookie("chatgpt.com")
-            except Exception:
-                cookie = {}
-            token = cookie.get("access_token") if isinstance(cookie, dict) else None
-        except Exception:
-            return KetQuaDangNhap(False, ma_loi="loi_module")
-        if not token:
-            return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
-        me = await self._kiem_token(token)
-        if me is None:
-            return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
-                                  ma_trang_thai=401)
-        self._them_token(token)
-        return KetQuaDangNhap(True, cookie=token)
-
     def tai_khoan_ke(self, khoa: str) -> str | None:
         """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""
         with self._khoa:
@@ -423,13 +676,29 @@ class Module:
     # -- hợp đồng lõi -------------------------------------------------------
 
     def nap(self, cau_hinh: dict) -> None:
-        """Nạp cấu hình ĐÃ KIỂM — không gọi mạng, chỉ tách token."""
+        """Nạp cấu hình ĐÃ KIỂM — không gọi mạng, chỉ tách token.
+
+        NV93: bỏ qua token đã bị go_tai_khoan gỡ (sổ go_bo trong kho riêng);
+        khôi phục email/gói/hồ sơ đã làm giàu từ bản ghi kho riêng (không cần
+        mạng). Làm giàu lại khi có mạng ở cai().
+        """
         cau_hinh = cau_hinh or {}
         danh_sach = cau_hinh.get("tai_khoan") or []
         if isinstance(danh_sach, str):
             danh_sach = [danh_sach]
-        tai_khoan = [_TaiKhoan(str(t).strip()) for t in danh_sach
-                     if isinstance(t, str) and str(t).strip()]
+        go_bo = self._doc_go_bo()
+        ban_ghi = self._doc_ban_ghi()
+        tai_khoan = []
+        for t in danh_sach:
+            if not isinstance(t, str) or not str(t).strip():
+                continue
+            token = str(t).strip()
+            khoa = self._khoa_tu_token(token)
+            if khoa in go_bo:
+                continue  # đã bị gỡ tường minh — không dựng lại
+            tk = _TaiKhoan(token)
+            tk.ap_dung_ban_ghi(ban_ghi.get(khoa))
+            tai_khoan.append(tk)
         danh_tinh_id = str(cau_hinh.get("danh_tinh_id") or "").strip() or None
         co_so = str(cau_hinh.get("co_so_url") or "").strip().rstrip("/") or None
         with self._khoa:
@@ -447,9 +716,22 @@ class Module:
                 raise ValueError(f"co_so_url không hợp lệ: {e}") from None
 
     async def _init_tai_khoan(self, tk: _TaiKhoan) -> None:
+        """Kiểm token + làm giàu email/gói khi mạng cho phép.
+
+        Không mạng/không đọc được gói → tài khoản vẫn dùng được, email/gói
+        giữ nguyên (hoặc "khong_ro"). Không bao giờ lộ token trong log.
+        """
         if tk.client is None:
             tk.client = self._tao_client(tk.token)
-        await tk.client.init()
+        me = await tk.client.init()
+        if isinstance(me, dict):
+            email = str(me.get("email") or "").strip()
+            if email and not tk.email:
+                tk.email = email
+        if not tk.goi or tk.goi == "khong_ro":
+            tk.goi = await self._lay_goi(tk.token)
+        tk.trang_thai = "hoat_dong"
+        self._luu_ban_ghi_tai_khoan()
 
     async def cai(self, cau_hinh: dict) -> dict:
         """Kiểm từng token bằng /backend-api/me (rẻ, không tốn lượt chat)."""
@@ -554,14 +836,63 @@ class Module:
             # (single-flight trong app/tu_lam_moi; module vẫn chuyển tài khoản kế ngay).
             tu_lam_moi.bao_loi_phien(self, self._khoa_tu_token(tk.token))
 
+    def _tai_khoan_cho_model(self, ten_than_thien: str) -> list[_TaiKhoan]:
+        """Tài khoản khoẻ trước, CHỈ những tài khoản có model này (theo gói).
+
+        Không có → danh sách rỗng; người gọi trả lỗi rõ, KHÔNG fallback âm thầm
+        sang model khác.
+        """
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        co = [tk for tk in ds if ten_than_thien in tk.model_duoc()]
+        return sorted(co, key=lambda t: 0 if t.khoe else 1)
+
+    def _model_mac_dinh_kha_dung(self) -> str | None:
+        """Model mặc định cho yêu cầu rỗng/auto: 4o nếu tài khoản nào có,
+        ngược lại model đầu của tài khoản khoẻ nhất; không có tài khoản → None."""
+        ds = self._thu_tu_tai_khoan()
+        if not ds:
+            return None
+        for tk in ds:
+            if MODEL_MAC_DINH in tk.model_duoc():
+                return MODEL_MAC_DINH
+        for tk in ds:
+            ds_model = tk.model_duoc()
+            if ds_model:
+                return ds_model[0]
+        return None
+
     async def chat(self, body: dict, stream: bool):
         body = dict(body or {})
         model_goc = str(body.get("model") or "")
+        yeu_cau_trong = not model_goc.strip() or model_goc.strip().lower() == "auto"
         try:
             ten_model = giai_quyet_model_day_du(model_goc)
         except ModelKhongCo:
             thong_diep = (f"model {nhac_lai(tach_tien_to(model_goc))} không có; "
                           f"chọn trong: {', '.join(id_day_du(m) for m in MO_HINH_HO_TRO)}")
+            return 400, {"Content-Type": "application/json"}, \
+                json.dumps(than_loi(400, thong_diep), ensure_ascii=False).encode("utf-8")
+        tat_ca = self._thu_tu_tai_khoan()
+        if not tat_ca:
+            return 401, {"Content-Type": "application/json"}, \
+                json.dumps(than_loi(401, "chatgpt-web chưa có tài khoản nào: "
+                                         "thêm token ở trường tai_khoan rồi cài lại."),
+                           ensure_ascii=False).encode("utf-8")
+        if yeu_cau_trong:
+            mac_dinh = self._model_mac_dinh_kha_dung()
+            if mac_dinh is not None:
+                ten_model = mac_dinh
+        ds = self._tai_khoan_cho_model(ten_model)
+        if not ds:
+            # Định tuyến theo gói: không tài khoản nào có model này → lỗi rõ,
+            # KHÔNG chạy model khác thay thế.
+            model_id = id_day_du(ten_model)
+            dang_co = [m["id"] for m in await self.models()]
+            thong_diep = (
+                f"model {model_id} không khả dụng: không tài khoản chatgpt-web "
+                f"nào đang có model này (cần gói {_goi_toi_thieu(ten_model)} trở lên). "
+                f"Các model đang có: {', '.join(dang_co) or 'không có'}.")
             return 400, {"Content-Type": "application/json"}, \
                 json.dumps(than_loi(400, thong_diep), ensure_ascii=False).encode("utf-8")
         model_id = id_day_du(ten_model)
@@ -571,12 +902,6 @@ class Module:
                 json.dumps(than_loi(400, "thiếu messages (danh sách hội thoại rỗng)"),
                            ensure_ascii=False).encode("utf-8")
 
-        ds = self._thu_tu_tai_khoan()
-        if not ds:
-            return 401, {"Content-Type": "application/json"}, \
-                json.dumps(than_loi(401, "chatgpt-web chưa có tài khoản nào: "
-                                         "thêm token ở trường tai_khoan rồi cài lại."),
-                           ensure_ascii=False).encode("utf-8")
         if stream:
             tieu_de = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache",
                        "X-Accel-Buffering": "no"}
@@ -610,6 +935,8 @@ class Module:
                 continue
             tk.khoe = True
             tk.loai_loi = None
+            tk.lan_dung_cuoi = _gio_utc()
+            self._luu_ban_ghi_tai_khoan()
             return 200, {"Content-Type": "application/json"}, phan_hoi_json(model_id, van_ban)
 
         # Hết tài khoản: mã theo lỗi cuối (không bao giờ lộ token hay đáp án thô).
@@ -656,6 +983,8 @@ class Module:
                 break
             tk.khoe = True
             tk.loai_loi = None
+            tk.lan_dung_cuoi = _gio_utc()
+            self._luu_ban_ghi_tai_khoan()
             yield chunk_ket_thuc(model_id, hoan_thanh_id, tao_luc)
             yield dong_done()
             return
@@ -667,9 +996,34 @@ class Module:
     # -- models / suc_khoe / dung --------------------------------------------
 
     async def models(self):
-        return [{"id": id_day_du(m), "object": "model",
-                 "created": 1760000000, "owned_by": "chatgpt-web"}
-                for m in MO_HINH_HO_TRO]
+        """HỢP model theo tài khoản (NV93): mỗi model có id ổn định
+        «chatgpt-web/<tên>», nhãn hiển thị «nhan» tách riêng, «goi» (gói tối
+        thiểu theo bảng MO_HINH_THEO_GOI — CHƯA KIỂM trên dịch vụ thật) và
+        «available_cho» (khoá mờ các tài khoản đang có model này)."""
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        hop: dict[str, list[str]] = {}
+        for tk in ds:
+            khoa = self._khoa_tu_token(tk.token)
+            for ten in tk.model_duoc():
+                hop.setdefault(ten, [])
+                if khoa not in hop[ten]:
+                    hop[ten].append(khoa)
+        thu_tu = _model_theo_goi(None)  # thứ tự chuẩn của bảng
+        ra = []
+        for ten in thu_tu:
+            if ten not in hop:
+                continue
+            ra.append({
+                "id": id_day_du(ten),
+                "object": "model",
+                "created": 1760000000,
+                "owned_by": "chatgpt-web",
+                "nhan": _nhan_model(ten),
+                "goi": _goi_toi_thieu(ten),
+                "available_cho": hop[ten],
+            })
+        return ra
 
     async def suc_khoe(self):
         with self._khoa:
@@ -695,7 +1049,7 @@ class Module:
             else:
                 muc.append({"khoa": tk.ten_che(), "ok": True, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": len(MO_HINH_HO_TRO), "loi": None,
+                            "so_model": len(tk.model_duoc()), "loi": None,
                             "danh_tinh": tt_danh_tinh})
         ok = any(m["ok"] for m in muc)
         return {"ok": ok, "khoa": muc,
