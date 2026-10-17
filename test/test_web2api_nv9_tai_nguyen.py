@@ -219,8 +219,7 @@ def test_tich_hop_tang_tai_nguyen_409_va_duyet(gh, du_lieu):
         assert diff["them"] == [{"loai": "tai_nguyen", "ten": "dia_mb",
                                  "tang_tu": 100, "tang_len": 150}]
         # duyệt đúng danh sách mới → áp dụng
-        kq = await ng.cai("echo", chap_nhan_quyen_them=diff["them"], sha_commit=sha,
-                          xac_nhan_lan_2=True)  # NV50: duyệt hạng B cần xác nhận lần 2
+        kq = await ng.cai("echo", chap_nhan_quyen_them=diff["them"], sha_commit=sha)
         assert kq["ok"] is True
         assert kho.doc_cho_duyet_quyen("echo") is None
     chay(ham)
@@ -239,6 +238,6 @@ def test_tich_hop_duyet_sai_danh_sach_cu_409(gh, du_lieu):
         with pytest.raises(LoiSo):
             await ng.cai("echo", chap_nhan_quyen_them=[
                 {"loai": "tai_nguyen", "ten": "dia_mb", "bam_gia_tri": "00" * 32}],
-                sha_commit=sha, xac_nhan_lan_2=True)  # NV50: vẫn 409 vì danh sách sai
+                sha_commit=sha)
         assert kho.doc_cho_duyet_quyen("echo") is not None  # yêu cầu còn đó
     chay(ham)

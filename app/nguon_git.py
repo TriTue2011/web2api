@@ -836,19 +836,17 @@ class NguonGit:
         return "cập nhật" if id_ in self.so.catalog else "cài"
 
     async def cai(self, id_: str, chap_nhan_quyen_them: list | None = None,
-                sha_commit: str | None = None, xac_nhan_lan_2: bool = False,
+                sha_commit: str | None = None,
                 nguoi_thuc_hien: str | None = None) -> dict:
         """Cài module từ git (nguồn chính). Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
         (phải khớp chính xác diff đã xem); không có → cài thường (bản mới xin thêm quyền
         thì 409 chờ duyệt thay vì kích hoạt).
 
-        NV50: duyệt hạng B cần `xac_nhan_lan_2` (xác nhận lại lần 2, chống bấm nhầm) —
-        thiếu → 409, chưa kích hoạt.
+        NV50: kiểm tra xác nhận lần 2 đặt ở route HTTP (nơi người bấm), không ở đây.
         """
         async with self._khoa:
             if chap_nhan_quyen_them is not None or sha_commit is not None:
                 return await self._cai_duyet(id_, chap_nhan_quyen_them, sha_commit,
-                                            xac_nhan_lan_2=xac_nhan_lan_2,
                                             nguoi_thuc_hien=nguoi_thuc_hien)
             nguon, tt = self._nguon_chinh()
             if nguon is None:
@@ -856,20 +854,15 @@ class NguonGit:
             return await self._cai_tu(nguon, tt, id_)
 
     async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None,
-                        xac_nhan_lan_2: bool = False,
                         nguoi_thuc_hien: str | None = None) -> dict:
         """Duyệt bản đang chờ: không tải lại, kích hoạt đúng thư mục đã chốt khi xem diff.
 
-        NV50 CG1: hạng B là hành động nguy hiểm — thiếu xác nhận lần 2 → 409, chưa
-        kích hoạt (chống bấm nhầm / CSRF một chạm).
         NV50 CG2: mỗi lần duyệt ghi nhật ký quản trị (người thực hiện + module).
         NV50 CG3: quyền duyệt được cấp có kỳ hạn (het_han trong tương lai).
+        (CG1 — xác nhận lần 2 — kiểm ở route HTTP, nơi người bấm.)
         """
         if not isinstance(chap_nhan_quyen_them, list) or not sha_commit:
             raise LoiGit("duyệt cần thân {\"chap_nhan_quyen_them\": [...], \"sha_commit\": \"...\"}", 400)
-        if not xac_nhan_lan_2:
-            raise LoiGit("duyệt hạng B cần xác nhận lần 2: gửi lại với "
-                         "{\"xac_nhan_lan_2\": true} cùng chap_nhan_quyen_them và sha_commit", 409)
         pending = kho.doc_cho_duyet_quyen(id_)
         if pending is None:
             raise LoiGit(f"module {id_!r} không có yêu cầu chờ duyệt quyền", 409)

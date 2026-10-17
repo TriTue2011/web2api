@@ -149,7 +149,8 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
             x5 = cho(lambda: next((x for x in tb()["danh_sach"] if x["phien_ban_moi"] == "5.0.0" and x["ghi_chu"]
                                    and "ĐỔI MÃ" in x["ghi_chu"]), None), mo_ta="bản đã ký được giữ chờ duyệt")
             assert noi() == "echo v2: ơi"
-            r = h.post("/api/nguon-git/cai/echo", json={"chap_nhan_quyen_them": [], "sha_commit": x5["commit"]["sha"]})
+            r = h.post("/api/nguon-git/cai/echo", json={"chap_nhan_quyen_them": [], "sha_commit": x5["commit"]["sha"],
+                                                       "xac_nhan_lan_2": True})  # NV50: duyệt cần xác nhận lần 2
             assert r.status_code == 200, r.text
             assert noi() == "echo v5: ơi"
             assert tb()["so_moi"] == 0

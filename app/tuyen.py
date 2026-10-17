@@ -1348,10 +1348,16 @@ async def cai_tu_git(id_: str, request: Request):
         than = {}
     try:
         if than.get("chap_nhan_quyen_them") is not None or than.get("sha_commit") is not None:
+            # NV50 CG1: duyệt hạng B là hành động nguy hiểm — thiếu xác nhận lần 2
+            # (xac_nhan_lan_2) → 409, chưa kích hoạt (chống bấm nhầm). Kiểm ở đây
+            # (nơi người bấm), không đặt trong lõi NguonGit.
+            if not than.get("xac_nhan_lan_2"):
+                raise LoiGit("duyệt hạng B cần xác nhận lần 2: gửi lại với "
+                             "{\"xac_nhan_lan_2\": true} cùng chap_nhan_quyen_them và sha_commit",
+                             409)
             danh_tinh = getattr(request.state, "danh_tinh", None) or {}
             return await _ng(request).cai(id_, chap_nhan_quyen_them=than.get("chap_nhan_quyen_them"),
                                          sha_commit=than.get("sha_commit"),
-                                         xac_nhan_lan_2=bool(than.get("xac_nhan_lan_2")),
                                          nguoi_thuc_hien=danh_tinh.get("id"))
         return await _ng(request).cai(id_)
     except LoiCanDuyetQuyen as e:

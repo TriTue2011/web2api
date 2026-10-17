@@ -322,9 +322,10 @@ def test_duong_cai_http_409_kem_diff_va_duyet(gh, du_lieu):
         than = r.json()
         assert than["ma"] == "can_duyet_quyen"
         assert {"loai": "cung_cap", "ten": "chat"} in than["diff"]["them"]
-        # duyệt qua HTTP
+        # duyệt qua HTTP (NV50: cần xác nhận lần 2)
         r2 = c.post("/api/nguon-git/cai/echo", headers=QT,
-                    json={"chap_nhan_quyen_them": than["diff"]["them"], "sha_commit": than["sha_commit"]})
+                    json={"chap_nhan_quyen_them": than["diff"]["them"], "sha_commit": than["sha_commit"],
+                          "xac_nhan_lan_2": True})
         assert r2.status_code == 200, r2.text
         assert r2.json()["ok"] is True
 
