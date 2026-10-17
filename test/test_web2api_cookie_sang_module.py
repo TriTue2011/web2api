@@ -660,11 +660,13 @@ def test_trang_module_m_co_csp_va_header_bao_ve(client):
         assert r.status_code == ma
         csp = r.headers.get("content-security-policy", "")
         for chi_thi in ("default-src 'self'", "script-src 'self'", "object-src 'none'", "base-uri 'none'",
-                        "frame-ancestors 'none'"):
+                        "frame-ancestors 'self'"):
             assert chi_thi in csp, (duong, csp)
+        assert "frame-ancestors *" not in csp and "frame-ancestors http" not in csp
         assert "unsafe-inline" not in csp.split("script-src")[1].split(";")[0]
         assert r.headers.get("x-content-type-options") == "nosniff"
-        assert r.headers.get("x-frame-options") == "DENY"
+        # Chỉ trang CÙNG GỐC (khung Hệ thống) được nhúng trang module; gốc khác vẫn bị chặn.
+        assert r.headers.get("x-frame-options") == "SAMEORIGIN"
         assert r.headers.get("referrer-policy") == "no-referrer"
 
 

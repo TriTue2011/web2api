@@ -123,8 +123,8 @@ def test_trang_ve_novnc_co_csp_sandbox(moi_truong):
 
 # ── 2. Đếm script nội tuyến (số đo thật) ───────────────────────────────
 
-def test_so_khoi_script_noi_tuyen_dung_11(moi_truong):
-    """Đo thật: 11 khối <script> không src trong web/*.html (mỗi trang 1 khối khởi động
+def test_so_khoi_script_noi_tuyen_dung_12(moi_truong):
+    """Đo thật: 12 khối <script> không src trong web/*.html (mỗi trang 1 khối khởi động
     dc-lite — có chủ đích). Ghim số để phát hiện khối mới thêm vào."""
     thu_muc_web = os.path.join(os.path.dirname(__file__), "..", "web")
     tong = 0
@@ -137,7 +137,7 @@ def test_so_khoi_script_noi_tuyen_dung_11(moi_truong):
         tat_ca = len(re.findall(r"<script(?![^>]*\bsrc=)", noi_dung))
         chi_tiet[ten] = tat_ca
         tong += tat_ca
-    assert tong == 11, f"đo được {tong} khối nội tuyến, chi tiết: {chi_tiet}"
+    assert tong == 12, f"đo được {tong} khối nội tuyến, chi tiết: {chi_tiet}"
     assert all(v == 1 for v in chi_tiet.values()), chi_tiet
 
 

@@ -91,10 +91,24 @@ class Trang:
                 raise AssertionError(f"Chờ quá {han}s: {mo_ta or expr}\n--- chữ trên trang ---\n{chu}")
             time.sleep(0.05)
 
-    def di(self, url: str):
+    def di(self, url: str, mo_muc: bool = True):
+        """Mở trang và đợi dựng xong. Trang có mục thu gọn (`[data-mo-muc]`, mặc định ĐÓNG theo quy ước giao diện) được
+        mở hết để test thao tác như cũ; test kiểm «mặc định đóng» truyền mo_muc=False."""
         self.cdp.goi("Page.navigate", {"url": url}, self.s)
         self.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
                  mo_ta="dc-lite dựng xong trang")
+        if mo_muc:
+            self.mo_het_muc()
+
+    def mo_het_muc(self):
+        """Bấm mở mọi mục thu gọn đang đóng (mục có nút `[data-mo-muc]`); không có mục nào thì không làm gì. Mục dựng
+        muộn (sau khi dữ liệu về) cũng được mở: lặp tới khi không còn mục đóng."""
+        for _ in range(8):
+            n = self.js("(() => { const ds = [...document.querySelectorAll('[data-mo-muc][aria-expanded=\"false\"]')];"
+                        " ds.forEach(b => b.click()); return ds.length; })()")
+            if not n:
+                return
+            time.sleep(0.15)
 
     def go(self, sel: str, chu: str):
         """Gõ như người (Input.insertText là sự kiện tin cậy) vào ô `sel`."""

@@ -14,12 +14,28 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
 main.pg{padding:32px 32px 48px;gap:24px}
-.khoa-khach-hang,.nguoi-dung-hang{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px;border-top:1px solid var(--line);min-width:0}
+.khoa-khach-hang,.nguoi-dung-hang{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;padding:6px 16px;min-height:40px;border-top:1px solid var(--line);min-width:0;box-sizing:border-box}
 .khoa-khach-hang:first-child,.nguoi-dung-hang:first-child{border-top:0}
-.khoa-thong-tin,.nguoi-dung-thong-tin{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:4px}
-.khoa-nhan,.nguoi-dung-nhan{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.khoa-phu,.nguoi-dung-phu{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.khoa-tac-vu,.nguoi-dung-tac-vu{flex:0 0 auto;display:flex;align-items:center;gap:8px;margin-left:auto}
+.khoa-thong-tin,.nguoi-dung-thong-tin{flex:1 1 0;min-width:0;display:flex;flex-direction:row;align-items:center;gap:10px;overflow:hidden}
+.khoa-nhan,.nguoi-dung-nhan{font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}
+.khoa-phu,.nguoi-dung-phu{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:10px;flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.khoa-phu .hang-chip,.nguoi-dung-phu .hang-chip{margin:0 !important;flex-wrap:nowrap;gap:4px}
+.khoa-tac-vu,.nguoi-dung-tac-vu{flex:0 0 auto;display:flex;align-items:center;gap:6px;margin-left:auto}
+.khoa-nhan > span:first-child,.nguoi-dung-nhan > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.khoa-nhan .huy,.nguoi-dung-nhan .huy{flex:0 0 auto}
+.khoa-nhan,.nguoi-dung-nhan{min-width:0;flex:0 1 auto !important}
+.muc-gap{padding:0 !important;gap:0 !important}
+.muc-gap-tieu{margin:0;font-size:inherit;font-weight:inherit}
+.muc-gap-nut{width:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:10px 16px;min-height:44px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;text-align:left}
+.muc-gap-nut:hover{background:#FBFAF8}
+.muc-gap-nut .mui{margin-left:auto;flex:0 0 auto;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-top:-3px;transition:transform .15s;opacity:.6;overflow:hidden;font-size:0}
+.muc-gap-nut .dem-phai{margin-left:auto}
+.muc-gap-nut .dem-phai + .mui{margin-left:0}
+.muc-gap-nut[aria-expanded="true"] .mui{transform:rotate(-135deg);margin-top:3px}
+.bang-tb .muc-gap-nut.bang-tb-dau{background:none;text-transform:none;letter-spacing:0;font-size:inherit;font-weight:inherit;border-bottom:0}
+.bang-tb .muc-gap-nut.bang-tb-dau[aria-expanded="true"]{border-bottom:1px solid var(--line)}
+.nguoi-dung-thong-tin[role="button"],.khoa-thong-tin[role="button"]{cursor:default}
+.muc-gap-nd{display:flex;flex-direction:column;gap:14px;padding:4px 16px 16px;border-top:1px solid var(--line)}
 .pham-vi-chon{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .the-ket-noi-moi{background:#F1F7F5;border-color:#B7DDD5}
 .acc-hop{flex:0 1 auto;margin-left:auto;display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap}
@@ -30,7 +46,13 @@ main.pg{padding:32px 32px 48px;gap:24px}
 }
 @media (max-width:1023px){
 main.pg{padding:12px 16px 24px}
-.khoa-tac-vu,.nguoi-dung-tac-vu{margin-left:0;width:100%;justify-content:flex-end}
+.nguoi-dung-thong-tin[role="button"],.khoa-thong-tin[role="button"]{cursor:pointer}
+.khoa-khach-hang,.nguoi-dung-hang{flex-wrap:wrap;row-gap:6px;min-height:44px}
+.khoa-thong-tin,.nguoi-dung-thong-tin{flex:1 1 100%;flex-wrap:nowrap;overflow:hidden}
+.khoa-phu,.nguoi-dung-phu,.khoa-tac-vu,.nguoi-dung-tac-vu{display:none}
+.hang-mo .khoa-phu,.hang-mo .nguoi-dung-phu{display:flex;flex-wrap:wrap;white-space:normal}
+.hang-mo .khoa-thong-tin,.hang-mo .nguoi-dung-thong-tin{flex-wrap:wrap;overflow:visible}
+.hang-mo .khoa-tac-vu,.hang-mo .nguoi-dung-tac-vu{display:flex;flex-wrap:wrap}
 }
 </style>
 </helmet>
@@ -97,8 +119,9 @@ main.pg{padding:12px 16px 24px}
 </section>
 </sc-if>
 
-<section class="the" aria-labelledby="h-tao-nd" id="tao-nguoi-dung">
-<h2 id="h-tao-nd" class="nhan-muc">Tạo tài khoản người dùng mới</h2>
+<section class="the muc-gap" aria-labelledby="h-tao-nd" id="tao-nguoi-dung">
+<h2 id="h-tao-nd" class="nhan-muc muc-gap-tieu"><button type="button" class="muc-gap-nut" data-mo-muc="tao-nguoi-dung" aria-expanded="{{m.taoNd.moChu}}" aria-controls="nd-tao-nguoi-dung" onClick="{{m.taoNd.bat}}" onKeyDown="{{m.taoNd.phim}}"><span>Tạo tài khoản người dùng mới</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.taoNd.mo}}"><div class="muc-gap-nd" id="nd-tao-nguoi-dung">
 <form class="form-tao-nd" novalidate onSubmit="{{taoNdSubmit}}" style="display:flex;flex-direction:column;gap:12px">
 <div style="display:flex;flex-wrap:wrap;gap:12px">
 <div class="truong" style="flex:1 1 200px">
@@ -133,18 +156,17 @@ main.pg{padding:12px 16px 24px}
 <button type="submit" class="nut nut-chinh" id="nut-tao-nd" disabled="{{dangTaoNd}}">{{nhanTaoNd}}</button>
 </div>
 </form>
+</div></sc-if>
 </section>
 
-<section class="bang-tb" aria-labelledby="h-ds-nd" id="danh-sach-nguoi-dung">
-<div class="bang-tb-dau">
-<h2 id="h-ds-nd" style="font-size:inherit;margin:0">Danh sách tài khoản người dùng</h2>
-<span class="dem-phai">{{tongSoNd}} người dùng</span>
-</div>
+<section class="bang-tb muc-gap" aria-labelledby="h-ds-nd" id="danh-sach-nguoi-dung">
+<h2 id="h-ds-nd" class="muc-gap-tieu"><button type="button" class="muc-gap-nut bang-tb-dau" data-mo-muc="danh-sach-nguoi-dung" aria-expanded="{{m.dsNd.moChu}}" aria-controls="nd-danh-sach-nguoi-dung" onClick="{{m.dsNd.bat}}" onKeyDown="{{m.dsNd.phim}}"><span>Danh sách tài khoản người dùng</span><span class="dem-phai">{{tongSoNd}} người dùng</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.dsNd.mo}}"><div id="nd-danh-sach-nguoi-dung">
 <sc-if value="{{ndThaoTacLoi}}"><p role="alert" class="bao bao-loi" id="loi-thao-tac-nd" style="margin:8px 16px">{{ndThaoTacLoi}}</p></sc-if>
 <ul class="bang-tb-ds">
 <sc-for list="{{dsNdHienThi}}" as="u">
-<li class="nguoi-dung-hang" data-nd-id="{{u.id}}">
-<div class="nguoi-dung-thong-tin">
+<li class="nguoi-dung-hang {{u.lopHang}}" data-nd-id="{{u.id}}">
+<div class="nguoi-dung-thong-tin" role="button" tabindex="0" aria-expanded="{{u.hangMoChu}}" onClick="{{u.chuyenHang}}" onKeyDown="{{u.phimHang}}">
 <div class="nguoi-dung-nhan">
 <span>{{u.ten}}</span>
 <sc-if value="{{u.laAdmin}}"><span class="huy huy-lam">admin</span></sc-if>
@@ -177,6 +199,7 @@ main.pg{padding:12px 16px 24px}
 </li>
 </sc-for>
 </ul>
+</div></sc-if>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -204,8 +227,9 @@ main.pg{padding:12px 16px 24px}
 </section>
 </sc-if>
 
-<section class="the" aria-labelledby="h-tao-khoa" id="tao-khoa">
-<h2 id="h-tao-khoa" class="nhan-muc">Tạo khoá khách mới</h2>
+<section class="the muc-gap" aria-labelledby="h-tao-khoa" id="tao-khoa">
+<h2 id="h-tao-khoa" class="nhan-muc muc-gap-tieu"><button type="button" class="muc-gap-nut" data-mo-muc="tao-khoa" aria-expanded="{{m.taoKhoa.moChu}}" aria-controls="nd-tao-khoa" onClick="{{m.taoKhoa.bat}}" onKeyDown="{{m.taoKhoa.phim}}"><span>Tạo khoá khách mới</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.taoKhoa.mo}}"><div class="muc-gap-nd" id="nd-tao-khoa">
 <form class="form-tao-khoa" novalidate onSubmit="{{taoKhoaSubmit}}" style="display:flex;flex-direction:column;gap:12px">
 <div class="truong">
 <label for="o-nhan-khoa">Nhãn / Tên ứng dụng (tuỳ chọn)</label>
@@ -226,13 +250,12 @@ main.pg{padding:12px 16px 24px}
 <button type="submit" class="nut nut-chinh" id="nut-tao-khoa" disabled="{{dangTao}}">{{nhanTaoKhoa}}</button>
 </div>
 </form>
+</div></sc-if>
 </section>
 
-<section class="bang-tb" aria-labelledby="h-ds-khoa" id="danh-sach-khoa">
-<div class="bang-tb-dau">
-<h2 id="h-ds-khoa" style="font-size:inherit;margin:0">Danh sách khoá khách</h2>
-<span class="dem-phai">{{tongSoKhoa}} khoá</span>
-</div>
+<section class="bang-tb muc-gap" aria-labelledby="h-ds-khoa" id="danh-sach-khoa">
+<h2 id="h-ds-khoa" class="muc-gap-tieu"><button type="button" class="muc-gap-nut bang-tb-dau" data-mo-muc="danh-sach-khoa" aria-expanded="{{m.dsKhoa.moChu}}" aria-controls="nd-danh-sach-khoa" onClick="{{m.dsKhoa.bat}}" onKeyDown="{{m.dsKhoa.phim}}"><span>Danh sách khoá khách</span><span class="dem-phai">{{tongSoKhoa}} khoá</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.dsKhoa.mo}}"><div id="nd-danh-sach-khoa">
 <sc-if value="{{coLoiDsKhoa}}">
 <div role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 12px">
   <span>{{dsKhoaLoi}}</span>
@@ -242,8 +265,8 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{coKhoaDs}}">
 <ul class="bang-tb-ds">
 <sc-for list="{{dsKhoaHienThi}}" as="k">
-<li class="khoa-khach-hang" data-khoa-id="{{k.id}}">
-<div class="khoa-thong-tin">
+<li class="khoa-khach-hang {{k.lopHang}}" data-khoa-id="{{k.id}}">
+<div class="khoa-thong-tin" role="button" tabindex="0" aria-expanded="{{k.hangMoChu}}" onClick="{{k.chuyenHang}}" onKeyDown="{{k.phimHang}}">
 <div class="khoa-nhan">
 <span>{{k.nhan}}</span>
 <sc-if value="{{k.bat}}"><span class="huy huy-xanh">Đang bật</span></sc-if>
@@ -275,14 +298,16 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{khongCoKhoaDs}}">
 <div class="bang-tb-rong">Chưa có khoá khách nào. Dùng biểu mẫu ở trên để tạo khoá đầu tiên.</div>
 </sc-if>
+</div></sc-if>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
      KHỐI QUẢN TRỊ VIÊN: SAO LƯU & KHÔI PHỤC CẤU HÌNH
      ═══════════════════════════════════════════════════════════════ -->
 
-<section class="the" aria-labelledby="h-sao-luu" id="sao-luu-khoi-phuc">
-<h2 id="h-sao-luu" class="nhan-muc">Sao lưu &amp; Khôi phục cấu hình</h2>
+<section class="the muc-gap" aria-labelledby="h-sao-luu" id="sao-luu-khoi-phuc">
+<h2 id="h-sao-luu" class="nhan-muc muc-gap-tieu"><button type="button" class="muc-gap-nut" data-mo-muc="sao-luu-khoi-phuc" aria-expanded="{{m.saoLuu.moChu}}" aria-controls="nd-sao-luu-khoi-phuc" onClick="{{m.saoLuu.bat}}" onKeyDown="{{m.saoLuu.phim}}"><span>Sao lưu &amp; Khôi phục cấu hình</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.saoLuu.mo}}"><div class="muc-gap-nd" id="nd-sao-luu-khoi-phuc">
 <p class="phu">Xuất hoặc nhập toàn bộ cấu hình hệ thống và khoá khách trong một tệp duy nhất (.w2a). Khi khôi phục, khoá khách cũ được giữ nguyên bản ghi băm để không làm gián đoạn ứng dụng đang kết nối.</p>
 
 <div style="display:flex;flex-direction:column;gap:16px;margin-top:12px">
@@ -337,6 +362,7 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{khoiPhucLoi}}"><p role="alert" class="bao bao-loi" id="loi-khoi-phuc" style="margin-top:8px">{{khoiPhucLoi}}</p></sc-if>
 </div>
 </div>
+</div></sc-if>
 </section>
 
 </sc-if>
@@ -365,8 +391,9 @@ main.pg{padding:12px 16px 24px}
 </section>
 </sc-if>
 
-<section class="the" aria-labelledby="h-tao-khoa-toi" id="tao-khoa-toi">
-<h2 id="h-tao-khoa-toi" class="nhan-muc">Tạo khoá API của tôi</h2>
+<section class="the muc-gap" aria-labelledby="h-tao-khoa-toi" id="tao-khoa-toi">
+<h2 id="h-tao-khoa-toi" class="nhan-muc muc-gap-tieu"><button type="button" class="muc-gap-nut" data-mo-muc="tao-khoa-toi" aria-expanded="{{m.taoKhoaToi.moChu}}" aria-controls="nd-tao-khoa-toi" onClick="{{m.taoKhoaToi.bat}}" onKeyDown="{{m.taoKhoaToi.phim}}"><span>Tạo khoá API của tôi</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.taoKhoaToi.mo}}"><div class="muc-gap-nd" id="nd-tao-khoa-toi">
 <form class="form-tao-khoa-toi" novalidate onSubmit="{{taoKhoaToiSubmit}}" style="display:flex;flex-direction:column;gap:12px">
 <div class="truong">
 <label for="o-nhan-khoa-toi">Nhãn / Tên ứng dụng (tuỳ chọn)</label>
@@ -389,13 +416,12 @@ main.pg{padding:12px 16px 24px}
 <button type="submit" class="nut nut-chinh" id="nut-gui-tao-khoa-toi" disabled="{{dangTaoKhoaToi}}">{{nhanTaoKhoaToi}}</button>
 </div>
 </form>
+</div></sc-if>
 </section>
 
-<section class="bang-tb" aria-labelledby="h-ds-khoa-toi" id="danh-sach-khoa-toi">
-<div class="bang-tb-dau">
-<h2 id="h-ds-khoa-toi" style="font-size:inherit;margin:0">Danh sách khoá API của tôi</h2>
-<span class="dem-phai">{{tongSoKhoaToi}} / 10 khoá</span>
-</div>
+<section class="bang-tb muc-gap" aria-labelledby="h-ds-khoa-toi" id="danh-sach-khoa-toi">
+<h2 id="h-ds-khoa-toi" class="muc-gap-tieu"><button type="button" class="muc-gap-nut bang-tb-dau" data-mo-muc="danh-sach-khoa-toi" aria-expanded="{{m.dsKhoaToi.moChu}}" aria-controls="nd-danh-sach-khoa-toi" onClick="{{m.dsKhoaToi.bat}}" onKeyDown="{{m.dsKhoaToi.phim}}"><span>Danh sách khoá API của tôi</span><span class="dem-phai">{{tongSoKhoaToi}} / 10 khoá</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.dsKhoaToi.mo}}"><div id="nd-danh-sach-khoa-toi">
 <sc-if value="{{coLoiKhoaToi}}">
 <div role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 12px">
   <span>{{dsKhoaToiLoi}}</span>
@@ -405,8 +431,8 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{coKhoaToiDs}}">
 <ul class="bang-tb-ds">
 <sc-for list="{{dsKhoaToiHienThi}}" as="k">
-<li class="khoa-khach-hang" data-khoa-id="{{k.id}}">
-<div class="khoa-thong-tin">
+<li class="khoa-khach-hang {{k.lopHang}}" data-khoa-id="{{k.id}}">
+<div class="khoa-thong-tin" role="button" tabindex="0" aria-expanded="{{k.hangMoChu}}" onClick="{{k.chuyenHang}}" onKeyDown="{{k.phimHang}}">
 <div class="khoa-nhan">
 <span>{{k.nhan}}</span>
 <sc-if value="{{k.bat}}"><span class="huy huy-xanh">Đang bật</span></sc-if>
@@ -437,10 +463,12 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{khongCoKhoaToiDs}}">
 <div class="bang-tb-rong">Bạn chưa tạo khoá API cá nhân nào. Dùng biểu mẫu ở trên để tạo khoá.</div>
 </sc-if>
+</div></sc-if>
 </section>
 
-<section class="the" aria-labelledby="h-doi-mk" id="doi-mat-khau">
-<h2 id="h-doi-mk" class="nhan-muc">Đổi mật khẩu tài khoản của tôi</h2>
+<section class="the muc-gap" aria-labelledby="h-doi-mk" id="doi-mat-khau">
+<h2 id="h-doi-mk" class="nhan-muc muc-gap-tieu"><button type="button" class="muc-gap-nut" data-mo-muc="doi-mat-khau" aria-expanded="{{m.doiMk.moChu}}" aria-controls="nd-doi-mat-khau" onClick="{{m.doiMk.bat}}" onKeyDown="{{m.doiMk.phim}}"><span>Đổi mật khẩu tài khoản của tôi</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+<sc-if value="{{m.doiMk.mo}}"><div class="muc-gap-nd" id="nd-doi-mat-khau">
 <p class="phu">Đổi mật khẩu sẽ tự động thu hồi mọi phiên đăng nhập web khác trên các thiết bị khác của bạn.</p>
 <form class="form-doi-mk" novalidate onSubmit="{{doiMkSubmit}}" style="display:flex;flex-direction:column;gap:12px;max-width:440px">
 <div class="truong">
@@ -461,6 +489,7 @@ main.pg{padding:12px 16px 24px}
 <button type="submit" class="nut nut-chinh" id="nut-gui-doi-mk" disabled="{{dangDoiMk}}">{{nhanDoiMk}}</button>
 </div>
 </form>
+</div></sc-if>
 </section>
 
 </main>
@@ -487,6 +516,10 @@ class Component extends DCLogic {
       loiTaiTrang: '',
       soTb: 0,
       menuMo: null,
+      // Mục thu gọn: mã mục → true khi đang mở. Luôn đóng mỗi lần tải (quy ước giao diện 17/10).
+      mucMo: {},
+      // Hàng danh sách đang mở chi tiết (điện thoại: hàng thu về MỘT dòng, bấm hàng mới hiện phụ + nút). 'nd:<id>' …
+      hangMo: null,
 
       // Quản lý người dùng (admin)
       dsNguoiDung: [],
@@ -1222,6 +1255,39 @@ class Component extends DCLogic {
     return ds;
   }
 
+  chuyenMuc(k) {
+    const mucMo = Object.assign({}, this.state.mucMo);
+    mucMo[k] = !mucMo[k];
+    this.setState({ mucMo });
+  }
+
+  // Trường dùng chung cho một hàng danh sách: lớp mở, thuộc tính a11y, bấm/phím (Enter/Space/Escape).
+  truongHang(khoa) {
+    const mo = this.state.hangMo === khoa;
+    const chuyen = () => this.setState({ hangMo: this.state.hangMo === khoa ? null : khoa });
+    return {
+      lopHang: mo ? 'hang-mo' : '', hangMoChu: mo ? 'true' : 'false', chuyenHang: chuyen,
+      phimHang: (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chuyen(); }
+        else if (e.key === 'Escape' && mo) this.setState({ hangMo: null });
+      }
+    };
+  }
+
+  // Mỗi mục thu gọn: {mo, moChu, bat, phim} cho mẫu ({{m.<mã>.…}}). Enter/Space là của chính nút; Escape đóng mục.
+  bangMuc() {
+    const ra = {};
+    for (const k of ['taoNd', 'dsNd', 'taoKhoa', 'dsKhoa', 'saoLuu', 'taoKhoaToi', 'dsKhoaToi', 'doiMk']) {
+      const mo = !!this.state.mucMo[k];
+      ra[k] = {
+        mo, moChu: mo ? 'true' : 'false',
+        bat: () => this.chuyenMuc(k),
+        phim: (e) => { if (e.key === 'Escape' && this.state.mucMo[k]) this.chuyenMuc(k); }
+      };
+    }
+    return ra;
+  }
+
   renderVals() {
     const s = this.state;
     const toi = s.toi;
@@ -1284,6 +1350,7 @@ class Component extends DCLogic {
       const uBat = !!u.bat;
       const uLaAdmin = u.vai === 'admin';
       return {
+        ...this.truongHang('nd:' + uId),
         id: uId,
         ten: u.ten_dang_nhap || uId,
         bat: uBat,
@@ -1317,6 +1384,7 @@ class Component extends DCLogic {
       const dungCuoi = k.dung_cuoi ? `Dùng cuối: ${K.tuongDoi(k.dung_cuoi)}` : 'Chưa dùng';
       const soLuot = `${k.so_luot || 0} lượt`;
       return {
+        ...this.truongHang('kk:' + k.id),
         id: k.id,
         nhan: k.nhan || 'Khoá khách',
         bat,
@@ -1343,6 +1411,7 @@ class Component extends DCLogic {
       const dungCuoi = k.dung_cuoi ? `Dùng cuối: ${K.tuongDoi(k.dung_cuoi)}` : 'Chưa dùng';
       const soLuot = `${k.so_luot || 0} lượt`;
       return {
+        ...this.truongHang('kt:' + k.id),
         id: k.id,
         nhan: k.nhan || 'Khoá cá nhân',
         bat,
@@ -1377,6 +1446,7 @@ class Component extends DCLogic {
       quayLai: K.quayLai(tn),
       menuMo: !!s.menuMo,
       dongMenu: () => this.setState({ menuMo: null }),
+      m: this.bangMuc(),
       phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null }); },
 
       tenNguoiDung: K.tenNguoiDung(toi) || '...',

@@ -1398,9 +1398,9 @@ async def xoa_nguon_git(id_: str, request: Request):
 HEADER_TRANG_MODULE = {
     "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
                                 "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
-                                "frame-ancestors 'none'"),
+                                "frame-ancestors 'self'"),
     "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
+    "X-Frame-Options": "SAMEORIGIN",
     "Referrer-Policy": "no-referrer",
 }
 

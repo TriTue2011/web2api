@@ -12,6 +12,8 @@
     ['ChatGPT', 'https://chatgpt.com/'], ['Claude', 'https://claude.ai/'], ['Gemini', 'https://gemini.google.com/']];
   const GOC = new URL('../../', location.href);
   const $ = (id) => document.getElementById(id);
+  // Nằm trong khung của Hệ thống thì thanh Hệ thống đã ở ngay trên: ẩn liên kết «← Hệ thống» (xem trang.css).
+  if (window.top !== window) document.documentElement.classList.add('trong-khung');
 
   let csrfToken = '';
   let ban = false;

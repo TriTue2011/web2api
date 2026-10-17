@@ -455,6 +455,7 @@ def test_trang_module_cham_bao_module_moi_va_tab_module(tmp_path, monkeypatch, t
     assert re.findall(r'data-nav="([^"]+)"', dom) == ["ai", "module", "m-echo", "bao_mat"]
     the = re.search(r'<[^>]*data-nav="m-echo"[^>]*>', dom)
     assert the, dom[:3000]  # thuộc tính HTML không có thứ tự cố định: lấy cả thẻ rồi kiểm href trong đó
-    assert re.search(r'href="http://127\.0\.0\.1:\d+/m/echo/echo\.dc\.html"', the.group(0)), the.group(0)
+    # Tab riêng của module nằm TRONG Hệ thống: trỏ tới trang chứa khung (không rời sang trang module).
+    assert 'href="He-thong-Module.dc.html?m=echo"' in the.group(0), the.group(0)
     assert 'data-nav="quay-lai"' not in dom
     assert 'data-o="echo"' in dom and 'data-tt="dang-chay"' in dom

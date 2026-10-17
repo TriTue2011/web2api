@@ -473,7 +473,7 @@ def test_tab_web_thanh_he_thong_khong_o_thanh_chinh_va_dung_thu_tu():
     # Kiểm tra chi tiết mục m-mod-demo
     muc_tab = next(x for x in kq_ht if x["id"] == "m-mod-demo")
     assert muc_tab["nhan"] == "Bàn điều khiển"
-    assert "m/mod-demo/index.html" in muc_tab["href"]
+    assert muc_tab["href"] == "He-thong-Module.dc.html?m=mod-demo"
     assert muc_tab["cham"] is False
     assert muc_tab["con"] == []
     assert muc_tab["ac"] == "false"

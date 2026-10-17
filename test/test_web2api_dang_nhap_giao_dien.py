@@ -805,6 +805,7 @@ def test_chrome_c3_user_tao_khoa_voi_pham_vi_va_nav_bao_mat(trang: Trang, tmp_pa
         assert trang.js("document.querySelector('[data-nav=\"module\"]')") is None
 
         # 2. Kiểm tra danh sách chip phạm vi khi tạo khoá của tôi: thấy đúng 2 chip 'chat' và 'anh'
+        trang.mo_het_muc()  # vào qua đăng nhập (không qua di) nên mục thu gọn còn đóng
         trang.cho("document.querySelectorAll('#tao-khoa-toi .chip').length >= 2", mo_ta="Hiện đủ các chip phạm vi")
         chips = trang.js("[...document.querySelectorAll('#tao-khoa-toi .chip')].map(c => c.getAttribute('data-pham-vi'))")
         assert "chat" in chips and "anh" in chips
@@ -844,6 +845,7 @@ def test_chrome_c2_doi_mat_khau_sai_hien_loi_giu_nguyen_o(trang: Trang, tmp_path
         trang.bam("document.getElementById('nut-dang-nhap')")
         trang.cho("location.pathname.endsWith('He-thong-Bao-mat.dc.html')", han=12)
         trang.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'", mo_ta="Trang Bảo mật dựng xong")
+        trang.mo_het_muc()  # mục «Đổi mật khẩu» thu gọn mặc định
         trang.cho("document.getElementById('o-mk-cu')", mo_ta="Hiện ô nhập mật khẩu cũ")
 
         # Nhập mật khẩu cũ sai

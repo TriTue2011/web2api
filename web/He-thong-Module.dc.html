@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Hệ thống · Module</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+main.pg{padding:16px 32px 24px;gap:12px;box-sizing:border-box}
+.khung-module{display:block;width:100%;border:1px solid var(--line);border-radius:10px;background:var(--nen,#fff);box-sizing:border-box;height:calc(100vh - 150px);min-height:520px}
+.khong-thay{color:var(--mute);padding:24px;text-align:center}
+@media (max-width:1023px){
+main.pg{padding:8px 12px 16px}
+.khung-module{height:calc(100vh - 190px);min-height:480px}
+}
+</style>
+</helmet>
+<div class="goc">
+
+<nav aria-label="Điều hướng Hệ thống" class="tb tb-ht" onKeyDown="{{phimNav}}">
+<sc-if value="{{coQuayLai}}"><div style="display:flex;align-items:center;gap:12px;flex:0 0 auto"><a class="quay-lai" data-nav="quay-lai" href="{{quayLai.href}}" aria-label="Quay lại {{quayLai.nhan}}" title="Quay lại {{quayLai.nhan}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.quay_lai}}"></path></svg><span>Quay lại</span></a></div></sc-if>
+<sc-if value="{{khongQuayLai}}"><div class="thuong-hieu"><div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div><span class="ten-web">web2api</span></div></sc-if>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{navHT}}" as="t"><div class="muc-nav">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" role="img" aria-label="{{t.nhanCham}}" title="{{t.nhanCham}}"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
+</nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
+
+<main class="pg">
+<h1 class="an-chu">Hệ thống — {{tenTab}}</h1>
+<sc-if value="{{coLoiTaiTrang}}"><p role="alert" class="bao bao-loi" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>{{loiTaiTrang}}</span><button type="button" class="nut nut-nho" onClick="{{taiLai}}">Thử lại</button></p></sc-if>
+<sc-if value="{{coKhung}}"><iframe class="khung-module" title="{{tenTab}}" src="{{duongKhung}}" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe></sc-if>
+<sc-if value="{{khongCoKhung}}"><p class="khong-thay">{{loiKhung}}</p></sc-if>
+</main>
+
+
+<nav aria-label="Điều hướng Hệ thống (điện thoại)" class="bn"><sc-for list="{{navHT}}" as="t">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><sc-if value="{{t.cham}}"><span class="cham" aria-hidden="true"></span></sc-if></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" aria-label="{{t.nhan}}" onClick="{{t.bat}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></button>
+<sc-if value="{{t.mo}}"><div class="bn-mui" aria-hidden="true" style="{{t.viTriMui}}"></div><div class="bn-menu" role="menu" aria-label="Mục trong {{t.nhan}}" style="{{t.viTri}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con-duoi="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</sc-for></nav>
+
+</div>
+</x-dc>
+
+
+<script type="text/x-dc" data-dc-script data-props='{}'>
+const K = window.Khung;
+
+// Trang chủ chứa tab riêng của module: giữ nguyên thanh Hệ thống (AI, Module, … Bảo mật), tab riêng của module nằm
+// trong khung. Mã module lấy từ ?m=<id> và CHỈ được tra trong danh sách tab do máy chủ khai (/api/tinh-nang → tab) —
+// địa chỉ khung không bao giờ lấy thẳng từ URL.
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { toi: null, tn: null, loiTaiTrang: '', soTb: 0, menuMo: null, daTai: false };
+  }
+
+  async didMount() { await this.taiLai(); }
+
+  async taiLai() {
+    let toi;
+    try { toi = await K.napToi(); }
+    catch (e) { this.setState({ loiTaiTrang: (e && e.message) || 'Lỗi kết nối máy chủ.' }); return; }
+    if (!toi || !toi.id) { K.chuyenDangNhap(); return; }
+    this.setState({ toi, loiTaiTrang: '' });
+    try { this.setState({ tn: await K.taiTinhNang(), daTai: true }); }
+    catch (e) { this.setState({ daTai: true, loiTaiTrang: (e && e.message) || 'Không đọc được trạng thái.' }); }
+  }
+
+  maModule() { return new URLSearchParams(location.search).get('m') || ''; }
+
+  tabHienTai() {
+    const tn = this.state.tn;
+    const m = this.maModule();
+    return ((tn && tn.tab) || []).find((t) => t && t.module === m) || null;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const toi = s.toi;
+    const laAdmin = !!(toi && toi.vai === 'admin');
+    const tab = this.tabHienTai();
+    const href = tab ? K.lienKetAnToan(tab.duong) : null;
+    const navHT = K.menuNav(this, K.navHeThong(s.tn, 'm-' + this.maModule(), s.soTb), null);
+    const coQuayLai = !!K.quayLai(s.tn);
+    let loiKhung = '';
+    if (s.daTai && !href && !s.loiTaiTrang) loiKhung = 'Module này không có trang riêng hoặc chưa được cài.';
+    return {
+      hinh: K.BIEU_TUONG,
+      navHT,
+      coQuayLai, khongQuayLai: !coQuayLai,
+      quayLai: coQuayLai ? K.quayLai(s.tn) : {},
+      phimNav: (e) => K.phimNav ? K.phimNav(e) : null,
+      menuMo: s.menuMo,
+      dongMenu: () => this.setState({ menuMo: null }),
+      tenNguoiDung: K.tenNguoiDung ? K.tenNguoiDung(toi) : '',
+      nhanVai: laAdmin ? 'admin' : 'user',
+      dangXuat: () => K.dangXuat(),
+      coLoiTaiTrang: !!s.loiTaiTrang,
+      loiTaiTrang: s.loiTaiTrang,
+      taiLai: () => this.taiLai(),
+      tenTab: tab ? tab.nhan : 'Module',
+      coKhung: !!href, duongKhung: href || '',
+      khongCoKhung: !!loiKhung, loiKhung,
+    };
+  }
+}
+</script>
+</body>
+</html>

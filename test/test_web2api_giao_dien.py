@@ -1369,7 +1369,7 @@ def test_loai_la_tab_module_va_muc_can_cung_lat_voi_khung(trang, tmp_path, monke
         # Tab riêng của module loại lạ nằm TRONG thanh Hệ thống (không ngang hàng Studio); chưa có Studio thì không có «Quay lại».
         assert trang.js("!document.querySelector('[data-nav=\"quay-lai\"]')")
         tab_md = trang.js("document.querySelector('[data-nav=\"m-mang-gia\"]')?.getAttribute('href')")
-        assert tab_md and tab_md.endswith("/m/mang-gia/index.html"), tab_md
+        assert tab_md == "He-thong-Module.dc.html?m=mang-gia", tab_md
         assert trang.js("[...document.querySelectorAll('#muc-module [data-muc]')].map((x) => x.dataset.muc)") == ["bang"]
         assert "«Tự động điều chỉnh» chưa mở" in trang.chu("#muc-module") and "chat" in trang.chu("#muc-module")
         assert not trang.js("!!document.querySelector('[data-muc=\"tu-dong\"]')")

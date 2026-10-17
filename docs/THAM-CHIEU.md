@@ -1396,8 +1396,11 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
   tên module/trường nào. Lưu qua đúng đường cài có sẵn (kho 0600).
 - Dịch vụ chỉ đọc cookie của hồ sơ FIREFOX từ BẢN SAO `cookies.sqlite` (+ `-wal`) trong thư mục tạm 0700, mở không
   theo symlink (chặn đọc chéo hồ sơ), chỉ cookie còn hạn của đúng tên miền và tên miền con, xoá bản sao ngay.
-- Trang tab module (`/m/<id>/…`) mang CSP `default-src 'self'; script-src 'self'; …; frame-ancestors 'none'`,
-  `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`; trang chỉ dựng DOM bằng `textContent`.
+- Trang tab module (`/m/<id>/…`) mang CSP `default-src 'self'; script-src 'self'; …; frame-ancestors 'self'`,
+  `nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`; trang chỉ dựng DOM bằng `textContent`.
+  Tab riêng của module hiện TRONG Hệ thống: thanh Hệ thống giữ nguyên, trang module nằm trong khung (iframe) của
+  `He-thong-Module.dc.html?m=<id>`; mã module chỉ được tra trong danh sách tab máy chủ khai, khung `sandbox` không có
+  `allow-top-navigation`, và chỉ trang cùng gốc được nhúng (gốc khác vẫn bị chặn).
 
 **Giới hạn.**
 - Chưa kiểm tra với dịch vụ trình duyệt thật (chỉ máy chủ ASGI giả lập; noVNC 1.6.0 thật đã chạy qua proxy với backend giả).
