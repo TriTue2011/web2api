@@ -213,12 +213,20 @@ def bao_loi_phien(module: Any, khoa: Any, ma_loi: str = "") -> "asyncio.Task | N
         return task
 
 
-async def _chay_khoi_phuc(module: Any, module_id: str, khoa: str, ma_loi: str) -> None:
-    """Lượt khôi phục nền: chạy các tầng (a)→(d), cập nhật trạng thái."""
+async def _chay_khoi_phuc(module: Any, module_id: str, khoa: str, ma_loi: str,
+                        dang_chay: dict | None = None) -> None:
+    """Lượt khôi phục nền: chạy các tầng (a)→(d), cập nhật trạng thái.
+
+    `dang_chay` được truyền tiếp cho `khoi_phuc` để tầng (b) tự lấy bộ điều
+    khiển trình duyệt thật qua cầu nối lõi (NV94-e). None → tự lấy từ registry.
+    """
+    if dang_chay is None:
+        dang_chay = _dang_chay_hien_tai()
     try:
         trinh_duyet = await _lay_trinh_duyet(module_id)
         tai_khoan = kp.TaiKhoanCanKhoiPhuc(khoa=khoa)
-        kq = await kp.khoi_phuc(module, tai_khoan, trinh_duyet=trinh_duyet)
+        kq = await kp.khoi_phuc(module, tai_khoan, trinh_duyet=trinh_duyet,
+                                dang_chay=dang_chay)
         if kq.thanh_cong and kq.khoa_moi:
             # Tầng (c): tài khoản cũ vừa bị đánh dấu hỏng và đã chuyển sang khoá
             # kế — KHÔNG bỏ dấu hỏng, kẻo lần chọn sau lại quay về khoá hỏng.
@@ -419,14 +427,22 @@ class QuanLyTuLamMoi:
         self._vong: dict[str, VongTuLamMoi] = {}
         self._task: asyncio.Task | None = None
         self._dung_co = False
+        self._lay_dang_chay: Callable[[], dict] | None = None
 
     def bat_dau(self, lay_dang_chay: Callable[[], dict]) -> None:
-        """`lay_dang_chay`: () -> {module_id: module}. Tạo tác vụ đồng bộ."""
+        """`lay_dang_chay`: () -> {module_id: module}. Tạo tác vụ đồng bộ.
+
+        NV94-e: NHỚ hàm này (và đăng ký toàn cục) để `bao_loi_phien` truyền
+        `dang_chay` cho `khoi_phuc` — nối vòng tự làm mới với cầu nối trình
+        duyệt thật.
+        """
         if self._task is not None and not self._task.done():
             return
+        self._lay_dang_chay = lay_dang_chay
+        dang_ky_dang_chay(lay_dang_chay)
         self._dung_co = False
         self._task = asyncio.get_running_loop().create_task(
-            self._vong_dong_bo(lay_dang_chay))
+            self._vong_dong_bo())
 
     async def dung(self) -> None:
         """Dừng gọn: dừng mọi vòng rồi huỷ tác vụ đồng bộ."""
@@ -442,11 +458,12 @@ class QuanLyTuLamMoi:
                 pass
             self._task = None
 
-    async def _vong_dong_bo(self, lay_dang_chay: Callable[[], dict]) -> None:
+    async def _vong_dong_bo(self) -> None:
         try:
             while not self._dung_co:
                 try:
-                    self.dong_hoa(lay_dang_chay())
+                    lay = self._lay_dang_chay or (lambda: {})
+                    self.dong_hoa(lay())
                 except Exception as e:
                     log.warning("tu-lam-moi: đồng bộ vòng lỗi: %s", type(e).__name__)
                 await asyncio.sleep(self.CHU_KY_DONG_BO)
@@ -481,6 +498,30 @@ class QuanLyTuLamMoi:
 
     def cac_vong(self) -> dict[str, VongTuLamMoi]:
         return dict(self._vong)
+
+
+#: Hàm () -> {module_id: module} do lifespan đăng ký qua bat_dau/dang_ky_dang_chay.
+#: `bao_loi_phien` dùng để truyền `dang_chay` cho `khoi_phuc` (NV94-e: nối
+#: NV91 với cầu nối trình duyệt thật NV92).
+_lay_dang_chay: Callable[[], dict] | None = None
+
+
+def dang_ky_dang_chay(ham: Callable[[], dict]) -> None:
+    """Đăng ký hàm lấy các module đang chạy (lifespan gọi một lần)."""
+    global _lay_dang_chay
+    if not callable(ham):
+        raise ValueError("ham phải gọi được")
+    _lay_dang_chay = ham
+
+
+def _dang_chay_hien_tai() -> dict | None:
+    if _lay_dang_chay is None:
+        return None
+    try:
+        dc = _lay_dang_chay()
+    except Exception:
+        return None
+    return dc if isinstance(dc, dict) else None
 
 
 _quan_ly: QuanLyTuLamMoi | None = None

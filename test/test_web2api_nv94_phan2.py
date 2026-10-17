@@ -76,3 +76,48 @@ class TestHoSoThatCuaTaiKhoan:
     def test_lay_trinh_duyet_that_tu_choi_khong_hex(self):
         from app import khoi_phuc_phien
         assert khoi_phuc_phien.lay_trinh_duyet_that("chatgpt-web-ab12cd34ef56", {}) is None
+
+
+# ── (e) nối NV91↔NV92: dang_chay tới khoi_phuc ─────────────────────────────
+
+class TestTuLamMoiNoiDangChay:
+    def test_bat_dau_nho_lay_dang_chay(self):
+        import asyncio
+        from app import tu_lam_moi
+
+        async def chay():
+            ql = tu_lam_moi.QuanLyTuLamMoi()
+            ham = lambda: {"m1": object()}
+            ql.bat_dau(ham)
+            try:
+                assert ql._lay_dang_chay is ham
+            finally:
+                await ql.dung()
+
+        asyncio.run(chay())
+
+    def test_chay_khoi_phuc_truyen_dang_chay(self, monkeypatch):
+        import asyncio
+        from app import khoi_phuc_phien as kp
+        from app import tu_lam_moi
+
+        da_goi = {}
+
+        async def gia_khoi_phuc(module, tai_khoan, **kw):
+            da_goi.update(kw)
+            return kp.KetQuaKhoiPhuc(True, tang="a")
+
+        monkeypatch.setattr(kp, "khoi_phuc", gia_khoi_phuc)
+        dc = {"m1": object()}
+        tu_lam_moi.dang_ky_dang_chay(lambda: dc)
+
+        class ModGia:
+            async def lam_moi_phien(self, khoa):
+                return kp.KetQuaKhoiPhuc(False, tang="a", ma_loi="hong")
+
+        async def chay():
+            await tu_lam_moi._chay_khoi_phuc(ModGia(), "m1", "k1", "")
+
+        asyncio.run(chay())
+        assert da_goi.get("dang_chay") is dc, \
+            "_chay_khoi_phuc chưa truyền dang_chay cho khoi_phuc"
