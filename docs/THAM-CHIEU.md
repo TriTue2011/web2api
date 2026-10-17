@@ -47,6 +47,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
+| Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
@@ -1738,6 +1739,63 @@ hỏng liên tiếp thì ngừng), `tai_khoan_ke`/`danh_dau_hong` (tầng c), `m
 `ho_so_trinh_duyet`. CAPTCHA/2FA/xác minh thiết bị → `can_nguoi`, dừng ngay, không cố vượt. Kiểm với máy chủ giả
 trong `test/test_web2api_nv89_claude_web.py`; **chưa kiểm với dịch vụ thật/Chrome** — claude.ai không có ô mật khẩu
 Anthropic (chỉ mã email hoặc «Continue with Google» SSO) nên chi tiết SSO thật chưa kiểm.
+
+### Module grok-api — Grok API (xAI)
+
+**Mô tả.** Gọi các model Grok bằng **khoá API chính thức của xAI** qua endpoint tương thích OpenAI
+(`https://api.x.ai/v1`): trò chuyện (kể cả stream). Khác module `grok-web`: đường này là API chính thức —
+**không qua Cloudflare, không cần đăng nhập web hay cookie**. Module chuyển tiếp thẳng tới xAI qua bộ
+chuyển tiếp dùng chung của lõi (`app/chuyen_tiep.py`); giá trị thêm vào: xoay vòng nhiều khoá, cho khoá nghỉ
+khi hết hạn mức/bị từ chối, đổi địa chỉ gốc, chuẩn hoá lỗi, danh sách model, kiểm sức khoẻ. Mã nguồn:
+`modules/grok-api/`. Tiền tố model: `grok-api` (vd `grok-api/grok-4`). Hạng: `A`.
+
+**Cần gì.**
+- Một hoặc nhiều khoá API lấy ở https://console.x.ai (đăng nhập tài khoản xAI, tạo API key trong mục API Keys).
+- Container ra được Internet tới `api.x.ai`.
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "grok-api"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/grok-api`
+3. Cài đặt cấu hình:
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {"api_keys": ["xai-..."]}}' \
+     $W/api/modules/grok-api/cai
+   ```
+
+   Lúc cài, module kiểm từng khoá bằng `GET /models` thật (rẻ, không tốn token); khoá bị từ chối
+   (401/403) bị loại, chỉ giữ khoá gọi được. Khoá lưu riêng trong kho bí mật (quyền 0600), chỉ hiện dạng
+   che `…abcd`, không bao giờ hiện lại hay vào log.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `api_keys` | Có | Danh sách khoá API xAI (hoặc một chuỗi, các khoá cách nhau bằng dấu phẩy/xuống dòng). Lưu ở kho bí mật (0600); không API nào trả lại khoá. |
+| `base_url` | Không | Địa chỉ gốc thay cho `https://api.x.ai/v1` — chỉ đổi khi đi qua proxy trong mạng nhà; bị kiểm chống SSRF (`app/tu_xa.py`). |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "grok-api/<tên model>", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+(tên model lấy từ `GET $W/v1/models` — danh sách do xAI trả, module không viết cứng).
+
+**Sự cố thường gặp.**
+- `401` «Incorrect API key» — khoá sai hoặc bị thu hồi: tạo khoá mới ở console.x.ai rồi cài lại.
+- `429` — hết hạn mức: module tự cho khoá nghỉ rồi xoay sang khoá kế; hết khoá thì đợi theo `Retry-After`.
+- `404` model không có — tên model sai hoặc khoá đó không có quyền: lấy tên đúng từ `/v1/models`.
+
+**Giới hạn.**
+- Chỉ khả năng chat; chưa có ảnh/video (xAI chưa mở qua endpoint này).
+- **Chưa kiểm với api.x.ai thật** (cần khoá xAI thật) — mới kiểm với máy chủ giả
+  (`test/test_web2api_nv90_grok_api.py`).
 
 ### Kho danh tính và API danh tính (lõi)
 

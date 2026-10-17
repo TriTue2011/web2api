@@ -168,6 +168,7 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 | `vnc-xa` | Workspace trình duyệt từ xa noVNC | HTTP / WebSocket | Có sẵn (cần dịch vụ trình duyệt riêng `dich-vu/trinh-duyet`, cấu hình `dich_vu_url` và `khoa_dich_vu`; chưa kiểm với Firefox thật; đăng nhập tay, trích xuất cookie sang module khác) |
 | `gemini-web` | Trò chuyện miễn phí bằng cookie Google | HTTP (batchexecute nội bộ) | Thử nghiệm, chưa kiểm với dịch vụ thật (giao thức web không chính thức; ảnh/video chưa làm; đăng nhập lại tự động + khôi phục nhiều tầng NV89) |
 | `grok-web` | Trò chuyện miễn phí bằng cookie | WebSocket tới grok.com | Thử nghiệm, chưa kiểm với grok.com thật (cần cookie tài khoản thật; đăng nhập lại tự động + khôi phục nhiều tầng NV89) |
+| `grok-api` | Trò chuyện bằng khoá API xAI | OpenAI HTTP | Có sẵn (API chính thức xAI, xoay nhiều khoá, cho khoá nghỉ khi hết hạn mức; chưa kiểm với api.x.ai thật) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.
