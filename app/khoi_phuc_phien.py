@@ -185,7 +185,15 @@ class BoDieuKhienTrinhDuyet(abc.ABC):
     def doc_cookie(self, mien: str) -> dict: ...
 
     @abc.abstractmethod
-    def tin_hieu(self) -> set: ...
+    def tin_hieu(self, quy_tac: list | None = None) -> set:
+        """Tín hiệu trang hiện tại: script cấu trúc chung (mã mở) ∪ quy tắc của module.
+
+        `quy_tac`: danh sách quy tắc CẤU TRÚC do module khai (kiểu
+        ``module.quy_tac_tin_hieu()``): mỗi quy tắc có ``loai`` thuộc
+        {"cookie", "url_chua", "tieu_de_chua", "bo_chon"} và ``tin_hieu`` là
+        tên tín hiệu mã mở ([a-z0-9_]). KHÔNG dò chữ trên trang. None/[] →
+        chỉ tín hiệu chung.
+        """
 
     async def vuot_thu_thach(self) -> None:
         """Cố vượt thử thách truy cập trên trang hiện tại (mặc định: không hỗ trợ).
@@ -231,9 +239,31 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
         cau_hinh = self._trang.get(self._hien_tai or "", {})
         return dict(cau_hinh.get("cookie") or {})
 
-    def tin_hieu(self) -> set:
+    def tin_hieu(self, quy_tac: list | None = None) -> set:
         cau_hinh = self._trang.get(self._hien_tai or "", {})
-        return set(cau_hinh.get("tin_hieu") or [])
+        ra = set(cau_hinh.get("tin_hieu") or [])
+        url = self._hien_tai or ""
+        cookie = dict(cau_hinh.get("cookie") or {})
+        tieu_de = str(cau_hinh.get("tieu_de") or "")
+        phan_tu = cau_hinh.get("phan_tu") or []
+        for q in (quy_tac or []):
+            if not isinstance(q, dict):
+                continue
+            ten_th = q.get("tin_hieu")
+            if not isinstance(ten_th, str) or not ten_th:
+                continue
+            loai = q.get("loai")
+            if loai == "cookie" and q.get("ten") in cookie:
+                ra.add(ten_th)
+            elif loai == "url_chua" and isinstance(q.get("gia_tri"), str) \
+                    and q["gia_tri"] in url:
+                ra.add(ten_th)
+            elif loai == "tieu_de_chua" and isinstance(q.get("gia_tri"), str) \
+                    and q["gia_tri"] in tieu_de:
+                ra.add(ten_th)
+            elif loai == "bo_chon" and q.get("bo_chon") in phan_tu:
+                ra.add(ten_th)
+        return ra
 
     async def vuot_thu_thach(self) -> None:
         """Cố vượt thử thách trên trang hiện tại (giả lập theo kịch bản).
@@ -268,12 +298,17 @@ def la_captcha_chu(tin_hieu) -> bool:
 
 
 async def vuot_thu_thach_toi_da(trinh_duyet,
-                                so_luot: int = SO_LUOT_VUOT_THU_THACH_TOI_DA) -> bool:
+                                so_luot: int = SO_LUOT_VUOT_THU_THACH_TOI_DA,
+                                quy_tac: list | None = None) -> bool:
     """Cố vượt thử thách truy cập qua hợp đồng BoDieuKhienTrinhDuyet.
 
     Mã MỞ, không tên nhà cung cấp — dùng chung cho mọi module web và cho tầng
     (b) «đăng nhập lại tự động» của khoi_phuc (NV91 phần 2): khi đăng nhập lại
     gặp thử thách thì gọi helper này thay vì bỏ cuộc ngay.
+
+    `quy_tac`: quy tắc cấu trúc của module (NV94-b) — đọc tín hiệu qua
+    `tin_hieu(quy_tac)`; bộ điều khiển cũ chưa nhận tham số thì tự về
+    `tin_hieu()`.
 
     Trả True = tín hiệu «thu_thach_truy_cap» đã hết (được phép tiếp tục);
     False = vẫn còn sau N lượt → bên gọi báo «cần người». Lỗi lạ khi đọc tín
@@ -290,9 +325,16 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
         so_luot = max(1, int(so_luot))
     except Exception:
         so_luot = SO_LUOT_VUOT_THU_THACH_TOI_DA
+
+    def _doc() -> set:
+        try:
+            return set(trinh_duyet.tin_hieu(quy_tac) or [])
+        except TypeError:
+            return set(trinh_duyet.tin_hieu() or [])
+
     for _ in range(so_luot):
         try:
-            if "thu_thach_truy_cap" not in trinh_duyet.tin_hieu():
+            if "thu_thach_truy_cap" not in _doc():
                 return True
         except Exception:
             return False
@@ -301,12 +343,42 @@ async def vuot_thu_thach_toi_da(trinh_duyet,
         except Exception:
             return False
     try:
-        return "thu_thach_truy_cap" not in trinh_duyet.tin_hieu()
+        return "thu_thach_truy_cap" not in _doc()
     except Exception:
         return False
 
 
 # ── Cầu nối lõi: bộ điều khiển trình duyệt thật (NV92 P1) ────────────────────
+
+def _quy_tac_cua(module: Any) -> list:
+    """Quy tắc tín hiệu cấu trúc do module khai (NV94-b); không khai → [].
+
+    Mã mở, không tên nhà cung cấp: lõi chỉ truyền tiếp cho
+    `trinh_duyet.tin_hieu(quy_tac)`, dịch vụ thực thi bằng cấu trúc.
+    """
+    fn = getattr(module, "quy_tac_tin_hieu", None)
+    if not callable(fn):
+        return []
+    try:
+        q = fn()
+    except Exception as e:
+        log.warning("khoi-phuc: quy_tac_tin_hieu lỗi: %s", type(e).__name__)
+        return []
+    return list(q) if isinstance(q, list) else []
+
+
+def _tin_hieu_an_toan(trinh_duyet: Any, quy_tac: list) -> set:
+    """Đọc tín hiệu, tương thích bộ điều khiển cũ chưa nhận `quy_tac`."""
+    try:
+        return set(trinh_duyet.tin_hieu(quy_tac) or [])
+    except TypeError:
+        try:
+            return set(trinh_duyet.tin_hieu() or [])
+        except Exception:
+            return set()
+    except Exception:
+        return set()
+
 
 def _ho_so_that_cua(module: Any, khoa: str) -> str | None:
     """Mã hồ sơ Firefox THẬT (hex) của một tài khoản (NV94-d).
@@ -615,24 +687,22 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                     mat_khau_dung = mat_khau_kho
             dang_nhap_td = getattr(module, "dang_nhap_tu_dong", None)
             if mat_khau_dung is not None and callable(dang_nhap_td):
-                # Patch bổ sung NV90: trước khi gọi module đăng nhập lại, nếu
-                # trình duyệt đang báo thử thách truy cập (mã mở
-                # «thu_thach_truy_cap») thì cố vượt bằng helper lõi dùng chung
-                # thay vì bỏ cuộc ngay (NV91 tầng b dùng luôn). Không qua được
-                # → can_nguoi ngay, khỏi gọi module. Lõi không biết tên nhà
-                # cung cấp nào; helper chạy qua hợp đồng BoDieuKhienTrinhDuyet
-                # nên NV92 thay TrinhDuyetGia bằng TrinhDuyetThat vẫn dùng được.
-                if trinh_duyet is not None:
-                    try:
-                        th_b = trinh_duyet.tin_hieu()
-                    except Exception:
-                        th_b = set()
-                    if "thu_thach_truy_cap" in th_b:
-                        if not await vuot_thu_thach_toi_da(trinh_duyet):
-                            return await _vao_can_nguoi(
-                                module_id, khoa, "gặp thử thách truy cập, không vượt được",
-                                mo_novnc, nguoi_dung_id,
-                                _ho_so_cua(module, module_id, khoa), "")
+                # NV94-b: quy tắc tín hiệu cấu trúc do module khai (mã mở).
+                quy_tac_b = _quy_tac_cua(module)
+
+                async def _thu_thach_con() -> bool:
+                    """Còn tín hiệu thử thách truy cập không (đọc an toàn)."""
+                    if trinh_duyet is None:
+                        return False
+                    return "thu_thach_truy_cap" in _tin_hieu_an_toan(
+                        trinh_duyet, quy_tac_b)
+
+                async def _can_nguoi_thu_thach():
+                    return await _vao_can_nguoi(
+                        module_id, khoa, "gặp thử thách truy cập, không vượt được",
+                        mo_novnc, nguoi_dung_id,
+                        _ho_so_cua(module, module_id, khoa), "")
+
                 tk_b = TaiKhoanCanKhoiPhuc(khoa=khoa, email=tai_khoan.email,
                                            mat_khau=mat_khau_dung)
                 if td_tu_cau_noi:
@@ -640,6 +710,13 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                     # đúng lượt này; người gọi tự đưa thì tự quản vòng đời.
                     try:
                         async with phien_dieu_khien_that(trinh_duyet):
+                            # NV94-P3: kiểm tín hiệu SAU khi đã giành quyền.
+                            # (Trước đây kiểm trước khi giành → với trình duyệt
+                            # thật luôn 409 và bị nuốt thành «không thử thách».)
+                            if await _thu_thach_con():
+                                if not await vuot_thu_thach_toi_da(
+                                        trinh_duyet, quy_tac=quy_tac_b):
+                                    return await _can_nguoi_thu_thach()
                             kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b,
                                                    trinh_duyet)
                     except Exception as e:
@@ -649,6 +726,12 @@ async def khoi_phuc(module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
                                     type(e).__name__)
                         kq = KetQuaKhoiPhuc(False, tang=TANG_B, ma_loi="trinh_duyet_ban")
                 else:
+                    # Người gọi tự quản vòng đời trình duyệt: kiểm trước khi
+                    # gọi module như cũ (không có giành/409 ở đây).
+                    if await _thu_thach_con():
+                        if not await vuot_thu_thach_toi_da(
+                                trinh_duyet, quy_tac=quy_tac_b):
+                            return await _can_nguoi_thu_thach()
                     kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk_b, trinh_duyet)
                 if kq.can_nguoi:
                     return await _vao_can_nguoi(module_id, khoa, "gặp màn hình cần người xử lý",

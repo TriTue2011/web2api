@@ -121,3 +121,77 @@ class TestTuLamMoiNoiDangChay:
         asyncio.run(chay())
         assert da_goi.get("dang_chay") is dc, \
             "_chay_khoi_phuc chưa truyền dang_chay cho khoi_phuc"
+
+
+# ── (b) quy tắc tín hiệu bằng cấu trúc ────────────────────────────────────
+
+QUY_TAC_MAU = [
+    {"loai": "cookie", "mien": "google.com", "ten": "SID",
+     "tin_hieu": "da_dang_nhap"},
+    {"loai": "url_chua", "gia_tri": "accounts.google.com/challenge",
+     "tin_hieu": "thu_thach_truy_cap"},
+]
+
+
+class TestTinHieuTheoQuyTac:
+    def test_trinh_duyet_gia_danh_gia_quy_tac_cookie(self):
+        from app.khoi_phuc_phien import TrinhDuyetGia
+        td = TrinhDuyetGia({"https://myaccount.google.com/":
+                            {"cookie": {"SID": "abc"}}})
+
+        async def chay():
+            await td.mo_trang("https://myaccount.google.com/")
+            return td.tin_hieu(QUY_TAC_MAU)
+
+        import asyncio
+        assert "da_dang_nhap" in asyncio.run(chay())
+
+    def test_trinh_duyet_gia_danh_gia_quy_tac_url(self):
+        from app.khoi_phuc_phien import TrinhDuyetGia
+        td = TrinhDuyetGia({})
+
+        async def chay():
+            await td.mo_trang("https://accounts.google.com/challenge/abc")
+            return td.tin_hieu(QUY_TAC_MAU)
+
+        import asyncio
+        assert "thu_thach_truy_cap" in asyncio.run(chay())
+
+    def test_ho_so_google_khai_quy_tac_cau_truc(self):
+        import sys
+        sys.path.insert(0, "modules/ho-so-google")
+        try:
+            import importlib
+            mod = importlib.import_module("module")
+            m = mod.Module({})
+            qt = m.quy_tac_tin_hieu()
+            assert isinstance(qt, list) and qt
+            for q in qt:
+                assert q["loai"] in ("cookie", "url_chua", "tieu_de_chua", "bo_chon")
+                assert "tin_hieu" in q
+            # Không dò chữ: không quy tắc nào mang nội dung văn bản trang
+            assert not any("van_ban" in q or "text" in q for q in qt)
+            ten_th = {q["tin_hieu"] for q in qt}
+            assert "da_dang_nhap" in ten_th
+        finally:
+            sys.path.remove("modules/ho-so-google")
+
+    def test_ho_so_google_di_tat_bang_quy_tac(self):
+        import asyncio, sys
+        sys.path.insert(0, "modules/ho-so-google")
+        try:
+            import importlib
+            mod = importlib.import_module("module")
+            from app.khoi_phuc_phien import TrinhDuyetGia
+            m = mod.Module({})
+            td = TrinhDuyetGia({"https://myaccount.google.com/":
+                                {"cookie": {"SID": "abc"}}})
+
+            async def chay():
+                return await m.dang_nhap("abcd1234abcd1234", "a@b.c", None, td)
+
+            kq = asyncio.run(chay())
+            assert kq.thanh_cong and kq.buoc == "di_tat", \
+                "quy tắc cấu trúc chưa được truyền qua tin_hieu"
+        finally:
+            sys.path.remove("modules/ho-so-google")

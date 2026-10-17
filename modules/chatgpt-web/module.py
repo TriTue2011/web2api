@@ -217,6 +217,8 @@ def _goi_toi_thieu(ten: str) -> str:
     return "plus"
 
 
+_QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'chatgpt.com', 'ten': 'access_token', 'tin_hieu': 'da_dang_nhap'}, {'loai': 'url_chua', 'gia_tri': 'auth/login', 'tin_hieu': 'chua_dang_nhap'}]
+
 class Module:
     """Lớp Module theo hợp đồng app/kham_pha.py."""
 
@@ -279,7 +281,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
@@ -293,7 +295,7 @@ class Module:
                 # Bước «chờ phiên»: Google chuyển về với phiên đã đăng nhập.
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
@@ -486,7 +488,6 @@ class Module:
             return True
         return self.mat_khau_da_luu(khoa) is not None
 
-    def ho_so_trinh_duyet(self, khoa: str) -> str:
     def danh_tinh_id_cua(self, khoa: str) -> str | None:
         """id danh tính của tài khoản (NV94-d). Module gắn một danh tính cho
         toàn bộ tài khoản trong cấu hình; tài khoản lạ → None."""
@@ -497,9 +498,19 @@ class Module:
             return None
         return self._danh_tinh_id
 
+    def quy_tac_tin_hieu(self) -> list:
+        """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
+
+        Dịch vụ thực thi: cookie đặc trưng có/không, URL đích — không dò chữ.
+        Chỉ NHẬN RA thử thách → can_nguoi (không tự vượt).
+        """
+        return [dict(q) for q in _QUY_TAC_TIN_HIEU]
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"chatgpt-web-{bam}"
+
+
 
     # -- đăng nhập theo hợp đồng NV67 (NV88 mở rộng) ---------------------------
 
@@ -524,7 +535,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-            tin_hieu = trinh_duyet.tin_hieu()
+            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:

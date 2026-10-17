@@ -180,6 +180,8 @@ class _TaiKhoanNV93:
             self.ho_so = hs
 
 
+_QUY_TAC_TIN_HIEU = [{'loai': 'url_chua', 'gia_tri': 'muse.ai/login', 'tin_hieu': 'chua_dang_nhap'}]
+
 class Module:
     def __init__(self, manifest: dict):
         self.manifest = manifest
@@ -311,14 +313,23 @@ class Module:
         """Module có biết khoá này không?"""
         return self._tim_acc(khoa) is not None
 
-    def ho_so_trinh_duyet(self, khoa: str) -> str:
     def danh_tinh_id_cua(self, khoa: str) -> str | None:
         """muse.ai không qua SSO Google nên không có danh tính hồ sơ (NV94-d)."""
         return None
 
+    def quy_tac_tin_hieu(self) -> list:
+        """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
+
+        Dịch vụ thực thi: cookie đặc trưng có/không, URL đích — không dò chữ.
+        Chỉ NHẬN RA thử thách → can_nguoi (không tự vượt).
+        """
+        return [dict(q) for q in _QUY_TAC_TIN_HIEU]
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"muse2api-{bam}"
+
+
 
     async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
         """Hợp đồng NV67: cookie → kiểm bằng bootstrap; mat_khau/dang_nhap_lai
@@ -439,7 +450,7 @@ class Module:
         try:
             # Đi tắt: hồ sơ đã có phiên muse.ai còn hiệu lực.
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
             if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                 # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
                 return KetQuaDangNhap(False, ma_loi="can_nguoi")
@@ -448,7 +459,7 @@ class Module:
                 await trinh_duyet.bam(self._BO_CHON_GOOGLE)
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:

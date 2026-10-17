@@ -157,6 +157,8 @@ def _gio_utc() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+_QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'google.com', 'ten': '__Secure-1PSID', 'tin_hieu': 'da_dang_nhap'}, {'loai': 'url_chua', 'gia_tri': 'accounts.google.com', 'tin_hieu': 'chua_dang_nhap'}]
+
 class Module:
     """Lớp Module theo hợp đồng app/kham_pha.py."""
 
@@ -269,7 +271,6 @@ class Module:
             return True
         return self.mat_khau_da_luu(khoa) is not None
 
-    def ho_so_trinh_duyet(self, khoa: str) -> str:
     def danh_tinh_id_cua(self, khoa: str) -> str | None:
         """id danh tính của tài khoản (NV94-d: cầu nối trình duyệt thật đi qua
         danh tính → ho_so hex, không đoán từ ho_so_trinh_duyet)."""
@@ -279,9 +280,19 @@ class Module:
             return None
         return tk.danh_tinh_id if tk is not None else None
 
+    def quy_tac_tin_hieu(self) -> list:
+        """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
+
+        Dịch vụ thực thi: cookie đặc trưng có/không, URL đích — không dò chữ.
+        Chỉ NHẬN RA thử thách → can_nguoi (không tự vượt).
+        """
+        return [dict(q) for q in _QUY_TAC_TIN_HIEU]
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"gemini-web-{bam}"
+
+
 
     # -- đăng nhập bằng trình duyệt -------------------------------------------
 
@@ -316,7 +327,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-            tin_hieu = trinh_duyet.tin_hieu()
+            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
@@ -452,7 +463,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_TAI_DUNG)
-            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
@@ -466,7 +477,7 @@ class Module:
                 # Bước «chờ phiên»: SSO chuyển về trang đã đăng nhập.
                 da_vao = False
                 for _ in range(20):
-                    tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                    tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:

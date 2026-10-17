@@ -51,6 +51,20 @@ BO_CHON_TIEP_MA_2FA = "#idvPreregisteredPhoneNext"
 #: Tín hiệu «cần người» từ tin_hieu() của bộ điều khiển (mã mở theo hợp đồng).
 TIN_HIEU_CAN_NGUOI = frozenset({"captcha", "xac_minh_thiet_bi", "xac_minh"})
 
+#: Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): cookie đặc trưng có/không, URL đích.
+#: Mã mở — không dò chữ trên trang, không tên nhà cung cấp trong mã lõi.
+#: Dịch vụ thực thi các quy tắc này (server.doc_tin_hieu).
+QUY_TAC_TIN_HIEU = [
+    {"loai": "cookie", "mien": "google.com", "ten": "SID",
+     "tin_hieu": "da_dang_nhap"},
+    {"loai": "cookie", "mien": "google.com", "ten": "__Secure-1PSID",
+     "tin_hieu": "da_dang_nhap"},
+    {"loai": "url_chua", "gia_tri": "accounts.google.com/challenge",
+     "tin_hieu": "thu_thach_truy_cap"},
+    {"loai": "url_chua", "gia_tri": "accounts.google.com/signin",
+     "tin_hieu": "chua_dang_nhap"},
+]
+
 #: Các bước của thủ tục (ngữ nghĩa 4 bước).
 BUOC_DI_TAT = "di_tat"
 BUOC_BAM_GOOGLE = "bam_google"
@@ -142,6 +156,14 @@ class Module:
 
     # -- thủ tục đăng nhập ------------------------------------------------------
 
+    def quy_tac_tin_hieu(self) -> list:
+        """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
+
+        Dịch vụ thực thi: cookie đặc trưng có/không, URL đích — không dò chữ.
+        Chỉ NHẬN RA thử thách → can_nguoi (không tự vượt).
+        """
+        return [dict(q) for q in QUY_TAC_TIN_HIEU]
+
     async def dang_nhap(self, ho_so: str, email: str,
                                mat_khau: BiMatTam | None,
                                trinh_duyet,
@@ -165,7 +187,7 @@ class Module:
             # Bước 1 — «đi tắt»: hồ sơ đã đăng nhập sẵn thì xong ngay.
             self._dat_tien_do(ho_so, giai_doan="kiem_tra_phien")
             await trinh_duyet.mo_trang(URL_KIEM_TRA)
-            if "da_dang_nhap" in (trinh_duyet.tin_hieu() or set()):
+            if "da_dang_nhap" in (trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
                 self._dat_tien_do(ho_so, giai_doan="xong", buoc=BUOC_DI_TAT)
                 return KetQuaDangNhapGoogle(True, buoc=BUOC_DI_TAT)
             if mat_khau is None:
@@ -180,7 +202,7 @@ class Module:
             # Bước 2 — «bấm Google»: điền email/mật khẩu.
             self._dat_tien_do(ho_so, giai_doan="dien_email", buoc=BUOC_BAM_GOOGLE)
             await trinh_duyet.mo_trang(URL_DANG_NHAP)
-            if TIN_HIEU_CAN_NGUOI & set(trinh_duyet.tin_hieu() or set()):
+            if TIN_HIEU_CAN_NGUOI & set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set()):
                 return self._dung_can_nguoi(ho_so, url_novnc)
             mat_khau_tho = mat_khau.lay()
             try:
@@ -192,7 +214,7 @@ class Module:
             finally:
                 mat_khau_tho = None  # noqa: F841 — không giữ chuỗi thô
 
-            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
             if TIN_HIEU_CAN_NGUOI & tin_hieu:
                 return self._dung_can_nguoi(ho_so, url_novnc)
             # Bước 3 — «chờ phiên»: Google đòi mã 2FA.
@@ -251,7 +273,7 @@ class Module:
         finally:
             ma_tho = None  # noqa: F841
             ma.xoa()
-        tin_hieu = set(trinh_duyet.tin_hieu() or set())
+        tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
         if TIN_HIEU_CAN_NGUOI & tin_hieu:
             return self._dung_can_nguoi(ho_so, url_novnc)
         if "da_dang_nhap" in tin_hieu:

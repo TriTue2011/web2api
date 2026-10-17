@@ -187,6 +187,8 @@ def _che_email(email: str) -> str:
     return f"{dau}@{mien}" if mien else dau
 
 
+_QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'claude.ai', 'ten': 'sessionKey', 'tin_hieu': 'da_dang_nhap'}, {'loai': 'url_chua', 'gia_tri': 'claude.ai/login', 'tin_hieu': 'chua_dang_nhap'}]
+
 class Module:
     """Module claude-web: nap / cai / models / chat / suc_khoe / dung."""
 
@@ -351,7 +353,6 @@ class Module:
             return True
         return self.mat_khau_da_luu(khoa) is not None
 
-    def ho_so_trinh_duyet(self, khoa: str) -> str:
     def danh_tinh_id_cua(self, khoa: str) -> str | None:
         """id danh tính của tài khoản (NV94-d)."""
         try:
@@ -360,9 +361,19 @@ class Module:
             return None
         return acc.danh_tinh_id if acc is not None else None
 
+    def quy_tac_tin_hieu(self) -> list:
+        """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
+
+        Dịch vụ thực thi: cookie đặc trưng có/không, URL đích — không dò chữ.
+        Chỉ NHẬN RA thử thách → can_nguoi (không tự vượt).
+        """
+        return [dict(q) for q in _QUY_TAC_TIN_HIEU]
+    def ho_so_trinh_duyet(self, khoa: str) -> str:
         """ID workspace cho noVNC: đúng khuôn chữ/số/gạch ngang/gạch dưới."""
         bam = hashlib.sha256(str(khoa).encode("utf-8")).hexdigest()[:16]
         return f"claude-web-{bam}"
+
+
 
     _URL_DANG_NHAP = "https://claude.ai/login"
 
@@ -407,7 +418,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-            tin_hieu = trinh_duyet.tin_hieu()
+            tin_hieu = trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
@@ -542,14 +553,14 @@ class Module:
         try:
             # Bước 1 — đi tắt: hồ sơ đã có phiên claude.ai còn hiệu lực.
             await trinh_duyet.mo_trang(self._URL_GOC)
-            tin_hieu = set(trinh_duyet.tin_hieu() or set())
+            tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
             if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                 # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
                 return KetQuaDangNhap(False, ma_loi="can_nguoi")
             if "da_dang_nhap" not in tin_hieu:
                 # Bước 2 — bấm «Continue with Google» trong hồ sơ (SSO).
                 await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
-                tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                 if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                     return KetQuaDangNhap(False, ma_loi="can_nguoi")
                 if "da_dang_nhap" not in tin_hieu:
@@ -557,7 +568,7 @@ class Module:
                     # Bước 3 — chờ phiên hình thành sau SSO (hết lượt chờ rõ).
                     da_vao = False
                     for _ in range(20):
-                        tin_hieu = set(trinh_duyet.tin_hieu() or set())
+                        tin_hieu = set(trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                             return KetQuaDangNhap(False, ma_loi="can_nguoi")
                         if "da_dang_nhap" in tin_hieu:
