@@ -37,6 +37,12 @@ PSID_GIA_HET_HAN = "psid-gia-nv89-het-han-0002"
 
 COOKIE_GIA_OK = f"__Secure-1PSID={PSID_GIA_OK}; __Secure-1PSIDTS={PSIDTS_GIA_OK}"
 COOKIE_GIA_HET_HAN = f"__Secure-1PSID={PSID_GIA_HET_HAN}"
+
+
+def _khoa(cookie):
+    """Khoá NV93 «tk-<băm>» của một chuỗi cookie giả."""
+    psid, _ = mod_module._tach_psid(cookie)
+    return Module._khoa_tu_token(psid)
 MAT_KHAU_GIA = "mat-khau-gia-nv89-001"
 EMAIL_GIA = "ban-gia-nv89@example.com"
 
@@ -147,7 +153,7 @@ def test_dang_nhap_mat_khau_thanh_cong_va_luu_mat_khau(mod):
     assert kq.thanh_cong, kq.ma_loi
     assert tk.mat_khau.da_xoa()
     # mật khẩu đã lưu NHƯ BÍ MẬT để tầng (b) dùng lại sau
-    bm = mod.mat_khau_da_luu(mod._khoa_tu_chuoi(kq.cookie))
+    bm = mod.mat_khau_da_luu(_khoa(kq.cookie))
     assert bm is not None and bm.lay() == MAT_KHAU_GIA
     bm.xoa()
     # thứ tự bước đăng nhập trên trình duyệt giả
@@ -198,21 +204,21 @@ def test_dang_nhap_lai_khong_co_mat_khau_luu(mod):
 
 def test_lam_moi_phien_thanh_cong(mod):
     mod.nap({"cookies": [COOKIE_GIA_OK]})
-    khoa = mod._khoa_tu_chuoi(COOKIE_GIA_OK)
+    khoa = _khoa(COOKIE_GIA_OK)
     kq = chay(mod.lam_moi_phien(khoa))
     assert kq.thanh_cong and kq.tang == "a"
 
 
 def test_lam_moi_phien_het_han(mod):
     mod.nap({"cookies": [COOKIE_GIA_HET_HAN]})
-    khoa = mod._khoa_tu_chuoi(COOKIE_GIA_HET_HAN)
+    khoa = _khoa(COOKIE_GIA_HET_HAN)
     kq = chay(mod.lam_moi_phien(khoa))
     assert not kq.thanh_cong and kq.ma_trang_thai == 401
     assert kq.tang == "a" and kq.ma_loi == "het_han"
 
 
 def test_lam_moi_phien_khoa_la(mod):
-    kq = chay(mod.lam_moi_phien("gk-khong-co-gia"))
+    kq = chay(mod.lam_moi_phien("tk-khong-co-gia"))
     assert not kq.thanh_cong and kq.ma_loi == "khoa_khong_co"
 
 
@@ -221,7 +227,7 @@ def test_lam_moi_phien_khoa_la(mod):
 def test_dang_nhap_tu_dong(mod):
     from app.khoi_phuc_phien import TaiKhoanCanKhoiPhuc
     mod._tao_trinh_duyet = lambda: _trinh_duyet_thanh_cong()
-    tk = TaiKhoanCanKhoiPhuc(khoa="gk-moi-gia", email=EMAIL_GIA,
+    tk = TaiKhoanCanKhoiPhuc(khoa="tk-moi-gia", email=EMAIL_GIA,
                              mat_khau=BiMatTam(MAT_KHAU_GIA))
     kq = chay(mod.dang_nhap_tu_dong(tk, mod._tao_trinh_duyet()))
     assert kq.thanh_cong and kq.tang == "b"
@@ -232,8 +238,8 @@ def test_dang_nhap_tu_dong(mod):
 
 def test_tai_khoan_ke_va_danh_dau_hong(mod):
     mod.nap({"cookies": [COOKIE_GIA_OK, COOKIE_GIA_HET_HAN]})
-    khoa_ok = mod._khoa_tu_chuoi(COOKIE_GIA_OK)
-    khoa_hh = mod._khoa_tu_chuoi(COOKIE_GIA_HET_HAN)
+    khoa_ok = _khoa(COOKIE_GIA_OK)
+    khoa_hh = _khoa(COOKIE_GIA_HET_HAN)
     mod.danh_dau_hong(khoa_hh, "sai_chung_thuc")
     # tài khoản hỏng bị bỏ qua → kế của nó là tài khoản khoẻ
     assert mod.tai_khoan_ke(khoa_hh) == khoa_ok
@@ -241,12 +247,12 @@ def test_tai_khoan_ke_va_danh_dau_hong(mod):
 
 def test_chi_mot_tai_khoan_thi_khong_co_ke(mod):
     mod.nap({"cookies": [COOKIE_GIA_OK]})
-    khoa = mod._khoa_tu_chuoi(COOKIE_GIA_OK)
+    khoa = _khoa(COOKIE_GIA_OK)
     assert mod.tai_khoan_ke(khoa) is None
 
 
 def test_ho_so_trinh_duyet_hop_khuon(mod):
-    hs = mod.ho_so_trinh_duyet("gk-a1b2c3d4e5f6")
+    hs = mod.ho_so_trinh_duyet("tk-a1b2c3d4e5f6")
     assert hs.startswith("gemini-web-")
     assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", hs)
 
@@ -289,7 +295,7 @@ def test_loi_la_o_tang_a_dong_cua(mod):
         raise RuntimeError("loi-gia-bat-ngo")
     transport = httpx.MockTransport(xu_ly)
     mod.nap({"cookies": [COOKIE_GIA_OK]})
-    khoa = mod._khoa_tu_chuoi(COOKIE_GIA_OK)
+    khoa = _khoa(COOKIE_GIA_OK)
 
     def tao_client_loi(psid, psidts):
         return mod_client.GeminiWebClient(

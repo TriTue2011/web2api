@@ -117,7 +117,7 @@ def nap_module(monkeypatch, che_do, cookies):
     return mod
 
 
-def than_chat(model="gemini-web/3.5-flash", noi_dung="Xin chào"):
+def than_chat(model="gemini-web/gemini-3-flash", noi_dung="Xin chào"):
     return {"model": model,
             "messages": [{"role": "user", "content": noi_dung}]}
 
@@ -174,7 +174,7 @@ class TestChat:
         assert tieu_de["Content-Type"] == "application/json"
         than = json.loads(raw.decode("utf-8"))
         assert than["object"] == "chat.completion"
-        assert than["model"] == "gemini-web/3.5-flash"
+        assert than["model"] == "gemini-web/gemini-3-flash"
         assert than["choices"][0]["message"]["content"] == "tra-loi-cua-psid-tot"
         assert than["choices"][0]["finish_reason"] == "stop"
 
@@ -191,9 +191,9 @@ class TestChat:
 
     def test_model_mac_dinh_va_tien_to(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [ck("psid-tot")])
-        ma, _, raw = chay(mod.chat(than_chat(model="3.5-flash"), False))
+        ma, _, raw = chay(mod.chat(than_chat(model="gemini-3-flash"), False))
         assert ma == 200
-        assert json.loads(raw.decode())["model"] == "gemini-web/3.5-flash"
+        assert json.loads(raw.decode())["model"] == "gemini-web/gemini-3-flash"
         # auto → mặc định
         ma, _, raw = chay(mod.chat(than_chat(model="auto"), False))
         assert ma == 200
@@ -206,7 +206,7 @@ class TestChat:
 
     def test_thieu_messages_400(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [ck("psid-tot")])
-        ma, _, _ = chay(mod.chat({"model": "gemini-web/3.5-flash", "messages": []}, False))
+        ma, _, _ = chay(mod.chat({"model": "gemini-web/gemini-3-flash", "messages": []}, False))
         assert ma == 400
 
 
@@ -335,8 +335,10 @@ class TestCaiVaSucKhoe:
     def test_models(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [])
         ds = chay(mod.models())
-        assert [m["id"] for m in ds] == ["gemini-web/3.5-flash", "gemini-web/3.1-pro",
-                                        "gemini-web/3.5-flash-lite"]
+        # NV93: mã ổn định, nhãn tách riêng; chưa có tài khoản → bảng tĩnh.
+        assert [m["id"] for m in ds] == ["gemini-web/gemini-3-flash",
+                                        "gemini-web/gemini-3-pro"]
+        assert all("nhan" in m and "available_cho" in m for m in ds)
 
     def test_dung(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [ck("psid-tot")])
@@ -357,7 +359,8 @@ class TestKhongCoTaiKhoan:
 
     def test_models_va_suc_khoe_khong_tai_khoan(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [])
-        assert len(chay(mod.models())) == 3
+        # NV93: bảng tĩnh mã ổn định (2 model), nhãn tách riêng.
+        assert len(chay(mod.models())) == 2
         sk = chay(mod.suc_khoe())
         assert sk["ok"] is False
         assert sk["khoa"] == []
@@ -452,12 +455,15 @@ class TestDonVi:
         assert psid is None
 
     def test_bi_danh_model(self):
-        assert mod_client.giai_quyet_model("gemini-web/3.5-flash") == "3.5-flash"
-        assert mod_client.giai_quyet_model("gma/pro") == "3.1-pro"
-        assert mod_client.giai_quyet_model("flash-lite") == "3.5-flash-lite"
-        assert mod_client.giai_quyet_model("auto") == "3.5-flash"
-        assert mod_client.giai_quyet_model("") == "3.5-flash"
-        assert mod_client.giai_quyet_model("gemini-3-flash") == "3.5-flash"
+        # NV93: mọi tên đều giải về MÃ ỔN ĐỊNH (nhãn tách riêng ở nhan_model).
+        assert mod_client.giai_quyet_model("gemini-web/3.5-flash") == "gemini-3-flash"
+        assert mod_client.giai_quyet_model("gma/pro") == "gemini-3-pro"
+        assert mod_client.giai_quyet_model("flash-lite") == "gemini-3-flash"
+        assert mod_client.giai_quyet_model("auto") == "gemini-3-flash"
+        assert mod_client.giai_quyet_model("") == "gemini-3-flash"
+        assert mod_client.giai_quyet_model("gemini-3-flash") == "gemini-3-flash"
+        assert mod_client.giai_quyet_model("gemini-3-pro") == "gemini-3-pro"
+        assert mod_client.nhan_model("gemini-3-flash") == "Gemini 3 Flash"
         with pytest.raises(mod_client.ModelKhongCo):
             mod_client.giai_quyet_model("gemini-web/khong-ton-tai")
 

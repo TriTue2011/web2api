@@ -97,31 +97,56 @@ class ModelKhongCo(ValueError):
 # Registry model: bí danh thân thiện như kho tham khảo (3.5-flash → gemini-3-flash…).
 # ---------------------------------------------------------------------------
 
-#: Tên chuẩn mà web Gemini hiểu (dùng trong f.req).
+# ---------------------------------------------------------------------------
+# Registry model (NV93/NV91-P3): mã ỔN ĐỊNH, nhãn hiển thị tách riêng.
+# Tên webui đổi chỉ đổi nhãn — mã trong /v1/models và khoá tài khoản không đổi.
+# CHƯA KIỂM với dịch vụ thật: bảng suy từ kho tham khảo, có thể thiếu model.
+# ---------------------------------------------------------------------------
+
+#: Mã ổn định → nhãn hiển thị.
+MO_HINH_ON_DINH = {
+    "gemini-3-flash": "Gemini 3 Flash",
+    "gemini-3-pro": "Gemini 3 Pro",
+}
+
+#: Bí danh người dùng gõ → mã ổn định (tương thích ngược tên cũ).
 BI_DANH_MODEL = {
     "3.5-flash": "gemini-3-flash",
     "3.1-pro": "gemini-3-pro",
-    "3.5-flash-lite": "gemini-flash-lite",
+    "3.5-flash-lite": "gemini-3-flash",
     "flash": "gemini-3-flash",
     "pro": "gemini-3-pro",
-    "flash-lite": "gemini-flash-lite",
+    "flash-lite": "gemini-3-flash",
     "auto": "gemini-3-flash",
+    "gemini-3-flash": "gemini-3-flash",
+    "gemini-3-pro": "gemini-3-pro",
+    "gemini-flash-lite": "gemini-3-flash",
 }
 
-#: Tên thân thiện hiện trong /v1/models (không tiền tố).
-MO_HINH_HO_TRO = ("3.5-flash", "3.1-pro", "3.5-flash-lite")
+#: Tên thân thiện hiện trong /v1/models (mã ổn định, không tiền tố).
+MO_HINH_HO_TRO = ("gemini-3-flash", "gemini-3-pro")
 
-MODEL_MAC_DINH = "3.5-flash"
+MODEL_MAC_DINH = "gemini-3-flash"
+
+#: Mã ổn định → tên web Gemini hiểu trong f.req (CHƯA KIỂM thật).
+TEN_CHUAN_WEB = {
+    "gemini-3-flash": "gemini-3-flash",
+    "gemini-3-pro": "gemini-3-pro",
+}
 
 _TIEN_TO_STRIP = ("gemini-web/", "gma/", "gemini_web_api/")
 
 
-def giai_quyet_model(ten: str | None) -> str:
-    """Tên model (đã/không kèm tiền tố) → tên thân thiện; lạ → ModelKhongCo.
+def nhan_model(ma_on_dinh: str) -> str:
+    """Nhãn hiển thị của một mã model ổn định (tách khỏi id)."""
+    return MO_HINH_ON_DINH.get(str(ma_on_dinh or ""), str(ma_on_dinh or ""))
 
-    Quy tắc học từ kho tham khảo: chỉ ``auto`` (hoặc rỗng) được rơi về mặc
-    định; người dùng CHỈ ĐÍCH DANH tên lạ phải nhận 400, không âm thầm chạy
-    model khác.
+
+def giai_quyet_model(ten: str | None) -> str:
+    """Tên model (đã/không kèm tiền tố) → mã ổn định; lạ → ModelKhongCo.
+
+    Quy tắc: chỉ ``auto`` (hoặc rỗng) được rơi về mặc định; người dùng CHỈ
+    ĐÍCH DANH tên lạ phải nhận 400, không âm thầm chạy model khác.
     """
     m = str(ten or "").strip().lower()
     for pfx in _TIEN_TO_STRIP:
@@ -131,22 +156,48 @@ def giai_quyet_model(ten: str | None) -> str:
     if not m or m == "auto":
         return MODEL_MAC_DINH
     if m in BI_DANH_MODEL:
-        chuan = BI_DANH_MODEL[m]
-        # Đảo ngược về tên thân thiện để hiện nhất quán trong /v1/models.
-        for than_thien, ten_chuan in BI_DANH_MODEL.items():
-            if ten_chuan == chuan and than_thien in MO_HINH_HO_TRO:
-                return than_thien
-        return chuan
-    # Tên chuẩn đầy đủ mà người dùng gõ thẳng (vd "gemini-3-flash").
-    for than_thien in MO_HINH_HO_TRO:
-        if BI_DANH_MODEL[than_thien] == m:
-            return than_thien
+        return BI_DANH_MODEL[m]
     raise ModelKhongCo(f"model {ten!r} không có trong danh sách hỗ trợ")
 
 
-def ten_chuan_cua_model(ten_than_thien: str) -> str:
-    """Tên thân thiện → tên chuẩn gửi trong f.req."""
-    return BI_DANH_MODEL.get(ten_than_thien, ten_than_thien)
+def ten_chuan_cua_model(ma_on_dinh: str) -> str:
+    """Mã ổn định → tên gửi trong f.req."""
+    return TEN_CHUAN_WEB.get(str(ma_on_dinh or ""), str(ma_on_dinh or ""))
+
+
+# ---------------------------------------------------------------------------
+# Khám phá model theo tài khoản (NV91-P3): đọc từ trang chủ đã đăng nhập.
+# ---------------------------------------------------------------------------
+
+_MAU_MODEL_LIST = re.compile(r'<script id="model-list"[^>]*>(.*?)</script>',
+                             re.S | re.I)
+
+
+def trich_model_tu_html(html: str | None) -> list[str]:
+    """Bóc danh sách mã model từ HTML trang chủ (khối model-list nhúng).
+
+    Chỉ lấy chuỗi; chuẩn hoá về mã ổn định khi nhận ra, giữ nguyên tên lạ
+    (kèm chú thích CHƯA KIỂM ở tầng module). Không có khối → [].
+    """
+    khop = _MAU_MODEL_LIST.search(str(html or ""))
+    if not khop:
+        return []
+    try:
+        du_lieu = json.loads(khop.group(1))
+    except (ValueError, TypeError):
+        return []
+    ds = du_lieu.get("models") if isinstance(du_lieu, dict) else None
+    if not isinstance(ds, list):
+        return []
+    ket_qua = []
+    for m in ds:
+        if not isinstance(m, str) or not m.strip():
+            continue
+        m = m.strip()
+        on_dinh = BI_DANH_MODEL.get(m.lower(), m)
+        if on_dinh not in ket_qua:
+            ket_qua.append(on_dinh)
+    return ket_qua
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +330,20 @@ class GeminiWebClient:
         self._snlm0e = khop.group(1)
         # httpx tự cập nhật cookie jar từ Set-Cookie (cơ chế xoay __Secure-1PSIDTS
         # trong phiên, như auto_refresh của gói tham khảo nhưng chỉ trong RAM).
+
+    async def lay_model_kha_dung(self) -> list[str]:
+        """Mã model tài khoản này dùng được (NV91-P3): đọc khối model-list
+        nhúng trong trang chủ đã đăng nhập. 401/403 → LoiXacThuc."""
+        if self._dong:
+            raise LoiMayChu("client đã đóng")
+        try:
+            r = await self._client.get("/")
+        except httpx.TimeoutException as e:
+            raise LoiHetGio(f"hết giờ chờ tải trang chủ: {type(e).__name__}") from None
+        except httpx.HTTPError as e:
+            raise LoiMayChu(f"không nối được gemini.google.com: {type(e).__name__}") from None
+        self._kiem_ma(r.status_code, "lay_model")
+        return trich_model_tu_html(r.text)
 
     async def _tham_so_va_du_lieu(self, prompt: str, ten_model: str):
         if self._snlm0e is None:
