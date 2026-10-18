@@ -71,6 +71,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
 | `zalo-bot` — kênh gửi ra Zalo Bot (chuẩn `kenh_ra`): mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định», tránh gửi nhầm mà API vẫn ok), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô | Có — kiểm với máy chủ Zalo giả (NV114); **chưa kiểm với Zalo thật** | 18/10/2026 |
 | Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
+| Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2170,6 +2171,21 @@ không bot trả lời. Mã nguồn: `modules/telegram-bot/`. Tiền tố model:
 - Token bot lấy từ @BotFather (trường `bot_token`, lưu riêng dạng bí mật).
 - Mạng ra tới `api.telegram.org` (địa chỉ gọi cố định trong mã — không cho cấu hình
   URL tuỳ ý, chống SSRF).
+
+### Module home-assistant — Home Assistant (thiết bị nhà)
+
+**Mô tả.** Đọc trạng thái và điều khiển có kiểm soát các thực thể Home Assistant (HA)
+trong mạng nhà qua REST API của HA (`/api/states`, `/api/services`, `/api/template`).
+Module đầu tiên cắm vào chuẩn thiết bị C1: mỗi `entity_id` của HA (vd `light.den_tran`)
+thành thực thể `home_assistant.light.den_tran` (giữ nguyên dấu chấm HA → đảo ngược
+được: bỏ tiền tố `home_assistant.` là ra `entity_id` gốc). Mã nguồn:
+`modules/home-assistant/`. Hạng: `A` (mã của dự án). Tiền tố model: không có (module
+thiết bị, không trò chuyện).
+
+**Cần gì.**
+- Máy chủ Home Assistant trong mạng nhà (vd `http://192.168.1.10:8123`) + Long-Lived
+  Access Token (Hồ sơ → Bảo mật → Token truy cập dài hạn).
+- Mạng ra tới địa chỉ HA đó (khớp `tai_nguyen.mang_ra` trong manifest).
 - RAM/đĩa: chưa đo.
 
 **Cách cài.**
@@ -2213,6 +2229,14 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
    `{"cau_hinh": {"bot_token": "<token>", "dich": "[{\"id\": \"nha\", \"ten\": \"Nhà\", \"chat_id\": 123456789}]"}}`
    (module kiểm token bằng `GET /getMe` và thẩm định cấu trúc danh sách đích).
 
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "home-assistant"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/home-assistant`
+3. Cấu hình: `POST /api/modules/home-assistant/cai` với thân
+   `{"cau_hinh": {"dia_chi": "http://192.168.1.10:8123", "token": "<token-dai-han>"}}`
+   — `dia_chi` được kiểm bằng ĐÚNG `app/tu_xa.py` (cho LAN riêng tư; chặn loopback,
+   link-local/metadata đám mây, không định tuyến; ghim IP chống DNS rebinding);
+   `cai` gọi thử `GET /api/` để kiểm token (sai → 401 rõ, token không lộ trong lỗi/log).
+
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
@@ -2228,6 +2252,10 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 | `cho_phep_khong_ma_hoa` | Không | Mặc định `false`. `true` cho phép nối trần (cổng `8728`) — mật khẩu đi dạng thô, chỉ dùng trong LAN tin cậy. |
 | `bot_token` | Có | Token bot từ @BotFather. Lưu riêng dạng bí mật, không trả lại; trong lúc gọi, logger `httpx`/`httpcore` bị nâng lên WARNING vì token nằm trong URL. |
 | `dich` | Không | Danh sách đích dạng JSON: `[{"id", "ten", "chat_id", "chu_de"?}]`. `id` do chủ máy đặt, duy nhất; `chat_id` là id chat Telegram; `chu_de` là id chủ đề (topic) trong nhóm, tuỳ chọn. Đích nào gửi tới chat nào do đích đã khai quyết định — không có «bot mặc định». |
+| `dia_chi` | Có | URL gốc HA, http/https |
+| `token` | Có | Long-Lived Access Token — lưu riêng kho bí mật, không trả lại |
+| `kiem_chung_chi_tls` | Không | `true` (mặc định) kiểm chứng chỉ khi dùng https |
+| `nhom_duoc_dieu_khien` | Không | Các miền được ĐIỀU KHIỂN (mặc định `light,switch,fan,scene,media_player,input_boolean,climate`); miền ngoài danh sách chỉ đọc; miền chạy mã tuỳ ý (`script`, `automation`, `shell_command`, `rest_command`, `python_script`, `hassio`) không bao giờ điều khiển được |
 
 **Ví dụ dùng.**
 
@@ -2275,6 +2303,25 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
   «…»); không gửi `parse_mode` (văn bản thuần).
 - Lỗi mạng thử lại tối đa 1 lần; 429 (`retry_after`) báo thất bại, không ngủ dài.
 - **Chưa kiểm với api.telegram.org thật** (kiểm với máy chủ Telegram giả cục bộ).
+
+# Liệt kê thực thể
+curl -s -H "Authorization: Bearer $K" $W/api/thiet-bi?module=home-assistant
+# Bật đèn (ghi) — quản trị hoặc khoá khách phạm vi thiet_bi:ghi
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "bat", "tham_so": {}}' \
+  $W/api/thiet-bi/home_assistant.light.den_tran/hanh-dong
+# Mở khoá (nguy_hiem) — quản trị cần xac_nhan: true; khoá khách → 202 vào hàng chờ phê duyệt
+```
+
+**Sự cố thường gặp.**
+- `Địa chỉ không hợp lệ: ... loopback` — `dia_chi` trỏ vào chính máy (127.0.0.1/::1);
+  chạy trong Docker thì 127.0.0.1 là container — dùng IP LAN của máy HA.
+- `Token không đúng hoặc hết hạn` — tạo token mới trong HA (Hồ sơ → Bảo mật).
+- Thực thể vắng sau khi thêm thiết bị ở HA — `thuc_the` liệt kê mới mỗi lần gọi,
+  nhưng thực thể mới bị coi `nguy_hiem` tới khi quản trị xác nhận (SEC-004f).
+
+**Giới hạn.**
+- Chưa kiểm với Home Assistant thật (chỉ máy chủ giả); sự kiện thời gian thực chưa làm.
 
 ---
 
