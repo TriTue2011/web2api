@@ -443,3 +443,23 @@ def test_api_quan_tri_gui_thanh_cong(moi_truong_loi):
     assert r.status_code == 200, r.text
     assert r.json() == {"ok": True, "kenh": "nha"}
     assert zalo_gia.da_nhan[0]["token"] == TOKENS[0]
+
+
+def test_gui_dong_thoi_khong_doi_muc_log_toan_cuc(zalo_gia):
+    """Lỗi do người soát tìm ra (Claude, 18/10): chặn log URL bằng cách đổi mức log của httpx quanh mỗi lời gọi rồi khôi phục —
+    hai lượt gửi chạy xen kẽ làm logger KẸT vĩnh viễn ở mức WARNING (lượt sau lưu lại mức đã bị lượt trước hạ). Phải chặn bằng bộ
+    lọc cài MỘT lần, không đổi mức log toàn cục."""
+    mod = _mod_da_cau_hinh(zalo_gia)
+    lg = logging.getLogger("httpx")
+    muc_dau = lg.level
+    lg.setLevel(logging.INFO)
+
+    async def _chay():
+        return await asyncio.gather(*[
+            mod.gui_tin({"kenh_id": k, "ten": k}, {"van_ban": "xin chào"}) for k in ("nha", "cong-ty", "vo", "test")])
+    try:
+        kq = asyncio.run(_chay())
+        assert all(r == {"ok": True} for r in kq), kq
+        assert lg.level == logging.INFO, f"logger httpx bị đổi mức toàn cục: {lg.level}"
+    finally:
+        lg.setLevel(muc_dau)

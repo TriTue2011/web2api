@@ -32,23 +32,33 @@ MA_LOI = (
 )
 
 
-@contextlib.contextmanager
-def _chan_log_url():
-    """Đặt logger httpx/httpcore về WARNING trong lúc gọi mạng.
+#: Token đang dùng (chỉ thêm) — bộ lọc log chặn mọi dòng của thư viện HTTP có chứa token (token nằm TRONG URL; httpx ghi URL ở mức INFO).
+_TOKEN_DANG_DUNG: set[str] = set()
+_LOGGER_HTTP = ("httpx", "httpcore", "httpcore.connection", "httpcore.http11", "httpcore.http2", "httpcore.proxy")
 
-    Token Zalo nằm trong URL — httpx ở mức DEBUG/TRACE sẽ log URL. Không log
-    URL/token/chat_id ở đây; mã gọi chỉ log id đích + tên kiểu ngoại lệ.
-    """
-    muc_cu = {}
-    for ten in ("httpx", "httpcore"):
+
+class _ChanRoToken(logging.Filter):
+    """Bỏ dòng log chứa token. Cài MỘT lần lên logger của thư viện HTTP — KHÔNG đổi mức log toàn cục (đổi quanh mỗi lời gọi rồi
+    khôi phục sẽ kẹt logger ở mức cao khi hai lượt gửi chạy xen kẽ)."""
+    _zalo_bot_loc = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            noi_dung = record.getMessage()
+        except Exception:
+            return False
+        return not any(t in noi_dung for t in _TOKEN_DANG_DUNG)
+
+
+def _cai_bo_loc_log() -> None:
+    for ten in _LOGGER_HTTP:
         lg = logging.getLogger(ten)
-        muc_cu[ten] = lg.level
-        lg.setLevel(logging.WARNING)
-    try:
-        yield
-    finally:
-        for ten, muc in muc_cu.items():
-            logging.getLogger(ten).setLevel(muc)
+        for f in [f for f in lg.filters if getattr(f, "_zalo_bot_loc", False)]:
+            lg.removeFilter(f)   # nạp lại module: bỏ bộ lọc của bản cũ
+        lg.addFilter(_ChanRoToken())
+
+
+_cai_bo_loc_log()
 
 
 def _tach_tin(van_ban: str) -> list[str]:
@@ -163,6 +173,7 @@ class Module:
         """Nạp cấu hình; lỗi → module rỗng + warning (không ném)."""
         try:
             self._bots, self._dich = self._phan_tich(cau_hinh)
+            _TOKEN_DANG_DUNG.update(b["token"] for b in self._bots)
         except Exception as e:
             log.warning("zalo-bot: cấu hình sai (%s) — module rỗng", e)
             self._bots, self._dich = [], []
@@ -174,6 +185,7 @@ class Module:
         except Exception as e:
             return {"ok": False, "loi": f"cấu hình sai: {e}"}
         self._bots, self._dich = bots, dich
+        _TOKEN_DANG_DUNG.update(x["token"] for x in bots)
         return {"ok": True, "cau_hinh_luu": {
             "bot_token": [b["token"] for b in bots],
             "ten_bot": ", ".join(b["ten"] for b in bots),
@@ -219,24 +231,23 @@ class Module:
         d_id = d["id"]
         timeout = httpx.Timeout(10.0, read=30.0)
         # KHÔNG retry: lõi NV107 đã thử lại theo chu kỳ của nó.
-        with _chan_log_url():
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    for tin in _tach_tin(van_ban):
-                        r = await client.post(
-                            f"{self._goc}/bot{token}/sendMessage",
-                            json={"chat_id": chat_id, "text": tin},
-                        )
-                        ma = self._phan_loai(r)
-                        if ma is not None:
-                            return {"ok": False, "ma": ma}
-            except httpx.HTTPError as e:
-                # Chỉ log id đích + tên kiểu ngoại lệ — str(e) có thể chứa URL (token).
-                log.warning("zalo-bot: đích %s mang_loi (%s)", d_id, type(e).__name__)
-                return {"ok": False, "ma": "mang_loi"}
-            except Exception as e:
-                log.warning("zalo-bot: đích %s loi_khong_ngu (%s)", d_id, type(e).__name__)
-                return {"ok": False, "ma": "loi_khong_ngu"}
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                for tin in _tach_tin(van_ban):
+                    r = await client.post(
+                        f"{self._goc}/bot{token}/sendMessage",
+                        json={"chat_id": chat_id, "text": tin},
+                    )
+                    ma = self._phan_loai(r)
+                    if ma is not None:
+                        return {"ok": False, "ma": ma}
+        except httpx.HTTPError as e:
+            # Chỉ log id đích + tên kiểu ngoại lệ — str(e) có thể chứa URL (token).
+            log.warning("zalo-bot: đích %s mang_loi (%s)", d_id, type(e).__name__)
+            return {"ok": False, "ma": "mang_loi"}
+        except Exception as e:
+            log.warning("zalo-bot: đích %s loi_khong_ngu (%s)", d_id, type(e).__name__)
+            return {"ok": False, "ma": "loi_khong_ngu"}
         return {"ok": True}
 
     @staticmethod
