@@ -91,6 +91,13 @@ class LoiHetGio(LoiGeminiWeb):
         super().__init__(504, thong_diep)
 
 
+class LoiNoiDungQuaDai(LoiGeminiWeb):
+    """Nội dung yêu cầu quá dài (413) — vượt quá trần ký tự của client web."""
+
+    def __init__(self, thong_diep: str = "nội dung yêu cầu quá dài (vượt quá giới hạn xử lý của client gemini-web)"):
+        super().__init__(413, thong_diep)
+
+
 class ModelKhongCo(ValueError):
     """Tên model người dùng chỉ đích danh nhưng module không biết → 400."""
 
@@ -279,6 +286,10 @@ def trich_van_ban_khung(khung) -> str:
         return ""
 
 
+#: Giới hạn tối đa ký tự prompt (tránh quá tải/tràn bộ nhớ client web).
+TOI_DA_KY_TU_PROMPT = 120_000
+
+
 # ---------------------------------------------------------------------------
 # Máy khách.
 # ---------------------------------------------------------------------------
@@ -362,7 +373,8 @@ class GeminiWebClient:
     async def _tham_so_va_du_lieu(self, prompt: str, ten_model: str):
         if self._snlm0e is None:
             await self.init()
-        f_req = json.dumps([None, json.dumps([[prompt], None, [ten_chuan_cua_model(ten_model)]])])
+        req_arr = [[prompt], None, [ten_chuan_cua_model(ten_model)]]
+        f_req = json.dumps([None, json.dumps(req_arr)])
         tham_so = {"rpcids": _RPC_TAO_NOI_DUNG, "source-path": "/", "hl": "vi", "rt": "c"}
         du_lieu = {"f.req": f_req, "at": self._snlm0e}
         return tham_so, du_lieu

@@ -1592,6 +1592,13 @@ Google thật có thể có thêm bước (chọn tài khoản, thử thách xá
      $W/api/modules/gemini-web/cai
    ```
 
+**Gọi công cụ và đầu ra có cấu trúc (NV134).**
+- **Gọi công cụ (tool_calls):** Khi yêu cầu có `tools` (`tool_choice` ≠ "none"), module tiêm giao thức văn bản nghiêm ngặt mô tả danh sách công cụ và JSON Schema. Model chỉ được phép gọi các công cụ đã khai báo trong yêu cầu (tên lạ bị bỏ hoàn toàn nhằm chống prompt injection), tham số được kiểm tra theo JSON Schema (sai kiểu hoặc thiếu thẻ đóng bị loại bỏ, không đoán). Giới hạn tối đa 16 lời gọi/lượt và độ dài tham số ≤ 65536 ký tự. ID lời gọi ngẫu nhiên mới mỗi lượt dạng `call_<24 hex>`.
+- **Stream tool_calls:** Bộ lọc `LocToolCallStream` chặn không phát nửa lời gọi hoặc cú pháp giao thức thô ra stream văn bản; gom đủ toàn bộ lời gọi rồi phát qua chunk `tool_calls` và `finish_reason: "tool_calls"`.
+- **Đầu ra có cấu trúc (Structured Outputs):** Hỗ trợ `response_format` kiểu `json_object` và `json_schema`. Do giao diện web không có constrained decoding, module áp dụng nguyên tắc «cố gắng hết sức»: chèn chỉ dẫn JSON nghiêm ngặt, kiểm tra lại bằng JSON Schema (hỗ trợ type, properties, required, items, enum, min/max...; từ khoá `pattern` chưa hỗ trợ, bị từ chối có chủ đích để ngăn ngừa hoàn toàn nguy cơ ReDoS). Nếu sai, tự động thử lại tối đa 1 lần kèm thông báo lỗi; nếu vẫn sai trả 502 với mã `structured_output_failed`.
+- **Giới hạn:** Phiên hội thoại (nối nhiều lượt vào cùng một cuộc trò chuyện web): làm sau.
+- **Tham số bỏ qua:** `temperature`, `top_p`, `max_tokens`, `parallel_tool_calls`, `safety` được chấp nhận và không báo lỗi, được ghi nhận là không có tác dụng trên giao diện web. Giới hạn prompt tối đa 120,000 ký tự (vượt quá trả 413 rõ ràng).
+
 ---
 
 ### Module chatgpt-web — ChatGPT Web (chatgpt.com, Bearer token)

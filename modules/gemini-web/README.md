@@ -14,6 +14,8 @@ dùng model mặc định; tên lạ bị chỉ đích danh → `400`.
 |---|---|---|
 | Trò chuyện | `chat` | Stream (SSE) + không stream |
 | Danh sách model | `models` | 3 model trên |
+| Gọi công cụ (tools) | `chat` | Bóc tách tool_calls qua protocol mô phỏng; stream gom đủ mới phát |
+| Đầu ra có cấu trúc | `chat` | `response_format` json_object & json_schema (kiểm tra bằng schema, retry 1 lần; pattern chưa hỗ trợ) |
 
 Ảnh/video **chưa làm** ở giai đoạn này (phần ảnh trong messages bị bỏ qua).
 
@@ -45,6 +47,8 @@ bộ lỗi tạm thời vẫn được thử lại ở lượt sau.
 
 ## Ví dụ dùng
 
+Trò chuyện thông thường:
+
 ```bash
 curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"model": "gemini-web/3.5-flash", "messages": [{"role": "user", "content": "Xin chào"}]}' \
@@ -58,6 +62,62 @@ curl -sN -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"model": "gemini-web/3.1-pro", "messages": [{"role": "user", "content": "Kể chuyện cười"}], "stream": true}' \
   $W/v1/chat/completions
 ```
+
+Gọi công cụ (Tool Calls):
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-web/3.5-flash",
+    "messages": [{"role": "user", "content": "Thời tiết ở Tokyo?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Lấy thời tiết hiện tại",
+        "parameters": {
+          "type": "object",
+          "properties": {"location": {"type": "string"}},
+          "required": ["location"]
+        }
+      }
+    }]
+  }' \
+  $W/v1/chat/completions
+```
+
+Đầu ra có cấu trúc (JSON Schema):
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-web/3.5-flash",
+    "messages": [{"role": "user", "content": "Thông tin thủ đô nước Pháp"}],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "capital_info",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "city": {"type": "string"},
+            "country": {"type": "string"}
+          },
+          "required": ["city", "country"]
+        }
+      }
+    }
+  }' \
+  $W/v1/chat/completions
+```
+
+## Lưu ý kỹ thuật (NV134)
+
+- **Gọi công cụ & Stream:** Khi yêu cầu có `tools`, module chèn giao thức văn bản nghiêm ngặt vào prompt và bóc tách đầu ra. Khi stream SSE, bộ lọc `LocToolCallStream` chặn không phát nửa lời gọi hoặc cú pháp thô ra luồng văn bản; gom đủ toàn bộ lời gọi rồi phát qua chunk `tool_calls` và `finish_reason: "tool_calls"`.
+- **Bảo vệ chống prompt injection:** Chỉ những công cụ nằm trong danh sách `tools` của yêu cầu mới được chấp nhận; công cụ lạ do model tự ý sinh ra sẽ bị loại bỏ hoàn toàn. Tham số được kiểm tra theo JSON Schema; sai kiểu hoặc thiếu thẻ đóng sẽ bị loại bỏ (không đoán sửa).
+- **Đầu ra có cấu trúc (best-effort):** Giao diện web Gemini không có constrained decoding (giải mã ràng buộc ở tầng suy luận). Module tiếp cận «cố gắng hết sức»: hướng dẫn nghiêm ngặt qua prompt, bóc tách JSON và kiểm tra lại bằng schema (hỗ trợ type, properties, required, items, enum, min/max...; từ khoá `pattern` chưa hỗ trợ, bị từ chối có chủ đích để ngăn ngừa hoàn toàn nguy cơ ReDoS). Nếu sai, thử lại tối đa 1 lần; nếu vẫn sai trả 502 rõ ràng (`structured_output_failed`).
+- **Giới hạn:** Phiên hội thoại (nối nhiều lượt vào cùng một cuộc trò chuyện web): làm sau.
+- **Tham số bỏ qua:** `temperature`, `top_p`, `max_tokens`, `parallel_tool_calls`, `safety` được chấp nhận và không báo lỗi, nhưng «không có tác dụng» trên giao diện web. Giới hạn prompt tối đa 120,000 ký tự (vượt quá trả 413 rõ ràng).
 
 ## Cách giao tiếp (học từ kho tham khảo)
 

@@ -17,6 +17,8 @@ import asyncio
 import hashlib
 import json
 import logging
+from pathlib import Path
+import re
 import threading
 import time
 
@@ -40,11 +42,14 @@ from .client import (
     MO_HINH_HO_TRO,
     MO_HINH_ON_DINH,
     ModelKhongCo,
+    TOI_DA_KY_TU_PROMPT,
     nhan_model,
 )
 from .converter import (
     TIEN_TO,
+    LocToolCallStream,
     chunk_delta,
+    chunk_delta_tool_calls,
     chunk_ket_thuc,
     chunk_loi,
     chunk_vai_tro,
@@ -52,9 +57,12 @@ from .converter import (
     dong_done,
     giai_quyet_model_day_du,
     id_day_du,
+    kiem_tra_json_schema,
     phan_hoi_json,
     tach_tien_to,
     tao_hoan_thanh_id,
+    trich_xuat_json,
+    trich_xuat_tool_calls,
 )
 
 log = logging.getLogger("web2api.module.gemini-web")
@@ -1009,6 +1017,13 @@ class Module:
                 json.dumps(than_loi(400, "thiếu messages (danh sách hội thoại rỗng)"),
                            ensure_ascii=False).encode("utf-8")
 
+        # NV134: Giới hạn độ dài nội dung prompt (quá trần trả 413 rõ ràng)
+        if len(prompt) > TOI_DA_KY_TU_PROMPT:
+            thong_diep = (f"nội dung yêu cầu quá dài ({len(prompt)} ký tự, "
+                          f"tối đa {TOI_DA_KY_TU_PROMPT} ký tự)")
+            return 413, {"Content-Type": "application/json"}, \
+                json.dumps(than_loi(413, thong_diep), ensure_ascii=False).encode("utf-8")
+
         ds = self._tai_khoan_cho_model(ten_model)
         if not ds:
             if not self._thu_tu_tai_khoan():
@@ -1021,17 +1036,103 @@ class Module:
                           f"(cần tài khoản gói {goi_can} trở lên)")
             return 404, {"Content-Type": "application/json"}, \
                 json.dumps(than_loi(404, thong_diep), ensure_ascii=False).encode("utf-8")
+
+        # Xác định thông tin tools và response_format
+        tools = body.get("tools")
+        tool_choice = body.get("tool_choice")
+        co_tools = bool(tools and tool_choice != "none")
+        response_format = body.get("response_format")
+        messages = body.get("messages") or []
+
         if stream:
             tieu_de = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache",
                        "X-Accel-Buffering": "no"}
-            return 200, tieu_de, self._luong_chat(ds, prompt, model_id, ten_model)
+            return 200, tieu_de, self._luong_chat(
+                ds, prompt, model_id, ten_model,
+                tools=tools if co_tools else None,
+            )
 
         loi_cuoi: LoiGeminiWeb | None = None
         for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.psid, tk.psidts)
-                van_ban = await tk.client.generate_content(prompt, ten_model_da_giai=ten_model)
+
+                van_ban = await tk.client.generate_content(
+                    prompt, ten_model_da_giai=ten_model
+                )
+                # Bóc tách tool_calls nếu có
+                if co_tools:
+                    van_ban_sach, tool_calls = trich_xuat_tool_calls(van_ban, tools)
+                else:
+                    van_ban_sach, tool_calls = van_ban, []
+
+                # Xử lý response_format nếu có
+                if isinstance(response_format, dict):
+                    rf_type = response_format.get("type")
+                    if rf_type == "json_object":
+                        ok, parsed_json, err_msg = trich_xuat_json(van_ban)
+                        if not (ok and isinstance(parsed_json, dict)):
+                            # Thử lại tối đa 1 lần (nằm trong try để xoay tài khoản nếu lỗi kết nối/hạn mức)
+                            prompt_sua = (
+                                f"{prompt}\n\nSystem: Your previous response was not valid JSON. Error: {err_msg}. "
+                                "You MUST return ONLY a valid JSON object. Do not include markdown fences or text outside JSON."
+                            )
+                            van_ban_2 = await tk.client.generate_content(
+                                prompt_sua, ten_model_da_giai=ten_model
+                            )
+                            ok, parsed_json, err_msg = trich_xuat_json(van_ban_2)
+                            if not (ok and isinstance(parsed_json, dict)):
+                                err_body = {
+                                    "error": {
+                                        "message": f"Không thể tạo đầu ra JSON hợp lệ sau khi thử lại: {err_msg}",
+                                        "type": "server_error",
+                                        "code": "structured_output_failed",
+                                    }
+                                }
+                                return 502, {"Content-Type": "application/json"}, \
+                                    json.dumps(err_body, ensure_ascii=False).encode("utf-8")
+                        van_ban_sach = json.dumps(parsed_json, ensure_ascii=False)
+
+                    elif rf_type == "json_schema":
+                        schema_info = response_format.get("json_schema") or {}
+                        schema = schema_info.get("schema") or {}
+                        ok, parsed_json, err_msg = trich_xuat_json(van_ban)
+                        schema_ok = False
+                        if ok:
+                            schema_ok, err_msg = kiem_tra_json_schema(parsed_json, schema)
+                        if not schema_ok:
+                            # Thử lại tối đa 1 lần (nằm trong try để xoay tài khoản nếu lỗi kết nối/hạn mức)
+                            prompt_sua = (
+                                f"{prompt}\n\nSystem: Your previous response did not match the JSON Schema. Error: {err_msg}. "
+                                f"You MUST return ONLY a valid JSON object strictly conforming to schema:\n"
+                                f"{json.dumps(schema, ensure_ascii=False)}\n"
+                                "Do not include markdown fences or text outside JSON."
+                            )
+                            van_ban_2 = await tk.client.generate_content(
+                                prompt_sua, ten_model_da_giai=ten_model
+                            )
+                            ok, parsed_json, err_msg = trich_xuat_json(van_ban_2)
+                            schema_ok = False
+                            if ok:
+                                schema_ok, err_msg = kiem_tra_json_schema(parsed_json, schema)
+                            if not schema_ok:
+                                err_body = {
+                                    "error": {
+                                        "message": f"Không thể tạo đầu ra JSON Schema hợp lệ sau khi thử lại: {err_msg}",
+                                        "type": "server_error",
+                                        "code": "structured_output_failed",
+                                    }
+                                }
+                                return 502, {"Content-Type": "application/json"}, \
+                                    json.dumps(err_body, ensure_ascii=False).encode("utf-8")
+                        van_ban_sach = json.dumps(parsed_json, ensure_ascii=False)
+
+                tk.khoe = True
+                tk.loai_loi = None
+                return 200, {"Content-Type": "application/json"}, \
+                    phan_hoi_json(model_id, van_ban_sach, tool_calls=tool_calls if tool_calls else None)
+
             except LoiXacThuc as e:
                 self._danh_dau_loi(tk, "khoa_hong", i)
                 loi_cuoi = e
@@ -1052,9 +1153,6 @@ class Module:
                 log.warning("gemini-web: lỗi không ngờ ở tài khoản #%d: %s", i, type(e).__name__)
                 loi_cuoi = LoiMayChu(f"lỗi không ngờ: {type(e).__name__}")
                 continue
-            tk.khoe = True
-            tk.loai_loi = None
-            return 200, {"Content-Type": "application/json"}, phan_hoi_json(model_id, van_ban)
 
         # Hết tài khoản: mã theo lỗi cuối (không bao giờ lộ cookie hay đáp án thô).
         ma = loi_cuoi.ma if loi_cuoi else 502
@@ -1067,20 +1165,69 @@ class Module:
             json.dumps(than_loi(ma, thong_diep), ensure_ascii=False).encode("utf-8")
 
     async def _luong_chat(self, ds: list[_TaiKhoan], prompt: str,
-                          model_id: str, ten_model: str):
+                          model_id: str, ten_model: str,
+                          tools: list | None = None):
         """SSE OpenAI; xoay tài khoản ngay trong luồng khi tài khoản đầu hỏng."""
         hoan_thanh_id = tao_hoan_thanh_id()
         tao_luc = int(time.time())
         yield chunk_vai_tro(model_id, hoan_thanh_id, tao_luc)
         loi_cuoi: LoiGeminiWeb | None = None
+        co_tools = bool(tools)
+
         for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.psid, tk.psidts)
+
                 da_ra_du_lieu = False
-                async for delta in tk.client.generate_content_stream(prompt, ten_model_da_giai=ten_model):
+                loc = LocToolCallStream() if co_tools else None
+
+                async for delta in tk.client.generate_content_stream(
+                    prompt, ten_model_da_giai=ten_model
+                ):
                     da_ra_du_lieu = True
-                    yield chunk_delta(model_id, hoan_thanh_id, tao_luc, delta)
+                    if loc is not None:
+                        van_ban_phat = loc.feed(delta)
+                        if van_ban_phat:
+                            yield chunk_delta(model_id, hoan_thanh_id, tao_luc, van_ban_phat)
+                    else:
+                        yield chunk_delta(model_id, hoan_thanh_id, tao_luc, delta)
+
+                tool_calls = []
+                van_ban_cuoi = ""
+                if loc is not None:
+                    duoi = loc.flush()
+                    if duoi:
+                        yield chunk_delta(model_id, hoan_thanh_id, tao_luc, duoi)
+                    van_ban_toan_bo = loc.van_ban_day_du()
+                    van_ban_cuoi, tool_calls = trich_xuat_tool_calls(van_ban_toan_bo, tools)
+                    da_phat_loc = loc.da_phat()
+
+                    # Trích xuất và phát phần văn bản chưa phát (sau khối ToolCalls hoặc khi cú pháp hỏng)
+                    m_block = re.search(r"\[ToolCalls\]([\s\S]*?)\[/ToolCalls\]", van_ban_toan_bo, re.IGNORECASE)
+                    if m_block:
+                        truoc = van_ban_toan_bo[: m_block.start()]
+                        sau = van_ban_toan_bo[m_block.end() :]
+                        phan_chua_phat = truoc[len(da_phat_loc) :] + sau
+                    else:
+                        phan_chua_phat = van_ban_toan_bo[len(da_phat_loc) :]
+
+                    if phan_chua_phat:
+                        yield chunk_delta(model_id, hoan_thanh_id, tao_luc, phan_chua_phat)
+                else:
+                    van_ban_cuoi = ""
+
+                tk.khoe = True
+                tk.loai_loi = None
+
+                if tool_calls:
+                    yield chunk_delta_tool_calls(model_id, hoan_thanh_id, tao_luc, tool_calls)
+                    yield chunk_ket_thuc(model_id, hoan_thanh_id, tao_luc, finish_reason="tool_calls")
+                else:
+                    yield chunk_ket_thuc(model_id, hoan_thanh_id, tao_luc, finish_reason="stop")
+                yield dong_done()
+                return
+
             except LoiXacThuc as e:
                 self._danh_dau_loi(tk, "khoa_hong", i)
                 loi_cuoi = e
@@ -1098,11 +1245,7 @@ class Module:
                             i, type(e).__name__)
                 loi_cuoi = LoiMayChu(f"lỗi không ngờ: {type(e).__name__}")
                 break
-            tk.khoe = True
-            tk.loai_loi = None
-            yield chunk_ket_thuc(model_id, hoan_thanh_id, tao_luc)
-            yield dong_done()
-            return
+
         ma = loi_cuoi.ma if loi_cuoi else 502
         yield chunk_loi(f"{loai_theo_ma(ma)}: không còn tài khoản gemini-web dùng được "
                         f"(mã {ma}) — xem nhật ký máy chủ.")
@@ -1206,7 +1349,9 @@ class Module:
                             "dang_nghi_den": None})
         ok = any(m["ok"] for m in muc)
         return {"ok": ok, "khoa": muc,
-                "ghi_chu": None if ds else "chưa cấu hình tài khoản nào"}
+                "ghi_chu": None if ds else "chưa cấu hình tài khoản nào",
+                "tham_so_bo_qua": ["temperature", "top_p", "max_tokens", "parallel_tool_calls", "safety"],
+                "chu_thich_tham_so": "các tham số temperature, top_p, max_tokens, parallel_tool_calls, safety không có tác dụng trên giao diện web"}
 
     async def dung(self):
         # Gỡ tham chiếu danh tính mà CHÍNH thể hiện này đã đăng ký. Thể hiện thay
