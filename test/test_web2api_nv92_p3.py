@@ -230,6 +230,9 @@ class SoGia:
     def tien_to_cua(self, module_id):
         return "gia" if module_id in self.dang_chay else None
 
+    def the_hien_cho_dang_nhap(self, id_):
+        return self.dang_chay.get(id_)
+
     async def cai(self, id_, cau_hinh):
         self.cai_goi.append((id_, cau_hinh))
         return {"ok": True, "ket_qua_tung_khoa": [], "loi": None}

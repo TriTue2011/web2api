@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import inspect
 import logging
 import os
 import secrets
@@ -164,8 +165,11 @@ class SoModule:
             cc = list(man.get("cung_cap", []))
             # `dang_nhap_tu_dong`: suy từ CẤU TRÚC (module đang chạy khai hàm `dang_nhap`), không từ tên nhà cung cấp —
             # giao diện chỉ hiện chế độ «Tự đăng nhập» cho module thật sự làm được.
-            dn = lk and callable(getattr(self.dang_chay.get(id_), "dang_nhap", None))
-            td = lk and callable(getattr(self.dang_chay.get(id_), "tai_dung_ho_so", None))
+            # Module CHƯA có tài khoản thì chưa chạy (trường tài khoản `bat_buoc`) nhưng vẫn phải cho thêm tài khoản ĐẦU TIÊN bằng
+            # đăng nhập → cờ suy từ LỚP module khi chưa chạy (cùng cấu trúc, không cần thể hiện).
+            nguon_hs = self.dang_chay.get(id_) if lk else getattr(self.catalog.get(id_), "lop", None)
+            dn = callable(getattr(nguon_hs, "dang_nhap", None))
+            td = callable(getattr(nguon_hs, "tai_dung_ho_so", None))
             nhom = man.get("nhom") if (not tu_xa and isinstance(man.get("nhom"), dict)) else None
             modules.append({"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
                             "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk,
@@ -418,7 +422,7 @@ class SoModule:
             return None
         the = km.tao()
         the.kho = kho.kho_rieng(km.id)
-        the.nap(cau_hinh)
+        self._nap(the, cau_hinh)
         return the
 
     async def _kich_hoat_da_cai(self) -> list[dict]:
@@ -445,6 +449,36 @@ class SoModule:
         return loi
 
     # ───────────── cài cấu hình / gỡ ─────────────
+
+    @staticmethod
+    def _nap(the, cau_hinh: dict) -> None:
+        """Gọi `nap(cau_hinh)` của module — hợp đồng là ĐỒNG BỘ. Module khai nhầm `async def nap` mà không chờ gì (thân chạy xong
+        ngay) vẫn được chạy trọn: nếu bỏ qua thì coroutine không bao giờ chạy và cấu hình đã lưu KHÔNG BAO GIỜ vào thể hiện (lỗi thật
+        đã gặp thật ở một module web: tài khoản lưu rồi mà module vẫn 0 tài khoản). `nap` thật sự chờ (await) thì từ chối to tiếng, không im lặng."""
+        kq = the.nap(cau_hinh)
+        if inspect.iscoroutine(kq):
+            try:
+                kq.send(None)
+            except StopIteration:
+                return
+            kq.close()
+            raise RuntimeError("nap() phải đồng bộ: module khai nap bất đồng bộ và thật sự chờ (await) — lõi gọi nap ở nơi không chờ được")
+
+    def the_hien_cho_dang_nhap(self, id_: str):
+        """Thể hiện để CHẠY ĐĂNG NHẬP: module đang chạy thì dùng nó; module CHƯA có tài khoản (không chạy vì trường tài khoản
+        `bat_buoc`) mà lớp có khả năng đăng nhập thì dựng thể hiện TẠM `nap({})` — không đăng ký vào `dang_chay` (nên /v1 không coi là
+        đã liên kết); kết quả đăng nhập được LƯU qua `cai()` như mọi đường thêm tài khoản, bản phục vụ do `cai()` dựng. Khác → None."""
+        dang = self.dang_chay.get(id_)
+        if dang is not None:
+            return dang
+        km = self.catalog.get(id_)
+        lop = getattr(km, "lop", None)
+        if km is None or not any(callable(getattr(lop, ten, None)) for ten in ("dang_nhap", "tai_dung_ho_so")):
+            return None
+        the = km.tao()
+        the.kho = kho.kho_rieng(id_)
+        self._nap(the, {})
+        return the
 
     async def cai(self, id_: str, cau_hinh: dict) -> dict:
         """Kiểm rồi lưu cấu hình. Trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận dạng sửa
@@ -481,7 +515,7 @@ class SoModule:
             raise LoiSo(500, f"Không lưu được cấu hình: {e}") from e
         the = km.tao()
         the.kho = kho.kho_rieng(km.id)
-        the.nap(sach)
+        self._nap(the, sach)
         cu = self.dang_chay.get(km.id)
         self.dang_chay[km.id] = the
         if cu is not None:

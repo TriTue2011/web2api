@@ -56,6 +56,9 @@ class SoGia:
         self.tu_xa: list[str] = []
         self.mui_gio = None
 
+    def the_hien_cho_dang_nhap(self, id_: str):
+        return self.dang_chay.get(id_)
+
     def tien_to_cua(self, module_id: str) -> str | None:
         return "gia" if module_id in self.dang_chay or module_id in self.catalog else None
 

@@ -3291,7 +3291,7 @@ def _truong_bi_mat_cua_module(module) -> tuple[str, bool] | None:
 def _module_khoi_phuc(request: Request, module_id: str):
     """Module đã cài cho khôi phục; chưa cài → 404."""
     _kiem_module_da_cai_tai_khoan(request, module_id)
-    module = request.app.state.so.dang_chay.get(module_id)
+    module = request.app.state.so.the_hien_cho_dang_nhap(module_id)
     if module is None:
         raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa chạy.", code="module_chua_chay")
     return module
@@ -3307,6 +3307,28 @@ def _kiem_khoa_thuoc_module(module, module_id: str, khoa: str) -> None:
     if callable(biet) and not biet(khoa_hop_le):
         # Lỗi của module KHÔNG được nuốt: bỏ qua bước này khi module hỏng là «mở cửa khi lỗi» (thao tác chạy trên khoá chưa kiểm).
         raise LoiOpenAI(404, "Không có tài khoản này trong module.", code="tai_khoan_khong_co")
+
+
+async def _luu_chung_chi_vao_module(so: Any, module: Any, module_id: str, chung_chi: str) -> dict:
+    """Lưu chứng chỉ phiên (cookie/token) vừa đăng nhập vào CẤU HÌNH của module qua `so.cai()` — MỘT đường chung cho mọi cách
+    thêm tài khoản (kiểu «qua danh tính» và kiểu «trực tiếp»). Tên trường bí mật do manifest của module quyết (không ghi cứng trong lõi).
+    Trả kết quả `cai()` (có khoá `ok`); lỗi lưu → LoiOpenAI; chứng chỉ thô không giữ lại."""
+    truong_dich = _truong_bi_mat_cua_module(module)
+    if truong_dich is None:
+        chung_chi = None
+        raise LoiOpenAI(501, f"Module «{_nhac_lai(module_id)}» không khai trường "
+                             "bí mật để nhận tài khoản.", code="module_chua_ho_tro")
+    khoa_truong, la_danh_sach = truong_dich
+    try:
+        return await so.cai(
+            module_id, {khoa_truong: {"them": [chung_chi]} if la_danh_sach else chung_chi})
+    except (LoiSo, kho.KhoHong) as e:
+        raise _loi_so(e) from None
+    except Exception as e:
+        log.warning("lưu tài khoản %s lỗi: %s", module_id, type(e).__name__)
+        raise LoiOpenAI(502, "Không lưu được tài khoản mới.", code="loi_luu") from None
+    finally:
+        chung_chi = None  # noqa: F841 — không giữ chuỗi thô
 
 
 async def _xu_ly_ket_qua_tai_dung(
@@ -3332,26 +3354,7 @@ async def _xu_ly_ket_qua_tai_dung(
     if not kq.thanh_cong or not kq.cookie:
         return {"thanh_cong": False, "can_nguoi": False,
                 "ma_loi": kq.ma_loi or "loi_module"}
-    chung_chi = kq.cookie
-    # Tên trường bí mật do manifest của module quyết (không ghi cứng trong lõi).
-    truong_dich = _truong_bi_mat_cua_module(module)
-    if truong_dich is None:
-        chung_chi = None
-        raise LoiOpenAI(501, f"Module «{_nhac_lai(module_id)}» không khai trường "
-                             "bí mật để nhận tài khoản.", code="module_chua_ho_tro")
-    khoa_truong, la_danh_sach = truong_dich
-    try:
-        kq_cai = await so.cai(
-            module_id, {khoa_truong: {"them": [chung_chi]} if la_danh_sach else chung_chi})
-    except (LoiSo, kho.KhoHong) as e:
-        raise _loi_so(e) from None
-    except Exception as e:
-        log.warning("tai-dung: lưu tài khoản %s lỗi: %s",
-                    module_id, type(e).__name__)
-        raise LoiOpenAI(502, "Không lưu được tài khoản mới.",
-                        code="loi_luu") from None
-    finally:
-        chung_chi = None  # noqa: F841 — không giữ chuỗi thô
+    kq_cai = await _luu_chung_chi_vao_module(so, module, module_id, kq.cookie)
     khoa_che = "…" + hashlib.sha256(
         str(kq.cookie or "").encode("utf-8")).hexdigest()[-4:]
     if not kq_cai.get("ok"):
@@ -3425,7 +3428,20 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
     dang_chay = (getattr(app.state, "so", None) is not None and getattr(app.state.so, "dang_chay", None)) or {}
 
     if kieu == "truc_tiep":
-        ham_chay = module.dang_nhap
+        async def ham_chay(dong: tai_khoan_hang_loat_mod.DongDaTach) -> tai_khoan_hang_loat_mod.KetQuaDangNhap:
+            # Đăng nhập xong phải LƯU vào cấu hình (đường chung) — nếu không tài khoản chỉ nằm trong bộ nhớ module và mất khi
+            # khởi động lại; module chưa có tài khoản cũng nhờ đó mới chạy được.
+            kq = await module.dang_nhap(dong)
+            # Chỉ khi module KHAI trường bí mật để nhận tài khoản; không khai thì module tự quản tài khoản của nó (hành vi cũ).
+            if (isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap) and kq.thanh_cong and kq.cookie
+                    and _truong_bi_mat_cua_module(module) is not None):
+                try:
+                    kq_cai = await _luu_chung_chi_vao_module(so, module, module_id, kq.cookie)
+                except LoiOpenAI:
+                    return tai_khoan_hang_loat_mod.KetQuaDangNhap(False, ma_loi="luu_that_bai")
+                if not kq_cai.get("ok"):
+                    return tai_khoan_hang_loat_mod.KetQuaDangNhap(False, ma_loi="luu_that_bai")
+            return kq
     else:
         mod_dn = _module_dang_nhap_danh_tinh(app, bat_buoc=False)
         mod_td = _tim_module_trinh_duyet(app)
