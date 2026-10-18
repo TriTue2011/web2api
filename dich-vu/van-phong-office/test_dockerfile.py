@@ -56,8 +56,8 @@ def test_copy_du_mo_dun_cuc_bo():
 
 
 def test_khong_curl_pipe_sh():
-    assert "curl" not in DOCKERFILE or "| sh" not in DOCKERFILE.replace(" ", "")
-    assert "|sh" not in DOCKERFILE.replace(" ", "")
+    # Cấm mẫu «| sh» / «| bash» (ống sang shell), nhưng cho phép «| sha256sum».
+    assert not re.search(r"\|\s*(ba)?sh(\s|;|$)", DOCKERFILE), "cấm mẫu curl|sh"
 
 
 def test_khong_sua_dockerfile_goc():

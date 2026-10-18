@@ -17,7 +17,10 @@ goc = Path(__file__).resolve().parent
 (goc / "da_goi.log").write_text("goi", encoding="utf-8")
 
 che_do = os.environ.get("OFFICE_GIA_CHE_DO", "echo")
-if che_do == "ngu":
+if "--version" in sys.argv:
+    # Kiểm tra khởi động của server: luôn trả nhanh, không theo chế độ treo.
+    sys.stdout.write("officecli-gia 1.0.140")
+elif che_do == "ngu":
     time.sleep(120)
 elif che_do == "dai":
     sys.stdout.write("x" * 100000)

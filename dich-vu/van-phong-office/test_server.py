@@ -102,7 +102,7 @@ def test_du_tap_lenh_dong_di_qua(may_chu):
     for lenh in sorted(server.LENH_CHO_PHEP):
         ma, than = _lenh(co_so, lenh, [])
         assert ma == 200, f"lệnh {lenh!r} trong tập đóng phải đi qua, nhận {ma}: {than[:200]}"
-    assert len(server.LENH_CHO_PHEP) == 18
+    assert len(server.LENH_CHO_PHEP) == 19
 
 
 def test_lenh_khong_phai_chuoi_bi_tu_choi(may_chu):
@@ -151,7 +151,7 @@ def test_duong_dan_trong_thu_muc_di_qua(may_chu):
     assert ma == 200, than[:200]
     # Đối số tới nhị phân là đường tuyệt đối đã resolve, KHÔNG qua shell.
     ban_ghi = json.loads((GOC / "ho_tro_test" / "doi_so_cuoi.json").read_text())
-    assert ban_ghi[1] == str((thu_muc / "bao_cao.docx").resolve())
+    assert ban_ghi[2] == str((thu_muc / "bao_cao.docx").resolve())
 
 
 def test_khong_bao_gio_dung_shell(may_chu):
