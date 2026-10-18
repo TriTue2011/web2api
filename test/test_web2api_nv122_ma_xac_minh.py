@@ -168,18 +168,18 @@ def _dn(client):
 
 # ───────────── tach_dong: cột gmail thứ tư ─────────────
 
-def test_tach_dong_cot_gmail():
+def test_tach_dong_cot_hop_thu():
     ds, loi, _ = tkh_mod.tach_dong(
         "a@example.com|mk||true\n"
         "b@example.com|mk||\n"
         "c@example.com|mk||false\n"
         "d@example.com|mk||rieng@example.com\n"
         "e@example.com|mk||khong-phai-email\n")
-    assert [t.ma_tu_gmail for t in ds] == [True, None, None, "rieng@example.com"]
-    assert [(l.dong, l.loi) for l in loi] == [(5, "gmail sai khuôn")]
+    assert [t.ma_tu_hop_thu for t in ds] == [True, None, None, "rieng@example.com"]
+    assert [(l.dong, l.loi) for l in loi] == [(5, "hop_thu sai khuôn")]
     # mặc định: không có cột gmail
     ds2, _, _ = tkh_mod.tach_dong("a@example.com|mk\n")
-    assert ds2[0].ma_tu_gmail is None
+    assert ds2[0].ma_tu_hop_thu is None
 
 
 # ───────────── luồng chính: cờ bật → lấy mã → nhập mã → lưu ─────────────
@@ -249,7 +249,7 @@ def test_tu_mien_khong_lay_tu_http(moi):
                  json={"module_id": ID_DN,
                        "van_ban": f"nguoi@example.com|{MK_GIA}||true",
                        "tu_mien": ["evil.example"], "do_dai": [1, 1],
-                       "ma_tu_gmail": True})
+                       "ma_tu_hop_thu": True})
     assert r.status_code == 200, r.text
     _doi_luot_xong(moi)
     yc = _doc(moi).da_goi[0]

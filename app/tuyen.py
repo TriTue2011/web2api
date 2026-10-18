@@ -3419,7 +3419,7 @@ def _xac_minh_email_cua_module(module, module_id: str) -> dict:
 def _hop_thu_cua_dong(dong) -> str:
     """Hộp thư của một tài khoản: True → trùng email tài khoản; chuỗi → hộp thư
     quản trị chỉ định rõ. Một tài khoản chỉ dùng được hai dạng này."""
-    return dong.email if dong.ma_tu_gmail is True else dong.ma_tu_gmail
+    return dong.email if dong.ma_tu_hop_thu is True else dong.ma_tu_hop_thu
 
 
 async def _xu_ly_can_ma_email(app, so, module, module_id: str, dong,
@@ -3521,16 +3521,16 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     dang_chay = (getattr(app.state, "so", None) is not None and getattr(app.state.so, "dang_chay", None)) or {}
 
-    # NV122 — cờ «lấy mã từ hộp thư» theo từng tài khoản (cột gmail thứ tư của
-    # van_ban; NV120 gộp với mảng tai_khoan có cấu trúc qua tai_khoan[i].ma_tu_gmail).
+    # NV122 — cờ «lấy mã từ hộp thư» theo từng tài khoản (cột hop_thu thứ tư của
+    # van_ban; NV120 gộp với mảng tai_khoan có cấu trúc qua tai_khoan[i].ma_tu_hop_thu).
     # Kiểm ĐỒNG BỘ trước khi chạy: module phải khai xac_minh_email và phải có
     # hộp thư khớp — không bắt người dùng chờ vô ích.
     cfg_xac_minh = None
-    co_gmail = [tk for tk in giu if tk.ma_tu_gmail]
-    if co_gmail:
+    co_hop_thu = [tk for tk in giu if tk.ma_tu_hop_thu]
+    if co_hop_thu:
         cfg_xac_minh = _xac_minh_email_cua_module(module, module_id)
-        for tk in co_gmail:
-            hop_thu = tk.email if tk.ma_tu_gmail is True else tk.ma_tu_gmail
+        for tk in co_hop_thu:
+            hop_thu = tk.email if tk.ma_tu_hop_thu is True else tk.ma_tu_hop_thu
             if not ma_xac_minh_mod.co_hop_thu(so, hop_thu):
                 for t2 in giu:
                     t2.xoa_bi_mat()
@@ -3546,14 +3546,14 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
             # khởi động lại; module chưa có tài khoản cũng nhờ đó mới chạy được.
             # NV122: đọc sau_luc (lúc bắt đầu bước đăng nhập) để chỉ nhận thư tới sau mốc này.
             sau_luc = (ma_xac_minh_mod.luc_hien_tai_iso()
-                       if (dong.ma_tu_gmail and cfg_xac_minh is not None) else None)
+                       if (dong.ma_tu_hop_thu and cfg_xac_minh is not None) else None)
             kq = await module.dang_nhap(dong)
             # NV122: module báo trang đang đòi mã gửi qua email + cờ tích BẬT +
             # module khai xac_minh_email → đọc mã từ hộp thư rồi điền; cờ TẮT thì
             # giữ hành vi hiện có (không bao giờ tự chuyển sang đọc hộp thư).
             if (isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap) and not kq.thanh_cong
                     and kq.ma_loi == "can_ma_email"
-                    and dong.ma_tu_gmail and cfg_xac_minh is not None):
+                    and dong.ma_tu_hop_thu and cfg_xac_minh is not None):
                 kq = await _xu_ly_can_ma_email(app, so, module, module_id, dong,
                                                cfg_xac_minh, sau_luc, da_goi_ma)
             # Chỉ khi module KHAI trường bí mật để nhận tài khoản; không khai thì module tự quản tài khoản của nó (hành vi cũ).
