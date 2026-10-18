@@ -457,7 +457,7 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     (hợp đồng NV67); `lam_moi_phien(khoa)` (tầng a); `dang_nhap_tu_dong(tai_khoan,
     trinh_duyet)` (tầng b); `tai_khoan_ke(khoa)`/`danh_dau_hong(khoa, ma_loi)` (tầng c);
     `mat_khau_da_luu(khoa)`, `co_tai_khoan(khoa)`, `ho_so_trinh_duyet(khoa)`.
-  - `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` (`module_id`, `van_ban`,
+  - `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` (`module_id`, `tai_khoan` (danh sách `{email, mat_khau, otp?, ma_tu_hop_thu?}`, tối đa 20) hoặc `van_ban` (chuỗi dòng `email|mật khẩu|otp` hoặc có thêm cột 4 hộp thư),
     `bo_qua_email` tuỳ chọn, `kieu`: `"truc_tiep"` (mặc định) hoặc `"danh_tinh"`):
     - Khởi động lượt đăng nhập tự động hàng loạt (`LuotChay`).
     - **Thứ tự kiểm tra đồng bộ**:
@@ -466,24 +466,29 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
       3. Theo kiểu:
          - `truc_tiep`: module có hàm `dang_nhap` gọi được → nếu không có trả `400` `module_chua_ho_tro`.
          - `danh_tinh`: (a) module đích có `tai_dung_ho_so` gọi được VÀ có module khả năng `dang_nhap_danh_tinh` đang chạy → nếu thiếu một trong hai trả `400` `thieu_module_dang_nhap_danh_tinh`; (b) module có trường bí mật khai trong manifest (`_truong_bi_mat_cua_module`) → không có trả `400` `module_chua_ho_tro`; (c) có module khả năng `trinh_duyet` đang chạy → không có trả `503` `chua_co_trinh_duyet`.
-      4. Tách dòng văn bản (`tach_dong`), `bo_qua_email` (danh sách chuỗi, sai khuôn trả `400` `invalid_value`), kiểm tra còn tài khoản hợp lệ → không có trả `400` `khong_co_tai_khoan`.
+      4. Nhận dạng đầu vào tài khoản (NV120):
+         - Cung cấp một trong hai trường: `tai_khoan` hoặc `van_ban`. Cả hai hoặc không có cả hai trả `400` `invalid_value`.
+         - Khi có `tai_khoan`: danh sách tối đa 20 đối tượng JSON `{email, mat_khau, otp?}`. Mật khẩu 1..256 ký tự không chứa ký tự điều khiển/surrogate; `otp` tuỳ chọn (khoá Base32 hoặc mã 6-8 số); `ma_tu_hop_thu` tuỳ chọn (bool | email theo NV122).
+         - Khi có `van_ban`: chuỗi qua kiểm biên `_chuoi_tuy_chon` (từ chối surrogate bằng 400 `invalid_value`), tách dòng văn bản (`tach_dong(van_ban, nang_cap_totp=True)`).
+         - Hỗ trợ khoá TOTP Base32 (16-128 ký tự): tạo `BiMatTotp` tính mã 6 số động qua `sinh_totp` tại thời điểm gọi. Mã 6-8 số tạo `BiMatTam` tĩnh. Khoá TOTP không bao giờ lưu ra đĩa (chỉ trong bộ nhớ lượt chạy).
+         - `bo_qua_email` (danh sách chuỗi, sai khuôn trả `400` `invalid_value`), kiểm tra còn tài khoản hợp lệ → không có trả `400` `khong_co_tai_khoan`.
       5. `quan_ly.bat_dau` → nếu đang có lượt chạy hàng loạt khác chưa xong trả `409` `da_co_luot_chay` (khi 409 xoá bí mật mọi dòng ngay).
-    - **Xử lý kiểu `"danh_tinh"` (NV101)**: kết nối luồng đăng nhập danh tính nền và tái dùng hồ sơ cho provider theo 4 trạng thái danh tính/hồ sơ (tuyệt đối không xoá danh tính có sẵn):
+    - **Xử lý kiểu `"danh_tinh"` (NV101, NV120)**: kết nối luồng đăng nhập danh tính nền và tái dùng hồ sơ cho provider theo 4 trạng thái danh tính/hồ sơ (tuyệt đối không xoá danh tính có sẵn):
       - **A1** (đã có danh tính cùng email và đã có hồ sơ trình duyệt `ho_so_trinh_duyet` khác rỗng): DÙNG LẠI hồ sơ đó, không tạo mới, không gọi `tao`. Gọi `dang_nhap` ở bước B (module tự đi tắt nếu hồ sơ còn đăng nhập sống). Thành công gọi `tai_dung_ho_so` ở bước C. Danh tính có sẵn không bao giờ bị dọn dẹp kể cả khi dòng đó thất bại.
       - **A2** (đã có danh tính nhưng chưa có hồ sơ): tạo hồ sơ (`trinh_duyet_tao(ten=email)`), cập nhật trạng thái `ho_so`, gọi đăng nhập bước B rồi tái dùng bước C. Nếu thất bại chỉ đóng hồ sơ vừa tạo, giữ nguyên danh tính.
       - **A3** (chưa có danh tính): `tao` danh tính mới rồi tạo hồ sơ như A2, gọi đăng nhập bước B rồi tái dùng bước C. Nếu thất bại sớm thì dọn cả danh tính và hồ sơ vừa tạo (thử lại cùng email không bị 400 `email_ton_tai`).
       - **A4** (dọn dẹp khi hỏng): chỉ dọn thứ chính lượt này vừa tạo (A3 dọn cả hai; A2 đóng hồ sơ; A1 giữ nguyên).
     - **Mã kết quả mỗi dòng**: `can_nguoi` (bị CAPTCHA/thử thách), `cho_2fa` (cần mã 2FA), `ma_2fa_sai`, `luu_that_bai` (module từ chối lưu chứng chỉ), `ho_so_dang_ban` (hồ sơ trình duyệt đang bị khóa), `loi_module` (lỗi bất ngờ hoặc mã lỗi sai khuôn `[a-z0-9_]{1,64}`). Mã lỗi lạ giữ nguyên (bảng mở).
-    - **Lưu ý 2FA**: 2FA ở kiểu trực tiếp: sẽ cần bạn xử lý (mã 2FA ở cột 3 chưa được dùng ở kiểu này; kiểu danh tính hỗ trợ truyền mã 2FA cột 3 qua tham số `ma_2fa`).
+    - **Lưu ý 2FA & Nhập mã OTP trực tiếp (NV120)**:
+      - Khi gặp mã lỗi `cho_2fa` ở kiểu `danh_tinh`, giao diện hiện ô nhập mã 6 số ngay trên dòng kết quả + nút «Gửi mã» gọi `POST /api/danh-tinh/{id}/ma-2fa`.
+      - Mã đúng: tự động tiếp tục bằng cách gọi lại `bat-dau` với dòng chỉ có email để hoàn tất lưu tài khoản provider.
+      - 2FA ở kiểu trực tiếp: module hiện coi 2FA là `can_nguoi` (mở noVNC xử lý tay).
     - **Cờ cấu trúc `/api/tinh-nang`**: mỗi phần tử `modules[]` có cờ `tai_dung_ho_so: bool` (module đang chạy và có hàm `tai_dung_ho_so` gọi được) và trường `nhom: {"id", "ten"} | null`.
-  - **Giao diện form «＋ Tài khoản» 3 bước (NV101)** (Hệ thống → AI → Tài khoản):
+  - **Giao diện form «＋ Tài khoản» (NV101, NV120)** (Hệ thống → AI → Tài khoản):
     - **Bước (1) - Nhóm (`data-nhom-them`)**: gom các module theo trường `nhom` (`{"id": "...", "ten": "..."}`) khai trong manifest.json; module không khai thuộc nhóm mặc định «Khác». Khi chọn nhóm, tự động chọn nhóm đầu tiên hoặc giữ nhóm hợp lệ.
     - **Bước (2) - Loại (`data-loai-them`)**: chọn loại cấu hình: `API` (nhập khóa tĩnh) hoặc `Tài khoản` (đăng nhập / phiên).
-    - **Bước (3) - Module và Kiểu (`data-chon-module`, khối `#khung-tu-dong`)**: chọn module ứng viên tương ứng. Nếu module hỗ trợ cả `tai_dung_ho_so` (kèm hệ thống có module đăng nhập danh tính) và `dang_nhap_tu_dong`, giao diện hiện 2 chip chọn kiểu:
-      - «Trực tiếp» (`data-kieu="truc_tiep"`)
-      - «Qua <nhóm danh tính>» (`data-kieu="danh_tinh"`), ví dụ: "Qua Google" nếu module đăng nhập danh tính thuộc nhóm Google. Nhãn được sinh động từ dữ liệu nhóm, không nhúng cứng.
-      - Khi chọn kiểu danh tính: danh sách các danh tính đã đăng nhập sẵn hiện ra để người dùng tick chọn (tự điền email, tái dùng hồ sơ mà không cần nhập lại mật khẩu).
-    - Dán danh sách (`email|mật khẩu`, `email|mật khẩu|mã2fa`...) → «Xem trước» (`POST /api/tai-khoan/dan-hang-loat`) → tick/bỏ tick → chạy LẦN LƯỢT (`POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` kèm `kieu` đã chọn) → theo dõi tiến độ, dừng bằng `POST …/dung`. Mật khẩu chỉ nằm trong ô dán tới khi bấm chạy rồi bị xoá khỏi trang.
+    - **Bước (3) - Module và Kiểu (`data-chon-module`, khối `#khung-tu-dong`)**: chọn module ứng viên tương ứng. Nếu module hỗ trợ cả `tai_dung_ho_so` (kèm hệ thống có module đăng nhập danh tính) và `dang_nhap_tu_dong`, giao diện hiện 2 chip chọn kiểu («Trực tiếp» và «Qua <nhóm danh tính>»).
+    - **Hàng ô nhập tài khoản (NV120)**: các hàng Email, Mật khẩu (nút Hiện/Ẩn), Mã OTP/khoá 2FA; nút «＋ Thêm tài khoản khác» (tối đa 20 hàng) và nút «Xoá» từng hàng. Lối phụ: «Dán nhiều dòng» (details thu gọn). Bấm «Đăng nhập» gửi API `tai_khoan`, mật khẩu/OTP bị xoá khỏi state và DOM ngay lập tức.
   - `POST /api/tai-khoan/khoi-phuc` (`module_id`, `khoa`, `email` tuỳ chọn) →
     `KetQuaKhoiPhuc.sang_dict()` (tầng `a`/`b`/`c`/`d`; không chứa bí mật).
     Khoá lạ/không thuộc module → `404` (chống IDOR); khoá sai khuôn → `400`.
@@ -3130,7 +3135,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau` | Có | Khởi động lượt đăng nhập lần lượt (`module_id`, `van_ban`, `bo_qua_email` tuỳ chọn); đang có lượt chạy → `409` `da_co_luot_chay`; module chưa hỗ trợ → dòng `bo_qua` |
 | `GET /api/tai-khoan/dang-nhap-hang-loat/trang-thai` | Có | Tiến độ từng dòng (`trang_thai_luot`, `ket_qua`, `tom_tat`); chưa có lượt nào → `404` `luot_khong_co` |
 | `POST /api/tai-khoan/dang-nhap-hang-loat/dung` | Có | Dừng lượt đang chạy (giữ kết quả đã xong); không có lượt đang chạy → `404` `luot_khong_chay` |
-| `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` | Có | Lượt đăng nhập TỰ ĐỘNG hàng loạt (`module_id`, `van_ban`, `bo_qua_email` tuỳ chọn, `kieu`: `"truc_tiep"` hoặc `"danh_tinh"`): tái dùng `LuotChay` gọi `mod.dang_nhap` hoặc kết nối đăng nhập danh tính + tái dùng hồ sơ; module chưa hỗ trợ → `400`; đang có lượt chạy → `409` (NV88, NV101). Cột thứ tư tuỳ chọn của `van_ban` (`email|mật khẩu|mã2fa|gmail`): `true` = lấy mã xác minh từ hộp thư trùng email tài khoản, email = hộp thư quản trị chỉ định rõ; kiểm đồng bộ `400 khong_co_hop_thu` / module không khai `xac_minh_email` → `400` trước khi chạy (NV122; trường `tai_khoan[i].ma_tu_hop_thu` tương ứng khi NV120 gộp mảng có cấu trúc) |
+| `POST /api/tai-khoan/dang-nhap-tu-dong/bat-dau` | Có | Lượt đăng nhập TỰ ĐỘNG hàng loạt (`module_id`, `van_ban` hoặc mảng cấu trúc `tai_khoan` [NV120], `bo_qua_email` tuỳ chọn, `kieu`: `"truc_tiep"` hoặc `"danh_tinh"`): tái dùng `LuotChay` gọi `mod.dang_nhap` hoặc kết nối đăng nhập danh tính + tái dùng hồ sơ; module chưa hỗ trợ → `400`; đang có lượt chạy → `409` (NV88, NV101, NV120). Hỗ trợ OTP dạng khoá Base32 TOTP hoặc mã 6–8 chữ số. Cột thứ tư tuỳ chọn của `van_ban` (`email|mật khẩu|mã2fa|gmail`) hoặc trường `ma_tu_hop_thu` trong từng phần tử của `tai_khoan`: `true` = lấy mã xác minh từ hộp thư trùng email tài khoản, email = hộp thư quản trị chỉ định rõ; kiểm đồng bộ `400 khong_co_hop_thu` / module không khai `xac_minh_email` → `400` trước khi chạy (NV122) |
 | `POST /api/tai-khoan/khoi-phuc` | Có | Khôi phục nhiều tầng (a)→(d) cho một tài khoản (`module_id`, `khoa`, `email` tuỳ chọn) → `{thanh_cong, tang, ma_loi, can_nguoi, huong_dan, khoa_moi, url_novnc}`; khoá lạ/không thuộc module → `404`; sai khuôn → `400` (NV88) |
 | `GET /api/tai-khoan/khoi-phuc/trang-thai` | Có | Trạng thái khôi phục của tài khoản (`hong_b_lien_tiep`, `ngung_tu_dang_nhap`, `can_nguoi`…) — không chứa bí mật (NV88) |
 | `GET /api/danh-tinh` | Có | Liệt kê hồ sơ Google (trạng thái đăng nhập, hồ sơ trình duyệt, module đã gắn) — sổ danh tính của lõi (NV92) |

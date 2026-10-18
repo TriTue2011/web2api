@@ -3501,13 +3501,27 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
             raise LoiOpenAI(503, "Chưa có dịch vụ trình duyệt (cần module có khả năng «trinh_duyet»).",
                             code="chua_co_trinh_duyet")
 
-    van_ban = _chuoi_tuy_chon(than, "van_ban") or ""
+    co_van_ban = "van_ban" in than and than.get("van_ban") is not None
+    co_tai_khoan = "tai_khoan" in than and than.get("tai_khoan") is not None
+    if co_van_ban and co_tai_khoan:
+        raise LoiOpenAI(400, "Không được gửi đồng thời «van_ban» và «tai_khoan».", code="invalid_value")
+    if not co_van_ban and not co_tai_khoan:
+        raise LoiOpenAI(400, "Phải cung cấp một trong hai trường: «tai_khoan» hoặc «van_ban».", code="invalid_value")
+
     bo_qua_email = than.get("bo_qua_email", [])
     if not isinstance(bo_qua_email, list) or any(not isinstance(e, str) for e in bo_qua_email):
         raise LoiOpenAI(400, "«bo_qua_email» phải là danh sách chuỗi.", code="invalid_value")
     bo_qua = {e.strip().lower() for e in bo_qua_email}
 
-    danh_sach, _loi, _trung = tai_khoan_hang_loat_mod.tach_dong(van_ban)
+    if co_tai_khoan:
+        tai_khoan_raw = than.get("tai_khoan")
+        try:
+            danh_sach, _trung = tai_khoan_hang_loat_mod.tach_danh_sach_tai_khoan(tai_khoan_raw)
+        except ValueError as e:
+            raise LoiOpenAI(400, str(e), code="invalid_value") from None
+    else:
+        van_ban = _chuoi_tuy_chon(than, "van_ban") or ""
+        danh_sach, _loi, _trung = tai_khoan_hang_loat_mod.tach_dong(van_ban, nang_cap_totp=True)
     giu = [tk for tk in danh_sach if tk.email.strip().lower() not in bo_qua]
     giu_id = {id(tk) for tk in giu}
     for tk in danh_sach:

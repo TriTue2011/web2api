@@ -535,39 +535,39 @@ def test_bi_mat_khong_lo_o_moi_noi(env_gia, caplog):
     client = env_gia["client"]
     caplog.set_level(logging.DEBUG)
 
-    van_ban = f"secret@example.com|matkhau_sieu_bi_mat_001|totp_789012"
+    van_ban = f"secret@example.com|matkhau_sieu_bi_mat_001|JBSWY3DPEHPK3PXP"
     r = client.post("/api/tai-khoan/dang-nhap-tu-dong/bat-dau", headers=QT, json={
         "module_id": "mod-provider-gia", "kieu": "danh_tinh", "van_ban": van_ban,
     })
     assert r.status_code == 200
     thong_tin = r.text
     assert "matkhau_sieu_bi_mat_001" not in thong_tin
-    assert "totp_789012" not in thong_tin
+    assert "JBSWY3DPEHPK3PXP" not in thong_tin
 
     tt = _cho_luot_chay_xong(client)
     tt_str = json.dumps(tt)
     assert "matkhau_sieu_bi_mat_001" not in tt_str
-    assert "totp_789012" not in tt_str
+    assert "JBSWY3DPEHPK3PXP" not in tt_str
     assert COOKIE_GIA not in tt_str
 
     # caplog không có mật khẩu / TOTP
     all_logs = " ".join(rec.message for rec in caplog.records)
     assert "matkhau_sieu_bi_mat_001" not in all_logs
-    assert "totp_789012" not in all_logs
+    assert "JBSWY3DPEHPK3PXP" not in all_logs
 
     # Nhật ký không lộ bí mật
     r_nk = client.get("/api/nhat-ky", headers=QT)
     if r_nk.status_code == 200:
         nk_text = r_nk.text
         assert "matkhau_sieu_bi_mat_001" not in nk_text
-        assert "totp_789012" not in nk_text
+        assert "JBSWY3DPEHPK3PXP" not in nk_text
 
     # Kho danh tính không lộ mật khẩu/cookie
     r_dt = client.get("/api/danh-tinh", headers=QT)
     assert r_dt.status_code == 200
     dt_text = r_dt.text
     assert "matkhau_sieu_bi_mat_001" not in dt_text
-    assert "totp_789012" not in dt_text
+    assert "JBSWY3DPEHPK3PXP" not in dt_text
     assert COOKIE_GIA not in dt_text
 
 

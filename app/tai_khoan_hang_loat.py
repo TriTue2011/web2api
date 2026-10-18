@@ -122,6 +122,41 @@ class BiMatTam:
     __str__ = __repr__
 
 
+class BiMatTotp(BiMatTam):
+    """Bí mật tạm chứa khoá TOTP Base32 (RFC 6238) trong bộ nhớ; xoá sau khi dùng.
+
+    Mỗi lần `lay()` sẽ tính mã 6 số THỜI ĐIỂM ĐÓ bằng `sinh_totp` từ `app.xac_thuc_2fa`
+    (mã luôn mới, không bị hết hạn vì thời gian chờ đợi giữa các bước).
+
+    Khoá TOTP KHÔNG được lưu ra đĩa ở việc này (chỉ tồn tại trong bộ nhớ lượt
+    đăng nhập, xoá sau khi dùng). Việc lưu khoá TOTP ra đĩa để tự động đăng nhập
+    lại là một quyết định kiến trúc và chính sách bảo mật riêng của kho, chưa được
+    phép thực hiện tại việc này nhằm bảo vệ tuyệt đối bí mật của người dùng.
+    """
+
+    __slots__ = ()
+
+    def lay(self, moc_thoi_gian: int | float | None = None) -> str:
+        """Tính và trả mã TOTP 6 số tại thời điểm gọi (hoặc moc_thoi_gian giả định)."""
+        if self.da_xoa():
+            return ""
+        from app.xac_thuc_2fa import sinh_totp
+        raw = bytes(self._buf).decode("ascii")
+        return sinh_totp(raw, moc_thoi_gian=moc_thoi_gian)
+
+    def lay_va_xoa(self, moc_thoi_gian: int | float | None = None) -> str:
+        """Tính mã TOTP thời điểm này rồi ghi đè bộ đệm bằng 0 ngay lập tức."""
+        try:
+            return self.lay(moc_thoi_gian=moc_thoi_gian)
+        finally:
+            self.xoa()
+
+    def __repr__(self) -> str:  # pragma: no cover - hiển thị
+        return "<BiMatTotp>"
+
+    __str__ = __repr__
+
+
 # ── Tách dòng ────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -188,7 +223,43 @@ def _tach_cot_hop_thu(gia_tri: str) -> bool | str | None | object:
     return g if _email_hop_le(g) else _HOP_THU_SAI
 
 
-def tach_dong(van_ban: str) -> tuple[list[DongDaTach], list[LoiDong], list[DongBiTrung]]:
+def kiem_tra_va_tao_otp(otp_tho: Any) -> BiMatTam | BiMatTotp | None:
+    """Kiểm tra và tạo đối tượng bí mật cho trường OTP / cột thứ 3.
+
+    Quy tắc nhận:
+      (1) KHOÁ TOTP base32 (A–Z, 2–7, bỏ dấu cách/gạch ngang, chữ hoa/thường đều được,
+          độ dài 16–128) -> BiMatTotp (lớp con của BiMatTam: mỗi lần .lay() tính mã 6 số thời điểm đó).
+      (2) Mã 6–8 chữ số đang có -> BiMatTam như cũ.
+      (3) Khác -> ném ValueError("otp_khong_hop_le"), không đoán.
+    """
+    if otp_tho is None:
+        return None
+    if isinstance(otp_tho, bool) or not isinstance(otp_tho, str):
+        raise ValueError("otp_khong_hop_le")
+    try:
+        otp_tho.encode("utf-8")
+    except (UnicodeEncodeError, UnicodeError):
+        raise ValueError("otp_khong_hop_le") from None
+    s = otp_tho.strip()
+    if not s:
+        return None
+    # (2) Mã 6–8 chữ số đang có
+    if re.fullmatch(r"[0-9]{6,8}", s):
+        return BiMatTam(s)
+    # (1) KHOÁ TOTP base32: bỏ dấu cách và gạch ngang, độ dài 16-128
+    s_clean = re.sub(r"[\s-]", "", s).upper()
+    if 16 <= len(s_clean) <= 128 and re.fullmatch(r"[A-Z2-7]+", s_clean):
+        try:
+            from app.xac_thuc_2fa import giai_ma_base32
+            giai_ma_base32(s_clean)
+            return BiMatTotp(s_clean)
+        except Exception as e:
+            raise ValueError("otp_khong_hop_le") from e
+    # (3) Khác -> từ chối khuôn
+    raise ValueError("otp_khong_hop_le")
+
+
+def tach_dong(van_ban: str, nang_cap_totp: bool = False) -> tuple[list[DongDaTach], list[LoiDong], list[DongBiTrung]]:
     """Tách văn bản dán hàng loạt thành danh sách tài khoản.
 
     Trả về `(danh_sach, loi, bo_trung)`:
@@ -241,9 +312,19 @@ def tach_dong(van_ban: str) -> tuple[list[DongDaTach], list[LoiDong], list[DongB
             if not phan[1]:
                 loi.append(LoiDong(so_dong, "thiếu mật khẩu"))
                 continue
+            totp_val: BiMatTam | BiMatTotp | None = None
+            if phan[2]:
+                if nang_cap_totp:
+                    try:
+                        totp_val = kiem_tra_va_tao_otp(phan[2])
+                    except ValueError:
+                        loi.append(LoiDong(so_dong, "mã OTP hoặc khoá 2FA không hợp lệ"))
+                        continue
+                else:
+                    totp_val = BiMatTam(phan[2])
             ban_ghi = DongDaTach(so_dong, email, _LOAI_MAT_KHAU,
                                  mat_khau=BiMatTam(phan[1]),
-                                 totp=BiMatTam(phan[2]) if phan[2] else None)
+                                 totp=totp_val)
         elif len(phan) == 4:
             # NV122: cột thứ tư tuỳ chọn «hop_thu» — cờ lấy mã xác minh từ hộp thư
             # (ghi chú cho NV120 gộp với mảng tai_khoan có cấu trúc: trường
@@ -254,13 +335,25 @@ def tach_dong(van_ban: str) -> tuple[list[DongDaTach], list[LoiDong], list[DongB
             if not phan[1]:
                 loi.append(LoiDong(so_dong, "thiếu mật khẩu"))
                 continue
+            totp_val_4: BiMatTam | BiMatTotp | None = None
+            if phan[2]:
+                if nang_cap_totp:
+                    try:
+                        totp_val_4 = kiem_tra_va_tao_otp(phan[2])
+                    except ValueError:
+                        loi.append(LoiDong(so_dong, "mã OTP hoặc khoá 2FA không hợp lệ"))
+                        continue
+                else:
+                    totp_val_4 = BiMatTam(phan[2])
             hop_thu = _tach_cot_hop_thu(phan[3])
             if hop_thu is _HOP_THU_SAI:
                 loi.append(LoiDong(so_dong, "hop_thu sai khuôn"))
+                if totp_val_4 is not None:
+                    totp_val_4.xoa()
                 continue
             ban_ghi = DongDaTach(so_dong, email, _LOAI_MAT_KHAU,
                                  mat_khau=BiMatTam(phan[1]),
-                                 totp=BiMatTam(phan[2]) if phan[2] else None,
+                                 totp=totp_val_4,
                                  ma_tu_hop_thu=hop_thu)
         else:
             loi.append(LoiDong(so_dong, "sai khuôn: quá nhiều dấu '|'"))
@@ -270,6 +363,119 @@ def tach_dong(van_ban: str) -> tuple[list[DongDaTach], list[LoiDong], list[DongB
         danh_sach.append(ban_ghi)
 
     return danh_sach, loi, bo_trung
+
+
+def tach_danh_sach_tai_khoan(
+    danh_sach_tho: list,
+) -> tuple[list[DongDaTach], list[DongBiTrung]]:
+    """Tách danh sách tài khoản dạng cấu trúc: [{email, mat_khau, otp?}, ...] (tối đa 20).
+
+    Kiểm tra chặt chẽ:
+      - Tối đa 20 phần tử.
+      - Mỗi phần tử là đối tượng JSON:
+          + email: chuẩn RFC / mẫu hẹp, không chứa ký tự HTML / điều khiển / surrogate.
+          + mat_khau: chuỗi 1..256 ký tự, không chứa ký tự điều khiển (ord < 32 hoặc ord == 127), không chứa surrogate.
+          + otp: tuỳ chọn, chuỗi <= 128 ký tự, đúng khuôn (khoá Base32 hoặc mã 6-8 số).
+      - Lỗi sai khuôn ném ValueError kèm số thứ tự phần tử (KHÔNG in giá trị, KHÔNG lộ câu codec).
+      - Email trùng nhau giữ lần đầu, các lần sau coi như bị trùng (xoá bí mật).
+      - Mật khẩu/OTP chỉ lưu trong BiMatTam / BiMatTotp, xoá sau khi dùng.
+    """
+    if not isinstance(danh_sach_tho, list) or isinstance(danh_sach_tho, (bool, str, bytes)):
+        raise ValueError("Trường «tai_khoan» phải là danh sách.")
+    if len(danh_sach_tho) > 20:
+        raise ValueError("Danh sách «tai_khoan» vượt quá tối đa 20 phần tử.")
+    if not danh_sach_tho:
+        return [], []
+
+    ket_qua: list[DongDaTach] = []
+    bo_trung: list[DongBiTrung] = []
+    da_thay: dict[str, int] = {}
+
+    for idx, item in enumerate(danh_sach_tho, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Phần tử thứ {idx} sai khuôn: phải là đối tượng JSON.")
+
+        email_raw = item.get("email")
+        if isinstance(email_raw, bool) or not isinstance(email_raw, str):
+            raise ValueError(f"Phần tử thứ {idx} sai khuôn: email không hợp lệ.")
+        try:
+            email_raw.encode("utf-8")
+        except (UnicodeEncodeError, UnicodeError):
+            raise ValueError(f"Phần tử thứ {idx} sai khuôn: email không hợp lệ.") from None
+        email = email_raw.strip()
+        if not _email_hop_le(email) or len(email) > 254:
+            raise ValueError(f"Phần tử thứ {idx} sai khuôn: email không hợp lệ.")
+
+        mat_khau_raw = item.get("mat_khau")
+        if isinstance(mat_khau_raw, bool) or not isinstance(mat_khau_raw, str):
+            raise ValueError(f"Phần tử thứ {idx} sai khuôn: mật khẩu không hợp lệ (chuỗi 1..256 ký tự, không chứa ký tự điều khiển).")
+        try:
+            mat_khau_raw.encode("utf-8")
+        except (UnicodeEncodeError, UnicodeError):
+            raise ValueError(f"Phần tử thứ {idx} sai khuôn: mật khẩu không hợp lệ (chuỗi 1..256 ký tự, không chứa ký tự điều khiển).") from None
+        if (
+            not (1 <= len(mat_khau_raw) <= 256)
+            or any(ord(c) < 32 or ord(c) == 127 for c in mat_khau_raw)
+        ):
+            raise ValueError(
+                f"Phần tử thứ {idx} sai khuôn: mật khẩu không hợp lệ (chuỗi 1..256 ký tự, không chứa ký tự điều khiển)."
+            )
+
+        otp_raw = item.get("otp")
+        otp_obj: BiMatTam | BiMatTotp | None = None
+        if otp_raw is not None and not (isinstance(otp_raw, str) and not otp_raw.strip()):
+            if isinstance(otp_raw, bool) or not isinstance(otp_raw, str):
+                raise ValueError(
+                    f"Phần tử thứ {idx} sai khuôn: trường «otp» không hợp lệ."
+                )
+            try:
+                otp_raw.encode("utf-8")
+            except (UnicodeEncodeError, UnicodeError):
+                raise ValueError(
+                    f"Phần tử thứ {idx} sai khuôn: trường «otp» không hợp lệ."
+                ) from None
+            if len(otp_raw) > 128:
+                raise ValueError(
+                    f"Phần tử thứ {idx} sai khuôn: trường «otp» không hợp lệ (chuỗi tối đa 128 ký tự)."
+                )
+            try:
+                otp_obj = kiem_tra_va_tao_otp(otp_raw)
+            except ValueError:
+                raise ValueError(
+                    f"Phần tử thứ {idx} sai khuôn: trường «otp» không hợp lệ (chỉ nhận mã 6-8 số hoặc khoá Base32)."
+                ) from None
+
+        ma_hop_thu_val = None
+        if "ma_tu_hop_thu" in item and item["ma_tu_hop_thu"] is not None:
+            mth = item["ma_tu_hop_thu"]
+            if isinstance(mth, bool):
+                ma_hop_thu_val = mth
+            elif isinstance(mth, str) and _email_hop_le(mth.strip()):
+                ma_hop_thu_val = mth.strip()
+            else:
+                raise ValueError(f"Phần tử thứ {idx} sai khuôn: ma_tu_hop_thu không hợp lệ.")
+
+        khoa_trung = email.lower()
+        if khoa_trung in da_thay:
+            bm_mk = BiMatTam(mat_khau_raw)
+            bm_mk.xoa()
+            if otp_obj is not None:
+                otp_obj.xoa()
+            bo_trung.append(DongBiTrung(idx, email))
+            continue
+
+        da_thay[khoa_trung] = idx
+        dong_obj = DongDaTach(
+            idx,
+            email,
+            _LOAI_MAT_KHAU,
+            mat_khau=BiMatTam(mat_khau_raw),
+            totp=otp_obj,
+            ma_tu_hop_thu=ma_hop_thu_val,
+        )
+        ket_qua.append(dong_obj)
+
+    return ket_qua, bo_trung
 
 
 # ── Hợp đồng đăng nhập chung ─────────────────────────────────────────────────
