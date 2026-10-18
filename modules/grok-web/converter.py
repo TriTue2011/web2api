@@ -27,11 +27,26 @@ class LoiGiuaLuu(Exception):
     """
 
 
-def tach_che_do(model: str) -> str:
-    """Bỏ tiền tố ``grok/``; chế độ lạ → ``fast`` (chế độ miễn phí)."""
+class CheDoKhongCo(ValueError):
+    """Chế độ người dùng yêu cầu nhưng không có → 400 (không fallback âm thầm)."""
+
+
+def tach_che_do(
+    model: str,
+    biet_them: tuple[str, ...] | list[str] | set[str] = (),
+) -> str:
+    """Bỏ tiền tố ``grok/``; thuộc CAC_CHE_DO hoặc biet_them -> trả nguyên;
+    rỗng hoặc auto -> fast; còn lại -> ném CheDoKhongCo(ValueError).
+    """
     che_do = model.split("/", 1)[1] if "/" in model else model
     che_do = che_do.strip().lower()
-    return che_do if che_do in CAC_CHE_DO else CHE_DO_MAC_DINH
+    if not che_do or che_do == "auto":
+        return CHE_DO_MAC_DINH
+    if che_do in CAC_CHE_DO:
+        return che_do
+    if che_do in biet_them:
+        return che_do
+    raise CheDoKhongCo(f"chế độ {che_do!r} không được hỗ trợ")
 
 
 def hop_van_ban(messages: list[dict]) -> str:

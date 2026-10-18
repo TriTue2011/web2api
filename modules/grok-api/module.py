@@ -124,6 +124,10 @@ class Module:
         """Danh sách model do xAI trả (GET /models) — không viết cứng."""
         return await self._ct.models()
 
+    async def lam_moi_model(self) -> None:
+        if self._ct is not None:
+            self._ct.lam_het_han_dem_models()
+
     async def suc_khoe(self) -> dict:
         return await self._ct.suc_khoe()
 

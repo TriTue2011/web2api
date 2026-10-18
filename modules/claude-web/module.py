@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app import danh_tinh
+from app import model_bo_sung
 from app import tu_lam_moi
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
@@ -932,25 +933,53 @@ class Module:
                 for m in co_ban if "/" in m["id"]}
         ds93 = list(self._tai_khoan_nv93)
         if not ds93:
-            return [{**m, "nhan": nhan.get(m["id"].split("/", 1)[1], m["id"]),
-                     "goi": "khong_ro", "available_cho": []} for m in co_ban]
-        hop: dict[str, dict] = {}
-        for tk in ds93:
-            khoa = self._khoa_tu_session_key(tk.session_key)
-            for m in tk.model or ten:
-                muc = hop.setdefault(m, {"khoa": [], "goi": []})
-                if khoa not in muc["khoa"]:
-                    muc["khoa"].append(khoa)
-                    muc["goi"].append(tk.goi)
-        ra = []
-        for m in ten:
-            v = hop.get(m, {"khoa": [], "goi": []})
-            goi_can = ("pro" if "pro" in v["goi"]
-                       else "free" if "free" in v["goi"] else "khong_ro")
-            ra.append({"id": f"{self._tien_to}/{m}", "object": "model",
-                       "owned_by": "claude-web", "nhan": nhan.get(m, m),
-                       "goi": goi_can, "available_cho": list(v["khoa"])})
-        return ra
+            ra = [{**m, "nhan": nhan.get(m["id"].split("/", 1)[1], m["id"]),
+                   "goi": "khong_ro", "available_cho": []} for m in co_ban]
+        else:
+            hop: dict[str, dict] = {}
+            for tk in ds93:
+                khoa = self._khoa_tu_session_key(tk.session_key)
+                for m in tk.model or ten:
+                    muc = hop.setdefault(m, {"khoa": [], "goi": []})
+                    if khoa not in muc["khoa"]:
+                        muc["khoa"].append(khoa)
+                        muc["goi"].append(tk.goi)
+            ra = []
+            for m in ten:
+                v = hop.get(m, {"khoa": [], "goi": []})
+                goi_can = ("pro" if "pro" in v["goi"]
+                           else "free" if "free" in v["goi"] else "khong_ro")
+                ra.append({"id": f"{self._tien_to}/{m}", "object": "model",
+                           "owned_by": "claude-web", "nhan": nhan.get(m, m),
+                           "goi": goi_can, "available_cho": list(v["khoa"])})
+
+        ra_dict: dict[str, dict] = {}
+        for item in ra:
+            m = item["id"].split("/", 1)[1] if "/" in item["id"] else item["id"]
+            ra_dict[m] = item
+
+        tat_ca_khoa = [self._khoa_tu_session_key(tk.session_key) for tk in ds93]
+        for b in model_bo_sung.doc("claude-web"):
+            if not isinstance(b, dict):
+                continue
+            mid = b.get("id")
+            if not mid:
+                continue
+            ten_m = mid.split("/", 1)[-1].strip()
+            nhan_m = b.get("nhan")
+            if ten_m in ra_dict:
+                if nhan_m:
+                    ra_dict[ten_m]["nhan"] = nhan_m
+            else:
+                ra_dict[ten_m] = {
+                    "id": f"{self._tien_to}/{ten_m}",
+                    "object": "model",
+                    "owned_by": "claude-web",
+                    "nhan": nhan_m or ten_m,
+                    "goi": "khong_ro",
+                    "available_cho": list(tat_ca_khoa),
+                }
+        return list(ra_dict.values())
 
     async def suc_khoe(self) -> dict:
         return {

@@ -39,6 +39,7 @@ from app import (
     phien_web as phien_web_mod,
     sao_luu as sao_luu_mod,
     tai_khoan_hang_loat as tai_khoan_hang_loat_mod,
+    lam_moi_model as lam_moi_model_mod,
     khoi_phuc_phien as khoi_phuc_phien_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
@@ -1165,6 +1166,8 @@ async def cai(id_: str, request: Request):
         kq = await _so(request).cai(id_, cau_hinh)
     except LoiSo as e:
         raise _loi_so(e) from None
+    if kq.get("ok"):
+        kq = lam_moi_model_mod.sau_khi_cai(request.app, id_, kq)
     return JSONResponse(kq, status_code=200 if kq["ok"] else 400)
 
 
@@ -1298,9 +1301,10 @@ async def cap_nhat_model_module(id_: str, request: Request):
             else:
                 mac_dinh_moi[nhom] = mid
     mac_dinh_moi = {nh: mid for nh, mid in mac_dinh_moi.items() if mid in hop_le and mid not in tat_moi}
+    tat_luu = (tat_moi & hop_le) | {x for x in cu["tat"] if x not in hop_le}
 
     try:
-        kho.luu_cai_dat_model_module(id_, sorted(tat_moi & hop_le), mac_dinh_moi)
+        kho.luu_cai_dat_model_module(id_, sorted(tat_luu), mac_dinh_moi)
     except kho.KhoHong as e:
         raise LoiOpenAI(500, f"Không lưu được cài đặt model: {e}") from e
     return {"ok": True, "bo_qua": sorted(bo_qua), **_tom_tat_model(raw, tat_moi, mac_dinh_moi)}

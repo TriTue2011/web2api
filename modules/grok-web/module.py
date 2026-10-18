@@ -38,6 +38,7 @@ from typing import AsyncIterator
 from urllib.parse import urlsplit
 
 from app import danh_tinh
+from app import model_bo_sung
 from app import tu_lam_moi
 from app.chuyen_tiep import ds_khoa
 from app.khoi_phuc_phien import (
@@ -66,6 +67,7 @@ from .client import (
 )
 from .converter import (
     CAC_CHE_DO,
+    CheDoKhongCo,
     LoiGiuaLuu,
     gom_json_openai,
     hop_van_ban,
@@ -1082,7 +1084,17 @@ class Module:
                 "module_not_configured", "missing_credentials",
             )
         model = str(body.get("model") or "")
-        che_do = tach_che_do(model)
+        biet_them = {b.get("id", "").split("/", 1)[-1].strip().lower() for b in model_bo_sung.doc("grok-web") if isinstance(b, dict) and b.get("id")}
+        try:
+            che_do = tach_che_do(model, biet_them=biet_them)
+        except (ValueError, CheDoKhongCo):
+            from app.loi_openai import nhac_lai
+            cac_lua_chon = sorted(set(CAC_CHE_DO) | biet_them)
+            return 400, {"content-type": "application/json"}, _loi_openai(
+                f"Model {nhac_lai(model)} không có; chọn trong: {', '.join(f'{self._tien_to}/{c}' for c in cac_lua_chon)}",
+                "invalid_request_error",
+                "model_not_found",
+            )
         ten_model = f"{self._tien_to}/{che_do}"
         loi_nhan = hop_van_ban(body.get("messages") or [])
         if not loi_nhan.strip():
@@ -1132,18 +1144,43 @@ class Module:
     # ── Danh sách model ────────────────────────────────────────────────
 
     async def models(self) -> list[dict]:
-        """Các chế độ của web app Grok dưới dạng model ``grok/<chế độ>``.
+        """Các chế độ của web app Grok dưới dạng model ``grok/<chế độ>`` + model_bo_sung.
 
         NV93: id ổn định + nhãn tách riêng; mỗi model kèm gói/tài khoản dùng
         được (grok chưa phân biệt gói theo tài khoản — CHƯA KIỂM thật).
         """
         ds_khoa = [self._khoa_tu_jar(j) for j in self._tai_khoan]
-        return [
-            {"id": f"{self._tien_to}/{m}", "object": "model",
-             "owned_by": "grok-web", "nhan": f"Grok {m}",
-             "goi": "khong_ro", "available_cho": list(ds_khoa)}
-            for m in CAC_CHE_DO
-        ]
+        cac_model: dict[str, dict] = {}
+        for m in CAC_CHE_DO:
+            cac_model[m] = {
+                "id": f"{self._tien_to}/{m}",
+                "object": "model",
+                "owned_by": "grok-web",
+                "nhan": f"Grok {m}",
+                "goi": "khong_ro",
+                "available_cho": list(ds_khoa),
+            }
+        for b in model_bo_sung.doc("grok-web"):
+            if not isinstance(b, dict):
+                continue
+            mid = b.get("id")
+            if not mid:
+                continue
+            ten = mid.split("/", 1)[-1].strip().lower()
+            nhan = b.get("nhan") or f"Grok {ten}"
+            if ten in cac_model:
+                if b.get("nhan"):
+                    cac_model[ten]["nhan"] = b["nhan"]
+            else:
+                cac_model[ten] = {
+                    "id": f"{self._tien_to}/{ten}",
+                    "object": "model",
+                    "owned_by": "grok-web",
+                    "nhan": nhan,
+                    "goi": "khong_ro",
+                    "available_cho": list(ds_khoa),
+                }
+        return list(cac_model.values())
 
     # ── Sức khoẻ ──────────────────────────────────────────────────────
 

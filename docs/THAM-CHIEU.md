@@ -648,6 +648,12 @@ Thư mục `modules/<id>/` gồm:
   `phan_loai_loi`, `kha_nang`) — bộ chuyển tiếp tự điền các trường bộ đếm trên từ bộ đếm trong bộ nhớ (kể từ
   lần khởi động hoặc lưu cấu hình gần nhất), `toi_da` luôn `null` vì API kiểu OpenAI không cho hỏi hạn mức còn lại.
 
+  **Làm mới danh sách model tự động (NV102)**: Phương thức tuỳ chọn `async lam_moi_model(self) -> None` — module tự lấy lại danh sách model từ nguồn THẬT của nó (xoá/làm hết hạn đệm rồi gọi lại nguồn, ném ngoại lệ khi nguồn lỗi; lõi không đọc kết quả mà gọi `models()` ngay sau đó). Khi cấu hình/thêm khoá module thành công (`POST /api/modules/{id}/cai`), lõi tự động kích hoạt tác vụ nền làm mới model và phản hồi có thêm `model_dang_lay: true`. Vòng nền `VongLamMoiModel` chạy định kỳ mỗi `WEB2API_CHU_KY_MODEL_GIO` (mặc định 3 giờ, kẹp 1..24 giờ) để tự động cập nhật danh sách model của mọi module có phương thức này.
+
+  **Quy tắc sổ model (`model_so.json`) và model bổ sung (`model_bo_sung/`)**:
+  - Tệp sổ `<WEB2API_DATA>/model_so.json` (quyền 0600) lưu lịch sử xuất hiện của model: model có mặt được đánh dấu `con=True, vang=0`; vắng mặt 1 chu kỳ vẫn `con=True, vang=1` (tránh lỗi mạng nhất thời); vắng từ 2 chu kỳ liên tiếp (`SO_CHU_KY_VANG = 2`) mới đánh dấu `con=False`. Khi model xuất hiện trở lại sẽ khôi phục `con=True, vang=0`. Danh sách model từ module trả về rỗng được hiểu là «không có thông tin» (không làm tăng `vang`, không đổi trạng thái). Lựa chọn bật/tắt trong `model.json` của chủ máy được giữ nguyên tuyệt đối (không tự bật lại model đã tắt). Giới hạn tối đa 500 model/module (cắt ngắn kèm cảnh báo). Mã model và nhãn từ nhà cung cấp là dữ liệu không tin cậy (kiểm tra chuẩn hoá độ dài ≤ 128 cho mã, ≤ 80 cho nhãn, loại trừ ký tự điều khiển/ngắt dòng).
+  - Bảng model bổ sung do chủ máy khai báo bằng dữ liệu: lưu tại `<WEB2API_DATA>/model_bo_sung/<id>.json` (thư mục 0700, tệp 0600) với khuôn `{"models": [{"id": "...", "nhan": "..."}]}`, tối đa 100 mục, cho phép thêm model mới cho nhà cung cấp không có nguồn danh sách công khai mà không phải sửa mã.
+
   **Chuẩn phân loại lỗi của lõi (LÕI ĐẶT CHUẨN, MODULE ĐỔI THEO)**: module có thể cài hook tuỳ chọn
   `phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None`. `loi` là từ điển lỗi đã che khoá
   `{"error": {"message", "type", "code"}}` (module có thể bổ sung gợi ý vào thông điệp); `boi_canh` chứa
@@ -1520,6 +1526,8 @@ model đó, thiếu → lỗi rõ 400/404, không âm thầm chạy model khác.
 nhập từ kho công khai TriTue2011/chatgpt2api (`captcha-solver/src/gemini_web_login.py`,
 chỉ đọc lấy hiểu, tự viết lại). **Chưa kiểm với gemini.google.com thật.**
 
+**Mô hình theo thực tế tài khoản (NV102).** Danh sách model lấy từ khối nhúng `<script id="model-list">` trong HTML trang chủ `gemini.google.com` của tài khoản đã đăng nhập qua `lay_model_kha_dung()`. Tên model được chuẩn hoá qua `chuan_hoa_ma_model`, lọc mã >128 ký tự hoặc chứa ký tự điều khiển, cắt tối đa `TOI_DA_MODEL`. Bảng tĩnh `gemini-3-flash`, `gemini-3-pro` chỉ là dự phòng khi không bóc được từ HTML. Hỗ trợ bổ sung hoặc ghi đè nhãn qua `model-bo-sung`. Người dùng chỉ đích danh model lạ trả lỗi 400 rõ ràng, không âm thầm chạy model khác. **CHƯA KIỂM với dịch vụ thật** (kiểm bằng máy chủ giả).
+
 **Cần gì.**
 - Một hoặc nhiều bộ cookie từ tab gemini.google.com đã đăng nhập (DevTools F12 → Application → Cookies), dạng
   `k1=v1; k2=v2`. Cần ít nhất `__Secure-1PSID`; `__Secure-1PSIDTS` giúp phiên bền hơn. Cookie hết hạn thì export lại.
@@ -1578,6 +1586,8 @@ từ `/api/auth/session` → kiểm qua `/backend-api/me` → suy gói Free/Plus
 bước đăng nhập từ kho công khai TriTue2011/chatgpt2api
 (`captcha-solver/src/chatgpt_login.py`, chỉ đọc lấy hiểu, tự viết lại).
 **Chưa kiểm với chatgpt.com thật.**
+
+**Mô hình theo thực tế tài khoản (NV102).** Danh sách model lấy từ nguồn thật qua điểm cuối `GET /backend-api/models` cho từng tài khoản qua `lay_model()`. Mỗi model có id ổn định `chatgpt-web/<slug>`, nhãn hiển thị tách riêng (từ title hoặc chuẩn hoá slug). Bảng tĩnh chỉ dùng làm dự phòng khi chưa lấy được hoặc lấy thất bại. Khám phá được lưu bền vững vào kho riêng để khôi phục khi nạp lại. Gọi model không có trả lỗi 400 rõ ràng, không fallback âm thầm. Định tuyến chuẩn xác theo tài khoản có model. **CHƯA KIỂM với chatgpt.com thật** (kiểm bằng máy chủ giả).
 
 **KHÁC các module web trước:** mỗi cấu hình có thể gắn `danh_tinh_id` (id `dt-…`
 trong kho danh tính lõi) — một Gmail nhập một lần ở lõi, module chỉ giữ token
@@ -1663,6 +1673,8 @@ KHÔNG đoán tên cookie phiên: «đã đăng nhập» = phiên dùng được
 nhập từ kho công khai TriTue2011/chatgpt2api
 (`captcha-solver/src/grok_web_login.py`, chỉ đọc lấy hiểu, tự viết lại).
 **Chưa kiểm với grok.com thật.**
+
+**Mô hình và model bổ sung (NV102).** grok.com không có điểm cuối lấy danh sách model qua web. Bốn chế độ mặc định: `grok/fast`, `grok/auto`, `grok/expert`, `grok/heavy`. Quản trị viên khai thêm model mới hoặc ghi đè nhãn hiển thị qua API `PUT /api/modules/grok-web/model-bo-sung` (lưu bền vững). Chat chỉ cho phép các chế độ tĩnh hoặc model bổ sung đã khai; gọi chế độ lạ trả lỗi 400 `invalid_request_error` (mã `model_not_found`), không tự rơi về `fast`. **CHƯA KIỂM với grok.com thật** (kiểm bằng máy chủ giả).
 
 **Cần gì.**
 - Gói Python `websockets`, `httpx` phải có trong ảnh (đã nằm trong `requirements.txt`).
@@ -1758,6 +1770,8 @@ ngay. Suy gói Free/Pro: `khong_ro` (**CHƯA KIỂM** — chưa có cấu trúc 
 claude.ai thật). Học bước đăng nhập từ kho công khai TriTue2011/chatgpt2api
 (`captcha-solver/src/claude_web_login.py`, chỉ đọc lấy hiểu, tự viết lại).
 **Chưa kiểm với claude.ai thật.**
+
+**Mô hình và model bổ sung (NV102).** claude.ai bản web không có điểm cuối danh sách model công khai; bảng tĩnh gồm các bí danh thân thiện (`clw/sonnet`, `clw/opus`, `clw/haiku`…). Quản trị viên khai thêm model mới hoặc ghi đè nhãn hiển thị qua API `PUT /api/modules/claude-web/model-bo-sung` (lưu bền vững). Khi chat tới model bổ sung, module tự động chuyển tiếp mã model xuống claude.ai. **CHƯA KIỂM với claude.ai thật** (kiểm bằng máy chủ giả).
 
 **Cần gì.**
 - Một hoặc nhiều bộ cookie từ tab claude.ai đã đăng nhập (DevTools F12 →
@@ -2689,6 +2703,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |
 | `GET /api/modules/{id}/model` | Có | Danh mục model của module (id, nhóm, bật/tắt, mặc định, số đếm) |
 | `PUT /api/modules/{id}/model` | Có | Bật/tắt và đặt mặc định model của module (thân `{"tat": [...], "mac_dinh": {...}}`) |
+| `POST /api/modules/{id}/lam-moi-model` | Có | Làm mới danh sách model của module (chờ gọi nguồn thật). Trả `{"id": str, "ho_tro": bool, "ket_qua": "ok"|"loi"|"het_gio"|"dang_chay", "moi": [...], "khong_con": [...]}` (không hỗ trợ → `{"id": str, "ho_tro": false}`) |
+| `GET /api/modules/{id}/model-so` | Có | Xem danh mục model trong sổ `model_so.json`, chu kỳ làm mới và lần chạy cuối: trả `{"id": str, "chu_ky_gio": float, "chay_cuoi": str | null, "models": [{"id": str, "nhan": str | null, "con": bool, "vang": int, "thay_dau": str, "thay_cuoi": str}]}` |
+| `GET /api/modules/{id}/model-bo-sung` | Có | Xem danh sách model bổ sung do chủ máy khai báo |
+| `PUT /api/modules/{id}/model-bo-sung` | Có | Cập nhật danh sách model bổ sung do chủ máy khai báo (thân `{"models": [{"id": "...", "nhan": "..."}]}`, tối đa 100 mục, thân ≤ 64 KB) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
 | `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo.
@@ -2842,6 +2860,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_TU_LAM_MOI_KHOANG_GIAY` | `1800` | Chu kỳ (giây) vòng làm mới phiên định kỳ nền; tối thiểu `60` để không thành vòng lặp bận. Đọc mỗi vòng |
 | `WEB2API_TU_LAM_MOI_NGHI_GIAY` | `300` | Thời gian nghỉ (giây) giữa hai lượt tự khôi phục của cùng một tài khoản. Đọc mỗi lần kích hoạt |
 | `WEB2API_TU_LAM_MOI_GIAN_CACH_TAI_KHOAN_GIAY` | `30` | Giãn cách (giây) giữa các tài khoản trong một vòng làm mới định kỳ. Đọc mỗi vòng |
+| `WEB2API_CHU_KY_MODEL_GIO` | `3` | Chu kỳ tự động làm mới danh sách model của các module (giờ, số thực, kẹp trong khoảng 1..24; sai kiểu, NaN hoặc vô cực dùng mặc định 3 và ghi cảnh báo log). Đọc mỗi chu kỳ |
 | `WEB2API_PHIEN_WEB_RANH_GIO` | `8` | Thời gian hết hạn do nhàn rỗi (giờ) của một phiên web kể từ lần hoạt động gần nhất |
 | `WEB2API_STEPUP_GIAY` | `900` | Thời gian hiệu lực (giây) của xác nhận lại (step-up) cho thao tác nguy hiểm của quản trị; mặc định 15 phút |
 | `WEB2API_WEBHOOK_THAN_TOI_DA_MB` | `1.0` | Trần thân (MB) cho cửa webhook `POST /api/webhook/{module}/{ma}` (lấy `min` với `webhook.tran_byte` của module); vượt là `413`. Đọc mỗi lượt; đếm byte thật, không tin `Content-Length` |

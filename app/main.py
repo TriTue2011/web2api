@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, nguoi_dung, nhat_ky, phien, phien_web, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -84,6 +84,9 @@ async def lifespan(app: FastAPI):
     # NV91-P2: vòng tự làm mới phiên định kỳ (đồng bộ với sổ module mỗi 60s;
     # tắt gọn khi dừng máy — không tác vụ nền mồ côi).
     tu_lam_moi.quan_ly().bat_dau(lambda: so.dang_chay)
+    vong_model = lam_moi_model.VongLamMoiModel(lambda: so.dang_chay)
+    app.state.vong_model = vong_model
+    vong_model.bat_dau()
     task_dong_bo = asyncio.create_task(_vong_dong_bo_khoa())
     task_quet_phien = asyncio.create_task(_vong_quet_phien(app))
     nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
@@ -97,6 +100,7 @@ async def lifespan(app: FastAPI):
         await tu_lam_moi.quan_ly().dung()
         await tu_lam_moi.huy_tat_ca()
         await ng.dung()
+        await vong_model.dung()
         await so.dung_het()
 
 
@@ -376,6 +380,8 @@ def api_he_thong():
 app.include_router(tuyen.v1)
 app.include_router(tuyen.v1_khong_co)  # NGAY sau v1: /v1 lạ → 404 unknown_endpoint, sai phương thức → 405
 app.include_router(tuyen.modules)
+app.include_router(lam_moi_model.router)
+app.include_router(model_bo_sung.router)
 app.include_router(tuyen.tinh_nang)
 # Cửa webhook chung: ĐƯỜNG MỞ (nhà cung cấp ngoài gọi vào, xác thực bằng bí mật riêng của module) — KHÔNG gắn vào router có QT.
 app.include_router(tuyen.webhook_mod.router)

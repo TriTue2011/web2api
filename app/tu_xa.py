@@ -116,6 +116,9 @@ class ModuleTuXa:
     async def models(self) -> list[dict]:
         return await self._ct.models()
 
+    async def lam_moi_model(self) -> None:
+        self._ct.lam_het_han_dem_models()
+
     async def suc_khoe(self) -> dict:
         return await self._ct.suc_khoe()
 

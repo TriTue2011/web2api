@@ -10,6 +10,7 @@ GIẢ ĐỊNH CHƯA ĐO: Google từ chối khoá hạng miễn phí cho ảnh/v
 import base64
 import hashlib
 import json
+import time
 import logging
 import shutil
 from pathlib import Path
@@ -86,6 +87,16 @@ def ct(c):
 
 def lan(google, duong, khoa=None):
     return [x for x in google.nhat_ky if x["duong"] == duong and (khoa is None or x["khoa"] == khoa)]
+
+
+def cho_lam_moi_nen(client, google, han=5.0):
+    """Sau `cai` thành công lõi tự làm mới model ở nền (NV102): chờ lượt đó xong để test đếm lời gọi không bị lẫn."""
+    het = time.monotonic() + han
+    while time.monotonic() < het:
+        if lan(google, "models_goc") and not client.app.state.vong_model._dang_chay_ids:
+            return
+        time.sleep(0.02)
+    raise AssertionError("lượt làm mới model nền không xong trong hạn")
 
 
 def khong_ro_khoa(*van_ban):
@@ -545,7 +556,10 @@ def test_models_gemini_di_het_cac_trang(client, google):
     google.models_goc_ds = [{"name": f"models/veo-{i}", "supportedGenerationMethods": ["predictLongRunning"]}
                             for i in range(3)]
     cai(client, google, [K1])
+    cho_lam_moi_nen(client, google)
+    google.nhat_ky.clear()
     mod = client.app.state.so.dang_chay["gemini-api"]
+    mod._dem_goc = None  # bản đệm do lượt làm mới nền vừa nạp (trang 1000) — xoá để thử cỡ trang 1
     mod.CO_TRANG_MODELS_GOC = 1
     ids = [x["id"] for x in client.get("/v1/models", headers=QT).json()["data"]]
     assert {"gemini/veo-0", "gemini/veo-1", "gemini/veo-2"} <= set(ids)
@@ -653,6 +667,7 @@ def test_models_quy_tac_anh_tren_id_that(client, google):
 def test_suc_khoe_khong_goi_anh_video(client, google):
     # Nguyên tắc: không dò khoá bằng lời gọi tốn tiền — «chua_ro» cho tới khi dùng thật.
     cai(client, google, [K1])
+    cho_lam_moi_nen(client, google)
     google.nhat_ky.clear()
     r = client.get("/api/modules/gemini-api/suc-khoe", headers=QT)
     assert r.status_code == 200

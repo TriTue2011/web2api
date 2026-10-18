@@ -21,6 +21,7 @@ import threading
 import time
 
 from app import danh_tinh
+from app import model_bo_sung
 from app import tu_lam_moi
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
@@ -966,9 +967,15 @@ class Module:
         KHÔNG fallback âm thầm sang model khác — không tài khoản nào có thì
         chat() trả lỗi rõ 404. Tài khoản chưa khám phá model (tk.model rỗng)
         được coi như có bảng mặc định (sẽ tinh chỉnh ở cai()).
+        Nếu ten_model nằm trong model_bo_sung thì mọi tài khoản đều được thử.
         """
+        ds_bo_sung = {tach_tien_to(b.get("id", "")) for b in model_bo_sung.doc("gemini-web")}
+        la_bo_sung = ten_model in ds_bo_sung
         ds = []
         for tk in self._thu_tu_tai_khoan():
+            if la_bo_sung:
+                ds.append(tk)
+                continue
             model_tk = tk.model or list(MO_HINH_HO_TRO)
             if ten_model in model_tk:
                 ds.append(tk)
@@ -977,11 +984,22 @@ class Module:
     async def chat(self, body: dict, stream: bool):
         body = dict(body or {})
         model_goc = str(body.get("model") or "")
+        biet_them = set()
+        with self._khoa:
+            for tk in self._tai_khoan:
+                if tk.model:
+                    biet_them.update(tk.model)
+        for bo_sung in model_bo_sung.doc("gemini-web"):
+            mid = bo_sung.get("id")
+            if mid:
+                biet_them.add(tach_tien_to(mid))
+
         try:
-            ten_model = giai_quyet_model_day_du(model_goc)
+            ten_model = giai_quyet_model_day_du(model_goc, biet_them=biet_them)
         except ModelKhongCo:
+            cac_model_biet = sorted(set(MO_HINH_HO_TRO) | biet_them)
             thong_diep = (f"model {nhac_lai(tach_tien_to(model_goc))} không có; "
-                          f"chọn trong: {', '.join(id_day_du(m) for m in MO_HINH_HO_TRO)}")
+                          f"chọn trong: {', '.join(id_day_du(m) for m in cac_model_biet)}")
             return 400, {"Content-Type": "application/json"}, \
                 json.dumps(than_loi(400, thong_diep), ensure_ascii=False).encode("utf-8")
         model_id = id_day_du(ten_model)
@@ -1013,7 +1031,7 @@ class Module:
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.psid, tk.psidts)
-                van_ban = await tk.client.generate_content(prompt, ten_model)
+                van_ban = await tk.client.generate_content(prompt, ten_model_da_giai=ten_model)
             except LoiXacThuc as e:
                 self._danh_dau_loi(tk, "khoa_hong", i)
                 loi_cuoi = e
@@ -1060,7 +1078,7 @@ class Module:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.psid, tk.psidts)
                 da_ra_du_lieu = False
-                async for delta in tk.client.generate_content_stream(prompt, ten_model):
+                async for delta in tk.client.generate_content_stream(prompt, ten_model_da_giai=ten_model):
                     da_ra_du_lieu = True
                     yield chunk_delta(model_id, hoan_thanh_id, tao_luc, delta)
             except LoiXacThuc as e:
@@ -1090,33 +1108,76 @@ class Module:
                         f"(mã {ma}) — xem nhật ký máy chủ.")
         yield dong_done()
 
-    # -- models / suc_khoe / dung --------------------------------------------
+    # -- models / lam_moi_model / suc_khoe / dung ----------------------------
 
-    def _muc_model(self, ma: str, ds_khoa: list[str], ds_goi: list[str]) -> dict:
-        """Một mục /v1/models: id ổn định + nhãn tách riêng + gói/tài khoản."""
-        goi_can = "pro" if "pro" in ds_goi else ("free" if ds_goi else "khong_ro")
-        return {"id": id_day_du(ma), "object": "model",
-                "created": 1760000000, "owned_by": "gemini-web",
-                "nhan": nhan_model(ma), "goi": goi_can,
-                "available_cho": list(ds_khoa)}
-
-    async def models(self):
-        """Hợp các model theo TÀI KHOẢN (NV91-P3): mỗi model kèm nhãn hiển thị,
-        gói tối thiểu và danh sách khoá tài khoản dùng được. Chưa có tài khoản
-        → bảng tĩnh đầy đủ (CHƯA KIỂM thật)."""
+    async def lam_moi_model(self) -> None:
+        """Lấy lại model từ nguồn thật (trang chủ gemini.google.com) cho từng tài khoản."""
         with self._khoa:
             ds = list(self._tai_khoan)
         if not ds:
-            return [self._muc_model(m, [], []) for m in MO_HINH_HO_TRO]
-        hop: dict[str, dict] = {}
+            raise RuntimeError("gemini-web chưa có tài khoản nào")
+        co_thanh_cong = False
         for tk in ds:
-            khoa = self._khoa_tu_token(tk.psid)
-            for m in tk.model or list(MO_HINH_HO_TRO):
-                muc = hop.setdefault(m, {"khoa": [], "goi": []})
-                if khoa not in muc["khoa"]:
-                    muc["khoa"].append(khoa)
-                    muc["goi"].append(tk.goi)
-        return [self._muc_model(m, v["khoa"], v["goi"]) for m, v in hop.items()]
+            try:
+                if tk.client is None:
+                    tk.client = self._tao_client(tk.psid, tk.psidts)
+                kq = await tk.client.lay_model_kha_dung()
+                if kq:
+                    tk.model = list(kq)
+                    if not tk.goi or tk.goi == "khong_ro":
+                        tk.goi = self._suy_goi(tk.model)
+                    co_thanh_cong = True
+            except Exception as e:
+                log.warning("gemini-web: không lấy được model cho %s: %s",
+                            tk.ten_che(), type(e).__name__)
+        if co_thanh_cong:
+            self._luu_ban_ghi_tai_khoan()
+        else:
+            raise RuntimeError("không lấy được model từ nguồn")
+
+    def _muc_model(self, ma: str, ds_khoa: list[str], ds_goi: list[str], nhan_ghi_de: str | None = None) -> dict:
+        """Một mục /v1/models: id ổn định + nhãn tách riêng + gói/tài khoản."""
+        goi_can = "pro" if "pro" in ds_goi else ("free" if ds_goi else "khong_ro")
+        nhan = nhan_ghi_de or nhan_model(ma)
+        return {"id": id_day_du(ma), "object": "model",
+                "created": 1760000000, "owned_by": "gemini-web",
+                "nhan": nhan, "goi": goi_can,
+                "available_cho": list(ds_khoa)}
+
+    async def models(self):
+        """Hợp các model theo TÀI KHOẢN (NV91-P3) + model_bo_sung: mỗi model kèm nhãn
+        hiển thị, gói tối thiểu và danh sách khoá tài khoản dùng được."""
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        hop: dict[str, dict] = {}
+        if not ds:
+            for m in MO_HINH_HO_TRO:
+                hop[m] = {"khoa": [], "goi": []}
+        else:
+            for tk in ds:
+                khoa = self._khoa_tu_token(tk.psid)
+                for m in tk.model or list(MO_HINH_HO_TRO):
+                    muc = hop.setdefault(m, {"khoa": [], "goi": []})
+                    if khoa not in muc["khoa"]:
+                        muc["khoa"].append(khoa)
+                        muc["goi"].append(tk.goi)
+
+        # Bổ sung từ model_bo_sung
+        nhan_bo_sung: dict[str, str] = {}
+        for b in model_bo_sung.doc("gemini-web"):
+            mid = b.get("id")
+            if not mid:
+                continue
+            ten = tach_tien_to(mid)
+            if b.get("nhan"):
+                nhan_bo_sung[ten] = b["nhan"]
+            if ten not in hop:
+                tat_ca_khoa = [self._khoa_tu_token(tk.psid) for tk in ds]
+                tat_ca_goi = [tk.goi for tk in ds]
+                hop[ten] = {"khoa": tat_ca_khoa, "goi": tat_ca_goi}
+
+        return [self._muc_model(m, v["khoa"], v["goi"], nhan_ghi_de=nhan_bo_sung.get(m))
+                for m, v in hop.items()]
 
     async def suc_khoe(self):
         with self._khoa:

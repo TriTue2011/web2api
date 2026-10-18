@@ -248,11 +248,13 @@ def test_chat_khong_stream_che_do_expert(bo_module, may_chu):
     assert may_chu.nhat_ky[0]["che_do"] == "expert"
 
 
-def test_chat_che_do_la_ve_fast(bo_module, may_chu):
+def test_chat_che_do_la_bao_loi_400(bo_module, may_chu):
     md = lap_module(bo_module, [cookie("tot_1")], may_chu.url)
     ma, _, noi_dung = chay(md.chat(than({"model": "grok/khong_ton_tai"}), stream=False))
-    assert ma == 200
-    assert json.loads(noi_dung)["model"] == "grok/fast"
+    assert ma == 400
+    du_lieu = json.loads(noi_dung)
+    assert du_lieu["error"]["code"] == "model_not_found"
+    assert du_lieu["error"]["type"] == "invalid_request_error"
 
 
 def test_chat_tin_nhan_rong_400(bo_module, may_chu):
@@ -505,8 +507,9 @@ def test_converter_tach_che_do(bo_module):
     conv = _sys.modules["web2api_module_grok_web_test.converter"]
     assert conv.tach_che_do("grok/expert") == "expert"
     assert conv.tach_che_do("expert") == "expert"
-    assert conv.tach_che_do("grok/la") == "fast"
     assert conv.tach_che_do("") == "fast"
+    with pytest.raises(conv.CheDoKhongCo):
+        conv.tach_che_do("grok/la")
 
 
 def test_converter_hop_van_ban(bo_module):

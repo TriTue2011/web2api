@@ -840,6 +840,7 @@ class Component extends DCLogic {
       luu: () => this.luuThayDoiModel(pvCur ? pvCur.id : null),
       moi: async () => {
         this.setState({ dangMd: true });
+        if (pvCur) { try { await K.goi('api/modules/' + encodeURIComponent(pvCur.id) + '/lam-moi-model', { method: 'POST' }); } catch (e) { this.loi(e); } }
         if (pvCur) await this.taiModelModule(pvCur.id);
         const ok = await this.taiModel();
         this.setState({ dangMd: false });

@@ -542,6 +542,18 @@ class Module:
                 theo_id[id_] = muc
         return ds
 
+    async def lam_moi_model(self) -> None:
+        if self._ct is None:
+            return
+        self._ct.lam_het_han_dem_models()
+        cu = (self._dem_goc, self._dem_goc_luc)
+        self._dem_goc = None
+        try:
+            await self._models_goc()
+        except Exception:
+            self._dem_goc, self._dem_goc_luc = cu
+            raise
+
     async def suc_khoe(self) -> dict:
         return await self._ct.suc_khoe()
 

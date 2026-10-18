@@ -40,6 +40,8 @@ import uuid
 
 import httpx
 
+from app.lam_moi_model import TOI_DA_MODEL, chuan_hoa_ma_model, chuan_hoa_nhan
+
 log = logging.getLogger("web2api.module.chatgpt-web")
 
 #: Máy chủ web ChatGPT (hằng số — không phải do người dùng nhập).
@@ -48,6 +50,7 @@ MAY_CHU_MAC_DINH = "https://chatgpt.com"
 _DUONG_ME = "/backend-api/me"
 _DUONG_GOI = "/backend-api/accounts/check"
 _DUONG_HOI_THOAI = "/backend-api/f/conversation"
+_DUONG_MODELS = "/backend-api/models"
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
@@ -119,27 +122,45 @@ MODEL_MAC_DINH = "4o"
 _TIEN_TO_STRIP = ("chatgpt-web/", "chatgpt/", "cgw/")
 
 
-def giai_quyet_model(ten: str | None) -> str:
+def ten_tu_slug(slug: str) -> str:
+    """Slug từ backend-api → tên thân thiện; slug lạ dùng nguyên slug."""
+    s = str(slug or "").strip()
+    for than_thien in MO_HINH_HO_TRO:
+        if BI_DANH_MODEL.get(than_thien) == s:
+            return than_thien
+    for k, v in BI_DANH_MODEL.items():
+        if k != "auto" and v == s:
+            return k
+    return s
+
+
+def giai_quyet_model(ten: str | None, biet_them: tuple[str, ...] | list[str] | set[str] = ()) -> str:
     """Tên model (đã/không kèm tiền tố) → tên thân thiện; lạ → ModelKhongCo.
 
     Chỉ ``auto`` (hoặc rỗng) được rơi về mặc định; người dùng CHỈ ĐÍCH DANH
     tên lạ phải nhận 400, không âm thầm chạy model khác.
     """
-    m = str(ten or "").strip().lower()
+    raw = str(ten or "").strip()
+    m = raw
     for pfx in _TIEN_TO_STRIP:
-        if m.startswith(pfx):
+        if m.lower().startswith(pfx):
             m = m[len(pfx):]
             break
-    if not m or m == "auto":
+    if not m or m.lower() == "auto":
         return MODEL_MAC_DINH
-    if m in BI_DANH_MODEL:
-        chuan = BI_DANH_MODEL[m]
+    if m in biet_them:
+        return m
+    m_lower = m.lower()
+    if m_lower in biet_them:
+        return m_lower
+    if m_lower in BI_DANH_MODEL:
+        chuan = BI_DANH_MODEL[m_lower]
         for than_thien, ten_chuan in BI_DANH_MODEL.items():
             if ten_chuan == chuan and than_thien in MO_HINH_HO_TRO:
                 return than_thien
         return chuan
     for than_thien in MO_HINH_HO_TRO:
-        if BI_DANH_MODEL[than_thien] == m:
+        if BI_DANH_MODEL[than_thien] == m_lower:
             return than_thien
     raise ModelKhongCo(f"model {ten!r} không có trong danh sách hỗ trợ")
 
@@ -352,6 +373,44 @@ class ChatGPTWebClient:
         goi = str(goi).strip().lower() if goi else ""
         return goi or None
 
+    async def lay_model(self) -> list[dict]:
+        """Lấy danh sách model khả dụng từ GET /backend-api/models.
+
+        Trả [{"slug": str, "nhan": str | None}]; slug qua chuan_hoa_ma_model,
+        nhãn qua chuan_hoa_nhan, bỏ trùng, cắt ở TOI_DA_MODEL.
+        """
+        if self._dong:
+            raise LoiMayChu("client đã đóng")
+        try:
+            r = await self._client.get(_DUONG_MODELS, params={"history_and_training_disabled": "false"})
+        except httpx.TimeoutException as e:
+            raise LoiHetGio(f"hết giờ chờ lấy danh sách model: {type(e).__name__}") from None
+        except httpx.HTTPError as e:
+            raise LoiMayChu(f"không nối được chatgpt.com: {type(e).__name__}") from None
+        self._kiem_ma(r.status_code, "lay_model")
+        try:
+            du_lieu = r.json()
+        except (ValueError, TypeError):
+            raise LoiMayChu("đáp án /backend-api/models không đúng cấu trúc") from None
+        if not isinstance(du_lieu, dict) or not isinstance(du_lieu.get("models"), list):
+            raise LoiMayChu("đáp án /backend-api/models không đúng cấu trúc")
+
+        ket_qua: list[dict] = []
+        da_thay: set[str] = set()
+        for m in du_lieu["models"]:
+            if not isinstance(m, dict):
+                continue
+            slug_raw = m.get("slug")
+            slug = chuan_hoa_ma_model(slug_raw)
+            if slug is None or slug in da_thay:
+                continue
+            da_thay.add(slug)
+            nhan = chuan_hoa_nhan(m.get("title"))
+            ket_qua.append({"slug": slug, "nhan": nhan})
+            if len(ket_qua) >= TOI_DA_MODEL:
+                break
+        return ket_qua
+
     def _tieu_de_hoi_thoai(self) -> dict:
         return {
             "Accept": "text/event-stream",
@@ -360,9 +419,9 @@ class ChatGPTWebClient:
             "X-OpenAI-Target-Route": _DUONG_HOI_THOAI,
         }
 
-    async def generate_content_stream(self, tin_nhan: list[dict], model: str | None = None):
+    async def generate_content_stream(self, tin_nhan: list[dict], model: str | None = None, slug_da_giai: str | None = None):
         """Async generator ra từng delta văn bản của assistant."""
-        slug = slug_cua_model(giai_quyet_model(model))
+        slug = slug_da_giai if slug_da_giai is not None else slug_cua_model(giai_quyet_model(model))
         payload = dung_payload(tin_nhan, slug)
         try:
             async with self._client.stream(
@@ -409,9 +468,9 @@ class ChatGPTWebClient:
         except httpx.HTTPError as e:
             raise LoiMayChu(f"mất kết nối khi đang chat: {type(e).__name__}") from None
 
-    async def generate_content(self, tin_nhan: list[dict], model: str | None = None) -> str:
+    async def generate_content(self, tin_nhan: list[dict], model: str | None = None, slug_da_giai: str | None = None) -> str:
         """Bản không stream: gom các delta thành văn bản đầy đủ."""
-        phan = [d async for d in self.generate_content_stream(tin_nhan, model)]
+        phan = [d async for d in self.generate_content_stream(tin_nhan, model, slug_da_giai=slug_da_giai)]
         return "".join(phan)
 
     async def close(self) -> None:

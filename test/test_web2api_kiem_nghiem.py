@@ -135,7 +135,7 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
                        json={"cau_hinh": {"api_keys": [KHOA_GEMINI], "base_url": s_g.url}})
             assert r.status_code == 200 and r.json()["ok"], r.text
             assert noi("gemini/gemini-2.5-flash") == "chào từ Google giả"
-            assert g.nhat_ky[-1]["than"]["model"] == "gemini-2.5-flash"
+            assert [x for x in g.nhat_ky if "than" in x][-1]["than"]["model"] == "gemini-2.5-flash"  # sau khi thêm khoá lõi còn hỏi /models nền (NV102)
 
             # (d) tự cài + yêu cầu chữ ký: commit chưa ký không tự cài; commit đã ký đổi mã module ĐÃ cài cũng không
             # tự chạy (NV49 R-1) — giữ chờ duyệt, quản trị duyệt (danh sách «them» rỗng + SHA) thì mới chạy.

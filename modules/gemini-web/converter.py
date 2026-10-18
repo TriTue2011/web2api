@@ -31,12 +31,15 @@ def tach_tien_to(model: str | None) -> str:
     return m
 
 
-def giai_quyet_model_day_du(model: str | None) -> str:
+def giai_quyet_model_day_du(
+    model: str | None,
+    biet_them: tuple[str, ...] | list[str] | set[str] = (),
+) -> str:
     """Tên model đầy đủ 'gemini-web/x' → tên thân thiện đã kiểm ('3.5-flash'…).
 
     Ném ModelKhongCo khi tên lạ được chỉ đích danh (→ 400 ở module).
     """
-    return giai_quyet_model(tach_tien_to(model))
+    return giai_quyet_model(tach_tien_to(model), biet_them=biet_them)
 
 
 def id_day_du(ten_than_thien: str) -> str:

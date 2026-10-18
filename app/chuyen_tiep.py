@@ -978,6 +978,9 @@ class ChuyenTiepOpenAI:
         muc["so_model"] = len(data)
         return muc
 
+    def lam_het_han_dem_models(self) -> None:
+        self._dem_luc = 0.0
+
     async def models(self) -> list[dict]:
         bay_gio = self._dong_ho()
         if self._dem_models is not None and bay_gio - self._dem_luc < self.DEM_MODELS_GIAY:

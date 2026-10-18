@@ -34,6 +34,8 @@ import re
 
 import httpx
 
+from app.lam_moi_model import TOI_DA_MODEL, chuan_hoa_ma_model
+
 log = logging.getLogger("web2api.module.gemini-web")
 
 #: Máy chủ web Gemini (hằng số — không phải do người dùng nhập).
@@ -142,21 +144,27 @@ def nhan_model(ma_on_dinh: str) -> str:
     return MO_HINH_ON_DINH.get(str(ma_on_dinh or ""), str(ma_on_dinh or ""))
 
 
-def giai_quyet_model(ten: str | None) -> str:
+def giai_quyet_model(ten: str | None, biet_them: tuple[str, ...] | list[str] | set[str] = ()) -> str:
     """Tên model (đã/không kèm tiền tố) → mã ổn định; lạ → ModelKhongCo.
 
     Quy tắc: chỉ ``auto`` (hoặc rỗng) được rơi về mặc định; người dùng CHỈ
     ĐÍCH DANH tên lạ phải nhận 400, không âm thầm chạy model khác.
     """
-    m = str(ten or "").strip().lower()
+    raw = str(ten or "").strip()
+    m = raw
     for pfx in _TIEN_TO_STRIP:
-        if m.startswith(pfx):
+        if m.lower().startswith(pfx):
             m = m[len(pfx):]
             break
-    if not m or m == "auto":
+    if not m or m.lower() == "auto":
         return MODEL_MAC_DINH
-    if m in BI_DANH_MODEL:
-        return BI_DANH_MODEL[m]
+    if m in biet_them:
+        return m
+    m_lower = m.lower()
+    if m_lower in biet_them:
+        return m_lower
+    if m_lower in BI_DANH_MODEL:
+        return BI_DANH_MODEL[m_lower]
     raise ModelKhongCo(f"model {ten!r} không có trong danh sách hỗ trợ")
 
 
@@ -176,8 +184,8 @@ _MAU_MODEL_LIST = re.compile(r'<script id="model-list"[^>]*>(.*?)</script>',
 def trich_model_tu_html(html: str | None) -> list[str]:
     """Bóc danh sách mã model từ HTML trang chủ (khối model-list nhúng).
 
-    Chỉ lấy chuỗi; chuẩn hoá về mã ổn định khi nhận ra, giữ nguyên tên lạ
-    (kèm chú thích CHƯA KIỂM ở tầng module). Không có khối → [].
+    Mã lấy ra phải qua chuan_hoa_ma_model, bỏ trùng, cắt ở TOI_DA_MODEL.
+    Chuẩn hoá về mã ổn định khi nhận ra, giữ nguyên tên lạ. Không có khối → [].
     """
     khop = _MAU_MODEL_LIST.search(str(html or ""))
     if not khop:
@@ -190,13 +198,19 @@ def trich_model_tu_html(html: str | None) -> list[str]:
     if not isinstance(ds, list):
         return []
     ket_qua = []
+    da_thay = set()
     for m in ds:
-        if not isinstance(m, str) or not m.strip():
+        if not isinstance(m, str):
             continue
-        m = m.strip()
-        on_dinh = BI_DANH_MODEL.get(m.lower(), m)
-        if on_dinh not in ket_qua:
+        chuan = chuan_hoa_ma_model(m)
+        if chuan is None:
+            continue
+        on_dinh = BI_DANH_MODEL.get(chuan.lower(), chuan)
+        if on_dinh not in da_thay:
+            da_thay.add(on_dinh)
             ket_qua.append(on_dinh)
+            if len(ket_qua) >= TOI_DA_MODEL:
+                break
     return ket_qua
 
 
@@ -353,9 +367,11 @@ class GeminiWebClient:
         du_lieu = {"f.req": f_req, "at": self._snlm0e}
         return tham_so, du_lieu
 
-    async def generate_content_stream(self, prompt: str, model: str | None = None):
+    async def generate_content_stream(self, prompt: str, model: str | None = None,
+                                      biet_them: tuple[str, ...] | list[str] | set[str] = (),
+                                      ten_model_da_giai: str | None = None):
         """Async generator ra từng delta văn bản (kiểu text_delta của gói tham khảo)."""
-        ten_model = giai_quyet_model(model)
+        ten_model = ten_model_da_giai if ten_model_da_giai is not None else giai_quyet_model(model, biet_them=biet_them)
         tham_so, du_lieu = await self._tham_so_va_du_lieu(prompt, ten_model)
         try:
             async with self._client.stream(
@@ -397,9 +413,11 @@ class GeminiWebClient:
         except httpx.HTTPError as e:
             raise LoiMayChu(f"mất kết nối khi đang chat: {type(e).__name__}") from None
 
-    async def generate_content(self, prompt: str, model: str | None = None) -> str:
+    async def generate_content(self, prompt: str, model: str | None = None,
+                               biet_them: tuple[str, ...] | list[str] | set[str] = (),
+                               ten_model_da_giai: str | None = None) -> str:
         """Bản không stream: gom các delta thành văn bản đầy đủ."""
-        phan = [d async for d in self.generate_content_stream(prompt, model)]
+        phan = [d async for d in self.generate_content_stream(prompt, model, biet_them=biet_them, ten_model_da_giai=ten_model_da_giai)]
         return "".join(phan)
 
     async def close(self) -> None:

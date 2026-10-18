@@ -38,6 +38,8 @@ from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 from app import tu_lam_moi
 from app.tu_xa import kiem_url_lan
 
+from app.lam_moi_model import TOI_DA_MODEL, chuan_hoa_ma_model, chuan_hoa_nhan
+
 from .client import (
     MAY_CHU_MAC_DINH,
     MODEL_MAC_DINH,
@@ -50,6 +52,8 @@ from .client import (
     LoiXacThuc,
     ModelKhongCo,
     chuyen_thanh_tin_nhan,
+    slug_cua_model,
+    ten_tu_slug,
 )
 from .converter import (
     TIEN_TO,
@@ -107,12 +111,15 @@ class _TaiKhoan:
         self.goi: str = "khong_ro"  # free | plus | pro | khong_ro | ...
         self.trang_thai: str = "hoat_dong"
         self.lan_dung_cuoi: str | None = None
+        self.model_that: list[dict] | None = None
 
     def ten_che(self) -> str:
         return che(self.token)
 
     def model_duoc(self) -> list[str]:
-        """Tên thân thiện các model tài khoản này dùng được (theo gói)."""
+        """Tên thân thiện các model tài khoản này dùng được (ưu tiên nguồn thật khi có, ngược lại theo gói)."""
+        if self.model_that:
+            return [ten_tu_slug(m["slug"]) for m in self.model_that if isinstance(m, dict) and "slug" in m]
         return _model_theo_goi(self.goi)
 
     def ban_ghi(self, khoa: str) -> dict:
@@ -125,6 +132,7 @@ class _TaiKhoan:
             "goi": self.goi,
             "trang_thai": self.trang_thai,
             "lan_dung_cuoi": self.lan_dung_cuoi,
+            "model_that": self.model_that,
         }
 
     def ap_dung_ban_ghi(self, ban_ghi: dict) -> None:
@@ -146,6 +154,23 @@ class _TaiKhoan:
         lan = ban_ghi.get("lan_dung_cuoi")
         if isinstance(lan, str) and lan:
             self.lan_dung_cuoi = lan
+        mt = ban_ghi.get("model_that")
+        if isinstance(mt, list):
+            ds_mt = []
+            da_thay: set[str] = set()
+            for it in mt:
+                if not isinstance(it, dict):
+                    continue
+                s = chuan_hoa_ma_model(it.get("slug"))
+                if s is None or s in da_thay:
+                    continue
+                da_thay.add(s)
+                nhan = chuan_hoa_nhan(it.get("nhan"))
+                ds_mt.append({"slug": s, "nhan": nhan})
+                if len(ds_mt) >= TOI_DA_MODEL:
+                    break
+            if ds_mt:
+                self.model_that = ds_mt
 
 
 def _gio_utc() -> str:
@@ -154,10 +179,10 @@ def _gio_utc() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Bảng model theo gói — CHƯA KIỂM trên dịch vụ thật.
+# Bảng model theo gói (dự phòng khi nguồn thật thất bại) — CHƯA KIỂM trên dịch vụ thật.
 #
 # Suy từ web app công khai của ChatGPT (không dò chữ trong đáp án, chỉ là bảng
-# tĩnh trong mã). OpenAI đổi gói/model bất cứ lúc nào — cập nhật bảng khi có
+# tĩnh trong mã, dùng làm dự phòng khi gọi nguồn thật thất bại). OpenAI đổi gói/model bất cứ lúc nào — cập nhật bảng khi có
 # đo thật. Gói lạ hoặc không rõ → cho phép toàn bộ (tài khoản vẫn dùng được
 # khi cai() không có mạng; định tuyến lúc đó dựa vào lỗi 4xx thực tế).
 # ---------------------------------------------------------------------------
@@ -754,6 +779,13 @@ class Module:
                 tk.email = email
         if not tk.goi or tk.goi == "khong_ro":
             tk.goi = await self._lay_goi(tk.token)
+        try:
+            kq = await tk.client.lay_model()
+            if kq:
+                tk.model_that = kq
+        except Exception as e:
+            log.warning("chatgpt-web: không lấy được model ở _init_tai_khoan cho %s: %s",
+                        tk.ten_che(), type(e).__name__)
         tk.trang_thai = "hoat_dong"
         self._luu_ban_ghi_tai_khoan()
 
@@ -890,11 +922,21 @@ class Module:
         body = dict(body or {})
         model_goc = str(body.get("model") or "")
         yeu_cau_trong = not model_goc.strip() or model_goc.strip().lower() == "auto"
+        with self._khoa:
+            ds_tk = list(self._tai_khoan)
+        biet_them = set()
+        for tk in ds_tk:
+            if tk.model_that:
+                for m in tk.model_that:
+                    if isinstance(m, dict) and "slug" in m:
+                        biet_them.add(ten_tu_slug(m["slug"]))
+                        biet_them.add(m["slug"])
         try:
-            ten_model = giai_quyet_model_day_du(model_goc)
+            ten_model = giai_quyet_model_day_du(model_goc, biet_them=biet_them)
         except ModelKhongCo:
+            dang_co = [m["id"] for m in await self.models()]
             thong_diep = (f"model {nhac_lai(tach_tien_to(model_goc))} không có; "
-                          f"chọn trong: {', '.join(id_day_du(m) for m in MO_HINH_HO_TRO)}")
+                          f"chọn trong: {', '.join(dang_co) if dang_co else ', '.join(id_day_du(m) for m in MO_HINH_HO_TRO)}")
             return 400, {"Content-Type": "application/json"}, \
                 json.dumps(than_loi(400, thong_diep), ensure_ascii=False).encode("utf-8")
         tat_ca = self._thu_tu_tai_khoan()
@@ -926,17 +968,18 @@ class Module:
                 json.dumps(than_loi(400, "thiếu messages (danh sách hội thoại rỗng)"),
                            ensure_ascii=False).encode("utf-8")
 
+        slug_da_giai = slug_cua_model(ten_model)
         if stream:
             tieu_de = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache",
                        "X-Accel-Buffering": "no"}
-            return 200, tieu_de, self._luong_chat(ds, tin_nhan, model_id, ten_model)
+            return 200, tieu_de, self._luong_chat(ds, tin_nhan, model_id, ten_model, slug_da_giai=slug_da_giai)
 
         loi_cuoi: LoiChatGPTWeb | None = None
         for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.token)
-                van_ban = await tk.client.generate_content(tin_nhan, ten_model)
+                van_ban = await tk.client.generate_content(tin_nhan, ten_model, slug_da_giai=slug_da_giai)
             except LoiXacThuc as e:
                 self._danh_dau_loi(tk, "khoa_hong", i)
                 loi_cuoi = e
@@ -974,7 +1017,7 @@ class Module:
             json.dumps(than_loi(ma, thong_diep), ensure_ascii=False).encode("utf-8")
 
     async def _luong_chat(self, ds: list[_TaiKhoan], tin_nhan: list[dict],
-                          model_id: str, ten_model: str):
+                          model_id: str, ten_model: str, slug_da_giai: str | None = None):
         """SSE OpenAI; xoay tài khoản ngay trong luồng khi tài khoản đầu hỏng."""
         hoan_thanh_id = tao_hoan_thanh_id()
         tao_luc = int(time.time())
@@ -985,7 +1028,7 @@ class Module:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.token)
                 da_ra_du_lieu = False
-                async for delta in tk.client.generate_content_stream(tin_nhan, ten_model):
+                async for delta in tk.client.generate_content_stream(tin_nhan, ten_model, slug_da_giai=slug_da_giai):
                     da_ra_du_lieu = True
                     yield chunk_delta(model_id, hoan_thanh_id, tao_luc, delta)
             except LoiXacThuc as e:
@@ -1017,34 +1060,89 @@ class Module:
                         f"(mã {ma}) — xem nhật ký máy chủ.")
         yield dong_done()
 
-    # -- models / suc_khoe / dung --------------------------------------------
+    # -- models / lam_moi_model / suc_khoe / dung ----------------------------
+
+    async def lam_moi_model(self) -> None:
+        """Lấy lại model từ nguồn thật GET /backend-api/models cho từng tài khoản."""
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        if not ds:
+            return
+        co_thanh_cong = False
+        for tk in ds:
+            try:
+                if tk.client is None:
+                    tk.client = self._tao_client(tk.token)
+                kq = await tk.client.lay_model()
+                if kq:
+                    tk.model_that = kq
+                    co_thanh_cong = True
+            except Exception as e:
+                log.warning("chatgpt-web: không lấy được model cho %s: %s",
+                            tk.ten_che(), type(e).__name__)
+        if co_thanh_cong:
+            self._luu_ban_ghi_tai_khoan()
+        else:
+            raise RuntimeError("không lấy được model từ nguồn")
 
     async def models(self):
-        """HỢP model theo tài khoản (NV93): mỗi model có id ổn định
-        «chatgpt-web/<tên>», nhãn hiển thị «nhan» tách riêng, «goi» (gói tối
-        thiểu theo bảng MO_HINH_THEO_GOI — CHƯA KIỂM trên dịch vụ thật) và
-        «available_cho» (khoá mờ các tài khoản đang có model này)."""
+        """HỢP model theo tài khoản: mỗi model có id ổn định «chatgpt-web/<tên>»,
+        nhãn hiển thị «nhan» tách riêng, «goi» và «available_cho»."""
         with self._khoa:
             ds = list(self._tai_khoan)
         hop: dict[str, list[str]] = {}
+        nhan_that: dict[str, str] = {}
+        co_that: dict[str, list[str]] = {}
+
         for tk in ds:
             khoa = self._khoa_tu_token(tk.token)
-            for ten in tk.model_duoc():
-                hop.setdefault(ten, [])
-                if khoa not in hop[ten]:
-                    hop[ten].append(khoa)
-        thu_tu = _model_theo_goi(None)  # thứ tự chuẩn của bảng
+            if tk.model_that:
+                for m in tk.model_that:
+                    if not isinstance(m, dict) or "slug" not in m:
+                        continue
+                    slug = m["slug"]
+                    ten = ten_tu_slug(slug)
+                    hop.setdefault(ten, [])
+                    if khoa not in hop[ten]:
+                        hop[ten].append(khoa)
+                    if m.get("nhan") and ten not in nhan_that:
+                        nhan_that[ten] = m["nhan"]
+                    co_that.setdefault(ten, []).append(tk.goi)
+            else:
+                for ten in tk.model_duoc():
+                    hop.setdefault(ten, [])
+                    if khoa not in hop[ten]:
+                        hop[ten].append(khoa)
+
+        thu_tu_chuan = _model_theo_goi(None)  # thứ tự chuẩn của bảng
+        cac_ten = []
+        for ten in thu_tu_chuan:
+            if ten in hop and ten not in cac_ten:
+                cac_ten.append(ten)
+        for ten in hop:
+            if ten not in cac_ten:
+                cac_ten.append(ten)
+
+        GOI_BAC = {"free": 1, "plus": 2, "pro": 3}
         ra = []
-        for ten in thu_tu:
-            if ten not in hop:
-                continue
+        for ten in cac_ten:
+            nhan = nhan_that.get(ten) or _nhan_model(ten) or ten
+            if ten in co_that:
+                ds_goi = [g for g in co_that[ten] if g in GOI_BAC]
+                if ds_goi:
+                    goi_nho_nhat = min(ds_goi, key=lambda g: GOI_BAC[g])
+                else:
+                    goi_nho_nhat = "khong_ro"
+            else:
+                goi_nho_nhat = _goi_toi_thieu(ten)
+
             ra.append({
                 "id": id_day_du(ten),
                 "object": "model",
                 "created": 1760000000,
                 "owned_by": "chatgpt-web",
-                "nhan": _nhan_model(ten),
-                "goi": _goi_toi_thieu(ten),
+                "nhan": nhan,
+                "goi": goi_nho_nhat,
                 "available_cho": hop[ten],
             })
         return ra
