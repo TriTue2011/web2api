@@ -1,8 +1,8 @@
 # Thông báo bên thứ ba
 
-Thư mục `.claude/skills/` của kho này chứa tài liệu được phỏng theo ba nguồn mở
+Thư mục `.claude/skills/` của kho này chứa tài liệu được phỏng theo năm nguồn mở
 dưới đây. Bản phỏng theo đã được Việt hoá, rút gọn và chỉnh cho khớp luật của kho
-web2api; nội dung gốc thuộc về tác giả của chúng theo giấy phép MIT.
+web2api; nội dung gốc thuộc về tác giả của chúng theo giấy phép của từng nguồn.
 
 ## 1. claudekit-skills
 
@@ -31,6 +31,49 @@ web2api; nội dung gốc thuộc về tác giả của chúng theo giấy phép
   `verification-loop`, `api-design` — đã **dịch và rút gọn** (mỗi skill ≤ 150
   dòng so với bản gốc 135–800 dòng), bỏ phần không khớp kho (Next.js/npm/Supabase/
   Vercel, SQLAlchemy/Alembic/JWT mẫu), viết lại theo luật cứng của kho ở CLAUDE.md.
+
+## 4. impeccable
+
+- Nguồn: https://github.com/pbakaus/impeccable
+- Trích tại commit: `08d5b470495d`
+- Giấy phép: Apache License 2.0
+- Dùng cho: skill `adapt` — đã **Việt hoá và chỉnh sửa** (rút gọn từ 318 dòng còn
+  ~90 dòng; chỉ giữ phần rà soát giao diện web trên điện thoại/máy tính bảng;
+  bỏ phần email, in ấn, native và phần «thiết kế lại cho ngữ cảnh mới» vì kho
+  web2api chỉ có giao diện web và giao diện phải giống y hệt demo).
+- Dòng bản quyền nguyên văn của họ: `Copyright 2025 Paul Bakaus`
+- Toàn văn giấy phép giữ tại `.claude/skills/adapt/LICENSE-Apache-2.0.txt`.
+
+Đoạn thông báo bản quyền/giấy phép cần giữ (nguyên văn, từ tệp LICENSE-impeccable
+của họ):
+
+```
+Copyright 2025 Paul Bakaus
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+## 5. web-quality-skills
+
+- Nguồn: https://github.com/addyosmani/web-quality-skills
+- Trích tại commit: `afa8da942115`
+- Giấy phép: MIT
+- Dòng bản quyền nguyên văn của họ: `Copyright (c) 2026 Addy Osmani`
+- Dùng cho: skill `accessibility` và `references/` — đã **Việt hoá và chỉnh sửa**
+  (SKILL.md rút từ 464 dòng còn ~110 dòng; references Việt hoá, ví dụ mã giữ
+  nguyên tiếng Anh kèm chú thích tiếng Việt; lệnh `npx lighthouse` /
+  `npm install @axe-core/cli` chỉ giữ dạng ví dụ kèm ghi chú kho không cài gói mới).
+- Toàn văn giấy phép giữ tại `.claude/skills/accessibility/LICENSE-MIT.txt`.
 
 Nội dung giấy phép MIT của họ (nguyên văn, tiếng Anh):
 
