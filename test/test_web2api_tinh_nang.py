@@ -372,12 +372,18 @@ def test_trang_thai_git_cu_thieu_truong_moi_duoc_doc_lai(du_lieu, monkeypatch):
 
 def _ten_nha_cung_cap() -> set[str]:
     """Tên suy từ manifest của CHÍNH các module trong kho (không gõ tay): tiền tố, các đoạn của id, nhãn tên máy
-    trong `mang_ra` (bỏ «apis» cuối: generativelanguage.googleapis.com → generativelanguage, google)."""
+    trong `mang_ra` (bỏ «apis» cuối: generativelanguage.googleapis.com → generativelanguage, google).
+
+    Ngoại lệ: mảnh «assistant» (từ id «home-assistant», NV118) là vai tin nhắn của chuẩn
+    OpenAI, đã có trong app/tuyen.py và web/Studio.dc.html từ trước — không phải tên
+    nhà cung cấp. Tên đầy đủ «home-assistant» và tiền tố «home_assistant» vẫn bị quét.
+    """
+    MANH_TU_THONG_DUNG = {"assistant"}
     ten = set()
     for p in (GOC / "modules").glob("*/manifest.json"):
         m = json.loads(p.read_text(encoding="utf-8"))
         ten.add(m["tien_to"].lower())
-        ten |= {x for x in m["id"].lower().split("-") if len(x) >= 4 and x not in {"api", "apis"}}
+        ten |= {x for x in m["id"].lower().split("-") if len(x) >= 4 and x not in {"api", "apis"} and x not in MANH_TU_THONG_DUNG}
         for may in m["tai_nguyen"].get("mang_ra", []):
             for nhan in may.lower().split(".")[:-1]:
                 if len(nhan) >= 5:
