@@ -141,12 +141,19 @@ def _tai_module():
     Cache theo đường dẫn để monkeypatch hằng số (TRAN_PHAN_HOI, SO_THUC_THE_TOI_DA) trúng đúng bản dùng.
     """
     import importlib.util
+    import sys
     duong = GOC / "modules" / "home-assistant" / "module.py"
     if not duong.is_file():
         raise ModuleNotFoundError("modules.home_assistant")
     if str(duong) not in _MOD_CACHE:
-        spec = importlib.util.spec_from_file_location("home_assistant_module_nv118", duong)
+        ten_pkg = "home_assistant_module_nv118"
+        spec = importlib.util.spec_from_file_location(
+            ten_pkg,
+            duong,
+            submodule_search_locations=[str(duong.parent)],
+        )
         mm = importlib.util.module_from_spec(spec)
+        sys.modules[ten_pkg] = mm
         spec.loader.exec_module(mm)
         _MOD_CACHE[str(duong)] = mm
     return _MOD_CACHE[str(duong)]
@@ -422,7 +429,7 @@ def moi_truong_loi(tmp_path, monkeypatch, loopback_cho_phep):
 def _cai_module_vao_loi(client, data_dir, ha_gia, cau_hinh=None):
     mod_path = data_dir / "modules" / "home-assistant"
     mod_path.mkdir(parents=True, exist_ok=True)
-    for ten in ("manifest.json", "module.py", "README.md"):
+    for ten in ("manifest.json", "module.py", "README.md", "khop_nhanh.py"):
         nguon = GOC / "modules" / "home-assistant" / ten
         if not nguon.is_file():
             pytest.skip(f"chưa có modules/home-assistant/{ten}")

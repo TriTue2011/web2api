@@ -21,6 +21,7 @@ import json
 import logging
 import time
 import unicodedata
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -52,7 +53,7 @@ MIEN_CAM_DIEU_KHIEN = frozenset(
 #: Thuộc tính HA được giữ lại (chống phình và rò thông tin — KHÔNG chép nguyên attributes).
 THUOC_TINH_AN_TOAN = frozenset({"device_class", "unit_of_measurement"})
 
-#: Trạng thái HA coi là không hợp lệ.
+#: Trạng thái HA coi là không hợp lệ / không khả dụng.
 TRANG_THAI_HONG = frozenset({"unavailable", "unknown", "none", ""})
 
 
@@ -199,6 +200,31 @@ def _kiem_tham_so(luoc_do: dict | None, tham_so: dict) -> str | None:
     return None
 
 
+# ── Nối thuật toán khớp nhanh từ khop_nhanh.py (NV131) ────────
+from .khop_nhanh import (
+    ChiMucUngVien,
+    KetQuaKhop,
+    khop_thiet_bi,
+    giai_thich_khop,
+    kiem_kha_thi_ung_vien,
+    normalize,
+    _char_ngrams,
+    _jaccard,
+    _seq_ratio,
+    _word_sim,
+    _bm25_scores,
+    _intent_affinity,
+    _tokens_aligned,
+    W_WORD,
+    W_CHAR,
+    W_BM25,
+    W_INTENT,
+    DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_MIN_MARGIN,
+    PREFILTER_TOP,
+)
+
+
 class Module:
     def __init__(self, manifest: dict):
         self.manifest = manifest
@@ -207,6 +233,8 @@ class Module:
         self._token = ""
         self._kiem_tls = True
         self._nhom: list[str] = list(NHOM_MAC_DINH)
+        self._tu_khoa_goi: list[str] = []
+        self._chi_muc_ung_vien = ChiMucUngVien()
         self._khach: httpx.AsyncClient | None = None
         self._ban_do_thuc_the: dict[str, dict] = {}  # entity_id HA → bản ghi nội bộ
         self._dem_states: tuple[float, list] | None = None
@@ -243,6 +271,13 @@ class Module:
         tls = str(cau_hinh.get("kiem_chung_chi_tls", "true")).strip().lower()
         self._kiem_tls = tls not in ("false", "0", "khong", "không", "no", "off")
         self._nhom = self._tach_nhom(cau_hinh.get("nhom_duoc_dieu_khien")) or list(NHOM_MAC_DINH)
+        tu_khoa = cau_hinh.get("tu_khoa_goi")
+        if isinstance(tu_khoa, str):
+            self._tu_khoa_goi = [k.strip() for k in tu_khoa.split(",") if k.strip()]
+        elif isinstance(tu_khoa, list):
+            self._tu_khoa_goi = [str(k).strip() for k in tu_khoa if str(k).strip()]
+        else:
+            self._tu_khoa_goi = []
         self._khach = None  # cấu hình đổi → bỏ client cũ (TLS/địa chỉ mới)
         self._dem_states = None
         self._dem_khu = {}
@@ -282,6 +317,7 @@ class Module:
             "token": token,
             "kiem_chung_chi_tls": "true" if kiem_tls else "false",
             "nhom_duoc_dieu_khien": ",".join(self._tach_nhom(cau_hinh.get("nhom_duoc_dieu_khien")) or list(NHOM_MAC_DINH)),
+            "tu_khoa_goi": ",".join(self._tu_khoa_goi),
         }
         self.nap(cau_hinh_luu)  # nạp ngay để thể hiện dùng được sau cai()
         return {
@@ -417,9 +453,8 @@ class Module:
             if not isinstance(s, dict):
                 continue
             eid = str(s.get("entity_id") or "")
-            if "." not in eid:
-                continue
-            hop_le.append((eid, s if isinstance(s.get("attributes"), dict) else {**s, "attributes": {}}))
+            if "." in eid:
+                hop_le.append((eid, s if isinstance(s.get("attributes"), dict) else {**s, "attributes": {}}))
         khu_vuc = await self._lay_khu_vuc([eid for eid, _ in hop_le])
         ra = []
         self._ban_do_thuc_the = {}
@@ -446,7 +481,12 @@ class Module:
                 "rui_ro_mac_dinh": _rui_ro_mien(mien, device_class),
             }
             ra.append(muc)
-            self._ban_do_thuc_the[eid] = {"mien": mien, "tinh_nang": tinh_nang, "device_class": device_class}
+            self._ban_do_thuc_the[eid] = {
+                "mien": mien,
+                "tinh_nang": tinh_nang,
+                "device_class": device_class,
+                "trang_thai": s.get("state"),
+            }
         return ra
 
     async def trang_thai(self, ids: list[str]) -> dict[str, dict]:
@@ -541,4 +581,105 @@ class Module:
             {"muc": {"type": "number", "minimum": t_min, "maximum": t_max,
                      "description": f"Nhiệt độ {t_min}–{t_max}"}},
             ["muc"],
+        )
+
+    # ── khớp thiết bị nhanh & chẩn đoán (NV131) ────────────────
+
+    def kiem_kha_thi(self, id: str, hanh_dong: str) -> tuple[bool, str | None]:
+        """Kiểm khả thi trước khi chạy theo nguyên tắc cấu trúc:
+        thực thể tồn tại, không cấm, trạng thái khả dụng, hành động hỗ trợ.
+        """
+        if not isinstance(id, str):
+            return False, "id thực thể không hợp lệ"
+        eid = id.split(".", 1)[1] if id.startswith(f"{self.tien_to}.") else id
+        if self._ban_do_thuc_the:
+            ban_ghi = self._ban_do_thuc_the.get(eid)
+            if ban_ghi is None:
+                return False, "thực thể không tồn tại trong danh sách của module"
+
+            trang_thai = ban_ghi.get("trang_thai")
+            if trang_thai is None and self._dem_states and isinstance(self._dem_states[1], list):
+                for s in self._dem_states[1]:
+                    if isinstance(s, dict) and s.get("entity_id") == eid:
+                        trang_thai = s.get("state")
+                        break
+
+            ent_check = {
+                "id": id,
+                "loai": ban_ghi.get("mien") or (eid.split(".", 1)[0] if "." in eid else ""),
+                "tinh_nang": ban_ghi.get("tinh_nang") or [],
+                "trang_thai": trang_thai,
+            }
+            return kiem_kha_thi_ung_vien(
+                ent_check,
+                hanh_dong,
+                mien_cam=MIEN_CAM_DIEU_KHIEN,
+                kha_nang_mien=_KHA_NANG_MIEN,
+                trang_thai_hong=TRANG_THAI_HONG,
+                nhom_duoc_dieu_khien=self._nhom,
+            )
+
+        # Nếu _ban_do_thuc_the chưa có (chưa gọi thuc_the), kiểm tra theo cấu trúc miền
+        loai = eid.split(".", 1)[0] if "." in eid else ""
+        ent_check = {"id": id, "loai": loai}
+        return kiem_kha_thi_ung_vien(
+            ent_check,
+            hanh_dong,
+            mien_cam=MIEN_CAM_DIEU_KHIEN,
+            kha_nang_mien=_KHA_NANG_MIEN,
+            trang_thai_hong=TRANG_THAI_HONG,
+            nhom_duoc_dieu_khien=self._nhom,
+        )
+
+    async def khop_thiet_bi(
+        self,
+        cau: str,
+        ung_vien: list[dict] | None = None,
+        *,
+        min_confidence: float = 0.55,
+        min_margin: float = 0.08,
+        tu_khoa_goi: list[str] | None = None,
+        ngon_ngu: str = "vi",
+    ) -> KetQuaKhop:
+        """Khớp câu nói với thiết bị Home Assistant mà không cần lượt LLM."""
+        if ung_vien is None:
+            ung_vien = await self.thuc_the(None)
+        kw = self._tu_khoa_goi if tu_khoa_goi is None else tu_khoa_goi
+        return khop_thiet_bi(
+            cau,
+            ung_vien,
+            module=self,
+            tu_khoa_goi=kw,
+            min_confidence=min_confidence,
+            min_margin=min_margin,
+            ngon_ngu=ngon_ngu,
+            chi_muc=self._chi_muc_ung_vien,
+            mien_cam=MIEN_CAM_DIEU_KHIEN,
+            kha_nang_mien=_KHA_NANG_MIEN,
+            trang_thai_hong=TRANG_THAI_HONG,
+            tinh_rui_ro=_rui_ro_mien,
+            nhom_duoc_dieu_khien=self._nhom,
+        )
+
+    async def giai_thich_khop(
+        self,
+        cau: str,
+        ung_vien: list[dict] | None = None,
+        *,
+        ngon_ngu: str = "vi",
+    ) -> dict:
+        """Chẩn đoán giải thích chi tiết điểm từng tín hiệu."""
+        if ung_vien is None:
+            ung_vien = await self.thuc_the(None)
+        return giai_thich_khop(
+            cau,
+            ung_vien,
+            module=self,
+            ngon_ngu=ngon_ngu,
+            chi_muc=self._chi_muc_ung_vien,
+            mien_cam=MIEN_CAM_DIEU_KHIEN,
+            kha_nang_mien=_KHA_NANG_MIEN,
+            trang_thai_hong=TRANG_THAI_HONG,
+            tinh_rui_ro=_rui_ro_mien,
+            nhom_duoc_dieu_khien=self._nhom,
         )

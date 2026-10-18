@@ -2185,7 +2185,7 @@ thành thực thể `home_assistant.light.den_tran` (giữ nguyên dấu chấm 
 thiết bị, không trò chuyện).
 
 **Cần gì.**
-- Máy chủ Home Assistant trong mạng nhà (vd `http://192.168.1.10:8123`) + Long-Lived
+- Máy chủ Home Assistant trong mạng nhà (vd `http://192.0.2.10:8123`) + Long-Lived
   Access Token (Hồ sơ → Bảo mật → Token truy cập dài hạn).
 - Mạng ra tới địa chỉ HA đó (khớp `tai_nguyen.mang_ra` trong manifest).
 
@@ -2248,7 +2248,7 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "home-assistant"`.
 2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/home-assistant`
 3. Cấu hình: `POST /api/modules/home-assistant/cai` với thân
-   `{"cau_hinh": {"dia_chi": "http://192.168.1.10:8123", "token": "<token-dai-han>"}}`
+   `{"cau_hinh": {"dia_chi": "http://192.0.2.10:8123", "token": "<token-dai-han>"}}`
    — `dia_chi` được kiểm bằng ĐÚNG `app/tu_xa.py` (cho LAN riêng tư; chặn loopback,
    link-local/metadata đám mây, không định tuyến; ghim IP chống DNS rebinding);
    `cai` gọi thử `GET /api/` để kiểm token (sai → 401 rõ, token không lộ trong lỗi/log).
@@ -2276,6 +2276,7 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 | `token` | Có | Long-Lived Access Token — lưu riêng kho bí mật, không trả lại |
 | `kiem_chung_chi_tls` | Không | `true` (mặc định) kiểm chứng chỉ khi dùng https |
 | `nhom_duoc_dieu_khien` | Không | Các miền được ĐIỀU KHIỂN (mặc định `light,switch,fan,scene,media_player,input_boolean,climate`); miền ngoài danh sách chỉ đọc; miền chạy mã tuỳ ý (`script`, `automation`, `shell_command`, `rest_command`, `python_script`, `hassio`) không bao giờ điều khiển được |
+| `tu_khoa_goi` | Không | Từ khoá gọi (hot words) ở đầu câu chuyển sang LLM, phân cách bằng dấu phẩy |
 | `dia_chi` | Có | `https://host[:port]` của trang quản trị bộ phát. Qua đúng bộ kiểm SSRF của lõi (`app/tu_xa.py`): chặn loopback, link-local/metadata đám mây, địa chỉ không định tuyến; cho phép LAN riêng tư. |
 | `tai_khoan` | Có | Tên đăng nhập trang quản trị. |
 | `mat_khau` | Có | Mật khẩu đăng nhập (kiểu `bi_mat`: lưu riêng quyền 0600, không vào log/URL/phản hồi). |
@@ -2347,6 +2348,21 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 **Giới hạn.**
 - Chưa kiểm với Home Assistant thật (chỉ máy chủ giả); sự kiện thời gian thực chưa làm.
+
+**Khớp thiết bị nhanh không cần LLM (`khop_thiet_bi`).**
+- **Xếp hạng đa tín hiệu thuần Python:** Kết hợp LCS ký tự (có phạt chênh lệch độ dài), Jaccard 3-gram ký tự, BM25 tính trực tiếp trên tập thực thể ứng viên (từ hiếm nhận diện phòng/thiết bị riêng biệt có trọng số cao), và tương hợp hành động (`bat`, `tat`, `chuyen`, `mo`, `dong` — triệt tiêu điểm đối với hành động đối nghịch).
+- **Chuẩn hoá:** NFKC → chữ thường → bỏ dấu tiếng Việt (kể cả `đ` → `d`) → bỏ dấu câu. Cho phép câu lệnh không dấu khớp chính xác thực thể có dấu.
+- **Cổng căn từ an toàn:** Mỗi từ có nghĩa trong câu phải có từ tương ứng ở thực thể; chặn hoàn toàn việc nhận diện sai khi câu chứa từ vựng không liên quan.
+- **Biên mơ hồ an toàn:** Khi hai ứng viên hàng đầu có điểm chênh lệch < 0.08, trả về `mo_ho: true` và không tự tiện chọn thay người dùng.
+- **Gợi ý từ khoá (`tu_khoa_goi`):** Hỗ trợ cấu hình hot words để ưu tiên nhận diện câu nói tắt hoặc biệt danh thường dùng.
+- **Kiểm tra khả thi trước điều khiển (`kiem_kha_thi`):** Kiểm tra trạng thái thực thể trước khi gửi lệnh; nếu ứng viên điểm cao nhất không khả thi (thiết bị offline/unavailable hoặc miền cấm như `script`), tự động bỏ qua và phục hồi sang ứng viên kế tiếp (tối đa 1 lần).
+- **Chẩn đoán khớp (`giai_thich_khop`):** Bóc tách chi tiết điểm số từng thành phần (LCS, 3-gram, BM25, intent affinity, hot words) phục vụ kiểm tra và tinh chỉnh.
+
+**Nối HA Assist vào web2api.**
+- Home Assistant Assist có thể kết nối với web2api qua endpoint chuẩn OpenAI `http://<dia-chi-web2api>:8000/v1` (tích hợp OpenAI Conversation hoặc custom component như `hass_local_openai_llm` — *chú ý luôn kiểm tra LICENSE và mã nguồn trước khi dùng*).
+- **Phân quyền tối thiểu:** Chỉ cấp khoá API khách mang phạm vi hẹp (`thiet_bi:doc`, `thiet_bi:ghi`) cho HA Assist, tuyệt đối không dùng khoá quản trị.
+- **Khớp nhanh vs LLM:** Dùng khớp nhanh (`khop_thiet_bi`) cho các khẩu lệnh bật/tắt thiết bị tức thời (< 100ms, không tốn quota), chỉ chuyển sang LLM khi cần hội thoại phức tạp hoặc suy luận nhiều bước.
+- **Nguyên tắc an toàn rủi ro cao:** Mọi thiết bị thuộc nhóm `nguy_hiem` (khoá cửa `lock`, bình nóng lạnh `water_heater`, van gas `valve`, cửa cuốn `cover`) bắt buộc phải chuyển qua hàng chờ phê duyệt của lõi C1 hoặc có xác nhận tường minh, không bao giờ được tự động thực thi dù qua LLM hay khớp nhanh.
 
 # Danh sách máy (qua sổ thiết bị của lõi; cần khoá quản trị)
 curl -s -H "Authorization: Bearer $K" "$W/api/so-thiet-bi/danh-sach" | head -c 600
