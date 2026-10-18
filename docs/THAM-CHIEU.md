@@ -70,7 +70,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Sao lưu gồm danh tính: `bi_mat/danh_tinh.json` có bộ kiểm riêng (id đúng khuôn `dt-<16hex>`, email đúng khuôn, không trùng id/email; sai → `400` `sao_luu_khong_hop_le` nêu tên tệp, không ghi đè); bản không mật khẩu không chứa bí mật | Có — kiểm với máy chủ giả (NV67 nhóm 5, việc 11) | 17/10/2026 |
 | Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
-| `zalo-bot` — kênh gửi ra Zalo Bot (chuẩn `kenh_ra`): mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định», tránh gửi nhầm mà API vẫn ok), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô | Có — kiểm với máy chủ Zalo giả (NV114); **chưa kiểm với Zalo thật** | 18/10/2026 |
+| `zalo-bot` — kênh Zalo Bot hai chiều (chuẩn `kenh_ra` + nhận tin qua webhook của lõi, chuẩn `tin_vao` NV117): gửi ra mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định»), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô; nhận vào phiên dịch payload Zalo (`result.message`) → tin chuẩn, nhiều bot chung một URL webhook nên ánh xạ `chat.id` → đích đã khai, chat lạ bị bỏ (đếm `bo_qua_chat_la`) | Có — kiểm với Zalo giả cục bộ (NV114 chiều gửi, NV117 chiều nhận); **chưa kiểm với Zalo thật** | 19/10/2026 |
 | Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
@@ -2209,22 +2209,34 @@ Lỗi Marionette → `502` chỉ mang mã; lỗi lạ ở chỗ quyết định 
 
 ---
 
-### Module zalo-bot — Zalo Bot (kênh gửi ra)
+### Module zalo-bot — Zalo Bot (kênh hai chiều)
 
-**Mô tả.** Kênh gửi ra (chuẩn `kenh_ra`) tới Zalo Bot: chỉ gửi văn bản thuần qua
+**Mô tả.** Kênh Zalo Bot hai chiều: GỬI RA văn bản thuần (chuẩn `kenh_ra`) qua
 `POST /bot<TOKEN>/sendMessage` tới `https://bot-api.zaloplatforms.com`; dùng cho
-sổ thiết bị (báo máy lạ) và mọi chỗ gửi thông báo của lõi. Bài học đo thật: nhà
-chạy bốn bot Zalo; không nêu bot thì tin đi ra bot đầu danh sách mà API vẫn báo
-`ok: true`, cùng `chat_id` gọi bằng token bot khác trả `410` — nên mỗi đích BẮT
-BUỘC khai rõ `id → bot → chat_id`, không có «bot mặc định», token chọn THEO ĐÍCH
-ở đúng lời gọi mạng. Mã nguồn: `modules/zalo-bot/`. Hạng: `A` (mã của dự án).
-Tiền tố model: không có (module tiện ích, không trò chuyện).
+sổ thiết bị (báo máy lạ) và mọi chỗ gửi thông báo của lõi — và NHẬN TIN VÀO qua
+webhook của lõi (chuẩn `tin_vao`, CHUAN-MODULE mục 12.3b; Zalo Bot không có
+getUpdates dùng được khi webhook đang bật): module chỉ phiên dịch payload Zalo
+(thân bọc trong khoá `result`) → tin chuẩn; nhiều bot CHUNG một URL webhook nên
+bắt buộc ánh xạ `chat.id` → đích đã khai, chat lạ bị bỏ (đếm `bo_qua_chat_la`).
+Bài học đo thật (chiều gửi): nhà chạy bốn bot Zalo; không nêu bot thì tin đi ra
+bot đầu danh sách mà API vẫn báo `ok: true`, cùng `chat_id` gọi bằng token bot
+khác trả `410` — nên mỗi đích BẮT BUỘC khai rõ `id → bot → chat_id`, không có
+«bot mặc định», token chọn THEO ĐÍCH ở đúng lời gọi mạng. Mã nguồn:
+`modules/zalo-bot/`. Hạng: `A` (mã của dự án). Tiền tố model: không có (module
+tiện ích, không trò chuyện).
 
 **Cần gì.**
 - Token của (các) bot Zalo (dạng `danh_sach_bi_mat`; mỗi dòng một token), lấy từ
   BotFather của Zalo; bot phải đã có người nhận (chưa ai nhắn cho bot → Zalo trả
   lỗi → thất bại, kèm mã ngắn).
 - Mạng ra tới `bot-api.zaloplatforms.com` (khớp `tai_nguyen.mang_ra` trong manifest).
+- Chiều NHẬN (webhook, NV117): bí mật webhook (`bi_mat_webhook`, `kieu bi_mat`,
+  phần `<ma>` của `POST /api/webhook/zalo-bot/<ma>` — tự đặt chuỗi dài ngẫu
+  nhiên); đặt webhook của từng bot trên bot.zapps.me trỏ tới URL lõi hiển thị ở
+  trang Module; «Danh sách đích» đồng thời là danh sách chat được phép gửi tin
+  vào (tin từ `chat_id` không khớp đích nào bị bỏ); cấp vai cho từng `from.id` ở
+  `/api/kenh-vao/nguoi` (người chưa cấp quyền là người lạ: không lệnh, không trả
+  lời). Xem từng bước ở `modules/zalo-bot/README.md`.
 
 ### Module telegram-bot — Telegram (kênh gửi ra)
 

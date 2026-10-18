@@ -152,7 +152,7 @@ def test_manifest_hop_le():
     m = _manifest()
     assert kiem_manifest(m) is None, kiem_manifest(m)
     assert m["id"] == "zalo-bot"
-    assert m["cung_cap"] == ["kenh_ra"]
+    assert m["cung_cap"] == ["kenh_ra", "webhook"]  # NV117: thêm nhận tin qua webhook của lõi
     assert m["hang"] in ("A", "B")
     assert m["tai_nguyen"]["mang_ra"] == ["bot-api.zaloplatforms.com"]
     khoa_truong = {t["khoa"] for t in m["truong_cau_hinh"]}
