@@ -68,6 +68,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Sao lưu gồm danh tính: `bi_mat/danh_tinh.json` có bộ kiểm riêng (id đúng khuôn `dt-<16hex>`, email đúng khuôn, không trùng id/email; sai → `400` `sao_luu_khong_hop_le` nêu tên tệp, không ghi đè); bản không mật khẩu không chứa bí mật | Có — kiểm với máy chủ giả (NV67 nhóm 5, việc 11) | 17/10/2026 |
 | Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
+| `zalo-bot` — kênh gửi ra Zalo Bot (chuẩn `kenh_ra`): mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định», tránh gửi nhầm mà API vẫn ok), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô | Có — kiểm với máy chủ Zalo giả (NV114); **chưa kiểm với Zalo thật** | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2134,6 +2135,55 @@ thư viện chuẩn, cổng Marionette chỉ loopback trong container dịch v�
 - `POST /ho-so/{id}/cookie-truc-tiep` `{"mien"}` — đọc cookie theo miền (máy gọi, không qua lõi).
 - `POST /ho-so/{id}/chup-trang-thai` — chụp trạng thái chẩn đoán (không lưu ảnh chứa bí mật).
 Lỗi Marionette → `502` chỉ mang mã; lỗi lạ ở chỗ quyết định → đóng cửa (nhả quyền).
+
+---
+
+### Module zalo-bot — Zalo Bot (kênh gửi ra)
+
+**Mô tả.** Kênh gửi ra (chuẩn `kenh_ra`) tới Zalo Bot: chỉ gửi văn bản thuần qua
+`POST /bot<TOKEN>/sendMessage` tới `https://bot-api.zaloplatforms.com`; dùng cho
+sổ thiết bị (báo máy lạ) và mọi chỗ gửi thông báo của lõi. Bài học đo thật: nhà
+chạy bốn bot Zalo; không nêu bot thì tin đi ra bot đầu danh sách mà API vẫn báo
+`ok: true`, cùng `chat_id` gọi bằng token bot khác trả `410` — nên mỗi đích BẮT
+BUỘC khai rõ `id → bot → chat_id`, không có «bot mặc định», token chọn THEO ĐÍCH
+ở đúng lời gọi mạng. Mã nguồn: `modules/zalo-bot/`. Hạng: `A` (mã của dự án).
+Tiền tố model: không có (module tiện ích, không trò chuyện).
+
+**Cần gì.**
+- Token của (các) bot Zalo (dạng `danh_sach_bi_mat`; mỗi dòng một token), lấy từ
+  BotFather của Zalo; bot phải đã có người nhận (chưa ai nhắn cho bot → Zalo trả
+  lỗi → thất bại, kèm mã ngắn).
+- Mạng ra tới `bot-api.zaloplatforms.com` (khớp `tai_nguyen.mang_ra` trong manifest).
+- RAM/đĩa: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "zalo-bot"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/zalo-bot`
+3. Cài cấu hình: `POST /api/modules/zalo-bot/cai` với thân
+   `{"cau_hinh": {"bot_token": ["<TOKEN1>", "<TOKEN2>"], "ten_bot": "bot-nha, bot-cong-ty",
+   "danh_sach_dich": "[{\"id\": \"nha\", \"ten\": \"Nhà\", \"chat_id\": \"...\", \"bot\": \"bot-nha\"}]"}}`.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `bot_token` | Có | Token từng bot Zalo (mỗi dòng một token). Thứ tự trong danh sách xác định bot; đặt tên ở «Tên bot». Lưu riêng, không API nào trả lại. |
+| `ten_bot` | Không | Tên các bot, cùng thứ tự với «Token các bot Zalo», ngăn cách bằng dấu phẩy hoặc xuống dòng. Thiếu tên thì tự đặt `bot-1`, `bot-2`… |
+| `danh_sach_dich` | Không | Chuỗi JSON `[{"id", "ten", "chat_id", "bot"}]`; mỗi đích BẮT BUỘC nêu bot (tên hoặc số thứ tự 0-based). |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"kenh_id": "nha", "noi_dung": {"van_ban": "Có máy lạ trong mạng nhà"}}' \
+  $W/api/gui/zalo-bot
+```
+
+**Bảo mật.** Token nằm trong URL → module chặn log URL (đặt logger `httpx`/`httpcore`
+về WARNING trong lúc gọi); không log URL/token/chat_id; `kenh_ra()` chỉ trả
+`[{id, ten}]`. Lỗi trả mã ngắn (`chat_sai`, `yeu_cau_sai`, `het_han_muc`…), không
+lộ `description` thô của Zalo.
 
 ---
 
