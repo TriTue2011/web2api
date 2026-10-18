@@ -182,3 +182,23 @@ main.pg{padding:20px 16px 40px;gap:16px}
 .luoi-form{grid-template-columns:minmax(0,1fr)}
 }
 @media (pointer:coarse){input,select,textarea{font-size:16px}}
+/* ---------- NV106: rà soát `adapt` mục 1+2 trên điện thoại — CHỈ CSS CHUNG, CHỈ CẢM ỨNG ----------
+   Mọi quy tắc dưới nằm trong @media (pointer:coarse) nên máy tính để bàn (chuột) GIỮ NGUYÊN
+   100%: không đổi màu, kiểu chữ, bố cục, khoảng cách, chiều cao nút trên desktop.
+   !important CHỈ dùng trong khối cảm ứng này vì nhiều .dc.html đặt style nội tuyến
+   (vd style="height:40px", style="font-size:14px") luôn thắng CSS thường; trên desktop
+   các style nội tuyến đó vẫn giữ nguyên. Không sửa bất kỳ tệp .dc.html nào. */
+@media (pointer:coarse){
+/* Mục 1 phiếu adapt: mọi phần tử bấm được (nút, liên kết, tab, summary, ô chọn) có vùng
+   chạm tối thiểu 44x44px. Bộ chọn theo CẤU TRÚC (loại phần tử/vai trò), không liệt kê
+   id/tên nút — phủ luôn các nút cao 40px đo được (.nut-nho, .chip, .quay-lai, tab,
+   .chon...), summary «Ghi chú về khoá» 18px, dòng provider 28px, nút «Đọc»/«Ghi» 36px. */
+button,a[href],[role=button],[role=tab],summary,select{min-height:44px!important;min-width:44px!important}
+/* Mục 2 phiếu adapt: ô nhập chữ < 16px làm iOS tự zoom — ép 16px, thắng style nội tuyến
+   font-size:13/14px trong các .dc.html (ô tìm kiếm, ô dán khoá, select nguồn mail...). */
+input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important}
+/* Chữ phụ không dưới 12px (phiếu adapt mục 2): nhãn thanh dưới điện thoại đang 10px,
+   nhãn ngôn ngữ trên khối mã đang 11px. */
+.bn>a,.bn>button{font-size:12px}
+.md pre[data-ngon-ngu]::before{font-size:12px}
+}
