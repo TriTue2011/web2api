@@ -545,6 +545,34 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     thật cho tầng (b) do NV92 điền qua `tu_lam_moi.dang_ky_trinh_duyet` — hiện tầng (b)
     nhận `trinh_duyet=None` và module tự quyết (thường → `can_nguoi`).
 
+### Nút GPU (`dich-vu/gpu-node/`)
+
+Gói dựng **phía máy có card NVIDIA** (máy khác, cùng mạng), dựng bằng một lệnh
+`docker compose up -d`; nói đúng «hợp đồng nút GPU» để web2api nối qua giao diện
+«＋ Thêm máy GPU» (NV140) — không đổi env của docker compose web2api.
+
+- **Lớp cổng** (`cong/cong.py`, chỉ thư viện chuẩn): xác thực Bearer bằng khoá
+  riêng của nút (sinh ngẫu nhiên lần đầu, file `0600`, in ra console đúng một
+  lần, không có khoá mặc định); `GET /health` →
+  `{ok, phien_ban, gpu:[{ten, vram_tong_mb, vram_dung_mb, nhiet_c, tai_pct}],
+  mo_hinh_da_nap, hang_doi:{dang_chay, cho}}` (đọc `nvidia-smi` dạng CSV an
+  toàn; không card/lỗi → `gpu: []`); `GET /.well-known/w2a-node` →
+  `{id, ten, kha_nang, mo_hinh, gioi_han_dong_thoi}`; hàng đợi + giới hạn đồng
+  thời (mặc định 1) — vượt thì chờ có hạn rồi 429 kèm `Retry-After`; danh sách
+  IP được phép (mặc định rỗng); chuyển tiếp ngược các đường `/v1/*`.
+- **Dịch vụ** (mỗi cái bật/tắt bằng profile compose): `nghe` (faster-whisper
+  large-v3, đúng đường OpenAI `POST /v1/audio/transcriptions` với
+  `json`/`text`/`verbose_json` có mốc từng từ + `avg_logprob`), `thi-giac`
+  (llama-server + Qwen3-VL-2B Q4_K_M + mmproj F16, đường OpenAI
+  `POST /v1/chat/completions`), `tach-am` (audio-separator MDX23C,
+  đường riêng `POST /v1/audio/tach-am`).
+- **An toàn**: chỉ cổng `cong` công bố ra ngoài, và chỉ trên địa chỉ LAN đặt ở
+  `GPU_NODE_BIND` (mặc định `127.0.0.1`); ảnh ghim phiên bản; uid không root;
+  `--cap-drop ALL`, `no-new-privileges`; không telemetry, không tự cập nhật.
+- Cách dựng, lấy khoá, kiểm bằng `curl`: `dich-vu/gpu-node/README.md`.
+- **Chưa kiểm**: chưa dựng ảnh thật, chưa chạy với card NVIDIA, chưa đo
+  VRAM/tốc độ thật (NV141).
+
 ### Giao diện (`web/`)
 
 Trang `.dc.html` chạy trên **dc-lite** (`web/support.js`, runtime mã nguồn mở đọc nguyên văn các trang của bản

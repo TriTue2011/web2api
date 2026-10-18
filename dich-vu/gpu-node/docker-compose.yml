@@ -1,0 +1,106 @@
+# Gói dựng phía máy GPU (NV141) — MỘT lệnh: docker compose up -d
+#
+# Mỗi dịch vụ bật/tắt bằng profile compose:
+#   docker compose up -d                        # chỉ cổng + nghe
+#   docker compose --profile thi-giac up -d     # thêm thị giác
+#   docker compose --profile tach-am up -d      # thêm tách âm
+#
+# Chỉ dịch vụ `cong` công bố cổng ra ngoài, và CHỈ trên địa chỉ LAN người dùng
+# đặt (GPU_NODE_BIND) — mặc định 127.0.0.1, KHÔNG 0.0.0.0.
+
+services:
+  cong:
+    build: ./cong
+    container_name: gpu-node-cong
+    restart: unless-stopped
+    ports:
+      - "${GPU_NODE_BIND:-127.0.0.1}:8091:8091"
+    volumes:
+      - "${GPU_NODE_DATA:-./du-lieu}:/data"
+    environment:
+      GPU_NODE_LISTEN: "0.0.0.0"
+      GPU_NODE_PORT: "8091"
+      GPU_NODE_TEN: "${GPU_NODE_TEN:-Máy GPU}"
+      GPU_NODE_IP_CHO_PHEP: "${GPU_NODE_IP_CHO_PHEP:-}"
+      GPU_NODE_DONG_THOI: "${GPU_NODE_DONG_THOI:-1}"
+      GPU_NODE_MO_HINH: "${GPU_NODE_MO_HINH:-large-v3}"
+      NGHE_URL: "http://nghe:5000"
+      THI_GIAC_URL: "http://thi-giac:8080"
+      TACH_AM_URL: "http://tach-am:5000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  nghe:
+    profiles: ["nghe"]
+    build: ./nghe
+    container_name: gpu-node-nghe
+    restart: unless-stopped
+    volumes:
+      - "${GPU_NODE_DATA:-./du-lieu}/nghe:/data"
+    environment:
+      FW_MODEL: "${FW_MODEL:-large-v3}"
+      FW_COMPUTE: "${FW_COMPUTE:-int8_float16}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  thi-giac:
+    profiles: ["thi-giac"]
+    # Ảnh llama.cpp chính thức, bản CUDA. Tag nổi server-cuda — khi dựng thật
+    # nên ghim digest: docker pull <ảnh> rồi chép @sha256:... vào đây.
+    # (18/10/2026: release mới nhất của llama.cpp là v0.7.0 — kiểm lại digest
+    #  trước khi dựng sản xuất; xem README.)
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: gpu-node-thi-giac
+    restart: unless-stopped
+    volumes:
+      - "${GPU_NODE_DATA:-./du-lieu}/thi-giac:/root/.cache"
+    # Qwen3-VL-2B Q4_K_M + mmproj F16: ~2 GB VRAM, vừa card 8 GB cùng lúc với
+    # faster-whisper int8. Giấy phép model: Apache 2.0 (Qwen3-VL, xem README).
+    command: >
+      --model /root/.cache/Qwen3VL-2B-Instruct-Q4_K_M.gguf
+      --mmproj /root/.cache/mmproj-Qwen3VL-2B-Instruct-F16.gguf
+      --host 0.0.0.0 --port 8080 -ngl 99
+      --jinja
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  tach-am:
+    profiles: ["tach-am"]
+    build: ./tach-am
+    container_name: gpu-node-tach-am
+    restart: unless-stopped
+    volumes:
+      - "${GPU_NODE_DATA:-./du-lieu}/tach-am:/data"
+    environment:
+      TACH_AM_MODEL: "${TACH_AM_MODEL:-MDX23C.onnx}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
