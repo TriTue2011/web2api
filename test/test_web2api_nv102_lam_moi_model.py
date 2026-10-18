@@ -453,15 +453,20 @@ def test_8_chuan_hoa_ma_la_va_nhan(caplog):
         {"id": None},
     ]
     ds = lam_moi_model.loc_danh_sach_model(raw)
-    assert len(ds) == 2
+    # NV110: không có tien_to để đối chiếu → id mang '/' (tuyên bố không gian tên
+    # không kiểm chứng được) bị loại; ý nghĩa chuẩn hoá của test giữ nguyên.
+    assert len(ds) == 1
     assert ds[0]["id"] == "m2"
     assert len(ds[0]["nhan"]) == 80
-    assert ds[1]["id"] == "m3/<script>test</script>"
+    # Có tien_to khớp tuyên bố: id tuyên bố đúng không gian tên được giữ.
+    ds2 = lam_moi_model.loc_danh_sach_model(raw, tien_to="m3")
+    assert [m["id"] for m in ds2] == ["m2", "m3/<script>test</script>"]
 
-    # Quá 500 model -> cắt và log warning
+    # Quá 500 model -> cắt và log warning (NV110: cần tien_to khớp để id có '/'
+    # không bị loại trước khi cắt)
     nhieu = [{"id": f"m/{i}"} for i in range(505)]
     with caplog.at_level(logging.WARNING, logger="web2api"):
-        ds_cat = lam_moi_model.loc_danh_sach_model(nhieu)
+        ds_cat = lam_moi_model.loc_danh_sach_model(nhieu, tien_to="m")
     assert len(ds_cat) == 500
     assert any("500" in r.getMessage() and "5" in r.getMessage() for r in caplog.records)
 

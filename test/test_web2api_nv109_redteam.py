@@ -365,8 +365,6 @@ def test_a3_khoa_kho_khong_betac_giua_coroutine(moi_truong):
     assert set(mod_dict) == {"a1", "b1"}, set(mod_dict)
 
 
-@pytest.mark.xfail(strict=True, reason="NV109-02: PUT /api/modules/{id}/model không giới hạn "
-        "số mục mac_dinh — 200k nhóm lạ được chấp nhận 200 và ghi vào model.json")
 def test_a3_model_mac_dinh_khong_tran_so_muc(moi_truong):
     """PUT model: trường `tat` bị lọc theo model hợp lệ (hữu hạn), nhưng
     `mac_dinh` {nhóm: id} KHÔNG có trần số mục — 200 nghìn nhóm lạ → 200 và
@@ -428,8 +426,6 @@ def test_a4_nhan_dai_bi_cat_80():
     assert lmm.chuan_hoa_nhan("   ") is None
 
 
-@pytest.mark.xfail(strict=True, reason="NV109-01: loc_danh_sach_model không kiểm tiền tố — "
-        "id 'mod-b/m1' từ upstream của module mod-a được chấp nhận vào sổ của mod-a")
 def test_a4_tien_to_gia_mao_bi_chan():
     """Upstream của module mod-a trả id 'mod-b/m1' (tiền tố của module khác):
     sổ của mod-a PHẢI từ chối hoặc gắn không gian tên, không lưu nguyên."""
