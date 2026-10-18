@@ -234,3 +234,65 @@ def cac_muc_chuan(cac_muc: list[dict]) -> list[dict]:
             d["tang_len"] = ln
         ra.append(d)
     return sorted(ra, key=lambda d: json.dumps(d, sort_keys=True, ensure_ascii=False))
+
+
+#: Khả năng «chỉ nói chuyện qua giao diện lõi» — hạng A (NV48 §3.1).
+#: `cung_cap` là trường MỞ: khả năng KHÔNG có trong tập này → hạng B
+#: (mặc-định-đóng; không liệt kê tên khả năng nguy hiểm).
+_KHA_NANG_AN_TOAN = frozenset({"chat", "anh", "nhung", "xep_hang", "nghe", "noi"})
+
+
+def _goi_co_trong_anh(ten_goi: str) -> bool:
+    """Gói có sẵn trong ảnh đang chạy không — cùng nguyên tắc với `goi_thieu`
+    trong app/kham_pha.py (`importlib.util.find_spec`): import được = có sẵn.
+    Không liệt kê tay tên gói nào; môi trường lạ → không tìm thấy → hạng B."""
+    import importlib.util
+    try:
+        return importlib.util.find_spec(ten_goi) is not None
+    except (ImportError, ValueError, AttributeError):
+        return False
+
+
+def tinh_hang(manifest) -> str:
+    """Hạng của module theo CẤU TRÚC manifest — "A" (an toàn mặc định) hay "B"
+    (nguy hiểm, cần cấp đích danh), theo NV48 §3.1.
+
+    Hàm THUẦN: không I/O, không nhập `app.*`, không phụ thuộc tên/id module.
+    - Hạng A khi TẤT CẢ đúng: `cung_cap` ⊆ tập an toàn; `tai_nguyen` không có
+      `mang_ra`; không `webhook`; không `nhan_cookie` trong `truong_cau_hinh`;
+      `yeu_cau_goi` chỉ gồm gói import được trong ảnh đang chạy
+      (`importlib.util.find_spec`, cùng nguyên tắc với `goi_thieu`).
+    - Hạng B khi BẤT KỲ điều nào trên sai — kể cả khả năng/gói chưa biết
+      (mặc-định-đóng: lạ → B, không danh sách tên khả năng nguy hiểm).
+    - `None` / `{}` → "A" (không khai quyền nào = không có gì nguy hiểm).
+    - Manifest sai kiểu (không phải dict) không ném ngoại lệ → "B" (đóng khi lỗi).
+    """
+    if manifest is None:
+        return "A"
+    if not isinstance(manifest, dict):
+        return "B"
+    cung_cap = manifest.get("cung_cap") or []
+    if not isinstance(cung_cap, list):
+        return "B"
+    for kn in cung_cap:
+        if not isinstance(kn, str) or kn not in _KHA_NANG_AN_TOAN:
+            return "B"
+    tai_nguyen = manifest.get("tai_nguyen")
+    if isinstance(tai_nguyen, dict):
+        mang_ra = tai_nguyen.get("mang_ra") or []
+        if not isinstance(mang_ra, list) or any(not isinstance(m, str) for m in mang_ra):
+            return "B"
+        if mang_ra:
+            return "B"
+    if manifest.get("webhook"):
+        return "B"
+    for truong in manifest.get("truong_cau_hinh") or []:
+        if isinstance(truong, dict) and truong.get("nhan_cookie"):
+            return "B"
+    yeu_cau_goi = manifest.get("yeu_cau_goi") or []
+    if not isinstance(yeu_cau_goi, list):
+        return "B"
+    for goi in yeu_cau_goi:
+        if not isinstance(goi, str) or not _goi_co_trong_anh(goi):
+            return "B"
+    return "A"
