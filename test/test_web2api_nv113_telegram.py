@@ -502,3 +502,21 @@ def test_thieu_kenh_id_khong_duoc_doan_dich_du_chi_mot_dich(may_chu_telegram):
     kq = asyncio.run(mod.gui_tin({}, {"van_ban": "A"}))
     assert kq == {"ok": False, "ma": "dich_khong_co"}
     assert xu_ly.ds_yeu_cau == []  # không gửi đi đâu cả
+
+
+def test_gui_dong_thoi_khong_doi_muc_log_toan_cuc(mod_da_cai):
+    """Lỗi do người soát tìm ra (Claude, 18/10): chặn log token bằng cách nâng mức log của httpx quanh mỗi lời gọi rồi khôi phục →
+    hai lượt gửi xen kẽ làm logger KẸT ở mức cao. Phải chặn bằng bộ lọc cài MỘT lần, không đổi mức log toàn cục."""
+    import logging
+    lg = logging.getLogger("httpx")
+    muc_dau = lg.level
+    lg.setLevel(logging.INFO)
+
+    async def _chay():
+        return await asyncio.gather(*[mod_da_cai.gui_tin({"kenh_id": "nha"}, {"van_ban": f"tin {i}"}) for i in range(4)])
+    try:
+        kq = asyncio.run(_chay())
+        assert all(r == {"ok": True} for r in kq), kq
+        assert lg.level == logging.INFO, f"logger httpx bị đổi mức toàn cục: {lg.level}"
+    finally:
+        lg.setLevel(muc_dau)

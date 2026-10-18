@@ -30,7 +30,6 @@ Mã này chạy TRONG tiến trình lõi và được nạp từ <WEB2API_DATA>/
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 from urllib.parse import urlsplit
@@ -54,23 +53,33 @@ _LOI_MANG = httpx.TransportError
 log = logging.getLogger("web2api.module.telegram_bot")
 
 
-@contextlib.contextmanager
-def _khoa_log_token():
-    """Nâng logger httpx/httpcore lên WARNING trong lúc gọi.
+#: Token đang dùng (chỉ thêm) — bộ lọc log bỏ mọi dòng của thư viện HTTP có chứa token (token nằm TRONG URL; httpx ghi URL ở mức INFO).
+_TOKEN_DANG_DUNG: set[str] = set()
+_LOGGER_HTTP = ("httpx", "httpcore", "httpcore.connection", "httpcore.http11", "httpcore.http2", "httpcore.proxy")
 
-    Token nằm trong URL nên httpx sẽ ghi URL (kèm token) ở mức INFO/DEBUG.
-    Khôi phục mức cũ sau khi gọi xong.
-    """
-    cac_logger = (logging.getLogger("httpx"), logging.getLogger("httpcore"))
-    muc_cu = [(lg, lg.level) for lg in cac_logger]
-    for lg in cac_logger:
-        if lg.level < logging.WARNING:
-            lg.setLevel(logging.WARNING)
-    try:
-        yield
-    finally:
-        for lg, muc in muc_cu:
-            lg.setLevel(muc)
+
+class _ChanRoToken(logging.Filter):
+    """Bỏ dòng log chứa token. Cài MỘT lần lên logger của thư viện HTTP — KHÔNG đổi mức log toàn cục (nâng mức quanh mỗi lời gọi rồi
+    khôi phục sẽ kẹt logger ở mức cao khi hai lượt gửi chạy xen kẽ)."""
+    _telegram_bot_loc = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            noi_dung = record.getMessage()
+        except Exception:
+            return False   # không định dạng được → bỏ dòng (đóng khi lỗi, không để lọt token)
+        return not any(t in noi_dung for t in _TOKEN_DANG_DUNG)
+
+
+def _cai_bo_loc_log() -> None:
+    for ten in _LOGGER_HTTP:
+        lg = logging.getLogger(ten)
+        for f in [f for f in lg.filters if getattr(f, "_telegram_bot_loc", False)]:
+            lg.removeFilter(f)   # nạp lại module: bỏ bộ lọc của bản cũ
+        lg.addFilter(_ChanRoToken())
+
+
+_cai_bo_loc_log()
 
 
 def _kiem_dich(gia_tri) -> list[dict]:
@@ -169,6 +178,8 @@ class Module:
         """Nạp cấu hình ĐÃ KIỂM (lúc khởi động/cài xong) — không gọi mạng."""
         cau_hinh = cau_hinh or {}
         self._token = str(cau_hinh.get("bot_token") or "").strip()
+        if self._token:
+            _TOKEN_DANG_DUNG.add(self._token)
         try:
             self._dich = {d["id"]: d for d in _kiem_dich(cau_hinh.get("dich"))}
         except ValueError as e:
@@ -211,8 +222,7 @@ class Module:
         dap = None
         for lan_thu in range(2):  # lần đầu + thử lại tối đa 1 lần
             try:
-                with _khoa_log_token():
-                    dap = await self._post(url, than)
+                dap = await self._post(url, than)
                 break
             except _LOI_MANG as e:
                 # Chỉ lỗi mạng mới thử lại. KHÔNG str(e): ngoại lệ httpx có thể
@@ -270,6 +280,8 @@ class Module:
         trúc danh sách đích. Chỉ giữ cấu hình gọi được."""
         cau_hinh = cau_hinh or {}
         token = str(cau_hinh.get("bot_token") or "").strip()
+        if token:
+            _TOKEN_DANG_DUNG.add(token)   # getMe dưới đây đặt token trong URL → bộ lọc phải biết trước
         if not token:
             return {"ok": False, "ket_qua_tung_khoa": [],
                     "loi": "Chưa nhập token bot (trường bot_token).", "cau_hinh_luu": {}}
@@ -284,8 +296,7 @@ class Module:
 
         url = f"{self._goc()}/bot{token}/getMe"
         try:
-            with _khoa_log_token():
-                dap = await self._get(url)
+            dap = await self._get(url)
             than = dap.json()
             hop_le = isinstance(than, dict) and than.get("ok") is True
         except _LOI_MANG as e:

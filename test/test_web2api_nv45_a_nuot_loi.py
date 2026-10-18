@@ -44,6 +44,7 @@ DA_KIEM_TOAN = {
     # Đã duyệt 18/10 (điều phối đọc hàm): bộ lọc log chặn token của module kênh — không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi,
     # không để lọt token); không được ném ra vì ngoại lệ trong bộ lọc làm hỏng chính lời gọi ghi log.
     ("modules/zalo-bot/module.py", "filter"),
+    ("modules/telegram-bot/module.py", "filter"),   # cùng lý do với zalo-bot: không định dạng được dòng log → bỏ dòng (đóng khi lỗi)
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),
