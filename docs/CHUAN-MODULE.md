@@ -407,6 +407,13 @@ Module cần kéo tin định kỳ (ví dụ Telegram khi không có HTTPS công
 - Module cài phương thức: `async def hoi_vong(self) -> list[dict]` (danh sách `tin` đúng chuẩn ở mục 12.1).
 - Vòng lặp do lõi duy trì: nghỉ theo chu kỳ, lùi dần khi lỗi (tối đa 5 phút), tự dừng khi gỡ module, không chạy trùng lượt, mỗi module có timeout riêng biệt và lỗi của module này không làm ảnh hưởng module khác.
 
+### 12.3b. Đẩy tin vào qua cửa webhook (`tin_vao`)
+Cửa webhook (mục 7) chỉ đưa THÂN JSON cho `module.webhook(yc)` — module không có `app` để gọi `nhan_tin`. Vì vậy `webhook()` trả dict có thêm khoá
+`tin_vao`: danh sách tin chuẩn hoá (đúng khuôn 12.1). Lõi, SAU khi cửa đã xác thực (bí mật + chữ ký + chống phát lại + hạn dòng), chuyển từng tin
+(tối đa 20 phần tử dạng dict mỗi lần, phần tử khác bị bỏ) vào `kenh_vao.nhan_tin(app, module, tin)` rồi BỎ khoá `tin_vao` khỏi phản hồi 200 —
+nội dung tin không bao giờ được phản chiếu ra ngoài. Một tin lỗi chỉ ghi log mã ngắn, không làm hỏng webhook (nhà cung cấp gửi lại nếu không nhận 200).
+Bí mật nằm trong đường dẫn `/api/webhook/<module>/<bí mật>` (so sánh thời gian hằng); header riêng của nhà cung cấp không tới module, nên không dựa vào nó.
+
 ### 12.4. Bảng lệnh và trả lời
 - Phân tích câu lệnh theo cấu trúc: bỏ dấu tiếng Việt (kể cả `đ` -> `d`), chuyển chữ thường, bỏ tiền tố `/` và hậu tố `@bot` ở token đầu tiên. Token đầu là tên lệnh, phần còn lại là đối số thô.
 - Hàm xử lý: `async def ham(ngu_canh: dict, doi_so: str) -> str`. Trả lời qua hàm gửi chung `gui_den_dich(..., nguoi_goi="kenh_vao")` về đúng `noi_gui`.

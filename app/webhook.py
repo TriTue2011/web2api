@@ -226,6 +226,25 @@ class _GiuDongThoi:
             _DANG_CHAY[self.module] = max(0, _DANG_CHAY.get(self.module, 1) - 1)
 
 
+#: Tối đa số tin một lần webhook được chuyển vào cổng tin vào (chống một thân webhook làm bùng nổ xử lý).
+TRAN_TIN_VAO_MOI_LAN = 20
+
+
+async def _chuyen_tin_vao(app, module: str, ket_qua: dict) -> None:
+    """Module kênh qua webhook trả thêm khoá `tin_vao` (danh sách tin chuẩn hoá, xem docs/CHUAN-MODULE.md «Tin vào») → chuyển từng tin vào
+    `kenh_vao.nhan_tin` (cổng chung: chống trùng, phân quyền theo NGƯỜI GỬI, lệnh) rồi BỎ khoá đó khỏi phản hồi 200 (không phản chiếu nội dung
+    tin ra ngoài). Chỉ chạy sau khi cửa đã xác thực xong; lỗi ở một tin không làm hỏng webhook (nhà cung cấp nhắn tin sẽ gửi lại nếu không nhận 200)."""
+    tin_vao = ket_qua.pop("tin_vao", None)
+    if not isinstance(tin_vao, list):
+        return
+    from app import kenh_vao   # nhập trễ: tránh vòng nhập giữa webhook và kenh_vao
+    for tin in [t for t in tin_vao if isinstance(t, dict)][:TRAN_TIN_VAO_MOI_LAN]:
+        try:
+            await kenh_vao.nhan_tin(app, module, tin)
+        except Exception as e:   # noqa: BLE001 — đã kiểm toán: không để một tin hỏng làm sập webhook; chỉ ghi tên kiểu lỗi
+            log.warning("webhook %s: chuyển tin vào lỗi (%s)", module, type(e).__name__)
+
+
 @router.post("/{module}/{ma}")
 async def nhan_webhook(module: str, ma: str, request: Request):
     bat_dau = time.monotonic()
@@ -334,4 +353,5 @@ async def nhan_webhook(module: str, ma: str, request: Request):
     if not isinstance(ket_qua, dict):
         raise LoiOpenAI(500, "Module webhook trả về sai định dạng",
                         loai="server_error", code="webhook_sai_dinh_dang")
+    await _chuyen_tin_vao(request.app, module, ket_qua)
     return JSONResponse(ket_qua)
