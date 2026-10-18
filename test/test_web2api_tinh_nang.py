@@ -420,6 +420,13 @@ def _chu_trong_ma_python(p: Path) -> list[str]:
 
 def test_loi_khong_mang_dac_thu_nha_cung_cap():
     ten = _ten_nha_cung_cap()
+    # NV121: mã khả năng chuẩn (HOP_DONG_KHA_NANG) là tên CHUNG của lõi
+    # (như kenh_ra, thiet_bi, trinh_duyet) — lõi được phép nêu trong bảng hợp
+    # đồng; không phải đặc thù nhà cung cấp. tien_to "ma_xac_minh" của module
+    # mới trùng mã chuẩn nên loại khỏi quét; tên NCC thật (gmail, telegram,
+    # zalo, mikrotik...) vẫn bị quét như cũ.
+    from app.kham_pha import HOP_DONG_KHA_NANG
+    ten = ten - set(HOP_DONG_KHA_NANG)
     pham = []
     for p in sorted((GOC / "app").rglob("*.py")):
         for chu in _chu_trong_ma_python(p):
@@ -431,6 +438,12 @@ def test_loi_khong_mang_dac_thu_nha_cung_cap():
 
 def test_khung_giao_dien_khong_mang_ten_module():
     ten = _ten_nha_cung_cap()
+    # NV121: «gmail» xuất hiện trong placeholder MẪU CHUNG của ô dán tài khoản
+    # hàng loạt (ten@gmail.com|mat-khau — có từ NV78, trước NV121): là miền ví
+    # dụ chung, không phải tên nhà cung cấp cứng trong khung giao diện.
+    # mang_ra "imap.gmail.com" của module mới đưa "gmail" vào danh sách quét
+    # nên loại riêng ở đây; các tên NCC khác vẫn bị quét như cũ.
+    ten = ten - {"gmail"}
     # Phông chữ tải từ CDN fonts.googleapis.com/fonts.gstatic.com — CDN phông, không phải nhà cung cấp AI.
     cdn_phong = re.compile(r"https://fonts\.(googleapis|gstatic)\.com/[^\"'\s>]*")
     pham = []

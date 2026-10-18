@@ -86,6 +86,10 @@ DA_KIEM_TOAN = {
     ("modules/claude-web/module.py", "danh_tinh_id_cua"),  # như trên
     ("modules/gemini-web/module.py", "danh_tinh_id_cua"),  # như trên
     ("modules/grok-web/module.py", "danh_tinh_id_cua"),  # như trên
+    # Đã duyệt NV121 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
+    ("modules/doc-ma-hop-thu/module.py", "filter"),  # không định dạng được dòng log → bỏ dòng đó (đóng khi lỗi, không để lọt mật khẩu)
+    ("modules/doc-ma-hop-thu/module.py", "_xet_thu"),  # phân tích thư hỏng → bỏ thư đó (fail-closed, không trích mã nhầm)
+    ("modules/doc-ma-hop-thu/module.py", "_van_ban"),  # trích văn bản hỏng → bỏ (fail-closed)
 }
 
 

@@ -248,6 +248,8 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
     "trinh_duyet": ("trinh_duyet_mo", "trinh_duyet_dong", "trinh_duyet_ds"),
     #: Gửi ra đích danh (NV32): module liệt kê đích qua kenh_ra() và gửi qua gui_tin().
     "kenh_ra": ("gui_tin", "kenh_ra"),
+    #: Mã xác minh (NV121): module đọc mã từ hộp thư qua hop_thu_ra() và lay_ma().
+    "ma_xac_minh": ("lay_ma", "hop_thu_ra"),
 }
 
 

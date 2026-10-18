@@ -43,6 +43,7 @@ Mọi module triển khai lớp `Module` trong `module.py` với các phương t
 | `tim_kiem` | `tim_kiem` | — | `yc: dict` | `dict` `{muc: [...], tong?}` | 400, 502 |
 | `trinh_duyet` | `trinh_duyet_mo`<br>`trinh_duyet_dong`<br>`trinh_duyet_ds` | `trinh_duyet_tao`<br>`trinh_duyet_cookie` | `ho_so, loai, url?` (mở)<br>`ho_so, giu_phien` (đóng)<br>`ten` (tạo)<br>`ho_so, mien` (cookie) | `dict` `{ho_so, dich, loai}` (mở)<br>`dict` `{ok}` (đóng)<br>`list[dict]` (danh sách)<br>`{ho_so, ten}` (tạo)<br>`{cookie}` (cookie) | 400, 404, 501, 502 |
 | `kenh_ra` | `gui_tin`<br>`kenh_ra` | — | `dich: {kenh_id, ten}`, `noi_dung: dict` (kèm `_tep` khi có tệp) | `dict` có `ok` là bool thật (`ok` thiếu/khác bool → lõi coi là thất bại `502`) | 400 (`kenh_required` khi nhiều đích mà không nêu `kenh_id`), 404 (đích lạ), 413, 429, 502, 503 (chưa có đích) |
+| `ma_xac_minh` | `lay_ma`<br>`hop_thu_ra` | — | `yeu_cau: dict` gồm `hop_thu`, `tu_mien`, `sau_luc` (ISO UTC), `do_dai` `[min, max]`, `cho_giay` (kẹp 5..180) | `dict` `{ok, ma?}` khi thấy mã mới hơn `sau_luc`; `{ok: False, ma_loi}` khi chưa cấu hình/hết giờ/lỗi | `khong_co_hop_thu`, `het_gio`, `sai_dang_nhap`, `mang_loi`, `khong_thay_ma`, `yeu_cau_sai` |
 | *(Mã lạ)* | Không bắt buộc | Tự do | Tuỳ ý | Tuỳ ý | — |
 
 > **Lưu ý**: Phương thức `anh` và `anh_sua` cũng được gọi từ `POST /v1/responses` khi client chỉ định công cụ `image_generation` (không có ảnh đầu vào → gọi `anh` với thân kiểu `/v1/images/generations`, `response_format: "b64_json"`; có `input_image` dạng data URL base64 → dựng `YeuCauDaPhan` gọi `anh_sua`). Module nhận y như từ đường chuẩn: `model` đầy đủ `<tiền tố>/<tên>`, các trường `prompt`, `n`, `size`, `quality`, `background`, `output_format` (nếu khách gửi). Đường này cần phản hồi `b64_json` (trả `url` → `502`); nên nêu `size`/`quality`/`background`/`output_format` ở cấp đầu phản hồi để lõi báo đúng thuộc tính của kết quả.
@@ -401,3 +402,61 @@ Module cần kéo tin định kỳ (ví dụ Telegram khi không có HTTPS công
   - `bo-qua <mac>` (vai `quan_tri`): Bỏ qua thiết bị.
 
 
+
+---
+
+## 13. Chuẩn `ma_xac_minh` — Đọc mã xác minh từ hộp thư (NV121)
+
+Nhiều dịch vụ gửi mã xác minh (thường 6 số) về Gmail khi đăng nhập bằng email +
+mật khẩu. Chuẩn `ma_xac_minh` để module đọc **CHỈ ĐỌC** hộp thư (IMAP) tìm mã
+mới gửi về; lõi (NV122) gọi khi chủ máy tích «Lấy mã từ Gmail» trong form thêm
+tài khoản. Mã KHÔNG bao giờ đi qua đường HTTP nào của lõi: module không có route.
+
+### 13.1. Hợp đồng phương thức
+
+- `def hop_thu_ra(self) -> list[dict]`: danh sách hộp thư module đọc được —
+  `[{"id": "<email chuẩn hoá>", "email_che": "n***@gmail.com"}]`. KHÔNG chứa
+  mật khẩu/token.
+- `async def lay_ma(self, yeu_cau: dict) -> dict` với
+  `yeu_cau = {"hop_thu": "<email>", "tu_mien": ["openai.com", ...],
+  "sau_luc": "<ISO UTC>", "do_dai": [4, 8], "cho_giay": 90}` →
+  `{"ok": True, "ma": "123456"}` hoặc `{"ok": False, "ma_loi": "<mã ngắn>"}`
+  (mã mở: `khong_co_hop_thu`, `het_gio`, `sai_dang_nhap`, `mang_loi`,
+  `khong_thay_ma`, `yeu_cau_sai`…). Hỏi vòng (mỗi ~3 giây, tối đa `cho_giay`,
+  kẹp 5..180) cho tới khi thấy thư MỚI hơn `sau_luc`.
+
+### 13.2. An toàn cứng (bắt buộc, có test)
+
+1. **CHỈ ĐỌC**: dùng IMAP `SELECT … readonly` (EXAMINE), `SEARCH`/`FETCH` với
+   `BODY.PEEK[]` (không đánh dấu đã đọc); không bao giờ STORE/EXPUNGE/COPY/
+   APPEND/DELETE — lớp trộn chặn các phương thức ghi theo cấu trúc.
+2. Chỉ xét thư đến **TỪ miền trong `tu_mien`** (so sánh miền của địa chỉ gửi theo
+   đúng ranh giới nhãn: `x.openai.com` khớp `openai.com`, `evilopenai.com`
+   KHÔNG khớp) và đến **SAU `sau_luc`**, trong hộp thư Đến/«Tất cả thư» — không
+   đọc nhãn khác.
+3. Trích mã bằng regex chặt: chuỗi số liền dài đúng trong `do_dai`, đứng độc
+   lập (không dính số điện thoại/ngày dài hơn); lấy mã của thư **MỚI NHẤT** khớp.
+4. KHÔNG lưu nội dung thư, KHÔNG log thư/tiêu đề/người gửi/mã, KHÔNG trả bất cứ
+   thứ gì ngoài mã; mã không bao giờ lộ qua đường HTTP nào của lõi (module
+   không có route).
+5. Kết nối máy chủ thư CỐ ĐỊNH qua SSL có kiểm chứng chỉ (cho phép ghi đè gốc
+   CHỈ cho test bằng tham số nội bộ, không đọc từ cấu hình người dùng — chống
+   SSRF).
+6. Hết giờ kết nối/đọc, trần kích thước thư đọc (256 KB/thư), trần số thư xét
+   (20 thư mới nhất).
+
+### 13.3. Cấu hình (khuôn modules/zalo-bot)
+
+Danh sách hộp thư do chủ máy khai: mỗi hộp thư `email` + `mat_khau_ung_dung`
+(kieu `danh_sach_bi_mat` — «Mật khẩu ứng dụng» 16 ký tự của Google, bỏ khoảng
+trắng). Vì form chung chưa hỗ trợ danh sách có cấu trúc, dùng khuôn
+danh-sách-bí-mật + cặp theo thứ tự như modules/telegram-bot và zalo-bot:
+`mat_khau_ung_dung` là danh sách bí mật (mỗi dòng một mật khẩu, lõi lưu riêng,
+không API nào trả lại) và `email` là chuỗi danh sách CÙNG THỨ TỰ; số lượng phải
+khớp nhau. `cai()` KIỂM bằng cách đăng nhập IMAP thử một lần (LOGIN rồi LOGOUT
+ngay, không đọc thư) và trả `ok` + `so_hop_thu`; sai → `ok False` + mã ngắn,
+không in mật khẩu.
+
+**Khuyến nghị giảm rủi ro** (nói rõ trong README module): dùng một Gmail PHỤ chỉ
+để nhận mã (đặt bộ lọc Gmail tự chuyển tiếp các thư mã xác minh sang Gmail phụ)
+thay vì Gmail chính, vì mật khẩu ứng dụng cho quyền đọc TOÀN BỘ hộp thư.

@@ -73,6 +73,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | `zalo-bot` — kênh gửi ra Zalo Bot (chuẩn `kenh_ra`): mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định», tránh gửi nhầm mà API vẫn ok), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô | Có — kiểm với máy chủ Zalo giả (NV114); **chưa kiểm với Zalo thật** | 18/10/2026 |
 | Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
+| Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2360,6 +2361,63 @@ curl -s -H "Authorization: Bearer $K" "$W/api/so-thiet-bi/danh-sach" | head -c 6
   của chủ kho; **chưa kiểm với bộ phát thật** — thiết bị thật có thể đặt tên trường khác.
 - Tín hiệu «khoá tài khoản» của thiết bị thật chưa thấy tận mắt; module nhận theo cấu trúc
   JSON cờ khoá + quy tắc dừng sau lỗi lặp.
+
+---
+
+### Module doc-ma-hop-thu — Đọc mã xác minh từ Gmail (chỉ đọc)
+
+**Mô tả.** Đọc mã xác minh (thường 6 số) các dịch vụ gửi về hộp thư Gmail qua
+IMAP khi đăng nhập bằng email + mật khẩu (chuẩn `ma_xac_minh`, NV121). CHỈ
+ĐỌC: mọi hộp thư mở bằng `EXAMINE` (readonly), mọi `FETCH` dùng `BODY.PEEK[]`
+một phần 256 KB, tối đa 20 thư mới nhất; các phương thức ghi
+(STORE/EXPUNGE/COPY/APPEND/DELETE) bị chặn theo cấu trúc. Mã nguồn:
+`modules/doc-ma-hop-thu/` (chỉ thư viện chuẩn: `imaplib`, `email`, `ssl`,
+không thêm gói). Hạng: `A` (mã của dự án). Không có route HTTP — mã không bao
+giờ lộ qua đường HTTP của lõi; lõi (NV122) gọi `lay_ma()` khi chủ máy tích «Lấy
+mã từ Gmail» trong form thêm tài khoản.
+
+**Cần gì.**
+- Gmail cần đọc đã bật xác minh 2 bước + «Mật khẩu ứng dụng» (16 ký tự) và đã
+  bật IMAP trong cài đặt Gmail.
+- KHUYẾN NGHỊ: dùng một Gmail PHỤ chỉ để nhận mã (đặt bộ lọc Gmail tự chuyển
+  tiếp các thư mã xác minh sang Gmail phụ) thay vì Gmail chính — vì mật khẩu
+  ứng dụng cho quyền đọc TOÀN BỘ hộp thư.
+- Mạng ra tới `imap.gmail.com:993` cố định (khớp `tai_nguyen.mang_ra`; máy chủ
+  không cấu hình được — chống SSRF).
+- RAM/đĩa: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "doc-ma-hop-thu"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/doc-ma-hop-thu`
+3. Cài cấu hình: `POST /api/modules/doc-ma-hop-thu/cai` với thân
+   `{"cau_hinh": {"email": "phu@example.com", "mat_khau_ung_dung": ["<MAT-KHAU-UNG-DUNG-16-KY-TU>"]}}`
+   (nhiều hộp thư: `email` ngăn bằng dấu phẩy/xuống dòng CÙNG THỨ TỰ với danh
+   sách mật khẩu). `cai()` kiểm bằng cách LOGIN thử một lần rồi LOGOUT ngay
+   (không đọc thư).
+
+# Hỏi mã qua chuẩn (lõi NV122 gọi; không có đường HTTP cho mã)
+```python
+hop = next(h for h in mod.hop_thu_ra())          # chỉ id + email che, không mật khẩu
+kq = await mod.lay_ma({"hop_thu": hop["id"],
+                       "tu_mien": ["openai.com"],          # khớp theo ranh giới nhãn
+                       "sau_luc": "2026-10-18T12:55:00Z",  # chỉ thư mới hơn
+                       "do_dai": [4, 8],                   # mã dài 4..8, đứng độc lập
+                       "cho_giay": 90})                    # hỏi vòng ~3s, kẹp 5..180
+# {"ok": True, "ma": "482916"}  hoặc  {"ok": False, "ma_loi": "het_gio"|"sai_dang_nhap"|...}
+```
+
+**Sự cố thường gặp.**
+- `sai_dang_nhap` — mật khẩu ứng dụng sai/hết hạn, hoặc chưa bật xác minh 2
+  bước/IMAP; tạo mật khẩu mới (Tài khoản Google → Bảo mật → Xác minh 2 bước →
+  Mật khẩu ứng dụng).
+- `het_gio`/`khong_thay_ma` — thư mã chưa về hoặc về từ miền không trong
+  `tu_mien`; kiểm bộ lọc chuyển tiếp sang Gmail phụ.
+- `mang_loi` — mạng không tới `imap.gmail.com:993`.
+
+**Giới hạn.**
+- Chưa kiểm với Gmail thật (chỉ máy chủ IMAP giả cục bộ); IMAP qua proxy
+  không hỗ trợ (kết nối trực tiếp `imap.gmail.com:993`).
 
 ---
 
