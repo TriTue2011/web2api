@@ -180,6 +180,16 @@ class Module:
         """Danh sách đích — KHÔNG chứa bí mật (token, chat_id thô)."""
         return [{"id": d["id"], "ten": d["ten"]} for d in self._dich.values()]
 
+    async def suc_khoe(self) -> dict:
+        """Sức khoẻ theo khuôn chung của lõi.
+
+        Chưa cấu hình bot_token → ok False. Đã cấu hình → ok True kèm số
+        đích đã khai. KHÔNG gọi mạng (sức khoẻ không được chạm mạng ngoài).
+        """
+        if not self._token:
+            return {"ok": False, "loi": "chua_cau_hinh_bot_token"}
+        return {"ok": True, "so_dich": len(self._dich)}
+
     async def _post(self, url: str, than: dict):
         async with httpx.AsyncClient(timeout=_HET_GIO) as client:
             return await client.post(url, json=than,

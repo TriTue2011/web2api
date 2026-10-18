@@ -472,3 +472,21 @@ def test_loi_module_chua_cau_hinh_503(monkeypatch, may_chu_telegram):
         so.dang_chay.pop(MOD, None)
         so.catalog.pop(MOD, None)
     gui_ra_mod._dat_lai_trang_thai()
+
+
+def test_suc_khoe_chua_cau_hinh_bao_khong_ok():
+    """Khuôn lõi: mọi module phải có suc_khoe(); chưa cấu hình → ok False."""
+    mod = Module(MANIFEST)
+    kq = asyncio.run(mod.suc_khoe())
+    assert kq["ok"] is False
+
+
+def test_suc_khoe_da_cau_hinh_bao_ok_va_khong_goi_mang(may_chu_telegram):
+    """Đã cấu hình → ok True kèm số đích; sức khoẻ KHÔNG gọi mạng ngoài."""
+    mod = Module(MANIFEST)
+    mod.nap({"bot_token": TOKEN_GIA, "dich": json.dumps(DICH_GIA)})
+    _XuLyTelegram.ds_yeu_cau = []
+    kq = asyncio.run(mod.suc_khoe())
+    assert kq["ok"] is True
+    assert kq["so_dich"] == 2
+    assert _XuLyTelegram.ds_yeu_cau == []
