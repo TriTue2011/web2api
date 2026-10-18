@@ -178,6 +178,7 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 | `home-assistant` | Đọc trạng thái + điều khiển có kiểm soát thiết bị Home Assistant (chuẩn C1) | HTTPS (REST API của HA) | Có sẵn (kiểm với máy chủ HA giả; chưa kiểm với Home Assistant thật) |
 | `zte-e2633` | Nguồn máy mạng WiFi (chỉ đọc) từ bộ phát ZTE E2633 | HTTPS (trang quản trị bộ phát) | Có sẵn (đăng nhập đúng thứ tự trường + header `check`, dừng khi khoá/lỗi lặp; chưa kiểm với bộ phát thật) |
 | `doc-ma-hop-thu` | Đọc mã xác minh gửi về Gmail qua IMAP — CHỈ ĐỌC (chuẩn `ma_xac_minh`; lõi gọi khi tích «Lấy mã từ Gmail») | IMAP SSL tới imap.gmail.com:993 | Có sẵn (kiểm với máy chủ IMAP giả; chưa kiểm với Gmail thật) |
+| `doc-viettat` | Chuẩn hoá chữ để đọc tiếng Việt (TTS: số, đơn vị, viết tắt, hoá học, ký hiệu) | Cục bộ (thuần Python, không mạng) | Có sẵn (chuẩn C2 công cụ `chuan_hoa_doc`, 8 lớp lỗi, chống ReDoS, trần 20.000 ký tự) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.

@@ -74,6 +74,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
+| Module `doc-viettat` (Chuẩn hoá chữ để đọc tiếng Việt chuẩn OpenAI / TTS, chuẩn C2 `thiet_bi`) | Có — chuẩn hoá văn bản tiếng Việt sang dạng đọc cho TTS: số, đơn vị tập đóng SI, viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng), phân biệt tên người/ngữ cảnh thường, tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji; trần 20.000 ký tự, chống ReDoS; thuần Python, không mạng | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2432,8 +2433,46 @@ kq = await mod.lay_ma({"hop_thu": hop["id"],
 - `mang_loi` — mạng không tới `imap.gmail.com:993`.
 
 **Giới hạn.**
-- Chưa kiểm với Gmail thật (chỉ máy chủ IMAP giả cục bộ); IMAP qua proxy
-  không hỗ trợ (kết nối trực tiếp `imap.gmail.com:993`).
+---
+
+### Module doc-viettat — Chuẩn hoá chữ để đọc tiếng Việt (TTS)
+
+**Mô tả.** Chuẩn hoá văn bản tiếng Việt sang dạng đọc phát âm chuẩn cho các mô hình tổng hợp giọng nói (TTS) hoặc các trợ lý AI (chuẩn C2 `thiet_bi`, NV129). Xử lý 8 lớp lỗi: gạch đầu dòng, số thập phân và phân tách hàng nghìn, đơn vị đo tập đóng SI, số La Mã, khoảng số, tỉ số, số điện thoại, tiền tệ, từ viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng, phân biệt tên người/từ thường), tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji. Mã nguồn: `modules/doc-viettat/` (thuần Python, không thêm gói ngoài, không gọi mạng). Tiền tố: `doc_viettat`. Hạng: `A` (mã của dự án).
+
+**Cần gì.**
+- Không cần tài khoản hay khoá dịch vụ bên ngoài.
+- Mạng ra: không có (khớp `tai_nguyen.mang_ra` rỗng trong manifest).
+- RAM/đĩa: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "doc-viettat"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/doc-viettat`
+3. Cài đặt module: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/doc-viettat/cai -H "Content-Type: application/json" -d '{"cau_hinh": {}}'`
+
+**Cấu hình.** Không có trường cấu hình bắt buộc.
+
+**Ví dụ dùng.**
+
+Xác nhận thực thể theo cơ chế an toàn mặc định (SEC-004f), sau đó thực hiện chuẩn hoá qua API thiết bị hoặc qua OpenAI function calling (`chuan_hoa_doc`):
+
+```bash
+# Xác nhận thực thể công cụ
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/thiet-bi/doc_viettat.chuan_hoa/xac-nhan
+
+# Gọi hành động chuẩn hoá
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "chuan_hoa_doc", "tham_so": {"van_ban": "UBND tỉnh họp lúc 14h30 về việc mở rộng 15 km đường."}}' \
+  $W/api/thiet-bi/doc_viettat.chuan_hoa/hanh-dong
+```
+
+**Sự cố thường gặp.**
+- `ValueError: Văn bản vượt quá giới hạn 20.000 ký tự` — đầu vào quá dài — chia nhỏ văn bản trước khi gửi.
+- `409 code="can_xac_nhan"` — thực thể mới chưa được xác nhận rủi ro — gọi `POST /api/thiet-bi/doc_viettat.chuan_hoa/xac-nhan` trước.
+
+**Giới hạn.**
+- Giới hạn trần 20.000 ký tự mỗi lượt gọi để bảo đảm hiệu năng và chống ReDoS.
+- Các từ viết tắt mơ hồ (nhiều nghĩa) được thu thập vào `mo_ho` và mặc định đánh vần bằng chữ cái tiếng Việt.
 
 ---
 

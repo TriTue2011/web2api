@@ -1,0 +1,22 @@
+{
+  "id": "doc-viettat",
+  "ten": "Chuẩn hoá chữ đọc tiếng Việt",
+  "mo_ta": "Chuẩn hoá chữ viết tắt, số, đơn vị đo, công thức hoá học, ký hiệu để đọc tiếng Việt chuẩn OpenAI / TTS. Thuần Python, không mạng.",
+  "phien_ban": "0.1.0",
+  "hang": "A",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 45,
+  "giao_thuc": "cuc_bo",
+  "tien_to": "doc_viettat",
+  "cung_cap": ["thiet_bi"],
+  "tai_nguyen": {
+    "dia_mb": null,
+    "gpu": false,
+    "mang_ra": [],
+    "ram_them_mb": null,
+    "ghi_chu": "Thuần Python, không mạng, không I/O ngoài. Trần 20.000 ký tự/lần. Hợp đồng chuẩn C2 (công cụ chuan_hoa_doc)."
+  },
+  "yeu_cau_goi": [],
+  "truong_cau_hinh": []
+}
