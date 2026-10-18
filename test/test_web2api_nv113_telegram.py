@@ -490,3 +490,15 @@ def test_suc_khoe_da_cau_hinh_bao_ok_va_khong_goi_mang(may_chu_telegram):
     assert kq["ok"] is True
     assert kq["so_dich"] == 2
     assert _XuLyTelegram.ds_yeu_cau == []
+
+
+def test_thieu_kenh_id_khong_duoc_doan_dich_du_chi_mot_dich(may_chu_telegram):
+    """Bài học c2a: thiếu kenh_id → dich_khong_co, KHÔNG đoán đích đầu
+    (ngay cả khi chỉ có đúng 1 đích đã khai)."""
+    mod = Module(MANIFEST)
+    mod.nap({"bot_token": TOKEN_GIA, "dich": json.dumps([DICH_GIA[0]])})
+    _, xu_ly = may_chu_telegram
+    xu_ly.ds_yeu_cau = []
+    kq = asyncio.run(mod.gui_tin({}, {"van_ban": "A"}))
+    assert kq == {"ok": False, "ma": "dich_khong_co"}
+    assert xu_ly.ds_yeu_cau == []  # không gửi đi đâu cả
