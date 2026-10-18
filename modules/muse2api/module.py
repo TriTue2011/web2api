@@ -180,7 +180,7 @@ class _TaiKhoanNV93:
             self.ho_so = hs
 
 
-_QUY_TAC_TIN_HIEU = [{'loai': 'url_chua', 'gia_tri': 'muse.ai/login', 'tin_hieu': 'chua_dang_nhap'}]
+_QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'muse.ai', 'ten': 'hatch_sess', 'tin_hieu': 'da_dang_nhap'}, {'loai': 'url_chua', 'gia_tri': 'muse.ai/login', 'tin_hieu': 'chua_dang_nhap'}]
 
 class Module:
     def __init__(self, manifest: dict):
