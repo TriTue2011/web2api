@@ -444,6 +444,11 @@ def test_khung_giao_dien_khong_mang_ten_module():
     # mang_ra "imap.gmail.com" của module mới đưa "gmail" vào danh sách quét
     # nên loại riêng ở đây; các tên NCC khác vẫn bị quét như cũ.
     ten = ten - {"gmail"}
+    # NV138: «phong» là từ tiếng Việt thông dụng («phong cách»), đã có trong
+    # web/Studio.dc.html và web/khung.css từ trước NV138; mảnh này chỉ xuất hiện
+    # trong danh sách quét vì id module mới «van-phong» bị tách theo dấu «-».
+    # Tên đầy đủ «van-phong» vẫn bị quét như cũ.
+    ten = ten - {"phong"}
     # Phông chữ tải từ CDN fonts.googleapis.com/fonts.gstatic.com — CDN phông, không phải nhà cung cấp AI.
     cdn_phong = re.compile(r"https://fonts\.(googleapis|gstatic)\.com/[^\"'\s>]*")
     pham = []

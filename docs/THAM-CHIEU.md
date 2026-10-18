@@ -75,6 +75,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
 | Module `doc-viettat` (Chuẩn hoá chữ để đọc tiếng Việt chuẩn OpenAI / TTS, chuẩn C2 `thiet_bi`) | Có — chuẩn hoá văn bản tiếng Việt sang dạng đọc cho TTS: số, đơn vị tập đóng SI, viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng), phân biệt tên người/ngữ cảnh thường, tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji; trần 20.000 ký tự, chống ReDoS; thuần Python, không mạng | 18/10/2026 |
+| Module `van-phong` (Công cụ văn phòng qua container phụ OfficeCLI) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật) | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2508,6 +2509,60 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 **Giới hạn.**
 - Giới hạn trần 20.000 ký tự mỗi lượt gọi để bảo đảm hiệu năng và chống ReDoS.
 - Các từ viết tắt mơ hồ (nhiều nghĩa) được thu thập vào `mo_ho` và mặc định đánh vần bằng chữ cái tiếng Việt.
+
+---
+
+### Module van-phong — Công cụ văn phòng qua container phụ (OfficeCLI)
+
+**Mô tả.** Đọc/sửa tài liệu văn phòng (docx/xlsx/pptx) bằng công cụ `office_*`
+gọi dịch vụ `dich-vu/van-phong-office` — OfficeCLI v1.0.140 chạy trong container
+riêng (HTTP nội bộ, tập lệnh đóng 19 lệnh, hết giờ 60/180 s, không mạng ra
+ngoài; khác c2a ở chỗ không nhúng nhị phân vào ảnh lõi). Mã nguồn:
+`modules/van-phong/` (module) + `dich-vu/van-phong-office/` (dịch vụ: `server.py`
+thư viện chuẩn, `Dockerfile` riêng). Tiền tố thực thể: `van_phong`. Hạng: `B`
+(mã tự viết, nhưng chạy nhị phân OfficeCLI của bên thứ ba ngoài lõi).
+
+**Cần gì.**
+- Container `van-phong-office` đang chạy (xem `dich-vu/van-phong-office/README.md`
+  từng bước: build ảnh, chạy với `--network none`, khoá `OFFICE_KHOA`).
+- Mạng nội bộ tới dịch vụ (mặc định `http://127.0.0.1:8701`); địa chỉ lúc cài
+  kiểm bằng `app/tu_xa.py` (chống SSRF).
+- RAM/đĩa: chưa đo (điền `null` theo khuôn).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "van-phong"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/van-phong`
+3. Cài cấu hình: `POST /api/modules/van-phong/cai` với thân
+   `{"cau_hinh": {"office_bat": true, "dich_vu_url": "http://127.0.0.1:8701",
+   "khoa_dich_vu": "<khoa>"}}` — lõi kiểm địa chỉ chống SSRF trước khi lưu.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `office_bat` | Không | Bật công cụ `office_*` (mặc định tắt). Tắt thì mọi công cụ báo «chưa bật» và không gọi mạng. |
+| `dich_vu_url` | Không | Địa chỉ HTTP nội bộ của dịch vụ van-phong-office (mặc định `http://127.0.0.1:8701`). |
+| `khoa_dich_vu` | Không | Khoá Bearer của dịch vụ; lưu riêng, không API nào trả lại, bị chặn khỏi log. |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" $W/api/modules/van-phong/suc-khoe
+# → {"ok": true, "office_bat": true, "dich_vu_url": "http://127.0.0.1:8701"}
+```
+
+**Sự cố thường gặp.**
+- `{"ok": false, "loi": "chưa bật"}` — chưa bật `office_bat`, sai địa chỉ/khoá,
+  hoặc container dịch vụ chưa chạy (đóng khi lỗi, không lộ chi tiết).
+- `dia_chi_dich_vu_khong_hop_le` lúc cài — địa chỉ trỏ vào dải bị chặn (SSRF).
+- `lenh_khong_ho_tro` — hành động ngoài tập đóng (kể cả `mcp`).
+
+**Giới hạn.**
+- Chưa kiểm với OfficeCLI thật (chỉ nhị phân giả trong test); chưa đo RAM/đĩa
+  container phụ; chưa dựng ảnh Docker thật trong hộp cát (không có daemon).
+- Đầu ra dịch vụ là dữ liệu không tin: module cắt ở 80.000 ký tự, gắn
+  `nguon_ngoai: true`.
 
 ---
 

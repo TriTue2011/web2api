@@ -76,7 +76,7 @@ def test_chua_bat_thi_bao_chua_bat_va_khong_goi_mang(mod, md, monkeypatch):
     monkeypatch.setattr(md.httpx, "Client", lambda *a, **k: da_goi.append(1) or 1 / 0)
     kq = mod.thuc_hien("van_phong.office_doc", "office_view", {"tep": "a.docx"})
     import asyncio
-    kq = asyncio.get_event_loop().run_until_complete(kq) if not isinstance(kq, dict) else kq
+    kq = asyncio.run(kq) if not isinstance(kq, dict) else kq
     assert kq["ok"] is False
     assert "chưa bật" in kq["loi"]
     assert not da_goi, "chưa bật thì không được gọi mạng"
@@ -112,7 +112,7 @@ def test_bat_thi_goi_dich_vu_va_gan_nguon_ngoai(mod, md, monkeypatch):
     import asyncio
     _gia_lap_dich_vu(md, monkeypatch, {"ok": True, "dau_ra": "noi-dung-tai-lieu"})
     mod.nap({"office_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
-    kq = asyncio.get_event_loop().run_until_complete(
+    kq = asyncio.run(
         mod.thuc_hien("van_phong.office_doc", "office_view", {"tep": "a.docx"}))
     assert kq["ok"] is True
     assert kq["nguon_ngoai"] is True
@@ -122,7 +122,7 @@ def test_dau_ra_qua_tran_bi_cat_va_gan_nguon_ngoai(mod, md, monkeypatch):
     import asyncio
     _gia_lap_dich_vu(md, monkeypatch, {"ok": True, "dau_ra": "x" * (md.TRAN_DAU_RA + 5000)})
     mod.nap({"office_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
-    kq = asyncio.get_event_loop().run_until_complete(
+    kq = asyncio.run(
         mod.thuc_hien("van_phong.office_doc", "office_get", {"tep": "a.docx"}))
     assert len(kq["dau_ra"]) <= md.TRAN_DAU_RA + 100
     assert kq["nguon_ngoai"] is True
@@ -137,7 +137,7 @@ def test_khong_noi_duoc_dich_vu_bao_chua_bat(mod, md, monkeypatch):
 
     monkeypatch.setattr(md.httpx, "Client", ClientHong)
     mod.nap({"office_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
-    kq = asyncio.get_event_loop().run_until_complete(
+    kq = asyncio.run(
         mod.thuc_hien("van_phong.office_doc", "office_view", {"tep": "a.docx"}))
     assert kq["ok"] is False
     assert "chưa bật" in kq["loi"]
@@ -146,7 +146,7 @@ def test_khong_noi_duoc_dich_vu_bao_chua_bat(mod, md, monkeypatch):
 def test_hanh_dong_ngoai_tap_bi_tu_choi(mod, md):
     import asyncio
     mod.nap({"office_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
-    kq = asyncio.get_event_loop().run_until_complete(
+    kq = asyncio.run(
         mod.thuc_hien("van_phong.office_doc", "office_mcp", {}))
     assert kq["ok"] is False
 
@@ -164,6 +164,6 @@ def test_cai_tu_choi_url_la(md):
     import asyncio
     manifest = json.loads((THU_MUC / "manifest.json").read_text(encoding="utf-8"))
     m = md.Module(manifest)
-    kq = asyncio.get_event_loop().run_until_complete(
+    kq = asyncio.run(
         m.cai({"office_bat": True, "dich_vu_url": "http://169.254.169.254/", "khoa_dich_vu": KHOA_GIA}))
     assert kq["ok"] is False

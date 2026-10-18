@@ -30,7 +30,10 @@ TRAN_HIEN_TAI = 0
 #: không tính khi quét app//web/. «assistant» là vai tin nhắn của chuẩn OpenAI, đã có
 #: trong app/tuyen.py và web/Studio.dc.html từ trước NV118 (module home-assistant mới
 #: sinh ra mảnh này khi test tách id theo dấu «-»). Tên đầy đủ «home-assistant» vẫn bị quét.
-MANH_TU_THONG_DUNG = {"assistant"}
+#: «phong» là từ tiếng Việt thông dụng («phong cách»), đã có trong web/Studio.dc.html và
+#: web/khung.css từ trước NV138 (module van-phong mới sinh ra mảnh này khi test tách id
+#: theo dấu «-»). Tên đầy đủ «van-phong» vẫn bị quét.
+MANH_TU_THONG_DUNG = {"assistant", "phong"}
 
 
 @pytest.fixture
