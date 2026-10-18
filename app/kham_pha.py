@@ -500,6 +500,16 @@ def kiem_manifest(m) -> str | None:
             return "webhook.chu_ky phải có dạng «header:TÊN» (tên header mang chữ ký HMAC)"
         if wh.get("thuat_toan", "hmac-sha256") != "hmac-sha256":
             return "webhook.thuat_toan chỉ hỗ trợ «hmac-sha256»"
+    hv = m.get("hoi_vong")
+    if hv is not None:
+        hop_le = False
+        if isinstance(hv, dict) and "chu_ky_giay" in hv:
+            ck = hv["chu_ky_giay"]
+            if isinstance(ck, (int, float)) and not isinstance(ck, bool) and 2 <= ck <= 300:
+                hop_le = True
+        if not hop_le:
+            log.warning("manifest module %s: 'hoi_vong' sai khuôn (%r), bỏ trường này", m.get("id"), hv)
+            m.pop("hoi_vong", None)
     return None
 
 

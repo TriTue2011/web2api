@@ -2865,6 +2865,12 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PUT /api/so-thiet-bi/bao` | Có | Cấu hình kênh báo máy lạ: `bat`, `dich: [{module, kenh_id}]`, `bao_mac_ngau_nhien: "gop"|"co"|"khong"` |
 | `GET /api/so-thiet-bi/bao` | Có | Xem cấu hình kênh báo máy lạ hiện tại kèm trạng thái hợp lệ của các đích |
 | `POST /api/so-thiet-bi/bao/thu` | Có | Thử nghiệm gửi tin tới các đích báo máy lạ đã cấu hình |
+| `GET /api/kenh-vao/nguoi` | Có | Danh sách người trong sổ phân quyền kênh vào |
+| `PUT /api/kenh-vao/nguoi` | Có | Thêm hoặc sửa vai trò của một người trong sổ phân quyền (`module`, `nguoi_id`, `vai`, `ten`) |
+| `DELETE /api/kenh-vao/nguoi/{module}/{nguoi_id}` | Có | Xoá một người khỏi sổ phân quyền kênh vào |
+| `GET /api/kenh-vao/la` | Có | Danh sách người lạ gần đây nhắn tin tới bot |
+| `GET /api/kenh-vao/lenh` | Có | Danh sách các lệnh đã đăng ký trong lõi kèm vai tối thiểu |
+| `GET /api/kenh-vao/trang-thai` | Có | Thống kê số liệu kênh vào: `nhan`, `trung`, `vuot_han`, `tu_choi`, `lenh_chay`, `loi_kho` |
 | `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
 | `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
 | `POST /api/phe-duyet/{id}/tu-choi` | Có | Quản trị từ chối và huỷ bỏ yêu cầu trong hàng chờ |
@@ -2922,6 +2928,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_GUI_TEP_TOI_DA_MB` | `25` | Trần tổng byte tệp đính kèm gửi ra (MB, theo cơ chế `app/than_co_tran.py`); vượt → `413` |
 | `WEB2API_GUI_THOI_GIAN_GIAY` | `60` | Trần thời gian (giây) một lượt gọi `gui_tin` của module; vượt → `504` |
 | `WEB2API_CHU_KY_SO_THIET_BI_GIAY` | `60` | Chu kỳ quét thiết bị mạng của vòng nền (giây, kẹp 15..3600; mặc định 60s, hoãn khởi động 20s) |
+| `WEB2API_KENH_VAO_NGUOI_PHUT` | `20` | Hạn dòng số lệnh/phút của mỗi người gửi trên một module kênh vào; vượt → bỏ tin |
+| `WEB2API_KENH_VAO_MODULE_PHUT` | `200` | Hạn dòng tổng số tin/phút của một module kênh vào, chỉ tính tin của người ĐÃ được cấp quyền (kẻ lạ không làm cạn hạn dòng của chủ máy); vượt → bỏ tin |
+| `WEB2API_KENH_VAO_LA_PHUT` | `60` | Ngân sách riêng số tin/phút từ NGƯỜI LẠ của một module kênh vào (không trả lời, chỉ ghi nhận); hết ngân sách → bỏ ngay. Báo «người lạ nhắn bot» tới kênh chủ máy còn có trần cứng 5 tin/10 phút, phần dư chỉ ghi nhận ở `/api/kenh-vao/la` |
+| `WEB2API_KENH_VAO_BAO_NGUOI_LA` | `1` | Bật/tắt gửi tin cảnh báo khi có người lạ nhắn tin tới bot (mặc định bật = `1`, gửi 1 lần tới đích báo của sổ thiết bị) |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |

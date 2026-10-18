@@ -851,19 +851,29 @@ async def gui_thu_bao(request: Request):
     return {"ok": tat_ca_ok, "ket_qua": ket_qua}
 
 
+def cap_nhat_trang_thai_thiet_bi(
+    mac_chuan: str, trang_thai: str | None = None, ten: str | None = None
+) -> dict | None:
+    """Cập nhật trạng thái hoặc tên của một thiết bị trong sổ. Trả về dict thiết bị nếu tìm thấy, None nếu không.
+    Kho hỏng -> ném KhoHong."""
+    with _KHOA_SO:
+        so = doc_so()
+        thiet_bi = so.get("thiet_bi", {})
+        if mac_chuan not in thiet_bi:
+            return None
+        tb = thiet_bi[mac_chuan]
+        if trang_thai is not None:
+            tb["trang_thai"] = trang_thai
+        if ten is not None:
+            tb["ten"] = lam_sach_ten_chu_may(ten)
+        ghi_so(so)
+        return tb
+
+
 @router.patch("/{mac:path}")
 async def sua_thiet_bi(mac: str, request: Request):
     """Cập nhật tên hoặc trạng thái của một thiết bị trong sổ."""
     mac_chuan = _kiem_mac_url(mac)
-    try:
-        so = doc_so()
-    except KhoHong as e:
-        raise LoiOpenAI(503, "Kho dữ liệu sổ thiết bị bị hỏng.", code="kho_loi") from e
-
-    thiet_bi = so.get("thiet_bi", {})
-    if mac_chuan not in thiet_bi:
-        raise LoiOpenAI(404, "Không tìm thấy thiết bị trong sổ.", code="thiet_bi_khong_co")
-
     try:
         body = await request.json()
     except Exception:
@@ -872,23 +882,89 @@ async def sua_thiet_bi(mac: str, request: Request):
     if not isinstance(body, dict):
         raise LoiOpenAI(400, "Thân yêu cầu phải là JSON object.", code="invalid_request")
 
-    tb = thiet_bi[mac_chuan]
+    tt = body.get("trang_thai")
+    if tt is not None and tt not in TRANG_THAI_HOP_LE:
+        raise LoiOpenAI(
+            400,
+            f"Trường «trang_thai» phải là một trong {list(TRANG_THAI_HOP_LE)}.",
+            code="invalid_request",
+        )
 
-    if "trang_thai" in body:
-        tt = body["trang_thai"]
-        if tt not in TRANG_THAI_HOP_LE:
-            raise LoiOpenAI(
-                400,
-                f"Trường «trang_thai» phải là một trong {list(TRANG_THAI_HOP_LE)}.",
-                code="invalid_request",
-            )
-        tb["trang_thai"] = tt
+    try:
+        tb = cap_nhat_trang_thai_thiet_bi(mac_chuan, trang_thai=tt, ten=body.get("ten"))
+    except KhoHong as e:
+        raise LoiOpenAI(503, "Kho dữ liệu sổ thiết bị bị hỏng.", code="kho_loi") from e
 
-    if "ten" in body:
-        tb["ten"] = lam_sach_ten_chu_may(body["ten"])
+    if tb is None:
+        raise LoiOpenAI(404, "Không tìm thấy thiết bị trong sổ.", code="thiet_bi_khong_co")
 
-    ghi_so(so)
     return tb
+
+
+def dang_ky_lenh_so_thiet_bi() -> None:
+    """Đăng ký các lệnh điều khiển sổ thiết bị qua kênh vào (NV115):
+    - may-la (vai >= nguoi_dung): liệt kê tối đa 10 máy lạ đang chờ.
+    - quen <mac> (vai quan_tri): chuyển trạng thái sang quen.
+    - bo-qua <mac> (vai quan_tri): chuyển trạng thái sang bo_qua.
+    """
+    from app import kenh_vao
+
+    async def xu_ly_may_la(ngu_canh: dict, doi_so: str) -> str:
+        try:
+            so = doc_so()
+        except KhoHong:
+            return "Kho dữ liệu sổ thiết bị bị hỏng."
+        thiet_bi = so.get("thiet_bi", {})
+        ds_la = [tb for tb in thiet_bi.values() if tb.get("trang_thai") == "la"]
+        if not ds_la:
+            return "Không có máy lạ nào đang chờ."
+        dong = ["Danh sách máy lạ đang chờ:"]
+        for tb in ds_la[:10]:
+            mac = tb.get("mac")
+            ip = tb.get("ip") or "chưa rõ"
+            ten_tk = tb.get("ten_tu_khai")
+            ten = f"{ten_tk} (tự khai)" if ten_tk else "(không tên)"
+            dong.append(f"• {mac} · IP {ip} · {ten}")
+        if len(ds_la) > 10:
+            dong.append(f"• ... và {len(ds_la) - 10} máy khác.")
+        return "\n".join(dong)
+
+    async def xu_ly_quen(ngu_canh: dict, doi_so: str) -> str:
+        mac_chuan, _ = chuan_hoa_mac(doi_so)
+        if not mac_chuan:
+            return "MAC không hợp lệ."
+        try:
+            tb = cap_nhat_trang_thai_thiet_bi(mac_chuan, trang_thai="quen")
+        except KhoHong:
+            return "Kho dữ liệu sổ thiết bị bị hỏng."
+        if tb is None:
+            return "Không thấy máy này."
+        return f"Đã chuyển {mac_chuan} sang quen."
+
+    async def xu_ly_bo_qua(ngu_canh: dict, doi_so: str) -> str:
+        mac_chuan, _ = chuan_hoa_mac(doi_so)
+        if not mac_chuan:
+            return "MAC không hợp lệ."
+        try:
+            tb = cap_nhat_trang_thai_thiet_bi(mac_chuan, trang_thai="bo_qua")
+        except KhoHong:
+            return "Kho dữ liệu sổ thiết bị bị hỏng."
+        if tb is None:
+            return "Không thấy máy này."
+        return f"Đã chuyển {mac_chuan} sang bo_qua."
+
+    try:
+        kenh_vao.dang_ky_lenh("may-la", xu_ly_may_la, "Liệt kê tối đa 10 máy lạ đang chờ", "nguoi_dung")
+    except ValueError:
+        pass
+    try:
+        kenh_vao.dang_ky_lenh("quen", xu_ly_quen, "Đánh dấu máy quen: quen <mac>", "quan_tri")
+    except ValueError:
+        pass
+    try:
+        kenh_vao.dang_ky_lenh("bo-qua", xu_ly_bo_qua, "Đánh dấu bỏ qua máy: bo-qua <mac>", "quan_tri")
+    except ValueError:
+        pass
 
 
 @router.delete("/{mac:path}")

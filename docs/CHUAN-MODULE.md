@@ -352,3 +352,52 @@ Lõi web2api cung cấp tính năng quản lý sổ thiết bị mạng bền v�
   - Đích nào lỗi thì chỉ thử lại đích đó ở các chu kỳ sau (tối đa 5 lần).
   - Chống bão: máy mới xuất hiện đột biến (> max(5, nửa số máy thấy được)) sẽ gửi 1 tin cảnh báo và tạm dừng báo cho tới khi quản trị gọi tiếp tục.
 
+---
+
+## 12. Chuẩn Tin vào, phân quyền người gửi và lệnh (NV115)
+
+Lõi web2api cung cấp cổng nhận tin chung (`app/kenh_vao.py`) cho mọi module kênh nhắn tin (Telegram, Zalo Bot...), phân quyền chặt chẽ theo người gửi và cho phép chủ máy ra lệnh trực tiếp trong chat:
+
+### 12.1. Hợp đồng tin vào (`nhan_tin`)
+Module đẩy tin vào qua `await kenh_vao.nhan_tin(app, module_id, tin) -> dict` với cấu trúc:
+```python
+tin = {
+    "id_tin": str,            # Định danh tin do nhà cung cấp cấp
+    "nguoi_gui": str,         # ID người gửi (^[0-9A-Za-z._:@-]{1,64}$)
+    "noi_gui": str,           # ID đích gửi trả lời (phải thuộc kenh_ra() của module)
+    "la_nhom": bool,          # Có phải tin trong nhóm/kênh đông người
+    "ten_tu_khai": str | None,# Tên người gửi do nền tảng báo (dữ liệu không tin cậy)
+    "van_ban": str,           # Nội dung tin (<= 4000 ký tự, lọc ký tự điều khiển)
+    "luc": str | None,        # Thời điểm ISO
+}
+```
+- **Chống phát lại**: Lõi tự động nhớ `(module, id_tin)` trong 10 phút (tối đa 10.000 id); tin trùng bị bỏ qua an toàn.
+- **Hạn dòng**: Mặc định 20 lệnh/phút theo `(module, nguoi_gui)` và 200 tin/phút theo `module`.
+
+### 12.2. Phân quyền theo NGƯỜI GỬI (chống lỗ hổng c2a)
+- Quyền hạn gắn liền với `nguoi_gui`, **tuyệt đối không theo nơi gửi (`noi_gui`)**: Trong nhóm chat chung của quản trị viên, thành viên chưa được cấp quyền riêng vẫn được coi là `la` (người lạ).
+- Thứ bậc vai trò: `quan_tri` (3) > `nguoi_dung` (2) > `chi_xem` (1). Mã vai lạ có thứ bậc 0 (như `la`).
+- **Người lạ (`la`)**: Không được thực thi lệnh, không nhận phản hồi (tránh kẻ lạ dò bot). Lõi tự động ghi nhận vào sổ «người lạ gần đây» (trần 200 người) và gửi 1 tin cảnh báo duy nhất tới đích báo của sổ thiết bị.
+- Quyền chỉ được cấp qua API quản trị (`/api/kenh-vao/nguoi`). Không có lệnh chat nào có quyền thay đổi vai trò.
+
+### 12.3. Khai báo hỏi vòng (`hoi_vong`) trong manifest
+Module cần kéo tin định kỳ (ví dụ Telegram khi không có HTTPS công khai) khai trong `manifest.json`:
+```json
+"hoi_vong": {
+  "chu_ky_giay": 5
+}
+```
+- `chu_ky_giay`: Số nguyên từ 2 đến 300 giây.
+- Module cài phương thức: `async def hoi_vong(self) -> list[dict]` (danh sách `tin` đúng chuẩn ở mục 12.1).
+- Vòng lặp do lõi duy trì: nghỉ theo chu kỳ, lùi dần khi lỗi (tối đa 5 phút), tự dừng khi gỡ module, không chạy trùng lượt, mỗi module có timeout riêng biệt và lỗi của module này không làm ảnh hưởng module khác.
+
+### 12.4. Bảng lệnh và trả lời
+- Phân tích câu lệnh theo cấu trúc: bỏ dấu tiếng Việt (kể cả `đ` -> `d`), chuyển chữ thường, bỏ tiền tố `/` và hậu tố `@bot` ở token đầu tiên. Token đầu là tên lệnh, phần còn lại là đối số thô.
+- Hàm xử lý: `async def ham(ngu_canh: dict, doi_so: str) -> str`. Trả lời qua hàm gửi chung `gui_den_dich(..., nguoi_goi="kenh_vao")` về đúng `noi_gui`.
+- Ngoại lệ trong lệnh luôn được bọc thành `"Lệnh lỗi."` (không lộ chi tiết lỗi hệ thống).
+- Sổ thiết bị kết nối sẵn 3 lệnh:
+  - `may-la` (vai >= `nguoi_dung`): Liệt kê tối đa 10 máy lạ đang chờ duyệt.
+  - `quen <mac>` (vai `quan_tri`): Đánh dấu thiết bị quen.
+  - `bo-qua <mac>` (vai `quan_tri`): Bỏ qua thiết bị.
+
+
