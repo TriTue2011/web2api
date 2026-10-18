@@ -20,11 +20,14 @@ He-thong-Tich-hop, He-thong-Tro-giup, He-thong-Module, Studio), mỗi trang đo 
   - document.documentElement.scrollWidth <= innerWidth + 1 (không tràn ngang).
 
 Test máy tính (1280x800, cảm ứng TẮT): chứng minh máy tính không đổi —
-matchMedia('(pointer:coarse)') phải SAI, và chiều cao nút «Đăng xuất» (#nut-dang-xuat)
-cùng các nút lọc trang Module (#loc-tt .chip) PHẢI y nguyên giá trị thiết kế trong
-khung.css (.nut-nho{min-height:40px}, .chip{min-height:40px} → 40px khi nội dung vừa).
-Các giá trị 40px này lấy từ hằng số thiết kế trong khung.css, KHÔNG đo bằng Chrome
-(vì máy làm NV106 không có Chrome); người giao việc chạy test này sẽ xác nhận lại.
+matchMedia('(pointer:coarse)') phải SAI, và chiều cao nút «Đăng xuất» + chip lọc trang
+Hệ thống PHẢI y nguyên giá trị thiết kế trong khung.css. Giá trị suy từ CSS (máy làm
+NV106 không có Chrome nên chưa đo thật; người giao việc chạy test này sẽ xác nhận):
+  - #nut-dang-xuat (class "nut nut-nho"): .nut có box-sizing:border-box, .nut-nho
+    đè min-height:40px → cao đúng 40px (viền đã tính trong border-box);
+  - #loc-tt .chip: .chip/.loc .chip KHÔNG đặt box-sizing (content-box),
+    min-height:40px + viền 1px×2 → cao 42px (nội dung 1 dòng, chữ 13px < 40px).
+Người chạy Chrome nếu thấy số khác thì cập nhật 2 hằng này theo số đo thật.
 """
 
 from __future__ import annotations
@@ -148,8 +151,9 @@ def test_desktop_khong_doi(trang, tmp_path, monkeypatch):
     """Khung 1280x800, cảm ứng TẮT: giao diện máy tính phải Y NGUYÊN.
 
     (pointer:coarse) phải sai (mọi quy tắc NV106 nằm trong khối cảm ứng), và
-    chiều cao nút «Đăng xuất» + chip lọc trang Module phải đúng 40px như thiết kế
-    trong khung.css (.nut-nho{min-height:40px}, .chip{min-height:40px}).
+    chiều cao nút «Đăng xuất» phải đúng 40px (.nut border-box + .nut-nho
+    min-height:40px), chip lọc #loc-tt đúng 42px (content-box: min-height 40px
+    + viền 2px). Hai hằng suy từ khung.css, chưa đo bằng Chrome.
     """
     _nen(tmp_path, monkeypatch)
     with MayChuThat(app, lifespan="on") as w:
@@ -167,5 +171,5 @@ def test_desktop_khong_doi(trang, tmp_path, monkeypatch):
         })()""")
         assert kq["coarse"] is False, "desktop chuột: (pointer:coarse) phải sai"
         assert kq["dangXuat"] == 40, f"nút «Đăng xuất» desktop phải cao 40px, đo được {kq['dangXuat']}"
-        assert kq["chip"] and all(c == 40 for c in kq["chip"]), \
-            f"chip lọc desktop phải cao 40px, đo được {kq['chip']}"
+        assert kq["chip"] and all(c == 42 for c in kq["chip"]), \
+            f"chip lọc desktop phải cao 42px (40 + viền 2px), đo được {kq['chip']}"
