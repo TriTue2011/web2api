@@ -76,6 +76,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
 | Module `doc-viettat` (Chuẩn hoá chữ để đọc tiếng Việt chuẩn OpenAI / TTS, chuẩn C2 `thiet_bi`) | Có — chuẩn hoá văn bản tiếng Việt sang dạng đọc cho TTS: số, đơn vị tập đóng SI, viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng), phân biệt tên người/ngữ cảnh thường, tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji; trần 20.000 ký tự, chống ReDoS; thuần Python, không mạng | 18/10/2026 |
 | Module `van-phong` (Công cụ văn phòng qua container phụ OfficeCLI) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật) | 18/10/2026 |
+| Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2591,6 +2592,53 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/van-phong/suc-khoe
   container phụ; chưa dựng ảnh Docker thật trong hộp cát (không có daemon).
 - Đầu ra dịch vụ là dữ liệu không tin: module cắt ở 80.000 ký tự, gắn
   `nguon_ngoai: true`.
+
+---
+
+### Module tro-ly — Trợ lý: dựng prompt theo ngân sách + chọn công cụ theo tầng (NV136)
+
+**Mô tả.** Khối xây dựng cho vòng lặp agent (NV135 dùng): mọi phần của prompt
+là một *mảnh* (`ManhPrompt`: id, nguon ∈ {loi, ho_so, skill, module, bo_nho,
+cong_cu}, noi_dung, dieu_kien_nap, tran_token, uu_tien, tang ∈ {on_dinh,
+ngu_canh, hay_doi}); bộ dựng chọn mảnh theo điều kiện nạp đã thoả và ưu tiên,
+vượt trần thì bỏ NGUYÊN mảnh (không cắt giữa mảnh), chống trùng bằng băm nội
+dung chuẩn hoá; tầng ổn định luôn đứng trước và bất biến giữa các lượt cùng
+đầu vào (byte-by-byte). Prompt nền tối giản (danh tính + 4 quy tắc cốt lõi)
+≤ 400 token ước tính (trần cứng). Công cụ theo tầng: ≤ 8 công cụ nền luôn nạp
+schema (`tim_cong_cu`, `tim_tri_thuc`, `doc_tri_thuc`, `hoi_lai`, `ket_thuc`,
+`ghi_nho_tam`); danh mục chỉ tên + một dòng (≤ 150 ký tự) và CHỈ qua
+`tim_cong_cu(y_dinh)`; schema đầy đủ chỉ của công cụ được chọn (tối đa K=8,
+trần 16). Bộ chọn xếp hạng nhiều tín hiệu thuần Python (tương đồng chuỗi LCS,
+token-max, Jaccard 3-gram, BM25 trên chính tập ứng viên, khớp miền C1, tỉ lệ
+thành công) + **cổng biên**: điểm thấp / chênh hạng 1–2 hẹp / cặp đối nghịch
+không vượt biên đầy đủ / cặp mô tả chồng chéo → `mo_ho=true`, hỏi lại thay vì
+đoán; thiếu tham số bắt buộc → hỏi lại; KHÔNG danh sách từ khoá ánh xạ ý
+định→công cụ. `do_chong_cheo()` phát hiện cặp mô tả giống nhau quá ngưỡng,
+cảnh báo một lần mỗi cặp trong `suc_khoe()`. X-quang mỗi lượt ghi vào nhật ký
+chỉ-thêm (mảnh vào/loại + lý do, token theo tầng, công cụ có schema/chỉ ở danh
+mục), lọc bí mật theo tên trường và mẫu `key=value`, đọc phân quyền theo hồ
+sơ. Sổ lỗi: tối đa 3 dòng gần nhất của ĐÚNG công cụ đang xét vào mảnh
+`hay_doi`. Mã nguồn: `modules/tro-ly/` (thuần thư viện chuẩn, không thêm gói).
+Hạng: `B`. Chưa có vòng lặp gọi mô hình (NV135) và API HTTP (NV135/lõi nối sau).
+
+**Dùng.**
+```python
+m = tro_ly.Module(manifest); m.nap({})
+manhs = [m.manh_nen(), m.manh_so_loi("ho-so-1", "dieu_khien_den")]
+van_ban, xq = m.dung_prompt([x for x in manhs if x],
+                            ngan_sach_tong=4000,
+                            ngan_sach_tang={"on_dinh": 1000, "ngu_canh": 2000,
+                                            "hay_doi": 1000},
+                            boi_canh={})
+kq = m.tim_cong_cu("bật đèn bếp", danh_muc)  # {cong_cu, diem, mo_ho, cau_hoi, ...}
+m.ghi_x_quang(luot_id="...", ho_so_id="...", x_quang=xq,
+              cong_cu_schema=[kq["cong_cu"]], cong_cu_danh_muc=[...])
+```
+
+**Giới hạn.**
+- Chưa đo trên nhật ký lượt chạy thật của nhà (cần NV135 chạy một thời gian);
+  ngưỡng cổng biên là giá trị mặc định. Chế độ «tự chọn không hỏi» mặc định TẮT.
+- Ước tính token là `số ký tự // 4` (thô), chưa hiệu chỉnh theo tokenizer thật.
 
 ---
 

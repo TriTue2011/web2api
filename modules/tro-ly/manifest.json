@@ -1,0 +1,22 @@
+{
+  "id": "tro-ly",
+  "ten": "Trợ lý (vòng lặp agent)",
+  "tien_to": "tro_ly",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 43,
+  "mo_ta": "Vòng lặp agent: bộ dựng prompt theo ngân sách, bộ chọn công cụ theo tầng, X-quang prompt và sổ lỗi công cụ (NV136). Chưa gồm vòng lặp gọi mô hình (NV135).",
+  "phien_ban": "0.1.0",
+  "hang": "B",
+  "cung_cap": [],
+  "giao_thuc": "noi-bo",
+  "yeu_cau_goi": [],
+  "tai_nguyen": {
+    "ram_them_mb": null,
+    "dia_mb": null,
+    "gpu": false,
+    "mang_ra": [],
+    "ghi_chu": "Thuần Python, không gọi mạng. RAM/đĩa chưa đo (null = chưa đo)."
+  },
+  "truong_cau_hinh": []
+}
