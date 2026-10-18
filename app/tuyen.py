@@ -1167,6 +1167,40 @@ async def them_tu_xa(request: Request):
         raise _loi_so(e) from None
 
 
+@modules.post("/do-nut-gpu", dependencies=QT)
+async def do_nut_gpu_endpoint(request: Request):
+    """Dò nút GPU trước khi đăng ký (NV140): đọc health và w2a-node, kiểm SSRF."""
+    from app.nut_gpu import do_nut_gpu
+
+    than = await _than_json(request)
+    base_url = than.get("base_url")
+    if not isinstance(base_url, str) or not base_url.strip():
+        raise LoiOpenAI(400, "Thiếu trường «base_url»")
+    api_key = than.get("api_key")
+    if api_key is not None and not isinstance(api_key, str):
+        raise LoiOpenAI(400, "api_key phải là chuỗi")
+    try:
+        return await do_nut_gpu(base_url, api_key)
+    except ValueError as e:
+        raise LoiOpenAI(400, str(e)) from None
+    except Exception as e:
+        raise LoiOpenAI(502, f"Không kết nối được tới nút GPU: {e}") from None
+
+
+@modules.post("/{id_}/bat-tat", dependencies=QT)
+async def bat_tat_module(id_: str, request: Request):
+    """Bật hoặc tắt module từ xa / nút GPU (NV140)."""
+    than = await _than_json(request)
+    if "bat" not in than:
+        raise LoiOpenAI(400, "Thiếu trường «bat» (true hoặc false)")
+    bat = bool(than.get("bat"))
+    try:
+        return await _so(request).bat_tat_tu_xa(id_, bat)
+    except LoiSo as e:
+        raise _loi_so(e) from None
+
+
+
 @modules.post("/{id_}/cai", dependencies=QT)
 async def cai(id_: str, request: Request):
     than = await _than_json(request)

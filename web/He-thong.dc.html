@@ -228,6 +228,64 @@ main.pg{padding:12px 16px 24px}
 <div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" disabled="{{dangTx}}">{{nhanTx}}</button></div>
 </form>
 </section>
+<section class="muc-ct" id="may-gpu" aria-labelledby="h-gpu">
+<h3 id="h-gpu">Máy GPU</h3>
+<p class="phu">Máy tính có card đồ hoạ (GPU) ở máy khác trong mạng nhà? Khám phá khả năng (chat, nghe, nói, vẽ ảnh...), theo dõi VRAM/nhiệt độ và giới hạn số lượt gọi đồng thời chống tràn card.</p>
+<div class="form-gpu" style="display:flex;flex-direction:column;gap:12px">
+<div class="buoc-gpu" style="border:1px solid var(--line);border-radius:12px;padding:12px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="vien" style="background:#181816;color:#fff;font-weight:700">1</span><strong style="font-size:13px">Địa chỉ máy GPU</strong></div>
+<div class="truong"><label for="gpu-url">Địa chỉ gốc <span class="bb">(bắt buộc)</span></label><input id="gpu-url" class="o" type="url" autocomplete="off" spellcheck="false" placeholder="http://192.0.2.10:5000" value="{{gpuForm.base_url}}" onInput="{{gpuGo.base_url}}"></div>
+<sc-if value="{{gpuLoiB1}}"><p role="alert" class="bao bao-loi">{{gpuLoiB1}}</p></sc-if>
+<sc-if value="{{gpuTinB1}}"><p role="status" class="bao bao-tot">{{gpuTinB1}}</p></sc-if>
+<div class="dong-nut" style="margin-top:8px"><button type="button" class="nut-chu" onClick="{{gpuKiemB1}}" disabled="{{dangGpuB1}}">{{nhanGpuB1}}</button></div>
+</div>
+
+<sc-if value="{{gpuBuoc2TroLen}}">
+<div class="buoc-gpu" style="border:1px solid var(--line);border-radius:12px;padding:12px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="vien" style="background:#181816;color:#fff;font-weight:700">2</span><strong style="font-size:13px">Khoá nút & Kiểm tra card</strong></div>
+<div class="truong"><label for="{{gpuIdKhoa}}">Khoá nút GPU (Bearer token)</label><input id="{{gpuIdKhoa}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống nếu nút không đặt khoá" onInput="{{gpuGoKhoa}}"><span class="phu">Khoá sinh ra ở máy GPU lúc khởi động. Sau khi lưu, khoá được cất an toàn và không bao giờ hiện lại.</span></div>
+<sc-if value="{{gpuLoiB2}}"><p role="alert" class="bao bao-loi">{{gpuLoiB2}}</p></sc-if>
+<sc-if value="{{gpuTinB2}}"><p role="status" class="bao bao-tot">{{gpuTinB2}}</p></sc-if>
+<div class="dong-nut" style="margin-top:8px"><button type="button" class="nut-chu" onClick="{{gpuKiemB2}}" disabled="{{dangGpuB2}}">{{nhanGpuB2}}</button></div>
+
+<sc-if value="{{gpuCoThongTin}}">
+<dl class="bang" style="margin-top:10px">
+<div class="bang-dong"><dt>Card GPU</dt><dd><strong>{{gpuTenCard}}</strong></dd></div>
+<div class="bang-dong"><dt>VRAM</dt><dd>{{gpuVram}}</dd></div>
+<div class="bang-dong"><dt>Nhiệt độ / Tải</dt><dd>{{gpuNhietTai}}</dd></div>
+<div class="bang-dong"><dt>Độ trễ</dt><dd>{{gpuDoTre}}</dd></div>
+<sc-if value="{{gpuCoMoHinh}}"><div class="bang-dong"><dt>Mô hình</dt><dd>{{gpuMoHinh}}</dd></div></sc-if>
+</dl>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{gpuBuoc3TroLen}}">
+<div class="buoc-gpu" style="border:1px solid var(--line);border-radius:12px;padding:12px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="vien" style="background:#181816;color:#fff;font-weight:700">3</span><strong style="font-size:13px">Chọn khả năng & Hoàn tất</strong></div>
+<div class="luoi-form">
+<div class="truong"><label for="gpu-id">Mã (id) <span class="bb">(bắt buộc)</span></label><input id="gpu-id" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="vd: may-gpu" value="{{gpuForm.id}}" onInput="{{gpuGo.id}}"></div>
+<div class="truong"><label for="gpu-ten">Tên hiển thị <span class="bb">(bắt buộc)</span></label><input id="gpu-ten" class="o" type="text" autocomplete="off" placeholder="vd: Máy GPU phòng khách" value="{{gpuForm.ten}}" onInput="{{gpuGo.ten}}"></div>
+<div class="truong"><label for="gpu-tien-to">Tiền tố model <span class="bb">(bắt buộc)</span></label><input id="gpu-tien-to" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="vd: gpu" value="{{gpuForm.tien_to}}" onInput="{{gpuGo.tien_to}}"></div>
+<div class="truong"><label for="gpu-dong-thoi">Giới hạn đồng thời (1..8)</label><input id="gpu-dong-thoi" class="o" type="number" min="1" max="8" value="{{gpuForm.gioi_han_dong_thoi}}" onInput="{{gpuGo.gioi_han_dong_thoi}}"></div>
+</div>
+<div class="truong" style="margin-top:8px">
+<label>Khả năng sử dụng</label>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+<sc-for list="{{gpuDsKhaNang}}" as="kn">
+<label class="chon" style="margin:0"><input type="checkbox" checked="{{kn.bat}}" onChange="{{kn.doi}}"><span>{{kn.ma}}</span></label>
+</sc-for>
+</div>
+</div>
+<sc-if value="{{gpuLoiB3}}"><p role="alert" class="bao bao-loi">{{gpuLoiB3}}</p></sc-if>
+<sc-if value="{{gpuTinB3}}"><p role="status" class="bao bao-tot">{{gpuTinB3}}</p></sc-if>
+<div class="dong-nut" style="margin-top:10px">
+<button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" onClick="{{gpuHoanTat}}" disabled="{{dangGpuB3}}">{{nhanGpuB3}}</button>
+</div>
+</div>
+</sc-if>
+</div>
+</section>
 </sc-if>
 
 <sc-if value="{{ct.laModule}}">
@@ -236,6 +294,25 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.moTa}}"><p style="text-wrap:pretty;overflow-wrap:anywhere;margin-top:-6px">{{ct.moTa}}</p></sc-if>
 <sc-if value="{{ct.loi}}"><p role="alert" class="bao bao-loi" id="ct-loi">{{ct.loi}}</p></sc-if>
 <sc-if value="{{ct.ghiChuGit}}"><p class="bao bao-vang">{{ct.ghiChuGit}}</p></sc-if>
+
+<sc-if value="{{ct.laNutGpu}}">
+<section class="muc-ct" id="thong-so-gpu" aria-labelledby="h-ts-gpu">
+<h3 id="h-ts-gpu">Thông số GPU & Trạng thái</h3>
+<dl class="bang">
+<sc-if value="{{ct.coCard}}"><div class="bang-dong"><dt>Card GPU</dt><dd><strong>{{ct.cardTen}}</strong></dd></div></sc-if>
+<sc-if value="{{ct.coVram}}"><div class="bang-dong"><dt>VRAM</dt><dd>{{ct.vramDung}} / {{ct.vramTong}} MB ({{ct.vramPct}}%)</dd></div></sc-if>
+<sc-if value="{{ct.coNhiet}}"><div class="bang-dong"><dt>Nhiệt độ / Tải</dt><dd>{{ct.nhietDo}} · {{ct.taiPct}}</dd></div></sc-if>
+<div class="bang-dong"><dt>Độ trễ</dt><dd>{{ct.doTre}}</dd></div>
+<div class="bang-dong"><dt>Hàng đợi</dt><dd>{{ct.hangDoi}}</dd></div>
+<div class="bang-dong"><dt>Mạch ngắt</dt><dd>{{ct.machNgatNhan}}</dd></div>
+</dl>
+<div class="dong-nut" style="margin-top:6px;gap:8px">
+<button type="button" class="nut-chu" onClick="{{ct.batTat}}">{{ct.nhanBatTat}}</button>
+<button type="button" class="nut-chu" onClick="{{ct.kiemTraLai}}">Kiểm tra lại</button>
+</div>
+</section>
+</sc-if>
+
 
 <sc-if value="{{ct.coCungCap}}">
 <section class="muc-ct" id="cho-ai" aria-labelledby="h-cho-ai">
@@ -364,7 +441,8 @@ const K = window.Khung;
 const TT = {
   'chua-cai': ['Chưa cài', 'vien v-mute'], 'cho-khoa': ['Đã cài — chờ khoá', 'vien v-warn'],
   'cho-lien-ket': ['Đã cài — chờ liên kết', 'vien v-warn'], 'dang-chay': ['Đang chạy', 'vien v-ok'],
-  'ban-moi': ['Có bản mới', 'vien v-warn'], 'loi': ['Lỗi', 'vien v-bad']
+  'ban-moi': ['Có bản mới', 'vien v-warn'], 'loi': ['Lỗi', 'vien v-bad'],
+  'da-tat': ['Đã tắt', 'vien v-mute'], 'ngat-mach': ['Ngắt mạch', 'vien v-bad']
 };
 const LOC_TT = [['tat-ca', 'Tất cả'], ['da-cai', 'Đã cài'], ['chua-cai', 'Chưa cài'], ['ban-moi', 'Có bản mới']];
 const MB = 1024 * 1024;
@@ -383,7 +461,13 @@ class Component extends DCLogic {
       dangTaiNg: false, ngLoiTai: '', ngSua: false,
       ngForm: { repo: '', nhanh: 'main', thu_muc: 'modules', chu_ky_giay: '300', tu_dong: false, yeu_cau_chu_ky: false },
       ngToken: '', ngLan: 0, dangLuuNg: false, ngLoi: '', ngTin: '',
-      txForm: { id: '', ten: '', tien_to: '', base_url: '' }, txKhoa: '', txLan: 0, dangTx: false, txLoi: '', txKq: null
+      txForm: { id: '', ten: '', tien_to: '', base_url: '' }, txKhoa: '', txLan: 0, dangTx: false, txLoi: '', txKq: null,
+      gpuForm: { base_url: '', id: '', ten: '', tien_to: '', gioi_han_dong_thoi: '2' },
+      gpuKhoa: '', gpuLan: 0, gpuBuoc: 1, gpuInfo: null, gpuKhaNangChon: {},
+      dangGpuB1: false, gpuLoiB1: '', gpuTinB1: '',
+      dangGpuB2: false, gpuLoiB2: '', gpuTinB2: '',
+      dangGpuB3: false, gpuLoiB3: '', gpuTinB3: '',
+      sk: {}
     };
     if (this.state.chon) this.state.chon = decodeURIComponent(this.state.chon);
   }
@@ -400,11 +484,14 @@ class Component extends DCLogic {
 
   didMount() {
     K.napToi().then((nd) => { if (nd) this.setState({ nguoiDung: nd }); });
-    this.taiLai();
+    this.taiLai().then(() => this.lamMoiTelemetry());
     window.addEventListener('hashchange', () => {
       const m = location.hash.match(/^#module-(.+)$/);
       if (m) this.chonO(decodeURIComponent(m[1]));
     });
+    this.timerTelemetry = setInterval(() => {
+      if (!document.hidden) this.lamMoiTelemetry();
+    }, 15000);
   }
 
   // ---------- dữ liệu ----------
@@ -447,6 +534,11 @@ class Component extends DCLogic {
   chonO(id, denForm) {
     this.setState((s) => ({ chon: id, hoiGo: null, hoiCai: (s.hoiCai && s.hoiCai.id === id) ? s.hoiCai : null, tin: '', xoaO: null }));
     const tai = id !== '+them' ? K.cauHinh.tai(this, id) : Promise.resolve();
+    if (id && id !== '+them') {
+      K.goi('api/modules/' + encodeURIComponent(id) + '/suc-khoe').then(({ j }) => {
+        if (j) this.setState((st) => ({ sk: Object.assign({}, st.sk, { [id]: j }) }));
+      }).catch(() => {});
+    }
     setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth > 1023 }); }, 30);
     if (denForm) tai.then(() => setTimeout(() => {
       const f = document.getElementById('lien-ket');
@@ -623,6 +715,144 @@ class Component extends DCLogic {
     }
   }
 
+  async lamMoiTelemetry() {
+    const s = this.state;
+    const tn = s.tn || {};
+    const mods = tn.modules || [];
+    const dsGpu = mods.filter((m) => m && (m.tu_xa || m.la_nut_gpu));
+    if (!dsGpu.length) return;
+    const ketQua = {};
+    await Promise.allSettled(dsGpu.map(async (m) => {
+      try {
+        const { j } = await K.goi('api/modules/' + encodeURIComponent(m.id) + '/suc-khoe');
+        if (j) ketQua[m.id] = j;
+      } catch (e) {
+        // bỏ qua lỗi kiểm tra định kỳ
+      }
+    }));
+    if (Object.keys(ketQua).length) {
+      this.setState((st) => ({ sk: Object.assign({}, st.sk, ketQua) }));
+    }
+  }
+
+  async gpuKiemB1() {
+    const url = String(this.state.gpuForm.base_url || '').trim();
+    if (!url) { this.setState({ gpuLoiB1: 'Vui lòng nhập địa chỉ gốc của máy GPU.', gpuTinB1: '' }); return; }
+    this.setState({ dangGpuB1: true, gpuLoiB1: '', gpuTinB1: '' });
+    try {
+      const { j } = await K.goi('api/modules/do-nut-gpu', { method: 'POST', json: { base_url: url } });
+      const mf = (j && j.manifest) || j || {};
+      const tl = (j && j.telemetry) || j || {};
+      const updates = {
+        dangGpuB1: false,
+        gpuBuoc: Math.max(this.state.gpuBuoc, 2),
+        gpuTinB1: 'Kết nối thành công tới ' + url + ((j && j.do_tre_ms != null) ? ' (' + j.do_tre_ms + ' ms)' : '') + '.',
+        gpuInfo: { manifest: mf, telemetry: tl, do_tre_ms: j && j.do_tre_ms }
+      };
+      const f = this.state.gpuForm;
+      updates.gpuForm = Object.assign({}, f, {
+        id: f.id || mf.id || '',
+        ten: f.ten || mf.ten || '',
+        tien_to: f.tien_to || mf.tien_to || '',
+        gioi_han_dong_thoi: f.gioi_han_dong_thoi || (mf.gioi_han_dong_thoi ? String(mf.gioi_han_dong_thoi) : '2')
+      });
+      this.setState(updates);
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ dangGpuB1: false, gpuLoiB1: 'Không kết nối được: ' + err.message });
+    }
+  }
+
+  async gpuKiemB2() {
+    const url = String(this.state.gpuForm.base_url || '').trim();
+    const k = (this.state.gpuKhoa || '').trim();
+    this.setState({ dangGpuB2: true, gpuLoiB2: '', gpuTinB2: '' });
+    try {
+      const than = { base_url: url };
+      if (k) than.api_key = k;
+      const { j } = await K.goi('api/modules/do-nut-gpu', { method: 'POST', json: than });
+      const mf = (j && j.manifest) || j || {};
+      const tl = (j && j.telemetry) || j || {};
+      const LOI_BIET = ['chat', 'nghe', 'noi', 'anh', 'anh_sua', 'nhung', 'kiem_duyet'];
+      const khaNangNut = Array.isArray(mf.kha_nang) && mf.kha_nang.length ? mf.kha_nang : LOI_BIET;
+      const knChon = {};
+      for (const m of LOI_BIET) {
+        if (khaNangNut.includes(m)) knChon[m] = true;
+      }
+      const f = this.state.gpuForm;
+      this.setState({
+        dangGpuB2: false,
+        gpuBuoc: 3,
+        gpuTinB2: 'Đã nhận thông tin card và cấu hình của nút GPU.',
+        gpuInfo: { manifest: mf, telemetry: tl, do_tre_ms: j && j.do_tre_ms },
+        gpuKhaNangChon: knChon,
+        gpuForm: Object.assign({}, f, {
+          id: f.id || mf.id || 'may-gpu',
+          ten: f.ten || mf.ten || 'Máy GPU',
+          tien_to: f.tien_to || mf.tien_to || 'gpu',
+          gioi_han_dong_thoi: f.gioi_han_dong_thoi || (mf.gioi_han_dong_thoi ? String(mf.gioi_han_dong_thoi) : '2')
+        })
+      });
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ dangGpuB2: false, gpuLoiB2: 'Lỗi kiểm tra nút: ' + err.message });
+    }
+  }
+
+  async gpuHoanTat() {
+    const f = this.state.gpuForm;
+    const thieu = [['id', 'mã'], ['ten', 'tên'], ['tien_to', 'tiền tố'], ['base_url', 'địa chỉ gốc']]
+      .filter(([k]) => !String(f[k] || '').trim()).map(([, n]) => n);
+    if (thieu.length) { this.setState({ gpuLoiB3: 'Còn thiếu: ' + thieu.join(', ') + '.' }); return; }
+    const knBat = Object.keys(this.state.gpuKhaNangChon).filter((k) => this.state.gpuKhaNangChon[k]);
+    if (!knBat.length) { this.setState({ gpuLoiB3: 'Vui lòng chọn ít nhất một khả năng để sử dụng.' }); return; }
+    const dh = Number(f.gioi_han_dong_thoi);
+    const gioiHan = Number.isInteger(dh) && dh >= 1 && dh <= 8 ? dh : 2;
+    const than = {
+      id: f.id.trim(), ten: f.ten.trim(), tien_to: f.tien_to.trim(), base_url: f.base_url.trim(),
+      la_nut_gpu: true, gioi_han_dong_thoi: gioiHan, kha_nang_bat: knBat
+    };
+    const k = (this.state.gpuKhoa || '').trim();
+    if (k) than.api_key = k;
+    this.setState((s) => ({ dangGpuB3: true, gpuLoiB3: '', gpuTinB3: '' }));
+    try {
+      const { j } = await K.goi('api/modules/tu-xa', { method: 'POST', json: than });
+      const skMoi = (j && j.suc_khoe) ? { [than.id]: j.suc_khoe } : {};
+      this.setState((s) => ({
+        dangGpuB3: false,
+        sk: Object.assign({}, s.sk, skMoi),
+        gpuTinB3: 'Đã thêm máy GPU thành công!',
+        gpuForm: { base_url: '', id: '', ten: '', tien_to: '', gioi_han_dong_thoi: '2' },
+        gpuKhoa: '', gpuLan: s.gpuLan + 1, gpuBuoc: 1, gpuInfo: null, gpuKhaNangChon: {}
+      }));
+      await this.taiLai();
+      await this.lamMoiTelemetry();
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ dangGpuB3: false, gpuLoiB3: 'Chưa đăng ký được: ' + err.message });
+    }
+  }
+
+  async batTatModule(id, bat) {
+    try {
+      await K.goi('api/modules/' + encodeURIComponent(id) + '/bat-tat', { method: 'POST', json: { bat } });
+      await this.taiLai();
+      this.lamMoiTelemetry();
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ tin: 'Không thể thay đổi trạng thái: ' + err.message });
+    }
+  }
+
+  async kiemTraLai(id) {
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/suc-khoe');
+      if (j) this.setState((st) => ({ sk: Object.assign({}, st.sk, { [id]: j }) }));
+    } catch (err) {
+      this.loiKhoa(err);
+    }
+  }
+
   // ---------- dựng ô ----------
   dungO() {
     const s = this.state;
@@ -639,25 +869,48 @@ class Component extends DCLogic {
       if (!id) continue;
       const c = cat.get(id), g = git.get(id), t = tnMod.get(id), m = mods.get(id);
       const tuXa = !!(t && t.tu_xa);
-      const info = c || (tuXa ? { ten: t.ten, loai: t.loai, cung_cap: t.cung_cap, tien_to: t.tien_to,
-        mo_ta: 'Dịch vụ nói chuẩn OpenAI ở máy khác, đăng ký bằng địa chỉ (module từ xa).' } : null) || g || { ten: id, loai: '' };
+      const laNutGpu = !!((t && t.la_nut_gpu) || (m && m.la_nut_gpu));
+      const sk = s.sk[id] || null;
+      const info = c || (tuXa ? { ten: (t && t.ten) || (m && m.ten) || id, loai: laNutGpu ? 'gpu' : (t && t.loai) || (m && m.loai) || 'ai', loai_ten: laNutGpu ? 'Máy GPU' : undefined,
+        cung_cap: (t && t.cung_cap) || (m && m.cung_cap) || [], tien_to: (t && t.tien_to) || (m && m.tien_to) || '',
+        mo_ta: laNutGpu ? 'Máy GPU từ xa kết nối qua mạng.' : 'Dịch vụ nói chuẩn OpenAI ở máy khác, đăng ký bằng địa chỉ (module từ xa).' } : null) || g || { ten: id, loai: '' };
       const daCai = !!c || tuXa;
       const lienKet = !!(t && t.da_lien_ket);
       let tt;
       if (!daCai) tt = (g && g.trang_thai === 'loi_manifest') || (!g && loiKP.has(id)) ? 'loi' : 'chua-cai';
       else if (g && g.trang_thai === 'co_ban_moi') tt = 'ban-moi';
+      else if (laNutGpu && t.bat === false) tt = 'da-tat';
+      else if (sk && sk.mach_ngat && sk.mach_ngat.trang_thai === 'ngat') tt = 'ngat-mach';
       else tt = lienKet ? 'dang-chay' : (m && m.can_cau_hinh === false ? 'cho-lien-ket' : 'cho-khoa');
-      const ma = info.loai || 'khac';
+      const ma = info.loai || (laNutGpu ? 'gpu' : 'khac');
       const l = loaiTn.get(ma);
-      ra.push({ id, c, g, t, m, info, daCai, lienKet, tuXa, tt, ma,
-        loaiTen: (l && l.ten) || info.loai_ten || ma,
-        thuTu: l && l.thu_tu != null ? l.thu_tu : (info.loai_thu_tu != null ? info.loai_thu_tu : null),
+      ra.push({ id, c, g, t, m, info, daCai, lienKet, tuXa, laNutGpu, tt, ma,
+        loaiTen: (l && l.ten) || info.loai_ten || (laNutGpu ? 'Máy GPU' : ma),
+        thuTu: l && l.thu_tu != null ? l.thu_tu : (info.loai_thu_tu != null ? info.loai_thu_tu : (laNutGpu ? 1 : null)),
         loi: (!daCai && g && g.trang_thai === 'loi_manifest' ? g.ly_do : '') || loiKP.get(id) || '' });
     }
     return ra;
   }
 
   taiNguyenO(x) {
+    if (x.laNutGpu) {
+      const sk = this.state.sk[x.id];
+      const dsG = (sk && sk.gpu && (Array.isArray(sk.gpu) ? sk.gpu : Array.isArray(sk.gpu.gpu) ? sk.gpu.gpu : Array.isArray(sk.gpu.gpus) ? sk.gpu.gpus : typeof sk.gpu === 'object' && sk.gpu.ten ? [sk.gpu] : [])) || [];
+      if (dsG.length) {
+        const g0 = dsG[0];
+        const p = [];
+        if (g0.ten) p.push(g0.ten);
+        if (typeof g0.vram_dung_mb === 'number' && typeof g0.vram_tong_mb === 'number') {
+          p.push('VRAM ' + Math.round(g0.vram_dung_mb / 1024 * 10) / 10 + '/' + Math.round(g0.vram_tong_mb / 1024) + ' GB');
+        }
+        const nhiet = g0.nhiet_c != null ? g0.nhiet_c : g0.nhiet_do_c;
+        if (nhiet != null) p.push(nhiet + '°C');
+        if (sk.do_tre_ms != null) p.push(sk.do_tre_ms + ' ms');
+        if (sk.hang_doi) p.push('chạy ' + sk.hang_doi.dang_chay + '/' + (sk.gioi_han_dong_thoi || 2));
+        return p.join(' · ');
+      }
+      return 'Máy GPU từ xa' + (x.t && x.t.tien_to ? ' · ' + x.t.tien_to + '/…' : '');
+    }
     const tn = x.info.tai_nguyen;
     if (!tn) return x.tuXa ? 'Chạy ở máy khác — không tốn tài nguyên máy này' : '';
     const p = [];
@@ -735,6 +988,20 @@ class Component extends DCLogic {
     const coForm = coKhoa && x.daCai && !x.tuXa;
     const moi = s.tabMoi[x.id] || [];
     const tabMoi = moi.length ? ' Tab vừa hiện: ' + moi.join(', ') + '.' : '';
+
+    const sk = s.sk[x.id] || null;
+    const dsG = (sk && sk.gpu && (Array.isArray(sk.gpu) ? sk.gpu : Array.isArray(sk.gpu.gpu) ? sk.gpu.gpu : Array.isArray(sk.gpu.gpus) ? sk.gpu.gpus : typeof sk.gpu === 'object' && sk.gpu.ten ? [sk.gpu] : [])) || [];
+    const g0 = dsG[0] || null;
+    const vramTong = g0 && typeof g0.vram_tong_mb === 'number' ? g0.vram_tong_mb : 0;
+    const vramDung = g0 && typeof g0.vram_dung_mb === 'number' ? g0.vram_dung_mb : 0;
+    const vramPct = vramTong > 0 ? Math.round((vramDung / vramTong) * 100) : 0;
+    const nhietG0 = g0 ? (g0.nhiet_c != null ? g0.nhiet_c : g0.nhiet_do_c) : null;
+    const machNgatNhan = sk && sk.mach_ngat
+      ? ((sk.mach_ngat === 'dong' || (sk.mach_ngat && sk.mach_ngat.trang_thai === 'dong')) ? 'Bình thường (đóng)'
+         : (sk.mach_ngat === 'ngat' || (sk.mach_ngat && sk.mach_ngat.trang_thai === 'ngat')) ? 'Ngắt (' + ((sk.mach_ngat && sk.mach_ngat.loi_lien_tiep) || '') + ' lỗi liên tiếp, mở lại sau ' + Math.max(0, Math.round((sk.mach_ngat && sk.mach_ngat.mo_lai_sau_s) || 0)) + 's)'
+         : 'Nửa mở (đang thử lại)')
+      : 'Bình thường';
+
     return {
       laModule: true, laThem: false, id: x.id, ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
       // «phiên bản 2.1 · Kênh chat» của demo; module không khai phiên bản thì «—» như demo.
@@ -755,6 +1022,20 @@ class Component extends DCLogic {
       dangHoiCai: !!hoiCaiVM, hoiCai: hoiCaiVM || {},
       dongYCai: () => this.xacNhanCai(x.id), huyCai: () => this.huyCai(),
       coForm, buocTiep: !x.lienKet, tabMoi,
+      laNutGpu: !!x.laNutGpu,
+      coCard: !!(g0 && g0.ten),
+      cardTen: g0 ? g0.ten : '',
+      coVram: !!(g0 && vramTong > 0),
+      vramDung, vramTong, vramPct,
+      coNhiet: !!(g0 && (nhietG0 != null || g0.tai_pct != null)),
+      nhietDo: g0 && nhietG0 != null ? nhietG0 + '°C' : '—',
+      taiPct: g0 && g0.tai_pct != null ? 'tải ' + g0.tai_pct + '%' : 'tải —',
+      doTre: sk && sk.do_tre_ms != null ? sk.do_tre_ms + ' ms' : 'Chưa đo',
+      hangDoi: sk && sk.hang_doi ? 'Đang chạy ' + sk.hang_doi.dang_chay + '/' + (sk.gioi_han_dong_thoi || (x.t && x.t.gioi_han_dong_thoi) || 2) + ' · chờ ' + sk.hang_doi.dang_cho + '/64' : '0 / 64',
+      machNgatNhan,
+      batTat: () => this.batTatModule(x.id, !(x.t && x.t.bat !== false)),
+      nhanBatTat: (x.t && x.t.bat === false) ? 'Bật lại' : 'Tắt tạm thời',
+      kiemTraLai: () => this.kiemTraLai(x.id),
       coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),
       hoiGo: () => this.setState({ hoiGo: x.id }), dangHoiGo: s.hoiGo === x.id, thoiGo: () => this.setState({ hoiGo: null }),
       go: () => this.go(x.id, x.info.ten || x.id), dangGo: s.dangGo === x.id, goLoi: s.goLoi[x.id] || ''
@@ -845,11 +1126,34 @@ class Component extends DCLogic {
     if (cfg && ttNg.kiem_luc) ngTomTat.push({ nhan: 'Kiểm lần cuối', giaTri: K.ngayGio(ttNg.kiem_luc) });
     if (ttNg.han_muc_con != null) ngTomTat.push({ nhan: 'Hạn mức GitHub', giaTri: 'còn ' + ttNg.han_muc_con + ' lượt' });
     if (ttNg.loi) ngTomTat.push({ nhan: 'Lỗi gần nhất', giaTri: String(ttNg.loi) });
-    const ngGo = {}, ngChon = {}, txGo = {};
+    const ngGo = {}, ngChon = {}, txGo = {}, gpuGo = {};
     for (const k of ['repo', 'nhanh', 'thu_muc', 'chu_ky_giay']) ngGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ ngSua: true, ngForm: Object.assign({}, st.ngForm, { [k]: v }) })); };
     for (const k of ['tu_dong', 'yeu_cau_chu_ky']) ngChon[k] = (e) => { const v = !!e.target.checked; this.setState((st) => ({ ngSua: true, ngForm: Object.assign({}, st.ngForm, { [k]: v }) })); };
     for (const k of ['id', 'ten', 'tien_to', 'base_url']) txGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ txForm: Object.assign({}, st.txForm, { [k]: v }) })); };
+    for (const k of ['base_url', 'id', 'ten', 'tien_to', 'gioi_han_dong_thoi']) gpuGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ gpuForm: Object.assign({}, st.gpuForm, { [k]: v }) })); };
     const txSk = s.txKq && s.txKq.suc_khoe;
+
+    const LOI_BIET = ['chat', 'nghe', 'noi', 'anh', 'anh_sua', 'nhung', 'kiem_duyet'];
+    let dsKn = LOI_BIET;
+    if (s.gpuInfo && s.gpuInfo.manifest && Array.isArray(s.gpuInfo.manifest.kha_nang) && s.gpuInfo.manifest.kha_nang.length) {
+      dsKn = s.gpuInfo.manifest.kha_nang.filter((k) => LOI_BIET.includes(k));
+      if (!dsKn.length) dsKn = LOI_BIET;
+    }
+    const gpuDsKhaNang = dsKn.map((ma) => ({
+      ma,
+      bat: s.gpuKhaNangChon[ma] !== false,
+      doi: (e) => {
+        const bat = !!e.target.checked;
+        this.setState((st) => ({
+          gpuKhaNangChon: Object.assign({}, st.gpuKhaNangChon, { [ma]: bat })
+        }));
+      }
+    }));
+    const tlG = s.gpuInfo && s.gpuInfo.telemetry;
+    const dsTlG = (tlG && (Array.isArray(tlG) ? tlG : Array.isArray(tlG.gpu) ? tlG.gpu : Array.isArray(tlG.gpus) ? tlG.gpus : typeof tlG === 'object' && tlG.ten ? [tlG] : [])) || [];
+    const gpuG0 = dsTlG[0] || null;
+    const gpuNhiet = gpuG0 ? (gpuG0.nhiet_c != null ? gpuG0.nhiet_c : gpuG0.nhiet_do_c) : null;
+    const dsMoHinh = (tlG && (tlG.mo_hinh_da_nap || tlG.mo_hinh || [])) || [];
 
     const ql = tn ? K.quayLai(tn) : null;
     const coLienKet = !!tn && (tn.modules || []).some((m) => m.da_lien_ket);
@@ -886,7 +1190,30 @@ class Component extends DCLogic {
       txForm: s.txForm, txGo, txIdKhoa: 'tx-khoa-' + s.txLan, txGoKhoa: (e) => this.setState({ txKhoa: e.target.value }),
       themTuXa: (e) => this.themTuXa(e), txLoi: s.txLoi, dangTx: s.dangTx, nhanTx: s.dangTx ? 'Đang kiểm…' : 'Kiểm tra và đăng ký',
       txTin: s.txKq ? 'Đã đăng ký ' + ((s.txKq.module && s.txKq.module.ten) || '') + (txSk ? (txSk.ok ? ' — dịch vụ trả lời được.' : ' — nhưng chưa gọi được dịch vụ.') : '.') : '',
-      txLopTin: 'bao ' + (txSk && !txSk.ok ? 'bao-vang' : 'bao-tot')
+      txLopTin: 'bao ' + (txSk && !txSk.ok ? 'bao-vang' : 'bao-tot'),
+      // máy gpu
+      gpuForm: s.gpuForm, gpuGo, gpuIdKhoa: 'gpu-khoa-' + s.gpuLan,
+      gpuGoKhoa: (e) => this.setState({ gpuKhoa: e.target.value }),
+      gpuKiemB1: () => this.gpuKiemB1(), dangGpuB1: s.dangGpuB1,
+      nhanGpuB1: s.dangGpuB1 ? 'Đang kết nối…' : 'Tiếp tục',
+      gpuLoiB1: s.gpuLoiB1, gpuTinB1: s.gpuTinB1,
+      gpuBuoc2TroLen: s.gpuBuoc >= 2,
+      gpuKiemB2: () => this.gpuKiemB2(), dangGpuB2: s.dangGpuB2,
+      nhanGpuB2: s.dangGpuB2 ? 'Đang kiểm tra card…' : 'Kiểm tra card',
+      gpuLoiB2: s.gpuLoiB2, gpuTinB2: s.gpuTinB2,
+      gpuCoThongTin: !!gpuG0,
+      gpuTenCard: gpuG0 ? gpuG0.ten : 'Không có card riêng',
+      gpuVram: gpuG0 && typeof gpuG0.vram_tong_mb === 'number'
+        ? (gpuG0.vram_dung_mb + ' / ' + gpuG0.vram_tong_mb + ' MB (' + Math.round((gpuG0.vram_dung_mb / (gpuG0.vram_tong_mb || 1)) * 100) + '%)') : '—',
+      gpuNhietTai: gpuG0
+        ? ((gpuNhiet != null ? gpuNhiet + '°C' : '—') + ' · ' + (gpuG0.tai_pct != null ? 'tải ' + gpuG0.tai_pct + '%' : 'tải —')) : '—',
+      gpuDoTre: s.gpuInfo && s.gpuInfo.do_tre_ms != null ? s.gpuInfo.do_tre_ms + ' ms' : '—',
+      gpuCoMoHinh: dsMoHinh.length > 0,
+      gpuMoHinh: dsMoHinh.join(', '),
+      gpuBuoc3TroLen: s.gpuBuoc >= 3,
+      gpuDsKhaNang, gpuLoiB3: s.gpuLoiB3, gpuTinB3: s.gpuTinB3,
+      gpuHoanTat: () => this.gpuHoanTat(), dangGpuB3: s.dangGpuB3,
+      nhanGpuB3: s.dangGpuB3 ? 'Đang lưu…' : 'Hoàn tất & Thêm máy GPU'
     };
   }
 }

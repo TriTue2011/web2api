@@ -973,6 +973,21 @@ Module từ xa hỗ trợ đầy đủ các đường chuẩn OpenAI:
 - Header của dịch vụ xa: mặc định từ chối, chỉ `content-type` tới khách (Set-Cookie, CORS, Server, WWW-Authenticate… bị bỏ).
 - Chống SSRF: không theo chuyển hướng 3xx của dịch vụ xa, ghim IP lúc kết nối (đích bị chặn → 502 `ssrf_blocked`); chuỗi khoá giả/lỗi thượng nguồn được che trước khi trả về khách. Khách ngắt kết nối giữa chừng (kể cả trước byte đầu) thì kết nối tới dịch vụ xa được đóng; luồng của dịch vụ xa đứt giữa chừng thì kết nối tới khách bị cắt (không kết thúc êm), nhật ký cuộc gọi ghi `dut`.
 
+#### Máy GPU từ xa (NV140)
+
+Máy GPU ở máy khác trong mạng nhà được kết nối trực quan qua trình hướng dẫn «Thêm máy GPU».
+- **Hợp đồng nút GPU**:
+  * `GET /health` → `{ok, phien_ban, gpu:[{ten, vram_tong_mb, vram_dung_mb, nhiet_c, tai_pct}], mo_hinh_da_nap:[...], hang_doi:{dang_chay, cho}}`
+  * `GET /.well-known/w2a-node` → `{id, ten, kha_nang:["nghe","noi","chat"...], mo_hinh:[...], gioi_han_dong_thoi}`
+  * Dữ liệu từ nút là không tin: đọc có trần 64 KB qua `doc_phan_hoi_co_tran` chống cạn kiệt RAM; lọc ký tự điều khiển, cắt tên card ≤ 80 ký tự, kẹp VRAM/nhiệt độ/tải trong khoảng an toàn, tối đa 8 GPU, 64 mô hình, 16 khả năng.
+- **Khai khả năng**: giao giữa khả năng nút khai và khả năng lõi biết (chat, nghe, noi, anh_sua). Khả năng người dùng chưa chọn bật thì không hiện.
+- **Telemetry**: `suc_khoe()` chỉ gọi `GET /health` và trả thêm `gpu`, `hang_doi`, `do_tre_ms`, `lan_cuoi_thay`, `mach_ngat`, `bat` khi `la_nut_gpu: true`; module từ xa thông thường giữ nguyên dạng cũ và không gọi `/health`. Làm mới nền định kỳ 60 s, dừng khi gỡ module.
+- **Giới hạn đồng thời + hàng đợi**: 1..8 luồng theo `gioi_han_dong_thoi`, hàng đợi ≤ 64 chỗ, chờ tối đa 30 s → 429 `Retry-After`. Huỷ yêu cầu giải phóng slot ngay, không rò rỉ; hỗ trợ giữ slot trong suốt vòng đời stream qua `StreamDongThoi`.
+- **Mạch ngắt (Circuit Breaker)**: 3 lỗi mạng hoặc 5xx liên tiếp → chuyển trạng thái ngắt (`ngat`) trong 30 s (lùi dần tối đa 5 phút), yêu cầu trả ngay 503 `circuit_broken`. Sau thời gian ngắt chuyển nửa mở (`nua_mo`), thử thành công thì đóng mạch lại; huỷ lượt thử nửa mở reset cờ thử để lượt sau thử tiếp. Phân biệt lỗi theo CẤU TRÚC: lỗi 4xx của khách hoặc phản hồi 5xx kèm thân lỗi mang `error.type == "invalid_request_error"` (lỗi đầu vào của khách như vượt context length do thượng nguồn báo mã 500) không kích hoạt mạch ngắt; nếu không phân biệt được bằng cấu trúc thì tính là lỗi máy chủ thượng nguồn để bảo vệ an toàn.
+- **Bật / Tắt**: `POST /api/modules/{id_}/bat-tat` với `{"bat": bool}` cho phép tạm tắt module từ xa (trả 503 `module_disabled`) hoặc bật lại mà không cần gỡ. Khi tắt (`bat=false`), các model của module tự động ẩn khỏi `GET /v1/models`.
+
+
+
 
 ## 4. Module có sẵn
 
@@ -3079,7 +3094,10 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/modules/thong-bao` | Có | Module mới / bản mới trên git, kèm tóm tắt manifest và `dung_luong`; `moi_nhat` = id các module đã cài đúng bản trên git («Đã là bản mới nhất») |
 | `POST /api/modules/nap-lai` | Có | Quét lại thư mục module, nạp nóng |
 | `POST /api/modules/tu-xa` | Có | Đăng ký module từ xa |
+| `POST /api/modules/do-nut-gpu` | Có | Dò nút GPU (đọc health và w2a-node, kiểm SSRF) trước khi đăng ký |
+| `POST /api/modules/{id_}/bat-tat` | Có | Bật hoặc tắt module từ xa / máy GPU (thân `{"bat": bool}`) |
 | `POST /api/modules/{id}/cai` | Có | Kiểm và lưu cấu hình module (thân `{"cau_hinh": {...}}`; trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận `{"giu": [...], "them": [...]}`) |
+
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module. Còn module đã cài khai `can_module` cần nó → `409` `{"ma": "module_dang_duoc_can", "dang_duoc_can_boi": [...]}`. Gỡ module cuối cùng còn cần một module chung → phản hồi có `hoi_giu_phu_thuoc: [...]` để hỏi giữ hay gỡ theo (xem «Phụ thuộc giữa các module») |
 | `GET /api/modules/{id}/suc-khoe` | Có | Sức khoẻ module (không tốn token, không lộ khoá; có `kha_nang` theo khoá nếu module báo) |

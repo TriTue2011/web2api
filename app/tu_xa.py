@@ -20,10 +20,14 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
 import os
 import socket
+import time
 from urllib.parse import urlsplit
+
+
 
 from app.chuyen_tiep import ChuyenTiepOpenAI
 from app.yeu_cau_da_phan import YeuCauDaPhan
@@ -89,38 +93,250 @@ class ModuleTuXa:
     """Thể hiện phục vụ /v1 cho một bản ghi tu_xa.json (cùng giao diện với lớp Module có mã)."""
 
     def __init__(self, ban_ghi: dict, api_key: str | None):
-        # Hợp đồng của module từ xa CHÍNH LÀ chuẩn OpenAI chat (chỉ chuyển tiếp chat + models) → khai như một
-        # manifest: loại "ai", cung cấp "chat". Giao diện đọc lời khai này qua /api/tinh-nang như mọi module.
-        self.manifest = {"id": ban_ghi["id"], "ten": ban_ghi["ten"], "tien_to": ban_ghi["tien_to"],
-                         "loai": "ai", "giao_thuc": "openai", "cung_cap": ["chat"]}
+        from app.nut_gpu import (
+            HangDoiDongThoi,
+            MachNgat,
+            KHA_NANG_LOI_BIET,
+            TRAN_DONG_THOI_GPU,
+        )
+
+        self.id_ = ban_ghi["id"]
+        self.ten = ban_ghi["ten"]
         self.tien_to = ban_ghi["tien_to"]
-        self._ct = ChuyenTiepOpenAI(ten=ban_ghi["ten"], tien_to=ban_ghi["tien_to"], base_url=ban_ghi["base_url"],
-                                    khoa=[api_key] if api_key else [],
-                                    # Sổ nghỉ theo (khoá, khả năng) của các việc chuyển tiếp ngoài chat — suc_khoe báo
-                                    # trạng thái từng việc; khoá bị từ chối giọng nói không làm chat nghỉ.
-                                    kha_nang=("noi", "nghe", "anh_sua"),
-                                    kiem_ip=_dia_chi_bi_chan)
+        self.base_url = ban_ghi["base_url"]
+        self.api_key = api_key
+        self.la_nut_gpu = bool(ban_ghi.get("la_nut_gpu", False))
+        self.bat = bool(ban_ghi.get("bat", True))
+
+        dong_thoi = ban_ghi.get("gioi_han_dong_thoi")
+        self.gioi_han_dong_thoi = max(1, min(TRAN_DONG_THOI_GPU, int(dong_thoi or 1)))
+        self.hang_doi = HangDoiDongThoi(self.gioi_han_dong_thoi)
+        self.mach_ngat = MachNgat()
+
+        # Khai khả năng:
+        # Module từ xa thường (không phải nút GPU): luôn chỉ cung cấp "chat" (tương thích ngược hoàn toàn).
+        # Nút GPU: áp phép giao giữa khả năng nút khai ∩ khả năng lõi biết ∩ khả năng người dùng bật.
+        if self.la_nut_gpu:
+            kn_khai = ban_ghi.get("kha_nang")
+            kn_bat = ban_ghi.get("kha_nang_bat")
+            if kn_khai is None and kn_bat is None:
+                cung_cap = ["chat"]
+            else:
+                cung_cap = []
+                for k in KHA_NANG_LOI_BIET:
+                    if kn_bat is not None and k not in kn_bat:
+                        continue
+                    if kn_khai is not None and k not in kn_khai:
+                        continue
+                    cung_cap.append(k)
+                if not cung_cap:
+                    cung_cap = ["chat"]
+        else:
+            cung_cap = ["chat"]
+
+        self.manifest = {
+            "id": ban_ghi["id"],
+            "ten": ban_ghi["ten"],
+            "tien_to": ban_ghi["tien_to"],
+            "loai": "ai",
+            "giao_thuc": "openai",
+            "cung_cap": list(cung_cap),
+        }
+
+        # Với nút GPU: khả năng người dùng chưa chọn bật thì không mở phương thức
+        if self.la_nut_gpu:
+            if "noi" not in cung_cap:
+                self.noi = None
+            if "nghe" not in cung_cap:
+                self.nghe = None
+            if "anh_sua" not in cung_cap:
+                self.anh_sua = None
+
+        self._ct = ChuyenTiepOpenAI(
+            ten=ban_ghi["ten"],
+            tien_to=ban_ghi["tien_to"],
+            base_url=ban_ghi["base_url"],
+            khoa=[api_key] if api_key else [],
+            kha_nang=("noi", "nghe", "anh_sua"),
+            kiem_ip=_dia_chi_bi_chan,
+        )
+
+        self._gpu_telemetry: list[dict] = []
+        self._hang_doi_nut: dict = {"dang_chay": 0, "cho": 0}
+        self._do_tre_ms: int | None = None
+        self._lan_cuoi_thay: str | None = None
+        self._vong_nen_task: asyncio.Task | None = None
+
+        if self.la_nut_gpu:
+            try:
+                loop = asyncio.get_running_loop()
+                self._vong_nen_task = loop.create_task(self._vong_telemetry_nen())
+            except RuntimeError:
+                pass
+
+    async def _dieu_phoi(self, fn, *args, **kwargs):
+        """Điều phối cuộc gọi qua mạch ngắt và hàng đợi đồng thời (áp dụng cho nút GPU)."""
+        if not self.la_nut_gpu:
+            return await fn(*args, **kwargs)
+
+        import json
+        from typing import AsyncIterator
+        from app.nut_gpu import (
+            QuaTaiHangDoi,
+            StreamDongThoi,
+            la_loi_cau_truc_khach,
+        )
+
+        if not self.bat:
+            return (
+                503,
+                {"content-type": "application/json"},
+                b'{"error":{"message":"Module dang tat","type":"server_error","code":"module_disabled"}}',
+            )
+
+        co_the, ly_do = self.mach_ngat.co_the_goi()
+        if not co_the:
+            return (
+                503,
+                {"content-type": "application/json"},
+                b'{"error":{"message":"Mach ngat may GPU dang mo do loi lien tiep","type":"server_error","code":"circuit_broken"}}',
+            )
+
+        try:
+            async with self.hang_doi.vao() as slot:
+                try:
+                    res = await fn(*args, **kwargs)
+                except asyncio.CancelledError:
+                    if ly_do == "nua_mo":
+                        self.mach_ngat.huy_thu_nua_mo()
+                    raise
+                except BaseException:
+                    self.mach_ngat.ghi_that_bai()
+                    raise
+
+                ma = res[0]
+                than_loi = res[2] if len(res) > 2 else None
+                if ma >= 500:
+                    if not la_loi_cau_truc_khach(ma, than_loi):
+                        self.mach_ngat.ghi_that_bai()
+                else:
+                    self.mach_ngat.ghi_thanh_cong()
+
+                if len(res) > 2 and isinstance(res[2], AsyncIterator):
+                    fn_giai_phong = slot.chuyen_giao()
+                    return (res[0], res[1], StreamDongThoi(res[2], fn_giai_phong))
+                else:
+                    return res
+        except QuaTaiHangDoi as e:
+            if ly_do == "nua_mo":
+                self.mach_ngat.huy_thu_nua_mo()
+            return (
+                429,
+                {"content-type": "application/json", "retry-after": str(e.retry_after)},
+                json.dumps({
+                    "error": {
+                        "message": str(e),
+                        "type": "requests",
+                        "code": "rate_limit_exceeded",
+                    }
+                }).encode("utf-8"),
+            )
 
     async def chat(self, body: dict, stream: bool):
-        return await self._ct.chat(body, stream)
+        return await self._dieu_phoi(self._ct.chat, body, stream)
 
     async def noi(self, body: dict):
-        return await self._ct.noi(body)
+        return await self._dieu_phoi(self._ct.noi, body)
 
     async def nghe(self, yc: YeuCauDaPhan):
-        return await self._ct.nghe(yc)
+        return await self._dieu_phoi(self._ct.nghe, yc)
 
     async def anh_sua(self, yc: YeuCauDaPhan):
-        return await self._ct.anh_sua(yc)
+        return await self._dieu_phoi(self._ct.anh_sua, yc)
 
     async def models(self) -> list[dict]:
+        if not self.bat:
+            return []
         return await self._ct.models()
 
     async def lam_moi_model(self) -> None:
         self._ct.lam_het_han_dem_models()
 
+    async def cap_nhat_telemetry(self) -> None:
+        """Đo telemetry từ GET /health của nút."""
+        import httpx
+        from app.chuyen_tiep import TransportGhimIp, doc_phan_hoi_co_tran
+        from app.kho import bay_gio_iso
+        from app.nut_gpu import lam_sach_telemetry_gpu, TRAN_JSON_TELEMETRY
+
+        phan = urlsplit(self.base_url)
+        goc = f"{phan.scheme}://{phan.netloc}"
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        bat_dau = time.monotonic()
+        try:
+            transport = TransportGhimIp(_dia_chi_bi_chan)
+            async with httpx.AsyncClient(
+                transport=transport,
+                follow_redirects=False,
+                timeout=httpx.Timeout(5.0, connect=3.0),
+            ) as client:
+                req = client.build_request("GET", f"{goc}/health", headers=headers)
+                r = await client.send(req, stream=True)
+                self._do_tre_ms = max(0, int((time.monotonic() - bat_dau) * 1000))
+                if r.status_code == 200:
+                    try:
+                        raw = await doc_phan_hoi_co_tran(r, tran_bytes=TRAN_JSON_TELEMETRY)
+                        data = lam_sach_telemetry_gpu(json.loads(raw))
+                        self._gpu_telemetry = data["gpu"]
+                        self._hang_doi_nut = data["hang_doi"]
+                        self._lan_cuoi_thay = bay_gio_iso()
+                    except Exception as e:
+                        log.debug("%s: lỗi đọc telemetry /health: %s", self.ten, e)
+                else:
+                    await r.aclose()
+        except Exception as e:
+            log.debug("%s: lỗi đo telemetry /health: %s", self.ten, type(e).__name__)
+
+
+
+    async def _vong_telemetry_nen(self) -> None:
+        """Vòng lặp nền làm mới telemetry định kỳ 60s (đo ngay lần đầu)."""
+        while True:
+            try:
+                await self.cap_nhat_telemetry()
+                await asyncio.sleep(60.0)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.debug("%s: lỗi vòng lặp telemetry nền: %s", self.ten, e)
+
+
     async def suc_khoe(self) -> dict:
-        return await self._ct.suc_khoe()
+        kq = await self._ct.suc_khoe()
+        if not self.la_nut_gpu:
+            return kq
+
+        await self.cap_nhat_telemetry()
+        kq["gpu"] = self._gpu_telemetry
+        kq["hang_doi"] = {
+            "dang_chay": self.hang_doi.dang_chay,
+            "cho": self.hang_doi.dang_cho,
+        }
+        kq["do_tre_ms"] = self._do_tre_ms if self._do_tre_ms is not None else (kq.get("khoa") and kq["khoa"][0].get("do_tre_ms"))
+        kq["lan_cuoi_thay"] = self._lan_cuoi_thay
+        kq["mach_ngat"] = self.mach_ngat.trang_thai
+        kq["gioi_han_dong_thoi"] = self.gioi_han_dong_thoi
+        kq["bat"] = self.bat
+        kq["la_nut_gpu"] = self.la_nut_gpu
+        return kq
+
 
     async def dung(self) -> None:
+        if self._vong_nen_task:
+            self._vong_nen_task.cancel()
+            self._vong_nen_task = None
         await self._ct.dung()
+

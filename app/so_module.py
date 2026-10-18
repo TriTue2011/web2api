@@ -53,7 +53,7 @@ async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
     """Kiểm THUẦN (không ghi) một bản ghi module từ xa — MỘT bộ kiểm cho đăng ký (POST /api/modules/tu-xa) và cho
     khôi phục tu_xa.json: id/tên/tiền tố đúng quy tắc, base_url qua `kiem_url_lan` (chặn SSRF). Trả
     {id, ten, tien_to, base_url} đã chuẩn hoá; sai → LoiSo(400)."""
-    from app.kham_pha import ID_DANH_RIENG, TIEN_TO_HOP_LE
+    from app.kham_pha import ID_DANH_RIENG, TIEN_TO_HOP_LE, MA_KHA_NANG
     from app.tu_xa import kiem_url_lan
 
     if not isinstance(than, dict):
@@ -69,7 +69,27 @@ async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
         base = await kiem_url_lan(than.get("base_url"))
     except ValueError as e:
         raise LoiSo(400, str(e)) from None
-    return {"id": id_, "ten": ten.strip(), "tien_to": tien_to, "base_url": base}
+    kq = {"id": id_, "ten": ten.strip(), "tien_to": tien_to, "base_url": base}
+    if "la_nut_gpu" in than:
+        kq["la_nut_gpu"] = bool(than.get("la_nut_gpu"))
+    if "bat" in than:
+        kq["bat"] = bool(than.get("bat"))
+    if "gioi_han_dong_thoi" in than:
+        try:
+            gh = int(than.get("gioi_han_dong_thoi"))
+            kq["gioi_han_dong_thoi"] = max(1, min(8, gh))
+        except (ValueError, TypeError):
+            kq["gioi_han_dong_thoi"] = 1
+    if "kha_nang" in than:
+        kn_raw = than.get("kha_nang")
+        if isinstance(kn_raw, list):
+            kq["kha_nang"] = [str(k).strip() for k in kn_raw if isinstance(k, str) and MA_KHA_NANG.match(str(k).strip())][:16]
+    if "kha_nang_bat" in than:
+        kn_raw = than.get("kha_nang_bat")
+        if isinstance(kn_raw, list):
+            kq["kha_nang_bat"] = [str(k).strip() for k in kn_raw if isinstance(k, str) and MA_KHA_NANG.match(str(k).strip())][:16]
+    return kq
+
 
 
 class LoiCanDuyetQuyen(LoiSo):
@@ -171,11 +191,17 @@ class SoModule:
             dn = callable(getattr(nguon_hs, "dang_nhap", None))
             td = callable(getattr(nguon_hs, "tai_dung_ho_so", None))
             nhom = man.get("nhom") if (not tu_xa and isinstance(man.get("nhom"), dict)) else None
-            modules.append({"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
+            muc_mod = {"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
                             "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk,
                             "dang_nhap_tu_dong": bool(dn),
                             "tai_dung_ho_so": bool(td),
-                            "nhom": nhom})
+                            "nhom": nhom}
+            if tu_xa and lk:
+                m_tx = self.dang_chay.get(id_)
+                if getattr(m_tx, "la_nut_gpu", False):
+                    muc_mod["la_nut_gpu"] = True
+                    muc_mod["bat"] = getattr(m_tx, "bat", True)
+            modules.append(muc_mod)
             l = loai.setdefault(man["loai"], {"ma": man["loai"], "ten": None, "thu_tu": None,
                                               "so_da_cai": 0, "so_da_lien_ket": 0})
             l["so_da_cai"] += 1
@@ -630,7 +656,21 @@ class SoModule:
                 raise LoiSo(409, f"id {id_!r} đã có")
             if self.tim_theo_tien_to(tien_to):
                 raise LoiSo(409, f"tiền tố {tien_to!r} đã thuộc module {self.tim_theo_tien_to(tien_to)!r}")
-            ban_ghi = {"id": id_, "ten": ten, "tien_to": tien_to, "base_url": base, "cai_luc": kho.bay_gio_iso()}
+            ban_ghi = {
+                "id": id_, "ten": ten, "tien_to": tien_to, "base_url": base,
+                "cai_luc": kho.bay_gio_iso(),
+            }
+            if "la_nut_gpu" in sach:
+                ban_ghi["la_nut_gpu"] = sach["la_nut_gpu"]
+            if "bat" in sach:
+                ban_ghi["bat"] = sach["bat"]
+            if "gioi_han_dong_thoi" in sach:
+                ban_ghi["gioi_han_dong_thoi"] = sach["gioi_han_dong_thoi"]
+            if "kha_nang" in sach:
+                ban_ghi["kha_nang"] = sach["kha_nang"]
+            if "kha_nang_bat" in sach:
+                ban_ghi["kha_nang_bat"] = sach["kha_nang_bat"]
+
             try:
                 kho.luu_tu_xa(ban_ghi, api_key)
             except kho.KhoHong as e:
@@ -645,10 +685,44 @@ class SoModule:
     def cong_khai_tu_xa(self, id_: str) -> dict:
         b = self.tu_xa[id_]
         co_khoa = bool(kho.doc_bi_mat(id_).get("api_key"))
-        return {"id": id_, "ten": b["ten"], "loai": "tu_xa", "tien_to": b["tien_to"], "cai_luc": b["cai_luc"],
-                "cau_hinh_cong_khai": {"base_url": b["base_url"],
-                                       "api_key": kho.che(kho.doc_bi_mat(id_)["api_key"]) if co_khoa else None},
-                "da_cau_hinh": True}  # module từ xa không có bước liên kết: đăng ký xong là phục vụ
+        res = {
+            "id": id_, "ten": b["ten"], "loai": "tu_xa", "tien_to": b["tien_to"], "cai_luc": b["cai_luc"],
+            "cau_hinh_cong_khai": {
+                "base_url": b["base_url"],
+                "api_key": kho.che(kho.doc_bi_mat(id_)["api_key"]) if co_khoa else None,
+            },
+            "da_cau_hinh": True,
+        }
+        if "la_nut_gpu" in b:
+            res["la_nut_gpu"] = b["la_nut_gpu"]
+        if "bat" in b:
+            res["bat"] = b["bat"]
+        if "gioi_han_dong_thoi" in b:
+            res["gioi_han_dong_thoi"] = b["gioi_han_dong_thoi"]
+        if "kha_nang" in b:
+            res["kha_nang"] = b["kha_nang"]
+        if "kha_nang_bat" in b:
+            res["kha_nang_bat"] = b["kha_nang_bat"]
+        return res
+
+    async def bat_tat_tu_xa(self, id_: str, bat: bool) -> dict:
+        """Bật hoặc tắt module từ xa (NV140)."""
+        async with self.khoa:
+            if id_ not in self.tu_xa:
+                raise LoiSo(404, f"Không có module từ xa {id_!r}")
+            ban_ghi = dict(self.tu_xa[id_])
+            ban_ghi["bat"] = bool(bat)
+            api_key = kho.doc_bi_mat(id_).get("api_key")
+            try:
+                kho.luu_tu_xa(ban_ghi, api_key)
+            except kho.KhoHong as e:
+                raise LoiSo(500, f"Không lưu được trạng thái module: {e}") from e
+            self.tu_xa[id_] = ban_ghi
+            m = self.dang_chay.get(id_)
+            if m is not None:
+                m.bat = bool(bat)
+            return {"ok": True, "id": id_, "bat": bool(bat)}
+
 
     # ───────────── cài thư mục mã (dùng bởi nguồn git) ─────────────
 
