@@ -512,6 +512,39 @@ def kiem_manifest(m) -> str | None:
         if not hop_le:
             log.warning("manifest module %s: 'hoi_vong' sai khuôn (%r), bỏ trường này", m.get("id"), hv)
             m.pop("hoi_vong", None)
+    xm = m.get("xac_minh_email")
+    if xm is not None:
+        # NV122: module đăng nhập khai nguồn sự thật cho tu_mien/do_dai của mã
+        # xác minh qua email. Sai khuôn → BỎ TRƯỜNG + cảnh báo, module vẫn nạp
+        # (lỗi khai báo của module không được chặn cả module; kiểm chặt ở đây
+        # để lõi không bao giờ nhận tu_mien/do_dai từ yêu cầu HTTP).
+        ly_do_xm = _ly_do_xac_minh_email_sai(xm)
+        if ly_do_xm is not None:
+            log.warning("manifest module %s: 'xac_minh_email' sai khuôn (%s), bỏ trường này",
+                        m.get("id"), ly_do_xm)
+            m.pop("xac_minh_email", None)
+    return None
+
+
+def _ly_do_xac_minh_email_sai(xm) -> str | None:
+    """Lý do trường «xac_minh_email» sai khuôn, hoặc None nếu đúng.
+
+    Khuôn đúng: {"tu_mien": [tên miền…], "do_dai": [min, max]} với tu_mien là
+    danh sách tên miền không trùng (mỗi tên ít nhất hai nhãn, theo MAU_MIEN),
+    do_dai là [min, max] số nguyên 1 <= min <= max <= 32.
+    """
+    if not isinstance(xm, dict) or set(xm) != {"tu_mien", "do_dai"}:
+        return "cần đúng {\"tu_mien\": [...], \"do_dai\": [min, max]}"
+    mien = xm["tu_mien"]
+    if (not isinstance(mien, list) or not mien
+            or any(not isinstance(x, str) or not MAU_MIEN.fullmatch(x) for x in mien)
+            or len(set(mien)) != len(mien)):
+        return "«tu_mien» phải là danh sách tên miền không trùng (mỗi tên ít nhất hai nhãn)"
+    dai = xm["do_dai"]
+    if (not isinstance(dai, (list, tuple)) or len(dai) != 2
+            or any(type(x) is not int for x in dai)
+            or not 1 <= dai[0] <= dai[1] <= 32):
+        return "«do_dai» phải là [min, max] số nguyên, 1 <= min <= max <= 32"
     return None
 
 

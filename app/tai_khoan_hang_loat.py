@@ -134,6 +134,10 @@ class DongDaTach:
     mat_khau: BiMatTam | None = None
     totp: BiMatTam | None = None
     cookie: BiMatTam | None = None
+    #: NV122 — cờ «lấy mã từ hộp thư» (cột thứ tư tuỳ chọn của văn bản dán):
+    #: None = không tích; True = dùng hộp thư trùng email tài khoản;
+    #: chuỗi email = dùng hộp thư đó (quản trị chỉ định rõ).
+    ma_tu_gmail: bool | str | None = None
 
     def xoa_bi_mat(self) -> None:
         """Xoá mọi bí mật thô của dòng này khỏi bộ nhớ."""
@@ -163,6 +167,25 @@ class DongBiTrung:
 
 def _email_hop_le(email: str) -> bool:
     return bool(_MAU_EMAIL.fullmatch(email))
+
+
+#: Sentinel cho cột gmail sai khuôn (phân biệt với None = không tích).
+_GMAIL_SAI: object = object()
+
+
+def _tach_cot_gmail(gia_tri: str) -> bool | str | None | object:
+    """Tách cột gmail thứ tư (NV122): "" → None (không tích); "true" → True
+    (dùng hộp thư trùng email tài khoản); "false" → None; email hợp lệ → chuỗi
+    email đó (hộp thư quản trị chỉ định rõ); còn lại → _GMAIL_SAI."""
+    g = (gia_tri or "").strip()
+    if not g:
+        return None
+    thap = g.casefold()
+    if thap == "true":
+        return True
+    if thap == "false":
+        return None
+    return g if _email_hop_le(g) else _GMAIL_SAI
 
 
 def tach_dong(van_ban: str) -> tuple[list[DongDaTach], list[LoiDong], list[DongBiTrung]]:
@@ -221,6 +244,24 @@ def tach_dong(van_ban: str) -> tuple[list[DongDaTach], list[LoiDong], list[DongB
             ban_ghi = DongDaTach(so_dong, email, _LOAI_MAT_KHAU,
                                  mat_khau=BiMatTam(phan[1]),
                                  totp=BiMatTam(phan[2]) if phan[2] else None)
+        elif len(phan) == 4:
+            # NV122: cột thứ tư tuỳ chọn «gmail» — cờ lấy mã xác minh từ hộp thư
+            # (ghi chú cho NV120 gộp với mảng tai_khoan có cấu trúc: trường
+            # tương ứng là tai_khoan[i].ma_tu_gmail: bool | email).
+            if phan[1].lower().startswith(_TIEN_TO_COOKIE):
+                loi.append(LoiDong(so_dong, "sai khuôn: 'cookie=' chỉ đi với email"))
+                continue
+            if not phan[1]:
+                loi.append(LoiDong(so_dong, "thiếu mật khẩu"))
+                continue
+            gmail = _tach_cot_gmail(phan[3])
+            if gmail is _GMAIL_SAI:
+                loi.append(LoiDong(so_dong, "gmail sai khuôn"))
+                continue
+            ban_ghi = DongDaTach(so_dong, email, _LOAI_MAT_KHAU,
+                                 mat_khau=BiMatTam(phan[1]),
+                                 totp=BiMatTam(phan[2]) if phan[2] else None,
+                                 ma_tu_gmail=gmail)
         else:
             loi.append(LoiDong(so_dong, "sai khuôn: quá nhiều dấu '|'"))
             continue

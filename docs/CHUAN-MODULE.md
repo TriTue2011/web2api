@@ -301,6 +301,21 @@ Khai báo nhóm của các module mẫu trong kho:
 
 > **Lưu ý kiến trúc**: Không bao giờ coi `nhom` là định danh duy nhất của module hay của nhà cung cấp ngoài đời. Nhiều module có thể dùng chung một `nhom` (ví dụ một module cổng API/provider và một module hồ sơ/đăng nhập trình duyệt của cùng một hãng); một module không khai báo thì thuộc nhóm Khác.
 
+### Trường tuỳ chọn `xac_minh_email` (mã xác minh qua email, NV122)
+
+Module đăng nhập muốn dùng nút tích «Lấy mã từ hộp thư» khai trong `manifest.json`:
+
+```json
+"xac_minh_email": {"tu_mien": ["example.com"], "do_dai": [6, 6]}
+```
+
+- `tu_mien`: danh sách tên miền không trùng (mỗi tên ít nhất hai nhãn); `do_dai`: `[min, max]` số nguyên, `1 <= min <= max <= 32`.
+- Đây là **nguồn sự thật duy nhất** cho `tu_mien`/`do_dai` mà lõi truyền vào module đọc hộp thư — lõi KHÔNG bao giờ lấy hai giá trị này từ yêu cầu HTTP (nếu không đường này thành công cụ đọc thư tuỳ ý).
+- Sai khuôn → `app/kham_pha.py` bỏ trường + `log.warning`, module vẫn nạp bình thường.
+- Module còn phải trả `KetQuaDangNhap(False, ma_loi="can_ma_email")` khi trang đòi mã gửi qua email, và cài `async def nhap_ma_xac_minh(self, ho_so_hoac_phien, ma: BiMatTam, trinh_duyet=None) -> KetQuaDangNhap` để lõi điền mã (mã bọc trong `BiMatTam`, xoá ngay sau khi điền).
+- Lõi: cờ tích BẬT + module khai `xac_minh_email` → đọc `sau_luc` lúc bắt đầu bước đăng nhập, gọi `lay_ma_xac_minh`, truyền mã cho `nhap_ma_xac_minh`; thành công → lưu chứng chỉ bằng `_luu_chung_chi_vao_module`. Không lấy được mã → `ma_loi` rõ (`khong_co_hop_thu`/`het_gio`/…) để giao diện báo «Không đọc được mã từ hộp thư — nhập tay hoặc dùng ứng dụng xác thực». Cờ TẮT: hành vi hiện có (chờ mã 2FA / khoá TOTP / cần người), KHÔNG bao giờ tự chuyển sang đọc hộp thư.
+- Nhật ký kênh `ma_xac_minh` chỉ ghi module, hộp thư BĂM rút gọn, kết quả (`ok`/mã lỗi), độ dài chờ — không mã, không tiêu đề thư.
+
 ---
 
 *Xem thêm: [Chuẩn Bảo Mật cho Module](CHUAN-BAO-MAT-MODULE.md) (luật bảo mật: hạng module, khai báo manifest, dịch vụ lõi dùng chung, test bắt buộc).*

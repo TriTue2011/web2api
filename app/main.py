@@ -421,6 +421,7 @@ app.include_router(tuyen.toi)
 app.include_router(tuyen.nguoi_dung)
 app.include_router(tuyen.danh_tinh)
 app.include_router(tuyen.tai_khoan)
+app.include_router(tuyen.ma_xac_minh)
 app.include_router(tuyen.bao_mat)
 
 
