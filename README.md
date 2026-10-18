@@ -176,6 +176,7 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 | `mikrotik-routeros` | Nguồn máy mạng từ router MikroTik (CHỈ ĐỌC) | RouterOS API nhị phân qua TLS | Có sẵn (đọc DHCP lease + bảng host, gộp theo MAC thành thực thể C1; lệnh ghi bị chặn theo cấu trúc ở client; chưa kiểm với router thật) |
 | `telegram-bot` | Gửi thông báo văn bản ra Telegram (chuẩn `kenh_ra`, `POST /api/gui/telegram-bot`) | HTTPS (Bot API api.telegram.org) | Có sẵn (nhiều đích do chủ máy khai, tin dài tự tách, token chặn rò qua log; chưa kiểm với api.telegram.org thật) |
 | `home-assistant` | Đọc trạng thái + điều khiển có kiểm soát thiết bị Home Assistant (chuẩn C1) | HTTPS (REST API của HA) | Có sẵn (kiểm với máy chủ HA giả; chưa kiểm với Home Assistant thật) |
+| `zte-e2633` | Nguồn máy mạng WiFi (chỉ đọc) từ bộ phát ZTE E2633 | HTTPS (trang quản trị bộ phát) | Có sẵn (đăng nhập đúng thứ tự trường + header `check`, dừng khi khoá/lỗi lặp; chưa kiểm với bộ phát thật) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.

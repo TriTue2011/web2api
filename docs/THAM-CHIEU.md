@@ -51,6 +51,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
 | Module `ho-so-google` + API hồ sơ Google (`GET`/`POST /api/danh-tinh`, `GET …/{id}/trang-thai`, `POST …/{id}/ma-2fa`, `DELETE …/{id}`) và tái dùng provider (`POST /api/tai-khoan/tai-dung`): một hồ sơ = một tài khoản Google đã đăng nhập sống; provider «Đăng nhập bằng Google» trong hồ sơ; CAPTCHA/xác minh → «cần người» + noVNC | Có — kiểm với dịch vụ trình duyệt giả + trình duyệt giả (NV92); **chưa kiểm với Google/dịch vụ thật** | 17/10/2026 |
 | Module `telegram-bot` (Telegram, kênh gửi ra văn bản qua Bot API) | Có — chuẩn `kenh_ra` (`POST /api/gui/telegram-bot`): một bot token, nhiều đích do chủ máy khai (đích → chat, không «bot mặc định»); tin dài tách ở ranh giới dòng (tối đa 5 tin); token chặn rò qua log (logger httpx/httpcore nâng lên WARNING, không `str()` ngoại lệ); `kenh_ra()` không token/chat_id thô; kiểm với máy chủ Telegram giả; **chưa kiểm với api.telegram.org thật** | 18/10/2026 |
+| Module `zte-e2633` (nguồn máy mạng WiFi, chỉ đọc): đăng nhập bộ phát ZTE E2633, đọc danh sách máy WiFi thành thực thể C1 (`loai: may_mang`, `rui_ro_mac_dinh: doc`, `thuc_hien` luôn từ chối); dừng khi gặp khoá/lỗi lặp; `dia_chi` qua kiểm SSRF của `app/tu_xa.py` | Có — kiểm với bộ phát giả (đúng thứ tự trường + header `check`, hết phiên đăng nhập lại 1 lần, JSON lạ bỏ qua mục sai); **chưa kiểm với bộ phát thật** (ánh xạ trường JSON suy từ tóm tắt giao thức) | 18/10/2026 |
 | Dịch vụ trình duyệt: các đường điều khiển có khoá (`/ho-so/{id}/dieu-khien/gianh|nha`, `/dieu-huong`, `/dien`, `/bam`, `/cho`, `/tin-hieu`, `/cookie-truc-tiep`, `/chup-trang-thai`) qua máy khách Marionette thư viện chuẩn (`dich-vu/trinh-duyet/marionette.py`); cổng Marionette chỉ loopback trong container; `TrinhDuyetThat` trong module `vnc-xa`; cầu nối lõi `app/khoi_phuc_phien.lay_trinh_duyet_that` | Có — kiểm với máy chủ giả (NV92); **chưa kiểm với Firefox thật** | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
@@ -2186,6 +2187,20 @@ thiết bị, không trò chuyện).
 - Máy chủ Home Assistant trong mạng nhà (vd `http://192.168.1.10:8123`) + Long-Lived
   Access Token (Hồ sơ → Bảo mật → Token truy cập dài hạn).
 - Mạng ra tới địa chỉ HA đó (khớp `tai_nguyen.mang_ra` trong manifest).
+
+### Module zte-e2633 — ZTE E2633 (máy mạng WiFi, chỉ đọc)
+
+**Mô tả.** Nguồn máy mạng đầu tiên cho sổ thiết bị của lõi (`app/so_thiet_bi.py`, NV107):
+đăng nhập trang quản trị của bộ phát WiFi ZTE E2633, đọc danh sách máy WiFi đang nối,
+trả thành thực thể chuẩn C1 (`loai: may_mang`, `thuoc_tinh.mac` để lõi nhận diện,
+`rui_ro_mac_dinh: doc`, `tinh_nang: []`). Không đổi bất kỳ cấu hình nào của bộ phát;
+`thuc_hien` luôn từ chối. Mã nguồn: `modules/zte-e2633/`. Hạng: `A` (mã của dự án).
+Tiền tố thực thể: `zte-e2633`.
+
+**Cần gì.**
+- Bộ phát WiFi ZTE E2633 trong mạng nhà, biết tài khoản/mật khẩu trang quản trị.
+- Mạng ra tới địa chỉ bộ phát (khớp `tai_nguyen.mang_ra` trong manifest: địa chỉ do
+  quản trị cấu hình ở trường `dia_chi`).
 - RAM/đĩa: chưa đo.
 
 **Cách cài.**
@@ -2237,6 +2252,10 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
    link-local/metadata đám mây, không định tuyến; ghim IP chống DNS rebinding);
    `cai` gọi thử `GET /api/` để kiểm token (sai → 401 rõ, token không lộ trong lỗi/log).
 
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "zte-e2633"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/zte-e2633`
+3. Cấu hình: `POST /api/modules/zte-e2633/cai` với thân `{"cau_hinh": {"dia_chi": "https://192.168.1.1", "tai_khoan": "admin", "mat_khau": "<mat-khau>"}}` (lúc cài module thử đăng nhập thật một lần).
+
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
@@ -2256,6 +2275,11 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 | `token` | Có | Long-Lived Access Token — lưu riêng kho bí mật, không trả lại |
 | `kiem_chung_chi_tls` | Không | `true` (mặc định) kiểm chứng chỉ khi dùng https |
 | `nhom_duoc_dieu_khien` | Không | Các miền được ĐIỀU KHIỂN (mặc định `light,switch,fan,scene,media_player,input_boolean,climate`); miền ngoài danh sách chỉ đọc; miền chạy mã tuỳ ý (`script`, `automation`, `shell_command`, `rest_command`, `python_script`, `hassio`) không bao giờ điều khiển được |
+| `dia_chi` | Có | `https://host[:port]` của trang quản trị bộ phát. Qua đúng bộ kiểm SSRF của lõi (`app/tu_xa.py`): chặn loopback, link-local/metadata đám mây, địa chỉ không định tuyến; cho phép LAN riêng tư. |
+| `tai_khoan` | Có | Tên đăng nhập trang quản trị. |
+| `mat_khau` | Có | Mật khẩu đăng nhập (kiểu `bi_mat`: lưu riêng quyền 0600, không vào log/URL/phản hồi). |
+| `kiem_chung_chi_tls` | Không | `"true"` (mặc định, an toàn) hoặc `"false"`. Bộ phát dùng chứng chỉ tự ký nên muốn nối được phải đặt `"false"` hoặc ghim `van_tay_tls`. |
+| `van_tay_tls` | Không | 64 ký tự hex: vân tay SHA-256 của chứng chỉ bộ phát; ghim thì bỏ kiểm chuỗi chứng chỉ nhưng vẫn đối chiếu vân tay trước mỗi lần đăng nhập. |
 
 **Ví dụ dùng.**
 
@@ -2322,6 +2346,20 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 **Giới hạn.**
 - Chưa kiểm với Home Assistant thật (chỉ máy chủ giả); sự kiện thời gian thực chưa làm.
+
+# Danh sách máy (qua sổ thiết bị của lõi; cần khoá quản trị)
+curl -s -H "Authorization: Bearer $K" "$W/api/so-thiet-bi/danh-sach" | head -c 600
+```
+
+**Sự cố thường gặp.**
+- `Không đăng nhập/đọc được thiết bị` — sai tài khoản/mật khẩu, sai địa chỉ, hoặc lỗi TLS (chứng chỉ tự ký: đặt `kiem_chung_chi_tls` thành `"false"` hoặc ghim `van_tay_tls`).
+- `Thiết bị đã khoá tài khoản` — đăng nhập sai nhiều lần: đợi thiết bị mở khoá rồi kiểm lại mật khẩu.
+
+**Giới hạn.**
+- Ánh xạ trường JSON (`MACAddress`, `AccessType` 1/2 → `2.4G`/`5G`…) suy từ tóm tắt giao thức
+  của chủ kho; **chưa kiểm với bộ phát thật** — thiết bị thật có thể đặt tên trường khác.
+- Tín hiệu «khoá tài khoản» của thiết bị thật chưa thấy tận mắt; module nhận theo cấu trúc
+  JSON cờ khoá + quy tắc dừng sau lỗi lặp.
 
 ---
 
