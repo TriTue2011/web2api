@@ -201,4 +201,8 @@ input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!impo
    nhãn ngôn ngữ trên khối mã đang 11px. */
 .bn>a,.bn>button{font-size:12px}
 .md pre[data-ngon-ngu]::before{font-size:12px}
+/* Nhãn tiêu đề khu (h2.khu-ten) đang 11px — nâng lên 12px chỉ trên cảm ứng. */
+.khu-ten{font-size:12px!important}
+/* Ô tích / ô chọn gốc rất nhỏ (13px): nới vùng bấm cho CẢ NHÃN bao quanh (cấu trúc: nhãn chứa ô tích/ô chọn). */
+label:has(input[type=checkbox]),label:has(input[type=radio]){min-height:44px!important;display:inline-flex;align-items:center;gap:8px}
 }
