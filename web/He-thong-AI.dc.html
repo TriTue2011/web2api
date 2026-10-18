@@ -63,10 +63,30 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </div>
 <sc-if value="{{them.co}}"><form id="form-them" novalidate data-module="{{them.chonId}}" onSubmit="{{them.luu}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
 <span style="font-weight:600">{{them.tieu}}</span>
-<div role="group" aria-label="Nhà cung cấp API" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.apis}}" as="c"><button type="button" data-chon-module="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}">{{c.nhan}}</button></sc-for></div><span style="font-size:12px;color:var(--mute)">{{them.mota}}</span>
+<sc-if value="{{them.hienNhom}}">
+<div role="group" aria-label="Nhóm" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.dsNhom}}" as="n"><button type="button" data-nhom-them="{{n.id}}" aria-pressed="{{n.on}}" onClick="{{n.pick}}" style="{{n.st}}">{{n.nhan}}</button></sc-for></div>
+</sc-if>
+<sc-if value="{{them.chuaChonNhom}}"><span style="font-size:12px;color:var(--mute)">Chọn một nhóm.</span></sc-if>
+<sc-if value="{{them.coNhomChon}}">
+<sc-if value="{{them.hienLoai}}">
+<div role="group" aria-label="Loại" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.dsLoai}}" as="l"><button type="button" data-loai-them="{{l.id}}" aria-pressed="{{l.on}}" onClick="{{l.pick}}" style="{{l.st}}">{{l.nhan}}</button></sc-for></div>
+</sc-if>
+<sc-if value="{{them.chuaChonLoai}}"><span style="font-size:12px;color:var(--mute)">Chọn loại thêm tài khoản.</span></sc-if>
+<sc-if value="{{them.coLoaiChon}}">
+<div role="group" aria-label="Nhà cung cấp" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.apis}}" as="c"><button type="button" data-chon-module="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}">{{c.nhan}}</button></sc-for></div><span style="font-size:12px;color:var(--mute)">{{them.mota}}</span>
 <sc-if value="{{them.canKhoaQt}}"><span style="font-size:12px;color:var(--mute)">Dán khoá quản trị ở khối «Khoá quản trị» phía trên để thêm khoá.</span></sc-if>
-<sc-if value="{{them.coTuDong}}"><div role="group" aria-label="Cách thêm tài khoản" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" data-che-do="khoa" aria-pressed="{{them.cheKhoa.on}}" onClick="{{them.cheKhoa.pick}}" style="{{them.cheKhoa.st}}">Dán cookie / khoá</button><button type="button" data-che-do="gmail" aria-pressed="{{them.cheGmail.on}}" onClick="{{them.cheGmail.pick}}" style="{{them.cheGmail.st}}">Tự đăng nhập bằng Gmail</button></div></sc-if>
-<sc-if value="{{them.laGmail}}"><div id="khung-tu-dong" style="display:flex;flex-direction:column;gap:10px;min-width:0">
+<sc-if value="{{them.laTaiKhoan}}"><div id="khung-tu-dong" style="display:flex;flex-direction:column;gap:10px;min-width:0">
+<sc-if value="{{them.td.coCaHaiKieu}}">
+<div role="group" aria-label="Kiểu đăng nhập" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" data-kieu="truc_tiep" aria-pressed="{{them.td.kieuTrucTiep.on}}" onClick="{{them.td.kieuTrucTiep.pick}}" style="{{them.td.kieuTrucTiep.st}}">Trực tiếp</button><button type="button" data-kieu="danh_tinh" aria-pressed="{{them.td.kieuDanhTinh.on}}" onClick="{{them.td.kieuDanhTinh.pick}}" style="{{them.td.kieuDanhTinh.st}}">{{them.td.nhanKieuDanhTinh}}</button></div>
+</sc-if>
+<sc-if value="{{them.td.chiMotKieu}}"><span style="font-size:12px;color:var(--mute)">Kiểu: {{them.td.nhanKieuHienTai}}</span></sc-if>
+<span style="font-size:12px;color:var(--mute)">{{them.td.goiYKieu}}</span>
+<sc-if value="{{them.td.coDanhTinh}}">
+<details open style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
+<summary style="padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Tài khoản đã đăng nhập sẵn</summary>
+<sc-for list="{{them.td.dsDanhTinh}}" as="d"><label data-danh-tinh="{{d.id}}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;border-top:1px solid var(--line);cursor:pointer;min-width:0"><input type="checkbox" checked="{{d.on}}" onChange="{{d.doi}}" aria-label="Chọn tài khoản {{d.emailChe}}"><span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{d.emailChe}}</span><span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:var(--mute)">{{d.nhanTt}}</span></label></sc-for>
+</details>
+</sc-if>
 <span style="font-size:12px;color:var(--mute);line-height:1.5">Mỗi dòng một tài khoản: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu</span>, có mã 2FA thì thêm <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu|mã2fa</span>, hoặc dùng cookie <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|cookie=…</span>. Hệ thống đăng nhập LẦN LƯỢT, cách nhau khoảng 30 giây. Gặp CAPTCHA hoặc bước xác minh thì dừng tài khoản đó và báo bạn mở trình duyệt xử lý — không cố vượt. Mật khẩu chỉ nằm trong ô này tới khi bấm đăng nhập rồi bị xoá khỏi trang.</span>
 <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Danh sách tài khoản<textarea id="o-tu-dong" rows="5" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="ten@gmail.com|mat-khau&#10;ten2@gmail.com|mat-khau|123456" value="{{them.td.vanBan}}" onInput="{{them.td.goVanBan}}" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px ui-monospace,Menlo,Consolas,monospace;resize:vertical"></textarea></label>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-xem-truoc" disabled="{{them.td.dangXem}}" onClick="{{them.td.xem}}" style="{{them.td.xemSt}}">Xem trước</button></div>
@@ -80,9 +100,18 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{them.td.coLuot}}"><div id="tien-do-tu-dong" role="status" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)"><span id="tom-tat-tu-dong">{{them.td.luotTomTat}}</span><sc-if value="{{them.td.dangChayLuot}}"><button type="button" id="nut-dung-tu-dong" onClick="{{them.td.dung}}" style="{{them.td.dungSt}}">Dừng</button></sc-if></div>
 <sc-for list="{{them.td.luotHang}}" as="h"><div data-ket-qua-tu-dong="{{h.email}}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;border-top:1px solid var(--line);min-width:0"><span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{h.email}}</span><span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:{{h.mau}}">{{h.nhan}}</span></div></sc-for>
-</div></sc-if>
+</div>
+<sc-if value="{{them.td.coCanNguoi}}">
+<div style="font-size:12px;color:var(--mute);padding:4px 0">
+<sc-if value="{{them.td.coDuongTrinhDuyet}}"><span><a href="{{them.td.duongTrinhDuyet}}" target="_blank" style="color:inherit;text-decoration:underline">Mở tab {{them.td.nhanTrinhDuyet}}</a> để đăng nhập tay, rồi chạy lại.</span></sc-if>
+<sc-if value="{{them.td.khongDuongTrinhDuyet}}"><span>mở tab Trình duyệt để đăng nhập tay, rồi chạy lại.</span></sc-if>
+</div>
+</sc-if>
+</sc-if>
 </div></sc-if>
 <sc-if value="{{them.coFields}}"><div style="display:flex;flex-wrap:wrap;gap:10px"><sc-for list="{{them.fields}}" as="f"><label data-truong="{{f.khoa}}" style="flex:1 1 240px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{f.nhan}}<sc-if value="{{f.biMat}}"><input id="{{f.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.onIn}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"></sc-if><sc-if value="{{f.chu}}"><input id="{{f.idO}}" type="text" autocomplete="off" spellcheck="false" placeholder="{{f.ph}}" value="{{f.val}}" onInput="{{f.onIn}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"></sc-if></label></sc-for></div></sc-if>
+</sc-if>
+</sc-if>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" id="nut-them-luu" hidden="{{them.anNutThem}}" disabled="{{them.dang}}" style="{{them.ok.st}}">{{them.ok.nhan}}</button><button type="button" onClick="{{them.huy.pick}}" style="{{them.huy.st}}">{{them.huy.nhan}}</button></div>
 </form></sc-if>
 
@@ -321,7 +350,8 @@ class Component extends DCLogic {
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
       mdLoc: '',
       tkPvMo: den ? { [den]: true } : {},
-      // Tự đăng nhập bằng Gmail (td*): chế độ thêm, văn bản dán (CHỈ trong bộ nhớ trang), xem trước, bỏ chọn, lượt chạy
+      // Tự đăng nhập (td*): nhóm/loại chọn, kiểu đăng nhập, danh tính tick sẵn, văn bản dán, xem trước, bỏ chọn, lượt chạy
+      tkNhomThem: null, tkLoaiThem: null, tdKieu: 'truc_tiep', tdDaChon: {}, dsDanhTinh: [],
       tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdDangXem: false, tdDangChay: false, tdLoi: '', tdLuot: null };
     this._den = den;
   }
@@ -484,11 +514,37 @@ class Component extends DCLogic {
     }
   }
   loi(e) {}
-  // ══ Tự đăng nhập bằng Gmail: dán danh sách → xem trước (tách dòng ở máy chủ) → tick → chạy LẦN LƯỢT → theo dõi ══
+  async taiDanhTinh() {
+    try {
+      const { j } = await K.goi('api/danh-tinh');
+      const raw = (j && Array.isArray(j.danh_tinh)) ? j.danh_tinh : (Array.isArray(j) ? j : []);
+      const ds = raw.filter((d) => d && d.ho_so_trinh_duyet);
+      this.setState({ dsDanhTinh: ds });
+    } catch (e) {
+      this.setState({ dsDanhTinh: [] });
+    }
+  }
+  layVanBanGop() {
+    const vb = (this.state.tdVanBan || '').trim();
+    const tick = Object.keys(this.state.tdDaChon || {}).filter((e) => this.state.tdDaChon[e]);
+    const lines = [];
+    if (vb) lines.push(vb);
+    for (const em of tick) {
+      if (!lines.includes(em)) lines.push(em);
+    }
+    return lines.join('\n');
+  }
+  doiDanhTinh(email) {
+    this.setState((st) => {
+      const dc = Object.assign({}, st.tdDaChon);
+      dc[email] = !dc[email];
+      return { tdDaChon: dc, tdXem: null, tdBo: {}, tdLoi: '' };
+    });
+  }
   tdDatLoi(chu) { this.setState({ tdLoi: chu || '' }); }
   async tdXemTruoc(m) {
-    const van_ban = this.state.tdVanBan;
-    if (!van_ban.trim()) { this.tdDatLoi('Dán ít nhất một dòng tài khoản.'); return; }
+    const van_ban = this.layVanBanGop();
+    if (!van_ban.trim()) { this.tdDatLoi('Dán ít nhất một dòng tài khoản hoặc chọn tài khoản có sẵn.'); return; }
     this.setState({ tdDangXem: true, tdLoi: '' });
     try {
       const { j } = await K.goi('api/tai-khoan/dan-hang-loat', { method: 'POST', json: { module_id: m.id, van_ban } });
@@ -496,14 +552,18 @@ class Component extends DCLogic {
     } catch (e) { this.setState({ tdDangXem: false, tdXem: null, tdLoi: (e && e.message) || 'Không tách được danh sách.' }); }
   }
   async tdChay(m) {
-    const { tdVanBan: van_ban, tdXem: xem, tdBo: bo } = this.state;
+    const van_ban = this.layVanBanGop();
+    const { tdXem: xem, tdBo: bo, tdKieu } = this.state;
     const giu = ((xem && xem.tai_khoan) || []).filter((t) => !bo[t.email.toLowerCase()]);
     if (!giu.length) { this.tdDatLoi('Chưa chọn tài khoản nào để đăng nhập.'); return; }
     const bo_qua_email = Object.keys(bo).filter((e) => bo[e]);
     // Mật khẩu rời state NGAY (không giữ trong trang) — chỉ còn bản đang gửi đi.
     this.setState({ tdVanBan: '', tdXem: null, tdDangChay: true, tdLoi: '', lan: this.state.lan + 1 });
     try {
-      await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', { method: 'POST', json: { module_id: m.id, van_ban, bo_qua_email } });
+      await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', {
+        method: 'POST',
+        json: { module_id: m.id, van_ban, bo_qua_email, kieu: tdKieu || 'truc_tiep' }
+      });
       this.setState({ tdDangChay: false, tdLuot: { trang_thai_luot: 'dang_chay', ket_qua: [], tom_tat: { tong: giu.length, xong: 0, loi: 0, bo_qua: 0 } } });
       this.tdTheoDoi();
     } catch (e) { this.setState({ tdDangChay: false, tdLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' }); }
@@ -514,7 +574,11 @@ class Component extends DCLogic {
       let tt = null;
       try { ({ j: tt } = await K.goi('api/tai-khoan/dang-nhap-hang-loat/trang-thai')); } catch (e) { tt = null; }
       if (tt) this.setState({ tdLuot: tt });
-      if (tt && tt.trang_thai_luot === 'hoan_thanh') { await this.taiLai(); return; }
+      if (tt && tt.trang_thai_luot === 'hoan_thanh') {
+        await this.taiLai();
+        await this.taiDanhTinh();
+        return;
+      }
       this._tdHen = setTimeout(vong, 2000);
     };
     this._tdHen = setTimeout(vong, 800);
@@ -625,22 +689,226 @@ class Component extends DCLogic {
       pick: () => this.setState({ tkNhom: id, tkMo: null, xoa: null }) }));
     // Nguồn nhận khoá qua trang: module có mã (module từ xa đặt khoá lúc đăng ký).
     const ungVien = ai.filter((m) => !m.tu_xa);
-    const chon = ungVien.find((m) => m.id === s.chonMod) || (ungVien.length === 1 ? ungVien[0] : null);
+
+    // Kiểu đăng nhập module làm được (suy từ cấu trúc: hàm `dang_nhap`, `tai_dung_ho_so` + module danh tính/trình duyệt đã liên kết).
+    const coTrucTiep = (m) => !!m.dang_nhap_tu_dong;
+    const modCoDanhTinh = (m) => !!m.tai_dung_ho_so && !!(tn && tn.kha_nang_lien_ket && tn.kha_nang_lien_ket.dang_nhap_danh_tinh > 0 && tn.kha_nang_lien_ket.trinh_duyet > 0);
+    const coKieuDangNhap = (m) => coTrucTiep(m) || modCoDanhTinh(m);
+    // Module chẳng có gì để thêm (không trường dán khoá, không kiểu đăng nhập) thì ẨN — không để nút chết.
+    const themDuoc = (m) => ((catId.get(m.id) || {}).truong_cau_hinh || []).length > 0 || coKieuDangNhap(m);
+
+    // Bước a — NHÓM: gom theo modules[].nhom, chỉ hiện nhóm có ≥1 module đã cài và thêm được
+    const nhomMap = new Map();
+    for (const m of ungVien.filter(themDuoc)) {
+      const nid = (m.nhom && m.nhom.id) || 'khac';
+      const nten = (m.nhom && m.nhom.ten) || 'Khác';
+      if (!nhomMap.has(nid)) {
+        nhomMap.set(nid, { id: nid, ten: nten, modules: [] });
+      }
+      nhomMap.get(nid).modules.push(m);
+    }
+    const dsNhomList = Array.from(nhomMap.values()).sort((a, b) => {
+      if (a.id === 'khac') return 1;
+      if (b.id === 'khac') return -1;
+      return (a.ten || '').localeCompare(b.ten || '', 'vi');
+    });
+
+    // Quy tắc tự chọn nhóm: chỉ có đúng 1 nhóm -> tự chọn và ẩn hàng chip
+    let nhomDuocChon = null;
+    let hienNhom = false;
+    if (dsNhomList.length === 1) {
+      nhomDuocChon = dsNhomList[0];
+      hienNhom = false;
+    } else if (dsNhomList.length > 1) {
+      hienNhom = true;
+      if (s.tkNhomThem && nhomMap.has(s.tkNhomThem)) {
+        nhomDuocChon = nhomMap.get(s.tkNhomThem);
+      }
+    }
+
+    const chuaChonNhom = !nhomDuocChon;
+    const coNhomChon = !!nhomDuocChon;
+
+    const dsNhom = dsNhomList.map((n) => ({
+      id: n.id,
+      nhan: n.ten,
+      on: !!nhomDuocChon && nhomDuocChon.id === n.id,
+      st: chipSt(!!nhomDuocChon && nhomDuocChon.id === n.id),
+      pick: () => {
+        this.setState({
+          tkNhomThem: n.id,
+          tkLoaiThem: null,
+          chonMod: null,
+          tdVanBan: '',
+          tdXem: null,
+          tdBo: {},
+          tdLoi: '',
+          tdDaChon: {}
+        });
+      }
+    }));
+
+    // Bước b — LOẠI
+
+    let loaiDuocChon = null;
+    let hienLoai = false;
+    let dsLoai = [];
+
+    if (nhomDuocChon) {
+      const modTrongNhom = nhomDuocChon.modules;
+      const nhomCoApi = modTrongNhom.some((m) => {
+        const tr = (catId.get(m.id) || {}).truong_cau_hinh || [];
+        return tr.length > 0;
+      });
+      const nhomCoTaiKhoan = modTrongNhom.some(coKieuDangNhap);
+
+      const dsLoaiList = [];
+      if (nhomCoApi) dsLoaiList.push({ id: 'api', nhan: 'API' });
+      if (nhomCoTaiKhoan) dsLoaiList.push({ id: 'tai_khoan', nhan: 'Tài khoản' });
+
+      if (dsLoaiList.length === 1) {
+        loaiDuocChon = dsLoaiList[0].id;
+        hienLoai = false;
+      } else if (dsLoaiList.length > 1) {
+        hienLoai = true;
+        if (s.tkLoaiThem && dsLoaiList.some((l) => l.id === s.tkLoaiThem)) {
+          loaiDuocChon = s.tkLoaiThem;
+        }
+      }
+
+      dsLoai = dsLoaiList.map((l) => ({
+        id: l.id,
+        nhan: l.nhan,
+        on: loaiDuocChon === l.id,
+        st: chipSt(loaiDuocChon === l.id),
+        pick: () => {
+          this.setState({
+            tkLoaiThem: l.id,
+            chonMod: null,
+            tdVanBan: '',
+            tdXem: null,
+            tdBo: {},
+            tdLoi: '',
+            tdDaChon: {}
+          });
+        }
+      }));
+    }
+
+    const chuaChonLoai = coNhomChon && !loaiDuocChon;
+    const coLoaiChon = coNhomChon && !!loaiDuocChon;
+
+    // Bước c — MODULE và KIỂU
+    let modUngVien = [];
+    if (nhomDuocChon && loaiDuocChon) {
+      if (loaiDuocChon === 'tai_khoan') {
+        modUngVien = nhomDuocChon.modules.filter(coKieuDangNhap);
+      } else {
+        modUngVien = nhomDuocChon.modules;
+      }
+    }
+
+    let chon = null;
+    if (modUngVien.length === 1) {
+      chon = modUngVien[0];
+    } else if (modUngVien.length > 1) {
+      chon = modUngVien.find((m) => m.id === s.chonMod) || null;
+    }
+
+    const apis = modUngVien.map((m) => ({
+      id: m.id,
+      nhan: m.ten,
+      on: !!chon && chon.id === m.id,
+      st: chipSt(!!chon && chon.id === m.id),
+      pick: () => {
+        this.setState({
+          chonMod: m.id,
+          f: {},
+          tdVanBan: '',
+          tdXem: null,
+          tdBo: {},
+          tdLoi: '',
+          tdDaChon: {}
+        });
+      }
+    }));
+
     const trChon = chon ? ((catId.get(chon.id) || {}).truong_cau_hinh || []) : [];
     const ckChon = chon ? ((s.mods.find((x) => x && x.id === chon.id) || {}).cau_hinh_cong_khai || {}) : {};
     const trBm = trChon.find(laBiMat);
-    // Module khai hàm `dang_nhap` (suy từ cấu trúc, /api/tinh-nang → dang_nhap_tu_dong) mới có chế độ «Tự đăng nhập».
-    const coTuDong = !!chon && !!chon.dang_nhap_tu_dong;
-    const laGmail = coTuDong && s.tkCheDo === 'gmail';
-    const cheSt = (on) => chipSt(on);
+
+    const laTaiKhoan = loaiDuocChon === 'tai_khoan' && !!chon;
+    const laApi = loaiDuocChon === 'api' && !!chon;
+
+    // Kiểu đăng nhập
+    const chonCoTrucTiep = chon ? coTrucTiep(chon) : false;
+    const chonCoDanhTinh = chon ? modCoDanhTinh(chon) : false;
+    const coCaHaiKieu = chonCoTrucTiep && chonCoDanhTinh;
+    const chiMotKieu = (chonCoTrucTiep && !chonCoDanhTinh) || (!chonCoTrucTiep && chonCoDanhTinh);
+
+    let kieuHienTai = 'truc_tiep';
+    if (coCaHaiKieu) {
+      kieuHienTai = (s.tdKieu === 'danh_tinh') ? 'danh_tinh' : 'truc_tiep';
+    } else if (chonCoDanhTinh) {
+      kieuHienTai = 'danh_tinh';
+    } else {
+      kieuHienTai = 'truc_tiep';
+    }
+
+    // Nhãn chip danh tính ghép từ dữ liệu module đăng nhập danh tính
+    const modDn = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('dang_nhap_danh_tinh'));
+    const nhanKieuDanhTinh = (modDn && modDn.nhom && modDn.nhom.ten) ? ('Qua ' + modDn.nhom.ten) : 'Qua danh tính';
+    const nhanKieuHienTai = (kieuHienTai === 'danh_tinh') ? nhanKieuDanhTinh : 'Trực tiếp';
+
+    const goiYKieu = (kieuHienTai === 'danh_tinh')
+      ? 'đăng nhập một lần trong hồ sơ trình duyệt rồi dùng lại; có mã 2FA thì thêm ở cột thứ 3'
+      : '2FA ở kiểu trực tiếp: sẽ cần bạn xử lý';
+
+    const cheEmail = (email) => {
+      if (!email || typeof email !== 'string') return '';
+      const at = email.indexOf('@');
+      if (at <= 0) return email;
+      return email.charAt(0) + '***' + email.slice(at);
+    };
+
+    const NHAN_TT_DANH_TINH = {
+      dang_nhap: 'đã đăng nhập',
+      can_nguoi: 'cần xử lý',
+      chua_dang_nhap: 'chưa đăng nhập',
+      het_han: 'hết hạn'
+    };
+
+    const dsDanhTinhHien = (kieuHienTai === 'danh_tinh' && Array.isArray(s.dsDanhTinh)) ? s.dsDanhTinh.map((d) => ({
+      id: d.id,
+      emailChe: cheEmail(d.email),
+      nhanTt: NHAN_TT_DANH_TINH[d.trang_thai_dang_nhap] || d.trang_thai_dang_nhap || '',
+      on: !!(s.tdDaChon && s.tdDaChon[d.email]),
+      doi: () => this.doiDanhTinh(d.email)
+    })) : [];
+    const coDanhTinh = kieuHienTai === 'danh_tinh' && dsDanhTinhHien.length > 0;
+
     const NHAN_LOAI = { mat_khau: 'mật khẩu', cookie: 'cookie', dang_nhap_lai: 'đăng nhập lại' };
     const NHAN_TT = { cho: ['Đang chờ', 'var(--mute)'], dang_chay: ['Đang đăng nhập…', 'var(--mute)'], xong: ['Xong', '#0B5A53'], loi: ['Lỗi', '#8A2A1E'], bo_qua: ['Bỏ qua', 'var(--mute)'] };
-    const NHAN_LOI = { can_nguoi: 'Cần bạn xử lý (CAPTCHA/xác minh)', sai_mat_khau: 'Sai mật khẩu' };  // mã lạ hiện nguyên mã
+    const NHAN_LOI = {
+      can_nguoi: 'Cần bạn xử lý',
+      cho_2fa: 'Cần mã 2FA',
+      thieu_module_dang_nhap_danh_tinh: 'Thiếu module đăng nhập danh tính',
+      sai_mat_khau: 'Sai mật khẩu'
+    };
     const xem = s.tdXem;
     const tdHang = ((xem && xem.tai_khoan) || []).map((t) => ({ email: t.email, loai: NHAN_LOAI[t.loai] || t.loai, on: !s.tdBo[t.email.toLowerCase()],
       doi: (e) => { const on = !!e.target.checked; this.setState((st) => ({ tdBo: Object.assign({}, st.tdBo, { [t.email.toLowerCase()]: !on }) })); } }));
     const tdChon = tdHang.filter((h) => h.on).length;
     const luot = s.tdLuot;
+
+    const coCanNguoi = !!luot && (luot.ket_qua || []).some((b) => b.ma_loi === 'can_nguoi');
+    const modTd = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('trinh_duyet'));
+    const tabTd = modTd ? (tn && tn.tab || []).find((t) => t.module === modTd.id) : null;
+    const coDuongTrinhDuyet = !!tabTd;
+    const duongTrinhDuyet = tabTd ? tabTd.duong : '';
+    const nhanTrinhDuyet = tabTd ? tabTd.nhan : '';
+    const khongDuongTrinhDuyet = !coDuongTrinhDuyet;
+
     const td = {
       vanBan: s.tdVanBan, goVanBan: (e) => { const v = e.target.value; this.setState({ tdVanBan: v, tdXem: null, tdBo: {}, tdLoi: '' }); },
       dangXem: s.tdDangXem, xem: () => { if (chon) this.tdXemTruoc(chon); }, xemSt: btnSt({}),
@@ -655,24 +923,59 @@ class Component extends DCLogic {
         + ' · bỏ qua ' + ((luot.tom_tat || {}).bo_qua || 0) + ' / tổng ' + ((luot.tom_tat || {}).tong || 0)) : '',
       luotHang: luot ? (luot.ket_qua || []).map((b) => { const t = NHAN_TT[b.trang_thai] || [b.trang_thai, 'var(--mute)'];
         return { email: b.email, mau: t[1], nhan: b.trang_thai === 'loi' ? (NHAN_LOI[b.ma_loi] || ('Lỗi' + (b.ma_loi ? ' (' + b.ma_loi + ')' : ''))) : t[0] }; }) : [],
-      dung: () => this.tdDung(), dungSt: btnSt({})
+      dung: () => this.tdDung(), dungSt: btnSt({}),
+      coCaHaiKieu,
+      chiMotKieu,
+      nhanKieuHienTai,
+      nhanKieuDanhTinh,
+      goiYKieu,
+      coDanhTinh,
+      dsDanhTinh: dsDanhTinhHien,
+      kieuTrucTiep: {
+        on: kieuHienTai === 'truc_tiep',
+        st: chipSt(kieuHienTai === 'truc_tiep'),
+        pick: () => this.setState({ tdKieu: 'truc_tiep', tdXem: null, tdBo: {}, tdLoi: '' })
+      },
+      kieuDanhTinh: {
+        on: kieuHienTai === 'danh_tinh',
+        st: chipSt(kieuHienTai === 'danh_tinh'),
+        pick: () => {
+          this.setState({ tdKieu: 'danh_tinh', tdXem: null, tdBo: {}, tdLoi: '' });
+          this.taiDanhTinh();
+        }
+      },
+      coCanNguoi,
+      coDuongTrinhDuyet,
+      duongTrinhDuyet,
+      nhanTrinhDuyet,
+      khongDuongTrinhDuyet
     };
     const them = {
-      co: s.tkThem, chonId: chon ? chon.id : '', tieu: 'Thêm API', dang: s.dangThem,
-      nut: { nhan: s.tkThem ? 'Đóng' : '＋ Thêm API', st: btnSt({ pri: !s.tkThem }), pick: () => this.setState({ tkThem: !s.tkThem, f: {}, chonMod: null }) },
-      apis: ungVien.map((m) => ({ id: m.id, nhan: m.ten, on: !!chon && chon.id === m.id, st: chipSt(!!chon && chon.id === m.id),
-        pick: () => this.setState({ chonMod: m.id, f: {}, tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '' }) })),
+      co: s.tkThem, chonId: chon ? chon.id : '', tieu: 'Thêm tài khoản', dang: s.dangThem,
+      nut: { nhan: s.tkThem ? 'Đóng' : '＋ Tài khoản', st: btnSt({ pri: !s.tkThem }), pick: () => {
+        const mo = !s.tkThem;
+        this.setState({
+          tkThem: mo, f: {}, chonMod: null, tkNhomThem: null, tkLoaiThem: null,
+          tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}
+        });
+        if (mo) this.taiDanhTinh();
+      }},
+      hienNhom, dsNhom, chuaChonNhom, coNhomChon,
+      hienLoai, dsLoai, chuaChonLoai, coLoaiChon,
+      apis,
       mota: chon ? ((trBm && trBm.mo_ta) || (catId.get(chon.id) || {}).mo_ta || '') : 'Chọn một nguồn AI đã cài.',
-      canKhoaQt: !!chon && !coKhoaQt, coFields: !!chon && coKhoaQt && trChon.length > 0 && !laGmail,
-      coTuDong, laGmail, anNutThem: laGmail, td,
-      cheKhoa: { on: !laGmail, st: cheSt(!laGmail), pick: () => this.setState({ tkCheDo: 'khoa' }) },
-      cheGmail: { on: laGmail, st: cheSt(laGmail), pick: () => this.setState({ tkCheDo: 'gmail' }) },
+      canKhoaQt: !!chon && !coKhoaQt,
+      coFields: laApi && !!chon && coKhoaQt && trChon.length > 0,
+      laTaiKhoan,
+      anNutThem: !laApi,
+      td,
       fields: trChon.map((t, j) => ({ khoa: t.khoa, nhan: t.nhan || t.khoa, biMat: laBiMat(t), chu: !laBiMat(t), idO: 'them-' + j + '-' + s.lan,
         ph: laBiMat(t) ? 'Dán ' + chuThuong(t.nhan || 'khoá') : (t.mac_dinh != null ? String(t.mac_dinh) : ''),
         val: laBiMat(t) ? '' : (s.f[t.khoa] != null ? String(s.f[t.khoa]) : (ckChon[t.khoa] == null ? '' : String(ckChon[t.khoa]))),
         onIn: (e) => { const v = e.target.value; this.setState((st) => ({ f: Object.assign({}, st.f, { [t.khoa]: v }) })); } })),
       luu: (e) => { if (e) e.preventDefault(); if (!chon) { this.msg('Chọn một nguồn AI trước.', true); return; } if (!coKhoaQt) { this.msg('Cần khoá quản trị để thêm khoá.', true); return; } this.themKhoa(e, chon, trChon, ckChon); },
-      ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Thêm API', st: btnSt({ pri: true }) + (laGmail ? 'display:none;' : '') }, huy: { nhan: 'Huỷ', st: btnSt(), pick: () => this.setState({ tkThem: false, f: {}, chonMod: null }) }
+      ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Thêm API', st: btnSt({ pri: true }) + (!laApi ? 'display:none;' : '') },
+      huy: { nhan: 'Huỷ', st: btnSt(), pick: () => this.setState({ tkThem: false, f: {}, chonMod: null, tkNhomThem: null, tkLoaiThem: null }) }
     };
     // Quy tắc sắp xếp ổn định cho khối provider (tab Tài khoản) và ô chọn (tab Provider):
     // theo TÊN HIỂN THỊ (localeCompare 'vi'), hòa thì theo id.

@@ -393,7 +393,7 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         assert con_ai(trang) == ["tai_khoan", "provider"]           # Provider có từ lúc CÀI; không Combo
         assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
         assert nhom_tk(trang) == [["API", "0"]]
-        assert trang.chu("#nut-them") == "＋ Thêm API"
+        assert trang.chu("#nut-them") == "＋ Tài khoản"
         assert trang.js("getComputedStyle(document.getElementById('nut-them')).backgroundColor") == "rgb(24, 24, 22)"  # nút đen nổi bật
         assert trang.chu("#tk-trong") == "Chưa có tài khoản API nào — bấm « ＋ » ở trên để thêm."
         assert trang.js("document.querySelectorAll('[data-tai-khoan]').length") == 0

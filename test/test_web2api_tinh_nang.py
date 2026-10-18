@@ -176,7 +176,8 @@ def test_module_tu_xa_tinh_la_ai_co_chat(du_lieu, monkeypatch):
         assert r.status_code == 200, r.text
         j = tn(c)
         assert j["modules"] == [{"id": "may-gpu", "ten": "Máy GPU", "loai": "ai", "cung_cap": ["chat"],
-                                 "tien_to": "gpu", "tu_xa": True, "da_lien_ket": True, "dang_nhap_tu_dong": False}]
+                                 "tien_to": "gpu", "tu_xa": True, "da_lien_ket": True, "dang_nhap_tu_dong": False,
+                                 "tai_dung_ho_so": False, "nhom": None}]
         assert j["kha_nang_lien_ket"] == {"ai": 1, "chat": 1}
         assert c.delete("/api/modules/may-gpu", headers=QT).status_code == 200
         assert tn(c)["modules"] == []

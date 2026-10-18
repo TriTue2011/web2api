@@ -11,6 +11,7 @@
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 20,
+  "nhom": {"id": "grok", "ten": "Grok"},
   "mo_ta": "Trò chuyện với Grok qua giao thức WebSocket của web app grok.com (miễn phí), xác thực bằng cookie của người dùng đã đăng nhập; hỗ trợ nhiều tài khoản và tự chuyển tài khoản khi lỗi phiên hoặc hết lượt.",
   "muc": [
     {
@@ -68,5 +69,9 @@
     "websockets",
     "httpx"
   ],
-  "dang_nhap_bang": "gmail"
+  "dang_nhap_bang": "gmail",
+  "nhom": {
+    "id": "grok",
+    "ten": "Grok"
+  }
 }

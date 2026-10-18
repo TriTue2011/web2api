@@ -11,6 +11,7 @@
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 21,
+  "nhom": {"id": "claude", "ten": "Claude"},
   "mo_ta": "Trò chuyện với Claude qua API web nội bộ của claude.ai, xác thực bằng cookie/sessionKey do người dùng đưa — miễn phí, không cần API key, không browser.",
   "muc": [
     {
@@ -57,5 +58,9 @@
   "yeu_cau_goi": [
     "httpx"
   ],
-  "dang_nhap_bang": "gmail"
+  "dang_nhap_bang": "gmail",
+  "nhom": {
+    "id": "claude",
+    "ten": "Claude"
+  }
 }

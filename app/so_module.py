@@ -165,9 +165,13 @@ class SoModule:
             # `dang_nhap_tu_dong`: suy từ CẤU TRÚC (module đang chạy khai hàm `dang_nhap`), không từ tên nhà cung cấp —
             # giao diện chỉ hiện chế độ «Tự đăng nhập» cho module thật sự làm được.
             dn = lk and callable(getattr(self.dang_chay.get(id_), "dang_nhap", None))
+            td = lk and callable(getattr(self.dang_chay.get(id_), "tai_dung_ho_so", None))
+            nhom = man.get("nhom") if (not tu_xa and isinstance(man.get("nhom"), dict)) else None
             modules.append({"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
                             "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk,
-                            "dang_nhap_tu_dong": bool(dn)})
+                            "dang_nhap_tu_dong": bool(dn),
+                            "tai_dung_ho_so": bool(td),
+                            "nhom": nhom})
             l = loai.setdefault(man["loai"], {"ma": man["loai"], "ten": None, "thu_tu": None,
                                               "so_da_cai": 0, "so_da_lien_ket": 0})
             l["so_da_cai"] += 1

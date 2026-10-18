@@ -165,7 +165,7 @@ hiện, không dựa vào lời khai; lời khai dùng cho giao diện (tab/ch�
 
 `loai` cũng là mã MỞ cùng mẫu MA_KHA_NANG (mục `can` trộn hai loại mã: "ai" là loại, "chat" là khả năng).
 Tuỳ chọn cho giao diện: `loai_ten` (tên hiển thị của loại, vd "AI"), `loai_thu_tu` (số nguyên, nhỏ đứng
-trước), `muc` — tab con/mục của module, mỗi mục {"id", "nhan", "can": [mã…]}: mục chỉ hiện khi module đã
+trước), `nhom` (nhóm hiển thị `{"id": "<id>", "ten": "<tên>"}` với id khớp `^[a-z0-9-]{1,32}$`, ten ≤ 40 ký tự; sai khuôn thì bị bỏ kèm cảnh báo), `muc` — tab con/mục của module, mỗi mục {"id", "nhan", "can": [mã…]}: mục chỉ hiện khi module đã
 liên kết VÀ mọi mã trong `can` có ở ít nhất một module đã liên kết (rỗng = luôn hiện khi đã liên kết).
 
 `can_module` (tuỳ chọn): danh sách id module mà module này CẦN mới chạy đầy đủ (vd ["mod-phu"]).
@@ -219,6 +219,8 @@ _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}\Z")
 #: Id của một mục (tab con) trong `muc` — đi vào id phần tử/đường dẫn của giao diện.
 ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}\Z")
+#: Mã nhóm hiển thị trong `nhom`: chữ thường, số, dấu gạch ngang (1-32 ký tự).
+MAU_NHOM_ID = re.compile(r"^[a-z0-9-]{1,32}\Z")
 
 #: Chuẩn phân loại lỗi trung lập cho module (mã mở):
 LOAI_LOI_CHUAN = {
@@ -364,11 +366,34 @@ class ModuleKhamPha:
         return {"nhan": tab["nhan"], "duong": f"/m/{self.id}/{tab['trang'].removeprefix('web/')}"}
 
 
+def _chuan_hoa_nhom(m: dict) -> None:
+    if "nhom" not in m:
+        return
+    nhom = m["nhom"]
+    mod_id = m.get("id", "chua_ro")
+    if not isinstance(nhom, dict):
+        log.warning("Module %s: nhom không phải đối tượng", mod_id)
+        m.pop("nhom", None)
+        return
+    id_nhom = nhom.get("id")
+    ten_nhom = nhom.get("ten")
+    if not isinstance(id_nhom, str) or not MAU_NHOM_ID.match(id_nhom):
+        log.warning("Module %s: nhom.id không hợp lệ", mod_id)
+        m.pop("nhom", None)
+        return
+    if not isinstance(ten_nhom, str) or not ten_nhom.strip() or len(ten_nhom.strip()) > 40:
+        log.warning("Module %s: nhom.ten không hợp lệ", mod_id)
+        m.pop("nhom", None)
+        return
+    m["nhom"] = {"id": id_nhom, "ten": ten_nhom.strip()}
+
+
 def kiem_manifest(m) -> str | None:
     """Lý do manifest không dùng được, hoặc None. Kiểu trường lạ là LỖI chứ không bỏ qua:
     kho dựa vào `kieu` để quyết bí mật — gõ nhầm «bi_mat » mà coi là chuỗi thường là lộ khoá."""
     if not isinstance(m, dict):
         return "manifest phải là đối tượng JSON"
+    _chuan_hoa_nhom(m)
     for k in TRUONG_CHUOI_BAT_BUOC:
         if not isinstance(m.get(k), str) or not m[k].strip():
             return f"thiếu hoặc sai trường «{k}» (cần chuỗi khác rỗng)"

@@ -736,7 +736,7 @@ class NguonGit:
                 muc.update(ten=m["ten"], mo_ta=m["mo_ta"], phien_ban=m.get("phien_ban"),
                            yeu_cau_goi=m.get("yeu_cau_goi", []), mang_ra=m["tai_nguyen"].get("mang_ra", []),
                            tai_nguyen=m["tai_nguyen"], loai=m["loai"], loai_ten=m.get("loai_ten"),
-                           loai_thu_tu=m.get("loai_thu_tu"), cung_cap=m.get("cung_cap", []))
+                           loai_thu_tu=m.get("loai_thu_tu"), nhom=m.get("nhom"), cung_cap=m.get("cung_cap", []))
             ra.append(muc)
         return ra
 
@@ -783,7 +783,7 @@ class NguonGit:
                 "phien_ban_cu": km.manifest.get("phien_ban") if km else None,
                 "phien_ban_moi": m.get("phien_ban"),
                 # Tóm tắt manifest trên git: trang Module xếp ô «Chưa cài» vào khu theo `loai` và hiện «Cần gì để chạy».
-                **{k: m.get(k) for k in ("mo_ta", "loai", "loai_ten", "loai_thu_tu", "cung_cap", "tai_nguyen",
+                **{k: m.get(k) for k in ("mo_ta", "loai", "loai_ten", "loai_thu_tu", "nhom", "cung_cap", "tai_nguyen",
                                          "yeu_cau_goi", "dung_luong")},
                 "commit": {k: commit.get(k) for k in ("sha", "tac_gia", "thong_diep")},
                 "ly_do": ly_do,

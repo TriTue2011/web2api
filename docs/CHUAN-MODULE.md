@@ -282,6 +282,24 @@ Trường `hang` là **bắt buộc** trong `manifest.json`, chỉ nhận giá t
 
 > **Lưu ý nguyên tắc bảo mật**: `hang` là lời khai của tác giả; máy chủ có quyền coi module bên thứ ba là B bất kể lời khai.
 
+### Trường tuỳ chọn `nhom` (gom nhóm nhà cung cấp trên giao diện)
+
+Module có thể khai báo thêm trường tuỳ chọn `nhom` dưới dạng object `{"id": "...", "ten": "..."}`:
+- `id`: Định danh nhóm, bắt buộc khớp biểu thức chính quy `^[a-z0-9-]{1,32}$`.
+- `ten`: Tên hiển thị của nhóm (ví dụ: `"Google"`, `"OpenAI"`, `"Anthropic"`), độ dài tối đa 40 ký tự.
+
+Trường `nhom` dùng để gom các module thuộc cùng một hệ sinh thái/nhà cung cấp trên giao diện người dùng (ví dụ: tab Hệ thống → AI → Tài khoản gom theo nhóm). Khi module không khai báo trường này hoặc khai báo sai khuôn (không phải object, thiếu khoá, id/ten không đúng quy cách), lõi sẽ bỏ qua trường `nhom`, ghi một cảnh báo `log.warning` (chỉ chứa id module và lý do ngắn), module vẫn nạp bình thường và tự động xếp vào nhóm mặc định là `"Khác"` (`id: "khac"`, `ten: "Khác"`).
+
+Khai báo nhóm của các module mẫu trong kho:
+- `gemini-api`, `gemini-web`, `antigravity`, `ho-so-google`: `{"id": "google", "ten": "Google"}`
+- `chatgpt-web`: `{"id": "chatgpt", "ten": "ChatGPT"}`
+- `grok-web`, `grok-api`: `{"id": "grok", "ten": "Grok"}`
+- `claude-web`: `{"id": "claude", "ten": "Claude"}`
+- `muse`, `muse2api`: `{"id": "muse", "ten": "Muse"}`
+- `vnc-xa`: không khai báo (xếp vào nhóm «Khác»).
+
+> **Lưu ý kiến trúc**: Không bao giờ coi `nhom` là định danh duy nhất của module hay của nhà cung cấp ngoài đời. Nhiều module có thể dùng chung một `nhom` (ví dụ một module cổng API/provider và một module hồ sơ/đăng nhập trình duyệt của cùng một hãng); một module không khai báo thì thuộc nhóm Khác.
+
 ---
 
 *Xem thêm: [Chuẩn Bảo Mật cho Module](CHUAN-BAO-MAT-MODULE.md) (luật bảo mật: hạng module, khai báo manifest, dịch vụ lõi dùng chung, test bắt buộc).*

@@ -191,6 +191,21 @@ def lay(id_: Any) -> dict[str, Any] | None:
     return None
 
 
+def tim_theo_email(email: Any) -> dict[str, Any] | None:
+    """Tìm danh tính theo email (chỉ đọc); không thấy hoặc email sai khuôn -> None."""
+    try:
+        email_chuan = chuan_hoa_email(email)
+    except LoiOpenAI:
+        return None
+    # Khớp theo CHÍNH khoá `tao()` dùng để chống trùng (trường email đã chuẩn hoá), không theo id sinh lại từ email:
+    # id chỉ là nhãn, bản ghi cũ hay nhập tay có thể mang id khác — tra theo id sẽ bỏ sót rồi `tao()` báo trùng.
+    with _KHOA_LUONG:
+        for d in _doc():
+            if d.get("email") == email_chuan:
+                return ban_ghi_cong_khai(d)
+    return None
+
+
 def gan(id_: str, module_id: str) -> dict[str, Any]:
     """Gắn danh tính vào một provider (module). Lũy đẳng: gắn lại module đã gắn thì không trùng.
     module_id đã kiểm khuôn trước khi gọi (route còn kiểm module đã cài)."""

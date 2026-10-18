@@ -7,6 +7,7 @@
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 20,
+  "nhom": {"id": "muse", "ten": "Muse"},
   "giao_thuc": "noise",
   "tien_to": "muse",
   "yeu_cau_goi": ["cryptography"],
@@ -53,5 +54,9 @@
       "*.metaaivm.com"
     ],
     "ghi_chu": "Thử nghiệm — chưa kiểm với dịch vụ thật. Cần khoá thiết bị và delegation token được cấp sau khi đăng ký OTP."
+  },
+  "nhom": {
+    "id": "muse",
+    "ten": "Muse"
   }
 }

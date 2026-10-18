@@ -34,7 +34,13 @@ def loi_that(tmp_path, monkeypatch):
     for id_, ma in ((MODULE_ID, MA_PROVIDER), (ID_KHONG, MA_KHONG_DANG_NHAP)):
         thu_muc = data / "modules" / id_
         thu_muc.mkdir(parents=True)
-        man = dict(MANIFEST_PROVIDER, id=id_, ten="Provider " + id_, tien_to=id_.replace("-", ""))
+        man = dict(
+            MANIFEST_PROVIDER,
+            id=id_,
+            ten="Provider " + id_,
+            tien_to=id_.replace("-", ""),
+            nhom={"id": f"nhom-{id_}", "ten": f"Nhóm {id_}"},
+        )
         (thu_muc / "manifest.json").write_text(json.dumps(man, ensure_ascii=False), encoding="utf-8")
         (thu_muc / "module.py").write_text(ma.replace("MAT_KHAU_GIA", MAT_KHAU_GIA), encoding="utf-8")
         (thu_muc / "web").mkdir()
@@ -62,18 +68,21 @@ def test_vong_tu_dang_nhap_tren_giao_dien(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-AI.dc.html")
-        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm API")
+        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
         trang.bam("document.getElementById('nut-them')")
-        # module KHÔNG có dang_nhap: không có chế độ Gmail
-        trang.cho(f"document.querySelector('[data-chon-module=\"{ID_KHONG}\"]')", mo_ta="chip provider")
-        trang.bam(f"document.querySelector('[data-chon-module=\"{ID_KHONG}\"]')")
-        assert trang.js("document.querySelector('[data-che-do=\"gmail\"]')") is None
-        # module CÓ dang_nhap: có chế độ Gmail
+
+        # 1. Module KHÔNG có dang_nhap (và không có trường dán khoá): chẳng có gì để thêm → nhóm của nó không hiện,
+        #    cũng không có chip module hay khung tự động cho nó.
+        trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chip provider")
+        assert trang.js(f"document.querySelector('[data-nhom-them=\"nhom-{ID_KHONG}\"]')") is None, "nhóm không có gì để thêm phải ẩn"
+        assert trang.js(f"document.querySelector('[data-chon-module=\"{ID_KHONG}\"]')") is None
+
+        # 2. Module CÓ dang_nhap: chỉ còn một nhóm và một loại («Tài khoản») → tự chọn cả hai, không có chip nhóm/loại.
+        assert trang.js("document.querySelector('[data-nhom-them]')") is None, "một nhóm duy nhất thì tự chọn"
+        assert trang.js("document.querySelector('[data-loai-them]')") is None, "một loại duy nhất thì tự chọn"
         trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-        trang.cho("document.querySelector('[data-che-do=\"gmail\"]')", mo_ta="chế độ Tự đăng nhập bằng Gmail")
-        trang.bam("document.querySelector('[data-che-do=\"gmail\"]')")
         trang.cho("document.getElementById('o-tu-dong')", mo_ta="ô dán danh sách")
-        assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") == "none", "nút Thêm API ẩn ở chế độ Gmail"
+        assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") == "none", "nút lưu API ẩn ở loại Tài khoản"
 
         # dán 3 dòng + 1 dòng lỗi + 1 dòng trùng
         trang.go("#o-tu-dong", f"a@x.com|{MAT_KHAU_GIA}\nb@x.com|mat-khau-sai-123\nc@x.com|{COOKIE_GIA}\nkhong-phai-email|x\nA@x.com|{MAT_KHAU_GIA}")

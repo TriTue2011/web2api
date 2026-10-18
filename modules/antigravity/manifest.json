@@ -7,6 +7,7 @@
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 20,
+  "nhom": {"id": "google", "ten": "Google"},
   "giao_thuc": "openai",
   "tien_to": "antigravity",
   "yeu_cau_goi": ["httpx"],

@@ -30,7 +30,7 @@ import math
 #: (đọc được localStorage khoá quản trị) nên là quyền, chỉ tăng mới cần duyệt.
 _TRUONG_KHONG_QUYEN = frozenset({
     "id", "ten", "mo_ta", "loai", "giao_thuc", "tien_to",
-    "loai_ten", "loai_thu_tu", "muc",
+    "loai_ten", "loai_thu_tu", "nhom", "muc",
     "truong_cau_hinh", "tai_nguyen", "phien_ban",
     "yeu_cau_goi", "cung_cap", "can_module",
 })
