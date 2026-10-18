@@ -43,6 +43,11 @@ TOI_DA_IP_MAC_DINH = 10000
 #: Số khoá sai RIÊNG BIỆT trong cửa sổ thì khoá IP (chống dò khoá — NV47).
 TOI_DA_KHOA_SAI_RIENG_BIET_MAC_DINH = 10
 
+#: Khoá đã xác thực THÀNH CÔNG từ một IP được «tin cậy» chừng này giây: khi IP đó bị khoá vì kẻ khác dò nhiều khoá khác nhau, khoá tin cậy vẫn qua
+#: (kẻ dò khoá không có băm trong tập này nên vẫn bị chặn; không tạo «oracle» cho kẻ đoán vì chỉ băm đã từng đúng mới qua). Tối đa TOI_DA_TIN_CAY mục.
+TIN_CAY_GIAY = 3600.0
+TOI_DA_TIN_CAY = 1000
+
 
 def _bam_khoa_thu(authorization: str | None) -> str:
     """Băm SHA-256 (cắt 32 ký tự hex) của khoá thử trong header Authorization.
@@ -79,6 +84,8 @@ class GioiHanSaiKhoa:
         # ip -> {"loi": {bam_khoa: deque[mốc giây]}, "khoa_den": giây | None,
         #        "khoa_cap": {bam_khoa: giây}}; OrderedDict để bỏ cũ nhất.
         self._ip: OrderedDict[str, dict] = OrderedDict()
+        # (ip, băm khoá) → thời điểm hết tin cậy. Chỉ ghi sau xác thực thành công; gỡ khi khoá đó sai lại (đã bị thu hồi/đổi).
+        self._khoa_da_xac_thuc: OrderedDict[tuple[str, str], float] = OrderedDict()
 
     @property
     def bat(self) -> bool:
@@ -165,6 +172,8 @@ class GioiHanSaiKhoa:
             if not ban_ghi:
                 return
             bay_gio = self._dong_ho()
+            if bam_khoa and self._la_tin_cay(ip, bam_khoa, bay_gio):
+                return  # khoá đã từng xác thực đúng từ IP này: không bị khoá lây bởi khoá sai của kẻ khác
             con_lai = 0.0
             if ban_ghi["khoa_den"]:
                 if ban_ghi["khoa_den"] > bay_gio:
@@ -188,6 +197,27 @@ class GioiHanSaiKhoa:
                 code="rate_limit_exceeded",
                 headers={"Retry-After": str(max(1, math.ceil(con_lai)))},
             )
+
+    def _la_tin_cay(self, ip: str, bam_khoa: str, bay_gio: float) -> bool:
+        """Gọi trong khoá luồng. Hết hạn thì gỡ."""
+        han = self._khoa_da_xac_thuc.get((ip, bam_khoa))
+        if han is None:
+            return False
+        if han > bay_gio:
+            return True
+        del self._khoa_da_xac_thuc[(ip, bam_khoa)]
+        return False
+
+    def ghi_thanh_cong(self, ip: str, bam_khoa: str) -> None:
+        """Ghi nhận khoá (băm) xác thực ĐÚNG từ IP này. Không ghi khoá rỗng (không có Bearer)."""
+        if not self.bat or not bam_khoa:
+            return
+        with self._khoa_luong:
+            khoa = (ip, bam_khoa)
+            self._khoa_da_xac_thuc[khoa] = self._dong_ho() + TIN_CAY_GIAY
+            self._khoa_da_xac_thuc.move_to_end(khoa)
+            while len(self._khoa_da_xac_thuc) > TOI_DA_TIN_CAY:
+                self._khoa_da_xac_thuc.popitem(last=False)
 
     def liet_ke_khoa(self) -> list[dict]:
         """IP/cặp đang bị khoá (còn hạn) kèm số giây còn lại — cho quản trị xem."""
@@ -225,6 +255,7 @@ class GioiHanSaiKhoa:
             return
         bay_gio = self._dong_ho()
         with self._khoa_luong:
+            self._khoa_da_xac_thuc.pop((ip, bam_khoa), None)  # khoá này vừa SAI: không còn được tin cậy (đã thu hồi/đổi)
             ban_ghi = self._ban_ghi(ip)
             self._don_moc_cu(ban_ghi, bay_gio)
             if ban_ghi["khoa_den"] and ban_ghi["khoa_den"] > bay_gio:
@@ -336,6 +367,17 @@ def kiem_tra_truoc_xac_thuc(request) -> None:
     if ip is None:
         return
     bo.kiem_tra(ip, bam)
+
+
+def ghi_thanh_cong_xac_thuc(request) -> None:
+    """Gọi khi `nguoi_goi` xác thực ĐÚNG bằng Bearer: khoá này được tin cậy từ IP này (xem TIN_CAY_GIAY)."""
+    bo = _bo()
+    if not bo.bat:
+        return
+    ip, bam = _lay_ip_va_bam(request)
+    if ip is None:
+        return
+    bo.ghi_thanh_cong(ip, bam)
 
 
 def ghi_loi_xac_thuc(request) -> None:

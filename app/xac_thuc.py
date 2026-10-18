@@ -124,6 +124,7 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
             request.state.nguoi_goi = "quan_tri"
             danh_tinh = {"loai": "quan_tri", "id": "quan_tri", "pham_vi": ["*"]}
             request.state.danh_tinh = danh_tinh
+            gioi_han.ghi_thanh_cong_xac_thuc(request)  # khoá đúng: không bị khoá lây khi kẻ khác dò khoá cùng IP
             from app import ngu_canh
             ngu_canh.dat(danh_tinh, nguon="nguoi", pham_vi_hieu_luc=("*",))
             return danh_tinh
@@ -150,6 +151,7 @@ async def nguoi_goi(request: Request) -> dict[str, Any]:
 
             id_khach = str(khach.get("id"))
             khoa_khach.ghi_nhan_su_dung(id_khach)
+            gioi_han.ghi_thanh_cong_xac_thuc(request)
 
             pham_vi_goc = list(khach.get("pham_vi", ["*"]))
             pham_vi_hieu_luc = pham_vi_goc
