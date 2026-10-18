@@ -69,6 +69,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
 | `zalo-bot` — kênh gửi ra Zalo Bot (chuẩn `kenh_ra`): mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định», tránh gửi nhầm mà API vẫn ok), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô | Có — kiểm với máy chủ Zalo giả (NV114); **chưa kiểm với Zalo thật** | 18/10/2026 |
+| Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2164,6 +2165,33 @@ Tiền tố model: không có (module tiện ích, không trò chuyện).
    `{"cau_hinh": {"bot_token": ["<TOKEN1>", "<TOKEN2>"], "ten_bot": "bot-nha, bot-cong-ty",
    "danh_sach_dich": "[{\"id\": \"nha\", \"ten\": \"Nhà\", \"chat_id\": \"...\", \"bot\": \"bot-nha\"}]"}}`.
 
+### Module mikrotik-routeros — Nguồn máy mạng từ router MikroTik (chỉ đọc)
+
+**Mô tả.** Nguồn máy mạng cho sổ thiết bị: đọc bảng DHCP lease
+(`/ip/dhcp-server/lease/print`) và bảng host (`/interface/bridge/host/print`) của
+router MikroTik qua RouterOS API (giao thức câu-từ nhị phân, TLS cổng `8729` mặc
+định), gộp theo địa chỉ MAC thành thực thể chuẩn thiết bị C1 (`loai="may_mang"`,
+`thuoc_tinh.mac` — lõi dùng để nhận diện máy mạng). Mã nguồn:
+`modules/mikrotik-routeros/` (chỉ thư viện chuẩn: `socket` + `ssl`, giao thức tự
+viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực thể:
+`mikrotikrouteros`.
+
+**Cần gì.**
+- Router MikroTik trong LAN bật dịch vụ `api-ssl` (cổng `8729` mặc định), hoặc
+  `api` (cổng `8728`) nếu bật cờ `cho_phep_khong_ma_hoa` (không khuyến nghị).
+- Tài khoản RouterOS — khuyến nghị tạo tài khoản chỉ có quyền đọc (nhóm `read`)
+  trong `/user`, vì module chỉ gọi các lệnh `.../print`.
+- Mạng ra tới địa chỉ RouterOS API của router (khớp `tai_nguyen.mang_ra`).
+- RAM/đĩa: chưa đo (chỉ socket ngắn hạn mỗi lần đọc).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "mikrotik-routeros"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/mikrotik-routeros`
+3. Cài cấu hình: `POST /api/modules/mikrotik-routeros/cai` với thân
+   `{"cau_hinh": {"dia_chi": "192.168.88.1", "tai_khoan": "doc", "mat_khau": "<mat-khau>",
+   "van_tay_tls": "<sha256-hex>"}}` — lõi kiểm nối + đăng nhập thật trước khi lưu.
+
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
@@ -2171,6 +2199,12 @@ Tiền tố model: không có (module tiện ích, không trò chuyện).
 | `bot_token` | Có | Token từng bot Zalo (mỗi dòng một token). Thứ tự trong danh sách xác định bot; đặt tên ở «Tên bot». Lưu riêng, không API nào trả lại. |
 | `ten_bot` | Không | Tên các bot, cùng thứ tự với «Token các bot Zalo», ngăn cách bằng dấu phẩy hoặc xuống dòng. Thiếu tên thì tự đặt `bot-1`, `bot-2`… |
 | `danh_sach_dich` | Không | Chuỗi JSON `[{"id", "ten", "chat_id", "bot"}]`; mỗi đích BẮT BUỘC nêu bot (tên hoặc số thứ tự 0-based). |
+| `dia_chi` | Có | Địa chỉ LAN của router, dạng `host[:cổng]` (mặc định `8729`). Kiểm đúng luật `app/tu_xa.py`: chặn loopback, link-local, địa chỉ không định tuyến; tên miền được ghim IP đã kiểm. |
+| `tai_khoan` | Có | Tài khoản RouterOS (nên chỉ quyền `read`). |
+| `mat_khau` | Có | Mật khẩu; lưu riêng trong kho bí mật, không trả lại qua API. |
+| `kiem_chung_chi_tls` | Không | Mặc định `true`. Router dùng chứng chỉ tự ký thì ghim vân tay ở `van_tay_tls` thay vì tắt. |
+| `van_tay_tls` | Không | Vân tay SHA-256 của chứng chỉ api-ssl — kiểm trước khi gửi mật khẩu. |
+| `cho_phep_khong_ma_hoa` | Không | Mặc định `false`. `true` cho phép nối trần (cổng `8728`) — mật khẩu đi dạng thô, chỉ dùng trong LAN tin cậy. |
 
 **Ví dụ dùng.**
 
@@ -2184,6 +2218,20 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 về WARNING trong lúc gọi); không log URL/token/chat_id; `kenh_ra()` chỉ trả
 `[{id, ten}]`. Lỗi trả mã ngắn (`chat_sai`, `yeu_cau_sai`, `het_han_muc`…), không
 lộ `description` thô của Zalo.
+
+# Liệt kê máy mạng đã gộp theo MAC
+curl -s -H "Authorization: Bearer $K" $W/api/thiet-bi | \
+  python3 -c "import json,sys; [print(e['id'], e['ten'], e['thuoc_tinh']['mac'], e['thuoc_tinh'].get('ip')) for e in json.load(sys.stdin) if e['id'].startswith('mikrotikrouteros.')]"
+```
+
+**Sự cố thường gặp.**
+- `LoiChungChi` khi cài — chứng chỉ router khác vân tay đã ghim (router đổi chứng chỉ tự ký): lấy vân tay mới và cấu hình lại `van_tay_tls`.
+- Địa chỉ bị chặn (`dia_chi trỏ vào … — bị chặn`) — router ở loopback/link-local hoặc tên miền phân giải ra địa chỉ bị chặn: dùng IP LAN thật.
+- Hết giờ đọc — router không phản hồi api-ssl: kiểm dịch vụ đã bật và tường lửa.
+
+**Giới hạn.**
+- CHỈ ĐỌC: `thuc_hien` luôn từ chối; muốn điều khiển router thì dùng module khác.
+- Chưa kiểm với router MikroTik thật (chỉ kiểm với máy chủ RouterOS giả dựng bằng thư viện chuẩn trong test).
 
 ---
 
