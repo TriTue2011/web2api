@@ -50,6 +50,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); tái dùng hồ sơ Google NV93 (Cloudflare → nhận bằng cấu trúc → `can_nguoi`, không tự tích/giải); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
 | Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
 | Module `ho-so-google` + API hồ sơ Google (`GET`/`POST /api/danh-tinh`, `GET …/{id}/trang-thai`, `POST …/{id}/ma-2fa`, `DELETE …/{id}`) và tái dùng provider (`POST /api/tai-khoan/tai-dung`): một hồ sơ = một tài khoản Google đã đăng nhập sống; provider «Đăng nhập bằng Google» trong hồ sơ; CAPTCHA/xác minh → «cần người» + noVNC | Có — kiểm với dịch vụ trình duyệt giả + trình duyệt giả (NV92); **chưa kiểm với Google/dịch vụ thật** | 17/10/2026 |
+| Module `telegram-bot` (Telegram, kênh gửi ra văn bản qua Bot API) | Có — chuẩn `kenh_ra` (`POST /api/gui/telegram-bot`): một bot token, nhiều đích do chủ máy khai (đích → chat, không «bot mặc định»); tin dài tách ở ranh giới dòng (tối đa 5 tin); token chặn rò qua log (logger httpx/httpcore nâng lên WARNING, không `str()` ngoại lệ); `kenh_ra()` không token/chat_id thô; kiểm với máy chủ Telegram giả; **chưa kiểm với api.telegram.org thật** | 18/10/2026 |
 | Dịch vụ trình duyệt: các đường điều khiển có khoá (`/ho-so/{id}/dieu-khien/gianh|nha`, `/dieu-huong`, `/dien`, `/bam`, `/cho`, `/tin-hieu`, `/cookie-truc-tiep`, `/chup-trang-thai`) qua máy khách Marionette thư viện chuẩn (`dich-vu/trinh-duyet/marionette.py`); cổng Marionette chỉ loopback trong container; `TrinhDuyetThat` trong module `vnc-xa`; cầu nối lõi `app/khoi_phuc_phien.lay_trinh_duyet_that` | Có — kiểm với máy chủ giả (NV92); **chưa kiểm với Firefox thật** | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
@@ -2155,6 +2156,20 @@ Tiền tố model: không có (module tiện ích, không trò chuyện).
   BotFather của Zalo; bot phải đã có người nhận (chưa ai nhắn cho bot → Zalo trả
   lỗi → thất bại, kèm mã ngắn).
 - Mạng ra tới `bot-api.zaloplatforms.com` (khớp `tai_nguyen.mang_ra` trong manifest).
+
+### Module telegram-bot — Telegram (kênh gửi ra)
+
+**Mô tả.** Kênh gửi ra văn bản qua Bot API công khai của Telegram (`POST
+https://api.telegram.org/bot<TOKEN>/sendMessage`), theo chuẩn `kenh_ra`
+(docs/CHUAN-MODULE.md mục 8): sổ thiết bị (NV107) và mọi chỗ khác gửi qua
+`POST /api/gui/telegram-bot`. Chỉ GỬI RA — không nhận tin vào, không webhook,
+không bot trả lời. Mã nguồn: `modules/telegram-bot/`. Tiền tố model: `telegram`
+(module tiện ích, không trò chuyện). Hạng: `A` (mã của dự án).
+
+**Cần gì.**
+- Token bot lấy từ @BotFather (trường `bot_token`, lưu riêng dạng bí mật).
+- Mạng ra tới `api.telegram.org` (địa chỉ gọi cố định trong mã — không cho cấu hình
+  URL tuỳ ý, chống SSRF).
 - RAM/đĩa: chưa đo.
 
 **Cách cài.**
@@ -2192,6 +2207,12 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
    `{"cau_hinh": {"dia_chi": "192.168.88.1", "tai_khoan": "doc", "mat_khau": "<mat-khau>",
    "van_tay_tls": "<sha256-hex>"}}` — lõi kiểm nối + đăng nhập thật trước khi lưu.
 
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "telegram-bot"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/telegram-bot`
+3. Cài + kiểm token: `POST /api/modules/telegram-bot/cai` với thân
+   `{"cau_hinh": {"bot_token": "<token>", "dich": "[{\"id\": \"nha\", \"ten\": \"Nhà\", \"chat_id\": 123456789}]"}}`
+   (module kiểm token bằng `GET /getMe` và thẩm định cấu trúc danh sách đích).
+
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
@@ -2205,6 +2226,8 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 | `kiem_chung_chi_tls` | Không | Mặc định `true`. Router dùng chứng chỉ tự ký thì ghim vân tay ở `van_tay_tls` thay vì tắt. |
 | `van_tay_tls` | Không | Vân tay SHA-256 của chứng chỉ api-ssl — kiểm trước khi gửi mật khẩu. |
 | `cho_phep_khong_ma_hoa` | Không | Mặc định `false`. `true` cho phép nối trần (cổng `8728`) — mật khẩu đi dạng thô, chỉ dùng trong LAN tin cậy. |
+| `bot_token` | Có | Token bot từ @BotFather. Lưu riêng dạng bí mật, không trả lại; trong lúc gọi, logger `httpx`/`httpcore` bị nâng lên WARNING vì token nằm trong URL. |
+| `dich` | Không | Danh sách đích dạng JSON: `[{"id", "ten", "chat_id", "chu_de"?}]`. `id` do chủ máy đặt, duy nhất; `chat_id` là id chat Telegram; `chu_de` là id chủ đề (topic) trong nhóm, tuỳ chọn. Đích nào gửi tới chat nào do đích đã khai quyết định — không có «bot mặc định». |
 
 **Ví dụ dùng.**
 
@@ -2232,6 +2255,26 @@ curl -s -H "Authorization: Bearer $K" $W/api/thiet-bi | \
 **Giới hạn.**
 - CHỈ ĐỌC: `thuc_hien` luôn từ chối; muốn điều khiển router thì dùng module khác.
 - Chưa kiểm với router MikroTik thật (chỉ kiểm với máy chủ RouterOS giả dựng bằng thư viện chuẩn trong test).
+
+# Gửi tới đích "nha" (khoá cần phạm vi gui:telegram_bot)
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"kenh_id": "nha", "noi_dung": {"van_ban": "Máy lạ vừa vào mạng nhà"}}' \
+  $W/api/gui/telegram-bot
+# → {"ok": true, "kenh": "nha"}
+```
+
+**Sự cố thường gặp.**
+- `503 chua_co_kenh` — module chưa khai đích nào → bổ sung trường `dich`.
+- `400 kenh_required` — module có nhiều đích mà không nêu `kenh_id` → nêu rõ đích.
+- Gửi thất bại (`ma`: `telegram_loi`, `mang_loi`, `bi_gioi_han`…) — `description`
+  thô của Telegram không bao giờ lộ ra kết quả/log/phản hồi; xem nhật ký kênh
+  `gui_ra` (chỉ module, `kenh_id` băm, mã kết quả, độ dài).
+
+**Giới hạn.**
+- Tin dài quá 4096 ký tự tự tách ở ranh giới dòng (tối đa 5 tin, phần dư cắt kèm
+  «…»); không gửi `parse_mode` (văn bản thuần).
+- Lỗi mạng thử lại tối đa 1 lần; 429 (`retry_after`) báo thất bại, không ngủ dài.
+- **Chưa kiểm với api.telegram.org thật** (kiểm với máy chủ Telegram giả cục bộ).
 
 ---
 

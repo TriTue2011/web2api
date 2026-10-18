@@ -174,6 +174,7 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 | `ho-so-google` | Đăng nhập Google một lần trong hồ sơ trình duyệt bền, tái dùng cho mọi provider | Điều khiển trình duyệt (Marionette) | Có sẵn (gặp CAPTCHA/xác minh → «cần người» + noVNC, không tự giải; chưa kiểm với Google thật) |
 | `zalo-bot` | Gửi tin nhắn văn bản ra Zalo qua Bot API (mỗi đích khai rõ bot; không «bot mặc định») | HTTPS (bot-api.zaloplatforms.com) | Có sẵn (kiểm với máy chủ Zalo giả; chưa kiểm với Zalo thật) |
 | `mikrotik-routeros` | Nguồn máy mạng từ router MikroTik (CHỈ ĐỌC) | RouterOS API nhị phân qua TLS | Có sẵn (đọc DHCP lease + bảng host, gộp theo MAC thành thực thể C1; lệnh ghi bị chặn theo cấu trúc ở client; chưa kiểm với router thật) |
+| `telegram-bot` | Gửi thông báo văn bản ra Telegram (chuẩn `kenh_ra`, `POST /api/gui/telegram-bot`) | HTTPS (Bot API api.telegram.org) | Có sẵn (nhiều đích do chủ máy khai, tin dài tự tách, token chặn rò qua log; chưa kiểm với api.telegram.org thật) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.
