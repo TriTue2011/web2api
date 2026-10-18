@@ -26,6 +26,12 @@ KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
 TRAN_HIEN_TAI = 0
 
+#: Mảnh tên module là từ thông dụng của giao thức, KHÔNG phải tên nhà cung cấp —
+#: không tính khi quét app//web/. «assistant» là vai tin nhắn của chuẩn OpenAI, đã có
+#: trong app/tuyen.py và web/Studio.dc.html từ trước NV118 (module home-assistant mới
+#: sinh ra mảnh này khi test tách id theo dấu «-»). Tên đầy đủ «home-assistant» vẫn bị quét.
+MANH_TU_THONG_DUNG = {"assistant"}
+
 
 @pytest.fixture
 def du_lieu(tmp_path, monkeypatch):
@@ -44,7 +50,7 @@ def _danh_sach_nha_cung_cap() -> list[str]:
             if (thu_muc_modules / d).is_dir():
                 danh_sach.add(d.lower())
                 for p in d.lower().split("-"):
-                    if len(p) >= 4 and p not in {"api", "apis"}:
+                    if len(p) >= 4 and p not in {"api", "apis"} and p not in MANH_TU_THONG_DUNG:
                         danh_sach.add(p)
     danh_sach |= {"gemini", "google", "openai-chat", "muse", "meta"}
     return sorted(danh_sach)
