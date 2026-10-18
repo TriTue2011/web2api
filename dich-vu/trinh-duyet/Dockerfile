@@ -52,8 +52,8 @@ COPY chinh-sach/firefox-policies.json /usr/lib/firefox-esr/distribution/policies
 RUN chmod 0644 /etc/chromium/policies/managed/w2a-chan-file.json /usr/lib/firefox-esr/distribution/policies.json
 
 # Sao chép mã nguồn dịch vụ (root:root) — xac_thuc_ws.py là plugin xác thực websockify nạp qua PYTHONPATH=/app
-COPY server.py xac_thuc_ws.py /app/
-RUN chmod 0644 /app/server.py /app/xac_thuc_ws.py
+COPY server.py xac_thuc_ws.py marionette.py /app/
+RUN chmod 0644 /app/server.py /app/xac_thuc_ws.py /app/marionette.py
 
 # Đổi quyền sang người dùng không phải root
 USER 1000:1000

@@ -4,16 +4,13 @@ Lỗi thật (18/10/2026): server.py nhập `marionette` (NV92) nhưng Dockerfil
 chết ngay lúc khởi động: «ModuleNotFoundError: No module named 'marionette'». Test trong thư mục chạy được vì mọi tệp nằm cạnh nhau;
 chỉ dựng ảnh thật mới lộ.
 
-Dockerfile là tệp phải hỏi chủ kho trước khi sửa, nên test này đánh dấu xfail(strict=True) cho tới khi dòng COPY được sửa
-(thêm `marionette.py` vào cả lệnh COPY và lệnh chmod). Sửa xong thì GỠ dấu xfail.
+Chủ kho đã duyệt sửa Dockerfile (18/10/2026): COPY và chmod đã có `marionette.py`; test này giờ chạy thường (không còn xfail).
 """
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
-
-import pytest
 
 GOC = Path(__file__).resolve().parent
 
@@ -34,7 +31,6 @@ def test_server_nhap_it_nhat_mot_mo_dun_cuc_bo():
     assert "marionette" in _mo_dun_cuc_bo_duoc_nhap()
 
 
-@pytest.mark.xfail(strict=True, reason="Dockerfile thiếu COPY marionette.py — chờ chủ kho duyệt sửa Dockerfile (tệp phải hỏi)")
 def test_dockerfile_copy_du_mo_dun_cuc_bo():
     dockerfile = (GOC / "Dockerfile").read_text(encoding="utf-8")
     dong_copy = " ".join(l for l in dockerfile.splitlines() if l.strip().startswith("COPY "))
