@@ -40,3 +40,39 @@ def chan_mang_that(monkeypatch):
               "WEB2API_ADMIN_KEY", "WEB2API_TEST_CHO_PHEP_LOOPBACK", "WEB2API_MAY_RAM_MB", "WEB2API_MAY_CPU",
               "TZ"):  # TZ của máy chạy test không được đổi kết quả: test cần múi giờ thì tự đặt
         monkeypatch.delenv(k, raising=False)
+
+
+def cai_git_hai_luot(client, id_: str, headers: dict | None = None, duong_dan: str | None = None):
+    """Cài module từ git qua API theo luồng xác nhận hai lượt NV61:
+    Lượt 1: POST /api/nguon-git/cai/{id_} → 409 can_xac_nhan_cai_moi + ma_xac_nhan.
+    Lượt 2: POST kèm {"xac_nhan": True, "ma_xac_nhan": ma} → 200.
+    Nếu lượt 1 trả 200 (module đã cài, là cập nhật), trả về luôn kết quả lượt 1.
+    """
+    url = duong_dan or f"/api/nguon-git/cai/{id_}"
+    r1 = client.post(url, headers=headers)
+    if r1.status_code == 200:
+        return r1
+    assert r1.status_code == 409, f"Lượt 1 cài git thất bại ({r1.status_code}): {r1.text}"
+    dl = r1.json()
+    ma = dl.get("ma_xac_nhan")
+    assert ma, f"Lượt 1 không trả về ma_xac_nhan: {r1.text}"
+    return client.post(url, json={"xac_nhan": True, "ma_xac_nhan": ma}, headers=headers)
+
+
+async def cai_ng_hai_luot(ng, id_: str, nid: str | None = None, **kwargs):
+    """Cài module từ NguonGit theo luồng xác nhận hai lượt NV61:
+    Lượt 1: nếu ném LoiCanXacNhanCaiMoi thì lấy ma_xac_nhan.
+    Lượt 2: gọi lại kèm xac_nhan=True, ma_xac_nhan=ma.
+    Nếu là cập nhật (không ném LoiCanXacNhanCaiMoi), trả kết quả bình thường.
+    """
+    from app.nguon_git import LoiCanXacNhanCaiMoi
+    try:
+        if nid is not None:
+            return await ng.cai_tu_nguon(nid, id_, **kwargs)
+        return await ng.cai(id_, **kwargs)
+    except LoiCanXacNhanCaiMoi as e:
+        if nid is not None:
+            return await ng.cai_tu_nguon(nid, id_, xac_nhan=True, ma_xac_nhan=e.ma_xac_nhan, **kwargs)
+        return await ng.cai(id_, xac_nhan=True, ma_xac_nhan=e.ma_xac_nhan, **kwargs)
+
+

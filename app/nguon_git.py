@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import io
 import json
 import logging
@@ -85,6 +86,41 @@ def bam_blob(du_lieu: bytes) -> str:
 #: Kỳ hạn quyền duyệt hạng B sau khi duyệt (ngày) — NV50 CG3. Hết hạn → bản mới
 #: lại phải qua cổng duyệt (mọi cập nhật A→B trên main đều đã phải duyệt).
 KY_HAN_DUYET_HANG_B_NGAY = 30
+
+#: Cấu hình kỳ hạn xác nhận cài module mới từ git (giây) — NV61.
+XAC_NHAN_CAI_GIAY_MAC_DINH = 300
+XAC_NHAN_CAI_GIAY_MIN = 30
+XAC_NHAN_CAI_GIAY_MAX = 3600
+TRAN_MA_XAC_NHAN = 100
+
+
+class LoiCanXacNhanCaiMoi(Exception):
+    def __init__(self, id_: str, repo: str, sha_commit: str, phien_ban: str | None,
+                 quyen: list, ma_xac_nhan: str):
+        super().__init__(f"Cài module mới {id_!r} cần xác nhận quản trị")
+        self.id_ = id_
+        self.repo = repo
+        self.sha_commit = sha_commit
+        self.phien_ban = phien_ban
+        self.quyen = quyen
+        self.ma_xac_nhan = ma_xac_nhan
+
+
+def _thoi_gian_xac_nhan_cai() -> int:
+    raw = os.environ.get("WEB2API_XAC_NHAN_CAI_GIAY")
+    if raw is None:
+        return XAC_NHAN_CAI_GIAY_MAC_DINH
+    try:
+        val = int(raw)
+        if val < XAC_NHAN_CAI_GIAY_MIN:
+            return XAC_NHAN_CAI_GIAY_MIN
+        if val > XAC_NHAN_CAI_GIAY_MAX:
+            return XAC_NHAN_CAI_GIAY_MAX
+        return val
+    except ValueError:
+        log.warning("WEB2API_XAC_NHAN_CAI_GIAY=%r không phải số nguyên hợp lệ, dùng mặc định %d",
+                    raw, XAC_NHAN_CAI_GIAY_MAC_DINH)
+        return XAC_NHAN_CAI_GIAY_MAC_DINH
 
 
 class LoiGit(Exception):
@@ -257,6 +293,8 @@ class NguonGit:
         self._cay_nguon: dict[str, dict] = {}
         self._ghi_chu: dict[tuple[str, str], tuple[str, str]] = {}  # NV59: khoá (nguon_id, module_id)
         self._tu_dong_hong: dict[tuple[str, str], str] = {}  # NV59: khoá (nguon_id, module_id)
+        #: NV61: kho mã xác nhận cài module mới trong bộ nhớ
+        self._ma_xac_nhan: list[dict] = []
         p_tt_nguon = kho.thu_muc_du_lieu() / TEP_TT_NGUON
         try:
             tt_n = kho.doc_json(p_tt_nguon)
@@ -269,6 +307,51 @@ class NguonGit:
                     self._tt_nguon[nid] = st
         if api_github() != API_MAC_DINH:
             log.warning("WEB2API_GITHUB_API=%s khác mặc định %s — chỉ dùng cho test", api_github(), API_MAC_DINH)
+
+    # ───────────── NV61: xác nhận cài module mới ─────────────
+
+    def _sinh_ma_xac_nhan(self, id_: str, sha_commit: str) -> str:
+        now = time.time()
+        self._ma_xac_nhan = [m for m in self._ma_xac_nhan if m["het_han"] > now]
+        while len(self._ma_xac_nhan) >= TRAN_MA_XAC_NHAN:
+            self._ma_xac_nhan.pop(0)
+
+        ma = secrets.token_urlsafe(32)
+        bam = hashlib.sha256(ma.encode("utf-8")).hexdigest()
+        het_han = now + _thoi_gian_xac_nhan_cai()
+        self._ma_xac_nhan.append({
+            "id": id_,
+            "sha_commit": sha_commit,
+            "bam_ma": bam,
+            "het_han": het_han,
+        })
+        return ma
+
+    def _kiem_tra_ma_xac_nhan(self, id_: str, sha_commit: str, ma_gui: str | None) -> None:
+        if not ma_gui or not isinstance(ma_gui, str):
+            raise LoiGit("thiếu mã xác nhận", 409)
+
+        bam_gui = hashlib.sha256(ma_gui.encode("utf-8")).hexdigest()
+        now = time.time()
+        muc_tim_thay = None
+        vi_tri = -1
+        for idx, muc in enumerate(self._ma_xac_nhan):
+            if hmac.compare_digest(muc["bam_ma"], bam_gui):
+                muc_tim_thay = muc
+                vi_tri = idx
+                break
+
+        if muc_tim_thay is None:
+            raise LoiGit("mã xác nhận không hợp lệ hoặc đã hết hạn", 409)
+
+        # Mã dùng một lần: xoá ngay
+        self._ma_xac_nhan.pop(vi_tri)
+
+        if now > muc_tim_thay["het_han"]:
+            raise LoiGit("mã xác nhận đã hết hạn", 409)
+
+        if muc_tim_thay["id"] != id_ or muc_tim_thay["sha_commit"] != sha_commit:
+            raise LoiGit("mã xác nhận không khớp commit hoặc module cần cài", 409)
 
     # ───────────── cấu hình ─────────────
 
@@ -451,11 +534,14 @@ class NguonGit:
             "loi": tt.get("loi"),
         }
 
-    async def cai_tu_nguon(self, nid: str, id_: str) -> dict:
+    async def cai_tu_nguon(self, nid: str, id_: str,
+                          xac_nhan: bool = False,
+                          ma_xac_nhan: str | None = None) -> dict:
         """Cài module từ ĐÚNG một nguồn (kiểm 409 trùng nguồn khác trong _cai_tu)."""
         async with self._khoa:
             nguon = self._lay_nguon(nid)
-            return await self._cai_tu(nguon, self._tt(nid), id_)
+            return await self._cai_tu(nguon, self._tt(nid), id_,
+                                      xac_nhan=xac_nhan, ma_xac_nhan=ma_xac_nhan)
 
     def cong_khai(self) -> dict:
         cfg = self.cau_hinh()
@@ -717,7 +803,7 @@ class NguonGit:
             truoc = cu_theo_id.get(ten)
             # Thư mục không đổi → khỏi tải lại manifest (tiết kiệm hạn mức). Bản tóm tắt do lõi CŨ ghi (chưa có
             # `loai`) thì đọc lại một lần: thiếu `loai` thì trang Module không xếp được ô «Chưa cài» vào khu nào.
-            if truoc and truoc.get("tree_sha") == sha_tm and (truoc.get("loi") or "loai" in truoc):
+            if truoc and truoc.get("tree_sha") == sha_tm and (truoc.get("loi") or ("loai" in truoc and "quyen" in truoc)):
                 ra.append({**truoc, "dung_luong": dung_luong.get(ten, 0)})
                 continue
             muc = {"id": ten, "tree_sha": sha_tm, "loi": None, "dung_luong": dung_luong.get(ten, 0)}
@@ -733,10 +819,13 @@ class NguonGit:
             if ly_do:
                 muc["loi"] = ly_do
             else:
+                from app.quyen_module import diff_quyen
+                quyen_ds = diff_quyen({}, m).get("them") or []
                 muc.update(ten=m["ten"], mo_ta=m["mo_ta"], phien_ban=m.get("phien_ban"),
                            yeu_cau_goi=m.get("yeu_cau_goi", []), mang_ra=m["tai_nguyen"].get("mang_ra", []),
                            tai_nguyen=m["tai_nguyen"], loai=m["loai"], loai_ten=m.get("loai_ten"),
-                           loai_thu_tu=m.get("loai_thu_tu"), nhom=m.get("nhom"), cung_cap=m.get("cung_cap", []))
+                           loai_thu_tu=m.get("loai_thu_tu"), nhom=m.get("nhom"), cung_cap=m.get("cung_cap", []),
+                           quyen=quyen_ds)
             ra.append(muc)
         return ra
 
@@ -784,7 +873,7 @@ class NguonGit:
                 "phien_ban_moi": m.get("phien_ban"),
                 # Tóm tắt manifest trên git: trang Module xếp ô «Chưa cài» vào khu theo `loai` và hiện «Cần gì để chạy».
                 **{k: m.get(k) for k in ("mo_ta", "loai", "loai_ten", "loai_thu_tu", "nhom", "cung_cap", "tai_nguyen",
-                                         "yeu_cau_goi", "dung_luong")},
+                                         "yeu_cau_goi", "dung_luong", "quyen")},
                 "commit": {k: commit.get(k) for k in ("sha", "tac_gia", "thong_diep")},
                 "ly_do": ly_do,
                 "ghi_chu": ghi_chu[1] if ghi_chu and ghi_chu[0] == m["tree_sha"] else None,
@@ -837,12 +926,15 @@ class NguonGit:
 
     async def cai(self, id_: str, chap_nhan_quyen_them: list | None = None,
                 sha_commit: str | None = None,
-                nguoi_thuc_hien: str | None = None) -> dict:
+                nguoi_thuc_hien: str | None = None,
+                xac_nhan: bool = False,
+                ma_xac_nhan: str | None = None) -> dict:
         """Cài module từ git (nguồn chính). Có `chap_nhan_quyen_them` + `sha_commit` → duyệt bản đang chờ
         (phải khớp chính xác diff đã xem); không có → cài thường (bản mới xin thêm quyền
         thì 409 chờ duyệt thay vì kích hoạt).
 
         NV50: kiểm tra xác nhận lần 2 đặt ở route HTTP (nơi người bấm), không ở đây.
+        NV61: cài module mới cần xác nhận {"xac_nhan": true, "ma_xac_nhan": "..."} ở lượt 2 (đóng khi lỗi, trừ đường tự động).
         """
         async with self._khoa:
             if chap_nhan_quyen_them is not None or sha_commit is not None:
@@ -851,7 +943,7 @@ class NguonGit:
             nguon, tt = self._nguon_chinh()
             if nguon is None:
                 raise LoiGit("chưa cấu hình nguồn git (PUT /api/nguon-git)", 400)
-            return await self._cai_tu(nguon, tt, id_)
+            return await self._cai_tu(nguon, tt, id_, xac_nhan=xac_nhan, ma_xac_nhan=ma_xac_nhan)
 
     async def _cai_duyet(self, id_: str, chap_nhan_quyen_them: list | None, sha_commit: str | None,
                         nguoi_thuc_hien: str | None = None) -> dict:
@@ -885,7 +977,8 @@ class NguonGit:
                 "duyet_hang_b": {"nguoi_duyet": nguoi_thuc_hien or "?", "het_han": het_han},
                 **kq}
 
-    async def _cai_tu(self, nguon: dict, tt: dict, id_: str, tu_dong: bool = False) -> dict:
+    async def _cai_tu(self, nguon: dict, tt: dict, id_: str, tu_dong: bool = False,
+                      xac_nhan: bool = False, ma_xac_nhan: str | None = None) -> dict:
         """Cài module từ ĐÚNG một nguồn. NV59: trùng id với module đã cài từ nguồn KHÁC → 409
         (không tự đè); đúng nguồn cũ → cập nhật bình thường.
         `tu_dong=True` chỉ từ vòng tự cài: bản mới của module ĐÃ cài thì giữ chờ duyệt (cai_thu_muc, NV49 R-1)."""
@@ -906,6 +999,23 @@ class NguonGit:
             if nid_cu != nid:
                 raise LoiGit(f"module {id_!r} đã cài từ nguồn {nid_cu!r} — không tự đè bằng nguồn {nid!r} "
                              "(trùng id module từ hai nguồn)", 409)
+        km_cu = self.so.catalog.get(id_)
+
+        # NV61: module CHƯA cài từ git phải qua bước xác nhận cài mới (đóng khi lỗi, trừ đường tự động)
+        if km_cu is None and not tu_dong:
+            if not xac_nhan:
+                ma = self._sinh_ma_xac_nhan(id_, str(commit["sha"]))
+                quyen = m.get("quyen") or []
+                raise LoiCanXacNhanCaiMoi(
+                    id_=id_,
+                    repo=nguon["repo"],
+                    sha_commit=str(commit["sha"]),
+                    phien_ban=m.get("phien_ban"),
+                    quyen=quyen,
+                    ma_xac_nhan=ma,
+                )
+            self._kiem_tra_ma_xac_nhan(id_, str(commit["sha"]), ma_xac_nhan)
+
         repo, thu_muc = nguon["repo"], nguon["thu_muc"]
         tien = f"{thu_muc}/{id_}/"
 

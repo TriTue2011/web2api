@@ -92,16 +92,14 @@ def dong_bo_ngay(c):
 
 def khoi_tao_nguon(c, gh):
     gh.day(tep_kho({"echo": tep_echo("echo v1", "1.0.0",
-                                     yeu_cau_goi=["goi_gia_nv61"],
                                      mang_ra=["api.gia-nv61.test"])}),
            thong_diep="thêm echo có quyền")
     assert c.put("/api/nguon-git", json=CAU_HINH, headers=QT).status_code == 200
     dong_bo_ngay(c)
 
 
-# ───────────── ĐỎ: xác nhận cài mới (chưa có trên main) ─────────────
+# ───────────── XÁC NHẬN CÀI MỚI (NV61) ─────────────
 
-@pytest.mark.xfail(strict=True, reason="NV61-01: cài mới từ git lượt 1 phải 409 can_xac_nhan_cai_moi, hiện cài ngay 200")
 def test_cai_moi_luot_1_phai_409_can_xac_nhan(gh, du_lieu):
     with TestClient(app) as c:
         khoi_tao_nguon(c, gh)
@@ -119,7 +117,6 @@ def test_cai_moi_luot_1_phai_409_can_xac_nhan(gh, du_lieu):
         assert all(m["id"] != "echo" for m in mods)
 
 
-@pytest.mark.xfail(strict=True, reason="NV61-02: lượt 2 kèm mã đúng phải cài được, hiện không có khái niệm mã")
 def test_cai_moi_luot_2_ma_dung_thi_cai(gh, du_lieu):
     with TestClient(app) as c:
         khoi_tao_nguon(c, gh)
@@ -133,7 +130,6 @@ def test_cai_moi_luot_2_ma_dung_thi_cai(gh, du_lieu):
         assert any(m["id"] == "echo" for m in mods)
 
 
-@pytest.mark.xfail(strict=True, reason="NV61-03: mã xác nhận sai phải 409, hiện không kiểm")
 def test_cai_moi_ma_sai_phai_409(gh, du_lieu):
     with TestClient(app) as c:
         khoi_tao_nguon(c, gh)
@@ -146,7 +142,6 @@ def test_cai_moi_ma_sai_phai_409(gh, du_lieu):
         assert all(m["id"] != "echo" for m in mods)
 
 
-@pytest.mark.xfail(strict=True, reason="NV61-04: mã đã dùng một lần rồi phải 409 khi dùng lại")
 def test_cai_moi_ma_dung_roi_khong_dung_lai_duoc(gh, du_lieu):
     with TestClient(app) as c:
         khoi_tao_nguon(c, gh)
@@ -165,7 +160,6 @@ def test_cai_moi_ma_dung_roi_khong_dung_lai_duoc(gh, du_lieu):
         assert r4.status_code == 409, r4.text
 
 
-@pytest.mark.xfail(strict=True, reason="NV61-05: mã của sha_commit khác phải 409")
 def test_cai_moi_ma_cua_sha_khac_phai_409(gh, du_lieu):
     with TestClient(app) as c:
         khoi_tao_nguon(c, gh)
@@ -185,7 +179,6 @@ def test_cai_moi_ma_cua_sha_khac_phai_409(gh, du_lieu):
         assert r3.status_code == 409, r3.text
 
 
-@pytest.mark.xfail(strict=True, reason="NV61-06: cờ xac_nhan true mà không có mã phải 409")
 def test_cai_moi_co_xac_nhan_ma_thieu_ma_phai_409(gh, du_lieu):
     with TestClient(app) as c:
         khoi_tao_nguon(c, gh)
@@ -195,7 +188,6 @@ def test_cai_moi_co_xac_nhan_ma_thieu_ma_phai_409(gh, du_lieu):
         assert all(m["id"] != "echo" for m in mods)
 
 
-@pytest.mark.xfail(strict=True, reason="NV61-07: mã xác nhận không được vào log")
 def test_ma_xac_nhan_khong_vao_log(gh, du_lieu, caplog):
     import logging
     with caplog.at_level(logging.WARNING):
@@ -260,3 +252,97 @@ def test_tu_dong_mac_dinh_tat_khong_cai_module_moi(gh, du_lieu):
         dong_bo_ngay(c)
         mods = c.get("/api/modules", headers=QT).json()["modules"]
         assert all(m["id"] != "echo" for m in mods)
+
+
+def test_cai_moi_than_rong_khong_kem_ma_409_khong_500_khong_cai(gh, du_lieu):
+    """(d) Gọi đường API cài cho module mới với thân rỗng hoặc không kèm mã -> 409 can_xac_nhan_cai_moi, không 500, không cài."""
+    with TestClient(app) as c:
+        khoi_tao_nguon(c, gh)
+        # 1. Gọi không có body
+        r1 = c.post("/api/nguon-git/cai/echo", headers=QT)
+        assert r1.status_code == 409 and r1.json().get("ma") == "can_xac_nhan_cai_moi"
+        # 2. Gọi với body rỗng {}
+        r2 = c.post("/api/nguon-git/cai/echo", headers=QT, json={})
+        assert r2.status_code == 409 and r2.json().get("ma") == "can_xac_nhan_cai_moi"
+        # 3. Gọi với body {"xac_nhan": False}
+        r3 = c.post("/api/nguon-git/cai/echo", headers=QT, json={"xac_nhan": False})
+        assert r3.status_code == 409 and r3.json().get("ma") == "can_xac_nhan_cai_moi"
+        # Đảm bảo tuyệt đối không cài
+        mods = c.get("/api/modules", headers=QT).json()["modules"]
+        assert all(m["id"] != "echo" for m in mods)
+
+
+# ───────────── TEST TÁI HIỆN LỖI (LƯỢT SỬA 2) ─────────────
+
+def test_cai_tu_nguon_module_moi_chua_xac_nhan_nem_loi_can_xac_nhan(gh, du_lieu):
+    """Lỗi 1 (TRUNG BÌNH): cai_tu_nguon cài module mới chưa xác nhận -> phải ném LoiCanXacNhanCaiMoi."""
+    from app.nguon_git import LoiCanXacNhanCaiMoi
+    with TestClient(app) as c:
+        khoi_tao_nguon(c, gh)
+        ng = app.state.nguon_git
+
+        async def _():
+            co_loi = False
+            try:
+                await ng.cai_tu_nguon("chinh", "echo")
+            except LoiCanXacNhanCaiMoi as e:
+                co_loi = True
+                assert e.id_ == "echo"
+                assert e.repo == REPO
+                assert e.sha_commit
+                assert e.ma_xac_nhan
+            assert co_loi is True, "cai_tu_nguon cho module mới chưa xác nhận phải ném LoiCanXacNhanCaiMoi"
+
+        c.portal.call(_)
+        # Chưa cài vào catalog
+        mods = c.get("/api/modules", headers=QT).json()["modules"]
+        assert all(m["id"] != "echo" for m in mods)
+
+
+def test_cai_tu_nguon_module_moi_xac_nhan_ma_dung_thi_cai_thanh_cong(gh, du_lieu):
+    """Lỗi 1: cai_tu_nguon lượt 2 gửi kèm xac_nhan=True và ma_xac_nhan đúng -> cài thành công."""
+    from app.nguon_git import LoiCanXacNhanCaiMoi
+    with TestClient(app) as c:
+        khoi_tao_nguon(c, gh)
+        ng = app.state.nguon_git
+
+        async def _():
+            ma = None
+            try:
+                await ng.cai_tu_nguon("chinh", "echo")
+            except LoiCanXacNhanCaiMoi as e:
+                ma = e.ma_xac_nhan
+            assert ma is not None, "Lượt 1 phải ném LoiCanXacNhanCaiMoi"
+            kq = await ng.cai_tu_nguon("chinh", "echo", xac_nhan=True, ma_xac_nhan=ma)
+            assert kq.get("ok") is True
+
+        c.portal.call(_)
+        mods = c.get("/api/modules", headers=QT).json()["modules"]
+        assert any(m["id"] == "echo" for m in mods)
+
+
+def test_thoi_gian_xac_nhan_cai_kep_duoi_30_thanh_30(monkeypatch):
+    """Lỗi 2 (THẤP): WEB2API_XAC_NHAN_CAI_GIAY < 30 phải được kẹp về 30 thay vì quay về 300."""
+    from app.nguon_git import _thoi_gian_xac_nhan_cai
+    monkeypatch.setenv("WEB2API_XAC_NHAN_CAI_GIAY", "10")
+    assert _thoi_gian_xac_nhan_cai() == 30
+
+
+def test_thoi_gian_xac_nhan_cai_kep_tren_3600_thanh_3600(monkeypatch):
+    """Lỗi 2 (THẤP): WEB2API_XAC_NHAN_CAI_GIAY > 3600 phải được kẹp về 3600 thay vì quay về 300."""
+    from app.nguon_git import _thoi_gian_xac_nhan_cai
+    monkeypatch.setenv("WEB2API_XAC_NHAN_CAI_GIAY", "5000")
+    assert _thoi_gian_xac_nhan_cai() == 3600
+
+
+def test_thoi_gian_xac_nhan_cai_khong_phai_so_mac_dinh_300_co_canh_bao(monkeypatch, caplog):
+    """Lỗi 2: WEB2API_XAC_NHAN_CAI_GIAY không phải số nguyên hợp lệ -> mặc định 300 + cảnh báo log."""
+    import logging
+    from app.nguon_git import _thoi_gian_xac_nhan_cai
+    monkeypatch.setenv("WEB2API_XAC_NHAN_CAI_GIAY", "khong-phai-so")
+    with caplog.at_level(logging.WARNING):
+        val = _thoi_gian_xac_nhan_cai()
+    assert val == 300
+    assert "WEB2API_XAC_NHAN_CAI_GIAY" in caplog.text
+
+

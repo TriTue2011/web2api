@@ -25,6 +25,7 @@ from starlette.responses import Response
 from app import kho, nguon_git, so_module
 from app.nguon_git import TEN_BI_MAT, LoiGit, NguonGit
 from app.so_module import SoModule
+from conftest import cai_ng_hai_luot
 from test.gia import GitHubGia, MayChuThat, tep_echo, tep_kho
 
 REPO = "chu-may/c2a"
@@ -110,7 +111,7 @@ def test_cai_module_8_tep_dung_1_yeu_cau_tarball(gh, du_lieu):
 
         gh.nhat_ky.clear()
         # Cài module 8 tệp: ĐÚNG 1 yêu cầu tarball, không gọi blob hay tree
-        kq = await ng.cai("mod8")
+        kq = await cai_ng_hai_luot(ng, "mod8")
         assert kq["ok"]
         assert dem(gh, "tarball") == 1
         assert dem(gh, "blob") == 0
@@ -145,7 +146,7 @@ def test_tu_choi_tarball_chua_duong_thoat(gh, du_lieu):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
         with pytest.raises(LoiGit, match="không an toàn"):
-            await ng.cai("echo")
+            await cai_ng_hai_luot(ng, "echo")
         assert not (du_lieu / "modules" / "echo").exists()
         assert khong_rac(du_lieu) == []
 
@@ -173,7 +174,7 @@ def test_tu_choi_tarball_chua_symlink(gh, du_lieu):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
         with pytest.raises(LoiGit, match="symlink"):
-            await ng.cai("echo")
+            await cai_ng_hai_luot(ng, "echo")
         assert not (du_lieu / "modules" / "echo").exists()
         assert khong_rac(du_lieu) == []
 
@@ -188,7 +189,7 @@ def test_tu_choi_tarball_chua_tep_qua_lon(gh, du_lieu, monkeypatch):
         await ng.mot_lan()
         monkeypatch.setattr(nguon_git, "TRAN_BLOB", 100)
         with pytest.raises(LoiGit, match="vượt trần"):
-            await ng.cai("echo")
+            await cai_ng_hai_luot(ng, "echo")
         assert not (du_lieu / "modules" / "echo").exists()
         assert khong_rac(du_lieu) == []
 
@@ -223,7 +224,7 @@ def test_302_sang_may_chu_khac_khong_mang_authorization(gh, du_lieu):
             await ng.mot_lan()
 
             # Gọi cài: gh trả 302 tới s2.url
-            kq = await ng.cai("echo")
+            kq = await cai_ng_hai_luot(ng, "echo")
             assert kq["ok"]
 
             # Kiểm tra tại máy chủ gh: có gửi Authorization
@@ -303,7 +304,7 @@ def test_kho_private_gia_bat_buoc_token(gh, du_lieu, monkeypatch):
         # Token đúng qua env: thăm dò và cài thành công
         monkeypatch.setenv("WEB2API_GITHUB_TOKEN", TOKEN_GIA)
         await ng.mot_lan()
-        kq = await ng.cai("echo")
+        kq = await cai_ng_hai_luot(ng, "echo")
         assert kq["ok"]
         assert await tra_loi(so) == "echo v1: a"
 
@@ -321,7 +322,7 @@ def test_cai_lai_cap_nhat_dung_va_ghi_nguon_commit(gh, du_lieu):
         c1 = gh.nhanh["main"]
 
         # Cài lần đầu
-        kq1 = await ng.cai("echo")
+        kq1 = await cai_ng_hai_luot(ng, "echo")
         assert kq1["ok"]
         assert await tra_loi(so) == "echo v1: a"
         nguon1 = json.loads((du_lieu / "modules" / "echo" / ".nguon.json").read_text(encoding="utf-8"))

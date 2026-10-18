@@ -902,12 +902,20 @@ Chỉ phần **thêm** mới cần duyệt; bớt quyền được qua tự do.
   chỉ đổi mã, không xin thêm quyền — mã chạy trong tiến trình lõi, nên đổi mã là đổi điều module làm được. Duyệt bằng
   nút «Cập nhật» (cài thường) hoặc thân `{"chap_nhan_quyen_them": [], "sha_commit": "<SHA>"}`; kích hoạt xong thì
   yêu cầu chờ duyệt cũ được dọn. Tự cài chỉ áp cho module **mới**.
-- `GET /api/modules` nêu cờ boolean `cho_duyet_quyen` cho mỗi module — chi tiết diff chỉ có ở phản
-  hồi 409 của đường quản trị.
-- Cài mới (chưa có bản cũ) không bị chặn; phản hồi nêu rõ module xin những quyền gì (`diff_quyen.them`).
+- **Cài mới (chưa có bản cũ)**: luôn yêu cầu bước xác nhận tường minh để chủ máy kiểm tra repo, commit và quyền module xin:
+  - Lượt 1: `POST /api/nguon-git/cai/<id>` (không thân hoặc `xac_nhan: false`) trả `409` kèm `{"ok": false, "ma": "can_xac_nhan_cai_moi", "id": "...", "repo": "...", "sha_commit": "...", "phien_ban": "...", "quyen": [...], "ma_xac_nhan": "..."}`. Máy chủ chưa cài mã, sinh mã xác nhận ngẫu nhiên (sống ngắn, mặc định 300 giây qua `WEB2API_XAC_NHAN_CAI_GIAY`), chỉ lưu băm SHA-256 trong bộ nhớ.
+  - Lượt 2: Quản trị gửi `POST /api/nguon-git/cai/<id>` với thân JSON `{"xac_nhan": true, "ma_xac_nhan": "<mã 1 lần>"}`. Đúng mã (so bằng `hmac.compare_digest`), đúng commit và còn hạn thì module mới được cài đặt, mã bị xoá ngay sau khi dùng. Mã sai, hết hạn hoặc commit bị thay đổi đều trả `409`.
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/echo   # 409 + diff nếu xin thêm quyền
+# Lượt 1: yêu cầu cài mới -> nhận mã xác nhận và quyền xin
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/echo
+# Lượt 2: xác nhận cài với mã nhận được
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"xac_nhan": true, "ma_xac_nhan": "<ma_xac_nhan>"}' \
+  $W/api/nguon-git/cai/echo
+
+# Cập nhật module đã cài (nếu xin thêm quyền):
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/echo   # 409 can_duyet_quyen nếu xin thêm quyền
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"chap_nhan_quyen_them": [{"loai": "cung_cap", "ten": "chat"}], "sha_commit": "<sha>"}' \
   $W/api/nguon-git/cai/echo
@@ -3083,11 +3091,11 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PUT /api/modules/{id}/model-bo-sung` | Có | Cập nhật danh sách model bổ sung do chủ máy khai báo (thân `{"models": [{"id": "...", "nhan": "..."}]}`, tối đa 100 mục, thân ≤ 64 KB) |
 | `GET /api/nguon-git` | Có | Cấu hình nguồn git (token đã che) và trạng thái đồng bộ |
 | `PUT /api/nguon-git` | Có | Đặt cấu hình nguồn git, thăm dò ngay |
-| `POST /api/nguon-git/cai/{id}` | Có | Cài (chưa có mã) hoặc cập nhật (đã cài) module từ git theo đúng commit đã báo.
+| `POST /api/nguon-git/cai/{id}` | Có | Cài mới (chưa có mã: lượt 1 trả 409 `can_xac_nhan_cai_moi` kèm mã; lượt 2 gửi thân `{"xac_nhan": true, "ma_xac_nhan": "..."}` để cài) hoặc cập nhật (đã cài: xin thêm quyền trả 409 `can_duyet_quyen`; duyệt bằng thân `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}`). Phản hồi cài luôn có `can_module_thieu` |
 | `GET /api/nguon-git/nguon` | Có | Danh sách nguồn git: `{"nguon": [...]}` (nguồn `"chinh"` = cấu hình cũ một-repo) |
 | `POST /api/nguon-git/nguon` | Có | Thêm nguồn git phụ `{id, repo, nhanh, thu_muc, chu_ky_giay, tu_dong, yeu_cau_chu_ky[, token]}`; trùng id → 409 |
 | `PUT /api/nguon-git/nguon/{id}` | Có | Sửa nguồn git phụ (trừ id); không có → 404 |
-| `DELETE /api/nguon-git/nguon/{id}` | Có | Xoá nguồn git phụ (giữ module đã cài); không có → 404 | Bản mới xin thêm quyền → `409 can_duyet_quyen` kèm diff (không kích hoạt); duyệt bằng thân JSON `{"chap_nhan_quyen_them": [...], "sha_commit": "..."}` khớp chính xác. Xem «Cập nhật module và duyệt quyền». Phản hồi cài luôn có `can_module_thieu` — id các module được khai cần mà chưa cài (để đề nghị, không tự cài lén; xem «Phụ thuộc giữa các module») |
+| `DELETE /api/nguon-git/nguon/{id}` | Có | Xoá nguồn git phụ (giữ module đã cài); không có → 404 |
 | `GET /api/dia-chi` | Có | Thông tin địa chỉ truy cập công khai (`url`, `nguon`, `dang_doan`, `tin_proxy`, `canh_bao`) |
 | `PUT /api/dia-chi` | Có | Đặt địa chỉ công khai (`{"url": "..."}`) hoặc xoá (`{"url": null}`) |
 | `GET /api/ket-noi` | Có | Hướng dẫn kết nối soạn sẵn (`base_url`, ví dụ `curl`, SDK Python, ứng dụng) cho trong nhà và qua domain |
@@ -3295,6 +3303,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_GIT_TOKEN` | không | Token GitHub (kho riêng tư hoặc nâng hạn mức) |
 | `WEB2API_GITHUB_TOKEN` | không | Token GitHub (cần cho kho private: token có quyền Contents: Read; đặt trong docker-compose/Portainer/NAS; ưu tiên hơn token lưu qua API) |
 | `WEB2API_GITHUB_API` | `https://api.github.com` | **Chỉ cho kiểm thử** (trỏ GitHub giả); khác mặc định thì nhật ký có cảnh báo |
+| `WEB2API_XAC_NHAN_CAI_GIAY` | `300` | Thời hạn sống của mã xác nhận một lần khi cài mới module từ git (giây, kẹp trong `[30, 3600]`, mặc định `300`) |
 | `WEB2API_TEST_CHO_PHEP_LOOPBACK` | không | **Chỉ cho kiểm thử**: cho module từ xa trỏ 127.0.0.1 |
 | `WEB2API_DEMO_DIR` | không | Chỉ cho test dc-lite: thư mục các trang demo thiết kế (nằm ngoài kho) |
 | `WEB2API_CHROME` | `/usr/bin/google-chrome` | Chỉ cho test giao diện và `scripts/chup-man-hinh.sh`: đường tới Chrome |

@@ -207,9 +207,10 @@ def test_cap_nhat_git_ban_moi_thieu_hang_bi_tu_choi_giu_ban_cu_dang_chay(gh, du_
     gh.day(tep_kho({"echo": tep_echo("echo v1", hang="A")}))
 
     async def ham(so, ng):
+        from conftest import cai_ng_hai_luot
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         the = so.dang_chay["echo"]
         assert await tra_loi_so(so) == "echo v1: a"
 

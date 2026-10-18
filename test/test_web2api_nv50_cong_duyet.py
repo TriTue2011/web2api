@@ -26,6 +26,7 @@ from app import khoa_khach, nguoi_dung, nhat_ky, so_module
 from app.main import app
 from app.nguon_git import NguonGit
 from app.so_module import LoiCanDuyetQuyen, SoModule
+from conftest import cai_ng_hai_luot
 from gia import GitHubGia, MayChuThat, tep_echo, tep_kho
 
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
@@ -89,7 +90,7 @@ async def cai_v1_hang_a(so, ng, gh):
     gh.day(tep_kho({"echo": tep_echo_quyen("echo v1", cung_cap=["chat"])}))
     ng.luu_cau_hinh(CAU_HINH)
     await ng.mot_lan()
-    kq = await ng.cai("echo")
+    kq = await cai_ng_hai_luot(ng, "echo")
     assert kq["ok"] is True
 
 

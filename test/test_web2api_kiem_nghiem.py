@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from conftest import MOI_TRUONG_CHAN_MANG
+from conftest import MOI_TRUONG_CHAN_MANG, cai_git_hai_luot
 from gia import GitHubGia, GoogleGia, MayChuThat, cong_trong, tep_echo, tep_kho
 
 GOC_WEB2API = Path(__file__).resolve().parents[1]
@@ -108,7 +108,7 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
             gh.day(tep_kho({"echo": tep_echo("echo v1", "1.0.0")}))
             cho(lambda: trang_thai("echo") == "moi", mo_ta="thông báo echo mới")
             assert h.get("/api/modules").json()["thong_bao_so"] == 1
-            assert h.post("/api/nguon-git/cai/echo").status_code == 200
+            assert cai_git_hai_luot(h, "echo").status_code == 200
             assert noi() == "echo v1: ơi"
             assert [x["id"] for x in h.get("/v1/models").json()["data"]] == ["echo/lap-lai"]
             ds = h.get("/api/modules").json()["modules"]
@@ -129,7 +129,7 @@ def test_them_doi_go_module_qua_git_khong_khoi_dong_lai(tmp_path):
             # (c) đẩy module Gemini API của repo → cài → cấu hình khoá → dùng với Google giả.
             gh.day(tep_kho({"echo": tep_echo("echo v3", "3.0.0", hong=True), "gemini-api": tep_gemini()}))
             cho(lambda: trang_thai("gemini-api") == "moi", mo_ta="thông báo gemini-api")
-            r = h.post("/api/nguon-git/cai/gemini-api")
+            r = cai_git_hai_luot(h, "gemini-api")
             assert r.status_code == 200 and r.json()["cai"] is None  # cần khoá → chưa tự cài cấu hình
             r = h.post("/api/modules/gemini-api/cai",
                        json={"cau_hinh": {"api_keys": [KHOA_GEMINI], "base_url": s_g.url}})

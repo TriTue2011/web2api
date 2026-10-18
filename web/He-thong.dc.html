@@ -263,6 +263,34 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.coNutCai}}">
 <div class="dong-nut"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-cai" onClick="{{ct.cai}}" disabled="{{ct.dangCai}}">{{ct.nhanCai}}</button><span class="phu">{{ct.goiYCai}}</span></div>
 </sc-if>
+<sc-if value="{{ct.dangHoiCai}}">
+<div role="alertdialog" aria-label="Xác nhận cài module" class="bao bao-vang" id="xac-nhan-cai" style="display:flex;flex-direction:column;gap:10px">
+<div>Cài module <strong>{{ct.hoiCai.ten}}</strong>?</div>
+<div class="phu" style="color:var(--ink)">
+<span>Nguồn: <code>{{ct.hoiCai.repo}}</code></span>
+<sc-if value="{{ct.hoiCai.coSha}}"> · commit <code>{{ct.hoiCai.sha}}</code></sc-if>
+<sc-if value="{{ct.hoiCai.coPhienBan}}"> · phiên bản <strong>{{ct.hoiCai.phien_ban}}</strong></sc-if>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<span style="font-size:13px;font-weight:600">Quyền module xin:</span>
+<sc-if value="{{ct.hoiCai.coQuyen}}">
+<ul style="margin:0;padding-left:18px;font-size:13px" class="ds-quyen">
+<sc-for list="{{ct.hoiCai.dsQuyen}}" as="q">
+<li><strong>{{q.loai}}</strong>: {{q.ten}}</li>
+</sc-for>
+</ul>
+</sc-if>
+<sc-if value="{{ct.hoiCai.khongQuyen}}">
+<span class="phu">Module không xin quyền truy cập đặc biệt nào.</span>
+</sc-if>
+</div>
+<sc-if value="{{ct.hoiCai.loi}}"><p role="alert" class="bao bao-loi">{{ct.hoiCai.loi}}</p></sc-if>
+<div class="dong-nut">
+<button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-dong-y-cai" onClick="{{ct.dongYCai}}" disabled="{{ct.hoiCai.dang}}">Đồng ý cài</button>
+<button type="button" class="nut-chu" id="nut-huy-cai" onClick="{{ct.huyCai}}">Huỷ</button>
+</div>
+</div>
+</sc-if>
 <sc-if value="{{ct.moiNhat}}"><p class="phu" id="moi-nhat">Đã là bản mới nhất trên git.</p></sc-if>
 <sc-if value="{{ct.caiLoi}}"><p role="alert" class="bao bao-loi" id="cai-loi">{{ct.caiLoi}}</p></sc-if>
 <sc-if value="{{ct.caiTin}}"><p role="status" class="bao bao-tot" id="cai-tin">{{ct.caiTin}}</p></sc-if>
@@ -351,12 +379,23 @@ class Component extends DCLogic {
       dangTai: true, thieu: q.get('thieu') || '',
       tim: '', locLoai: null, menuMo: null, locTT: 'tat-ca', chon: (location.hash.match(/^#module-(.+)$/) || [])[1] || null,
       cf: {}, caiGit: {}, hoiGo: null, dangGo: null, goLoi: {}, tin: '', xoaO: null, tabMoi: {},
+      hoiCai: null,
       dangTaiNg: false, ngLoiTai: '', ngSua: false,
       ngForm: { repo: '', nhanh: 'main', thu_muc: 'modules', chu_ky_giay: '300', tu_dong: false, yeu_cau_chu_ky: false },
       ngToken: '', ngLan: 0, dangLuuNg: false, ngLoi: '', ngTin: '',
       txForm: { id: '', ten: '', tien_to: '', base_url: '' }, txKhoa: '', txLan: 0, dangTx: false, txLoi: '', txKq: null
     };
     if (this.state.chon) this.state.chon = decodeURIComponent(this.state.chon);
+  }
+
+  loiKhoa(e) {
+    if (!e) return;
+    const ma = e.ma || e.status;
+    if (ma === 401) {
+      this.setState({ tin: 'Cần khoá quản trị để thực hiện thao tác này.' });
+    } else if (ma === 403) {
+      this.setState({ tin: 'Khoá hiện tại không đủ quyền quản trị.' });
+    }
   }
 
   didMount() {
@@ -406,7 +445,7 @@ class Component extends DCLogic {
   // `denForm`: mở thẳng ở bước thêm khoá (nút «Thêm khoá» trên ô) — đợi form đọc xong cấu hình rồi đặt focus vào ô
   // nhập đầu tiên của nó.
   chonO(id, denForm) {
-    this.setState({ chon: id, hoiGo: null, tin: '', xoaO: null });
+    this.setState((s) => ({ chon: id, hoiGo: null, hoiCai: (s.hoiCai && s.hoiCai.id === id) ? s.hoiCai : null, tin: '', xoaO: null }));
     const tai = id !== '+them' ? K.cauHinh.tai(this, id) : Promise.resolve();
     setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth > 1023 }); }, 30);
     if (denForm) tai.then(() => setTimeout(() => {
@@ -419,7 +458,7 @@ class Component extends DCLogic {
   }
   dongChiTiet() {
     const id = this.state.chon;
-    this.setState({ chon: null, hoiGo: null });
+    this.setState({ chon: null, hoiGo: null, hoiCai: null });
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     setTimeout(() => { const o = document.querySelector(id === '+them' ? '#o-them' : '[data-o="' + CSS.escape(id || '') + '"]'); if (o) o.focus(); }, 30);
   }
@@ -431,15 +470,43 @@ class Component extends DCLogic {
   async caiTuGit(id, laCai) {
     // this.state cập nhật ĐỒNG BỘ trong setState → cú bấm thứ hai trước lần vẽ lại cũng bị chặn ở đây.
     if ((this.state.caiGit[id] || {}).dang) return;
-    this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: true } }) }));
-    let j;
-    try { ({ j } = await K.goi('api/nguon-git/cai/' + encodeURIComponent(id), { method: 'POST' })); }
-    catch (e) {
+    this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: true, loi: '', tin: '' } }), hoiCai: null }));
+    let res;
+    try {
+      res = await K.goi('api/nguon-git/cai/' + encodeURIComponent(id), { method: 'POST', chapNhan: [409] });
+    } catch (e) {
       this.loiKhoa(e);
       this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, loi: e.message } }) }));
       if (this.state.chon !== id) this.chonO(id);   // bấm từ ô: mở bảng chi tiết để thấy lý do
       return;
     }
+    const { ma, j } = res;
+    if (ma === 409 && j && j.ma === 'can_xac_nhan_cai_moi') {
+      // Cài mới cần xác nhận lượt 2
+      this.setState((s) => ({
+        caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false } }),
+        hoiCai: {
+          id,
+          repo: j.repo || '',
+          sha_commit: j.sha_commit || '',
+          phien_ban: j.phien_ban || '',
+          quyen: j.quyen || [],
+          ma_xac_nhan: j.ma_xac_nhan || '',
+          dang: false,
+          loi: ''
+        }
+      }));
+      if (this.state.chon !== id) this.chonO(id);
+      return;
+    }
+
+    if (ma >= 400) {
+      const msg = (j && j.error && j.error.message) || (j && j.detail) || ('Máy chủ trả HTTP ' + ma);
+      this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, loi: msg } }) }));
+      if (this.state.chon !== id) this.chonO(id);
+      return;
+    }
+
     const viec = j && j.nap_lai && (j.nap_lai.doi || []).includes(id) ? 'Đã cập nhật' : 'Đã cài';
     this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, tin: viec + (j && j.phien_ban ? ' bản ' + j.phien_ban : '') + '.' } }) }));
     await this.taiLai();
@@ -447,6 +514,48 @@ class Component extends DCLogic {
     if (tc) { location.href = tc.href + '?da_cai=' + encodeURIComponent(id); return; }
     if (laCai && this.state.chon !== id) this.chonO(id);
     else K.cauHinh.tai(this, id);
+  }
+
+  async xacNhanCai(id) {
+    const hc = this.state.hoiCai;
+    if (!hc || hc.id !== id || hc.dang) return;
+    this.setState((s) => ({
+      hoiCai: Object.assign({}, s.hoiCai, { dang: true, loi: '' })
+    }));
+    let res;
+    try {
+      res = await K.goi('api/nguon-git/cai/' + encodeURIComponent(id), {
+        method: 'POST',
+        json: { xac_nhan: true, ma_xac_nhan: hc.ma_xac_nhan },
+        chapNhan: [409]
+      });
+    } catch (e) {
+      this.loiKhoa(e);
+      this.setState((s) => ({
+        hoiCai: s.hoiCai ? Object.assign({}, s.hoiCai, { dang: false, loi: e.message }) : null
+      }));
+      return;
+    }
+    const { ma, j } = res;
+    if (ma >= 400 || !j || !j.ok) {
+      const msg = (j && j.error && j.error.message) || (j && j.detail) || (j && j.ly_do) || ('Lỗi HTTP ' + ma);
+      this.setState((s) => ({
+        hoiCai: s.hoiCai ? Object.assign({}, s.hoiCai, { dang: false, loi: msg + ' — vui lòng huỷ rồi bấm Cài lại.' }) : null
+      }));
+      return;
+    }
+    this.setState((s) => ({
+      hoiCai: null,
+      caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, tin: 'Đã cài' + (j && j.phien_ban ? ' bản ' + j.phien_ban : '') + '.' } })
+    }));
+    await this.taiLai();
+    const tc = K.trangChinhCua(id, this.state.tn);
+    if (tc) { location.href = tc.href + '?da_cai=' + encodeURIComponent(id); return; }
+    K.cauHinh.tai(this, id);
+  }
+
+  huyCai() {
+    this.setState({ hoiCai: null });
   }
 
   // Liên kết xong: tải lại «tính năng đang có» → khung tính lại điều kiện, tab liên quan hiện NGAY (không tải lại
@@ -601,7 +710,28 @@ class Component extends DCLogic {
     }
     const cg = s.caiGit[x.id] || {};
     const coKhoa = true;
-    const coNutCai = coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi');
+    const hc = s.hoiCai && s.hoiCai.id === x.id ? s.hoiCai : null;
+    let hoiCaiVM = null;
+    if (hc) {
+      const dsQuyen = Array.isArray(hc.quyen) ? hc.quyen.map((q) => {
+        if (typeof q === 'string') return { loai: 'Quyền', ten: q };
+        return { loai: (q && q.loai) || 'Quyền', ten: (q && (q.ten || q.mo_ta)) || '' };
+      }) : [];
+      hoiCaiVM = {
+        ten: x.info.ten || x.id,
+        repo: hc.repo || '',
+        sha: (hc.sha_commit || '').slice(0, 7),
+        coSha: !!hc.sha_commit,
+        phien_ban: hc.phien_ban || '',
+        coPhienBan: !!hc.phien_ban,
+        dsQuyen,
+        coQuyen: dsQuyen.length > 0,
+        khongQuyen: dsQuyen.length === 0,
+        loi: hc.loi || '',
+        dang: !!hc.dang
+      };
+    }
+    const coNutCai = coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi') && !hoiCaiVM;
     const coForm = coKhoa && x.daCai && !x.tuXa;
     const moi = s.tabMoi[x.id] || [];
     const tabMoi = moi.length ? ' Tab vừa hiện: ' + moi.join(', ') + '.' : '';
@@ -622,6 +752,8 @@ class Component extends DCLogic {
       goiYCai: x.tt === 'ban-moi' ? 'Thay mã bằng bản mới trên git; cấu hình và khoá giữ nguyên.' : 'Cài không cần khoá API — khoá thêm ở bước sau.',
       cai: () => this.caiTuGit(x.id, x.tt === 'chua-cai'), dangCai: !!cg.dang, caiLoi: cg.loi ? 'Chưa ' + (x.tt === 'ban-moi' ? 'cập nhật' : 'cài') + ' được: ' + cg.loi : '',
       caiTin: cg.tin ? cg.tin + (x.tt === 'cho-khoa' ? ' Bước tiếp theo: thêm tài khoản/khoá API bên dưới rồi bấm «Kiểm tra và lưu».' : '') : '',
+      dangHoiCai: !!hoiCaiVM, hoiCai: hoiCaiVM || {},
+      dongYCai: () => this.xacNhanCai(x.id), huyCai: () => this.huyCai(),
       coForm, buocTiep: !x.lienKet, tabMoi,
       coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),
       hoiGo: () => this.setState({ hoiGo: x.id }), dangHoiGo: s.hoiGo === x.id, thoiGo: () => this.setState({ hoiGo: null }),

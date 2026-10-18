@@ -18,6 +18,7 @@ from app.main import app
 from app.nguon_git import LoiGit, NguonGit
 from app.so_module import LoiSo, SoModule
 from gia import GitHubGia, MayChuThat, bam_blob, ghi_thu_muc, tep_echo, tep_kho
+from conftest import cai_git_hai_luot, cai_ng_hai_luot
 
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -96,7 +97,7 @@ def test_thong_bao_moi_cai_roi_ban_moi(gh, du_lieu):
         x = tb["danh_sach"][0]
         assert (x["id"], x["trang_thai"], x["phien_ban_moi"], x["phien_ban_cu"]) == ("echo", "moi", "1.0.0", None)
         assert x["commit"]["thong_diep"] == "thêm echo" and x["commit"]["tac_gia"] == "Chủ máy"
-        kq = await ng.cai("echo")
+        kq = await cai_ng_hai_luot(ng, "echo")
         assert kq["ok"] and kq["cai"]["ok"]  # không cần cấu hình → tự cài cấu hình rỗng
         assert await tra_loi(so) == "echo v1: a"
         nguon = json.loads((du_lieu / "modules" / "echo" / ".nguon.json").read_text())
@@ -140,7 +141,7 @@ def test_cai_chot_dung_sha_da_thay(gh, du_lieu):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
         gh.day(tep_kho({"echo": tep_echo("echo v2")}))  # đẩy bản mới nhưng CHƯA thăm dò
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         assert await tra_loi(so) == "echo v1: a"
     chay(ham)
 
@@ -154,7 +155,7 @@ def test_blob_bi_sua_trai_bam_tu_choi_ca_module(gh, du_lieu):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
         with pytest.raises(LoiGit, match="SAI BĂM"):
-            await ng.cai("echo")
+            await cai_ng_hai_luot(ng, "echo")
         assert "echo" not in so.catalog and not (du_lieu / "modules" / "echo").exists()
         assert khong_rac(du_lieu) == []
     chay(ham)
@@ -174,7 +175,7 @@ def test_tu_choi_symlink_submodule_duong_thoat(gh, du_lieu, them, mau):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
         with pytest.raises(LoiGit, match=mau):
-            await ng.cai("echo")
+            await cai_ng_hai_luot(ng, "echo")
         assert not (du_lieu / "modules" / "echo").exists() and khong_rac(du_lieu) == []
         assert dem(gh, "blob") == 1  # chỉ manifest lúc thăm dò; KHÔNG tải tệp nào của bản bị từ chối
     chay(ham)
@@ -190,7 +191,7 @@ def test_tran_so_tep_va_dung_luong(gh, du_lieu, monkeypatch, hang, gia_tri, mau)
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
         with pytest.raises(LoiGit, match=mau):
-            await ng.cai("echo")
+            await cai_ng_hai_luot(ng, "echo")
         assert khong_rac(du_lieu) == [] and not (du_lieu / "modules" / "echo").exists()
     chay(ham)
 
@@ -201,7 +202,7 @@ def test_cai_de_ban_hong_hoan_ve_ban_cu(gh, du_lieu):
     async def ham(so, ng):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
-        await ng.cai("echo")
+        kq = await cai_ng_hai_luot(ng, "echo")
         the = so.dang_chay["echo"]
         gh.day(tep_kho({"echo": tep_echo("echo v3", "3.0.0", hong=True)}))
         await ng.mot_lan()
@@ -313,7 +314,7 @@ def test_an_danh_khong_gui_authorization(gh, du_lieu):
     async def ham(so, ng):
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
     chay(ham)
     assert gh.nhat_ky and all(x["auth"] is None for x in gh.nhat_ky)
 
@@ -325,7 +326,7 @@ def test_token_gui_dung_header_va_khong_ro(gh, du_lieu, caplog):
     async def ham(so, ng):
         cong = ng.luu_cau_hinh({**CAU_HINH, "token": TOKEN})
         await ng.mot_lan()
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         gh.loi_commit.append((500, {}, f"máy chủ nhắc lại token {TOKEN}"))
         gh.day(tep_kho({"echo": tep_echo("v2")}))
         with pytest.raises(LoiGit) as e:
@@ -481,7 +482,7 @@ def test_get_mo_khong_lo_repo_va_vong_nen_that(gh, du_lieu):
             time.sleep(0.1)
         mo = c.get("/api/modules", headers=QT).text + c.get("/api/modules/catalog", headers=QT).text
         tb = c.get("/api/modules/thong-bao", headers=QT).json()
-        r = c.post("/api/nguon-git/cai/echo", headers=QT)
+        r = cai_git_hai_luot(c, "echo", headers=QT)
         assert r.status_code == 200, r.text
         assert c.get("/api/modules", headers=QT).json()["thong_bao_so"] == 0
         assert c.get("/api/modules", headers=QT).json()["modules"][0]["tab_web"]["duong"] == "/m/echo/echo.dc.html"

@@ -17,6 +17,7 @@ from app.main import app
 from app.nguon_git import LoiGit, NguonGit
 from app.quyen_module import bam_diff, cac_muc_chuan, diff_quyen, tap_quyen
 from app.so_module import LoiCanDuyetQuyen, LoiSo, SoModule
+from conftest import cai_ng_hai_luot
 from gia import GitHubGia, MayChuThat, tep_echo, tep_kho
 
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
@@ -88,7 +89,7 @@ async def cai_v1(so, ng, gh, **quyen_v1):
     gh.day(tep_kho({"echo": tep_echo_quyen("echo v1", **quyen_v1)}))
     ng.luu_cau_hinh(CAU_HINH)
     await ng.mot_lan()
-    await ng.cai("echo")
+    await cai_ng_hai_luot(ng, "echo")
     assert await tra_loi(so) == "echo v1: a"
 
 
@@ -288,7 +289,7 @@ def test_cai_moi_khong_bi_chan_nhung_neu_quyen(gh, du_lieu):
                                                 cung_cap=["chat"])}))
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
-        kq = await ng.cai("echo")  # cài mới: không chặn
+        kq = await cai_ng_hai_luot(ng, "echo")  # cài mới: qua helper xác nhận hai lượt NV61
         assert kq["ok"] is True
         quyen = (kq.get("diff_quyen") or {}).get("them") or []
         loai_ten = {(m["loai"], m["ten"]) for m in quyen}

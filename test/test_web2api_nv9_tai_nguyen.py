@@ -17,6 +17,7 @@ from app import kho, nguon_git, so_module
 from app.nguon_git import NguonGit
 from app.quyen_module import bam_diff, cac_muc_chuan, diff_quyen, tap_quyen
 from app.so_module import LoiCanDuyetQuyen, SoModule
+from conftest import cai_ng_hai_luot
 from gia import GitHubGia, MayChuThat, tep_echo, tep_kho
 
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
@@ -194,7 +195,7 @@ async def cai_v1(so, ng, gh, tai_nguyen=None):
     gh.day(tep_kho({"echo": tep_echo_tn("echo v1", tai_nguyen)}))
     ng.luu_cau_hinh(CAU_HINH)
     await ng.mot_lan()
-    await ng.cai("echo")
+    await cai_ng_hai_luot(ng, "echo")
 
 
 def test_tich_hop_giam_tai_nguyen_qua_tu_do(gh, du_lieu):

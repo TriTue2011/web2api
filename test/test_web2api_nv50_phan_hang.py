@@ -186,11 +186,12 @@ def chay(ham):
 
 
 def test_catalog_luu_hang_a_sau_khi_cai(gh, du_lieu):
+    from conftest import cai_ng_hai_luot
     async def ham(so, ng):
         gh.day(tep_kho({"echo": tep_echo_hang("echo v1", cung_cap=["chat"])}))
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         assert getattr(so.catalog["echo"], "hang", None) == "A"
     chay(ham)
 
@@ -198,12 +199,13 @@ def test_catalog_luu_hang_a_sau_khi_cai(gh, du_lieu):
 def test_catalog_luu_hang_b_sau_khi_cai(gh, du_lieu):
     # Cài MỚI module hạng B không bị chặn (chỉ cập nhật A→B mới chờ duyệt) —
     # nhưng hạng phải được ghi vào catalog.
+    from conftest import cai_ng_hai_luot
     async def ham(so, ng):
         gh.day(tep_kho({"echo": tep_echo_hang(
             "echo v1", cung_cap=["chat"],
             tai_nguyen={"mang_ra": ["api.vi-du-test.example"]})}))
         ng.luu_cau_hinh(CAU_HINH)
         await ng.mot_lan()
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         assert getattr(so.catalog["echo"], "hang", None) == "B"
     chay(ham)

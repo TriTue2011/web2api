@@ -55,7 +55,7 @@ from app import (
 from app.goi_kha_nang import goi
 from app.kham_pha import ID_HOP_LE
 from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
-from app.nguon_git import LoiGit, NguonGit
+from app.nguon_git import LoiCanXacNhanCaiMoi, LoiGit, NguonGit
 from app.so_module import LoiCanDuyetQuyen, LoiModuleDangDuocCan, LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, THAN_MULTIPART, doc_het
 from app.xac_thuc import can_phien_web, can_quan_tri, dinh_danh_nguoi_thuc_hien, khop_pham_vi, kiem_tra_pham_vi, kiem_tra_step_up, xac_thuc_v1
@@ -1391,11 +1391,24 @@ async def cai_tu_git(id_: str, request: Request):
             return await _ng(request).cai(id_, chap_nhan_quyen_them=than.get("chap_nhan_quyen_them"),
                                          sha_commit=than.get("sha_commit"),
                                          nguoi_thuc_hien=danh_tinh.get("id"))
-        return await _ng(request).cai(id_)
+        xac_nhan = bool(than.get("xac_nhan"))
+        ma_xac_nhan = than.get("ma_xac_nhan")
+        return await _ng(request).cai(id_, xac_nhan=xac_nhan, ma_xac_nhan=ma_xac_nhan)
     except LoiCanDuyetQuyen as e:
         return JSONResponse({"ok": False, "ma": "can_duyet_quyen", "id": e.id_,
                              "sha_commit": e.sha_commit, "tree_sha": e.tree_sha, "diff": e.diff},
                             status_code=409)
+    except LoiCanXacNhanCaiMoi as e:
+        return JSONResponse({
+            "ok": False,
+            "ma": "can_xac_nhan_cai_moi",
+            "id": e.id_,
+            "repo": e.repo,
+            "sha_commit": e.sha_commit,
+            "phien_ban": e.phien_ban,
+            "quyen": e.quyen,
+            "ma_xac_nhan": e.ma_xac_nhan,
+        }, status_code=409)
     except (LoiGit, LoiSo) as e:
         raise _loi_so(e) from None
 

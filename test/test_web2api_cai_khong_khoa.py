@@ -25,6 +25,7 @@ from app.main import app
 from app.nguon_git import NguonGit
 from app.so_module import SoModule
 from gia import GitHubGia, GoogleGia, MayChuThat, ghi_thu_muc, tep_echo, tep_kho
+from conftest import cai_git_hai_luot
 
 GOC_GEMINI = Path(__file__).resolve().parents[1] / "modules" / "gemini-api"
 KHOA_QT = "khoa-quan-tri-test-0123456789abcdef"
@@ -112,7 +113,7 @@ def cai_gemini_tu_git(c, gh):
     assert c.put("/api/nguon-git", json=CAU_HINH_GIT, headers=QT).status_code == 200
     cho(lambda: any(x["id"] == "gemini-api" for x in c.get("/api/modules/thong-bao", headers=QT).json()["danh_sach"]),
         mo_ta="thông báo gemini-api")
-    r = c.post("/api/nguon-git/cai/gemini-api", headers=QT)
+    r = cai_git_hai_luot(c, "gemini-api", headers=QT)
     assert r.status_code == 200, r.text
     return r.json()
 

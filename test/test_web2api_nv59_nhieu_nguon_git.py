@@ -45,6 +45,7 @@ from app import nguon_git, so_module
 from app.main import app
 from app.nguon_git import LoiGit, NguonGit, _duong_an_toan, kiem_cau_hinh, kiem_repo
 from app.so_module import SoModule
+from conftest import cai_ng_hai_luot
 from gia import GitHubGia, MayChuThat, tep_echo, tep_kho
 
 KHOA_QT = "khoa-quan-tri-test-nv59-0123456789abcdef"
@@ -196,7 +197,7 @@ def test_module_cai_ghi_nho_nguon_trong_nguon_json(gh, du_lieu):
     async def ham(so, ng):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
         await ng.mot_lan()
-        kq = await ng.cai("echo")
+        kq = await cai_ng_hai_luot(ng, "echo")
         assert kq["ok"]
         return json.loads((du_lieu / "modules" / "echo" / ".nguon.json").read_text(encoding="utf-8"))
 
@@ -265,7 +266,7 @@ def test_nguon_json_ghi_nguon_id(gh, du_lieu):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
         await ng.them_nguon(NGUON_B)
         await ng.dong_bo_nguon("rieng")
-        await ng.cai_tu_nguon("rieng", "phu")
+        await cai_ng_hai_luot(ng, "phu", nid="rieng")
         return json.loads((du_lieu / "modules" / "phu" / ".nguon.json").read_text(encoding="utf-8"))
 
     nguon = chay(ham)
@@ -282,7 +283,7 @@ def test_trung_id_hai_nguon_khong_tu_de_nhau(gh, du_lieu):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
         await ng.them_nguon(NGUON_B)
         await ng.dong_bo_nguon("chinh")
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         await ng.dong_bo_nguon("rieng")
         with pytest.raises(LoiGit) as ei:
             await ng.cai_tu_nguon("rieng", "echo")
@@ -300,7 +301,7 @@ def test_cap_nhat_tu_dung_nguon_cu_van_duoc(gh, du_lieu):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
         await ng.them_nguon(NGUON_B)
         await ng.dong_bo_nguon("chinh")
-        await ng.cai("echo")
+        await cai_ng_hai_luot(ng, "echo")
         gh.a.day(tep_kho({"echo": tep_echo("echo v2", "2.0.0")}))
         await ng.dong_bo_nguon("chinh")
         kq = await ng.cai_tu_nguon("chinh", "echo")
@@ -318,7 +319,7 @@ def test_xoa_nguon_khong_go_module_da_cai(gh, du_lieu):
         ng.luu_cau_hinh({"repo": REPO_A, "nhanh": "main", "thu_muc": "modules", "chu_ky_giay": 1})
         await ng.them_nguon(NGUON_B)
         await ng.dong_bo_nguon("rieng")
-        await ng.cai_tu_nguon("rieng", "phu")
+        await cai_ng_hai_luot(ng, "phu", nid="rieng")
         assert "phu" in so.catalog
         await ng.xoa_nguon("rieng")
         assert "phu" in so.catalog  # KHÔNG bị gỡ
