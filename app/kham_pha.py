@@ -195,6 +195,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.quyen_module import tinh_hang
+
 log = logging.getLogger("web2api.kham_pha")
 
 ID_HOP_LE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}\Z")
@@ -316,9 +318,13 @@ class ModuleKhamPha:
     ten_ma: str
     chuan_loi: dict[str, list[str]] = field(default_factory=dict)
     tien_to: str = field(init=False)
+    #: Hạng TÍNH từ cấu trúc manifest (NV50 PH1) — khác với hạng KHAI trong
+    #: manifest["hang"]; lõi vẫn dùng hạng khai cho mọi hành vi hiện có.
+    hang: str = field(init=False)
 
     def __post_init__(self):
         self.tien_to = self.manifest["tien_to"]
+        self.hang = tinh_hang(self.manifest)
         if not self.chuan_loi and self.lop:
             self.chuan_loi = kiem_chuan_module(self.manifest.get("cung_cap", []), self.lop)
 
