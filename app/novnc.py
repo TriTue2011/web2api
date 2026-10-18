@@ -11,6 +11,8 @@ Cơ chế:
 1. Quản trị gọi `POST /api/trinh-duyet/{module}/mo` → lõi mở hồ sơ, GHIM đích và cấp vé (60 giây, một lần, RAM).
 2. `GET /novnc/dang-nhap?ve=…` chỉ trả một trang nhỏ có NÚT (không script); bấm nút gửi `POST /novnc/dang-nhap`
    (vé trong thân form). Bot xem trước liên kết của ứng dụng nhắn tin chỉ GET nên không giành được vé.
+
+   (vé trong thân form). Bot xem trước liên kết của các ứng dụng nhắn tin chỉ GET nên không giành được vé.
    POST đổi vé NGUYÊN TỬ (kiểm vé + trần + tạo phiên trong một khoá) → 303 sang `/novnc/s/<phien>/vnc.html`.
 3. KHÔNG cookie. Phiên (256 bit) nằm TRONG ĐƯỜNG DẪN `/novnc/s/<phien>/…`; sổ phiên tra theo sha256 của phiên;
    (module, hồ sơ) suy ra từ phiên — khách không tự chọn được hồ sơ. Trần: 4 phiên mỗi (module, hồ sơ),
