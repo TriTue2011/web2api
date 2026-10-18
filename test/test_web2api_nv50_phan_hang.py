@@ -41,52 +41,41 @@ def _hang(manifest):
     return tinh_hang(manifest)
 
 
-XFAIL_PH1 = pytest.mark.xfail(strict=True, reason="NV50 PH1: tinh_hang chưa có trên main")
-
-
 # ── Hạng A ────────────────────────────────────────────────────────────────
 
-@XFAIL_PH1
 def test_tinh_hang_chat_don_gian_la_a():
     assert _hang(mf(cung_cap=["chat"], truong_cau_hinh=[])) == "A"
 
 
-@XFAIL_PH1
 def test_tinh_hang_nhom_kha_nang_loi_la_a():
     assert _hang(mf(cung_cap=["chat", "anh", "nhung", "xep_hang", "nghe", "noi"])) == "A"
 
 
-@XFAIL_PH1
 def test_tinh_hang_manifest_rong_la_a():
     # Không khai quyền nào → không có gì nguy hiểm → hạng A (mặc định an toàn).
     assert _hang({}) == "A"
 
 
-@XFAIL_PH1
 def test_tinh_hang_none_la_a():
     assert _hang(None) == "A"
 
 
-@XFAIL_PH1
 def test_tinh_hang_mang_ra_rong_khong_doi_hang():
     m = mf(cung_cap=["chat"], tai_nguyen={"mang_ra": []})
     assert _hang(m) == "A"
 
 
-@XFAIL_PH1
 def test_tinh_hang_yeu_cau_goi_rong_la_a():
     assert _hang(mf(cung_cap=["chat"], yeu_cau_goi=[])) == "A"
 
 
 # ── Hạng B ────────────────────────────────────────────────────────────────
 
-@XFAIL_PH1
 def test_tinh_hang_mang_ra_la_b():
     m = mf(cung_cap=["chat"], tai_nguyen={"mang_ra": ["api.vi-du-test.example"]})
     assert _hang(m) == "B"
 
 
-@XFAIL_PH1
 def test_tinh_hang_webhook_la_b():
     m = mf(cung_cap=["chat"], webhook={
         "bi_mat": "khoa_bi_mat", "tran_byte": 1024,
@@ -94,7 +83,6 @@ def test_tinh_hang_webhook_la_b():
     assert _hang(m) == "B"
 
 
-@XFAIL_PH1
 def test_tinh_hang_nhan_cookie_la_b():
     m = mf(truong_cau_hinh=[{"khoa": "cookie_dn", "nhan": "Cookie đăng nhập",
                              "kieu": "danh_sach_bi_mat",
@@ -102,26 +90,22 @@ def test_tinh_hang_nhan_cookie_la_b():
     assert _hang(m) == "B"
 
 
-@XFAIL_PH1
 def test_tinh_hang_yeu_cau_goi_la_la_b():
     # Gói rõ ràng không thuộc allowlist của ảnh → hạng B.
     m = mf(cung_cap=["chat"], yeu_cau_goi=["goi-la-nv50-khong-co-that-xyz"])
     assert _hang(m) == "B"
 
 
-@XFAIL_PH1
 def test_tinh_hang_trinh_duyet_la_b():
     # Tự động hoá trình duyệt (NV48 §3.1) → hạng B.
     assert _hang(mf(cung_cap=["trinh_duyet"])) == "B"
 
 
-@XFAIL_PH1
 def test_tinh_hang_thiet_bi_la_b():
     # Điều khiển thiết bị (NV48 §3.1) → hạng B.
     assert _hang(mf(cung_cap=["thiet_bi"])) == "B"
 
 
-@XFAIL_PH1
 def test_tinh_hang_kha_nang_la_mac_dinh_dong():
     # cung_cap là trường mở: khả năng chưa biết → B (không liệt kê tên nguy hiểm).
     assert _hang(mf(cung_cap=["kha_nang_moi_chua_biet_xyz"])) == "B"
@@ -129,7 +113,6 @@ def test_tinh_hang_kha_nang_la_mac_dinh_dong():
 
 # ── Theo cấu trúc, không theo tên ─────────────────────────────────────────
 
-@XFAIL_PH1
 def test_tinh_hang_khong_phu_thuoc_ten_module():
     # Tên «nguy hiểm» nhưng cấu trúc an toàn → A; tên «lành» nhưng cấu trúc B → B.
     assert _hang(mf(id="mod-nguy-hiem", tien_to="nguyhiem", cung_cap=["chat"])) == "A"
@@ -202,7 +185,6 @@ def chay(ham):
     return asyncio.run(_())
 
 
-@pytest.mark.xfail(strict=True, reason="NV50 PH1: catalog chưa lưu hạng module")
 def test_catalog_luu_hang_a_sau_khi_cai(gh, du_lieu):
     async def ham(so, ng):
         gh.day(tep_kho({"echo": tep_echo_hang("echo v1", cung_cap=["chat"])}))
@@ -213,7 +195,6 @@ def test_catalog_luu_hang_a_sau_khi_cai(gh, du_lieu):
     chay(ham)
 
 
-@pytest.mark.xfail(strict=True, reason="NV50 PH1: catalog chưa lưu hạng module")
 def test_catalog_luu_hang_b_sau_khi_cai(gh, du_lieu):
     # Cài MỚI module hạng B không bị chặn (chỉ cập nhật A→B mới chờ duyệt) —
     # nhưng hạng phải được ghi vào catalog.
