@@ -22,6 +22,7 @@ import pytest
 
 from app import so_module
 from app.main import app
+from conftest import cai_git_hai_luot
 from gia import GitHubGia, GoogleGia, MayChuThat, ghi_thu_muc, tep_kho
 from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 from gia import OpenAIGia
@@ -171,21 +172,26 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.cho("!document.getElementById('chi-tiet')", mo_ta="đóng bảng chi tiết")
 
         # Nút «Cài» NGAY TRÊN Ô (biểu tượng tải về nền đen như ô chưa cài của demo Tiện ích): không lồng trong nút chọn ô;
-        # bấm hai lần liền → MỘT lần cài, không mở bảng chi tiết.
+        # bấm hai lần liền → MỘT lần cài ở lượt 1, mở hộp xác nhận cài mới (NV61).
         assert trang.js(nut_o("ai-gia") + ".getAttribute('aria-label')") == "Cài AI giả"
         assert "den" in trang.js(nut_o("ai-gia") + ".className")
         assert trang.js(nut_o("ai-gia") + ".dataset.hanhDong") == "cai"
         assert trang.js(nut_o("ai-gia") + ".closest('button[data-o]') === null && " + o("ai-gia") + ".querySelector('button, a') === null")
         trang.js(DEM_CAI)
         trang.js(f"(() => {{ const b = {nut_o('ai-gia')}; b.click(); b.click(); }})()")
-        assert not trang.js("!!document.getElementById('chi-tiet')")
+        trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mới")
+        assert "Cài module" in trang.chu("#xac-nhan-cai")
+        assert trang.js("sessionStorage.demCai") == "1"
         assert trang.js(o("ai-gia") + ".getAttribute('aria-pressed')") == "false"
+        assert not trang.js("!!document.getElementById('can-gi')")  # bảng chi tiết bình thường của ô không mở, chỉ có hộp xác nhận
+        # Bấm Đồng ý cài: bấm hai lần liền cũng chỉ gửi MỘT lần cài ở lượt 2 (chống gửi đúp)
+        trang.js("(() => { const b = document.getElementById('nut-dong-y-cai'); if (b) { b.click(); b.click(); } })()")
 
         # Cài xong (module khai chat) → tự sang Studio; MỘT dòng nhỏ «Chưa có khoá cho … — Thêm khoá» dẫn tới chỗ thêm
         # khoá (không dải «Đã cài …» — bản demo không có), viên trạng thái của demo chuyển vàng «Chờ khoá».
         trang.cho("location.pathname.endsWith('/Studio.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'"
                   " && !!document.getElementById('studio-chua-khoa')", han=20, mo_ta="tự sang Studio sau khi cài")
-        assert trang.js("sessionStorage.demCai") == "1"
+        assert trang.js("sessionStorage.demCai") == "2"
         assert "da_cai" not in trang.js("location.search")          # tham số chỉ dùng một lần, bỏ khỏi địa chỉ
         assert not trang.js("!!document.getElementById('da-cai')")
         assert trang.chu("#trang-thai-chung") == "Chờ khoá"
@@ -258,6 +264,8 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.cho(nut_o("mang-gia"), mo_ta="nút Cài trên ô mang-gia")
         trang.js("window.__oLai = 1")
         trang.bam(nut_o("mang-gia"))
+        trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mang-gia")
+        trang.bam("document.getElementById('nut-dong-y-cai')")
         trang.cho(o("mang-gia") + "?.dataset.tt === 'dang-chay'", han=15, mo_ta="mang-gia cài xong")
         time.sleep(0.5)
         assert trang.js("window.__oLai") == 1 and trang.js("location.pathname").endswith("/He-thong.dc.html")
@@ -268,7 +276,7 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
     """Form khoá trong bảng chi tiết (module cài sẵn qua API, chưa khoá): bắt buộc, base_url không bị ghi đè,
     thêm/bớt từng khoá, gỡ → tab biến mất. Studio có từ lúc CÀI (chủ máy 11/10), không đợi liên kết."""
     with loi_that(tmp_path, monkeypatch, git={"ai-gia": module_ai()}) as w:
-        assert httpx.post(f"{w.url}/api/nguon-git/cai/ai-gia", headers=QT, timeout=30).status_code == 200
+        assert cai_git_hai_luot(httpx, "ai-gia", headers=QT, duong_dan=f"{w.url}/api/nguon-git/cai/ai-gia").status_code == 200
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("ai-gia") + "?.dataset.tt === 'cho-khoa'", han=15, mo_ta="ô «Đã cài — chờ khoá»")
@@ -1485,7 +1493,7 @@ def test_go_tren_o_bam_hai_lan(trang, tmp_path, monkeypatch):
 
 def test_ban_moi_tren_git_hien_cap_nhat(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, git={"ai-gia": module_ai()}) as w:
-        r = httpx.post(f"{w.url}/api/nguon-git/cai/ai-gia", headers=QT, timeout=30)
+        r = cai_git_hai_luot(httpx, "ai-gia", headers=QT, duong_dan=f"{w.url}/api/nguon-git/cai/ai-gia")
         assert r.status_code == 200, r.text
         tep = module_ai()
         m = json.loads(tep["manifest.json"])

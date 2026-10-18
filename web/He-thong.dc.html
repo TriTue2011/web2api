@@ -290,7 +290,7 @@ main.pg{padding:12px 16px 24px}
 
 <sc-if value="{{ct.laModule}}">
 <div class="chi-tiet-dau"><span class="bieu-tuong" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ct.hinh}}"></path></svg></span><div style="display:flex;flex-direction:column;min-width:0"><h2 id="chi-tiet-ten" tabindex="-1">{{ct.ten}}</h2><span class="ct-phu">{{ct.phu}}</span></div><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
-<div class="dong-nut" style="gap:6px"><span class="{{ct.lopTT}}" id="ct-trang-thai">{{ct.nhanTT}}</span></div>
+<sc-if value="{{ct.coTrangThai}}"><div class="dong-nut" style="gap:6px"><span class="{{ct.lopTT}}" id="ct-trang-thai">{{ct.nhanTT}}</span></div></sc-if>
 <sc-if value="{{ct.moTa}}"><p style="text-wrap:pretty;overflow-wrap:anywhere;margin-top:-6px">{{ct.moTa}}</p></sc-if>
 <sc-if value="{{ct.loi}}"><p role="alert" class="bao bao-loi" id="ct-loi">{{ct.loi}}</p></sc-if>
 <sc-if value="{{ct.ghiChuGit}}"><p class="bao bao-vang">{{ct.ghiChuGit}}</p></sc-if>
@@ -321,12 +321,14 @@ main.pg{padding:12px 16px 24px}
 </section>
 </sc-if>
 
+<sc-if value="{{ct.coTaiNguyen}}">
 <section class="muc-ct" id="can-gi" aria-labelledby="h-can-gi">
 <h3 id="h-can-gi">Cần gì để chạy</h3>
 <dl class="bang"><sc-for list="{{ct.taiNguyen}}" as="r"><div class="bang-dong"><dt>{{r.nhan}}</dt><dd><sc-if value="{{r.chuaDo}}"><span class="chua-do">chưa đo</span></sc-if><sc-if value="{{r.coGiaTri}}">{{r.giaTri}}</sc-if></dd></div></sc-for></dl>
 <sc-if value="{{ct.huongDan}}"><p class="phu" id="huong-dan" style="color:var(--ink)"><strong>Hướng dẫn:</strong> {{ct.huongDan}}</p></sc-if>
 <sc-if value="{{ct.mayNay}}"><p class="{{ct.lopMayNay}}" id="may-nay">{{ct.mayNay}}</p></sc-if>
 </section>
+</sc-if>
 
 <sc-if value="{{ct.coMuc}}">
 <section class="muc-ct" id="muc-module" aria-labelledby="h-muc">
@@ -562,6 +564,7 @@ class Component extends DCLogic {
   async caiTuGit(id, laCai) {
     // this.state cập nhật ĐỒNG BỘ trong setState → cú bấm thứ hai trước lần vẽ lại cũng bị chặn ở đây.
     if ((this.state.caiGit[id] || {}).dang) return;
+    const tuO = (this.state.chon !== id);
     this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: true, loi: '', tin: '' } }), hoiCai: null }));
     let res;
     try {
@@ -585,7 +588,8 @@ class Component extends DCLogic {
           quyen: j.quyen || [],
           ma_xac_nhan: j.ma_xac_nhan || '',
           dang: false,
-          loi: ''
+          loi: '',
+          tuO: tuO
         }
       }));
       if (this.state.chon !== id) this.chonO(id);
@@ -647,7 +651,10 @@ class Component extends DCLogic {
   }
 
   huyCai() {
-    this.setState({ hoiCai: null });
+    this.setState((s) => ({
+      hoiCai: null,
+      chon: (s.hoiCai && s.hoiCai.tuO) ? null : s.chon
+    }));
   }
 
   // Liên kết xong: tải lại «tính năng đang có» → khung tính lại điều kiện, tab liên quan hiện NGAY (không tải lại
@@ -964,6 +971,7 @@ class Component extends DCLogic {
     const cg = s.caiGit[x.id] || {};
     const coKhoa = true;
     const hc = s.hoiCai && s.hoiCai.id === x.id ? s.hoiCai : null;
+    const chiHoiCai = !!(hc && hc.tuO);
     let hoiCaiVM = null;
     if (hc) {
       const dsQuyen = Array.isArray(hc.quyen) ? hc.quyen.map((q) => {
@@ -984,8 +992,8 @@ class Component extends DCLogic {
         dang: !!hc.dang
       };
     }
-    const coNutCai = coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi') && !hoiCaiVM;
-    const coForm = coKhoa && x.daCai && !x.tuXa;
+    const coNutCai = !chiHoiCai && coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi') && !hoiCaiVM;
+    const coForm = !chiHoiCai && coKhoa && x.daCai && !x.tuXa;
     const moi = s.tabMoi[x.id] || [];
     const tabMoi = moi.length ? ' Tab vừa hiện: ' + moi.join(', ') + '.' : '';
 
@@ -1009,11 +1017,12 @@ class Component extends DCLogic {
       nhanTT: TT[x.tt][0] + (x.tt === 'ban-moi' && x.g ? ' ' + (x.g.phien_ban_cu || '') + ' → ' + (x.g.phien_ban_moi || '') : ''),
       // A0: chữ theo trạng thái git suy từ cấu trúc — moi → «Cài», co_ban_moi → «Cập nhật», da_cai_dung → «Đã là bản mới nhất».
       moiNhat: x.daCai && ((s.tb && s.tb.moi_nhat) || []).includes(x.id),
+      coTrangThai: !chiHoiCai,
       lopTT: TT[x.tt][1], cungCap: Array.isArray(x.info.cung_cap) ? x.info.cung_cap : [],
-      coCungCap: Array.isArray(x.info.cung_cap) && x.info.cung_cap.length > 0,
-      moTa: x.info.mo_ta || '', loi: x.loi ? 'Không dùng được: ' + x.loi : '', ghiChuGit: (x.g && x.g.ghi_chu) || '',
-      taiNguyen, huongDan: (tn && tn.ghi_chu) || '', mayNay, lopMayNay,
-      coMuc: muc.length > 0, coMucDu: mucDu.length > 0, mucDu, mucThieu,
+      coCungCap: !chiHoiCai && Array.isArray(x.info.cung_cap) && x.info.cung_cap.length > 0,
+      moTa: chiHoiCai ? '' : (x.info.mo_ta || ''), loi: x.loi ? 'Không dùng được: ' + x.loi : '', ghiChuGit: (x.g && x.g.ghi_chu) || '',
+      taiNguyen, coTaiNguyen: !chiHoiCai && taiNguyen.length > 0, huongDan: (tn && tn.ghi_chu) || '', mayNay, lopMayNay,
+      coMuc: !chiHoiCai && muc.length > 0, coMucDu: mucDu.length > 0, mucDu, mucThieu,
       caiCanKhoa: !coKhoa && x.tt !== 'loi', coNutCai,
       nhanCai: cg.dang ? (x.tt === 'ban-moi' ? 'Đang cập nhật…' : 'Đang cài…') : (x.tt === 'ban-moi' ? 'Cập nhật' : 'Cài'),
       goiYCai: x.tt === 'ban-moi' ? 'Thay mã bằng bản mới trên git; cấu hình và khoá giữ nguyên.' : 'Cài không cần khoá API — khoá thêm ở bước sau.',
@@ -1100,12 +1109,16 @@ class Component extends DCLogic {
       .filter((k) => k.o.length);
     const khu = khuHien.map((k, i) => ({
       ma: k.ma, ten: k.ten, idTen: 'khu-' + i, dem: k.o.length, coThem: i === khuHien.length - 1,
-      o: k.o.map((x) => Object.assign({
-        id: x.id, tt: x.tt, chon: s.chon === x.id, lop: 'o-mod' + (s.chon === x.id ? ' o-dang-chon' : ''),
-        ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
-        loaiTen: x.loaiTen, nhanTT: TT[x.tt][0], lopTT: TT[x.tt][1], moTa: x.info.mo_ta || '', taiNguyen: this.taiNguyenO(x),
-        aria: (x.info.ten || x.id) + ' — ' + TT[x.tt][0], chonO: () => this.chonO(x.id)
-      }, this.nutO(x, coKhoa)))
+      o: k.o.map((x) => {
+        const laHoiCaiTuO = !!(s.hoiCai && s.hoiCai.id === x.id && s.hoiCai.tuO);
+        const dangChon = s.chon === x.id && !laHoiCaiTuO;
+        return Object.assign({
+          id: x.id, tt: x.tt, chon: dangChon, lop: 'o-mod' + (dangChon ? ' o-dang-chon' : ''),
+          ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
+          loaiTen: x.loaiTen, nhanTT: TT[x.tt][0], lopTT: TT[x.tt][1], moTa: x.info.mo_ta || '', taiNguyen: this.taiNguyenO(x),
+          aria: (x.info.ten || x.id) + ' — ' + TT[x.tt][0], chonO: () => this.chonO(x.id)
+        }, this.nutO(x, coKhoa));
+      })
     }));
     const chipLoai = [{ ma: 'tat-ca', ten: 'Tất cả', dem: String(tatCa.length) }].concat(dsKhu.map((k) => ({ ma: k.ma, ten: k.ten, dem: String(k.o.length) })))
       .map((c) => Object.assign(c, { on: c.ma === locLoai, chon: () => this.setState({ locLoai: c.ma }) }));

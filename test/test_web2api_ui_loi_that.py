@@ -61,6 +61,10 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài")
             assert "generativelanguage.googleapis.com" in trang.chu("#can-gi") and "httpx" in trang.chu("#can-gi")
             trang.bam("document.getElementById('nut-cai')")
+            # Hộp xác nhận cài mới hiện ra (NV61: cài module mới từ git phải qua xác nhận)
+            trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mới")
+            assert "Gemini" in trang.chu("#xac-nhan-cai") or "gemini-api" in trang.chu("#xac-nhan-cai")
+            trang.bam("document.getElementById('nut-dong-y-cai')")
             # Cài xong: module khai chat → tự sang Studio (trang chính); chưa có khoá → MỘT dòng «Chưa có khoá cho … — Thêm khoá».
             trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/Studio.dc.html') && !!document.getElementById('studio-chua-khoa')", han=20,
                       mo_ta="tự sang Studio sau khi cài")

@@ -463,8 +463,11 @@ def test_danh_sach_tai_khoan_danh_tinh_va_chay_chi_email_giao_dien(trang, tmp_pa
         assert email_che in dong_text, f"email che phải hiện, thực tế: {dong_text}"
         assert email_that not in dong_text, f"email thật không được lộ trong innerText: {dong_text}"
 
-        # Tick một dòng -> Xem trước
+        # Tick một dòng -> Mở khối dán nhiều dòng (lối phụ) -> Xem trước
         trang.bam("document.querySelector('[data-danh-tinh=\"dt-001\"] input[type=\"checkbox\"]')")
+        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
+            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
+            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
         trang.bam("document.getElementById('nut-xem-truoc')")
         trang.cho("document.getElementById('xem-truoc-tu-dong')", mo_ta="khung xem trước")
         assert "1 tài khoản hợp lệ" in trang.chu("#xem-truoc-tu-dong")
@@ -535,6 +538,9 @@ def test_xss_khong_pha_dom_va_khong_chay_ma_giao_dien(trang, tmp_path, monkeypat
         trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="loại tài khoản")
         trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
         trang.cho("document.getElementById('o-tu-dong')", mo_ta="ô dán danh sách")
+        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
+            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
+            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
         trang.go("#o-tu-dong", f"xss_{xss_payload}@example.com|matkhau123")
         trang.bam("document.getElementById('nut-xem-truoc')")
 
@@ -592,6 +598,9 @@ def test_can_nguoi_va_ma_la_va_xoa_bi_mat_giao_dien(trang, tmp_path, monkeypatch
 
         # Dán 2 dòng: 1 dòng can_nguoi, 1 dòng mã lạ
         trang.cho("document.getElementById('o-tu-dong')", mo_ta="ô dán")
+        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
+            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
+            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
         trang.go("#o-tu-dong", f"acc_can_nguoi@x.com|{mat_khau_bi_mat}\nacc_ma_la@x.com|{mat_khau_bi_mat}")
         trang.bam("document.getElementById('nut-xem-truoc')")
         trang.cho("document.getElementById('xem-truoc-tu-dong')", mo_ta="xem trước")

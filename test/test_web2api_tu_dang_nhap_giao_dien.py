@@ -85,6 +85,9 @@ def test_vong_tu_dang_nhap_tren_giao_dien(trang, tmp_path, monkeypatch):
         assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") == "none", "nút lưu API ẩn ở loại Tài khoản"
 
         # dán 3 dòng + 1 dòng lỗi + 1 dòng trùng
+        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
+            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
+            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
         trang.go("#o-tu-dong", f"a@x.com|{MAT_KHAU_GIA}\nb@x.com|mat-khau-sai-123\nc@x.com|{COOKIE_GIA}\nkhong-phai-email|x\nA@x.com|{MAT_KHAU_GIA}")
         trang.bam("document.getElementById('nut-xem-truoc')")
         trang.cho("document.getElementById('xem-truoc-tu-dong')", mo_ta="xem trước")

@@ -118,11 +118,11 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </sc-if>
 </div>
 </div>
-<details style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-top:4px">
-<summary style="padding:10px 14px;background:#FBFAF8;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Dán nhiều dòng (lối phụ)</summary>
+<details open="{{them.td.moDan}}" onToggle="{{them.td.doiMoDan}}" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-top:4px">
+<summary onClick="{{them.td.bamSummary}}" style="padding:10px 14px;background:#FBFAF8;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Dán nhiều dòng (lối phụ)</summary>
 <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
 <span style="font-size:12px;color:var(--mute);line-height:1.5">Mỗi dòng một tài khoản: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu</span>, có mã 2FA thì thêm <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu|mã2fa</span>, hoặc dùng cookie <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|cookie=…</span>. Hệ thống đăng nhập LẦN LƯỢT, cách nhau khoảng 30 giây. Gặp CAPTCHA hoặc bước xác minh thì dừng tài khoản đó và báo bạn mở trình duyệt xử lý — không cố vượt. Mật khẩu chỉ nằm trong ô này tới khi bấm đăng nhập rồi bị xoá khỏi trang.</span>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Danh sách tài khoản<textarea id="o-tu-dong" rows="5" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="ten@gmail.com|mat-khau&#10;ten2@gmail.com|mat-khau|123456" value="{{them.td.vanBan}}" onInput="{{them.td.goVanBan}}" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px ui-monospace,Menlo,Consolas,monospace;resize:vertical"></textarea></label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Danh sách tài khoản<textarea id="o-tu-dong" rows="5" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="ten@gmail.com|mat-khau&#10;ten2@gmail.com|mat-khau|123456" value="{{them.td.vanBan}}" onFocus="{{them.td.focusVanBan}}" onInput="{{them.td.goVanBan}}" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px ui-monospace,Menlo,Consolas,monospace;resize:vertical"></textarea></label>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-xem-truoc" disabled="{{them.td.dangXem}}" onClick="{{them.td.xem}}" style="{{them.td.xemSt}}">Xem trước</button></div>
 <sc-if value="{{them.td.coXem}}"><div id="xem-truoc-tu-dong" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
 <div style="padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)">{{them.td.tomTat}}</div>
@@ -404,6 +404,7 @@ class Component extends DCLogic {
       // Tự đăng nhập (td*): nhóm/loại chọn, kiểu đăng nhập, danh tính tick sẵn, văn bản dán, xem trước, bỏ chọn, lượt chạy
       tkNhomThem: null, tkLoaiThem: null, tdKieu: 'truc_tiep', tdDaChon: {}, dsDanhTinh: [],
       tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdDangXem: false, tdDangChay: false, tdLoi: '', tdLuot: null,
+      tdMoDan: false,
       tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
       tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null };
     this._den = den;
@@ -768,10 +769,10 @@ class Component extends DCLogic {
   async tdXemTruoc(m) {
     const van_ban = this.layVanBanGop();
     if (!van_ban.trim()) { this.tdDatLoi('Dán ít nhất một dòng tài khoản hoặc chọn tài khoản có sẵn.'); return; }
-    this.setState({ tdDangXem: true, tdLoi: '' });
+    this.setState({ tdDangXem: true, tdMoDan: true, tdLoi: '' });
     try {
       const { j } = await K.goi('api/tai-khoan/dan-hang-loat', { method: 'POST', json: { module_id: m.id, van_ban } });
-      this.setState({ tdXem: j || { tai_khoan: [], loi: [], bo_trung: [] }, tdBo: {}, tdDangXem: false });
+      this.setState({ tdXem: j || { tai_khoan: [], loi: [], bo_trung: [] }, tdBo: {}, tdDangXem: false, tdMoDan: true });
     } catch (e) { this.setState({ tdDangXem: false, tdXem: null, tdLoi: (e && e.message) || 'Không tách được danh sách.' }); }
   }
   async tdChay(m) {
@@ -1153,7 +1154,12 @@ class Component extends DCLogic {
     const soHangNhapCoDuLieu = (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length;
     const chayHangNhapNhan = s.tdDangChay ? 'Đang bắt đầu…' : (soHangNhapCoDuLieu > 1 ? ('Đăng nhập ' + soHangNhapCoDuLieu + ' tài khoản') : 'Đăng nhập');
 
+    const moDan = !!(s.tdMoDan || (s.tdVanBan && s.tdVanBan.trim()) || s.tdXem || s.tdDangXem);
     const td = {
+      moDan,
+      bamSummary: () => this.setState((st) => ({ tdMoDan: !moDan })),
+      doiMoDan: (e) => { const mo = !!e.target.open; if (s.tdMoDan !== mo) this.setState({ tdMoDan: mo }); },
+      focusVanBan: () => { if (!s.tdMoDan) this.setState({ tdMoDan: true }); },
       hangNhap,
       coThemHang,
       themHang: () => this.themHangTk(),
@@ -1162,7 +1168,7 @@ class Component extends DCLogic {
       chayHangNhapSt: btnSt({ pri: true }) + 'min-height:44px;',
       chayHangNhapNhan,
       dangChayHangNhap: s.tdDangChay,
-      vanBan: s.tdVanBan, goVanBan: (e) => { const v = e.target.value; this.setState({ tdVanBan: v, tdXem: null, tdBo: {}, tdLoi: '' }); },
+      vanBan: s.tdVanBan, goVanBan: (e) => { const v = e.target.value; this.setState({ tdVanBan: v, tdMoDan: true, tdXem: null, tdBo: {}, tdLoi: '' }); },
       dangXem: s.tdDangXem, xem: () => { if (chon) this.tdXemTruoc(chon); }, xemSt: btnSt({}),
       coLoi: !!s.tdLoi, loi: s.tdLoi,
       coXem: !!xem, hang: tdHang,
@@ -1231,7 +1237,7 @@ class Component extends DCLogic {
           tkThem: mo, f: {}, chonMod: null, tkNhomThem: null, tkLoaiThem: null,
           tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
           tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
-          tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}
+          tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false
         });
         if (mo) this.taiDanhTinh();
       }},
