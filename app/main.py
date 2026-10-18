@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kho, khoa_khach, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -87,6 +87,9 @@ async def lifespan(app: FastAPI):
     vong_model = lam_moi_model.VongLamMoiModel(lambda: so.dang_chay)
     app.state.vong_model = vong_model
     vong_model.bat_dau()
+    vong_stb = so_thiet_bi.VongQuetSoThietBi(lambda: app)
+    app.state.vong_so_thiet_bi = vong_stb
+    vong_stb.bat_dau()
     task_dong_bo = asyncio.create_task(_vong_dong_bo_khoa())
     task_quet_phien = asyncio.create_task(_vong_quet_phien(app))
     nhat_ky.ghi("he_thong", "thong_tin", f"Khởi động web2api v{PHIEN_BAN}", phien_ban=PHIEN_BAN)
@@ -101,6 +104,7 @@ async def lifespan(app: FastAPI):
         await tu_lam_moi.huy_tat_ca()
         await ng.dung()
         await vong_model.dung()
+        await vong_stb.dung()
         await so.dung_het()
 
 
@@ -395,6 +399,7 @@ app.include_router(tuyen.phien)
 app.include_router(tuyen.sao_luu)
 
 app.include_router(tuyen.thiet_bi)
+app.include_router(so_thiet_bi.router)
 app.include_router(tuyen.phe_duyet)
 app.include_router(tuyen.tim_kiem)
 app.include_router(tuyen.cong_cu)

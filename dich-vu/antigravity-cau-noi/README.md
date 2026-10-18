@@ -52,6 +52,7 @@ Email hiển thị ở `/tai-khoan` (dạng che `a…z@miền`) lấy từ tệp
 | `AGY_PROMPT_TOI_DA_KB` | `120` | Trần hội thoại đã ghép (byte UTF-8); vượt → `400 context_length_exceeded`. Không nâng được quá 120 KiB: Linux giới hạn một tham số dòng lệnh ở 128 KiB. |
 | `AGY_GIU_BIEN` | *(rỗng)* | Tên biến môi trường thêm cho phép truyền xuống `agy` (ngăn bằng dấu phẩy). Mặc định `agy` chỉ nhận `PATH`, `LANG`, `LC_*`, `TZ`, `USER`, `LOGNAME`, `TERM`, biến proxy và `HOME`; biến `AGY_CAU_NOI_*` không bao giờ được truyền. Chưa kiểm `agy` thật có cần thêm biến nào (vd keyring) không. |
 | `AGY_TTL_MODELS_S` | `600` | Thời gian đệm danh mục model (`agy models`). |
+| `AGY_TTL_PHIEN_BAN_S` | `3600` | Thời gian đệm phiên bản CLI (`agy --version`). |
 | `AGY_TTL_USAGE_S` | `60` | Thời gian đệm hạn mức (`agy -p "/usage"`); cửa sổ đang cạn qua mốc reset thì đọc lại ngay. |
 
 ## Cách chạy
@@ -107,6 +108,12 @@ nghe `0.0.0.0` khi máy chủ có cổng mở ra ngoài. Chưa kiểm cách này
 - **Hạn mức:** câu tối thiểu («Trả lời: OK») tốn khoảng **12.500 token vào** vì khung agent của `agy` nạp sẵn ngữ
   cảnh; một việc viết mã nhỏ có thể tới 290.000 token. Dùng làm **nguồn dự phòng**, không làm nguồn chat chính.
   Chưa đo `agy -p "/usage"` có tốn token không (cầu nối gọi nó tối đa mỗi `AGY_TTL_USAGE_S` giây mỗi tài khoản).
+- **Cập nhật CLI `agy`:** Cầu nối **KHÔNG** tự chạy `agy update` và **KHÔNG** tải gì từ internet: tự cập nhật nhị
+  phân một công cụ đang chạy việc giữa chừng là mã bên thứ ba chạy không người duyệt (luật bảo mật 4) và có thể cắt
+  ngang lượt đang chạy. Cầu nối chỉ BÁO phiên bản hiện tại qua trường `agy_phien_ban` tại `/health`; chủ máy tự chạy
+  `agy update` thủ công khi rảnh.
+- **Làm mới danh mục model:** `POST /v1/models/lam-moi` (yêu cầu Bearer token) xoá đệm và ép chạy lại `agy models`,
+  trả `{ok, so_model, moi, khong_con}` để web2api đồng bộ sổ model tự động (NV102/NV108) mà không cần can thiệp tay.
 - **Ai giữ khoá cầu nối là điều khiển được một agent trên máy chủ** (`--mode accept-edits`, trong hộp cát). Lời dặn
   «không dùng công cụ» chỉ là lời dặn, không phải rào chắn — rào chắn là hộp cát của `agy`, môi trường tối giản và
   thư mục tạm trống. Giữ khoá như mật khẩu quản trị.

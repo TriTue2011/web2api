@@ -64,6 +64,10 @@ def moi_truong(tmp_path, monkeypatch):
     monkeypatch.setattr(cau_noi, "_dem_models", [])
     monkeypatch.setattr(cau_noi, "_dem_models_luc", 0.0)
     monkeypatch.setattr(cau_noi, "_khoa_models", asyncio.Lock())
+    monkeypatch.setattr(cau_noi, "_models_doi_luc", None)
+    monkeypatch.setattr(cau_noi, "_dem_phien_ban", None)
+    monkeypatch.setattr(cau_noi, "_dem_phien_ban_luc", 0.0)
+    monkeypatch.setattr(cau_noi, "_khoa_phien_ban", asyncio.Lock())
     monkeypatch.setattr(cau_noi, "be", None)
     tam = tmp_path / "tam"
     tam.mkdir()
@@ -97,8 +101,8 @@ def nhat_ky(home: Path) -> list[dict]:
 
 
 def luot_chat(home: Path) -> list[dict]:
-    """Các lần agy được gọi để CHAT (bỏ /usage và models)."""
-    return [m for m in nhat_ky(home) if "argv" in m and m["argv"][:1] != ["models"] and m["argv"][1:2] != ["/usage"]]
+    """Các lần agy được gọi để CHAT (bỏ /usage, models và --version)."""
+    return [m for m in nhat_ky(home) if "argv" in m and m["argv"][:1] not in (["models"], ["--version"]) and m["argv"][1:2] != ["/usage"]]
 
 
 def con_song(pid: int) -> bool:
@@ -160,7 +164,8 @@ def test_health_va_models_bo_dong_la_va_hoi_tai_khoan_ke_khi_dau_hong(tmp_path, 
                                       {"id": "id có cách", "nhan": "y"}])
     monkeypatch.setenv("AGY_HOMES", f"{h0}:{h1}")
     with TestClient(app) as c:
-        assert c.get("/health").json() == {"status": "ok", "accounts": 2}
+        d_health = c.get("/health").json()
+        assert d_health["status"] == "ok" and d_health["accounts"] == 2
         assert [m["id"] for m in c.get("/v1/models", headers=AUTH).json()["data"]] == ["gemini-x"]
 
 
@@ -625,3 +630,148 @@ def test_khong_log_prompt_home_email(tmp_path, monkeypatch, caplog):
     assert "acc" in caplog.text
     for x in (bi_mat, str(h0), str(h1), "nguoidung@", "khac@", KHOA):
         assert x not in caplog.text, x
+
+
+# ───────────── NV108: làm mới model & báo phiên bản ─────────────
+
+
+def test_lam_moi_models_ep_doc_lai_va_cap_nhat_moi_khong_con(tmp_path, monkeypatch):
+    h0 = tao_acc(tmp_path, 0, models=[
+        {"id": "gemini-3.8-flash-high", "nhan": "Gemini 3.8"},
+        {"id": "claude-sonnet-4-6", "nhan": "Claude Sonnet 4.6"},
+    ])
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        # Lần 1: nạp ban đầu qua GET /v1/models
+        r1 = c.get("/v1/models", headers=AUTH)
+        assert r1.status_code == 200
+        assert [m["id"] for m in r1.json()["data"]] == ["gemini-3.8-flash-high", "claude-sonnet-4-6"]
+
+        # Cập nhật danh sách model của agy giả: claude biến mất, gemini-3.9-pro mới xuất hiện
+        (h0 / "_agy_gia.json").write_text(json.dumps({
+            "models": [
+                {"id": "gemini-3.8-flash-high", "nhan": "Gemini 3.8"},
+                {"id": "gemini-3.9-pro", "nhan": "Gemini 3.9 Pro"},
+            ]
+        }, ensure_ascii=False), encoding="utf-8")
+
+        # Nếu không gọi POST /v1/models/lam-moi thì GET /v1/models vẫn trả bản đệm cũ (TTL 600s)
+        r_dem = c.get("/v1/models", headers=AUTH)
+        assert [m["id"] for m in r_dem.json()["data"]] == ["gemini-3.8-flash-high", "claude-sonnet-4-6"]
+
+        # Gọi POST /v1/models/lam-moi để ép làm mới
+        r_lam_moi = c.post("/v1/models/lam-moi", headers=AUTH)
+        assert r_lam_moi.status_code == 200
+        body = r_lam_moi.json()
+        assert body["ok"] is True
+        assert body["so_model"] == 2
+        assert body["moi"] == ["gemini-3.9-pro"]
+        assert body["khong_con"] == ["claude-sonnet-4-6"]
+
+        # Sau khi làm mới, GET /v1/models phải thấy danh mục mới
+        r2 = c.get("/v1/models", headers=AUTH)
+        assert [m["id"] for m in r2.json()["data"]] == ["gemini-3.8-flash-high", "gemini-3.9-pro"]
+
+
+def test_lam_moi_models_xac_thuc_401(tmp_path, monkeypatch):
+    h0 = tao_acc(tmp_path, 0)
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        # Không có Authorization
+        r_khong_khoa = c.post("/v1/models/lam-moi")
+        assert r_khong_khoa.status_code == 401
+        assert r_khong_khoa.json()["error"]["code"] == "invalid_api_key"
+
+        # Sai khoá
+        r_sai_khoa = c.post("/v1/models/lam-moi", headers={"Authorization": "Bearer sai-khoa"})
+        assert r_sai_khoa.status_code == 401
+        assert r_sai_khoa.json()["error"]["code"] == "invalid_api_key"
+
+
+def test_lam_moi_models_dau_ra_ban_bi_loc_va_tran_500_model(tmp_path, monkeypatch):
+    # Dòng chèn lệnh, ký tự điều khiển, cờ giả, id quá dài, trùng lặp
+    models_ban = [
+        {"id": "gemini-hop-le", "nhan": "Hợp lệ"},
+        {"id": "; rm -rf /", "nhan": "Chèn lệnh"},
+        {"id": "-model-co-gia", "nhan": "Cờ giả"},
+        {"id": "id\x00nul", "nhan": "Ký tự NUL"},
+        {"id": "a" * 150, "nhan": "Quá 100 ký tự"},
+        {"id": "gemini-hop-le", "nhan": "Trùng lặp"},
+    ]
+    # Thêm 550 model hợp lệ để kiểm tra trần 500
+    for i in range(550):
+        models_ban.append({"id": f"model-extra-{i}", "nhan": f"Extra {i}"})
+
+    h0 = tao_acc(tmp_path, 0, models=models_ban)
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        r = c.post("/v1/models/lam-moi", headers=AUTH)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        # Không vượt quá trần 500
+        assert body["so_model"] <= 500
+        assert len(body["moi"]) <= 500
+        # Tất cả id trong moi đều khớp mẫu an toàn
+        for mid in body["moi"]:
+            assert cau_noi.MAU_ID_MODEL.fullmatch(mid)
+            assert not mid.startswith("-")
+            assert ";" not in mid
+            assert "\x00" not in mid
+
+
+def test_lam_moi_models_loi_hoac_het_gio_khong_lo_thong_tin(tmp_path, monkeypatch):
+    # Lỗi thoát mã != 0
+    h0 = tao_acc(tmp_path, 0, models_ma_thoat=2)
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        r = c.post("/v1/models/lam-moi", headers=AUTH)
+        assert r.status_code in (502, 504)
+        err = r.json().get("error", {})
+        assert err.get("code") in ("upstream_error", "timeout")
+        # Không lộ đường dẫn hay thông tin nội bộ
+        assert str(h0) not in err.get("message", "")
+
+
+def test_health_bao_phien_ban_va_models_doi_luc(tmp_path, monkeypatch):
+    h0 = tao_acc(tmp_path, 0, version="2.5.1-beta")
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        # Trước khi gọi models, models_doi_luc là None
+        r1 = c.get("/health")
+        assert r1.status_code == 200
+        d1 = r1.json()
+        assert d1["status"] == "ok"
+        assert d1["accounts"] == 1
+        assert d1["agy_phien_ban"] == "2.5.1-beta"
+        assert d1["models_doi_luc"] is None
+
+        # Gọi GET /v1/models để nạp danh mục lần đầu
+        c.get("/v1/models", headers=AUTH)
+        r2 = c.get("/health")
+        assert r2.status_code == 200
+        d2 = r2.json()
+        assert d2["models_doi_luc"] is not None
+        # Định dạng ISO
+        assert "T" in d2["models_doi_luc"]
+
+
+def test_health_phien_ban_loi_va_het_gio_van_200(tmp_path, monkeypatch):
+    # Khi agy --version bị lỗi hoặc đầu ra lạ (không khớp ^[0-9][0-9A-Za-z._+-]{0,31}$)
+    h0 = tao_acc(tmp_path, 0, version_raw="invalid-version-not-starting-with-digit\n")
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        r = c.get("/health")
+        assert r.status_code == 200
+        assert r.json()["agy_phien_ban"] is None
+
+    # Khi agy --version thoát mã lỗi
+    h1 = tao_acc(tmp_path, 1, version_ma_thoat=1)
+    monkeypatch.setenv("AGY_HOMES", str(h1))
+    monkeypatch.setattr(cau_noi, "_dem_phien_ban", None)
+    monkeypatch.setattr(cau_noi, "_dem_phien_ban_luc", 0.0)
+    with TestClient(app) as c:
+        r = c.get("/health")
+        assert r.status_code == 200
+        assert r.json()["agy_phien_ban"] is None
+

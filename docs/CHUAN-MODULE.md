@@ -60,12 +60,20 @@ Mỗi thực thể do module trả về phải có cấu trúc từ điển:
   "loai": "den | cong_tac | cam_bien | camera | may_chu | cong_mang | ... (mã mở)",
   "khu": "Phòng khách | Tầng 1 | ... (tuỳ chọn nhóm/vị trí)",
   "thuoc_tinh": {
-    "ip": "192.168.1.50"
+    "mac": "aa:bb:cc:dd:ee:ff",
+    "ip": "192.168.1.50",
+    "ten_may_tu_khai": "iphone-guest",
+    "bang_tan": "5GHz"
   },
   "tinh_nang": ["bat", "tat", "do_sang"],
   "rui_ro_mac_dinh": "doc | ghi | nguy_hiem"
 }
 ```
+- **Thuộc tính chuẩn cho thiết bị mạng (`thuoc_tinh`)**:
+  - `mac`: Địa chỉ MAC của thiết bị (chuỗi bất kỳ định dạng chuẩn, lõi tự chuẩn hoá về dạng `aa:bb:cc:dd:ee:ff`). Đây là điều kiện nhận diện thực thể là máy mạng trong sổ thiết bị của lõi.
+  - `ip`: Địa chỉ IP hiện tại của thiết bị (tuỳ chọn).
+  - `ten_may_tu_khai`: Tên máy tự khai qua DHCP/mDNS (tuỳ chọn, dữ liệu KHÔNG TIN — lõi làm sạch ký tự điều khiển/ngắt dòng và cắt 40 ký tự).
+  - `bang_tan`: Băng tần WiFi/kết nối (ví dụ `"2.4GHz"`, `"5GHz"`, `"6GHz"` — tuỳ chọn).
 - **Quy tắc tiền tố**: `id` BẮT BUỘC bắt đầu bằng `<tien_to>.` khớp với `tien_to` khai báo trong `manifest.json`. Lõi sẽ bỏ qua các thực thể sai tiền tố hoặc trùng lặp `id` mà không làm hỏng toàn bộ danh sách.
 - **Mức rủi ro**:
   - `"doc"`: Chỉ đọc dữ liệu, không làm thay đổi trạng thái thiết bị.
@@ -295,3 +303,34 @@ giống bí mật nhúng cứng. Dạng `--json` là «bản rút gọn do mã t
 từ mã đều bị cắt ngắn và làm sạch vì nội dung mã là dữ liệu không tin được.
 
 Mã thoát: `0` = đạt; `1` = lỗi manifest hoặc vi phạm; `2` = không đọc được.
+
+---
+
+## 11. Chuẩn Sổ thiết bị mạng và báo máy lạ (NV107)
+
+Lõi web2api cung cấp tính năng quản lý sổ thiết bị mạng bền vững và cảnh báo máy lạ tự động mà không phụ thuộc vào bất kỳ nhà cung cấp phần cứng cụ thể nào:
+
+### 11.1. Nguồn dữ liệu từ module
+- Bất kỳ module nào khai báo khả năng `"thiet_bi"` và trả về thực thể có thuộc tính `thuoc_tinh.mac` hợp lệ đều được coi là nguồn dữ liệu mạng.
+- Module nguồn cần cung cấp:
+  - `thuoc_tinh.mac`: Địa chỉ MAC (dạng bất kỳ).
+  - `thuoc_tinh.ip`: Địa chỉ IP (tuỳ chọn).
+  - `thuoc_tinh.ten_may_tu_khai`: Tên máy tự khai qua DHCP/mDNS (tuỳ chọn, dữ liệu không tin).
+- Sổ chỉ thêm/cập nhật khi thấy máy; một nguồn lỗi hoặc trả rỗng không làm mất máy cũ và không biến máy cũ thành mới khi nguồn hoạt động trở lại.
+
+### 11.2. Chuẩn hoá MAC và nhận diện MAC ngẫu nhiên
+- Lõi tự động chuẩn hoá mọi định dạng MAC về một định dạng chuẩn duy nhất `aa:bb:cc:dd:ee:ff`.
+- Tự động lọc bỏ các địa chỉ sai khuôn, toàn 0 (`00:00:00:00:00:00`), broadcast (`ff:ff:ff:ff:ff:ff`), và multicast (bit 0 của octet đầu tiên = 1).
+- Tự động nhận diện MAC ngẫu nhiên / riêng tư của điện thoại (bit 0x02 của octet đầu bật).
+
+### 11.3. Báo máy lạ qua chuẩn `kenh_ra`
+- Báo máy lạ được gửi qua bất kỳ module nào có khả năng `"kenh_ra"` thông qua hàm gửi chuẩn của lõi (`app/gui_ra.py`).
+- Cấu hình qua `PUT /api/so-thiet-bi/bao`:
+  - `bat`: bật/tắt báo.
+  - `dich`: danh sách `[{"module": "...", "kenh_id": "..."}]`.
+  - `bao_mac_ngau_nhien`: `"gop"` (mặc định — gom vào 1 tin tóm tắt), `"co"` (báo như máy thường), `"khong"` (chỉ ghi sổ, không gửi tin).
+- Cơ chế theo dõi từng (máy, đích):
+  - Đích nào gửi thành công thì không gửi lại.
+  - Đích nào lỗi thì chỉ thử lại đích đó ở các chu kỳ sau (tối đa 5 lần).
+  - Chống bão: máy mới xuất hiện đột biến (> max(5, nửa số máy thấy được)) sẽ gửi 1 tin cảnh báo và tạm dừng báo cho tới khi quản trị gọi tiếp tục.
+

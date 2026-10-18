@@ -44,7 +44,9 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   $W/v1/chat/completions
 ```
 
-## Giới hạn
+## Giới hạn & Tính năng tự động
 
+- Tự động làm mới danh mục model qua vòng lặp định kỳ và nút «Làm mới danh sách» (NV102/NV108) mà không cần cấu hình lại.
+- Báo phiên bản CLI `agy` hiện tại tại mục sức khoẻ/trạng thái.
 - Chỉ hỗ trợ chat văn bản (ảnh và tập tin bị bỏ qua).
 - Tốn hạn mức lớn (khoảng 12.500 token đầu vào tối thiểu mỗi lượt), thích hợp làm nguồn AI dự phòng.

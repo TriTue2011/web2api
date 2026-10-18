@@ -206,9 +206,87 @@ def _co_pham_vi_gui(danh_tinh: dict, module: str) -> bool:
     return f"gui:{module}" in pham_vi or f"gui:{ma}" in pham_vi
 
 
+async def gui_den_dich(
+    app,
+    module_id: str,
+    kenh_id: str | None,
+    noi_dung: dict,
+    nguoi_goi: str = "so_thiet_bi",
+    do_dai: int | None = None,
+) -> dict:
+    """Gửi tin đến đích qua module chỉ định — hàm nội bộ dùng chung cho API và sổ thiết bị.
+
+    Kiểm tra toàn bộ: module đang chạy có kenh_ra, đích danh kenh_id hợp lệ,
+    hạn dòng theo (nguoi_goi, module_id), trần đồng thời toàn cục,
+    kết quả ok phải là bool True thật, nhật ký băm kenh_id.
+    """
+    so = getattr(getattr(app, "state", None), "so", None) or getattr(app, "so", None) or app
+    tim = _lay_module(so, module_id)
+    if tim is None:
+        raise LoiOpenAI(404, "Không có module gửi ra này.", code="module_khong_co")
+    mod, _man = tim
+
+    try:
+        ds_kenh = _ds_kenh_hop_le(mod.kenh_ra())
+    except Exception as e:
+        log.warning("module %s.kenh_ra() ném %s", module_id, type(e).__name__)
+        raise LoiOpenAI(502, "Module gửi ra lỗi.", code="module_loi") from e
+    if ds_kenh is None:
+        log.warning("module %s.kenh_ra() trả hình dạng sai", module_id)
+        raise LoiOpenAI(502, "Module gửi ra lỗi.", code="module_loi")
+    if not ds_kenh:
+        raise LoiOpenAI(503, "Module chưa có đích gửi nào.", code="chua_co_kenh")
+
+    if kenh_id is not None and not isinstance(kenh_id, str):
+        raise LoiOpenAI(400, "Trường «kenh_id» phải là chuỗi.", code="invalid_request")
+    k_id = kenh_id.strip() if isinstance(kenh_id, str) else None
+    if not k_id:
+        if len(ds_kenh) > 1:
+            raise LoiOpenAI(400, "Phải nêu rõ «kenh_id» khi module có nhiều đích gửi.",
+                            code="kenh_required")
+        k_id = ds_kenh[0]["kenh_id"]
+    dich = next((d for d in ds_kenh if d["kenh_id"] == k_id), None)
+    if dich is None:
+        raise LoiOpenAI(404, "Không có đích gửi này.", code="kenh_khong_co")
+
+    _kiem_han_dong(nguoi_goi, module_id)
+    _vao_dong_thoi()
+    try:
+        if do_dai is None:
+            try:
+                do_dai = len(json.dumps(noi_dung, ensure_ascii=False).encode("utf-8"))
+            except Exception:
+                do_dai = 0
+        try:
+            ket_qua = await asyncio.wait_for(mod.gui_tin(dich, noi_dung), timeout=_thoi_gian_giay())
+        except asyncio.TimeoutError as e:
+            _ghi_nhat_ky(module_id, k_id, "timeout", do_dai)
+            raise LoiOpenAI(504, "Module gửi ra quá thời gian.", code="gui_timeout") from e
+        except LoiOpenAI:
+            raise
+        except Exception as e:
+            # Lỗi thô của nhà cung cấp KHÔNG lộ ra phản hồi — chỉ mã + câu chung.
+            _ghi_nhat_ky(module_id, k_id, "loi_module", do_dai)
+            log.exception("gui_tin của module %s ném %s", module_id, type(e).__name__)
+            raise LoiOpenAI(502, "Gửi thất bại.", code="gui_that_bai") from e
+    finally:
+        _ra_dong_thoi()
+
+    # Lõi KHÔNG tin `ok` của module: phải là dict có `ok` là bool THẬT.
+    if not isinstance(ket_qua, dict) or not isinstance(ket_qua.get("ok"), bool):
+        _ghi_nhat_ky(module_id, k_id, "ok_sai", do_dai)
+        log.warning("module %s.gui_tin() trả kết quả không chuẩn (ok không phải bool)", module_id)
+        raise LoiOpenAI(502, "Gửi thất bại.", code="gui_that_bai")
+    if not ket_qua["ok"]:
+        _ghi_nhat_ky(module_id, k_id, "that_bai", do_dai)
+        raise LoiOpenAI(502, "Gửi thất bại.", code="gui_that_bai")
+
+    _ghi_nhat_ky(module_id, k_id, "ok", do_dai)
+    return {"ok": True, "kenh": k_id}
+
+
 @router.post("/{module}")
 async def gui_ra(request: Request, module: str):
-    so = request.app.state.so
     danh_tinh = getattr(request.state, "danh_tinh", None) or {}
     # Phạm vi RIÊNG cho gửi ra — không dùng chung với phạm vi chat/đọc.
     from app.xac_thuc import kiem_tra_pham_vi
@@ -222,67 +300,16 @@ async def gui_ra(request: Request, module: str):
         )
     id_khoa = str(danh_tinh.get("id", "khong_ro"))
 
-    tim = _lay_module(so, module)
-    if tim is None:
-        raise LoiOpenAI(404, "Không có module gửi ra này.", code="module_khong_co")
-    mod, _man = tim
-
-    try:
-        ds_kenh = _ds_kenh_hop_le(mod.kenh_ra())
-    except Exception as e:
-        log.warning("module %s.kenh_ra() ném %s", module, type(e).__name__)
-        raise LoiOpenAI(502, "Module gửi ra lỗi.", code="module_loi") from e
-    if ds_kenh is None:
-        log.warning("module %s.kenh_ra() trả hình dạng sai", module)
-        raise LoiOpenAI(502, "Module gửi ra lỗi.", code="module_loi")
-    if not ds_kenh:
-        raise LoiOpenAI(503, "Module chưa có đích gửi nào.", code="chua_co_kenh")
-
-    # Đích danh: nhiều đích mà không nêu kenh_id → 400, KHÔNG đoán «đích đầu danh sách».
     than_so = await _doc_than_mong(request)
-    kenh_id = than_so.get("kenh_id")
-    if kenh_id is not None and not isinstance(kenh_id, str):
-        raise LoiOpenAI(400, "Trường «kenh_id» phải là chuỗi.", code="invalid_request")
-    kenh_id = kenh_id.strip() if isinstance(kenh_id, str) else None
-    if not kenh_id:
-        if len(ds_kenh) > 1:
-            raise LoiOpenAI(400, "Phải nêu rõ «kenh_id» khi module có nhiều đích gửi.",
-                            code="kenh_required")
-        kenh_id = ds_kenh[0]["kenh_id"]
-    dich = next((d for d in ds_kenh if d["kenh_id"] == kenh_id), None)
-    if dich is None:
-        raise LoiOpenAI(404, "Không có đích gửi này.", code="kenh_khong_co")
-
-    _kiem_han_dong(id_khoa, module)
-    _vao_dong_thoi()
-    try:
-        noi_dung, do_dai = than_so["noi_dung"], than_so["do_dai"]
-        try:
-            ket_qua = await asyncio.wait_for(mod.gui_tin(dich, noi_dung), timeout=_thoi_gian_giay())
-        except asyncio.TimeoutError as e:
-            _ghi_nhat_ky(module, kenh_id, "timeout", do_dai)
-            raise LoiOpenAI(504, "Module gửi ra quá thời gian.", code="gui_timeout") from e
-        except LoiOpenAI:
-            raise
-        except Exception as e:
-            # Lỗi thô của nhà cung cấp KHÔNG lộ ra phản hồi — chỉ mã + câu chung.
-            _ghi_nhat_ky(module, kenh_id, "loi_module", do_dai)
-            log.exception("gui_tin của module %s ném %s", module, type(e).__name__)
-            raise LoiOpenAI(502, "Gửi thất bại.", code="gui_that_bai") from e
-    finally:
-        _ra_dong_thoi()
-
-    # Lõi KHÔNG tin `ok` của module: phải là dict có `ok` là bool THẬT.
-    if not isinstance(ket_qua, dict) or not isinstance(ket_qua.get("ok"), bool):
-        _ghi_nhat_ky(module, kenh_id, "ok_sai", do_dai)
-        log.warning("module %s.gui_tin() trả kết quả không chuẩn (ok không phải bool)", module)
-        raise LoiOpenAI(502, "Gửi thất bại.", code="gui_that_bai")
-    if not ket_qua["ok"]:
-        _ghi_nhat_ky(module, kenh_id, "that_bai", do_dai)
-        raise LoiOpenAI(502, "Gửi thất bại.", code="gui_that_bai")
-
-    _ghi_nhat_ky(module, kenh_id, "ok", do_dai)
-    return JSONResponse({"ok": True, "kenh": kenh_id})
+    kq = await gui_den_dich(
+        request.app,
+        module,
+        than_so.get("kenh_id"),
+        than_so["noi_dung"],
+        nguoi_goi=id_khoa,
+        do_dai=than_so.get("do_dai"),
+    )
+    return JSONResponse(kq)
 
 
 async def _doc_than_mong(request: Request) -> dict:

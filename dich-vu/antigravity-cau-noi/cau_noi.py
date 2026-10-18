@@ -33,10 +33,11 @@ import shutil
 import signal
 import tempfile
 import time
+import unicodedata
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
@@ -76,6 +77,10 @@ def _ttl_models_s() -> int:
     return _so("AGY_TTL_MODELS_S", 600)
 
 
+def _ttl_phien_ban_s() -> int:
+    return _so("AGY_TTL_PHIEN_BAN_S", 3600)
+
+
 def _ttl_usage_s() -> int:
     return _so("AGY_TTL_USAGE_S", 60)
 
@@ -107,6 +112,8 @@ MAU_VAI = re.compile(r"[a-z][a-z_]{0,31}")
 MAU_PHAN_TRAM = re.compile(r"(\d{1,3})%")
 MAU_TU = re.compile(r"[a-z0-9]+")
 MAU_TRANG_THAI = re.compile(r"[A-Z_]{1,40}")
+#: Phiên bản từ ``agy --version``: bắt đầu bằng số, tối đa 32 ký tự, an toàn
+MAU_PHIEN_BAN = re.compile(r"^[0-9][0-9A-Za-z._+-]{0,31}$")
 
 # ── lời dặn cho agy (luôn đứng ĐẦU prompt — vì vậy prompt không bao giờ mở đầu bằng «-») ─────────────
 
@@ -433,33 +440,111 @@ class BeTaiKhoan:
         return max(1, int(min(moc) - bay_gio + 0.999)) if moc else 3600
 
 
-# ── danh mục model (cache) ─────────────────────────────────────────────────
+# ── danh mục model và phiên bản CLI (cache) ─────────────────────────────────
 
 _dem_models: list[dict] = []
 _dem_models_luc: float = 0.0
 _khoa_models = asyncio.Lock()
+_models_doi_luc: str | None = None
+
+_dem_phien_ban: str | None = None
+_dem_phien_ban_luc: float = 0.0
+_khoa_phien_ban = asyncio.Lock()
 
 
 def phan_tich_models(van_ban: str) -> list[dict]:
-    """``agy models``: mỗi dòng ``<id>\\t<nhãn>``; dòng không đúng cấu trúc (vd «Fetching…») bị bỏ."""
+    """``agy models``: mỗi dòng ``<id>\t<nhãn>``; dòng không đúng cấu trúc (vd «Fetching…») bị bỏ."""
     ds: list[dict] = []
+    da_thay: set[str] = set()
     for dong in van_ban.splitlines():
         cot = dong.strip().split("\t")
-        if len(cot) >= 2 and MAU_ID_MODEL.fullmatch(cot[0].strip()):
-            ds.append({"id": cot[0].strip(), "nhan": cot[1].strip()})
+        if len(cot) >= 2:
+            mid = cot[0].strip()
+            if MAU_ID_MODEL.fullmatch(mid) and mid not in da_thay:
+                da_thay.add(mid)
+                nhan = "".join(c for c in cot[1].strip() if not unicodedata.category(c).startswith("C"))[:80]
+                ds.append({"id": mid, "nhan": nhan})
+                if len(ds) >= 500:
+                    break
     return ds
 
 
+def phan_tich_phien_ban(van_ban: str) -> str | None:
+    """Lọc phiên bản agy từ đầu ra `agy --version`: mẫu `^[0-9][0-9A-Za-z._+-]{0,31}$`."""
+    for dong in van_ban.splitlines():
+        dong = dong.strip()
+        if not dong:
+            continue
+        if MAU_PHIEN_BAN.fullmatch(dong):
+            return dong
+        cac_tu = dong.split()
+        if cac_tu and MAU_PHIEN_BAN.fullmatch(cac_tu[-1]):
+            return cac_tu[-1]
+        break
+    return None
+
+
+async def _lay_phien_ban(agy_bin: str, homes: list[str]) -> str | None:
+    global _dem_phien_ban, _dem_phien_ban_luc
+    async with _khoa_phien_ban:
+        if _dem_phien_ban is not None and time.time() - _dem_phien_ban_luc < _ttl_phien_ban_s():
+            return _dem_phien_ban
+        b = lay_be()
+        tk_theo_home = {tk.home: tk for tk in b.tai_khoan} if b else {}
+        for home in homes:
+            tk = tk_theo_home.get(home)
+            if tk is not None and (tk.ban or tk._dang_doc.locked()):
+                continue
+            try:
+                if tk is not None:
+                    async with tk._dang_doc:
+                        tk.ban = True
+                        try:
+                            kq = await _chay([agy_bin, "--version"], home, 10)
+                        finally:
+                            tk.ban = False
+                            async with b._dk:
+                                b._dk.notify_all()
+                else:
+                    kq = await _chay([agy_bin, "--version"], home, 10)
+                if kq.ma_thoat == 0 and not kq.het_gio:
+                    pb = phan_tich_phien_ban(kq.stdout.decode("utf-8", "replace"))
+                    if pb:
+                        _dem_phien_ban = pb
+                        _dem_phien_ban_luc = time.time()
+                        return _dem_phien_ban
+            except Exception as e:
+                log.warning("Đọc agy --version thất bại: %s", type(e).__name__)
+        return _dem_phien_ban
+
+
 async def _lay_models(agy_bin: str, homes: list[str]) -> list[dict]:
-    global _dem_models, _dem_models_luc
+    global _dem_models, _dem_models_luc, _models_doi_luc
     async with _khoa_models:
         if _dem_models and time.time() - _dem_models_luc < _ttl_models_s():
             return _dem_models
+        b = lay_be()
+        tk_theo_home = {tk.home: tk for tk in b.tai_khoan} if b else {}
         for i, home in enumerate(homes):   # tài khoản đầu hỏng thì hỏi tài khoản kế
-            kq = await _chay([agy_bin, "models"], home, 30)
+            tk = tk_theo_home.get(home)
+            if tk is not None and (tk.ban or tk._dang_doc.locked()):
+                continue
+            if tk is not None:
+                async with tk._dang_doc:
+                    tk.ban = True
+                    try:
+                        kq = await _chay([agy_bin, "models"], home, 30)
+                    finally:
+                        tk.ban = False
+                        async with b._dk:
+                            b._dk.notify_all()
+            else:
+                kq = await _chay([agy_bin, "models"], home, 30)
             ds = phan_tich_models(kq.stdout.decode("utf-8", "replace")) if kq.ma_thoat == 0 else []
             if ds:
                 _dem_models, _dem_models_luc = ds, time.time()
+                if _models_doi_luc is None:
+                    _models_doi_luc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 break
             log.warning("acc%d: không lấy được danh sách model (mã thoát %s)", i, kq.ma_thoat)
         return _dem_models
@@ -655,7 +740,13 @@ app = FastAPI(title="Antigravity Bridge", lifespan=vong_doi)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "accounts": len(lay_be().tai_khoan)}
+    pb = await _lay_phien_ban(_agy_bin(), _agy_homes())
+    return {
+        "status": "ok",
+        "accounts": len(lay_be().tai_khoan),
+        "agy_phien_ban": pb,
+        "models_doi_luc": _models_doi_luc,
+    }
 
 
 @app.get("/v1/models")
@@ -665,6 +756,76 @@ async def v1_models(request: Request):
         return loi
     ds = await _lay_models(_agy_bin(), _agy_homes())
     return {"object": "list", "data": [{"id": m["id"], "object": "model", "owned_by": "antigravity"} for m in ds]}
+
+
+@app.post("/v1/models/lam-moi")
+async def v1_models_lam_moi(request: Request):
+    loi = _kiem_xac_thuc(request)
+    if loi:
+        return loi
+    global _dem_models, _dem_models_luc, _models_doi_luc
+    async with _khoa_models:
+        id_cu = [m["id"] for m in _dem_models]
+        _dem_models = []
+        _dem_models_luc = 0.0
+
+        b = lay_be()
+        homes = _agy_homes()
+        tk_theo_home = {tk.home: tk for tk in b.tai_khoan} if b else {}
+        ds_moi: list[dict] = []
+        co_het_gio = False
+        lay_duoc = False
+
+        for i, home in enumerate(homes):
+            tk = tk_theo_home.get(home)
+            if tk is not None and (tk.ban or tk._dang_doc.locked()):
+                continue
+            if tk is not None:
+                async with tk._dang_doc:
+                    tk.ban = True
+                    try:
+                        kq = await _chay([_agy_bin(), "models"], home, 30)
+                    finally:
+                        tk.ban = False
+                        async with b._dk:
+                            b._dk.notify_all()
+            else:
+                kq = await _chay([_agy_bin(), "models"], home, 30)
+
+            if kq.het_gio:
+                co_het_gio = True
+                log.warning("acc%d: hết giờ khi làm mới agy models", i)
+                continue
+            if kq.ma_thoat == 0:
+                ds = phan_tich_models(kq.stdout.decode("utf-8", "replace"))
+                if ds:
+                    ds_moi = ds
+                    lay_duoc = True
+                    break
+            log.warning("acc%d: không lấy được danh sách model khi làm mới (mã thoát %s)", i, kq.ma_thoat)
+
+        if not lay_duoc:
+            if co_het_gio:
+                return _loi_openai(504, "Hết giờ khi làm mới danh mục model.", "timeout")
+            return _loi_openai(502, "Không lấy được danh sách model từ agy.", "upstream_error")
+
+        _dem_models = ds_moi
+        _dem_models_luc = time.time()
+        id_moi = [m["id"] for m in ds_moi]
+        set_cu = set(id_cu)
+        set_moi = set(id_moi)
+        moi = [mid for mid in id_moi if mid not in set_cu]
+        khong_con = [mid for mid in id_cu if mid not in set_moi]
+
+        if moi or khong_con or _models_doi_luc is None:
+            _models_doi_luc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        return JSONResponse({
+            "ok": True,
+            "so_model": len(ds_moi),
+            "moi": moi,
+            "khong_con": khong_con,
+        })
 
 
 @app.post("/v1/chat/completions")

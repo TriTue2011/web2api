@@ -45,6 +45,8 @@ _MAC_DINH = {
         "Claude and GPT models\tFive Hour Limit Remaining\t100%\t2026-10-12T09:42:59Z"
     ),
     "usage_ma_thoat": 0,
+    "version": "1.2.3",
+    "version_ma_thoat": 0,
     "tre": 0,
     "treo": False,
     "tu_het_gio": False,
@@ -77,6 +79,21 @@ def main():
         print("Fetching available models...")  # noqa: T201
         for m in ch["models"]:
             print(f"{m['id']}\t{m['nhan']}")  # noqa: T201
+        return
+
+    if args[:1] == ["--version"]:
+        _ghi(muc)
+        if ch["version_ma_thoat"]:
+            sys.exit(ch["version_ma_thoat"])
+        if ch["tu_het_gio"]:
+            time.sleep(15)
+            sys.exit(1)
+        if ch["tre"]:
+            time.sleep(float(ch["tre"]))
+        if "version_raw" in ch:
+            sys.stdout.write(str(ch["version_raw"]))
+        else:
+            print(f"agy {ch['version']}")
         return
 
     prompt = args[args.index("-p") + 1] if "-p" in args and args.index("-p") + 1 < len(args) else ""

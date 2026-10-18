@@ -41,7 +41,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `muse` (Muse, Meta AI VM) | Thử nghiệm — giao thức Noise XX WebSocket, kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật** | 0.1.0 · 12/10/2026 |
 | Module `claude-web` (Claude Web, claude.ai) | Có — chat stream/không stream, xoay nhiều tài khoản theo mã lỗi, kiểm với máy chủ giả; gắn danh tính chung (NV80, cùng khuôn NV77); tái dùng hồ sơ Google NV93 (đi tắt sessionKey / «Continue with Google», org qua `/api/organizations`); **chưa kiểm với claude.ai thật** | 17/10/2026 |
 | Module `muse2api` (Muse Web, muse.ai direct protocol) | Có — chat qua giao thức web trực tiếp (WebSocket + Noise XX), kiểm với máy chủ giả; tái dùng hồ sơ Google NV93 (NV90-C: có thể không có Google SSO do SSO Meta → `khong_ho_tro` rõ); **chưa kiểm với muse.ai thật** | 17/10/2026 |
-| Module `antigravity` (Antigravity CLI trên máy chủ) | Có — kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 12/10/2026 |
+| Module `antigravity` (Antigravity CLI trên máy chủ) | Có — tự làm mới model (NV108) + báo agy_phien_ban, kiểm với agy giả lập; **chưa kiểm với agy thật** (tránh tốn hạn mức) | 0.1.0-khung · 18/10/2026 |
 | Module `vnc-xa` (Workspace trình duyệt qua noVNC, cookie sang module) | Có — kiểm với dịch vụ giả + Chrome thật cho tab; **chưa kiểm với dịch vụ/Firefox thật** | 0.2.0 · 13/10/2026 |
 | Phụ thuộc module (`can_module` + đếm tham chiếu): cài thì đề nghị cài cái thiếu (không tự cài lén), gỡ cái đang được cần → `409`, gỡ provider cuối thì hỏi giữ hay gỡ cái chung | Có — kiểm bằng test NV73 | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
@@ -2783,6 +2783,15 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `PUT /api/thiet-bi/{id}/rui-ro` | Có | Quản trị đặt ghi đè mức rủi ro hiệu lực (`doc`, `ghi`, `nguy_hiem`) cho thực thể (đồng thời xác nhận băm tính năng) |
 | `POST /api/thiet-bi/{id}/xac-nhan` | Có (quản trị) | Quản trị xác nhận băm tính năng của thực thể mới hoặc vừa đổi tính năng, đưa rủi ro về mức tự nhiên |
 | `POST /api/thiet-bi/{id}/hanh-dong` | Có | Thực hiện hành động trên thực thể (rủi ro nguy hiểm yêu cầu xác nhận hoặc đưa vào hàng chờ) |
+| `GET /api/so-thiet-bi` | Có | Danh sách thiết bị mạng trong sổ, lọc `trang_thai` (`quen`\|`la`\|`bo_qua`), tìm kiếm `q`, tối đa 500 dòng |
+| `GET /api/so-thiet-bi/trang-thai` | Có | Thống kê số lượng máy (`tong`, `la`, `quen`, `bo_qua`, `chua_bao`), trạng thái `da_chot`, `tam_dung`, `dich_hop_le`, `loi_kho`, trạng thái từng nguồn `trang_thai_nguon` |
+| `PATCH /api/so-thiet-bi/{mac}` | Có | Cập nhật `ten` (≤60 ký tự) hoặc `trang_thai` (`quen`\|`la`\|`bo_qua`) cho máy theo MAC |
+| `DELETE /api/so-thiet-bi/{mac}` | Có | Xoá thiết bị khỏi sổ theo MAC |
+| `POST /api/so-thiet-bi/chot` | Có | Chốt sổ lần đầu: đánh dấu mọi máy `la` thành `quen` và đặt `da_chot=true` |
+| `POST /api/so-thiet-bi/tiep-tuc` | Có | Tiếp tục báo tự động sau khi bị tạm dừng chống bão |
+| `PUT /api/so-thiet-bi/bao` | Có | Cấu hình kênh báo máy lạ: `bat`, `dich: [{module, kenh_id}]`, `bao_mac_ngau_nhien: "gop"|"co"|"khong"` |
+| `GET /api/so-thiet-bi/bao` | Có | Xem cấu hình kênh báo máy lạ hiện tại kèm trạng thái hợp lệ của các đích |
+| `POST /api/so-thiet-bi/bao/thu` | Có | Thử nghiệm gửi tin tới các đích báo máy lạ đã cấu hình |
 | `GET /api/phe-duyet` | Có | Danh sách yêu cầu hành động đang chờ phê duyệt |
 | `POST /api/phe-duyet/{id}/duyet` | Có | Quản trị phê duyệt và thực thi yêu cầu trong hàng chờ |
 | `POST /api/phe-duyet/{id}/tu-choi` | Có | Quản trị từ chối và huỷ bỏ yêu cầu trong hàng chờ |
@@ -2839,6 +2848,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_GUI_NOI_DUNG_TOI_DA_BYTE` | `16384` | Trần nội dung gửi ra (byte) cho thân JSON; vượt → `413` |
 | `WEB2API_GUI_TEP_TOI_DA_MB` | `25` | Trần tổng byte tệp đính kèm gửi ra (MB, theo cơ chế `app/than_co_tran.py`); vượt → `413` |
 | `WEB2API_GUI_THOI_GIAN_GIAY` | `60` | Trần thời gian (giây) một lượt gọi `gui_tin` của module; vượt → `504` |
+| `WEB2API_CHU_KY_SO_THIET_BI_GIAY` | `60` | Chu kỳ quét thiết bị mạng của vòng nền (giây, kẹp 15..3600; mặc định 60s, hoãn khởi động 20s) |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |

@@ -124,13 +124,59 @@ class Module:
             return []
         return await self._ct.models()
 
+    async def lam_moi_model(self) -> None:
+        """Làm mới danh mục model bằng cách gọi POST /v1/models/lam-moi của cầu nối."""
+        if self._ct is None or not self._dia_chi_cau_noi or not self._khoa:
+            return
+
+        khach = self._ct._client()
+        headers = {"Authorization": f"Bearer {self._khoa}"}
+        req = khach.build_request(
+            "POST",
+            f"{self._dia_chi_cau_noi}/v1/models/lam-moi",
+            headers=headers,
+            timeout=httpx.Timeout(35.0),
+        )
+        r = await khach.send(req, stream=True)
+        noi_dung = await doc_phan_hoi_co_tran(r)
+        if r.status_code != 200:
+            raise RuntimeError(f"Cầu nối trả HTTP {r.status_code} khi làm mới danh mục model")
+
+        try:
+            j = json.loads(noi_dung)
+        except (ValueError, TypeError) as e:
+            raise RuntimeError("Cầu nối trả dữ liệu không phải JSON khi làm mới danh mục model") from e
+
+        if not isinstance(j, dict) or not j.get("ok"):
+            raise RuntimeError("Cầu nối báo lỗi khi làm mới danh mục model")
+
+        self._ct.lam_het_han_dem_models()
+
     async def suc_khoe(self) -> dict:
         if self._ct is None:
             return {"ok": False, "loi": "Module Antigravity chưa được nạp cấu hình"}
         kq = await self._ct.suc_khoe()
+        kq["agy_phien_ban"] = None
         if self._dia_chi_cau_noi and self._khoa:
+            khach = self._ct._client()
+            # 1. Đọc phiên bản từ /health của cầu nối
             try:
-                khach = self._ct._client()
+                req_h = khach.build_request(
+                    "GET",
+                    f"{self._dia_chi_cau_noi}/health",
+                    timeout=httpx.Timeout(self._ct.TIMEOUT_KIEM),
+                )
+                r_h = await khach.send(req_h, stream=True)
+                noi_dung_h = await doc_phan_hoi_co_tran(r_h)
+                if r_h.status_code == 200:
+                    jh = json.loads(noi_dung_h)
+                    if isinstance(jh, dict):
+                        kq["agy_phien_ban"] = jh.get("agy_phien_ban")
+            except (httpx.HTTPError, ValueError, PhanHoiQuaLon, TimeoutError):
+                pass
+
+            # 2. Đọc thông tin tài khoản từ /tai-khoan
+            try:
                 req = khach.build_request(
                     "GET",
                     f"{self._dia_chi_cau_noi}/tai-khoan",
