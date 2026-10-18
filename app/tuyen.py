@@ -1255,6 +1255,11 @@ def _doc_cai_dat_model(id_: str) -> dict:
         return {"tat": [], "mac_dinh": {}}
 
 
+# ───────────── NV110: trần số mục mac_dinh của PUT /api/modules/{id}/model ────
+# Giá trị tự chọn theo spec (spec không nêu số, yêu cầu «biên nhỏ cố định, có test biên»).
+TRAN_THEM_MAC_DINH = 5
+
+
 @modules.get("/{id_}/model", dependencies=QT)
 async def lay_model_module(id_: str, request: Request):
     """Danh mục model của một module (id, nhóm, bật/tắt, mặc định, số đếm)."""
@@ -1268,6 +1273,8 @@ async def cap_nhat_model_module(id_: str, request: Request):
     """Cập nhật bật/tắt và mặc định model của một module.
     Thân: {"tat": [id…], "mac_dinh": {<nhóm>: id}}; trường vắng = giữ nguyên. Id lạ bỏ qua và nêu trong `bo_qua`.
     Mặc định phải là model đang bật: tắt model mặc định → bỏ mặc định; đặt mặc định cho model tắt → 400.
+    NV110: `mac_dinh` bị trần số mục (số nhóm thật của module + TRAN_THEM_MAC_DINH) — vượt → 400 `invalid_value`
+    (chống phình model.json bằng hàng nghìn nhóm lạ).
     """
     than = await _than_json(request)
     tat_in, mac_dinh_in = than.get("tat"), than.get("mac_dinh")
@@ -1279,6 +1286,12 @@ async def cap_nhat_model_module(id_: str, request: Request):
     hop_le = {item["id"] for item in raw if isinstance(item.get("id"), str)}
     cu = _doc_cai_dat_model(id_)
     bo_qua: set[str] = set()
+
+    if mac_dinh_in is not None:
+        nhom_that = {_nhom_cua_model(item) for item in raw if isinstance(item, dict)}
+        tran = len(nhom_that) + TRAN_THEM_MAC_DINH
+        if len(mac_dinh_in) > tran:
+            raise LoiOpenAI(400, f"«mac_dinh» vượt trần số mục cho phép ({tran})", code="invalid_value")
 
     if tat_in is None:
         tat_moi = set(cu["tat"])
@@ -1299,6 +1312,10 @@ async def cap_nhat_model_module(id_: str, request: Request):
             elif mid in tat_moi:
                 raise LoiOpenAI(400, f"Không thể đặt model đã tắt {mid!r} làm mặc định cho nhóm {nhom!r}",
                                 code="model_disabled")
+            elif nhom not in nhom_that:
+                # NV110: nhóm lạ (không thuộc tập nhóm thật của module) bị lọc
+                # như tat đang làm — không lưu vào sổ, nêu trong bo_qua.
+                bo_qua.add(nhom)
             else:
                 mac_dinh_moi[nhom] = mid
     mac_dinh_moi = {nh: mid for nh, mid in mac_dinh_moi.items() if mid in hop_le and mid not in tat_moi}

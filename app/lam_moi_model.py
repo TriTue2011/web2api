@@ -80,8 +80,37 @@ def chuan_hoa_nhan(nhan: Any) -> str | None:
     return cat_nhan if cat_nhan else None
 
 
-def loc_danh_sach_model(ds: Any) -> list[dict]:
-    """Lọc danh sách model từ kết quả models() của module, chuẩn hoá và bỏ trùng."""
+def _tien_to_cua(m: Any) -> str | None:
+    """Lấy tien_to của module theo cấu trúc (manifest là hợp đồng của lõi)."""
+    manifest = getattr(m, "manifest", None)
+    if isinstance(manifest, dict):
+        tt = manifest.get("tien_to")
+        if isinstance(tt, str) and tt:
+            return tt
+    return None
+
+
+def _tien_to_hop_le(mid: str, tien_to: str | None) -> bool:
+    """Nguyên tắc không gian tên của id model: dấu '/' trong id là TUYÊN BỐ
+    không gian tên của module — chỉ hợp lệ khi khớp đúng tien_to của CHÍNH
+    module đang làm mới. Id không chứa '/' (không tuyên bố không gian tên,
+    dữ liệu cũ) luôn được giữ để không làm hỏng module hợp lệ."""
+    if "/" not in mid:
+        return True
+    if not tien_to:
+        return False
+    return mid.startswith(tien_to + "/")
+
+
+def loc_danh_sach_model(ds: Any, tien_to: str | None = None) -> list[dict]:
+    """Lọc danh sách model từ kết quả models() của module, chuẩn hoá và bỏ trùng.
+
+    tien_to là tiền tố không gian tên của chính module đang làm mới (lấy từ
+    manifest). Tuyên bố không gian tên không kiểm chứng được bị loại kèm log
+    mã ngắn (chỉ tiền tố tuyên bố, KHÔNG in id thô). Không có tien_to để đối
+    chiếu (gọi trực tiếp không ngữ cảnh) thì mọi tuyên bố không gian tên đều
+    bị loại — thà loại nhầm còn hơn ghi nhầm sổ của module khác.
+    """
     if not isinstance(ds, list):
         return []
     ket_qua = []
@@ -91,6 +120,13 @@ def loc_danh_sach_model(ds: Any) -> list[dict]:
             continue
         mid = chuan_hoa_ma_model(it.get("id"))
         if mid is None or mid in da_thay:
+            continue
+        if not _tien_to_hop_le(mid, tien_to):
+            log.warning(
+                "Loại model mang tiền tố lạ %r (không khớp tien_to %r)",
+                mid.split("/", 1)[0],
+                tien_to if tien_to else "?",
+            )
             continue
         da_thay.add(mid)
         nhan = chuan_hoa_nhan(it.get("nhan"))
@@ -284,7 +320,7 @@ class VongLamMoiModel:
                 log.warning("Làm mới danh sách model module %s: loi (%s)", id_module, type(e).__name__)
                 return {"ket_qua": "loi", "moi": [], "khong_con": []}
 
-            ds_sach = loc_danh_sach_model(raw)
+            ds_sach = loc_danh_sach_model(raw, tien_to=_tien_to_cua(m))
             kq = cap_nhat_so(id_module, ds_sach)
             return {
                 "ket_qua": "ok",
