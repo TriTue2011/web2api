@@ -41,6 +41,9 @@ GOC = Path(__file__).resolve().parents[1]
 # (tệp, hàm) chứa 15 điểm nuốt lỗi đã kiểm toán (toàn bộ là AN TOÀN).
 DA_KIEM_TOAN = {
     ("app/che_log.py", "filter"),
+    # Đã duyệt 18/10 (điều phối đọc hàm): bộ lọc log chặn token của module kênh — không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi,
+    # không để lọt token); không được ném ra vì ngoại lệ trong bộ lọc làm hỏng chính lời gọi ghi log.
+    ("modules/zalo-bot/module.py", "filter"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),
