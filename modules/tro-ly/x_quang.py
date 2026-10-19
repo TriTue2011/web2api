@@ -5,91 +5,152 @@ mảnh bị loại (lý do: tran/trung/dieu_kien), tổng token theo tầng, cô
 schema, công cụ chỉ ở danh mục.
 
 - Chỉ-thêm: file JSONL, mỗi dòng một bản ghi, không sửa/xoá dòng cũ.
-- Không chứa bí mật: lọc mọi giá trị của trường có tên chứa mat_khau, token,
-  bi_mat, khoa (theo TÊN TRƯỜNG cấu trúc, không theo nội dung).
+- LƯỢC ĐỒ ĐÓNG: chỉ ghi các trường số/đếm/định danh cố định được khai tường minh;
+  không ghi giá trị tự do; trường lạ bị LOẠI BỎ hoàn toàn (không lọc danh sách từ khoá).
+  Số liệu token (tổng, theo tầng) luôn nguyên vẹn; khoá/cookie/mật khẩu không thể lọt vào.
 - API quản trị đọc có phân quyền theo hồ sơ (IDOR): chỉ đọc được hồ sơ của mình.
-
-Ghi chú: NV135 đang làm nhật ký lượt chạy SQLite + API HTTP; khi NV135 gộp,
-hàm ghi/đọc ở đây được nối vào nhật ký đó (ghi trong CẦN QUYẾT của báo cáo).
 """
 from __future__ import annotations
 
 import json
-import re
+import os
+import threading
 from pathlib import Path
 from typing import Any
 
-_TRUONG_NHAY_CAM = re.compile(r"mat_khau|token|bi_mat|khoa", re.IGNORECASE)
-# Mẫu key=value nhúng trong chuỗi (vd "mat_khau_noi_bo=abc123") → che giá trị.
-# Theo cấu trúc tên khoá, không theo nội dung.
-_GIA_TRI_NHAY_CAM_RE = re.compile(
-    r"((?:mat_khau|token|bi_mat|khoa)[_a-z0-9]*)\s*=\s*([^\s,}]+)",
-    re.IGNORECASE)
+TANG_HOP_LE = ("on_dinh", "ngu_canh", "hay_doi")
 
 
-def _loc_bi_mat(obj: Any) -> Any:
-    """Đệ quy thay giá trị của trường nhạy cảm bằng '…che'.
+def _chuan_hoa_manh_vao(m: Any) -> dict | None:
+    if not isinstance(m, dict):
+        return None
+    try:
+        tok = int(m.get("token", 0))
+    except (ValueError, TypeError):
+        tok = 0
+    return {
+        "id": str(m.get("id", "")),
+        "nguon": str(m.get("nguon", "")),
+        "token": tok,
+        "tang": str(m.get("tang", "")),
+        "ly_do": str(m.get("ly_do", "")),
+    }
 
-    - Trường có tên nhạy cảm → che toàn bộ giá trị.
-    - Chuỗi chứa mẫu <tên_nhạy_cảm>=<giá_trị> → che phần giá trị.
-    """
-    if isinstance(obj, dict):
-        return {k: ("…che" if _TRUONG_NHAY_CAM.search(str(k)) else _loc_bi_mat(v))
-                for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_loc_bi_mat(v) for v in obj]
-    if isinstance(obj, str):
-        obj = _GIA_TRI_NHAY_CAM_RE.sub(r"\1=…che", obj)
-        if len(obj) > 2000:
-            return obj[:2000] + "…(cắt)"
-    return obj
+
+def _chuan_hoa_manh_loai(m: Any) -> dict | None:
+    if not isinstance(m, dict):
+        return None
+    try:
+        tok = int(m.get("token", 0))
+    except (ValueError, TypeError):
+        tok = 0
+    return {
+        "id": str(m.get("id", "")),
+        "nguon": str(m.get("nguon", "")),
+        "token": tok,
+        "ly_do": str(m.get("ly_do", "")),
+    }
+
+
+def _chuan_hoa_token_theo_tang(ttt: Any) -> dict[str, int]:
+    res = {t: 0 for t in TANG_HOP_LE}
+    if isinstance(ttt, dict):
+        for t in TANG_HOP_LE:
+            if t in ttt:
+                try:
+                    res[t] = int(ttt[t])
+                except (ValueError, TypeError):
+                    pass
+    return res
+
+
+def _chuan_hoa_danh_sach_chuoi(ds: Any) -> list[str]:
+    if not isinstance(ds, (list, tuple)):
+        return []
+    return [str(x) for x in ds if isinstance(x, (str, int, float))]
 
 
 class NhatKyXQuang:
-    """Nhật ký X-quang chỉ-thêm, lưu theo file JSONL."""
+    """Nhật ký X-quang chỉ-thêm theo lược đồ đóng, lưu JSONL bền có khoá luồng."""
 
     def __init__(self, duong_dan: str | Path) -> None:
         self.duong_dan = Path(duong_dan)
+        self._khoa = threading.RLock()
         self.duong_dan.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.duong_dan.parent, 0o700)
+        except OSError:
+            pass
 
     def ghi(self, *, luot_id: str, ho_so_id: str, x_quang: dict,
             cong_cu_schema: list[str], cong_cu_danh_muc: list[str],
             **them: Any) -> None:
+        x_quang = x_quang or {}
+        manh_vao = [_chuan_hoa_manh_vao(m) for m in x_quang.get("manh_vao", [])]
+        manh_vao = [m for m in manh_vao if m is not None]
+
+        manh_loai = [_chuan_hoa_manh_loai(m) for m in x_quang.get("manh_loai", [])]
+        manh_loai = [m for m in manh_loai if m is not None]
+
+        try:
+            tong_token = int(x_quang.get("tong_token", 0))
+        except (ValueError, TypeError):
+            tong_token = 0
+
+        # Lược đồ đóng cố định: trường lạ bị loại bỏ hoàn toàn
         ban_ghi = {
-            "luot_id": luot_id,
-            "ho_so_id": ho_so_id,
-            "manh_vao": x_quang.get("manh_vao", []),
-            "manh_loai": x_quang.get("manh_loai", []),
-            "token_theo_tang": x_quang.get("token_theo_tang", {}),
-            "tong_token": x_quang.get("tong_token", 0),
-            "cong_cu_schema": list(cong_cu_schema),
-            "cong_cu_danh_muc": list(cong_cu_danh_muc),
+            "luot_id": str(luot_id),
+            "ho_so_id": str(ho_so_id),
+            "manh_vao": manh_vao,
+            "manh_loai": manh_loai,
+            "token_theo_tang": _chuan_hoa_token_theo_tang(x_quang.get("token_theo_tang")),
+            "tong_token": tong_token,
+            "cong_cu_schema": _chuan_hoa_danh_sach_chuoi(cong_cu_schema),
+            "cong_cu_danh_muc": _chuan_hoa_danh_sach_chuoi(cong_cu_danh_muc),
         }
-        ban_ghi.update(them)
-        ban_ghi = _loc_bi_mat(ban_ghi)
-        with open(self.duong_dan, "a", encoding="utf-8") as f:
-            f.write(json.dumps(ban_ghi, ensure_ascii=False) + "\n")
+
+        with self._khoa:
+            p = self.duong_dan
+            p.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(p.parent, 0o700)
+            except OSError:
+                pass
+            dong = json.dumps(ban_ghi, ensure_ascii=False) + "\n"
+            tep_moi = not p.exists()
+            flags = os.O_CREAT | os.O_WRONLY | os.O_APPEND
+            fd = os.open(str(p), flags, 0o600)
+            try:
+                if tep_moi:
+                    try:
+                        os.fchmod(fd, 0o600)
+                    except OSError:
+                        pass
+                os.write(fd, dong.encode("utf-8"))
+            finally:
+                os.close(fd)
 
     def doc(self, *, ho_so_id: str, nguoi_hoi_ho_so_id: str,
             luot_id: str | None = None) -> list[dict]:
         """Đọc các dòng của một hồ sơ. IDOR: người hỏi khác hồ sơ → từ chối."""
         if nguoi_hoi_ho_so_id != ho_so_id:
             raise PermissionError("khong_duoc_doc_ho_so_khac")
-        if not self.duong_dan.exists():
-            return []
-        ket_qua = []
-        with open(self.duong_dan, encoding="utf-8") as f:
-            for dong in f:
-                dong = dong.strip()
-                if not dong:
-                    continue
-                try:
-                    d = json.loads(dong)
-                except json.JSONDecodeError:
-                    continue
-                if d.get("ho_so_id") != ho_so_id:
-                    continue
-                if luot_id is not None and d.get("luot_id") != luot_id:
-                    continue
-                ket_qua.append(d)
-        return ket_qua
+        with self._khoa:
+            if not self.duong_dan.exists():
+                return []
+            ket_qua = []
+            with open(self.duong_dan, encoding="utf-8") as f:
+                for dong in f:
+                    dong = dong.strip()
+                    if not dong:
+                        continue
+                    try:
+                        d = json.loads(dong)
+                    except json.JSONDecodeError:
+                        continue
+                    if d.get("ho_so_id") != ho_so_id:
+                        continue
+                    if luot_id is not None and d.get("luot_id") != luot_id:
+                        continue
+                    ket_qua.append(d)
+            return ket_qua

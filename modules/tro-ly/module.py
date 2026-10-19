@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -40,10 +41,27 @@ class Module:
     def nap(self, cau_hinh: dict) -> None:
         goc = self._du_lieu
         if goc is None:
-            goc = Path("/tmp/tro-ly-nv136")
-        goc.mkdir(parents=True, exist_ok=True)
-        self._nk = _xq.NhatKyXQuang(goc / "x_quang.jsonl")
-        self._so_loi = _sl.SoLoi(goc / "so_loi.json")
+            kho_the = getattr(self, "kho", None)
+            if kho_the is not None and hasattr(kho_the, "module_id"):
+                try:
+                    from app import kho
+                    goc = kho.thu_muc_du_lieu() / "du_lieu" / kho_the.module_id
+                except Exception:
+                    goc = None
+            elif os.environ.get("WEB2API_DATA"):
+                goc = Path(os.environ["WEB2API_DATA"]) / "du_lieu" / "tro-ly"
+
+        if goc is not None:
+            goc.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(goc, 0o700)
+            except OSError:
+                pass
+            self._nk = _xq.NhatKyXQuang(goc / "x_quang.jsonl")
+            self._so_loi = _sl.SoLoi(goc / "so_loi.json")
+        else:
+            self._nk = None
+            self._so_loi = None
 
     async def cai(self, cau_hinh: dict) -> dict:
         if not isinstance(cau_hinh, dict):
@@ -51,11 +69,11 @@ class Module:
                     "cau_hinh_luu": {}}
         return {"ok": True, "ket_qua_tung_khoa": {}, "loi": None, "cau_hinh_luu": {}}
 
-    def suc_khoe(self) -> dict:
+    async def suc_khoe(self) -> dict:
         return {"ok": True, "canh_bao_chong_cheo": len(self._cap_chong_cheo_da_bao),
                 "prompt_nen_token": _mp.uoc_tinh_token(_mp.PROMPT_NEN_TOI_GIAN)}
 
-    def dung(self) -> None:
+    async def dung(self) -> None:
         return None
 
     # ── A/B: dựng prompt ──────────────────────────────────────────────
@@ -103,17 +121,20 @@ class Module:
                     **them) -> None:
         if self._nk is None:
             self.nap({})
-        assert self._nk is not None
-        self._nk.ghi(luot_id=luot_id, ho_so_id=ho_so_id, x_quang=x_quang,
-                     cong_cu_schema=cong_cu_schema,
-                     cong_cu_danh_muc=cong_cu_danh_muc, **them)
+        if self._nk is not None:
+            self._nk.ghi(luot_id=luot_id, ho_so_id=ho_so_id, x_quang=x_quang,
+                         cong_cu_schema=cong_cu_schema,
+                         cong_cu_danh_muc=cong_cu_danh_muc, **them)
 
     def doc_x_quang(self, *, ho_so_id: str, nguoi_hoi_ho_so_id: str,
                     luot_id: str | None = None) -> list[dict]:
         """Đọc X-quang có phân quyền theo hồ sơ (IDOR: sai hồ sơ → PermissionError)."""
+        if nguoi_hoi_ho_so_id != ho_so_id:
+            raise PermissionError("khong_duoc_doc_ho_so_khac")
         if self._nk is None:
             self.nap({})
-        assert self._nk is not None
+        if self._nk is None:
+            return []
         return self._nk.doc(ho_so_id=ho_so_id,
                             nguoi_hoi_ho_so_id=nguoi_hoi_ho_so_id, luot_id=luot_id)
 
@@ -121,13 +142,14 @@ class Module:
     def ghi_loi(self, ho_so_id: str, cong_cu: str, loai_loi: str, tom_tat: str) -> None:
         if self._so_loi is None:
             self.nap({})
-        assert self._so_loi is not None
-        self._so_loi.ghi(ho_so_id, cong_cu, loai_loi, tom_tat)
+        if self._so_loi is not None:
+            self._so_loi.ghi(ho_so_id, cong_cu, loai_loi, tom_tat)
 
     def manh_so_loi(self, ho_so_id: str, cong_cu: str) -> _mp.ManhPrompt | None:
         if self._so_loi is None:
             self.nap({})
-        assert self._so_loi is not None
+        if self._so_loi is None:
+            return None
         noi_dung = self._so_loi.manh_hay_doi(ho_so_id, cong_cu)
         if not noi_dung:
             return None

@@ -65,7 +65,7 @@ assert len(CONG_CU_NEN) <= 8
 # ── Ngưỡng cổng biên (có thể chỉnh; test đột biến tắt cổng) ───────────────
 NGUONG_TOI_THIEU = 0.30
 NGUONG_BIEN = 0.08
-NGUONG_BIEN_DOI_NGHICH = 0.15  # cặp đối nghịch phải vượt biên đầy đủ
+NGUONG_BIEN_DOI_NGHICH = 0.25  # cặp đối nghịch phải vượt biên đầy đủ
 NGUONG_CHONG_CHEO = 0.50       # max(Jaccard 3-gram, Jaccard token) của mô tả
 K_MAC_DINH = 8
 K_TRAN = 16
@@ -83,14 +83,29 @@ _WS_RE = re.compile(r"\s+")
 
 from functools import lru_cache
 
+TRAN_DO_DAI_Y_DINH = 500
 
-@lru_cache(maxsize=8192)
-def chuan_hoa(text: str) -> str:
+
+def _chuan_hoa_thuc(text: str) -> str:
     """Bỏ dấu, thường hoá, bỏ dấu câu, gộp khoảng trắng (học c2a normalize)."""
     s = unicodedata.normalize("NFKC", text or "").casefold().replace("đ", "d")
     s = "".join(c for c in unicodedata.normalize("NFD", s)
                 if not unicodedata.combining(c))
     return _WS_RE.sub(" ", _NON_WORD_RE.sub(" ", s)).strip()
+
+
+@lru_cache(maxsize=1024)
+def _chuan_hoa_cache(text: str) -> str:
+    return _chuan_hoa_thuc(text)
+
+
+def chuan_hoa(text: str) -> str:
+    """Chuẩn hoá chuỗi; chỉ cache chuỗi ngắn (<=128 ký tự) để chống nuốt bộ nhớ."""
+    if not text:
+        return ""
+    if len(text) <= 128:
+        return _chuan_hoa_cache(text)
+    return _chuan_hoa_thuc(text)
 
 
 def _tokens(s: str) -> list[str]:
@@ -203,21 +218,105 @@ def _diem_mien(y_dinh_chuan: str, mien: str) -> float:
     return 1.0 if m and m in y_dinh_chuan else 0.3
 
 
-def do_chong_cheo(ds_cong_cu: list[dict]) -> list[tuple[str, str, float]]:
-    """Trả về các cặp (ten_a, ten_b, diem) có mô tả giống nhau quá ngưỡng.
+def _kiem_tra_tham_so_bat_buoc(mau: Any, y_dinh: str) -> bool:
+    """Khớp cấu trúc tham số bắt buộc thuần túy, KHÔNG chạy regex từ bên ngoài để chống ReDoS.
+    Trả về True nếu ĐỦ tham số, False nếu THIẾU tham số."""
+    if not y_dinh:
+        return False
+    q = chuan_hoa(y_dinh)
+    q_tokens = _tokens(q)
 
-    Điểm = max(Jaccard 3-gram ký tự, Jaccard tập token) — bắt cả cặp chỉ khác
-    vài từ ("lưu trữ" ~ "dữ liệu").
+    # 1. Khai báo dạng dict (kiểu, độ dài, enum, token)
+    if isinstance(mau, dict):
+        kieu = str(mau.get("kieu") or mau.get("type") or "").lower()
+        if kieu in ("so", "int", "integer"):
+            if not any(t.isdigit() for t in q_tokens):
+                return False
+        do_dai_min = mau.get("do_dai_toi_thieu") or mau.get("min_length")
+        if isinstance(do_dai_min, int) and do_dai_min > 0:
+            if len(y_dinh.strip()) < do_dai_min:
+                return False
+        enum = mau.get("enum") or mau.get("gia_tri")
+        if isinstance(enum, (list, tuple, set)) and enum:
+            enum_chuan = [chuan_hoa(str(e)) for e in enum if e]
+            if not any(e in q for e in enum_chuan):
+                return False
+        chua_tok = mau.get("chua_token") or mau.get("tokens") or mau.get("contains_token")
+        if isinstance(chua_tok, (list, tuple, set)) and chua_tok:
+            toks_chuan = [chuan_hoa(str(t)) for t in chua_tok if t]
+            if not all(t in q for t in toks_chuan):
+                return False
+        return True
+
+    # 2. Khai báo dạng chuỗi (tương thích mẫu cũ mà KHÔNG dùng regex từ bên ngoài)
+    if isinstance(mau, str):
+        tien_to_ds: list[str] = []
+        m_nhom = re.findall(r"\(([^)]+)\)", mau)
+        for nhom in m_nhom:
+            if "|" in nhom:
+                for t in nhom.split("|"):
+                    tc = chuan_hoa(t.strip())
+                    if tc:
+                        tien_to_ds.append(tc)
+        if not tien_to_ds and ("|" not in mau and not any(c in mau for c in "+*?{}[]^$")):
+            mau_chuan = chuan_hoa(mau)
+            if mau_chuan:
+                tien_to_ds.append(mau_chuan)
+
+        if not tien_to_ds:
+            return False
+
+        for tt in tien_to_ds:
+            idx = q.find(tt)
+            if idx != -1:
+                sau = q[idx + len(tt):].strip()
+                if _tokens(sau):
+                    return True
+        return False
+
+    return True
+
+
+def _tinh_idf_tap_cong_cu(ds_cong_cu: list[dict]) -> dict[str, float]:
+    """Tính trọng số hiếm IDF trên tập mô tả công cụ. Từ xuất hiện ở nhiều công cụ (khuôn mẫu) có IDF thấp."""
+    n = len(ds_cong_cu)
+    if n <= 1:
+        return {}
+    df: dict[str, int] = {}
+    for c in ds_cong_cu:
+        toks = set(_tokens(chuan_hoa(c.get("mo_ta", ""))))
+        for t in toks:
+            df[t] = df.get(t, 0) + 1
+    idf: dict[str, float] = {}
+    for t, f in df.items():
+        idf[t] = math.log(1.0 + (n - f + 0.5) / (f + 0.5))
+    return idf
+
+
+def do_chong_cheo(ds_cong_cu: list[dict], nguong: float = NGUONG_CHONG_CHEO) -> list[tuple[str, str, float]]:
+    """Trả về các cặp (ten_a, ten_b, diem) có mô tả giống nhau quá ngưỡng dựa vào TỪ ĐẶC TRƯNG.
+
+    Điểm tính bằng tỉ lệ phần chung so với phần đặc trưng có trọng số IDF:
+    từ khuôn mẫu chung có IDF thấp, từ đặc trưng có IDF cao.
     """
-    chuan = [(c["ten"], chuan_hoa(c.get("mo_ta", ""))) for c in ds_cong_cu]
-    grams = {t: _3grams(s) for t, s in chuan}
-    toks = {t: set(_tokens(s)) for t, s in chuan}
+    if len(ds_cong_cu) < 2:
+        return []
+    chuan = [(c["ten"], set(_tokens(chuan_hoa(c.get("mo_ta", ""))))) for c in ds_cong_cu]
+    idf = _tinh_idf_tap_cong_cu(ds_cong_cu)
     cap = []
     for i in range(len(chuan)):
         for j in range(i + 1, len(chuan)):
-            ti, tj = chuan[i][0], chuan[j][0]
-            d = max(_jaccard(grams[ti], grams[tj]), _jaccard(toks[ti], toks[tj]))
-            if d >= NGUONG_CHONG_CHEO:
+            ti, si = chuan[i]
+            tj, sj = chuan[j]
+            chung = si & sj
+            rieng_i = si - sj
+            rieng_j = sj - si
+            w_chung = sum(idf.get(t, 1.0) for t in chung)
+            w_rieng_min = min(sum(idf.get(t, 1.0) for t in rieng_i),
+                              sum(idf.get(t, 1.0) for t in rieng_j))
+            tong_w = w_chung + w_rieng_min
+            d = (w_chung / tong_w) if tong_w > 0 else (1.0 if not rieng_i and not rieng_j else 0.0)
+            if d >= nguong:
                 cap.append((ti, tj, round(d, 3)))
     return cap
 
@@ -241,12 +340,17 @@ def chon_cong_cu(y_dinh: str, ung_vien: list[dict], *, k: int = K_MAC_DINH,
                  nguong_chong_cheo: float = NGUONG_CHONG_CHEO) -> dict:
     """Xếp hạng ứng viên theo y_dinh, qua cổng biên.
 
-    Trả về {cong_cu, diem, mo_ho, ly_do, cau_hoi, lua_chon, thieu_tham_so, xep_hang}.
+    Trả về {cong_cu, diem, mo_ho, ly_do, cau_hoi, lua_chon, thieu_tham_so, xep_hang, da_cat}.
     """
     if not ung_vien:
         return {"cong_cu": None, "diem": 0.0, "mo_ho": True,
                 "ly_do": "khong_co_ung_vien", "cau_hoi": None,
-                "lua_chon": [], "thieu_tham_so": [], "xep_hang": []}
+                "lua_chon": [], "thieu_tham_so": [], "xep_hang": [], "da_cat": False}
+    da_cat = False
+    if len(y_dinh) > TRAN_DO_DAI_Y_DINH:
+        y_dinh = y_dinh[:TRAN_DO_DAI_Y_DINH]
+        da_cat = True
+
     q = chuan_hoa(y_dinh)
     qt = _tokens(q)
     ti_le = ti_le_thanh_cong or {}
@@ -301,21 +405,41 @@ def chon_cong_cu(y_dinh: str, ung_vien: list[dict], *, k: int = K_MAC_DINH,
         b1 = next(c for c in ung_vien if c["ten"] == second["ten"])
         if _la_doi_nghich(b0, b1) and (best["diem"] - second["diem"]) < nguong_bien_doi_nghich:
             mo_ho, ly_do = True, "doi_nghich"
-        elif 0 < nguong_chong_cheo < 1.0 and _thuoc_cap_chong_cheo(
-                best["ten"], second["ten"],
-                do_chong_cheo([c for c in ung_vien if c["ten"] in (best["ten"], second["ten"])])):
-            # Chỉ kiểm chồng chéo trên cặp top-2 (rẻ); ngưỡng toàn cục dùng ở suc_khoe.
-            mo_ho, ly_do = True, "chong_cheo"
+        elif 0 < nguong_chong_cheo < 1.0:
+            # Kiểm tra chồng chéo trên cặp top-2 (rẻ) kết hợp IDF từ đặc trưng trên ứng viên
+            s_best = set(_tokens(chuan_hoa(b0.get("mo_ta", ""))))
+            s_second = set(_tokens(chuan_hoa(b1.get("mo_ta", ""))))
+            chung = s_best & s_second
+            diff_best = s_best - s_second
+            diff_second = s_second - s_best
 
-    # Thiếu tham số bắt buộc: theo mẫu khai báo của công cụ (cấu trúc, không đoán).
+            toks_check = s_best | s_second
+            tap_xet = [nhan[i][1] for i in pool]
+            n_uv = len(tap_xet)
+            df = {t: sum(1 for s in tap_xet if t in s) for t in toks_check}
+            idf_map = {t: math.log(1.0 + (n_uv - df[t] + 0.5) / (df[t] + 0.5)) for t in toks_check}
+
+            w_chung = sum(idf_map.get(t, 1.0) for t in chung)
+            w_diff_min = min(sum(idf_map.get(t, 1.0) for t in diff_best),
+                             sum(idf_map.get(t, 1.0) for t in diff_second))
+            d_cc = (w_chung / (w_chung + w_diff_min)) if (w_chung + w_diff_min) > 0 else (1.0 if not diff_best and not diff_second else 0.0)
+
+            if d_cc >= nguong_chong_cheo:
+                q_set = set(qt)
+                w_match_best = sum(idf_map.get(t, 1.0) for t in (q_set & diff_best))
+                w_match_second = sum(idf_map.get(t, 1.0) for t in (q_set & diff_second))
+
+                if w_match_best > 0 and w_match_best > w_match_second:
+                    mo_ho = False
+                else:
+                    mo_ho, ly_do = True, "chong_cheo"
+
+    # Thiếu tham số bắt buộc: theo cấu trúc khai báo của công cụ (không đoán, không regex ngoài).
     thieu: list[str] = []
-    if not mo_ho:
+    if best["ten"]:
         b0 = next(c for c in ung_vien if c["ten"] == best["ten"])
         for ten_ts, mau in (b0.get("tham_so_bat_buoc") or {}).items():
-            try:
-                if not re.search(mau, y_dinh):
-                    thieu.append(ten_ts)
-            except re.error:
+            if not _kiem_tra_tham_so_bat_buoc(mau, y_dinh):
                 thieu.append(ten_ts)
 
     cau_hoi = None
@@ -339,7 +463,7 @@ def chon_cong_cu(y_dinh: str, ung_vien: list[dict], *, k: int = K_MAC_DINH,
 
     return {"cong_cu": best["ten"], "diem": best["diem"], "mo_ho": mo_ho,
             "ly_do": ly_do, "cau_hoi": cau_hoi, "lua_chon": lua_chon,
-            "thieu_tham_so": thieu, "xep_hang": topk}
+            "thieu_tham_so": thieu, "xep_hang": topk, "da_cat": da_cat}
 
 
 def tim_cong_cu(y_dinh: str, danh_muc: list[dict], *, k: int = K_MAC_DINH,
