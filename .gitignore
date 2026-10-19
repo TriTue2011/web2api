@@ -18,3 +18,7 @@ bi_mat/
 
 # trạng thái OAuth tạm của module (mã thiết bị / identity token lúc chạy)
 modules/*/.oauth.json
+
+# Tệp do test dịch vụ van-phong-office sinh ra
+dich-vu/van-phong-office/ho_tro_test/da_goi.log
+dich-vu/van-phong-office/ho_tro_test/doi_so_cuoi.json
