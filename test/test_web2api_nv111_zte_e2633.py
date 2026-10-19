@@ -309,10 +309,13 @@ def test_sai_mat_khau_dang_nhap_that_bai_khong_sap(mod, manifest, may_chu_gia,
     m.nap(ch)
     try:
         with caplog.at_level(logging.DEBUG, logger="web2api.zte_e2633"):
-            ds = chay(m.thuc_the(None))
+            # Vòng sửa NV150 1/3 (L3, bài học NV98): lỗi đăng nhập KHÔNG trả []
+            # như «0 máy» nữa — ném ZteLoiDangNhap sạch để lõi ghi trạng thái
+            # «loi». Giữ nguyên assert ý nghĩa: không sập, mật khẩu không rò.
+            with pytest.raises(mod.ZteLoiDangNhap):
+                chay(m.thuc_the(None))
     finally:
         chay(m.dung())
-    assert ds == []
     assert "SaiMatKhau-Gia-0002" not in caplog.text, "mật khẩu rò vào log"
     assert MAT_KHAU_GIA not in caplog.text
 
@@ -324,10 +327,15 @@ def test_loi_lap_lien_tuc_thi_dung_khong_thu_lai(mod, manifest, may_chu_gia, cho
     ch["mat_khau"] = "SaiMatKhau-Gia-0003"
     m.nap(ch)
     try:
+        # Vòng sửa NV150 1/3 (L3, bài học NV98): mỗi lần gọi ném ZteLoiDangNhap
+        # (không trả []); giữ nguyên assert ý nghĩa: sau ngưỡng lỗi lặp, module
+        # DỪNG hẳn (không gửi thêm lần đăng nhập nào tới thiết bị).
         for _ in range(6):
-            chay(m.thuc_the(None))
+            with pytest.raises(mod.ZteLoiDangNhap):
+                chay(m.thuc_the(None))
         lan_loi = tt.lan_dang_nhap_loi
-        chay(m.thuc_the(None))
+        with pytest.raises(mod.ZteLoiDangNhap):
+            chay(m.thuc_the(None))
     finally:
         chay(m.dung())
     # Sau ngưỡng lỗi lặp, module DỪNG hẳn (không gửi thêm lần đăng nhập nào tới thiết bị)
@@ -342,10 +350,17 @@ def test_tin_hieu_khoa_cua_thiet_bi_thi_dung(mod, manifest, may_chu_gia, cho_phe
     ch["mat_khau"] = "SaiMatKhau-Gia-0004"
     m.nap(ch)
     try:
-        chay(m.thuc_the(None))  # lần 1: sai
+        # Vòng sửa NV150 1/3 (L3, bài học NV98): lần 1 sai → ném ZteLoiDangNhap
+        # và đặt tạm ngừng dài; các lần sau còn tạm ngừng → ném mà không gửi
+        # thêm yêu cầu. Giữ nguyên assert ý nghĩa: đã khoá/từ chối thì không
+        # thử đăng nhập nữa. (Nhánh ZteBiKhoa riêng có test ở vòng sửa 1/3.)
+        with pytest.raises(mod.ZteLoiDangNhap):
+            chay(m.thuc_the(None))  # lần 1: sai
         truoc = tt.lan_dang_nhap_loi
-        chay(m.thuc_the(None))  # lần 2: thiết bị báo khoá → module dừng
-        chay(m.thuc_the(None))  # lần 3: không được gửi thêm
+        with pytest.raises(mod.ZteLoiDangNhap):
+            chay(m.thuc_the(None))  # lần 2: còn tạm ngừng → không gửi thêm
+        with pytest.raises(mod.ZteLoiDangNhap):
+            chay(m.thuc_the(None))  # lần 3: không được gửi thêm
     finally:
         chay(m.dung())
     assert tt.lan_dang_nhap_loi == truoc, "đã khoá thì không thử đăng nhập nữa"
@@ -480,7 +495,10 @@ def test_mac_dinh_kiem_chung_chi_tu_ky_that_bai_an_toan(mod, manifest, may_chu_g
     ch = _cau_hinh(may_chu_gia["dia_chi"], kiem_chung_chi="true")
     m.nap(ch)
     try:
-        assert chay(m.thuc_the(None)) == []  # lỗi TLS → rỗng, không sập
+        # Vòng sửa NV150 1/3 (L3, bài học NV98): lỗi TLS → ném ZteLoi sạch
+        # (không trả [] như «0 máy»), không sập.
+        with pytest.raises(mod.ZteLoi):
+            chay(m.thuc_the(None))
     finally:
         chay(m.dung())
 
@@ -501,7 +519,10 @@ def test_ghim_van_tay_sai_thi_that_bai(mod, manifest, may_chu_gia, cho_phep_loop
     m.nap(_cau_hinh(may_chu_gia["dia_chi"], kiem_chung_chi="true",
                     van_tay="ab" * 32))
     try:
-        assert chay(m.thuc_the(None)) == []
+        # Vòng sửa NV150 1/3 (L3, bài học NV98): vân tay sai → ném ZteLoi sạch
+        # (không trả [] như «0 máy»).
+        with pytest.raises(mod.ZteLoi):
+            chay(m.thuc_the(None))
     finally:
         chay(m.dung())
 

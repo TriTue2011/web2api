@@ -103,6 +103,7 @@ class _TrangThaiGia:
         self.trang_dang_nhap_la = False  # GET / trả trang lạ (không có _sessionTOKEN)
         self.token_rong = False          # token đăng nhập rỗng
         self.tu_choi_dang_nhap = False   # POST luôn trả «đã quá hạn» dù đúng mật khẩu
+        self.khoa_tai_khoan = False      # POST trả JSON {"bi_khoa": true}, không cookie
         self.bam_dung = hashlib.sha256((MAT_KHAU_GIA + LOGIN_TOKEN_GIA).encode()).hexdigest()
 
 
@@ -194,6 +195,12 @@ class _HandlerGia(BaseHTTPRequestHandler):
         check_dung = hashlib.sha256(than).hexdigest()
         thu_tu_dung = ten_truong == ["Username", "Password", "action", "Frm_Logintoken",
                                      "captchaCode", "_sessionTOKEN"]
+        if tt.khoa_tai_khoan:
+            # Thiết bị báo khoá tài khoản (tín hiệu JSON có cấu trúc, chưa kiểm
+            # trên bộ phát thật): không đặt cookie phiên.
+            tt.lan_dang_nhap_loi += 1
+            self._gui(200, json.dumps({"bi_khoa": True}).encode(), "application/json")
+            return
         anh_xa = dict(truong)
         hop_le = (not tt.tu_choi_dang_nhap and thu_tu_dung and check_gui == check_dung
                   and anh_xa.get("Username") == TAI_KHOAN_GIA
@@ -381,26 +388,38 @@ def test_doc_hong_giu_du_lieu_cu_khong_tra_0_may(mod, manifest, may_chu_gia,
     finally:
         chay(m.dung())
     assert sk["ok"] is False, "đọc hỏng là lỗi, không phải «không có máy»"
-    assert sk["so_may"] == 2, "giữ số máy lần đọc trước, không trả 0"
+    # Vòng sửa NV150 1/3 (L3, bài học NV98): quá hạn giữ thì báo lỗi, không giữ
+    # số máy cũ vô thời hạn — hành vi mới có chủ ý, cập nhật test cũ cho khớp.
+    assert "so_may" not in sk, "quá hạn: không trình số máy cũ như còn hiệu lực"
     assert "sai khuôn" in sk["loi"] or "đọc hỏng" in sk["loi"]
 
 
-def test_trang_la_token_rong_khong_tam_ngung_dai(mod, manifest, may_chu_gia,
-                                                cho_phep_loopback, dong_ho):
+def test_trang_la_token_rong_khong_tam_ngung_dai_nhung_co_gian_cach(
+        mod, manifest, may_chu_gia, cho_phep_loopback):
+    """«Không tạm ngừng DÀI» ≠ «không giãn cách»: trang lạ/token rỗng không đặt
+    tạm ngừng 30 phút, nhưng vẫn chịu giãn cách khoang_cach_dang_nhap_phut như
+    mọi đường đăng nhập (chính sách dùng chung ở chỗ đăng nhập)."""
     tt = may_chu_gia["tt"]
-    m = mod.Module(manifest, dong_ho=dong_ho)
-    m.nap(_cau_hinh(may_chu_gia["dia_chi"]))
-    try:
-        for co in ("trang_dang_nhap_la", "token_rong"):
-            chay(m.dung())  # quên phiên → lần đọc tới bắt buộc đăng nhập lại
+    for co in ("trang_dang_nhap_la", "token_rong"):
+        dong_ho_rieng = DongHoGia()
+        m = mod.Module(manifest, dong_ho=dong_ho_rieng)
+        m.nap(_cau_hinh(may_chu_gia["dia_chi"]))
+        try:
             setattr(tt, co, True)
-            assert chay(m.thuc_the(None)) == []
-            setattr(tt, co, False)
-            dong_ho.nhich(1)  # chỉ 1 phút sau: nếu bị tạm ngừng dài thì vẫn chặn
-            assert len(chay(m.thuc_the(None))) == 2, \
+            with pytest.raises(mod.ZteLoiDangNhap):
+                chay(m.thuc_the(None))
+            assert m._tam_ngung_den is None, \
                 f"{co}: trang lạ/token rỗng không được tạm ngừng dài"
-    finally:
-        chay(m.dung())
+            setattr(tt, co, False)
+            dong_ho_rieng.nhich(1)  # chỉ 1 phút sau: vẫn trong giãn cách 10'
+            with pytest.raises(mod.ZteDangChoThuLai):
+                chay(m.thuc_the(None))
+            assert m._tam_ngung_den is None
+            dong_ho_rieng.nhich(10)  # qua giãn cách: đăng nhập lại bình thường
+            assert len(chay(m.thuc_the(None))) == 2, \
+                f"{co}: qua giãn cách phải đọc lại được"
+        finally:
+            chay(m.dung())
 
 
 def test_bi_tu_choi_tam_ngung_roi_hoi_phuc(mod, manifest, may_chu_gia,
@@ -410,10 +429,12 @@ def test_bi_tu_choi_tam_ngung_roi_hoi_phuc(mod, manifest, may_chu_gia,
     m = mod.Module(manifest, dong_ho=dong_ho)
     m.nap(_cau_hinh(may_chu_gia["dia_chi"]))
     try:
-        assert chay(m.thuc_the(None)) == []
+        with pytest.raises(mod.ZteLoiDangNhap):
+            chay(m.thuc_the(None))
         loi_truoc = tt.lan_dang_nhap_loi
         dong_ho.nhich(5)
-        assert chay(m.thuc_the(None)) == []
+        with pytest.raises(mod.ZteLoiDangNhap):
+            chay(m.thuc_the(None))
         assert tt.lan_dang_nhap_loi == loi_truoc, "đang tạm ngừng: không gửi thêm"
         sk = chay(m.suc_khoe())
         assert sk["ok"] is False and "chưa kết nối được" in sk["loi"]

@@ -51,6 +51,10 @@ Bộ phát dùng HTTPS với chứng chỉ tự ký.
 - Mật khẩu không vào log/URL/phản hồi; lưu riêng ở `bi_mat/` quyền 0600.
 - **MỘT PHIÊN**: giữ phiên giữa các lần đọc; hết phiên đăng nhập lại đúng một lần;
   `dung()` chỉ quên phiên phía client, không gửi yêu cầu đăng xuất.
+- `cai()` đăng nhập thử thành công thì **để cookie phiên lại** cho bản phục vụ
+  (thể hiện mới do lõi dựng sau khi cài) dùng luôn — không đăng nhập lần nữa,
+  không giữ phiên mồ côi (sổ trong tiến trình, dùng một lần rồi xoá; cookie
+  lạ/hết hạn tự hồi phục ở lần đọc).
 - `suc_khoe()` không đăng nhập lại mỗi lần gọi: dùng kết quả lần đọc gần nhất
   (trong 5 phút) hoặc đăng nhập tối đa 1 lần mỗi `khoang_cach_dang_nhap_phut`
   (mặc định 10).
@@ -67,4 +71,5 @@ Bộ phát dùng HTTPS với chứng chỉ tự ký.
 - Ánh xạ trường JSON (`MACAddress`, `AccessType`…) suy từ tóm tắt giao thức của chủ kho,
   **chưa kiểm với bộ phát thật** — thiết bị thật có thể đặt tên trường khác.
 - Tín hiệu «khoá tài khoản» của thiết bị thật chưa thấy tận mắt; hiện nhận theo cấu
-  trúc JSON cờ khoá + quy tắc dừng sau lỗi lặp.
+  trúc JSON cờ khoá + quy tắc dừng sau lỗi lặp. **Chưa xác nhận trên bộ phát thật**
+  — nhánh này có test với bộ phát giả (`test_l6_bi_khoa_co_test_va_tam_ngung_dai`)

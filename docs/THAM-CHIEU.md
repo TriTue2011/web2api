@@ -2455,6 +2455,17 @@ chối → tạm ngừng 30 phút rồi tự hồi phục; đọc hỏng là l�
    `{"cau_hinh": {"bot_token": ["<TOKEN1>", "<TOKEN2>"], "ten_bot": "bot-nha, bot-cong-ty",
    "danh_sach_dich": "[{\"id\": \"nha\", \"ten\": \"Nhà\", \"chat_id\": \"...\", \"bot\": \"bot-nha\"}]"}}`.
 
+**Bảng cấu hình** (`POST /api/modules/zte-e2633/cai` → `cau_hinh`):
+
+| Trường | Bắt buộc | Mặc định | Ghi chú |
+|---|---|---|---|
+| `dia_chi` | có | — | `https://<ip-bo-phat>`; qua kiểm SSRF của `app/tu_xa.py` |
+| `tai_khoan` | có | — | tài khoản trang quản trị bộ phát |
+| `mat_khau` | có | — | lưu riêng ở `bi_mat/` (0600), không vào log/phản hồi |
+| `kiem_chung_chi_tls` | không | `"true"` | `"false"` nếu bộ phát dùng chứng chỉ tự ký |
+| `van_tay_tls` | không | — | 64 ký tự hex (SHA-256 của chứng chỉ bộ phát) để ghim |
+| `khoang_cach_dang_nhap_phut` | không | `"10"` | số phút 1–1440: giãn cách tối thiểu giữa các lần đăng nhập lại |
+
 ### Module mikrotik-routeros — Nguồn máy mạng từ router MikroTik (chỉ đọc)
 
 **Mô tả.** Nguồn máy mạng cho sổ thiết bị: đọc bảng DHCP lease

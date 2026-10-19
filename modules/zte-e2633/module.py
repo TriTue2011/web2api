@@ -70,11 +70,19 @@ TRAN_PHAN_HOI = 1_000_000  # 1 MB — danh sách máy của bộ phát gia đìn
 HET_GIO_GIAY = 10.0
 TEN_GOI_COOKIE_PHIEN = "zte_sess"
 
-# ── Chính sách phiên (NV150) ─────────────────────────────────────────────────
+# ── Chính sách phiên (NV150, vòng sửa 1/3) ────────────────────────────────────
 TAM_NGUNG_SAU_TU_CHOI_PHUT = 30  # bị từ chối → nghỉ dài rồi tự hồi phục
-HAN_DOC_CUOI_PHUT = 5            # suc_khoe dùng lại kết quả đọc gần nhất trong hạn này
+HAN_DOC_CUOI_PHUT = 5            # đọc gần nhất dùng lại trong hạn này;
+                                 # thuc_the giữ dữ liệu cũ cũng chỉ trong hạn này
 KHOANG_CACH_DANG_NHAP_MAC_DINH_PHUT = 10  # đăng nhập tối đa 1 lần mỗi N phút
 KHOANG_CACH_DANG_NHAP_TOI_DA_PHUT = 1440
+
+# ── Phiên dùng lại từ cai() (L4) ─────────────────────────────────────────────
+# cai() đăng nhập thử thành công thì để cookie phiên ở đây để bản phục vụ
+# (thể hiện mới do SoModule dựng lại sau khi cai) dùng lại — không đăng nhập
+# mới, không giữ phiên mồ côi. Chỉ sống trong tiến trình, không lưu đĩa;
+# cookie lạ/hết hạn tự hồi phục ở lần đọc (hết phiên → đăng nhập lại).
+_PHIEN_CAI_DUNG_LAI: dict[tuple[str, str], str] = {}
 
 
 class ZteLoi(Exception):
@@ -93,6 +101,11 @@ class ZteLoi(Exception):
 
 class ZteLoiDangNhap(ZteLoi):
     """Đăng nhập bị từ chối hoặc không đọc được dữ liệu sau đăng nhập."""
+
+
+class ZteDangChoThuLai(ZteLoi):
+    """Đang trong giãn cách giữa các lần đăng nhập (khoang_cach_dang_nhap_phut)
+    — bên gọi thử lại sau, không phải «bị từ chối»."""
 
 
 class ZteBiKhoa(ZteLoiDangNhap):
@@ -168,6 +181,16 @@ class MayKhachZte:
     def co_phien(self) -> bool:
         return self._co_phien
 
+    @property
+    def khoa_phien(self) -> tuple[str, str]:
+        """Khoá sổ phiên dùng lại: (dia_chi, tai_khoan)."""
+        return (self._dia_chi, self._tai_khoan)
+
+    def nhan_phien_da_co(self, gia_tri_cookie: str) -> None:
+        """Nhận cookie phiên có sẵn (do cai() để lại) — không đăng nhập mới."""
+        self._client_hien_tai().cookies.set(TEN_GOI_COOKIE_PHIEN, gia_tri_cookie)
+        self._co_phien = True
+
     # ── hạ tầng ──────────────────────────────────────────────────────────────
     def _ngu_canh_tls(self) -> ssl.SSLContext:
         ngu = ssl.create_default_context()
@@ -216,7 +239,11 @@ class MayKhachZte:
             phan_hoi = await client.send(yc, stream=True)
             than = await doc_phan_hoi_co_tran(phan_hoi, tran_bytes=TRAN_PHAN_HOI,
                                               tran_giay=HET_GIO_GIAY)
-        except (httpx.HTTPError, PhanHoiQuaLon, TimeoutError) as e:
+        except (httpx.HTTPError, httpx.InvalidURL, PhanHoiQuaLon,
+                TimeoutError) as e:
+            # httpx.InvalidURL KHÔNG phải httpx.HTTPError (là Exception trần):
+            # địa chỉ dị dạng (cổng «abc», ký tự điều khiển) lọt qua kiểm biên
+            # phải thành ZteLoiKetNoi, không được ném ra ngoài cai().
             loi = ZteLoiKetNoi(f"không tới được {self._dia_chi}: {type(e).__name__}",
                                tls_tu_ky=_la_loi_chung_chi_tu_ky(e))
             raise loi from e
@@ -385,6 +412,22 @@ def _canh_bao_tu_loi(loi: ZteLoi, kiem_chung_chi: bool) -> tuple[str | None, str
     return (None, f"Lỗi chưa phân loại ({type(loi).__name__}): {loi}. Đã lưu cấu hình.")
 
 
+def _luu_phien_cai(dia_chi: str, tai_khoan: str, khach: MayKhachZte) -> None:
+    """L4: giữ cookie phiên từ lần đăng nhập thử của cai() vào sổ dùng lại để
+    bản phục vụ (thể hiện mới do SoModule dựng sau khi cai) nhận — không cần
+    đăng nhập lần nữa, không giữ phiên mồ côi."""
+    try:
+        client = khach._client
+        gt = client.cookies.get(TEN_GOI_COOKIE_PHIEN) if client is not None else None
+    except Exception:
+        gt = None
+    if gt:
+        # Khoá theo đúng (dia_chi, tai_khoan) của thể hiện đã đăng nhập —
+        # nap() tra bằng cùng khoá từ cấu hình đã chuẩn hoá.
+        _PHIEN_CAI_DUNG_LAI[khach.khoa_phien] = gt
+        log.info("zte-e2633: để lại phiên cho bản phục vụ dùng lại")
+
+
 class Module:
     """Lớp Module theo hợp đồng app/kham_pha.py (khả năng thiet_bi, chỉ đọc).
 
@@ -398,6 +441,9 @@ class Module:
         self._khach: MayKhachZte | None = None
         self._dong_ho = dong_ho or (lambda: datetime.now(timezone.utc))
         self._khoang_cach_phut = KHOANG_CACH_DANG_NHAP_MAC_DINH_PHUT
+        # L2: MỘT khoá asyncio bao toàn bộ vòng đọc/đăng nhập (thuc_the,
+        # suc_khoe, cai, dung) — người đến sau dùng phiên/kết quả của người trước.
+        self._khoa = asyncio.Lock()
         # Trạng thái một phiên + tạm ngừng + đọc gần nhất:
         self._tam_ngung_den: datetime | None = None
         self._ly_do_tam_ngung = ""
@@ -433,8 +479,19 @@ class Module:
         ), khoang_cach
 
     def nap(self, cau_hinh: dict) -> None:
-        """Nạp cấu hình ĐÃ KIỂM (lúc khởi động hoặc sau khi cài) — không gọi mạng."""
+        """Nạp cấu hình ĐÃ KIỂM (lúc khởi động hoặc sau khi cài) — không gọi mạng.
+
+        L4: nếu cai() vừa đăng nhập thử thành công và để lại cookie phiên cho
+        cặp (dia_chi, tai_khoan) này thì nhận dùng luôn — bản phục vụ không đăng
+        nhập mới, không giữ phiên mồ côi. Dùng một lần rồi xoá khỏi sổ; cookie
+        lạ/hết hạn tự hồi phục ở lần đọc (hết phiên → đăng nhập lại).
+        """
         self._khach, self._khoang_cach_phut = self._dung_khach(cau_hinh)
+        if self._khach is not None:
+            gt = _PHIEN_CAI_DUNG_LAI.pop(self._khach.khoa_phien, None)
+            if gt:
+                self._khach.nhan_phien_da_co(gt)
+                log.info("zte-e2633: dùng lại phiên cai() để lại, không đăng nhập mới")
 
     @staticmethod
     def _kiem_khoang_cach(cau_hinh: dict) -> tuple[int | None, str | None]:
@@ -469,6 +526,15 @@ class Module:
             dia_chi = await kiem_url_lan(dia_chi)
         except ValueError as e:
             return that_bai(str(e))
+        except Exception as e:
+            # L5: kiem_url_lan của lõi có thể ném loại không lường trước
+            # (vd ExceptionGroup với cổng lạ) — bọc ở ranh giới module,
+            # trả lỗi sạch, ghi log KIỂU ngoại lệ (không nội dung bí mật).
+            log.warning("zte-e2633: kiem_url_lan lỗi không lường trước [%s]",
+                        type(e).__name__)
+            return that_bai(
+                f"Không kiểm được địa chỉ ({type(e).__name__} — đã ghi nhật ký). "
+                "Kiểm tra lại địa chỉ bộ phát.")
         tai_khoan = str(cau_hinh.get("tai_khoan") or "").strip()
         if not tai_khoan:
             return that_bai("Chưa nhập tài khoản (tai_khoan).")
@@ -493,21 +559,38 @@ class Module:
         }
 
         # Đăng nhập THỬ: kết quả chỉ là cảnh báo có cấu trúc, không bỏ lưu.
-        khach = MayKhachZte(dia_chi, tai_khoan, mat_khau,
-                            kiem_chung_chi_tls=kiem_chung_chi, van_tay_tls=van_tay)
+        # L2: đăng nhập thử cũng nằm trong khoá một phiên của thể hiện này.
         ma_loi: str | None = None
         canh_bao: str | None = None
         so_may: int | None = None
-        try:
+        async with self._khoa:
+            khach = MayKhachZte(dia_chi, tai_khoan, mat_khau,
+                                kiem_chung_chi_tls=kiem_chung_chi, van_tay_tls=van_tay)
             try:
-                ds = await khach.doc_may()
-            except ZteLoi as e:
-                ma_loi, canh_bao = _canh_bao_tu_loi(e, kiem_chung_chi)
-                log.warning("zte-e2633: đăng nhập thử cảnh báo [%s]", ma_loi)
-            else:
-                so_may = sum(1 for m in ds if _thuc_the_tu_may(self.tien_to, m))
-        finally:
-            await khach.dong()
+                try:
+                    ds = await khach.doc_may()
+                except ZteLoi as e:
+                    ma_loi, canh_bao = _canh_bao_tu_loi(e, kiem_chung_chi)
+                    log.warning("zte-e2633: đăng nhập thử cảnh báo [%s]", ma_loi)
+                    _PHIEN_CAI_DUNG_LAI.pop(khach.khoa_phien, None)
+                except Exception as e:
+                    # L5: ranh giới cai() — lỗi không lường trước cũng chỉ là
+                    # cảnh báo (lưu rồi cảnh báo), ghi log KIỂU ngoại lệ.
+                    log.warning("zte-e2633: đăng nhập thử lỗi không lường "
+                                "trước [%s]", type(e).__name__)
+                    ma_loi = "LOI_KHONG_LUONG_TRUOC"
+                    canh_bao = (
+                        "Đăng nhập thử gặp lỗi không lường trước "
+                        f"({type(e).__name__} — đã ghi nhật ký). Đã lưu cấu hình; "
+                        "kiểm tra địa chỉ rồi thử lại.")
+                    _PHIEN_CAI_DUNG_LAI.pop(khach.khoa_phien, None)
+                else:
+                    so_may = sum(1 for m in ds if _thuc_the_tu_may(self.tien_to, m))
+                    # L4: đăng nhập thử thành công — để cookie phiên lại cho bản
+                    # phục vụ dùng (không giữ phiên mồ côi bằng lần đăng nhập mới).
+                    _luu_phien_cai(dia_chi, tai_khoan, khach)
+            finally:
+                await khach.dong()
         return {
             "ok": True,
             "ket_qua_tung_khoa": [{"khoa": tai_khoan, "ok": True, "loi": None,
@@ -522,11 +605,25 @@ class Module:
         return (self._tam_ngung_den is not None
                 and self._dong_ho() < self._tam_ngung_den)
 
+    def _con_du_lieu_cu(self) -> bool:
+        """Dữ liệu lần đọc trước còn trong hạn giữ (HAN_DOC_CUOI_PHUT) không?
+
+        Hết hạn thì không giữ vô thời hạn — lỗi phải ném ra để lõi ghi trạng
+        thái «loi» thay vì hiểu nhầm là nguồn «trong» (app/so_thiet_bi.py).
+        """
+        return (self._doc_cuoi is not None
+                and self._dong_ho() - self._doc_cuoi[0]
+                < timedelta(minutes=HAN_DOC_CUOI_PHUT))
+
     async def _doc_mot_vong(self) -> list[dict]:
         """Một vòng đọc: dùng phiên hiện có; hết phiên đăng nhập lại đúng 1 lần.
 
+        L3 — CHÍNH SÁCH ĐIỀU TIẾT DÙNG CHUNG, đặt ở CHỖ ĐĂNG NHẬP (không ở từng
+        hàm gọi): chỉ khi PHẢI đăng nhập lại mới bị giãn cách
+        (khoang_cach_dang_nhap_phut); phiên còn sống thì đọc luôn (L1).
         Bị từ chối → đặt tạm ngừng dài rồi ném; đọc hỏng → ném ZteLoiDocHong.
-        Ghi nhận lần thử đăng nhập để suc_khoe điều tiết.
+        L5: lỗi không lường trước từ lớp mạng → phân loại theo KIỂU, ném ZteLoi
+        sạch (không ném ngoại lệ trần ra ranh giới module).
         """
         if self._khach is None:
             raise ZteLoi("chưa cấu hình")
@@ -537,6 +634,11 @@ class Module:
                 "tích hợp khác", bi_tu_choi=True)
         bay_gio = self._dong_ho()
         if not self._khach.co_phien:
+            if (self._lan_thu_dang_nhap is not None
+                    and bay_gio - self._lan_thu_dang_nhap
+                    < timedelta(minutes=self._khoang_cach_phut)):
+                raise ZteDangChoThuLai(
+                    f"đang chờ thử lại (mỗi {self._khoang_cach_phut} phút)")
             self._lan_thu_dang_nhap = bay_gio
         try:
             ds_may = await self._khach.doc_may()
@@ -548,6 +650,14 @@ class Module:
                 log.warning("zte-e2633: bị từ chối — tạm ngừng %d phút",
                             TAM_NGUNG_SAU_TU_CHOI_PHUT)
             raise
+        except Exception as e:
+            # L5: ranh giới module — ghi log KIỂU ngoại lệ, không ghi nội dung
+            # (có thể chứa bí mật); ném ZteLoi sạch thay vì ngoại lệ trần.
+            log.warning("zte-e2633: doc_may lỗi không lường trước [%s]",
+                        type(e).__name__)
+            raise ZteLoi(
+                f"lỗi không lường trước khi đọc ({type(e).__name__} "
+                "— đã ghi nhật ký)") from e
         ra = []
         for may in ds_may:
             try:
@@ -561,29 +671,44 @@ class Module:
         self._loi_cuoi = ""
         return ra
 
+    @staticmethod
+    def _loc_thuc_the(ra: list[dict], loc: dict | None) -> list[dict]:
+        if isinstance(loc, dict) and loc.get("loai"):
+            return [e for e in ra if e.get("loai") == loc["loai"]]
+        return ra
+
     async def _lay_thuc_the(self, loc: dict | None) -> list[dict]:
         """Đọc và đổi sang thực thể.
 
-        Đọc hỏng → GIỮ DỮ LIỆU CŨ (không trả «0 máy»); lỗi khác → rỗng + log.
+        L3: lỗi mạng/«trang lạ»/hết phiên/đọc hỏng KHÔNG được trả [] như «0 máy»
+        (lõi ở app/so_thiet_bi.py hiểu [] là nguồn «trong»): giữ dữ liệu cũ
+        TRONG HẠN; quá hạn thì NÉM ZteLoi để lõi ghi trạng thái «loi». Đang
+        trong giãn cách đăng nhập → ném ZteDangChoThuLai (bên gọi thử lại sau).
+        L2: toàn bộ vòng đọc/đăng nhập nằm trong MỘT khoá asyncio — người đến
+        sau dùng phiên/kết quả của người trước.
         """
         if self._khach is None:
             return []
-        try:
-            ra = await self._doc_mot_vong()
-        except ZteLoiDocHong as e:
-            log.warning("zte-e2633: đọc hỏng, giữ dữ liệu cũ: %s", e)
-            self._loi_cuoi = str(e)
-            if self._doc_cuoi is not None:
-                ra = self._doc_cuoi[1]
-            else:
-                return []
-        except ZteLoi as e:
-            log.warning("zte-e2633: không đọc được danh sách máy: %s", e)
-            self._loi_cuoi = str(e)
-            return []
-        if isinstance(loc, dict) and loc.get("loai"):
-            ra = [e for e in ra if e.get("loai") == loc["loai"]]
-        return ra
+        async with self._khoa:
+            try:
+                ra = await self._doc_mot_vong()
+            except ZteDangChoThuLai:
+                raise
+            except ZteLoi as e:
+                self._loi_cuoi = str(e)
+                if self._con_du_lieu_cu():
+                    log.warning("zte-e2633: lỗi đọc, giữ dữ liệu cũ trong hạn: %s", e)
+                    ra = self._doc_cuoi[1]
+                else:
+                    raise
+            except Exception as e:
+                # L5: ranh giới thuc_the() — không để ngoại lệ trần lọt ra lõi.
+                log.warning("zte-e2633: thuc_the lỗi không lường trước [%s]",
+                            type(e).__name__)
+                raise ZteLoi(
+                    f"lỗi không lường trước khi đọc thực thể "
+                    f"({type(e).__name__} — đã ghi nhật ký)") from e
+        return self._loc_thuc_the(ra, loc)
 
     # ── khả năng thiet_bi ────────────────────────────────────────────────────
     async def thuc_the(self, loc: dict | None) -> list[dict]:
@@ -604,44 +729,57 @@ class Module:
                 "loi": "Module zte-e2633 chỉ đọc danh sách máy WiFi, không hỗ trợ hành động."}
 
     async def suc_khoe(self) -> dict:
-        """Không đăng nhập lại mỗi lần gọi: dùng kết quả đọc gần nhất (có hạn);
-        nếu không thì đăng nhập tối đa 1 lần mỗi N phút. Lỗi → trạng thái
-        «chưa kết nối được: <lý do>», không ném."""
+        """Không đăng nhập lại mỗi lần gọi. Hợp đồng: KHÔNG NÉM.
+
+        - Còn kết quả đọc gần nhất (5 phút) → ok luôn.
+        - L1: phiên còn sống → đọc luôn, không điều tiết; chỉ điều tiết khi
+          PHẢI đăng nhập lại (chính sách dùng chung ở _doc_mot_vong).
+        - Bị từ chối trước đó và còn tạm ngừng → ok False kèm mốc tam_ngung_den
+          (nhánh tách riêng khỏi nhánh giãn cách — đột biến (i)).
+        - Đang trong giãn cách đăng nhập → ok False «đang chờ thử lại».
+        - L5: lỗi không lường trước → ok False, ghi log KIỂU ngoại lệ (không ghi
+          nội dung có thể chứa bí mật).
+        """
         if self._khach is None:
             return {"ok": False, "loi": "chưa kết nối được: chưa cấu hình"}
-        bay_gio = self._dong_ho()
-        if self._doc_cuoi is not None:
-            tuoi = bay_gio - self._doc_cuoi[0]
-            if tuoi < timedelta(minutes=HAN_DOC_CUOI_PHUT):
-                return {"ok": True, "so_may": len(self._doc_cuoi[1])}
-        if self._con_tam_ngung():
-            return {"ok": False,
-                    "loi": "chưa kết nối được: " + self._ly_do_tam_ngung,
-                    "tam_ngung_den": self._tam_ngung_den.isoformat()}
-        if (self._lan_thu_dang_nhap is not None
-                and bay_gio - self._lan_thu_dang_nhap
-                < timedelta(minutes=self._khoang_cach_phut)):
-            return {"ok": False,
-                    "loi": "chưa kết nối được: " + (self._loi_cuoi or
-                          f"đang chờ thử lại (mỗi {self._khoang_cach_phut} phút)")}
-        self._lan_thu_dang_nhap = bay_gio
         try:
-            ra = await self._doc_mot_vong()
+            async with self._khoa:  # L2: một khoá bao toàn bộ vòng đọc/đăng nhập
+                bay_gio = self._dong_ho()
+                if self._doc_cuoi is not None:
+                    tuoi = bay_gio - self._doc_cuoi[0]
+                    if tuoi < timedelta(minutes=HAN_DOC_CUOI_PHUT):
+                        return {"ok": True, "so_may": len(self._doc_cuoi[1])}
+                ra = await self._doc_mot_vong()
+        except ZteDangChoThuLai as e:
+            return {"ok": False, "loi": "chưa kết nối được: " + str(e)}
+        except ZteLoiDangNhap as e:
+            self._loi_cuoi = str(e)
+            if self._con_tam_ngung():
+                return {"ok": False,
+                        "loi": "chưa kết nối được: " + self._ly_do_tam_ngung,
+                        "tam_ngung_den": self._tam_ngung_den.isoformat()}
+            return {"ok": False, "loi": "chưa kết nối được: " + str(e)}
         except ZteLoiDocHong as e:
             self._loi_cuoi = str(e)
-            if self._doc_cuoi is not None:
-                # Đọc hỏng là lỗi — giữ số máy lần đọc trước, không trả 0.
-                return {"ok": False, "loi": f"chưa kết nối được: đọc hỏng ({e})",
-                        "so_may": len(self._doc_cuoi[1]), "du_lieu_cu": True}
             return {"ok": False, "loi": f"chưa kết nối được: đọc hỏng ({e})"}
         except ZteLoi as e:
             self._loi_cuoi = str(e)
             return {"ok": False, "loi": f"chưa kết nối được: {e}"}
-        self._doc_cuoi = (bay_gio, ra)
-        self._loi_cuoi = ""
+        except Exception as e:
+            # L5: ranh giới suc_khoe() — không ném; ghi log KIỂU ngoại lệ.
+            log.warning("zte-e2633: suc_khoe lỗi không lường trước [%s]",
+                        type(e).__name__)
+            return {"ok": False,
+                    "loi": "chưa kết nối được: lỗi không lường trước "
+                           "(đã ghi nhật ký)"}
         return {"ok": True, "so_may": len(ra)}
 
     async def dung(self) -> None:
-        """Quên phiên phía client; KHÔNG gửi yêu cầu đăng xuất lên bộ phát."""
-        if self._khach is not None:
-            await self._khach.dong()
+        """Quên phiên phía client; KHÔNG gửi yêu cầu đăng xuất lên bộ phát.
+
+        L2: cũng nằm trong khoá một phiên (không xoá cookie đúng lúc luồng
+        khác đang đọc — lỗi L2 của người soát).
+        """
+        async with self._khoa:
+            if self._khach is not None:
+                await self._khach.dong()
