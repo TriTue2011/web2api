@@ -297,10 +297,10 @@ class Module:
         """Danh sách hộp thư đọc được — CHỈ id và email che, KHÔNG mật khẩu."""
         return [{"id": h["email"], "email_che": _che_email(h["email"])} for h in self._hop_thu]
 
-    def suc_khoe(self) -> dict:
+    async def suc_khoe(self) -> dict:
         return {"ok": True, "so_hop_thu": len(self._hop_thu)}
 
-    def dung(self) -> None:
+    async def dung(self) -> None:
         return None
 
     # ── chuẩn ma_xac_minh ──

@@ -197,7 +197,7 @@ class Module:
         await asyncio.to_thread(p.dong)
         return {"ok": True, "khoa": []}
 
-    def dung(self) -> None:
+    async def dung(self) -> None:
         self._cfg = None
 
     # ── chuẩn thiết bị C1 ──

@@ -198,10 +198,10 @@ class Module:
         """Danh sách đích gửi ra — KHÔNG chứa token/chat_id thô."""
         return [{"id": d["id"], "ten": d["ten"]} for d in self._dich]
 
-    def suc_khoe(self) -> dict:
+    async def suc_khoe(self) -> dict:
         return {"ok": True, "so_bot": len(self._bots), "so_dich": len(self._dich)}
 
-    def dung(self) -> None:
+    async def dung(self) -> None:
         return None
 
     # ── gửi tin ──
