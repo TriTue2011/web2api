@@ -3839,6 +3839,32 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 ---
 
+### Module tuvanhanh — Bộ tự vận hành + kênh báo/hỏi một đường (NV147)
+
+**Mô tả.** Lập lịch nền tự động: làm mới phiên/token định kỳ, tự đăng nhập lại khi
+phiên hết hạn (qua hợp đồng đăng nhập chung `tai_dung_ho_so` của module, giãn cách
+`WEB2API_DANG_NHAP_GIAN_CACH_GIAY`, dừng sau 2 hỏng liên tiếp), theo dõi sức khoẻ
+nguồn/model, tự khôi phục module lỗi (lùi dần, tối đa N lần rồi báo một tin), cảnh báo
+đĩa > 85% và dọn dữ liệu tạm của chính module. Khi cần quyết định của chủ máy, gửi tin
+đánh số qua kênh ra của lõi (`POST /api/gui/<kenh>` — đích nêu đích danh trong cấu hình);
+chủ máy trả lời `cl <số>` (lệnh `cl`, chỉ quản trị). Không trả lời trong 6 giờ → hết hạn,
+mặc định an toàn (không làm). Port từ c2a của chủ máy
+(`services/hoi_giam_sat.py`, `web_session_scheduler.py`, `solver_selfheal.py`).
+Mã nguồn: `modules/tuvanhanh/`.
+
+**Cần gì.**
+- Một module kênh đã cài và cấu hình (ví dụ `telegram-bot`) + id đích nhận báo/hỏi.
+
+**Cách cài.** Hệ thống → Module → **Tự vận hành** → Cài đặt → nhập `kenh_module`
+(ví dụ `telegram-bot`) và `kenh_id` (ví dụ `nha`). Công tắc tự động mặc định BẬT;
+ba công tắc rủi ro (tự cài module, giải CAPTCHA, tự đăng ký) mặc định TẮT.
+
+**Giới hạn.**
+- Chưa kiểm với kênh thật và provider thật (mới kiểm bằng kênh/provider giả).
+- Gắn app cho lịch dùng lazy capture (từ lệnh `cl` đầu tiên) hoặc `dat_app(app)`.
+
+---
+
 ## 5. Triển khai
 
 
