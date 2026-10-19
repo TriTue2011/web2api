@@ -155,10 +155,10 @@ def test_ten_tu_khai_cat_va_lam_sach():
 
 def test_chat_la_bi_bo_va_dem():
     mod = _module()
-    truoc = mod.suc_khoe()["bo_qua_chat_la"]
+    truoc = asyncio.run(mod.suc_khoe())["bo_qua_chat_la"]
     kq = _goi_webhook(mod, _payload(chat_id="9999999999"))
     assert kq == {"ok": True, "tin_vao": []}, "chat lạ: bỏ tin, không trả lời nơi lạ"
-    assert mod.suc_khoe()["bo_qua_chat_la"] == truoc + 1
+    assert asyncio.run(mod.suc_khoe())["bo_qua_chat_la"] == truoc + 1
 
 
 def test_su_kien_anh_va_sticker_bi_bo():
@@ -233,7 +233,7 @@ def test_manifest_khai_webhook_dung_muc_7():
 def test_suc_khoe_co_che_do_va_dem_khong_lo_bi_mat():
     mod = _module()
     _goi_webhook(mod, _payload(text="nội dung nhạy cảm cần giấu"))
-    sk = mod.suc_khoe()
+    sk = asyncio.run(mod.suc_khoe())
     assert sk["che_do_nhan"] == "webhook"
     assert isinstance(sk["bo_qua_chat_la"], int)
     assert isinstance(sk["loi_cuoi"], str) and len(sk["loi_cuoi"]) <= 32
