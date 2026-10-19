@@ -219,6 +219,7 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `register` | Điều phối đăng ký tài khoản có NGƯỜI TRONG VÒNG LẶP: hộp thư tạm + mật khẩu sinh, nhận diện bước rồi DỪNG «cần người» khi gặp thử thách/xác minh — mặc định tắt | HTTPS tới trang đăng ký đã khai + API Inbucket tự host | Có sẵn (kiểm với trang và hộp thư GIẢ; chưa kiểm với nhà cung cấp thật/noVNC thật) |
 | `email` | Kênh email hai chiều: gửi ra qua SMTP + nhận tin vào qua IMAP hỏi vòng (nhiều hộp thư; thư từ người lạ bị bỏ) | IMAP/SMTP tới máy chủ do chủ máy khai | Có sẵn (kiểm với máy chủ IMAP/SMTP giả; chưa kiểm với máy chủ thư thật) |
 | `tuvanhanh` | Bộ tự vận hành: lập lịch nền làm mới phiên/token, tự đăng nhập lại, theo dõi sức khoẻ nguồn, tự khôi phục, cảnh báo đĩa; kênh báo/hỏi một đường qua kênh ra của lõi (trả lời `cl <số>`) | Nội bộ (qua cổng `gui_ra`/`kenh_vao` của lõi) | Có sẵn (19 test xanh; port từ c2a; chưa kiểm với kênh thật) |
+| `mqtt` | Thiết bị nhà qua MQTT, không cần Home Assistant (port từ c2a): khám phá phổ quát bằng `+` nhiều độ sâu (không bao giờ `#`), bản tự khai báo Home Assistant discovery, nhận dạng Frigate; GHI mặc định TẮT, loại nguy hiểm không bao giờ điều khiển được | MQTT (TCP, mặc định 1883) | Có sẵn (kiểm với máy chủ MQTT giả cục bộ; **chưa kiểm với máy chủ MQTT thật**; cần `paho-mqtt==2.1.0` trong container) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.
@@ -238,6 +239,19 @@ Mọi khoá đều do **bạn tự sinh** và phải dán **đúng cùng một g
 | `rclone` | `rclone` | Container riêng (chỉ công bố `127.0.0.1:8702`): `cd dich-vu/rclone && docker build -t rclone-bridge:1.0 .` rồi `docker run -d` với `-e RCLONE_KHOA=<khoá>` trên mạng Docker nội bộ (lệnh đầy đủ trong README của dịch vụ). Chi tiết: [dich-vu/rclone/README.md](dich-vu/rclone/README.md) | `RCLONE_KHOA` tự sinh (chuỗi ngẫu nhiên dài); dán cùng giá trị vào module `rclone` |
 | `gpu-node` | Các nút GPU từ xa (nghe/thị giác/tách âm) | Chạy trên **máy có card NVIDIA** (thường là máy khác): `cd dich-vu/gpu-node && cp .env.mau .env` (đặt `GPU_NODE_BIND` là IP LAN của máy GPU), `docker compose up -d`. Chi tiết: [dich-vu/gpu-node/README.md](dich-vu/gpu-node/README.md) | Khoá nút **tự sinh** lần đầu và chỉ in một lần: `docker logs gpu-node-cong 2>&1 \| grep "KHOA NUT GPU"`; dán khoá đó khi «Thêm máy GPU» trong web2api |
 | `muse-web` | (công cụ dòng lệnh, không phải module) | Không phải dịch vụ nền: chạy tay từ gốc kho `./.venv/bin/python dich-vu/muse-web/muse_web.py …` để giao việc cho agent Muse. Chi tiết: [dich-vu/muse-web/README.md](dich-vu/muse-web/README.md) | Không có khoá dịch vụ; cookie tài khoản nạp qua stdin hoặc tệp quyền 0600 trong `$MUSE_WEB_DIR` (mặc định `~/.config/muse-web`) |
+### Module mqtt — Thiết bị nhà qua MQTT (không cần Home Assistant)
+
+Đường thứ hai biết nhà (port từ c2a, NV151): nối máy chủ MQTT trong mạng nhà,
+khám phá phổ quát bằng `+` nhiều độ sâu (**không bao giờ** đăng ký `#` — giữ
+nguyên bài học EMQX), đọc bản tự khai báo Home Assistant discovery
+(Zigbee2MQTT/Tasmota) + nhận dạng Frigate, trả thành thực thể chuẩn C1
+(`mqtt.<tên>`). GHI (publish lệnh) mặc định **TẮT** tới khi bật ô «Cho phép
+điều khiển»; loại nguy hiểm (khoá cửa, báo động, bình nóng lạnh, van, còi —
+phân loại bằng cấu trúc component) **không bao giờ** điều khiển được. Mật khẩu
+kiểu `bi_mat`, lưu kho 0600 của lõi. Phụ thuộc duy nhất `paho-mqtt==2.1.0`
+(khai `yeu_cau_goi`, không trong requirements của lõi). Chi tiết:
+[modules/mqtt/README.md](modules/mqtt/README.md). **Chưa kiểm với máy chủ
+MQTT thật.**
 
 ## Cấu hình
 

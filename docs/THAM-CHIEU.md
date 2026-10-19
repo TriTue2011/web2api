@@ -101,6 +101,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `zalo-ca-nhan` (Zalo cá nhân qua dịch vụ phụ Node) + dịch vụ `dich-vu/zalo-ca-nhan` | Có — kênh hai chiều bằng tài khoản CÁ NHÂN: gửi ra chuẩn `kenh_ra` (văn bản + tệp, qua dịch vụ `POST /gui-tin`), nhận vào qua `hoi_vong` (chu kỳ 5 s, lọc `danh_sach_cho_phep` mặc định rỗng = không nhận ai); dịch vụ Node dùng zca-js 2.1.2 (API **không chính thức** — **có thể bị khoá tài khoản**), trong container nghe 0.0.0.0 nhưng cổng chỉ publish về 127.0.0.1 của máy chủ, Bearer ≥24 ký tự fail-fast, trang QR một lần + CSP, chứng chỉ Zalo 0600, hạn tốc độ gửi giữ chỗ nguyên tử; module mặc định TẮT, khoá không vào log, kiểm với dịch vụ/adapter GIẢ; **chưa kiểm với Zalo thật** | 20/10/2026 |
 | Module `cameranha` (Camera nhà — go2rtc/RTSP, loa/bộ đàm, NV167; sửa bảo mật NV173B) + dịch vụ `dich-vu/camera` | Có — thực thể C1 đọc `cam.<tên>` (chụp, chụp cho AI, cảnh báo chuyển động qua webhook Frigate), `cam.phat_<tên>` ở mức nguy_hiem chỉ khi bật loa (mặc định TẮT, xác nhận từng lần); URL luồng là bí mật, không vào log; địa chỉ camera chỉ mạng riêng + ghim IP; dịch vụ phụ chỉ nhận cam_id của bảng đã đăng ký; phát bị trần thời lượng/giãn cách ở hai lớp; giao thức kênh nói chép từ c2a (NetSDK 37777, HTTP 8086, HCNetSDK); kiểm với go2rtc giả + dịch vụ phụ thật trên loopback; **chưa kiểm với camera thật**, dịch vụ chưa dựng ảnh Docker | 20/10/2026 |
 | Module `register` (Đăng ký tài khoản có người trong vòng lặp, NV174) | Có — chuẩn `thiet_bi` hai thực thể: `dang_ky.luot` (nguy hiểm: bắt đầu/đợi mã/ghi nhận người xử lý/xác nhận hoàn tất/huỷ) và `dang_ky.trang_thai` (đọc); mặc định TẮT; mỗi lần MỘT tài khoản, trần lượt/ngày (mặc định 1, cứng 5); tải trang đăng ký qua bộ kiểm URL không tin của lõi (ghim IP chống tái gắn DNS) và NHẬN DIỆN CẤU TRÚC: form sẵn sàng/thử thách chống bot (iframe/script của nhà cung cấp widget + `data-sitekey`)/xác minh điện thoại/mã một lần/trang lạ; gặp thử thách, xác minh điện thoại hay trang lạ → DỪNG «can_nguoi» không đi tiếp, người thật xử lý trên trình duyệt từ xa (noVNC) — module TUYỆT ĐỐI không giải/vượt thử thách, không tự điền biểu mẫu; hộp thư tạm Inbucket tự host (đường API qua bộ kiểm URL LAN của lõi), mật khẩu sinh bằng `secrets`, bí mật lưu kho bí mật của lõi 0600, chỉ hiện MỘT lần, không vào log/trạng thái/sức khoẻ; **chưa kiểm với nhà cung cấp thật và noVNC thật** (test bằng trang và hộp thư GIẢ) | 20/10/2026 |
+| Module `mqtt` (Thiết bị nhà qua MQTT, không cần Home Assistant — chuẩn C1, NV151, port từ c2a): khám phá phổ quát bằng `+` nhiều độ sâu (**không bao giờ** đăng ký `#`, giữ nguyên bài học EMQX), đọc bản tự khai báo Home Assistant discovery (Zigbee2MQTT/Tasmota) + nhận dạng Frigate; GHI (publish lệnh) mặc định TẮT tới khi bật ô «Cho phép điều khiển»; loại nguy_hiem (lock/alarm_control_panel/water_heater/valve/siren — phân loại bằng **cấu trúc** component, không bằng chữ trong tên) **không bao giờ** điều khiển được; chủ đề đích chỉ từ bản khai đã nạp; địa chỉ kiểm SSRF bằng `app/tu_xa.py` (cho LAN, chặn loopback/link-local/metadata); mật khẩu kiểu `bi_mat` (kho 0600, bọc `_BiMat` chống lộ qua `repr`); dữ liệu MQTT không tin (payload > 64 KiB bỏ, giá trị cắt 4096 ký tự, tối đa 5000 chủ đề); mất kết nối ≠ 0 thiết bị | Có — kiểm với máy chủ MQTT giả cục bộ (49 test NV151); **chưa kiểm với máy chủ MQTT thật**; cần `paho-mqtt==2.1.0` trong container (khai `yeu_cau_goi`, không trong requirements của lõi) | 19/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2645,6 +2646,38 @@ Tiền tố thực thể: `khoa_cua`.
 - Điều khiển mặc định TẮT (`cho_phep_dieu_khien=tat`, chỉ đọc). Mã lệnh
   mở/đóng do chủ máy khai rõ (`lenh_mo`/`lenh_dong` JSON) — module không đoán
   mã DP. **Chưa kiểm với khoá cửa thật.**
+### Module mqtt — Thiết bị nhà qua MQTT (không cần Home Assistant)
+
+**Mô tả.** Đường thứ hai biết nhà (port từ c2a, NV151): nối máy chủ MQTT trong
+mạng nhà, khám phá phổ quát bằng `+` nhiều độ sâu (**không bao giờ** đăng ký
+`#` — giữ nguyên bài học EMQX từ c2a: máy chủ đặt `no_match = deny` từ chối
+`#` và `$SYS/#` một cách im lặng), đọc bản tự khai báo Home Assistant
+discovery (`homeassistant/+/+/config`, Zigbee2MQTT/Tasmota…) + nhận dạng
+Frigate (`frigate/<camera>/<vật thể>`), trả thành thực thể chuẩn C1
+(`mqtt.<tên>`). GHI (publish lệnh) mặc định **TẮT** tới khi bật ô «Cho phép
+điều khiển»; loại `nguy_hiem` (lock, alarm_control_panel, water_heater,
+valve, siren — phân loại bằng **cấu trúc** component trong bản tự khai báo,
+không bằng chữ trong tên) **không bao giờ** điều khiển được. Chủ đề đích của
+lệnh chỉ lấy từ bản tự khai báo đã nạp. Mã nguồn: `modules/mqtt/`
+(`mqtt_lop.py` port từ c2a `services/mqtt_nha.py` @ `d879b03`; `module.py`
+khuôn web2api). Hạng: `A` (mã của dự án). Tiền tố thực thể: `mqtt`.
+
+**Cần gì.**
+- Máy chủ MQTT trong mạng nhà (mặc định cổng 1883, TCP trần — nên tạo tài khoản
+  MQTT riêng chỉ cho việc này).
+- `paho-mqtt==2.1.0` trong container (khai `yeu_cau_goi` của manifest — không
+  nằm trong `requirements.txt` của lõi; lõi từ chối nạp khi thiếu và báo rõ).
+- Mật khẩu là trường `bi_mat`: lưu kho bí mật 0600 của lõi; trong tiến trình
+  bọc bằng `_BiMat` để `repr()` không lộ.
+
+**Cách kiểm tra.** Nút **«Kiểm tra»** ở cấu hình module (`cai()`): nối thật,
+đếm nhánh chủ đề; nối được mà không tin nào về → cảnh báo quyền bị giới hạn.
+Địa chỉ kiểm SSRF bằng `app/tu_xa.py` (cho LAN riêng tư, chặn loopback/
+link-local/metadata; `.invalid` không bao giờ phân giải được theo RFC 2606).
+
+**Giới hạn.**
+- **Chưa kiểm với máy chủ MQTT thật** (mới kiểm với máy chủ MQTT giả cục bộ);
+  chưa đo RAM/đĩa thật; chưa dựng ảnh Docker thật có paho-mqtt.
 
 ### Module doc-ma-hop-thu — Đọc mã xác minh từ Gmail (chỉ đọc)
 
