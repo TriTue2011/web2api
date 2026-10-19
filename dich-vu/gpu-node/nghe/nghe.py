@@ -92,18 +92,24 @@ def go_mo_hinh():
 
 
 @app.post("/v1/audio/transcriptions")
-async def nghe(tep: UploadFile = File(...), model: str = Form("whisper-1"),
-               response_format: str = Form("json"), language: str = Form(""),
+async def nghe(file: UploadFile | None = File(None),
+               tep: UploadFile | None = File(None),
+               model: str = Form("whisper-1"),
+               response_format: str = Form("json"),
+               language: str = Form(""),
                temperature: float = Form(0.0)):
+    tep_that = file or tep
+    if tep_that is None:
+        raise HTTPException(422, "Thiếu trường tệp âm thanh (cần 'file' hoặc 'tep')")
     dinh_dang = (response_format or "json").lower()
     if dinh_dang not in ("json", "text", "verbose_json"):
         raise HTTPException(400, f"response_format không hỗ trợ: {dinh_dang!r}")
-    duoi = os.path.splitext(tep.filename or "a.wav")[1] or ".wav"
+    duoi = os.path.splitext(tep_that.filename or "a.wav")[1] or ".wav"
     fd, duong = tempfile.mkstemp(suffix=duoi)
     try:
         with os.fdopen(fd, "wb") as f:
             while True:
-                khuc = await tep.read(1 << 20)
+                khuc = await tep_that.read(1 << 20)
                 if not khuc:
                     break
                 f.write(khuc)

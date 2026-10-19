@@ -9,10 +9,23 @@
 # đặt (GPU_NODE_BIND) — mặc định 127.0.0.1, KHÔNG 0.0.0.0.
 
 services:
+  khoi-tao:
+    build: ./cong
+    container_name: gpu-node-khoi-tao
+    user: "0:0"
+    restart: "no"
+    command: >
+      sh -c "mkdir -p /data/nghe /data/thi-giac /data/tach-am && chown -R 1000:1000 /data"
+    volumes:
+      - "${GPU_NODE_DATA:-./du-lieu}:/data"
+
   cong:
     build: ./cong
     container_name: gpu-node-cong
     restart: unless-stopped
+    depends_on:
+      khoi-tao:
+        condition: service_completed_successfully
     ports:
       - "${GPU_NODE_BIND:-127.0.0.1}:8091:8091"
     volumes:

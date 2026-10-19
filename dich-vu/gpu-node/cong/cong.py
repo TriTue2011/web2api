@@ -19,6 +19,7 @@ Chỉ dùng thư viện chuẩn — ảnh nhẹ, không thêm gói.
 
 from __future__ import annotations
 
+import hmac
 import http.client
 import json
 import logging
@@ -32,6 +33,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 PHIEN_BAN = "1.0.0"
+
+#: Trần kích thước thân yêu cầu (mặc định 100 MB).
+TRAN_THAN_BYTE = int(os.getenv("GPU_NODE_MAX_BODY_BYTES", str(100 * 1024 * 1024)))
 
 #: Semaphore giới hạn đồng thời của lần ``tao_may_chu`` gần nhất — test dùng
 #: để giữ chặt khe và kiểm đường 429.
@@ -48,20 +52,28 @@ _DUONG_DICH_VU = (
 _TIEU_DE_BO_QUA = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
     "te", "trailers", "transfer-encoding", "upgrade", "host",
+    "authorization",
 }
 
 
 def khoi_tao_khoa(thu_muc: str, khoa_ghi_de: str | None = None) -> str:
-    """Lấy khoá nút; chưa có thì sinh ngẫu nhiên, ghi file 0600, in ra MỘT lần."""
+    """Lấy khoá nút; chưa có hoặc rỗng thì sinh ngẫu nhiên, ghi file 0600 (không khoảng hở quyền), in ra MỘT lần."""
     os.makedirs(thu_muc, exist_ok=True)
     duong = os.path.join(thu_muc, "khoa")
     if os.path.exists(duong):
         with open(duong, encoding="utf-8") as f:
-            return f.read().strip()
-    khoa = khoa_ghi_de or secrets.token_urlsafe(32)
-    with open(duong, "w", encoding="utf-8") as f:
+            khoa_co_san = f.read().strip()
+        if khoa_co_san:
+            return khoa_co_san
+        try:
+            os.unlink(duong)
+        except OSError:
+            pass
+
+    khoa = (khoa_ghi_de.strip() if khoa_ghi_de and khoa_ghi_de.strip() else "") or secrets.token_urlsafe(32)
+    fd = os.open(duong, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with open(fd, "w", encoding="utf-8") as f:
         f.write(khoa + "\n")
-    os.chmod(duong, 0o600)
     # In đúng một lần ở lần sinh đầu — người dựng lấy khoá nối web2api.
     print(f"KHOA NUT GPU (luu lai, chi hien mot lan): {khoa}", flush=True)
     return khoa
@@ -98,6 +110,7 @@ class _XuLy(BaseHTTPRequestHandler):
     cau_hinh: dict = {}
     nhat_ky: logging.Logger | None = None
     _dang_chay = 0
+    _dang_cho = 0
     _khoa_dem = threading.Lock()
 
     # -- tiện ích ------------------------------------------------------
@@ -124,8 +137,22 @@ class _XuLy(BaseHTTPRequestHandler):
         return self.client_address[0] in cho_phep
 
     def _xac_thuc(self) -> bool:
+        khoa_chuan = self.cau_hinh.get("khoa", "")
+        if not isinstance(khoa_chuan, str):
+            return False
+        khoa_chuan = khoa_chuan.strip()
+        if not khoa_chuan:
+            return False
         nhan = self.headers.get("Authorization", "")
-        return nhan == "Bearer " + self.cau_hinh.get("khoa", "")
+        if not nhan.startswith("Bearer "):
+            return False
+        token = nhan[len("Bearer "):].strip()
+        if not token:
+            return False
+        try:
+            return hmac.compare_digest(token.encode("ascii"), khoa_chuan.encode("ascii"))
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return False
 
     def _tuyen_duong(self) -> str | None:
         duong = urlsplit(self.path).path
@@ -137,8 +164,14 @@ class _XuLy(BaseHTTPRequestHandler):
     def _chuyen_tiep(self, ten_dv: str):
         co_so = self.cau_hinh["dich_vu"][ten_dv]
         phan = urlsplit(co_so)
-        dai = int(self.headers.get("Content-Length", 0) or 0)
-        than = self.rfile.read(dai) if dai else None
+        raw_cl = self.headers.get("Content-Length")
+        dai = 0
+        if raw_cl is not None:
+            try:
+                dai = int(raw_cl.strip())
+            except ValueError:
+                dai = 0
+        than = self.rfile.read(dai) if dai > 0 else None
         tieu_de = {k: v for k, v in self.headers.items()
                    if k.lower() not in _TIEU_DE_BO_QUA}
         lop = (http.client.HTTPSConnection if phan.scheme == "https"
@@ -169,17 +202,36 @@ class _XuLy(BaseHTTPRequestHandler):
             self._tra_json(401, {"loi": "can_xac_thuc"})
             self._ghi_log(401)
             return
+
+        raw_cl = self.headers.get("Content-Length")
+        if raw_cl is not None:
+            try:
+                dai_cl = int(raw_cl.strip())
+                if dai_cl < 0:
+                    self._tra_json(400, {"loi": "content_length_am"})
+                    self._ghi_log(400)
+                    return
+            except ValueError:
+                self._tra_json(400, {"loi": "content_length_khong_hop_le"})
+                self._ghi_log(400)
+                return
+            if dai_cl > TRAN_THAN_BYTE:
+                self._tra_json(413, {"loi": "noi_dung_qua_lon", "toi_da": TRAN_THAN_BYTE})
+                self._ghi_log(413)
+                return
+
         duong = urlsplit(self.path).path
         ch = self.cau_hinh
         if duong == "/health":
             with self._khoa_dem:
                 chay = self._dang_chay
+                cho = self._dang_cho
             self._tra_json(200, {
                 "ok": True,
                 "phien_ban": ch.get("phien_ban", PHIEN_BAN),
                 "gpu": doc_gpu(ch.get("nvidia_smi", "nvidia-smi")),
                 "mo_hinh_da_nap": ch.get("mo_hinh", []),
-                "hang_doi": {"dang_chay": chay, "cho": 0},
+                "hang_doi": {"dang_chay": chay, "cho": cho},
             })
             self._ghi_log(200)
             return
@@ -199,7 +251,16 @@ class _XuLy(BaseHTTPRequestHandler):
             self._ghi_log(404)
             return
         sem = self.server.semaphore
-        if not sem.acquire(timeout=ch.get("han_cho_giay", 60)):
+        with self._khoa_dem:
+            type(self)._dang_cho += 1
+        co_khe = False
+        try:
+            co_khe = sem.acquire(timeout=ch.get("han_cho_giay", 60))
+        finally:
+            with self._khoa_dem:
+                type(self)._dang_cho -= 1
+
+        if not co_khe:
             self._tra_json(429, {"loi": "nut_dang_ban"},
                            {"Retry-After": "5"})
             self._ghi_log(429)

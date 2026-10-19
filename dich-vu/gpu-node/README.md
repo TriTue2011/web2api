@@ -27,6 +27,12 @@ cp .env.mau .env          # rồi sửa .env cho đúng mạng nhà (xem dưới
 docker compose up -d
 ```
 
+Dịch vụ chạy bằng uid không root (`1000`). Dịch vụ `khoi-tao` trong `docker-compose.yml`
+sẽ tự động tạo và chown thư mục `./du-lieu` cho uid `1000`. Nếu chuẩn bị thủ công:
+```bash
+mkdir -p du-lieu/nghe du-lieu/thi-giac du-lieu/tach-am && chown -R 1000:1000 du-lieu
+```
+
 Lần đầu `nghe` tải model faster-whisper large-v3 (~3 GB) vào `./du-lieu/nghe`
 rồi mới mở cổng — `/health` có thể im vài phút, là bình thường.
 Bật thêm dịch vụ trong `.env` (`COMPOSE_PROFILES=nghe,thi-giac,tach-am`)
@@ -98,7 +104,7 @@ thật nên ghim digest: `docker pull` ảnh rồi chép `@sha256:...` vào
 
 ## CHƯA kiểm
 
-- Chưa dựng ảnh thật, chưa chạy với card NVIDIA, chưa đo VRAM/tốc độ thật.
+- Chưa chạy Docker thật, chưa dựng ảnh thật, chưa chạy với card NVIDIA, chưa đo VRAM/tốc độ thật.
 - Chưa kiểm digest ghim của ảnh llama.cpp (ghi ở trên).
 - Chưa kiểm giấy phép model trực tiếp trên trang Hugging Face lúc tải.
 

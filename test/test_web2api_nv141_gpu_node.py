@@ -374,3 +374,269 @@ def test_readme_tung_buoc_tieng_viet():
     for cum in ["docker compose up", "khoá", "curl", "GPU_NODE_BIND", "CHƯA kiểm"]:
         assert cum in noi, f"README thiếu: {cum}"
     assert "Tailscale" in noi or "WireGuard" in noi or "Cloudflare Tunnel" in noi
+
+
+# ---------------------------------------------------------------- Lỗi theo soát độc lập NV141
+
+
+def test_nghe_chap_nhan_truong_file_chuan_openai(monkeypatch):
+    """Lỗi 12: Client chuẩn OpenAI gửi trường 'file' thay vì 'tep'."""
+    from fastapi.testclient import TestClient
+    nghe = _nap_nghe()
+
+    class MoHinhGia:
+        def transcribe(self, duong, **kw):
+            class Seg:
+                start = 0.0
+                end = 1.0
+                text = "xin chao"
+                avg_logprob = -0.1
+                words = []
+            class Info:
+                language = "vi"
+                language_probability = 0.98
+                duration = 1.0
+            return [Seg()], Info()
+
+    monkeypatch.setattr(nghe, "_lay_mo_hinh", lambda: MoHinhGia())
+    client = TestClient(nghe.app)
+    files = {"file": ("test.wav", io.BytesIO(b"fake-audio-bytes"), "audio/wav")}
+    data = {"model": "whisper-1", "response_format": "json"}
+    resp = client.post("/v1/audio/transcriptions", files=files, data=data)
+    assert resp.status_code == 200
+    assert resp.json() == {"text": "xin chao"}
+
+
+def test_nghe_van_chap_nhan_truong_tep_cu(monkeypatch):
+    """Lỗi 12: Giữ tương thích ngược cho trường 'tep' cũ."""
+    from fastapi.testclient import TestClient
+    nghe = _nap_nghe()
+
+    class MoHinhGia:
+        def transcribe(self, duong, **kw):
+            class Seg:
+                start = 0.0
+                end = 1.0
+                text = "tep cu"
+                avg_logprob = -0.1
+                words = []
+            class Info:
+                language = "vi"
+                language_probability = 0.98
+                duration = 1.0
+            return [Seg()], Info()
+
+    monkeypatch.setattr(nghe, "_lay_mo_hinh", lambda: MoHinhGia())
+    client = TestClient(nghe.app)
+    files = {"tep": ("test.wav", io.BytesIO(b"fake-audio-bytes"), "audio/wav")}
+    data = {"model": "whisper-1", "response_format": "json"}
+    resp = client.post("/v1/audio/transcriptions", files=files, data=data)
+    assert resp.status_code == 200
+    assert resp.json() == {"text": "tep cu"}
+
+
+def test_nghe_thieu_ca_hai_truong_tra_422():
+    """Lỗi 12: Thiếu cả 'file' và 'tep' trả về 422."""
+    from fastapi.testclient import TestClient
+    nghe = _nap_nghe()
+    client = TestClient(nghe.app)
+    data = {"model": "whisper-1"}
+    resp = client.post("/v1/audio/transcriptions", data=data)
+    assert resp.status_code == 422
+
+
+def test_chuyen_tiep_nghe_qua_cong_voi_truong_file(cong_mod, du_lieu, monkeypatch):
+    """Lỗi 12: Client gửi multipart 'file' qua cổng cong tới dịch vụ nghe."""
+    import uvicorn
+    nghe = _nap_nghe()
+
+    class MoHinhGia:
+        def transcribe(self, duong, **kw):
+            class Seg:
+                start = 0.0
+                end = 1.0
+                text = "qua cong thanh cong"
+                avg_logprob = -0.1
+                words = []
+            class Info:
+                language = "vi"
+                language_probability = 0.98
+                duration = 1.0
+            return [Seg()], Info()
+
+    monkeypatch.setattr(nghe, "_lay_mo_hinh", lambda: MoHinhGia())
+    cfg = uvicorn.Config(nghe.app, host="127.0.0.1", port=0, log_level="error")
+    srv = uvicorn.Server(cfg)
+    t = threading.Thread(target=srv.run, daemon=True)
+    t.start()
+    while not srv.started:
+        time.sleep(0.01)
+    port = srv.servers[0].sockets[0].getsockname()[1]
+    co_so_nghe = f"http://127.0.0.1:{port}"
+    try:
+        with cong_chay(cong_mod, du_lieu, {"nghe": co_so_nghe}) as (co_so_cong, khoa):
+            boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+            body = (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="model"\r\n\r\n'
+                f"whisper-1\r\n"
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
+                f"Content-Type: audio/wav\r\n\r\n"
+                f"fake-wav-content\r\n"
+                f"--{boundary}--\r\n"
+            ).encode("utf-8")
+            headers = {
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(body)),
+            }
+            ma, _, than = _goi(co_so_cong, "/v1/audio/transcriptions", khoa=khoa,
+                               phuong_thuc="POST", du_lieu=body, tieu_de=headers)
+            assert ma == 200
+            assert json.loads(than)["text"] == "qua cong thanh cong"
+    finally:
+        srv.should_exit = True
+
+
+def test_xac_thuc_tu_choi_bearer_rong_hoac_chi_dau_cach(cong_mod, du_lieu):
+    """Lỗi 13: 'Bearer ' rỗng, 'Bearer ' có dấu cách thừa hoặc không có dấu cách đều trả 401."""
+    with may_chu_gia() as gia, cong_chay(cong_mod, du_lieu, {"nghe": gia}) as (co_so, _k):
+        # Bearer rỗng
+        ma, _, _ = _goi(co_so, "/health", tieu_de={"Authorization": "Bearer "})
+        assert ma == 401
+        # Bearer chỉ có dấu cách
+        ma, _, _ = _goi(co_so, "/health", tieu_de={"Authorization": "Bearer    "})
+        assert ma == 401
+        # Bearer không có dấu cách
+        ma, _, _ = _goi(co_so, "/health", tieu_de={"Authorization": "Bearer"})
+        assert ma == 401
+
+
+def test_xac_thuc_tu_choi_khoa_khong_ascii(cong_mod, du_lieu):
+    """Lỗi 13: Khoá chứa ký tự không-ASCII trả 401."""
+    with may_chu_gia() as gia, cong_chay(cong_mod, du_lieu, {"nghe": gia}) as (co_so, _k):
+        ma, _, _ = _goi(co_so, "/health", tieu_de={"Authorization": "Bearer khoá-sai"})
+        assert ma == 401
+
+
+def test_xac_thuc_tu_choi_khi_cau_hinh_khoa_rong(cong_mod, du_lieu):
+    """Lỗi 13: Nếu cấu hình máy chủ có khoá rỗng, gọi Bearer rỗng vẫn phải bị 401."""
+    with may_chu_gia() as gia, cong_chay(cong_mod, du_lieu, {"nghe": gia}, them={"khoa": ""}) as (co_so, _k):
+        ma, _, _ = _goi(co_so, "/health", tieu_de={"Authorization": "Bearer "})
+        assert ma == 401
+
+
+def test_khoi_tao_khoa_sinh_lai_neu_tep_rong(cong_mod, tmp_path):
+    """Lỗi 13: Tệp khoá rỗng có sẵn -> sinh lại khoá mới không chấp nhận khoá rỗng."""
+    d = tmp_path / "data_rong"
+    d.mkdir()
+    tep = d / "khoa"
+    tep.write_text("   \n", encoding="utf-8")
+    khoa = cong_mod.khoi_tao_khoa(str(d))
+    assert khoa != ""
+    assert len(khoa) >= 20
+    assert tep.read_text(encoding="utf-8").strip() == khoa
+    assert stat.S_IMODE(tep.stat().st_mode) == 0o600
+
+
+def test_khoi_tao_khoa_quyen_600_ngay_khi_tao(cong_mod, tmp_path):
+    """Lỗi 13: Tệp khoá phải được tạo bằng os.open với 0o600 không có khoảng hở quyền."""
+    d = tmp_path / "data_perm"
+    d.mkdir()
+    ma_nguon = (GPU_NODE / "cong" / "cong.py").read_text(encoding="utf-8")
+    assert "os.O_CREAT" in ma_nguon
+    assert "os.O_EXCL" in ma_nguon
+    assert "0o600" in ma_nguon
+    khoa = cong_mod.khoi_tao_khoa(str(d))
+    tep = d / "khoa"
+    assert stat.S_IMODE(tep.stat().st_mode) == 0o600
+
+
+def test_compose_co_khoi_tao_chown_quyen_du_lieu():
+    """Lỗi 14: docker-compose.yml có init service hoặc giải pháp chown thư mục cho uid 1000."""
+    noi = _doc("docker-compose.yml")
+    assert "khoi-tao" in noi or "chown" in noi or "init" in noi
+    assert "1000" in noi
+
+
+def test_hang_doi_cho_do_that_khi_co_yeu_cau_cho(cong_mod, du_lieu):
+    """Lỗi 18: hang_doi.cho trong /health phản ánh số yêu cầu đang chờ slot."""
+    with may_chu_gia() as gia, cong_chay(cong_mod, du_lieu, {"nghe": gia}, them={"han_cho_giay": 5}) as (co_so, khoa):
+        sem = cong_mod._semaphore_toan_cuc
+        assert sem.acquire(blocking=False)
+        cho_xong = threading.Event()
+
+        def _gui_yeu_cau_cho():
+            _goi(co_so, "/v1/audio/transcriptions", khoa=khoa, phuong_thuc="POST", du_lieu=b"cho")
+            cho_xong.set()
+
+        t = threading.Thread(target=_gui_yeu_cau_cho, daemon=True)
+        t.start()
+        time.sleep(0.1)
+        try:
+            ma, _, than = _goi(co_so, "/health", khoa=khoa)
+            assert ma == 200
+            h = json.loads(than)
+            assert h["hang_doi"]["cho"] == 1
+        finally:
+            sem.release()
+            t.join(timeout=2)
+
+
+def test_chuyen_tiep_bo_authorization_va_hop_by_hop(cong_mod, du_lieu):
+    """Lỗi 19: Cổng chuyển tiếp không đưa header Authorization xuống dịch vụ nội bộ."""
+    class MayChuGhiHeader(BaseHTTPRequestHandler):
+        cac_headers = []
+
+        def do_POST(self):
+            dai = int(self.headers.get("Content-Length", 0) or 0)
+            self.rfile.read(dai)
+            MayChuGhiHeader.cac_headers.append(dict(self.headers))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"ok": true}')
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), MayChuGhiHeader)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    co_so_noi_bo = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        with cong_chay(cong_mod, du_lieu, {"nghe": co_so_noi_bo}) as (co_so, khoa):
+            tieu_de = {
+                "X-Custom-Header": "gia-tri-hop-le",
+                "Keep-Alive": "timeout=5",
+            }
+            ma, _, _ = _goi(co_so, "/v1/audio/transcriptions", khoa=khoa,
+                            phuong_thuc="POST", du_lieu=b"payload", tieu_de=tieu_de)
+            assert ma == 200
+            assert len(MayChuGhiHeader.cac_headers) > 0
+            hd = {k.lower(): v for k, v in MayChuGhiHeader.cac_headers[-1].items()}
+            assert "authorization" not in hd
+            assert "keep-alive" not in hd
+            assert hd.get("x-custom-header") == "gia-tri-hop-le"
+    finally:
+        srv.shutdown()
+
+
+def test_chan_content_length_khong_hop_le_hoac_am_hoac_qua_lon(cong_mod, du_lieu):
+    """Lỗi 19: Chặn Content-Length âm/chữ (400) hoặc vượt trần (413)."""
+    with may_chu_gia() as gia, cong_chay(cong_mod, du_lieu, {"nghe": gia}) as (co_so, khoa):
+        # Content-Length âm
+        ma, _, _ = _goi(co_so, "/v1/audio/transcriptions", khoa=khoa,
+                        phuong_thuc="POST", du_lieu=b"data", tieu_de={"Content-Length": "-5"})
+        assert ma == 400
+
+        # Content-Length không phải số
+        ma, _, _ = _goi(co_so, "/v1/audio/transcriptions", khoa=khoa,
+                        phuong_thuc="POST", du_lieu=b"data", tieu_de={"Content-Length": "abc"})
+        assert ma == 400
+
+        # Content-Length quá lớn (> 100MB)
+        ma, _, _ = _goi(co_so, "/v1/audio/transcriptions", khoa=khoa,
+                        phuong_thuc="POST", du_lieu=b"", tieu_de={"Content-Length": str(200 * 1024 * 1024)})
+        assert ma == 413
+
