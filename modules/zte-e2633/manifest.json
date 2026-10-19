@@ -1,1 +1,77 @@
-{"cung_cap":["thiet_bi"],"giao_thuc":"zte-e2633-web","hang":"A","id":"zte-e2633","loai":"nha","loai_ten":"Nhà","loai_thu_tu":30,"mo_ta":"Nguồn máy mạng (chỉ đọc) từ bộ phát WiFi ZTE E2633: đăng nhập trang quản trị của bộ phát, đọc danh sách máy WiFi đang nối, trả thành thực thể chuẩn C1 (loai may_mang, rui_ro_mac_dinh doc) cho sổ thiết bị của lõi. Không đổi bất kỳ cấu hình nào của bộ phát; không hỗ trợ hành động (thuc_hien luôn từ chối).","phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Chưa đo RAM/đĩa thật (null = chưa đo). Chỉ đọc danh sách máy qua trang quản trị của bộ phát trong mạng nhà; mỗi chu kỳ quét đăng nhập tối đa 1 lần, gặp khoá/lỗi lặp thì dừng.","gpu":false,"mang_ra":["địa chỉ bộ phát ZTE E2633 trên mạng nhà (do quản trị cấu hình ở trường dia_chi)"],"ram_them_mb":null},"ten":"ZTE E2633 (máy mạng WiFi)","tien_to":"zte-e2633","truong_cau_hinh":[{"bat_buoc":true,"khoa":"dia_chi","kieu":"chuoi","mac_dinh":null,"mo_ta":"Địa chỉ trang quản trị của bộ phát, dạng https://host[:port] (ví dụ https://192.168.1.1). Qua đúng bộ kiểm SSRF của lõi (app/tu_xa.py): chặn loopback, link-local/metadata đám mây, địa chỉ không định tuyến; cho phép LAN riêng tư 10/8, 172.16/12, 192.168/16. Không được chứa tài khoản/mật khẩu.","nhan":"Địa chỉ bộ phát"},{"bat_buoc":true,"khoa":"tai_khoan","kieu":"chuoi","mac_dinh":null,"mo_ta":"Tên đăng nhập trang quản trị của bộ phát.","nhan":"Tài khoản"},{"bat_buoc":true,"khoa":"mat_khau","kieu":"bi_mat","mac_dinh":null,"mo_ta":"Mật khẩu đăng nhập. Lưu riêng quyền 0600; không vào log, URL ghi log hay phản hồi lỗi.","nhan":"Mật khẩu"},{"bat_buoc":false,"khoa":"kiem_chung_chi_tls","kieu":"chuoi","mac_dinh":"true","mo_ta":"«true» (mặc định, an toàn) hoặc «false». Bộ phát dùng chứng chỉ tự ký nên muốn nối được phải đặt «false» HOẶC ghim van_tay_tls. Mọi giá trị khác «false» đều được coi là «true» (mặc định an toàn).","nhan":"Kiểm chứng chỉ TLS"},{"bat_buoc":false,"khoa":"van_tay_tls","kieu":"chuoi","mac_dinh":null,"mo_ta":"Tuỳ chọn: 64 ký tự hex là vân tay SHA-256 của chứng chỉ bộ phát. Khi ghim, module bỏ qua kiểm chuỗi chứng chỉ nhưng vẫn đối chiếu vân tay trước mỗi lần đăng nhập.","nhan":"Vân tay TLS (SHA-256)"}],"yeu_cau_goi":["httpx"]}
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "zte-e2633-web",
+  "hang": "A",
+  "id": "zte-e2633",
+  "loai": "nha",
+  "loai_ten": "Nhà",
+  "loai_thu_tu": 30,
+  "mo_ta": "DỰ PHÒNG: nguồn máy mạng (chỉ đọc) từ bộ phát WiFi ZTE E2633 khi KHÔNG có Home Assistant đọc ZTE — chỉ MỘT bên được đăng nhập bộ phát (bộ phát có thể chỉ cho một phiên quản trị; đừng chạy đồng thời với tích hợp khác đang đọc ZTE, vd mikrotik_snmp). Đăng nhập trang quản trị của bộ phát, đọc danh sách máy WiFi đang nối, trả thành thực thể chuẩn C1 (loai may_mang, rui_ro_mac_dinh doc) cho sổ thiết bị của lõi. cai() kiểm biên rồi lưu cấu hình ngay (đăng nhập thử chỉ sinh cảnh báo có cấu trúc canh_bao/ma_loi, không bỏ lưu); giữ một phiên giữa các lần đọc, hết phiên đăng nhập lại đúng một lần; bị từ chối thì tạm ngừng dài rồi tự hồi phục; đọc hỏng là lỗi và giữ dữ liệu cũ. Không đổi bất kỳ cấu hình nào của bộ phát; không hỗ trợ hành động (thuc_hien luôn từ chối).",
+  "phien_ban": "0.2.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Chưa đo RAM/đĩa thật (null = chưa đo). Chỉ đọc danh sách máy qua trang quản trị của bộ phát trong mạng nhà; giữ một phiên, hết phiên đăng nhập lại đúng một lần; bị từ chối (sai mật khẩu/khoá) thì tạm ngừng 30 phút rồi tự hồi phục; suc_khoe không đăng nhập lại mỗi lần gọi (tối đa 1 lần mỗi khoang_cach_dang_nhap_phut, mặc định 10).",
+    "gpu": false,
+    "mang_ra": [
+      "địa chỉ bộ phát ZTE E2633 trên mạng nhà (do quản trị cấu hình ở trường dia_chi)"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "ZTE E2633 (máy mạng WiFi)",
+  "tien_to": "zte-e2633",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "dia_chi",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ trang quản trị của bộ phát, dạng https://host[:port] (ví dụ https://192.168.1.1). Qua đúng bộ kiểm SSRF của lõi (app/tu_xa.py): chặn loopback, link-local/metadata đám mây, địa chỉ không định tuyến; cho phép LAN riêng tư 10/8, 172.16/12, 192.168/16. Không được chứa tài khoản/mật khẩu.",
+      "nhan": "Địa chỉ bộ phát"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "tai_khoan",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Tên đăng nhập trang quản trị của bộ phát.",
+      "nhan": "Tài khoản"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "mat_khau",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Mật khẩu đăng nhập. Lưu riêng quyền 0600; không vào log, URL ghi log hay phản hồi lỗi.",
+      "nhan": "Mật khẩu"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "kiem_chung_chi_tls",
+      "kieu": "chuoi",
+      "mac_dinh": "true",
+      "mo_ta": "«true» (mặc định, an toàn) hoặc «false». Bộ phát dùng chứng chỉ tự ký nên muốn nối được phải đặt «false» HOẶC ghim van_tay_tls. Mọi giá trị khác «false» đều được coi là «true» (mặc định an toàn).",
+      "nhan": "Kiểm chứng chỉ TLS"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "van_tay_tls",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Tuỳ chọn: 64 ký tự hex là vân tay SHA-256 của chứng chỉ bộ phát. Khi ghim, module bỏ qua kiểm chuỗi chứng chỉ nhưng vẫn đối chiếu vân tay trước mỗi lần đăng nhập.",
+      "nhan": "Vân tay TLS (SHA-256)"
+    },
+    {
+      "khoa": "khoang_cach_dang_nhap_phut",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "10",
+      "nhan": "Khoảng cách đăng nhập lại",
+      "mo_ta": "Số phút 1–1440. suc_khoe() đăng nhập lại tối đa 1 lần mỗi khoảng này (mặc định 10) để không làm phiên mồ côi hay đá phiên của tích hợp khác; trong khoảng thì dùng kết quả lần đọc gần nhất hoặc báo «chưa kết nối được»."
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

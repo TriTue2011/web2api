@@ -450,12 +450,18 @@ def test_cai_thanh_cong_voi_may_chu_gia(mod, manifest, may_chu_gia, cho_phep_loo
 
 
 def test_cai_sai_mat_khau_bao_loi_khong_ro_mat_khau(mod, manifest, may_chu_gia, cho_phep_loopback):
+    # NV150 đổi hành vi có chủ ý: cai() lưu cấu hình NGAY, đăng nhập thử chỉ sinh
+    # cảnh báo có cấu trúc (không còn ok=False). Giữ nguyên assert ý nghĩa: mật khẩu
+    # không rò rỉ trong bất kỳ thông báo nào.
     m = mod.Module(manifest)
     ch = _cau_hinh(may_chu_gia["dia_chi"])
     ch["mat_khau"] = "SaiMatKhau-Gia-0005"
     kq = chay(m.cai(ch))
-    assert kq["ok"] is False
+    assert kq["ok"] is True, "NV150: đăng nhập thử lỗi vẫn phải lưu cấu hình"
+    assert "cau_hinh_luu" in kq
+    assert kq["ket_qua_tung_khoa"][0]["ma_loi"] == "MAT_KHAU_BI_TU_CHOI"
     assert "SaiMatKhau-Gia-0005" not in (kq["loi"] or "")
+    assert "SaiMatKhau-Gia-0005" not in json.dumps(kq["ket_qua_tung_khoa"])
 
 
 def test_cai_van_tay_sai_dinh_dang_bao_loi(mod, manifest):

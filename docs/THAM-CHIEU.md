@@ -52,7 +52,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
 | Module `ho-so-google` + API hồ sơ Google (`GET`/`POST /api/danh-tinh`, `GET …/{id}/trang-thai`, `POST …/{id}/ma-2fa`, `DELETE …/{id}`) và tái dùng provider (`POST /api/tai-khoan/tai-dung`): một hồ sơ = một tài khoản Google đã đăng nhập sống; provider «Đăng nhập bằng Google» trong hồ sơ; CAPTCHA/xác minh → «cần người» + noVNC | Có — kiểm với dịch vụ trình duyệt giả + trình duyệt giả (NV92); **chưa kiểm với Google/dịch vụ thật** | 17/10/2026 |
 | Module `telegram-bot` (Telegram, kênh gửi ra văn bản qua Bot API) | Có — chuẩn `kenh_ra` (`POST /api/gui/telegram-bot`): một bot token, nhiều đích do chủ máy khai (đích → chat, không «bot mặc định»); tin dài tách ở ranh giới dòng (tối đa 5 tin); token chặn rò qua log (logger httpx/httpcore nâng lên WARNING, không `str()` ngoại lệ); `kenh_ra()` không token/chat_id thô; kiểm với máy chủ Telegram giả; **chưa kiểm với api.telegram.org thật** | 18/10/2026 |
-| Module `zte-e2633` (nguồn máy mạng WiFi, chỉ đọc): đăng nhập bộ phát ZTE E2633, đọc danh sách máy WiFi thành thực thể C1 (`loai: may_mang`, `rui_ro_mac_dinh: doc`, `thuc_hien` luôn từ chối); dừng khi gặp khoá/lỗi lặp; `dia_chi` qua kiểm SSRF của `app/tu_xa.py` | Có — kiểm với bộ phát giả (đúng thứ tự trường + header `check`, hết phiên đăng nhập lại 1 lần, JSON lạ bỏ qua mục sai); **chưa kiểm với bộ phát thật** (ánh xạ trường JSON suy từ tóm tắt giao thức) | 18/10/2026 |
+| Module `zte-e2633` (nguồn máy mạng WiFi, chỉ đọc; **VAI TRÒ DỰ PHÒNG** — chỉ bật khi không có Home Assistant đọc ZTE, bộ phát có thể chỉ cho một phiên): đăng nhập bộ phát ZTE E2633, đọc danh sách máy WiFi thành thực thể C1 (`loai: may_mang`, `rui_ro_mac_dinh: doc`, `thuc_hien` luôn từ chối); `cai()` kiểm biên rồi lưu cấu hình ngay (đăng nhập thử chỉ sinh cảnh báo `ma_loi`/`canh_bao`); giữ MỘT phiên, hết phiên đăng nhập lại đúng 1 lần; `suc_khoe()` không đăng nhập lại mỗi lần (tối đa 1 lần mỗi `khoang_cach_dang_nhap_phut`, mặc định 10); bị từ chối → tạm ngừng 30 phút rồi tự hồi phục (trang lạ/token rỗng không tạm ngừng dài — phân loại bằng cấu trúc); đọc hỏng là lỗi, giữ dữ liệu cũ; `dia_chi` qua kiểm SSRF của `app/tu_xa.py` | Có — kiểm với bộ phát giả (đúng thứ tự trường + header `check`, hết phiên đăng nhập lại 1 lần, đọc hỏng giữ dữ liệu cũ, không trả «0 máy»); **chưa kiểm với bộ phát thật** (ánh xạ trường JSON suy từ tóm tắt giao thức) | 19/10/2026 |
 | Dịch vụ trình duyệt: các đường điều khiển có khoá (`/ho-so/{id}/dieu-khien/gianh|nha`, `/dieu-huong`, `/dien`, `/bam`, `/cho`, `/tin-hieu`, `/cookie-truc-tiep`, `/chup-trang-thai`) qua máy khách Marionette thư viện chuẩn (`dich-vu/trinh-duyet/marionette.py`); cổng Marionette chỉ loopback trong container; `TrinhDuyetThat` trong module `vnc-xa`; cầu nối lõi `app/khoi_phuc_phien.lay_trinh_duyet_that` | Có — kiểm với máy chủ giả (NV92); **chưa kiểm với Firefox thật** | 17/10/2026 |
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cập nhật có điều kiện, lần đầu thêm nguồn thì cập nhật module đang có | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
@@ -2424,12 +2424,22 @@ thiết bị, không trò chuyện).
 
 ### Module zte-e2633 — ZTE E2633 (máy mạng WiFi, chỉ đọc)
 
-**Mô tả.** Nguồn máy mạng đầu tiên cho sổ thiết bị của lõi (`app/so_thiet_bi.py`, NV107):
-đăng nhập trang quản trị của bộ phát WiFi ZTE E2633, đọc danh sách máy WiFi đang nối,
-trả thành thực thể chuẩn C1 (`loai: may_mang`, `thuoc_tinh.mac` để lõi nhận diện,
+**VAI TRÒ DỰ PHÒNG.** Theo quyết định đã chốt của chủ máy: chỉ MỘT bên được đăng
+nhập bộ phát (tích hợp Home Assistant `mikrotik_snmp` đang giữ đăng nhập liên
+tục); web2api đọc danh sách máy qua module `home-assistant`. Chỉ bật module này
+khi KHÔNG có Home Assistant đọc ZTE — bộ phát có thể chỉ cho một phiên quản
+trị, đừng chạy đồng thời với tích hợp khác đang đọc ZTE.
+
+**Mô tả.** Nguồn máy mạng cho sổ thiết bị của lõi (`app/so_thiet_bi.py`): đăng nhập
+trang quản trị của bộ phát WiFi ZTE E2633, đọc danh sách máy WiFi đang nối, trả
+thành thực thể chuẩn C1 (`loai: may_mang`, `thuoc_tinh.mac` để lõi nhận diện,
 `rui_ro_mac_dinh: doc`, `tinh_nang: []`). Không đổi bất kỳ cấu hình nào của bộ phát;
 `thuc_hien` luôn từ chối. Mã nguồn: `modules/zte-e2633/`. Hạng: `A` (mã của dự án).
-Tiền tố thực thể: `zte-e2633`.
+Tiền tố thực thể: `zte-e2633`. Phiên bản 0.2.0: `cai()` kiểm biên rồi lưu cấu hình
+ngay (đăng nhập thử chỉ sinh cảnh báo `ma_loi`/`canh_bao` tiếng Việt); giữ MỘT phiên
+giữa các lần đọc, hết phiên đăng nhập lại đúng một lần; `suc_khoe()` không đăng nhập
+lại mỗi lần gọi (tối đa 1 lần mỗi `khoang_cach_dang_nhap_phut`, mặc định 10); bị từ
+chối → tạm ngừng 30 phút rồi tự hồi phục; đọc hỏng là lỗi và giữ dữ liệu cũ.
 
 **Cần gì.**
 - Bộ phát WiFi ZTE E2633 trong mạng nhà, biết tài khoản/mật khẩu trang quản trị.
@@ -2488,7 +2498,7 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 
 1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "zte-e2633"`.
 2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/zte-e2633`
-3. Cấu hình: `POST /api/modules/zte-e2633/cai` với thân `{"cau_hinh": {"dia_chi": "https://192.168.1.1", "tai_khoan": "admin", "mat_khau": "<mat-khau>"}}` (lúc cài module thử đăng nhập thật một lần).
+3. Cấu hình: `POST /api/modules/zte-e2633/cai` với thân `{"cau_hinh": {"dia_chi": "https://192.168.1.1", "tai_khoan": "admin", "mat_khau": "<mat-khau>"}}` (lúc cài module kiểm biên rồi lưu cấu hình ngay; đăng nhập thử chỉ sinh cảnh báo `ma_loi`/`canh_bao`, không bỏ lưu).
 
 **Cấu hình.**
 
