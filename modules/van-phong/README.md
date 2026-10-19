@@ -11,8 +11,11 @@ hết giờ, không có mạng ra ngoài. Mã nguồn module: `modules/van-phong
    ```bash
    cd dich-vu/van-phong-office
    docker build -t van-phong-office:1.0 .
+   docker network create --internal mang-office-noi-bo || true
    OFFICE_KHOA='<khoa-dai-ngau-nhien>' docker run -d --name office \
-     --network none -p 127.0.0.1:8701:8701 \
+     --network mang-office-noi-bo \
+     --memory 512m --pids-limit 64 \
+     -p 127.0.0.1:8701:8701 \
      -e OFFICE_KHOA -v office-data:/data van-phong-office:1.0
    ```
    Kiểm còn sống: `curl http://127.0.0.1:8701/suc-khoe` → `{"ok": true}`.
@@ -23,10 +26,11 @@ hết giờ, không có mạng ra ngoài. Mã nguồn module: `modules/van-phong
 3. **Bật và cấu hình** (`POST /api/modules/van-phong/cai`,
    thân `{"cau_hinh": {...}}`):
    - `office_bat`: `true` — bật công cụ `office_*` (mặc định tắt).
-   - `dich_vu_url`: `http://127.0.0.1:8701` — địa chỉ dịch vụ. Lúc cài, lõi kiểm
-     bằng `app/tu_xa.py` (chặn loopback/link-local/không định tuyến — chống SSRF).
+   - `dich_vu_url`: `http://127.0.0.1:8701` (hoặc `http://office:8701` trong mạng Docker).
+     Module tự kiểm tra SSRF (`_kiem_url_dich_vu`): cho phép loopback (127.0.0.1) và mạng
+     LAN nội bộ/Docker host, chặn link-local 169.254.169.254, multicast và dải cấm.
    - `khoa_dich_vu`: khoá Bearer của dịch vụ (biến `OFFICE_KHOA` lúc chạy
-     container). Lưu riêng, không API nào trả lại, bị chặn khỏi log.
+     container). Lưu an toàn trong thư mục bí mật, không bao giờ lộ ra log hay API.
 
 4. **Dùng**: hai thực thể `van_phong.office_doc` (công cụ đọc: `office_view`,
    `office_get`, `office_query`, `office_validate`, `office_dump`, `office_help` —

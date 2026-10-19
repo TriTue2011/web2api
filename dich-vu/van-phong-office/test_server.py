@@ -318,3 +318,146 @@ def test_thieu_co_tat_cap_nhat_thi_khong_khoi_dong(monkeypatch, tmp_path):
     monkeypatch.delenv("OFFICECLI_SKIP_UPDATE", raising=False)
     with pytest.raises(RuntimeError):
         server.tao_may_chu()
+
+
+# ── Mục 4: Đường phần tử hợp lệ & Danh sách ≥ 25 dạng lách ───────────────────
+
+@pytest.mark.parametrize("lenh,doi_so_them", [
+    ("get", ["/body/p[1]"]),
+    ("get", ["/slide[1]/shape[1]"]),
+    ("get", ["/Sheet1/A1"]),
+    ("get", ["/body/p[2]/r[1]"]),
+    ("get", ["/"]),
+    ("set", ["/body/p[1]", "--prop", "text=Xin chao"]),
+    ("add", ["/body", "--type", "paragraph", "--prop", "text=Them doan"]),
+    ("query", ["p:first"]),
+    ("remove", ["/body/p[1]"]),
+])
+def test_duong_phan_tu_hop_le_qua_duoc(may_chu, lenh, doi_so_them):
+    """Mục 4 (i): Đường phần tử hợp lệ qua được cho get/set/add/query/remove,
+    đối số đến nơi nguyên vẹn."""
+    co_so, thu_muc, gia_bin = may_chu
+    (thu_muc / "tai_lieu.docx").write_bytes(b"PK\x03\x04gia")
+    log_file = gia_bin.parent / "doi_so_cuoi.json"
+    if log_file.exists():
+        log_file.unlink()
+
+    ma, than = _lenh(co_so, lenh, ["tai_lieu.docx", *doi_so_them])
+    assert ma == 200, f"Lệnh {lenh} với đối số {doi_so_them} phải thành công 200, nhận {ma}: {than[:200]}"
+    assert log_file.exists(), f"Nhị phân phải được gọi cho {lenh}"
+    ban_ghi = json.loads(log_file.read_text(encoding="utf-8"))
+    # Kiểm tra đối số đến nơi nguyên vẹn
+    for ds in doi_so_them:
+        if not ds.startswith("--prop"):
+            assert ds in ban_ghi, f"Đối số {ds} phải có trong argv gửi tới nhị phân: {ban_ghi}"
+
+
+DANG_LACH_25 = [
+    # 1-3. Cờ --output trỏ ngoài thư mục
+    ("save", ["a.docx", "--output", "../../x"]),
+    ("save", ["a.docx", "--output=../../x"]),
+    ("save", ["a.docx", "--output", "/etc/passwd"]),
+    # 4-7. Cờ --prop tham chiếu tệp ngoài thư mục
+    ("set", ["a.docx", "/body/p[1]", "--prop", "src=/etc/passwd"]),
+    ("set", ["a.docx", "/body/p[1]", "--prop=src=/etc/passwd"]),
+    ("set", ["a.docx", "/body/p[1]", "--prop", "src=../x"]),
+    ("set", ["a.docx", "/body/p[1]", "--prop", "path=/etc/passwd"]),
+    ("set", ["a.docx", "/body/p[1]", "--prop", "file=../../bi_mat"]),
+    # 8-11. Cờ --input / --data trỏ ngoài thư mục
+    ("batch", ["a.docx", "--input=/etc/passwd"]),
+    ("batch", ["a.docx", "--input", "/etc/passwd"]),
+    ("merge", ["a.docx", "b.docx", "--data=/etc/passwd"]),
+    ("merge", ["a.docx", "b.docx", "--data", "../../x"]),
+    # 12-13. Đối số @file đọc tệp ngoài thư mục
+    ("view", ["a.docx", "@/etc/passwd"]),
+    ("view", ["a.docx", "@../x"]),
+    # 14-15. Cờ viết tắt -o trỏ ra ngoài
+    ("save", ["a.docx", "-o", "/tmp/x"]),
+    ("save", ["a.docx", "-o=../../x"]),
+    # 16-19. Đường phần tử bất thường (thoát thư mục, ký tự lạ)
+    ("get", ["a.docx", "/body/../p[1]"]),
+    ("get", ["a.docx", "/body//p[1]"]),
+    ("get", ["a.docx", "/body\\p[1]"]),
+    ("get", ["a.docx", "/body/p[1]\x00"]),
+    ("get", ["a.docx", "/body/p[1]\n"]),
+    # 20. Tên tệp có dấu phân tách thư mục
+    ("view", ["thu_muc/a.docx"]),
+    # 21-23. Cờ lạ ngoài tập khai báo
+    ("view", ["a.docx", "--exec", "id"]),
+    ("view", ["a.docx", "--shell", "sh"]),
+    ("view", ["a.docx", "--url", "http://127.0.0.1:8701"]),
+    # 24. Đối số vượt quá độ dài trần
+    ("view", ["a.docx", "x" * 60_000]),
+    # 25-28. Cờ và dạng lách khác
+    ("get", ["a.docx", "/body/p[1]", "--depth", "khong_phai_so"]),
+    ("get", ["a.docx", "/body/p[1]", "--depth=9999"]),
+    ("set", ["a.docx", "/body/p[1]", "--prop", "khoa khong hop le=gia_tri"]),
+    ("view", ["a.docx", "--cờ_lạ=123"]),
+]
+
+
+@pytest.mark.parametrize("lenh,doi_so", DANG_LACH_25)
+def test_25_dang_lach_bi_tu_choi_va_khong_goi_nhi_phan(may_chu, lenh, doi_so):
+    """Mục 4 (ii): Danh sách ≥ 25 dạng lách đều bị từ chối (400/403) và
+    nhị phân giả KHÔNG được gọi."""
+    co_so, thu_muc, gia_bin = may_chu
+    (thu_muc / "a.docx").write_bytes(b"PK\x03\x04gia")
+    log_file = gia_bin.parent / "da_goi.log"
+    if log_file.exists():
+        log_file.unlink()
+
+    ma, than = _lenh(co_so, lenh, doi_so)
+    assert ma in (400, 403), f"Dạng lách {lenh} {doi_so} phải bị từ chối 400/403, nhận {ma}: {than[:200]}"
+    assert not log_file.exists(), f"Dạng lách {lenh} {doi_so} đã gọi nhị phân (phải chặn trước)!"
+
+
+# ── Mục 15: Khoá chứa ký tự không-ASCII ─────────────────────────────────────
+
+def test_xac_thuc_khoa_chua_ky_tu_khong_ascii_tra_401(may_chu):
+    """Mục 15: compare_digest trên bytes UTF-8; khoá chứa ký tự không-ASCII trả 401 chứ không 500."""
+    co_so, _, _ = may_chu
+    khoa_unicode = "kho\xe1-dich-vu-12345678901234567890"
+    ma, than = _lenh(co_so, "view", ["a.docx"], khoa=khoa_unicode)
+    assert ma == 401, f"Khoá unicode sai phải trả 401, nhận {ma}: {than[:200]}"
+    assert json.loads(than) == {"loi": "khong_xac_thuc"}
+
+
+# ── Mục 16: Xoá tệp tạm & Chống zip bomb ──────────────────────────────────────
+
+def test_xoa_tep_tam_sau_lenh_ke_ca_khi_loi(may_chu, monkeypatch):
+    """Mục 16: Tệp tạm .du-lieu-*.json phải bị xoá sau lệnh, kể cả khi lệnh gặp lỗi."""
+    co_so, thu_muc, _ = may_chu
+    (thu_muc / "mau.docx").write_bytes(b"PK\x03\x04gia")
+
+    # 1. Chạy lệnh thành công
+    ma, _ = _lenh(co_so, "merge", ["mau.docx", "ra.docx", {"ten": "CongTy"}])
+    assert ma == 200
+    tep_tam = list(thu_muc.glob(".du-lieu-*.json"))
+    assert not tep_tam, f"Tệp tạm không được tồn tại sau lệnh thành công: {tep_tam}"
+
+    # 2. Chạy lệnh thất bại (nhị phân lỗi)
+    monkeypatch.setenv("OFFICE_GIA_CHE_DO", "loi")
+    ma_loi, _ = _lenh(co_so, "merge", ["mau.docx", "ra.docx", {"ten": "CongTy"}])
+    tep_tam_loi = list(thu_muc.glob(".du-lieu-*.json"))
+    assert not tep_tam_loi, f"Tệp tạm phải bị xoá cả khi lệnh lỗi: {tep_tam_loi}"
+
+
+def test_tai_len_chong_zip_bomb(may_chu):
+    """Mục 16: Tải lên tệp zip bomb (kích thước giải nén khổng lồ) bị từ chối 400/413."""
+    import io
+    import zipfile
+
+    co_so, _, _ = may_chu
+    ranh = b"ranh-gioi-zip-bomb"
+
+    # Tạo tệp zip với file_size giải nén lớn (> 100MB)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # Ghi 100MB số 0 nhưng nén lại rất nhỏ (< 100KB)
+        zf.writestr("word/document.xml", b"\x00" * (120 * 1024 * 1024))
+    du_lieu_zip = buf.getvalue()
+
+    tep = _multipart(ranh, "tep", "bomb.docx", du_lieu_zip)
+    ma, than = _goi(co_so, "/tai-len", tep, kieu=f"multipart/form-data; boundary={ranh.decode()}")
+    assert ma in (400, 413), f"Zip bomb phải bị từ chối 400/413, nhận {ma}: {than[:200]}"
+

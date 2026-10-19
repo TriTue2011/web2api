@@ -19,6 +19,11 @@ GOC_WEB2API = Path(__file__).resolve().parents[1]
 if str(GOC_WEB2API) not in sys.path:
     sys.path.insert(0, str(GOC_WEB2API))
 
+#: Các mảnh từ (khi tách id module theo dấu «-») trùng với từ thông dụng của tiếng Việt
+#: hoặc chuẩn mở (như «assistant» là vai tin nhắn của chuẩn OpenAI, «phong» trong «phong cách», «giải phóng»).
+#: Tên đầy đủ của module («home-assistant», «van-phong») và tiền tố vẫn bị quét bình thường.
+MANH_TU_THONG_DUNG = frozenset({"assistant", "phong"})
+
 #: Biến môi trường dùng chung cho test trong tiến trình VÀ tiến trình uvicorn con (test_web2api_kiem_nghiem).
 MOI_TRUONG_CHAN_MANG = {
     "HTTP_PROXY": "http://127.0.0.1:9",

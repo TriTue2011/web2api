@@ -167,3 +167,212 @@ def test_cai_tu_choi_url_la(md):
     kq = asyncio.run(
         m.cai({"office_bat": True, "dich_vu_url": "http://169.254.169.254/", "khoa_dich_vu": KHOA_GIA}))
     assert kq["ok"] is False
+
+
+def test_cai_qua_so_module_luu_cau_hinh_va_hoat_dong_voi_dich_vu_gia(tmp_path, monkeypatch):
+    """Mục 3: Cài đặt qua SoModule:
+    (a) Địa chỉ mặc định http://127.0.0.1:8701 mà README hướng dẫn cài được ngay cả khi
+        không có biến môi trường WEB2API_TEST_CHO_PHEP_LOOPBACK (dịch vụ phụ nội bộ).
+    (b) cai() trả về cau_hinh_luu sạch, khoá dịch vụ lưu vào bi_mat/, cấu hình được lưu.
+    (c) Khởi động lại SoModule thì cấu hình được nạp lại và office_* hoạt động với dịch vụ.
+    (d) SSRF vẫn chặn link-local (169.254.169.254).
+    """
+    import asyncio
+    import shutil
+    from app import kho, so_module
+    from app.so_module import SoModule
+
+    # Đảm bảo không có cờ test loopback
+    monkeypatch.delenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", raising=False)
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
+
+    # Chuẩn bị module van-phong trong WEB2API_DATA/modules/van-phong
+    mod_dir = tmp_path / "modules" / "van-phong"
+    shutil.copytree(THU_MUC, mod_dir, ignore=shutil.ignore_patterns("__pycache__"))
+
+    so = SoModule()
+    asyncio.run(so.khoi_dong())
+    assert "van-phong" in so.catalog, "van-phong phải có trong catalog sau khởi động"
+
+    # (d) Test SSRF trước: cài với 169.254.169.254 phải bị từ chối
+    kq_ssrf = asyncio.run(so.cai("van-phong", {
+        "office_bat": "1",
+        "dich_vu_url": "http://169.254.169.254:8701",
+        "khoa_dich_vu": KHOA_GIA,
+    }))
+    assert kq_ssrf["ok"] is False, "SSRF link-local phải bị từ chối"
+
+    # (a) Cài đặt với địa chỉ mặc định http://127.0.0.1:8701
+    cau_hinh_cai = {
+        "office_bat": "1",
+        "dich_vu_url": "http://127.0.0.1:8701",
+        "khoa_dich_vu": KHOA_GIA,
+    }
+    kq_cai = asyncio.run(so.cai("van-phong", cau_hinh_cai))
+    assert kq_cai["ok"] is True, f"Cài đặt thất bại: {kq_cai}"
+    # Bí mật không bị lộ ra ngoài kết quả công khai
+    assert KHOA_GIA not in json.dumps(kq_cai)
+
+    # (b) Kiểm tra cấu hình đã được lưu trên đĩa trong modules.json và bi_mat/
+    tep_modules = tmp_path / "modules.json"
+    tep_bi_mat = tmp_path / "bi_mat" / "van-phong.json"
+    assert tep_modules.exists(), "modules.json phải tồn tại"
+    dl_modules = json.loads(tep_modules.read_text(encoding="utf-8"))
+    muc = next(m for m in dl_modules["modules"] if m["id"] == "van-phong")
+    cong_khai = muc["cau_hinh_cong_khai"]
+    assert cong_khai.get("office_bat") in (True, "1", 1)
+    assert cong_khai.get("dich_vu_url") == "http://127.0.0.1:8701"
+    assert cong_khai.get("khoa_dich_vu", "").startswith("…"), "khoa_dich_vu phải ở dạng che trong modules.json"
+
+    assert tep_bi_mat.exists(), "Tệp bí mật phải tồn tại"
+    # Đọc bí mật qua kho.doc_bi_mat (hỗ trợ giải mã hầm khoá)
+    dl_bi_mat = kho.doc_bi_mat("van-phong")
+    assert dl_bi_mat.get("khoa_dich_vu") == KHOA_GIA
+
+    # (c) Khởi động lại SoModule mới hoàn toàn (mô phỏng restart web2api)
+    so_moi = SoModule()
+    asyncio.run(so_moi.khoi_dong())
+    mod_moi = so_moi.dang_chay["van-phong"]
+    assert mod_moi._bat is True, "office_bat phải được nạp thành True sau khi khởi động lại"
+    assert mod_moi._url == "http://127.0.0.1:8701"
+    assert mod_moi._khoa == KHOA_GIA
+
+    # Kiểm tra office_* hoạt động với dịch vụ GIẢ sau khi khởi động lại
+    da_goi = []
+
+    class ClientGia:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, **k):
+            da_goi.append((url, k))
+            class Resp:
+                status_code = 200
+                def json(self):
+                    return {"ok": True, "dau_ra": "thanh cong"}
+            return Resp()
+
+    monkeypatch.setattr(mod_moi.__class__.__module__ + ".httpx.Client", ClientGia, raising=False)
+    # Monkeypatch trực tiếp lên httpx của module van-phong
+    import sys
+    for ten_mod, mod_obj in list(sys.modules.items()):
+        if "van_phong" in ten_mod and hasattr(mod_obj, "httpx"):
+            monkeypatch.setattr(mod_obj.httpx, "Client", ClientGia)
+
+    kq_th = asyncio.run(mod_moi.thuc_hien("van_phong.office_doc", "office_view", {"tep": "a.docx"}))
+    assert kq_th["ok"] is True
+    assert kq_th["dau_ra"] == "thanh cong"
+    assert kq_th["nguon_ngoai"] is True
+    assert len(da_goi) == 1
+    assert da_goi[0][0] == "http://127.0.0.1:8701/lenh"
+    assert da_goi[0][1]["headers"]["Authorization"] == f"Bearer {KHOA_GIA}"
+
+
+def test_quet_ten_nha_cung_cap_that_trong_app_van_bi_bat(tmp_path):
+    """Mục 1: Chứng minh hằng chung MANH_TU_THONG_DUNG không làm lỏng test dò tên nhà cung cấp THẬT.
+    Tên NCC thật (gemini, chatgpt, grok, claude...) thêm vào mã vẫn bị bắt (dùng file giả trong tmp_path,
+    không sửa app/ thật).
+    """
+    from conftest import MANH_TU_THONG_DUNG
+    import ast
+
+    # 1. MANH_TU_THONG_DUNG chỉ chứa các từ thông dụng tiếng Việt / OpenAI role, tuyệt đối không có NCC thật
+    ncc_that = {"gemini", "chatgpt", "grok", "claude", "google", "openai"}
+    assert not (MANH_TU_THONG_DUNG & ncc_that), f"MANH_TU_THONG_DUNG không được chứa tên NCC thật: {MANH_TU_THONG_DUNG & ncc_that}"
+
+    # 2. Logic quét _chu_trong_ma_python phải bắt được mọi tên NCC thật trong mã
+    def _chu_trong_ma_python_local(p: Path) -> list[str]:
+        cay = ast.parse(p.read_text(encoding="utf-8"))
+        docstring = set()
+        for nut in ast.walk(cay):
+            if isinstance(nut, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and nut.body:
+                dau = nut.body[0]
+                if isinstance(dau, ast.Expr) and isinstance(dau.value, ast.Constant) and isinstance(dau.value.value, str):
+                    docstring.add(id(dau.value))
+        ra = []
+        for nut in ast.walk(cay):
+            if isinstance(nut, ast.Constant) and isinstance(nut.value, str) and id(nut) not in docstring:
+                ra.append(nut.value)
+            elif isinstance(nut, ast.Name):
+                ra.append(nut.id)
+            elif isinstance(nut, ast.Attribute):
+                ra.append(nut.attr)
+            elif isinstance(nut, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                ra.append(nut.name)
+            elif isinstance(nut, ast.arg):
+                ra.append(nut.arg)
+        return ra
+
+    for ten_that in ("gemini", "chatgpt", "grok", "claude"):
+        tep_gia = tmp_path / f"ma_gia_{ten_that}.py"
+        tep_gia.write_text(f"""
+def ham_xu_ly():
+    model_{ten_that} = "mo-hinh-ai"
+    return model_{ten_that}
+""", encoding="utf-8")
+        chuoi_tim_thay = _chu_trong_ma_python_local(tep_gia)
+        pham = [c for c in chuoi_tim_thay if ten_that in c.lower()]
+        assert pham, f"Tên nhà cung cấp thật «{ten_that}» phải bị phát hiện trong mã python giả"
+
+
+def test_cai_module_xac_thuc_leo_thang_quyen(tmp_path, monkeypatch):
+    """Bảo mật LUẬT CỨNG #1: Kiểm leo thang quyền trên POST /api/modules/{id}/cai:
+    - Không khoá → 401
+    - Khoá sai / không phải quản trị → 401/403
+    - Khoá quản trị hợp lệ → 200
+    - Module không tồn tại → 404 (chống đụng tài nguyên không có)
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+    import shutil
+
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", "khoa-quan-tri-test-0123456789abcdef")
+
+    mod_dir = tmp_path / "modules" / "van-phong"
+    shutil.copytree(THU_MUC, mod_dir, ignore=shutil.ignore_patterns("__pycache__"))
+
+    with TestClient(app) as client:
+        # Nạp lại để nhận module
+        client.post("/api/modules/nap-lai", headers={"Authorization": "Bearer khoa-quan-tri-test-0123456789abcdef"})
+
+        cau_hinh = {
+            "cau_hinh": {
+                "office_bat": "1",
+                "dich_vu_url": "http://127.0.0.1:8701",
+                "khoa_dich_vu": KHOA_GIA,
+            }
+        }
+
+    # 1. Không khoá → 401
+    r_no_auth = client.post("/api/modules/van-phong/cai", json=cau_hinh)
+    assert r_no_auth.status_code == 401, f"Không khoá phải nhận 401, nhận {r_no_auth.status_code}"
+
+    # 2. Khoá sai / vai không đủ → 401 hoặc 403
+    r_bad_auth = client.post("/api/modules/van-phong/cai",
+                             headers={"Authorization": "Bearer khoa-khach-hoac-sai-quyen"},
+                             json=cau_hinh)
+    assert r_bad_auth.status_code in (401, 403), f"Khoá sai phải nhận 401/403, nhận {r_bad_auth.status_code}"
+
+    # 3. IDOR / Module không tồn tại → 404
+    r_idor = client.post("/api/modules/module-khong-ton-tai-999/cai",
+                         headers={"Authorization": "Bearer khoa-quan-tri-test-0123456789abcdef"},
+                         json=cau_hinh)
+    assert r_idor.status_code == 404, f"Module không tồn tại phải nhận 404, nhận {r_idor.status_code}"
+
+    # 4. Khoá quản trị chuẩn → 200
+    r_admin = client.post("/api/modules/van-phong/cai",
+                          headers={"Authorization": "Bearer khoa-quan-tri-test-0123456789abcdef"},
+                          json=cau_hinh)
+    assert r_admin.status_code == 200, f"Khoá quản trị phải nhận 200, nhận {r_admin.status_code}: {r_admin.text}"
+    assert r_admin.json().get("ok") is True
+
+
+

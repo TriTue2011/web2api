@@ -21,8 +21,10 @@ Chỉ dùng httpx (đã khai `yeu_cau_goi` trong manifest) + thư viện chuẩn
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
+import socket
 from urllib.parse import urlsplit
 
 import httpx
@@ -98,6 +100,52 @@ def _cat_dau_ra(dau_ra) -> str:
     return s
 
 
+def _dia_chi_bi_chan_dich_vu(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_link_local:
+        return "link-local / metadata đám mây (169.254.0.0/16)"
+    if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return "địa chỉ không định tuyến"
+    if isinstance(ip, ipaddress.IPv6Address):
+        nhung = [ip.sixtofour] if ip.sixtofour else []
+        if ip.teredo:
+            nhung += list(ip.teredo)
+        for v4 in nhung:
+            ly_do = _dia_chi_bi_chan_dich_vu(v4)
+            if ly_do:
+                return f"IPv4 nhúng {v4}: {ly_do}"
+    if ip.is_loopback:
+        return None  # Dịch vụ phụ nội bộ nghe loopback (127.0.0.1/::1)
+    if ip.is_private or ip.is_global:
+        return None
+    return "dải địa chỉ đặc biệt"
+
+
+async def _kiem_url_dich_vu(url: str) -> str:
+    s = str(url or "").strip().rstrip("/")
+    phan = urlsplit(s)
+    if phan.scheme not in ("http", "https") or not phan.hostname:
+        raise ValueError("dich_vu_url phải dạng http(s)://<máy>[:cổng]")
+    if phan.username or phan.password:
+        raise ValueError("dich_vu_url không được chứa tài khoản/mật khẩu")
+    try:
+        ds = [ipaddress.ip_address(phan.hostname)]
+    except ValueError:
+        try:
+            thong_tin = await asyncio.get_running_loop().getaddrinfo(
+                phan.hostname, phan.port or 0, type=socket.SOCK_STREAM
+            )
+        except OSError as e:
+            raise ValueError(f"không phân giải được tên máy {phan.hostname!r}: {e}") from None
+        ds = list({ipaddress.ip_address(x[4][0]) for x in thong_tin})
+    for ip in ds:
+        ly_do = _dia_chi_bi_chan_dich_vu(ip)
+        if ly_do:
+            raise ValueError(f"dich_vu_url trỏ vào {ip} — bị chặn: {ly_do}")
+    return s
+
+
 class Module:
     """Công cụ office_* qua dịch vụ van-phong-office (mặc định tắt)."""
 
@@ -122,15 +170,27 @@ class Module:
             _KHOA_DANG_DUNG.add(khoa)
 
     async def cai(self, cau_hinh: dict) -> dict:
-        """Kiểm cấu hình trước khi lưu: địa chỉ dịch vụ qua đúng bộ kiểm SSRF của lõi."""
-        from app.tu_xa import kiem_url_lan
+        """Kiểm cấu hình trước khi lưu: địa chỉ dịch vụ qua bộ kiểm SSRF dịch vụ phụ (cho phép loopback/mạng nội bộ)."""
         cau_hinh = cau_hinh or {}
         url = str(cau_hinh.get("dich_vu_url") or "http://127.0.0.1:8701")
         try:
-            await kiem_url_lan(url)
+            url_sach = await _kiem_url_dich_vu(url)
         except ValueError as e:
             return {"ok": False, "loi": f"dia_chi_dich_vu_khong_hop_le: {e}"}
-        return {"ok": True}
+        khoa = str(cau_hinh.get("khoa_dich_vu") or "").strip()
+        bat = _bat(cau_hinh.get("office_bat", False))
+        khoa_che = f"…{khoa[-4:]}" if len(khoa) >= 4 else "…"
+        ket_qua_tung_khoa = [{"khoa": khoa_che, "ok": True}] if khoa else []
+        return {
+            "ok": True,
+            "loi": None,
+            "ket_qua_tung_khoa": ket_qua_tung_khoa,
+            "cau_hinh_luu": {
+                "office_bat": "1" if bat else "0",
+                "dich_vu_url": url_sach,
+                "khoa_dich_vu": khoa,
+            },
+        }
 
     async def suc_khoe(self) -> dict:
         return {"ok": True, "office_bat": self._bat,

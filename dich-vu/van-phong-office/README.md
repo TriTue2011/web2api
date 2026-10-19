@@ -34,21 +34,27 @@ cát rồi trả kết quả. web2api **không** nhúng nhị phân vào ảnh l
    uid không root (`office`, uid 1000).
 
 2. **Chạy** (sinh khoá riêng, KHÔNG khoá mặc định):
+   Dịch vụ lắng nghe `0.0.0.0:8701` bên trong container. Để bảo mật mạng:
+   - Dùng mạng Docker nội bộ (`internal: true`, không định tuyến ra Internet) để nối với container web2api.
+   - Thêm giới hạn tài nguyên (`--memory 512m --pids-limit 64`) và cô lập quyền (`--cap-drop ALL --security-opt no-new-privileges:true`).
+   - Chỉ công bố ra `127.0.0.1:8701` trên máy chủ host nếu cần truy cập từ host loopback.
+
    ```bash
    KHOA=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+   # Tạo mạng nội bộ không có gateway ra ngoài
+   docker network create --internal mang-office-noi-bo || true
+
    docker run -d --name van-phong-office \
-     --network none \
+     --network mang-office-noi-bo \
      --cap-drop ALL --security-opt no-new-privileges:true \
+     --memory 512m --pids-limit 64 \
      -p 127.0.0.1:8701:8701 \
      -e OFFICE_KHOA="$KHOA" \
      -v van-phong-office-data:/data \
      van-phong-office:1.0
    ```
-   - `--network none`: không có mạng ra ngoài (kiểm tra cập nhật nền đã tắt từ
-     lúc dựng + `OFFICECLI_SKIP_UPDATE=1` lúc chạy).
-   - Chỉ công bố cổng trên `127.0.0.1` (mặc định `OFFICE_HOST=127.0.0.1`); muốn
-     web2api ở máy khác nối tới thì đặt `OFFICE_HOST` + công bố trên IP LAN và
-     mở firewall cho đúng IP máy web2api — **không mở ra Internet**.
+   - Không có mạng ra ngoài Internet (mạng Docker nội bộ + kiểm tra cập nhật nền đã tắt từ lúc dựng + `OFFICECLI_SKIP_UPDATE=1` lúc chạy).
+   - Chỉ công bố cổng trên `127.0.0.1` của host (không bind 0.0.0.0 ngoài host); container web2api trong cùng mạng `mang-office-noi-bo` có thể gọi qua tên dịch vụ `http://van-phong-office:8701`.
    - `/data` là volume riêng (thư mục làm việc); `/app/server.py` chỉ đọc.
 
 3. **Kiểm còn sống** (không cần khoá):

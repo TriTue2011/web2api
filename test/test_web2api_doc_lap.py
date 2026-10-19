@@ -27,13 +27,8 @@ QT = {"Authorization": f"Bearer {KHOA_QT}"}
 TRAN_HIEN_TAI = 0
 
 #: Mảnh tên module là từ thông dụng của giao thức, KHÔNG phải tên nhà cung cấp —
-#: không tính khi quét app//web/. «assistant» là vai tin nhắn của chuẩn OpenAI, đã có
-#: trong app/tuyen.py và web/Studio.dc.html từ trước NV118 (module home-assistant mới
-#: sinh ra mảnh này khi test tách id theo dấu «-»). Tên đầy đủ «home-assistant» vẫn bị quét.
-#: «phong» là từ tiếng Việt thông dụng («phong cách»), đã có trong web/Studio.dc.html và
-#: web/khung.css từ trước NV138 (module van-phong mới sinh ra mảnh này khi test tách id
-#: theo dấu «-»). Tên đầy đủ «van-phong» vẫn bị quét.
-MANH_TU_THONG_DUNG = {"assistant", "phong"}
+from conftest import MANH_TU_THONG_DUNG
+
 
 
 @pytest.fixture

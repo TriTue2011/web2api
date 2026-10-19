@@ -59,7 +59,7 @@ EXPOSE 8701
 
 ENV OFFICE_THU_MUC_GOC=/data \
     OFFICE_PORT=8701 \
-    OFFICE_HOST=127.0.0.1
+    OFFICE_HOST=0.0.0.0
 
 # OFFICE_KHOA (khoá dịch vụ, xem README) truyền lúc chạy, không ghi vào ảnh.
 CMD ["python3", "/app/server.py"]

@@ -374,11 +374,10 @@ def _ten_nha_cung_cap() -> set[str]:
     """Tên suy từ manifest của CHÍNH các module trong kho (không gõ tay): tiền tố, các đoạn của id, nhãn tên máy
     trong `mang_ra` (bỏ «apis» cuối: generativelanguage.googleapis.com → generativelanguage, google).
 
-    Ngoại lệ: mảnh «assistant» (từ id «home-assistant», NV118) là vai tin nhắn của chuẩn
-    OpenAI, đã có trong app/tuyen.py và web/Studio.dc.html từ trước — không phải tên
-    nhà cung cấp. Tên đầy đủ «home-assistant» và tiền tố «home_assistant» vẫn bị quét.
+    Ngoại lệ: các mảnh từ thông dụng (như «assistant», «phong») dùng chung qua MANH_TU_THONG_DUNG từ conftest.
+    Tên đầy đủ của module và tiền tố vẫn bị quét đầy đủ.
     """
-    MANH_TU_THONG_DUNG = {"assistant"}
+    from conftest import MANH_TU_THONG_DUNG
     ten = set()
     for p in (GOC / "modules").glob("*/manifest.json"):
         m = json.loads(p.read_text(encoding="utf-8"))
@@ -444,11 +443,6 @@ def test_khung_giao_dien_khong_mang_ten_module():
     # mang_ra "imap.gmail.com" của module mới đưa "gmail" vào danh sách quét
     # nên loại riêng ở đây; các tên NCC khác vẫn bị quét như cũ.
     ten = ten - {"gmail"}
-    # NV138: «phong» là từ tiếng Việt thông dụng («phong cách»), đã có trong
-    # web/Studio.dc.html và web/khung.css từ trước NV138; mảnh này chỉ xuất hiện
-    # trong danh sách quét vì id module mới «van-phong» bị tách theo dấu «-».
-    # Tên đầy đủ «van-phong» vẫn bị quét như cũ.
-    ten = ten - {"phong"}
     # Phông chữ tải từ CDN fonts.googleapis.com/fonts.gstatic.com — CDN phông, không phải nhà cung cấp AI.
     cdn_phong = re.compile(r"https://fonts\.(googleapis|gstatic)\.com/[^\"'\s>]*")
     pham = []

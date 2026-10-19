@@ -27,6 +27,7 @@ Chỉ dùng thư viện chuẩn (không thêm gói).
 from __future__ import annotations
 
 import hmac
+import io
 import json
 import logging
 import os
@@ -38,6 +39,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -132,24 +134,41 @@ def kiem_tra_lenh(lenh) -> str:
     return lenh
 
 
+TRAN_DO_DAI_DOI_SO = 4096
+TRAN_GIAI_NEN_ZIP = 100 * 1024 * 1024  # 100 MB
+TRAN_SO_TEP_ZIP = 10_000
+
+CO_BOOLEAN = frozenset({"--json", "--best-effort"})
+CO_GIA_TRI = frozenset({
+    "--output", "-o",
+    "--input", "--data",
+    "--depth", "--type",
+    "--prop", "--mode",
+})
+CO_HOP_LE = CO_BOOLEAN | CO_GIA_TRI
+
+KHOA_PROP_TEP = frozenset({"src", "path", "file", "image", "template", "data", "source"})
+MAU_KHOA_PROP = re.compile(r"^[A-Za-z0-9_.-]+$")
+MAU_TYPE = re.compile(r"^[A-Za-z0-9_-]+$")
+CHE_DO_VIEW = frozenset({"outline", "text", "annotated", "stats", "issues"})
+MAU_DUONG_PHAN_TU = re.compile(
+    r"^/(?:[A-Za-z0-9_.:-]+(?:\[[0-9]+\])?(?:/[A-Za-z0-9_.:-]+(?:\[[0-9]+\])?)*)?$"
+)
+
+
 def _co_ky_tu_dieu_khien(s: str) -> bool:
     return any(ord(c) < 32 or ord(c) == 127 for c in s)
 
 
-def _la_doi_so_duong_dan(s: str, vi_tri_dau: bool) -> bool:
-    """Phần tử đầu luôn là đường dẫn tài liệu. Các phần tử sau là đường dẫn nếu
-    có HÌNH DẠNG đường dẫn theo cấu trúc: đường tuyệt đối, trỏ tới tệp đã tồn
-    tại, hoặc có đuôi tệp dữ liệu đã biết — nguyên tắc cấu trúc, không liệt kê
-    tên cờ. Bộ chọn phần tử (vd ``run:contains(x)``) không có hình dạng này nên
-    đi qua như dữ liệu (vẫn không qua shell)."""
-    if vi_tri_dau:
-        return True
-    thap = s.lower()
-    return (
-        os.path.isabs(s)
-        or thap.endswith(DUOI_CAN_CHUA)
-        or Path(s).exists()
-    )
+def la_duong_phan_tu(s: str) -> bool:
+    """Đường phần tử OfficeCLI (DOM XML): bắt đầu bằng '/', cấu trúc /tag[n]/subtag."""
+    if not isinstance(s, str) or not s.startswith("/"):
+        return False
+    if ".." in s or "//" in s or "\\" in s or _co_ky_tu_dieu_khien(s):
+        return False
+    if len(s) > 500:
+        return False
+    return bool(MAU_DUONG_PHAN_TU.fullmatch(s))
 
 
 def chua_duong_dan(duong: str, thu_muc_goc: Path) -> Path:
@@ -168,39 +187,186 @@ def chua_duong_dan(duong: str, thu_muc_goc: Path) -> Path:
     return dich
 
 
-def lam_sach_doi_so(lenh: str, doi_so, thu_muc_goc: Path) -> list[str]:
-    """Kiểm và chuẩn hoá doi_so thành danh sách đối số cho tiến trình con.
+def kiem_ten_tep_tai_lieu(s: str, thu_muc_goc: Path) -> Path:
+    """Kiểm tra tên tệp tài liệu: tên tệp đơn thuần trong workspace, không chứa / hay \\."""
+    if not s or _co_ky_tu_dieu_khien(s):
+        raise LoiYeuCau(400, "doi_so_khong_hop_le")
+    if "/" in s or "\\" in s or ".." in s or s.startswith("@"):
+        raise LoiYeuCau(400, "doi_so_khong_hop_le")
+    goc = thu_muc_goc.resolve()
+    dich = (goc / s).resolve()
+    try:
+        dich.relative_to(goc)
+    except ValueError:
+        raise LoiYeuCau(403, "duong_dan_ngoai_thu_muc") from None
+    return dich
 
-    - Mỗi phần tử là chuỗi (hoặc dict → ghi tệp JSON tạm trong thư mục làm việc,
-      thay bằng cặp cờ --data/--input + đường dẫn, theo cú pháp officecli).
-    - Từ chối ký tự điều khiển ở MỌI đối số; đối số hình dạng đường dẫn phải
-      resolve() dưới thư mục làm việc. Không bao giờ qua shell.
+
+def lam_sach_doi_so(lenh: str, doi_so, thu_muc_goc: Path,
+                    tep_tam_luu: list[Path] | None = None) -> list[str]:
+    """Kiểm và chuẩn hoá doi_so theo NGUYÊN TẮC ĐÓNG.
+
+    - Tập lệnh đóng 19 lệnh với cấu trúc tham số vị trí và cờ xác định trước.
+    - Chuẩn hoá cờ --cờ=giá_trị và -o=giá_trị thành cặp cờ và giá trị.
+    - Chặn mọi đối số bắt đầu bằng '@', ký tự điều khiển, hoặc vượt quá trần độ dài.
+    - Cờ tệp (--output, -o, --input, --data) bắt buộc resolve() dưới thư mục làm việc.
+    - Cờ --prop: kiểm tra cú pháp khoa=gia_tri; nếu là khoá tệp (src, path...) thì
+      giá trị phải là tệp trong thư mục làm việc (không chứa '..', không tuyệt đối).
+    - Đường phần tử (/tag[n]/...) kiểm tra cú pháp DOM, không resolve ra filesystem.
     """
     if not isinstance(doi_so, list):
         raise LoiYeuCau(400, "doi_so_phai_la_danh_sach")
-    sach: list[str] = []
-    for i, muc in enumerate(doi_so):
+
+    # 1. Chuẩn hoá và tiền kiểm tra từng token
+    tokens: list[str | dict] = []
+    for muc in doi_so:
         if isinstance(muc, dict):
-            # Dữ liệu có cấu trúc (merge/batch): ghi tệp tạm tên ngẫu nhiên
-            # trong thư mục làm việc, truyền đường dẫn qua cờ của lệnh.
+            tokens.append(muc)
+            continue
+        if not isinstance(muc, str):
+            raise LoiYeuCau(400, "doi_so_khong_hop_le")
+        if _co_ky_tu_dieu_khien(muc) or len(muc) > TRAN_DO_DAI_DOI_SO:
+            raise LoiYeuCau(400, "doi_so_khong_hop_le")
+        if muc.startswith("@"):
+            raise LoiYeuCau(400, "doi_so_khong_hop_le")
+
+        # Tách --cờ=giá_trị hoặc -o=giá_trị
+        if muc.startswith("--") and "=" in muc:
+            co, val = muc.split("=", 1)
+            tokens.append(co)
+            tokens.append(val)
+        elif muc.startswith("-o=") and len(muc) > 3:
+            tokens.append("-o")
+            tokens.append(muc[3:])
+        else:
+            tokens.append(muc)
+
+    # 2. Xử lý theo cấu trúc lệnh đóng
+    sach: list[str] = []
+    vi_tri_tham_so = 0
+    i = 0
+    n = len(tokens)
+
+    while i < n:
+        tok = tokens[i]
+
+        # Dữ liệu dict: tạo tệp tạm .du-lieu-*.json
+        if isinstance(tok, dict):
             ten_tam = f".du-lieu-{secrets.token_hex(8)}.json"
             duong_tam = thu_muc_goc / ten_tam
-            duong_tam.write_text(json.dumps(muc, ensure_ascii=False), encoding="utf-8")
+            duong_tam.write_text(json.dumps(tok, ensure_ascii=False), encoding="utf-8")
             try:
                 os.chmod(duong_tam, 0o600)
             except OSError:
                 pass
+            if tep_tam_luu is not None:
+                tep_tam_luu.append(duong_tam)
             sach.append(CO_NHAN_DU_LIEU.get(lenh, "--data"))
             sach.append(str(chua_duong_dan(ten_tam, thu_muc_goc)))
+            vi_tri_tham_so += 1
+            i += 1
             continue
-        if not isinstance(muc, str):
-            raise LoiYeuCau(400, "doi_so_khong_hop_le")
-        if _co_ky_tu_dieu_khien(muc):
-            raise LoiYeuCau(400, "doi_so_khong_hop_le")
-        if _la_doi_so_duong_dan(muc, i == 0):
-            sach.append(str(chua_duong_dan(muc, thu_muc_goc)))
-        else:
-            sach.append(muc)
+
+        # Cờ (bắt đầu bằng '-')
+        if tok.startswith("-"):
+            if tok not in CO_HOP_LE:
+                raise LoiYeuCau(400, "doi_so_khong_hop_le")
+            if tok in CO_BOOLEAN:
+                sach.append(tok)
+                i += 1
+                continue
+
+            # Cờ kèm giá trị
+            if i + 1 >= n:
+                raise LoiYeuCau(400, "doi_so_khong_hop_le")
+            val = tokens[i + 1]
+            if not isinstance(val, str) or val.startswith("-") or val.startswith("@"):
+                raise LoiYeuCau(400, "doi_so_khong_hop_le")
+            if _co_ky_tu_dieu_khien(val) or len(val) > TRAN_DO_DAI_DOI_SO:
+                raise LoiYeuCau(400, "doi_so_khong_hop_le")
+
+            if tok in ("--output", "-o", "--input", "--data"):
+                dich = chua_duong_dan(val, thu_muc_goc)
+                sach.extend([tok, str(dich)])
+            elif tok == "--depth":
+                if not val.isdigit() or not (0 <= int(val) <= 100):
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                sach.extend([tok, str(int(val))])
+            elif tok == "--type":
+                if not MAU_TYPE.fullmatch(val) or len(val) > 50:
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                sach.extend([tok, val])
+            elif tok == "--mode":
+                if val not in CHE_DO_VIEW:
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                sach.extend([tok, val])
+            elif tok == "--prop":
+                if "=" not in val:
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                khoa, gia_tri = val.split("=", 1)
+                if not MAU_KHOA_PROP.fullmatch(khoa):
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                if khoa.lower() in KHOA_PROP_TEP:
+                    # Giá trị tham chiếu tệp: phải resolve trong thư mục làm việc
+                    if ".." in Path(gia_tri.replace("\\", "/")).parts:
+                        raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                    dich = chua_duong_dan(gia_tri, thu_muc_goc)
+                    sach.extend([tok, f"{khoa}={dich}"])
+                else:
+                    if _co_ky_tu_dieu_khien(gia_tri):
+                        raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                    sach.extend([tok, f"{khoa}={gia_tri}"])
+            i += 2
+            continue
+
+        # Đối số vị trí
+        if vi_tri_tham_so == 0:
+            if lenh == "help" and re.match(r"^[a-z_]+$", tok):
+                sach.append(tok)
+            else:
+                dich = kiem_ten_tep_tai_lieu(tok, thu_muc_goc)
+                sach.append(str(dich))
+            vi_tri_tham_so += 1
+            i += 1
+            continue
+
+        if vi_tri_tham_so == 1:
+            if lenh == "merge":
+                dich = kiem_ten_tep_tai_lieu(tok, thu_muc_goc)
+                sach.append(str(dich))
+            elif lenh == "view":
+                if tok in CHE_DO_VIEW:
+                    sach.append(tok)
+                else:
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+            elif lenh == "query":
+                if tok.startswith("@") or _co_ky_tu_dieu_khien(tok) or len(tok) > 1000:
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                sach.append(tok)
+            elif lenh in ("get", "set", "add", "remove", "move", "swap", "dump", "extract"):
+                if not la_duong_phan_tu(tok):
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                sach.append(tok)
+            else:
+                raise LoiYeuCau(400, "doi_so_khong_hop_le")
+            vi_tri_tham_so += 1
+            i += 1
+            continue
+
+        if vi_tri_tham_so == 2:
+            if lenh in ("move", "swap"):
+                if not la_duong_phan_tu(tok):
+                    raise LoiYeuCau(400, "doi_so_khong_hop_le")
+                sach.append(tok)
+            else:
+                raise LoiYeuCau(400, "doi_so_khong_hop_le")
+            vi_tri_tham_so += 1
+            i += 1
+            continue
+
+        # vi_tri_tham_so >= 3 không được hỗ trợ
+        raise LoiYeuCau(400, "doi_so_khong_hop_le")
+
     return sach
 
 
@@ -263,7 +429,7 @@ def _tach_multipart(than: bytes, ranh_gioi: bytes) -> tuple[str, bytes]:
 
 
 def xu_ly_tai_len(than: bytes, kieu_noi_dung: str, thu_muc_goc: Path, tran: int) -> dict:
-    """Nhận tệp OOXML: kiểm kích thước, magic bytes zip; tên do hệ thống sinh."""
+    """Nhận tệp OOXML: kiểm kích thước, magic bytes zip, chống zip bomb; tên do hệ thống sinh."""
     m = re.search(r"boundary=([^;\s]+)", kieu_noi_dung or "")
     if not m:
         raise LoiYeuCau(400, "thieu_boundary")
@@ -277,6 +443,19 @@ def xu_ly_tai_len(than: bytes, kieu_noi_dung: str, thu_muc_goc: Path, tran: int)
     duoi = Path(ten_khach).suffix.lower()
     if duoi not in DUOI_OOXML:
         raise LoiYeuCau(400, "sai_dinh_dang_tep")
+
+    # Chống zip bomb: kiểm tra số lượng tệp con và tổng dung lượng giải nén
+    try:
+        with zipfile.ZipFile(io.BytesIO(du_lieu)) as zf:
+            ds_tep = zf.infolist()
+            if len(ds_tep) > TRAN_SO_TEP_ZIP:
+                raise LoiYeuCau(413, "tep_qua_lon")
+            tong_giai_nen = sum(info.file_size for info in ds_tep)
+            if tong_giai_nen > TRAN_GIAI_NEN_ZIP:
+                raise LoiYeuCau(413, "tep_qua_lon")
+    except zipfile.BadZipFile:
+        pass
+
     id_tep = secrets.token_hex(8)
     dich = chua_duong_dan(id_tep + duoi, thu_muc_goc)
     dich.write_bytes(du_lieu)
@@ -329,7 +508,10 @@ class XuLy(BaseHTTPRequestHandler):
         nhan = self.headers.get("Authorization", "")
         if not nhan.startswith("Bearer "):
             return False
-        return hmac.compare_digest(nhan[7:].strip(), self.khoa_dich_vu)
+        token = nhan[7:].strip()
+        token_bytes = token.encode("utf-8", "surrogateescape")
+        khoa_bytes = self.khoa_dich_vu.encode("utf-8")
+        return hmac.compare_digest(token_bytes, khoa_bytes)
 
     def _doc_than(self, tran: int) -> bytes:
         try:
@@ -384,11 +566,20 @@ class XuLy(BaseHTTPRequestHandler):
                     raise LoiYeuCau(400, "than_khong_phai_json")
                 lenh = kiem_tra_lenh(yeu_cau.get("lenh"))
                 thu_muc = self.cau_hinh["thu_muc_goc"]
-                doi_so_sach = lam_sach_doi_so(lenh, yeu_cau.get("doi_so", []), thu_muc)
-                het_gio = (self.cau_hinh["het_gio_dai"] if lenh in LENH_HET_GIO_DAI
-                           else self.cau_hinh["het_gio"])
-                ket_qua = chay_officecli(self.cau_hinh["bin"], lenh, doi_so_sach,
-                                         thu_muc, het_gio)
+                tep_tam: list[Path] = []
+                try:
+                    doi_so_sach = lam_sach_doi_so(lenh, yeu_cau.get("doi_so", []), thu_muc, tep_tam)
+                    het_gio = (self.cau_hinh["het_gio_dai"] if lenh in LENH_HET_GIO_DAI
+                               else self.cau_hinh["het_gio"])
+                    ket_qua = chay_officecli(self.cau_hinh["bin"], lenh, doi_so_sach,
+                                             thu_muc, het_gio)
+                finally:
+                    for t in tep_tam:
+                        try:
+                            if t.exists():
+                                t.unlink()
+                        except OSError:
+                            pass
                 log.info("lenh=%s doi_so=%d ok=%s", lenh, len(doi_so_sach), ket_qua["ok"])
                 self._tra_json(200, ket_qua)
             elif duong == "/tai-len":
