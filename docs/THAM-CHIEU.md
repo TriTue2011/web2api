@@ -3776,6 +3776,64 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 ---
 
+### Module email — Email (kênh gửi/nhận thư)
+
+**Mô tả.** Kênh email hai chiều: GỬI RA qua SMTP (chuẩn `kenh_ra`) và NHẬN TIN
+VÀO qua IMAP hỏi vòng (chuẩn `hoi_vong`, mỗi 60 giây một lượt; lõi tự lùi dần
+khi lỗi, dừng khi gỡ module). Hỗ trợ nhiều hộp thư trong một module. Thư mới
+từ người gửi trong danh sách được phép được chuyển cho lõi qua
+`kenh_vao.nhan_tin`; thư từ người lạ bị bỏ (đếm, không lộ nội dung vào log).
+Nội dung email là dữ liệu không tin: HTML lọc thành văn bản, đính kèm KHÔNG
+ghi đĩa — chỉ trích văn bản có trần (4000 ký tự/tệp, tối đa 5 tệp, tệp > 8 MB
+bị bỏ). Mã nguồn: `modules/email/` (chỉ thư viện chuẩn: `smtplib`, `imaplib`,
+`email`, `ssl` — không thêm gói). Tiền tố model: `email`. Hạng: `A` (mã của
+dự án; port từ kênh email của c2a).
+
+**Cần gì.**
+- Tài khoản email + mật khẩu (Gmail bật 2FA: dùng App Password 16 ký tự, lấy
+  tại https://myaccount.google.com/apppasswords).
+- Mạng ra tới máy chủ IMAP/SMTP do chủ máy khai (khớp `tai_nguyen.mang_ra`
+  trong manifest — máy chủ do người dùng khai, kiểm SSRF qua `app/tu_xa.py`
+  lúc cài).
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "email"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/email`
+3. `POST /api/modules/email/cai` với thân `{"cau_hinh": {"tai_khoan": "[{...}]", "mat_khau": ["..."]}}`
+   (mẫu đầy đủ xem `modules/email/README.md`).
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `tai_khoan` | Có | Mảng JSON các hộp thư (id, label, imap_host/port, smtp_host/port, user, security, verify_ssl, allowed_senders, mark_seen, max_body_chars, poll_seconds). Không ghi mật khẩu vào đây. |
+| `mat_khau` | Có | Danh sách mật khẩu, mỗi dòng một mật khẩu — CÙNG THỨ TỰ với `tai_khoan`. Trường bí mật: lưu riêng (0600), không API nào trả lại. |
+| `nguoi_nhan_cho_phep` | Không | Danh sách người nhận được phép khi gửi; để trống = gửi được cho mọi địa chỉ hợp lệ. |
+| `mang_noi_bo` | Không | Ghi `"co"` chỉ khi dùng máy chủ thư nội bộ (bỏ kiểm `app/tu_xa.py`); chủ máy tự chịu rủi ro SSRF. |
+
+**Ví dụ dùng.**
+
+```bash
+# Gửi email qua hộp thư đã khai (kenh_id = id hộp thư trong tai_khoan)
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"kenh_id": "chinh", "noi_dung": {"van_ban": "Xin chào", "tieu_de": "Thử", "nguoi_nhan": "ban@example.com"}}' \
+  $W/api/gui/email
+```
+
+**Sự cố thường gặp.**
+- `máy chủ ...: bị chặn: loopback` — máy chủ thư nội bộ: đặt `mang_noi_bo: "co"` (đã hiểu rủi ro).
+- `Sai tài khoản hoặc mật khẩu. Cần App Password...` — Gmail/Outlook bật 2FA: tạo App Password, không dùng mật khẩu đăng nhập.
+- Không nhận thư của ai — kiểm tra `allowed_senders` (rỗng = chặn hết) và `enabled: true`.
+- Hộp thư dừng vì lỗi liên tiếp — xem `suc_khoe`, sửa cấu hình rồi cài lại.
+
+**Giới hạn.**
+- Chỉ trích văn bản đính kèm (không đọc PDF/Office như bản c2a).
+- Chưa kiểm với IMAP/SMTP thật, Gmail thật, hộp thư thật (chỉ kiểm với máy chủ giả cục bộ).
+
+---
+
 ## 5. Triển khai
 
 
