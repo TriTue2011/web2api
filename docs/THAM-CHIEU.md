@@ -539,6 +539,48 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     CAPTCHA/2FA/xác minh thiết bị → `can_nguoi` (dừng, không cố vượt); mật khẩu
     lưu kho riêng mã hoá, không log; lỗi lạ → đóng cửa (fail-closed).
 
+- **Kho tài khoản đã lưu + tự đăng nhập lại — NV144** (`app/kho_tai_khoan.py`;
+  router `/api/tai-khoan`, chỉ quản trị; lõi dùng chữ trung lập «tài khoản»/«nhà
+  cung cấp», không tên nhà cung cấp):
+  - Kho ở `bi_mat/_tai_khoan_da_luu.json` (0600, mã hoá khi nghỉ qua
+    `app.kho` nếu đã đặt `WEB2API_KHOA_CHINH`): mỗi bản ghi `{id, email, nhan,
+    mat_khau, totp_secret, trang_thai, cap_nhat}`; `id` ổn định
+    (`tk-` + 16 hex SHA-256 của email chuẩn hoá). Lưu trùng email → cập nhật.
+  - Kiểm biên: email theo khuôn hẹp của `tai_khoan_hang_loat`; mật khẩu
+    1–1024 ký tự; TOTP secret chỉ nhận KHOÁ Base32 (qua `kiem_tra_va_tao_otp`,
+    ép kiểu `BiMatTotp` — mã 6–8 số dùng một lần bị từ chối vì lưu lại vô
+    nghĩa); ký tự điều khiển/surrogate → `400 invalid_value` (không lộ giá
+    trị). Kho hỏng → `500 kho_hong`, đóng cửa, không lưu một phần.
+  - `GET /api/tai-khoan/da-luu` → danh sách công khai (email CHE dạng
+    `v***@example.com`, nhãn, `co_mat_khau`/`co_totp`, trạng thái; KHÔNG BAO
+    GIỜ trả mật khẩu/secret).
+  - `POST /api/tai-khoan/da-luu` (`email`, `mat_khau`, `totp_secret`?,
+    `nhan`?) → `201 {tai_khoan: …}`; hoặc `{"tai_khoan": [{…}, …]}` để lưu
+    hàng loạt → `{luu: […], loi: [{dong, ma}]}`.
+  - `DELETE /api/tai-khoan/da-luu/{id}` → `{ok: true}`; id lạ → `404` (so id
+    bằng `hmac.compare_digest`, chống IDOR).
+  - `POST /api/tai-khoan/da-luu/{id}/dang-nhap` (`module_id`) → server tự lấy
+    bí mật từ kho, gọi hợp đồng `module.dang_nhap(dong)` với `BiMatTam`/
+    `BiMatTotp` (CHỈ GỌI, không sửa module); trình duyệt/giao diện KHÔNG nhận
+    lại mật khẩu; bí mật bị `xoa()` khỏi bộ nhớ ngay sau lượt gọi.
+  - Công tắc `GET`/`PUT /api/tai-khoan/tu-dang-nhap-lai` (`{"bat": bool}`,
+    mặc định BẬT): khi `tu_lam_moi` khôi phục rơi tới `can_nguoi`, server tự
+    đăng nhập lại bằng tài khoản đã lưu khớp email phiên (qua sổ danh tính);
+    giãn cách `WEB2API_DANG_NHAP_GIAN_CACH_GIAY` (mặc định `300`); dừng khi
+    hỏng 2 liên tiếp (trạng thái ở `bi_mat/_tai_khoan_da_luu_trang_thai.json`).
+  - Giao diện (`web/He-thong-AI.dc.html`, khối «Tài khoản đã lưu (n)» trong tab
+    Tài khoản): dropdown chọn → điền email, mật khẩu hiện `•••• đã lưu`
+    (không đổ mật khẩu thật ra ô); ô Email/Mật khẩu (nút Hiện/Ẩn)/TOTP secret
+    («để trống = xác minh thiết bị»)/Nhãn; mục thu gọn «Cách lấy secret»
+    (5 bước); các nút «Lưu tài khoản» (vô hiệu khi thiếu email+mật khẩu),
+    «Lưu và đăng nhập» (chính), «Chỉ đăng nhập», «Mở noVNC»; mỗi tài khoản một
+    dòng (email che · nhãn · trạng thái · «Đăng nhập» · «Xoá» bấm hai lần);
+    nút «Lưu tất cả» lưu mọi hàng đang gõ ở khối hàng loạt. Mật khẩu/TOTP rời
+    state và DOM ngay sau khi gửi.
+  - Nhật ký quản trị chỉ ghi email CHE, không ghi bí mật; `app/sao_luu*.py`:
+    thư mục `bi_mat/` chỉ vào bản sao lưu CÓ mật khẩu (đã mã hoá), không vào
+    bản sao lưu thường.
+
 - **Tự động khôi phục/làm mới nối vào đường chạy thật — NV91-P2** (`app/tu_lam_moi.py`;
   lõi không chứa tên nhà cung cấp; module tham gia bằng hợp đồng NV88 + hai phương thức
   tuỳ chọn mới `khoa_tai_khoan()` / `danh_dau_khoe(khoa)`):

@@ -33,6 +33,7 @@ from app import (
     ip_cho_phep as ip_cho_phep_mod,
     kho,
     khoa_khach as khoa_khach_mod,
+    kho_tai_khoan as kho_tai_khoan_mod,
     ma_xac_minh as ma_xac_minh_mod,
     nguoi_dung as nguoi_dung_mod,
     nhat_ky as nhat_ky_mod,
@@ -3400,6 +3401,150 @@ def _ham_dang_nhap_cua_module(request: Request, module_id: str):
     mod = request.app.state.so.dang_chay.get(module_id)
     ham = getattr(mod, "dang_nhap", None) if mod is not None else None
     return ham if callable(ham) else None
+
+
+# ───────────── TÀI KHOẢN ĐÃ LƯU (NV144, QT) ─────────────
+# Kho tài khoản đã lưu: email + nhãn + mật khẩu + TOTP secret (tuỳ chọn).
+# Mọi đường đều cần khoá quản trị (QT). Bí mật KHÔNG BAO GIỜ rời server qua
+# các đường này — giao diện/trình duyệt không nhận lại mật khẩu.
+
+def _loi_kho_tai_khoan(e: kho_tai_khoan_mod.LoiKhoTaiKhoan) -> LoiOpenAI:
+    ma = e.ma
+    if ma == "kho_hong":
+        return LoiOpenAI(
+            500, "Kho tài khoản đã lưu bị hỏng; đã đóng cửa, không lưu một phần.",
+            code="kho_hong")
+    if ma == "invalid_email":
+        return LoiOpenAI(400, "Địa chỉ email không hợp lệ.", code="invalid_email")
+    return LoiOpenAI(400, "Giá trị không hợp lệ.", code="invalid_value")
+
+
+@tai_khoan.get("/da-luu")
+def liet_ke_tai_khoan_da_luu():
+    """Liệt kê tài khoản đã lưu: email CHE, nhãn, cờ có/không bí mật, trạng
+    thái. KHÔNG bao giờ trả mật khẩu/TOTP secret."""
+    try:
+        return {"tai_khoan": kho_tai_khoan_mod.liet_ke()}
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+
+
+@tai_khoan.post("/da-luu")
+async def luu_tai_khoan_da_luu(request: Request):
+    """Lưu/cập nhật một tài khoản (theo email, trùng → cập nhật) hoặc hàng loạt
+    qua {"tai_khoan": [{email, mat_khau, totp_secret?, nhan?}]}."""
+    than = await _than_json(request)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    try:
+        ds = than.get("tai_khoan")
+        if isinstance(ds, list):
+            luu, loi = [], []
+            for i, muc in enumerate(ds, start=1):
+                try:
+                    if not isinstance(muc, dict):
+                        raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
+                    bk = kho_tai_khoan_mod.luu_tai_khoan(
+                        muc.get("email"), muc.get("mat_khau"),
+                        muc.get("totp_secret"), muc.get("nhan", ""))
+                    luu.append(bk)
+                except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+                    if e.ma == "kho_hong":
+                        raise
+                    loi.append({"dong": i, "ma": e.ma})
+            nhat_ky_mod.ghi(
+                "quan_tri", "thong_tin",
+                f"Lưu hàng loạt tài khoản đã lưu ({len(luu)} xong, {len(loi)} lỗi)",
+                nguoi_thuc_hien=nguoi_thuc_hien)
+            return {"luu": luu, "loi": loi}
+        bk = kho_tai_khoan_mod.luu_tai_khoan(
+            _chuoi_bat_buoc(than, "email"),
+            _chuoi_bat_buoc(than, "mat_khau"),
+            _chuoi_tuy_chon(than, "totp_secret"),
+            _chuoi_tuy_chon(than, "nhan") or "")
+        nhat_ky_mod.ghi(
+            "quan_tri", "thong_tin",
+            f"Lưu tài khoản đã lưu ({bk['email_che']})",
+            nguoi_thuc_hien=nguoi_thuc_hien)
+        return {"tai_khoan": bk}
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+
+
+@tai_khoan.delete("/da-luu/{id}")
+def xoa_tai_khoan_da_luu(id: str, request: Request):
+    """Xoá tài khoản đã lưu theo id. Id lạ → 404 (không lộ có/không)."""
+    try:
+        da_xoa = kho_tai_khoan_mod.xoa_tai_khoan(id)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if not da_xoa:
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin", "Xoá tài khoản đã lưu",
+        nguoi_thuc_hien=dinh_danh_nguoi_thuc_hien(request))
+    return {"da_xoa": True}
+
+
+@tai_khoan.post("/da-luu/{id}/dang-nhap")
+async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
+    """Đăng nhập bằng tài khoản đã lưu: server tự lấy bí mật từ kho rồi gọi
+    hợp đồng ``dang_nhap(dong)`` của module. Trình duyệt/giao diện KHÔNG nhận
+    lại mật khẩu."""
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    try:
+        bi_mat = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(id)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if bi_mat is None:
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+    mat_khau, totp = bi_mat
+    ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    email = ban_ghi["email"] if ban_ghi else ""
+    mod = request.app.state.so.dang_chay.get(module_id)
+    ham = getattr(mod, "dang_nhap", None) if mod is not None else None
+    if not callable(ham):
+        mat_khau.xoa()
+        if totp is not None:
+            totp.xoa()
+        raise LoiOpenAI(502, "Module chưa triển khai đăng nhập.", code="chua_ho_tro")
+    dong = tai_khoan_hang_loat_mod.DongDaTach(
+        dong=0, email=email, loai="mat_khau", mat_khau=mat_khau, totp=totp)
+    try:
+        kq = await ham(dong)
+    finally:
+        dong.xoa_bi_mat()
+    thanh_cong = bool(getattr(kq, "thanh_cong", False))
+    return {
+        "thanh_cong": thanh_cong,
+        "can_nguoi": bool(getattr(kq, "can_nguoi", False)),
+        "ma_loi": getattr(kq, "ma_loi", "") or "",
+    }
+
+
+@tai_khoan.get("/tu-dang-nhap-lai")
+def lay_cong_tac_tu_dang_nhap_lai():
+    """Đọc công tắc «tự đăng nhập lại khi phiên hết hạn» (mặc định BẬT)."""
+    return {"bat": kho_tai_khoan_mod.tu_dang_nhap_lai_bat()}
+
+
+@tai_khoan.put("/tu-dang-nhap-lai")
+async def dat_cong_tac_tu_dang_nhap_lai(request: Request):
+    """Bật/tắt «tự đăng nhập lại khi phiên hết hạn». Thân: {"bat": bool}."""
+    than = await _than_json(request)
+    bat = than.get("bat")
+    if not isinstance(bat, bool):
+        raise LoiOpenAI(400, "Trường «bat» phải là true/false.", code="invalid_value")
+    try:
+        moi = kho_tai_khoan_mod.dat_tu_dang_nhap_lai(bat)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Đặt công tắc tự đăng nhập lại: {'BẬT' if moi else 'TẮT'}",
+        nguoi_thuc_hien=dinh_danh_nguoi_thuc_hien(request))
+    return {"bat": moi}
 
 
 @tai_khoan.post("/dan-hang-loat")

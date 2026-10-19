@@ -52,6 +52,7 @@ import time
 from typing import Any, Callable
 
 from app import khoi_phuc_phien as kp
+from app import kho_tai_khoan
 from app import nhat_ky
 
 log = logging.getLogger("web2api.tu_lam_moi")
@@ -237,6 +238,23 @@ async def _chay_khoi_phuc(module: Any, module_id: str, khoa: str, ma_loi: str,
             log.info("tu-lam-moi: %s/%s tự khôi phục xong ở tầng %s",
                      module_id, khoa, kq.tang)
         elif kq.can_nguoi:
+            # NV144: trước khi báo «cần người», thử tự đăng nhập lại bằng tài
+            # khoản đã lưu (công tắc mặc định BẬT, giãn cách theo
+            # WEB2API_DANG_NHAP_GIAN_CACH_GIAY, dừng khi hỏng 2 liên tiếp).
+            # Chỉ GỌI hợp đồng dang_nhap của module, không sửa module.
+            try:
+                email_phien = kho_tai_khoan.email_cua_phien(module, khoa)
+                if email_phien:
+                    kq_dl = await kho_tai_khoan.thu_dang_nhap_lai(
+                        module=module, module_id=module_id, dinh_danh=email_phien)
+                    if kq_dl.get("thu") and kq_dl.get("thanh_cong"):
+                        _danh_dau_khoe(module, khoa)
+                        log.info("tu-lam-moi: %s/%s tự đăng nhập lại bằng tài "
+                                 "khoản đã lưu xong", module_id, khoa)
+                        return
+            except Exception as e:
+                log.warning("tu-lam-moi: tự đăng nhập lại lỗi: %s",
+                            type(e).__name__)
             # 2.3: hỏng tới tầng (d) → nhật ký quản trị + trạng thái «cần
             # người» (trạng thái do khoi_phuc ghi rồi); KHÔNG tự thử lại mãi
             # (lượt sau bị chặn bởi chốt dừng / thời gian nghỉ).

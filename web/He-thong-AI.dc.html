@@ -133,6 +133,64 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </div></sc-if>
 </div>
 </details>
+<details id="dl-khoi" open="{{them.dl.moDS}}" onToggle="{{them.dl.doiMoDS}}" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-top:4px">
+<summary style="padding:10px 14px;background:#FBFAF8;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Tài khoản đã lưu ({{them.dl.dem}})</summary>
+<div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản đã lưu
+<select id="dl-chon" value="{{them.dl.chonId}}" onChange="{{them.dl.doiChon}}" aria-label="Chọn tài khoản đã lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chọn để điền nhanh —</option>
+<sc-for list="{{them.dl.tuyChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+</select></label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Email
+<input id="dl-email" type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{them.dl.email}}" onInput="{{them.dl.doiEmail}}" aria-label="Email tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Mật khẩu
+<div style="display:flex;gap:6px;align-items:center">
+<input id="dl-mat-khau" type="{{them.dl.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="{{them.dl.goiYMatKhau}}" value="{{them.dl.matKhau}}" onInput="{{them.dl.doiMatKhau}}" aria-label="Mật khẩu tài khoản lưu" style="flex:1 1 auto;min-width:0;min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px">
+<button type="button" id="dl-hien-mk" onClick="{{them.dl.doiHienMk}}" aria-label="{{them.dl.nhanHienMk}} mật khẩu đã lưu" style="min-height:44px;min-width:44px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;cursor:pointer;flex:0 0 auto">{{them.dl.nhanHienMk}}</button>
+</div>
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">TOTP secret
+<span style="font-size:11px;color:var(--mute);line-height:1.4">Dán khoá Base32 của ứng dụng xác thực; để trống = xác minh trên thiết bị khi đăng nhập.</span>
+<input id="dl-totp" type="text" autocomplete="off" spellcheck="false" placeholder="Khoá Base32 (A–Z, 2–7)" value="{{them.dl.totp}}" onInput="{{them.dl.doiTotp}}" aria-label="TOTP secret" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+</label>
+<details style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+<summary style="padding:8px 12px;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Cách lấy secret</summary>
+<ol style="margin:0;padding:8px 12px 12px 32px;font-size:12px;color:var(--mute);line-height:1.6">
+<li>Mở trang «Bảo mật» của tài khoản trên trình duyệt rồi đăng nhập.</li>
+<li>Tìm mục «Xác minh 2 bước» và bật nếu chưa bật.</li>
+<li>Trong mục đó, chọn «Ứng dụng xác thực» để thêm phương thức mới.</li>
+<li>Khi hiện mã QR, chọn «Không quét được mã?» để hiện khoá chữ thay thế.</li>
+<li>Sao chép dãy ký tự (chữ hoa A–Z và số 2–7), dán vào ô «TOTP secret» ở trên.</li>
+</ol>
+</details>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Nhãn (tuỳ chọn)
+<input id="dl-nhan" type="text" autocomplete="off" spellcheck="false" placeholder="VD: tài khoản chính" value="{{them.dl.nhan}}" onInput="{{them.dl.doiNhan}}" aria-label="Nhãn tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+</label>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<button type="button" id="nut-dl-luu" disabled="{{them.dl.thieuLuu}}" onClick="{{them.dl.luu}}" style="{{them.dl.luuSt}}">Lưu tài khoản</button>
+<button type="button" id="nut-dl-luu-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.luuVaDangNhap}}" style="{{them.dl.luuVaDangNhapSt}}">Lưu và đăng nhập</button>
+<button type="button" id="nut-dl-chi-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.chiDangNhap}}" style="{{them.dl.chiDangNhapSt}}">Chỉ đăng nhập</button>
+<sc-if value="{{them.dl.coTrinhDuyet}}"><a id="nut-dl-trinh-duyet" href="{{them.dl.duongTrinhDuyet}}" target="_blank" style="{{them.dl.trinhDuyetSt}}">Mở {{them.dl.nhanTrinhDuyet}}</a></sc-if>
+</div>
+<label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink);min-height:44px;cursor:pointer"><input type="checkbox" id="dl-tu-dong-lai" checked="{{them.dl.tuDongLai}}" onChange="{{them.dl.doiTuDongLai}}" style="width:20px;height:20px">Tự đăng nhập lại khi phiên hết hạn</label>
+<sc-if value="{{them.dl.coLoi}}"><p role="alert" id="loi-dl" style="margin:0;font-size:13px;color:#8A2A1E">{{them.dl.loi}}</p></sc-if>
+<div id="dl-danh-sach" style="display:flex;flex-direction:column">
+<sc-for list="{{them.dl.hang}}" as="r">
+<div data-tk-da-luu="{{r.id}}" style="display:flex;align-items:center;gap:10px;padding:8px 0;min-height:44px;border-top:1px solid var(--line);min-width:0">
+<span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{r.emailChe}}</span>
+<sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
+<span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
+<span style="margin-left:auto;display:inline-flex;gap:6px;flex:0 0 auto">
+<button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
+<button type="button" data-dl-xoa="{{r.id}}" onClick="{{r.xoa}}" style="{{r.xoaSt}}">{{r.nhanXoa}}</button>
+</span>
+</div>
+</sc-for>
+</div>
+<div><button type="button" id="nut-dl-luu-tat-ca" onClick="{{them.dl.luuTatCa}}" style="{{them.dl.luuTatCaSt}}">Lưu tất cả ({{them.dl.soHangCoDuLieu}})</button></div>
+</div>
+</details>
 <sc-if value="{{them.td.coLoi}}"><p role="alert" id="loi-tu-dong" style="margin:0;font-size:13px;color:#8A2A1E">{{them.td.loi}}</p></sc-if>
 <sc-if value="{{them.td.coLuot}}"><div id="tien-do-tu-dong" role="status" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)"><span id="tom-tat-tu-dong">{{them.td.luotTomTat}}</span><sc-if value="{{them.td.dangChayLuot}}"><button type="button" id="nut-dung-tu-dong" onClick="{{them.td.dung}}" style="{{them.td.dungSt}}">Dừng</button></sc-if></div>
@@ -651,6 +709,151 @@ class Component extends DCLogic {
       this.msg('Đã xoá danh tính «' + ten + '».' + (j && j.canh_bao ? ' ' + j.canh_bao : ''));
     } catch (e) { this.setState({ dtXoa: null }); this.loi(e); }
     this.setState({ dtDangXoa: null });
+  }
+  // ===== Tài khoản đã lưu (NV144) =====
+  async taiDlDs() {
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu');
+      this.setState({ dlDs: (j && Array.isArray(j.tai_khoan)) ? j.tai_khoan : [] });
+    } catch (e) {
+      this.setState({ dlDs: [] });
+    }
+    try {
+      const { j } = await K.goi('api/tai-khoan/tu-dang-nhap-lai');
+      if (j && typeof j.bat === 'boolean') this.setState({ dlTuDongLai: j.bat });
+    } catch (e) { /* giữ mặc định BẬT */ }
+  }
+  dlDoiChon(id) {
+    const t = (this.state.dlDs || []).find((x) => x && x.id === id);
+    this.setState({
+      dlChonId: id || '',
+      dlEmail: t ? (t.email_che || '') : '',
+      dlNhan: t ? (t.nhan || '') : '',
+      dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: ''
+    });
+  }
+  dlXoaBiMatKhoiDom() {
+    // Bí mật rời state VÀ DOM ngay sau khi gửi (đã lưu ở server nên không mất)
+    this.setState((st) => ({ dlMatKhau: '', dlTotp: '', dlLan: (st.dlLan || 0) + 1 }));
+    ['dl-mat-khau', 'dl-totp'].forEach((oid) => {
+      try { const o = document.getElementById(oid); if (o) o.value = ''; } catch (e) {}
+    });
+  }
+  async dlLuu(chon, vaDangNhap) {
+    const s = this.state;
+    if (s.dlDangLuu) return; // chống bấm hai lần → chỉ MỘT lần gửi
+    const email = (s.dlEmail || '').trim();
+    const mk = s.dlMatKhau || '';
+    const chonId = s.dlChonId || '';
+    if (s.dlDaLuu && chonId && !mk) {
+      // Đã chọn tài khoản lưu sẵn mà không gõ gì mới
+      if (vaDangNhap) { await this.dlDangNhapDaLuu(chon, chonId); return; }
+      this.msg('Tài khoản này đã được lưu.', false);
+      return;
+    }
+    if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
+    const payload = { email, mat_khau: mk };
+    const totp = (s.dlTotp || '').trim();
+    if (totp) payload.totp_secret = totp;
+    const nhan = (s.dlNhan || '').trim();
+    if (nhan) payload.nhan = nhan;
+    this.dlXoaBiMatKhoiDom();
+    this.setState({ dlDangLuu: true, dlLoi: '' });
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu', { method: 'POST', json: payload });
+      const tk = j && j.tai_khoan;
+      await this.taiDlDs();
+      this.setState({
+        dlDangLuu: false,
+        dlChonId: tk ? tk.id : '', dlDaLuu: !!tk,
+        dlEmail: tk ? tk.email_che : email
+      });
+      if (vaDangNhap && tk) await this.dlDangNhapDaLuu(chon, tk.id);
+    } catch (e) {
+      this.setState({ dlDangLuu: false, dlLoi: (e && e.message) || 'Không lưu được tài khoản.' });
+    }
+  }
+  async dlDangNhapDaLuu(chon, id) {
+    if (!chon) { this.setState({ dlLoi: 'Chọn một nguồn AI trước.' }); return; }
+    this.setState({ dlLoi: '' });
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/dang-nhap', {
+        method: 'POST', json: { module_id: chon.id }
+      });
+      if (j && j.thanh_cong) this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false);
+      else if (j && j.can_nguoi) this.msg('Cần bạn xử lý thêm trong trình duyệt.', true);
+      else this.setState({ dlLoi: 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') });
+    } catch (e) {
+      this.setState({ dlLoi: (e && e.message) || 'Không đăng nhập được.' });
+    }
+  }
+  async dlChiDangNhap(chon) {
+    const s = this.state;
+    const chonId = s.dlChonId || '';
+    if (s.dlDaLuu && chonId && !(s.dlMatKhau || '')) {
+      await this.dlDangNhapDaLuu(chon, chonId);
+      return;
+    }
+    const email = (s.dlEmail || '').trim();
+    const mk = s.dlMatKhau || '';
+    if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu để đăng nhập.' }); return; }
+    const tk = { email, mat_khau: mk };
+    const otp = (s.dlTotp || '').trim();
+    if (otp) tk.otp = otp;
+    this.dlXoaBiMatKhoiDom();
+    try {
+      await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', {
+        method: 'POST',
+        json: { module_id: chon.id, tai_khoan: [tk], kieu: this.tdLayKieu(chon) }
+      });
+      this.tdTheoDoi();
+    } catch (e) {
+      this.setState({ dlLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' });
+    }
+  }
+  async dlXoa(id) {
+    if ((this.state.dlXoaChon || '') !== id) {
+      this.setState({ dlXoaChon: id }); // lần 1: hỏi lại
+      return;
+    }
+    this.setState({ dlXoaChon: '' }); // lần 2: xoá thật
+    try {
+      await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id), { method: 'DELETE' });
+      await this.taiDlDs();
+      if ((this.state.dlChonId || '') === id) {
+        this.setState({ dlChonId: '', dlEmail: '', dlDaLuu: false });
+      }
+    } catch (e) {
+      this.setState({ dlLoi: (e && e.message) || 'Không xoá được.' });
+    }
+  }
+  async dlLuuTatCa() {
+    const hang = (this.state.tdHangNhap || []).map((h) => ({
+      email: (h.email || '').trim(), mat_khau: h.matKhau || '', totp_secret: (h.otp || '').trim()
+    })).filter((t) => t.email && t.mat_khau);
+    if (!hang.length) { this.setState({ dlLoi: 'Chưa có tài khoản nào để lưu.' }); return; }
+    const tai_khoan = hang.map((t) => {
+      const o = { email: t.email, mat_khau: t.mat_khau };
+      if (t.totp_secret) o.totp_secret = t.totp_secret;
+      return o;
+    });
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu', { method: 'POST', json: { tai_khoan } });
+      await this.taiDlDs();
+      const ok = (j && Array.isArray(j.luu)) ? j.luu.length : 0;
+      const loi = (j && Array.isArray(j.loi)) ? j.loi.length : 0;
+      this.msg('Đã lưu ' + ok + ' tài khoản' + (loi ? ', ' + loi + ' lỗi.' : '.'), loi > 0);
+    } catch (e) {
+      this.setState({ dlLoi: (e && e.message) || 'Không lưu được.' });
+    }
+  }
+  async dlDoiTuDongLai(bat) {
+    this.setState({ dlTuDongLai: !!bat });
+    try {
+      await K.goi('api/tai-khoan/tu-dang-nhap-lai', { method: 'PUT', json: { bat: !!bat } });
+    } catch (e) {
+      this.setState({ dlTuDongLai: !bat, dlLoi: (e && e.message) || 'Không đổi được công tắc.' });
+    }
   }
   layVanBanGop() {
     const vb = (this.state.tdVanBan || '').trim();
@@ -1313,9 +1516,13 @@ class Component extends DCLogic {
           tkThem: mo, f: {}, chonMod: null, tkNhomThem: null, tkLoaiThem: null,
           tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
           tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
-          tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false
+          tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false,
+          dlDs: [], dlChonId: '', dlEmail: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
+          dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
+          dlXoaChon: '', dlMoDS: true, dlTuDongLai: true
         });
         if (mo) this.taiDanhTinh();
+        if (mo) this.taiDlDs();
       }},
       hienNhom, dsNhom, chuaChonNhom, coNhomChon,
       hienLoai, dsLoai, chuaChonLoai, coLoaiChon,
@@ -1326,6 +1533,66 @@ class Component extends DCLogic {
       laTaiKhoan,
       anNutThem: !laApi,
       td,
+      dl: (() => {
+        const dlDs = Array.isArray(s.dlDs) ? s.dlDs : [];
+        const dlEmailTrim = (s.dlEmail || '').trim();
+        const dlCoChungThuc = !!(dlEmailTrim && (s.dlMatKhau || ''));
+        return {
+          moDS: s.dlMoDS !== false,
+          doiMoDS: (e) => { const mo = !!e.target.open; if ((s.dlMoDS !== false) !== mo) this.setState({ dlMoDS: mo }); },
+          dem: String(dlDs.length),
+          tuyChon: dlDs.map((t) => ({
+            id: t.id,
+            nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
+            chon: t.id === s.dlChonId
+          })),
+          chonId: s.dlChonId || '',
+          doiChon: (e) => this.dlDoiChon(e.target.value),
+          email: s.dlEmail || '',
+          doiEmail: (e) => this.setState({ dlEmail: e.target.value, dlChonId: '', dlDaLuu: false }),
+          matKhau: s.dlMatKhau || '',
+          doiMatKhau: (e) => this.setState({ dlMatKhau: e.target.value }),
+          kieuMk: s.dlHienMk ? 'text' : 'password',
+          nhanHienMk: s.dlHienMk ? 'Ẩn' : 'Hiện',
+          doiHienMk: () => this.setState((st) => ({ dlHienMk: !st.dlHienMk })),
+          goiYMatKhau: s.dlDaLuu ? '•••• đã lưu' : 'Mật khẩu',
+          totp: s.dlTotp || '',
+          doiTotp: (e) => this.setState({ dlTotp: e.target.value }),
+          nhan: s.dlNhan || '',
+          doiNhan: (e) => this.setState({ dlNhan: e.target.value }),
+          thieuLuu: !dlCoChungThuc,
+          tatLuuVaDangNhap: !(dlCoChungThuc || s.dlChonId),
+          luuSt: btnSt({}) + 'min-height:44px;',
+          luuVaDangNhapSt: btnSt({ pri: true }) + 'min-height:44px;',
+          chiDangNhapSt: btnSt({}) + 'min-height:44px;',
+          luu: () => this.dlLuu(chon, false),
+          luuVaDangNhap: () => this.dlLuu(chon, true),
+          chiDangNhap: () => this.dlChiDangNhap(chon),
+          dangLuu: !!s.dlDangLuu,
+          coLoi: !!s.dlLoi, loi: s.dlLoi || '',
+          tuDongLai: s.dlTuDongLai !== false,
+          doiTuDongLai: (e) => this.dlDoiTuDongLai(e.target.checked),
+          coTrinhDuyet: td.coDuongTrinhDuyet,
+          duongTrinhDuyet: td.duongTrinhDuyet,
+          nhanTrinhDuyet: td.nhanTrinhDuyet,
+          trinhDuyetSt: btnSt({}) + 'min-height:44px;text-decoration:none;display:inline-flex;align-items:center;',
+          hang: dlDs.map((t) => ({
+            id: t.id,
+            emailChe: t.email_che || '',
+            coNhan: !!(t.nhan || ''),
+            nhan: t.nhan || '',
+            trangThai: t.trang_thai || (t.co_totp ? 'đã lưu · 2FA' : 'đã lưu'),
+            dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
+            dangNhapSt: btnSt({}) + 'min-height:44px;',
+            xoa: () => this.dlXoa(t.id),
+            xoaSt: btnSt({ bad: (s.dlXoaChon || '') === t.id }) + 'min-height:44px;',
+            nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá'
+          })),
+          soHangCoDuLieu: (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length,
+          luuTatCa: () => this.dlLuuTatCa(),
+          luuTatCaSt: btnSt({}) + 'min-height:44px;'
+        };
+      })(),
       fields: trChon.map((t, j) => ({ khoa: t.khoa, nhan: t.nhan || t.khoa, biMat: laBiMat(t), chu: !laBiMat(t), idO: 'them-' + j + '-' + s.lan,
         ph: laBiMat(t) ? 'Dán ' + chuThuong(t.nhan || 'khoá') : (t.mac_dinh != null ? String(t.mac_dinh) : ''),
         val: laBiMat(t) ? '' : (s.f[t.khoa] != null ? String(s.f[t.khoa]) : (ckChon[t.khoa] == null ? '' : String(ckChon[t.khoa]))),
