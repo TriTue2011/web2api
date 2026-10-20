@@ -82,6 +82,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
 | Module `chitieu` (Sổ chi tiêu theo hũ JARS, NV160) | Có — ghi/xem chi tiêu theo kỳ, tự bù hũ vượt theo thứ tự, cổng xác nhận khi vượt tổng ngân sách, cảnh báo ngưỡng, tạm ứng công ty; mỗi danh tính đăng nhập một sổ riêng; port từ c2a; **chưa kiểm với dữ liệu thật** | 20/10/2026 |
+| Module `rclone` (Cầu nối lưu trữ đám mây qua rclone) + dịch vụ `dich-vu/rclone` | Có — liệt kê/đọc/tải về (`liet_ke`, `doc_chu`, `tai_ve`, rủi ro `doc`, mặc định) và tải lên/xoá/chuyển tệp (`gui_len`, `chuyen_tep` rủi ro `ghi`; `xoa` rủi ro `nguy_hiem`) — hành động GHI mặc định TẮT (bật bằng `ghi_bat`), tắt thì báo `chua_bat_ghi` và không gọi mạng; cấu hình rclone ở dịch vụ (0600, API chỉ trả bản đã che), khoá Bearer dịch vụ ≥ 24 ký tự; dịch vụ HTTP nội bộ gọi rclone v1.75.2 trong hộp cát (tập lệnh đóng 16 op, đường cục bộ `resolve()` dưới thư mục làm việc, không bao giờ qua shell, hết giờ 30/600 s, tải lên/xuống ≤ 25 MB, tên tệp hệ thống sinh); địa chỉ dịch vụ kiểm SSRF; kiểm với nhị phân rclone giả + kiểm tĩnh Dockerfile; **chưa kiểm với dịch vụ đám mây thật** (chưa dựng ảnh Docker thật) | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2952,6 +2953,82 @@ với `xac_nhan_vuot_tong: true`.
 - Chưa port phần đọc thư báo biến động (c2a `email_chi.py`): phụ thuộc module `email`
   (NV125/NV154, chưa gộp vào main) — điểm nối đã ghi trong `modules/chitieu/README.md`.
 - Chưa có trang `tab_web` riêng; thao tác qua công cụ C2.
+
+---
+
+### Module rclone — Cầu nối lưu trữ đám mây qua rclone (NV161)
+
+**Mô tả.** Cầu nối liệt kê, đọc, tải về, tải lên, xoá, chuyển tệp trên 150+
+backend của trình rclone (Google Drive, S3/R2, OneDrive, WebDAV, SFTP…) bằng
+cách gọi dịch vụ `dich-vu/rclone` — rclone v1.75.2 chạy trong container riêng
+(HTTP nội bộ, tập lệnh đóng 16 op, đường cục bộ `resolve()` dưới thư mục làm
+việc, không bao giờ qua shell, hết giờ 30/600 s; tạo remote luôn `--obscure --`).
+Khác c2a ở chỗ không nhúng nhị phân vào ảnh lõi. Mã nguồn:
+`modules/rclone/` (module) + `dich-vu/rclone/` (dịch vụ: `server.py` thư viện
+chuẩn, `Dockerfile` riêng ghim digest ảnh nền + SHA-256 rclone từng kiến trúc).
+Tiền tố thực thể: `rclone`. Hạng: `B` (mã tự viết, nhưng chạy nhị phân rclone
+của bên thứ ba ngoài lõi).
+
+**Cần gì.**
+- Container `rclone-bridge` đang chạy (xem `dich-vu/rclone/README.md` từng
+  bước: build ảnh, chạy với mạng nội bộ + công bố `127.0.0.1:8702`, khoá
+  `RCLONE_KHOA`, volume `/data` riêng cho `rclone.conf`).
+- Các kho đám mây: cấu hình rclone nằm ở dịch vụ (`rclone.conf` 0600 trên
+  volume); module không giữ token truy cập.
+- Mạng nội bộ tới dịch vụ (mặc định `http://127.0.0.1:8702`); địa chỉ lúc cài
+  kiểm SSRF ở module (loopback/mạng nội bộ được, link-local chặn).
+- RAM/đĩa: chưa đo (điền `null` theo khuôn).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "rclone"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/rclone`
+3. Cài cấu hình: `POST /api/modules/rclone/cai` với thân
+   `{"cau_hinh": {"dich_vu_url": "http://127.0.0.1:8702",
+   "khoa_dich_vu": "<khoa>", "ghi_bat": "0"}}` — lõi kiểm địa chỉ chống SSRF
+   trước khi lưu.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `dich_vu_url` | Không | Địa chỉ HTTP nội bộ của dịch vụ dich-vu/rclone (mặc định `http://127.0.0.1:8702`). |
+| `khoa_dich_vu` | Có | Khoá Bearer ≥ 24 ký tự của dịch vụ; TỰ ĐẶT khi chạy container; lưu riêng, không API nào trả lại, bị chặn khỏi log. |
+| `ghi_bat` | Không | Bật hành động ghi (`gui_len`, `chuyen_tep`, `xoa`) lên đám mây; mặc định tắt (`"0"`). |
+
+**Thực thể và hành động.**
+
+| Thực thể | Hành động | Rủi ro |
+|---|---|---|
+| `rclone.kho` | `liet_ke`, `doc_chu`, `tai_ve`, `remotes`, `kiem_tra`, `config_xem`, `drive_start` | `doc` |
+| `rclone.ghi` | `gui_len`, `chuyen_tep` | `ghi` (cần `ghi_bat`) |
+| `rclone.ghi` | `xoa`, `them_remote`, `xoa_remote`, `config_ghi`, `drive_exchange`, `luu_khoa_json` | `nguy_hiem` (cần `ghi_bat`) |
+
+`config_xem` luôn trả cấu hình **đã che**; `config_ghi`/`drive_exchange` ghi
+hỏng thì dịch vụ giữ bản cũ. `drive_start` + `drive_exchange` là luồng đăng
+nhập Google Drive bằng mã cấp quyền (không cần dòng lệnh).
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" $W/api/modules/rclone/suc-khoe
+# → {"ok": true, "ghi_bat": false, "dich_vu_url": "http://127.0.0.1:8702"}
+```
+
+**Sự cố thường gặp.**
+- `{"ok": false, "loi": "chua_bat_ghi"}` — hành động ghi/xoá khi `ghi_bat` tắt
+  (mặc định tắt); bật `ghi_bat` = `"1"`.
+- `{"ok": false, "loi": "dich_vu_khong_noi_duoc"}` — container dịch vụ chưa chạy
+  hoặc sai khoá/địa chỉ (đóng khi lỗi, không lộ chi tiết).
+- `khoa_dich_vu_qua_ngan` lúc cài — khoá < 24 ký tự.
+- `dia_chi_dich_vu_khong_hop_le` lúc cài — địa chỉ trỏ vào dải bị chặn (SSRF).
+
+**Giới hạn.**
+- Chưa kiểm với dịch vụ đám mây thật (chỉ nhị phân giả); chưa đo RAM/đĩa
+  container phụ; chưa dựng ảnh Docker thật trong hộp cát (không có daemon).
+- `tai_ve`/`gui_len` qua API ≤ 25 MB; `doc_chu` ≤ 2 MB văn bản.
+- Cấu hình rclone là bề mặt nhạy cảm nhất: volume `/data` không nên sao lưu
+  chung hay chia sẻ.
 
 ---
 
