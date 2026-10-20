@@ -1,8 +1,11 @@
-/* Trang «YouTube phát» — NV153 đợt C.
+/* Trang «YouTube phát» — NV153 đợt C (NV181: tách thực thể theo rủi ro).
  *
  * Mọi lời gọi đi qua máy chủ: giao diện gọi hành động của module bằng đường lõi
- * POST /api/thiet-bi/youtube_phat.dieu_khien/hanh-dong (chuẩn C1, phiên quản trị
- * + CSRF như trang vnc-xa). Khoá dịch vụ KHÔNG ra trình duyệt, không lưu ở đâu;
+ * POST /api/thiet-bi/<thực thể>/hanh-dong (chuẩn C1, phiên quản trị
+ * + CSRF như trang vnc-xa). Hành động ĐỌC (tim/trang_thai/danh_sach_playlist)
+ * đi qua thực thể «youtube_phat.xem» (rủi ro «doc»); hành động ĐIỀU KHIỂN +
+ * `lay_khoa` đi qua «youtube_phat.dieu_khien» (rủi ro «ghi»). Khoá dịch vụ
+ * KHÔNG ra trình duyệt, không lưu ở đâu;
  * chỉ khi quản trị bấm «Chép token» mới gọi `lay_khoa` một lần rồi chép ngay.
  *
  * Mọi dữ liệu ngoài (tên bài, kênh, tên loa…) đều qua esc() + textContent —
@@ -21,6 +24,8 @@ function esc(giaTri) {
 
 (function () {
   const THUC_THE = "youtube_phat.dieu_khien";
+  const THUC_THE_XEM = "youtube_phat.xem";
+  const HANH_DONG_DOC = new Set(["tim", "trang_thai", "danh_sach_playlist"]);
   const $ = (id) => document.getElementById(id);
 
   function the(ten, lop, chu) {
@@ -84,7 +89,8 @@ function esc(giaTri) {
   }
 
   async function hanhDong(ten, thamSo) {
-    const kq = await goi("api/thiet-bi/" + THUC_THE + "/hanh-dong",
+    const thucThe = HANH_DONG_DOC.has(ten) ? THUC_THE_XEM : THUC_THE;
+    const kq = await goi("api/thiet-bi/" + thucThe + "/hanh-dong",
       { hanh_dong: ten, tham_so: thamSo || {} });
     if (!kq.r.ok) throw new Error(loiCua(kq));
     const du = kq.du || {};

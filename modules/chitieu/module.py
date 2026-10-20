@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +142,7 @@ class Module:
         return None
 
     # ── thực thể / hành động ──────────────────────────────────────────────
-    def thuc_the(self, loc=None) -> list[dict]:
+    async def thuc_the(self, loc=None) -> list[dict]:
         doc = {"id": _ID_DOC, "ten": "Chi tiêu — xem (ngân sách, lịch sử, thống kê, cảnh báo)",
                "loai": "cong_cu", "thuoc_tinh": {"du_lieu": "cuc_bo"},
                "tinh_nang": _DOC, "rui_ro_mac_dinh": "doc"}
@@ -149,6 +150,16 @@ class Module:
                "loai": "cong_cu", "thuoc_tinh": {"du_lieu": "cuc_bo"},
                "tinh_nang": _GHI, "rui_ro_mac_dinh": "ghi"}
         return [doc, ghi]
+
+    async def trang_thai(self, ids) -> dict:
+        """Trạng thái THẬT tại thời điểm gọi (hợp đồng C1): module thuần cục
+        bộ — sẵn sàng khi thư mục dữ liệu của module đã mở được (self._goc có
+        sau `nap`); chưa nạp xong thì báo «chua_cai». KHÔNG nhúng số tiền/số
+        dư vào trạng thái (dữ liệu tài chính chỉ ra qua hành động có kiểm
+        quyền)."""
+        luc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        gia_tri = "san_sang" if getattr(self, "_goc", None) else "chua_cai"
+        return {str(i): {"gia_tri": gia_tri, "luc": luc} for i in (ids or [])}
 
     def _so_id(self, danh_tinh: dict | None) -> int:
         """so_id ràng buộc theo danh tính: có danh tính → sổ của danh tính (tạo khi mở lần đầu);

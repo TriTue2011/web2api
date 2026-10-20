@@ -5,8 +5,11 @@ khoẻ dịch vụ `dich-vu/youtube-phat` (HTTP nội bộ/LAN). Bản thân mod
 phát nhạc và KHÔNG gọi ra youtube.com — dịch vụ mới là nơi gọi ra ngoài
 (youtube.com/googlevideo.com/ytimg.com/zingmp3.vn).
 
-`thuc_the()` mô tả một thực thể `cong_cu` (URL gốc để dán vào Home Assistant
-+ khoá che dạng `…abcd`) và khai 10 hành động gọi qua dịch vụ (đợt C + D4):
+`thuc_the()` mô tả HAI thực thể `cong_cu` tách theo rủi ro (NV181):
+`youtube_phat.xem` (đọc: tìm/trạng thái/playlist) và
+`youtube_phat.dieu_khien` (ghi: phát/dừng/chuyển bài/tua/nhập mã/lấy khoá),
+mang URL gốc để dán vào Home Assistant + khoá che dạng `…abcd`, và khai
+10 hành động gọi qua dịch vụ (đợt C + D4):
 `tim`, `phat_len_loa`, `dung_phien`, `trang_thai`, `danh_sach_playlist`,
 `nhap_ma_chia_se`, `lay_khoa`. Giao diện web của module
 (`web/index.html`, khai `tab_web` trong manifest) gọi các hành động này qua
@@ -40,7 +43,9 @@ Hợp đồng lõi (đọc từ app/kham_pha.py, app/so_module.py — không đo
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 import httpx
 
@@ -51,8 +56,16 @@ log = logging.getLogger(__name__)
 #: Hết giờ hỏi sức khoẻ dịch vụ (giây).
 HET_GIO_SUC_KHOE = 10.0
 
-#: Địa chỉ dịch vụ mặc định (trùng manifest).
-URL_MAC_DINH = "http://127.0.0.1:8713"
+#: Địa chỉ dịch vụ mặc định. NV181: BỎ mặc định «http://127.0.0.1:8713»
+#: cũ — lõi chạy trong container nên `kiem_url_lan` của lõi CHẶN loopback
+#: ngay lúc cài (chỉ nới cho test qua WEB2API_TEST_CHO_PHEP_LOOPBACK), vì
+#: vậy mặc định cũ khiến module KHÔNG BAO GIỜ cài được. Nay trường là BẮT
+#: BUỘC (manifest `bat_buoc: true`, `mac_dinh: null`): quản trị nhập địa
+#: chỉ LAN của máy chạy dịch vụ (vd http://192.168.1.10:8713) hoặc tên
+#: container trong mạng Docker nội bộ (vd http://youtube-phat:8713).
+#: Rỗng = chưa cấu hình; `cai` từ chối kèm hướng dẫn, không âm thầm dùng
+#: địa chỉ loopback chết.
+URL_MAC_DINH = ""
 
 #: Khoá đang dùng — bộ lọc log chặn mọi dòng của thư viện HTTP chứa một trong các chuỗi này.
 _KHOA_DANG_DUNG: set[str] = set()
@@ -268,6 +281,19 @@ _TINH_NANG = [
     },
 ]
 
+#: NV181 — tách hành động theo rủi ro để tách THỰC THỂ: lõi tính rủi ro
+#: HIỆU LỰC theo TỪNG thực thể (app/thiet_bi.py::tinh_rui_ro_hieu_luc), nên
+#: một thực thể duy nhất «ghi» khiến cả thao tác đọc cũng bị nâng rủi ro +
+#: vào cổng xác nhận. Hành động ĐỌC (không đổi trạng thái ở dịch vụ) đi
+#: qua thực thể «xem»; hành động đổi trạng thái + `lay_khoa` qua
+#: «dieu_khien». `trang_thai` ở đây là HÀNH ĐỘNG đọc trạng thái phát —
+#: khác hàm `trang_thai(ids)` của hợp đồng C1 ở dưới.
+_HANH_DONG_DOC = {"tim", "trang_thai", "danh_sach_playlist"}
+_HANH_DONG_GHI = {t["hanh_dong"] for t in _TINH_NANG} - _HANH_DONG_DOC
+_TINH_NANG_XEM = [t for t in _TINH_NANG if t["hanh_dong"] in _HANH_DONG_DOC]
+_TINH_NANG_DIEU_KHIEN = [t for t in _TINH_NANG
+                         if t["hanh_dong"] in _HANH_DONG_GHI]
+
 
 class Module:
     """Điều khiển máy phát YouTube/Zing qua dịch vụ youtube-phat."""
@@ -297,6 +323,19 @@ class Module:
         ra ngoài chỉ dạng che …abcd."""
         cau_hinh = cau_hinh or {}
         url = str(cau_hinh.get("dich_vu_url") or URL_MAC_DINH)
+        if not url.strip():
+            # NV181: không còn mặc định loopback (bị chính lõi chặn khi
+            # cài) — thiếu địa chỉ thì từ chối NGAY kèm hướng dẫn nhập.
+            return {"ok": False,
+                    "loi": ("chưa nhập «Địa chỉ dịch vụ» — nhập địa chỉ LAN "
+                            "của máy chạy dịch vụ (ví dụ "
+                            "http://192.168.1.10:8713) hoặc tên container "
+                            "trong mạng Docker nội bộ (ví dụ "
+                            "http://youtube-phat:8713). KHÔNG nhập "
+                            "127.0.0.1/localhost: lõi chạy trong container "
+                            "nên địa chỉ loopback trỏ vào chính container "
+                            "và bị chặn."),
+                    "ket_qua_tung_khoa": []}
         try:
             url_sach = await kiem_url_lan(url)
         except ValueError as e:
@@ -317,6 +356,10 @@ class Module:
     async def suc_khoe(self) -> dict:
         """Hỏi GET <url>/api/integration/health của dịch vụ. Lỗi → dict
         «chưa kết nối được: <lý do>», KHÔNG ném; lý do không chứa khoá."""
+        if not self._url:
+            return {"ok": False,
+                    "loi": "chưa cấu hình «Địa chỉ dịch vụ» (xem hướng dẫn ở trường cấu hình)",
+                    "dich_vu_url": self._url}
         url = f"{self._url}/api/integration/health"
         try:
             async with httpx.AsyncClient(timeout=HET_GIO_SUC_KHOE) as khach:
@@ -351,30 +394,64 @@ class Module:
     # ── thực thể: mô tả + 10 hành động qua dịch vụ ─────────────────────────
 
     async def thuc_the(self, loc=None) -> list[dict]:
-        """Một thực thể cong_cu: URL gốc để dán vào Home Assistant + khoá che
-        …abcd, kèm 10 hành động gọi qua dịch vụ (khoá Bearer chỉ đi ở phía
-        server, không ra trình duyệt — trừ `lay_khoa` khi quản trị bấm
-        «Chép token» có chủ đích)."""
-        return [{
-            "id": f"{self.tien_to}.dieu_khien",
-            "ten": "Máy phát YouTube/Zing (qua dịch vụ youtube-phat)",
-            "loai": "cong_cu",
-            "thuoc_tinh": {
-                "dich_vu": "youtube-phat",
-                "dich_vu_url": self._url,
-                "khoa": _che_khoa(self._khoa),
-                "ghi_chu": ("URL gốc để dán vào tích hợp Home Assistant; "
-                            "khoá đầy đủ bấm «Chép token» trên tab YouTube phát, "
-                            "hoặc đọc tệp integration_token trong "
-                            "/data/youtube_phat của dịch vụ."),
+        """HAI thực thể cong_cu tách theo rủi ro (NV181): `xem` giữ các hành
+        động ĐỌC (tìm/trạng thái/playlist — lõi giữ mức «doc»), `dieu_khien`
+        giữ các hành động đổi trạng thái + `lay_khoa` (mức «ghi»). Lõi tính
+        rủi ro hiệu lực theo từng thực thể, nên gộp chung sẽ nâng rủi ro
+        cả thao tác đọc vô hại. Mỗi thực thể đều mang URL gốc để dán vào
+        Home Assistant + khoá che dạng …abcd (khoá Bearer đầy đủ chỉ đi
+        ở phía server, không ra trình duyệt — trừ `lay_khoa` khi quản trị
+        bấm «Chép token» có chủ đích)."""
+        mo_ta_chung = ("Điều khiển máy phát YouTube/Zing qua dịch vụ "
+                       "dich-vu/youtube-phat (HTTP nội bộ/LAN). Bản thân module "
+                       "không phát nhạc; tìm/phát/dừng do dịch vụ đảm nhiệm, "
+                       "tạm dừng/tiếp tục loa do tích hợp Home Assistant đảm nhiệm.")
+        thuoc_tinh_chung = {
+            "dich_vu": "youtube-phat",
+            "dich_vu_url": self._url,
+            "khoa": _che_khoa(self._khoa),
+            "ghi_chu": ("URL gốc để dán vào tích hợp Home Assistant; "
+                        "khoá đầy đủ bấm «Chép token» trên tab YouTube phát, "
+                        "hoặc đọc tệp integration_token trong "
+                        "/data/youtube_phat của dịch vụ."),
+        }
+        return [
+            {
+                "id": f"{self.tien_to}.xem",
+                "ten": "Máy phát YouTube/Zing — xem (tìm bài, trạng thái, playlist)",
+                "loai": "cong_cu",
+                "thuoc_tinh": dict(thuoc_tinh_chung),
+                "mo_ta": mo_ta_chung,
+                "tinh_nang": _TINH_NANG_XEM,
+                "rui_ro_mac_dinh": "doc",
             },
-            "mo_ta": ("Điều khiển máy phát YouTube/Zing qua dịch vụ "
-                      "dich-vu/youtube-phat (HTTP nội bộ/LAN). Bản thân module "
-                      "không phát nhạc; tìm/phát/dừng do dịch vụ đảm nhiệm, "
-                      "tạm dừng/tiếp tục loa do tích hợp Home Assistant đảm nhiệm."),
-            "tinh_nang": _TINH_NANG,
-            "rui_ro_mac_dinh": "ghi",
-        }]
+            {
+                "id": f"{self.tien_to}.dieu_khien",
+                "ten": "Máy phát YouTube/Zing (qua dịch vụ youtube-phat)",
+                "loai": "cong_cu",
+                "thuoc_tinh": dict(thuoc_tinh_chung),
+                "mo_ta": mo_ta_chung,
+                "tinh_nang": _TINH_NANG_DIEU_KHIEN,
+                "rui_ro_mac_dinh": "ghi",
+            },
+        ]
+
+    async def trang_thai(self, ids) -> dict:
+        """Trạng thái THẬT tại thời điểm gọi (hợp đồng C1 — lõi `await
+        m.trang_thai(ids)`): hỏi một lần hành động `trang_thai` của dịch
+        vụ, quy về gia_tri tối thiểu cho lõi (đang phát/dừng/chua_ket_noi).
+        Không nhúng khoá hay chi tiết dư thừa. Hết giờ 4,5 giây — vừa trong
+        trần 5 giây của lõi, vừa tránh treo khi dịch vụ ngủ."""
+        luc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        gia_tri = "chua_ket_noi"
+        if self._url:
+            try:
+                kq = await asyncio.wait_for(self._hd_trang_thai(), 4.5)
+                if isinstance(kq, dict) and kq.get("ok"):
+                    gia_tri = str(kq.get("trang_thai") or "unknown")
+            except Exception:  # noqa: BLE001 — trạng thái là gợi ý, lỗi giữ mặc định
+                gia_tri = "chua_ket_noi"
+        return {str(i): {"gia_tri": gia_tri, "luc": luc} for i in (ids or [])}
 
     async def _goi_dich_vu(self, method: str, path: str,
                            params: dict | None = None,
@@ -383,6 +460,9 @@ class Module:
 
         Ném LoiDichVu với thông điệp sạch (không khoá, không thân lạ) khi
         không nối được hoặc khoá bị từ chối."""
+        if not self._url:
+            raise LoiDichVu("chưa cấu hình «Địa chỉ dịch vụ» — nhập địa chỉ "
+                            "LAN hoặc tên container của dịch vụ")
         if not self._khoa:
             raise LoiDichVu("chưa cấu hình «Khoá Integration API» của dịch vụ")
         url = f"{self._url}{path}"
@@ -562,9 +642,18 @@ class Module:
                 "seek_url": than.get("seek_url")}
 
     async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
-        """Điều phối 10 hành động đợt C+D qua dịch vụ. Lỗi dịch vụ → dict
-        {"ok": False, "loi": <sạch>}, KHÔNG ném, KHÔNG lộ khoá."""
+        """Điều phối 10 hành động đợt C+D qua dịch vụ (định tuyến theo id
+        thực thể — NV181). Lỗi dịch vụ → dict {"ok": False, "loi": <sạch>},
+        KHÔNG ném, KHÔNG lộ khoá."""
         tham_so = dict(tham_so or {})
+        xem_id = f"{self.tien_to}.xem"
+        dieu_khien_id = f"{self.tien_to}.dieu_khien"
+        if id not in (xem_id, dieu_khien_id):
+            return {"ok": False, "loi": "khong_thay_thuc_the"}
+        if id == xem_id and hanh_dong not in _HANH_DONG_DOC:
+            return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
+        if id == dieu_khien_id and hanh_dong not in _HANH_DONG_GHI:
+            return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
         try:
             if hanh_dong == "tim":
                 return await self._hd_tim(tham_so)

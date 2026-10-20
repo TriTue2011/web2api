@@ -20,12 +20,17 @@ dạng che `…abcd`.
 
 | Trường | Giá trị |
 |---|---|
-| Địa chỉ dịch vụ youtube-phat | `http://<địa-chỉ-lan-của-dịch-vụ>:8713` (mặc định `http://127.0.0.1:8713`) |
+| Địa chỉ dịch vụ youtube-phat | `http://<địa-chỉ-lan-của-dịch-vụ>:8713` — **bắt buộc, không có mặc định** |
 | Khoá Integration API | nội dung tệp `integration_token` ở bước 2 |
 
 Địa chỉ được kiểm chống SSRF bằng bộ kiểm chung của lõi
-(`app/tu_xa.py`): loopback/LAN nội bộ được chấp nhận, link-local
+(`app/tu_xa.py`): LAN nội bộ được chấp nhận, link-local
 (169.254.x.x), địa chỉ không định tuyến và scheme lạ bị từ chối.
+**Loopback (`127.0.0.1`/`localhost`) BỊ CHẶN** (NV181): lõi chạy trong
+container nên loopback trỏ vào chính container lõi, không tới được dịch
+vụ — các bản trước có mặc định `http://127.0.0.1:8713` khiến module không
+bao giờ cài được. Nếu dịch vụ chạy cùng mạng Docker với lõi, nhập tên
+container (ví dụ `http://youtube-phat:8713`).
 
 **Bước 4 — Kiểm tra.** Bấm nút **«Kiểm tra»** trên ô module (gọi
 `GET /api/modules/youtube-phat/suc-khoe`): `{"ok": true, ...}` nghĩa là nối
@@ -57,10 +62,13 @@ thể media_player của module home-assistant), «Bài kế»/«Bài trước»
 đợi + thanh tua tới giây (đợt D4); (6) «Hàng đợi» của phiên.
 
 Giao diện gọi 10 hành động của module qua đường lõi
-`POST /api/thiet-bi/youtube_phat.dieu_khien/hanh-dong` (chuẩn C1 — lõi đã có
-cơ chế, đợt C không sửa lõi): `tim`, `phat_len_loa`, `dung_phien`,
-`trang_thai`, `danh_sach_playlist`, `nhap_ma_chia_se`, `lay_khoa`, cộng
-`bai_ke`, `bai_truoc`, `tua` (đợt D4). Mọi tham số
+`POST /api/thiet-bi/<thực thể>/hanh-dong` (chuẩn C1 — lõi đã có
+cơ chế, đợt C không sửa lõi). NV181 tách HAI thực thể theo rủi ro (lõi
+tính rủi ro theo thực thể): hành động ĐỌC `tim`, `trang_thai`,
+`danh_sach_playlist` đi qua `youtube_phat.xem` (rủi ro `doc`); hành động
+điều khiển `phat_len_loa`, `dung_phien`, `nhap_ma_chia_se`, `lay_khoa`,
+`bai_ke`, `bai_truoc`, `tua` (đợt D4) đi qua `youtube_phat.dieu_khien`
+(rủi ro `ghi`). Mọi tham số
 được lõi kiểm theo lược đồ (SEC-004a); vì đợt C thêm `tinh_nang`, lần đầu dùng
 quản trị phải **xác nhận thực thể một lần** ở Hệ thống → Thiết bị (SEC-004f) —
 giao diện báo rõ khi gặp 409.

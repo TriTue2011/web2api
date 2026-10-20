@@ -800,7 +800,7 @@ class Module:
             "rui_ro_mac_dinh": "ghi",
         }
 
-    def thuc_the(self, loc=None) -> list[dict]:
+    async def thuc_the(self, loc=None) -> list[dict]:
         doc = {
             "id": f"{self.tien_to}.office_doc",
             "ten": "Công cụ đọc tài liệu văn phòng (office_*)",
@@ -819,7 +819,7 @@ class Module:
         }
         return [doc, ghi, self._thuc_the_ocr()]
 
-    def trang_thai(self, ids) -> dict:
+    async def trang_thai(self, ids) -> dict:
         luc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         ra = {}
         for id_ in ids or []:
@@ -848,7 +848,7 @@ class Module:
         # Hành động ngoài tập office_* → từ chối TRƯỚC khi gọi mạng.
         if not isinstance(hanh_dong, str) or not hanh_dong.startswith("office_"):
             return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
-        thuc_the = {e["id"]: e for e in self.thuc_the()}
+        thuc_the = {e["id"]: e for e in await self.thuc_the()}
         muc = thuc_the.get(id)
         if muc is None or id == f"{self.tien_to}.ocr_va_soan_thao":
             return {"ok": False, "loi": "khong_thay_thuc_the"}

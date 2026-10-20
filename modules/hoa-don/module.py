@@ -41,6 +41,7 @@ import binascii
 import difflib
 import io
 import re
+import time
 import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
@@ -721,7 +722,7 @@ class Module:
         return None
 
     # ── thực thể / hành động ────────────────────────────────────────────────
-    def thuc_the(self, loc: dict | None = None) -> list[dict]:
+    async def thuc_the(self, loc: dict | None = None) -> list[dict]:
         return [{
             "id": f"{self.tien_to}.cong_cu",
             "ten": "Công cụ đối chiếu hoá đơn điện tử (XML TT78) với bảng danh mục",
@@ -737,6 +738,13 @@ class Module:
             ],
             "rui_ro_mac_dinh": "doc",
         }]
+
+    async def trang_thai(self, ids) -> dict:
+        """Trạng thái THẬT tại thời điểm gọi (hợp đồng C1): module thuần
+        tính toán trong bộ nhớ, không giữ trạng thái ngoài — luôn sẵn sàng
+        khi đã được nạp."""
+        luc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        return {str(i): {"gia_tri": "san_sang", "luc": luc} for i in (ids or [])}
 
     def _lay_hoa_don(self, tham_so: dict, *, ten_goi_y: list[str] | None = None) -> dict:
         """Lấy hoá đơn từ xml (ưu tiên) hoặc van_ban_pdf; lỗi → {"loi": ...}. ``ten_goi_y`` là
@@ -778,7 +786,7 @@ class Module:
         tham_so = tham_so or {}
         if not isinstance(tham_so, dict):
             return {"ok": False, "loi": "tham_so_sai_kieu"}
-        muc = {e["id"]: e for e in self.thuc_the()}.get(id)
+        muc = {e["id"]: e for e in await self.thuc_the()}.get(id)
         if muc is None:
             return {"ok": False, "loi": "khong_thay_thuc_the"}
         if hanh_dong not in {"doc_hoa_don", "doi_chieu_hoa_don"}:
