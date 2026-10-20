@@ -72,6 +72,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
 | `zalo-bot` — kênh Zalo Bot hai chiều (chuẩn `kenh_ra` + nhận tin qua webhook của lõi, chuẩn `tin_vao` NV117): gửi ra mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định»), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô; nhận vào phiên dịch payload Zalo (`result.message`) → tin chuẩn, nhiều bot chung một URL webhook nên ánh xạ `chat.id` → đích đã khai, chat lạ bị bỏ (đếm `bo_qua_chat_la`) | Có — kiểm với Zalo giả cục bộ (NV114 chiều gửi, NV117 chiều nhận); **chưa kiểm với Zalo thật** | 19/10/2026 |
 | Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
+| Module `khoa-cua` (khoá cửa Tuya qua Open API — thiết bị nhà, chuẩn C1): trạng thái khoá + nhật ký mở/đóng + học tên người từ mã mở; mở khoá LUÔN `nguy_hiem` theo cấu trúc, quản trị phải qua cửa sổ xác nhận lại (mã dùng một lần, hết hạn 120 giây), mọi lần mở ghi nhật ký bất biến, điều khiển mặc định TẮT | Có — kiểm với khoá giả + MockTransport (NV169); **chưa kiểm với khoá cửa thật** | 20/10/2026 |
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
 | Module `doc-viettat` (Chuẩn hoá chữ để đọc tiếng Việt chuẩn OpenAI / TTS, chuẩn C2 `thiet_bi`) | Có — chuẩn hoá văn bản tiếng Việt sang dạng đọc cho TTS: số, đơn vị tập đóng SI, viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng), phân biệt tên người/ngữ cảnh thường, tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji; trần 20.000 ký tự, chống ReDoS; thuần Python, không mạng | 18/10/2026 |
@@ -2591,6 +2592,29 @@ khi trang sạch. Mọi hành động «giải» đều bị từ chối theo c�
 - Không giúp người dùng vượt thử thách tự động — đó là hàng rào cố ý.
 
 ---
+### Module khoa-cua — Khoá cửa thông minh Tuya (NV169)
+
+**Mô tả.** Khoá cửa Tuya qua Tuya IoT Open API (đám mây): đọc trạng thái khoá
+(sadow properties — mã DP khai trong cấu hình, mặc định `lock_motor_state`),
+nhật ký mở/đóng (`/v1.0/devices/{id}/door-lock/open-logs`) và học tên người
+từ mã mở («fingerprint#11» → dạy tên «Con trai»). Mã nguồn:
+`modules/khoa-cua/` (`module.py` + `dam_may.py` — chữ ký HMAC-SHA256 và quy
+trình token port từ c2a `services/tuya_nha.py`; logic cách mở/học tên port từ
+c2a `services/khoa_cua_nha.py`, commit d879b03). Hạng: `A` (mã của dự án).
+Tiền tố thực thể: `khoa_cua`.
+
+**Hàng rào an toàn.**
+- Thực thể `khoa_cua.khoa_chinh` khai `rui_ro_mac_dinh: nguy_hiem` theo cấu
+  trúc: mở khoá bắt quản trị + `xac_nhan: true` (cổng SEC-004 của lõi); khách
+  / mô hình / kênh vào chỉ đi vào hàng chờ phê duyệt.
+- Module bắt thêm cửa sổ xác nhận lại riêng: «chuan_bi_mo» cấp mã xác nhận
+  dùng một lần, gắn đúng quản trị, hết hạn 120 giây; đường hàng chờ của lõi
+  không dùng được cho «mo_khoa» vì không kèm mã — quản trị dùng đường trực
+  tiếp. Mọi lần chuẩn bị/mở/đóng ghi `nhat-ky-bat-bien.jsonl` (0600, chỉ ghi
+  thêm): ai, từ đâu, lúc nào.
+- Điều khiển mặc định TẮT (`cho_phep_dieu_khien=tat`, chỉ đọc). Mã lệnh
+  mở/đóng do chủ máy khai rõ (`lenh_mo`/`lenh_dong` JSON) — module không đoán
+  mã DP. **Chưa kiểm với khoá cửa thật.**
 
 ### Module doc-ma-hop-thu — Đọc mã xác minh từ Gmail (chỉ đọc)
 

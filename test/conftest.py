@@ -26,7 +26,7 @@ if str(GOC_WEB2API) not in sys.path:
 #: «router» là từ kỹ thuật (APIRouter của FastAPI) — lộ ra từ nhãn đầu «router» của host router.project-osrm.org trong mang_ra.
 #: «hoa_don» (tiền tố module hoa-don) là cụm từ tiếng Việt thông dụng, trùng đoạn của «khoa_dong_bo» trong lõi khi dò theo chuỗi con.
 #: Tên đầy đủ của module («home-assistant», «van-phong», «youtube-phat», «lich-ics») và tiền tố vẫn bị quét bình thường.
-MANH_TU_THONG_DUNG = frozenset({"assistant", "dich", "hoa_don", "lich", "open", "phat", "phong", "router", "song", "tien"})
+MANH_TU_THONG_DUNG = frozenset({"assistant", "dich", "hoa_don", "khoa", "lich", "open", "phat", "phong", "router", "song", "tien"})
 
 #: Biến môi trường dùng chung cho test trong tiến trình VÀ tiến trình uvicorn con (test_web2api_kiem_nghiem).
 MOI_TRUONG_CHAN_MANG = {
