@@ -144,6 +144,12 @@
         dong.type = 'button';
         dong.addEventListener('click', () => dongWs(w));
         nut.append(dong);
+      } else {
+        const nhan = the('button', 'nut nut-nho nhan', 'Nhận làm tài khoản');
+        nhan.type = 'button';
+        nhan.title = 'Gắn workspace đã đóng vào một danh tính để dùng ở trang AI';
+        nhan.addEventListener('click', () => moFormNhan(o, w));
+        nut.append(nhan);
       }
       o.append(dau, the('p', 'ws-id', w.ho_so), nut);
       const lk = lienKet[w.ho_so];
@@ -214,6 +220,52 @@
       $('ten').value = '';
       await napWs();
       thongBao('Đã tạo hồ sơ riêng. Bấm Mở để đăng nhập.', 'tot');
+    });
+  }
+
+  // ── nhận workspace đã đóng làm tài khoản (gắn vào danh tính của lõi) ──
+  function moFormNhan(o, w) {
+    if (o.querySelector('.form-nhan')) return;
+    const f = the('form', 'form-nhan');
+    f.noValidate = true;  // kiểm khuôn ở JS để báo lỗi chung một chỗ, không để trình duyệt tự chặn sự kiện submit
+    const lb = the('label', '', 'Email của tài khoản đã đăng nhập trong workspace này');
+    const oEmail = document.createElement('input');
+    oEmail.className = 'o';
+    oEmail.type = 'email';
+    oEmail.maxLength = 254;
+    oEmail.autocomplete = 'off';
+    oEmail.spellcheck = false;
+    lb.append(oEmail);
+    const ok = the('button', 'nut nut-chinh nut-nho nhan-luu', 'Nhận');
+    ok.type = 'submit';
+    const huy = the('button', 'nut nut-nho', 'Huỷ');
+    huy.type = 'button';
+    const ketQua = the('p', 'phu ket-qua-nhan', '');
+    ketQua.setAttribute('aria-live', 'polite');
+    huy.addEventListener('click', () => f.remove());
+    f.addEventListener('submit', (e) => { e.preventDefault(); nhanTaiKhoan(w, oEmail.value.trim(), ketQua); });
+    f.append(lb, ok, huy, ketQua);
+    o.append(f);
+    oEmail.focus();
+  }
+
+  function nhanTaiKhoan(w, email, ketQua) {
+    chay(async () => {
+      if (!MAU_HO_SO.test(w.ho_so)) throw new Error('Mã workspace không hợp lệ.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Email không hợp lệ.');
+      ketQua.textContent = 'Đang nhận…';
+      const kq = await goi('api/danh-tinh/nhan-ho-so', { ho_so: w.ho_so, email });
+      const du = kq.du;
+      if (kq.r.ok && du && du.danh_tinh) {
+        const tt = du.trang_thai_dang_nhap === 'dang_nhap'
+          ? 'phiên đăng nhập đã kiểm được' : 'chưa kiểm được phiên đăng nhập';
+        ketQua.textContent = 'Đã nhận làm tài khoản «' + du.danh_tinh.email + '» (' + tt + '). '
+          + 'Bước kế: Hệ thống → AI → Thêm tài khoản → Qua danh tính để dùng.';
+        thongBao('Đã nhận workspace làm tài khoản.', 'tot');
+      } else {
+        ketQua.textContent = '';
+        throw new Error(loiCua(kq));
+      }
     });
   }
 

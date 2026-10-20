@@ -269,6 +269,58 @@ def cap_nhat_trang_thai(id_: str, trang_thai: str | None = None,
         return ban_ghi_cong_khai(tim)
 
 
+def nhan_ho_so(ho_so: str, email: Any, nhan: Any = None,
+               trang_thai: str = "chua_dang_nhap") -> tuple[dict[str, Any], bool]:
+    """«Nhận workspace làm tài khoản» (NV155c): gắn hồ sơ trình duyệt ĐÃ ĐÓNG vào
+    danh tính của `email`, trong MỘT vùng găng — chống IDOR/cướp hồ sơ:
+
+    - Hồ sơ đã gắn với danh tính KHÁC → 409 `ho_so_da_gan` (không cướp).
+    - Email đã có danh tính gắn hồ sơ KHÁC → 409 `email_da_gan_ho_so_khac`.
+    - Email có danh tính chưa gắn hồ sơ → gắn (kèm trạng thái mới kiểm) —
+      da_co_san=True; đã gắn ĐÚNG hồ sơ này → luỹ đẳng, chỉ cập nhật trạng thái.
+    - Email chưa có danh tính → tạo mới kèm hồ sơ + trạng thái — da_co_san=False.
+
+    `ho_so` phải ĐÃ qua `MAU_HO_SO_TRINH_DUYET` ở biên (route kiểm trước khi gọi);
+    `trang_thai` phải thuộc TRANG_THAI_DANG_NHAP. Trả (bản ghi công khai, da_co_san).
+    Lỗi 409 không nêu email/hồ sơ của danh tính khác vào thông báo.
+    """
+    email_chuan = chuan_hoa_email(email)
+    nhan_chuan = kiem_nhan(nhan)
+    if trang_thai not in TRANG_THAI_DANG_NHAP:
+        raise LoiOpenAI(400, "«trang_thai» không hợp lệ.", code="invalid_value")
+    with _KHOA_LUONG:
+        ds = _doc()
+        for d in ds:
+            if d.get("ho_so_trinh_duyet") == ho_so and d.get("email") != email_chuan:
+                raise LoiOpenAI(
+                    409, "Hồ sơ trình duyệt này đã gắn với một danh tính khác.",
+                    loai="invalid_request_error", code="ho_so_da_gan")
+        for d in ds:
+            if d.get("email") == email_chuan:
+                hs = d.get("ho_so_trinh_duyet") or ""
+                if hs and hs != ho_so:
+                    raise LoiOpenAI(
+                        409, "Email này đã gắn với một hồ sơ trình duyệt khác.",
+                        loai="invalid_request_error", code="email_da_gan_ho_so_khac")
+                if not hs:
+                    d["ho_so_trinh_duyet"] = ho_so
+                d["trang_thai_dang_nhap"] = trang_thai
+                _ghi(ds)
+                return ban_ghi_cong_khai(d), True
+        ban_ghi = {
+            "id": _id_tu_email(email_chuan),
+            "email": email_chuan,
+            "nhan": nhan_chuan,
+            "ngay_tao": kho.bay_gio_iso(),
+            "gan": [],
+            "trang_thai_dang_nhap": trang_thai,
+            "ho_so_trinh_duyet": ho_so,
+        }
+        ds.append(ban_ghi)
+        _ghi(ds)
+        return ban_ghi_cong_khai(ban_ghi), False
+
+
 def xoa(id_: str) -> bool:
     """Xoá danh tính. Còn tài khoản provider trỏ tới → 409 `con_tai_khoan` kèm danh sách
     module (tránh mồ côi). Không thấy → 404."""

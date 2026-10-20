@@ -2872,6 +2872,98 @@ async def go_danh_tinh_theo_module(request: Request):
     return {"ok": True, "da_go": dem}
 
 
+async def _kiem_tin_hieu_dang_nhap(request_hoac_app: Any, ho_so: str) -> bool:
+    """Kiểm TÍN HIỆU phiên của một hồ sơ trình duyệt bằng QUY_TAC_TIN_HIEU của
+    module có khả năng «dang_nhap_danh_tinh» (NV155c).
+
+    Cơ chế SẴN CÓ (NV94-b): module khai quy tắc cấu trúc qua `quy_tac_tin_hieu()`,
+    bộ điều khiển của dịch vụ trình duyệt thực thi (`tin_hieu(quy_tac)`) — lõi
+    không tự viết bộ dò thứ hai. Trả True CHỈ khi tín hiệu «da_dang_nhap» có mặt.
+    Không kiểm được (thiếu module/bộ điều khiển, dịch vụ lỗi) → False (đóng cửa:
+    trạng thái mặc định luôn là chua_dang_nhap).
+    """
+    mod_dn = _module_dang_nhap_danh_tinh(request_hoac_app, bat_buoc=False)
+    if mod_dn is None:
+        return False
+    lay_quy_tac = getattr(mod_dn, "quy_tac_tin_hieu", None)
+    if not callable(lay_quy_tac):
+        return False
+    try:
+        quy_tac = lay_quy_tac() or []
+    except Exception as e:
+        log.warning("nhan-ho-so: quy_tac_tin_hieu lỗi: %s", type(e).__name__)
+        return False
+    try:
+        td = _dieu_khien_that(request_hoac_app, ho_so)
+    except LoiOpenAI:
+        return False
+    try:
+        tin_hieu = await khoi_phuc_phien_mod._tin_hieu_an_toan(td, list(quy_tac))
+    except Exception:
+        return False
+    finally:
+        await _dong_trinh_duyet_that(td)
+    return "da_dang_nhap" in tin_hieu
+
+
+@danh_tinh.post("/nhan-ho-so")
+async def nhan_workspace_lam_tai_khoan(request: Request):
+    """«Nhận workspace làm tài khoản» (NV155c): gắn hồ sơ trình duyệt ĐÃ ĐÓNG
+    (workspace) vào danh tính của email, để tài khoản đã đăng nhập sẵn hiện ở
+    trang AI («Thêm tài khoản → Qua danh tính»).
+
+    Chỉ quản trị (phụ thuộc QT của router: không khoá → 401, khoá khách/vai
+    thấp → 403). Hồ sơ phải có thật ở dịch vụ trình duyệt và ĐÃ ĐÓNG (đang mở
+    → 409, giữ cơ chế «Đóng · giữ phiên»); đã gắn danh tính khác → 409 (chống
+    cướp hồ sơ/IDOR). Trạng thái «dang_nhap» CHỈ khi kiểm được tín hiệu phiên
+    qua quy tắc của module đăng nhập danh tính; không kiểm được →
+    «chua_dang_nhap». Không bí mật vào phản hồi/nhật ký; lỗi không nêu email.
+    """
+    than = await _than_json(request)
+    ho_so = _chuoi_bat_buoc(than, "ho_so")
+    email = _chuoi_bat_buoc(than, "email")
+    nhan = _chuoi_tuy_chon(than, "nhan")
+    if not MAU_HO_SO_TRINH_DUYET.fullmatch(ho_so):
+        raise LoiOpenAI(400, "«ho_so» không hợp lệ.", code="invalid_value")
+    email_chuan = danh_tinh_mod.chuan_hoa_email(email)
+    nhan_chuan = danh_tinh_mod.kiem_nhan(nhan)
+    mod_td = _doi_module_trinh_duyet(request)
+    try:
+        ds_ws = await mod_td.trinh_duyet_ds()
+    except Exception as e:
+        log.warning("nhan-ho-so: trinh_duyet_ds lỗi: %s", type(e).__name__)
+        raise LoiOpenAI(502, "Không đọc được danh sách hồ sơ ở dịch vụ trình duyệt.",
+                        code="loi_dich_vu_trinh_duyet") from None
+    ws = next((w for w in (ds_ws or [])
+               if isinstance(w, dict) and w.get("ho_so") == ho_so), None)
+    if ws is None:
+        raise LoiOpenAI(404, "Hồ sơ trình duyệt này không có ở dịch vụ trình duyệt.",
+                        code="ho_so_khong_co")
+    if ws.get("dang_mo"):
+        raise LoiOpenAI(409, "Hồ sơ trình duyệt đang mở. Đóng trình duyệt "
+                             "(giữ phiên) rồi nhận lại.", code="ho_so_dang_mo")
+    da_dang_nhap = await _kiem_tin_hieu_dang_nhap(request, ho_so)
+    trang_thai = "dang_nhap" if da_dang_nhap else "chua_dang_nhap"
+    ban_ghi, da_co_san = danh_tinh_mod.nhan_ho_so(
+        ho_so, email_chuan, nhan_chuan, trang_thai)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Nhận workspace làm tài khoản (nhan-ho-so): danh tính "
+        f"«{_nhac_lai(ban_ghi['email'])}», trạng thái {trang_thai}",
+        id_danh_tinh=ban_ghi["id"], ho_so=ho_so,
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return JSONResponse({
+        "danh_tinh": ban_ghi,
+        "ho_so": ho_so,
+        "trang_thai_dang_nhap": trang_thai,
+        "da_co_san": da_co_san,
+        "buoc_tiep_theo": "Vào Hệ thống → AI → Thêm tài khoản → Qua danh tính "
+                          "để dùng tài khoản này.",
+    }, status_code=200 if da_co_san else 201)
+
+
 @danh_tinh.get("/{id}")
 def lay_mot_danh_tinh(id: str):
     ban_ghi = danh_tinh_mod.lay(id)
