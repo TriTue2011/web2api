@@ -265,7 +265,8 @@ def _kiem_zip(raw: bytes, nhan: str) -> None:
             with zf.open(m) as f:
                 dau = f.read(64 * 1024)
         except Exception:
-            continue
+            # Đóng cửa: mục XML không đọc được thì không thể bảo đảm không có thực thể → từ chối, không bỏ qua.
+            raise DocRejected(f"Tài liệu{nhan}: không đọc được {m.filename[:80]!r} để kiểm thực thể XML.") from None
         if any(x in dau for x in _MAU_THUC_THE_XML):
             raise DocRejected(
                 f"Tài liệu{nhan} chứa khai báo thực thể XML (<!ENTITY/<!DOCTYPE) "

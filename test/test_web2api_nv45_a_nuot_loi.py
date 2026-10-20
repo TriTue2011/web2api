@@ -61,6 +61,17 @@ DA_KIEM_TOAN = {
     # thì coi cả lượt hỏi là hỏng (trả None → hoi_vong trả [] lượt này, không tiến con trỏ seq, không nhận
     # tin từ phản hồi không tin được); chu kỳ sau hỏi lại bình thường. Đóng khi lỗi, không mở quyền.
     ("modules/zalo-ca-nhan/module.py", "_lay_tin_moi"),
+    # Đã duyệt đợt 20/10 (điều phối đọc từng hàm):
+    # AN TOÀN — chỉ trả «không kiểm được»/False, trạng thái mặc định đóng cửa:
+    ("app/khoi_phuc_phien.py", "tin_hieu_tu_cookie_ho_so_da_dong"),  # đọc cookie hồ sơ lỗi → None → dự phòng phiên sống → cuối cùng False
+    ("app/novnc.py", "_kiem_tin_hieu_danh_tinh"),                    # mọi lỗi → False (không nâng trạng thái); dong() lỗi chỉ ghi log
+    ("modules/nhaptaikhoan/module.py", "_nguoi_goi_la_quan_tri"),    # lỗi đọc ngữ cảnh → False (không phải quản trị)
+    # bộ lọc log chặn bí mật — cùng mẫu zalo-bot/telegram-bot (không định dạng được thì BỎ dòng, đóng khi lỗi):
+    ("modules/facebook/module.py", "filter"),
+    ("modules/nhaptaikhoan/module.py", "filter"),
+    ("modules/rclone/module.py", "filter"),
+    # tuya.thuc_hien: lỗi trả {"ok": False, "loi": ...} chứ không giả thành công; pass là làm mới bảng hành động best-effort, thiếu thì báo hành động lạ.
+    ("modules/tuya/module.py", "thuc_hien"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),

@@ -186,11 +186,9 @@ class Module:
         return int(kho.tao_so("Sổ của nhà", None)["id"])
 
     def _danh_tinh(self) -> dict | None:
-        try:
-            from app import ngu_canh
-            nc = ngu_canh.lay()
-        except Exception:  # noqa: BLE001 — không có ngữ cảnh lõi thì coi là gọi nội bộ
-            return None
+        # Không nuốt lỗi: lỗi đọc ngữ cảnh mà rơi về «sổ chung của nhà» là mở cửa vào dữ liệu người khác.
+        from app import ngu_canh
+        nc = ngu_canh.lay()
         return dict(nc.danh_tinh) if nc is not None else None
 
     async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
