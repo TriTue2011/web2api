@@ -150,6 +150,16 @@ def _khoi_phuc_trang_thai_toan_cuc(ban_chup):
         lg.level = level
         lg.propagate = propagate
         lg.disabled = disabled
+    # Logger SINH RA trong lúc test chạy (chưa có trong bản chụp — vd logger
+    # «httpx» chỉ được tạo khi module nạp lần đầu ngay trong test): không có
+    # trạng thái gốc để khôi phục, nên gỡ filter/handler mà test đã gắn vào
+    # (giữ NullHandler do thư viện tự cài lúc import — hành vi mặc định của
+    # thư viện, không phải rò rỉ của test).
+    for lg in _tat_ca_logger():
+        if lg.name not in ban_chup["loggers"]:
+            lg.filters[:] = []
+            lg.handlers[:] = [h for h in lg.handlers
+                               if isinstance(h, logging.NullHandler)]
     for k in list(os.environ):
         if k not in ban_chup["env"]:
             del os.environ[k]

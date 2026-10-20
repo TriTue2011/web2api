@@ -40,22 +40,34 @@ def _bo_loc_facebook_dang_gan():
             if getattr(f, "_facebook_loc", False)]
 
 
-# Bản nạp ở cấp tệp: bộ lọc của bản này là «bản gốc» phải còn nguyên sau mọi
-# test trong tệp (kể cả test nạp lại module ở dưới).
-_MOD_GOC = _nap_module_facebook("facebook_nv183_meta_goc")
-_BO_LOC_GOC = _bo_loc_facebook_dang_gan()
-assert _BO_LOC_GOC, "nạp module facebook phải cài đúng một bộ lọc lên httpx"
+# LƯU Ý: không nạp module ở cấp tệp — nạp ở cấp tệp là hoán đổi bộ lọc ngay
+# lúc THU THẬP, trước khi fixture kịp chụp trạng thái, và sẽ phá chính test
+# nạn nhân của module đó trong bộ đầy đủ (đã vấp ở vòng đo lại đầu tiên).
+# Mọi lần nạp nằm trong test: fixture khôi phục đúng trạng thái trước-test
+# khi test kết thúc, ở mọi thứ tự tệp.
+_TRANG_THAI_TRUOC: list = []
+_DA_GHI_TRUOC = False
 
 
 def test_a_nap_lai_module_hoan_doi_bo_loc():
-    """Mô phỏng lớp (a): nạp lại module ⇒ bộ lọc gốc bị gỡ ngay trong test."""
+    """Mô phỏng lớp (a): ghi lại bộ lọc đang gắn, nạp module hai lần — mỗi lần
+    nạp hoán đổi bộ lọc ngay trong test. Fixture phải trả lại ĐÚNG trạng thái
+    trước-test khi test kết thúc (kiểm ở test_b)."""
+    global _DA_GHI_TRUOC
+    _TRANG_THAI_TRUOC[:] = _bo_loc_facebook_dang_gan()
+    _DA_GHI_TRUOC = True
+    _nap_module_facebook("facebook_nv183_meta_goc")
+    bo_loc_goc = _bo_loc_facebook_dang_gan()
+    assert bo_loc_goc, "nạp module facebook phải cài đúng một bộ lọc lên httpx"
     _nap_module_facebook("facebook_nv183_meta_ban_hai")
-    assert _bo_loc_facebook_dang_gan() != _BO_LOC_GOC
+    assert _bo_loc_facebook_dang_gan() != bo_loc_goc
 
 
-def test_b_bo_loc_goc_duoc_khoi_phuc_sau_khi_nap_lai():
-    """Sau test trên, fixture phải đã khôi phục bộ lọc gốc (đúng đối tượng)."""
-    assert _bo_loc_facebook_dang_gan() == _BO_LOC_GOC
+def test_b_bo_loc_duoc_khoi_phuc_ve_trang_thai_truoc_test():
+    """Sau test_a, bộ lọc đang gắn phải bằng đúng trạng thái trước test_a —
+    tức fixture đã khôi phục (đúng đối tượng), dù test_a nạp lại module."""
+    assert _DA_GHI_TRUOC, "test_a phải chạy trước và ghi lại trạng thái"
+    assert _bo_loc_facebook_dang_gan() == _TRANG_THAI_TRUOC
 
 
 def test_c_asyncio_run_de_lai_khong_con_loop():
