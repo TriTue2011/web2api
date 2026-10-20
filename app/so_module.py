@@ -92,6 +92,98 @@ async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
 
 
 
+# ───────────── preset nhà cung cấp từ xa (NV199b) ─────────────
+
+_DUONG_DAN_PRESET_TU_XA = Path(__file__).with_name("tu_xa_preset.json")
+_PRESET_TU_XA_DEM: list[dict] | None = None
+
+
+def doc_preset_tu_xa() -> list[dict]:
+    """Danh sách preset nhà cung cấp từ xa — DỮ LIỆU (không chứa bí mật).
+
+    Đọc từ app/tu_xa_preset.json (có lược đồ + test kiểm lược đồ riêng); bản
+    đọc hỏng thì trả rỗng thay vì làm rơi trang.
+    """
+    global _PRESET_TU_XA_DEM
+    if _PRESET_TU_XA_DEM is None:
+        try:
+            du_lieu = json.loads(_DUONG_DAN_PRESET_TU_XA.read_text(encoding="utf-8"))
+            ds = du_lieu.get("preset") if isinstance(du_lieu, dict) else None
+            _PRESET_TU_XA_DEM = ([p for p in ds if isinstance(p, dict) and isinstance(p.get("id"), str)]
+                                 if isinstance(ds, list) else [])
+        except (OSError, ValueError):
+            _PRESET_TU_XA_DEM = []
+    return [dict(p) for p in _PRESET_TU_XA_DEM]
+
+
+async def kiem_tra_tu_xa(than: dict) -> dict:
+    """Kiểm THUẦN (không ghi) nhà cung cấp từ xa: base_url + api_key (+ model tuỳ chọn).
+
+    Chỉ gọi GET /models (RẤT NGẮN, không tốn token) qua ChuyenTiepOpenAI.kiem_khoa.
+    Phân loại lỗi THEO MÃ HTTP + tín hiệu cấu trúc (cấm dò chuỗi lỗi của từng nhà):
+      - 401/403 → «khoa»: khoá API sai hoặc hết hạn;
+      - 429 → «han_muc»: hết hạn mức gọi;
+      - base_url bị SSRF chặn / lỗi mạng / hết thời gian → «dia_chi»;
+      - gọi được nhưng model yêu cầu không có trong danh sách → «mo_hinh».
+    Không bao giờ đưa api_key vào kết quả hay thông báo lỗi.
+    """
+    from app.chuyen_tiep import ChuyenTiepOpenAI
+    from app.tu_xa import _dia_chi_bi_chan, kiem_url_lan
+
+    if not isinstance(than, dict):
+        raise LoiSo(400, "thân yêu cầu phải là đối tượng")
+    api_key = than.get("api_key") or None
+    if api_key is not None and not isinstance(api_key, str):
+        raise LoiSo(400, "api_key phải là chuỗi")
+    mo_hinh = than.get("model") or None
+    if mo_hinh is not None and not isinstance(mo_hinh, str):
+        raise LoiSo(400, "model phải là chuỗi")
+    try:
+        base = await kiem_url_lan(than.get("base_url"))
+    except ValueError as e:
+        raise LoiSo(400, f"địa chỉ: {e}") from None
+    ct = ChuyenTiepOpenAI(ten="kiem-tra", tien_to="kiemtra", base_url=base,
+                          khoa=[api_key] if api_key else [], kiem_ip=_dia_chi_bi_chan)
+    muc = {"ok": False, "do_tre_ms": None, "so_model": 0, "loai": None, "thong_diep": None}
+    try:
+        kq = await ct.kiem_khoa(api_key or "")
+        muc["do_tre_ms"] = kq["do_tre_ms"]
+        muc["so_model"] = kq["so_model"]
+        if not kq["ok"]:
+            loi = kq["loi"] or ""
+            if loi.startswith("HTTP 401") or loi.startswith("HTTP 403"):
+                muc["loai"] = "khoa"
+                muc["thong_diep"] = "Khoá API sai hoặc hết hạn (nhà cung cấp trả 401/403)."
+            elif loi.startswith("HTTP 429"):
+                muc["loai"] = "han_muc"
+                muc["thong_diep"] = "Hết hạn mức gọi — chờ rồi thử lại sau."
+            elif loi.startswith("HTTP 404"):
+                muc["loai"] = "dia_chi"
+                muc["thong_diep"] = "Địa chỉ không có đường /models — kiểm lại base_url (thường kết thúc bằng /v1)."
+            else:
+                muc["loai"] = "dia_chi"
+                muc["thong_diep"] = f"Không kết nối được tới địa chỉ: {loi}."
+        elif mo_hinh and mo_hinh.strip():
+            ds = await ct.models()
+            ids = [(m.get("id")[len("kiemtra/"):] if isinstance(m.get("id"), str)
+                    and m["id"].startswith("kiemtra/") else m.get("id"))
+                   for m in ds if isinstance(m, dict)]
+            if mo_hinh.strip() not in ids:
+                muc["loai"] = "mo_hinh"
+                muc["thong_diep"] = f"Không thấy model «{mo_hinh.strip()}» trong {len(ids)} model nhà này trả về."
+            else:
+                muc["ok"] = True
+                muc["mo_hinh_co"] = True
+        else:
+            muc["ok"] = True
+    finally:
+        try:
+            await ct.dung()
+        except Exception:
+            pass
+    return muc
+
+
 class LoiCanDuyetQuyen(LoiSo):
     """409 khi bản mới của module đã cài xin thêm quyền, hoặc vòng tự cài tải về bản đổi mã (NV49 R-1):
     chưa kích hoạt, chờ quản trị duyệt.

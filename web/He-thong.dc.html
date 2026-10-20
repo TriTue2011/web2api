@@ -216,16 +216,28 @@ main.pg{padding:12px 16px 24px}
 <h3 id="h-tx">Từ xa</h3>
 <p class="phu">Có sẵn một dịch vụ nói chuẩn OpenAI ở máy khác (ví dụ máy có GPU trong mạng nhà)? Đăng ký bằng địa chỉ của nó: web2api chuyển tiếp các model có tiền tố bạn đặt sang đó, không cài mã nào.</p>
 <form novalidate onSubmit="{{themTuXa}}" class="form-tu-xa" style="display:flex;flex-direction:column;gap:12px">
+<sc-if value="{{txCoPreset}}">
+<div class="truong"><label for="tx-preset">Thêm nhà cung cấp</label>
+<select id="tx-preset" class="o" value="{{txPreset}}" onChange="{{txChonPreset}}" aria-label="Chọn nhà cung cấp theo preset" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">Tuỳ chỉnh tương thích OpenAI</option>
+<sc-for list="{{txDsPresetOpt}}" as="p"><option value="{{p.id}}" selected="{{p.chon}}">{{p.ten}}</option></sc-for>
+</select>
+<span class="phu">Chọn preset để điền sẵn địa chỉ và hướng dẫn lấy khoá; chọn «Tuỳ chỉnh» để tự nhập địa chỉ bất kỳ.</span></div>
+<sc-if value="{{txGhiChu}}"><p class="bao bao-vang" role="note">{{txGhiChu}}</p></sc-if>
+<sc-if value="{{txMoTaKhoa}}"><p class="phu">{{txMoTaKhoa}} <sc-if value="{{txLinkKhoa}}"><a href="{{txLinkKhoa}}" target="_blank" rel="noopener">Trang chính thức</a></sc-if></p></sc-if>
+</sc-if>
 <div class="luoi-form">
 <div class="truong"><label for="tx-id">Mã (id) <span class="bb">(bắt buộc)</span></label><input id="tx-id" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="vd: may-gpu" value="{{txForm.id}}" onInput="{{txGo.id}}"></div>
 <div class="truong"><label for="tx-ten">Tên hiển thị <span class="bb">(bắt buộc)</span></label><input id="tx-ten" class="o" type="text" autocomplete="off" placeholder="vd: Máy GPU trong nhà" value="{{txForm.ten}}" onInput="{{txGo.ten}}"></div>
 <div class="truong"><label for="tx-tien-to">Tiền tố model <span class="bb">(bắt buộc)</span></label><input id="tx-tien-to" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="vd: gpu (model sẽ là gpu/…)" value="{{txForm.tien_to}}" onInput="{{txGo.tien_to}}"></div>
 <div class="truong"><label for="tx-url">Địa chỉ gốc <span class="bb">(bắt buộc)</span></label><input id="tx-url" class="o" type="url" autocomplete="off" spellcheck="false" placeholder="http://192.168.1.20:8000/v1" value="{{txForm.base_url}}" onInput="{{txGo.base_url}}"></div>
+<div class="truong"><label for="tx-model">Model muốn dùng (tuỳ chọn)</label><input id="tx-model" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="để trống để chỉ kiểm kết nối và khoá" value="{{txForm.model}}" onInput="{{txGo.model}}"></div>
 </div>
-<div class="truong"><label for="{{txIdKhoa}}">Khoá API của dịch vụ đó (tuỳ chọn)</label><input id="{{txIdKhoa}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống nếu dịch vụ không cần khoá" onInput="{{txGoKhoa}}"></div>
+<div class="truong"><label for="{{txIdKhoa}}">{{txNhanKhoa}}</label><input id="{{txIdKhoa}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống nếu dịch vụ không cần khoá" onInput="{{txGoKhoa}}"></div>
 <sc-if value="{{txLoi}}"><p role="alert" class="bao bao-loi">{{txLoi}}</p></sc-if>
 <sc-if value="{{txTin}}"><p role="status" class="{{txLopTin}}">{{txTin}}</p></sc-if>
-<div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" disabled="{{dangTx}}">{{nhanTx}}</button></div>
+<sc-if value="{{txKtKq}}"><p role="status" class="{{txKtLop}}">{{txKtKq}}</p></sc-if>
+<div class="dong-nut" style="gap:8px"><button type="button" class="nut-chu" onClick="{{txKiemTra}}" disabled="{{dangKtTx}}">{{nhanKtTx}}</button><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" disabled="{{dangTx}}">{{nhanTx}}</button></div>
 </form>
 </section>
 <section class="muc-ct" id="may-gpu" aria-labelledby="h-gpu">
@@ -463,7 +475,9 @@ class Component extends DCLogic {
       dangTaiNg: false, ngLoiTai: '', ngSua: false,
       ngForm: { repo: '', nhanh: 'main', thu_muc: 'modules', chu_ky_giay: '300', tu_dong: false, yeu_cau_chu_ky: false },
       ngToken: '', ngLan: 0, dangLuuNg: false, ngLoi: '', ngTin: '',
-      txForm: { id: '', ten: '', tien_to: '', base_url: '' }, txKhoa: '', txLan: 0, dangTx: false, txLoi: '', txKq: null,
+      txForm: { id: '', ten: '', tien_to: '', base_url: '', model: '' }, txKhoa: '', txLan: 0, dangTx: false, txLoi: '', txKq: null,
+      txPreset: '', txDsPreset: [], txGhiChu: '', txMoTaKhoa: '', txLinkKhoa: '', txNhanKhoa: 'Khoá API của dịch vụ đó (tuỳ chọn)',
+      dangKtTx: false, txKtKq: '', txKtLop: '',
       gpuForm: { base_url: '', id: '', ten: '', tien_to: '', gioi_han_dong_thoi: '2' },
       gpuKhoa: '', gpuLan: 0, gpuBuoc: 1, gpuInfo: null, gpuKhaNangChon: {},
       dangGpuB1: false, gpuLoiB1: '', gpuTinB1: '',
@@ -487,6 +501,7 @@ class Component extends DCLogic {
   didMount() {
     K.napToi().then((nd) => { if (nd) this.setState({ nguoiDung: nd }); });
     this.taiLai().then(() => this.lamMoiTelemetry());
+    this.taiPreset();
     window.addEventListener('hashchange', () => {
       const m = location.hash.match(/^#module-(.+)$/);
       if (m) this.chonO(decodeURIComponent(m[1]));
@@ -714,7 +729,7 @@ class Component extends DCLogic {
     this.setState((s) => ({ txKhoa: '', txLan: s.txLan + 1, dangTx: true, txLoi: '', txKq: null }));
     try {
       const { j } = await K.goi('api/modules/tu-xa', { method: 'POST', json: than });
-      this.setState({ dangTx: false, txKq: j || {}, txForm: { id: '', ten: '', tien_to: '', base_url: '' } });
+      this.setState({ dangTx: false, txKq: j || {}, txForm: { id: '', ten: '', tien_to: '', base_url: '', model: '' } });
       this.taiLai();
     } catch (err) {
       this.loiKhoa(err);
@@ -722,6 +737,54 @@ class Component extends DCLogic {
     }
   }
 
+  async taiPreset() {
+    try {
+      const { j } = await K.goi('api/modules/tu-xa/preset');
+      this.setState({ txDsPreset: (j && Array.isArray(j.preset)) ? j.preset : [] });
+    } catch (e) {
+      this.setState({ txDsPreset: [] });  // lõi cũ chưa có đường này → ẩn ô chọn preset
+    }
+  }
+  chonPresetTx(e) {
+    const id = (e && e.target && e.target.value) || '';
+    const p = (this.state.txDsPreset || []).find((x) => x && x.id === id);
+    if (!p) {
+      this.setState({ txPreset: '', txGhiChu: '', txMoTaKhoa: '', txLinkKhoa: '', txNhanKhoa: 'Khoá API của dịch vụ đó (tuỳ chọn)' });
+      return;
+    }
+    const tk = (p.truong || []).find((t) => t && t.khoa === 'api_key');
+    this.setState({
+      txPreset: id,
+      txGhiChu: p.ghi_chu_gioi_han || '',
+      txMoTaKhoa: tk ? (tk.mo_ta || '') : '',
+      txLinkKhoa: tk ? (tk.lien_ket || '') : '',
+      txNhanKhoa: tk ? (tk.nhan || 'Khoá API') : 'Khoá API của dịch vụ đó (tuỳ chọn)',
+      txForm: { id: p.id_goi_y || '', ten: p.ten_goi_y || '', tien_to: p.tien_to_goi_y || '', base_url: p.base_url_mac_dinh || '', model: '' }
+    });
+  }
+  async kiemTraTx() {
+    const f = this.state.txForm;
+    const url = String(f.base_url || '').trim();
+    if (!url) { this.setState({ txKtKq: 'Nhập địa chỉ gốc trước khi kiểm tra.', txKtLop: 'bao bao-loi' }); return; }
+    const k = (this.state.txKhoa || '').trim();
+    const than = { base_url: url };
+    if (k) than.api_key = k;
+    const mh = String(f.model || '').trim();
+    if (mh) than.model = mh;
+    this.setState((s) => ({ txKhoa: '', txLan: s.txLan + 1, dangKtTx: true, txKtKq: '', txKtLop: '' }));
+    try {
+      const { j } = await K.goi('api/modules/tu-xa/kiem-tra', { method: 'POST', json: than });
+      if (j && j.ok) {
+        this.setState({ dangKtTx: false, txKtLop: 'bao bao-tot',
+          txKtKq: 'Kết nối được (' + j.do_tre_ms + ' ms), thấy ' + j.so_model + ' model.' + (j.mo_hinh_co ? ' Có model đã nhập.' : '') });
+      } else {
+        this.setState({ dangKtTx: false, txKtLop: 'bao bao-loi', txKtKq: 'Chưa dùng được: ' + ((j && j.thong_diep) || 'không rõ nguyên nhân.') });
+      }
+    } catch (err) {
+      this.loiKhoa(err);
+      this.setState({ dangKtTx: false, txKtLop: 'bao bao-loi', txKtKq: 'Kiểm tra thất bại: ' + err.message });
+    }
+  }
   async lamMoiTelemetry() {
     const s = this.state;
     const tn = s.tn || {};
@@ -1154,7 +1217,7 @@ class Component extends DCLogic {
     const ngGo = {}, ngChon = {}, txGo = {}, gpuGo = {};
     for (const k of ['repo', 'nhanh', 'thu_muc', 'chu_ky_giay']) ngGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ ngSua: true, ngForm: Object.assign({}, st.ngForm, { [k]: v }) })); };
     for (const k of ['tu_dong', 'yeu_cau_chu_ky']) ngChon[k] = (e) => { const v = !!e.target.checked; this.setState((st) => ({ ngSua: true, ngForm: Object.assign({}, st.ngForm, { [k]: v }) })); };
-    for (const k of ['id', 'ten', 'tien_to', 'base_url']) txGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ txForm: Object.assign({}, st.txForm, { [k]: v }) })); };
+    for (const k of ['id', 'ten', 'tien_to', 'base_url', 'model']) txGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ txForm: Object.assign({}, st.txForm, { [k]: v }) })); };
     for (const k of ['base_url', 'id', 'ten', 'tien_to', 'gioi_han_dong_thoi']) gpuGo[k] = (e) => { const v = e.target.value; this.setState((st) => ({ gpuForm: Object.assign({}, st.gpuForm, { [k]: v }) })); };
     const txSk = s.txKq && s.txKq.suc_khoe;
 
@@ -1216,6 +1279,12 @@ class Component extends DCLogic {
       themTuXa: (e) => this.themTuXa(e), txLoi: s.txLoi, dangTx: s.dangTx, nhanTx: s.dangTx ? 'Đang kiểm…' : 'Kiểm tra và đăng ký',
       txTin: s.txKq ? 'Đã đăng ký ' + ((s.txKq.module && s.txKq.module.ten) || '') + (txSk ? (txSk.ok ? ' — dịch vụ trả lời được.' : ' — nhưng chưa gọi được dịch vụ.') : '.') : '',
       txLopTin: 'bao ' + (txSk && !txSk.ok ? 'bao-vang' : 'bao-tot'),
+      txCoPreset: (s.txDsPreset || []).length > 0,
+      txPreset: s.txPreset, txChonPreset: (e) => this.chonPresetTx(e),
+      txDsPresetOpt: (s.txDsPreset || []).map((p) => ({ id: p.id, ten: p.ten, chon: p.id === s.txPreset })),
+      txGhiChu: s.txGhiChu, txMoTaKhoa: s.txMoTaKhoa, txLinkKhoa: s.txLinkKhoa, txNhanKhoa: s.txNhanKhoa,
+      txKiemTra: () => this.kiemTraTx(), dangKtTx: s.dangKtTx, nhanKtTx: s.dangKtTx ? 'Đang kiểm tra…' : 'Kiểm tra',
+      txKtKq: s.txKtKq, txKtLop: s.txKtLop,
       // máy gpu
       gpuForm: s.gpuForm, gpuGo, gpuIdKhoa: 'gpu-khoa-' + s.gpuLan,
       gpuGoKhoa: (e) => this.setState({ gpuKhoa: e.target.value }),

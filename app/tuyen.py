@@ -1169,6 +1169,34 @@ async def them_tu_xa(request: Request):
         raise _loi_so(e) from None
 
 
+@modules.get("/tu-xa/preset")
+async def preset_tu_xa(request: Request):
+    """Danh sách preset nhà cung cấp từ xa (NV199b) — DỮ LIỆU, không bí mật.
+
+    Giao diện «Thêm nhà cung cấp» dùng để điền sẵn id/tên/tiền tố/địa chỉ gốc
+    và hướng dẫn lấy khoá. Không có khoá quản trị vẫn gọi được như GET /api/modules;
+    thiếu tệp preset thì trả rỗng (giao diện ẩn ô chọn preset).
+    """
+    from app.so_module import doc_preset_tu_xa
+
+    return {"preset": doc_preset_tu_xa()}
+
+
+@modules.post("/tu-xa/kiem-tra", dependencies=QT)
+async def kiem_tra_tu_xa_endpoint(request: Request):
+    """Kiểm THUẦN (không ghi) nhà cung cấp từ xa trước khi đăng ký (NV199b).
+
+    Thân: {base_url, api_key?, model?}. Chỉ gọi GET /models rất ngắn, phân loại
+    lỗi thành khoa/han_muc/dia_chi/mo_hinh; không bao giờ lộ api_key.
+    """
+    from app.so_module import kiem_tra_tu_xa
+
+    try:
+        return await kiem_tra_tu_xa(await _than_json(request))
+    except LoiSo as e:
+        raise _loi_so(e) from None
+
+
 @modules.post("/do-nut-gpu", dependencies=QT)
 async def do_nut_gpu_endpoint(request: Request):
     """Dò nút GPU trước khi đăng ký (NV140): đọc health và w2a-node, kiểm SSRF."""

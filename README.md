@@ -292,7 +292,7 @@ Các biến môi trường thường dùng nhất (cấu hình trong `.env` ho�
   - Khoá khách mới tạo có phạm vi mặc định thu hẹp `["chat"]`, không cấp toàn quyền `*`.
   - Mật khẩu băm an toàn bằng scrypt; khoá đăng nhập hai tầng chống brute-force phân tán kèm băm giả chống tấn công định thời (timing attack).
   - Cookie phiên mang cờ `HttpOnly`, `SameSite=Strict`, tự bật `Secure` và tiền tố `__Host-` khi có HTTPS, chống CSRF.
-  - Chống SSRF và bảo vệ đường dẫn: kiểm duyệt chặt chẽ mọi URL từ xa qua `app/tu_xa.py`, ghim IP lúc kết nối và chuẩn hoá đường dẫn tệp.
+  - Chống SSRF và bảo vệ đường dẫn: kiểm duyệt chặt chẽ mọi URL từ xa qua `app/tu_xa.py`, ghim IP lúc kết nối và chuẩn hoá đường dẫn tệp. Preset nhà cung cấp AI: `GET /api/modules/tu-xa/preset`; kiểm thuần trước khi đăng ký: `POST /api/modules/tu-xa/kiem-tra` (không ghi, không lộ khoá).
   - Tự động che giấu bí mật/khoá trong lỗi và nhật ký; nhật ký hệ thống ghi chuỗi băm SHA-256 chống sửa lén.
 - **Khuyến nghị triển khai ra Internet**:
   - Triển khai sau Cloudflare Tunnel (khuyên dùng — không cần mở cổng router) hoặc reverse proxy theo hướng dẫn chi tiết tại [docs/TRIEN-KHAI.md](docs/TRIEN-KHAI.md).
