@@ -85,7 +85,12 @@ class LichTrinh:
                 nv["lui"] = 0.0
                 ket_qua[ten] = "ok"
             except Exception as e:
-                nv["lui"] = min(max((nv["lui"] or nv["chu_ky"]) * 2, nv["chu_ky"]), LUI_TOI_DA)
+                # Nguyên tắc (lỗi 3, soát độc lập): lùi dần không bao giờ được
+                # NHANH hơn chu kỳ gốc — trần lùi là max(LUI_TOI_DA, chu_ky).
+                # Trước đây trần cứng 300s ép nhiệm vụ chu kỳ 1800/3600s chạy
+                # dày hơn 6–12 lần khi lỗi (tự gây quá tải).
+                tran = max(LUI_TOI_DA, nv["chu_ky"])
+                nv["lui"] = min(max((nv["lui"] or nv["chu_ky"]) * 2, nv["chu_ky"]), tran)
                 log.warning("tu-van-hanh: nhiệm vụ %s lỗi (%s), lùi %ss",
                             ten, type(e).__name__, nv["lui"])
                 ket_qua[ten] = "loi"
