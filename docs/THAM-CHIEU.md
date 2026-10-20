@@ -97,6 +97,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `zalo-ca-nhan` (Zalo cá nhân qua dịch vụ phụ Node) + dịch vụ `dich-vu/zalo-ca-nhan` | Có — kênh hai chiều bằng tài khoản CÁ NHÂN: gửi ra chuẩn `kenh_ra` (văn bản + tệp, qua dịch vụ `POST /gui-tin`), nhận vào qua `hoi_vong` (chu kỳ 5 s, lọc `danh_sach_cho_phep` mặc định rỗng = không nhận ai); dịch vụ Node dùng zca-js 2.1.2 (API **không chính thức** — **có thể bị khoá tài khoản**), nghe loopback, Bearer ≥24 ký tự fail-fast, trang QR một lần + CSP, chứng chỉ Zalo 0600, hạn tốc độ gửi; module mặc định TẮT, khoá không vào log, kiểm với dịch vụ/adapter GIẢ; **chưa kiểm với Zalo thật** | 20/10/2026 |
 | Module `zalo-ca-nhan` (Zalo cá nhân qua dịch vụ phụ Node) + dịch vụ `dich-vu/zalo-ca-nhan` | Có — kênh hai chiều bằng tài khoản CÁ NHÂN: gửi ra chuẩn `kenh_ra` (văn bản + tệp, qua dịch vụ `POST /gui-tin`), nhận vào qua `hoi_vong` (chu kỳ 5 s, lọc `danh_sach_cho_phep` mặc định rỗng = không nhận ai); dịch vụ Node dùng zca-js 2.1.2 (API **không chính thức** — **có thể bị khoá tài khoản**), trong container nghe 0.0.0.0 nhưng cổng chỉ publish về 127.0.0.1 của máy chủ, Bearer ≥24 ký tự fail-fast, trang QR một lần + CSP, chứng chỉ Zalo 0600, hạn tốc độ gửi giữ chỗ nguyên tử; module mặc định TẮT, khoá không vào log, kiểm với dịch vụ/adapter GIẢ; **chưa kiểm với Zalo thật** | 20/10/2026 |
 | Module `cameranha` (Camera nhà — go2rtc/RTSP, loa/bộ đàm, NV167; sửa bảo mật NV173B) + dịch vụ `dich-vu/camera` | Có — thực thể C1 đọc `cam.<tên>` (chụp, chụp cho AI, cảnh báo chuyển động qua webhook Frigate), `cam.phat_<tên>` ở mức nguy_hiem chỉ khi bật loa (mặc định TẮT, xác nhận từng lần); URL luồng là bí mật, không vào log; địa chỉ camera chỉ mạng riêng + ghim IP; dịch vụ phụ chỉ nhận cam_id của bảng đã đăng ký; phát bị trần thời lượng/giãn cách ở hai lớp; giao thức kênh nói chép từ c2a (NetSDK 37777, HTTP 8086, HCNetSDK); kiểm với go2rtc giả + dịch vụ phụ thật trên loopback; **chưa kiểm với camera thật**, dịch vụ chưa dựng ảnh Docker | 20/10/2026 |
+| Module `register` (Đăng ký tài khoản có người trong vòng lặp, NV174) | Có — chuẩn `thiet_bi` hai thực thể: `dang_ky.luot` (nguy hiểm: bắt đầu/đợi mã/ghi nhận người xử lý/xác nhận hoàn tất/huỷ) và `dang_ky.trang_thai` (đọc); mặc định TẮT; mỗi lần MỘT tài khoản, trần lượt/ngày (mặc định 1, cứng 5); tải trang đăng ký qua bộ kiểm URL không tin của lõi (ghim IP chống tái gắn DNS) và NHẬN DIỆN CẤU TRÚC: form sẵn sàng/thử thách chống bot (iframe/script của nhà cung cấp widget + `data-sitekey`)/xác minh điện thoại/mã một lần/trang lạ; gặp thử thách, xác minh điện thoại hay trang lạ → DỪNG «can_nguoi» không đi tiếp, người thật xử lý trên trình duyệt từ xa (noVNC) — module TUYỆT ĐỐI không giải/vượt thử thách, không tự điền biểu mẫu; hộp thư tạm Inbucket tự host (đường API qua bộ kiểm URL LAN của lõi), mật khẩu sinh bằng `secrets`, bí mật lưu kho bí mật của lõi 0600, chỉ hiện MỘT lần, không vào log/trạng thái/sức khoẻ; **chưa kiểm với nhà cung cấp thật và noVNC thật** (test bằng trang và hộp thư GIẢ) | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3625,6 +3626,92 @@ dữ liệu trả ra). Chụp/phát bị trần kích thước; phát bị trầ
 có trần số phiên/thời lượng/hết hạn khi im ở dịch vụ phụ; dịch vụ phụ là
 container riêng (user không root, Bearer <redacted>á ≥ 24 ký tự, chỉ nghe loopback
 theo mặc định). Chưa kiểm với camera thật; dịch vụ chưa dựng ảnh Docker.
+
+---
+
+### Module register — Đăng ký tài khoản có người trong vòng lặp (NV174)
+
+**Mô tả.** Điều phối các bước đăng ký tài khoản của **chính chủ máy** ở nhà cung
+cấp theo mô hình người-trong-vòng-lặp (chuẩn `thiet_bi`, NV174). Module chuẩn bị
+hộp thư tạm (Inbucket tự host) + mật khẩu sinh ngẫu nhiên, tải trang đăng ký để
+**NHẬN DIỆN BƯỚC theo cấu trúc HTML** (form email+mật khẩu sẵn sàng / iframe,
+script của nhà cung cấp widget thử thách hoặc thuộc tính `data-sitekey` →
+thử thách / `input type="tel"` → xác minh điện thoại / `autocomplete=
+"one-time-code"` → đợi mã / không khớp → không rõ), rồi **DỪNG ĐÚNG ĐIỂM CẦN
+NGƯỜI**: thử thách chống bot, xác minh điện thoại và trang lạ đều dừng ở trạng
+thái «can_nguoi» và không hành động nào đi tiếp được cho tới khi quản trị ghi
+nhận người đã tự xử lý. Người thật điền biểu mẫu, vượt thử thách và nhập mã
+trên trình duyệt từ xa (noVNC của lõi). Module không chứa mã giải/vượt
+CAPTCHA, không giả mạo dấu vân tay trình duyệt, không tự điền biểu mẫu, không
+tạo tài khoản hàng loạt: mỗi lần **một** tài khoản, trần lượt/ngày (mặc định
+1, trần cứng 5), mặc định **TẮT**. Mã nguồn: `modules/register/` (thuần Python
++ `httpx`; khung hộp thư và hàm sinh mật khẩu **port từ chatgpt2api (c2a)**
+theo luật port — chi tiết ở đầu `module.py` và báo cáo NV174; các phần vượt
+thử thách/hàng loạt của c2a cố ý KHÔNG port). Tiền tố: `dang_ky`. Hạng: `B`.
+
+**Cần gì.**
+- Một máy chủ **Inbucket tự host** (mã nguồn mở) nhận thư cho miền của bạn —
+  đây là hộp thư của chính bạn, không phải dịch vụ thư tạm của bên thứ ba.
+- Truy cập trình duyệt từ xa (noVNC) của lõi để làm phần tay.
+- Mạng ra: trang đăng ký công khai bạn khai (đi qua bộ kiểm URL không tin của
+  lõi `app/tai_url_khong_tin.py`: chặn IP nội bộ/metadata, ghim IP chống tái
+  gắn DNS) và API Inbucket của bạn (qua bộ kiểm URL LAN của lõi `app/tu_xa.py`).
+- RAM/đĩa: chưa đo (khớp `tai_nguyen` khai `null`).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "register"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/register`
+3. Cài đặt module: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/register/cai -H "Content-Type: application/json" -d '{"cau_hinh": {"bat": "true", "url_dang_ky": "https://nha-cung-cap.example/dang-ky", "hop_thu_api": "http://192.168.1.10:9000", "hop_thu_mien": "hop-thu.example", "gioi_han_moi_ngay": "1"}}'`
+
+**Cấu hình.**
+- `bat` (mặc định `false`): gõ `true` mới bật; tắt thì không gọi mạng nào.
+- `url_dang_ky`: URL trang đăng ký công khai **của chính bạn** muốn đăng ký —
+  chép URL cuối sau chuyển hướng (module không theo chuyển hướng khi tải về
+  nhận diện).
+- `hop_thu_api`: địa chỉ API Inbucket tự host của bạn.
+- `hop_thu_mien`: miền Inbucket nhận thư (cấu hình SMTP_DOMAIN của Inbucket);
+  cần bản ghi MX trỏ miền đó vào máy của bạn để thư nhà cung cấp về được.
+- `hop_thu_khoa` (bí mật, để trống nếu không dùng): **tự đặt** — chỉ khi bạn
+  đặt Inbucket sau một lớp cổng có khoá Bearer do bạn tự dựng.
+- `gioi_han_moi_ngay` (mặc định `1`, trần cứng `5`): số lượt tối đa mỗi ngày.
+
+**Ví dụ dùng.**
+
+```bash
+# Xác nhận cả hai thực thể theo cơ chế an toàn mặc định (SEC-004f)
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/thiet-bi/dang_ky.luot/xac-nhan
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/thiet-bi/dang_ky.trang_thai/xac-nhan
+
+# Bắt đầu một lượt (quản trị, cần xác nhận) — mật khẩu chỉ hiện trong phản hồi này
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "bat_dau", "xac_nhan": true}' \
+  $W/api/thiet-bi/dang_ky.luot/hanh-dong
+
+# Sau khi người đã nộp biểu mẫu trên noVNC và nhà cung cấp gửi mã: lấy mã
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "doi_ma", "tham_so": {"cho_giay": 60}, "xac_nhan": true}' \
+  $W/api/thiet-bi/dang_ky.luot/hanh-dong
+```
+
+**Sự cố thường gặp.**
+- `ma_loi="module_dang_tat"` — cấu hình `bat` chưa phải `true`.
+- `ma_loi="khong_tai_duoc_trang"` — URL bị bộ kiểm không tin của lõi chặn
+  (IP nội bộ/metadata) hoặc trang không tải được; kiểm lại URL là địa chỉ công
+  khai và là URL cuối sau chuyển hướng.
+- `buoc="can_nguoi"` kèm `ly_do="thu_thach_chong_bot"` — đúng thiết kế: mở
+  noVNC tự xử lý thử thách, rồi gọi `ghi_nhan_nguoi_xu_ly` (có `xac_nhan`).
+- `ma_loi="chua_thay_ma"` — chưa có thư mã trong hộp thư sau thời gian chờ;
+  gọi lại `doi_ma` hoặc kiểm miền/MX của Inbucket.
+
+**Giới hạn.**
+- **Điều khoản nhà cung cấp có thể cấm đăng ký tự động** — module không giả
+  mạo trình duyệt và không vượt thử thách, nhưng bạn vẫn nên đọc điều khoản
+  của nhà cung cấp và tự cân nhắc trước khi bật.
+- Chưa kiểm với nhà cung cấp thật và noVNC thật; toàn bộ test chạy trên
+  trang đăng ký GIẢ và hộp thư GIẢ.
+- Chỉ port **một** nhà cung cấp hộp thư (Inbucket tự host); các dịch vụ thư
+  tạm của bên thứ ba trong c2a cố ý không port.
 
 ---
 
