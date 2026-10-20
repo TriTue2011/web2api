@@ -29,11 +29,11 @@ def _mo_ta(mid: str, khoa: str) -> str:
 
 
 def _hang_bang(van_ban: str, mid: str) -> int:
-    """Số hàng bảng Markdown (| … `id` … | …) nhắc tới module."""
+    """Số hàng bảng Markdown THUỘC VỀ module (| Module `id` … hoặc | `id` … ở đầu hàng)."""
     return sum(
         1
         for dong in van_ban.splitlines()
-        if dong.startswith("|") and f"`{mid}`" in dong
+        if re.match(r"^\|\s*(Module\s+)?`" + re.escape(mid) + r"`(\s|\|)", dong)
     )
 
 
@@ -91,9 +91,10 @@ def test_tai_nguyen_dich_vu_nang_ghi_ro_chua_do_va_cach_do():
 # --- (4) Đồng bộ bảng: không trùng hàng, không thiếu module đợt này ---
 
 def test_bang_readme_goc_khong_trung_hang_module():
+    bang_module = README.split("## Module có sẵn", 1)[1].split("## Dịch vụ phụ", 1)[0]
     for p in sorted((GOC / "modules").glob("*/manifest.json")):
         mid = json.loads(p.read_text(encoding="utf-8"))["id"]
-        assert _hang_bang(README, mid) <= 1, f"README gốc trùng hàng {mid}"
+        assert _hang_bang(bang_module, mid) <= 1, f"README gốc trùng hàng {mid}"
 
 
 def test_tham_chieu_muc_1_khong_trung_va_du_module_dot_nay():
