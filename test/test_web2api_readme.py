@@ -129,3 +129,22 @@ def test_readme_gon_gioi_han_dong():
     assert len(dong) <= 415, f"README.md có {len(dong)} dòng, vượt trần 415 dòng"
     dong_en = (GOC / "README.en.md").read_text(encoding="utf-8").splitlines()
     assert len(dong_en) <= 400, f"README.en.md có {len(dong_en)} dòng, vượt trần 400 dòng"
+
+
+def test_hop_dong_tai_khoan_da_luu_nv144_khong_lech_ma():
+    """Lỗi 5: THAM-CHIEU.md không được lệch hợp đồng thực tế của NV144."""
+    tc = (GOC / "docs" / "THAM-CHIEU.md").read_text(encoding="utf-8")
+    assert "Kho tài khoản đã lưu + tự đăng nhập lại — NV144" in tc
+    # Mật khẩu trần 256 ký tự (DOI_DAI_MAT_KHAU), không phải 1024
+    assert "1–1024 ký tự" not in tc, "THAM-CHIEU.md ghi sai độ dài mật khẩu (phải là 1–256 ký tự)"
+    assert "1–256 ký tự" in tc, "THAM-CHIEU.md phải ghi đúng 1–256 ký tự cho mật khẩu"
+    # Email che dạng …***@example.com, không phải v***@example.com
+    assert "v***@example.com" not in tc, "THAM-CHIEU.md ghi sai khuôn email che"
+    assert "…***@example.com" in tc, "THAM-CHIEU.md phải ghi đúng email che …***@example.com"
+    # POST trả 200, không phải 201
+    assert "201 {tai_khoan" not in tc, "THAM-CHIEU.md ghi sai mã trạng thái POST (phải là 200)"
+    assert "200 {tai_khoan" in tc, "THAM-CHIEU.md phải ghi đúng POST trả 200"
+    # DELETE trả {"da_xoa": true}, không phải {ok: true}
+    assert "{ok: true}" not in tc, "THAM-CHIEU.md ghi sai phản hồi DELETE (phải là {\"da_xoa\": true})"
+    assert '{"da_xoa": true}' in tc, "THAM-CHIEU.md phải ghi đúng DELETE trả {\"da_xoa\": true}"
+

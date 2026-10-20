@@ -202,25 +202,50 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
 
 
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
-                  trang_thai="") -> dict:
-    """Lưu mới hoặc cập nhật theo email (trùng email → cập nhật, không trùng lặp).
+                  trang_thai="", id=None) -> dict:
+    """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
-    email_chuan = chuan_hoa_email(email)
     mk = kiem_mat_khau(mat_khau)
     totp = kiem_totp_secret(totp_secret)
     nhan_sach = kiem_nhan(nhan)
-    id_ = ma_tai_khoan(email_chuan)
     with kho.giu_khoa_kho():
         du_lieu = _doc()
-        cu = du_lieu.get(id_)
+        cu = None
+        if id is not None:
+            if isinstance(id, bool) or not isinstance(id, str):
+                raise LoiKhoTaiKhoan("invalid_value")
+            for k, ban_ghi_cu in du_lieu.items():
+                if hmac.compare_digest(k, id):
+                    cu = ban_ghi_cu
+                    break
+            if cu is None:
+                raise LoiKhoTaiKhoan("khong_tim_thay")
+            if email is None or (isinstance(email, str) and (email.startswith("…") or email == che_email(cu["email"]))):
+                email_chuan = cu["email"]
+            else:
+                email_chuan = chuan_hoa_email(email)
+                if email_chuan != cu["email"]:
+                    raise LoiKhoTaiKhoan("invalid_value")
+            id_ = cu["id"]
+        else:
+            email_chuan = chuan_hoa_email(email)
+            id_ = ma_tai_khoan(email_chuan)
+            cu = du_lieu.get(id_)
+
+        # Bảo toàn TOTP secret nếu không truyền trường totp_secret
+        if totp_secret is None and cu:
+            totp_cuoi = cu.get("totp_secret", "")
+        else:
+            totp_cuoi = totp or ""
+
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
             "nhan": nhan_sach,
             "mat_khau": mk,
-            "totp_secret": totp or "",
+            "totp_secret": totp_cuoi,
             "trang_thai": cu.get("trang_thai", "") if cu else "",
             "cap_nhat": int(time.time()),
         }
@@ -228,6 +253,18 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             ban_ghi["trang_thai"] = kiem_nhan(trang_thai)
         du_lieu[id_] = ban_ghi
         _ghi(du_lieu)
+
+        # Nguyên tắc vòng đời: đổi thông tin đăng nhập ⇒ trạng thái thử lại về gốc
+        thong_tin_doi = (
+            cu is None
+            or cu.get("mat_khau") != mk
+            or cu.get("totp_secret", "") != totp_cuoi
+        )
+        if thong_tin_doi:
+            tt = _doc_trang_thai()
+            if id_ in tt:
+                del tt[id_]
+                _ghi_trang_thai(tt)
     return ban_cong_khai(ban_ghi)
 
 
@@ -274,6 +311,11 @@ def xoa_tai_khoan(id_) -> bool:
             return False
         del du_lieu[muc_tieu]
         _ghi(du_lieu)
+        # Nguyên tắc vòng đời: tài khoản xoá ⇒ trạng thái thử lại bị xoá theo
+        tt = _doc_trang_thai()
+        if muc_tieu in tt:
+            del tt[muc_tieu]
+            _ghi_trang_thai(tt)
     return True
 
 

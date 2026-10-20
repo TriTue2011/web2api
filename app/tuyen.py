@@ -3416,6 +3416,8 @@ def _loi_kho_tai_khoan(e: kho_tai_khoan_mod.LoiKhoTaiKhoan) -> LoiOpenAI:
             code="kho_hong")
     if ma == "invalid_email":
         return LoiOpenAI(400, "Địa chỉ email không hợp lệ.", code="invalid_email")
+    if ma == "khong_tim_thay":
+        return LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
     return LoiOpenAI(400, "Giá trị không hợp lệ.", code="invalid_value")
 
 
@@ -3431,7 +3433,7 @@ def liet_ke_tai_khoan_da_luu():
 
 @tai_khoan.post("/da-luu")
 async def luu_tai_khoan_da_luu(request: Request):
-    """Lưu/cập nhật một tài khoản (theo email, trùng → cập nhật) hoặc hàng loạt
+    """Lưu/cập nhật một tài khoản (theo email hoặc id, trùng → cập nhật) hoặc hàng loạt
     qua {"tai_khoan": [{email, mat_khau, totp_secret?, nhan?}]}."""
     than = await _than_json(request)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
@@ -3445,7 +3447,8 @@ async def luu_tai_khoan_da_luu(request: Request):
                         raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
                     bk = kho_tai_khoan_mod.luu_tai_khoan(
                         muc.get("email"), muc.get("mat_khau"),
-                        muc.get("totp_secret"), muc.get("nhan", ""))
+                        muc.get("totp_secret"), muc.get("nhan", ""),
+                        id=muc.get("id"))
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -3456,11 +3459,16 @@ async def luu_tai_khoan_da_luu(request: Request):
                 f"Lưu hàng loạt tài khoản đã lưu ({len(luu)} xong, {len(loi)} lỗi)",
                 nguoi_thuc_hien=nguoi_thuc_hien)
             return {"luu": luu, "loi": loi}
+        tai_id = _chuoi_tuy_chon(than, "id")
+        email_val = _chuoi_tuy_chon(than, "email")
+        if not tai_id and not email_val:
+            raise LoiOpenAI(400, "Thiếu trường «email».", code="invalid_value")
         bk = kho_tai_khoan_mod.luu_tai_khoan(
-            _chuoi_bat_buoc(than, "email"),
+            email_val,
             _chuoi_bat_buoc(than, "mat_khau"),
             _chuoi_tuy_chon(than, "totp_secret"),
-            _chuoi_tuy_chon(than, "nhan") or "")
+            _chuoi_tuy_chon(than, "nhan") or "",
+            id=tai_id)
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
             f"Lưu tài khoản đã lưu ({bk['email_che']})",

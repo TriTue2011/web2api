@@ -391,3 +391,101 @@ def test_id_khong_doan_duoc_tu_email(moi_truong):
     # id đúng khuôn tk- + 16 hex
     import re
     assert re.fullmatch(r"tk-[0-9a-f]{16}", tai_id)
+
+
+# ── 10. Tự tái hiện lỗi theo báo cáo soát ────────────────────────────────────
+
+def test_xoa_hoac_cap_nhat_tai_khoan_phai_xoa_trang_thai_hong_lien_tiep(moi_truong):
+    """Lỗi 1: Cập nhật mật khẩu hoặc xoá rồi tạo lại phải dọn trạng thái hỏng liên tiếp."""
+    import asyncio
+    client, _ = moi_truong
+    tai_id = _luu(client).json()["tai_khoan"]["id"]
+    mod = _module_gia(client)
+    mod.kich_ban[EMAIL] = (False, "sai_mat_khau")
+    # Làm hỏng 2 lần liên tiếp
+    asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    # Lần 3 bị chặn do hỏng 2 liên tiếp
+    kq = asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    assert kq["thu"] is False and kq["ly_do"] == "hong_2_lien_tiep"
+
+    # Nhánh A: Cập nhật mật khẩu mới -> phải được thử lại
+    mod.kich_ban[EMAIL] = (True, "")
+    _luu(client, email=EMAIL, mat_khau="MatKhauMoi_999")
+    kq_sau_sua = asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    assert kq_sau_sua["thu"] is True and kq_sau_sua["thanh_cong"] is True
+
+    # Làm hỏng lại 2 lần để test Nhánh B (Xoá rồi thêm lại)
+    mod.kich_ban[EMAIL] = (False, "sai_mat_khau")
+    asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    kq = asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    assert kq["thu"] is False and kq["ly_do"] == "hong_2_lien_tiep"
+
+    # Xoá tài khoản -> thêm lại
+    r_xoa = client.delete(f"/api/tai-khoan/da-luu/{tai_id}", headers=QT)
+    assert r_xoa.status_code == 200
+    mod.kich_ban[EMAIL] = (True, "")
+    _luu(client, email=EMAIL, mat_khau="MatKhauMoi_888")
+    kq_sau_xoa = asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    assert kq_sau_xoa["thu"] is True and kq_sau_xoa["thanh_cong"] is True
+
+
+def test_ui_chon_tai_khoan_roi_sua_mat_khau_khong_bi_loi_email(moi_truong):
+    """Lỗi 2: Chọn tài khoản từ dropdown gửi id + email che không bị 400 invalid_email."""
+    client, _ = moi_truong
+    r_tao = _luu(client)
+    assert r_tao.status_code == 200
+    tk = r_tao.json()["tai_khoan"]
+    tai_id = tk["id"]
+    email_che = tk["email_che"]
+
+    # Form gửi email_che kèm id và mật khẩu mới
+    r_sua = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "id": tai_id,
+        "email": email_che,
+        "mat_khau": "MatKhauMoi_DaSua",
+    })
+    assert r_sua.status_code == 200, r_sua.text
+    assert r_sua.json()["tai_khoan"]["id"] == tai_id
+    ban_ghi = ktk.tim_theo_id(tai_id)
+    assert ban_ghi is not None
+    assert ban_ghi["mat_khau"] == "MatKhauMoi_DaSua"
+    assert ban_ghi["email"] == EMAIL
+
+
+def test_cap_nhat_khong_truyen_totp_phai_giu_totp_cu(moi_truong):
+    """Lỗi 3: Cập nhật nhãn hoặc mật khẩu mà không truyền totp_secret phải giữ TOTP cũ."""
+    client, _ = moi_truong
+    _luu(client, totp=TOTP_SECRET, nhan="gốc")
+    ban_ghi = ktk.tim_theo_email(EMAIL)
+    assert ban_ghi["totp_secret"] == TOTP_SECRET
+
+    # Cập nhật không truyền trường totp_secret
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "email": EMAIL,
+        "mat_khau": "MatKhauMoi_123",
+        "nhan": "nhãn mới",
+    })
+    assert r.status_code == 200
+    assert r.json()["tai_khoan"]["co_totp"] is True
+    ban_ghi_moi = ktk.tim_theo_email(EMAIL)
+    assert ban_ghi_moi["totp_secret"] == TOTP_SECRET
+    assert ban_ghi_moi["nhan"] == "nhãn mới"
+
+
+def test_dang_nhap_module_da_cai_nhung_khong_co_ham_dang_nhap_502(moi_truong):
+    """Lỗi 4: Module đã cài nhưng không có hàm dang_nhap phải trả 502 chua_ho_tro."""
+    client, _ = moi_truong
+    tai_id = _luu(client).json()["tai_khoan"]["id"]
+    mod = _module_gia(client)
+    ham_goc = getattr(mod, "dang_nhap", None)
+    try:
+        mod.dang_nhap = None
+        r = client.post(f"/api/tai-khoan/da-luu/{tai_id}/dang-nhap", headers=QT,
+                        json={"module_id": MODULE_ID})
+        assert r.status_code == 502, r.text
+        assert r.json()["error"]["code"] == "chua_ho_tro"
+    finally:
+        mod.dang_nhap = ham_goc
+

@@ -547,18 +547,19 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     mat_khau, totp_secret, trang_thai, cap_nhat}`; `id` ổn định
     (`tk-` + 16 hex SHA-256 của email chuẩn hoá). Lưu trùng email → cập nhật.
   - Kiểm biên: email theo khuôn hẹp của `tai_khoan_hang_loat`; mật khẩu
-    1–1024 ký tự; TOTP secret chỉ nhận KHOÁ Base32 (qua `kiem_tra_va_tao_otp`,
+    1–256 ký tự; TOTP secret chỉ nhận KHOÁ Base32 (qua `kiem_tra_va_tao_otp`,
     ép kiểu `BiMatTotp` — mã 6–8 số dùng một lần bị từ chối vì lưu lại vô
     nghĩa); ký tự điều khiển/surrogate → `400 invalid_value` (không lộ giá
     trị). Kho hỏng → `500 kho_hong`, đóng cửa, không lưu một phần.
   - `GET /api/tai-khoan/da-luu` → danh sách công khai (email CHE dạng
-    `v***@example.com`, nhãn, `co_mat_khau`/`co_totp`, trạng thái; KHÔNG BAO
+    `…***@example.com`, nhãn, `co_mat_khau`/`co_totp`, trạng thái; KHÔNG BAO
     GIỜ trả mật khẩu/secret).
-  - `POST /api/tai-khoan/da-luu` (`email`, `mat_khau`, `totp_secret`?,
-    `nhan`?) → `201 {tai_khoan: …}`; hoặc `{"tai_khoan": [{…}, …]}` để lưu
-    hàng loạt → `{luu: […], loi: [{dong, ma}]}`.
-  - `DELETE /api/tai-khoan/da-luu/{id}` → `{ok: true}`; id lạ → `404` (so id
-    bằng `hmac.compare_digest`, chống IDOR).
+  - `POST /api/tai-khoan/da-luu` (`email` hoặc `id`, `mat_khau`, `totp_secret`?,
+    `nhan`?) → `200 {tai_khoan: …}`; hoặc `{"tai_khoan": [{…}, …]}` để lưu
+    hàng loạt → `{luu: […], loi: [{dong, ma}]}`. Cập nhật không truyền `totp_secret`
+    bảo toàn TOTP cũ; đổi mật khẩu/TOTP làm sạch trạng thái thử lại cũ.
+  - `DELETE /api/tai-khoan/da-luu/{id}` → `{"da_xoa": true}`; id lạ → `404` (so id
+    bằng `hmac.compare_digest`, chống IDOR; dọn sạch trạng thái thử lại).
   - `POST /api/tai-khoan/da-luu/{id}/dang-nhap` (`module_id`) → server tự lấy
     bí mật từ kho, gọi hợp đồng `module.dang_nhap(dong)` với `BiMatTam`/
     `BiMatTotp` (CHỈ GỌI, không sửa module); trình duyệt/giao diện KHÔNG nhận

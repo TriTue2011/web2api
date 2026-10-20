@@ -753,6 +753,7 @@ class Component extends DCLogic {
     }
     if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
     const payload = { email, mat_khau: mk };
+    if (s.dlDaLuu && chonId) payload.id = chonId;
     const totp = (s.dlTotp || '').trim();
     if (totp) payload.totp_secret = totp;
     const nhan = (s.dlNhan || '').trim();
