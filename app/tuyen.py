@@ -3452,6 +3452,7 @@ async def luu_tai_khoan_da_luu(request: Request):
                     bk = kho_tai_khoan_mod.luu_tai_khoan(
                         muc.get("email"), muc.get("mat_khau"),
                         muc.get("totp_secret"), muc.get("nhan", ""),
+                        trang_thai=muc.get("trang_thai"),
                         id=muc.get("id") or None)
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
@@ -3472,6 +3473,7 @@ async def luu_tai_khoan_da_luu(request: Request):
             _chuoi_bat_buoc(than, "mat_khau"),
             _chuoi_tuy_chon(than, "totp_secret"),
             _chuoi_tuy_chon(than, "nhan") or "",
+            trang_thai=_chuoi_tuy_chon(than, "trang_thai"),
             id=tai_id or None)
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
@@ -3500,6 +3502,38 @@ def xoa_tai_khoan_da_luu(id: str, request: Request):
     return {"da_xoa": True}
 
 
+@tai_khoan.post("/da-luu/{id}/tam-dung")
+async def dat_tam_dung_tai_khoan_da_luu(id: str, request: Request):
+    """Tạm dừng / bật lại một tài khoản đã lưu (NV197b).
+
+    Body: {"tam_dung": true|false} (phải là boolean thật). Tài khoản tạm dừng
+    bị lõi BỎ QUA khi chọn/đăng nhập (không chạm bí mật, không gọi module);
+    bật lại mới dùng được. Không tự bật lại theo giờ.
+
+    Thao tác đổi trạng thái chạm bí mật bên thứ ba: phiên web phải đã xác nhận
+    lại (step-up); Bearer <redacted>ản trị được miễn. Id lạ → 404 (không lộ có/không).
+    """
+    kiem_tra_step_up(request)
+    than = await _than_json(request)
+    tam_dung = than.get("tam_dung")
+    if not isinstance(tam_dung, bool):
+        raise LoiOpenAI(400, "Thiếu trường «tam_dung» (true/false).",
+                        code="invalid_value")
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    try:
+        bk = kho_tai_khoan_mod.dat_tam_dung(id, tam_dung)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if bk is None:
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.",
+                        code="khong_tim_thay")
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"{'Tạm dừng' if tam_dung else 'Bật lại'} tài khoản đã lưu ({bk['email_che']})",
+        nguoi_thuc_hien=nguoi_thuc_hien)
+    return {"tai_khoan": bk}
+
+
 @tai_khoan.post("/da-luu/{id}/dang-nhap")
 async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     """Đăng nhập bằng tài khoản đã lưu: server tự lấy bí mật từ kho rồi gọi
@@ -3512,6 +3546,12 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     than = await _than_json(request)
     module_id = _chuoi_bat_buoc(than, "module_id")
     _kiem_module_da_cai_tai_khoan(request, module_id)
+    # NV197b: kiểm cờ tạm dừng TRƯỚC khi chạm bí mật — tài khoản tạm dừng
+    # không được đăng nhập, lỗi rõ ràng, bí mật không rời kho.
+    ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    if ban_ghi is not None and ban_ghi.get("trang_thai") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
+        raise LoiOpenAI(403, "Tài khoản đã tạm dừng; bật lại mới đăng nhập được.",
+                        code="tam_dung")
     try:
         bi_mat = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(id)
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
@@ -3519,7 +3559,6 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     if bi_mat is None:
         raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
     mat_khau, totp = bi_mat
-    ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
     email = ban_ghi["email"] if ban_ghi else ""
     mod = request.app.state.so.dang_chay.get(module_id)
     ham = getattr(mod, "dang_nhap", None) if mod is not None else None

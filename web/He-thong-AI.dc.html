@@ -182,6 +182,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
 <span style="margin-left:auto;display:inline-flex;gap:6px;flex:0 0 auto">
+<button type="button" data-dl-tam-dung="{{r.id}}" onClick="{{r.doiTamDung}}" hidden="{{r.anTamDung}}" style="{{r.tamDungSt}}">{{r.nhanTamDung}}</button>
 <button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
 <button type="button" data-dl-xoa="{{r.id}}" onClick="{{r.xoa}}" style="{{r.xoaSt}}">{{r.nhanXoa}}</button>
 </span>
@@ -810,6 +811,23 @@ class Component extends DCLogic {
       this.tdTheoDoi();
     } catch (e) {
       this.setState({ dlLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' });
+    }
+  }
+  async dlDoiTamDung(id, tam_dung) {
+    // NV197b: Tạm dừng / Bật lại tài khoản đã lưu. Máy chủ cũ chưa có đường
+    // này (404 không kèm mã lỗi) → ẩn nút, không báo lỗi ầm ĩ.
+    try {
+      const { ma, j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/tam-dung', {
+        method: 'POST', json: { tam_dung: !!tam_dung }, chapNhan: [404]
+      });
+      if (ma === 404 && !(j && j.error && j.error.code)) {
+        this.setState({ dlCoTamDung: false });
+        return;
+      }
+      await this.taiDlDs();
+      this.msg(tam_dung ? 'Đã tạm dừng tài khoản.' : 'Đã bật lại tài khoản.', false);
+    } catch (e) {
+      this.setState({ dlLoi: (e && e.message) || 'Không đổi được trạng thái.' });
     }
   }
   async dlXoa(id) {
@@ -1582,7 +1600,12 @@ class Component extends DCLogic {
             emailChe: t.email_che || '',
             coNhan: !!(t.nhan || ''),
             nhan: t.nhan || '',
-            trangThai: t.trang_thai || (t.co_totp ? 'đã lưu · 2FA' : 'đã lưu'),
+            trangThai: t.trang_thai === 'tam_dung' ? 'Đã tạm dừng' : (t.co_totp ? 'đã lưu · 2FA' : 'đã lưu'),
+            tamDung: t.trang_thai === 'tam_dung',
+            doiTamDung: () => this.dlDoiTamDung(t.id, t.trang_thai !== 'tam_dung'),
+            nhanTamDung: t.trang_thai === 'tam_dung' ? 'Bật lại' : 'Tạm dừng',
+            tamDungSt: btnSt({}) + 'min-height:44px;',
+            anTamDung: s.dlCoTamDung === false,
             dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
             dangNhapSt: btnSt({}) + 'min-height:44px;',
             xoa: () => this.dlXoa(t.id),

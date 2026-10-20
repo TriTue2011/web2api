@@ -42,6 +42,11 @@ TEN_CONG_TAC = "_tu_dang_nhap_lai"
 #: Tệp trạng thái thử lại (số lần hỏng liên tiếp, lần thử cuối).
 TEN_TRANG_THAI = "_tai_khoan_da_luu_trang_thai"
 
+#: Trạng thái «tạm dừng» (NV197b): tài khoản còn lưu trong kho nhưng bị lõi
+#: BỎ QUA khi chọn/đăng nhập (lấy ý từ c2a `account_service.update_account`
+#: {"status": "disabled"}). Không tự bật lại theo giờ.
+TRANG_THAI_TAM_DUNG = "tam_dung"
+
 DOI_DAI_EMAIL = 254
 DOI_DAI_MAT_KHAU = 256
 DOI_DAI_TOTP = 256
@@ -142,6 +147,21 @@ def kiem_nhan(nhan) -> str:
     return n
 
 
+def kiem_trang_thai(trang_thai) -> str:
+    """Kiểm trạng thái tài khoản (NV197b): "" (đang dùng) hoặc "tam_dung".
+
+    None → "" (mặc định bật). Giá trị liệt kê đóng — không dò chuỗi tự do.
+    """
+    if trang_thai is None:
+        return ""
+    if isinstance(trang_thai, bool) or not isinstance(trang_thai, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    t = trang_thai.strip()
+    if t not in ("", TRANG_THAI_TAM_DUNG):
+        raise LoiKhoTaiKhoan("invalid_value")
+    return t
+
+
 def ma_tai_khoan(email_chuan: str) -> str:
     """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256)."""
     return _TIEN_TO_ID + hashlib.sha256(email_chuan.encode("utf-8")).hexdigest()[:16]
@@ -202,9 +222,11 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
 
 
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
-                  trang_thai="", id=None) -> dict:
+                  trang_thai=None, id=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
+    `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
+    → đặt mới (kiểm qua ``kiem_trang_thai``, giá trị khác → invalid_value).
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
     mk = kiem_mat_khau(mat_khau)
@@ -240,17 +262,19 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         else:
             totp_cuoi = totp or ""
 
+        tt_moi = cu.get("trang_thai", "") if cu else ""
+        if trang_thai is not None:
+            tt_moi = kiem_trang_thai(trang_thai)
+
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
             "nhan": nhan_sach,
             "mat_khau": mk,
             "totp_secret": totp_cuoi,
-            "trang_thai": cu.get("trang_thai", "") if cu else "",
+            "trang_thai": tt_moi,
             "cap_nhat": int(time.time()),
         }
-        if isinstance(trang_thai, str) and trang_thai.strip():
-            ban_ghi["trang_thai"] = kiem_nhan(trang_thai)
         du_lieu[id_] = ban_ghi
         _ghi(du_lieu)
 
@@ -319,6 +343,40 @@ def xoa_tai_khoan(id_) -> bool:
     return True
 
 
+def dat_tam_dung(id_, tam_dung: bool) -> dict | None:
+    """Đặt/gỡ cờ tạm dừng theo id, ghi nguyên tử dưới khoá kho (NV197b).
+
+    ``tam_dung=True`` → ``trang_thai="tam_dung"``; False → "" (đang dùng).
+    Tra cứu bằng ``hmac.compare_digest`` như mọi nơi khác (chống IDOR dò id).
+    Trả bản công khai; không có → None (người gọi đổi thành 404).
+    Đổi trạng thái KHÔNG reset trạng thái thử lại (không phải đổi bí mật).
+    """
+    if not isinstance(tam_dung, bool):
+        raise LoiKhoTaiKhoan("invalid_value")
+    if isinstance(id_, bool) or not isinstance(id_, str):
+        return None
+    with kho.giu_khoa_kho():
+        du_lieu = _doc()
+        muc_tieu = None
+        for k in du_lieu:
+            if hmac.compare_digest(k, id_):
+                muc_tieu = k
+                break
+        if muc_tieu is None:
+            return None
+        ban_ghi = du_lieu[muc_tieu]
+        ban_ghi["trang_thai"] = TRANG_THAI_TAM_DUNG if tam_dung else ""
+        ban_ghi["cap_nhat"] = int(time.time())
+        _ghi(du_lieu)
+        return ban_cong_khai(ban_ghi)
+
+
+def da_tam_dung(id_) -> bool:
+    """Tài khoản có đang tạm dừng không (id lạ → False)."""
+    ban_ghi = tim_theo_id(id_)
+    return bool(ban_ghi) and ban_ghi.get("trang_thai") == TRANG_THAI_TAM_DUNG
+
+
 def lay_bi_mat_dang_nhap(id_: str) -> tuple[BiMatTam, BiMatTotp | None] | None:
     """Lấy bí mật đăng nhập dưới dạng ``BiMatTam``/``BiMatTotp`` (nội bộ).
 
@@ -383,6 +441,9 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     - `{"thu": False, "ly_do": "da_tat"}` — công tắc đang TẮT.
     - `{"thu": False, "ly_do": "khong_co_tai_khoan"}` — không có tài khoản
       đã lưu khớp email (hoặc thiếu mật khẩu).
+    - `{"thu": False, "ly_do": "tam_dung"}` — tài khoản đã tạm dừng (NV197b):
+      bị BỎ QUA, không chạm bí mật, không gọi module; lỗi rõ ràng để tầng trên
+      biết không còn tài khoản khả dụng.
     - `{"thu": False, "ly_do": "hong_2_lien_tiep"}` — đã hỏng 2 liên tiếp,
       dừng hẳn.
     - `{"thu": False, "ly_do": "gian_cach"}` — chưa hết giãn cách
@@ -403,6 +464,10 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     ban_ghi = tim_theo_email(email) if email else None
     if ban_ghi is None or not ban_ghi.get("mat_khau"):
         return {"thu": False, "ly_do": "khong_co_tai_khoan"}
+    if ban_ghi.get("trang_thai") == TRANG_THAI_TAM_DUNG:
+        # NV197b: tài khoản tạm dừng bị BỎ QUA khi chọn — không chạm bí mật,
+        # không gọi module.dang_nhap; lỗi rõ ràng, không âm thầm dùng.
+        return {"thu": False, "ly_do": "tam_dung"}
     id_ = ban_ghi["id"]
     cap_nhat_dau = ban_ghi.get("cap_nhat", 0)
     bay_gio = time.time()
