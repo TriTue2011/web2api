@@ -47,6 +47,16 @@ def _so_nguyen(ten: str, mac_dinh: int) -> int:
         return mac_dinh
 
 
+def _ket_qua_ok(kq: Any) -> bool:
+    """Chuẩn hoá kết quả hợp đồng provider: dict {"ok"/"thanh_cong"} hoặc
+    dataclass KetQua* có trường `thanh_cong` (app/khoi_phuc_phien)."""
+    if isinstance(kq, dict):
+        if "ok" in kq:
+            return bool(kq.get("ok"))
+        return bool(kq.get("thanh_cong"))
+    return bool(getattr(kq, "thanh_cong", False))
+
+
 def _la_bat(gia_tri: Any) -> bool:
     """Công tắc dạng chuỗi theo manifest: «1» = bật, còn lại = tắt.
 
@@ -171,16 +181,20 @@ class Module:
         """Tiêm tham chiếu app (cho test hoặc đấu nối thủ công)."""
         self._app = app
 
-    def _lay_nha_cung_cap(self) -> list[tuple[str, Any]]:
-        """Liệt kê (id, thể hiện) các module provider đang chạy có hợp đồng đăng nhập."""
+    def _dang_chay(self) -> dict:
+        """Ánh xạ id → thể hiện module đang chạy (qua sổ của lõi)."""
         app = self._app
         if app is None:
-            return []
+            return {}
         try:
             so = getattr(getattr(app, "state", None), "so", None) or getattr(app, "so", None)
-            dang_chay = getattr(so, "dang_chay", {}) or {}
+            return dict(getattr(so, "dang_chay", {}) or {})
         except Exception:
-            return []
+            return {}
+
+    def _lay_nha_cung_cap(self) -> list[tuple[str, Any]]:
+        """Liệt kê (id, thể hiện) các module provider đang chạy có hợp đồng đăng nhập."""
+        dang_chay = self._dang_chay()
         ra = []
         for mid, mod in dang_chay.items():
             if mid == (self.manifest or {}).get("id"):
@@ -188,6 +202,31 @@ class Module:
             if callable(getattr(mod, "tai_dung_ho_so", None)) or callable(getattr(mod, "dang_nhap", None)):
                 ra.append((mid, mod))
         return ra
+
+    def _tai_khoan_cua(self, mod: Any) -> list[dict]:
+        """Danh sách tài khoản (không bí mật) qua hợp đồng chung
+        `liet_ke_tai_khoan()` — cả 5 module web thật đều có. Không có → []."""
+        fn = getattr(mod, "liet_ke_tai_khoan", None)
+        if not callable(fn):
+            return []
+        try:
+            ds = fn()
+        except Exception:
+            return []
+        return [tk for tk in (ds or []) if isinstance(tk, dict)]
+
+    def _trinh_duyet_cho(self, ho_so: Any) -> Any:
+        """Bộ điều khiển trình duyệt THẬT cho một hồ sơ qua cầu nối lõi
+        (app/khoi_phuc_phien.lay_trinh_duyet_that). Không lấy được → None
+        (đóng cửa, không đoán) và provider sẽ trả `can_nguoi`."""
+        hs = ho_so.get("id") if isinstance(ho_so, dict) else str(ho_so or "")
+        if not hs:
+            return None
+        try:
+            from app import khoi_phuc_phien
+            return khoi_phuc_phien.lay_trinh_duyet_that(str(hs), self._dang_chay())
+        except Exception:
+            return None
 
     # ── gửi tin ──
 
@@ -232,15 +271,28 @@ class Module:
     # ── nhiệm vụ nền ──
 
     async def _nv_lam_moi(self) -> None:
+        """(a) Làm mới phiên/token định kỳ — mỗi tài khoản một lần.
+
+        Lỗi 4 (soát độc lập): chữ ký thật là `lam_moi_phien(khoa)` với `khoa`
+        lấy từ `liet_ke_tai_khoan()`; trước đây gọi không tham số nên luôn
+        TypeError rồi bị nuốt vào log.
+        """
         if not self._bat_lam_moi:
             return
         for mid, mod in self._lay_nha_cung_cap():
-            try:
-                lam_moi = getattr(mod, "lam_moi_phien", None)
-                if callable(lam_moi):
-                    await lam_moi()
-            except Exception as e:
-                log.warning("tuvanhanh: làm mới %s lỗi (%s)", mid, type(e).__name__)
+            lam_moi = getattr(mod, "lam_moi_phien", None)
+            if not callable(lam_moi):
+                continue
+            for tk in self._tai_khoan_cua(mod):
+                khoa = str(tk.get("khoa") or "").strip()
+                if not khoa:
+                    continue
+                try:
+                    kq = await lam_moi(khoa)
+                    if not _ket_qua_ok(kq):
+                        log.warning("tuvanhanh: làm mới %s không xong", mid)
+                except Exception as e:
+                    log.warning("tuvanhanh: làm mới %s lỗi (%s)", mid, type(e).__name__)
 
     async def _nv_dang_nhap_lai(self) -> None:
         """(b) Tự đăng nhập lại khi phiên hết hạn qua hợp đồng chung."""
@@ -252,7 +304,16 @@ class Module:
             await self._dang_nhap_lai_mot_nha(mod, mid)
 
     async def _dang_nhap_lai_mot_nha(self, mod: Any, mid: str) -> dict:
-        """Đăng nhập lại một nhà cung cấp. Trả {"ok": bool} hoặc {"bo_qua": True}."""
+        """Đăng nhập lại cho các tài khoản của một nhà cung cấp.
+
+        Lỗi 5 (soát độc lập): chữ ký thật là `tai_dung_ho_so(ho_so,
+        trinh_duyet)`; trước đây chỉ truyền 1 tham số nên luôn TypeError.
+        `ho_so` lấy từ `liet_ke_tai_khoan()`; `trinh_duyet` xin qua cầu
+        nối lõi — không có cầu nối thì provider trả `can_nguoi` và lần thử
+        vẫn tính là hỏng (phần của chủ máy, không lách qua). Ít nhất một
+        tài khoản thành công = nhà cung cấp khoẻ lại, đặt lại bộ đếm hỏng.
+        Trả {"ok": bool} hoặc {"bo_qua": True}.
+        """
         if self._hong_lien_tiep.get(mid, 0) >= 2:
             return {"bo_qua": True}
         # Giãn cách giữa các lần thử.
@@ -261,16 +322,39 @@ class Module:
         lan_cuoi = getattr(self, "_lan_dang_nhap", {}).get(khoa, 0.0)
         if bay_gio - lan_cuoi < _gian_cach_dang_nhap():
             return {"bo_qua": True}
+        fn = getattr(mod, "tai_dung_ho_so", None)
+        if not callable(fn):
+            return {"ok": False, "loi": "khong_co_hop_dong"}
+        ds = self._tai_khoan_cua(mod)
+        if not ds:
+            return {"ok": False, "loi": "khong_co_tai_khoan"}
         try:
-            fn = getattr(mod, "tai_dung_ho_so", None) or getattr(mod, "dang_nhap", None)
-            if not callable(fn):
-                return {"ok": False, "loi": "khong_co_hop_dong"}
-            kq = await fn(mid)
-            if isinstance(kq, dict) and kq.get("ok"):
+            ok = False
+            loi_cuoi: Exception | None = None
+            for tk in ds:
+                ho_so = tk.get("ho_so") or str(tk.get("khoa") or "")
+                if not ho_so:
+                    continue
+                td = self._trinh_duyet_cho(ho_so)
+                try:
+                    if td is not None:
+                        from app import khoi_phuc_phien
+                        async with khoi_phuc_phien.phien_dieu_khien_that(td):
+                            kq = await fn(ho_so, td)
+                    else:
+                        kq = await fn(ho_so, td)
+                except Exception as e:
+                    loi_cuoi = e
+                    continue
+                if _ket_qua_ok(kq):
+                    ok = True
+                else:
+                    loi_cuoi = RuntimeError("that_bai")
+            if ok:
                 self._hong_lien_tiep[mid] = 0
                 self._da_bao_dung_hang.discard(mid)
                 return {"ok": True}
-            raise RuntimeError(str((kq or {}).get("ma") or "that_bai"))
+            raise loi_cuoi or RuntimeError("that_bai")
         except Exception as e:
             self._hong_lien_tiep[mid] = self._hong_lien_tiep.get(mid, 0) + 1
             if self._hong_lien_tiep[mid] >= 2 and mid not in self._da_bao_dung_hang:
