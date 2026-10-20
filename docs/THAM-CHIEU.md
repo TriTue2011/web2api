@@ -85,6 +85,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `rclone` (Cầu nối lưu trữ đám mây qua rclone) + dịch vụ `dich-vu/rclone` | Có — liệt kê/đọc/tải về (`liet_ke`, `doc_chu`, `tai_ve`, rủi ro `doc`, mặc định) và tải lên/xoá/chuyển tệp (`gui_len`, `chuyen_tep` rủi ro `ghi`; `xoa` rủi ro `nguy_hiem`) — hành động GHI mặc định TẮT (bật bằng `ghi_bat`), tắt thì báo `chua_bat_ghi` và không gọi mạng; cấu hình rclone ở dịch vụ (0600, API chỉ trả bản đã che), khoá Bearer dịch vụ ≥ 24 ký tự; dịch vụ HTTP nội bộ gọi rclone v1.75.2 trong hộp cát (tập lệnh đóng 16 op, đường cục bộ `resolve()` dưới thư mục làm việc, không bao giờ qua shell, hết giờ 30/600 s, tải lên/xuống ≤ 25 MB, tên tệp hệ thống sinh); địa chỉ dịch vụ kiểm SSRF; kiểm với nhị phân rclone giả + kiểm tĩnh Dockerfile; **chưa kiểm với dịch vụ đám mây thật** (chưa dựng ảnh Docker thật) | 20/10/2026 |
 | Module `hoa-don` (Đối chiếu hoá đơn điện tử với danh mục, NV162) | Có — hai công cụ rủi ro `doc`: `doc_hoa_don` và `doi_chieu_hoa_don`; đọc XML TT78 (tìm thẻ theo tên ở mọi tầng) + văn bản Markdown đã trích từ PDF (điểm nối module `van-phong` NV156), danh mục từ mảng dòng đã đọc hoặc .xlsx base64 đọc bằng zipfile (trần giải nén chống zip bomb, công thức không thực thi); XML chống nổ thực thể (từ chối DOCTYPE/ENTITY, trần kích thước/độ sâu); số tiền là Decimal; port từ c2a `services/hoa_don.py` (d879b03); kiểm với hoá đơn giả đúng khuôn TT78; **chưa kiểm với hoá đơn thật của nhà phát hành** | 20/10/2026 |
 | Module `dich` (Dịch văn bản + từ điển thuật ngữ qua model của lõi, chuẩn C2/C4 `thiet_bi`) | Có — dịch qua `/v1/chat/completions` loopback bằng khoá khách phạm vi hẹp (chống SSRF: chỉ loopback), prompt hệ thống cố định chống tiêm lệnh, cắt code/URL/markdown/thuật ngữ khỏi phần gửi model, chia đoạn kiểm tra độ phủ; từ điển tra cả các nghĩa (lemmatize) + thuật ngữ người dùng lưu tệp 0600, nhập/xuất trần 20.000 mục; kiểm với model giả + máy chủ HTTP giả loopback; **chưa kiểm với model thật** | 20/10/2026 |
+| Module `nhaptaikhoan` (Nhập tài khoản hàng loạt từ 9router/sub2api/CPA — CHỈ xem trước, chưa nối kho, NV164) | Có — 3 hành động `nguy_hiem` chỉ quản trị: `xem_truoc_tep` (tệp 9router `.json`/`.json.gz`: nhận diện `providerConnections` kể cả lồng `data`, trích token codex/cursor/openai `eyJ`, combo đầy đủ; trần base64 8MiB / tệp giải mã 6MiB / bung gzip 10MiB), `xem_truoc_may_chu` (`sub2api`: JWT hoặc `x-api-key`, trang `/api/v1/admin/accounts` phân trang; `cpa`: chỉ liệt kê `/v0/management/auth-files`, không tải token), `ap_dung` luôn từ chối `chua_noi_kho_tai_khoan` (chờ kho lõi NV144/NV72); email/token chỉ hiện dạng che, không log/không vào lỗi; địa chỉ máy chủ qua `app/tu_xa.kiem_url_lan`; **chưa kiểm với sub2api/CPA thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3146,6 +3147,50 @@ chuỗi. Báo cáo cắt ở 80.000 ký tự; mỗi nhóm «chỉ một bên» l
 - Chỉ đọc sheet đầu tiên của .xlsx; ghép tên gần đúng ở ngưỡng tương tự
   0,85 (của c2a).
 - Chưa kiểm với hoá đơn XML thật của nhà phát hành (Viettel/VNPT/MISA…).
+
+---
+
+### Module nhaptaikhoan — Nhập tài khoản hàng loạt (xem trước, chưa nối kho, NV164)
+
+**Mô tả.** Đọc danh sách tài khoản từ dịch vụ khác và trả về **bản xem trước
+đã che** để quản trị duyệt trước khi nhập: tệp sao lưu 9router (`.json`,
+`.json.gz`), máy chủ sub2api (admin API), và CLIProxyAPI/CPA (liệt kê tệp
+auth). Mã nguồn: `modules/nhaptaikhoan/`. Tiền tố: `nhaptaikhoan`. Hạng: `A`
+(mã của dự án). Port từ chatgpt2api của chủ máy (commit `d879b03`):
+`services/ninerouter_backup_import.py` (nhận diện/trích token/combo — không
+chép phần ghi vào kho), `services/sub2api_service.py` (bóc phong bì `{code,data}`,
+trích trang `items/total/page`, đăng nhập JWT — `curl_cffi` đổi `httpx`),
+`services/cpa_service.py` (liệt kê — không chép tải token; kho đăng ký máy chủ
+và mọi đường ghi của c2a không chép vì module không giữ trạng thái và kho đích
+chưa có).
+
+**Cần gì.**
+- Không cần cấu hình; khoá/mật khẩu là tham số từng lần xem trước (không lưu).
+- Mạng ra: tới máy chủ sub2api/CPA do **quản trị nhập theo lần** (khoá
+  `mang_ra: []` vì địa chỉ không cố định); URL qua đúng
+  `app/tu_xa.kiem_url_lan` (chặn loopback/link-local/không định tuyến, LAN
+  riêng được phép); lỗi chỉ là mã ngắn, không chép thân phản hồi của máy chủ.
+
+**Nạp sớm / khả năng / hành động.**
+- Nạp sớm: `module.py` đầu tệp. Khả năng: thực thể `nhaptaikhoan.nguon`,
+  `cung_cap: ["tai_lieu"]`. Ba hành động đều `rui_ro: "nguy_hiem"` (quản trị
+  duyệt): `xem_truoc_tep` (dang `ninerouter`, `noi_dung_base64` — trần base64
+  8 MiB, tệp giải mã 6 MiB, bung gzip 10 MiB theo từng khúc; JSON qua
+  `json.loads`, không YAML/pickle), `xem_truoc_may_chu` (loai `sub2api`/`cpa`,
+  `may_chu_url`, `khoa_api` hoặc `email`+`mat_khau`), `ap_dung` (nhận
+  `danh_sach` mục `{nguon, dinh_danh}` — **chưa nối kho lõi NV144/NV72 nên luôn
+  từ chối `chua_noi_kho_tai_khoan`**, không ghi vào đâu).
+- Mọi lệnh qua `thuc_hien` có cổng quản trị (chỉ `quan_tri`/`noi_bo`; thiếu
+  ngữ cảnh thì đóng) — phòng hở giao diện C1 khi lõi chưa tự lọc (NV153).
+- Che bí mật: email → `a***@mien`, khoá/token → `…` + 4 ký tự cuối; URL ký gửi CPA chỉ hiện đuôi 4 ký tự; bộ lọc log httpx chặn dòng `Authorization … Bearer`.
+
+**Giới hạn.**
+- Chưa nối kho tài khoản/danh tính (NV144, NV72) — `ap_dung` mới là giao diện.
+- YAML không hỗ trợ: không có định dạng xuất chuẩn YAML cho 9router/sub2api/
+  CPA; tệp nguồn là JSON/gzip qua API, và việc thêm `pyyaml` vượt phạm vi
+  không-thêm-gói.
+- Chưa kiểm với máy chủ sub2api/CPA thật và tệp xuất 9router thật; con số
+  phân trang/trần là giá trị tự chọn từ c2a + độ an toàn.
 
 ---
 

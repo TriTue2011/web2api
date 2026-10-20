@@ -1,0 +1,650 @@
+"""Module nhaptaikhoan — nhập hàng loạt tài khoản từ dịch vụ khác (PHẦN ĐỌC/XEM TRƯỚC).
+
+NV164: kho tài khoản/danh tính của lõi (NV144, NV72) CHƯA gộp, nên module này
+chỉ làm phần phân tích + xem trước và khai một giao diện «áp dụng» rõ ràng:
+
+- `xem_truoc_tep`: phân tích tệp sao lưu 9router (JSON hoặc JSON.gz) do quản trị
+  gửi; tệp là DỮ LIỆU KHÔNG TIN (trần kích thước từng lớp, gzip bung có trần,
+  JSON thuần — không YAML tuỳ ý, không pickle).
+- `xem_truoc_may_chu`: đọc danh sách qua API quản trị của máy chủ sub2api
+  (đăng nhập JWT hoặc x-api-key) hoặc CLIProxyAPI/CPA (Bearer secret, CHỈ liệt
+  kê tệp auth — không tải token).
+- `ap_dung(danh_sach_da_duyet)`: hàm giao diện NHẬN danh sách đã duyệt; kho chưa
+  nối nên luôn từ chối rõ ràng `chua_noi_kho_tai_khoan`. Module KHÔNG tự ghi
+  vào bất kỳ kho nào.
+
+An toàn:
+- CHỈ quản trị: mọi hành động kiểm danh tính người gọi qua ngữ cảnh lõi
+  (app.ngu_canh, SEC-002 — giao diện app.* chỉ đọc thứ hai được phép của module
+  này, bên cạnh app.tu_xa) và ĐÓNG KHI LỖI (thiếu ngữ cảnh cũng từ chối).
+  Thực thể khai `rui_ro_mac_dinh: "nguy_hiem"` để lõi bắt xác nhận/xếp hàng chờ.
+- Bí mật (token/cookie/mật khẩu/khoá API) chỉ hiện DẠNG CHE: khoá `…abcd`,
+  email `a***@mien`; không vào log, không vào phản hồi lỗi (lỗi luôn là mã ngắn
+  của module, không chép thân phản hồi hay URL chứa thông tin đăng nhập).
+- Địa chỉ máy chủ do quản trị khai được kiểm bằng đúng `app/tu_xa.kiem_url_lan`
+  (chống SSRF: chặn loopback/link-local/không định tuyến; LAN riêng được phép)
+  ngay trước khi nối — module không viết bộ kiểm thứ hai.
+- Một logging.Filter theo CẤU TRÚC chặn mọi dòng log của thư viện HTTP mang
+  «Authorization … Bearer» (khuôn zalo-bot/van-phong, vá theo bài học NV116:
+  mỗi bản nạp chỉ gỡ bộ lọc CỦA CHÍNH MÌNH, giữ bộ lọc của các bản khác).
+
+Nguồn chép (LUẬT PORT — c2a là kho của chính chủ máy, commit d879b03,
+đường /opt/claude-c2a/chatgpt2api, CHỈ ĐỌC):
+- services/ninerouter_backup_import.py: `detect_9router_backup`,
+  `extract_chatgpt_tokens`, `extract_all_oauth_tokens`, `extract_combos`
+  (chỉ nhận diện + trích; phần GHI vào kho của c2a không chép).
+- services/sub2api_service.py: `_clean`, `_unwrap_envelope`,
+  `_extract_paged_items`, `_extract_access_token`, đăng nhập JWT và liệt kê
+  tài khoản phân trang (curl_cffi → httpx theo `yeu_cau_goi` của lõi).
+- services/cpa_service.py: `_management_headers`, `list_remote_files`
+  (chỉ liệt kê; `fetch_remote_access_token` thuộc phía áp dụng — không chép).
+
+Không chép: kho đăng ký máy chủ của c2a (module không giữ trạng thái — quản trị
+khai theo từng lần xem trước, không lưu khoá của máy chủ lạ vào đĩa) và mọi
+đường ghi (`account_service.add_accounts`, `state_backup.import_all`): kho đích
+chưa có, chép sang sẽ thành ghi vào kho của c2a — sai phạm vi NV164.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import binascii
+import gzip
+import json
+import logging
+import zlib
+
+import httpx
+
+log = logging.getLogger(__name__)
+
+#: Trần chuỗi base64 của tệp nhập (ký tự) — khớp lược đồ tham số ở manifest mã.
+TRAN_BASE64 = 8 * 1024 * 1024
+#: Trần tệp sau giải mã base64 (byte).
+TRAN_TEP = 6 * 1024 * 1024
+#: Trần nội dung sau khi bung gzip (byte) — chống bom nén.
+TRAN_GZIP_BUNG = 10 * 1024 * 1024
+#: Trần số mục trong một bản xem trước.
+TRAN_MUC_XEM_TRUOC = 2000
+#: Trần số trang khi liệt kê tài khoản sub2api (trang 200 mục ⇒ tối đa 1000 tài khoản).
+TRAN_SO_TRANG = 5
+KICH_THUOC_TRANG = 200
+HET_GIO_GOI = 30
+
+#: Provider của 9router mà token dùng được như tài khoản ChatGPT (đúng c2a).
+_NHA_CUNG_CAP_NHAP_DUOC = ("codex", "cursor", "openai")
+
+
+# ───────── Che bí mật ─────────
+
+def _che_email(email) -> str:
+    """a***@mien — giữ 1 ký tự đầu phần tên và tên miền; không email → «***»."""
+    s = str(email or "").strip()
+    if "@" not in s or s.startswith("@"):
+        return "***"
+    ten, _, mien = s.partition("@")
+    if not ten or not mien:
+        return "***"
+    return f"{ten[0]}***@{mien}"
+
+
+def _che_khoa(khoa) -> str:
+    """…abcd (khoá ngắn hơn 4 ký tự → «…»)."""
+    s = str(khoa or "")
+    return f"…{s[-4:]}" if len(s) >= 4 else "…"
+
+
+def _lam_sach_chu(x, toi_da: int = 80) -> str:
+    """Bỏ ký tự điều khiển/ngắt dòng và cắt ở trần — dữ liệu ngoài là không tin."""
+    s = str(x or "")
+    s = "".join(c for c in s if c.isprintable())
+    return s.strip()[:toi_da]
+
+
+# ───────── Bộ lọc log (khuôn zalo-bot/van-phong, vá bài học NV116) ─────────
+
+_LOGGER_HTTP = ("httpx", "httpcore", "httpcore.connection", "httpcore.http11",
+                "httpcore.http2", "httpcore.proxy")
+
+
+class _ChanBiMatHTTP(logging.Filter):
+    """Bỏ dòng log của thư viện HTTP mang mẫu «Authorization … Bearer».
+
+    Chặn theo CẤU TRÚC, không theo giá trị khoá cụ thể: mọi dòng như vậy đều là
+    dòng mang bí mật xác thực. Khoá/mật khẩu của module này đi trong header
+    Authorization/x-api-key và thân đăng nhập — không bao giờ là một phần của
+    URL mà httpx ghi log."""
+
+    _nhaptaikhoan_loc = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            noi_dung = record.getMessage()
+        except Exception:
+            return False
+        thap = noi_dung.lower()
+        return not ("authorization" in thap and "bearer" in thap)
+
+
+def _cai_bo_loc_log() -> None:
+    for ten in _LOGGER_HTTP:
+        lg = logging.getLogger(ten)
+        # Bài học NV116: chỉ gỡ bộ lọc của CHÍNH bản này (đúng __name__ của bản
+        # đang nạp), giữ nguyên bộ lọc của các bản nạp khác — gỡ nhầm bản khác
+        # là để khoá của bản đó lọt log.
+        for f in [f for f in lg.filters
+                  if getattr(f, "_nhaptaikhoan_loc", False) and type(f).__module__ == __name__]:
+            lg.removeFilter(f)
+        lg.addFilter(_ChanBiMatHTTP())
+
+
+_cai_bo_loc_log()
+
+
+def _nguoi_goi_la_quan_tri() -> bool:
+    """Người gọi hiện tại có phải quản trị không (đóng khi lỗi).
+
+    Đọc ngữ cảnh gọi lõi đặt cho mỗi lời gọi (app.ngu_canh, SEC-002 — kênh CHỈ
+    ĐỌC), đúng định nghĩa `la_quan_tri` của lõi (app/thiet_bi.py): danh tính
+    «quan_tri» hoặc «noi_bo». Thiếu ngữ cảnh hoặc lỗi khi đọc → KHÔNG."""
+    try:
+        from app.ngu_canh import lay  # chỉ đọc, không gọi sâu vào lõi
+
+        nc = lay()
+    except Exception:
+        return False
+    if nc is None:
+        return False
+    return str((nc.danh_tinh or {}).get("loai") or "") in ("quan_tri", "noi_bo")
+
+
+# ───────── 9router (chép từ c2a services/ninerouter_backup_import.py @ d879b03) ─────────
+
+def _sach(value) -> str:
+    return str(value or "").strip()
+
+
+def detect_9router_backup(data) -> bool:
+    """Chép c2a: JSON có mảng `providerConnections` (trên cùng hoặc lồng trong `data`)."""
+    if not isinstance(data, dict):
+        return False
+    if isinstance(data.get("providerConnections"), list):
+        return True
+    inner = data.get("data") or {}
+    if isinstance(inner, dict) and isinstance(inner.get("providerConnections"), list):
+        return True
+    return False
+
+
+def _ket_noi_cua(data: dict) -> list:
+    connections = data.get("providerConnections") or []
+    if not connections:
+        inner = data.get("data") or {}
+        connections = inner.get("providerConnections") or []
+    return connections if isinstance(connections, list) else []
+
+
+def _token_ket_noi(conn: dict) -> str:
+    """accessToken ở cấp ngoài hoặc lồng trong `data` (đúng c2a)."""
+    access_token = str(conn.get("accessToken") or "")
+    if not access_token:
+        conn_data = conn.get("data") or {}
+        if isinstance(conn_data, dict):
+            access_token = str(conn_data.get("accessToken") or "")
+    return access_token.strip()
+
+
+def _truong_ket_noi(conn: dict, khoa: str) -> str:
+    """Trường ở cấp ngoài hoặc lồng trong `data` (email/refreshToken/expiresAt)."""
+    gia_tri = str(conn.get(khoa) or "")
+    if not gia_tri:
+        conn_data = conn.get("data") or {}
+        if isinstance(conn_data, dict):
+            gia_tri = str(conn_data.get(khoa) or "")
+    return gia_tri.strip()
+
+
+def extract_all_oauth_tokens(data: dict) -> list[dict]:
+    """Chép c2a: mọi kết nối OAuth {provider, name, access_token, refresh_token, expires_at}."""
+    ra: list[dict] = []
+    for conn in _ket_noi_cua(data):
+        if not isinstance(conn, dict):
+            continue
+        access_token = _token_ket_noi(conn)
+        if not access_token:
+            continue
+        ra.append({
+            "provider": str(conn.get("provider") or "").strip().lower(),
+            "name": str(conn.get("connectionName") or conn.get("name")
+                        or conn.get("id") or conn.get("provider") or ""),
+            "email": _truong_ket_noi(conn, "email"),
+            "access_token": access_token,
+            "refresh_token": _truong_ket_noi(conn, "refreshToken") or None,
+            "expires_at": _truong_ket_noi(conn, "expiresAt") or None,
+        })
+    return ra
+
+
+def extract_chatgpt_tokens(data: dict) -> list[str]:
+    """Chép c2a: token ChatGPT dùng được — provider codex/cursor/openai, bắt đầu «eyJ»."""
+    tokens: list[str] = []
+    for conn in _ket_noi_cua(data):
+        if not isinstance(conn, dict):
+            continue
+        provider = str(conn.get("provider") or "").strip().lower()
+        access_token = _token_ket_noi(conn)
+        if provider in _NHA_CUNG_CAP_NHAP_DUOC and access_token.startswith("eyJ"):
+            tokens.append(access_token)
+    return tokens
+
+
+def extract_combos(data: dict) -> dict:
+    """Chép c2a: combo {tên: [model]}."""
+    combos = data.get("combos") or []
+    if not combos and isinstance(data.get("data"), dict):
+        combos = data["data"].get("combos") or []
+    if not isinstance(combos, list):
+        return {}
+    ket_qua: dict = {}
+    for combo in combos:
+        if not isinstance(combo, dict):
+            continue
+        name = str(combo.get("name") or "").strip()
+        models = combo.get("models") or []
+        if name and isinstance(models, list):
+            ket_qua[name] = [str(m) for m in models if m]
+    return ket_qua
+
+
+def _xem_truoc_9router(data: dict) -> dict:
+    """Dựng bản xem trước ĐÃ CHE từ dữ liệu 9router đã phân tích."""
+    tat_ca = extract_all_oauth_tokens(data)
+    muc: list[dict] = []
+    for t in tat_ca[:TRAN_MUC_XEM_TRUOC]:
+        muc.append({
+            "ten": _lam_sach_chu(t["name"]),
+            "nha_cung_cap": t["provider"],
+            "co_the_nhap": t["provider"] in _NHA_CUNG_CAP_NHAP_DUOC
+                           and t["access_token"].startswith("eyJ"),
+            "email_che": _che_email(t["email"]) if t["email"] else None,
+            "khoa_che": _che_khoa(t["access_token"]),
+            "co_refresh": bool(t["refresh_token"]),
+            "het_han": t["expires_at"],
+        })
+    return {
+        "ok": True,
+        "nguon": "ninerouter",
+        "tong": len(_ket_noi_cua(data)),
+        "co_token": len(tat_ca),
+        "tai_khoan": muc,
+        "so_combo": len(extract_combos(data)),
+        "nguon_ngoai": True,
+    }
+
+
+# ───────── sub2api (chép từ c2a services/sub2api_service.py @ d879b03) ─────────
+
+class _SaiDangNhap(Exception):
+    """Máy chủ nguồn từ chối thông tin đăng nhập (401/403)."""
+
+
+def _unwrap_envelope(payload):
+    """Chép c2a: bóc phong bì `{code, message, data}` của sub2api."""
+    if isinstance(payload, dict) and "data" in payload and "code" in payload:
+        return payload.get("data")
+    return payload
+
+
+def _extract_paged_items(payload) -> tuple[list, int]:
+    """Chép c2a: (mục, tổng) từ phản hồi phân trang của sub2api."""
+    inner = _unwrap_envelope(payload)
+    if isinstance(inner, list):
+        return inner, len(inner)
+    if isinstance(inner, dict):
+        for key in ("items", "data", "list"):
+            value = inner.get(key)
+            if isinstance(value, list):
+                return value, int(inner.get("total") or len(value))
+    return [], 0
+
+
+def _extract_access_token(credentials) -> str:
+    """Chép c2a: access_token / accessToken / token trong credentials."""
+    if not isinstance(credentials, dict):
+        return ""
+    for key in ("access_token", "accessToken", "token"):
+        value = _sach(credentials.get(key))
+        if value:
+            return value
+    return ""
+
+
+async def _dang_nhap_sub2api(client: httpx.AsyncClient, goc: str, email: str, mat_khau: str) -> str:
+    """Chép c2a `_login`: POST /api/v1/auth/login → JWT. Không ghi log thân."""
+    try:
+        tra_loi = await client.post(
+            f"{goc}/api/v1/auth/login",
+            json={"email": email, "password": mat_khau},
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+        )
+    except httpx.HTTPError:
+        raise _LoiMayChu from None
+    if tra_loi.status_code in (401, 403):
+        raise _SaiDangNhap
+    if tra_loi.status_code != 200:
+        raise _LoiMayChu
+    try:
+        than = _unwrap_envelope(tra_loi.json())
+    except Exception:
+        raise _LoiMayChu from None
+    token = _sach(than.get("access_token")) if isinstance(than, dict) else ""
+    if not token:
+        raise _LoiMayChu
+    return token
+
+
+class _LoiMayChu(Exception):
+    """Không nối được / phản hồi lạ từ máy chủ nguồn (không kèm chi tiết thô)."""
+
+
+async def _xem_truoc_sub2api(url: str, tham_so: dict) -> dict:
+    khoa_api = _sach(tham_so.get("khoa_api"))
+    email = _sach(tham_so.get("email"))
+    mat_khau = _sach(tham_so.get("mat_khau"))
+    nhom = _sach(tham_so.get("nhom"))
+    if not khoa_api and not (email and mat_khau):
+        return {"ok": False, "loi": "thieu_xac_thuc"}
+    goc = url.rstrip("/")
+    async with httpx.AsyncClient(timeout=HET_GIO_GOI, verify=True) as client:
+        if khoa_api:
+            headers = {"x-api-key": khoa_api, "Accept": "application/json"}
+        else:
+            try:
+                token = await _dang_nhap_sub2api(client, goc, email, mat_khau)
+            except _SaiDangNhap:
+                return {"ok": False, "loi": "sai_dang_nhap"}
+            except _LoiMayChu:
+                return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        muc: list[dict] = []
+        try:
+            for trang in range(1, TRAN_SO_TRANG + 1):
+                params: dict = {"platform": "openai", "type": "oauth",
+                                "page": trang, "page_size": KICH_THUOC_TRANG}
+                if nhom:
+                    params["group"] = nhom
+                tra_loi = await client.get(f"{goc}/api/v1/admin/accounts",
+                                           headers=headers, params=params)
+                if tra_loi.status_code in (401, 403):
+                    return {"ok": False, "loi": "sai_dang_nhap"}
+                if tra_loi.status_code != 200:
+                    return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
+                try:
+                    payload = tra_loi.json()
+                except Exception:
+                    return {"ok": False, "loi": "phan_hoi_sai"}
+                data, tong = _extract_paged_items(payload)
+                for account in data:
+                    if not isinstance(account, dict):
+                        continue
+                    credentials = account.get("credentials") if isinstance(account.get("credentials"), dict) else {}
+                    if not _extract_access_token(credentials):
+                        continue
+                    ma = account.get("id")
+                    email_tk = _sach(credentials.get("email")) or _sach(account.get("name"))
+                    muc.append({
+                        "id": str(ma) if ma is not None else _sach(credentials.get("chatgpt_account_id")),
+                        "ten": _lam_sach_chu(account.get("name")),
+                        "email_che": _che_email(email_tk) if email_tk else None,
+                        "goi": _sach(credentials.get("plan_type")),
+                        "trang_thai": _sach(account.get("status")),
+                        "co_refresh": bool(_sach(credentials.get("refresh_token"))),
+                        "het_han": _sach(credentials.get("expires_at")) or None,
+                    })
+                    if len(muc) >= TRAN_MUC_XEM_TRUOC:
+                        break
+                if len(muc) >= TRAN_MUC_XEM_TRUOC or not data \
+                        or trang * KICH_THUOC_TRANG >= tong or len(data) < KICH_THUOC_TRANG:
+                    break
+        except httpx.HTTPError:
+            return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
+    return {"ok": True, "nguon": "sub2api", "tong": len(muc), "tai_khoan": muc,
+            "nguon_ngoai": True}
+
+
+# ───────── CPA / CLIProxyAPI (chép từ c2a services/cpa_service.py @ d879b03) ─────────
+
+def _management_headers(secret_key: str) -> dict:
+    """Chép c2a: header quản trị của CPA."""
+    return {"Authorization": f"Bearer {secret_key}", "Accept": "application/json"}
+
+
+async def _xem_truoc_cpa(url: str, tham_so: dict) -> dict:
+    khoa = _sach(tham_so.get("khoa_api"))
+    if not khoa:
+        return {"ok": False, "loi": "thieu_xac_thuc"}
+    goc = url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=HET_GIO_GOI, verify=True) as client:
+            tra_loi = await client.get(f"{goc}/v0/management/auth-files",
+                                       headers=_management_headers(khoa))
+    except httpx.HTTPError:
+        return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
+    if tra_loi.status_code in (401, 403):
+        return {"ok": False, "loi": "sai_dang_nhap"}
+    if tra_loi.status_code != 200:
+        return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
+    try:
+        payload = tra_loi.json()
+    except Exception:
+        return {"ok": False, "loi": "phan_hoi_sai"}
+    files = payload.get("files") if isinstance(payload, dict) else None
+    if not isinstance(files, list):
+        return {"ok": False, "loi": "phan_hoi_sai"}
+    muc: list[dict] = []
+    for item in files[:TRAN_MUC_XEM_TRUOC]:
+        if not isinstance(item, dict):
+            continue
+        name = _sach(item.get("name"))
+        if not name:
+            continue
+        email = _sach(item.get("email") or item.get("account"))
+        muc.append({"ten": _lam_sach_chu(name), "email_che": _che_email(email) if email else None})
+    return {"ok": True, "nguon": "cpa", "tong": len(muc), "tai_khoan": muc,
+            "nguon_ngoai": True}
+
+
+# ───────── Phân tích tệp (dữ liệu không tin) ─────────
+
+def _bung_gzip_co_tran(tho: bytes) -> bytes:
+    """Bung gzip với trần cứng — bom nén bị từ chối thay vì bung hết vào RAM."""
+    bo = zlib.decompressobj(31)  # wbits 31 = gzip
+    ra = bytearray()
+    con_lai = tho
+    while con_lai:
+        khuc = bo.decompress(con_lai, TRAN_GZIP_BUNG + 1 - len(ra))
+        ra += khuc
+        if len(ra) > TRAN_GZIP_BUNG:
+            raise ValueError("tep_qua_lon")
+        con_lai = bo.unconsumed_tail
+        if not khuc and not con_lai:
+            break
+    ra += bo.flush()
+    if len(ra) > TRAN_GZIP_BUNG:
+        raise ValueError("tep_qua_lon")
+    return bytes(ra)
+
+
+def _xem_truoc_tep(tham_so: dict) -> dict:
+    dang = str(tham_so.get("dang") or "").strip()
+    if dang != "ninerouter":
+        return {"ok": False, "loi": "dinh_dang_khong_ho_tro"}
+    noi_dung = tham_so.get("noi_dung_base64")
+    if not isinstance(noi_dung, str) or not noi_dung.strip():
+        return {"ok": False, "loi": "thieu_tham_so"}
+    if len(noi_dung) > TRAN_BASE64:
+        return {"ok": False, "loi": "tep_qua_lon"}
+    try:
+        tho = base64.b64decode(noi_dung, validate=True)
+    except (binascii.Error, ValueError):
+        return {"ok": False, "loi": "noi_dung_sai"}
+    if len(tho) > TRAN_TEP and tho[:2] != b"\x1f\x8b":
+        return {"ok": False, "loi": "tep_qua_lon"}
+    dinh_dang = "json"
+    if tho[:2] == b"\x1f\x8b":
+        dinh_dang = "json.gz"
+        try:
+            tho = _bung_gzip_co_tran(tho)
+        except ValueError as e:
+            return {"ok": False, "loi": str(e) if str(e) == "tep_qua_lon" else "noi_dung_sai"}
+        except Exception:
+            return {"ok": False, "loi": "noi_dung_sai"}
+    try:
+        data = json.loads(tho.decode("utf-8"))
+    except Exception:
+        return {"ok": False, "loi": "noi_dung_sai"}
+    if not isinstance(data, dict) or not detect_9router_backup(data):
+        return {"ok": False, "loi": "dinh_dang_khong_ho_tro"}
+    kq = _xem_truoc_9router(data)
+    kq["dinh_dang"] = dinh_dang
+    return kq
+
+
+# ───────── Module ─────────
+
+_LUOC_DO_TEP = {
+    "type": "object",
+    "required": ["dang", "noi_dung_base64"],
+    "additionalProperties": False,
+    "properties": {
+        "dang": {"type": "string", "enum": ["ninerouter"]},
+        "noi_dung_base64": {"type": "string", "minLength": 1,
+                            "maxLength": TRAN_BASE64, "bi_mat": True},
+    },
+}
+
+_LUOC_DO_MAY_CHU = {
+    "type": "object",
+    "required": ["loai", "may_chu_url"],
+    "additionalProperties": False,
+    "properties": {
+        "loai": {"type": "string", "enum": ["sub2api", "cpa"]},
+        "may_chu_url": {"type": "string", "maxLength": 512},
+        "khoa_api": {"type": "string", "maxLength": 4096, "bi_mat": True},
+        "email": {"type": "string", "maxLength": 320},
+        "mat_khau": {"type": "string", "maxLength": 4096, "bi_mat": True},
+        "nhom": {"type": "string", "maxLength": 128},
+    },
+}
+
+_LUOC_DO_AP_DUNG = {
+    "type": "object",
+    "required": ["danh_sach"],
+    "additionalProperties": False,
+    "properties": {
+        "danh_sach": {"type": "array", "maxItems": 500},
+    },
+}
+
+
+class Module:
+    """Xem trước nhập tài khoản hàng loạt (chỉ đọc, chỉ quản trị, chưa nối kho)."""
+
+    def __init__(self, manifest, _goc_kiem_thu: str | None = None):
+        self.manifest = manifest
+        self.tien_to = str(manifest.get("tien_to") or "nhaptaikhoan")
+
+    # ── vòng đời ──────────────────────────────────────────────────────────
+
+    def nap(self, cau_hinh: dict) -> None:
+        # Module không có trường cấu hình và không giữ trạng thái.
+        return None
+
+    async def cai(self, cau_hinh: dict) -> dict:
+        return {"ok": True, "loi": None, "ket_qua_tung_khoa": [], "cau_hinh_luu": {}}
+
+    async def suc_khoe(self) -> dict:
+        return {
+            "ok": True,
+            "dinh_dang": ["ninerouter-json", "ninerouter-json.gz", "sub2api", "cpa"],
+            "ap_dung": "chua_noi_kho_tai_khoan",
+        }
+
+    async def dung(self) -> None:
+        return None
+
+    # ── thực thể / hành động ──────────────────────────────────────────────
+
+    def thuc_the(self, loc=None) -> list[dict]:
+        return [{
+            "id": f"{self.tien_to}.nguon",
+            "ten": "Nguồn nhập tài khoản (9router / sub2api / CPA)",
+            "loai": "cong_cu",
+            "thuoc_tinh": {"dich_vu": "nhaptaikhoan"},
+            "tinh_nang": [
+                {"hanh_dong": "xem_truoc_tep", "rui_ro": "nguy_hiem",
+                 "mo_ta": "Phân tích tệp sao lưu 9router (JSON/JSON.gz, gửi base64) và trả danh sách tài khoản DẠNG CHE. Chỉ quản trị.",
+                 "tham_so": _LUOC_DO_TEP},
+                {"hanh_dong": "xem_truoc_may_chu", "rui_ro": "nguy_hiem",
+                 "mo_ta": "Đọc danh sách tài khoản qua API quản trị của máy chủ sub2api / CLIProxyAPI (CPA) và trả DẠNG CHE. Khoá/mật khẩu khai theo từng lần, không lưu. Chỉ quản trị.",
+                 "tham_so": _LUOC_DO_MAY_CHU},
+                {"hanh_dong": "ap_dung", "rui_ro": "nguy_hiem",
+                 "mo_ta": "Áp dụng danh sách đã duyệt vào kho tài khoản — CHƯA nối kho (NV144/NV72), luôn từ chối rõ ràng. Chỉ quản trị.",
+                 "tham_so": _LUOC_DO_AP_DUNG},
+            ],
+            "rui_ro_mac_dinh": "nguy_hiem",
+        }]
+
+    def ap_dung(self, danh_sach) -> dict:
+        """HÀM GIAO DIỆN áp dụng — nhận danh sách tài khoản ĐÃ DUYỆT.
+
+        Hợp đồng nối kho sau (khi NV144/NV72 gộp): mỗi mục là dict có `nguon`
+        ("sub2api" | "cpa" | "ninerouter"), `dinh_danh` (định danh ở nguồn) và
+        `bi_mat` (mã thô — CHỈ đi qua đường này, không qua xem trước/log).
+        Hiện kho chưa nối: hàm kiểm hình dạng rồi TỪ CHỐI rõ ràng, không ghi
+        vào bất kỳ đâu."""
+        if not isinstance(danh_sach, list) or not danh_sach:
+            return {"ok": False, "loi": "danh_sach_rong"}
+        if len(danh_sach) > 500:
+            return {"ok": False, "loi": "danh_sach_qua_lon"}
+        for muc in danh_sach:
+            if not isinstance(muc, dict) or not _sach(muc.get("nguon")) \
+                    or not _sach(muc.get("dinh_danh")):
+                return {"ok": False, "loi": "danh_sach_sai_khuon"}
+        return {
+            "ok": False,
+            "loi": "chua_noi_kho_tai_khoan",
+            "chi_tiet": "Kho tài khoản/danh tính của lõi (NV144, NV72) chưa được "
+                        "gộp nên phần áp dụng chưa nối; danh sách đã duyệt KHÔNG "
+                        "được ghi vào đâu. Nối kho xong sẽ ghi qua đúng hàm này.",
+        }
+
+    async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
+        tham_so = tham_so or {}
+        # Cổng quản trị TRƯỚC mọi xử lý: khách không tới được cả bước phân tích.
+        if not _nguoi_goi_la_quan_tri():
+            return {"ok": False, "loi": "chi_quan_tri"}
+        if id != f"{self.tien_to}.nguon":
+            return {"ok": False, "loi": "khong_thay_thuc_the"}
+        if hanh_dong == "xem_truoc_tep":
+            return _xem_truoc_tep(tham_so)
+        if hanh_dong == "xem_truoc_may_chu":
+            loai = str(tham_so.get("loai") or "").strip()
+            if loai not in ("sub2api", "cpa"):
+                return {"ok": False, "loi": "loai_khong_ho_tro"}
+            url = str(tham_so.get("may_chu_url") or "").strip()
+            if not url:
+                return {"ok": False, "loi": "thieu_tham_so"}
+            try:
+                from app.tu_xa import kiem_url_lan  # bộ kiểm SSRF chung của lõi
+
+                url_sach = await kiem_url_lan(url)
+            except ValueError:
+                return {"ok": False, "loi": "url_khong_hop_le"}
+            if loai == "sub2api":
+                return await _xem_truoc_sub2api(url_sach, tham_so)
+            return await _xem_truoc_cpa(url_sach, tham_so)
+        if hanh_dong == "ap_dung":
+            return self.ap_dung(tham_so.get("danh_sach"))
+        return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}

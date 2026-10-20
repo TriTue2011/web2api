@@ -390,3 +390,4 @@ Bản quyền (c) 2026 `TriTue2011`. **Giữ toàn quyền** (*All rights reserv
 - [docs/CHUAN-BAO-MAT-MODULE.md](docs/CHUAN-BAO-MAT-MODULE.md): Quy chuẩn bảo mật khi xây dựng module.
 - [SECURITY.md](SECURITY.md): Chính sách bảo mật và kênh báo cáo lỗ hổng riêng tư.
 - [CONTRIBUTING.md](CONTRIBUTING.md): Hướng dẫn đóng góp cho dự án.
+| `nhaptaikhoan` | Xem trước nhập tài khoản hàng loạt từ 9router (tệp `.json`/`.json.gz`), sub2api và CPA — chỉ xem trước dạng che, chỉ quản trị, chưa nối kho tài khoản (NV164) | HTTP tới máy chủ do quản trị nhập (`sub2api`/`CPA`) + tệp | Có sẵn (kiểm với máy chủ giả + tệp giả; `ap_dung` chưa nối kho nên từ chối rõ ràng; chưa kiểm với dịch vụ thật) |
