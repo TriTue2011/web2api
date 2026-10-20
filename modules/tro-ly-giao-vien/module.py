@@ -1,17 +1,24 @@
-"""Module tro-ly-giao-vien — trợ lý giáo viên (đợt 1: kiểm kê + phần thuần).
+"""Module tro-ly-giao-vien — trợ lý giáo viên (đợt 1: kiểm kê + phần thuần;
+đợt 2: chấm tự luận bằng mô hình).
 
 Nội dung port từ c2a (~/workspace/c2a-nv146/services/agent/) theo LUẬT PORT —
 mỗi tệp ghi rõ nguồn ở đầu: tieng_anh.py (teacher_english.py nguyên văn),
 cham.py (teacher_assess.py), giao_an.py (teacher.py), mon_hoc.py
 (teacher_workspace.py), lop.py (teacher_path.py), muc_luc.py
-(teacher_lecture.py + detect_volume).
+(teacher_lecture.py + detect_volume), cham_model.py (teacher_assess
+._llm_grade — đợt 2).
 
 Dữ liệu học sinh là NHẠY CẢM:
-- `student_answer`/bài làm là DỮ LIỆU KHÔNG TIN: chỉ đối chiếu đáp án ở lớp thuần
-  (không gọi mô hình đợt này), không log, không đưa vào phản hồi sau khi strip.
+- `student_answer`/bài làm là DỮ LIỆU KHÔNG TIN: chấm thuần ở lớp heuristic,
+  chấm model thì được rào trong prompt như dữ liệu (xem cham_model.py); không
+  log, không đưa vào phản hồi sau khi strip, KHÔNG lưu vào kết quả chấm.
 - Kho đề: <WEB2API_DATA>/du_lieu/tro-ly-giao-vien/<sha256(danh_tinh_id)[:16]>/de/,
   0600, thư mục 0700, cách ly theo danh tính (IDOR giữa các giáo viên bị chặn),
   ghi nguyên tử. Thực thể kho_de có rủi ro `ghi`.
+- Đợt 2 — kết quả chấm model nằm ở ../ket_qua/ cùng khuôn 0600/0700; điểm
+  model chỉ là ĐỀ XUẤT, giáo viên `xac_nhan_diem` mới thành điểm chính thức.
+  Model của lõi được gọi qua loopback /v1/chat/completions bằng khoá khách
+  phạm vi hẹp (mẫu NV135/NV163); chưa cấu hình thì hành động chấm model tắt.
 """
 
 from __future__ import annotations
@@ -19,12 +26,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
+import re
+import secrets
 import time
 from typing import Any
 
 from app import kho, ngu_canh
 
-from . import cham, giao_an, kho_de, lop, mon_hoc, muc_luc, tieng_anh
+from . import cham, cham_model, giao_an, ket_qua_cham, kho_de, lop, mon_hoc, muc_luc, tieng_anh
 
 log = logging.getLogger("web2api.tro_ly_giao_vien")
 
@@ -32,6 +41,20 @@ TRAN_BAI_HS = 4000
 TRAN_VAN_BAN = 20000
 TRAN_MARKDOWN = 500000
 TRAN_MUC_LUC = 500000
+
+DIA_CHI_MAC_DINH = "http://127.0.0.1:3031"
+HET_GIO_MODEL = 90.0
+
+_MO_HINH_HOP_LE = re.compile(r"^[^/\\\s]+/[^\s]+$")
+_MAU_DIA_CHI = re.compile(r"^https?://(\[[0-9a-fA-F:]+\]|[^/:?#\s]+)(?::\d+)?(?:[/?#]|$)")
+
+
+def _la_loopback(dia_chi: str) -> bool:
+    """Địa chỉ lõi có phải loopback không (chống SSRF). Mẫu NV135/NV163."""
+    m = _MAU_DIA_CHI.match(str(dia_chi or "").strip())
+    if not m:
+        return False
+    return m.group(1).strip("[]").lower() in ("127.0.0.1", "localhost", "::1")
 
 
 class Module:
@@ -43,13 +66,105 @@ class Module:
         self._cau_hinh: dict[str, Any] = {}
 
     def nap(self, cau_hinh: dict[str, Any]) -> None:
-        self._cau_hinh = cau_hinh or {}
+        """Nạp cấu hình đã lưu (không gọi mạng)."""
+        self._cau_hinh = dict(cau_hinh or {})
 
     async def cai(self, cau_hinh: dict[str, Any]) -> dict[str, Any]:
-        return {"ok": True, "ket_qua_tung_khoa": [], "cau_hinh_luu": {}}
+        """Kiểm tra cấu hình chấm bằng model (mẫu NV163).
+
+        Rỗng = hợp lệ (chấm model tắt, các hành động thuần vẫn chạy).
+        Đã khai model_cham thì cần khoa_khach; dia_chi_v1 chỉ chấp nhận loopback.
+        """
+        cau_hinh = dict(cau_hinh or {})
+        ket_qua: list[dict[str, Any]] = []
+
+        def ghi(khoa: str, hop_le: bool, loi: str | None = None) -> None:
+            muc: dict[str, Any] = {"khoa": khoa, "hop_le": hop_le}
+            if loi:
+                muc["loi"] = loi
+            ket_qua.append(muc)
+
+        dia_chi = str(cau_hinh.get("dia_chi_v1") or DIA_CHI_MAC_DINH).strip()
+        if _la_loopback(dia_chi):
+            ghi("dia_chi_v1", True)
+        else:
+            ghi("dia_chi_v1", False,
+                "chỉ chấp nhận loopback (127.0.0.1/localhost/::1) — chống SSRF")
+
+        model = str(cau_hinh.get("model_cham") or "").strip()
+        khoa = str(cau_hinh.get("khoa_khach") or "").strip()
+        if model:
+            if _MO_HINH_HOP_LE.match(model):
+                ghi("model_cham", True)
+            else:
+                ghi("model_cham", False,
+                    "đúng dạng trong GET /v1/models, ví dụ tien_to/ten-model")
+            if khoa:
+                ghi("khoa_khach", True)
+            else:
+                ghi("khoa_khach", False,
+                    "đã khai model_cham thì cần khoá khách để gọi model")
+        else:
+            ghi("model_cham", True)
+            ghi("khoa_khach", True)  # không chấm model thì không cần khoá
+
+        ok = all(m["hop_le"] for m in ket_qua)
+        luu = {k: cau_hinh[k] for k in ("model_cham", "khoa_khach", "dia_chi_v1")
+               if k in cau_hinh} if ok else {}
+        return {
+            "ok": ok,
+            "ket_qua_tung_khoa": ket_qua,
+            "loi": None if ok else "cấu hình chưa hợp lệ",
+            "cau_hinh_luu": luu,
+        }
 
     async def suc_khoe(self) -> dict[str, Any]:
-        return {"ok": True, "base_url": None, "khoa": []}
+        return {"ok": True, "base_url": None, "khoa": [],
+                "model_cham": self._model_kha_dung()}
+
+    def _model_kha_dung(self) -> bool:
+        ch = self._cau_hinh
+        return bool(str(ch.get("model_cham") or "").strip()
+                    and str(ch.get("khoa_khach") or "").strip()
+                    and _la_loopback(str(ch.get("dia_chi_v1") or DIA_CHI_MAC_DINH)))
+
+    async def _goi_model(self, tin_nhan: list[dict[str, str]]) -> str:
+        """Gọi /v1/chat/completions của chính lõi qua loopback. (mẫu NV135/NV163)
+
+        Test monkeypatch phương thức này bằng model GIẢ (không mạng).
+        """
+        ch = self._cau_hinh
+        dia_chi = str(ch.get("dia_chi_v1") or DIA_CHI_MAC_DINH).strip()
+        if not _la_loopback(dia_chi):
+            raise cham_model.LoiChamModel(
+                "dia_chi_v1 không phải loopback — chặn trước khi gọi (chống SSRF)")
+        model = str(ch.get("model_cham") or "").strip()
+        khoa = str(ch.get("khoa_khach") or "").strip()
+        if not model or not khoa:
+            raise cham_model.LoiChamModel(
+                "chưa cấu hình model_cham / khoa_khach — cài ở Hệ thống → Module")
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=HET_GIO_MODEL) as client:
+                r = await client.post(
+                    f"{dia_chi.rstrip('/')}/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {khoa}"},
+                    json={"model": model, "messages": tin_nhan, "stream": False},
+                )
+        except Exception as exc:
+            raise cham_model.LoiChamModel(
+                f"không gọi được model của lõi: {type(exc).__name__}") from exc
+        if r.status_code >= 400:
+            # Không đưa body lỗi vào thông điệp (có thể lẫn nội dung nhạy cảm),
+            # càng không bao giờ kèm khoá.
+            raise cham_model.LoiChamModel(f"model của lõi trả HTTP {r.status_code}")
+        try:
+            data = r.json()
+            noi_dung = str((data.get("choices") or [{}])[0]
+                           .get("message", {}).get("content") or "")
+        except Exception as exc:
+            raise cham_model.LoiChamModel("phản hồi model không đúng dạng") from exc
+        return noi_dung
 
     async def dung(self) -> None:
         return None
@@ -141,6 +256,43 @@ class Module:
                     ],
                 }
             )
+        kq_id = f"{self.tien_to}.ket_qua_cham"
+        if not loc or kq_id in loc or loc.get("id") in (None, kq_id):
+            ra.append(
+                {
+                    "id": kq_id,
+                    "ten": "Chấm tự luận bằng model + kết quả (đợt 2)",
+                    "loai": "cong_cu",
+                    "rui_ro_mac_dinh": "ghi",
+                    "tinh_nang": [
+                        self._tn("cham_tu_luan_model",
+                                 "Chấm một bài tự luận bằng model của lõi (điểm là ĐỀ XUẤT; cần model_cham + khoa_khach)",
+                                 {"de_bai": ("string", "Đề bài (tối đa 2000 ký tự đưa vào prompt)", True),
+                                  "bai_hs": ("string", "Bài làm học sinh (tối đa 8000 ký tự; dữ liệu không tin, không lưu)", True),
+                                  "barem": ("array", "Danh sách [{tieu_chi, diem_toi_da}] của giáo viên (bỏ trống = 1 tiêu chí «Tổng thể» 10 điểm)", False),
+                                  "goi_y_dap_an": ("string", "Gợi ý đáp án (tối đa 1000 ký tự đưa vào prompt)", False),
+                                  "mon": ("string", "Mã môn", False),
+                                  "lop": ("integer", "Lớp (1-12)", False)}),
+                        self._tn("cham_nhieu_bai_model",
+                                 "Chấm nhiều bài tự luận trong một lượt (tối đa 5 bài)",
+                                 {"de_bai": ("string", "Đề bài chung", True),
+                                  "danh_sach_bai": ("array", "Danh sách [{bai_hs}] (1-5 bài)", True),
+                                  "barem": ("array", "Danh sách [{tieu_chi, diem_toi_da}]", False),
+                                  "goi_y_dap_an": ("string", "Gợi ý đáp án", False),
+                                  "mon": ("string", "Mã môn", False),
+                                  "lop": ("integer", "Lớp (1-12)", False)}),
+                        self._tn("doc_ket_qua", "Đọc một kết quả chấm của chính danh tính",
+                                 {"ket_qua_id": ("string", "Mã kết quả", True)}),
+                        self._tn("liet_ke_ket_qua", "Liệt kê kết quả chấm của chính danh tính (tóm tắt)", {}),
+                        self._tn("xac_nhan_diem",
+                                 "Xác nhận điểm cho một kết quả (điểm model là đề xuất; thành điểm chính thức khi xác nhận)",
+                                 {"ket_qua_id": ("string", "Mã kết quả", True),
+                                  "diem_chinh_thuc": ("number", "Điểm chính thức (bỏ trống = dùng điểm đề xuất của model)", False)}),
+                        self._tn("xoa_ket_qua", "Xoá một kết quả chấm của chính danh tính",
+                                 {"ket_qua_id": ("string", "Mã kết quả", True)}),
+                    ],
+                }
+            )
         return ra
 
     def _tn(self, hanh_dong: str, mo_ta: str, ts: dict[str, tuple[str, str, bool]]) -> dict[str, Any]:
@@ -155,7 +307,8 @@ class Module:
 
     async def trang_thai(self, ids: list[str]) -> dict[str, dict[str, Any]]:
         ra = {}
-        for tid in (f"{self.tien_to}.thu_vien", f"{self.tien_to}.kho_de"):
+        for tid in (f"{self.tien_to}.thu_vien", f"{self.tien_to}.kho_de",
+                    f"{self.tien_to}.ket_qua_cham"):
             if not ids or tid in ids:
                 ra[tid] = {
                     "gia_tri": "san_sang", "don_vi": None,
@@ -171,6 +324,8 @@ class Module:
             return self._thuc_hien_thu_vien(hanh_dong, tham_so or {})
         if id == f"{self.tien_to}.kho_de":
             return self._thuc_hien_kho_de(hanh_dong, tham_so or {})
+        if id == f"{self.tien_to}.ket_qua_cham":
+            return await self._thuc_hien_ket_qua(hanh_dong, tham_so or {})
         return {"ok": False, "loi": f"Không tìm thấy thực thể {id!r}"}
 
     # –– thu_vien (chỉ đọc) ––
@@ -314,6 +469,136 @@ class Module:
         except Exception as e:
             log.warning("Lỗi kho đề %s: %s", hanh_dong, type(e).__name__)
             return {"ok": False, "loi": "lỗi nội bộ khi thao tác kho đề"}
+
+    # –– ket_qua_cham (ghi — chấm model + kết quả, cần danh tính) ––
+
+    async def _cham_mot_bai(self, de_bai: str, bai_hs: str,
+                            barem: list[dict[str, Any]], mon: str, lop: int,
+                            goi_y: str) -> dict[str, Any]:
+        """Chấm 1 bài bằng model. Bài là DỮ LIỆU KHÔNG TIN (xem cham_model).
+
+        Trả dict đã chuẩn hoá (diem_de_xuat tự cộng từ barem). Lỗi nào cũng
+        ném LoiChamModel — không bao giờ bịa điểm thay thế.
+        """
+        bai = str(bai_hs or "")
+        if not bai.strip():
+            raise cham_model.LoiChamModel("thiếu bài làm học sinh")
+        if len(bai) > cham_model.TRAN_BAI_MODEL:
+            raise cham_model.LoiChamModel(
+                f"bài làm vượt trần {cham_model.TRAN_BAI_MODEL} ký tự — "
+                "chia nhỏ hoặc rút gọn bài rồi chấm lại")
+        if not de_bai.strip():
+            raise cham_model.LoiChamModel("thiếu đề bài")
+        tin_nhan = cham_model.dung_tin_nhan(
+            de_bai, goi_y, bai, barem, mon, lop)
+        tra_ve = await self._goi_model(tin_nhan)
+        data = cham_model.boc_json(tra_ve)
+        if data is None:
+            raise cham_model.LoiChamModel(
+                "model trả về không phải JSON hợp lệ — không chấm được")
+        return cham_model.chuan_hoa_ket_qua(data, barem)
+
+    async def _thuc_hien_ket_qua(self, hanh_dong: str, ts: dict[str, Any]) -> dict[str, Any]:
+        khoa, loi = self._khoa_danh_tinh()
+        if loi:
+            return {"ok": False, "loi": loi, "ma_loi": "missing_context"}
+        goc = self._goc_de()
+        try:
+            if hanh_dong == "cham_tu_luan_model":
+                mon = mon_hoc.chuan_mon(str(ts.get("mon") or "")) or "van"
+                lop = self._lop(ts.get("lop") or 5)
+                barem = cham_model.chuan_barem(ts.get("barem"))
+                kq = await self._cham_mot_bai(
+                    str(ts.get("de_bai") or ""), ts.get("bai_hs") or "",
+                    barem, mon, lop, str(ts.get("goi_y_dap_an") or ""))
+                ban_ghi = self._ban_ghi_ket_qua(ts, barem, mon, lop, kq)
+                luu = ket_qua_cham.luu_ket_qua(goc, khoa, ban_ghi["id"], ban_ghi)
+                if not luu["ok"]:
+                    return {"ok": False, "loi": luu["loi"]}
+                return {"ok": True, "ket_qua_id": ban_ghi["id"], "ket_qua": ban_ghi}
+            if hanh_dong == "cham_nhieu_bai_model":
+                ds = ts.get("danh_sach_bai")
+                if not isinstance(ds, list) or not ds:
+                    return {"ok": False, "loi": "danh_sach_bai phải là danh sách 1-5 bài"}
+                if len(ds) > cham_model.TRAN_SO_BAI_LUOT:
+                    return {"ok": False,
+                            "loi": f"vượt trần {cham_model.TRAN_SO_BAI_LUOT} bài/lượt"}
+                mon = mon_hoc.chuan_mon(str(ts.get("mon") or "")) or "van"
+                lop = self._lop(ts.get("lop") or 5)
+                barem = cham_model.chuan_barem(ts.get("barem"))
+                ket_qua_ds: list[dict[str, Any]] = []
+                for muc in ds:
+                    bai = (muc or {}).get("bai_hs") if isinstance(muc, dict) else None
+                    try:
+                        kq = await self._cham_mot_bai(
+                            str(ts.get("de_bai") or ""), bai or "",
+                            barem, mon, lop, str(ts.get("goi_y_dap_an") or ""))
+                        ban_ghi = self._ban_ghi_ket_qua(ts, barem, mon, lop, kq)
+                        luu = ket_qua_cham.luu_ket_qua(goc, khoa, ban_ghi["id"], ban_ghi)
+                        if not luu["ok"]:
+                            ket_qua_ds.append({"ok": False, "loi": luu["loi"]})
+                        else:
+                            ket_qua_ds.append({"ok": True, "ket_qua_id": ban_ghi["id"],
+                                               "ket_qua": ban_ghi})
+                    except cham_model.LoiChamModel as e:
+                        ket_qua_ds.append({"ok": False, "loi": str(e)})
+                return {"ok": any(m["ok"] for m in ket_qua_ds), "ket_qua": ket_qua_ds}
+            if hanh_dong == "doc_ket_qua":
+                return ket_qua_cham.doc_ket_qua(goc, khoa, str(ts.get("ket_qua_id") or ""))
+            if hanh_dong == "liet_ke_ket_qua":
+                return ket_qua_cham.liet_ke_ket_qua(goc, khoa)
+            if hanh_dong == "xac_nhan_diem":
+                doc = ket_qua_cham.doc_ket_qua(goc, khoa, str(ts.get("ket_qua_id") or ""))
+                if not doc["ok"]:
+                    return {"ok": False, "loi": doc["loi"]}
+                bg = doc["ket_qua"]
+                tong = sum(float(m["diem_toi_da"]) for m in bg.get("barem") or [])
+                diem_in = ts.get("diem_chinh_thuc")
+                if diem_in is None:
+                    diem = float(bg["diem_de_xuat"])
+                elif isinstance(diem_in, bool) or not isinstance(diem_in, (int, float)):
+                    return {"ok": False, "loi": "diem_chinh_thuc phải là số"}
+                else:
+                    diem = float(diem_in)
+                if not (0 <= diem <= tong):
+                    return {"ok": False,
+                            "loi": f"diem_chinh_thuc phải trong [0, {tong:g}] (tổng barem)"}
+                bg["diem_chinh_thuc"] = round(diem, 2)
+                bg["trang_thai"] = "da_xac_nhan"
+                bg["luc_xac_nhan"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                luu = ket_qua_cham.luu_ket_qua(goc, khoa, bg["id"], bg)
+                if not luu["ok"]:
+                    return {"ok": False, "loi": luu["loi"]}
+                return {"ok": True, "ket_qua_id": bg["id"], "ket_qua": bg}
+            if hanh_dong == "xoa_ket_qua":
+                return ket_qua_cham.xoa_ket_qua(goc, khoa, str(ts.get("ket_qua_id") or ""))
+            return {"ok": False, "loi": f"Hành động «{hanh_dong}» không hỗ trợ"}
+        except cham_model.LoiChamModel as e:
+            return {"ok": False, "loi": str(e)}
+        except ValueError as e:
+            return {"ok": False, "loi": str(e)}
+        except Exception as e:
+            log.warning("Lỗi kết quả chấm %s: %s", hanh_dong, type(e).__name__)
+            return {"ok": False, "loi": "lỗi nội bộ khi chấm/lưu kết quả"}
+
+    def _ban_ghi_ket_qua(self, ts: dict[str, Any], barem: list[dict[str, Any]],
+                         mon: str, lop: int, kq: dict[str, Any]) -> dict[str, Any]:
+        """Bản ghi lưu đĩa: KHÔNG chứa bài làm học sinh, không chứa khoá."""
+        return {
+            "id": f"kq-{secrets.token_hex(4)}",
+            "de_bai": str(ts.get("de_bai") or "")[:500],
+            "mon": mon,
+            "lop": lop,
+            "barem": barem,
+            "tieu_chi": kq["tieu_chi"],
+            "diem_de_xuat": kq["diem_de_xuat"],
+            "nhan_xet_chung": kq["nhan_xet_chung"],
+            "da_kep_diem": kq["da_kep_diem"],
+            "trang_thai": "de_xuat",
+            "diem_chinh_thuc": None,
+            "model": str(self._cau_hinh.get("model_cham") or ""),
+            "luc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
 
     # –– helper ––
 

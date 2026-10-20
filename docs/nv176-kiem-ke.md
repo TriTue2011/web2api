@@ -4,7 +4,8 @@ Soát xong ngày 2026-10-20 từ bản sao `~/workspace/c2a-nv146` (nguồn gố
 `/opt/claude-c2a/chatgpt2api` commit `d879b03` — không còn tồn tại trên VM, nên
 mọi tham chiếu dưới đây đều đối chiếu trên bản sao; được ghi rõ ở đầu mỗi tệp
 module). Đợt này (NV176 đợt 1): **sản phẩm kiểm kê này + port phần thuần hàm
-KHÔNG gọi mô hình, KHÔNG phụ thuộc tro-ly**.
+KHÔNG gọi mô hình, KHÔNG phụ thuộc tro-ly**. **Cập nhật đợt 2 (20/10/2026,
+theo quyết chủ máy):** đã làm `cham_tu_luan_model` — xem mục Đợt 2 dưới đây.
 
 ## 1. Sơ đồ nhóm tệp trong c2a
 
@@ -40,11 +41,22 @@ KHÔNG gọi mô hình, KHÔNG phụ thuộc tro-ly**.
 | `_TOC_LINE_RE`, `toc_tu_markdown` → `muc_luc_tu_markdown`, `detect_volume` → `doan_tap` | G + B | `modules/tro-ly-giao-vien/muc_luc.py` |
 | Kho đề theo danh tính (0600, ghi nguyên tử, trần 100) — viết mới, không phải c2a | — | `modules/tro-ly-giao-vien/kho_de.py` |
 
-### Đợt 2 — cần mô hình (độc lập với đợt 3/4, theo spec phải chờ quyết định người dùng)
+### Đợt 2 — cần mô hình — **LÀM MỘT PHẦN 20/10/2026 (theo quyết chủ máy)**
 
-- `grade_answer` bước `_llm_grade` (chấm tự luận bằng mô hình) — tách thành hành động mới `cham_tu_luan_model`, gọi `tro-ly`/`runtime.call_model` khi hạ tầng cho phép.
-- A: vòng lặp agent (call_model + chọn kỹ năng) — cần đợi NV135 hoàn thành lõi tro-ly.
-- G: sinh bài giảng qua mô hình; `ai_draft_lesson`/`ai_draft_assignment`; D: bài tập hàng ngày; `english.models` (ánh xạ mô hình tiếng Anh).
+- ✅ `grade_answer` bước `_llm_grade` → hành động mới `cham_tu_luan_model`
+  (+ `cham_nhieu_bai_model`, tối đa 5 bài/lượt) trên thực thể
+  `tro_ly_giao_vien.ket_qua_cham`. Thay cho `tro-ly`/`runtime.call_model` của
+  c2a: gọi `/v1/chat/completions` của chính lõi qua loopback bằng khoá khách
+  phạm vi hẹp (mẫu NV135/NV163 — cấu hình `model_cham`/`khoa_khach`/`dia_chi_v1`).
+  Barem do giáo viên tự khai theo tiêu chí; điểm model là **ĐỀ XUẤT**, mã tự
+  cộng tổng từ barem và kẹp điểm từng tiêu chí vào trần barem (chống tiêm
+  lệnh từ bài làm); giáo viên `xac_nhan_diem` mới thành điểm chính thức. Kết
+  quả lưu 0600 theo danh tính, **không chứa bài làm**. Mã: `cham_model.py` +
+  `ket_qua_cham.py`; test: `test/test_nv176_dot2_cham_model.py`.
+- ⏳ Chưa làm (vẫn thuộc đợt 2): A vòng lặp agent (call_model + chọn kỹ năng —
+  cần lõi tro-ly NV135); G sinh bài giảng qua mô hình
+  (`ai_draft_lesson`/`ai_draft_assignment`); D bài tập hàng ngày;
+  `english.models` (ánh xạ mô hình tiếng Anh).
 
 ### Đợt 3 — cần hạ tầng dữ liệu (độc lập với đợt 2)
 
@@ -68,14 +80,24 @@ KHÔNG gọi mô hình, KHÔNG phụ thuộc tro-ly**.
 6. **Bài làm học sinh** (`student_answer`): chỉ dùng trong lượt chấm, strip khỏi đầu ra, không log.
 7. **Năm sinh** chỉ dùng một lần trong `xac_dinh_lop`, không lưu hồ sơ học sinh.
 8. `build_lesson_plan` template có nhắc các hành động đợt sau (`search_sgk`, `teacher_hint`...) — giữ nguyên như c2a; các đợt sau cài tiếp.
+9. (Đợt 2) `_llm_grade` của c2a chọn model theo môn/kỹ năng (`model_write`,
+   `model_for_english_skill`) — web2api dùng MỘT `model_cham` do quản trị cấu
+   hình cho module; c2a nuốt lỗi LLM rồi rơi xuống heuristic, bản port **báo
+   lỗi «không chấm được»** và không rơi xuống heuristic (không bịa điểm).
+   Barem mặc định của c2a là rubric theo môn; bản port dùng barem giáo viên
+   tự khai (mặc định 1 tiêu chí «Tổng thể» 10 điểm) để điểm từng tiêu chí
+   kiểm chứng được.
 
 ## 4. Trạng thái dữ liệu học sinh
 
 Tối thiểu hoá: đợt này module không lưu tên học sinh, năm sinh, hay bài làm vào bất cứ nơi nào. `xac_dinh_lop` chỉ trả lớp suy được; kho đề chứa đề do giáo viên tạo (không chứa dữ liệu học sinh).
 
-## 5. Cần chủ máy quyết (chưa làm gì)
+## 5. Cần chủ máy quyết
 
-1. Có port đợt 2 (chấm tự luận qua mô hình) và cách nối vào `tro-ly` (NV135) không, hay giữ module thuần?
+1. ✅ ĐÃ QUYẾT (20/10/2026): làm đợt 2 chấm tự luận qua mô hình — đã làm
+   `cham_tu_luan_model` nối loopback lõi (không đợi tro-ly NV135). Còn mở:
+   có làm tiếp phần còn lại của đợt 2 (vòng lặp agent, sinh bài giảng, bài
+   tập hàng ngày) không?
 2. Có port hồ sơ học sinh/placement (đợt 3) không — dữ liệu trẻ em, cần ràng buộc lưu trữ/pháp lý trước?
 3. Có nạp nội dung SGK (nhóm J/M — bản quyền) không?
 4. Có tách tạo ảnh bài giảng thành dịch vụ phụ (2.2GB) không?

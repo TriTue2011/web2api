@@ -1,1 +1,51 @@
-{"cung_cap":["thiet_bi"],"giao_thuc":"cuc_bo","hang":"A","id":"tro-ly-giao-vien","loai":"tien_ich","loai_ten":"Tiện ích","loai_thu_tu":44,"mo_ta":"Trợ lý giáo viên VN (đợt 1): ra đề + chấm bài thuần hàm (không gọi mô hình), bảng môn theo lớp, xác định lớp từ năm sinh, mạch kiến thức, gợi ý bậc thang, giáo án 6 pha, tiếng Anh theo cấp, kho đề 0600 cách ly theo danh tính.","phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Thuần Python (stdlib), không mạng, không gọi mô hình đợt này. Kho đề: <WEB2API_DATA>/du_lieu/tro-ly-giao-vien/<khoa>/de, 0600, ghi nguyên tử, trần 100 đề/danh tính. Hợp đồng chuẩn C2 (thiet_bi), thực thể thu_vien (rủi ro doc) + kho_de (rủi ro ghi).","gpu":false,"mang_ra":[],"ram_them_mb":null},"ten":"Trợ lý giáo viên","tien_to":"tro_ly_giao_vien","truong_cau_hinh":[],"yeu_cau_goi":[]}
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "cuc_bo",
+  "hang": "A",
+  "id": "tro-ly-giao-vien",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 44,
+  "mo_ta": "Trợ lý giáo viên VN (đợt 1 + đợt 2): ra đề + chấm bài thuần hàm (không gọi mô hình), bảng môn theo lớp, xác định lớp từ năm sinh, mạch kiến thức, gợi ý bậc thang, giáo án 6 pha, tiếng Anh theo cấp, kho đề 0600 cách ly theo danh tính; đợt 2: chấm tự luận bằng model của lõi qua loopback (điểm là ĐỀ XUẤT tới khi giáo viên xác nhận).",
+  "phien_ban": "0.2.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Thuần Python (stdlib + httpx chỉ cho lượt gọi model). Đợt 2 gọi HTTP loopback tới chính lõi web2api (/v1/chat/completions) bằng khoá khách phạm vi hẹp khi đã cấu hình 3 trường trên; chưa cấu hình thì chấm bằng model tắt. Không gọi mạng ra ngoài. Kho đề/kết quả: <WEB2API_DATA>/du_lieu/tro-ly-giao-vien/<khoa>/, 0600/0700, ghi nguyên tử, trần 100 đề và 200 kết quả/danh tính. Hợp đồng chuẩn C2 (thiet_bi), thực thể thu_vien (rủi ro doc) + kho_de (rủi ro ghi) + ket_qua_cham (rủi ro ghi).",
+    "gpu": false,
+    "mang_ra": [],
+    "ram_them_mb": null
+  },
+  "ten": "Trợ lý giáo viên",
+  "tien_to": "tro_ly_giao_vien",
+  "truong_cau_hinh": [
+    {
+      "khoa": "model_cham",
+      "nhan": "Model chấm tự luận",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Model dùng để chấm tự luận, đúng dạng trong GET /v1/models của chính máy chủ web2api này (ví dụ tien_to/ten-model). Để trống = tính năng chấm bằng model tắt; các hành động thuần vẫn chạy."
+    },
+    {
+      "khoa": "khoa_khach",
+      "nhan": "Khoá khách gọi model",
+      "kieu": "bi_mat",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Khoá khách của chính web2api này. LẤY Ở ĐÂU: vào Hệ thống → Khoá khách, tạo một khoá mới với phạm vi hẹp chỉ gồm «chat» cho module này, rồi dán giá trị vào đây. Module chỉ dùng khoá này để gọi /v1/chat/completions qua loopback; khoá chỉ đi trong header Authorization, không vào log/nhật ký/phản hồi lỗi."
+    },
+    {
+      "khoa": "dia_chi_v1",
+      "nhan": "Địa chỉ lõi web2api",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "http://127.0.0.1:3031",
+      "mo_ta": "Địa chỉ gốc của chính lõi web2api để gọi /v1/chat/completions. Chỉ chấp nhận loopback (127.0.0.1/localhost/::1) — chống SSRF."
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}
