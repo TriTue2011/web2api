@@ -36,6 +36,12 @@ services:
     # Biến tuỳ chọn đặt trong .env cạnh tệp này (không có .env cũng chạy được). Không viết `VAR: ""` ở
     # trên: biến RỖNG bị hiểu là «có khai».
     #   WEB2API_ADMIN_KEY                     khoá quản trị; để trống thì tự sinh vào /data/admin_key
+    #                                         (được mã hoá AES-256-GCM khi đã có khoá chính)
+    #   WEB2API_KHOA_CHINH                     khoá chính 32 byte (base64 hoặc hex) cho mã hoá khi nghỉ —
+    #                                         BẮT BUỘC vì mẫu đã bật WEB2API_BAT_BUOC_MA_HOA=1; thiếu hoặc
+    #                                         sai thì lõi dừng ngay với lỗi rõ ràng, không chạy dạng rõ
+    #   WEB2API_KHOA_CHINH_TEP                 tệp chứa khoá chính (quyền 0600), phải NGOÀI volume dữ liệu
+    #                                         (khoá nằm cạnh dữ liệu thì mã hoá vô nghĩa khi bị chụp ổ đĩa)
     #   WEB2API_MAY_RAM_MB, WEB2API_MAY_CPU   số RAM/nhân CỦA MÁY: trong container bị giới hạn không đọc
     #                                         được số thật (README, mục «Chạy trong LXC/Proxmox»)
     #   WEB2API_GIT_TOKEN                     token GitHub chỉ-đọc, chỉ cần cho kho riêng tư

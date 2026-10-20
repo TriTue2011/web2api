@@ -16,6 +16,11 @@ bị chiếm — dùng không giới hạn.
 Nguồn khoá: biến `WEB2API_ADMIN_KEY`; không đặt thì sinh một lần (secrets.token_urlsafe(32),
 256 bit) và lưu `<WEB2API_DATA>/admin_key` quyền 0600. KHÔNG BAO GIỜ in khoá ra log —
 log chỉ nêu đường dẫn tệp để người vận hành `docker exec … cat` lấy.
+
+Mã hoá khi nghỉ: nếu đã cấu hình khoá chính (`app.ham_khoa`), tệp admin_key được
+mã hoá AES-256-GCM như các bí mật khác; tệp cũ dạng rõ vẫn đọc được và tự di trú
+sang dạng mã hoá ở lần đọc đầu tiên có khoá chính. Chưa cấu hình khoá chính ⇒ giữ
+hành vi cũ (dạng rõ, 0600).
 """
 
 from __future__ import annotations
@@ -51,8 +56,64 @@ def _nguoi_dung_cua_phien(phien: dict[str, Any] | None) -> dict[str, Any] | None
 _KHOA_TU_TEP: dict[tuple, str] = {}
 
 
+def _doc_khoa_quan_tri_tu_tep(p) -> str:
+    """Đọc khoá quản trị từ tệp `admin_key`.
+
+    - Tệp đã mã hoá (gói W2A1 của `app.ham_khoa`): giải mã bằng khoá chính;
+      thiếu khoá chính hoặc giải mã thất bại ⇒ RuntimeError (đóng cửa, không
+      đoán bừa) — thông điệp KHÔNG chứa dữ liệu bí mật.
+    - Tệp dạng rõ (triển khai cũ): đọc như trước; nếu ĐÃ có khoá chính thì tự
+      di trú — ghi lại dạng mã hoá ngay trong lần đọc này (ghi nguyên tử 0600).
+      Di trú lỗi thì chỉ cảnh báo, vẫn trả khoá (không làm sập xác thực vì một
+      lần ghi đĩa lỗi).
+    """
+    from app import ham_khoa, kho
+
+    try:
+        raw = p.read_bytes()
+    except OSError as e:
+        raise RuntimeError(f"Không đọc được tệp khoá quản trị {p}: {e}") from e
+
+    if raw.startswith(ham_khoa.TIEN_TO_MA_HOA):
+        khoa_chinh = ham_khoa.lay_khoa_chinh()
+        if khoa_chinh is None:
+            raise RuntimeError(
+                f"Tệp {p} đã mã hoá nhưng chưa cấu hình khoá chính "
+                "(WEB2API_KHOA_CHINH hoặc WEB2API_KHOA_CHINH_TEP)")
+        try:
+            ro = ham_khoa.giai_ma(raw, ham_khoa.tinh_aad(p), khoa_chinh)
+        except ham_khoa.KhoHong as e:
+            raise RuntimeError(
+                f"Không giải mã được khoá quản trị {p} (sai khoá chính hoặc tệp hỏng)") from e
+        try:
+            return ro.decode("utf-8").strip()
+        except UnicodeDecodeError as e:
+            raise RuntimeError(f"Nội dung đã giải mã của {p} không phải UTF-8 hợp lệ") from e
+
+    try:
+        khoa = raw.decode("utf-8").strip()
+    except UnicodeDecodeError as e:
+        raise RuntimeError(f"Tệp {p} không phải văn bản UTF-8 hợp lệ") from e
+    if not khoa:
+        return khoa
+
+    # Tương thích ngược + tự di trú: có khoá chính → ghi lại dạng mã hoá.
+    khoa_chinh = ham_khoa.lay_khoa_chinh()
+    if khoa_chinh is not None:
+        du_lieu = ham_khoa.ma_hoa(khoa.encode("utf-8"), ham_khoa.tinh_aad(p), khoa_chinh)
+        try:
+            kho.ghi_nguyen_tu(p, du_lieu, 0o600)
+        except Exception as e:  # noqa: BLE001 — di trú lỗi không được làm sập xác thực
+            log.warning("Không di trú được khoá quản trị %s sang dạng mã hoá (%s) — vẫn dùng bản rõ.",
+                        p, type(e).__name__)
+    return khoa
+
+
 def khoa_quan_tri() -> str:
-    """Khoá quản trị từ biến WEB2API_ADMIN_KEY hoặc tệp <WEB2API_DATA>/admin_key (0600)."""
+    """Khoá quản trị từ biến WEB2API_ADMIN_KEY hoặc tệp <WEB2API_DATA>/admin_key (0600).
+
+    Tệp được mã hoá AES-256-GCM khi đã cấu hình khoá chính; tệp cũ dạng rõ vẫn
+    đọc được và tự di trú (xem `_doc_khoa_quan_tri_tu_tep`)."""
     tu_bien = os.environ.get("WEB2API_ADMIN_KEY", "").strip()
     if tu_bien:
         return tu_bien
@@ -62,19 +123,27 @@ def khoa_quan_tri() -> str:
         danh_tinh = (p, st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
         khoa = _KHOA_TU_TEP.get(danh_tinh)
         if khoa is None:
-            khoa = p.read_text(encoding="utf-8").strip()
+            khoa = _doc_khoa_quan_tri_tu_tep(p)
+            st2 = os.stat(p)  # đọc lại stat: lần đọc có thể đã di trú tệp
             _KHOA_TU_TEP.clear()
             if khoa:
-                _KHOA_TU_TEP[danh_tinh] = khoa
+                _KHOA_TU_TEP[(p, st2.st_dev, st2.st_ino, st2.st_size, st2.st_mtime_ns)] = khoa
     except FileNotFoundError:
+        from app import ham_khoa
+
         p.parent.mkdir(parents=True, exist_ok=True)
         khoa = secrets.token_urlsafe(32)
+        khoa_chinh = ham_khoa.lay_khoa_chinh()
+        if khoa_chinh is not None:
+            du_lieu = ham_khoa.ma_hoa(khoa.encode("utf-8"), ham_khoa.tinh_aad(p), khoa_chinh)
+        else:
+            du_lieu = (khoa + "\n").encode("utf-8")
         try:
             fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
             return khoa_quan_tri()
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(khoa + "\n")
+        with os.fdopen(fd, "wb") as f:
+            f.write(du_lieu)
         log.warning(
             "Đã sinh khoá quản trị lần đầu, lưu ở %s (quyền 0600). Đọc bằng: docker exec <tên> cat %s",
             p,

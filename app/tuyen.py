@@ -3434,7 +3434,11 @@ def liet_ke_tai_khoan_da_luu():
 @tai_khoan.post("/da-luu")
 async def luu_tai_khoan_da_luu(request: Request):
     """Lưu/cập nhật một tài khoản (theo email hoặc id, trùng → cập nhật) hoặc hàng loạt
-    qua {"tai_khoan": [{email, mat_khau, totp_secret?, nhan?}]}."""
+    qua {"tai_khoan": [{email, mat_khau, totp_secret?, nhan?}]}.
+
+    Thao tác chạm bí mật bên thứ ba: phiên web phải đã xác nhận lại (step-up);
+    Bearer quản trị được miễn (đã gửi khoá bí mật cao nhất)."""
+    kiem_tra_step_up(request)
     than = await _than_json(request)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     try:
@@ -3480,7 +3484,10 @@ async def luu_tai_khoan_da_luu(request: Request):
 
 @tai_khoan.delete("/da-luu/{id}")
 def xoa_tai_khoan_da_luu(id: str, request: Request):
-    """Xoá tài khoản đã lưu theo id. Id lạ → 404 (không lộ có/không)."""
+    """Xoá tài khoản đã lưu theo id. Id lạ → 404 (không lộ có/không).
+
+    Phiên web phải đã xác nhận lại (step-up); Bearer quản trị được miễn."""
+    kiem_tra_step_up(request)
     try:
         da_xoa = kho_tai_khoan_mod.xoa_tai_khoan(id)
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
@@ -3497,7 +3504,11 @@ def xoa_tai_khoan_da_luu(id: str, request: Request):
 async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     """Đăng nhập bằng tài khoản đã lưu: server tự lấy bí mật từ kho rồi gọi
     hợp đồng ``dang_nhap(dong)`` của module. Trình duyệt/giao diện KHÔNG nhận
-    lại mật khẩu."""
+    lại mật khẩu.
+
+    Server lấy bí mật từ kho (thao tác nhạy cảm): phiên web phải đã xác nhận
+    lại (step-up); Bearer quản trị được miễn."""
+    kiem_tra_step_up(request)
     than = await _than_json(request)
     module_id = _chuoi_bat_buoc(than, "module_id")
     _kiem_module_da_cai_tai_khoan(request, module_id)
