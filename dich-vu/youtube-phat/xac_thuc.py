@@ -17,9 +17,16 @@ class LoiXacThuc(Exception):
 def kiem_bearer(authorization: str | None, token: str) -> None:
     """Đúng Bearer token thì im lặng; thiếu/sai → raise LoiXacThuc("invalid_auth").
 
-    So bằng `hmac.compare_digest` để không rò thời gian so khớp.
+    So bằng `hmac.compare_digest` trên BYTES (utf-8 cả hai vế) để không rò
+    thời gian so khớp. Lý do phải là bytes (NV153 đợt D2): `compare_digest`
+    dạng str ném TypeError khi một vế chứa ký tự ngoài ASCII — header
+    Authorization do khách lạ gửi có thể chứa ký tự như «ö» (trên dây là byte
+    latin-1, ASGI giải mã thành str) → server cũ trả 500 thay vì 401. Encode
+    sang bytes thì mọi đầu vào lạ chỉ đơn giản là KHÔNG khớp → LoiXacThuc.
     """
-    if not hmac.compare_digest(str(authorization or ""), f"Bearer {token}"):
+    nhan = str(authorization or "").encode("utf-8")
+    mong = f"Bearer {token}".encode("utf-8")
+    if not hmac.compare_digest(nhan, mong):
         raise LoiXacThuc("invalid_auth")
 
 
