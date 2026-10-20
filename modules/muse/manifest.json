@@ -26,7 +26,7 @@
       "kieu": "bi_mat",
       "bat_buoc": true,
       "mac_dinh": null,
-      "mo_ta": "Khoá bí mật 32 bytes của thiết bị (dạng hex hoặc base32) dùng để dẫn xuất khoá tĩnh X25519 cho kênh Noise XX."
+      "mo_ta": "LẤY Ở ĐÂU: khoá 32 bytes gắn với thiết bị đã đăng ký với Meta qua mã OTP — web2api HIỆN CHƯA đăng ký tự động được nên bạn phải có sẵn khoá thiết bị tĩnh (chuỗi 32 bytes dạng hex, base32 hoặc base64) rồi dán vào đây; tự bịa khoá ngẫu nhiên thì bắt tay thất bại. Chưa có khoá thì module không chạy được."
     },
     {
       "khoa": "delegation_token",

@@ -19,7 +19,7 @@
       "kieu": "danh_sach_bi_mat",
       "bat_buoc": true,
       "mac_dinh": null,
-      "mo_ta": "Một hoặc nhiều khoá từ https://aistudio.google.com/apikey. Nhiều khoá thì xoay vòng; khoá hết hạn mức (429) được cho nghỉ và dùng khoá kế."
+      "mo_ta": "Một hoặc nhiều khoá từ https://aistudio.google.com/apikey. Nhiều khoá thì xoay vòng; khoá hết hạn mức (429) được cho nghỉ và dùng khoá kế. LƯU Ý TRẢ PHÍ: tạo ảnh và video Veo chỉ dùng được với khoá của dự án đã bật thanh toán (khoá trả phí) — khoá miễn phí gọi ảnh/video sẽ bị từ chối, chỉ chat được."
     },
     {
       "khoa": "base_url",
@@ -35,7 +35,7 @@
       "kieu": "bi_mat",
       "bat_buoc": false,
       "mac_dinh": null,
-      "mo_ta": "Mã bí mật gửi qua header X-Proxy-Token tới proxy (Cloudflare Worker). Để trống nếu gọi thẳng Google."
+      "mo_ta": "Mã bí mật gửi qua header X-Proxy-Token tới proxy (Cloudflare Worker). Để trống nếu gọi thẳng Google. TỰ ĐẶT: nghĩ một chuỗi bí mật bất kỳ, đặt lên Worker bằng lệnh `npx wrangler secret put PROXY_TOKEN` (chạy trong thư mục chứa deploy/cloudflare-gemini-proxy.js), rồi dán đúng giá trị đó vào đây — hai phía phải trùng nhau."
     }
   ],
   "tai_nguyen": {

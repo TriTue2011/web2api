@@ -35,6 +35,6 @@
     "dia_mb": null,
     "gpu": false,
     "mang_ra": [],
-    "ghi_chu": "Dịch vụ trình duyệt nặng, cần container riêng (chạy ở dich-vu/trinh-duyet/ hoặc máy chủ riêng)."
+    "ghi_chu": "Dịch vụ trình duyệt nặng, cần container riêng: dựng bằng docker compose trong dich-vu/trinh-duyet/ (đặt TRINH_DUYET_KHOA trong .env bằng openssl rand -hex 32) rồi nối container web2api vào mạng riêng bằng docker network connect — xem dich-vu/trinh-duyet/README.md. RAM/đĩa: chưa đo (null = chưa đo) vì máy làm việc không có Docker để dựng/chạy container. Cách đo khi có máy Docker: đĩa = docker images <ảnh dịch vụ>; RAM = docker stats <container> khi đang chạy tải thật (mở hồ sơ trình duyệt)."
   }
 }

@@ -31,6 +31,14 @@ Module này được cài qua giao diện **Hệ thống → Module** hoặc `/a
 | `delegation_token` | bí mật | ❌ | Token uỷ quyền đã ký đi kèm thông điệp Message 3 |
 | `ws_url` | chuỗi | ❌ | Địa chỉ WebSocket máy ảo (mặc định dùng cổng Meta AI VM) |
 
+**Lấy `device_key` ở đâu:** khoá này gắn với một thiết bị đã đăng ký với Meta qua mã OTP.
+web2api **hiện chưa đăng ký tự động được** (Meta chưa mở cơ chế này cho bên thứ ba) nên không
+có nút bấm nào để lấy khoá: bạn phải **có sẵn** khoá thiết bị tĩnh (ví dụ từ một lần đăng ký
+thiết bị trước đó bằng công cụ khác của chính bạn) rồi dán vào trường `device_key`. Đừng tự
+sinh chuỗi ngẫu nhiên — khoá dẫn xuất phải khớp thiết bị đã đăng ký, khoá bịa sẽ làm bắt tay
+Noise XX thất bại. Chưa có khoá thì module không chạy được; đó là lý do module vẫn ở trạng
+thái thử nghiệm.
+
 ## Trạng thái
 
 Thử nghiệm — chưa kiểm với dịch vụ thật.

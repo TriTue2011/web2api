@@ -35,8 +35,9 @@ Nhập ở bước «Thêm tài khoản/khoá API» của bảng chi tiết (ho�
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `api_keys` | Có | Một hoặc nhiều khoá lấy ở https://aistudio.google.com/apikey (mỗi dòng một khoá; hoặc một chuỗi cách nhau bằng dấu phẩy). Lưu riêng ở `<thư mục dữ liệu>/bi_mat/gemini-api.json` quyền 0600, không API nào trả lại khoá. |
+| `api_keys` | Có | Một hoặc nhiều khoá lấy ở https://aistudio.google.com/apikey (mỗi dòng một khoá; hoặc một chuỗi cách nhau bằng dấu phẩy). Lưu riêng ở `<thư mục dữ liệu>/bi_mat/gemini-api.json` quyền 0600, không API nào trả lại khoá. **Tạo ảnh và video Veo chỉ dùng được với khoá của dự án đã bật thanh toán (khoá trả phí)** — khoá miễn phí chỉ chat được. |
 | `base_url` | Không | Mặc định gọi thẳng Google. Đặt địa chỉ proxy khi bị chặn vùng; thiếu `/v1beta/openai` thì module tự thêm. Phải bắt đầu bằng `http://` hoặc `https://` và có tên máy. |
+| `proxy_token` | Không | Mã bí mật gửi kèm header `X-Proxy-Token` khi gọi qua proxy. **Tự đặt**: nghĩ một chuỗi bí mật bất kỳ, đặt lên Cloudflare Worker bằng `npx wrangler secret put PROXY_TOKEN` rồi dán đúng giá trị đó vào đây (xem «Chặn vùng và proxy» dưới đây). Để trống khi gọi thẳng Google. |
 
 Lúc lưu, module gọi thử `GET /models` với **từng** khoá (không tốn token) và chỉ lưu những khoá dùng
 được. Không khoá nào dùng được thì cấu hình không được lưu và API trả mã 400.
