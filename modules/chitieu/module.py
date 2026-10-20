@@ -16,6 +16,9 @@ Bảo mật dữ liệu (dữ liệu tài chính cá nhân nhạy cảm):
   ghi theo giao dịch (nguyên tử); tệp hỏng → lỗi rõ, KHÔNG xoá/ghi đè (tiền lệ NV20).
 - Số tiền là số nguyên VNĐ (không float). Ghi chú là DỮ LIỆU: lưu nguyên văn, tầng hiển thị
   chịu trách nhiệm escape (không thực thi HTML từ ghi chú ở bất kỳ đường nào của module).
+- MỌI trường mang nội dung tài chính cá nhân trong lược đồ hành động (so_tien, ghi_chu,
+  mo_ta, luong, ten, hu, danh_sach) khai ``bi_mat: true`` (NV160-SUA · D2) để lõi che khi
+  ghi nhật ký kiểm toán/hàng chờ — nhật ký chỉ còn dạng «…che», không số tiền/ghi chú rõ chữ.
 
 KHÔNG port (ghi rõ ở README.md mục «Khác biệt với c2a»):
 - ``email_chi.py`` (đọc hộp thư IMAP tự ghi chi) — kéo kênh email; phụ thuộc module ``email``
@@ -47,6 +50,14 @@ _CHUOI = {"type": "string"}
 _SO_NGUYEN = {"type": "integer"}
 _SO = {"type": "number"}
 
+# NV160-SUA (D2): trường mang NỘI DUNG tài chính cá nhân phải khai «bi_mat» —
+# lõi (app.thiet_bi.lam_sach_tham_so, SEC-004b) chỉ che tham số ĐÃ KHAI bí mật khi
+# ghi nhật ký kiểm toán kênh «thiet_bi» và bản sao hàng chờ duyệt; không khai là
+# số tiền/ghi chú/lương/tên hũ đi vào nhật ký ở dạng rõ chữ cho quản trị đọc.
+_CHUOI_BI_MAT = {"type": "string", "bi_mat": True}
+_SO_NGUYEN_BI_MAT = {"type": "integer", "bi_mat": True}
+_DANH_SACH_BI_MAT = {"type": "array", "items": {"type": "object"}, "bi_mat": True}
+
 
 def _hd(ten: str, mo_ta: str, thuoc: dict[str, Any], bat_buoc: tuple[str, ...] = ()) -> dict[str, Any]:
     return {"hanh_dong": ten, "mo_ta": mo_ta,
@@ -70,36 +81,36 @@ _DOC: list[dict[str, Any]] = [
 _GHI: list[dict[str, Any]] = [
     _hd("ghi_chi", "Ghi MỘT khoản chi vào một hũ. Vượt tổng ngân sách kỳ → trả can_xac_nhan=true và CHƯA ghi; "
         "chỉ gọi lại với xac_nhan_vuot_tong=true khi người dùng đồng ý rõ ràng.",
-        {"hu": {**_CHUOI, "description": "Tên hũ hoặc id hũ"}, "so_tien": _SO_NGUYEN,
-         "ghi_chu": _CHUOI, "xac_nhan_vuot_tong": {"type": "boolean"}}, ("hu", "so_tien")),
+        {"hu": {**_CHUOI_BI_MAT, "description": "Tên hũ hoặc id hũ"}, "so_tien": _SO_NGUYEN_BI_MAT,
+         "ghi_chu": _CHUOI_BI_MAT, "xac_nhan_vuot_tong": {"type": "boolean"}}, ("hu", "so_tien")),
     _hd("sua_chi", "Sửa khoản chi (hũ / số tiền / ghi chú). Tăng tiền cũng qua cổng vượt tổng như ghi mới.",
-        {"id": _SO_NGUYEN, "hu": _CHUOI, "so_tien": _SO_NGUYEN, "ghi_chu": _CHUOI,
+        {"id": _SO_NGUYEN, "hu": _CHUOI_BI_MAT, "so_tien": _SO_NGUYEN_BI_MAT, "ghi_chu": _CHUOI_BI_MAT,
          "xac_nhan_vuot_tong": {"type": "boolean"}}, ("id",)),
     _hd("xoa_chi", "Xoá một khoản chi.", {"id": _SO_NGUYEN}, ("id",)),
     _hd("tach_chi", "Tách một khoản chi thành ≥2 mục (tổng phải bằng khoản gốc).",
-        {"id": _SO_NGUYEN, "danh_sach": {"type": "array", "items": {"type": "object"}}}, ("id", "danh_sach")),
+        {"id": _SO_NGUYEN, "danh_sach": _DANH_SACH_BI_MAT}, ("id", "danh_sach")),
     _hd("thu_nhap_them", "Ghi thu nhập thêm của kỳ (tăng hạn mức mọi hũ theo tỷ lệ).",
-        {"mo_ta": _CHUOI, "so_tien": _SO_NGUYEN}, ("mo_ta", "so_tien")),
+        {"mo_ta": _CHUOI_BI_MAT, "so_tien": _SO_NGUYEN_BI_MAT}, ("mo_ta", "so_tien")),
     _hd("chi_phi_dac_biet", "Ghi chi phí đặc biệt (trừ vào các hũ hứng chi phí đặc biệt theo thứ tự).",
-        {"mo_ta": _CHUOI, "so_tien": _SO_NGUYEN}, ("mo_ta", "so_tien")),
+        {"mo_ta": _CHUOI_BI_MAT, "so_tien": _SO_NGUYEN_BI_MAT}, ("mo_ta", "so_tien")),
     _hd("sua_ky", "Sửa mục thu nhập thêm / chi phí đặc biệt.",
         {"loai": {**_CHUOI, "enum": ["thu_nhap_them", "chi_phi_dac_biet"]}, "id": _SO_NGUYEN,
-         "mo_ta": _CHUOI, "so_tien": _SO_NGUYEN}, ("loai", "id")),
+         "mo_ta": _CHUOI_BI_MAT, "so_tien": _SO_NGUYEN_BI_MAT}, ("loai", "id")),
     _hd("xoa_ky", "Xoá mục thu nhập thêm / chi phí đặc biệt.",
         {"loai": {**_CHUOI, "enum": ["thu_nhap_them", "chi_phi_dac_biet"]}, "id": _SO_NGUYEN}, ("loai", "id")),
     _hd("them_hu", "Thêm hũ mới vào sổ.",
-        {"ten": _CHUOI, "ty_le": _SO, "thu_tu_bu": _SO_NGUYEN, "thu_tu_dac_biet": _SO_NGUYEN}, ("ten",)),
+        {"ten": _CHUOI_BI_MAT, "ty_le": _SO, "thu_tu_bu": _SO_NGUYEN, "thu_tu_dac_biet": _SO_NGUYEN}, ("ten",)),
     _hd("sua_hu", "Sửa hũ (tên / tỷ lệ % / thứ tự bù / thứ tự hứng chi phí đặc biệt).",
-        {"id": _SO_NGUYEN, "ten": _CHUOI, "ty_le": _SO, "thu_tu": _SO_NGUYEN,
+        {"id": _SO_NGUYEN, "ten": _CHUOI_BI_MAT, "ty_le": _SO, "thu_tu": _SO_NGUYEN,
          "thu_tu_bu": _SO_NGUYEN, "thu_tu_dac_biet": _SO_NGUYEN}, ("id",)),
     _hd("xoa_hu", "Xoá hũ (còn khoản chi thì xoá mềm — lịch sử giữ nguyên).", {"id": _SO_NGUYEN}, ("id",)),
     _hd("luu_cau_hinh", "Lưu cấu hình sổ: tên, lương kỳ, ngày bắt đầu kỳ (1–28), ngưỡng cảnh báo.",
-        {"ten": _CHUOI, "luong": _SO_NGUYEN, "ngay_bat_dau": _SO_NGUYEN,
+        {"ten": _CHUOI_BI_MAT, "luong": _SO_NGUYEN_BI_MAT, "ngay_bat_dau": _SO_NGUYEN,
          "nguong": {"type": "array", "items": _SO}}),
-    _hd("cong_ty_tam_ung", "Ghi nhận tạm ứng công ty.", {"so_tien": _SO_NGUYEN, "mo_ta": _CHUOI}, ("so_tien", "mo_ta")),
-    _hd("cong_ty_chi", "Ghi chi hộ công ty.", {"so_tien": _SO_NGUYEN, "mo_ta": _CHUOI}, ("so_tien", "mo_ta")),
+    _hd("cong_ty_tam_ung", "Ghi nhận tạm ứng công ty.", {"so_tien": _SO_NGUYEN_BI_MAT, "mo_ta": _CHUOI_BI_MAT}, ("so_tien", "mo_ta")),
+    _hd("cong_ty_chi", "Ghi chi hộ công ty.", {"so_tien": _SO_NGUYEN_BI_MAT, "mo_ta": _CHUOI_BI_MAT}, ("so_tien", "mo_ta")),
     _hd("cong_ty_sua", "Sửa giao dịch công ty đang mở.",
-        {"id": _SO_NGUYEN, "loai": {**_CHUOI, "enum": ["tam_ung", "chi"]}, "so_tien": _SO_NGUYEN, "mo_ta": _CHUOI},
+        {"id": _SO_NGUYEN, "loai": {**_CHUOI, "enum": ["tam_ung", "chi"]}, "so_tien": _SO_NGUYEN_BI_MAT, "mo_ta": _CHUOI_BI_MAT},
         ("id",)),
     _hd("cong_ty_xoa", "Xoá giao dịch công ty đang mở.", {"id": _SO_NGUYEN}, ("id",)),
     _hd("giai_chi", "Giải chi: chốt toàn bộ giao dịch công ty đang mở thành một kỳ.", {}),

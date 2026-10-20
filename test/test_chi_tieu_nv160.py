@@ -268,3 +268,142 @@ def test_khong_port_email_chi(module):
         assert cum not in ma, cum
     doc = (THU_MUC_MODULE / "README.md").read_text(encoding="utf-8")
     assert "email" in doc.lower() and "chưa gộp" in doc.lower()  # điểm nối đã ghi vào tài liệu
+
+
+# ── NV160-SUA · D2: nhật ký lõi không ghi số tiền/ghi chú rõ chữ ─────────────
+# Phát hiện D2 (soat-doc-lap-B.md mục 5): lược đồ hành động `_hd()` không khai
+# «bi_mat» nên lõi (app.thiet_bi.lam_sach_tham_so, SEC-004b) giữ NGUYÊN giá trị
+# khi ghi nhật ký kiểm toán kênh «thiet_bi» (bước 9 của thuc_hien_hanh_dong_loi)
+# và khi ghi hàng chờ duyệt → quản trị đọc nhật ký là thấy chi tiêu của mọi người.
+# Vá: khai «bi_mat: true» cho MỌI trường mang nội dung tài chính cá nhân
+# (số tiền, văn bản tự do, lương, tên hũ/tên sổ, danh sách tách khoản).
+
+#: Trường mang nội dung tài chính cá nhân — ở bất kỳ hành động nào cũng phải che.
+_TRUONG_NHAY_CAM = {"so_tien", "ghi_chu", "mo_ta", "luong", "hu", "ten", "danh_sach"}
+
+_SO_TIEN_LE = 987_654_321
+_GHI_CHU_LE = "khám bệnh — bí mật của B QZX987"
+
+
+def _cac_thuc_the(module):
+    """thuc_the() đồng bộ ở bản này, bất đồng bộ sau NV181 (D1) — chịu cả hai."""
+    import inspect
+    kq = module.thuc_the()
+    if inspect.iscoroutine(kq):
+        kq = asyncio.run(kq)
+    return kq
+
+
+def test_d2_moi_truong_nhay_cam_deu_khai_bi_mat(module):
+    """Mọi trường nhạy cảm xuất hiện trong lược đồ đều phải «bi_mat: true»."""
+    thieu = []
+    for ent in _cac_thuc_the(module):
+        for tn in ent["tinh_nang"]:
+            props = (tn.get("tham_so") or {}).get("properties") or {}
+            for ten_truong, spec in props.items():
+                if ten_truong in _TRUONG_NHAY_CAM and spec.get("bi_mat") is not True:
+                    thieu.append(f"{ent['id']}.{tn['hanh_dong']}.{ten_truong}")
+    assert not thieu, f"trường nhạy cảm chưa khai bi_mat: {thieu}"
+
+
+def test_d2_lam_sach_qua_loi_che_het_noi_dung_nhay_cam(module):
+    """Cho tham số qua ĐÚNG hàm làm sạch của lõi: không còn số tiền/ghi chú/lương/tên."""
+    from app.thiet_bi import lam_sach_tham_so, lay_luoc_do_tham_so
+
+    ds = {e["id"]: e for e in _cac_thuc_the(module)}
+    ghi, doc = ds[ID_GHI], ds[ID_DOC]
+
+    cac_ca = [
+        (ghi, "ghi_chi", {"hu": "Thiết Yếu", "so_tien": _SO_TIEN_LE, "ghi_chu": _GHI_CHU_LE,
+                          "xac_nhan_vuot_tong": True}),
+        (ghi, "sua_chi", {"id": 7, "hu": "Học Tập", "so_tien": _SO_TIEN_LE, "ghi_chu": _GHI_CHU_LE}),
+        (ghi, "tach_chi", {"id": 3, "danh_sach": [{"so_tien": _SO_TIEN_LE, "ghi_chu": _GHI_CHU_LE},
+                                                  {"so_tien": 5, "ghi_chu": "mục hai"}]}),
+        (ghi, "thu_nhap_them", {"mo_ta": _GHI_CHU_LE, "so_tien": _SO_TIEN_LE}),
+        (ghi, "luu_cau_hinh", {"ten": "Sổ bí mật QZX987", "luong": _SO_TIEN_LE, "ngay_bat_dau": 1}),
+        (ghi, "cong_ty_chi", {"so_tien": _SO_TIEN_LE, "mo_ta": _GHI_CHU_LE}),
+        (ghi, "chi_phi_dac_biet", {"mo_ta": _GHI_CHU_LE, "so_tien": _SO_TIEN_LE}),
+        (ghi, "cong_ty_tam_ung", {"so_tien": _SO_TIEN_LE, "mo_ta": _GHI_CHU_LE}),
+        (ghi, "them_hu", {"ten": "Hũ bí mật QZX987", "ty_le": 10}),
+    ]
+    for ent, hd, ts in cac_ca:
+        luoc_do = lay_luoc_do_tham_so(ent["tinh_nang"], hd)
+        assert luoc_do, f"không thấy lược đồ cho {hd}"
+        phang = json.dumps(lam_sach_tham_so(ts, luoc_do), ensure_ascii=False)
+        for le in (str(_SO_TIEN_LE), "khám bệnh", "bí mật của B", "Sổ bí mật"):
+            assert le not in phang, f"{hd}: còn lộ «{le}» trong tham số đã làm sạch: {phang}"
+    # Trường cấu trúc (không phải nội dung cá nhân) vẫn giữ nguyên — che có mục tiêu:
+    luoc_do = lay_luoc_do_tham_so(ghi["tinh_nang"], "ghi_chi")
+    sach = lam_sach_tham_so({"xac_nhan_vuot_tong": True}, luoc_do)
+    assert sach["xac_nhan_vuot_tong"] is True
+    luoc_do2 = lay_luoc_do_tham_so(ghi["tinh_nang"], "sua_chi")
+    assert lam_sach_tham_so({"id": 7}, luoc_do2)["id"] == 7
+
+
+_KHOA_QT_D2 = "khoa-quan-tri-test-nv160-sua-0123456789ab"
+_QT_D2 = {"Authorization": f"Bearer {_KHOA_QT_D2}"}
+
+
+@pytest.fixture()
+def moi_truong_loi(tmp_path, monkeypatch):
+    """Môi trường lõi THẬT (khuôn test_web2api_thiet_bi.moi_truong): app đầy đủ +
+    SoModule rỗng, module chitieu được thả vào thư mục modules của dữ liệu."""
+    import shutil
+
+    from fastapi.testclient import TestClient
+
+    from app import so_module as _so_module_mod
+    from app.main import app
+    from app.so_module import SoModule
+
+    data_dir = tmp_path / "data-loi"
+    (data_dir / "modules").mkdir(parents=True, exist_ok=True)
+    anh_dir = tmp_path / "anh"
+    anh_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("WEB2API_DATA", str(data_dir))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", _KHOA_QT_D2)
+    monkeypatch.setattr(_so_module_mod, "THU_MUC_ANH", anh_dir)
+
+    dich = data_dir / "modules" / "chitieu"
+    shutil.copytree(THU_MUC_MODULE, dich,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    with TestClient(app) as client:
+        so = SoModule()
+        client.app.state.so = so
+        r_nap = client.post("/api/modules/nap-lai", headers=_QT_D2)
+        assert r_nap.status_code == 200, r_nap.text
+        assert "chitieu" in (r_nap.json().get("them") or []), r_nap.json()
+        r_cai = client.post("/api/modules/chitieu/cai", headers=_QT_D2,
+                            json={"cau_hinh": {}})
+        assert r_cai.status_code == 200 and r_cai.json().get("ok") is True, r_cai.text
+        yield client
+
+
+def test_d2_nhat_ky_loi_sau_ghi_chi_khong_chua_so_tien_ghi_chu(moi_truong_loi):
+    """QUA LÕI THẬT: ghi một khoản chi bằng HTTP → đọc nhật ký lõi (kênh thiet_bi):
+    dòng kiểm toán của chính lần ghi đó KHÔNG chứa số tiền/ghi chú rõ chữ, mà khoản
+    chi vẫn ghi thành công (test không rỗng). Cần NV181 (D1: thuc_the bất đồng bộ)
+    áp trước — trên cây chưa nối lõi, thực thể không hiện nên test đỏ ở bước tra cứu."""
+    from app import nhat_ky
+
+    client = moi_truong_loi
+    r_xn = client.post("/api/thiet-bi/chi_tieu.ghi/xac-nhan", headers=_QT_D2)
+    assert r_xn.status_code == 200, r_xn.text
+    # Số tiền phải dưới tổng ngân sách mặc định (10.000.000) kẻo module đòi xác nhận vượt tổng.
+    tien_e2e = 9_876_543
+    r = client.post("/api/thiet-bi/chi_tieu.ghi/hanh-dong", headers=_QT_D2, json={
+        "hanh_dong": "ghi_chi",
+        "tham_so": {"hu": "Thiết Yếu", "so_tien": tien_e2e, "ghi_chu": _GHI_CHU_LE},
+    })
+    assert r.status_code == 200, r.text
+    assert r.json().get("da_ghi") is True, r.json()
+
+    dong = nhat_ky.doc(kenh="thiet_bi", gioi_han=500)
+    dong_ghi = [d for d in dong if (d.get("them") or {}).get("hanh_dong") == "ghi_chi"]
+    assert dong_ghi, "không thấy dòng nhật ký của lần ghi_chi — test sẽ rỗng"
+    phang = json.dumps(dong_ghi, ensure_ascii=False)
+    for le in (str(tien_e2e), "khám bệnh", "bí mật của B", "Thiết Yếu"):
+        assert le not in phang, f"nhật ký lõi còn lộ «{le}»: {phang}"
+    # Tham số trong nhật ký chỉ còn dạng che:
+    ts = (dong_ghi[0].get("them") or {}).get("tham_so") or {}
+    assert ts.get("so_tien") == "…che" and ts.get("ghi_chu") == "…che", ts
