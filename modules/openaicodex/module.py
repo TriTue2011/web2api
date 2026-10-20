@@ -105,13 +105,17 @@ def _la_token_api_only(token: str) -> bool:
 class _TaiKhoan:
     __slots__ = ("access_token", "refresh_token", "email", "plan",
                  "expires_at", "trang_thai", "device_id", "so_401",
-                 "restore_at", "lan_dung_cuoi", "ma_on_dinh")
+                 "restore_at", "lan_dung_cuoi", "ma_on_dinh", "ma_tai_khoan")
 
     def __init__(self, access_token: str, refresh_token: str = ""):
         # Định danh ỔN ĐỊNH của tài khoản trong tiến trình: KHÔNG xoay theo
         # access_token/refresh_token như `khoa`. Chỉ dùng làm khoá «đã thử /
         # đã làm mới trong lượt» ở chat(); không lưu, không ra ngoài.
         self.ma_on_dinh = f"tkid-{next(_DEM_MA_ON_DINH)}"
+        # Mã tài khoản BỀN QUA LÀM MỚI (NV198c): khoá công khai `khoa` của
+        # tài khoản BẮT NGUỒN từ đây, không từ access_token xoay theo mỗi
+        # lần làm mới. Cấp một lần khi thêm tài khoản, lưu bền trong kho.
+        self.ma_tai_khoan = f"tk-{uuid.uuid4().hex[:16]}"
         self.access_token = access_token
         self.refresh_token = refresh_token
         tt = han_muc.thong_tin_token(access_token)
@@ -130,7 +134,15 @@ class _TaiKhoan:
 
     @property
     def khoa(self) -> str:
-        return _khoa_tu_token(self.access_token)
+        # Khoá công khai ỔN ĐỊNH qua làm mới token (NV198c): bắt nguồn từ
+        # mã bền `ma_tai_khoan`, KHÔNG từ access_token. Lõi giữ khoá này
+        # trong lam_moi_phien/tai_khoan_ke/danh_dau_hong và trạng thái
+        # khôi phục — sau làm mới nó vẫn trỏ đúng tài khoản.
+        return self.ma_tai_khoan
+
+    def _cap_ma_moi(self) -> None:
+        """Cấp lại mã bền (dùng khi phát hiện trùng với tài khoản khác)."""
+        self.ma_tai_khoan = f"tk-{uuid.uuid4().hex[:16]}"
 
     @property
     def id_thuc_the(self) -> str:
@@ -147,11 +159,19 @@ class _TaiKhoan:
             "device_id": self.device_id,
             "so_401": self.so_401,
             "restore_at": self.restore_at,
+            "ma_tai_khoan": self.ma_tai_khoan,
         }
 
     def ap_dung_dict(self, d: dict) -> None:
         if not isinstance(d, dict):
             return
+        ma = d.get("ma_tai_khoan")
+        if isinstance(ma, str) and ma and len(ma) <= 64:
+            self.ma_tai_khoan = ma
+        else:
+            # Tài khoản CŨ chưa có mã bền: lấy khoá hiện tại (sha256 của
+            # access_token lúc này) MỘT lần rồi giữ nguyên từ đây về sau.
+            self.ma_tai_khoan = _khoa_tu_token(self.access_token)
         if d.get("email"):
             self.email = str(d["email"])
         if d.get("plan"):
@@ -265,6 +285,19 @@ class Module:
                     break
             if dich is None:
                 dich = _TaiKhoan(access, refresh)
+                # Hai tài khoản KHÁC nhau không bao giờ được trùng mã bền
+                # (phòng va chạm ngẫu nhiên cực hiếm của uuid; trần 32 lần
+                # để không treo nếu nguồn ngẫu nhiên suy biến).
+                da_co = {u.ma_tai_khoan for u in self._tai_khoan}
+                lan = 0
+                while dich.ma_tai_khoan in da_co and lan < 32:
+                    dich._cap_ma_moi()
+                    lan += 1
+                if dich.ma_tai_khoan in da_co:
+                    goc, i = dich.ma_tai_khoan, 0
+                    while f"{goc}-{i}" in da_co:
+                        i += 1
+                    dich.ma_tai_khoan = f"{goc}-{i}"
                 self._tai_khoan.append(dich)
             else:
                 dich.access_token = access
