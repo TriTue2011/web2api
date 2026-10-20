@@ -89,7 +89,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `nhaptaikhoan` (Nhập tài khoản hàng loạt từ 9router/sub2api/CPA — CHỈ xem trước, chưa nối kho, NV164) | Có — hai thực thể tách rủi ro (NV164-SUA): `nhaptaikhoan.xem_truoc` (`doc`: `xem_truoc_tep`, `xem_truoc_may_chu`) và `nhaptaikhoan.ap_dung` (`nguy_hiem`), mọi hành động vẫn chỉ quản trị: `xem_truoc_tep` (tệp 9router `.json`/`.json.gz`: nhận diện `providerConnections` kể cả lồng `data`, trích token codex/cursor/openai `eyJ`, combo đầy đủ; trần base64 8000 ký tự do trần tham số 8 KB của lõi / bung gzip 10MiB), `xem_truoc_may_chu` (`sub2api`: JWT hoặc `x-api-key`, trang `/api/v1/admin/accounts` phân trang; `cpa`: chỉ liệt kê `/v0/management/auth-files`, không tải token), `ap_dung` luôn từ chối `chua_noi_kho_tai_khoan` (chờ kho lõi NV144/NV72); email/token chỉ hiện dạng che, không log/không vào lỗi; địa chỉ máy chủ qua `app/tu_xa.kiem_url_lan` + ghim IP đã kiểm (chống DNS rebinding); **chưa kiểm với sub2api/CPA thật** | 20/10/2026 |
 | Module `facebook` (Facebook — đăng bài Trang qua Graph API, chuẩn C1) | Có — mỗi Trang một thực thể rủi ro `nguy_hiem`, quản trị xác nhận trước khi đăng (SEC-004f); bài chữ/link, ảnh, video; không đăng nhóm (Meta đã gỡ Groups API); kiểm với máy chủ Graph giả; **chưa kiểm với Facebook thật** | 20/10/2026 |
 | Module `thuthach` (Nhận diện thử thách chống bot, chuẩn C2 `thiet_bi`) | Có — nhận diện reCAPTCHA v2/v3, Turnstile, chọn hình/quiz, CAPTCHA chữ, mã OTP, mã 2FA, BotGuard bằng cấu trúc rồi báo «cần người» + hướng dẫn noVNC — KHÔNG giải; thuần phân tích, không gọi mạng | 20/10/2026 |
-| Module `nhin-nha` (Mắt nhà, chuẩn C2 `thiet_bi`, NV168) + dịch vụ `dich-vu/nhin-nha` | Có — client HTTP Bearer + chống SSRF (chỉ loopback/mạng nhà riêng, cấm metadata/IP công khai) tới dịch vụ ML phụ (YOLO26 + SCRFD/ArcFace, port c2a, model tải ngoài có kiểm sha256); 3 thực thể `nhin_nha.mat`/`so_mat`/`nhan_dien`; sổ khuôn mặt (IRIS, ngưỡng tự chỉnh theo dữ liệu nhà) mã hoá khi nghỉ/không thì 0600; embedding không vào log/phản hồi/suc_khoe; nhận diện mặc định TẮT (bật cần quản trị + ghi nhật ký); xoá 1 người/xoá tất cả; kiểm với dịch vụ ML giả + kiểm tĩnh Dockerfile; **chưa kiểm với model ONNX thật** | 20/10/2026 |
+| Module `nhin-nha` (Mắt nhà, chuẩn C2 `thiet_bi`, NV168) + dịch vụ `dich-vu/nhin-nha` | Có — client HTTP Bearer + chống SSRF (chỉ loopback/mạng nhà riêng, cấm metadata/IP công khai) tới dịch vụ ML phụ (YOLO26 + SCRFD/ArcFace, port c2a, model tải ngoài có kiểm sha256); 3 thực thể `nhin_nha.mat`/`so_mat`/`nhan_dien`; sổ khuôn mặt (IRIS, ngưỡng tự chỉnh theo dữ liệu nhà) mã hoá khi nghỉ/không thì 0600; embedding không vào log/phản hồi/suc_khoe; nhận diện mặc định TẮT (bật cần quản trị + ghi nhật ký); NV168-SUA: cổng sinh trắc chung cho mọi hành động sổ (trừ xoá), khoá bất đồng bộ cho vòng đọc-sửa-ghi, sự kiện không lưu vector + xoá người triệt để, mặt lạ có trần 50 cụm/hạn 30 ngày + xoá riêng, dịch vụ ML kiểm lại sha256 lúc nạp + trần điểm ảnh trước giải mã; kiểm với dịch vụ ML giả + kiểm tĩnh Dockerfile; **chưa kiểm với model ONNX thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3403,6 +3403,26 @@ LXC, `/proc/meminfo` do lxcfs cung cấp tính theo giới hạn của chính ti
 «máy» khoảng 0,2 GB; gắn `-v /proc/meminfo:/proc/meminfo:ro` không sửa được). Hãy **khai** `WEB2API_MAY_RAM_MB`,
 `WEB2API_MAY_CPU`. RAM container được cấp (giới hạn `--memory`) luôn đúng vì đọc từ cgroup. Các số này dùng cho
 dòng «Máy này đủ chạy / có thể thiếu» ở bảng chi tiết module.
+
+### Module nhin-nha — Nhìn nhà (thị giác: YOLO + khuôn mặt, NV168)
+
+**Mô tả.** Phát hiện vật thể (YOLO) và nhận diện khuôn mặt trên ảnh qua
+dịch vụ ML phụ trong nhà (`dich-vu/nhin-nha/`); module là client + sổ khuôn
+mặt (vector chỉ nằm trong kho riêng, mã hoá khi nghỉ hoặc 0600). Mã nguồn:
+`modules/nhin-nha/`. Tiền tố: `nhin_nha`. Hạng: `A`. Ba thực thể:
+`nhin_nha.mat` (đọc), `nhin_nha.so_mat` và `nhin_nha.nhan_dien` (nguy_hiem).
+
+**Hàng rào sinh trắc (NV168-SUA).** Nhận diện **mặc định TẮT**
+(`nhan_mat_bat=0`); khi tắt, MỌI hành động chạm dữ liệu sinh trắc (dạy,
+nhận, đọc sổ, đổi tên, sự kiện) bị chặn ở một cổng chung — chỉ việc xoá
+luôn làm được. Vòng đọc-sửa-ghi sổ khoá bất đồng bộ (dạy/xoá chồng nhau
+không mất dữ liệu, không hồi sinh). Sự kiện không lưu vector; `xoa_nguoi`
+xoá vector của người ở mọi bản sao. Mặt lạ (người thứ ba): trần
+`mat_la_toi_da` (mặc định 50 cụm), hạn giữ `mat_la_giu_ngay` (mặc định 30
+ngày, tự dọn), xoá riêng bằng `xoa_mat_la`. Đổi bộ model phải dạy lại sổ
+(không lưu ảnh cắt). Dịch vụ ML: khoá so trên bytes (401 sạch với đầu
+ngoài ASCII), `Content-Length` âm/lạ → 400, trần 25 triệu điểm ảnh đọc từ
+tiêu đề ảnh trước giải mã, sha256 model kiểm lại lúc nạp.
 
 ## 6. Vận hành
 
