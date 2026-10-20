@@ -78,6 +78,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `van-phong` (Văn phòng: OfficeCLI + OCR + dựng Word/Excel — NV156 gộp NV138 + NV132, id cũ `vanphong` đã gỡ) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật). Thêm từ NV132: OCR ảnh bằng model thị giác (prompt theo nguyên tắc + kiểm lặp vòng `ocr_rules` + dọn rào `bo_rao_markdown` của c2a @ d879b03), `pdf_thanh_anh` chỉ nhận ảnh từng trang đã tách (gộp có mốc `<<<TRANG n>>>`), dựng .docx/.xlsx bằng zipfile (ô `inlineStr` + thoát `= + - @` chống chèn công thức), `kiem_tai_lieu` chặn zip bomb/zip-slip/XXE/trần (port `doc_guard.py` @ d879b03, thêm quét `<!ENTITY`); **chưa kiểm với model thật / Word-Excel thật** | 20/10/2026 |
 | Module `van-phong` (Công cụ văn phòng qua container phụ OfficeCLI) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật) | 18/10/2026 |
 | Module `tuya` (Thiết bị Tuya chuẩn C1, đám mây + LAN, NV157) | Có — port từ c2a: ký HMAC-SHA256 chép nguyên công thức (đo bằng mock kiểm chữ ký thật), danh sách phân trang `last_row_key`, local_key qua Open API; LAN giao thức 6668 tự viết (khung 55AA + AES-128-ECB đo vector NIST + CRC32), chỉ IP riêng khai tường minh, lỗi giải mã báo «local_key đã đổi»; điều khiển mặc định TẮT, ngành khoá/bếp/bình nóng lạnh theo cấu trúc KHÔNG có hành động ghi; kiểm bằng máy chủ Tuya giả + thiết bị LAN giả loopback, đột biến trên bản sao; **chưa kiểm với thiết bị Tuya thật**, dò quảng bá UDP chỉ kiểm tầng phân tích (sandbox chặn UDP) | 20/10/2026 |
+| Module `tien-ich-doi-song` (Tiện ích đời sống, chuẩn C2 `thiet_bi`, NV165) | Có — bản tin tóm tắt theo nguồn/mốc giờ (chống trùng, mỗi mốc 1 lần/ngày), chỉ đường và tra địa điểm qua Nominatim/OpenStreetMap + OSRM (không khoá; đường cào Google không chính thức của c2a KHÔNG port), vùng khoảng cách tự học từ dữ liệu thu thập (chưa học đủ thì luôn báo có mặt), kiểm tra/chia lô dấu câu lời thoại; địa chỉ không vào log, tắt được gọi mạng (`bat_tim_duong`); kiểm với dịch vụ GIẢ; **chưa kiểm Nominatim/OSRM thật**; KHÔNG port lớp gửi Zalo/Telegram và `trong_xe` (phụ thuộc camera) | 20/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
 | Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
@@ -3041,6 +3042,35 @@ của bên thứ ba ngoài lõi).
    `{"cau_hinh": {"dich_vu_url": "http://127.0.0.1:8702",
    "khoa_dich_vu": "<khoa>", "ghi_bat": "0"}}` — lõi kiểm địa chỉ chống SSRF
    trước khi lưu.
+### Module tien-ich-doi-song — Tiện ích đời sống (bản tin, chỉ đường, vùng radar, dấu câu)
+
+**Mô tả.** Bốn tiện ích đời sống theo chuẩn C2 `thiet_bi` (NV165), port từ mã c2a
+(commit `d879b03`): (1) *bản tin tóm tắt* — công cụ `tin_tuc_*` xếp hàng mục tin theo
+nguồn (chống trùng theo mã mục), trả bản tổng hợp theo mốc giờ mỗi ngày bắn một lần;
+(2) *chỉ đường* — công cụ `chi_duong_*` tra địa điểm và định tuyến qua Nominatim /
+OpenStreetMap và OSRM (dịch vụ công khai, không khoá, thay cho đường cào Google
+không chính thức của c2a — đường đó KHÔNG port, chờ chủ máy quyết); (3) *vùng khoảng
+cách* — công cụ `vung_*` tự học ngưỡng «trong/ngoài» của radar đo khoảng cách từ dữ
+liệu lịch sử đã thu thập; chưa học đủ thì luôn trả «có mặt» (không bao giờ báo trống
+sai); (4) *dấu câu* — công cụ `dau_cau_*` kiểm tra văn bản thiếu dấu câu và chia lô
+cho phục hồi dấu câu lời thoại (lớp gọi mô hình thuộc tầng tro-ly, module chỉ phơi
+phần thuần). Mã nguồn: `modules/tien-ich-doi-song/`. Tiền tố: `tienich`. Hạng: `A`
+(trường `hang` là bắt buộc trong `manifest.json`: "A" = chủ máy đã đọc hết mã + ghim
+SHA; hạng là lời khai của tác giả).
+
+**Cần gì.**
+- Không cần khoá nào: Nominatim/OSRM miễn phí không API key. Chính sách dùng hợp lệ:
+  User-Agent khai rõ `web2api-tienich/0.1 (tien-ich-doi-song)`; tra tối đa 5 kết quả.
+- Mạng ra: `nominatim.openstreetmap.org`, `router.project-osrm.org`, `www.google.com`
+  (chỉ khi người dùng dán link ghim Maps rút gọn: giải chuyển hướng, đích cuối phải
+  vẫn là máy chủ Google). Khớp `tai_nguyen.mang_ra` trong manifest.
+- RAM/đĩa thêm: chưa đo (ghi «chưa đo»).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "tien-ich-doi-song"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/tien-ich-doi-song`
+3. Cài: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/tien-ich-doi-song/cai -H "Content-Type: application/json" -d '{"cau_hinh": {"bat_tim_duong": "1"}}'`
 
 **Cấu hình.**
 
@@ -3193,9 +3223,23 @@ chưa có).
   phân trang/trần là giá trị tự chọn từ c2a + độ an toàn.
 
 ---
+| `bat_tim_duong` | Không | «1» (mặc định) bật gọi Nominatim/OSRM; «0» tắt toàn bộ gọi mạng ngoài của chỉ đường. Địa chỉ/vị trí là dữ liệu NHẠY CẢM: module không ghi địa chỉ vào log. |
 
-## 5. Triển khai
+**Ví dụ dùng.** Qua hội thoại có công cụ: «Chỉ đường từ Bờ Hồ đến Mai Hắc Đế bằng xe máy»
+→ trợ lý gọi `tienich__chi_duong__tim_duong` và nhận về số km, phút, các bước rẽ tiếng
+Việt và link Google Maps. Trạng thái bản tin/vùng lưu tại
+`WEB2API_DATA/du_lieu/tien-ich-doi-song/` (tệp 0600).
 
+**Sự cố thường gặp.**
+- «Tìm đường đã tắt (bat_tim_duong=0)» — cấu hình tắt mạng ngoài; đặt lại «1» nếu muốn dùng.
+- «Không định tuyến được (xe buýt chỉ đưa link)» — OSRM không có tuyến xe buýt; công cụ trả link Google Maps chế độ transit.
+- Công cụ `vung` báo mọi thứ «có mặt» — vùng chưa học đủ mẫu; gọi `hoc_tu_du_lieu` với lịch sử đã thu thập.
+
+**Giới hạn.**
+- Lớp GỬI bản tin tới kênh Zalo/Telegram của c2a không port: công cụ trả văn bản, tác nhân/tro-ly tự gửi.
+- `hoc()` nguyên bản c2a tự đọc Home Assistant không port; điểm nối là `hoc_tu_du_lieu` — module khác phải thu thập lịch sử trước.
+- Chưa kiểm với Nominatim/OSRM thật; chưa đo RAM/đĩa.
+- KHÔNG port `trong_xe.py` của c2a (nhắc giữ xe/ghi xe trong bãi) — phụ thuộc camera/nhin-nha (⚠ chờ chủ máy quyết như quy ước chung).
 ### Cần gì để chạy
 
 - **Docker** có `docker compose` 2.24 trở lên. Không cần Python trên máy chủ.
