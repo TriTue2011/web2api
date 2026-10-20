@@ -440,6 +440,13 @@ def test_loi_khong_mang_dac_thu_nha_cung_cap():
     # đầu. Loại riêng như «gmail» ở test khung dưới; tên NCC thật (tuya...)
     # vẫn bị quét như cũ.
     ten = ten - {"open"}
+    # NV171: «chay_ma» được lõi phân loại TĨNH là khả năng nguy hiểm
+    # (app/xac_thuc.py la_kha_nang_nguy_hiem — fail-closed SEC-004f, nền
+    # chuẩn bị từ 340267f trước khi module chay-ma tồn tại): cổng phê duyệt
+    # của lõi phải tự biết khả năng thực thi mã là nguy hiểm mà không cần
+    # tra manifest. Loại riêng ở đây như «gmail» bên dưới; các tên khác vẫn
+    # bị quét đầy đủ.
+    ten = ten - {"chay_ma"}
     pham = []
     for p in sorted((GOC / "app").rglob("*.py")):
         for chu in _chu_trong_ma_python(p):
