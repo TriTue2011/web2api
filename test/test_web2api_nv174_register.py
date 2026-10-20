@@ -70,6 +70,14 @@ TRANG_MA = """<!doctype html><html><head><title>Nhập mã</title></head><body>
 
 TRANG_LA = "<!doctype html><html><body><h1>Trang chủ</h1><p>Xin chào.</p></body></html>"
 
+# Trang đợi mã NHƯNG có script từ gốc khác (R5: cổng ghi-nhận cho doi_ma).
+TRANG_MA_NGOAI = """<!doctype html><html><head><title>Nhập mã</title>
+<script src="https://cdn.example.com/widget-la.js"></script></head><body>
+<form method="post">
+<label>Mã <input type="text" name="ma" autocomplete="one-time-code" inputmode="numeric"></label>
+<button type="submit">Xác minh</button>
+</form></body></html>"""
+
 
 # ───────────────────────── Máy chủ GIẢ (trang + hộp thư Inbucket) ─────────────────────────
 
@@ -98,6 +106,8 @@ class _XuLyGia(BaseHTTPRequestHandler):
             return self._gui(200, TRANG_DIEN_THOAI.encode())
         if self.path == "/dang-ky-ma":
             return self._gui(200, TRANG_MA.encode())
+        if self.path == "/dang-ky-ma-ngoai":
+            return self._gui(200, TRANG_MA_NGOAI.encode())
         if self.path == "/dang-ky-la":
             return self._gui(200, TRANG_LA.encode())
         m = re.fullmatch(r"/api/v1/mailbox/([a-z0-9-]+)", self.path)
@@ -477,6 +487,261 @@ def test_suc_khoe_khong_lo_bi_mat(moi_truong):
     assert sk["ok"] is True
     chuoi = json.dumps(sk, ensure_ascii=False)
     assert KHOA_HOP_THU not in chuoi
+
+
+# ─────────────────── Vòng sửa NV174-SUA (R1, R2, R5, R3, R4) ───────────────────
+
+
+def test_sua_r1_bat_dau_song_song_chi_mot_luot_qua_api_that(client):
+    """R1: 8 POST bat_dau ĐỒNG THỜI qua /api/thiet-bi thật → đúng 1 ok, đếm = 1."""
+    import threading
+    from app import kho
+
+    c, tmp, goc_url = client
+    r_cai = c.post("/api/modules/register/cai", headers=KHOA_QT,
+                   json={"cau_hinh": _cau_hinh_day_du(goc_url)})
+    assert r_cai.status_code == 200 and r_cai.json()["ok"] is True, r_cai.text
+    assert c.post("/api/thiet-bi/dang_ky.luot/xac-nhan", headers=KHOA_QT).status_code == 200
+
+    ket_qua: list = [None] * 8
+    rao = threading.Barrier(8)
+
+    def goi(i: int):
+        rao.wait(timeout=10)
+        ket_qua[i] = c.post("/api/thiet-bi/dang_ky.luot/hanh-dong", headers=KHOA_QT,
+                            json={"hanh_dong": "bat_dau", "xac_nhan": True})
+
+    luongs = [threading.Thread(target=goi, args=(i,)) for i in range(8)]
+    for t in luongs:
+        t.start()
+    for t in luongs:
+        t.join(timeout=30)
+    assert all(r is not None for r in ket_qua)
+    thanh_cong = [r for r in ket_qua if r.status_code == 200 and r.json().get("ok") is True]
+    assert len(thanh_cong) == 1, [r.status_code for r in ket_qua]
+    assert c.post("/api/thiet-bi/dang_ky.trang_thai/xac-nhan", headers=KHOA_QT).status_code == 200
+    xem = c.post("/api/thiet-bi/dang_ky.trang_thai/hanh-dong", headers=KHOA_QT,
+                 json={"hanh_dong": "xem"})
+    assert xem.status_code == 200, xem.text
+    assert xem.json()["ket_qua"]["so_luot_hom_nay"] == 1
+    tep = [p.name for p in (tmp / "bi_mat").glob("register-*.json")]
+    assert len(tep) == 1, tep
+
+
+def test_sua_r1_tai_trang_loi_nha_cho_dem_va_luot(moi_truong):
+    """R1 thất bại → hoàn lại: tải trang lỗi thì đếm KHÔNG tăng, bắt đầu lại được."""
+    import socket as _socket
+
+    _, tao, goc_url, _ = moi_truong
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(goc_url)))
+    # Cổng đã đóng hẳn → lỗi kết nối thật (không phải 404: trang 403/404 vẫn được
+    # tải về để phân loại thử thách như thiết kế).
+    _s = _socket.socket()
+    _s.bind(("127.0.0.1", 0))
+    cong_dong = _s.getsockname()[1]
+    _s.close()
+    m._cau_hinh["url_dang_ky"] = f"http://127.0.0.1:{cong_dong}/dang-ky"
+    r = _chay(m.thuc_hien("dang_ky.luot", "bat_dau", {}))
+    assert r["ok"] is False and r["ma_loi"] == "khong_tai_duoc_trang", r
+    xem = _chay(m.thuc_hien("dang_ky.trang_thai", "xem", {}))
+    assert xem["ket_qua"]["so_luot_hom_nay"] == 0
+    assert xem["ket_qua"]["buoc"] == "chua_bat_dau"
+    # Nhả chỗ rồi: bắt đầu lại với trang tốt phải được.
+    m._cau_hinh["url_dang_ky"] = f"{goc_url}/dang-ky-form"
+    r2 = _chay(m.thuc_hien("dang_ky.luot", "bat_dau", {}))
+    assert r2["ok"] is True, r2
+
+
+def test_sua_r2_hoan_tat_xoa_bi_mat_va_doc_mot_lan(moi_truong):
+    from app import kho
+
+    _, tao, goc_url, _ = moi_truong
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(goc_url)))
+    r = _chay(m.thuc_hien("dang_ky.luot", "bat_dau", {}))
+    luot = r["ket_qua"]["luot_id"]
+    assert kho.doc_bi_mat(f"register-{luot}").get("mat_khau")
+    r2 = _chay(m.thuc_hien("dang_ky.luot", "xac_nhan_hoan_tat", {}))
+    assert r2["ok"] is True
+    assert kho.doc_bi_mat(f"register-{luot}") == {}, "hoàn tất phải XOÁ bí mật khỏi kho"
+
+
+def test_sua_r2_luot_do_het_han_30_phut_tu_xoa(moi_truong, monkeypatch):
+    from app import kho
+
+    _, tao, goc_url, _ = moi_truong
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(goc_url)))
+    r = _chay(m.thuc_hien("dang_ky.luot", "bat_dau", {}))
+    luot = r["ket_qua"]["luot_id"]
+    assert kho.doc_bi_mat(f"register-{luot}").get("mat_khau")
+    # Giả thời gian trôi 31 phút (mốc bắt đầu lưu trong trạng thái lượt).
+    monkeypatch.setattr(m, "_bay_gio_ts",
+                        lambda: m._tt["bat_dau_luc"] + 31 * 60)
+    xem = _chay(m.thuc_hien("dang_ky.trang_thai", "xem", {}))
+    assert xem["ket_qua"]["buoc"] == "het_han"
+    assert kho.doc_bi_mat(f"register-{luot}") == {}, "hết hạn phải XOÁ bí mật khỏi kho"
+
+
+def test_sua_r2_nap_don_bi_mat_mo_coi(moi_truong):
+    """R2: tệp bí mật register-* không khớp lượt hiện tại bị dọn khi nap()."""
+    from app import kho
+
+    _, tao, goc_url, _ = moi_truong
+    kho.ghi_bi_mat("register-mo-coi-9999", {"email": "x@mien.test", "mat_khau": "MoCoi123456789012"})
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(goc_url)))
+    assert kho.doc_bi_mat("register-mo-coi-9999") == {}
+
+
+def test_sua_r5_thu_thach_khong_nhan_ra_dung_can_nguoi_va_doi_ma_bi_chan(moi_truong):
+    import unittest.mock as _mock
+
+    tep, tao, goc_url, _ = moi_truong
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(goc_url)))
+    trang = ("<html><body><script src='https://cdn.example.com/arkose.js'></script>"
+             "<form><input type='email'><input type='password'></form></body></html>")
+
+    async def gia(url):
+        return (200, trang)
+
+    with _mock.patch.object(tep, "_tai_trang_dang_ky", gia):
+        r = _chay(m.thuc_hien("dang_ky.luot", "bat_dau", {}))
+    assert r["trang_thai_moi"]["buoc"] == "can_nguoi", r
+    assert r["trang_thai_moi"]["ly_do"] == "thu_thach_chua_ro"
+    r2 = _chay(m.thuc_hien("dang_ky.luot", "doi_ma", {"cho_giay": 1}))
+    assert r2["ok"] is False and r2["ma_loi"] == "dang_can_nguoi"
+
+
+def test_sua_r5_phan_loai_ma_ngoai_la_can_nguoi_con_form_thuan_thi_khong(moi_truong):
+    tep, *_ = moi_truong
+    co_script_ngoai = ("<html><body><script src='https://cdn.example.com/arkose.js'>"
+                       "</script><form><input type='email'><input type='password'>"
+                       "</form></body></html>")
+    assert tep.phan_loai_trang(co_script_ngoai)["loai"] == "thu_thach"
+    co_iframe_ngoai = ("<html><body><iframe src='https://khung.example.com/w'></iframe>"
+                       "<form><input type='email'><input type='password'></form></body></html>")
+    assert tep.phan_loai_trang(co_iframe_ngoai)["loai"] == "thu_thach"
+    # Script nội tuyến + cùng gốc: form thuần vẫn sẵn sàng.
+    form_thuan = ("<html><head><script>var x=1;</script>"
+                  "<script src='/js/app.js'></script></head><body>"
+                  "<form><input type='email'><input type='password'></form></body></html>")
+    assert tep.phan_loai_trang(form_thuan)["loai"] == "form_dang_ky"
+    # Ô điện thoại type=text + inputmode=tel (soát P6) → xác minh điện thoại.
+    o_dt = ("<html><body><form><input type='text' inputmode='tel' name='sdt'>"
+            "</form></body></html>")
+    assert tep.phan_loai_trang(o_dt)["loai"] == "xac_minh_dien_thoai"
+
+
+def test_sua_r1_bat_dau_dong_thoi_muc_module_dem_dung_mot(moi_truong):
+    """R1 mức module (tất định): tải trang CHẬM + 8 bat_dau gather → 1 ok, đếm 1.
+
+    Hạn ngày đặt 5 (không phải 1) để cổng «một lượt đang chạy» là thứ quyết
+    định: nếu giữ chỗ không đặt trạng thái đang-chạy trong cùng khối khoá,
+    nhiều lượt sẽ cùng giữ chỗ và bộ đếm vọt lên 5.
+    """
+    import unittest.mock as _mock
+
+    tep, tao, goc_url, _ = moi_truong
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(goc_url, gioi_han_moi_ngay="5")))
+
+    async def tai_cham(url):
+        await asyncio.sleep(0.3)
+        return (200, TRANG_FORM)
+
+    async def chay_ca_lo():
+        with _mock.patch.object(tep, "_tai_trang_dang_ky", tai_cham):
+            return await asyncio.gather(*[
+                m.thuc_hien("dang_ky.luot", "bat_dau", {}) for _ in range(8)])
+
+    kq = _chay(chay_ca_lo())
+    assert sum(1 for r in kq if r["ok"] is True) == 1, kq
+    xem = _chay(m.thuc_hien("dang_ky.trang_thai", "xem", {}))
+    assert xem["ket_qua"]["so_luot_hom_nay"] == 1
+
+
+def test_sua_r5_trang_doi_ma_co_ma_ngoai_doi_ma_phai_cho_ghi_nhan(moi_truong):
+    """R5 (cổng doi_ma): trang đợi mã + script ngoài → doi_ma bị chặn tới khi
+    có ghi_nhan_nguoi_xu_ly (nhánh ghi nhận không đổi bước)."""
+    _, tao, goc_url, _ = moi_truong
+    m = tao()
+    _chay(_cai_va_nap(m, _cau_hinh_day_du(
+        goc_url, url_dang_ky=f"{goc_url}/dang-ky-ma-ngoai")))
+    r = _chay(m.thuc_hien("dang_ky.luot", "bat_dau", {}))
+    assert r["ok"] is True and r["trang_thai_moi"]["buoc"] == "doi_ma_xac_minh", r
+    r2 = _chay(m.thuc_hien("dang_ky.luot", "doi_ma", {"cho_giay": 1}))
+    assert r2["ok"] is False and r2["ma_loi"] == "dang_can_nguoi", r2
+    r3 = _chay(m.thuc_hien("dang_ky.luot", "ghi_nhan_nguoi_xu_ly", {}))
+    assert r3["ok"] is True and r3["trang_thai_moi"]["buoc"] == "doi_ma_xac_minh"
+    r4 = _chay(m.thuc_hien("dang_ky.luot", "doi_ma", {"cho_giay": 5}))
+    assert r4["ok"] is True and r4["ket_qua"]["ma_xac_minh"] == MA_THU, r4
+
+
+def test_sua_r4_trich_ma_chi_tu_mien_gui_da_khai(moi_truong):
+    tep, *_ = moi_truong
+    thu_la = {"subject": "Ma 654321", "text_content": "Ma 654321",
+              "html_content": "", "sender": "attacker@evil.example"}
+    assert tep.trich_ma_xac_minh(thu_la, mien_gui_cho_phep="nha-cung-cap.test") is None
+    thu_dung = {"subject": "Mã xác minh 483920", "text_content": "Mã xác minh 483920",
+                "html_content": "", "sender": "noreply@nha-cung-cap.test"}
+    assert tep.trich_ma_xac_minh(thu_dung, mien_gui_cho_phep="nha-cung-cap.test") == "483920"
+    tieu_mien = dict(thu_dung, sender="no-reply@mail.nha-cung-cap.test")
+    assert tep.trich_ma_xac_minh(tieu_mien, mien_gui_cho_phep="nha-cung-cap.test") == "483920"
+    # Miền lạ CHỨA miền khai ở giữa (không phải hậu tố) → không khớp.
+    gia_mao = dict(thu_dung, sender="x@nha-cung-cap.test.evil.example")
+    assert tep.trich_ma_xac_minh(gia_mao, mien_gui_cho_phep="nha-cung-cap.test") is None
+    # Đơn hàng từ chính miền khai nhưng số không có ngữ cảnh mã → không trích.
+    don_hang = {"subject": "Đơn hàng #123456 đã giao", "text_content": "Mã đơn hàng 123456.",
+                "html_content": "", "sender": "shop@nha-cung-cap.test"}
+    assert tep.trich_ma_xac_minh(don_hang, mien_gui_cho_phep="nha-cung-cap.test") is None
+
+
+def test_sua_r3_hop_thu_ghim_ip_cam_dns_rebinding(moi_truong, monkeypatch):
+    """R3: tên hộp thư phân giải lúc KIỂM (cai) ra IP LAN, lúc GỌI ra 127.0.0.1
+    → đường gọi phải bị ghim IP chặn (không tới được loopback)."""
+    import socket as _socket
+    from http.server import ThreadingHTTPServer as _THS
+
+    tep, *_ = moi_truong
+    sv = _THS(("0.0.0.0", 0), _XuLyGia)  # nghe mọi giao diện: IP LAN nối được thật
+    sv.dem = {}
+    sv.co_ma = True
+    luong = threading.Thread(target=sv.serve_forever, daemon=True)
+    luong.start()
+    cong = sv.server_address[1]
+    try:
+        # IP LAN thật của máy (không phải loopback): nối UDP (không gửi gì) để
+        # hệ điều hành chọn địa chỉ nguồn theo tuyến.
+        _u = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        _u.connect(("203.0.113.1", 9))
+        lan_ip = _u.getsockname()[0]
+        _u.close()
+        assert not lan_ip.startswith("127."), lan_ip
+        so_lan = {"n": 0}
+
+        def giai_gia(host, port, *a, **k):
+            so_lan["n"] += 1
+            ip = lan_ip if so_lan["n"] == 1 else "127.0.0.1"
+            return [(2, 1, 6, "", (ip, port or 0))]
+
+        monkeypatch.setattr(_socket, "getaddrinfo", giai_gia)
+        # Lượt phân giải 1 = lúc cai() kiểm (LAN, hợp lệ); từ lượt 2 (lúc gọi
+        # thật) tên bị tái gắn về loopback.
+        _socket.getaddrinfo("hop-thu-gia.test", cong)
+        # Môi trường test này tắt cờ cho-phép-loopback (cờ đó là của các test
+        # máy giả khác) và không đi qua proxy egress cho tên giả này.
+        monkeypatch.delenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", raising=False)
+        monkeypatch.setenv("NO_PROXY", "hop-thu-gia.test")
+        monkeypatch.setenv("no_proxy", "hop-thu-gia.test")
+        hop = tep.HopThuInbucket(f"http://hop-thu-gia.test:{cong}", "khoa-gia")
+        assert _chay(hop.kiem_tra()) is False
+        assert sv.dem == {}, "yêu cầu KHÔNG được chạm tới máy chủ (dù là qua IP LAN)"
+    finally:
+        sv.shutdown()
+        sv.server_close()
 
 
 # ───────────────────────── Qua API của lõi ─────────────────────────

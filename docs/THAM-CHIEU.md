@@ -3636,11 +3636,18 @@ cấp theo mô hình người-trong-vòng-lặp (chuẩn `thiet_bi`, NV174). Mod
 hộp thư tạm (Inbucket tự host) + mật khẩu sinh ngẫu nhiên, tải trang đăng ký để
 **NHẬN DIỆN BƯỚC theo cấu trúc HTML** (form email+mật khẩu sẵn sàng / iframe,
 script của nhà cung cấp widget thử thách hoặc thuộc tính `data-sitekey` →
-thử thách / `input type="tel"` → xác minh điện thoại / `autocomplete=
-"one-time-code"` → đợi mã / không khớp → không rõ), rồi **DỪNG ĐÚNG ĐIỂM CẦN
+thử thách / `input type="tel"` hoặc `inputmode="tel"` → xác minh điện thoại /
+`autocomplete="one-time-code"` → đợi mã / không khớp → không rõ). Từ vòng sửa
+NV174-SUA, nhận diện **đảo mặc định**: form đăng ký mà trang có tải
+script/iframe từ **gốc khác** (dù không rõ thuộc nhà cung cấp nào) cũng tính
+là thử thách chưa rõ → dừng «can_nguoi», và `doi_ma` phải chờ ghi nhận người
+khi trang đầu có mã ngoài), rồi **DỪNG ĐÚNG ĐIỂM CẦN
 NGƯỜI**: thử thách chống bot, xác minh điện thoại và trang lạ đều dừng ở trạng
 thái «can_nguoi» và không hành động nào đi tiếp được cho tới khi quản trị ghi
-nhận người đã tự xử lý. Người thật điền biểu mẫu, vượt thử thách và nhập mã
+nhận người đã tự xử lý. **Bí mật của lượt** (email + mật khẩu sinh) chỉ hiện
+MỘT lần ở kết quả `bat_dau` và bị **XOÁ khỏi kho ngay khi lượt kết thúc**
+(hoàn tất/huỷ); lượt dở quá 30 phút tự hết hạn và cũng xoá. Trần lượt được
+giữ bằng giữ-chỗ nguyên tử — gọi `bat_dau` đồng thời cũng chỉ một lượt qua. Người thật điền biểu mẫu, vượt thử thách và nhập mã
 trên trình duyệt từ xa (noVNC của lõi). Module không chứa mã giải/vượt
 CAPTCHA, không giả mạo dấu vân tay trình duyệt, không tự điền biểu mẫu, không
 tạo tài khoản hàng loạt: mỗi lần **một** tài khoản, trần lượt/ngày (mặc định
@@ -3674,7 +3681,12 @@ thử thách/hàng loạt của c2a cố ý KHÔNG port). Tiền tố: `dang_ky`
   cần bản ghi MX trỏ miền đó vào máy của bạn để thư nhà cung cấp về được.
 - `hop_thu_khoa` (bí mật, để trống nếu không dùng): **tự đặt** — chỉ khi bạn
   đặt Inbucket sau một lớp cổng có khoá Bearer do bạn tự dựng.
+  Đường gọi hộp thư ghim IP lúc gọi (cùng cơ chế của lõi) chống tái gắn DNS.
 - `gioi_han_moi_ngay` (mặc định `1`, trần cứng `5`): số lượt tối đa mỗi ngày.
+- `mien_gui_cho_phep` (tuỳ chọn): miền người gửi của nhà cung cấp (phần sau
+  @ trong thư của họ) — khi khai, mã xác minh CHỈ được trích từ thư thuộc
+  miền đó/tiểu miền của nó và phải có ngữ cảnh mã (không trích số 6 chữ số
+  bất kỳ như số đơn hàng).
 
 **Ví dụ dùng.**
 
