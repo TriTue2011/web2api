@@ -31,6 +31,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import re
 import secrets
 import time
@@ -118,9 +119,12 @@ class PhienAgent:
     """Một máy trạm đang kết nối — ghép yêu cầu↔kết quả bằng id (chép c2a AgentSession)."""
 
     def __init__(self, ten: str, cfg: dict, khoa_phien: bytes, kenh,
-                 het_gio: float = _HET_GIO_MAC_DINH):
+                 het_gio: float = _HET_GIO_MAC_DINH, dau_van: str = ""):
         self.ten = ten
         self.cfg = cfg
+        #: Dấu vân của khoá đã dùng để lập phiên này (NV170-SUA M1) — module
+        #: đối chiếu với khoá HIỆN HÀNH ở mỗi lệnh: khoá xoay thì phiên chết.
+        self.dau_van = dau_van
         self._khoa_phien = khoa_phien
         self._kenh = kenh
         self._het_gio = het_gio
@@ -300,11 +304,17 @@ class QuanLyPhien:
             # Không nói rõ máy tồn tại hay không — như c2a, không giúp dò.
             raise BatTayLoi("máy không hợp lệ hoặc đã bị thu hồi")
         nonce_agent = str(chao.get("nonce_agent") or "")
-        self._kiem_nonce(nonce_agent)  # phát lại → dừng ngay tại đây
         thoi_gian = chao.get("thoi_gian")
-        if (not isinstance(thoi_gian, (int, float))
+        # M4 (NV170-SUA): giờ phải là SỐ HỮU HẠN và không phải bool — NaN lọt
+        # qua phép so cửa sổ vì mọi phép so với NaN đều False, vô cực cũng
+        # không phải mốc giờ thật. Kiểm giờ TRƯỚC nonce: khung chào sai giờ
+        # của kẻ không có khoá không được đốt nonce của agent thật.
+        if (isinstance(thoi_gian, bool)
+                or not isinstance(thoi_gian, (int, float))
+                or not math.isfinite(float(thoi_gian))
                 or abs(time.time() - float(thoi_gian)) > self._cua_so):
             raise BatTayLoi("thời gian lệch quá cửa sổ cho phép")
+        self._kiem_nonce(nonce_agent)  # phát lại → dừng ngay tại đây
         try:
             khoa = bytes.fromhex(str(tb.get("khoa_agent") or ""))
         except ValueError:
@@ -333,12 +343,30 @@ class QuanLyPhien:
 
         khoa_phien = bytes.fromhex(_hmac_hex(
             khoa, b"phien:", nonce_agent.encode(), b":", nonce_loi.encode()))
-        phien = PhienAgent(ten, tb, khoa_phien, kenh, het_gio=self._het_gio_lenh)
         thong_tin = dap.get("thong_tin")
-        if isinstance(thong_tin, dict):
-            phien.thong_tin = {k: str(v)[:80] for k, v in thong_tin.items()
-                               if k in ("nen_tang", "ten_may", "phien_ban")}
         async with self._khoa:
+            # M1 (NV170-SUA): NẠP LẠI bản ghi TRONG khoá ngay trước khi lập
+            # phiên. Bắt tay có thể bị giữ dở tới 60s (mỗi bước chờ 15s) —
+            # trong lúc đó chủ máy có thể đã XOAY KHOÁ/THU HỒI/XOÁ máy để xử
+            # lý sự cố; bản ghi `tb` nạp ở khung chào đã CŨ. Khoá hiện hành
+            # khác khoá đã dùng bắt tay, hoặc máy đã tắt/thu hồi/mất khỏi sổ
+            # → bắt tay CHẾT, không lập phiên cho kẻ giữ khoá cũ.
+            tb2 = self._lay_thiet_bi(ten)
+            if (not isinstance(tb2, dict) or not tb2.get("bat", True)
+                    or tb2.get("da_thu_hoi")):
+                raise BatTayLoi("máy không hợp lệ hoặc đã bị thu hồi")
+            try:
+                khoa_hien_hanh = bytes.fromhex(str(tb2.get("khoa_agent") or ""))
+            except ValueError:
+                raise BatTayLoi("khoá máy hỏng trong sổ") from None
+            if not hmac.compare_digest(khoa_hien_hanh, khoa):
+                raise BatTayLoi("khoá đã đổi trong lúc bắt tay")
+            phien = PhienAgent(ten, tb2, khoa_phien, kenh,
+                               het_gio=self._het_gio_lenh,
+                               dau_van=str(tb2.get("dau_van") or ""))
+            if isinstance(thong_tin, dict):
+                phien.thong_tin = {k: str(v)[:80] for k, v in thong_tin.items()
+                                   if k in ("nen_tang", "ten_may", "phien_ban")}
             cu = self._phien.get(ten)
             self._phien[ten] = phien
         if cu is not None:
@@ -350,7 +378,7 @@ class QuanLyPhien:
                                   "nguon": phien.co_quyen_nguon,
                                   "ghi_man_hinh": phien.co_quyen_ghi_man_hinh}})
         log.info({"su_kien": "maytram_ket_noi", "may": ten,
-                  "dau_van": str(tb.get("dau_van") or "")})
+                  "dau_van": phien.dau_van})
         return phien
 
     async def chay_kenh(self, kenh) -> PhienAgent:
