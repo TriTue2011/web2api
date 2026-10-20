@@ -77,7 +77,9 @@ def ctx_khach():
 
 
 def _thuc_hien(mod, hanh_dong, tham_so):
-    return asyncio.run(mod.thuc_hien("nhaptaikhoan.nguon", hanh_dong, tham_so))
+    # NV164-SUA: hành động chỉ chạy dưới thực thể của nó (xem trước / áp dụng).
+    ent = "nhaptaikhoan.ap_dung" if hanh_dong == "ap_dung" else "nhaptaikhoan.xem_truoc"
+    return asyncio.run(mod.thuc_hien(ent, hanh_dong, tham_so))
 
 
 # ───────── manifest ─────────
@@ -109,14 +111,21 @@ def test_suc_khoe_khong_lo_bi_mat(mod):
         assert khoa not in json.dumps(kq, ensure_ascii=False).lower()
 
 
-def test_thuc_the_nguy_hiem_mac_dinh(mod):
-    ents = {e["id"]: e for e in mod.thuc_the()}
-    ent = ents["nhaptaikhoan.nguon"]
-    assert ent["rui_ro_mac_dinh"] == "nguy_hiem"
-    hanh_dong = {a["hanh_dong"]: a for a in ent["tinh_nang"]}
-    assert set(hanh_dong) == {"xem_truoc_tep", "xem_truoc_may_chu", "ap_dung"}
-    for a in hanh_dong.values():
-        assert a["rui_ro"] == "nguy_hiem"
+def test_thuc_the_tach_theo_rui_ro(mod):
+    # NV164-SUA (phát hiện (b)): hai thực thể tách theo rủi ro — xem trước là
+    # «doc», áp dụng là «nguy_hiem» (trước: một thực thể «nguon» nguy_hiem cả khối).
+    ents = {e["id"]: e for e in asyncio.run(mod.thuc_the())}
+    xem = ents["nhaptaikhoan.xem_truoc"]
+    assert xem["rui_ro_mac_dinh"] == "doc"
+    hanh_dong_xem = {a["hanh_dong"]: a for a in xem["tinh_nang"]}
+    assert set(hanh_dong_xem) == {"xem_truoc_tep", "xem_truoc_may_chu"}
+    for a in hanh_dong_xem.values():
+        assert a["rui_ro"] == "doc"
+    ap = ents["nhaptaikhoan.ap_dung"]
+    assert ap["rui_ro_mac_dinh"] == "nguy_hiem"
+    hanh_dong_ap = {a["hanh_dong"]: a for a in ap["tinh_nang"]}
+    assert set(hanh_dong_ap) == {"ap_dung"}
+    assert hanh_dong_ap["ap_dung"]["rui_ro"] == "nguy_hiem"
 
 
 # ───────── Cổng quản trị: chỉ quản trị gọi được ─────────
