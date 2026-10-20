@@ -76,6 +76,7 @@ class MayChuMqttGia:
     def __init__(self):
         self.da_nhan: list[tuple[str, bytes]] = []  # publish từ client
         self.dang_ky: list[str] = []  # bộ lọc client đã đăng ký
+        self.client_ids: list[str] = []  # id của mọi phiên CONNECT
         self._sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sk.bind(("127.0.0.1", 0))
@@ -128,6 +129,15 @@ class MayChuMqttGia:
                     mul *= 128
                 than = self._doc(conn, rl) if rl else b""
                 if loai == 1:  # CONNECT
+                    # payload CONNECT: đầu biến 10 byte rồi client_id có
+                    # tiền tố độ dài — ghi lại để test kiểm trùng id.
+                    try:
+                        n = struct.unpack("!H", than[10:12])[0]
+                        cid = than[12:12 + n].decode("utf-8", "replace")
+                        with self._khoa:
+                            self.client_ids.append(cid)
+                    except (IndexError, struct.error, UnicodeDecodeError):
+                        pass
                     conn.sendall(b"\x20\x02\x00\x00")  # CONNACK ok
                 elif loai == 8:  # SUBSCRIBE
                     pkt = struct.unpack("!H", than[:2])[0]
@@ -722,3 +732,205 @@ class TestSucKhoe:
             assert ok, "không kết nối được broker giả"
         finally:
             asyncio.run(mod.dung())
+
+
+# ───────── 10. Vòng sửa NV151-SUA (soát độc lập của agy) ─────────
+
+#: Bản khai THIẾU payload_on/payload_off — chuẩn Home Assistant coi mặc định
+#: là "ON"/"OFF". Thiết bị thật không phải lúc nào cũng khai đủ hai trường.
+KHAI_BAO_THIEU_PAYLOAD = {
+    "name": "Đèn thử 2",
+    "state_topic": "zigbee2mqtt/den-thu-2",
+    "command_topic": "zigbee2mqtt/den-thu-2/set",
+    "device": {"name": "Đèn thử 2"},
+}
+
+
+class TestSuaPayloadOff:
+    """Phát hiện 1 (NGHIÊM TRỌNG): thiếu payload_off → bấm TẮT gửi «ON»."""
+
+    def _lop_co_den_thieu(self, broker):
+        mqtt_lop, _ = _nap()
+        lop = mqtt_lop.LopMqtt({"dia_chi": f"127.0.0.1:{broker.cong}"})
+        lop._nap_tin("homeassistant/switch/0xden2/config",
+                     json.dumps(KHAI_BAO_THIEU_PAYLOAD).encode(), None)
+        return lop
+
+    def test_doc_ban_khai_thieu_payload_la_none(self):
+        """Tiền đề của lỗi: doc_ban_khai đặt khoá với giá trị None."""
+        mqtt_lop, _ = _nap()
+        kq = mqtt_lop.doc_ban_khai("homeassistant/switch/0xden2/config",
+                                   json.dumps(KHAI_BAO_THIEU_PAYLOAD).encode())
+        assert kq is not None
+        assert kq[2]["bat"] is None and kq[2]["tat"] is None
+
+    def test_tat_gui_off_khi_thieu_payload_off(self, broker, loopback):
+        lop = self._lop_co_den_thieu(broker)
+        assert lop.dieu_khien("Đèn thử 2", "Đèn thử 2", False) is True
+        ok = _cho_dieu_kien(lambda: broker.da_nhan, han_giay=8.0)
+        assert ok, "broker không nhận được lệnh"
+        chu_de, payload = broker.da_nhan[-1]
+        assert chu_de == "zigbee2mqtt/den-thu-2/set"
+        assert payload == b"OFF", f"tắt phải gửi OFF, broker nhận {payload!r}"
+
+    def test_bat_gui_on_khi_thieu_payload_on(self, broker, loopback):
+        lop = self._lop_co_den_thieu(broker)
+        assert lop.dieu_khien("Đèn thử 2", "Đèn thử 2", True) is True
+        ok = _cho_dieu_kien(lambda: broker.da_nhan, han_giay=8.0)
+        assert ok, "broker không nhận được lệnh"
+        assert broker.da_nhan[-1][1] == b"ON"
+
+    def test_chuoi_tat_gui_off_khi_thieu_payload_off(self, broker, loopback):
+        lop = self._lop_co_den_thieu(broker)
+        assert lop.dieu_khien("Đèn thử 2", "Đèn thử 2", "tat") is True
+        ok = _cho_dieu_kien(lambda: broker.da_nhan, han_giay=8.0)
+        assert ok, "broker không nhận được lệnh"
+        assert broker.da_nhan[-1][1] == b"OFF"
+
+    def test_module_thuc_hien_tat_khi_thieu_payload_off(self, broker, loopback):
+        """Đường qua module (thuc_hien «tat»): broker phải nhận b"OFF"."""
+        import asyncio
+        _ml, _ = _nap()
+        mod, _ = _module_moi()
+        mod.nap({"dia_chi": f"127.0.0.1:{broker.cong}",
+                 "cho_phep_dieu_khien": "true"})
+        try:
+            mod._lop._nap_tin("homeassistant/switch/0xden2/config",
+                              json.dumps(KHAI_BAO_THIEU_PAYLOAD).encode(), None)
+            ds = asyncio.run(mod.thuc_the(None))
+            id_den = [e["id"] for e in ds
+                      if e["id"].startswith("mqtt.Den_thu_2")][0]
+            kq = asyncio.run(mod.thuc_hien(id_den, "tat", {}))
+            assert kq["ok"] is True, kq
+            ok = _cho_dieu_kien(lambda: broker.da_nhan, han_giay=8.0)
+            assert ok, "broker không nhận được lệnh"
+            chu_de, payload = broker.da_nhan[-1]
+            assert chu_de == "zigbee2mqtt/den-thu-2/set"
+            assert payload == b"OFF", f"tắt phải gửi OFF, broker nhận {payload!r}"
+        finally:
+            mod._lop.stop()
+
+
+class TestSuaIPv6:
+    """Phát hiện 2: kiem_dia_chi làm mất ngoặc [] của IPv6 → nạp lại sập."""
+
+    def test_kiem_dia_chi_giu_ngoac_ipv6(self, loopback):
+        import asyncio
+        _ml, lop_cls = _nap()
+        mod, mqtt_lop = _module_moi()
+        kq = asyncio.run(lop_cls.kiem_dia_chi("[fd00::1]:1883"))
+        assert kq == "[fd00::1]:1883"
+        # Nạp lại cấu hình đã chuẩn hoá không được ném LoiMqtt.
+        lop = mqtt_lop.LopMqtt({"dia_chi": kq})
+        host, cong = lop._tach_may_chu()
+        assert (host, cong) == ("fd00::1", 1883)
+
+    def test_kiem_dia_chi_ipv6_mac_dinh_cong(self, loopback):
+        import asyncio
+        _ml, lop_cls = _nap()
+        mod, mqtt_lop = _module_moi()
+        kq = asyncio.run(lop_cls.kiem_dia_chi("[fd00::1]"))
+        assert kq == "[fd00::1]:1883"
+        lop = mqtt_lop.LopMqtt({"dia_chi": kq})
+        assert lop._tach_may_chu() == ("fd00::1", 1883)
+
+
+class TestKhongDuLieuNhaThat:
+    """Phát hiện 3: mã/test/tài liệu KHÔNG còn số đo hay tên nhà thật.
+
+    Các mẫu bị cấm được GHÉP từ hai nửa để chính test này không tự chứa
+    chuỗi bị cấm (grep toàn cục trên patch vẫn phải ra 0).
+    """
+
+    CAM = ["74" + "7", "21" + "1 bản", "Nhà t" + "ắm", "Bế" + "p, Nhà"]
+
+    def test_module_sach_du_lieu_that(self):
+        for ten in ("mqtt_lop.py", "module.py", "README.md", "manifest.json"):
+            noi_dung = (THU_MUC_MODULE / ten).read_text(encoding="utf-8")
+            for mau in self.CAM:
+                assert mau not in noi_dung, f"{ten} còn chứa {mau!r}"
+
+    def test_file_test_sach_du_lieu_that(self):
+        noi_dung = Path(__file__).read_text(encoding="utf-8")
+        for mau in self.CAM:
+            assert mau not in noi_dung, f"file test còn chứa {mau!r}"
+
+
+class TestClientIdDuyNhat:
+    """Phát hiện 4: client_id cố định → hai lệnh đồng thời đá nhau khỏi broker."""
+
+    def test_hai_lenh_dong_thoi_khong_trung_client_id(self, broker, loopback):
+        mqtt_lop, _ = _nap()
+        lop = mqtt_lop.LopMqtt({"dia_chi": f"127.0.0.1:{broker.cong}"})
+        lop._nap_tin("homeassistant/switch/0xden/config",
+                     json.dumps(KHAI_BAO_DEN).encode(), None)
+        # Nạp thêm thiết bị thứ hai để hai lệnh đi hai chủ đề khác nhau.
+        khai2 = {**KHAI_BAO_DEN, "name": "Đèn thử 3",
+                 "state_topic": "zigbee2mqtt/den-thu-3",
+                 "command_topic": "zigbee2mqtt/den-thu-3/set",
+                 "device": {"name": "Đèn thử 3"}}
+        lop._nap_tin("homeassistant/switch/0xden3/config",
+                     json.dumps(khai2).encode(), None)
+
+        ket_qua: dict[str, object] = {}
+        rao = threading.Barrier(2)
+
+        def gui(ten):
+            rao.wait(timeout=5)
+            try:
+                ket_qua[ten] = lop.dieu_khien(ten, ten, True)
+            except Exception as exc:  # ghi lại để assert dưới, không nuốt
+                ket_qua[ten] = exc
+
+        luong = [threading.Thread(target=gui, args=(t,))
+                 for t in ("Đèn thử 1", "Đèn thử 3")]
+        for t in luong:
+            t.start()
+        for t in luong:
+            t.join(20)
+        assert ket_qua.get("Đèn thử 1") is True, ket_qua
+        assert ket_qua.get("Đèn thử 3") is True, ket_qua
+        ok = _cho_dieu_kien(lambda: len(broker.da_nhan) >= 2, han_giay=8.0)
+        assert ok, f"broker mới nhận {broker.da_nhan}"
+        assert len(broker.client_ids) >= 2
+        # Mọi phiên lệnh phải có id RIÊNG — trùng id thì broker đá phiên cũ.
+        assert len(set(broker.client_ids)) == len(broker.client_ids), \
+            f"trùng client_id: {broker.client_ids}"
+
+
+class TestTranNhanhGoc:
+    """Phát hiện 5: _nhanh_goc không trần → broker độc hại phình RAM + bão đăng ký."""
+
+    def test_nhanh_goc_co_tran(self):
+        mqtt_lop, _ = _nap()
+        lop = mqtt_lop.LopMqtt({})
+        lop._TRAN_NHANH = 10
+        da_dang_ky = []
+        for i in range(50):
+            lop._nap_tin(f"goc-la-{i}/x", b"1",
+                         lambda f, q=0: da_dang_ky.append(f))
+        assert len(lop._nhanh_goc) <= 10, len(lop._nhanh_goc)
+        assert len(da_dang_ky) <= 10, len(da_dang_ky)
+
+    def test_tran_mac_dinh_chan_bao_nhanh(self):
+        """Kịch bản của soát: 6000 nhánh gốc lạ — sổ nhánh không vượt trần."""
+        mqtt_lop, _ = _nap()
+        lop = mqtt_lop.LopMqtt({})
+        da_dang_ky = []
+        for i in range(6000):
+            lop._nap_tin(f"goc{i}/x", b"1",
+                         lambda f, q=0: da_dang_ky.append(f))
+        assert len(lop._nhanh_goc) <= mqtt_lop._TRAN_NHANH
+        assert len(da_dang_ky) <= mqtt_lop._TRAN_NHANH
+
+    def test_nhanh_da_biet_van_cap_nhat_gia_tri(self):
+        """Chạm trần nhánh mới KHÔNG được làm mất cập nhật của nhánh đã biết."""
+        mqtt_lop, _ = _nap()
+        lop = mqtt_lop.LopMqtt({})
+        lop._TRAN_NHANH = 2
+        lop._nap_tin("goc-a/x", b"1", None)
+        lop._nap_tin("goc-b/x", b"1", None)
+        lop._nap_tin("goc-c/x", b"1", None)  # nhánh mới thứ ba: bị chặn
+        assert "goc-c" not in lop._nhanh_goc
+        lop._nap_tin("goc-a/x", b"2", None)
+        assert lop._gia_tri["goc-a/x"][0] == "2"
