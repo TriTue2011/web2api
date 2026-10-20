@@ -80,6 +80,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `tuya` (Thiết bị Tuya chuẩn C1, đám mây + LAN, NV157) | Có — port từ c2a: ký HMAC-SHA256 chép nguyên công thức (đo bằng mock kiểm chữ ký thật), danh sách phân trang `last_row_key`, local_key qua Open API; LAN giao thức 6668 tự viết (khung 55AA + AES-128-ECB đo vector NIST + CRC32), chỉ IP riêng khai tường minh, lỗi giải mã báo «local_key đã đổi»; điều khiển mặc định TẮT, ngành khoá/bếp/bình nóng lạnh theo cấu trúc KHÔNG có hành động ghi; kiểm bằng máy chủ Tuya giả + thiết bị LAN giả loopback, đột biến trên bản sao; **chưa kiểm với thiết bị Tuya thật**, dò quảng bá UDP chỉ kiểm tầng phân tích (sandbox chặn UDP) | 20/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
 | Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
+| Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2743,6 +2744,67 @@ m.ghi_x_quang(luot_id="...", ho_so_id="...", x_quang=xq,
 - Chưa đo trên nhật ký lượt chạy thật của nhà (cần NV135 chạy một thời gian);
   ngưỡng cổng biên là giá trị mặc định. Chế độ «tự chọn không hỏi» mặc định TẮT.
 - Ước tính token là `số ký tự // 4` (thô), chưa hiệu chỉnh theo tokenizer thật.
+
+### Module lich-ics — Lịch ICS: đọc lịch, chỉ đọc (NV159)
+
+**Mô tả.** Đọc lịch từ link ICS bí mật (Google Calendar, Outlook, Nextcloud…)
+và trả sự kiện sắp tới cho trợ lý qua chuẩn C2 `thiet_bi` (thực thể công cụ
+`lich_ics.lich`, rủi ro `doc`) — **CHỈ ĐỌC, không ghi lịch, không CalDAV**.
+Port từ dịch vụ `calendar_connector` của c2a (chỉ đọc): nhiều lịch, bộ đệm theo
+lịch, kiểm tra link lúc cài. Bản web2api tôn trọng **TZID** (c2a bỏ qua, gán
+múi giờ mặc định và coi UTC là giờ địa phương), mở rộng **RRULE** (DAILY/WEEKLY/
+MONTHLY/YEARLY + INTERVAL/COUNT/UNTIL/BYDAY/BYMONTHDAY/EXDATE) giữ giờ địa
+phương qua chuyển DST. Mã nguồn: `modules/lich-ics/`. Tiền tố model: `lich_ics`.
+Hạng: `A`.
+
+**Cần gì.**
+- Link `.ics` bí mật của mỗi lịch: Google Calendar → Cài đặt → chọn lịch →
+  «Địa chỉ bí mật ở định dạng iCal»; Outlook.com → Cài đặt → Lịch → Lịch dùng
+  chung → Xuất bản → link ICS; Nextcloud → app Lịch → «Sao chép đường dẫn riêng
+  tư» rồi thêm `?export`. Link là bí mật: lưu trong kho bí mật, không API nào
+  trả lại, không vào log.
+- Mạng ra chỉ tới đúng các máy chủ lịch đã khai trong cấu hình (mỗi URL được
+  kiểm SSRF bằng `app/tu_xa.py` lúc cài và ở mỗi bước chuyển hướng).
+- RAM/đĩa thêm: **chưa đo** (manifest để null).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "lich-ics"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/lich-ics`
+3. Cài cấu hình: `POST /api/modules/lich-ics/cai` với thân `{"cau_hinh": {"ten_lich": "Lịch nhà, Lịch cơ quan", "url_lich": ["https://…/lich-1.ics", "https://…/lich-2.ics"]}}` — module tải thử từng lịch ngay lúc cài; sai link thì từ chối kèm lý do.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `ten_lich` | Có | Tên từng lịch, ngăn cách bằng dấu phẩy hoặc xuống dòng — CÙNG THỨ TỰ với `url_lich` (tên thứ nhất ứng với link thứ nhất). |
+| `url_lich` | Có | Link `.ics` bí mật, mỗi dòng một link; trường bí mật — lưu riêng, không trả lại qua API, không vào log. |
+| `so_ngay_mac_dinh` | Không | Số ngày nhìn trước mặc định, 1..31 (mặc định 7). |
+| `toi_da_mac_dinh` | Không | Số sự kiện tối đa mặc định, 1..30 (mặc định 8). |
+| `cache_giay` | Không | Thời gian bộ đệm mỗi lịch, giây, tối thiểu 60 (mặc định 900); tải lỗi thì dùng bản đệm cũ. |
+| `mui_gio` | Không | Múi giờ nhà (IANA, mặc định `Asia/Ho_Chi_Minh`). |
+
+**Ví dụ dùng.** (qua công cụ của trợ lý, không có route HTTP riêng)
+
+- «Tuần này có gì?» → trợ lý gọi `lich_ics.lich` / `su_kien_sap_toi` `{}` —
+  kết quả `{"su_kien": [...], "nguon_ngoai": true}`; nội dung sự kiện là dữ
+  liệu ngoài, không phải chỉ dẫn cho trợ lý.
+- Kiểm tra một lịch: hành động `kiem_tra_lich` `{"lich": "Lịch nhà"}` — tải
+  lại ngay và báo tổng số sự kiện trong tệp + xem trước.
+
+**Sự cố thường gặp.**
+- «Link tải được nhưng nội dung KHÔNG phải tệp ICS» — link trỏ tới trang HTML
+  đăng nhập: lấy lại link ICS bí mật đúng mục ở trên.
+- «Không tải được lịch: link không tồn tại (404)» — link bí mật đã bị đặt lại
+  ở nhà cung cấp; lấy link mới.
+- «đường dẫn bị chặn (SSRF)» — URL trỏ vào địa chỉ nội bộ bị cấm; lịch công
+  khai phải là http(s) công cộng (hoặc máy chủ tự host trong LAN được phép).
+
+**Giới hạn.**
+- Chỉ đọc: không tạo/sửa/xoá sự kiện, không đồng bộ hai chiều, không CalDAV.
+- RRULE chỉ hỗ trợ tập thường gặp; chưa hỗ trợ BYSETPOS/BYWEEKNO/BYYEARDAY và
+  RDATE (sự kiện vẫn hiện ở lần xuất hiện đầu tiên).
+- Chưa kiểm với lịch Google/Outlook/Nextcloud thật; chưa đo RAM/đĩa thật.
 
 ---
 

@@ -49,6 +49,10 @@ DA_KIEM_TOAN = {
     # không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi, không để lọt khoá); ngoại lệ trong bộ lọc
     # làm hỏng chính lời gọi ghi log nên không được ném ra.
     ("modules/van-phong/module.py", "filter"),
+    # Đã duyệt NV159 (cùng mẫu zalo-bot/telegram-bot/van-phong): bộ lọc log chặn URL lịch bí mật —
+    # không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi, không để lọt URL bí mật); ngoại lệ trong
+    # bộ lọc làm hỏng chính lời gọi ghi log nên không được ném ra.
+    ("modules/lich-ics/module.py", "filter"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),
