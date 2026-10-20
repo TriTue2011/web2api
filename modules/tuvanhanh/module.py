@@ -22,6 +22,7 @@ import logging
 import os
 import shutil
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 from .hop_thu import HopThu
@@ -31,6 +32,12 @@ log = logging.getLogger(__name__)
 
 #: Tên lệnh trả lời — giữ đúng c2a để chủ máy quen tay.
 TEN_LENH = "cl"
+
+#: Số vòng lỗi liên tiếp tối đa để tự khôi phục còn thử (d).
+_SO_LAN_THU_KHOI_PHUC = 3
+
+#: Tuổi tối đa (giờ) của tệp tạm của chính module trước khi bị dọn (e).
+TUOI_TAM_TOI_DA_GIO = 24.0
 
 #: Giãn cách đăng nhập lại (giây) — đọc mỗi lượt, đổi không cần khởi động lại.
 def _gian_cach_dang_nhap() -> float:
@@ -101,6 +108,9 @@ class Module:
         # Theo dõi hỏng liên tiếp theo nhà cung cấp (b): dừng sau 2.
         self._hong_lien_tiep: dict[str, int] = {}
         self._da_bao_dung_hang: set[str] = set()
+        # Theo dõi nguồn lỗi cho tự khôi phục (d): đếm vòng lỗi liên tiếp.
+        self._loi_nguon: dict[str, int] = {}
+        self._da_bao_tu_khoi_phuc: set[str] = set()
         self._lenh_da_dang_ky = False
 
     # ── cấu hình ──
@@ -381,24 +391,87 @@ class Module:
                 log.warning("tuvanhanh: kiểm sức khoẻ %s lỗi (%s)", mid, type(e).__name__)
 
     async def _nv_tu_khoi_phuc(self) -> None:
-        # Khung tự khôi phục: phát hiện module lỗi qua suc_khoe, thử lại lùi dần
-        # (lịch đã lùi), quá N lần thì báo một tin. Chi tiết theo từng loại lỗi
-        # sẽ mở rộng khi có module thật cần khôi phục.
-        return None
+        """(d) Tự khôi phục module lỗi — port solver_selfheal của c2a.
+
+        Phát hiện qua `suc_khoe()` của provider: mỗi vòng lỗi thì thử khôi
+        phục bằng đường đăng nhập lại có rào sẵn (giãn cách + dừng sau 2
+        hỏng). Quá _SO_LAN_THU_KHOI_PHUC vòng lỗi liên tiếp mà vẫn không
+        khoẻ: báo đúng MỘT tin rồi thôi (không báo chồng nếu đường đăng
+        nhập lại đã báo dừng hẳn cho cùng nhà). Nguồn khoẻ lại → đặt lại
+        đếm. Hành động khôi phục chính là đăng nhập lại nên theo công tắc
+        `bat_tu_dang_nhap_lai`.
+        """
+        if not self._bat_tu_dang_nhap_lai:
+            return
+        for mid, mod in self._lay_nha_cung_cap():
+            loi = False
+            try:
+                sk = await mod.suc_khoe()
+                loi = isinstance(sk, dict) and sk.get("ok") is False
+            except Exception:
+                loi = True
+            if not loi:
+                self._loi_nguon.pop(mid, None)
+                self._da_bao_tu_khoi_phuc.discard(mid)
+                continue
+            dem = self._loi_nguon.get(mid, 0) + 1
+            self._loi_nguon[mid] = dem
+            if dem > _SO_LAN_THU_KHOI_PHUC:
+                if (mid not in self._da_bao_tu_khoi_phuc
+                        and mid not in self._da_bao_dung_hang):
+                    self._da_bao_tu_khoi_phuc.add(mid)
+                    await self._gui_canh_bao_noi_bo(
+                        f"Nguồn {mid} lỗi {_SO_LAN_THU_KHOI_PHUC} vòng liên tiếp, "
+                        f"tự khôi phục không xong — đã dừng thử. Cần chủ máy kiểm tra.")
+                continue
+            await self._dang_nhap_lai_mot_nha(mod, mid)
 
     async def _nv_kiem_dia(self) -> None:
         """(e) Cảnh báo đĩa > 85% và dọn dữ liệu tạm của chính module.
 
+        Lỗi 7 (soát độc lập): trước đây đọc đĩa ở thư mục nhà (~) thay vì
+        thư mục dữ liệu WEB2API_DATA và báo «đã dọn» nhưng không dọn gì.
+        Nay: đo đúng thư mục dữ liệu; khi quá ngưỡng thì dọn THẬT các tệp
+        tạm quá hạn của chính module và báo đúng số tệp đã dọn.
         Lỗi đọc đĩa để lịch bắt và lùi dần (không nuốt im ở đây).
         """
         if not self._bat_don_dep:
             return
-        du = shutil.disk_usage(os.path.expanduser("~"))
+        du_lieu = Path(os.environ.get("WEB2API_DATA", "/data"))
+        du = shutil.disk_usage(str(du_lieu))
         ty_le = du.used / du.total if du.total else 0.0
-        if ty_le > 0.85:
-            await self._gui_canh_bao_noi_bo(
-                f"Đĩa đã dùng {ty_le:.0%} (> 85%). Bộ tự vận hành đã dọn dữ liệu tạm của mình.")
-            log.warning("tuvanhanh: đĩa %.0f%% — đã dọn tạm của module", ty_le * 100)
+        if ty_le <= 0.85:
+            return
+        da_don = self._don_tam_cua_minh(du_lieu)
+        if da_don:
+            tin = (f"Đĩa đã dùng {ty_le:.0%} (> 85%). Bộ tự vận hành đã dọn "
+                   f"{da_don} tệp tạm của mình.")
+        else:
+            tin = (f"Đĩa đã dùng {ty_le:.0%} (> 85%). Bộ tự vận hành không "
+                   f"có tệp tạm nào cần dọn.")
+        await self._gui_canh_bao_noi_bo(tin)
+        log.warning("tuvanhanh: đĩa %.0f%% — đã dọn %d tệp tạm của module",
+                    ty_le * 100, da_don)
+
+    def _don_tam_cua_minh(self, du_lieu: Path) -> int:
+        """Xoá tệp tạm của CHÍNH module quá hạn; trả số tệp đã xoá.
+
+        Chỉ chạm thư mục <WEB2API_DATA>/tuvanhanh/tam/ — không bao giờ dọn
+        dữ liệu của module khác hay của lõi.
+        """
+        tam = du_lieu / "tuvanhanh" / "tam"
+        if not tam.is_dir():
+            return 0
+        moc = self._lay_gio() - TUOI_TAM_TOI_DA_GIO * 3600.0
+        n = 0
+        for p in tam.iterdir():
+            try:
+                if p.is_file() and p.stat().st_mtime < moc:
+                    p.unlink()
+                    n += 1
+            except OSError:
+                continue
+        return n
 
     # ── hợp đồng ──
 
