@@ -1,0 +1,7 @@
+/* Trang Camera nhà — chỉ định dạng riêng của trang này; khung chung ở ../../khung.css. */
+.ds-cam { display: grid; gap: 1rem; margin-top: 1rem; }
+.the-cam { border: 1px solid var(--vien, #ccc); border-radius: 8px; padding: 0.75rem; }
+.the-cam img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin-top: 0.5rem; }
+.the-cam .hang-nut { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.ds-cb { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.ds-cb li { padding: 0.25rem 0; border-bottom: 1px dashed var(--vien, #ddd); }

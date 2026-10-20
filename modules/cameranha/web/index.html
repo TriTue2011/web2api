@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Camera nhà</title>
+<link rel="stylesheet" href="../../khung.css">
+<link rel="stylesheet" href="trang.css">
+<script src="trang.js" defer></script>
+</head>
+<body>
+<div class="goc">
+<main class="trang-tb">
+  <a class="quay-lai" href="../../He-thong.dc.html">← Hệ thống</a>
+  <h1>Camera nhà</h1>
+
+  <section class="the" aria-labelledby="tieu-de-ds">
+    <h2 id="tieu-de-ds">Danh sách camera</h2>
+    <p class="phu">Bấm «Chụp» để xem một khung ảnh hiện tại. Ảnh chỉ xem trên trang này,
+      không lưu trữ. Phát tiếng qua loa chỉ có khi quản trị bật công tắc «loa_bat» ở cấu
+      hình module — loa là hành động ghi, có ghi nhật ký.</p>
+    <button class="nut" id="lam-moi" type="button">Làm mới</button>
+    <p class="bao bao-loi" id="loi" role="alert" hidden></p>
+    <div class="ds-cam" id="ds-cam"></div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-cb">
+    <h2 id="tieu-de-cb">Cảnh báo chuyển động gần nhất</h2>
+    <p class="phu">Từ Frigate qua webhook của module (chỉ giữ 20 sự kiện gần nhất trong bộ nhớ).</p>
+    <div id="ds-canh-bao"></div>
+  </section>
+
+  <p class="bao" id="thong-bao" role="status" aria-live="polite" hidden></p>
+</main>
+</div>
+</body>
+</html>
