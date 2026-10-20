@@ -9,8 +9,17 @@ Thiết kế an toàn:
 - URL lịch chứa mã bí mật → trường `danh_sach_bi_mat`; không bao giờ vào log,
   phản hồi, nhật ký hay `suc_khoe`. Một `logging.Filter` (mẫu NV116: giữ filter
   của mọi bản đã nạp, mỗi bản chặn bí mật của chính mình) quét các logger HTTP.
+  Vòng sửa sau soát độc lập: bộ lọc che theo CẤU TRÚC — trích URL trong dòng
+  log, so TÊN MÁY ĐÃ CHUẨN HOÁ với tập tên máy của các URL lịch đang dùng và
+  đã tải (gồm đích chuyển hướng) — thay cho dò chuỗi con URL gốc, vốn bị qua
+  mặt khi `kiem_url_lan` cắt «/» cuối hoặc httpx thường-hoá tên máy.
 - Mọi URL được kiểm bằng ĐÚNG bộ kiểm `app/tu_xa.kiem_url_lan` của lõi lúc `cai`
-  và lại ở mỗi bước chuyển hướng lúc tải (không viết bộ kiểm thứ hai).
+  và lại ở mỗi bước chuyển hướng lúc tải (không viết bộ kiểm thứ hai); kết nối
+  thật ghim IP bằng `TransportGhimIp` của lõi nên không còn cửa sổ DNS
+  rebinding giữa lúc kiểm và lúc nối.
+- Mở rộng RRULE là việc thuần CPU: chạy ngoài vòng lặp sự kiện
+  (`asyncio.to_thread`) với ngân sách mốc chung của `lich.gom_moc`, nên một
+  tệp lịch ác ý không treo được cả tiến trình.
 - Chỉ có HÀNH ĐỘNG ĐỌC: thực thể công cụ `lich_ics.lich` rủi ro «doc»; không có
   đường ghi lịch nào (không CalDAV). Nội dung lịch là DỮ LIỆU KHÔNG TIN: kết quả
   luôn gắn `nguon_ngoai=True`, tiêu đề/mô tả đã lọc ký tự điều khiển.
@@ -20,11 +29,13 @@ Chỉ dùng httpx (đã khai `yeu_cau_goi`) + thư viện chuẩn.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import re
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx  # noqa: F401  (khai yeu_cau_goi — dùng qua lich.tai_ics)
@@ -39,17 +50,41 @@ KHOANG_SO_NGAY = (1, 31)
 KHOANG_TOI_DA = (1, 30)
 CACHE_TOI_THIEU = 60
 
-#: URL lịch đang dùng của MỌI bản module đã nạp (chặn trong log).
-_URL_DANG_DUNG: set = set()
+#: Tên máy (đã chuẩn hoá) của mọi URL lịch đang dùng của MỌI bản module đã
+#: nạp — đơn vị che của bộ lọc log. Che theo tên máy thay vì chuỗi con URL
+#: gốc: dòng log httpx chứa URL ĐÃ chuẩn hoá (mất «/» cuối do
+#: `kiem_url_lan(...).rstrip("/")`, tên máy bị thường-hoá) nên dò chuỗi con
+#: bị qua mặt; tên máy trích bằng urlsplit thì chuẩn hoá ở cả hai phía.
+_HOST_DANG_DUNG: set = set()
 _LOGGER_HTTP = ("httpx", "httpcore", "httpcore.connection", "httpcore.http11",
                 "httpcore.http2", "httpcore.proxy")
+_MAU_URL_TRONG_LOG = re.compile(r"https?://[^\s\"'<>\)\]]+")
+
+
+def _host_chuan(url: str):
+    """Tên máy đã chuẩn hoá của một URL (urlsplit().hostname tự thường-hoá);
+    URL hỏng → None."""
+    try:
+        return urlsplit(url or "").hostname
+    except ValueError:
+        return None
+
+
+def _dang_ky_url(url: str) -> None:
+    h = _host_chuan(url)
+    if h:
+        _HOST_DANG_DUNG.add(h)
 
 
 class _ChanUrlLich(logging.Filter):
-    """Bỏ mọi dòng log chứa URL lịch (bí mật) hoặc mẫu «Authorization … Bearer».
+    """Bỏ mọi dòng log chứa URL thuộc tên máy của lịch (bí mật) hoặc mẫu
+    «Authorization … Bearer».
 
     Mẫu NV116 (bản vá telegram-bot): mỗi bản module có bộ lọc RIÊNG; bản nạp lại
-    dưới tên gói khác KHÔNG được gỡ bộ lọc của bản cũ."""
+    dưới tên gói khác KHÔNG được gỡ bộ lọc của bản cũ. Việc so khớp làm theo
+    CẤU TRÚC: trích từng URL trong thông điệp, lấy tên máy đã chuẩn hoá, so
+    với tập tên máy đã đăng ký + tên máy mọi URL `lich.tai_ics` đã tải thật
+    (đích chuyển hướng không có trong cấu hình nhưng vẫn bị chặn)."""
 
     _lich_ics_loc = True
 
@@ -61,7 +96,14 @@ class _ChanUrlLich(logging.Filter):
         thap = noi_dung.lower()
         if "authorization" in thap and "bearer" in thap:
             return False
-        return not any(u in noi_dung for u in _URL_DANG_DUNG if u)
+        hosts = _HOST_DANG_DUNG | lich_mod.hosts_da_tai()
+        if not hosts:
+            return True
+        for vua in _MAU_URL_TRONG_LOG.finditer(noi_dung):
+            h = _host_chuan(vua.group(0).rstrip(".,;:"))
+            if h is not None and h in hosts:
+                return False
+        return True
 
 
 def _cai_bo_loc_log() -> None:
@@ -196,7 +238,8 @@ class Module:
                 self._ds_lich = _chuan_hoa(ch)
             except ValueError:
                 self._ds_lich = []
-        _URL_DANG_DUNG.update(c["url"] for c in self._ds_lich)
+        for c in self._ds_lich:
+            _dang_ky_url(c["url"])
         lich_mod.giu_cache({f"cal:{c['id']}" for c in self._ds_lich})
 
     async def cai(self, cau_hinh: dict) -> dict:
@@ -224,8 +267,9 @@ class Module:
         except Exception:
             return {"ok": False, "loi": f"múi giờ lạ: {mui_gio_ten!r}"}
         # Đăng ký chặn-log TRƯỚC khi tải bất cứ thứ gì: httpx ghi log ngay trong
-        # lúc tải thử ở cai(), URL phải đã nằm trong danh sách chặn từ đầu.
-        _URL_DANG_DUNG.update(c["url"] for c in ds)
+        # lúc tải thử ở cai(), tên máy của URL phải đã nằm trong tập chặn từ đầu.
+        for c in ds:
+            _dang_ky_url(c["url"])
         for c in ds:
             try:
                 await kiem_url_lan(c["url"])
@@ -242,7 +286,8 @@ class Module:
         self._ds_lich = ds
         self._so_ngay, self._toi_da = so_ngay, toi_da
         self._cache_giay, self._mui_gio_ten, self._mui_gio = cache, mui_gio_ten, mui_gio
-        _URL_DANG_DUNG.update(c["url"] for c in ds)
+        for c in ds:
+            _dang_ky_url(c["url"])
         return {"ok": True, "cau_hinh_luu": {
             "so_lich": len(ds),
             "ten_lich": ", ".join(c["ten"] for c in ds),
@@ -360,6 +405,49 @@ class Module:
         lich_mod.dat_cache(khoa, sk)
         return sk
 
+    @staticmethod
+    def _chuoi_ghi_chu(phuc_tap: int, thong_ke: dict):
+        """Câu ghi chú minh bạch khi mở rộng không trọn vẹn (None nếu không có).
+
+        Sự kiện RRULE phức tạp (thành phần chưa hỗ trợ) chỉ hiện lần đầu —
+        phải NÓI RÕ thay vì lặng lẽ tạo ngày sai (phát hiện C3)."""
+        cac = []
+        if phuc_tap:
+            cac.append(f"{phuc_tap} sự kiện lặp có quy tắc phức tạp chưa hỗ "
+                       "trợ mở rộng — tạm chỉ hiện lần đầu")
+        if thong_ke.get("bi_loi"):
+            cac.append(f"{thong_ke['bi_loi']} sự kiện lỗi đã bị bỏ qua")
+        if thong_ke.get("da_cat"):
+            cac.append("quá nhiều lần lặp — đã cắt bớt theo trần an toàn")
+        return "; ".join(cac) if cac else None
+
+    @staticmethod
+    def _mo_rong_tat_ca(ds_goc: list, den: datetime, moc_sap: datetime):
+        """Phần mở rộng RRULE thuần CPU — chạy trong `asyncio.to_thread`.
+
+        ds_goc: [(cal, [sự kiện gốc])]. Mở rộng MỌI lịch bằng một ngân sách
+        mốc chung (lich.gom_moc), nhảy thẳng tới cửa sổ `moc_sap` thay vì
+        đếm từ DTSTART. Trả (ds_ban_ghi_đã_sắp, ghi_chu | None)."""
+        tat_ca = [sk for _cal, goc in ds_goc for sk in goc]
+        bang, thong_ke = lich_mod.gom_moc(tat_ca, den, tu=moc_sap)
+        kq: list = []
+        phuc_tap = 0
+        i = 0
+        for cal, goc in ds_goc:
+            for sk in goc:
+                if sk.get("lap_phuc_tap"):
+                    phuc_tap += 1
+                for moc in bang[i]:
+                    if moc < moc_sap:
+                        continue
+                    ban = lich_mod.dinh_dang_moc(sk, moc)
+                    ban["lich"] = cal["ten"]
+                    ban["lich_id"] = cal["id"]
+                    kq.append(ban)
+                i += 1
+        kq.sort(key=lambda x: x["bat_dau"])
+        return kq, Module._chuoi_ghi_chu(phuc_tap, thong_ke)
+
     async def _su_kien_sap_toi(self, tham_so: dict) -> dict:
         so_ngay = tham_so.get("so_ngay", self._so_ngay)
         toi_da = tham_so.get("toi_da", self._toi_da)
@@ -379,26 +467,23 @@ class Module:
         bay_gio = datetime.now(self._mui_gio)
         den = bay_gio + timedelta(days=so_ngay)
         moc_sap = bay_gio - timedelta(hours=2)
-        kq: list = []
+        ds_goc = []
         for cal in ds:
             try:
                 goc = await self._tai_su_kien(cal)
             except lich_mod.LoiLich as e:
                 return {"ok": False, "loi": _chuoi_loi_lich(e)}
-            for sk in goc:
-                for moc in lich_mod.mo_rong(sk, den):
-                    if moc < moc_sap:
-                        continue
-                    ban = lich_mod.dinh_dang_moc(sk, moc)
-                    ban["lich"] = cal["ten"]
-                    ban["lich_id"] = cal["id"]
-                    kq.append(ban)
-        kq.sort(key=lambda x: x["bat_dau"])
-        return {"ok": True, "ket_qua": {
+            ds_goc.append((cal, goc))
+        kq, ghi_chu = await asyncio.to_thread(
+            self._mo_rong_tat_ca, ds_goc, den, moc_sap)
+        ket_qua = {
             "su_kien": kq[:toi_da],
             "tong": len(kq),
             "nguon_ngoai": True,
-        }}
+        }
+        if ghi_chu:
+            ket_qua["ghi_chu"] = ghi_chu
+        return {"ok": True, "ket_qua": ket_qua}
 
     async def _kiem_tra_lich(self, tham_so: dict) -> dict:
         ds = self._tim_lich(tham_so.get("lich"))
@@ -413,15 +498,15 @@ class Module:
         lich_mod.dat_cache(f"cal:{cal['id']}", goc)
         bay_gio = datetime.now(self._mui_gio)
         den = bay_gio + timedelta(days=self._so_ngay)
-        xem_truoc = []
-        for sk in goc:
-            for moc in lich_mod.mo_rong(sk, den):
-                if moc >= bay_gio - timedelta(hours=2):
-                    xem_truoc.append(lich_mod.dinh_dang_moc(sk, moc))
-        xem_truoc.sort(key=lambda x: x["bat_dau"])
-        return {"ok": True, "ket_qua": {
+        moc_sap = bay_gio - timedelta(hours=2)
+        xem, ghi_chu = await asyncio.to_thread(
+            self._mo_rong_tat_ca, [(cal, goc)], den, moc_sap)
+        ket_qua = {
             "lich": cal["ten"],
             "tong_trong_tep": len(goc),
-            "xem_truoc": xem_truoc[:3],
+            "xem_truoc": xem[:3],
             "nguon_ngoai": True,
-        }}
+        }
+        if ghi_chu:
+            ket_qua["ghi_chu"] = ghi_chu
+        return {"ok": True, "ket_qua": ket_qua}

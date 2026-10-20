@@ -2860,8 +2860,12 @@ và trả sự kiện sắp tới cho trợ lý qua chuẩn C2 `thiet_bi` (thự
 Port từ dịch vụ `calendar_connector` của c2a (chỉ đọc): nhiều lịch, bộ đệm theo
 lịch, kiểm tra link lúc cài. Bản web2api tôn trọng **TZID** (c2a bỏ qua, gán
 múi giờ mặc định và coi UTC là giờ địa phương), mở rộng **RRULE** (DAILY/WEEKLY/
-MONTHLY/YEARLY + INTERVAL/COUNT/UNTIL/BYDAY/BYMONTHDAY/EXDATE) giữ giờ địa
-phương qua chuyển DST. Mã nguồn: `modules/lich-ics/`. Tiền tố model: `lich_ics`.
+MONTHLY/YEARLY + INTERVAL/COUNT/UNTIL/BYDAY/BYMONTHDAY/BYMONTH/BYDAY có thứ
+tự/BYSETPOS/EXDATE, RECURRENCE-ID loại buổi gốc) giữ giờ địa
+phương qua chuyển DST. Vòng sửa sau soát độc lập: bộ sinh có trần kỳ chống
+treo với RRULE ác ý, nhảy thẳng tới cửa sổ xem thay vì đếm từ DTSTART,
+thành phần RRULE chưa hỗ trợ được ghi chú công khai trong kết quả thay vì
+bỏ qua lặng lẽ. Mã nguồn: `modules/lich-ics/`. Tiền tố model: `lich_ics`.
 Hạng: `A`.
 
 **Cần gì.**
