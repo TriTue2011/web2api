@@ -67,7 +67,8 @@ def _module(tmp_path, monkeypatch, bat_tim_duong="1"):
 
 
 def chay(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # asyncio.run: tạo và ĐÓNG vòng riêng cho từng lời gọi — không phụ thuộc vòng «hiện tại» mà test khác có thể đã đóng.
+    return asyncio.run(coro)
 
 
 # ── digest: máy trạng thái ───────────────────────────────────────────────────

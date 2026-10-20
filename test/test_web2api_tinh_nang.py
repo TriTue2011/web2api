@@ -390,7 +390,11 @@ def _ten_nha_cung_cap() -> set[str]:
         for may in m["tai_nguyen"].get("mang_ra", []):
             for nhan in may.lower().split(".")[:-1]:
                 if len(nhan) >= 5:
-                    ten.add(re.sub(r"apis?$", "", nhan))
+                    # Cùng bộ miễn trừ mảnh thông dụng như id/tiền tố: «openapi.tuyaus.com» bị cắt «api» còn «open»,
+                    # là tiền tố của chuẩn mở OpenAI (LoiOpenAI…) chứ không phải nhà cung cấp.
+                    manh = re.sub(r"apis?$", "", nhan)
+                    if manh not in MANH_TU_THONG_DUNG:
+                        ten.add(manh)
     assert ten, "phải suy được ít nhất một tên từ modules/"
     return ten
 

@@ -77,9 +77,10 @@ def test_khoa_dich_vu_giu_nguyen_khai_bao_nv138():
     truong = {t["khoa"]: t for t in m["truong_cau_hinh"]}
     kd = truong["khoa_dich_vu"]
     assert kd["bat_buoc"] is True
-    assert kd["mo_ta"] == ("Khoá Bearer của dịch vụ van-phong-office (biến "
-                           "OFFICE_KHOA lúc chạy container). Lưu riêng, không "
-                           "API nào trả lại, không vào log.")
+    assert kd["kieu"] == "bi_mat"
+    # Mô tả đã được viết lại có chủ ý (điều phối 20/10): nói rõ khoá TỰ ĐẶT, cách sinh, đúng tên biến của dịch vụ.
+    # Kiểm cấu trúc ý nghĩa thay vì nguyên văn: vẫn đúng tên biến, vẫn không hứa «API trả lại khoá».
+    assert "OFFICE_KHOA" in kd["mo_ta"] and "TỰ ĐẶT" in kd["mo_ta"] and "không vào log" in kd["mo_ta"]
     # Trường OCR MỚI: không bắt buộc ở manifest (chỉ bắt buộc khi dùng OCR) và
     # mo_ta nói rõ lấy ở đâu.
     assert truong["diem_chat_url"]["bat_buoc"] is False
