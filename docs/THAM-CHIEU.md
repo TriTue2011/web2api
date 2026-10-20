@@ -2532,6 +2532,55 @@ curl -s -H "Authorization: Bearer $K" "$W/api/so-thiet-bi/danh-sach" | head -c 6
 
 ---
 
+### Module thuthach — Nhận diện thử thách (CAPTCHA), báo cần người (không giải)
+
+**Mô tả.** Nhận diện sự hiện diện và loại thử thách chống bot trên một trang
+bằng **CẤU TRÚC** — dấu hiệu đường dẫn URL và dấu hiệu trong HTML do người
+gọi đưa vào — rồi phân loại (`recaptcha_v2`, `recaptcha_v3`, `turnstile`,
+`captcha_chu`, `xac_thuc_hai_lop`, `botguard`, `thu_thach_khac`) và báo
+**«cần người»** kèm hướng dẫn tự hoàn thành trên noVNC (chuẩn C2 `thiet_bi`,
+công cụ `thuthach.thu_thach`, rủi ro `doc`, NV175). Đây là phần TƯƠNG THÍCH
+của `captcha-solver` (c2a) theo LUẬT PORT: **kho web2api có quy tắc KHÔNG
+giải CAPTCHA**, nên module thuần phân tích — không tải trang, không gọi
+mạng, không tích ô, không gọi dịch vụ giải hộ, không trả dữ liệu giúp giải
+(không sitekey, không token). Phần giải của c2a (solvers/*, auto_login,
+workspaces.click_checkbox…) thuộc nhóm (B), không port — xem kiểm kê đầy
+đủ trong `nv175-bao-cao.md` (outbox). Mã nguồn: `modules/thuthach/`
+(chỉ thư viện chuẩn). Hạng: `A` (mã của dự án).
+
+**Cần gì.**
+- Không cần tài khoản hay khoá dịch vụ bên ngoài.
+- Không cần bí mật hay mạng ra — module không giữ trạng thái, không nghe
+  cổng, không gọi ra ngoài.
+- RAM/đĩa: chưa đo. Trần đầu vào: HTML tối đa 1.048.576 ký tự, URL tối đa
+  2.048 ký tự; query của URL bị bỏ trước khi phân loại (nơi hay chứa token).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "thuthach"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/thuthach`
+3. Cài cấu hình: `POST /api/modules/thuthach/cai` với thân `{"cau_hinh": {"kenh_no_vnc": "..."}}`
+   (chữ hướng dẫn nơi mở noVNC hiển thị kèm kết quả «cần người»; không phải bí mật,
+   để trống vẫn chạy).
+
+**Dùng công cụ.**
+
+```json
+{"hanh_dong": "kiem_tra",
+ "tham_so": {"html": "<...>", "url": "https://host.example.invalid/login"}}
+```
+Trả `{ok: true, ket_qua: {co_thu_thach, loai, can_nguoi: true, tin_cay,
+trang_thai: "can_nguoi", huong_dan: [...]}}` khi thấy thử thách — trợ lý
+hoặc người dùng tự hoàn thành trên noVNC; `trang_thai: "khong_thu_thach"`
+khi trang sạch. Mọi hành động «giải» đều bị từ chối theo cấu trúc.
+
+**Giới hạn.**
+- Nhận diện bằng dấu hiệu cấu trúc, không phải bộ giải: thử thách dạng mới
+  lạ có thể về loại `thu_thach_khac` hoặc không phát hiện.
+- Không giúp người dùng vượt thử thách tự động — đó là hàng rào cố ý.
+
+---
+
 ### Module doc-ma-hop-thu — Đọc mã xác minh từ Gmail (chỉ đọc)
 
 **Mô tả.** Đọc mã xác minh (thường 6 số) các dịch vụ gửi về hộp thư Gmail qua
