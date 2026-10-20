@@ -47,6 +47,9 @@ def _danh_sach_nha_cung_cap() -> list[str]:
         for d in os.listdir(thu_muc_modules):
             if (thu_muc_modules / d).is_dir():
                 # id nguyên cũng có thể trùng từ thông dụng (NV163: module «dich»)
+                # Tên module là TỪ THÔNG DỤNG (vd «email» — lõi có sẵn
+                # chuan_hoa_email/EMAIL_RE từ tính năng danh tính) không phải
+                # đặc thù nhà cung cấp: không đưa vào danh sách quét.
                 if d.lower() not in MANH_TU_THONG_DUNG:
                     danh_sach.add(d.lower())
                 for p in d.lower().split("-"):

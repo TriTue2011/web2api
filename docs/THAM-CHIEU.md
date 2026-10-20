@@ -3785,7 +3785,12 @@ từ người gửi trong danh sách được phép được chuyển cho lõi q
 `kenh_vao.nhan_tin`; thư từ người lạ bị bỏ (đếm, không lộ nội dung vào log).
 Nội dung email là dữ liệu không tin: HTML lọc thành văn bản, đính kèm KHÔNG
 ghi đĩa — chỉ trích văn bản có trần (4000 ký tự/tệp, tối đa 5 tệp, tệp > 8 MB
-bị bỏ). Mã nguồn: `modules/email/` (chỉ thư viện chuẩn: `smtplib`, `imaplib`,
+bị bỏ). **⚠️ Nguy cơ giả mạo người gửi**: module kiểm `Authentication-Results`
+(SPF/DKIM, fail → bỏ thư) khi máy chủ phía trên có gắn header; nếu máy chủ
+không lọc/không gắn SPF/DKIM, kẻ tấn công trên Internet vẫn có thể **giả mạo**
+địa chỉ `From:` khớp danh sách cho phép — đừng coi thư nhận qua kênh này là
+bằng chứng danh tính khi máy chủ chưa lọc SPF/DKIM trước. Ép TLS: IMAP chỉ
+993, SMTP chỉ 465/587 (không `plain`). Mã nguồn: `modules/email/` (chỉ thư viện chuẩn: `smtplib`, `imaplib`,
 `email`, `ssl` — không thêm gói). Tiền tố model: `email`. Hạng: `A` (mã của
 dự án; port từ kênh email của c2a).
 

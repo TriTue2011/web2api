@@ -31,16 +31,26 @@ MAT_KHAU = "mat-khau-bi-mat-XYZ-123"
 # ── máy chủ giả ──────────────────────────────────────────────────────────────
 
 class FakeIMAP:
-    """IMAP giả: giữ thư trong bộ nhớ, ghi nhận thao tác."""
+    """IMAP giả: thư theo UID, ghi nhận thao tác. Hỗ trợ đủ giao thức UID mà
+    module dùng: uid SEARCH/FETCH/STORE + select(readonly) + UIDVALIDITY."""
     instances: list = []
 
     def __init__(self, host, port, timeout=None, ssl_context=None):
         self.host, self.port, self.timeout = host, port, timeout
-        self.mails: dict[bytes, bytes] = {}
-        self.logged_in = None
+        self.mails: dict[int, bytes] = {}
+        self.seen: set[int] = set()
         self.stored: list = []
+        self.uid_goi: list = []       # (lenh, *doi_so)
+        self.fetch_goi: list = []    # (uid, bo_phan)
+        self.logged_in = None
         self.fail_login = False
+        self.uidvalidity = 777
+        self._readonly = False
         FakeIMAP.instances.append(self)
+
+    @property
+    def untagged_responses(self):
+        return {"OK": [f"[UIDVALIDITY {self.uidvalidity}]".encode()]}
 
     # -- giao thức tối thiểu mà module dùng --
     def login(self, user, pw):
@@ -49,22 +59,35 @@ class FakeIMAP:
         self.logged_in = (user, pw)
         return ("OK", [])
 
-    def select(self, box="INBOX"):
+    def select(self, box="INBOX", readonly=False):
+        self._readonly = readonly
         return ("OK", [b"1"])
 
-    def search(self, charset, *criteria):
-        return ("OK", [b" ".join(sorted(self.mails.keys())) or b""])
-
-    def fetch(self, num, parts):
-        key = num if isinstance(num, bytes) else str(num).encode()
-        raw = self.mails.get(key)
-        if raw is None:
-            return ("NO", [])
-        return ("OK", [(key + b" (RFC822)", raw)])
-
-    def store(self, num, cmd, flags):
-        self.stored.append((num, cmd, flags))
-        return ("OK", [])
+    def uid(self, cmd, *args):
+        self.uid_goi.append((str(cmd).upper(),) + args)
+        c = str(cmd).upper()
+        if c == "SEARCH":
+            unseen = [u for u in sorted(self.mails) if u not in self.seen]
+            return ("OK", [b" ".join(str(u).encode() for u in unseen) or b""])
+        if c == "FETCH":
+            uid = int(args[0])
+            parts = str(args[1]).upper()
+            raw = self.mails.get(uid)
+            if raw is None:
+                return ("NO", [])
+            self.fetch_goi.append((uid, parts))
+            if "RFC822.SIZE" in parts:
+                return ("OK", [(f"{uid} (RFC822.SIZE {len(raw)})".encode(), b"")])
+            # BODY.PEEK[] — không đổi cờ Seen (mô phỏng máy chủ thật)
+            return ("OK", [(f"{uid} (BODY[] {{{len(raw)}}})".encode(), raw)])
+        if c == "STORE":
+            uid = int(args[0])
+            flags = str(args[2]) if len(args) > 2 else ""
+            self.stored.append((uid, args[1], flags))
+            if "\\Seen" in flags:
+                self.seen.add(uid)
+            return ("OK", [])
+        return ("BAD", [])
 
     def starttls(self, ctx=None):
         return ("OK", [])
@@ -118,7 +141,7 @@ def _thu_trong_hop(anh_xa):
 
     def _init(self, host, port, timeout=None, ssl_context=None):
         orig(self, host, port, timeout=timeout, ssl_context=ssl_context)
-        self.mails = dict(anh_xa)
+        self.mails = {int(k): v for k, v in anh_xa.items()}
 
     FakeIMAP.__init__ = _init
     try:
@@ -150,8 +173,8 @@ def _thu_mau(from_addr="sep@example.com", subject="Xin chao",
 def _cau_hinh(allowed_senders=("sep@example.com",), **them):
     acc = {
         "id": "chinh", "label": "Hop chinh", "enabled": True,
-        "imap_host": "127.0.0.1", "imap_port": 10993,
-        "smtp_host": "127.0.0.1", "smtp_port": 10465,
+        "imap_host": "127.0.0.1", "imap_port": 993,
+        "smtp_host": "127.0.0.1", "smtp_port": 465,
         "user": "nguoi.a@example.com",
         "security": "ssl", "verify_ssl": True,
         "allowed_senders": list(allowed_senders),
@@ -217,11 +240,15 @@ def test_dinh_kem_nhi_phan_khong_doc_duoc():
 
 
 def test_dinh_kem_qua_lon_bi_bo():
+    # Đổi theo hành vi mới có chủ ý (lỗi 8, NV98): cả thư vượt 2 MB bị bỏ
+    # TRƯỚC khi tải (kiểm RFC822.SIZE), không còn tải rồi mới bỏ đính kèm —
+    # xem test_bo_qua_thu_kich_thuoc_qua_lon_truoc_khi_tai.
     dk = [("lon.bin", b"x" * (9 * 1024 * 1024), "application/octet-stream")]
     with _thu_trong_hop({b"1": _thu_mau(body="than", dinh_kem=dk)}):
         tins = _chay(_mod().hoi_vong())
-    # thư vẫn xử lý được, không treo, không đọc tệp quá lớn
-    assert len(tins) == 1
+    assert tins == []
+    inst = FakeIMAP.instances[-1]
+    assert not any("BODY" in p for _, p in inst.fetch_goi)
 
 
 def test_tieu_de_ma_hoa_duoc_giai():
@@ -295,8 +322,10 @@ def test_khoi_dong_lai_khong_phat_lai_thu_da_xu_ly(tmp_path, monkeypatch):
         m2.kho = kho_mod.kho_rieng("email")
         m2.nap(_cau_hinh())
         assert _chay(m2.hoi_vong()) == []
-    assert ("mot@example.com" in json.dumps(m1._da_thay)
-            or any("mot@example.com" in u for d in m1._da_thay.values() for u in d))
+    # Sổ mới (NV98 — đổi cơ chế định danh có chủ ý): theo UID IMAP +
+    # UIDVALIDITY. UID 1 của hộp chính đã nhớ — đây là cơ chế chống trùng;
+    # Message-ID không còn là khoá sổ.
+    assert 1 in m1._da_thay["chinh"]["uids"]
 
 
 def test_quyen_0600_cho_so_uid(tmp_path, monkeypatch):
@@ -314,12 +343,12 @@ def test_quyen_0600_cho_so_uid(tmp_path, monkeypatch):
 
 def test_loi_lien_tiep_thi_dung_va_bao_mot_lan(caplog):
     m = _mod()
-    orig_search = FakeIMAP.search
+    orig_uid = FakeIMAP.uid
 
-    def _search(self, charset, *c):
+    def _uid(self, cmd, *a):
         raise OSError("dut")
 
-    FakeIMAP.search = _search
+    FakeIMAP.uid = _uid
     try:
         with caplog.at_level(logging.WARNING, logger="modules.email.module"):
             for _ in range(12):
@@ -327,7 +356,7 @@ def test_loi_lien_tiep_thi_dung_va_bao_mot_lan(caplog):
                     m._lan_poll[acc["id"]] = 0
                 assert _chay(m.hoi_vong()) == []
     finally:
-        FakeIMAP.search = orig_search
+        FakeIMAP.uid = orig_uid
     so_lan_dung = sum(1 for r in caplog.records
                       if "dung vi loi lien tiep" in r.getMessage())
     assert so_lan_dung == 1
@@ -408,18 +437,18 @@ def test_mat_khau_khong_vao_log(caplog):
     for lg in loggers:
         lg.filters = [f for f in lg.filters if not getattr(f, "_email_loc", False)]
     m = _mod()
-    orig_search = FakeIMAP.search
+    orig_uid = FakeIMAP.uid
 
-    def _search(self, charset, *c):
+    def _uid(self, cmd, *a):
         raise OSError("dut mang")
 
-    FakeIMAP.search = _search
+    FakeIMAP.uid = _uid
     try:
         with caplog.at_level(logging.DEBUG):
             _chay(m.hoi_vong())
             _chay(m.suc_khoe())
     finally:
-        FakeIMAP.search = orig_search
+        FakeIMAP.uid = orig_uid
         for lg, fs in saved.items():
             lg.filters = fs
     for r in caplog.records:
@@ -486,3 +515,239 @@ def test_suc_khoe_bao_chua_ket_noi_duoc():
         FakeIMAP.login = orig_login
     assert sk["ok"] is False
     assert "chưa kết nối được" in sk["tai_khoan"][0]["loi"]
+
+
+# ── vòng sửa theo soát độc lập (agy) + chép lớp bảo vệ NV125 ─────────────────
+
+def _cfg_sua(**acc_them):
+    cfg = _cau_hinh()
+    acc = json.loads(cfg["tai_khoan"])[0]
+    acc.update(acc_them)
+    cfg["tai_khoan"] = json.dumps([acc], ensure_ascii=False)
+    return cfg
+
+
+def _mod_trong():
+    return mem.Module({}, _imap_ssl=FakeIMAP, _imap=FakeIMAP,
+                      _smtp_ssl=FakeSMTP, _smtp=FakeSMTP)
+
+
+def test_cai_mang_noi_bo_dung_va_chan_ssrf():
+    # Lỗi 1: cai() đọc cờ mang_noi_bo CŨ. (a) khai "co" cho máy chủ nội bộ hợp
+    # lệ phải qua; (b) sau đó tắt cờ + máy chủ metadata phải bị CHẶN.
+    m = _mod_trong()
+    cfg = _cfg_sua(imap_host="192.168.10.5", smtp_host="192.168.10.5")
+    cfg["mang_noi_bo"] = "co"
+    kq = _chay(m.cai(cfg))
+    assert kq["ok"] is True, kq
+    cfg2 = _cfg_sua(imap_host="169.254.169.254", smtp_host="169.254.169.254")
+    cfg2["mang_noi_bo"] = ""
+    kq2 = _chay(m.cai(cfg2))
+    assert kq2["ok"] is False
+
+
+def test_mark_seen_false_khong_nghen_khi_qua_muoi_thu():
+    # Lỗi 2: 12 thư, mark_seen tắt — thư 11, 12 vẫn phải tới, không kẹt ở 10
+    # thư đầu (chống trùng bằng sổ UID, không phụ thuộc cờ \Seen).
+    thu = {str(i).encode(): _thu_mau(message_id=f"<m{i}@example.com>",
+                                     subject=f"Thu {i}")
+           for i in range(1, 13)}
+    m = _mod(mark_seen=False)
+    with _thu_trong_hop(thu):
+        l1 = _chay(m.hoi_vong())
+        m._lan_poll = {}     # bỏ nhịp lùi dần giữa các lượt (chỉ trong test)
+        l2 = _chay(m.hoi_vong())
+        m._lan_poll = {}
+        l3 = _chay(m.hoi_vong())
+    assert len(l1) == 10 and len(l2) == 2 and l3 == []
+    assert len({t["id_tin"] for t in l1 + l2}) == 12
+    inst = FakeIMAP.instances[-1]
+    assert inst._readonly is True        # không đánh dấu → mở chỉ đọc
+    assert inst.stored == []              # tuyệt đối không ghi \Seen
+
+
+def test_tu_choi_thu_co_nhieu_header_from():
+    # Lỗi 3 (ưu tiên a): thư 2 header From — đầu là người được phép, sau là
+    # kẻ tấn công → phải bỏ (RFC 5322 3.6: đúng một From).
+    raw = (b"From: sep@example.com\r\n"
+           b"From: ke-tan-cong@evil.com\r\n"
+           b"To: nguoi.a@example.com\r\nSubject: Gia danh\r\n"
+           b"Message-ID: <dup@example.com>\r\n"
+           b"Date: Mon, 19 Oct 2026 10:00:00 +0700\r\n"
+           b"Content-Type: text/plain; charset=utf-8\r\n\r\nLenh gia danh")
+    with _thu_trong_hop({b"1": raw}):
+        tins = _chay(_mod().hoi_vong())
+    assert tins == []
+
+
+def test_imap_dung_uid_search_va_uid_store():
+    # Lỗi 4: mọi thao tác qua UID (uid SEARCH/FETCH/STORE), không số thứ tự.
+    m = _mod()
+    with _thu_trong_hop({b"1": _thu_mau()}):
+        assert len(_chay(m.hoi_vong())) == 1
+    inst = FakeIMAP.instances[-1]
+    lenhs = [g[0] for g in inst.uid_goi]
+    assert "SEARCH" in lenhs and "STORE" in lenhs
+    assert any("\\Seen" in str(g[-1]) for g in inst.uid_goi if g[0] == "STORE")
+
+
+def test_uidvalidity_doi_reset_so_uid():
+    # Lỗi 4 (tt): UIDVALIDITY đổi → UID cũ thuộc hộp khác → phải xử lý lại.
+    m = _mod()
+    with _thu_trong_hop({b"1": _thu_mau()}):
+        assert len(_chay(m.hoi_vong())) == 1
+        m._lan_poll = {}
+        orig = FakeIMAP.__init__
+
+        def _init888(self, host, port, timeout=None, ssl_context=None):
+            orig(self, host, port, timeout=timeout, ssl_context=ssl_context)
+            self.uidvalidity = 888
+
+        FakeIMAP.__init__ = _init888
+        try:
+            tins = _chay(m.hoi_vong())
+        finally:
+            FakeIMAP.__init__ = orig
+    assert len(tins) == 1
+
+
+def _thu_co_ar(ar):
+    msg = EmailMessage()
+    msg["From"] = "sep@example.com"
+    msg["To"] = "nguoi.a@example.com"
+    msg["Subject"] = "Thu AR"
+    msg["Message-ID"] = "<ar@example.com>"
+    msg["Date"] = "Mon, 19 Oct 2026 10:00:00 +0700"
+    if ar:
+        msg["Authentication-Results"] = ar
+    msg.set_content("Noi dung thu AR")
+    return msg.as_bytes()
+
+
+def test_spf_fail_bi_bo():
+    # Lớp SPF/DKIM chép từ NV125: AR có spf=fail → bỏ thư.
+    ar = "mx.example.com; spf=fail smtp.mailfrom=sep@example.com; dkim=pass"
+    with _thu_trong_hop({b"1": _thu_co_ar(ar)}):
+        assert _chay(_mod().hoi_vong()) == []
+
+
+def test_dkim_softfail_bi_bo():
+    ar = "mx.example.com; spf=pass; dkim=softfail header.d=example.com"
+    with _thu_trong_hop({b"1": _thu_co_ar(ar)}):
+        assert _chay(_mod().hoi_vong()) == []
+
+
+def test_ar_pass_va_khong_co_ar_van_nhan():
+    ar = "mx.example.com; spf=pass; dkim=pass"
+    with _thu_trong_hop({b"1": _thu_co_ar(ar)}):
+        assert len(_chay(_mod().hoi_vong())) == 1
+    with _thu_trong_hop({b"1": _thu_co_ar("")}):
+        assert len(_chay(_mod().hoi_vong())) == 1
+
+
+def test_readme_va_tham_chieu_canh_bao_spoofing_from():
+    # Lỗi 5: tài liệu phải cảnh báo mạo danh From khi không có SPF/DKIM.
+    readme = (GOC / "modules" / "email" / "README.md").read_text(encoding="utf-8")
+    tham = (GOC / "docs" / "THAM-CHIEU.md").read_text(encoding="utf-8")
+    for tai_lieu in (readme, tham):
+        assert "giả mạo" in tai_lieu and "SPF/DKIM" in tai_lieu
+
+
+def _cau_hinh_hai_hop():
+    def _acc(id_):
+        return {"id": id_, "label": f"Hop {id_}", "enabled": True,
+                "imap_host": "127.0.0.1", "imap_port": 993,
+                "smtp_host": "127.0.0.1", "smtp_port": 465,
+                "user": f"{id_}@example.com", "security": "ssl",
+                "verify_ssl": True, "allowed_senders": ["sep@example.com"],
+                "mark_seen": True, "max_body_chars": 6000, "poll_seconds": 20}
+    return {"tai_khoan": json.dumps([_acc("mot"), _acc("hai")],
+                                     ensure_ascii=False),
+            "mat_khau": ["mk-mot-bi-mat", "mk-hai-bi-mat"]}
+
+
+def test_dung_ngat_ngay_vong_nhieu_hop_thu():
+    # Lỗi 6: dung() sau hộp đầu → hộp còn lại KHÔNG được kết nối nữa.
+    m = _mod_trong()
+    m.nap(_cau_hinh_hai_hop())
+    orig = mem.Module._poll_account_sync
+
+    def _poll_va_dung(self, acc):
+        self._dung = True     # gỡ module NGAY trong lượt hỏi
+        return orig(self, acc)
+
+    mem.Module._poll_account_sync = _poll_va_dung
+    try:
+        _chay(m.hoi_vong())
+    finally:
+        mem.Module._poll_account_sync = orig
+    assert len(FakeIMAP.instances) == 1  # chỉ hộp đầu từng kết nối
+
+
+def test_extract_body_fallback_khi_charset_la():
+    # Lỗi 7: charset lạ không được làm mất thân thư — fallback UTF-8.
+    than = "Nội dung có dấu: Tiếng Việt rõ ràng".encode("utf-8")
+    raw = (b"From: sep@example.com\r\nTo: nguoi.a@example.com\r\n"
+           b"Subject: Charset\r\nMessage-ID: <cs@example.com>\r\n"
+           b"Date: Mon, 19 Oct 2026 10:00:00 +0700\r\n"
+           b"MIME-Version: 1.0\r\n"
+           b"Content-Type: text/plain; charset=x-la-123\r\n"
+           b"Content-Transfer-Encoding: 8bit\r\n\r\n") + than
+    with _thu_trong_hop({b"1": raw}):
+        tins = _chay(_mod().hoi_vong())
+    assert len(tins) == 1
+    assert "Tiếng Việt" in tins[0]["van_ban"]
+
+
+def test_bo_qua_thu_kich_thuoc_qua_lon_truoc_khi_tai():
+    # Lỗi 8: thư 3 MB bị bỏ theo RFC822.SIZE; BODY của nó KHÔNG bao giờ fetch.
+    lon = _thu_mau(body="x" * (3 * 1024 * 1024), message_id="<lon@example.com>")
+    m = _mod()
+    with _thu_trong_hop({b"1": lon, b"2": _thu_mau(message_id="<nho@example.com>")}):
+        tins = _chay(m.hoi_vong())
+        m._lan_poll = {}
+        lai = _chay(m.hoi_vong())
+    assert len(tins) == 1 and lai == []          # chỉ thư nhỏ được xử lý
+    inst = FakeIMAP.instances[0]                 # lượt poll đầu
+    assert not any(u == 1 and "BODY" in p for u, p in inst.fetch_goi)
+    assert any(u == 1 and "SIZE" in p for u, p in inst.fetch_goi)
+
+
+def test_bao_mat_mac_dinh_la_ssl_khong_plain():
+    # Đậy đột biến DB1 của agy: mặc định không bao giờ rơi về plain.
+    assert mem._sec_mode({}) == "ssl"
+    assert mem._sec_mode({"security": "plain"}) == "ssl"
+    m = _mod_trong()
+    kq = _chay(m.cai(_cfg_sua(security="plain")))
+    assert kq["ok"] is False
+
+
+def test_cai_tu_choi_cong_khong_tls(monkeypatch):
+    # Ép TLS (port NV125): IMAP 143 / SMTP 2525 / gán sai cặp 465+starttls.
+    # (conftest dọn env giữa test → bật loopback bằng monkeypatch.)
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    m = _mod_trong()
+    assert _chay(m.cai(_cfg_sua(imap_port=143)))["ok"] is False
+    assert _chay(m.cai(_cfg_sua(smtp_port=2525)))["ok"] is False
+    assert _chay(m.cai(_cfg_sua(smtp_port=465, security="starttls")))["ok"] is False
+    assert _chay(m.cai(_cfg_sua(smtp_port=587, security="starttls")))["ok"] is True
+
+
+def test_lech_so_mat_khau_hop_thu_bi_tu_choi():
+    # Đậy đột biến DB5 của agy: 2 hộp 1 mật khẩu → từ chối (cũ chỉ thử []).
+    cfg = _cau_hinh_hai_hop()
+    cfg["mat_khau"] = ["chi-mot-mat-khau"]
+    m = _mod_trong()
+    assert _chay(m.cai(cfg))["ok"] is False
+    m.nap(cfg)
+    assert m._tai_khoan == []
+
+
+def test_id_tin_giu_tien_to_mid():
+    # Đậy đột biến DB2 của agy: id_tin giữ tiền tố mid: khi có Message-ID.
+    with _thu_trong_hop({b"1": _thu_mau(message_id="<git@example.com>")}):
+        tins = _chay(_mod().hoi_vong())
+    assert len(tins) == 1
+    assert ":mid:git@example.com" in tins[0]["id_tin"]
+
+
