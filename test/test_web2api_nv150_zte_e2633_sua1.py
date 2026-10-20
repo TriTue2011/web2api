@@ -282,3 +282,25 @@ def test_t_khoang_cach_1_va_30_doi_hanh_vi_that(mod, manifest, may_chu_gia,
     assert sk2["ok"] is False and "đang chờ thử lại" in sk2["loi"], \
         "khoang_cach=30: sau 6' vẫn phải chờ"
     assert tt.lan_dang_nhap == lan2, "bị giãn cách: không gửi thêm đăng nhập"
+
+
+def test_doi_chieu_van_tay_cong_chuoi_khong_nem_ngoai_le_tran(mod):
+    """phan.port ném ValueError khi cổng là chuỗi (vd :abc) — phải thành ZteLoiKetNoi."""
+    khach = mod.MayKhachZte("https://127.0.0.1:abc", "admin", "mat_khau",
+                            van_tay_tls="a" * 64)
+    with pytest.raises(mod.ZteLoiKetNoi):
+        khach._doi_chieu_van_tay()
+
+
+def test_dung_xoa_cache_doc_cuoi(mod, manifest, may_chu_gia, cho_phep_loopback):
+    """dung() dọn dẹp sạch cache _doc_cuoi và _tam_ngung_den."""
+    m = mod.Module(manifest)
+    m.nap(_cau_hinh(may_chu_gia["dia_chi"]))
+    try:
+        assert chay(m.suc_khoe())["ok"] is True
+        assert m._doc_cuoi is not None
+        chay(m.dung())
+        assert m._doc_cuoi is None
+        assert m._tam_ngung_den is None
+    finally:
+        chay(m.dung())

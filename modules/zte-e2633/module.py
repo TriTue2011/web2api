@@ -83,6 +83,13 @@ KHOANG_CACH_DANG_NHAP_TOI_DA_PHUT = 1440
 # mới, không giữ phiên mồ côi. Chỉ sống trong tiến trình, không lưu đĩa;
 # cookie lạ/hết hạn tự hồi phục ở lần đọc (hết phiên → đăng nhập lại).
 _PHIEN_CAI_DUNG_LAI: dict[tuple[str, str], str] = {}
+_KHOA_THEO_TIEN_TO: dict[str, asyncio.Lock] = {}
+
+
+def _lay_khoa_tien_to(tien_to: str) -> asyncio.Lock:
+    if tien_to not in _KHOA_THEO_TIEN_TO:
+        _KHOA_THEO_TIEN_TO[tien_to] = asyncio.Lock()
+    return _KHOA_THEO_TIEN_TO[tien_to]
 
 
 class ZteLoi(Exception):
@@ -176,6 +183,7 @@ class MayKhachZte:
         self._van_tay = van_tay_tls
         self._client: httpx.AsyncClient | None = None
         self._co_phien = False
+        self.so_lan_dang_nhap = 0
 
     @property
     def co_phien(self) -> bool:
@@ -214,8 +222,8 @@ class MayKhachZte:
                                           timeout=HET_GIO_GIAY) as sock:
                 with ngu.wrap_socket(sock, server_hostname=phan.hostname) as tls:
                     der = tls.getpeercert(binary_form=True)
-        except OSError as e:
-            raise ZteLoiKetNoi(f"không tới được {self._dia_chi} để đối chiếu vân tay") from e
+        except (OSError, ValueError) as e:
+            raise ZteLoiKetNoi(f"không tới được {self._dia_chi} để đối chiếu vân tay: {type(e).__name__}") from e
         that = hashlib.sha256(der).hexdigest()
         if not hmac.compare_digest(that, self._van_tay):
             raise ZteLoiVanTay("vân tay TLS của thiết bị không khớp cấu hình") from None
@@ -254,6 +262,7 @@ class MayKhachZte:
         """Một lần đăng nhập. Không tự thử lại. Phân loại TỪ CHỐI theo cấu trúc."""
         if self._van_tay:
             await asyncio.to_thread(self._doi_chieu_van_tay)
+        self.so_lan_dang_nhap += 1
         self._co_phien = False
         client = self._client_hien_tai()
         client.cookies.clear()  # bắt đầu từ phiên sạch
@@ -442,8 +451,9 @@ class Module:
         self._dong_ho = dong_ho or (lambda: datetime.now(timezone.utc))
         self._khoang_cach_phut = KHOANG_CACH_DANG_NHAP_MAC_DINH_PHUT
         # L2: MỘT khoá asyncio bao toàn bộ vòng đọc/đăng nhập (thuc_the,
-        # suc_khoe, cai, dung) — người đến sau dùng phiên/kết quả của người trước.
-        self._khoa = asyncio.Lock()
+        # suc_khoe, cai, dung) — dùng chung theo tiền tố để liên thể hiện
+        # (moi trong cai và cu trong dang_chay) không chạy chồng chéo đăng nhập.
+        self._khoa = _lay_khoa_tien_to(self.tien_to)
         # Trạng thái một phiên + tạm ngừng + đọc gần nhất:
         self._tam_ngung_den: datetime | None = None
         self._ly_do_tam_ngung = ""
@@ -639,10 +649,12 @@ class Module:
                     < timedelta(minutes=self._khoang_cach_phut)):
                 raise ZteDangChoThuLai(
                     f"đang chờ thử lại (mỗi {self._khoang_cach_phut} phút)")
-            self._lan_thu_dang_nhap = bay_gio
+        so_truoc = self._khach.so_lan_dang_nhap
         try:
             ds_may = await self._khach.doc_may()
         except ZteLoi as e:
+            if self._khach.so_lan_dang_nhap > so_truoc:
+                self._lan_thu_dang_nhap = bay_gio
             if e.bi_tu_choi:
                 self._tam_ngung_den = bay_gio + timedelta(
                     minutes=TAM_NGUNG_SAU_TU_CHOI_PHUT)
@@ -651,6 +663,8 @@ class Module:
                             TAM_NGUNG_SAU_TU_CHOI_PHUT)
             raise
         except Exception as e:
+            if self._khach.so_lan_dang_nhap > so_truoc:
+                self._lan_thu_dang_nhap = bay_gio
             # L5: ranh giới module — ghi log KIỂU ngoại lệ, không ghi nội dung
             # (có thể chứa bí mật); ném ZteLoi sạch thay vì ngoại lệ trần.
             log.warning("zte-e2633: doc_may lỗi không lường trước [%s]",
@@ -658,6 +672,8 @@ class Module:
             raise ZteLoi(
                 f"lỗi không lường trước khi đọc ({type(e).__name__} "
                 "— đã ghi nhật ký)") from e
+        if self._khach.so_lan_dang_nhap > so_truoc:
+            self._lan_thu_dang_nhap = bay_gio
         ra = []
         for may in ds_may:
             try:
@@ -783,3 +799,5 @@ class Module:
         async with self._khoa:
             if self._khach is not None:
                 await self._khach.dong()
+            self._doc_cuoi = None
+            self._tam_ngung_den = None
