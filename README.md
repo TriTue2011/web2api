@@ -199,7 +199,6 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `doc-viettat` | Chuẩn hoá chữ để đọc tiếng Việt (TTS: số, đơn vị, viết tắt, hoá học, ký hiệu) | Cục bộ (thuần Python, không mạng) | Có sẵn (chuẩn C2 công cụ `chuan_hoa_doc`, 8 lớp lỗi, chống ReDoS, trần 20.000 ký tự) |
 | `van-phong` | Văn phòng: công cụ `office_*` qua container phụ OfficeCLI (mặc định tắt) + OCR bằng model thị giác qua điểm chat do quản trị khai + dựng Word/Excel bằng zipfile + `kiem_tai_lieu` chặn zip bomb/zip-slip/XXE | HTTP nội bộ tới dịch vụ van-phong-office + điểm chat do quản trị khai | Có sẵn (kiểm với nhị phân giả + máy chủ chat giả + kiểm tĩnh Dockerfile; chưa kiểm với OfficeCLI/model thật) |
 | `rclone` | Cầu nối lưu trữ đám mây qua rclone: liệt kê/đọc/tải về/tải lên/xoá/chuyển tệp trên 150+ backend (Google Drive, S3/R2, OneDrive, WebDAV…); hành động ghi/xoá mặc định TẮT | HTTP nội bộ tới dịch vụ dich-vu/rclone | Có sẵn (NV161; kiểm với nhị phân rclone giả; **chưa kiểm với dịch vụ đám mây thật**) |
-| `thuthach` | Nhận diện thử thách chống bot (reCAPTCHA v2/v3, Turnstile, CAPTCHA chữ, mã 2FA, BotGuard) bằng cấu trúc rồi báo «cần người» + hướng dẫn noVNC — KHÔNG giải (chuẩn C2 `thiet_bi`) | Không gọi mạng (thuần phân tích chuỗi trong tiến trình lõi) | Có sẵn (26 test; phần giải của captcha-solver không port — quy tắc kho: không giải CAPTCHA) |
 | `thuthach` | Nhận diện thử thách chống bot (reCAPTCHA v2/v3, Turnstile, chọn hình/quiz, CAPTCHA chữ, mã OTP, mã 2FA, BotGuard) bằng cấu trúc rồi báo «cần người» + hướng dẫn noVNC — KHÔNG giải (chuẩn C2 `thiet_bi`) | Không gọi mạng (thuần phân tích chuỗi trong tiến trình lõi) | Có sẵn (33 test; phần giải của captcha-solver không port — quy tắc kho: không giải CAPTCHA) |
 | `tro-ly` | Trợ lý: dựng prompt theo ngân sách + chọn công cụ theo tầng + X-quang prompt + sổ lỗi (NV136; vòng lặp gọi mô hình là NV135) | Nội bộ (thuần Python) | Có sẵn (11 test xanh; chưa đo trên nhật ký thật; chưa có vòng lặp gọi mô hình) |
 | `youtube-phat` | Máy phát YouTube/Zing qua dịch vụ phụ: giữ địa chỉ + khoá Integration API, hỏi sức khoẻ dịch vụ (NV153 đợt B) | HTTP nội bộ/LAN tới dịch vụ youtube-phat | Có sẵn (kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**) |
@@ -212,6 +211,21 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.
 - **Dành cho nhà phát triển viết module mới**: Tham khảo chi tiết tại [docs/CHUAN-MODULE.md](docs/CHUAN-MODULE.md) và [docs/CHUAN-BAO-MAT-MODULE.md](docs/CHUAN-BAO-MAT-MODULE.md).
+
+## Dịch vụ phụ (`dich-vu/`)
+
+Một số module cần tiến trình riêng chạy cạnh web2api (không nằm trong `docker-compose.yml` gốc).
+Mọi khoá đều do **bạn tự sinh** và phải dán **đúng cùng một giá trị** vào cả dịch vụ lẫn module.
+
+| Dịch vụ | Phục vụ module | Cách chạy | Khoá |
+|---|---|---|---|
+| `antigravity-cau-noi` | `antigravity` | Tiến trình Python **ngoài container**, trên máy chủ (cổng 8300): `export AGY_CAU_NOI_KHOA="$(openssl rand -hex 24)"; export AGY_HOMES="/srv/agy-homes/acc1"` rồi `python3 dich-vu/antigravity-cau-noi/cau_noi.py`. **Chạy nền** bằng systemd — mẫu unit đầy đủ ở mục «Chạy nền (systemd)» của chính README này: [dich-vu/antigravity-cau-noi/README.md](dich-vu/antigravity-cau-noi/README.md) | `AGY_CAU_NOI_KHOA` tự sinh; dán cùng giá trị vào trường «Khoá cầu nối» của module `antigravity` |
+| `trinh-duyet` | `vnc-xa` | Container riêng: `cd dich-vu/trinh-duyet`, đặt `TRINH_DUYET_KHOA` trong `.env`, `docker compose up -d --build`, rồi **bắt buộc** nối lõi vào mạng riêng: `docker network connect web2api-trinh-duyet <tên container web2api>` (dịch vụ không công bố cổng nào ra ngoài). Chi tiết: [dich-vu/trinh-duyet/README.md](dich-vu/trinh-duyet/README.md) | `TRINH_DUYET_KHOA` tự sinh bằng `openssl rand -hex 32`; dán cùng giá trị vào trường `khoa_dich_vu` của module `vnc-xa` |
+| `van-phong-office` | `van-phong` | Container riêng (OfficeCLI, cổng nội bộ 8701): `cd dich-vu/van-phong-office && docker build -t van-phong-office:1.0 .` rồi `docker run -d` với `-e OFFICE_KHOA=<khoá>` trên mạng Docker nội bộ (lệnh đầy đủ trong README của dịch vụ). Chi tiết: [dich-vu/van-phong-office/README.md](dich-vu/van-phong-office/README.md) | `OFFICE_KHOA` tự sinh bằng `openssl rand -hex 24`; dán cùng giá trị vào trường `khoa_dich_vu` của module `van-phong` |
+| `youtube-phat` | `youtube-phat` (+ Home Assistant) | Container riêng (cổng 8713): `cd dich-vu/youtube-phat && docker compose up -d --build`. Chi tiết: [dich-vu/youtube-phat/README.md](dich-vu/youtube-phat/README.md) | Token tích hợp **tự sinh** lần đầu trong `/data/youtube_phat/integration_token` — lấy bằng `docker compose exec youtube-phat cat /data/youtube_phat/integration_token` rồi dán vào module |
+| `rclone` | `rclone` | Container riêng (chỉ công bố `127.0.0.1:8702`): `cd dich-vu/rclone && docker build -t rclone-bridge:1.0 .` rồi `docker run -d` với `-e RCLONE_KHOA=<khoá>` trên mạng Docker nội bộ (lệnh đầy đủ trong README của dịch vụ). Chi tiết: [dich-vu/rclone/README.md](dich-vu/rclone/README.md) | `RCLONE_KHOA` tự sinh (chuỗi ngẫu nhiên dài); dán cùng giá trị vào module `rclone` |
+| `gpu-node` | Các nút GPU từ xa (nghe/thị giác/tách âm) | Chạy trên **máy có card NVIDIA** (thường là máy khác): `cd dich-vu/gpu-node && cp .env.mau .env` (đặt `GPU_NODE_BIND` là IP LAN của máy GPU), `docker compose up -d`. Chi tiết: [dich-vu/gpu-node/README.md](dich-vu/gpu-node/README.md) | Khoá nút **tự sinh** lần đầu và chỉ in một lần: `docker logs gpu-node-cong 2>&1 \| grep "KHOA NUT GPU"`; dán khoá đó khi «Thêm máy GPU» trong web2api |
+| `muse-web` | (công cụ dòng lệnh, không phải module) | Không phải dịch vụ nền: chạy tay từ gốc kho `./.venv/bin/python dich-vu/muse-web/muse_web.py …` để giao việc cho agent Muse. Chi tiết: [dich-vu/muse-web/README.md](dich-vu/muse-web/README.md) | Không có khoá dịch vụ; cookie tài khoản nạp qua stdin hoặc tệp quyền 0600 trong `$MUSE_WEB_DIR` (mặc định `~/.config/muse-web`) |
 
 ## Cấu hình
 
@@ -375,7 +389,7 @@ docker build -t web2api:latest .                          # Dựng thử ảnh D
 | `test/` | Bộ kiểm thử tự động pytest với toàn bộ dịch vụ giả lập offline (Google, GitHub, OpenAI) |
 | `docs/` | Tài liệu kỹ thuật: `THAM-CHIEU.md`, `TRIEN-KHAI.md`, `CHUAN-MODULE.md`, `CHUAN-BAO-MAT-MODULE.md`, ảnh chụp |
 | `deploy/` | Tệp triển khai proxy phụ trợ (Cloudflare Worker) |
-| `dich-vu/` | Dịch vụ phụ trợ (cầu nối Antigravity CLI, dịch vụ trình duyệt noVNC) |
+| `dich-vu/` | Dịch vụ phụ trợ chạy cạnh web2api: `antigravity-cau-noi` (cầu nối Antigravity CLI), `trinh-duyet` (trình duyệt noVNC), `van-phong-office` (OfficeCLI), `youtube-phat` (máy phát YouTube/Zing), `rclone` (cầu nối rclone), `gpu-node` (máy GPU từ xa), `muse-web` (CLI giao việc cho agent Muse) |
 | `scripts/` | Tiện ích hỗ trợ: `chup-man-hinh.sh`, `chan-lan-trinh-duyet.sh` |
 
 Quy định đóng góp chi tiết có tại [CONTRIBUTING.md](CONTRIBUTING.md).

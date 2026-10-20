@@ -69,6 +69,43 @@ hoặc qua `uvicorn` (tên thư mục có dấu gạch ngang nên phải chỉ `
 uvicorn --app-dir dich-vu/antigravity-cau-noi cau_noi:app --host 127.0.0.1 --port 8300
 ```
 
+## Chạy nền (systemd)
+
+Chạy tay như trên sẽ chết khi tắt terminal. Trên máy chủ Linux, gói cầu nối thành một
+dịch vụ systemd — tắt terminal hay khởi động lại máy, cầu nối vẫn sống:
+
+1. Tạo tệp môi trường `/etc/web2api/antigravity-cau-noi.env` (quyền 0600, chỉ root đọc):
+   ```ini
+   AGY_CAU_NOI_KHOA=<chuỗi ngẫu nhiên dài — sinh bằng: openssl rand -hex 24>
+   AGY_HOMES=/srv/agy-homes/acc1:/srv/agy-homes/acc2
+   ```
+2. Tạo unit `/etc/systemd/system/web2api-antigravity-cau-noi.service` (thay `/opt/web2api`
+   bằng đường dẫn bản kiểm của bạn, `User=` bằng người dùng không phải root đã cài `agy`):
+   ```ini
+   [Unit]
+   Description=Cầu nối Antigravity cho web2api
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=web2api
+   WorkingDirectory=/opt/web2api
+   EnvironmentFile=/etc/web2api/antigravity-cau-noi.env
+   ExecStart=/usr/bin/python3 dich-vu/antigravity-cau-noi/cau_noi.py
+   Restart=on-failure
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+3. Bật dịch vụ:
+   ```bash
+   sudo systemctl daemon-reload && sudo systemctl enable --now web2api-antigravity-cau-noi
+   systemctl status web2api-antigravity-cau-noi
+   curl -s http://127.0.0.1:8300/v1/models -H "Authorization: Bearer <AGY_CAU_NOI_KHOA>"
+   ```
+4. Dán đúng `AGY_CAU_NOI_KHOA` ở bước 1 vào trường «Khoá cầu nối» của module `antigravity`
+   trong web2api (xem «Đăng ký vào web2api» dưới đây).
+
 ## Cầu nối làm gì với một yêu cầu
 
 1. Kiểm khoá (so sánh thời gian hằng), đọc thân có trần, kiểm hình dạng `messages`; id `model` phải **khớp đúng**
