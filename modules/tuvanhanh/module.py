@@ -269,12 +269,22 @@ class Module:
     # ── lệnh cl ──
 
     async def _xu_ly_cl(self, ngu_canh: dict, doi_so: str) -> str:
-        """Xử lý `cl <số>`. Vai quản trị theo NGƯỜI GỬI (lõi đã chặn, đây là lớp 2)."""
+        """Xử lý `cl <số>`. Vai quản trị theo NGƯỜI GỬI (lõi đã chặn, đây là lớp 2).
+
+        Lớp kênh (lỗi 9, soát độc lập): câu hỏi được gửi ĐÍCH DANH tới
+        (kenh_module, kenh_id) đã cấu hình; chỉ chấp nhận trả lời đến từ
+        đúng kênh đó — `cl` từ kênh khác, dù vai quản trị, cũng bị bỏ
+        lặng lẽ như sai vai (IDOR kênh).
+        """
         app = ngu_canh.get("app") if isinstance(ngu_canh, dict) else None
         if app is not None:
             self._app = app
         if not isinstance(ngu_canh, dict) or ngu_canh.get("vai") != "quan_tri":
             return ""
+        if self._kenh_module and self._kenh_id:
+            if (ngu_canh.get("module") != self._kenh_module
+                    or ngu_canh.get("noi_gui") != self._kenh_id):
+                return ""
         ma, tb = self._hop_thu.tra_loi(f"cl {doi_so or ''}")
         return tb
 
@@ -486,7 +496,13 @@ class Module:
         }
 
     async def dung(self) -> None:
+        global _the_hien_hien_tai
         await self._lich.dung()
+        # Lỗi 8 (soát độc lập): thể hiện đã dừng phải nhả điều hướng lệnh —
+        # nếu không, `cl` vẫn trỏ về xác cũ (giữ cả tham chiếu app).
+        if _the_hien_hien_tai is self:
+            _the_hien_hien_tai = None
+        self._app = None
 
     # ── công cụ C2 chỉ-đọc ──
 

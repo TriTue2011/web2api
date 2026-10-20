@@ -498,7 +498,8 @@ def test_sua5_hong_2_lan_thi_dung_va_bao_mot_tin():
 
 def test_sua6_tu_khoi_phuc_thu_lai_roi_bao_mot_tin():
     async def _chay():
-        mod = Module(MANIFEST, lay_gio=DongHoGia())
+        dh = DongHoGia()
+        mod = Module(MANIFEST, lay_gio=dh)
         mod.nap({"kenh_module": "kenh-gia", "kenh_id": "d1"})
         ncc = NhaCungCapThat("hong_mai")
         mod._lay_nha_cung_cap = lambda: [("ncc1", ncc)]
@@ -508,10 +509,13 @@ def test_sua6_tu_khoi_phuc_thu_lai_roi_bao_mot_tin():
             bao.append(t)
             return True
         mod._gui_canh_bao_noi_bo = _bao
-        for _ in range(5):  # quá N lần
+        for _ in range(5):  # quá N lần, mỗi vòng cách nhau đủ giãn cách
             await mod._nv_tu_khoi_phuc()
+            dh.tien(301)
         assert ncc.dang_nhap_da_goi  # có thử khôi phục thật
-        assert len(bao) == 1  # báo đúng một tin
+        # Chủ máy chỉ bị làm phiền đúng mức: đường đăng nhập lại báo một tin
+        # khi dừng hẳn; tự khôi phục không báo chồng lên nhà đã được báo.
+        assert len(bao) == 1
         await mod.dung()
     asyncio.run(_chay())
 
@@ -548,7 +552,11 @@ def test_sua7_dia_day_doc_dung_thu_muc_du_lieu_va_don_tam(monkeypatch, tmp_path)
         class _Du:
             total = 100
             used = 90
-        monkeypatch.setattr(_shutil, "disk_usage", lambda p: da_doc.setdefault("p", str(p)) or _Du())
+
+        def _gia(p):
+            da_doc["p"] = str(p)
+            return _Du()
+        monkeypatch.setattr(_shutil, "disk_usage", _gia)
         mod = Module(MANIFEST)
         mod.nap({"kenh_module": "kenh-gia", "kenh_id": "d1"})
         bao = []
