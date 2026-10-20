@@ -43,18 +43,25 @@ class LoiSo(Exception):
         self.code = code
 
 
-def _van_tay_tu_xa(ban_ghi: dict, api_key: str | None) -> tuple:
-    """Dấu để biết thể hiện từ xa đang chạy còn khớp đĩa không — băm khoá, không giữ thêm bản khoá thô."""
+def _van_tay_tu_xa(ban_ghi: dict, api_key: str | None, header_them: dict | None = None) -> tuple:
+    """Dấu để biết thể hiện từ xa đang chạy còn khớp đĩa không — băm khoá và giá trị header_them,
+    không giữ thêm bản thô."""
     return (json.dumps(ban_ghi, sort_keys=True, ensure_ascii=False),
-            hashlib.sha256(api_key.encode("utf-8")).hexdigest() if api_key else None)
+            hashlib.sha256(api_key.encode("utf-8")).hexdigest() if api_key else None,
+            hashlib.sha256(json.dumps(header_them or {}, sort_keys=True,
+                                      ensure_ascii=False).encode("utf-8")).hexdigest() if header_them else None)
 
 
-async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
+async def kiem_ban_ghi_tu_xa(than: dict, api_key: str | None = None) -> dict:
     """Kiểm THUẦN (không ghi) một bản ghi module từ xa — MỘT bộ kiểm cho đăng ký (POST /api/modules/tu-xa) và cho
-    khôi phục tu_xa.json: id/tên/tiền tố đúng quy tắc, base_url qua `kiem_url_lan` (chặn SSRF). Trả
-    {id, ten, tien_to, base_url} đã chuẩn hoá; sai → LoiSo(400)."""
+    khôi phục tu_xa.json: id/tên/tiền tố đúng quy tắc, base_url qua `kiem_url_lan` (chặn SSRF),
+    header_them qua `kiem_header_them` (cấu trúc RFC 7230). Trả
+    {id, ten, tien_to, base_url} đã chuẩn hoá (+ các cờ tuỳ chọn); sai → LoiSo(400).
+
+    `api_key` chỉ để kiểm xung đột: đã có khoá (lõi gửi Bearer) thì không được đặt tay Authorization.
+    Bản ghi trả về chỉ giữ TÊN header (list) — giá trị thật nằm ở kho bí mật, không đi cùng bản ghi/sao lưu."""
     from app.kham_pha import ID_DANH_RIENG, TIEN_TO_HOP_LE, MA_KHA_NANG
-    from app.tu_xa import kiem_url_lan
+    from app.tu_xa import kiem_header_them, kiem_url_lan
 
     if not isinstance(than, dict):
         raise LoiSo(400, "bản ghi module từ xa phải là đối tượng")
@@ -70,6 +77,14 @@ async def kiem_ban_ghi_tu_xa(than: dict) -> dict:
     except ValueError as e:
         raise LoiSo(400, str(e)) from None
     kq = {"id": id_, "ten": ten.strip(), "tien_to": tien_to, "base_url": base}
+    if "header_them" in than:
+        try:
+            ht = kiem_header_them(than.get("header_them"), co_khoa=bool(api_key))
+        except ValueError as e:
+            raise LoiSo(400, str(e)) from None
+        dang = than.get("header_them")
+        kq["header_them"] = sorted(ht) if isinstance(dang, dict) else sorted(
+            {t for t in dang if isinstance(t, str)})
     if "la_nut_gpu" in than:
         kq["la_nut_gpu"] = bool(than.get("la_nut_gpu"))
     if "bat" in than:
@@ -347,10 +362,13 @@ class SoModule:
         except kho.KhoHong as e:
             log.warning("%s", e)
             return [{"thu_muc": str(kho.thu_muc_du_lieu() / "tu_xa.json"), "ly_do": str(e)}]
-        moi: dict[str, tuple[dict, str | None]] = {}
+        moi: dict[str, tuple[dict, str | None, dict | None]] = {}
         for ban_ghi in ds:
             try:
-                moi[ban_ghi["id"]] = (ban_ghi, kho.doc_bi_mat(ban_ghi["id"]).get("api_key"))
+                bm = kho.doc_bi_mat(ban_ghi["id"])
+                ht = bm.get("header_them")
+                moi[ban_ghi["id"]] = (ban_ghi, bm.get("api_key"),
+                                      ht if isinstance(ht, dict) else None)
             except (KeyError, TypeError, ValueError, kho.KhoHong) as e:
                 log.warning("Bỏ qua module từ xa hỏng: %s", e)
         for id_ in [i for i in self.tu_xa if i not in moi]:
@@ -359,13 +377,13 @@ class SoModule:
             m = self.dang_chay.pop(id_, None)
             if m is not None:
                 await self._dung_an_toan(id_, m)
-        for id_, (ban_ghi, api_key) in moi.items():
-            vt = _van_tay_tu_xa(ban_ghi, api_key)
+        for id_, (ban_ghi, api_key, header_them) in moi.items():
+            vt = _van_tay_tu_xa(ban_ghi, api_key, header_them)
             cu = self.dang_chay.get(id_) if id_ in self.tu_xa else None
             if cu is not None and self._vt_tu_xa.get(id_) == vt:
                 continue
             try:
-                the = ModuleTuXa(ban_ghi, api_key)
+                the = ModuleTuXa(ban_ghi, api_key, header_them)
             except (KeyError, TypeError, ValueError) as e:
                 log.warning("Bỏ qua module từ xa hỏng %s: %s", id_, e)
                 loi.append({"thu_muc": str(kho.thu_muc_du_lieu() / "tu_xa.json"), "ly_do": f"{id_}: {e}"})
@@ -736,12 +754,14 @@ class SoModule:
     # ───────────── module từ xa ─────────────
 
     async def them_tu_xa(self, than: dict) -> dict:
-        from app.tu_xa import ModuleTuXa
+        from app.tu_xa import ModuleTuXa, kiem_header_them
 
         api_key = than.get("api_key") or None
         if api_key is not None and not isinstance(api_key, str):
             raise LoiSo(400, "api_key phải là chuỗi")
-        sach = await kiem_ban_ghi_tu_xa(than)
+        sach = await kiem_ban_ghi_tu_xa(than, api_key)
+        # Dict thật cho vận hành (đã kiểm cấu trúc ở trên — gọi lại hàm thuần để lấy giá trị).
+        header_them = kiem_header_them(than.get("header_them"), co_khoa=bool(api_key))
         id_, ten, tien_to, base = sach["id"], sach["ten"], sach["tien_to"], sach["base_url"]
         async with self.khoa:
             if id_ in self.catalog or id_ in self.tu_xa:
@@ -752,6 +772,8 @@ class SoModule:
                 "id": id_, "ten": ten, "tien_to": tien_to, "base_url": base,
                 "cai_luc": kho.bay_gio_iso(),
             }
+            if "header_them" in sach:
+                ban_ghi["header_them"] = sach["header_them"]  # chỉ TÊN — giá trị thật vào kho bí mật
             if "la_nut_gpu" in sach:
                 ban_ghi["la_nut_gpu"] = sach["la_nut_gpu"]
             if "bat" in sach:
@@ -764,13 +786,13 @@ class SoModule:
                 ban_ghi["kha_nang_bat"] = sach["kha_nang_bat"]
 
             try:
-                kho.luu_tu_xa(ban_ghi, api_key)
+                kho.luu_tu_xa(ban_ghi, api_key, header_them or None)
             except kho.KhoHong as e:
                 raise LoiSo(500, f"Không lưu được module từ xa: {e} — khôi phục hoặc xoá tệp tu_xa.json hỏng",
                             code="store_unreadable") from e
             self.tu_xa[id_] = ban_ghi
-            m = ModuleTuXa(ban_ghi, api_key)
-            self._vt_tu_xa[id_] = _van_tay_tu_xa(ban_ghi, api_key)
+            m = ModuleTuXa(ban_ghi, api_key, header_them or None)
+            self._vt_tu_xa[id_] = _van_tay_tu_xa(ban_ghi, api_key, header_them or None)
             self.dang_chay[id_] = m
         return {"ok": True, "module": self.cong_khai_tu_xa(id_), "suc_khoe": await m.suc_khoe()}
 
@@ -782,6 +804,8 @@ class SoModule:
             "cau_hinh_cong_khai": {
                 "base_url": b["base_url"],
                 "api_key": kho.che(kho.doc_bi_mat(id_)["api_key"]) if co_khoa else None,
+                # Chỉ TÊN header — giá trị coi như bí mật, không trả về (như khoá).
+                "header_them": sorted(b.get("header_them", [])),
             },
             "da_cau_hinh": True,
         }
@@ -804,9 +828,11 @@ class SoModule:
                 raise LoiSo(404, f"Không có module từ xa {id_!r}")
             ban_ghi = dict(self.tu_xa[id_])
             ban_ghi["bat"] = bool(bat)
-            api_key = kho.doc_bi_mat(id_).get("api_key")
+            bm = kho.doc_bi_mat(id_)
+            api_key = bm.get("api_key")
+            ht = bm.get("header_them")
             try:
-                kho.luu_tu_xa(ban_ghi, api_key)
+                kho.luu_tu_xa(ban_ghi, api_key, ht if isinstance(ht, dict) else None)
             except kho.KhoHong as e:
                 raise LoiSo(500, f"Không lưu được trạng thái module: {e}") from e
             self.tu_xa[id_] = ban_ghi

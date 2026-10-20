@@ -439,12 +439,19 @@ class ChuyenTiepOpenAI:
         kha_nang: tuple[str, ...] = (),
         goi_y_tu_choi_kha_nang: str = "",
         kiem_ip: Callable[[ipaddress.IPv4Address | ipaddress.IPv6Address], str | None] | None = None,
+        header_them: dict | None = None,
     ):
         self.ten = ten
         self.tien_to = tien_to
         self.base_url = base_url.rstrip("/")
         # Không khoá (dịch vụ trong LAN không đòi) = một "khe" rỗng, không gửi Authorization.
         self.khoa = list(khoa) or [""]
+        # Header thêm theo bản ghi module từ xa (NV199c) — đã kiểm cấu trúc ở đăng ký
+        # (app/tu_xa.py kiem_header_them); chỉ gửi tới ĐÚNG gốc đã khai, không theo chuyển hướng
+        # (client dựng với follow_redirects=False, xem _client).
+        self.header_them = dict(header_them or {})
+        # Mọi chuỗi nhạy cảm phải che khỏi log/lỗi: khoá + GIÁ TRỊ header thêm (tên header không bí mật).
+        self._chuoi_nhay_cam = [k for k in self.khoa if k] + [v for v in self.header_them.values() if v]
         self._doi_id_model = doi_id_model
         self._phan_loai_loi = phan_loai_loi
         self._vi_tri = 0
@@ -491,10 +498,16 @@ class ChuyenTiepOpenAI:
     def _tieu_de(khoa: str) -> dict:
         return {"Authorization": f"Bearer {khoa}"} if khoa else {}
 
+    def _tieu_de_day_du(self, khoa: str) -> dict:
+        """Tiêu đề gửi đi cho MỌI yêu cầu: Authorization (nếu có khoá) + header_them đã kiểm ở đăng ký.
+        header_them không bao giờ chứa Authorization khi đã có khoá (bị từ chối ở đăng ký) nên không xung đột."""
+        td = self._tieu_de(khoa)
+        td.update(self.header_them)
+        return td
+
     def che_khoa(self, van_ban: str) -> str:
-        for k in self.khoa:
-            if k:
-                van_ban = van_ban.replace(k, che(k))
+        for chuoi in self._chuoi_nhay_cam:
+            van_ban = van_ban.replace(chuoi, che(chuoi))
         return van_ban
 
     def nhan_khoa(self, khoa: str) -> str:
@@ -638,7 +651,7 @@ class ChuyenTiepOpenAI:
         da_thu_lai = False
         for khoa in ung_vien:
             khach = self._client()
-            req = khach.build_request("POST", url, json=than, headers=self._tieu_de(khoa), timeout=timeout)
+            req = khach.build_request("POST", url, json=than, headers=self._tieu_de_day_du(khoa), timeout=timeout)
             try:
                 r = await khach.send(req, stream=True)
             except LoiDichBiChan:  # đích bị chặn lúc nối: mọi khoá sẽ hỏng y hệt, không thử tiếp
@@ -755,7 +768,7 @@ class ChuyenTiepOpenAI:
         """POST /v1/audio/speech — chuyển tiếp JSON OpenAI, trả âm thanh nhị phân stream từng khúc. Xoay khoá theo
         (khoá, "noi") như khả năng tốn tiền (`goi_kha_nang`): khoá không có quyền giọng nói không làm chat nghỉ."""
         _, kq = await self.goi_kha_nang("noi", "đọc văn bản thành giọng nói", "POST", f"{self.base_url}/audio/speech",
-                                        json_than=self.doi_model(body), tieu_de=self._tieu_de, stream=True,
+                                        json_than=self.doi_model(body), tieu_de=self._tieu_de_day_du, stream=True,
                                         kieu_mac_dinh="audio/mpeg")
         return kq
 
@@ -781,7 +794,7 @@ class ChuyenTiepOpenAI:
             files.append((t.ten_truong, (ten_tep, t.noi_dung, ct)))
 
         _, kq = await self.goi_kha_nang(kha_nang, viec, "POST", f"{self.base_url}/{endpoint}", data=data, files=files,
-                                        tieu_de=self._tieu_de)
+                                        tieu_de=self._tieu_de_day_du)
         return kq
 
     async def nghe(self, yc: YeuCauDaPhan) -> tuple[int, dict, bytes]:
@@ -942,7 +955,7 @@ class ChuyenTiepOpenAI:
         muc = {"khoa": self.nhan_khoa(khoa), "ok": False, "do_tre_ms": None, "so_model": 0, "loi": None}
         bat_dau = time.monotonic()
         khach = self._client()
-        req = khach.build_request("GET", f"{self.base_url}/models", headers=self._tieu_de(khoa),
+        req = khach.build_request("GET", f"{self.base_url}/models", headers=self._tieu_de_day_du(khoa),
                                   timeout=httpx.Timeout(self.TIMEOUT_KIEM))
         try:
             r = await khach.send(req, stream=True)
@@ -987,7 +1000,7 @@ class ChuyenTiepOpenAI:
             return list(self._dem_models)
         khoa = next((k for k in self.khoa if self._nghi.get(k, 0.0) <= bay_gio), self.khoa[0])
         khach = self._client()
-        req = khach.build_request("GET", f"{self.base_url}/models", headers=self._tieu_de(khoa),
+        req = khach.build_request("GET", f"{self.base_url}/models", headers=self._tieu_de_day_du(khoa),
                                   timeout=httpx.Timeout(self.TIMEOUT_DOC, connect=self.TIMEOUT_KET_NOI))
         try:
             r = await khach.send(req, stream=True)

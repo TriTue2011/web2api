@@ -23,6 +23,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import socket
 import time
 from urllib.parse import urlsplit
@@ -89,10 +90,79 @@ async def kiem_url_lan(url: str) -> str:
     return s
 
 
+# ── header thêm theo bản ghi (NV199c) ─────────────────────────────────────────
+# Kiểm CẤU TRÚC theo RFC 7230 — không danh sách từ khoá theo nhà cung cấp.
+
+_TOKEN_HEADER = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+# Tên hop-by-hop (RFC 7230 §6.1): tầng truyền tải tự quản, cấm đặt tay.
+_HOP_BY_HOP = frozenset({
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade",
+})
+# httpx tự đặt theo cấu trúc yêu cầu — đặt tay sẽ phá khung HTTP / ghim đích.
+_CAM_DAT_TAY = frozenset({"host", "content-length"})
+TRAN_HEADER_TEN = 256
+TRAN_HEADER_GIA_TRI = 8192
+TRAN_HEADER_SO_LUONG = 16
+
+
+def _kiem_ten_header(ten: object, co_khoa: bool = False) -> None:
+    if not isinstance(ten, str) or not ten:
+        raise ValueError("tên header phải là chuỗi không rỗng")
+    if len(ten) > TRAN_HEADER_TEN:
+        raise ValueError(f"tên header quá dài (tối đa {TRAN_HEADER_TEN} ký tự)")
+    if not _TOKEN_HEADER.match(ten):
+        # Token RFC 7230 đã loại trừ sẵn khoảng trắng, :, CR, LF và mọi ký tự điều khiển.
+        raise ValueError(f"tên header {ten!r} không hợp lệ (cần token theo RFC 7230)")
+    thap = ten.lower()
+    if thap in _HOP_BY_HOP:
+        raise ValueError(f"header {ten!r} là hop-by-hop — không được đặt tay")
+    if thap in _CAM_DAT_TAY:
+        raise ValueError(f"header {ten!r} do tầng HTTP tự quản — không được đặt tay")
+    if thap == "authorization" and co_khoa:
+        raise ValueError("đã cấu hình api_key (lõi gửi Bearer) — không được đặt tay Authorization; "
+                         "muốn scheme xác thực lạ thì bỏ api_key")
+
+
+def kiem_header_them(dang: object, co_khoa: bool = False) -> dict[str, str]:
+    """Kiểm cấu trúc `header_them` của bản ghi module từ xa.
+
+    Chấp nhận dict {tên: giá trị} (đường đăng ký) hoặc list tên (bản ghi đã lưu/khôi phục —
+    giá trị thật nằm ở kho bí mật, không đi cùng bản ghi). Trả dict {tên: giá trị}
+    (list tên → {} — giá trị đọc từ kho bí mật lúc dựng thể hiện).
+
+    Từ chối: tên không phải token RFC 7230, tên hop-by-hop, tên httpx tự quản
+    (Host/Content-Length), Authorization khi đã có khoá, giá trị có ký tự điều khiển
+    (CRLF injection), quá số lượng (16) hoặc quá dài (tên 256, giá trị 8192 ký tự).
+    Sai → ValueError — thông điệp KHÔNG BAO GIỜ nêu giá trị (coi như bí mật).
+    """
+    if dang is None:
+        return {}
+    if isinstance(dang, list):
+        for ten in dang:
+            _kiem_ten_header(ten, co_khoa=co_khoa)
+        return {}
+    if not isinstance(dang, dict):
+        raise ValueError("header_them phải là đối tượng {tên: giá trị}")
+    if len(dang) > TRAN_HEADER_SO_LUONG:
+        raise ValueError(f"header_them tối đa {TRAN_HEADER_SO_LUONG} header")
+    kq: dict[str, str] = {}
+    for ten, gia_tri in dang.items():
+        _kiem_ten_header(ten, co_khoa=co_khoa)
+        if not isinstance(gia_tri, str):
+            raise ValueError(f"giá trị của header {ten!r} phải là chuỗi")
+        if len(gia_tri) > TRAN_HEADER_GIA_TRI:
+            raise ValueError(f"giá trị của header {ten!r} quá dài (tối đa {TRAN_HEADER_GIA_TRI} ký tự)")
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in gia_tri):
+            raise ValueError(f"giá trị của header {ten!r} chứa ký tự điều khiển — từ chối (chống CRLF injection)")
+        kq[ten] = gia_tri
+    return kq
+
+
 class ModuleTuXa:
     """Thể hiện phục vụ /v1 cho một bản ghi tu_xa.json (cùng giao diện với lớp Module có mã)."""
 
-    def __init__(self, ban_ghi: dict, api_key: str | None):
+    def __init__(self, ban_ghi: dict, api_key: str | None, header_them: dict | None = None):
         from app.nut_gpu import (
             HangDoiDongThoi,
             MachNgat,
@@ -159,6 +229,7 @@ class ModuleTuXa:
             khoa=[api_key] if api_key else [],
             kha_nang=("noi", "nghe", "anh_sua"),
             kiem_ip=_dia_chi_bi_chan,
+            header_them=header_them,
         )
 
         self._gpu_telemetry: list[dict] = []
@@ -271,7 +342,8 @@ class ModuleTuXa:
 
         phan = urlsplit(self.base_url)
         goc = f"{phan.scheme}://{phan.netloc}"
-        headers = {}
+        # Cùng gốc đã khai: gửi kèm header_them (đã kiểm ở đăng ký); Authorization từ khoá như cũ.
+        headers = dict(self._ct.header_them)
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 

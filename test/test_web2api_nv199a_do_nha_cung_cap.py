@@ -380,20 +380,25 @@ def test_do_nvidia_nim(du_lieu):
             assert "data: [DONE]" in s2.text
 
 
-def test_do_opencode_thieu_tieu_de_la(du_lieu):
-    """opencode: chat BẮT BUỘC x-opencode-client mà lõi không gửi được → ĐO ĐƯỢC ĐỎ."""
+def test_do_opencode_tieu_de_la_qua_header_them(du_lieu):
+    """opencode: khai header_them={"x-opencode-client": "desktop"} ở đăng ký → chat 200 (NV199c vá).
+    Không khai header → vẫn 400 như đo ở NV199a (xem test_web2api_nv199c_header_them.py)."""
     g = GiaOpencode()
     with MayChuThat(g.app) as s:
         g.url = s.url
         with TestClient(app) as c:
-            r = dang_ky(c, "do-opencode", "OpenCode", "oc", g.url + "/zen/v1", "public")
+            than = {"id": "do-opencode", "ten": "OpenCode", "tien_to": "oc",
+                    "base_url": g.url + "/zen/v1", "api_key": "public",
+                    "header_them": {"x-opencode-client": "desktop"}}
+            r = c.post("/api/modules/tu-xa", json=than, headers=QT)
             assert r.status_code == 200, r.text
+            # công khai chỉ nêu TÊN header, không lộ giá trị
+            assert r.json()["module"]["cau_hinh_cong_khai"]["header_them"] == ["x-opencode-client"]
             r2 = chat(c, "oc/qwen-free")
-            # lõi chỉ gửi Authorization, thiếu tiêu đề lạ → nhà giả trả 400, lõi chuyển tiếp 400
-            assert r2.status_code == 400, r2.text
+            assert r2.status_code == 200, r2.text
             nhan = g.nhat_ky[-1]
             assert nhan["auth"] == "Bearer public"
-            assert nhan["x_opencode_client"] is None
+            assert nhan["x_opencode_client"] == "desktop"
             # liệt kê model thì vẫn qua được (đường /models không đòi tiêu đề lạ)
             ds = c.get("/v1/models", headers=QT).json()["data"]
             assert "oc/qwen-free" in [m["id"] for m in ds]

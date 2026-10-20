@@ -330,11 +330,18 @@ def doc_tu_xa() -> list[dict]:
     return ds
 
 
-def luu_tu_xa(ban_ghi: dict, api_key: str | None) -> None:
+def luu_tu_xa(ban_ghi: dict, api_key: str | None, header_them: dict | None = None) -> None:
+    """Lưu bản ghi module từ xa; api_key và GIÁ TRỊ header_them (coi như bí mật) vào kho bí mật,
+    KHÔNG vào tu_xa.json (bản ghi trên đĩa chỉ giữ TÊN header)."""
     with _KHOA:
         ds = doc_tu_xa()
+        bi_mat: dict = {}
         if api_key:
-            ghi_bi_mat(ban_ghi["id"], {"api_key": api_key})
+            bi_mat["api_key"] = api_key
+        if header_them:
+            bi_mat["header_them"] = {str(k): str(v) for k, v in header_them.items()}
+        if bi_mat:
+            ghi_bi_mat(ban_ghi["id"], bi_mat)
         else:
             xoa_bi_mat(ban_ghi["id"])
         ds = [m for m in ds if m.get("id") != ban_ghi["id"]] + [ban_ghi]
