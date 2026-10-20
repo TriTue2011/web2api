@@ -9,7 +9,8 @@
 // QR một lần + CSP. Xem thêm modules/zalo-ca-nhan/README.md.
 //
 // CẢNH BÁO: dùng API không chính thức — Zalo có thể khoá tài khoản bất cứ lúc
-// nào. Dịch vụ chỉ nghe LOOPBACK (127.0.0.1); toàn bộ route (trừ trang QR một
+// nào. Dịch vụ nghe loopback, hoặc 0.0.0.0 TRONG container với cổng chỉ
+// publish về 127.0.0.1 của máy chủ (Z4); toàn bộ route (trừ trang QR một
 // lần) cần `Authorization: Bearer <ZALO_KHOA>`.
 
 import http from 'node:http';
@@ -44,8 +45,12 @@ export function docCauHinh() {
   if (!cfg.khoa || cfg.khoa.length < 24) {
     throw new Error('ZALO_KHOA thiếu hoặc ngắn hơn 24 ký tự — tự đặt: openssl rand -hex 32');
   }
-  if (cfg.may !== '127.0.0.1' && cfg.may !== '::1' && cfg.may !== 'localhost') {
-    throw new Error(`ZALO_HOST chỉ được là loopback (hiện ${cfg.may})`);
+  // Loopback khi chạy trực tiếp trên máy chủ; 0.0.0.0/:: CHỈ để nghe mọi
+  // interface TRONG container (Dockerfile đặt sẵn) — khi đó cổng PHẢI chỉ
+  // publish về 127.0.0.1 của máy chủ (`-p 127.0.0.1:8703:8703`), xem README.
+  // IP cụ thể khác (LAN/công khai) luôn bị từ chối.
+  if (!['127.0.0.1', '::1', 'localhost', '0.0.0.0', '::'].includes(cfg.may)) {
+    throw new Error(`ZALO_HOST chỉ được là loopback hoặc 0.0.0.0 trong container (hiện ${cfg.may})`);
   }
   if (!Number.isFinite(cfg.cong) || cfg.cong < 0 || cfg.cong > 65535) {
     throw new Error(`ZALO_PORT không hợp lệ (${process.env.ZALO_PORT})`);
@@ -69,6 +74,10 @@ export async function taoDichVu({ cauHinh = null, client = null } = {}) {
   const mocGuiPhut = [];
   const demTin = [];
   let seq = 0;
+  // Nhãn phiên (epoch): sinh ngẫu nhiên MỖI lần dịch vụ khởi động, trả kèm
+  // trong /tin-moi. seq về 0 khi khởi động lại — module thấy nhãn đổi thì
+  // đặt lại con trỏ của nó, không bỏ tin lặng lẽ (NV172-SUA Z2).
+  const nhanPhien = crypto.randomBytes(8).toString('hex');
   const phienQR = new Map(); // phien → {token, cookie_trang, het_han, anh_base64}
 
   function demTinMoi(tin) {
@@ -134,17 +143,24 @@ export async function taoDichVu({ cauHinh = null, client = null } = {}) {
     return gui.length === that.length && crypto.timingSafeEqual(gui, that);
   }
 
-  function kiemHanGui() {
+  // Hạn tốc độ gửi — kiểm và GIỮ CHỖ trong cùng một đoạn đồng bộ (NV172-SUA
+  // Z1). Bản cũ kiểm ở đầu handler rồi ghi mốc SAU `await zalo.guiTin`:
+  // mọi yêu cầu đến đồng thời đều thấy mốc cũ nên cùng qua (đo thật 40/40),
+  // và đường gửi lỗi không bao giờ ghi mốc. Nguyên tắc ở đây:
+  // - Kiểm + ghi mốc là MỘT thao tác không có `await` ở giữa (Node đơn
+  //   luồng ⇒ không yêu cầu nào chen vào giữa kiểm và giữ chỗ).
+  // - Mọi lần ĐÃ chạm Zalo đều bị đếm, kể cả gửi lỗi: Zalo đã thấy nỗ lực
+  //   gửi, và spam-lỗi là đúng mẫu cần chặn để bảo vệ tài khoản.
+  // - Lần bị từ chối TRƯỚC khi chạm Zalo (thân/tham số sai, chưa đăng
+  //   nhập) không tốn chỗ — handler kiểm các điều đó trước khi gọi hàm này.
+  function giuChoGui() {
     const bayGio = Date.now();
     while (mocGuiPhut.length && bayGio - mocGuiPhut[0] > 60_000) mocGuiPhut.shift();
-    if (mocGuiPhut.length >= GUI_TOI_DA_PHUT) return true;
-    if (bayGio - lanGuiCuoi < GUI_CACH_GI_MS) return true;
-    return false;
-  }
-
-  function ghiNhanGui() {
-    lanGuiCuoi = Date.now();
-    mocGuiPhut.push(lanGuiCuoi);
+    if (mocGuiPhut.length >= GUI_TOI_DA_PHUT) return false;
+    if (bayGio - lanGuiCuoi < GUI_CACH_GI_MS) return false;
+    lanGuiCuoi = bayGio;
+    mocGuiPhut.push(bayGio);
+    return true;
   }
 
   function sachTenTep(ten) {
@@ -152,9 +168,13 @@ export async function taoDichVu({ cauHinh = null, client = null } = {}) {
     return (goc.slice(0, 100) || 'tep').replace(/^\.+/, '');
   }
 
+  // CSP của trang QR (NV172-SUA Z4): form-action/base-uri KHÔNG rơi về
+  // default-src nên phải khai tường minh ở cả thẻ meta lẫn header.
+  const CSP_QR = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'";
+
   function trangQR(anhBase64) {
     return `<!doctype html><html lang="vi"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="${CSP_QR}">
 <meta http-equiv="refresh" content="7">
 <title>Đăng nhập Zalo — quét QR</title>
 <style>body{font-family:sans-serif;max-width:560px;margin:2em auto;padding:0 1em;color:#111}
@@ -187,7 +207,7 @@ img{width:300px;height:300px;border:1px solid #ccc}.canh-bao{background:#fff3cd;
       const html = trangQR(phien.anh_base64);
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
-        'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+        'Content-Security-Policy': CSP_QR,
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
@@ -217,12 +237,20 @@ img{width:300px;height:300px;border:1px solid #ccc}.canh-bao{background:#fff3cd;
       if (zalo.dangNhap()) return traJson(res, 409, { ok: false, ma: 'da_dang_nhap' });
       try {
         const { anh_base64 } = await zalo.dangNhapQR();
+        // Z4: anh_base64 đến từ zca-js (dữ liệu ngoài) và bị chèn vào thuộc
+        // tính src của trang QR — chỉ nhận đúng khuôn base64 (độ dài bội 4,
+        // bảng chữ base64, đệm = ở cuối); khác khuôn thì TỪ CHỐI tạo phiên,
+        // không dựng trang. Đây là kiểm cấu trúc, không phải lọc nội dung.
+        const anh = String(anh_base64 || '');
+        if (!/^[A-Za-z0-9+/]+={0,2}$/.test(anh) || anh.length % 4 !== 0) {
+          return traJson(res, 500, { ok: false, ma: 'anh_qr_sai' });
+        }
         const phien = crypto.randomBytes(12).toString('hex');
         const p = {
           token: crypto.randomBytes(24).toString('hex'),
           cookie_trang: crypto.randomBytes(24).toString('hex'),
           het_han: Date.now() + QR_HET_HAN_GIAY * 1000,
-          anh_base64,
+          anh_base64: anh, // chỉ giữ bản đã qua kiểm khuôn ở trên
         };
         phienQR.set(phien, p);
         setTimeout(() => phienQR.delete(phien), QR_HET_HAN_GIAY * 1000).unref?.();
@@ -242,10 +270,9 @@ img{width:300px;height:300px;border:1px solid #ccc}.canh-bao{background:#fff3cd;
     }
 
     if (req.method === 'POST' && duong === '/gui-tin') {
-      if (kiemHanGui()) {
-        res.setHeader('Retry-After', '2');
-        return traJson(res, 429, { ok: false, ma: 'gui_qua_nhanh' });
-      }
+      // Thứ tự theo nguyên tắc Z1: từ chối TRƯỚC khi chạm Zalo (thân/tham
+      // số sai, chưa đăng nhập) không tốn chỗ hạn tốc độ; giữ chỗ là thao
+      // tác đồng bộ cuối cùng ngay trước lời gọi Zalo.
       let than;
       try {
         than = JSON.parse(await docThan(req));
@@ -272,11 +299,24 @@ img{width:300px;height:300px;border:1px solid #ccc}.canh-bao{background:#fff3cd;
         tepDuongDan = path.join(thuMucTep, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${sachTenTep(tep.ten)}`);
         fs.writeFileSync(tepDuongDan, nhi_phan, { mode: 0o600 });
       }
+      if (!zalo.dangNhap()) {
+        if (tepDuongDan) {
+          try { fs.unlinkSync(tepDuongDan); } catch { /* bỏ qua */ }
+        }
+        return traJson(res, 409, { ok: false, ma: 'chua_dang_nhap' });
+      }
+      if (!giuChoGui()) {
+        if (tepDuongDan) {
+          try { fs.unlinkSync(tepDuongDan); } catch { /* bỏ qua */ }
+        }
+        res.setHeader('Retry-After', '2');
+        return traJson(res, 429, { ok: false, ma: 'gui_qua_nhanh' });
+      }
       try {
         await zalo.guiTin({ thread_id, loai, van_ban, tepDuongDan });
-        ghiNhanGui();
         return traJson(res, 200, { ok: true });
       } catch (e) {
+        // Chỗ đã giữ KHÔNG hoàn lại: lần gửi lỗi vẫn bị đếm (xem giuChoGui).
         return traLoi(res, e);
       } finally {
         if (tepDuongDan) {
@@ -288,7 +328,9 @@ img{width:300px;height:300px;border:1px solid #ccc}.canh-bao{background:#fff3cd;
     if (req.method === 'GET' && duong === '/tin-moi') {
       const tu = Math.max(0, Number(url.searchParams.get('tu')) || 0);
       const tin = demTin.filter((t) => t.seq > tu).slice(0, 100);
-      return traJson(res, 200, { ok: true, tu_moi: seq, tin });
+      // phien = nhãn phiên khởi động (Z2): module so nhãn để biết seq đã
+      // bị đặt lại sau lần khởi động lại, kể cả khi tu_moi tình cờ lớn hơn.
+      return traJson(res, 200, { ok: true, tu_moi: seq, phien: nhanPhien, tin });
     }
 
     if (req.method === 'POST' && duong === '/dang-xuat') {

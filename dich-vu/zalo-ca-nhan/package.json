@@ -9,7 +9,7 @@
   "name": "zalo-ca-nhan",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/server.test.js"
+    "test": "node --test \"test/*.test.js\""
   },
   "type": "module",
   "version": "0.1.0"
