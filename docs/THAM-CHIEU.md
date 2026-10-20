@@ -2932,8 +2932,11 @@ thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ng
   `dich-vu/youtube-phat/README.md`: dựng ảnh, chạy container, mở cổng LAN).
 - Khoá Integration API: đọc tệp `integration_token` trong `/data/youtube_phat`
   của dịch vụ.
-- Mạng tới dịch vụ (mặc định `http://127.0.0.1:8713`); địa chỉ lúc cài kiểm
-  bằng `app/tu_xa.py` (chống SSRF; cho phép loopback + LAN nội bộ).
+- Mạng tới dịch vụ: trường `dich_vu_url` BẮT BUỘC, không mặc định (NV181 bỏ
+  mặc định `http://127.0.0.1:8713` — loopback bị chính lõi chặn khi cài vì
+  lõi chạy trong container); nhập địa chỉ LAN của máy chạy dịch vụ hoặc tên
+  container trong mạng Docker nội bộ; địa chỉ lúc cài kiểm bằng
+  `app/tu_xa.py` (chống SSRF; cho phép LAN nội bộ, chặn loopback).
 - RAM/đĩa: chưa đo (điền `null` theo khuôn).
 
 **Cách cài.**
@@ -2941,7 +2944,7 @@ thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ng
 1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "youtube-phat"`.
 2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/youtube-phat`
 3. Cài cấu hình: `POST /api/modules/youtube-phat/cai` với thân
-   `{"cau_hinh": {"dich_vu_url": "http://127.0.0.1:8713",
+   `{"cau_hinh": {"dich_vu_url": "http://192.168.1.10:8713",
    "khoa_dich_vu": "<noi-dung-tep-integration_token>"}}` — lõi kiểm địa chỉ
    chống SSRF trước khi lưu; khoá lưu riêng 0600, không API nào trả lại.
 ### Module tuya — Tuya (thiết bị nhà, đám mây + LAN)
@@ -2957,22 +2960,23 @@ thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ng
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `dich_vu_url` | Không | Địa chỉ HTTP của dịch vụ youtube-phat (mặc định `http://127.0.0.1:8713`). |
+| `dich_vu_url` | Có | Địa chỉ HTTP của dịch vụ youtube-phat: IP LAN của máy chạy dịch vụ hoặc tên container Docker (KHÔNG dùng 127.0.0.1 — bị chặn khi cài, NV181). |
 | `khoa_dich_vu` | Có | Khoá Bearer của dịch vụ (tệp `integration_token`); lưu riêng 0600, bị chặn khỏi log, mọi nơi chỉ thấy dạng che `…abcd`. |
 
 **Ví dụ dùng.**
 
 ```bash
 curl -s -H "Authorization: Bearer $K" $W/api/modules/youtube-phat/suc-khoe
-# → {"ok": true, "dich_vu_url": "http://127.0.0.1:8713", "trang_thai": "ok", "khoa": "…abcd"}
+# → {"ok": true, "dich_vu_url": "http://192.168.1.10:8713", "trang_thai": "ok", "khoa": "…abcd"}
 ```
 
 **Đợt C — giao diện web.** Module khai `tab_web` (`{"nhan": "YouTube phát",
 "trang": "web/index.html"}`) nên khi đã cài có tab riêng ở `/m/youtube-phat/`
 (HTML tĩnh theo khung, một cột, điện thoại là chính); gỡ module thì tab biến
 mất. Tab gọi 10 hành động của module qua đường lõi
-`POST /api/thiet-bi/youtube_phat.dieu_khien/hanh-dong` (chuẩn C1, không sửa
-lõi): `tim` (YouTube/Zing + chép mã), `phat_len_loa` (chọn loa/tivi từ module
+`POST /api/thiet-bi/<thực thể>/hanh-dong` (chuẩn C1, không sửa
+lõi; NV181: hành động đọc qua `youtube_phat.xem` rủi ro `doc`, điều
+khiển qua `youtube_phat.dieu_khien` rủi ro `ghi`): `tim` (YouTube/Zing + chép mã), `phat_len_loa` (chọn loa/tivi từ module
 home-assistant qua `GET /api/thiet-bi`), `dung_phien` (dừng hẳn), `trang_thai`,
 `danh_sach_playlist` (chép id) + `nhap_ma_chia_se` (`TTPL1.`), `lay_khoa` (chép
 token HA khi bấm có chủ đích), `bai_ke`/`bai_truoc`/`tua` (đợt D4 — dịch vụ
