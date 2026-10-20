@@ -133,18 +133,23 @@ class LopXuLy(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _xac_thuc(self) -> bool:
-        if not secrets.compare_digest(
-                str(self.headers.get("Authorization") or ""),
-                f"Bearer {self.khoa}"):
+        # So sánh trên bytes: đầu Authorization có ký tự ngoài ASCII làm
+        # compare_digest(str, str) ném TypeError → luồng chết, kết nối đóng
+        # (N5). Trên bytes, bất kỳ byte nào cũng so được; lệch thì 401 sạch.
+        nhan = str(self.headers.get("Authorization") or "").encode("utf-8")
+        dung = secrets.compare_digest(nhan, f"Bearer {self.khoa}".encode("utf-8"))
+        if not dung:
             self._tra(401, {"loi": "sai khoa"})
             return False
         return True
 
     def _than_json(self) -> dict | None:
         try:
-            n = int(self.headers.get("Content-Length", "0") or 0)
-        except ValueError:
-            n = 0
+            n = int(str(self.headers.get("Content-Length", "0") or 0))
+        except (TypeError, ValueError):
+            return None  # Content-Length lạ → 400
+        if n < 0:
+            return None  # Content-Length âm: read(-1) sẽ treo chờ khách (N5)
         if n > TRAN_ANH_B64 + 4096:
             return None
         try:
@@ -192,8 +197,12 @@ def chay() -> None:
         luong=int(os.environ.get("NHINNHA_LUONG", "2")))
     LopXuLy.khoa = khoa
     cong = int(os.environ.get("PORT", "8703"))
-    srv = ThreadingHTTPServer(("127.0.0.1", cong), LopXuLy)
-    log.info("dich-vu nhin-nha nghe 127.0.0.1:%d", cong)
+    # Trong container phải nghe 0.0.0.0 thì cổng publish phía máy chủ
+    # (chỉ publish 127.0.0.1:8703) mới tới được; chạy trực tiếp ngoài
+    # container thì mặc định vẫn chỉ loopback. Dockerfile đặt NHINNHA_HOST.
+    host = os.environ.get("NHINNHA_HOST", "127.0.0.1")
+    srv = ThreadingHTTPServer((host, cong), LopXuLy)
+    log.info("dich-vu nhin-nha nghe %s:%d", host, cong)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -243,7 +243,7 @@ def test_tai_nguyen_null_khong_bia_so():
 
 def test_thuc_the_dung_tien_to(may_chu):
     inst = asyncio.run(_nap_on(may_chu))
-    tts = inst.thuc_the()
+    tts = asyncio.run(inst.thuc_the())
     assert len(tts) == 3
     for t in tts:
         assert t["id"].startswith("nhin_nha."), t["id"]
@@ -347,7 +347,7 @@ def _day(inst, ten, nhan):
 
 
 def test_day_mat_tao_nguoi(may_chu):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     kq = _day(inst, "Nguyễn Văn An", b"MAT_A")
     assert kq["ok"] is True and kq["trang_thai_moi"]["nguoi_moi"] is True
     # vector KHÔNG ra phản hồi
@@ -355,7 +355,7 @@ def test_day_mat_tao_nguoi(may_chu):
 
 
 def test_ten_sach_ky_tu_dieu_khien(may_chu):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     kq = _day(inst, "An\x00\x1b<img>", b"MAT_A")
     assert kq["ok"] is True
     kq2 = _thuc_hien(inst, "nhin_nha.so_mat", "danh_sach_nguoi", {})
@@ -365,19 +365,19 @@ def test_ten_sach_ky_tu_dieu_khien(may_chu):
 
 
 def test_mat_mo_khong_day_duoc(may_chu):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     kq = _day(inst, "Người Mờ", b"MAT_MO")
     assert kq["ok"] is False
 
 
 def test_anh_nhieu_mat_khong_day_duoc(may_chu):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     kq = _day(inst, "Người Đôi", b"MAT_HAI")
     assert kq["ok"] is False
 
 
 def test_vector_khong_vao_log_khi_day(may_chu, caplog):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     dau = base64.b64encode(MAT_A).decode()[:60]
     with caplog.at_level(logging.DEBUG):
         _day(inst, "An", b"MAT_A")
@@ -388,7 +388,7 @@ def test_vector_khong_vao_log_khi_day(may_chu, caplog):
 def test_nguong_tu_chinh_theo_du_lieu(may_chu):
     """c2a: ngưỡng «có thể» = min(cấu hình, max(30, cặp-khác-người cao nhất + 6)).
     A·B = 29 → ngưỡng hiệu lực 35."""
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     assert _day(inst, "An", b"MAT_A")["ok"] is True
     assert _day(inst, "Bình", b"MAT_B")["ok"] is True
     # 34/100 → người lạ; 36/100 → «có thể là»
@@ -409,7 +409,7 @@ def test_nhan_dien_mac_dinh_tat(may_chu):
 
 
 def test_nhan_dien_quen_va_la(may_chu):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     assert _day(inst, "An", b"MAT_A")["ok"] is True
     inst2 = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     kq = _thuc_hien(inst2, "nhin_nha.nhan_dien", "nhan_mat_trong_anh",
@@ -461,7 +461,7 @@ def test_xoa_nguoi_giu_su_kien_mat_ten(may_chu):
 
 def test_xoa_tat_ca(may_chu, tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     assert _day(inst, "An", b"MAT_A")["ok"] is True
     kq = _thuc_hien(inst, "nhin_nha.so_mat", "xoa_tat_ca", {})
     assert kq["ok"] is True
@@ -474,7 +474,7 @@ def test_xoa_tat_ca(may_chu, tmp_path, monkeypatch):
 def test_ma_hoa_khi_co_khoa_chinh(may_chu, tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     monkeypatch.setenv("WEB2API_KHOA_CHINH", base64.b64encode(os.urandom(32)).decode())
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     assert _day(inst, "An", b"MAT_A")["ok"] is True
     from app.kho import thu_muc_du_lieu
     teps = list((thu_muc_du_lieu() / "bi_mat" / "mo-dun" / "nhin-nha").glob("*.json"))
@@ -486,7 +486,7 @@ def test_ma_hoa_khi_co_khoa_chinh(may_chu, tmp_path, monkeypatch):
 def test_tep_0600_khi_khong_khoa_chinh(may_chu, tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     monkeypatch.delenv("WEB2API_KHOA_CHINH", raising=False)
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     assert _day(inst, "An", b"MAT_A")["ok"] is True
     from app.kho import thu_muc_du_lieu
     teps = list((thu_muc_du_lieu() / "bi_mat" / "mo-dun" / "nhin-nha").glob("*.json"))
@@ -516,9 +516,9 @@ def test_idor_tien_to_khac(may_chu):
 
 
 def test_trang_thai_mat_so_lieu(may_chu):
-    inst = asyncio.run(_nap_on(may_chu))
+    inst = asyncio.run(_nap_on(may_chu, nhan_mat_bat="1"))
     assert _day(inst, "An", b"MAT_A")["ok"] is True
-    tt = inst.trang_thai(["nhin_nha.so_mat"])
+    tt = asyncio.run(inst.trang_thai(["nhin_nha.so_mat"]))
     assert tt["nhin_nha.so_mat"]["so_nguoi"] == 1
 
 

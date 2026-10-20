@@ -12,9 +12,18 @@ chính thức (GitHub digest) của hai file trong bộ, đầy đủ trong hằ
 """
 from __future__ import annotations
 
+import hashlib
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def _kiem_sha256_tep(tep: Path, ky_vong: str) -> bool:
+    h = hashlib.sha256()
+    with Path(tep).open("rb") as f:
+        for khoi in iter(lambda: f.read(1 << 20), b""):
+            h.update(khoi)
+    return h.hexdigest() == ky_vong
 
 PHAT_HANH_MAT = "https://github.com/deepinsight/insightface/releases/download/v0.7/"
 
@@ -212,6 +221,11 @@ class BoNhanMat:
     """Hai phiên ONNX (dò + vector) của một bộ model. Dùng chung giữa các luồng."""
 
     def __init__(self, thu_muc: Path, bo: BoMat, luong: int = 2) -> None:
+        # Kiểm LẠI sha256 lúc nạp (N5) cho cả hai tệp của bộ — volume bị
+        # thay sau bước tải thì không nạp.
+        for tep, sha in ((bo.tep_do, bo.sha_do), (bo.tep_vector, bo.sha_vector)):
+            if not _kiem_sha256_tep(Path(thu_muc) / tep, sha):
+                raise ValueError(f"lệch sha256 khi nạp model {tep} — không dùng")
         import onnxruntime as ort
 
         def _phien(tep: str):

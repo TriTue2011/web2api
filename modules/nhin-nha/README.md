@@ -17,7 +17,7 @@ không nằm trong lõi.
 | Thực thể | Tên | Rủi ro | Hành động |
 |---|---|---|---|
 | `nhin_nha.mat` | Mắt nhà | doc | `quet_anh`, `trang_thai_mo_hinh` |
-| `nhin_nha.so_mat` | Sổ khuôn mặt | nguy_hiem | `danh_sach_nguoi`, `day_mat`, `doi_ten`, `xoa_nguoi`, `xoa_tat_ca`, `danh_sach_mat_la`, `dat_ten_mat_la`, `bo_qua_mat_la`, `su_kien_gan` |
+| `nhin_nha.so_mat` | Sổ khuôn mặt | nguy_hiem | `danh_sach_nguoi`, `day_mat`, `doi_ten`, `xoa_nguoi`, `xoa_tat_ca`, `danh_sach_mat_la`, `dat_ten_mat_la`, `bo_qua_mat_la`, `xoa_mat_la`, `su_kien_gan` |
 | `nhin_nha.nhan_dien` | Nhận diện khuôn mặt | nguy_hiem | `nhan_mat_trong_anh` (chỉ khi bật `nhan_mat_bat`) |
 
 ## Hàng rào sinh trắc (bắt buộc, không tắt được)
@@ -30,7 +30,20 @@ không nằm trong lõi.
   (loopback/RFC1918) — không có đường gửi ra dịch vụ ngoài lõi/máy nhà.
 - Nhận diện khuôn mặt **mặc định TẮT** (`nhan_mat_bat=0`): bật phải xác nhận
   cấp quản trị theo cổng nguy_hiem của lõi + ghi nhật ký.
-- Xoá: `xoa_nguoi` (một người, sự kiện giữ nhưng mất tên) và `xoa_tat_ca`.
+- **Cổng sinh trắc chung** (NV168-SUA N1): khi `nhan_mat_bat=0` thì MỌI
+  đường chạm dữ liệu sinh trắc đều bị chặn ở một cổng chung — dạy mặt, nhận
+  diện, đọc danh sách người/mặt lạ, đổi tên, đặt tên mặt lạ, sự kiện gần.
+  Chỉ việc **xoá** là ngoại lệ: xoá phải luôn làm được.
+- Vòng đọc-sửa-ghi sổ khoá bằng khoá bất đồng bộ (N2): dạy/xoá chồng nhau
+  không mất người, không hồi sinh dữ liệu đã xoá.
+- Sự kiện **không lưu vector** (N3); `xoa_nguoi` xoá vector của người đó ở
+  mọi bản sao trong sổ (mẫu + sự kiện cũ). Xoá: `xoa_nguoi`, `xoa_tat_ca`,
+  `xoa_mat_la` (một cụm hoặc tất cả).
+- **Mặt lạ** (dữ liệu sinh trắc của người thứ ba) có trần + hạn giữ (N4):
+  `mat_la_toi_da` (mặc định 50 cụm) và `mat_la_giu_ngay` (mặc định 30
+  ngày) — quá hạn tự xoá mỗi lần lưu sổ.
+- Đổi bộ model (buffalo_s → buffalo_l) phải **dạy lại sổ**: module không
+  lưu ảnh cắt khuôn mặt để tính lại vector (giữ ít dữ liệu sinh trắc hơn).
 - Kết quả nhận sai **không** được dùng để mở/khoá cửa hay hành động nguy
   hiểm — module chỉ là sổ.
 

@@ -15,9 +15,20 @@ Giấy phép trọng số: AGPL-3.0 (Ultralytics).
 from __future__ import annotations
 
 import ast
+import hashlib
+import struct
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def kiem_sha256_tep(tep: Path, ky_vong: str) -> bool:
+    """Băm một tệp theo khối — dùng khi tải (tai_model) và KHI NẠP (N5)."""
+    h = hashlib.sha256()
+    with Path(tep).open("rb") as f:
+        for khoi in iter(lambda: f.read(1 << 20), b""):
+            h.update(khoi)
+    return h.hexdigest() == ky_vong
 
 PHAT_HANH = "https://github.com/ultralytics/assets/releases/download/v8.4.0/"
 
@@ -165,14 +176,56 @@ def vi_tri(hop: tuple[int, int, int, int], rong: int, cao: int) -> str:
     return _VI_TRI[min(2, int(cy * 3))][min(2, int(cx * 3))]
 
 
+#: Trần điểm ảnh TRƯỚC khi giải mã (N5): PNG nén cực mạnh vài chục byte
+#: cũng khai được hàng trăm triệu điểm ảnh — trần base64 (14 MB) không
+#: chặn nổi bom giải nén. ~25 triệu điểm ≈ ảnh 5000×5000, dư cho camera nhà.
+TRAN_DIEM_ANH = 25_000_000
+
+
+def _kich_thuoc_anh(du_lieu: bytes) -> tuple[int, int] | None:
+    """(rộng, cao) đọc từ TIÊU ĐỀ PNG/JPEG — không giải mã điểm ảnh.
+
+    Không nhận dạng được khuôn thì trả None (để bước giải mã xử lý tiếp,
+    vẫn còn lớp chặn sau giải mã trong `doc_anh`)."""
+    if du_lieu[:8] == b"\x89PNG\r\n\x1a\n" and len(du_lieu) >= 24:
+        rong, cao = struct.unpack(">II", du_lieu[16:24])
+        return int(rong), int(cao)
+    if du_lieu[:2] == b"\xff\xd8":  # JPEG: duyệt các đoạn tới SOF0/1/2
+        i = 2
+        while i + 9 < len(du_lieu):
+            if du_lieu[i] != 0xFF:
+                i += 1
+                continue
+            dau = du_lieu[i + 1]
+            if dau in (0xC0, 0xC1, 0xC2):
+                cao, rong = struct.unpack(">HH", du_lieu[i + 5:i + 9])
+                return int(rong), int(cao)
+            if dau in (0xD8, 0xD9) or 0xD0 <= dau <= 0xD7 or dau == 0x01:
+                i += 2
+                continue
+            do_dai = int.from_bytes(du_lieu[i + 2:i + 4], "big")
+            if do_dai < 2:
+                return None
+            i += 2 + do_dai
+        return None
+    return None
+
+
 def doc_anh(du_lieu: bytes):
     """JPEG/PNG → mảng BGR. Không đọc được thì ném ``ValueError``."""
+    kt = _kich_thuoc_anh(du_lieu)
+    if kt is not None and kt[0] * kt[1] > TRAN_DIEM_ANH:
+        raise ValueError(
+            f"ảnh quá nhiều điểm ảnh ({kt[0]}x{kt[1]} > {TRAN_DIEM_ANH})")
     import cv2
     import numpy as np
 
     anh = cv2.imdecode(np.frombuffer(du_lieu, np.uint8), cv2.IMREAD_COLOR)
     if anh is None:
         raise ValueError("không đọc được ảnh")
+    if anh.shape[0] * anh.shape[1] > TRAN_DIEM_ANH:
+        # Khuôn không đọc được tiêu đề (WebP/BMP…) vẫn bị chặn sau giải mã.
+        raise ValueError("ảnh quá nhiều điểm ảnh sau giải mã")
     return anh
 
 
@@ -180,6 +233,15 @@ class BoPhatHien:
     """Một phiên ONNX cho một model. Dùng chung giữa các luồng — có khoá."""
 
     def __init__(self, duong_model: Path, luong: int = 2) -> None:
+        # Kiểm LẠI sha256 lúc nạp (N5): volume /model bị thay tệp sau khi
+        # tai_model đã kiểm thì dịch vụ cũng không được nạp. Chỉ nhận đúng
+        # các model đã ghim trong MODELS.
+        mh = next((m for m in MODELS if m.tep == Path(duong_model).name), None)
+        if mh is None:
+            raise ValueError(f"model {Path(duong_model).name} không nằm trong "
+                             "danh sách đã ghim sha256 (MODELS)")
+        if not kiem_sha256_tep(Path(duong_model), mh.sha256):
+            raise ValueError(f"lệch sha256 khi nạp model {mh.tep} — không dùng")
         import onnxruntime as ort
 
         tuy_chon = ort.SessionOptions()

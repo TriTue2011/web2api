@@ -1,1 +1,96 @@
-{"cung_cap": ["thiet_bi"], "giao_thuc": "http-noi-bo", "hang": "A", "id": "nhin-nha", "loai": "nha", "loai_ten": "Nhà", "mo_ta": "Thị giác nhà: YOLO phát hiện vật thể + nhận diện khuôn mặt qua dịch vụ ML phụ chạy trong máy nhà (dich-vu/nhin-nha). Module này là client + sổ khuôn mặt; phần ML nặng không nằm ở lõi.", "nguon": {"ghi_chu": "Port từ c2a commit d879b03 (bản sao ~/workspace/c2a-nv146, /opt/claude-c2a không còn): logic sổ khuôn mặt + nhận dạng IRIS từ services/so_mat_nha.py, phát hiện YOLO từ services/yolo_nha.py, dò mặt + vector từ services/khuon_mat_nha.py, mô hình nút GPU xa từ services/onnx_xa.py.", "loai": "port-c2a"}, "phien_ban": "0.1.0", "quyen": {"du_lieu_nhay_cam": ["embedding khuôn mặt (sinh trắc)", "tên gắn với khuôn mặt", "ảnh gửi dịch vụ ML"], "mang": ["HTTP tới dịch_vu_url (chỉ loopback/mạng nhà riêng)"]}, "tai_nguyen": {"dia_mb": null, "ghi_chu": "Chưa đo (chạy cùng quy trình web2api). Dịch vụ ML nặng tách riêng ở dich-vu/nhin-nha — xem README ở đó để biết tài nguyên khi chạy CPU/GPU.", "gpu": false, "mang_ra": [], "ram_them_mb": null}, "ten": "Nhìn nhà", "tien_to": "nhin_nha", "truong_cau_hinh": [{"khoa": "nhin_nha_bat", "kieu": "chuoi", "mac_dinh": "0", "mo_ta": "0 = tắt (mặc định, module không gọi dịch vụ ML); 1 = cho gọi dịch vụ.", "nhan": "Bật mắt nhà"}, {"khoa": "nhan_mat_bat", "kieu": "chuoi", "mac_dinh": "0", "mo_ta": "Mặc định TẮT vì nhận diện là dữ liệu sinh trắc nhạy cảm nhất. Đặt 1 để bật; mỗi lần bật được GHI NHẬT KÝ. Bật cần quản trị xác nhận trên đường /api/modules/nhin-nha/cai (cổng nguy_hiem của lõi). Kết quả «nhận sai» KHÔNG bao giờ gây hành động nguy hiểm (không mở cửa/khoá cửa) — module này chỉ là sổ, không kết nối thiết bị chấp hành.", "nhan": "Bật nhận diện khuôn mặt"}, {"khoa": "dich_vu_url", "kieu": "chuoi", "mac_dinh": "http://127.0.0.1:8703", "mo_ta": "CHỈ loopback (127.0.0.1) hoặc IP trong mạng nhà riêng (192.168.x.x, 10.x.x.x, 172.16.x.x) — IP công khai/metadata đám mây bị TỪ CHỐI (chống SSRF) vì dữ liệu sinh trắc không được rời máy nhà. Mặc định là container dich-vu/nhin-nha chạy cùng máy (port 8703).", "nhan": "Địa chỉ dịch vụ ML"}, {"khoa": "khoa_dich_vu", "kieu": "bi_mat", "mac_dinh": "", "mo_ta": "TỰ ĐẶT: chuỗi ngẫu nhiên tối thiểu 24 ký tự. Sinh bằng lệnh `head -c 32 /dev/urandom | base64`, rồi đặt cùng giá trị vào biến môi trường NHINNHA_KHOA khi chạy container dịch vụ (xem dich-vu/nhin-nha/README.md). Khoá lưu 0600/mã hoá trong kho của lõi, không API nào trả lại, không vào log/suc_khoe.", "nhan": "Khoá gọi dịch vụ ML"}, {"khoa": "nguong_co_the", "kieu": "chuoi", "mac_dinh": "40", "mo_ta": "CÁCH ĐO (không bịa): ngưỡng hiệu lực = min(cấu hình, max(30, cặp-khác-người giống nhất + 6)) — module tự tính trên dữ liệu sổ của chính nhà bạn. Để đo tay: dạy 2 người (day_mat), so do_giong của hai ảnh KHÁC người (xem su_kien_gan), đặt ngưỡng = giá trị cao nhất + 6. Số đo của c2a trên 17 ảnh mẫu camera nhà: hai người khác nhau cao nhất 29/100.", "nhan": "Ngưỡng «có thể là» (thang 0–100)"}, {"khoa": "nguong_chac", "kieu": "chuoi", "mac_dinh": "55", "mo_ta": "CÁCH ĐO: bằng ngưỡng «có thể là» hiệu lực hoặc cao hơn. Số đo của c2a: cùng người 14–57/100; ngưỡng chắc mặc định 55 cho phép ảnh rõ gần đạt, ảnh xấu thì «có thể là». Không nên thấp hơn 50.", "nhan": "Ngưỡng «chắc chắn» (thang 0–100)"}], "yeu_cau_goi": ["httpx"]}
+{
+ "cung_cap": [
+  "thiet_bi"
+ ],
+ "giao_thuc": "http-noi-bo",
+ "hang": "A",
+ "id": "nhin-nha",
+ "loai": "nha",
+ "loai_ten": "Nhà",
+ "mo_ta": "Thị giác nhà: YOLO phát hiện vật thể + nhận diện khuôn mặt qua dịch vụ ML phụ chạy trong máy nhà (dich-vu/nhin-nha). Module này là client + sổ khuôn mặt; phần ML nặng không nằm ở lõi.",
+ "nguon": {
+  "ghi_chu": "Port từ c2a commit d879b03 (bản sao ~/workspace/c2a-nv146, /opt/claude-c2a không còn): logic sổ khuôn mặt + nhận dạng IRIS từ services/so_mat_nha.py, phát hiện YOLO từ services/yolo_nha.py, dò mặt + vector từ services/khuon_mat_nha.py, mô hình nút GPU xa từ services/onnx_xa.py.",
+  "loai": "port-c2a"
+ },
+ "phien_ban": "0.2.0",
+ "quyen": {
+  "du_lieu_nhay_cam": [
+   "embedding khuôn mặt (sinh trắc)",
+   "tên gắn với khuôn mặt",
+   "ảnh gửi dịch vụ ML"
+  ],
+  "mang": [
+   "HTTP tới dịch_vu_url (chỉ loopback/mạng nhà riêng)"
+  ]
+ },
+ "tai_nguyen": {
+  "dia_mb": null,
+  "ghi_chu": "Chưa đo (chạy cùng quy trình web2api). Dịch vụ ML nặng tách riêng ở dich-vu/nhin-nha — xem README ở đó để biết tài nguyên khi chạy CPU/GPU.",
+  "gpu": false,
+  "mang_ra": [],
+  "ram_them_mb": null
+ },
+ "ten": "Nhìn nhà",
+ "tien_to": "nhin_nha",
+ "truong_cau_hinh": [
+  {
+   "khoa": "nhin_nha_bat",
+   "kieu": "chuoi",
+   "mac_dinh": "0",
+   "mo_ta": "0 = tắt (mặc định, module không gọi dịch vụ ML); 1 = cho gọi dịch vụ.",
+   "nhan": "Bật mắt nhà"
+  },
+  {
+   "khoa": "nhan_mat_bat",
+   "kieu": "chuoi",
+   "mac_dinh": "0",
+   "mo_ta": "Mặc định TẮT vì nhận diện là dữ liệu sinh trắc nhạy cảm nhất. Đặt 1 để bật; mỗi lần bật được GHI NHẬT KÝ. Bật cần quản trị xác nhận trên đường /api/modules/nhin-nha/cai (cổng nguy_hiem của lõi). Kết quả «nhận sai» KHÔNG bao giờ gây hành động nguy hiểm (không mở cửa/khoá cửa) — module này chỉ là sổ, không kết nối thiết bị chấp hành.",
+   "nhan": "Bật nhận diện khuôn mặt"
+  },
+  {
+   "khoa": "dich_vu_url",
+   "kieu": "chuoi",
+   "mac_dinh": "http://127.0.0.1:8703",
+   "mo_ta": "CHỈ loopback (127.0.0.1) hoặc IP trong mạng nhà riêng (192.168.x.x, 10.x.x.x, 172.16.x.x) — IP công khai/metadata đám mây bị TỪ CHỐI (chống SSRF) vì dữ liệu sinh trắc không được rời máy nhà. Mặc định là container dich-vu/nhin-nha chạy cùng máy (port 8703).",
+   "nhan": "Địa chỉ dịch vụ ML"
+  },
+  {
+   "khoa": "khoa_dich_vu",
+   "kieu": "bi_mat",
+   "mac_dinh": "",
+   "mo_ta": "TỰ ĐẶT: chuỗi ngẫu nhiên tối thiểu 24 ký tự. Sinh bằng lệnh `head -c 32 /dev/urandom | base64`, rồi đặt cùng giá trị vào biến môi trường NHINNHA_KHOA khi chạy container dịch vụ (xem dich-vu/nhin-nha/README.md). Khoá lưu 0600/mã hoá trong kho của lõi, không API nào trả lại, không vào log/suc_khoe.",
+   "nhan": "Khoá gọi dịch vụ ML"
+  },
+  {
+   "khoa": "nguong_co_the",
+   "kieu": "chuoi",
+   "mac_dinh": "40",
+   "mo_ta": "CÁCH ĐO (không bịa): ngưỡng hiệu lực = min(cấu hình, max(30, cặp-khác-người giống nhất + 6)) — module tự tính trên dữ liệu sổ của chính nhà bạn. Để đo tay: dạy 2 người (day_mat), so do_giong của hai ảnh KHÁC người (xem su_kien_gan), đặt ngưỡng = giá trị cao nhất + 6. Số đo của c2a trên 17 ảnh mẫu camera nhà: hai người khác nhau cao nhất 29/100.",
+   "nhan": "Ngưỡng «có thể là» (thang 0–100)"
+  },
+  {
+   "khoa": "nguong_chac",
+   "kieu": "chuoi",
+   "mac_dinh": "55",
+   "mo_ta": "CÁCH ĐO: bằng ngưỡng «có thể là» hiệu lực hoặc cao hơn. Số đo của c2a: cùng người 14–57/100; ngưỡng chắc mặc định 55 cho phép ảnh rõ gần đạt, ảnh xấu thì «có thể là». Không nên thấp hơn 50.",
+   "nhan": "Ngưỡng «chắc chắn» (thang 0–100)"
+  },
+  {
+   "khoa": "mat_la_toi_da",
+   "kieu": "chuoi",
+   "mac_dinh": "50",
+   "nhan": "Trần cụm mặt lạ",
+   "mo_ta": "TRẦN số cụm mặt lạ giữ trong sổ (dữ liệu sinh trắc của người thứ ba). Vượt trần giữ cụm mới nhất. Kẹp 1..1000. Số đo gợi ý: 300 người lạ mới đầy trần 500 sự kiện — 50 là mặc định ngắn theo yêu cầu riêng tư."
+  },
+  {
+   "khoa": "mat_la_giu_ngay",
+   "kieu": "chuoi",
+   "mac_dinh": "30",
+   "nhan": "Hạn giữ cụm mặt lạ (ngày)",
+   "mo_ta": "HẠN GIỮ (ngày) của một cụm mặt lạ tính từ lần thấy cuối: quá hạn tự xoá mỗi lần lưu sổ (cấu hình 1..3650). Mặt lạ là dữ liệu sinh trắc của người thứ ba — mặc định ngắn 30 ngày."
+  }
+ ],
+ "yeu_cau_goi": [
+  "httpx"
+ ]
+}

@@ -14,4 +14,8 @@ RUN useradd --create-home --uid 10001 nhinnha && mkdir -p /model && chown nhinnh
 USER nhinnha
 EXPOSE 8703
 ENV PORT=8703
+# Trong container nghe mọi giao diện thì cổng publish phía máy chủ mới tới
+# được; phía máy chủ CHỈ publish 127.0.0.1:8703 nên dịch vụ vẫn không lộ ra
+# LAN/Internet. Chạy server.py ngoài container mặc định chỉ nghe loopback.
+ENV NHINNHA_HOST=0.0.0.0
 CMD ["python", "server.py"]
