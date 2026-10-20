@@ -53,6 +53,10 @@ DA_KIEM_TOAN = {
     # không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi, không để lọt URL bí mật); ngoại lệ trong
     # bộ lọc làm hỏng chính lời gọi ghi log nên không được ném ra.
     ("modules/lich-ics/module.py", "filter"),
+    # Đã duyệt NV172 (cùng mẫu van-phong/zalo-bot): bộ lọc log chặn khoá Bearer của dịch vụ zalo-ca-nhan —
+    # không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi, không để lọt khoá); ngoại lệ trong bộ lọc
+    # làm hỏng chính lời gọi ghi log nên không được ném ra.
+    ("modules/zalo-ca-nhan/module.py", "filter"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),
