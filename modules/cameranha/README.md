@@ -34,6 +34,10 @@ Ghi (thực thể `cam.phat_<tên>`, chỉ khi `loa_bat=true`): `phat`
 
 ## Lưu ý khi gộp
 
-- Dịch vụ phụ cần ảnh Docker dựng thật (VM soạn bài không có Docker daemon).
+- Dịch vụ phụ cần ảnh Docker dựng thật (VM soạn bài không có Docker daemon) —
+  **ảnh container có sẵn ffmpeg** (bản tĩnh BtbN ghim SHA-256 trong Dockerfile).
+- Máy chạy test cục bộ: bộ test đầy đủ cần `ffmpeg` trên PATH (sinh JPEG thật);
+  máy thiếu ffmpeg thì các test cần nó **tự bỏ qua** (`cần ffmpeg`), các logic
+  cốt lõi vẫn được kiểm bằng JPEG dựng tay (NV167-sua).
 - Chưa kiểm với camera thật (chỉ go2rtc giả + camera giả qua loopback).
 - Chi tiết trong `docs/THAM-CHIEU.md` và báo cáo `nv167-bao-cao.md` (outbox).

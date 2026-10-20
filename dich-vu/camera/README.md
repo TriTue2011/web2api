@@ -26,6 +26,10 @@ Khoá phải ≥ 24 ký tự; dịch vụ từ chối khởi động nếu yếu
 curl -s http://127.0.0.1:8714/suc-khoe            # {"ok": true} (không cần khoá)
 ```
 
+Ảnh container có sẵn `ffmpeg` (bản tĩnh BtbN, ghim SHA-256 trong Dockerfile).
+Máy chạy **test cục bộ** của module `cameranha` cũng cần `ffmpeg` trên PATH để
+chạy đủ bộ (sinh JPEG thật); thiếu thì các test cần ffmpeg tự bỏ qua.
+
 ## Biến môi trường
 
 | Biến | Mặc định | Ý nghĩa |

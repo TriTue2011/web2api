@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -24,6 +25,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 pytestmark = pytest.mark.anyio
+
+#: Máy này có ffmpeg không (dịch vụ chụp/phát dùng ffmpeg; máy điều phối không có).
+CAN_FFMPEG = shutil.which("ffmpeg") is not None
+#: Bỏ qua các test cần ffmpeg khi máy không có (NV167-sua) — chỉ skip, không nuốt lỗi khác.
+can_ffmpeg = pytest.mark.skipif(not CAN_FFMPEG, reason="cần ffmpeg (chỉ có trong ảnh container dịch vụ)")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "modules", "cameranha")))
 
@@ -46,6 +52,8 @@ def _jpeg_that() -> bytes:
 @pytest.fixture(scope="module")
 def go2rtc_gia():
     """go2rtc giả: /api/frame.jpeg?src=cua trả JPEG thật; cái khác trả 404."""
+    if not CAN_FFMPEG:
+        pytest.skip("cần ffmpeg để sinh JPEG thật")
     jpeg = _jpeg_that()
 
     class _Go(BaseHTTPRequestHandler):
@@ -375,6 +383,7 @@ class TestBiMat:
 # ── 8. Kích thước JPEG ─────────────────────────────────────────────────────────
 
 class TestJpeg:
+    @can_ffmpeg
     async def test_kich_thuoc_jpeg_that(self):
         from module import kich_thuoc_jpeg
         jpeg = _jpeg_that()
@@ -383,6 +392,60 @@ class TestJpeg:
     async def test_khong_phai_jpeg(self):
         from module import kich_thuoc_jpeg
         assert kich_thuoc_jpeg(b"khong phai jpeg") is None
+
+
+# ── 8b. Đường chụp KHÔNG cần ffmpeg (NV167-sua) ────────────────────────────────
+
+#: JPEG tối thiểu dựng bằng tay: SOI + APP0 + SOF0 (32×16) + EOI — đủ cho
+#: kich_thuoc_jpeg đọc và đường chụp go2rtc truyền qua không đổi.
+_JPEG_TAY = bytes.fromhex(
+    "ffd8"                                    # SOI
+    "ffe000104a46494600010100000100010000"    # APP0/JFIF
+    "ffc00011080020001003012200021101031101"  # SOF0: cao 0x0020? chỉnh dưới
+    "ffd9"                                    # EOI
+).replace(b"\x08\x00\x20\x00\x10", b"\x08\x00\x10\x00\x20")
+
+
+@pytest.fixture(scope="module")
+def go2rtc_tay():
+    """go2rtc giả trả JPEG DỰNG TAY (không ffmpeg) — đường chính chạy được ở mọi máy."""
+    class _Go(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if "frame.jpeg" in self.path and "src=cua" in self.path:
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(_JPEG_TAY)))
+                self.end_headers()
+                self.wfile.write(_JPEG_TAY)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Go)
+    cong = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield {"base": f"http://127.0.0.1:{cong}", "jpeg": _JPEG_TAY}
+    srv.shutdown()
+
+
+class TestChupKhongCanFfmpeg:
+    """NV167-sua (2): máy thiếu ffmpeg vẫn kiểm được logic chụp cốt lõi."""
+
+    async def test_kich_thuoc_jpeg_tay(self):
+        from module import kich_thuoc_jpeg
+        assert kich_thuoc_jpeg(_JPEG_TAY) == (32, 16)
+
+    async def test_chup_duong_chinh_bang_jpeg_tay(self, monkeypatch, go2rtc_tay):
+        ch = {"danh_sach_camera": json.dumps([
+            {"name": "Cửa", "kind": "go2rtc", "src": "cua", "base": go2rtc_tay["base"]}])}
+        m = _nap(monkeypatch, ch)
+        kq = await m.thuc_hien("cam.cua", "chup")
+        assert kq["ok"] is True
+        assert base64.b64decode(kq["trang_thai_moi"]["anh_base64"]) == go2rtc_tay["jpeg"]
+        assert kq["trang_thai_moi"]["kich_thuoc"] == [32, 16]
 
 
 # ── 9. Dịch vụ phụ chạy thật ───────────────────────────────────────────────────
@@ -452,8 +515,10 @@ class TestChuoiDayDu:
         assert go2rtc_gia["base"] not in str(kq3)
 
 
+@can_ffmpeg
 class TestHangRaoDichVu:
-    """Hàng rào tầng dịch vụ phụ: giới hạn tần suất phát (2 lần liên tiếp bị chặn)."""
+    """Hàng rào tầng dịch vụ phụ: giới hạn tần suất phát (2 lần liên tiếp bị chặn).
+    Đường phát của dịch vụ cần ffmpeg để đổi âm thanh → bỏ qua khi máy thiếu."""
 
     async def test_phat_hai_lan_lien_tiep_bi_chan(self, dich_vu_gia, go2rtc_gia):
         import httpx
