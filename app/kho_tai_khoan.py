@@ -188,10 +188,29 @@ def _doc() -> dict:
     if not isinstance(du_lieu, dict):
         raise LoiKhoTaiKhoan("kho_hong")
     for id_, ban_ghi in du_lieu.items():
+        if not isinstance(id_, str) or not isinstance(ban_ghi, dict):
+            raise LoiKhoTaiKhoan("kho_hong")
+        if ban_ghi.get("loai") == "nhap":
+            # Bản ghi token nhập từ dịch vụ khác (NV197e): định danh bằng
+            # (nguon, dinh_danh), không bắt buộc email.
+            try:
+                dinh_danh = ban_ghi.get("dinh_danh")
+                nguon = ban_ghi.get("nguon")
+                hop_le = (
+                    id_ == ma_tai_khoan_nhap(nguon, dinh_danh)
+                    and isinstance(nguon, str) and nguon in NGUON_NHAP_CHO_PHEP
+                    and isinstance(dinh_danh, str) and dinh_danh
+                    and isinstance(ban_ghi.get("bi_mat"), str) and ban_ghi.get("bi_mat")
+                    and isinstance(ban_ghi.get("email"), str)
+                    and isinstance(ban_ghi.get("nhan"), str)
+                )
+            except Exception:
+                hop_le = False
+            if not hop_le:
+                raise LoiKhoTaiKhoan("kho_hong")
+            continue
         if (
-            not isinstance(id_, str)
-            or not isinstance(ban_ghi, dict)
-            or not isinstance(ban_ghi.get("email"), str)
+            not isinstance(ban_ghi.get("email"), str)
             or not isinstance(ban_ghi.get("mat_khau"), str)
             or id_ != ma_tai_khoan(ban_ghi["email"])
         ):
@@ -209,6 +228,20 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
 
     Nhãn được escape HTML ở biên ra (chống XSS khi giao diện chèn vào DOM).
     """
+    if ban_ghi.get("loai") == "nhap":
+        # Bản ghi token nhập (NV197e): không bao giờ lộ bi_mat hay dinh_danh thô
+        # (dinh_danh thường chính là email ở nguồn ngoài).
+        email = ban_ghi.get("email", "")
+        return {
+            "id": ban_ghi.get("id", ""),
+            "loai": "nhap",
+            "nguon": ban_ghi.get("nguon", ""),
+            "email_che": che_email(email) if email else None,
+            "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
+            "co_bi_mat": bool(ban_ghi.get("bi_mat")),
+            "trang_thai": ban_ghi.get("trang_thai", ""),
+            "cap_nhat": ban_ghi.get("cap_nhat", 0),
+        }
     email = ban_ghi.get("email", "")
     return {
         "id": ban_ghi.get("id", ""),
@@ -318,6 +351,103 @@ def tim_theo_email(email) -> dict | None:
     except LoiKhoTaiKhoan:
         return None
     return tim_theo_id(ma_tai_khoan(email_chuan))
+
+
+# ── Nhập tài khoản token từ dịch vụ khác (NV197e) ────────────────────────────
+# Ý từ c2a (services/cpa_service.py CPAImportService + services/sub2api_service.py
+# Sub2APIImportService @ d879b03, CHỈ ĐỌC): nhập chạy theo lô, từng mục lấy
+# token rồi gọi add_accounts — kết quả từng mục: added/skipped/failed, lỗi
+# từng mục không chặn cả lô. web2api: cùng kho TEN_KHO (không kho thứ hai),
+# bản ghi loại "nhap" (token/cookie, không phải email+mật khẩu), khử trùng
+# theo (nguon, dinh_danh), ghi NGUYÊN TỬ một lần dưới khoá kho.
+
+#: Nguồn nhập cho phép — danh sách ĐÓNG (đúng các nguồn module đọc được),
+#: không suy luận theo từ khoá.
+NGUON_NHAP_CHO_PHEP = ("ninerouter", "sub2api", "cpa")
+DOI_DAI_DINH_DANH_NHAP = 256
+DOI_DAI_BI_MAT_NHAP = 4096
+
+
+def ma_tai_khoan_nhap(nguon, dinh_danh) -> str:
+    """ID ổn định cho tài khoản nhập: ``tk-`` + 16 hex SHA-256 của
+    ``"nhap" + nguon + dinh_danh`` (phân tách bằng NUL để không lẫn)."""
+    goc = "nhap\x00" + str(nguon or "") + "\x00" + str(dinh_danh or "")
+    return _TIEN_TO_ID + hashlib.sha256(goc.encode("utf-8")).hexdigest()[:16]
+
+
+def _kiem_nguon_nhap(nguon) -> str:
+    if isinstance(nguon, bool) or not isinstance(nguon, str):
+        raise LoiKhoTaiKhoan("nguon_khong_ho_tro")
+    g = nguon.strip()
+    if g not in NGUON_NHAP_CHO_PHEP:
+        raise LoiKhoTaiKhoan("nguon_khong_ho_tro")
+    return g
+
+
+def _kiem_dinh_danh_nhap(dinh_danh) -> str:
+    if isinstance(dinh_danh, bool) or not isinstance(dinh_danh, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(dinh_danh, "dinh_danh")
+    d = dinh_danh.strip()
+    if not d or len(d) > DOI_DAI_DINH_DANH_NHAP:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return d
+
+
+def _kiem_bi_mat_nhap(bi_mat) -> str:
+    if isinstance(bi_mat, bool) or not isinstance(bi_mat, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(bi_mat, "bi_mat")
+    b = bi_mat.strip()
+    if not b or len(b) > DOI_DAI_BI_MAT_NHAP:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return b
+
+
+def nhap_nhieu_tai_khoan(danh_sach: list) -> list:
+    """Ghi NGUYÊN TỬ một lô tài khoản nhập vào cùng kho.
+
+    Mỗi mục: dict {"nguon", "dinh_danh", "bi_mat", "email"|None, "nhan"|""}.
+    Trả list kết quả từng mục {"ket_qua": "da_them"|"trung"|"loi", "loi"?: mã}.
+    Trùng (nguon, dinh_danh) → "trung", KHÔNG ghi đè bí mật cũ. Toàn bộ lô
+    đọc-sửa-ghi MỘT lần dưới khoá kho, một lần `_ghi` → kho hỏng giữa chừng
+    thì không có gì được ghi (không nửa vời).
+    """
+    with kho.giu_khoa_kho():
+        du_lieu = _doc()
+        da_thay = set()
+        ket_qua = []
+        for muc in danh_sach:
+            try:
+                nguon = _kiem_nguon_nhap(muc.get("nguon"))
+                dinh_danh = _kiem_dinh_danh_nhap(muc.get("dinh_danh"))
+                bi_mat = _kiem_bi_mat_nhap(muc.get("bi_mat"))
+                email_tho = muc.get("email")
+                email_chuan = chuan_hoa_email(email_tho) if email_tho else ""
+                nhan_sach = kiem_nhan(muc.get("nhan") or "")
+            except LoiKhoTaiKhoan as e:
+                ket_qua.append({"ket_qua": "loi", "loi": e.ma})
+                continue
+            id_ = ma_tai_khoan_nhap(nguon, dinh_danh)
+            if id_ in du_lieu or id_ in da_thay:
+                ket_qua.append({"ket_qua": "trung"})
+                continue
+            du_lieu[id_] = {
+                "id": id_,
+                "loai": "nhap",
+                "nguon": nguon,
+                "dinh_danh": dinh_danh,
+                "email": email_chuan,
+                "nhan": nhan_sach,
+                "bi_mat": bi_mat,
+                "trang_thai": "",
+                "cap_nhat": int(time.time()),
+            }
+            da_thay.add(id_)
+            ket_qua.append({"ket_qua": "da_them"})
+        if da_thay:
+            _ghi(du_lieu)
+    return ket_qua
 
 
 def xoa_tai_khoan(id_) -> bool:

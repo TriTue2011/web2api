@@ -9,9 +9,10 @@ chỉ làm phần phân tích + xem trước và khai một giao diện «áp d�
 - `xem_truoc_may_chu`: đọc danh sách qua API quản trị của máy chủ sub2api
   (đăng nhập JWT hoặc x-api-key) hoặc CLIProxyAPI/CPA (Bearer secret, CHỈ liệt
   kê tệp auth — không tải token).
-- `ap_dung(danh_sach_da_duyet)`: hàm giao diện NHẬN danh sách đã duyệt; kho chưa
-  nối nên luôn từ chối rõ ràng `chua_noi_kho_tai_khoan`. Module KHÔNG tự ghi
-  vào bất kỳ kho nào.
+- `ap_dung(danh_sach_da_duyet)`: hàm giao diện NHẬN danh sách đã duyệt và
+  GHI vào kho tài khoản của lõi qua `app.kho_tai_khoan.nhap_nhieu_tai_khoan`
+  (NV197e: cùng kho, không kho thứ hai; khử trùng theo (nguồn, định danh),
+  ghi nguyên tử, báo cáo từng dòng không lộ bí mật).
 
 An toàn:
 - CHỈ quản trị: mọi hành động kiểm danh tính người gọi qua ngữ cảnh lõi
@@ -76,6 +77,9 @@ TRAN_BASE64 = 8000
 TRAN_TEP = 6 * 1024 * 1024
 #: Trần nội dung sau khi bung gzip (byte) — chống bom nén.
 TRAN_GZIP_BUNG = 10 * 1024 * 1024
+#: Trần số mục trong một lần áp dụng (trần tham số 8 KB của lõi: token dài
+#: ~vài trăm byte — 20 mục là mức an toàn; nhiều hơn thì chia nhiều lần gọi).
+TRAN_AP_DUNG = 20
 #: Trần số mục trong một bản xem trước.
 TRAN_MUC_XEM_TRUOC = 2000
 #: Trần số trang khi liệt kê tài khoản sub2api (trang 200 mục ⇒ tối đa 1000 tài khoản).
@@ -578,6 +582,51 @@ def _xem_truoc_tep(tham_so: dict) -> dict:
     return kq
 
 
+# ───────── Áp dụng vào kho (NV197e) ─────────
+
+def _kiem_muc_nhap(muc) -> str | None:
+    """Kiểm hình dạng một mục nhập. Trả None nếu hợp lệ, "bo_qua" nếu thiếu
+    bí mật (không có gì để lưu — không phải lỗi), hoặc mã lỗi rút gọn.
+
+    Đây là kiểm SỚM ở tầng module (không chạm kho); kho kiểm lại có thẩm
+    quyền trong `nhap_nhieu_tai_khoan`.
+    """
+    if not isinstance(muc, dict):
+        return "danh_sach_sai_khuon"
+    if str(muc.get("nguon") or "").strip() not in ("ninerouter", "sub2api", "cpa"):
+        return "nguon_khong_ho_tro"
+    dinh_danh = muc.get("dinh_danh")
+    if not isinstance(dinh_danh, str) or not dinh_danh.strip():
+        return "dinh_danh_sai"
+    if len(dinh_danh) > 256 or any(not c.isprintable() for c in dinh_danh):
+        return "dinh_danh_sai"
+    bi_mat = muc.get("bi_mat")
+    if bi_mat is None or (isinstance(bi_mat, str) and not bi_mat.strip()):
+        return "bo_qua"
+    if not isinstance(bi_mat, str) or len(bi_mat) > 4096 \
+            or any(not c.isprintable() for c in bi_mat):
+        return "bi_mat_sai"
+    email = muc.get("email")
+    if email is not None and email != "" \
+            and (not isinstance(email, str) or len(email) > 320):
+        return "email_sai"
+    nhan = muc.get("nhan")
+    if nhan is not None and nhan != "" \
+            and (not isinstance(nhan, str) or len(nhan) > 120):
+        return "nhan_sai"
+    return None
+
+
+def _tom_tat_ap_dung(dong: list[dict]) -> dict:
+    """Gói kết quả từng dòng thành phản hồi tóm tắt (không bí mật)."""
+    dem = {"da_them": 0, "trung": 0, "bo_qua": 0, "loi": 0}
+    for d in dong:
+        k = d.get("ket_qua")
+        if k in dem:
+            dem[k] += 1
+    return {"ok": True, "tong": len(dong), "chi_tiet": dong, **dem}
+
+
 # ───────── Module ─────────
 
 _LUOC_DO_TEP = {
@@ -614,7 +663,32 @@ _LUOC_DO_AP_DUNG = {
     "required": ["danh_sach"],
     "additionalProperties": False,
     "properties": {
-        "danh_sach": {"type": "array", "maxItems": 500},
+        "danh_sach": {
+            "type": "array",
+            "maxItems": TRAN_AP_DUNG,
+            "items": {
+                "type": "object",
+                "required": ["nguon", "dinh_danh"],
+                "additionalProperties": False,
+                "properties": {
+                    "nguon": {"type": "string",
+                              "enum": ["ninerouter", "sub2api", "cpa"]},
+                    "dinh_danh": {"type": "string", "minLength": 1,
+                                  "maxLength": 256},
+                    "bi_mat": {"type": "string", "maxLength": 4096,
+                               "bi_mat": True,
+                               "mo_ta": "Token/cookie/khoá truy cập của tài khoản "
+                                        "ở dịch vụ nguồn. LẤY Ở ĐÂU: chỉ lấy từ "
+                                        "kết quả XEM TRƯỚC của chính module này "
+                                        "(xem_truoc_tep/xem_truoc_may_chu) — gửi "
+                                        "vào đây những mục đã duyệt. Không tự "
+                                        "đặt, không lấy từ nơi khác. Mục thiếu "
+                                        "bí mật được BỎ QUA (không phải lỗi)."},
+                    "email": {"type": "string", "maxLength": 320},
+                    "nhan": {"type": "string", "maxLength": 120},
+                },
+            },
+        },
     },
 }
 
@@ -639,7 +713,7 @@ class Module:
         return {
             "ok": True,
             "dinh_dang": ["ninerouter-json", "ninerouter-json.gz", "sub2api", "cpa"],
-            "ap_dung": "chua_noi_kho_tai_khoan",
+            "ap_dung": "da_noi_kho_tai_khoan",
         }
 
     async def dung(self) -> None:
@@ -674,12 +748,12 @@ class Module:
             },
             {
                 "id": f"{self.tien_to}.ap_dung",
-                "ten": "Áp dụng nhập tài khoản vào kho (chưa nối)",
+                "ten": "Áp dụng nhập tài khoản vào kho",
                 "loai": "cong_cu",
                 "thuoc_tinh": {"dich_vu": "nhaptaikhoan"},
                 "tinh_nang": [
                     {"hanh_dong": "ap_dung", "rui_ro": "nguy_hiem",
-                     "mo_ta": "Áp dụng danh sách đã duyệt vào kho tài khoản — CHƯA nối kho (NV144/NV72), luôn từ chối rõ ràng. Chỉ quản trị.",
+                     "mo_ta": "Áp dụng danh sách ĐÃ DUYỆT vào kho tài khoản của lõi (xem trước trước, danh sách gửi vào chính là xác nhận; thực thể nguy_hiem: lõi đòi step-up + xac_nhan). Ghi nguyên tử, khử trùng theo (nguồn, định danh), báo cáo từng dòng không lộ bí mật. Chỉ quản trị.",
                      "tham_so": _LUOC_DO_AP_DUNG},
                 ],
                 "rui_ro_mac_dinh": "nguy_hiem",
@@ -691,35 +765,78 @@ class Module:
         tt = {}
         for ent in ids:
             if ent == f"{self.tien_to}.ap_dung":
-                tt[ent] = {"san_sang": True, "ap_dung": "chua_noi_kho_tai_khoan"}
+                tt[ent] = {"san_sang": True, "ap_dung": "da_noi_kho_tai_khoan"}
             elif ent == f"{self.tien_to}.xem_truoc":
                 tt[ent] = {"san_sang": True,
                            "dinh_dang": ["ninerouter-json", "ninerouter-json.gz", "sub2api", "cpa"]}
         return tt
 
     def ap_dung(self, danh_sach) -> dict:
-        """HÀM GIAO DIỆN áp dụng — nhận danh sách tài khoản ĐÃ DUYỆT.
+        """Áp dụng danh sách ĐÃ DUYỆT vào kho tài khoản của lõi (NV197e).
 
-        Hợp đồng nối kho sau (khi NV144/NV72 gộp): mỗi mục là dict có `nguon`
-        ("sub2api" | "cpa" | "ninerouter"), `dinh_danh` (định danh ở nguồn) và
-        `bi_mat` (mã thô — CHỈ đi qua đường này, không qua xem trước/log).
-        Hiện kho chưa nối: hàm kiểm hình dạng rồi TỪ CHỐI rõ ràng, không ghi
-        vào bất kỳ đâu."""
+        Mỗi mục: {nguon ("ninerouter"|"sub2api"|"cpa"), dinh_danh, bi_mat,
+        email?, nhan?}. Ghi qua `app.kho_tai_khoan.nhap_nhieu_tai_khoan`
+        (cùng kho, không kho thứ hai), khử trùng theo (nguon, dinh_danh),
+        ghi nguyên tử một lần. Báo cáo từng dòng: da_them/trung/bo_qua/loi —
+        không lộ bí mật (định danh che, email thô không xuất hiện).
+
+        Luồng gọi đúng: XEM TRƯỚC trước (xem_truoc_tep/xem_truoc_may_chu),
+        duyệt rồi mới gọi hàm này — chính danh sách gửi vào là `xac_nhan`;
+        thực thể ap_dung ở mức nguy_hiem nên lõi còn đòi step-up + xac_nhan.
+        """
         if not isinstance(danh_sach, list) or not danh_sach:
             return {"ok": False, "loi": "danh_sach_rong"}
-        if len(danh_sach) > 500:
+        if len(danh_sach) > TRAN_AP_DUNG:
             return {"ok": False, "loi": "danh_sach_qua_lon"}
+
+        # Lượt 1 (không chạm kho): phân loại hình dạng từng mục.
+        muc_hop_le: list[dict] = []
+        dong: list[dict] = []
         for muc in danh_sach:
-            if not isinstance(muc, dict) or not _sach(muc.get("nguon")) \
-                    or not _sach(muc.get("dinh_danh")):
-                return {"ok": False, "loi": "danh_sach_sai_khuon"}
-        return {
-            "ok": False,
-            "loi": "chua_noi_kho_tai_khoan",
-            "chi_tiet": "Kho tài khoản/danh tính của lõi (NV144, NV72) chưa được "
-                        "gộp nên phần áp dụng chưa nối; danh sách đã duyệt KHÔNG "
-                        "được ghi vào đâu. Nối kho xong sẽ ghi qua đúng hàm này.",
-        }
+            ma = _kiem_muc_nhap(muc)
+            khoa_che = _che_ten(muc.get("dinh_danh")) \
+                if isinstance(muc, dict) else "…"
+            if ma is None:
+                muc_hop_le.append(muc)
+                dong.append({"nguon": str(muc.get("nguon")),
+                             "khoa_che": khoa_che, "_cho": len(muc_hop_le) - 1})
+            elif ma == "bo_qua":
+                dong.append({"nguon": str(muc.get("nguon")) if isinstance(muc, dict) else "",
+                             "khoa_che": khoa_che, "ket_qua": "bo_qua"})
+            else:
+                dong.append({"nguon": str(muc.get("nguon")) if isinstance(muc, dict) else "",
+                             "khoa_che": khoa_che, "ket_qua": "loi",
+                             "loi": ma})
+
+        # Lượt 2: ghi nguyên tử một lần dưới khoá kho (khử trùng trong kho).
+        from app import kho_tai_khoan
+
+        try:
+            kq_kho = kho_tai_khoan.nhap_nhieu_tai_khoan(muc_hop_le)
+        except kho_tai_khoan.LoiKhoTaiKhoan as e:
+            for d in dong:
+                if "_cho" in d:
+                    d["ket_qua"] = "loi"
+                    d["loi"] = e.ma
+                    del d["_cho"]
+            return _tom_tat_ap_dung(dong)
+        except Exception:
+            log.exception("nhaptaikhoan.ap_dung: lỗi kho không ngờ")
+            for d in dong:
+                if "_cho" in d:
+                    d["ket_qua"] = "loi"
+                    d["loi"] = "loi_noi_bo"
+                    del d["_cho"]
+            return _tom_tat_ap_dung(dong)
+
+        for d in dong:
+            if "_cho" in d:
+                k = kq_kho[d["_cho"]]
+                d["ket_qua"] = k["ket_qua"]
+                if k["ket_qua"] == "loi":
+                    d["loi"] = k["loi"]
+                del d["_cho"]
+        return _tom_tat_ap_dung(dong)
 
     async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
         tham_so = tham_so or {}

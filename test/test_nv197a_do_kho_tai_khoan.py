@@ -18,7 +18,7 @@ NV197b… riêng, mỗi ô một việc).
 - codex_error_recovery_scheduler (giới hạn khôi phục)           → test_khoi_phuc_gioi_han_2_lan_hong,
                                                                  test_khoi_phuc_tang_a_lam_moi
 - GET /api/accounts (xuất, chỉ dạng che — cả hai cùng thiết kế) → test_xuat_chi_du_lieu_che
-- POST /api/cpa|sub2api/.../import (nhập thật)                  → test_nhap_ap_dung_tu_choi (ĐỎ)
+- POST /api/cpa|sub2api/.../import (nhập thật)                  → test_nhap_ap_dung_ghi_that_vao_kho (NV197e: XANH)
 - POST /api/accounts/openai-hang-loat                          → test_dang_nhap_hang_loat
 """
 
@@ -310,8 +310,11 @@ def test_xuat_chi_du_lieu_che(moi_truong):
     assert ds[0]["co_mat_khau"] is True and ds[0]["co_totp"] is True
 
 
-def test_nhap_ap_dung_tu_choi(moi_truong):
-    """c2a import từ cpa/sub2api → web2api ap_dung từ chối: ĐỎ (kho chưa nối)."""
+def test_nhap_ap_dung_ghi_that_vao_kho(moi_truong):
+    """c2a import từ cpa/sub2api → web2api ap_dung GHI THẬT vào kho (NV197e).
+
+    (Trước NV197e test này tên test_nhap_ap_dung_tu_choi, assert từ chối
+    «chua_noi_kho_tai_khoan» — hành vi đã đổi có chủ ý nên cập nhật theo.)"""
     import pathlib
 
     from modules.nhaptaikhoan.module import Module
@@ -331,6 +334,7 @@ def test_nhap_ap_dung_tu_choi(moi_truong):
         ngu_canh.khoi_phuc(tok)
     assert kq.get("ok") is True, \
         f"nhập thật vào kho chưa nối được (c2a: import cpa/sub2api): {kq}"
+    assert kq.get("da_them") == 1
 
 
 def test_dang_nhap_hang_loat(moi_truong):

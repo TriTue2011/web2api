@@ -438,19 +438,25 @@ def test_loai_may_chu_la(mod, ctx_quan_tri):
 
 # ───────── ap_dung: giao diện rõ, từ chối khi chưa nối ─────────
 
-def test_ap_dung_tu_choi_ro_rang(mod, ctx_quan_tri):
+def test_ap_dung_ghi_that_vao_kho(mod, ctx_quan_tri, tmp_path, monkeypatch):
+    # NV197e: kho đã nối — ap_dung ghi thật, báo cáo từng dòng, không lộ bí mật.
+    # Cô lập WEB2API_DATA: tệp này không có fixture môi trường riêng.
+    d = tmp_path / "data-nv164"
+    d.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("WEB2API_DATA", str(d))
     ds = [{"nguon": "sub2api", "dinh_danh": "11", "email_che": "n***@example.com",
-           "bi_mat": {"access_token": "token-tho"}}]
+           "bi_mat": "token-tho-gia"}]
     kq = _thuc_hien(mod, "ap_dung", {"danh_sach": ds})
-    assert kq["ok"] is False
-    assert kq["loi"] == "chua_noi_kho_tai_khoan"
-    assert "NV144" in kq["chi_tiet"] or "NV72" in kq["chi_tiet"]
+    assert kq["ok"] is True
+    assert kq["da_them"] == 1
+    assert "token-tho-gia" not in json.dumps(kq)
 
 
-def test_ap_dung_ham_giao_dien(mod, ctx_quan_tri):
-    # Hàm giao diện rõ, gọi trực tiếp cũng từ chối rõ ràng.
+def test_ap_dung_ham_giao_dien_bo_qua_khi_thieu_bi_mat(mod, ctx_quan_tri):
+    # Hàm giao diện rõ: mục thiếu bí mật → «bo_qua» (không phải lỗi), gọi trực tiếp.
     kq = mod.ap_dung([{"nguon": "ninerouter", "dinh_danh": "c1"}])
-    assert kq["ok"] is False and kq["loi"] == "chua_noi_kho_tai_khoan"
+    assert kq["ok"] is True
+    assert kq["chi_tiet"][0]["ket_qua"] == "bo_qua"
 
 
 def test_ap_dung_danh_sach_rong(mod, ctx_quan_tri):

@@ -189,14 +189,19 @@ def test_qua_loi_that_goi_hanh_dong(moi_truong_loi_that):
     kq = r.json()
     assert kq["ok"] is True and kq["nguon"] == "ninerouter"
     assert TOKEN_9ROUTER_GIA not in json.dumps(kq, ensure_ascii=False)
-    # Thực thể ap_dung: nguy hiểm → quản trị gọi kèm xac_nhan, vẫn từ chối rõ ràng
-    # «chưa nối kho» (không phải 404 «không tìm thấy thực thể»).
+    # Thực thể ap_dung: nguy hiểm → quản trị gọi kèm xac_nhan; NV197e: kho đã
+    # nối nên ghi thật (không phải 404 «không tìm thấy thực thể», cũng không
+    # còn từ chối «chua_noi_kho_tai_khoan»).
     r2 = client.post("/api/thiet-bi/nhaptaikhoan.ap_dung/hanh-dong", headers=QT,
                      json={"hanh_dong": "ap_dung",
-                           "tham_so": {"danh_sach": [{"nguon": "x", "dinh_danh": "y"}]},
+                           "tham_so": {"danh_sach": [{"nguon": "sub2api",
+                                                      "dinh_danh": "tk-sua-1",
+                                                      "bi_mat": "bi-mat-gia-sua"}]},
                            "xac_nhan": True})
     assert r2.status_code == 200
-    assert r2.json()["loi"] == "chua_noi_kho_tai_khoan"
+    kq2 = r2.json()
+    assert kq2["ok"] is True and kq2["da_them"] == 1
+    assert "bi-mat-gia-sua" not in json.dumps(kq2, ensure_ascii=False)
 
 
 # ───────── (d): trần 8 KB của lõi ─────────
