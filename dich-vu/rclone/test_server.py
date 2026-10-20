@@ -168,7 +168,7 @@ def test_them_remote_dung_obscure(srv, monkeypatch):
         return True, "{}", ""
 
     monkeypatch.setattr(md, "_chay", _chay_gia)
-    md.tao_remote("rr1", "s3", {"mat_khau": "bi-mat"})
+    md.tao_remote("rr1", "s3", {"secret_access_key": "bi-mat"})
     assert "--obscure" in da_goi[0]
     assert "--" in da_goi[0]
 

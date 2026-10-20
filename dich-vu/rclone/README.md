@@ -38,10 +38,10 @@ kết quả. web2api **không** nhúng nhị phân vào ảnh lõi (quyết đ�
 2. **Chạy** (sinh khoá riêng, KHÔNG khoá mặc định):
    ```bash
    KHOA=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-   docker network create --internal mang-rclone-noi-bo || true
+   docker network create mang-rclone || true
 
    docker run -d --name rclone-bridge \
-     --network mang-rclone-noi-bo \
+     --network mang-rclone \
      --cap-drop ALL --security-opt no-new-privileges:true \
      --memory 256m --pids-limit 64 \
      -p 127.0.0.1:8702:8702 \
@@ -49,13 +49,16 @@ kết quả. web2api **không** nhúng nhị phân vào ảnh lõi (quyết đ�
      -v rclone-bridge-data:/data \
      rclone-bridge:1.0
    ```
-   - Dịch vụ **nghe loopback trên host** (`-p 127.0.0.1:8702:8702`); container
-     web2api trong cùng mạng `mang-rclone-noi-bo` gọi qua `http://rclone-bridge:8702`.
-   - **Mạng ra ngoài Internet là bắt buộc** cho remote đám mây (Google, S3…):
-     `mang-rclone-noi-bo` phải có NAT ra ngoài; khoanh vùng bằng firewall nếu
-     muốn (rclone chỉ cần HTTPS tới backend đã khai + `oauth2.googleapis.com`
-     khi dùng `drive_exchange`). Cấu hình rclone trong `/data/rclone/rclone.conf`
-     (0600) là bề mặt nhạy cảm nhất — volume này không sao lưu chung, không share.
+   - Dịch vụ **chỉ công bố loopback trên host** (`-p 127.0.0.1:8702:8702`);
+     container web2api trong cùng mạng `mang-rclone` gọi qua
+     `http://rclone-bridge:8702`. Mạng KHÔNG dùng `--internal`: mạng
+     `--internal` vừa không công bố được cổng vừa cắt đường ra Internet mà
+     rclone bắt buộc phải có để tới backend đám mây (Google, S3…). Đánh đổi:
+     khoanh vùng bằng việc chỉ publish loopback + firewall egress trên host
+     nếu muốn siết thêm (rclone chỉ cần HTTPS tới backend đã khai +
+     `oauth2.googleapis.com` khi dùng `drive_exchange`).
+   - Cấu hình rclone trong `/data/rclone/rclone.conf` (0600) là bề mặt nhạy
+     cảm nhất — volume này không sao lưu chung, không share.
 
 3. **Kiểm còn sống** (không cần khoá):
    ```bash
@@ -74,12 +77,21 @@ kết quả. web2api **không** nhúng nhị phân vào ảnh lõi (quyết đ�
   `kiem_tra`, `drive_start`, `drive_exchange`, `luu_khoa_json`, `liet_ke`,
   `doc_chu`, `tai_ve`, `gui_len`, `xoa`, `chuyen_tep`. Mọi op ngoài tập bị chặn
   **trước** khi gọi nhị phân; lệnh rclone luôn là danh sách đối số (không shell).
-- Đường cục bộ qua `resolve()` dưới `/data/workspace`; tên remote/loại/khoá
-  tham số qua regex; `config create` luôn `--obscure --`; hết giờ 30 s (tra cứu)
-  / 600 s (truyền); đầu ra cắt ở trần.
+- Đường cục bộ qua `resolve()` dưới `/data/workspace`; `config create` luôn
+  `--obscure --`; hết giờ 30 s (tra cứu) / 600 s (truyền); đầu ra cắt ở trần.
+  Tiến trình rclone con chỉ nhận môi trường tối thiểu (PATH/HOME/LANG) —
+  không thừa hưởng `RCLONE_KHOA` hay biến nào khác của dịch vụ.
+- Loại remote + tham số remote là **bảng ĐÓNG**: chỉ `drive`, `s3`, `webdav`,
+  `onedrive`, `dropbox`, `box`, `mega`, `ftp`, `sftp`, `http` với đúng tập
+  tham số của từng loại. Cấm `local`, `sftp` kèm tham số `ssh`, remote chồng
+  (`alias`/`union`/`combine`/`hasher`/`crypt`…) và mọi tham số lạ — ở cả
+  `them_remote` lẫn `config_ghi` (phân tích INI rồi áp cùng bảng).
 - `POST /tep-len` (thân thô ≤ 25 MB): nhận byte lên dịch vụ trước khi
-  `gui_len`; `GET /tep-xuong/<id>`: trả byte đã tải về; id do hệ thống sinh.
-- `config_xem` luôn trả bản đã che (`•••`); token/R2/S3/Drive không bao giờ vào
+  `gui_len`; `GET /tep-xuong/<id>`: truyền byte đã tải về theo khúc rồi XOÁ
+  tệp tạm (mỗi id tải được một lần); `tai_ve` chặn ở trần 25 MB; tệp tạm mồ
+  côi quá 10 phút tự dọn.
+- `config_xem` luôn trả bản đã che THEO CẤU TRÚC (mặc định che mọi giá trị,
+  chỉ siêu dữ liệu an toàn mới hiện); token/R2/S3/Drive không bao giờ vào
   log hay phản hồi.
 - `GET /suc-khoe`: mở, không cần khoá, chỉ báo còn sống. Thiếu/sai khoá → `401`
   (không lộ lý do chi tiết); dịch vụ từ chối khởi động nếu `RCLONE_KHOA` yếu
@@ -94,7 +106,10 @@ kết quả. web2api **không** nhúng nhị phân vào ảnh lõi (quyết đ�
 `test_server.py` dựng máy chủ thật trên 127.0.0.1 với nhị phân **giả**
 (`ho_tro_test/rclone_gia.py`, trỏ qua `RCLONE_BIN`): kiểm tập lệnh đóng, 401,
 path traversal/symlink, che khoá, ghi cấu hình hỏng thì giữ bản cũ, `--obscure`,
-drive_start, upload/download hai bước. `test_dockerfile.py` kiểm tĩnh Dockerfile
+drive_start, upload/download hai bước. `test_server_sua.py` (NV161-SUA) kiểm
+vòng sửa theo soát độc lập: bảng loại/tham số remote đóng, môi trường tối
+thiểu cho tiến trình con, che cấu hình theo cấu trúc, trần + dọn tệp tạm,
+401 không đọc thân. `test_dockerfile.py` kiểm tĩnh Dockerfile
 (ghim digest + SHA-256 từng kiến trúc, uid không root, không `curl|sh`).
 
 ## CHƯA kiểm (ghi `null` theo khuôn)

@@ -17,10 +17,16 @@ chung; mọi đường (trừ /suc-khoe) kiểm Bearer TRƯỚC khi đọc thân
 Hợp đồng:
 - Chỉ nhận JSON ``{"lenh", "tham_so"}`` với ``lenh`` trong TẬP ĐÓNG (ánh xạ sang
   lệnh rclone an toàn); mọi tham số đường dẫn qua ``resolve()`` dưới thư mục
-  làm việc; tên remote/loại/khoá tham số qua regex; không bao giờ truyền chuỗi
-  thô vào shell (luôn ``shell=False``).
-- Hết giờ 30 s (tra cứu) / 600 s (truyền); đầu ra cắt ở trần.
-- Cấu hình rclone chứa token R2/S3/Drive thật: tệp 0600, API chỉ trả bản đã che;
+  làm việc; không bao giờ truyền chuỗi thô vào shell (luôn ``shell=False``).
+- Loại remote và tham số remote cũng là TẬP ĐÓNG (bảng
+  ``LOAI_REMOTE_CHO_PHEP``): mặc định CẤM mọi loại ngoài bảng (``local``,
+  ``sftp`` kèm ``ssh``, remote chồng ``alias``/``union``/``crypt``…) và mọi
+  tham số ngoài tập của loại — áp ở cả ``them_remote`` lẫn ``config_ghi``.
+  Tiến trình rclone con chỉ nhận môi trường tối thiểu (không có khoá dịch vụ).
+- Hết giờ 30 s (tra cứu) / 600 s (truyền); đầu ra cắt ở trần; ``tai_ve`` có
+  trần kích thước và tệp tạm được dọn sau khi dùng/quá hạn.
+- Cấu hình rclone chứa token R2/S3/Drive thật: tệp 0600, API chỉ trả bản đã
+  che THEO CẤU TRÚC (mặc định che, chỉ khoá siêu dữ liệu an toàn mới hiện);
   log không chứa bí mật.
 - Binary rclone (Go, MIT) do Dockerfile tự tải + ghim SHA-256 từng kiến trúc.
 
@@ -34,6 +40,7 @@ Chỉ dùng thư viện chuẩn (không thêm gói).
 from __future__ import annotations
 
 import base64
+import configparser
 import hmac
 import io
 import json
@@ -43,6 +50,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -73,16 +81,46 @@ MAX_MUC = 500             # trần số mục liệt kê thư mục
 #: ID tệp do hệ thống sinh: 16 ký tự hex.
 MAU_ID_TEP = re.compile(r"^[a-f0-9]{16}$")
 
-#: Tên remote: chữ/số/._- , 1..64 ký tự (giữ nguyên từ c2a).
-_TEN_REMOTE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
-#: Loại remote đứng trước dấu ``--`` của CLI (giữ nguyên từ c2a).
-_LOAI_REMOTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+#: Tên remote: phải bắt đầu bằng chữ/số (chặn tiêm cờ CLI dạng `--log-file`),
+#: 1..64 ký tự (giữ nguyên từ c2a + siết ký tự đầu).
+_TEN_REMOTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 #: Tên tham số remote sau ``--`` (giữ nguyên từ c2a).
 _KHOA_THAM_SO_REMOTE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
-#: Khoá nào là bí mật thì che khi trả cấu hình ra giao diện (giữ nguyên từ c2a).
-_KHOA_BI_MAT = re.compile(
-    r"(token|pass|password|secret|key|credentials|client_secret|sa_file)",
-    re.I)
+
+#: BẢNG ĐÓNG: loại remote ĐƯỢC PHÉP và THAM SỐ ĐƯỢC PHÉP của từng loại
+#: (NV161-SUA, phát hiện A3 — sửa theo nguyên tắc «mặc định cấm»).
+#: Đây là chỗ DUY NHẤT chấp nhận danh sách vì phải đóng theo nguyên tắc:
+#: loại không có trong bảng (``local``, ``ssh``, remote chồng ``alias``,
+#: ``union``, ``combine``, ``hasher``, ``crypt`` chồng lên local…) đều bị
+#: chặn; tham số ngoài tập của loại đều bị chặn — kể cả ``ssh`` của backend
+#: sftp (đường dẫn + đối số tới nhị phân ssh ngoài → chạy lệnh tuỳ ý).
+LOAI_REMOTE_CHO_PHEP: dict[str, frozenset[str]] = {
+    "drive": frozenset({
+        "client_id", "client_secret", "token", "scope", "root_folder_id",
+        "service_account_file", "team_drive"}),
+    "s3": frozenset({
+        "provider", "access_key_id", "secret_access_key", "session_token",
+        "endpoint", "region", "env_auth", "acl", "storage_class",
+        "force_path_style"}),
+    "webdav": frozenset({"url", "vendor", "user", "pass", "bearer_token"}),
+    "onedrive": frozenset({
+        "client_id", "client_secret", "token", "drive_id", "drive_type"}),
+    "dropbox": frozenset({"token", "client_id", "client_secret"}),
+    "box": frozenset({"token", "client_id", "client_secret"}),
+    "mega": frozenset({"user", "pass"}),
+    "ftp": frozenset({"host", "port", "user", "pass", "tls"}),
+    "sftp": frozenset({
+        "host", "port", "user", "pass", "key_file", "key_pem",
+        "use_insecure_cipher", "disable_hashcheck"}),
+    "http": frozenset({"url"}),
+}
+
+#: `config_xem` che theo CẤU TRÚC: mọi giá trị bị che theo mặc định, CHỈ các
+#: khoá siêu dữ liệu không bí mật này được hiện nguyên (để đối chiếu cấu hình).
+_KHOA_CAU_HINH_HIEN_GIA_TRI = frozenset({
+    "type", "provider", "region", "scope", "vendor", "drive_type",
+    "storage_class", "acl", "force_path_style", "env_auth", "tls",
+})
 
 
 class LoiYeuCau(Exception):
@@ -210,11 +248,26 @@ def cau_hinh_toan_cuc() -> dict:
 _CAU_HINH: dict = {}
 
 
+def _moi_truong_con() -> dict:
+    """Môi trường TỐI THIỂU cho tiến trình rclone con (phát hiện A3).
+
+    KHÔNG thừa hưởng môi trường của dịch vụ: đặc biệt không có
+    ``RCLONE_KHOA`` (khoá dịch vụ) và không có biến nào khác mà người/nơi
+    khác đã đặt — liệt kê tường minh đúng ba biến rclone cần.
+    """
+    return {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "LANG": "C.UTF-8",
+    }
+
+
 def _chay(args: list[str], *, timeout: int = HET_GIO_NHANH) -> tuple[bool, str, str]:
     """Chạy một lệnh rclone bằng DANH SÁCH đối số (ràng buộc 2: không shell)."""
     lenh = [_rclone(), "--config", str(conf_path()), *args]
     try:
-        r = subprocess.run(lenh, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(lenh, capture_output=True, text=True, timeout=timeout,
+                           env=_moi_truong_con())
     except subprocess.TimeoutExpired:
         return False, "", f"quá {timeout} giây không xong"
     except FileNotFoundError as exc:
@@ -255,7 +308,13 @@ def remotes() -> list[dict]:
 
 
 def config_da_che() -> str:
-    """Nội dung rclone.conf với mọi giá trị bí mật thay bằng •••."""
+    """Nội dung rclone.conf đã che THEO CẤU TRÚC (phát hiện A4).
+
+    Mặc định CHE mọi giá trị (kể cả khoá chưa từng nghe tên như ``sas_url``,
+    ``access_grant``, URL chứa mật khẩu); chỉ khoá trong tập
+    ``_KHOA_CAU_HINH_HIEN_GIA_TRI`` (siêu dữ liệu không bí mật) mới hiện
+    nguyên để người dùng đối chiếu. Không khớp theo tên khoá bí mật nữa.
+    """
     try:
         raw = conf_path().read_text("utf-8")
     except OSError:
@@ -264,11 +323,51 @@ def config_da_che() -> str:
     for dong in raw.splitlines():
         if "=" in dong and not dong.lstrip().startswith((";", "#", "[")):
             khoa, _, gt = dong.partition("=")
-            if _KHOA_BI_MAT.search(khoa) and gt.strip():
+            if khoa.strip().lower() not in _KHOA_CAU_HINH_HIEN_GIA_TRI \
+                    and gt.strip():
                 ra.append(f"{khoa}= •••")
                 continue
         ra.append(dong)
     return "\n".join(ra)
+
+
+def _loi_cau_hinh_remote(loai: str, tham_so: dict) -> str | None:
+    """Kiểm một remote theo BẢNG ĐÓNG — trả thông điệp lỗi hoặc None.
+
+    Dùng chung cho `tao_remote` (khai qua API) và `dat_config` (dán cả tệp
+    rclone.conf): cùng một luật, không đường vòng.
+    """
+    loai = str(loai or "").strip().lower()
+    tap = LOAI_REMOTE_CHO_PHEP.get(loai)
+    if tap is None:
+        return (f"loại remote «{loai[:40]}» không được phép — chỉ nhận loại "
+                "lưu trữ đám mây/WebDAV/S3 trong bảng cho phép của dịch vụ")
+    for k in tham_so:
+        if str(k) not in tap:
+            return (f"tham số «{str(k)[:60]}» không được phép cho loại "
+                    f"remote {loai}")
+    return None
+
+
+def _kiem_noi_dung_config(text: str) -> str | None:
+    """Phân tích INI của một rclone.conf và áp BẢNG ĐÓNG cho từng remote."""
+    cp = configparser.RawConfigParser()
+    cp.optionxform = str  # giữ nguyên hoa/thường của tên khoá
+    try:
+        cp.read_string(text)
+    except configparser.Error:
+        return "cấu hình không phân tích được (không phải INI hợp lệ)"
+    for muc in cp.sections():
+        if not _TEN_REMOTE.match(muc):
+            return f"tên remote không hợp lệ trong cấu hình: {muc[:60]}"
+        tham_so = dict(cp.items(muc))
+        loai = str(tham_so.pop("type", "") or "").strip()
+        if not loai:
+            return f"remote «{muc[:60]}» thiếu khoá type"
+        loi = _loi_cau_hinh_remote(loai, tham_so)
+        if loi:
+            return loi
+    return None
 
 
 def dat_config(noi_dung: str) -> dict:
@@ -277,6 +376,9 @@ def dat_config(noi_dung: str) -> dict:
     if "•••" in text:
         return {"ok": False, "error":
                 "Nội dung còn dấu ••• — đó là bản đã che, hãy dán cấu hình thật"}
+    loi_kiem = _kiem_noi_dung_config(text)
+    if loi_kiem:
+        return {"ok": False, "error": loi_kiem}
     p = conf_path()
     try:
         cu = p.read_text("utf-8")
@@ -402,20 +504,39 @@ def luu_khoa_json(ten: str, noi_dung: str) -> dict:
 
 
 def tao_remote(ten: str, loai: str, tham_so: dict) -> dict:
-    """Khai một remote không cần OAuth. --obscure BẮT BUỘC (giữ nguyên từ c2a)."""
+    """Khai một remote không cần OAuth. --obscure BẮT BUỘC (giữ nguyên từ c2a).
+
+    Loại và tham số qua BẢNG ĐÓNG `LOAI_REMOTE_CHO_PHEP` (phát hiện A3):
+    mặc định cấm — remote `local`/`sftp ssh=`/remote chồng không còn đường
+    vào, ở đây hay qua `config_ghi` đều như nhau.
+    """
     ten = str(ten or "").strip()
     if not _TEN_REMOTE.match(ten):
-        return {"ok": False, "error": "tên remote chỉ gồm chữ, số, dấu . _ -"}
-    loai = str(loai or "").strip()
-    if not _LOAI_REMOTE.match(loai):
-        return {"ok": False, "error": "loại remote không hợp lệ"}
-    args = ["config", "create", ten, loai, "--obscure", "--"]
-    for k, v in (tham_so or {}).items():
+        return {"ok": False,
+                "error": "tên remote chỉ gồm chữ, số, dấu . _ - và bắt đầu "
+                         "bằng chữ hoặc số"}
+    loai = str(loai or "").strip().lower()
+    if not isinstance(tham_so, dict):
+        return {"ok": False, "error": "tham_so_sai"}
+    sach: dict[str, str] = {}
+    for k, v in tham_so.items():
         k = str(k).strip()
         if not _KHOA_THAM_SO_REMOTE.match(k):
             return {"ok": False, "error": f"tên tham số remote không hợp lệ: {k[:60]}"}
-        if k and str(v).strip():
-            args += [k, str(v)]
+        if v is None or isinstance(v, (dict, list)):
+            return {"ok": False, "error": f"giá trị tham số không hợp lệ: {k[:60]}"}
+        v = str(v)
+        if any(ord(c) < 32 for c in v):
+            return {"ok": False,
+                    "error": f"giá trị tham số chứa ký tự điều khiển: {k[:60]}"}
+        if v.strip():
+            sach[k] = v
+    loi = _loi_cau_hinh_remote(loai, sach)
+    if loi:
+        return {"ok": False, "error": loi}
+    args = ["config", "create", ten, loai, "--obscure", "--"]
+    for k, v in sach.items():
+        args += [k, v]
     ok, _, err = _chay(args, timeout=HET_GIO_TRUYEN)
     return {"ok": ok, "error": err[:200], "remotes": remotes()}
 
@@ -474,11 +595,33 @@ def _tep_tam(id_tep: str, thu_muc_goc: Path) -> Path:
     return p
 
 
+def don_tep_tam(qua_han_giay: int = 600) -> int:
+    """Dọn tệp tạm ``tep-*.bin`` quá hạn trong thư mục làm việc (phát hiện A6).
+
+    Tệp tạm sinh bởi /tep-len và tai_ve; bình thường chúng bị xoá ngay sau
+    khi dùng (xem /tep-xuong và gui_len) — lượt quét này là lưới cho các tệp
+    mồ côi khi một lượt bị bỏ dở. Chỉ dọn đúng mẫu tệp hệ thống sinh.
+    """
+    goc = thu_muc_lam_viec()
+    moc = time.time() - max(0, int(qua_han_giay))
+    da_xoa = 0
+    for p in goc.glob("tep-*.bin"):
+        try:
+            if p.is_file() and p.stat().st_mtime < moc:
+                p.unlink()
+                da_xoa += 1
+        except OSError:
+            pass
+    return da_xoa
+
+
 def tai_ve(duong_dan: str) -> dict:
     """Tải file từ đám mây về thư mục làm việc; trả id để lấy qua /tep-xuong.
 
     Trả id thay vì nội dung: giữ phản hồi /lenh nhỏ, module lấy byte qua đường
-    riêng (tránh JSON khổng lồ).
+    riêng (tránh JSON khổng lồ). Tải thẳng vào tên tệp hệ thống sinh (không
+    qua bước đổi tên — tránh đua tên), và CHẶN ở trần `TRAN_TEP_QUA_LENH`:
+    tệp lớn hơn bị xoá ngay và báo lỗi, không để đĩa đầy dần (phát hiện A6).
     """
     try:
         dd = _kiem_remote(duong_dan)
@@ -486,21 +629,30 @@ def tai_ve(duong_dan: str) -> dict:
         if not ten:
             return {"ok": False, "error": "không suy được tên file để lưu"}
         goc = thu_muc_lam_viec()
-        dich = _duong_dan_cuc_bo(ten, goc)
     except LoiYeuCau as e:
         return {"ok": False, "error": e.loi}
+    don_tep_tam()
+    id_tep = secrets.token_hex(8)
+    dich = goc / f"tep-{id_tep}.bin"
     ok, _, err = _chay(["copyto", dd, str(dich)], timeout=HET_GIO_TRUYEN)
     if not ok:
+        try:
+            dich.unlink(missing_ok=True)
+        except OSError:
+            pass
         return {"ok": False, "error": err[:200]}
-    id_tep = secrets.token_hex(8)
-    dich_moi = goc / f"tep-{id_tep}.bin"
-    dich.rename(dich_moi)
+    co = dich.stat().st_size
+    if co > TRAN_TEP_QUA_LENH:
+        try:
+            dich.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return {"ok": False, "error": "tep_qua_lon"}
     try:
-        os.chmod(dich_moi, 0o600)
+        os.chmod(dich, 0o600)
     except OSError:
         pass
-    return {"ok": True, "id_tep": id_tep, "ten": ten,
-            "co": dich_moi.stat().st_size}
+    return {"ok": True, "id_tep": id_tep, "ten": ten, "co": co}
 
 
 def gui_len(id_tep: str, thu_muc_dam_may: str, ten: str = "") -> dict:
@@ -516,8 +668,14 @@ def gui_len(id_tep: str, thu_muc_dam_may: str, ten: str = "") -> dict:
         return {"ok": False, "error": "ten_tep_khong_hop_le"}
     dich = dich_goc.rstrip("/") + "/" + ten
     ok, _, err = _chay(["copyto", str(nguon), dich], timeout=HET_GIO_TRUYEN)
-    return ({"ok": True, "duong_dan": dich}
-            if ok else {"ok": False, "error": err[:200]})
+    if not ok:
+        return {"ok": False, "error": err[:200]}
+    # Đã gửi lên xong: tệp tạm hết vai trò, xoá ngay (phát hiện A6).
+    try:
+        nguon.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return {"ok": True, "duong_dan": dich}
 
 
 def doc_chu(duong_dan: str, *, max_bytes: int = TRAN_DOC_BYTES) -> dict:
@@ -572,8 +730,13 @@ def xu_ly_lenh(lenh, tham_so: dict) -> dict:
     if lenh == "config_ghi":
         return dat_config(str(ts.get("noi_dung") or ""))
     if lenh == "them_remote":
+        ts_phu = ts.get("tham_so")
+        if ts_phu is None:
+            ts_phu = {}
+        if not isinstance(ts_phu, dict):
+            return {"ok": False, "error": "tham_so_sai"}
         return tao_remote(str(ts.get("ten") or ""), str(ts.get("loai") or ""),
-                          dict(ts.get("tham_so") or {}))
+                          ts_phu)
     if lenh == "xoa_remote":
         return xoa_remote(str(ts.get("ten") or ""))
     if lenh == "kiem_tra":
@@ -613,6 +776,8 @@ class XuLy(BaseHTTPRequestHandler):
 
     khoa_dich_vu: str = ""
     server_version = "RcloneBridge/1.0"
+    # Trần chờ trên từng kết nối: khách treo không giữ luồng mãi (A8).
+    timeout = 30
 
     def log_message(self, fmt, *args):
         log.info("%s %s", self.address_string(), fmt % args)
@@ -649,19 +814,31 @@ class XuLy(BaseHTTPRequestHandler):
             self._tra_json(200, {"ok": True})
             return
         if not self._xac_thuc():
+            self.close_connection = True
             self._tra_json(401, {"loi": "khong_xac_thuc"})
             return
         if duong.startswith("/tep-xuong/"):
             try:
                 p = _tep_tam(duong[len("/tep-xuong/"):], thu_muc_lam_viec())
-                du_lieu = p.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Length", str(len(du_lieu)))
-                self.end_headers()
-                self.wfile.write(du_lieu)
             except LoiYeuCau as e:
                 self._tra_json(e.ma, {"loi": e.loi})
+                return
+            # Truyền theo khúc (không nạp cả tệp vào RAM) rồi XOÁ tệp tạm:
+            # một id chỉ tải xuống được một lần (phát hiện A6).
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(p.stat().st_size))
+                self.end_headers()
+                with p.open("rb") as f:
+                    shutil.copyfileobj(f, self.wfile, 64 * 1024)
+            except (ConnectionError, BrokenPipeError):
+                pass
+            finally:
+                try:
+                    p.unlink(missing_ok=True)
+                except OSError:
+                    pass
             return
         self._tra_json(404, {"loi": "khong_co_duong"})
 
@@ -669,10 +846,9 @@ class XuLy(BaseHTTPRequestHandler):
         from urllib.parse import urlsplit as _us
         duong = _us(self.path).path
         if not self._xac_thuc():
-            try:
-                self._doc_than(TRAN_THAN_JSON)
-            except LoiYeuCau:
-                pass
+            # 401 NGAY, không đọc thân (phát hiện A8): đọc thân trước khi
+            # xác thực giữ luồng theo Content-Length của kẻ lạ.
+            self.close_connection = True
             self._tra_json(401, {"loi": "khong_xac_thuc"})
             return
         try:
@@ -690,6 +866,7 @@ class XuLy(BaseHTTPRequestHandler):
                     log.info("lenh=%s ok=%s", yeu_cau.get("lenh"), kq.get("ok"))
                 self._tra_json(200, kq)
             elif duong == "/tep-len":
+                don_tep_tam()
                 than = self._doc_than(_CAU_HINH["tran_tai_len"] + 1024 * 1024)
                 id_tep = secrets.token_hex(8)
                 dich = thu_muc_lam_viec() / f"tep-{id_tep}.bin"
@@ -706,6 +883,14 @@ class XuLy(BaseHTTPRequestHandler):
             self._tra_json(e.ma, {"loi": e.loi})
         except (ConnectionError, BrokenPipeError):
             pass
+        except Exception:
+            # Ngoại lệ nào thoát khỏi xử lý cũng phải trả JSON 500,
+            # không được rớt kết nối lặng (phát hiện A8).
+            log.exception("loi xu ly POST %s", duong)
+            try:
+                self._tra_json(500, {"loi": "loi_noi_bo"})
+            except Exception:
+                pass
 
 
 def tao_may_chu() -> tuple[ThreadingHTTPServer, dict]:
@@ -719,8 +904,7 @@ def tao_may_chu() -> tuple[ThreadingHTTPServer, dict]:
     proc = subprocess.run(
         [cau_hinh["bin"], "version"],
         capture_output=True, timeout=15,
-        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-             "HOME": os.environ.get("HOME", "/tmp")},
+        env=_moi_truong_con(),
     )
     log.info("rclone version: %s",
              (proc.stdout or b"").decode("utf-8", "replace")[:80].strip())

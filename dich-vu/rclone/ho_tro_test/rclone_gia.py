@@ -17,8 +17,17 @@ from pathlib import Path
 
 
 def _state_path() -> Path:
-    p = os.environ.get("RCLONE_GIA_STATE", "./rclone-gia-state.json")
-    return Path(p)
+    """Tệp trạng thái: ưu tiên RCLONE_GIA_STATE; nếu không có, đặt CẠNH tệp
+    cấu hình nhận qua `--config` (mỗi môi trường test một thư mục riêng,
+    không phụ thuộc biến môi trường của tiến trình cha — dịch vụ chỉ truyền
+    môi trường tối thiểu cho tiến trình con)."""
+    p = os.environ.get("RCLONE_GIA_STATE")
+    if p:
+        return Path(p)
+    argv = sys.argv[1:]
+    if "--config" in argv:
+        return Path(argv[argv.index("--config") + 1]).parent / "rclone-gia-state.json"
+    return Path("./rclone-gia-state.json")
 
 
 def _tai() -> dict:
