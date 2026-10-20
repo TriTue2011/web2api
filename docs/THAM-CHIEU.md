@@ -83,6 +83,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
 | Module `chitieu` (Sổ chi tiêu theo hũ JARS, NV160) | Có — ghi/xem chi tiêu theo kỳ, tự bù hũ vượt theo thứ tự, cổng xác nhận khi vượt tổng ngân sách, cảnh báo ngưỡng, tạm ứng công ty; mỗi danh tính đăng nhập một sổ riêng; port từ c2a; **chưa kiểm với dữ liệu thật** | 20/10/2026 |
 | Module `rclone` (Cầu nối lưu trữ đám mây qua rclone) + dịch vụ `dich-vu/rclone` | Có — liệt kê/đọc/tải về (`liet_ke`, `doc_chu`, `tai_ve`, rủi ro `doc`, mặc định) và tải lên/xoá/chuyển tệp (`gui_len`, `chuyen_tep` rủi ro `ghi`; `xoa` rủi ro `nguy_hiem`) — hành động GHI mặc định TẮT (bật bằng `ghi_bat`), tắt thì báo `chua_bat_ghi` và không gọi mạng; cấu hình rclone ở dịch vụ (0600, API chỉ trả bản đã che), khoá Bearer dịch vụ ≥ 24 ký tự; dịch vụ HTTP nội bộ gọi rclone v1.75.2 trong hộp cát (tập lệnh đóng 16 op, đường cục bộ `resolve()` dưới thư mục làm việc, không bao giờ qua shell, hết giờ 30/600 s, tải lên/xuống ≤ 25 MB, tên tệp hệ thống sinh); địa chỉ dịch vụ kiểm SSRF; kiểm với nhị phân rclone giả + kiểm tĩnh Dockerfile; **chưa kiểm với dịch vụ đám mây thật** (chưa dựng ảnh Docker thật) | 20/10/2026 |
+| Module `hoa-don` (Đối chiếu hoá đơn điện tử với danh mục, NV162) | Có — hai công cụ rủi ro `doc`: `doc_hoa_don` và `doi_chieu_hoa_don`; đọc XML TT78 (tìm thẻ theo tên ở mọi tầng) + văn bản Markdown đã trích từ PDF (điểm nối module `van-phong` NV156), danh mục từ mảng dòng đã đọc hoặc .xlsx base64 đọc bằng zipfile (trần giải nén chống zip bomb, công thức không thực thi); XML chống nổ thực thể (từ chối DOCTYPE/ENTITY, trần kích thước/độ sâu); số tiền là Decimal; port từ c2a `services/hoa_don.py` (d879b03); kiểm với hoá đơn giả đúng khuôn TT78; **chưa kiểm với hoá đơn thật của nhà phát hành** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3029,6 +3030,70 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/rclone/suc-khoe
 - `tai_ve`/`gui_len` qua API ≤ 25 MB; `doc_chu` ≤ 2 MB văn bản.
 - Cấu hình rclone là bề mặt nhạy cảm nhất: volume `/data` không nên sao lưu
   chung hay chia sẻ.
+
+---
+
+### Module hoa-don — Đối chiếu hoá đơn điện tử với bảng danh mục (NV162)
+
+**Mô tả.** Hai công cụ rủi ro `doc` qua một thực thể `hoa_don.cong_cu`
+(loại `cong_cu`): `doc_hoa_don` đọc hoá đơn điện tử XML (bản gốc pháp lý —
+Nghị định 123/2020, Thông tư 78/2021 — tìm thẻ theo TÊN ở mọi tầng, không theo
+đường lồng vì các nhà phát hành đặt `TToan` không thống nhất) hoặc văn bản
+Markdown đã trích từ PDF; `doi_chieu_hoa_don` đối chiếu với bảng danh mục,
+báo dòng khớp/lệch (số lượng, đơn giá, thành tiền, đơn vị), dòng chỉ có một
+bên, và tự kiểm phép tính trên hoá đơn (số lượng × đơn giá − chiết khấu =
+thành tiền; tổng dòng = tổng chưa thuế; chưa thuế + thuế = thanh toán).
+Danh mục đều lệch hoá đơn đúng tỉ lệ (1 + thuế suất) ở mọi dòng thì báo là
+«danh mục ghi giá đã gồm thuế». Port từ c2a `services/hoa_don.py` (commit
+`d879b03`), chỉ đổi lớp kết nối/khuôn module: KHÔNG pandas, KHÔNG đọc tệp
+theo đường dẫn, KHÔNG lưu trạng thái; mã nguồn: `modules/hoa-don/`. Tiền tố:
+`hoa_don`. Hạng: `B`.
+
+**Cần gì.** Không khoá, không tài khoản, không dịch vụ phụ, không mạng ra
+ngoài, không trường cấu hình. Người dùng/trợ lý cung cấp lúc gọi công cụ:
+nội dung XML gốc của hoá đơn (chắc hơn bản in PDF) hoặc văn bản Markdown đã
+trích từ PDF; danh mục dạng mảng dòng đã đọc (dòng đầu là tiêu đề: tên hàng,
+số lượng, đơn giá, thành tiền) hoặc tệp `.xlsx` dạng base64. Tài nguyên thêm:
+chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "hoa-don"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/hoa-don`
+3. Không cần cấu hình (`truong_cau_hinh` rỗng); cài xong công cụ hiện ngay.
+
+**Cấu hình.** Không có trường nào.
+
+**Ví dụ dùng.** Người dùng nói với trợ lý: «Đối chiếu hoá đơn này với danh
+mục giúp tôi» và đưa hai tệp; trợ lý gọi `doi_chieu_hoa_don` với
+`{"xml": "<HDon>…</HDon>", "xlsx_base64": "UEsDB…"}` (hoặc `"danh_muc"` là
+mảng dòng) và nhận về báo cáo Markdown mang `nguon_ngoai: true`.
+
+**An toàn đầu vào.** Hoá đơn/bảng là dữ liệu không tin. XML: từ chối
+`<!DOCTYPE`/khai báo ENTITY (chống nổ thực thể qua expat), trần 2.000.000
+byte, sâu 64 tầng, 200.000 phần tử; mẫu lạ (không `DSHHDVu/HHDVu`) → báo
+«không đọc được», không đoán. `.xlsx`: zipfile với trần nén 10 MB / tổng
+giải nén 20 MB / một tệp con 5 MB / tỉ lệ nén 100× / 2.000 mục / 5.000 dòng
+/ 64 cột; chỉ đọc sheet đầu tiên; công thức không bao giờ thực thi (chỉ
+dùng giá trị đã lưu; ô công thức không có giá trị lưu thì bỏ qua). Số
+tiền/số lượng là **Decimal** (ba khuôn số Việt/Anh của c2a); MST giữ nguyên
+chuỗi. Báo cáo cắt ở 80.000 ký tự; mỗi nhóm «chỉ một bên» liệt kê tối đa
+200 tên.
+
+**Sự cố thường gặp.**
+- «không tìm thấy dòng tiêu đề…» — danh mục thiếu cột tên hàng hoặc thiếu hai
+  trong ba cột số lượng/đơn giá/thành tiền; kiểm tiêu đề trong 30 dòng đầu.
+- «không tìm thấy bảng hàng hóa trong văn bản» — Markdown trích từ PDF không
+  có bảng đọc được; gửi file XML gốc của hoá đơn.
+
+**Giới hạn.**
+- Điểm nối PDF: trích xuất văn bản từ PDF thuộc module `van-phong` (NV156,
+  chưa gộp) — module này chỉ nhận văn bản đã trích qua `van_ban_pdf`; báo cáo
+  NÓI RÕ nguồn là PDF (bản in), kém chắc hơn XML. Điểm nối danh mục cũng vậy:
+  nếu `van-phong` cung cấp phần đọc, chỉ cần đưa mảng dòng qua `danh_muc`.
+- Chỉ đọc sheet đầu tiên của .xlsx; ghép tên gần đúng ở ngưỡng tương tự
+  0,85 (của c2a).
+- Chưa kiểm với hoá đơn XML thật của nhà phát hành (Viettel/VNPT/MISA…).
 
 ---
 
