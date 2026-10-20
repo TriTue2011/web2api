@@ -31,6 +31,17 @@ from app import kho as kho_loi
 # Khuôn tên máy — chép đúng khuôn của c2a api/devices.py (dòng đăng ký).
 MAU_TEN = re.compile(r"\A[a-z0-9][a-z0-9_-]{1,30}\Z")
 
+#: Id cục bộ của THỰC THỂ QUẢN LÝ trong không gian tên của module (module.py
+#: dùng đúng hằng này) — thực thể máy có id `<tien_to>.<ten_may>` nên máy
+#: trùng tên này sẽ tạo HAI thực thể cùng id (lõi giữ cái đầu, máy vô hình).
+ID_QUAN_LY = "dang_ky"
+
+#: Không gian tên RIÊNG của thực thể quản lý (NV170-SUA M5): id thực thể +
+#: mọi hành động quản lý. Tên máy KHÔNG được trùng bất kỳ tên nào ở đây —
+#: tách không gian tên theo nguyên tắc, không vá theo từng tên bị phát hiện.
+TEN_DANH_RIENG = frozenset(
+    {ID_QUAN_LY, "thu_hoi", "xoa", "xoay_khoa", "doi_quyen"})
+
 TEN_TEP = "thiet_bi.json"
 
 
@@ -88,6 +99,9 @@ class SoThietBi:
         ten = str(ten or "").strip()
         if not MAU_TEN.fullmatch(ten):
             raise ValueError("ten_may chỉ gồm a-z 0-9 _ - (2–31 ký tự), ví dụ «may-van-phong-1»")
+        if ten in TEN_DANH_RIENG:
+            raise ValueError(f"tên máy «{ten}» trùng tên dành riêng của thực thể "
+                             "quản lý — chọn tên khác")
         ds_dd = [str(p).strip() for p in (duong_dan or []) if str(p).strip()]
         if not ds_dd:
             raise ValueError("phải khai ít nhất một thư mục trong «duong_dan» — "
