@@ -37,6 +37,10 @@ _SAU_TOI_DA = 6
 #: Giữ tối đa ngần này chủ đề trong RAM. Không chặn thì tiến trình phình theo
 #: thời gian chạy.
 _TRAN_CHU_DE = 5000
+#: Giữ tối đa ngần này NHÁNH GỐC. Mỗi nhánh mới còn kéo theo một đăng ký
+#: ``<gốc>/#`` lên broker, nên trần này chặn cả phình RAM lẫn bão đăng ký khi
+#: broker (dữ liệu không tin) phát vô số nhánh gốc lạ.
+_TRAN_NHANH = 512
 #: Giá trị một chủ đề giữ tối đa ngần này ký tự (cắt, không vỡ).
 TRAN_GIA_TRI = 4096
 #: Payload lớn hơn ngần này byte thì BỎ HẲN (không tin máy chủ MQTT).
@@ -217,6 +221,8 @@ class LopMqtt:
         self._mat_khau = _BiMat(str(c.get("mat_khau") or ""))
         # Trần số chủ đề để trên thể hiện để test chỉnh được.
         self._TRAN_CHU_DE = _TRAN_CHU_DE
+        # Trần số nhánh gốc cũng trên thể hiện, cùng lý do.
+        self._TRAN_NHANH = _TRAN_NHANH
 
         self._khoa = threading.Lock()
         self._stop = threading.Event()
@@ -390,7 +396,12 @@ class LopMqtt:
         goc = chu_de.split("/")[0]
 
         with self._khoa:
-            moi = goc and goc not in self._nhanh_goc
+            # Nhánh gốc mới chỉ được nhớ (và kéo theo đăng ký «<gốc>/#») khi
+            # còn dưới trần — broker là phía không tin, vô số nhánh lạ không
+            # được phình RAM hay gây bão đăng ký. Chủ đề của nhánh ĐÃ BIẾT
+            # vẫn cập nhật bình thường kể cả khi đã chạm trần nhánh.
+            moi = (goc and goc not in self._nhanh_goc
+                   and len(self._nhanh_goc) < self._TRAN_NHANH)
             if moi:
                 self._nhanh_goc.add(goc)
             # Vượt trần thì thôi không nhớ thêm chủ đề mới, nhưng vẫn cập nhật
