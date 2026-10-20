@@ -219,6 +219,32 @@ def _vi_du_json(mo_ta: str) -> str | None:
     return None
 
 
+def _mang_json_tu_mo_ta(mo_ta: str, url_goc: str) -> str:
+    """Dựng mảng JSON hợp lệ từ mô tả văn xuôi khi mo_ta KHÔNG có ví dụ JSON
+    nguyên văn (vd cameranha: «Mảng JSON, mỗi phần tử: name (tên, vd 'Cửa'),
+    kind ('go2rtc' hoặc 'rtsp'), với kind=go2rtc: base (vd http://10.0.0.6:1984)
+    + src (tên luồng)...»). Ưu tiên kind=go2rtc (base http cho loopback lúc
+    cài) hơn rtsp (đòi IP riêng, cấm loopback)."""
+    import re
+    trich = re.findall(r"'([^'\n]{1,60})'", mo_ta)
+    mo_ta_l = mo_ta.lower()
+    bo_qua = {"go2rtc", "rtsp", "json", "mảng json"}
+    ten = next((x for x in trich if x.strip().lower() not in bo_qua), "Camera")
+    muc: dict = {"name": ten}
+    if "rtsp" in mo_ta_l and "go2rtc" not in mo_ta_l:
+        # rtsp-only: host phải là IP riêng (cấm loopback) — dùng IP riêng giả.
+        muc["kind"] = "rtsp"
+        host = url_goc.split("://", 1)[-1].split(":", 1)[0]
+        if host in ("127.0.0.1", "localhost", "::1"):
+            host = "192.168.77.5"
+        muc["url"] = f"rtsp://smoke:smoke@{host}/stream"
+    else:
+        muc["kind"] = "go2rtc"
+        muc["base"] = url_goc  # base http; loopback được phép lúc cài
+        muc["src"] = "smoke"
+    return json.dumps([muc], ensure_ascii=False)
+
+
 def _gia_tri_truong(t: dict, url_goc: str):
     """Giá trị giả hợp lệ cho MỘT trường, theo kieu + định dạng manifest tự mô tả
     (hex/base64 cho khoá thiết bị, chuỗi cookie 'k1=v1; k2=v2', URL hay host
@@ -234,17 +260,25 @@ def _gia_tri_truong(t: dict, url_goc: str):
         return [f"{url_goc}/gia.ics"] if _la_o_url(khoa) else [KHOA_GIA]
     if kieu == "danh_sach":
         return [f"{url_goc}/gia.ics"] if _la_o_url(khoa) else ["gia-tri-smoke-nv184"]
-    if kieu == "bi_mat":
-        if "hex" in mo_ta.lower():  # khoá dạng hex (vd 32 bytes = 64 ký tự)
-            return "cd" * 32
-        if "base64" in mo_ta.lower():
-            import base64
-            return base64.b64encode(b"s" * 32).decode()
-        return BI_MAT_GIA
-    if kieu == "chuoi" and ("dạng json" in mo_ta.lower() or "dang json" in mo_ta.lower()):
+    mo_ta_l = mo_ta.lower()
+    muon_json = ("json" in mo_ta_l
+                 and ("mảng" in mo_ta_l or "dạng json" in mo_ta_l
+                      or "dang json" in mo_ta_l or "array" in mo_ta_l))
+    if muon_json and kieu in ("chuoi", "bi_mat"):
+        # Trường nhận CHUỖI JSON (vd cameranha.danh_sach_camera: kieu bi_mat,
+        # mo_ta «Mảng JSON...»): BI_MAT_GIA không phải JSON hợp lệ nên cài luôn
+        # đỏ — sinh mảng JSON đúng khuôn theo mô tả (NV189, lớp A).
         vd = _vi_du_json(mo_ta)
         if vd is not None:
             return vd
+        return _mang_json_tu_mo_ta(mo_ta, url_goc)
+    if kieu == "bi_mat":
+        if "hex" in mo_ta_l:  # khoá dạng hex (vd 32 bytes = 64 ký tự)
+            return "cd" * 32
+        if "base64" in mo_ta_l:
+            import base64
+            return base64.b64encode(b"s" * 32).decode()
+        return BI_MAT_GIA
     if _la_o_url(khoa):
         if _truong_dang_url(t):
             return url_goc
@@ -403,13 +437,64 @@ def _ten_va_rui_ro(tinh_nang_mot: object, rui_ro_mac_dinh: str | None) -> tuple[
     return str(tinh_nang_mot or "").strip(), str(rui_ro_mac_dinh or "")
 
 
-def kiem_tra_thiet_bi_qua_loi(client: TestClient, mod_id: str, manifest: dict) -> None:
-    """Bước (c): thực thể + hành động đọc an toàn qua tuyến HTTP thật."""
+def _than_thiet_bi(client: TestClient, mod_id: str) -> dict:
     r = client.get("/api/thiet-bi", headers=QT)
     assert r.status_code == 200, f"[{mod_id}] GET /api/thiet-bi vỡ: HTTP {r.status_code}"
-    than = r.json()
-    ds = than.get("thuc_the", [])
-    cua = [e for e in ds if e.get("module") == mod_id]
+    return r.json()
+
+
+def _khoa_bat_mac_dinh_tat(manifest: dict) -> str | None:
+    """Tên công tắc «bat» TẮT theo mặc định (module fail-closed: tắt là đúng)."""
+    for t in manifest.get("truong_cau_hinh") or []:
+        if (str(t.get("khoa") or "").lower() == "bat"
+                and str(t.get("mac_dinh") or "").strip().lower() in ("false", "0", "")):
+            return str(t.get("khoa"))
+    return None
+
+
+def _hanh_dong_doc_hoac_skip(cua: list[dict], mod_id: str) -> tuple[str, str]:
+    """Chọn một hành động ĐỌC an toàn từ CHÍNH dữ liệu thực thể (không liệt
+    kê tên hành động cụ thể). Module không công bố hành động «doc» nào →
+    pytest.skip (không thử ghi/nguy_hiem). Lớp A (NV189, openaicodex)."""
+    chon = None
+    rui_ro_thay: set[str] = set()
+    for e in cua:
+        for tn in e.get("tinh_nang") or []:
+            ten, rr = _ten_va_rui_ro(tn, e.get("rui_ro_mac_dinh"))
+            if ten:
+                rui_ro_thay.add(rr)
+            if ten and rr == "doc":
+                chon = (e["id"], ten)
+                break
+        if chon:
+            break
+    if not chon:
+        pytest.skip(
+            f"[{mod_id}] không có hành động rủi ro «doc» trong dữ liệu thực "
+            f"thể (rui_ro thực tế tìm được: {sorted(rui_ro_thay)}) — "
+            f"không thử ghi/nguy_hiem")
+    return chon
+
+
+def kiem_tra_thiet_bi_qua_loi(client: TestClient, mod_id: str, manifest: dict,
+                              cau_hinh: dict) -> None:
+    """Bước (c): thực thể + hành động đọc an toàn qua tuyến HTTP thật."""
+    than = _than_thiet_bi(client, mod_id)
+    cua = [e for e in than.get("thuc_the", []) if e.get("module") == mod_id]
+    if not cua:
+        # Module TẮT theo thiết kế (fail-closed, vd maytram bat=false mặc
+        # định): thuc_the=[] là ĐÚNG, không phải module chết — bật công tắc
+        # lên rồi đọc lại để bước (c) thật sự chạy được (NV189, lớp A).
+        # Cài lại thất bại → rơi xuống đường fail/skip như cũ, không che lỗi.
+        khoa_bat = _khoa_bat_mac_dinh_tat(manifest)
+        if (khoa_bat and str(cau_hinh.get(khoa_bat, "")).strip().lower()
+                not in ("true", "1", "bat", "on")):
+            r2 = client.post(f"/api/modules/{mod_id}/cai", headers=QT,
+                             json={"cau_hinh": {**cau_hinh, khoa_bat: "true"}})
+            if r2.status_code == 200 and r2.json().get("ok"):
+                than = _than_thiet_bi(client, mod_id)
+                cua = [e for e in than.get("thuc_the", [])
+                       if e.get("module") == mod_id]
     if not cua:
         loi_cua = [x for x in (than.get("loi_module") or [])
                    if isinstance(x, dict) and x.get("module") == mod_id]
@@ -442,18 +527,7 @@ def kiem_tra_thiet_bi_qua_loi(client: TestClient, mod_id: str, manifest: dict) -
          f"được trang_thai qua lõi (lớp lỗi «bỏ trang_thai»)")
     # Một hành động ĐỌC an toàn: chọn theo rủi ro «doc» trong CHÍNH dữ liệu
     # thực thể, không liệt kê tên hành động cụ thể nào.
-    chon = None
-    for e in cua:
-        for tn in e.get("tinh_nang") or []:
-            ten, rr = _ten_va_rui_ro(tn, e.get("rui_ro_mac_dinh"))
-            if ten and rr == "doc":
-                chon = (e["id"], ten)
-                break
-        if chon:
-            break
-    assert chon, (f"[{mod_id}] không tìm thấy hành động rủi ro «doc» "
-                  f"trong dữ liệu thực thể — không có gì an toàn để thử")
-    eid, hd = chon
+    eid, hd = _hanh_dong_doc_hoac_skip(cua, mod_id)
     r = client.post(f"/api/thiet-bi/{eid}/hanh-dong", headers=QT,
                     json={"hanh_dong": hd, "tham_so": {}, "xac_nhan": True})
     assert r.status_code != 500, \
@@ -476,7 +550,7 @@ def smoke_qua_loi(client: TestClient, data_dir: Path, dir_name: str,
             phu_thuoc.append(dep_mf.get("id") or dep_dir)
 
     # (a) cài module chính
-    manifest, _cau_hinh, bi_mat = cai_mot_module(client, data_dir, dir_name, url_goc)
+    manifest, cau_hinh, bi_mat = cai_mot_module(client, data_dir, dir_name, url_goc)
 
     # (b) danh sách + catalog + cấu hình từng module: không lỗi, không lộ bí mật
     van_bi_mat: dict[str, str] = {}
@@ -503,7 +577,7 @@ def smoke_qua_loi(client: TestClient, data_dir: Path, dir_name: str,
 
     # (c) thiết bị — chỉ khi module khai cung_cap thiet_bi
     if "thiet_bi" in (manifest.get("cung_cap") or []):
-        kiem_tra_thiet_bi_qua_loi(client, mod_id, manifest)
+        kiem_tra_thiet_bi_qua_loi(client, mod_id, manifest, cau_hinh)
 
     # (d) sức khoẻ có cấu trúc
     r = client.get(f"/api/modules/{mod_id}/suc-khoe", headers=QT)

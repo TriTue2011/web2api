@@ -628,7 +628,9 @@ class CameraModule:
 
     # ── sức khoẻ / webhook ──
 
-    def suc_khoe(self) -> dict:
+    async def suc_khoe(self) -> dict:
+        # NV189: lõi await m.suc_khoe() (app/tuyen.py) — để sync là TypeError
+        # qua lõi dù gọi trực tiếp vẫn xanh (lớp lỗi NV184).
         url, khoa = self._dich_vu()
         return {
             "ok": self._kich_hoat,

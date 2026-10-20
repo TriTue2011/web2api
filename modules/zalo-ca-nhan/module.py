@@ -126,6 +126,12 @@ def _kiem_danh_sach_cho_phep(gia_tri) -> list[str]:
     return da_thay
 
 
+# Mặc định của trường `dich_vu_url` trong manifest (bat_buoc=False): cấu hình
+# để trống nghĩa là dùng giá trị này, KHÔNG phải lỗi (NV189: cai({})/nap({})
+# trước đây ném ValueError vì `_kiem_url_dich_vu("")`).
+_DICH_VU_URL_MAC_DINH = "http://127.0.0.1:8703"
+
+
 class Module:
     """Kênh Zalo cá nhân: gửi ra qua POST /gui-tin, nhận vào qua GET /tin-moi
     của dịch vụ phụ dich-vu/zalo-ca-nhan (xác thực Bearer)."""
@@ -133,7 +139,7 @@ class Module:
     def __init__(self, manifest, _goc_kiem_thu: str | None = None):
         self.manifest = manifest
         self._bat = False
-        self._dich_vu_url = "http://127.0.0.1:8703"
+        self._dich_vu_url = _DICH_VU_URL_MAC_DINH
         self._khoa = ""
         self._cho_phep: list[str] = []
         self._seq = 0
@@ -150,7 +156,8 @@ class Module:
         try:
             ch = cau_hinh or {}
             self._bat = _la_bat(ch.get("bat"))
-            self._dich_vu_url = _kiem_url_dich_vu(ch.get("dich_vu_url", ""))
+            self._dich_vu_url = _kiem_url_dich_vu(
+                ch.get("dich_vu_url") or _DICH_VU_URL_MAC_DINH)
             self._cho_phep = _kiem_danh_sach_cho_phep(ch.get("danh_sach_cho_phep"))
             khoa = (ch.get("khoa_dich_vu") or "").strip()
             if self._bat and (not khoa or len(khoa) < 24):
@@ -175,7 +182,7 @@ class Module:
         try:
             ch = cau_hinh or {}
             bat = _la_bat(ch.get("bat"))
-            url = _kiem_url_dich_vu(ch.get("dich_vu_url", ""))
+            url = _kiem_url_dich_vu(ch.get("dich_vu_url") or _DICH_VU_URL_MAC_DINH)
             cho_phep = _kiem_danh_sach_cho_phep(ch.get("danh_sach_cho_phep"))
             khoa = (ch.get("khoa_dich_vu") or "").strip()
             if bat and (not khoa or len(khoa) < 24):

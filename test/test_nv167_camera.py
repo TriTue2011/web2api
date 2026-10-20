@@ -170,7 +170,7 @@ class TestNap:
     async def test_khong_camera(self, monkeypatch):
         m = _nap(monkeypatch, {"danh_sach_camera": "[]"})
         assert await m.thuc_the() == []
-        assert m.suc_khoe()["ok"] is True
+        assert (await m.suc_khoe())["ok"] is True  # NV189: suc_khoe thành async
 
 
 # ── 2. cai() — kiểm theo đặc tả tu_xa ─────────────────────────────────────────
@@ -376,7 +376,7 @@ class TestBiMat:
 
     async def test_suc_khoe_khong_chua_mat_khau(self, monkeypatch):
         m = _nap(monkeypatch, dict(CH_DAY_DU))
-        sk = json.dumps(m.suc_khoe(), ensure_ascii=False)
+        sk = json.dumps(await m.suc_khoe(), ensure_ascii=False)  # NV189: async
         assert "mat-khau-gia" not in sk
 
     async def test_dia_chi_bi_mat_trong_log(self, caplog, monkeypatch):
@@ -384,7 +384,7 @@ class TestBiMat:
         import module as mod
         m = _nap(monkeypatch, dict(CH_DAY_DU))
         with caplog.at_level("INFO", logger="web2api.camera"):
-            m.suc_khoe()
+            await m.suc_khoe()  # NV189: suc_khoe thành async
         for rec in caplog.records:
             assert "mat-khau-gia" not in rec.getMessage()
 

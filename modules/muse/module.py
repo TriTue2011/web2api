@@ -272,10 +272,12 @@ class Module:
         """Kiểm tra tình trạng module — tuyệt đối không để lộ khoá bí mật."""
         if not self._device_priv_key:
             return {
+                "ok": False,
                 "trang_thai": "chưa cấu hình",
                 "chi_tiet": "Thiếu khoá thiết bị (device_key)",
             }
         return {
+            "ok": True,
             "trang_thai": "sẵn sàng",
             "ghi_chu": "Thử nghiệm — chưa kiểm với dịch vụ thật",
         }

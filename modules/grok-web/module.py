@@ -392,6 +392,16 @@ class Module:
         return {
             "ok": True,
             "ghi_chu": f"Đã nhận {len(self._tai_khoan)} tài khoản Grok.",
+            # Lõi chỉ lưu/nạp lại những gì cai() trả trong «cau_hinh_luu»
+            # (app/so_module.py::_cai); thiếu là lõi lưu {} và bản phục vụ
+            # nạp cấu hình trống → suc_khoe tự nhận «chưa cấu hình» (NV189).
+            "cau_hinh_luu": {
+                "tai_khoan": ds_khoa((cau_hinh or {}).get("tai_khoan")),
+                "ws_url": str((cau_hinh or {}).get("ws_url") or "").strip(),
+                "che_do_dang_nhap": str(
+                    (cau_hinh or {}).get("che_do_dang_nhap") or "truc_tiep"
+                ).strip().lower(),
+            },
         }
 
     # ── Tái dùng hồ sơ Google (NV93 — đường chính) ─────────────────────────
@@ -1188,10 +1198,12 @@ class Module:
         """Tình trạng module — không để lộ cookie."""
         if not self._tai_khoan:
             return {
+                "ok": False,
                 "trang_thai": "chưa cấu hình",
                 "chi_tiet": "Thiếu danh sách cookie tài khoản («tai_khoan»)",
             }
         return {
+            "ok": True,
             "trang_thai": "sẵn sàng",
             "ghi_chu": f"{len(self._tai_khoan)} tài khoản đã cấu hình",
         }

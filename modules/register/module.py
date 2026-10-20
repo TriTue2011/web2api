@@ -727,8 +727,16 @@ class Module:
         return {"ok": True, "ket_qua_tung_khoa": ket, "loi": None, "cau_hinh_luu": luu}
 
     async def suc_khoe(self) -> dict[str, Any]:
-        if not self._bat() or not self._cau_hinh.get("url_dang_ky"):
-            return {"ok": False, "loi": "Module chưa bật hoặc chưa cấu hình xong.",
+        # Tách «đang tắt» khỏi «chưa cấu hình» (NV189): module tắt theo thiết
+        # kế (bat=false mặc định) là trạng thái chủ đích, không phải mâu thuẫn
+        # «cai ok nhưng chưa cấu hình» — thông điệp cũ gộp hai trường hợp làm
+        # smoke (d) dương tính giả.
+        if not self._bat():
+            return {"ok": False, "trang_thai": "đang tắt",
+                    "loi": "Module đang tắt (bat=false) — đây là trạng thái chủ đích.",
+                    "chi_tiet": {"buoc": self._tt.get("buoc", "chua_bat_dau")}}
+        if not self._cau_hinh.get("url_dang_ky"):
+            return {"ok": False, "loi": "Module chưa cấu hình xong (thiếu «URL trang đăng ký»).",
                     "chi_tiet": {"buoc": self._tt.get("buoc", "chua_bat_dau")}}
         return {"ok": True, "chi_tiet": {
             "buoc": self._tt.get("buoc", "chua_bat_dau"),
