@@ -1,0 +1,10 @@
+# Dinh kem hash (lay tu PyPI JSON API 2026-10-20). Ket noi pull se chet neu
+# hash lech. Giu cung python:3.12-slim@sha256:a6e34c59... o Dockerfile.
+numpy==2.5.4 \
+    --hash=sha256:fbde6962867ee75b48b0ee29b2b9372ec5d617799dbaf38e82dc0596f2f7738a
+onnxruntime==1.31.0 \
+    --hash=sha256:5e129d6c56abd53e659cb70f00a108d6824086470ff99c2e47a82e5786563db3
+opencv-python-headless==5.0.0.93 \
+    --hash=sha256:ed709fdf9aa0bd1f2ed8549e71d19449b03a675bb581eb292285f6861953be37
+pillow==13.0.0 \
+    --hash=sha256:42d63be3af4f9b951b199b0a9d23365d37ab14687e6d77b74940432c8515c4ca

@@ -207,6 +207,16 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `hoa-don` | Công cụ đối chiếu hoá đơn điện tử XML (bản gốc pháp lý NĐ 123/2020 + TT 78/2021) với bảng danh mục Excel: báo dòng khớp/lệch và tự kiểm phép tính trên hoá đơn (NV162) | Cục bộ (thuần Python, không mạng, không khoá) | Có sẵn (kiểm với hoá đơn giả đúng khuôn TT78 + xlsx giả; chưa kiểm với hoá đơn thật của nhà phát hành) |
 | `dich` | Dịch văn bản qua model của lõi + từ điển/thuật ngữ người dùng tự thêm lưu cục bộ + chế độ song ngữ (NV163) | Cục bộ (gọi loopback /v1 của chính lõi) | Có sẵn (kiểm với model giả + máy chủ HTTP giả loopback; chưa kiểm với model thật) |
 | `tien-ich-doi-song` | Tiện ích đời sống (chuẩn C2 `thiet_bi`, NV165, port c2a): bản tin tóm tắt theo nguồn/mốc giờ, chỉ đường Nominatim+OSRM, vùng khoảng cách tự học, kiểm tra/chia lô dấu câu lời thoại | HTTPS tới nominatim.openstreetmap.org + router.project-osrm.org (tắt được bằng `bat_tim_duong=0`) | Có sẵn (50 test xanh với dịch vụ GIẢ; chưa kiểm Nominatim/OSRM thật; KHÔNG port lớp gửi Zalo/Telegram và `trong_xe`) |
+| `nhin-nha` | Mắt nhà: phát hiện vật thể (YOLO) + nhận diện khuôn mặt trên ảnh qua dịch vụ ML phụ trong nhà — nhận diện mặc định TẮT, sổ mặt mã hoá khi nghỉ | HTTP nội bộ tới dịch vụ nhin-nha-ml (`dich-vu/nhin-nha`) | Có sẵn (kiểm với dịch vụ ML giả + kiểm tĩnh Dockerfile; chưa kiểm với model ONNX thật) |
+
+### nhin-nha (Mắt nhà)
+
+Thị giác nhà: YOLO phát hiện vật thể, SCRFD + ArcFace nhận diện khuôn mặt —
+phần ML nặng chạy ở dịch vụ phụ [`dich-vu/nhin-nha/`](dich-vu/nhin-nha/) (tự
+dựng, model kiểm sha256 khi tải), module trong lõi là client + sổ khuôn mặt.
+Dữ liệu sinh trắc chỉ nằm trong kho riêng (mã hoá khi nghỉ nếu có khoá chính,
+không thì 0600), không log, không ra khỏi máy nhà; nhận diện khuôn mặt mặc
+định TẮT, bật cần quản trị xác nhận + ghi nhật ký.
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.
