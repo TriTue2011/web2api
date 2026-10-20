@@ -92,7 +92,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `thuthach` (Nhận diện thử thách chống bot, chuẩn C2 `thiet_bi`) | Có — nhận diện reCAPTCHA v2/v3, Turnstile, chọn hình/quiz, CAPTCHA chữ, mã OTP, mã 2FA, BotGuard bằng cấu trúc rồi báo «cần người» + hướng dẫn noVNC — KHÔNG giải; thuần phân tích, không gọi mạng | 20/10/2026 |
 | Module `nhin-nha` (Mắt nhà, chuẩn C2 `thiet_bi`, NV168) + dịch vụ `dich-vu/nhin-nha` | Có — client HTTP Bearer + chống SSRF (chỉ loopback/mạng nhà riêng, cấm metadata/IP công khai) tới dịch vụ ML phụ (YOLO26 + SCRFD/ArcFace, port c2a, model tải ngoài có kiểm sha256); 3 thực thể `nhin_nha.mat`/`so_mat`/`nhan_dien`; sổ khuôn mặt (IRIS, ngưỡng tự chỉnh theo dữ liệu nhà) mã hoá khi nghỉ/không thì 0600; embedding không vào log/phản hồi/suc_khoe; nhận diện mặc định TẮT (bật cần quản trị + ghi nhật ký); NV168-SUA: cổng sinh trắc chung cho mọi hành động sổ (trừ xoá), khoá bất đồng bộ cho vòng đọc-sửa-ghi, sự kiện không lưu vector + xoá người triệt để, mặt lạ có trần 50 cụm/hạn 30 ngày + xoá riêng, dịch vụ ML kiểm lại sha256 lúc nạp + trần điểm ảnh trước giải mã; kiểm với dịch vụ ML giả + kiểm tĩnh Dockerfile; **chưa kiểm với model ONNX thật** | 20/10/2026 |
 | Module `maytram` (Máy trạm — điều khiển từ xa qua agent, hạng B, rủi ro cao, NV170): agent trên máy trạm tự kết nối RA, bắt tay HMAC hai chiều (khoá riêng 256 bit mỗi máy, chống phát lại nonce + cửa sổ thời gian), tập lệnh ĐÓNG (không chạy lệnh tuỳ ý — `exec`/`kill` của c2a KHÔNG port), mọi thực thể `rui_ro_mac_dinh: nguy_hiem` qua phê duyệt của lõi, kết quả agent cắt trần + gắn `nguon_ngoai` | Có — kiểm với agent GIẢ trong tiến trình (bắt tay 2 chiều, phát lại, IDOR giữa hai phiên, MAC giả, allowlist hai lớp, thu hồi/xoay khoá); **chưa kiểm với máy trạm thật** (điểm gắn truyền tải trong lõi chưa có) | 20/10/2026 |
-| Module `chay-ma` (Chạy mã Python trong container cách ly, NV171) + dịch vụ `dich-vu/chay-ma` | Có — mỗi lượt chạy là một container docker dùng-một-lần cách ly (`--network none`, rootfs chỉ đọc + tmpfs /tmp, `--user 65534:65534`, `--cap-drop ALL`, `no-new-privileges`, `--cpus 1 --memory 512m --pids-limit 64`, `--pull never`, bind-mount duy nhất thư mục tạm của lần chạy); môi trường container là whitelist tối thiểu — bí mật của lõi không lọt vào; cổng tĩnh chặn mã chạm hệ thống trước khi gọi docker; bootstrap rlimit trong container; hết giờ diệt process group + `docker kill`; đầu ra cắt ở trần, tệp ra không đi theo symlink. Hành động `chay_python` rủi ro `nguy_hiem` (lõi bắt phê duyệt), `kiem_tinh` chỉ soi tĩnh; tắt mặc định, bật cần khoá dịch vụ riêng; kiểm với docker GIẢ + kiểm tĩnh Dockerfile + bootstrap rlimit chạy thật; **chưa kiểm với Docker thật** (chưa dựng ảnh thật, chưa kiểm các kịch bản thoát hộp cát) | 20/10/2026 |
+| Module `chay-ma` (Chạy mã Python trong container cách ly, NV171) + dịch vụ `dich-vu/chay-ma` | Có — mỗi lượt chạy là một container docker dùng-một-lần cách ly (`--network none`, rootfs chỉ đọc + tmpfs /tmp, `--user 65534:65534`, `--cap-drop ALL`, `no-new-privileges`, `--cpus 1 --memory 512m --pids-limit 64`, `--pull never`, bind-mount duy nhất thư mục tạm của lần chạy); môi trường container là whitelist tối thiểu — bí mật của lõi không lọt vào; soi tĩnh chỉ là GỢI Ý SỚM (dấu hiệu chuỗi, lách được — KHÔNG phải ranh giới an toàn; NV171-SUA C3), ranh giới thật là container; bootstrap rlimit + `timeout` giờ tường trong container; `--log-driver none`; mọi đường thoát đều `docker kill` + `docker rm -f` theo tên (không container mồ côi, C2); thư mục lần chạy chown uid 65534 (C4); đầu ra cắt ở trần, tệp ra không đi theo symlink. Hành động `chay_python` rủi ro `nguy_hiem` (lõi bắt phê duyệt), `kiem_tinh` chỉ soi tĩnh; tắt mặc định, bật cần khoá dịch vụ riêng; kiểm với docker GIẢ + kiểm tĩnh Dockerfile + bootstrap rlimit chạy thật; **chưa kiểm với Docker thật** (chưa dựng ảnh thật, chưa kiểm các kịch bản thoát hộp cát) | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2858,26 +2858,35 @@ lần chạy (id ngẫu nhiên) → `/lam-viec`, không mount dữ liệu lõi, 
 docker.sock; môi trường trong container là whitelist tối thiểu nên bí mật
 của lõi (biến môi trường, khoá) không lọt vào môi trường chạy mã. Lớp thứ
 hai trong container: bootstrap đặt `RLIMIT_CPU/RLIMIT_AS/RLIMIT_FSIZE`
-sau exec. Cổng tĩnh chặn mã chạm hệ thống (`os.system`, `subprocess`,
-`socket`, `open("/"…)`, `input(`, `while true:`) TRƯỚC khi gọi docker.
-Hết giờ: diệt cả process group + `docker kill <name>`; đầu ra phun vượt
-trần cứng 2 MB thì diệt ngay, giữ lại ≤ 64 KB mỗi luồng; tệp ra không đi
-theo symlink. Mã nguồn: `modules/chay-ma/` (module) + `dich-vu/chay-ma/`
+sau exec. Soi tĩnh (`goi_y_som`) là GỢI Ý SỚM trước khi gọi docker — danh sách dấu
+hiệu chuỗi (`os.system`, `subprocess`, `socket`, `input(`, `while true:`…)
+để bỏ qua sớm mã chắc chắn chờ người/không tự đủ; nó LÁCH ĐƯỢC và KHÔNG
+phải ranh giới an toàn (NV171-SUA C3) — ranh giới thật là container cách
+ly ở trên. Hết giờ/tràn/lỗi/xong: diệt cả process group + `finally` luôn
+`docker kill` + `docker rm -f <name>` (không container mồ côi, C2);
+`timeout` giờ tường chạy trong container; đầu ra phun vượt trần cứng
+2 MB thì diệt ngay, giữ lại ≤ 64 KB mỗi luồng; tệp ra không đi theo
+symlink. Mã nguồn: `modules/chay-ma/` (module) + `dich-vu/chay-ma/`
 (dịch vụ: `server.py` thư viện chuẩn, `Dockerfile` riêng ghim SHA-256
 docker CLI 27.5.1 + digest `python:3.13-slim`; test bằng docker GIẢ ghi
 lại argv để đọc kiểm từng cờ cách ly). Tiền tố thực thể: `chay_ma`. Hạng:
-`B` (mã tự viết; thực thi nằm ở container phụ). Cổng tĩnh/chẩn đoán chép
+`B` (mã tự viết; thực thi nằm ở container phụ). Soi tĩnh/chẩn đoán chép
 từ c2a CỦA CHÍNH CHỦ MÁY (`services/code_runner.py`: `boc_code_python`,
-`co_the_chay`, `kiem_tinh`, `chan_doan_loi`, bootstrap rlimit) — phần
+`co_the_chay` — đổi tên `goi_y_som` ở NV171-SUA, `kiem_tinh`, `chan_doan_loi`, bootstrap rlimit) — phần
 `chay()` chạy trực tiếp của c2a KHÔNG port, thay bằng container cách ly.
 
 **Cần gì.**
 - Dịch vụ `dich-vu/chay-ma` đang chạy với khoá `CHAYMA_KHOA` (xem
   `dich-vu/chay-ma/README.md`: build ảnh — gồm docker CLI — rồi cấp
   `/var/run/docker.sock` cho CHÍNH dịch vụ; container chạy mã không có).
-- Mạng nội bộ tới dịch vụ (mặc định `http://127.0.0.1:8703`); địa chỉ lúc
-  cài qua kiểm SSRF của module (chỉ loopback/RFC1918/ULA/tên đơn nhãn —
-  chặn link-local/metadata).
+- Mạng nội bộ tới dịch vụ (mặc định `http://127.0.0.1:8703`); địa chỉ qua
+  ĐÚNG bộ kiểm SSRF của lõi `app/tu_xa.py`: phân giải rồi kiểm TỪNG IP
+  (host dạng số/hex trỏ metadata bị chặn), ghim IP khi gọi bằng
+  `TransportGhimIp`; loopback là ngoại lệ có chủ đích cho dịch vụ cục bộ
+  do quản trị đặt, ngoài ra chỉ RFC1918/ULA (NV171-SUA C1). Kèm compose
+  mẫu + hướng dẫn triển khai ở `dich-vu/chay-ma/` (dịch vụ cầm
+  docker.sock = quyền root máy chủ — không bật mặc định, cổng chỉ
+  127.0.0.1; NV171-SUA C7).
 - RAM/đĩa: chưa đo (điền `null` theo khuôn).
 
 **Cách cài.**
@@ -2905,19 +2914,23 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/chay-ma/suc-khoe
 ```
 
 - Thực thể `chay_ma.kiem`, hành động `kiem_tinh` (rủi ro `doc`): soi tĩnh
-  không chạy — trả `co_the_chay`, `ly_do`, `kiem_tinh`.
+  không chạy — trả `goi_y`, `ly_do`, `kiem_tinh`.
 - Thực thể `chay_ma.chay`, hành động `chay_python` (rủi ro `nguy_hiem` —
   lõi bắt phê duyệt SEC-004f): tham số `ma` (bắt buộc), `han_giay`
-  (1–60, mặc định 20), `tep_dau_vao` (tối đa 8 tệp × 64 KB, tên đơn đúng
-  khuôn). Trả `da_chay`, `stdout`/`stderr` (module cắt ở 20.000 ký tự),
+  (1–60, mặc định 20), `tep_dau_vao` (tên đơn đúng khuôn). Qua LÕI, tổng
+  tham số một lần gọi ≤ 8 KB (trần của lõi) nên lược đồ để `ma`/tệp
+  ≤ 8.000 ký tự (NV171-SUA C8); gọi thẳng dịch vụ thì trần riêng là
+  8 tệp × 64 KB, mã 40.000 ký tự. Trả `da_chay`, `stdout`/`stderr` (module cắt ở 20.000 ký tự),
   `chan_doan`, `ma_thoat`, `het_gio`, `bi_cat`, `tep_ra`,
   `nguon_ngoai: true`.
 
 **Sự cố thường gặp.**
 - `{"ok": false, "loi": "chưa bật"}` — chưa bật `chay_bat`, sai địa
   chỉ/khoá, hoặc dịch vụ chưa chạy (đóng khi lỗi, không lộ chi tiết).
-- `da_chay: false` kèm `ly_do_bo_qua` — mã chạm cổng tĩnh (hệ
-  thống/mạng/vòng lặp vô hạn); không có container nào được tạo.
+- `da_chay: false` kèm `ly_do_bo_qua` — gợi ý sớm bỏ qua (mã chờ
+  người/không tự đủ/dấu hiệu chạm hệ thống); không có container nào
+  được tạo. Mã lọt qua gợi ý KHÔNG có nghĩa là an toàn — nó chỉ chạy
+  trong container cách ly.
 - `ten_tep_khong_hop_le` — tên tệp đầu vào có `..`, đường dẫn, ký tự lạ.
 
 **Giới hạn.**
