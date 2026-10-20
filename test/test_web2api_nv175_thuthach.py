@@ -312,6 +312,148 @@ def test_url_query_bi_mat_khong_lo():
     assert "challenge/botguard" not in chuoi2
 
 
+# ── A2. Dương tính giả (NV175-SUA, F1 của soát độc lập B mục 7) ──────────
+# Nhận diện CHỈ theo cấu trúc DOM/URL (thẻ/thuộc tính thật, host/đường dẫn
+# của iframe/script, từng thẻ input) — KHÔNG theo chữ trong thân văn bản,
+# chú thích HTML hay mã nguồn trích dẫn trong bài viết.
+
+HTML_FP_DANG_NHAP = """<html><head><title>Đăng nhập</title></head><body>
+<header><img src="/logo.png" alt="Logo cửa hàng"></header>
+<form method="post" action="/dang-nhap">
+<label>Email <input type="email" name="email"></label>
+<label>Mật khẩu <input type="password" name="mat_khau"></label>
+<button>Đăng nhập</button>
+</form>
+<!-- Ghi chú của lập trình viên: trang này KHÔNG nhúng recaptcha -->
+<footer><p>protected by reCAPTCHA — trang chính sách của chúng tôi nhắc tới
+captcha như một biện pháp chống bot nói chung.</p></footer>
+</body></html>"""
+
+HTML_FP_BLOG = """<html><body><article>
+<h1>Cloudflare Turnstile là gì?</h1>
+<p>Turnstile dùng miền challenges.cloudflare.com để hiển thị widget kiểm tra
+trình duyệt. Khi so sánh, người ta hay nhắc grecaptcha.execute của reCAPTCHA
+v3 và các dịch vụ captcha nói chung.</p>
+<pre>grecaptcha.execute('sitekey', {action: 'login'})</pre>
+</article></body></html>"""
+
+HTML_FP_BAI_HUONG_DAN = """<html><body><article>
+<h1>Hướng dẫn nhúng reCAPTCHA v2</h1>
+<p>Trang web của bạn sẽ tải khung có địa chỉ như sau (chỉ là mã trích dẫn):</p>
+<pre>&lt;iframe src="https://www.google.com/recaptcha/api2/anchor?k=SITEKEY"&gt;&lt;/iframe&gt;</pre>
+</article></body></html>"""
+
+HTML_FP_BUU_DIEN = """<html><body><form>
+<label>Mã bưu điện <input type="text" name="ma_buu_dien"
+       inputmode="numeric" maxlength="5"></label>
+<label>Họ tên <input type="text" name="ho_ten"></label>
+</form></body></html>"""
+
+HTML_FP_BUU_DIEN_AUTOCOMPLETE = """<html><body><form>
+<label>Mã bưu chính <input type="text" name="postal_code"
+       autocomplete="postal-code" inputmode="numeric" maxlength="6"></label>
+</form></body></html>"""
+
+HTML_FP_HAI_O_KHAC_NHAU = """<html><body><form>
+<label>Số điện thoại <input type="tel" name="dien_thoai"
+       inputmode="numeric"></label>
+<label>Mã giảm giá <input type="text" name="ma_giam_gia"
+       maxlength="6"></label>
+</form></body></html>"""
+
+HTML_TURNSTILE_SCRIPT = """<html><head>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async></script>
+</head><body><p>Đang kiểm tra trình duyệt…</p></body></html>"""
+
+
+def test_fp_trang_dang_nhap_chan_trang_nhac_recaptcha():
+    """Trang đăng nhập thường, chân trang ghi «protected by reCAPTCHA» +
+    chú thích HTML nhắc captcha + logo + ô email → KHÔNG thử thách."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_FP_DANG_NHAP, "https://host.example.invalid/dang-nhap")
+    assert kq["co_thu_thach"] is False
+    assert kq["loai"] is None
+    assert kq["can_nguoi"] is False
+
+
+def test_fp_blog_nhac_ten_mien_turnstile_trong_chu():
+    """Bài blog CHỈ nhắc tên miền challenges.cloudflare.com và
+    grecaptcha.execute trong đoạn văn/mã minh hoạ → KHÔNG thử thách."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_FP_BLOG, "https://host.example.invalid/blog/turnstile")
+    assert kq["co_thu_thach"] is False
+
+
+def test_fp_bai_huong_dan_trich_ma_iframe():
+    """Bài hướng dẫn trích mã iframe reCAPTCHA trong <pre> (ký tự đã thoát,
+    không phải thẻ thật) → KHÔNG thử thách."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_FP_BAI_HUONG_DAN,
+                      "https://host.example.invalid/huong-dan/recaptcha")
+    assert kq["co_thu_thach"] is False
+
+
+def test_fp_o_ma_buu_dien_khong_phai_otp():
+    """Ô mã bưu điện (số, tối đa 5 ký tự, tên trường thư tín) không phải ô
+    OTP → KHÔNG báo ma_otp."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_FP_BUU_DIEN, "https://host.example.invalid/giao-hang")
+    assert kq["co_thu_thach"] is False
+
+
+def test_fp_o_ma_buu_chinh_autocomplete():
+    """Ô có autocomplete="postal-code" tự khai là mã bưu chính → KHÔNG
+    báo ma_otp dù số + maxlength 6."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_FP_BUU_DIEN_AUTOCOMPLETE,
+                      "https://host.example.invalid/giao-hang")
+    assert kq["co_thu_thach"] is False
+
+
+def test_fp_inputmode_va_maxlength_o_hai_o_khac_nhau():
+    """inputmode="numeric" ở một ô và maxlength ở MỘT Ô KHÁC không được
+    cộng dồn thành dấu hiệu OTP — dấu hiệu phải nằm trên CÙNG một thẻ."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_FP_HAI_O_KHAC_NHAU,
+                      "https://host.example.invalid/thanh-toan")
+    assert kq["co_thu_thach"] is False
+
+
+def test_fp_url_tai_lieu_chua_doan_recaptcha():
+    """Đường dẫn tài liệu chứa đoạn /recaptcha/ (không nằm trong ngữ cảnh
+    challenge) → KHÔNG báo recaptcha_v2 qua URL."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai("", "https://host.example.invalid/tai-lieu/recaptcha/huong-dan")
+    assert kq["co_thu_thach"] is False
+
+
+def test_otp_phuong_an_3_tin_cay_thap():
+    """Ô số + maxlength không tên đặc thù là tín hiệu MƠ HỒ: vẫn nhận diện
+    ma_otp nhưng tin_cay phải hạ xuống «thap» (gợi ý của soát độc lập)."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_OTP_PIN, "https://host.example.invalid/xac-minh")
+    assert kq["loai"] == "ma_otp"
+    assert kq["tin_cay"] == "thap"
+
+
+def test_otp_one_time_code_tin_cay_cao():
+    """Ô có autocomplete="one-time-code" là tín hiệu cấu trúc mạnh:
+    tin_cay giữ «cao»."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_OTP_EMAIL, "https://host.example.invalid/xac-minh")
+    assert kq["loai"] == "ma_otp"
+    assert kq["tin_cay"] == "cao"
+
+
+def test_turnstile_qua_script_src_that():
+    """Thẻ <script> thật trỏ challenges.cloudflare.com (trang kiểm tra
+    Cloudflare kiểu «Just a moment») → turnstile."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_TURNSTILE_SCRIPT, "https://host.example.invalid/")
+    assert kq["co_thu_thach"] is True
+    assert kq["loai"] == "turnstile"
+
+
 # ── B. Hợp đồng module (thiet_bi) ─────────────────────────────────────────
 
 def test_thuc_the_va_trang_thai():
