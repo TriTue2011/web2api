@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import secrets
 import threading
 import time
 import unicodedata
@@ -81,6 +82,16 @@ class _BiMat:
 
     def __repr__(self):
         return "***"
+
+
+def _client_id(tien_to: str) -> str:
+    """client_id cho phiên TẠM THỜI (gửi lệnh/quét/thử nối).
+
+    Hậu tố ngẫu nhiên để hai phiên đồng thời không đá nhau: broker bắt buộc
+    ngắt phiên cũ khi một phiên mới dùng trùng client_id. Phiên nền dùng id
+    cố định vì chỉ có đúng một gương chạy.
+    """
+    return f"{tien_to}-{secrets.token_hex(4)}"
 
 
 def _can_paho():
@@ -546,17 +557,22 @@ class LopMqtt:
             raise LoiMqtt(f"'{thuc_the}' của '{khop}' chỉ đọc được, không điều khiển được.")
 
         # Chữ bật/tắt lấy từ chính bản khai của thiết bị, không tự chế.
+        # Bản khai THIẾU payload_on/payload_off thì theo mặc định của chuẩn
+        # Home Assistant là "ON"/"OFF". Phải dùng `or`, KHÔNG dùng
+        # m.get(k, mặc định): doc_ban_khai luôn đặt khoá với giá trị None khi
+        # thiết bị không khai, và .get trả None đó — trước vòng sửa NV151,
+        # «tat» rơi xuống nhánh `tin is None` thành "ON" (bấm tắt hoá bật).
         tin = gia_tri
         if isinstance(gia_tri, bool):
-            tin = m.get("bat", "ON") if gia_tri else m.get("tat", "OFF")
+            tin = (m.get("bat") or "ON") if gia_tri else (m.get("tat") or "OFF")
         elif isinstance(gia_tri, str) and _gap_dau(gia_tri.strip()) in ("on", "bat", "mo"):
-            tin = m.get("bat", "ON")
+            tin = m.get("bat") or "ON"
         elif isinstance(gia_tri, str) and _gap_dau(gia_tri.strip()) in ("off", "tat", "dong"):
-            tin = m.get("tat", "OFF")
+            tin = m.get("tat") or "OFF"
         if tin is None:
             tin = "ON"
 
-        cl, host, port = self._tao_client("web2api-mqtt-gui")
+        cl, host, port = self._tao_client(_client_id("web2api-mqtt-gui"))
         try:
             cl.connect(host, port, 20)
             cl.loop_start()
@@ -587,7 +603,7 @@ class LopMqtt:
         thì quét hỏng cũng không làm chết gương.
         """
         giay = max(3.0, min(float(giay or 20), 60.0))
-        cl, host, port = self._tao_client("web2api-mqtt-quet")
+        cl, host, port = self._tao_client(_client_id("web2api-mqtt-quet"))
 
         def on_connect(client, userdata, flags, rc, props=None):
             client.subscribe([(f, 0) for f in bo_loc_do_sau()])
@@ -634,7 +650,8 @@ class LopMqtt:
 
         thay: set[str] = set()
         da_xac_nhan = threading.Event()
-        cl = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="web2api-mqtt-thu")
+        cl = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+                         client_id=_client_id("web2api-mqtt-thu"))
         if self.nguoi_dung:
             cl.username_pw_set(self.nguoi_dung, self._mat_khau.gia_tri)
 
