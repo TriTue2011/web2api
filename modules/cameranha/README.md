@@ -8,17 +8,27 @@ nv167-bao-cao.md «Tận dụng từ c2a»).
 
 - **URL luồng chứa mật khẩu → bí mật**: chỉ ở trường cấu hình `danh_sach_camera`
   (kiểu `bi_mat`), không bao giờ vào log/phản hồi/ảnh chụp/trạng thái.
-- **Loa/bộ đàm mặc định TẮT**: chỉ có thực thể ghi `cam.phat_<tên>` khi cấu hình
-  `loa_bat=true`; phát bị giới hạn thời lượng (mặc định 10 s, module + trần 30 s
-  ở dịch vụ phụ) và giãn cách 2 s.
-- **Không lưu ảnh mặc định**; ảnh cho AI chỉ khi bật `cho_ai_xem` (mặc định tắt);
-  ảnh qua dịch vụ phụ luôn thu nhỏ (người xem ≤ 1600 px, AI ≤ 768 px).
+- **Loa/bộ đàm mặc định TẮT và ở mức NGUY HIỂM**: chỉ có thực thể
+  `cam.phat_<tên>` khi cấu hình `loa_bat=true`, và thực thể này mang rủi ro
+  `nguy_hiem` — khoá khách vào hàng chờ, quản trị xác nhận TỪNG LẦN phát/mở
+  bộ đàm (NV173B). Phát bị giới hạn thời lượng (mặc định 10 s, module + trần
+  30 s ở dịch vụ phụ) và giãn cách 2 s; phiên bộ đàm ở dịch vụ phụ có trần
+  số phiên/thời lượng/hết hạn khi im.
+- **Địa chỉ camera chỉ ở mạng nhà riêng**: cấu hình bị chặn nếu URL camera
+  phân giải ra IP công khai/loopback/link-local (module kiểm khi cài đặt và
+  ghim IP khi gọi ra — chống DNS rebinding). Chỉ `base` go2rtc và
+  `dich_vu_url` được dùng loopback khi dịch vụ chạy cùng máy.
+- **Ảnh là dữ liệu có cổng riêng**: `cho_ai_xem=false` (mặc định) thì KHÔNG
+  hành động nào trả ảnh — kể cả nút chụp ở tab web (cổng đặt trên dữ liệu
+  ảnh, không theo tên hành động). Bật `cho_ai_xem=true` mới chụp được.
+- **Không lưu ảnh mặc định**; ảnh qua dịch vụ phụ luôn thu nhỏ (người xem
+  ≤ 1600 px, AI ≤ 768 px).
 
 ## Cấu hình
 
 | Khoá | Kiểu | Lấy ở đâu |
 |---|---|---|
-| `danh_sach_camera` | bí mật (JSON) | Chép từ go2rtc (phần «Luồng») hoặc thông tin camera: mỗi phần tử `{"name":"Cửa","kind":"go2rtc","base":"http://10.0.0.6:1984","src":"cua"}` hoặc `{"name":"Phòng khách","kind":"rtsp","url":"rtsp://admin:MK@10.0.0.6/stream"}`. Thêm `src_ai`/`url_ai` cho luồng phụ của AI. |
+| `danh_sach_camera` | bí mật (JSON) | Chép từ go2rtc (phần «Luồng») hoặc thông tin camera: mỗi phần tử `{"name":"Cửa","kind":"go2rtc","base":"http://10.0.0.6:1984","src":"cua"}` hoặc `{"name":"Phòng khách","kind":"rtsp","url":"rtsp://admin:MK@10.0.0.6/stream"}`. Thêm `src_ai`/`url_ai` cho luồng phụ của AI. Camera có loa muốn phát/bộ đàm phải khai thêm `"cho_loa": true` — dịch vụ phụ mặc định TẮT loa cho mọi camera. |
 | `dich_vu_url` | chuỗi | URL nội bộ của `dich-vu/camera` đã dựng (mặc định `http://127.0.0.1:8714`) |
 | `dich_vu_khoa` | bí mật | TỰ ĐẶT (≥ 24 ký tự) — chính là `CAM_KHOA` đã đặt khi chạy dịch vụ phụ |
 | `loa_bat` | chuỗi | `true`/`false` (mặc định `false`) |
@@ -28,9 +38,15 @@ nv167-bao-cao.md «Tận dụng từ c2a»).
 
 ## Hành động
 
-Đọc (thực thể `cam.<tên>`): `chup`, `chup_cho_ai`, `canh_bao_moi_nhat`.
-Ghi (thực thể `cam.phat_<tên>`, chỉ khi `loa_bat=true`): `phat`
-(`am_thanh_b64` WAV/MP3), `bo_dam_mo` → `bo_dam_them` (`alaw_b64`) → `bo_dam_dong`.
+Đọc (thực thể `cam.<tên>`): `chup`, `chup_cho_ai`, `canh_bao_moi_nhat` —
+`chup`/`chup_cho_ai` chỉ trả ảnh khi `cho_ai_xem=true`.
+Nguy hiểm (thực thể `cam.phat_<tên>`, chỉ khi `loa_bat=true`, xác nhận từng
+lần): `phat` (`am_thanh_b64` WAV/MP3), `bo_dam_mo` → `bo_dam_them`
+(`alaw_b64`) → `bo_dam_dong`.
+
+Module đăng ký bảng camera với dịch vụ phụ (`POST /dang-ky`) ở lượt gọi đầu
+tiên sau khi nạp cấu hình — dịch vụ kiểm và ghim IP từng bản ghi rồi chỉ
+nhận `cam_id` cho mọi lượt sau (không gửi URL theo từng lời gọi nữa).
 
 ## Lưu ý khi gộp
 

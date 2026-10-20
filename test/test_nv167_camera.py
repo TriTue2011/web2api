@@ -83,7 +83,10 @@ def go2rtc_gia():
 def dich_vu_gia():
     """Dịch vụ phụ camera CHẠY THẬT (server.py của nhiệm vụ) trên cổng tạm."""
     khoa = "khoa-test-dai-du-24-ky-tu-abcdef"
+    # CAM_TEST_CHO_PHEP_LOOPBACK: go2rtc giả chạy trên 127.0.0.1 — dịch vụ
+    # phụ (NV173B) chặn loopback trong bản ghi đăng ký, chỉ test mới mở.
     env = dict(os.environ, CAM_KHOA=khoa, CAM_CONG="0", CAM_HOST="127.0.0.1",
+               CAM_TEST_CHO_PHEP_LOOPBACK="1",
                PYTHONPATH=DV)
     p = subprocess.Popen(
         [sys.executable, os.path.join(DV, "server.py")],
@@ -233,12 +236,14 @@ class TestThucThe:
         assert [e["id"] for e in ett] == ["cam.cua"]
         assert ett[0]["rui_ro_mac_dinh"] == "doc"
 
-    async def test_loa_bat_thi_co_thuc_the_ghi(self, monkeypatch):
+    async def test_loa_bat_thi_co_thuc_the_nguy_hiem(self, monkeypatch):
+        # NV173B (C3): thực thể loa/bộ đàm ở mức NGUY HIỂM — xác nhận từng lần,
+        # không còn «ghi» (xác nhận thực thể một lần là phát tự do mãi).
         ch = dict(CH_TIEU_BIEU, loa_bat="true")
         m = _nap(monkeypatch, ch)
         ids = [e["id"] for e in await m.thuc_the()]
         assert ids == ["cam.cua", "cam.phat_cua"]
-        assert (await m.thuc_the())[1]["rui_ro_mac_dinh"] == "ghi"
+        assert (await m.thuc_the())[1]["rui_ro_mac_dinh"] == "nguy_hiem"
 
     async def test_loc_theo_ten(self, monkeypatch, go2rtc_gia):
         ch = dict(CH_TIEU_BIEU, **{"danh_sach_camera": json.dumps(
@@ -258,8 +263,10 @@ class TestThucThe:
 
 class TestChupTrucTiep:
     async def test_chup_anh_that(self, monkeypatch, go2rtc_gia):
+        # NV173B (C4): cho_ai_xem=false nay chặn CẢ «chup» — muốn chụp phải bật.
         ch = {"danh_sach_camera": json.dumps([
-            {"name": "Cửa", "kind": "go2rtc", "src": "cua", "base": go2rtc_gia["base"]}])}
+            {"name": "Cửa", "kind": "go2rtc", "src": "cua", "base": go2rtc_gia["base"]}]),
+              "cho_ai_xem": "true"}
         m = _nap(monkeypatch, ch)
         kq = await m.thuc_hien("cam.cua", "chup")
         assert kq["ok"] is True
@@ -283,14 +290,16 @@ class TestChupTrucTiep:
         assert kq["ok"] is True
 
     async def test_go2rtc_404(self, monkeypatch, go2rtc_gia):
+        # Bật cho_ai_xem để test chạm đúng đường 404, không dừng ở cổng dữ liệu.
         ch = {"danh_sach_camera": json.dumps([
-            {"name": "A", "kind": "go2rtc", "src": "khong-co", "base": go2rtc_gia["base"]}])}
+            {"name": "A", "kind": "go2rtc", "src": "khong-co", "base": go2rtc_gia["base"]}]),
+              "cho_ai_xem": "true"}
         m = _nap(monkeypatch, ch)
         kq = await m.thuc_hien("cam.a", "chup")
         assert kq["ok"] is False
 
     async def test_rtsp_can_dich_vu(self, monkeypatch):
-        m = _nap(monkeypatch, dict(CH_DAY_DU))
+        m = _nap(monkeypatch, dict(CH_DAY_DU, cho_ai_xem="true"))
         kq = await m.thuc_hien("cam.phong-khach", "chup")
         assert kq["ok"] is False
         assert "dịch vụ phụ" in kq["loi"]
@@ -440,7 +449,8 @@ class TestChupKhongCanFfmpeg:
 
     async def test_chup_duong_chinh_bang_jpeg_tay(self, monkeypatch, go2rtc_tay):
         ch = {"danh_sach_camera": json.dumps([
-            {"name": "Cửa", "kind": "go2rtc", "src": "cua", "base": go2rtc_tay["base"]}])}
+            {"name": "Cửa", "kind": "go2rtc", "src": "cua", "base": go2rtc_tay["base"]}]),
+              "cho_ai_xem": "true"}
         m = _nap(monkeypatch, ch)
         kq = await m.thuc_hien("cam.cua", "chup")
         assert kq["ok"] is True
@@ -474,10 +484,13 @@ class TestDichVu:
 
 class TestChuoiDayDu:
     def _ch_dich_vu(self, monkeypatch, go2rtc_gia, dich_vu_gia, **them):
+        # NV173B: bản ghi khai cho_loa=true (dịch vụ phụ mặc định TẮT loa khi
+        # thiếu trường) và đường chụp cần cho_ai_xem=true (cổng dữ liệu C4).
         ch = {"danh_sach_camera": json.dumps([
                   {"name": "Cửa", "kind": "go2rtc", "src": "cua",
-                   "base": go2rtc_gia["base"]}]),
-              "dich_vu_url": dich_vu_gia["url"], "dich_vu_khoa": dich_vu_gia["khoa"]}
+                   "base": go2rtc_gia["base"], "cho_loa": True}]),
+              "dich_vu_url": dich_vu_gia["url"], "dich_vu_khoa": dich_vu_gia["khoa"],
+              "cho_ai_xem": "true"}
         ch.update(them)
         return _nap(monkeypatch, ch)
 
@@ -521,13 +534,19 @@ class TestHangRaoDichVu:
     Đường phát của dịch vụ cần ffmpeg để đổi âm thanh → bỏ qua khi máy thiếu."""
 
     async def test_phat_hai_lan_lien_tiep_bi_chan(self, dich_vu_gia, go2rtc_gia):
+        # NV173B (C2): dịch vụ không còn nhận bản ghi theo lượt — phải
+        # /dang-ky trước (bản ghi khai cho_loa=true) rồi gọi bằng cam_id.
         import httpx
         hd = {"Authorization": f"Bearer {dich_vu_gia['khoa']}"}
-        than = {"cam": {"name": "HangRao", "kind": "go2rtc",
-                        "base": go2rtc_gia["base"], "src": "cua"},
+        ban = {"id": "hang-rao", "name": "HangRao", "kind": "go2rtc",
+               "base": go2rtc_gia["base"], "src": "cua", "cho_loa": True}
+        than = {"cam_id": "hang-rao",
                 "am_thanh_b64": base64.b64encode(b"\x00" * 1600).decode(),
                 "toi_da_giay": 5}
         async with httpx.AsyncClient() as client:
+            rd = await client.post(f"{dich_vu_gia['url']}/dang-ky",
+                                   json={"danh_sach": [ban]}, headers=hd)
+            assert rd.status_code == 200, rd.text
             r1 = await client.post(f"{dich_vu_gia['url']}/phat", json=than, headers=hd)
             r2 = await client.post(f"{dich_vu_gia['url']}/phat", json=than, headers=hd)
         assert r2.status_code == 422
