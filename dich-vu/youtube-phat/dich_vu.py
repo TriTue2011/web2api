@@ -279,6 +279,15 @@ class PlayerCore:
         self.stream_cache: dict[tuple[str, str], tuple[float, dict]] = {}
         self.prefetching: set[tuple[str, str]] = set()
         self.prefetch_streams = True
+        #: Khoá TUẦN TỰ cho bài kế/bài trước/tua (NV153 đợt D4). Ý tưởng từ thẻ
+        #: HA trong kho youtube 0.27.12 (thẻ giữ khoá quanh thao tác tự chuyển
+        #: bài để bấm liên tiếp không sinh phiên đôi; kho youtube CHỈ ĐỌC, lấy
+        #: ý chứ không chép mã): mọi lần chuyển bài/tua giữ khoá này từ lúc
+        #: kiểm trạng thái tới lúc xong — bấm liên tiếp 5 lần = đúng 5 lần
+        #: chuyển, không bỏ sót, không sinh hai phiên. Riêng với player_lock
+        #: (dùng ở play/stop/record_session): đây là lock độc lập cho riêng ba
+        #: thao tác chuyển/tua để đột biến «bỏ khoá» có đường đỏ rõ ràng.
+        self._khoa_chuyen_bai = threading.Lock()
         self.playback_session = PlaybackSession()
         self.playlists = PlaylistStore(self.data_dir / "playlists.json")
 
@@ -433,6 +442,40 @@ class PlayerCore:
     def stop(self, expected_revision=None, session_id=None):
         with self.player_lock:
             return self.playback_session.stop(expected_revision, session_id)
+
+    def bai_ke(self, session_id=None):
+        """Bài kế trong hàng đợi của phiên (NV153 đợt D4).
+
+        Giữ `_khoa_chuyen_bai` suốt lần chuyển: bấm liên tiếp không sinh hai
+        phiên, không bỏ sót bài. «Dừng là dừng hẳn» được ưu tiên: phiên đã
+        dừng → ValueError("session_not_found") (route dịch 404), KHÔNG hồi
+        sinh phiên / phát ma. Hết hàng đợi → ValueError("het_hang_doi").
+        """
+        with self._khoa_chuyen_bai:
+            with self.player_lock:
+                ss = self.playback_session.advance(1, session_id)
+        self.prefetch_next(ss)
+        return ss
+
+    def bai_truoc(self, session_id=None):
+        """Bài trước trong hàng đợi của phiên (NV153 đợt D4)."""
+        with self._khoa_chuyen_bai:
+            with self.player_lock:
+                ss = self.playback_session.advance(-1, session_id)
+        self.prefetch_next(ss)
+        return ss
+
+    def tua(self, session_id, giay):
+        """Đặt vị trí phát của phiên (NV153 đợt D4) — chỉ trạng thái.
+
+        Byte thật do `GET /api/stream/{token}?t=<giây>` tính từ mục lục
+        sidx/tỉ lệ thời lượng, đồng bộ với rơ-le `ro_le` (rơ-le mở lại từ
+        `dau` đã tính). Giây không hợp lệ → ValueError("invalid_seek_position"),
+        phiên không còn → ValueError("session_not_found").
+        """
+        with self._khoa_chuyen_bai:
+            with self.player_lock:
+                return self.playback_session.dat_vi_tri(giay, session_id)
 
     def playlist_action(self, payload):
         """Một lệnh playlist (từ giao diện web hoặc tích hợp ngoài). Trả {"playlists": [...], ...}.

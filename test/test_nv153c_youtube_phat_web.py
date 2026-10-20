@@ -5,7 +5,7 @@ và chưa có web/.
 
 Phạm vi đợt C (đọc từ viec-nv153-bo-sung-c.txt):
 - Module khai `tab_web` → tab «YouTube phát» chỉ hiện khi module đã cài.
-- Module mở 7 hành động qua chuẩn C1 `thiet_bi`/`hanh-dong` (lõi đã có cơ chế,
+- Module mở 10 hành động qua chuẩn C1 `thiet_bi`/`hanh-dong` (lõi đã có cơ chế,
   không sửa lõi): tim, phat_len_loa, dung_phien, trang_thai,
   danh_sach_playlist, nhap_ma_chia_se, lay_khoa. Mọi lời gọi dịch vụ đi bằng
   khoá phía server, không lộ khoá ra trình duyệt (trừ `lay_khoa` khi quản trị
@@ -50,9 +50,11 @@ WEB_DIR = THU_MUC_MODULE / "web"
 KHOA_GIA = "khoa-gia-test-youtube-phat-0123456789abcdef"
 URL_DICH_VU = "http://127.0.0.1:8713"
 
+# (D4 đổi có chủ ý: thêm bai_ke/bai_truoc/tua — cập nhật theo NV98.)
 HANH_DONG_MONG_DOI = {
     "tim", "phat_len_loa", "dung_phien", "trang_thai",
     "danh_sach_playlist", "nhap_ma_chia_se", "lay_khoa",
+    "bai_ke", "bai_truoc", "tua",
 }
 
 
@@ -158,7 +160,7 @@ def test_web_files_ton_tai_va_dung_khung():
 
 # ── thực thể + lược đồ hành động ──────────────────────────────────────────
 
-def test_thuc_the_khai_du_7_hanh_dong_va_rui_ro_ghi(the):
+def test_thuc_the_khai_du_10_hanh_dong_va_rui_ro_ghi(the):
     nap_gia(the)
     ents = asyncio.run(the.thuc_the(None))
     assert len(ents) == 1

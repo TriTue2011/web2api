@@ -356,8 +356,71 @@ def test_thuc_the_mo_ta_khong_cong_cu_gia(the):
     assert KHOA_GIA not in json.dumps(ds, ensure_ascii=False)
     # KHÔNG liệt kê công cụ giả: tinh_nang rỗng, chỉ mô tả bằng chữ.
     # (Đợt C đổi có chủ ý: thực thể giờ khai 7 hành động THẬT gọi qua dịch vụ,
-    #  không còn rỗng — cập nhật assert theo bài học NV98.)
-    assert isinstance(e["tinh_nang"], list) and len(e["tinh_nang"]) == 7
+    #  không còn rỗng — cập nhật assert theo bài học NV98. Đợt D4 thêm
+    #  bai_ke/bai_truoc/tua → 10 hành động.)
+    assert isinstance(e["tinh_nang"], list) and len(e["tinh_nang"]) == 10
     assert {t["hanh_dong"] for t in e["tinh_nang"]} == {
         "tim", "phat_len_loa", "dung_phien", "trang_thai",
-        "danh_sach_playlist", "nhap_ma_chia_se", "lay_khoa"}
+        "danh_sach_playlist", "nhap_ma_chia_se", "lay_khoa",
+        "bai_ke", "bai_truoc", "tua"}
+
+
+# ── đợt D4: hành động bài kế / bài trước / tua gọi đúng route dịch vụ ─────
+
+
+def _gia_goi_dich_vu(the, phan_hoi):
+    """Thay `_goi_dich_vu` bằng bản giả ghi lại lời gọi, trả `phan_hoi`."""
+
+    async def _gia(self, method, path, params=None, json_body=None):
+        _gia.goi.append((method, path, json_body))
+        return phan_hoi
+
+    _gia.goi = []
+    type(the)._goi_dich_vu = _gia
+    return _gia.goi
+
+
+def test_bai_ke_goi_route_next(the):
+    goi = _gia_goi_dich_vu(
+        the, (200, {"success": True, "session": {"id": 1},
+                    "item": {"id": "x"}}))
+    kq = asyncio.run(the.thuc_hien("youtube_phat.dieu_khien", "bai_ke",
+                                   {"phien": "web"}))
+    assert kq["ok"] is True
+    assert goi == [("POST", "/api/integration/next", {"session_id": "web"})]
+
+
+def test_bai_truoc_goi_route_prev(the):
+    goi = _gia_goi_dich_vu(
+        the, (200, {"success": True, "session": {"id": 1},
+                    "item": {"id": "y"}}))
+    kq = asyncio.run(the.thuc_hien("youtube_phat.dieu_khien", "bai_truoc", {}))
+    assert kq["ok"] is True
+    assert goi == [("POST", "/api/integration/prev", {})]
+
+
+def test_tua_goi_route_seek_va_tra_seek_url(the):
+    goi = _gia_goi_dich_vu(
+        the, (200, {"success": True, "session": {"id": 1}, "position": 30.0,
+                    "seek_url": "http://x/api/stream/abc?t=30.0"}))
+    kq = asyncio.run(the.thuc_hien("youtube_phat.dieu_khien", "tua",
+                                   {"giay": 30}))
+    assert kq["ok"] is True
+    assert kq["seek_url"].endswith("?t=30.0")
+    assert goi == [("POST", "/api/integration/seek", {"giay": 30.0})]
+
+
+def test_tua_giay_khong_hop_le_loi_sach(the):
+    _gia_goi_dich_vu(the, (200, {"success": True}))
+    for giay in (-1, "abc", None):
+        kq = asyncio.run(the.thuc_hien("youtube_phat.dieu_khien", "tua",
+                                       {"giay": giay}))
+        assert kq["ok"] is False, giay
+        assert "giay" in kq["loi"]
+
+
+def test_bai_ke_het_hang_doi_tra_loi_sach(the):
+    _gia_goi_dich_vu(the, (409, {"error": "queue_end"}))
+    kq = asyncio.run(the.thuc_hien("youtube_phat.dieu_khien", "bai_ke", {}))
+    assert kq["ok"] is False
+    assert kq["loi"] == "queue_end"

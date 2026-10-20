@@ -88,6 +88,16 @@
         <button class="nut nut-nho" id="nut-tiep-tuc" type="button">Tiếp tục loa</button>
         <button class="nut nut-nho nut-nguy" id="nut-dung" type="button">Dừng hẳn</button>
       </div>
+      <div class="hang-nut">
+        <button class="nut nut-nho" id="nut-bai-truoc" type="button">◀ Bài trước</button>
+        <button class="nut nut-nho" id="nut-bai-ke" type="button">Bài kế ▶</button>
+      </div>
+      <div class="hang-tua">
+        <label class="phu nho" for="thanh-tua">Tua</label>
+        <input type="range" id="thanh-tua" min="0" max="0" value="0" step="1"
+               disabled aria-describedby="chu-tua">
+        <span class="phu nho" id="chu-tua" aria-live="polite">–</span>
+      </div>
       <p class="bao bao-loi" id="loi-dang-phat" role="alert" hidden></p>
       <p class="phu nho">«Tạm dừng/Tiếp tục loa» gửi tới loa/tivi đã chọn qua tích hợp Home Assistant.
         «Dừng hẳn» dừng phiên của dịch vụ: không phát lại, không tự chuyển bài.</p>

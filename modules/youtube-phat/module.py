@@ -6,7 +6,7 @@ phát nhạc và KHÔNG gọi ra youtube.com — dịch vụ mới là nơi gọ
 (youtube.com/googlevideo.com/ytimg.com/zingmp3.vn).
 
 `thuc_the()` mô tả một thực thể `cong_cu` (URL gốc để dán vào Home Assistant
-+ khoá che dạng `…abcd`) và khai 7 hành động gọi qua dịch vụ (đợt C):
++ khoá che dạng `…abcd`) và khai 10 hành động gọi qua dịch vụ (đợt C + D4):
 `tim`, `phat_len_loa`, `dung_phien`, `trang_thai`, `danh_sach_playlist`,
 `nhap_ma_chia_se`, `lay_khoa`. Giao diện web của module
 (`web/index.html`, khai `tab_web` trong manifest) gọi các hành động này qua
@@ -143,7 +143,7 @@ def _chuoi_sach(gia_tri, dai_toi_da=2048) -> str:
     return str(gia_tri or "").strip()[:dai_toi_da]
 
 
-#: Lược đồ 7 hành động mở qua chuẩn C1 `thiet_bi` (đợt C). Lõi kiểm tham số theo
+#: Lược đồ 10 hành động mở qua chuẩn C1 `thiet_bi` (đợt C + D4). Lõi kiểm tham số theo
 #: lược đồ này (SEC-004a); module tự áp giá trị mặc định cho trường vắng.
 _TINH_NANG = [
     {
@@ -217,6 +217,45 @@ _TINH_NANG = [
                        "description": "Mã chia sẻ, phải bắt đầu bằng «TTPL1.»"},
                 "ten": {"type": "string", "minLength": 1, "maxLength": 120,
                         "description": "Tên đặt cho playlist (tuỳ chọn)"},
+            },
+        },
+    },
+    {
+        "hanh_dong": "bai_ke",
+        "mo_ta": "Chuyển bài KẾ trong hàng đợi của phiên (đợt D4)",
+        "tham_so": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "phien": {"type": "string", "minLength": 1, "maxLength": 64,
+                          "description": "Mã phiên (bỏ trống: dùng phiên đang chạy)"},
+            },
+        },
+    },
+    {
+        "hanh_dong": "bai_truoc",
+        "mo_ta": "Chuyển bài TRƯỚC trong hàng đợi của phiên (đợt D4)",
+        "tham_so": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "phien": {"type": "string", "minLength": 1, "maxLength": 64,
+                          "description": "Mã phiên (bỏ trống: dùng phiên đang chạy)"},
+            },
+        },
+    },
+    {
+        "hanh_dong": "tua",
+        "mo_ta": "Tua phiên phát tới vị trí giây (đợt D4)",
+        "tham_so": {
+            "type": "object",
+            "required": ["giay"],
+            "additionalProperties": False,
+            "properties": {
+                "phien": {"type": "string", "minLength": 1, "maxLength": 64,
+                          "description": "Mã phiên (bỏ trống: dùng phiên đang chạy)"},
+                "giay": {"type": "number", "minimum": 0,
+                         "description": "Vị trí muốn tua tới (giây, >= 0)"},
             },
         },
     },
@@ -309,11 +348,11 @@ class Module:
     async def dung(self) -> None:
         return None
 
-    # ── thực thể: mô tả + 7 hành động qua dịch vụ ─────────────────────────
+    # ── thực thể: mô tả + 10 hành động qua dịch vụ ─────────────────────────
 
     async def thuc_the(self, loc=None) -> list[dict]:
         """Một thực thể cong_cu: URL gốc để dán vào Home Assistant + khoá che
-        …abcd, kèm 7 hành động gọi qua dịch vụ (khoá Bearer chỉ đi ở phía
+        …abcd, kèm 10 hành động gọi qua dịch vụ (khoá Bearer chỉ đi ở phía
         server, không ra trình duyệt — trừ `lay_khoa` khi quản trị bấm
         «Chép token» có chủ đích)."""
         return [{
@@ -481,8 +520,49 @@ class Module:
                     "loi": self._loi_dich_vu(ma, than, "nhập mã chia sẻ thất bại")}
         return {"ok": True, "playlist": (than or {}).get("playlist")}
 
+    async def _hd_chuyen_bai(self, duong: str, tham_so: dict, mac_dinh: str) -> dict:
+        """Bài kế/bài trước (đợt D4): gọi thẳng route tương ứng của dịch vụ.
+
+        Dịch vụ giữ khoá tuần tự quanh mỗi lần chuyển, và «dừng là dừng hẳn»
+        vẫn ưu tiên (phiên đã dừng → lỗi sạch, không hồi sinh)."""
+        than_gui: dict = {}
+        phien = _chuoi_sach(tham_so.get("phien"), 64)
+        if phien:
+            than_gui["session_id"] = phien
+        ma, than = await self._goi_dich_vu("POST", duong, json_body=than_gui)
+        if ma != 200 or not (than or {}).get("success"):
+            return {"ok": False,
+                    "loi": self._loi_dich_vu(ma, than, mac_dinh)}
+        return {"ok": True, "phien": than.get("session"),
+                "bai": than.get("item")}
+
+    async def _hd_tua(self, tham_so: dict) -> dict:
+        """Tua phiên tới vị trí giây (đợt D4).
+
+        Dịch vụ tự tính byte bắt đầu từ mục lục sidx/tỉ lệ thời lượng và trả
+        `seek_url` để loa tự nhảy tới — không dựa vào loa có SEEK hay không.
+        Giây không hợp lệ → lỗi sạch, KHÔNG ném."""
+        try:
+            giay = float(tham_so.get("giay"))
+        except (TypeError, ValueError):
+            return {"ok": False, "loi": "«giay» phải là số >= 0"}
+        if giay != giay or giay < 0:
+            return {"ok": False, "loi": "«giay» phải là số >= 0"}
+        than_gui: dict = {"giay": giay}
+        phien = _chuoi_sach(tham_so.get("phien"), 64)
+        if phien:
+            than_gui["session_id"] = phien
+        ma, than = await self._goi_dich_vu(
+            "POST", "/api/integration/seek", json_body=than_gui)
+        if ma != 200 or not (than or {}).get("success"):
+            return {"ok": False,
+                    "loi": self._loi_dich_vu(ma, than, "tua thất bại")}
+        return {"ok": True, "phien": than.get("session"),
+                "vi_tri": than.get("position"),
+                "seek_url": than.get("seek_url")}
+
     async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
-        """Điều phối 7 hành động đợt C qua dịch vụ. Lỗi dịch vụ → dict
+        """Điều phối 10 hành động đợt C+D qua dịch vụ. Lỗi dịch vụ → dict
         {"ok": False, "loi": <sạch>}, KHÔNG ném, KHÔNG lộ khoá."""
         tham_so = dict(tham_so or {})
         try:
@@ -498,6 +578,14 @@ class Module:
                 return await self._hd_danh_sach_playlist()
             if hanh_dong == "nhap_ma_chia_se":
                 return await self._hd_nhap_ma_chia_se(tham_so)
+            if hanh_dong == "bai_ke":
+                return await self._hd_chuyen_bai("/api/integration/next",
+                                                 tham_so, "chuyển bài kế thất bại")
+            if hanh_dong == "bai_truoc":
+                return await self._hd_chuyen_bai("/api/integration/prev",
+                                                 tham_so, "chuyển bài trước thất bại")
+            if hanh_dong == "tua":
+                return await self._hd_tua(tham_so)
             if hanh_dong == "lay_khoa":
                 if not self._khoa:
                     return {"ok": False, "loi": "chưa cấu hình «Khoá Integration API»"}

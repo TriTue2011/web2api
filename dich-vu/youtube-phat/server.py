@@ -187,6 +187,67 @@ def _ios_can_danh_sach(token: str, request: Request) -> bool:
     return source == "youtube"
 
 
+async def _offset_theo_giay(resolved: dict, giay: float) -> int | None:
+    """Byte bắt đầu để TUA tới `giay` giây (NV153 đợt D4), hoặc None khi
+    không tính được (không mục lục, không thời lượng, không biết cỡ tệp).
+
+    Ưu tiên mục lục `sidx` của MP4 cắt mảnh: đáp đúng ranh giới mảnh chứa
+    giây đó (mảnh ~10 giây độc lập giải mã được — cùng cách danh sách HLS
+    của iOS dùng). Không có sidx thì tỉ lệ theo thời lượng thật mà
+    `prepare_stream` đã điền vào bản ghi luồng. Offset trả ra đi thẳng vào
+    `ro_le.luong_chiu_loi` (đồng bộ với bộ nối lại: rơ-le mở lại từ đúng
+    `dau` này, hỏng giữa chừng vẫn nối lại từ byte đã gửi)."""
+    def _doc_dau() -> bytes:
+        headers = {**resolved["headers"], "Accept-Encoding": "identity",
+                   "Range": f"bytes=0-{_DAU_MUC_LUC - 1}"}
+        with urlopen(UrlRequest(resolved["url"], headers=headers),
+                     timeout=20) as up:
+            return up.read(_DAU_MUC_LUC)
+
+    try:
+        buf = await asyncio.to_thread(_doc_dau)
+    except (OSError, HTTPError):
+        buf = b""
+    muc = doc_muc_luc_mp4(buf) if buf else None
+    if muc is not None:
+        # Mỗi mục là (offset, cỡ, THỜI LƯỢNG của mảnh đó) — thời điểm bắt
+        # đầu của mảnh phải cộng dồn từ các mảnh trước.
+        _khoi, cac_khuc = muc
+        dau = cac_khuc[0][0]
+        bat_dau = 0.0
+        for off, _dai, dai_giay in cac_khuc:
+            if bat_dau > giay:
+                break
+            dau = off
+            bat_dau += dai_giay
+        return dau
+    # Không sidx: tỉ lệ theo thời lượng — cần cả cỡ tệp thật.
+    thoi_luong = 0
+    try:
+        thoi_luong = float(resolved.get("duration") or 0)
+    except (TypeError, ValueError):
+        thoi_luong = 0
+    if thoi_luong <= 0:
+        return None
+
+    def _tong() -> int:
+        headers = {**resolved["headers"], "Accept-Encoding": "identity",
+                   "Range": "bytes=0-0"}
+        with urlopen(UrlRequest(resolved["url"], headers=headers),
+                     timeout=15) as up:
+            cr = str(up.headers.get("Content-Range") or "")
+            tong = cr.rsplit("/", 1)[-1].strip() if "/" in cr else ""
+            return int(tong) if tong.isdigit() else 0
+
+    try:
+        tong = await asyncio.to_thread(_tong)
+    except (OSError, HTTPError):
+        return None
+    if tong <= 0:
+        return None
+    return min(max(int(tong * giay / thoi_luong), 0), tong - 1)
+
+
 def _tong_co_tep(up) -> int:
     """Cỡ THẬT của cả tệp, đọc từ «Content-Range: bytes a-b/TỔNG» của khúc đầu.
 
@@ -575,6 +636,7 @@ def _dang_ky_routes(app: FastAPI) -> None:
             return _json(400, {"error": "invalid_request"})
         return _json(200, {"success": True, "source": source, "stream_url": stream_url,
                            "media_content_type": resolved.get("content_type", "audio/mpeg"),
+                           "duration": resolved.get("duration") or 0,
                            "expires_in": 3600,
                            **(_luong_hinh(resolved) if source in {"youtube_video", "facebook_video"} else {})})
 
@@ -597,6 +659,98 @@ def _dang_ky_routes(app: FastAPI) -> None:
         ket_qua = await asyncio.to_thread(core.play, target, raw_target=raw_target)
         return _json(200, {"success": True, "item": ket_qua["item"],
                            "session_revision": ket_qua["revision"]})
+
+    # ── bài kế / bài trước / tua (NV153 đợt D4) ──────────────────────────
+    # Khoá TUẦN TỰ ở tầng HTTP (ý từ khoá tuần tự trong thẻ HA kho youtube
+    # 0.27.12 — thẻ giữ khoá quanh thao tác tự chuyển bài để bấm liên tiếp
+    # không sinh phiên đôi; kho youtube CHỈ ĐỌC, lấy ý chứ không chép mã):
+    # mỗi yêu cầu giữ khoá từ lúc vào tới lúc core trả xong. Core có thêm
+    # `_khoa_chuyen_bai` riêng cho phần đổi trạng thái để đường này có đột
+    # biến kiểm được độc lập.
+    khoa_chuyen_bai = asyncio.Lock()
+
+    def _loi_phien(error: ValueError):
+        """Dịch lỗi phiên của core thành mã HTTP hợp đồng."""
+        ma = str(error)
+        if ma == "session_not_found":
+            return _json(404, {"error": ma})
+        if ma == "het_hang_doi":
+            return _json(409, {"error": "queue_end"})
+        if ma == "dau_hang_doi":
+            return _json(409, {"error": "queue_start"})
+        return _json(400, {"error": "invalid_request"})
+
+    async def _phien_id(request: Request) -> str | None:
+        if int(request.headers.get("content-length") or "0"):
+            try:
+                payload = await _doc_json(request, 256)
+            except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+                return "?"
+            return str(payload.get("session_id") or "") or None
+        return None
+
+    @app.post("/api/integration/next")
+    async def bai_ke(request: Request, authorization: str | None = Header(default=None)):
+        core = request.app.state.core
+        if (loi := _xac_thuc(authorization, core.integration_token)) is not None:
+            return loi
+        session_id = await _phien_id(request)
+        if session_id == "?":
+            return _json(400, {"error": "invalid_request"})
+        try:
+            async with khoa_chuyen_bai:
+                ss = await asyncio.to_thread(core.bai_ke, session_id)
+        except ValueError as error:
+            return _loi_phien(error)
+        return _json(200, {"success": True, "session": ss, "item": ss["item"]})
+
+    @app.post("/api/integration/prev")
+    async def bai_truoc(request: Request, authorization: str | None = Header(default=None)):
+        core = request.app.state.core
+        if (loi := _xac_thuc(authorization, core.integration_token)) is not None:
+            return loi
+        session_id = await _phien_id(request)
+        if session_id == "?":
+            return _json(400, {"error": "invalid_request"})
+        try:
+            async with khoa_chuyen_bai:
+                ss = await asyncio.to_thread(core.bai_truoc, session_id)
+        except ValueError as error:
+            return _loi_phien(error)
+        return _json(200, {"success": True, "session": ss, "item": ss["item"]})
+
+    @app.post("/api/integration/seek")
+    async def tua(request: Request, authorization: str | None = Header(default=None)):
+        core = request.app.state.core
+        if (loi := _xac_thuc(authorization, core.integration_token)) is not None:
+            return loi
+        try:
+            payload = await _doc_json(request, 256)
+            session_id = str(payload.get("session_id") or "") or None
+            giay = payload.get("giay")
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            return _json(400, {"error": "invalid_request"})
+        try:
+            async with khoa_chuyen_bai:
+                ss = await asyncio.to_thread(core.tua, session_id, giay)
+        except ValueError as error:
+            ma = str(error)
+            if ma == "invalid_seek_position":
+                return _json(400, {"error": ma})
+            return _loi_phien(error)
+        # Đường luồng mới cho loa nhảy tới: dịch vụ tự tính byte bắt đầu từ
+        # giây (?t=), không dựa vào loa có SEEK hay không.
+        bai = ss["item"] or {}
+        seek_url = None
+        if bai.get("source") and bai.get("id"):
+            try:
+                seek_url = (core.create_stream_url(
+                    bai["source"], bai["id"], _url_goc(request))
+                    + f"?t={ss['position']}")
+            except ValueError:
+                seek_url = None
+        return _json(200, {"success": True, "session": ss,
+                           "position": ss["position"], "seek_url": seek_url})
 
 
 def _luong_hinh(giai: dict) -> dict:
@@ -650,6 +804,27 @@ def _dang_ky_stream(app: FastAPI) -> None:
         dau = int(xin.group(1)) if xin else 0
         cuoi_xin = int(xin.group(2)) if xin and xin.group(2) else None
 
+        # TUA theo giây (NV153 đợt D4): tham số ?t=<giây> — dịch vụ tự tính
+        # byte bắt đầu (sidx/tỉ lệ thời lượng), KHÔNG dựa vào loa có SEEK hay
+        # không. Range tường minh của khách thắng ?t= (Range là byte tuyệt
+        # đối, rõ nghĩa hơn). Tính TRƯỚC vòng mở khúc đầu để mọi đường sau
+        # (mở khúc + rơ-le nối lại) cùng dùng một `dau`.
+        giay_tua = None
+        if not range_header and request.query_params.get("t") is not None:
+            try:
+                giay_tua = float(request.query_params.get("t") or "")
+            except (TypeError, ValueError):
+                return _json(400, {"error": "invalid_seek"})
+            if giay_tua != giay_tua or giay_tua < 0:
+                return _json(400, {"error": "invalid_seek"})
+            giai, loi_tua = await _mo_luong(token, request)
+            if loi_tua is not None:
+                return loi_tua
+            dau_tua = await _offset_theo_giay(giai, giay_tua)
+            if dau_tua is None:
+                return _json(400, {"error": "invalid_seek"})
+            dau = dau_tua
+
         het_khuc_dau = None if not xin else dau + KHUC_LUONG - 1
         if cuoi_xin is not None:
             het_khuc_dau = min(het_khuc_dau, cuoi_xin) if het_khuc_dau is not None else cuoi_xin
@@ -681,10 +856,11 @@ def _dang_ky_stream(app: FastAPI) -> None:
                "Accept-Ranges": "bytes"}
         if cuoi is not None:
             out["Content-Length"] = str(cuoi - dau + 1)
-        if xin is not None and range_header and tong:
-            # Máy nghe hỏi theo khúc thì trả đúng khúc NÓ hỏi — không phải khúc
-            # proxy này đang lấy của nguồn. «bytes=-N» (xin None) đi đường cũ:
-            # 200 từ đầu như c2a, vì không tính được đầu khúc từ hậu tố.
+        if xin is not None and (range_header or giay_tua is not None) and tong:
+            # Máy nghe hỏi theo khúc (hoặc tua bằng ?t=) thì trả đúng khúc NÓ
+            # hỏi — không phải khúc proxy này đang lấy của nguồn. «bytes=-N»
+            # (xin None) đi đường cũ: 200 từ đầu như c2a, vì không tính được
+            # đầu khúc từ hậu tố.
             ma = 206
             out["Content-Range"] = f"bytes {dau}-{cuoi}/{tong}"
         else:

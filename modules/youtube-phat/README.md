@@ -53,12 +53,14 @@ và «Phát lên loa»; (3) phát lên một hay nhiều loa/tivi (danh sách l�
 module `home-assistant` qua `GET /api/thiet-bi`, không gọi thẳng HA);
 (4) playlist trong kho (chép id) + nhập mã chia sẻ `TTPL1.`; (5) «Đang phát»:
 trạng thái thật của dịch vụ, «Dừng hẳn», «Tạm dừng/Tiếp tục loa» (qua thực
-thể media_player của module home-assistant); (6) «Hàng đợi» của phiên.
+thể media_player của module home-assistant), «Bài kế»/«Bài trước» trong hàng
+đợi + thanh tua tới giây (đợt D4); (6) «Hàng đợi» của phiên.
 
-Giao diện gọi 7 hành động của module qua đường lõi
+Giao diện gọi 10 hành động của module qua đường lõi
 `POST /api/thiet-bi/youtube_phat.dieu_khien/hanh-dong` (chuẩn C1 — lõi đã có
 cơ chế, đợt C không sửa lõi): `tim`, `phat_len_loa`, `dung_phien`,
-`trang_thai`, `danh_sach_playlist`, `nhap_ma_chia_se`, `lay_khoa`. Mọi tham số
+`trang_thai`, `danh_sach_playlist`, `nhap_ma_chia_se`, `lay_khoa`, cộng
+`bai_ke`, `bai_truoc`, `tua` (đợt D4). Mọi tham số
 được lõi kiểm theo lược đồ (SEC-004a); vì đợt C thêm `tinh_nang`, lần đầu dùng
 quản trị phải **xác nhận thực thể một lần** ở Hệ thống → Thiết bị (SEC-004f) —
 giao diện báo rõ khi gặp 409.
@@ -66,9 +68,13 @@ giao diện báo rõ khi gặp 409.
 **Ẩn (không nút chết), chờ lõi:** «Nghe trên máy này» — CSP của trang module
 do lõi đặt (`media-src` về `default-src 'self'`) chặn thẻ `<audio>` tải luồng
 từ dịch vụ (khác origin); «Video nhúng» — CSP (`frame-src` về `'self'`) chặn
-khung youtube.com; «Bài kế» cho loa — dịch vụ đợt A không có điểm cuối next
-(chỉ có phát/dừng/phiên). Muốn bật: lõi nới CSP cho trang module hoặc thêm
-proxy, và dịch vụ thêm điểm cuối next.
+khung youtube.com. Muốn bật: lõi nới CSP cho trang module hoặc thêm proxy.
+**Đợt D4 đã bật «Bài kế»/«Bài trước» + thanh tua** ở mục «Đang phát»: dịch vụ
+có `POST /api/integration/next`, `/prev`, `/seek` với khoá tuần tự (bấm liên
+tiếp không sinh phiên đôi; «Dừng hẳn» vẫn thắng — phiên đã dừng thì bài kế
+báo lỗi, không hồi sinh), thời lượng thật điền sẵn ở `prepare_stream`, và tua
+tính byte bắt đầu ngay ở dịch vụ (`GET /api/stream/{token}?t=<giây>`, theo
+mục lục `sidx` của tệp MP4 hoặc tỉ lệ thời lượng).
 
 ## Bảo mật
 

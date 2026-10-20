@@ -322,6 +322,73 @@ class PlaybackSession:
             del self._sessions[oldest]
         return self.snapshot(session_id)
 
+    def _phien_con(self, session_id):
+        """Phiên còn sống theo id, hoặc phiên mới đổi nhất khi không đưa id.
+
+        None khi không có phiên nào (đã dừng hẳn / chưa từng phát)."""
+        if session_id:
+            return self._sessions.get(validate_session_id(session_id))
+        if not self._sessions:
+            return None
+        return max(self._sessions.values(),
+                   key=lambda phien: phien["revision"])
+
+    def advance(self, huong, session_id=None):
+        """Chuyển một bài trong hàng đợi CỦA PHIÊN (NV153 đợt D4).
+
+        `huong` > 0 = bài kế, < 0 = bài trước. Phiên không còn →
+        ValueError("session_not_found") — «dừng là dừng hẳn»: dừng rồi bấm
+        bài kế KHÔNG được hồi sinh phiên (không phát ma). Hết biên hàng đợi →
+        ValueError("het_hang_doi") / ("dau_hang_doi"). Vị trí phát đặt lại 0,
+        thời lượng lấy theo bài mới. Người gọi (PlayerCore) phải giữ khoá
+        tuần tự quanh lời gọi này.
+        """
+        phien = self._phien_con(session_id)
+        if phien is None:
+            raise ValueError("session_not_found")
+        hang = phien["queue"]
+        cac_bai = hang["items"]
+        moi = hang["index"] + (1 if huong and huong > 0 else -1)
+        if moi < 0:
+            raise ValueError("dau_hang_doi")
+        if moi >= len(cac_bai):
+            raise ValueError("het_hang_doi")
+        bai = dict(cac_bai[moi])
+        self._revision += 1
+        phien["item"] = bai
+        hang["index"] = moi
+        phien["position"] = 0
+        phien["duration"] = bai.get("duration", 0)
+        phien["state"] = "playing"
+        phien["revision"] = self._revision
+        phien["updated_at"] = self._timestamp()
+        return self._copy(phien)
+
+    def dat_vi_tri(self, giay, session_id=None):
+        """Đặt vị trí phát (giây) của phiên — phần trạng thái của TUA (D4).
+
+        Byte thật do đường luồng tính (`server._offset_theo_giay`); ở đây chỉ
+        giữ vị trí để trạng thái/UI khớp. Giây âm/không phải số →
+        ValueError("invalid_seek_position"); vượt thời lượng thì kẹp về cuối.
+        """
+        phien = self._phien_con(session_id)
+        if phien is None:
+            raise ValueError("session_not_found")
+        try:
+            giay = float(giay)
+        except (TypeError, ValueError):
+            raise ValueError("invalid_seek_position") from None
+        if giay != giay or giay < 0:  # NaN hoặc âm
+            raise ValueError("invalid_seek_position")
+        thoi_luong = phien.get("duration") or 0
+        if thoi_luong > 0:
+            giay = min(giay, float(thoi_luong))
+        self._revision += 1
+        phien["position"] = giay
+        phien["revision"] = self._revision
+        phien["updated_at"] = self._timestamp()
+        return self._copy(phien)
+
     def stop(self, expected_revision=None, session_id=None):
         if session_id:
             session_id = validate_session_id(session_id)

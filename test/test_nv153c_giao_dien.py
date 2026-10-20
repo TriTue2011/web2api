@@ -191,3 +191,34 @@ def test_playlist_va_hang_doi(trang):
     trang.bam("document.querySelector('[data-mo-muc=\"hang-doi\"]')")
     trang.bam("document.querySelector('[data-mo-muc=\"dang-phat\"]')")
     trang.cho("document.querySelectorAll('#ds-hang-doi > li').length === 2", mo_ta="2 bài trong hàng đợi")
+
+
+def test_bai_ke_bai_truoc_tua_gui_dung_hanh_dong(trang):
+    """Đợt D4 trên Chrome thật: nút bài kế/trước + thanh tua gọi đúng
+    hành động bai_ke/bai_truoc/tua qua fetch (lỗi stub cũng hiện đúng chỗ)."""
+    _mo(trang)
+    trang.bam("document.querySelector('[data-mo-muc=\\\"dang-phat\\\"]')")
+    trang.cho("document.getElementById('nut-bai-ke') !== null", mo_ta="có nút bài kế")
+    assert trang.js("document.getElementById('thanh-tua') !== null")
+    # chưa có thời lượng (stub không trả duration) → thanh tua tắt
+    assert trang.js("document.getElementById('thanh-tua').disabled") is True
+    # bọc fetch của stub để ghi lại lời gọi
+    trang.js("""(() => { window.__cacGoi = [];
+      const goc = window.fetch.bind(window);
+      window.fetch = async (...tham) => {
+        const u = tham[0], tuyChon = tham[1] || {};
+        if (String(u).includes('/hanh-dong'))
+          window.__cacGoi.push(tuyChon.body || '');
+        return goc(...tham);
+      }; })();""")
+    trang.bam("document.getElementById('nut-bai-ke')")
+    trang.cho("window.__cacGoi.some(g => g.includes('bai_ke'))", mo_ta="đã gọi bai_ke")
+    # stub chưa hỗ trợ bai_ke → trang báo lỗi sạch, không sập trang
+    trang.cho("!document.getElementById('loi-dang-phat').hidden", mo_ta="hiện lỗi bai_ke")
+    trang.bam("document.getElementById('nut-bai-truoc')")
+    trang.cho("window.__cacGoi.some(g => g.includes('bai_truoc'))", mo_ta="đã gọi bai_truoc")
+    # kéo thanh tua → thả tay (change) → gọi tua với giay số
+    trang.js("""(() => { const t = document.getElementById('thanh-tua');
+      t.disabled = false; t.max = '100'; t.value = '42'; })()""")
+    trang.js("document.getElementById('thanh-tua').dispatchEvent(new Event('change'))")
+    trang.cho("window.__cacGoi.some(g => g.includes('\"giay\":42'))", mo_ta="đã gọi tua giay=42")

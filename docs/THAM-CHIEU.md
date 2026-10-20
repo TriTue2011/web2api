@@ -2702,15 +2702,17 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/youtube-phat/suc-khoe
 **Đợt C — giao diện web.** Module khai `tab_web` (`{"nhan": "YouTube phát",
 "trang": "web/index.html"}`) nên khi đã cài có tab riêng ở `/m/youtube-phat/`
 (HTML tĩnh theo khung, một cột, điện thoại là chính); gỡ module thì tab biến
-mất. Tab gọi 7 hành động của module qua đường lõi
+mất. Tab gọi 10 hành động của module qua đường lõi
 `POST /api/thiet-bi/youtube_phat.dieu_khien/hanh-dong` (chuẩn C1, không sửa
 lõi): `tim` (YouTube/Zing + chép mã), `phat_len_loa` (chọn loa/tivi từ module
 home-assistant qua `GET /api/thiet-bi`), `dung_phien` (dừng hẳn), `trang_thai`,
 `danh_sach_playlist` (chép id) + `nhap_ma_chia_se` (`TTPL1.`), `lay_khoa` (chép
-token HA khi bấm có chủ đích). Vì thêm `tinh_nang`, lần đầu quản trị xác nhận
+token HA khi bấm có chủ đích), `bai_ke`/`bai_truoc`/`tua` (đợt D4 — dịch vụ
+thêm `POST /api/integration/next`, `/prev`, `/seek` với khoá tuần tự và
+`?t=<giây>` ở luồng). Vì thêm `tinh_nang`, lần đầu quản trị xác nhận
 thực thể một lần ở Hệ thống → Thiết bị (SEC-004f). Ẩn chờ lõi: «Nghe trên máy
 này» (CSP `media-src` chặn luồng khác origin), «Video nhúng» (CSP `frame-src`
-chặn youtube.com), «Bài kế» (dịch vụ chưa có điểm cuối next). Thêm `tab_web`
+chặn youtube.com). Thêm `tab_web`
 là thêm quyền (NV15b) — cập nhật module cần duyệt 409 một lần.
 
 **Sự cố thường gặp.**

@@ -287,6 +287,7 @@ function esc(giaTri) {
       const trangThai = du.trang_thai || phien.state || "";
       o.append(the("div", "dong-phu", "Trạng thái: " + (trangThai || "không rõ")));
       napHangDoi(phien);
+      napThanhTua(phien);
     } catch (e) {
       if (String(e.message) !== "het_phien") {
         o.replaceChildren(the("p", "phu", "Chưa tải trạng thái."));
@@ -314,6 +315,51 @@ function esc(giaTri) {
   }
 
   $("nut-lam-moi-tt").addEventListener("click", napTrangThai);
+
+  /* ── 4b. Bài kế / bài trước / tua (đợt D4) ───────────────────────── */
+
+  function napThanhTua(phien) {
+    const thanh = $("thanh-tua");
+    const chu = $("chu-tua");
+    const bai = (phien && phien.item) || {};
+    const thoiLuong = Number((phien && phien.duration != null)
+      ? phien.duration : bai.duration) || 0;
+    const viTri = Number((phien && phien.position != null)
+      ? phien.position : 0) || 0;
+    if (thoiLuong > 0) {
+      thanh.max = String(Math.floor(thoiLuong));
+      thanh.value = String(Math.min(Math.floor(viTri), Math.floor(thoiLuong)));
+      thanh.disabled = false;
+      chu.textContent = (dinhDangGiay(viTri) || "0:00") + " / " + dinhDangGiay(thoiLuong);
+    } else {
+      thanh.max = "0"; thanh.value = "0"; thanh.disabled = true;
+      chu.textContent = "–";
+    }
+  }
+
+  async function chuyenBai(ten) {
+    baoLoi("loi-dang-phat", "");
+    try {
+      await hanhDong(ten, {});
+      await napTrangThai();
+    } catch (e) {
+      if (String(e.message) !== "het_phien") baoLoi("loi-dang-phat", e.message);
+    }
+  }
+
+  $("nut-bai-ke").addEventListener("click", () => chuyenBai("bai_ke"));
+  $("nut-bai-truoc").addEventListener("click", () => chuyenBai("bai_truoc"));
+
+  // Kéo xong thả tay mới tua một lần (change), không phát theo từng nấc kéo.
+  $("thanh-tua").addEventListener("change", async () => {
+    baoLoi("loi-dang-phat", "");
+    try {
+      await hanhDong("tua", { giay: Number($("thanh-tua").value) });
+      await napTrangThai();
+    } catch (e) {
+      if (String(e.message) !== "het_phien") baoLoi("loi-dang-phat", e.message);
+    }
+  });
 
   async function dieuKhienLoa(hanhDongHa) {
     baoLoi("loi-dang-phat", "");

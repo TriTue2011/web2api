@@ -31,3 +31,8 @@
 .o-nguon{flex:0 0 auto;width:auto}
 [hidden]{display:none !important}
 .trong-khung .trang-tb .quay-lai{display:none}
+
+/* Đợt D4: thanh tua nằm ngay dưới hàng nút bài kế / bài trước */
+.hang-tua{display:flex;align-items:center;gap:8px;margin-top:8px}
+.hang-tua #thanh-tua{flex:1;min-width:0}
+.hang-tua #chu-tua{white-space:nowrap;font-variant-numeric:tabular-nums}

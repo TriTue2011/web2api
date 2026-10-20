@@ -450,6 +450,17 @@ def fetch_zing_playlist(
     return str(data.get("title") or "Album Zing MP3"), items
 
 
+def _thoi_luong_cua(info) -> int:
+    """Thời lượng thật (giây) từ dữ liệu nguồn, 0 khi nguồn không cho biết.
+
+    NV153 đợt D4: `prepare_stream` PHẢI điền thời lượng thật thay vì để 0 —
+    yt-dlp (YouTube/Facebook) và API bài hát Zing đều có sẵn trường này."""
+    try:
+        return max(0, int(float((info or {}).get("duration") or 0)))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
 def resolve_zing_stream(
     target_url: str,
     *,
@@ -541,6 +552,7 @@ def resolve_zing_stream(
             "User-Agent": ZING_USER_AGENT,
         },
         "content_type": CONTENT_TYPES.get(extension, "audio/mpeg"),
+        "duration": _thoi_luong_cua(streams),
     }
 
 
@@ -668,6 +680,7 @@ def resolve_youtube_video(target: str, *, timeout: int = 20, extractor=extract_w
         "content_type": VIDEO_CONTENT_TYPES[str(selected.get("ext")).lower()],
         "height": selected.get("height"),
         "bitrate_kbps": round(float(selected.get("tbr") or 0)),
+        "duration": _thoi_luong_cua(info),
     }
 
 
@@ -711,6 +724,7 @@ def resolve_youtube_audio(
         "url": stream_url,
         "headers": headers,
         "content_type": CONTENT_TYPES.get(extension, "audio/mp4"),
+        "duration": _thoi_luong_cua(info),
     }
 
 
@@ -880,7 +894,8 @@ def _facebook_stream(selected: dict, info: dict) -> dict:
             for key, value in upstream_headers.items()
             if key and value
         } or headers
-    return {"url": stream_url, "headers": headers}
+    return {"url": stream_url, "headers": headers,
+            "duration": _thoi_luong_cua(info)}
 
 
 def _facebook_info(video_id: str, timeout: int, extractor) -> dict:
