@@ -10,8 +10,13 @@ Bảo mật:
   hoặc không nối được dịch vụ → báo «chưa bật» (đóng khi lỗi, không lộ chi
   tiết) và KHÔNG gọi mạng. Hành động trên thực thể `chay_ma.chay` mang rủi
   ro `nguy_hiem` nên lõi bắt cổng phê duyệt SEC-004f — mô hình không tự gọi.
-- URL dịch vụ qua `_kiem_url_dich_vu` (chép khuôn kiểm loopback/nội bộ của
-  lõi — NV138/van-phong): chặn link-local/metadata, DNS rebinding, IP lạ.
+- URL dịch vụ qua ĐÚNG bộ kiểm của lõi `app/tu_xa.py` (NV171-SUA C1):
+  phân giải host rồi kiểm TỪNG IP bằng `_dia_chi_bi_chan` (bản cũ tự viết
+  bộ lọc theo hình dạng host nên lọt host dạng số nguyên/hex trỏ vào
+  169.254.169.254); lúc gọi ghim IP bằng `TransportGhimIp` chống DNS
+  rebinding. Ngoại lệ có chủ đích duy nhất: loopback ĐƯỢC phép vì dịch vụ
+  là tiến trình cục bộ do quản trị cấu hình (mặc định 127.0.0.1:8703) —
+  chi tiết ở `_kiem_ip_dich_vu`.
 - Mã và đầu ra là DỮ LIỆU KHÔNG TIN (nguon_ngoai=True): module cắt ở trần
   TRAN_DAU_RA rồi mới trả cho lõi, không diễn giải thành chỉ thị nào.
 - Khoá dịch vụ riêng (khác khoá quản trị/khoá khách); module import cài
@@ -22,7 +27,6 @@ Khung theo chuẩn CHUAN-MODULE.md và khuôn modules/van-phong của lõi.
 
 from __future__ import annotations
 
-import asyncio
 import ipaddress
 import logging
 import re
@@ -30,6 +34,9 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
+
+from app.chuyen_tiep import TransportGhimIp
+from app.tu_xa import _dia_chi_bi_chan
 
 log = logging.getLogger("module.chay_ma")
 
@@ -81,11 +88,45 @@ def _bat(gia_tri) -> bool:
     return str(gia_tri).strip().lower() in ("1", "true", "yes", "on", "bat", "bật")
 
 
+def _kiem_ip_dich_vu(ip) -> str | None:
+    """Chính sách IP cho địa chỉ DỊCH VỤ chay-ma — dùng ĐÚNG bộ kiểm của
+    lõi `app.tu_xa._dia_chi_bi_chan` (link-local/metadata, địa chỉ dành
+    riêng, multicast, IPv4 nhúng trong 6to4/Teredo đều bị chặn như lõi),
+    cộng hai điều chỉnh theo ngữ cảnh dịch vụ cục bộ:
+
+    - Loopback ĐƯỢC phép (ngoại lệ CÓ CHỦ ĐÍCH): dịch vụ chay-ma là tiến
+      trình CỤC BỘ do QUẢN TRỊ cấu hình, mặc định chính là
+      http://127.0.0.1:8703 — `_dia_chi_bi_chan` chặn loopback vì nó viết
+      cho module từ xa (trỏ vào chính container lõi). Ngoại lệ này do cấu
+      hình quản trị đặt (trường dich_vu_url), không phải người gọi quyết.
+    - Ngược lại CHẶT hơn lõi ở đầu kia: chỉ loopback hoặc mạng riêng
+      (RFC1918/ULA) — dịch vụ thực thi mã không bao giờ nằm trên Internet
+      công cộng, chặn luôn để khoá Bearer không đi ra ngoài nhà.
+    Trả None nếu được phép, chuỗi lý do nếu bị chặn."""
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback:
+        return None
+    ly_do = _dia_chi_bi_chan(ip)
+    if ly_do:
+        return ly_do
+    if not ip.is_private:
+        return "chỉ chấp nhận địa chỉ loopback hoặc mạng riêng (RFC1918/ULA)"
+    return None
+
+
 def _kiem_url_dich_vu(url: str) -> tuple[str, str | None]:
-    """Kiểm URL dịch vụ theo khuôn kiểm loopback/nội bộ của lõi (chép từ
-    modules/van-phong — NV138): chỉ http/https, không thông tin đăng nhập,
-    không link-local/metadata; IP phải thuộc loopback/RFC1918/ULA hoặc tên
-    máy đơn nhãn nội bộ. Trả (url_sạch, lỗi|None)."""
+    """Kiểm URL dịch vụ (NV171-SUA C1): kiểm cấu trúc, PHÂN GIẢI host rồi
+    kiểm TỪNG IP phân giải bằng `_kiem_ip_dich_vu`.
+
+    Bản cũ kiểm theo HÌNH DẠNG host: host không chứa «.»/«:» chỉ cần
+    getaddrinfo thành công là qua — mà getaddrinfo/inet_aton hiểu host
+    dạng số nguyên/hex/bát phân (`http://2852039166`, `http://0xa9fea9fe`)
+    thành 169.254.169.254, nên khoá Bearer bị gửi tới metadata đám mây.
+    Nay phân giải bằng chính getaddrinfo của hệ thống (hiểu mọi dạng như
+    tầng kết nối) và soi IP thật; lúc GỌI, `TransportGhimIp` phân giải +
+    kiểm + ghim lại nên DNS đổi giữa hai thời điểm cũng không lách được.
+    Trả (url_sạch, lỗi|None)."""
     u = (url or "").strip().rstrip("/")
     if not u:
         return "", "thiếu dich_vu_url"
@@ -100,24 +141,24 @@ def _kiem_url_dich_vu(url: str) -> tuple[str, str | None]:
     if not host:
         return "", "dich_vu_url thiếu tên máy"
     try:
-        ip = ipaddress.ip_address(host)
+        cong = parts.port or 0
     except ValueError:
-        if "." in host or ":" in host:
-            return "", "dich_vu_url phải là địa chỉ cùng máy hoặc mạng nội bộ"
+        return "", "dich_vu_url có cổng không hợp lệ"
+    try:
+        thong_tin = socket.getaddrinfo(host, cong, type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError) as exc:
+        return "", f"Không phân giải được tên máy dịch vụ: {exc}"
+    ds_ip = {x[4][0] for x in thong_tin}
+    if not ds_ip:
+        return "", "Không phân giải được tên máy dịch vụ"
+    for chuoi_ip in ds_ip:
         try:
-            socket.getaddrinfo(host, None)
-        except (socket.gaierror, UnicodeError) as exc:
-            return "", f"Không phân giải được tên máy dịch vụ: {exc}"
-        return u, None
-    if ip.version == 6 and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    # Chặn link-local (gồm metadata 169.254.169.254), multicast, unspecified…
-    if (ip.is_link_local or ip.is_multicast
-            or ip.is_unspecified or ip.is_reserved):
-        return "", "dich_vu_url phải là địa chỉ cùng máy hoặc mạng nội bộ"
-    # …và chỉ cho phép loopback / mạng riêng (RFC1918, ULA):
-    if not (ip.is_loopback or ip.is_private):
-        return "", "dich_vu_url phải là địa chỉ cùng máy hoặc mạng nội bộ"
+            ip = ipaddress.ip_address(chuoi_ip)
+        except ValueError:
+            return "", "dich_vu_url phải là địa chỉ cùng máy hoặc mạng nội bộ"
+        ly_do = _kiem_ip_dich_vu(ip)
+        if ly_do:
+            return "", f"dich_vu_url trỏ vào {chuoi_ip} — bị chặn: {ly_do}"
     return u, None
 
 
@@ -135,13 +176,21 @@ class Module:
         self._manifest = manifest
         self._bat = False
         self._url = ""
+        self._loi_url: str | None = None
         self._khoa = ""
 
     # ── Nạp cấu hình (lõi gọi sau cai()/khoi_dong) ──────────────────────
     def nap(self, cau_hinh: dict) -> None:
         cau_hinh = dict(cau_hinh or {})
         self._bat = _bat(cau_hinh.get("chay_bat"))
-        self._url = str(cau_hinh.get("dich_vu_url") or "").rstrip("/")
+        # C1: kiểm lại URL NGAY Ở nap() — không chỉ lúc cai(): cấu hình nạp
+        # từ đĩa (bản phục vụ) cũng phải qua cùng một bộ kiểm, URL bị chặn
+        # thì hành động từ chối thẳng, không gọi mạng.
+        tho_url = str(cau_hinh.get("dich_vu_url") or "")
+        if tho_url:
+            self._url, self._loi_url = _kiem_url_dich_vu(tho_url)
+        else:
+            self._url, self._loi_url = "", None
         self._khoa = str(cau_hinh.get("khoa_dich_vu") or "")
         if self._khoa:
             _KHOA_DANG_DUNG.add(self._khoa)
@@ -161,10 +210,13 @@ class Module:
                 "tinh_nang": [
                     {"hanh_dong": "kiem_tinh", "rui_ro": "doc",
                      "mo_ta": "Soi đoạn mã Python KHÔNG chạy: lỗi cú pháp, "
-                             "tên chưa định nghĩa, và cổng kiểm mã chạm hệ "
-                             "thống (os.system/subprocess/socket/input/vòng "
-                             "lặp vô hạn). Trả về có thể chạy được hay không "
-                             "và lý do. Chỉ kiểm tra, không thực thi."},
+                             "tên chưa định nghĩa, và GỢI Ý SỚM về mã có đáng "
+                             "chạy thử không (dấu hiệu mã chờ người/không tự "
+                             "đủ/chạm hệ thống như os.system/subprocess/"
+                             "socket/input). Gợi ý này CHỈ là dấu hiệu chuỗi, "
+                             "lách được — KHÔNG phải bằng chứng an toàn; "
+                             "ranh giới an toàn thật là container cách ly "
+                             "của hành động chay_python. Chỉ soi, không chạy."},
                 ],
             },
             {
@@ -181,31 +233,36 @@ class Module:
                              "dùng-một-lần cách ly (không mạng, rootfs chỉ "
                              "đọc, user không-root, trần CPU/RAM/thời gian/"
                              "đầu ra) qua dịch vụ chay-ma và trả stdout/stderr/"
-                             "tệp ra. Mã chạm hệ thống (os.system, "
-                             "subprocess, socket, mở tệp ngoài thư mục làm "
-                             "việc) bị chặn tĩnh trước khi chạy. Đây là hành "
-                             "động NGUY HIỂM — lõi bắt phê duyệt.",
+                             "tệp ra. Mã là DỮ LIỆU KHÔNG TIN: soi tĩnh chỉ "
+                             "là gợi ý sớm (bỏ qua mã chắc chắn chờ người/"
+                             "không tự đủ), KHÔNG chặn hết mã chạm hệ thống "
+                             "— ranh giới an toàn thật là container cách ly. "
+                             "Đây là hành động NGUY HIỂM — lõi bắt phê duyệt.",
                      "tham_so": {
                          "type": "object",
                          "additionalProperties": False,
                          "required": ["ma"],
                          "properties": {
                              "ma": {"type": "string", "minLength": 1,
-                                    "maxLength": 40000,
-                                    "description": "Đoạn mã Python cần chạy."},
+                                    "maxLength": 8000,
+                                    "description": "Đoạn mã Python cần chạy. "
+                                                   "Lõi giới hạn TỔNG tham số của một lần gọi ≤ 8 KB "
+                                                   "(app/thiet_bi.py) nên mã + tệp đầu vào cộng lại "
+                                                   "phải dưới 8 KB; mã dài hơn thì chia nhỏ nhiều lượt "
+                                                   "hoặc gọi thẳng API của dịch vụ (trần riêng 40.000 ký tự)."},
                              "han_giay": {"type": "integer", "minimum": 1,
                                           "maximum": 60,
                                           "description": "Hạn thời gian (giây), mặc định 20."},
                              "tep_dau_vao": {
                                  "type": "array", "maxItems": 8,
-                                 "description": "Tệp đầu vào đặt vào thư mục làm việc của lần chạy.",
+                                 "description": "Tệp đầu vào đặt vào thư mục làm việc của lần chạy (tổng tham số cả lần gọi vẫn ≤ 8 KB như trên).",
                                  "items": {
                                      "type": "object",
                                      "additionalProperties": False,
                                      "required": ["ten", "noi_dung"],
                                      "properties": {
                                          "ten": {"type": "string", "maxLength": 64},
-                                         "noi_dung": {"type": "string", "maxLength": 65536},
+                                         "noi_dung": {"type": "string", "maxLength": 8000},
                                      },
                                  },
                              },
@@ -230,6 +287,10 @@ class Module:
             return {"ok": False,
                     "loi": "module chay-ma chưa bật (chay_bat) — cần quản trị "
                            "bật trong Cài đặt và đặt khoá dịch vụ"}
+        if self._loi_url:
+            return {"ok": False,
+                    "loi": "dich_vu_url không hợp lệ hoặc bị chặn (SSRF) — "
+                           "quản trị kiểm lại cấu hình module"}
 
         ma = str(tham_so.get("ma") or "")
         if hanh_dong == "kiem_tinh":
@@ -243,7 +304,7 @@ class Module:
             if tham_so.get("tep_dau_vao") is not None:
                 than_gui["tep_dau_vao"] = tham_so.get("tep_dau_vao")
         try:
-            ket = await asyncio.to_thread(self._goi_http, duong, than_gui)
+            ket = await self._goi_http(duong, than_gui)
         except Exception as exc:  # đóng khi lỗi: báo «chưa bật», không lộ chi tiết
             log.warning("chay-ma: lỗi gọi dịch vụ (%s)", type(exc).__name__)
             return {"ok": False,
@@ -251,7 +312,9 @@ class Module:
         if "loi" in ket:
             return {"ok": False, "loi": ket["loi"]}
         if hanh_dong == "kiem_tinh":
-            return {"ok": True, "co_the_chay": bool(ket.get("co_the_chay")),
+            # «goi_y» là khoá mới (C3); còn đọc «co_the_chay» cho dịch vụ
+            # đời cũ trong lúc nâng cấp luân phiên.
+            return {"ok": True, "goi_y": bool(ket.get("goi_y", ket.get("co_the_chay"))),
                     "ly_do": _cat(ket.get("ly_do", ""), 500),
                     "kiem_tinh": _cat(ket.get("kiem_tinh", ""), TRAN_DAU_RA),
                     "nguon_ngoai": True}
@@ -283,10 +346,15 @@ class Module:
             "nguon_ngoai": True,
         }
 
-    def _goi_http(self, duong: str, than_gui: dict) -> dict:
-        """Một lượt POST sang dịch vụ. Lỗi mạng → ngoại lệ (người gọi đóng)."""
-        with httpx.Client(timeout=HET_GIO_GOI) as khach:
-            tra = khach.post(
+    async def _goi_http(self, duong: str, than_gui: dict) -> dict:
+        """Một lượt POST sang dịch vụ qua `TransportGhimIp` của lõi (C1):
+        phân giải + kiểm MỌI IP bằng `_kiem_ip_dich_vu` NGAY TRƯỚC khi nối
+        rồi ghim đúng IP đã kiểm — DNS rebinding giữa lúc cài và lúc gọi
+        không lách được. Lỗi mạng → ngoại lệ (người gọi đóng)."""
+        transport = TransportGhimIp(_kiem_ip_dich_vu)
+        async with httpx.AsyncClient(timeout=HET_GIO_GOI, transport=transport,
+                                     trust_env=False) as khach:
+            tra = await khach.post(
                 self._url + duong,
                 json=than_gui,
                 headers={"Authorization": f"Bearer {self._khoa}"},

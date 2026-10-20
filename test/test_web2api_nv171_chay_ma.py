@@ -75,7 +75,7 @@ def test_thuc_the_va_rui_ro(mod):
 
 def test_chua_bat_thi_bao_chua_bat_va_khong_goi_mang(mod, md, monkeypatch):
     da_goi = []
-    monkeypatch.setattr(md.httpx, "Client", lambda *a, **k: da_goi.append(1) or 1 / 0)
+    monkeypatch.setattr(md.httpx, "AsyncClient", lambda *a, **k: da_goi.append(1) or 1 / 0)
     for id_, hd in (("chay_ma.chay", "chay_python"), ("chay_ma.kiem", "kiem_tinh")):
         kq = asyncio.run(mod.thuc_hien(id_, hd, {"ma": "print(1)"}))
         assert kq["ok"] is False
@@ -100,17 +100,17 @@ def _gia_lap_dich_vu(md, monkeypatch, tra_ve=None, ma_http=200):
         def __init__(self, *a, **k):
             pass
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *a):
+        async def __aexit__(self, *a):
             return False
 
-        def post(self, url, **k):
+        async def post(self, url, **k):
             ClientGia.da_goi = (url, k.get("json"), k.get("headers"))
             return TraLoiGia()
 
-    monkeypatch.setattr(md.httpx, "Client", ClientGia)
+    monkeypatch.setattr(md.httpx, "AsyncClient", ClientGia)
     return ClientGia
 
 
@@ -129,12 +129,12 @@ def test_bat_thi_goi_dich_vu_dung_duong_va_gan_nguon_ngoai(mod, md, monkeypatch)
 
 def test_kiem_tinh_goi_dung_duong(mod, md, monkeypatch):
     ClientGia = _gia_lap_dich_vu(md, monkeypatch,
-                                  {"ok": True, "co_the_chay": False,
+                                  {"ok": True, "goi_y": False,
                                    "ly_do": "code có 'socket.'", "kiem_tinh": "vấn đề giả"})
     mod.nap({"chay_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
     kq = asyncio.run(mod.thuc_hien("chay_ma.kiem", "kiem_tinh", {"ma": "import socket"}))
     assert kq["ok"] is True
-    assert kq["co_the_chay"] is False
+    assert kq["goi_y"] is False
     assert ClientGia.da_goi[0] == URL_GIA + "/kiem-tinh"
 
 
@@ -155,7 +155,7 @@ def test_khong_noi_duoc_dich_vu_bao_chua_bat(mod, md, monkeypatch):
         def __init__(self, *a, **k):
             raise ConnectionError("mang hong gia")
 
-    monkeypatch.setattr(md.httpx, "Client", ClientHong)
+    monkeypatch.setattr(md.httpx, "AsyncClient", ClientHong)
     mod.nap({"chay_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
     kq = asyncio.run(mod.thuc_hien("chay_ma.chay", "chay_python", {"ma": "print(1)"}))
     assert kq["ok"] is False
@@ -173,7 +173,7 @@ def test_dich_vu_bao_loi_ma_ngan_duoc_truyen_nguyen(mod, md, monkeypatch):
 
 def test_hanh_dong_va_thuc_the_la_bi_tu_choi_truoc_khi_goi_mang(mod, md, monkeypatch):
     da_goi = []
-    monkeypatch.setattr(md.httpx, "Client", lambda *a, **k: da_goi.append(1) or 1 / 0)
+    monkeypatch.setattr(md.httpx, "AsyncClient", lambda *a, **k: da_goi.append(1) or 1 / 0)
     mod.nap({"chay_bat": True, "dich_vu_url": URL_GIA, "khoa_dich_vu": KHOA_GIA})
     kq = asyncio.run(mod.thuc_hien("chay_ma.chay", "chay_shell", {"ma": "ls"}))
     assert kq["ok"] is False
@@ -200,6 +200,116 @@ def test_suc_khoe_khong_lo_khoa(mod):
     sk = asyncio.run(mod.suc_khoe())
     assert sk["ok"] is True
     assert KHOA_GIA not in json.dumps(sk)
+
+
+# ── NV171-SUA C1: SSRF qua app/tu_xa — kiểm IP SAU phân giải ────────────
+
+def _phan_giai_gia(md, monkeypatch, bang: dict):
+    """Giả getaddrinfo: host → danh sách IP (mọi dạng host lạ đều do bảng
+    này quyết — đúng cách inet_aton/getaddrinfo thật phân giải)."""
+    import socket as sk
+
+    def gia(host, port=0, *a, **k):
+        if host not in bang:
+            raise sk.gaierror(f"gia: khong phan giai duoc {host}")
+        ra = []
+        for ip in bang[host]:
+            if ":" in ip:
+                ra.append((sk.AF_INET6, sk.SOCK_STREAM, 6, "", (ip, port or 0, 0, 0)))
+            else:
+                ra.append((sk.AF_INET, sk.SOCK_STREAM, 6, "", (ip, port or 0)))
+        return ra
+
+    monkeypatch.setattr(md.socket, "getaddrinfo", gia)
+
+
+def _module_moi(md):
+    manifest = json.loads((THU_MUC / "manifest.json").read_text(encoding="utf-8"))
+    return md.Module(manifest)
+
+
+@pytest.mark.parametrize("host", ["2852039166", "0xa9fea9fe", "025077524776",
+                                  "169.254.169.254"])
+def test_c1_host_so_hex_batphan_tro_metadata_bi_chan(md, monkeypatch, host):
+    """C1: host dạng số nguyên/hex/bát phân được inet_aton hiểu thành
+    169.254.169.254 — bản cũ cho qua (chỉ kiểm hình dạng), bản sửa phân
+    giải rồi kiểm IP thật bằng app/tu_xa → chặn."""
+    _phan_giai_gia(md, monkeypatch, {host: ["169.254.169.254"]})
+    m = _module_moi(md)
+    kq = asyncio.run(m.cai({"chay_bat": True, "dich_vu_url": f"http://{host}:8703",
+                            "khoa_dich_vu": KHOA_GIA}))
+    assert kq["ok"] is False, f"host {host} trỏ metadata phải bị chặn"
+
+
+def test_c1_ipv6_mapped_metadata_bi_chan(md, monkeypatch):
+    _phan_giai_gia(md, monkeypatch,
+                   {"::ffff:169.254.169.254": ["::ffff:169.254.169.254"]})
+    m = _module_moi(md)
+    kq = asyncio.run(m.cai({"chay_bat": True,
+                            "dich_vu_url": "http://[::ffff:169.254.169.254]:8703",
+                            "khoa_dich_vu": KHOA_GIA}))
+    assert kq["ok"] is False
+
+
+def test_c1_ten_dns_tro_link_local_bi_chan_ten_tro_lan_duoc(md, monkeypatch):
+    _phan_giai_gia(md, monkeypatch, {
+        "dich-vu-xau": ["169.254.169.254"],
+        "dich-vu-nha": ["10.0.0.9"],
+        "localhost": ["127.0.0.1"],
+    })
+    m = _module_moi(md)
+    kq = asyncio.run(m.cai({"chay_bat": True, "dich_vu_url": "http://dich-vu-xau:8703",
+                            "khoa_dich_vu": KHOA_GIA}))
+    assert kq["ok"] is False, "DNS trỏ link-local phải bị chặn (không tin tên)"
+    kq = asyncio.run(m.cai({"chay_bat": True, "dich_vu_url": "http://dich-vu-nha:8703",
+                            "khoa_dich_vu": KHOA_GIA}))
+    assert kq["ok"] is True, f"DNS trỏ LAN riêng phải được: {kq}"
+    kq = asyncio.run(m.cai({"chay_bat": True, "dich_vu_url": "http://localhost:8703",
+                            "khoa_dich_vu": KHOA_GIA}))
+    assert kq["ok"] is True, "localhost→loopback là ngoại lệ cục bộ có chủ đích"
+
+
+def test_c1_kiem_ip_dich_vu_theo_cau_truc(md):
+    import ipaddress
+    kiem = md._kiem_ip_dich_vu
+    assert kiem(ipaddress.ip_address("127.0.0.1")) is None
+    assert kiem(ipaddress.ip_address("::1")) is None
+    assert kiem(ipaddress.ip_address("192.168.1.9")) is None
+    assert kiem(ipaddress.ip_address("169.254.169.254")) is not None
+    assert kiem(ipaddress.ip_address("::ffff:169.254.169.254")) is not None
+    assert kiem(ipaddress.ip_address("::ffff:127.0.0.1")) is None
+    # IPv4 nhúng trong 6to4/Teredo chịu cùng luật (kiểm theo cấu trúc):
+    assert kiem(ipaddress.ip_address("2002:7f00:1::")) is not None, "6to4 mang loopback"
+    assert kiem(ipaddress.ip_address("2002:a9fe:a9fe::")) is not None, "6to4 mang metadata"
+    # Dịch vụ thực thi mã không nằm trên Internet công cộng:
+    assert kiem(ipaddress.ip_address("8.8.8.8")) is not None
+
+
+def test_c1_nap_url_bi_chan_thi_hanh_dong_tu_choi_khong_goi_mang(md, monkeypatch):
+    """C1: kiểm lại ở nap() — cấu hình nạp từ đĩa trỏ metadata thì hành
+    động từ chối thẳng, httpx không được chạm."""
+    _phan_giai_gia(md, monkeypatch, {"dich-vu-xau": ["169.254.169.254"]})
+    da_goi = []
+    monkeypatch.setattr(md.httpx, "AsyncClient", lambda *a, **k: da_goi.append(1) or 1 / 0)
+    m = _module_moi(md)
+    m.nap({"chay_bat": True, "dich_vu_url": "http://dich-vu-xau:8703",
+           "khoa_dich_vu": KHOA_GIA})
+    kq = asyncio.run(m.thuc_hien("chay_ma.chay", "chay_python", {"ma": "print(1)"}))
+    assert kq["ok"] is False and "dich_vu_url" in kq["loi"]
+    assert not da_goi
+
+
+# ── NV171-SUA C8: lược đồ khớp trần 8 KB của lõi ───────────────────────────
+
+def test_c8_luoc_do_khop_tran_8kb_cua_loi(mod):
+    thuc_the = {e["id"]: e for e in asyncio.run(mod.thuc_the())}
+    chay = next(t for t in thuc_the["chay_ma.chay"]["tinh_nang"]
+                if t["hanh_dong"] == "chay_python")
+    thuoc = chay["tham_so"]["properties"]
+    assert thuoc["ma"]["maxLength"] <= 8000, \
+        "ma hứa 40.000 ký tự nhưng lõi từ chối tham số > 8 KB (app/thiet_bi.py)"
+    tep = thuoc["tep_dau_vao"]["items"]["properties"]
+    assert tep["noi_dung"]["maxLength"] <= 8000
 
 
 # ── cai() ────────────────────────────────────────────────────────────────
