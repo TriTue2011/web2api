@@ -9,8 +9,10 @@
   thực thể `facebook.ket_noi` rủi ro «doc» cho liệt kê/kiểm tra.
 - thuc_hien: dang_bai (chữ/link), dang_anh (tải qua app.tai_url_khong_tin +
   app.tep_an_toan.kiem_anh rồi upload multipart), dang_video (file_url đã
-  kiểm host công khai); giới hạn tần suất theo Page; lỗi Graph dịch tiếng
-  Việt, thử lại lỗi thoáng qua; token KHÔNG vào log/phản hồi/kết quả.
+  kiểm host công khai); giới hạn tần suất theo Page (khoá chống đua);
+  lỗi Graph dịch tiếng Việt; thử lại lỗi thoáng qua CHỈ cho GET (POST đăng
+  bài không thử lại sau khi đã gửi — NV158-SUA); token KHÔNG vào
+  log/phản hồi/kết quả.
 - IDOR: page_id không thuộc cấu hình → từ chối, không gọi Graph.
 
 Máy chủ Graph/media là GIẢ (http.server trên 127.0.0.1 +
@@ -419,12 +421,16 @@ def test_loi_graph_duoc_dich(may_chu):
     assert PAGE_TOKEN_1 not in kq["loi"]
 
 
-def test_thu_lai_loi_thoang_qua_429(may_chu):
+def test_post_429_khong_thu_lai_chong_dang_trung(may_chu):
+    # NV158-SUA (soát C1): POST đăng bài KHÔNG thử lại sau khi yêu cầu đã gửi
+    # — kể cả 429: thử lại một POST không-idempotent là đăng TRÙNG công khai.
+    # (Test này trước đây khẳng định hành vi thử lại; đã cập nhật theo hành
+    # vi mới theo bài học NV98. GET vẫn thử lại — xem test NV158-SUA.)
     m = _module(may_chu, _cau_hinh_da_ket_noi())
     _XuLyGia.che_do = "thoang_qua"
     kq = asyncio.run(m.thuc_hien("facebook.trang_111", "dang_bai", {"noi_dung": "x"}))
-    assert kq["ok"] is True, kq
-    assert len(_yeu_cau("/feed", "POST")) == 2           # that bai 1 lan roi thu lai
+    assert kq["ok"] is False, kq
+    assert len(_yeu_cau("/feed", "POST")) == 1           # chỉ gửi đúng 1 lần
 
 
 def test_kiem_tra_ket_noi_va_liet_ke(may_chu):
