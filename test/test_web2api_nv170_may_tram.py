@@ -66,6 +66,18 @@ def du_lieu(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _ngu_canh_quan_tri():
+    """NV170-SUA (bài học NV98): module nay TỰ kiểm vai người gọi (M2) —
+    test cũ gọi thuc_hien trực tiếp phải đặt ngữ cảnh như lõi thật vẫn làm
+    (quản trị); assert của từng test giữ nguyên ý nghĩa."""
+    from app import ngu_canh
+
+    tok = ngu_canh.dat({"loai": "quan_tri", "id": "admin-test"}, nguon="nguoi")
+    yield
+    ngu_canh.khoi_phuc(tok)
+
+
 async def _module_moi_a(mod, du_lieu, **cau_hinh):
     m = mod.Module({"id": "maytram", "tien_to": "maytram",
                     "ten": "Máy trạm", "hang": "A"})
