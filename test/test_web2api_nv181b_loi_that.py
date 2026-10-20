@@ -74,7 +74,7 @@ class DichVuGia:
                     self._tra({"ok": True, "yolo": {"san_sang": True},
                                "khuon_mat": {"san_sang": True}})
                 elif self.path == "/kiem-tinh":
-                    self._tra({"co_the_chay": True, "ly_do": "",
+                    self._tra({"goi_y": True, "ly_do": "",
                                "kiem_tinh": "khong thay van de"})
                 else:
                     self._tra({"ok": True})
@@ -244,10 +244,31 @@ def test_chay_ma_noi_loi_that(moi_truong, dich_vu_gia):
     assert r.status_code == 200, r.text
     than = r.json()
     assert than.get("ok") is True, than
-    assert than.get("co_the_chay") is True, than
+    assert than.get("goi_y") is True, than
 
     # «Xác nhận một lần» không mở đường chạy mã tuỳ ý: mỗi lượt gọi nguy hiểm
     # thiếu xac_nhan vẫn bị lõi chặn 409.
     r = _hanh_dong(client, "chay_ma.chay", "chay_python",
                    {"ma": "print(1)"}, xac_nhan=False)
     assert r.status_code == 409, r.text
+
+
+def test_chay_ma_goi_y_tuong_thich_dich_vu_cu():
+    """NV200: dịch vụ đời cũ trả khoá «co_the_chay» — module vẫn ánh xạ sang «goi_y» (C3, tương thích luân phiên)."""
+    import asyncio
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("chay_ma_nv200", Path("modules/chay-ma/module.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    m = mod.Module({"id": "chay-ma"})
+    m.nap({"chay_bat": "1", "khoa_dich_vu": "KHOA-GIA", "dich_vu_url": "http://127.0.0.1:9/"})
+
+    async def goi_gia(_duong, _than):
+        return {"co_the_chay": True, "ly_do": "", "kiem_tinh": "ok"}
+
+    m._goi_http = goi_gia
+    ket = asyncio.run(m.thuc_hien("chay_ma.kiem", "kiem_tinh", {"ma": "print(1)"}))
+    assert ket.get("ok") is True, ket
+    assert ket.get("goi_y") is True, ket
+    assert "co_the_chay" not in ket, ket

@@ -214,7 +214,7 @@ def _kiem_ip_khi_goi(ip) -> str | None:
     return _dia_chi_camera_bi_chan(ip, cho_loopback=True)
 
 
-class CameraModule:
+class Module:
     """Module camera: mỗi camera một thực thể đọc; thực thể ghi chỉ khi bật loa."""
 
     tien_to = "cam."
@@ -681,6 +681,5 @@ class CameraModule:
         return {"ok": True}
 
 
-# Lõi nạp module qua lớp có tên đúng «Module» (app/kham_pha.py). CameraModule giữ
-# tên cũ cho tương thích với các test nội bộ của module.
-Module = CameraModule
+# Alias giữ tên cũ cho tương thích với các test nội bộ của module.
+CameraModule = Module

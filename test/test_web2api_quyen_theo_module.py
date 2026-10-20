@@ -609,7 +609,9 @@ def test_12_chong_idor_giua_cac_user(moi_truong):
 
 def test_13_nguyen_tac_duyet_moi_route_v1_auth(moi_truong):
     """Test nguyên tắc: duyệt mọi route V1_AUTH, khẳng định có nhận (khả năng, module) khi kiểm tra phạm vi."""
-    from test.test_web2api_ma_tran_quyen import phan_loai_route, thu_thap_routes
+    # NV200: import đúng tên module đỉnh mà pytest đặt (test/ KHÔNG có __init__.py;
+    # «test.test_…» luôn trỏ vào gói test của THƯ VIỆN CHUẨN nên không bao giờ thấy).
+    from test_web2api_ma_tran_quyen import phan_loai_route, thu_thap_routes
 
     client, so = moi_truong
     routes = thu_thap_routes(app)
