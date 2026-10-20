@@ -653,7 +653,12 @@ class Module:
         try:
             ds_may = await self._khach.doc_may()
         except ZteLoi as e:
-            if self._khach.so_lan_dang_nhap > so_truoc:
+            if self._khach.so_lan_dang_nhap > so_truoc \
+                    or isinstance(e, (ZteLoiVanTay, ZteLoiKetNoi)):
+                # Lần thử đã CHẠM BƯỚC KẾT NỐI tới thiết bị (đăng nhập đi qua
+                # đối chiếu vân tay TLS — cả khi vân tay SAI hay không tới
+                # được thiết bị) thì vẫn đặt mốc giãn cách, đúng mục đích
+                # điều tiết khoang_cach_dang_nhap_phut (vá theo dõi NV177).
                 self._lan_thu_dang_nhap = bay_gio
             if e.bi_tu_choi:
                 self._tam_ngung_den = bay_gio + timedelta(
