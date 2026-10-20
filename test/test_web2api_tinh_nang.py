@@ -447,6 +447,13 @@ def test_loi_khong_mang_dac_thu_nha_cung_cap():
     # tra manifest. Loại riêng ở đây như «gmail» bên dưới; các tên khác vẫn
     # bị quét đầy đủ.
     ten = ten - {"chay_ma"}
+    # NV173: «openai» là tên GIAO THỨC tương thích mà lõi dùng ngay trong mã
+    # của chính lõi từ trước NV173 (app/loi_openai.py, LoiOpenAI,
+    # ChuyenTiepOpenAI…) — không phải đặc thù tích hợp một nhà cung cấp.
+    # Module openaicodex khai host auth.openai.com trong mang_ra nên nhãn
+    # «openai» lọt vào danh sách quét; loại riêng như tiền lệ gmail ở test
+    # khung giao diện bên dưới. Tên NCC thật khác vẫn bị quét như cũ.
+    ten = ten - {"openai"}
     pham = []
     for p in sorted((GOC / "app").rglob("*.py")):
         for chu in _chu_trong_ma_python(p):
@@ -467,6 +474,11 @@ def test_khung_giao_dien_khong_mang_ten_module():
     # NV169: «open» — xem chú thích ở test_loi_khong_mang_dac_thu_nha_cung_cap
     # (mảnh chung của «OpenAPI», khớp thuộc tính open/js thông thường).
     ten = ten - {"open"}
+    # NV173: «openai» trong khung giao diện là chữ «chuẩn OpenAI» (giao thức
+    # tương thích của chính lõi, có từ trước NV173) ở các trang Hệ thống và
+    # khung.js — không phải tên module/nhà cung cấp cứng. Module openaicodex
+    # khai host auth.openai.com trong mang_ra nên nhãn này lọt danh sách quét.
+    ten = ten - {"openai"}
     # Phông chữ tải từ CDN fonts.googleapis.com/fonts.gstatic.com — CDN phông, không phải nhà cung cấp AI.
     cdn_phong = re.compile(r"https://fonts\.(googleapis|gstatic)\.com/[^\"'\s>]*")
     pham = []

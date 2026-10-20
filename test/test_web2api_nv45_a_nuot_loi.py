@@ -114,6 +114,9 @@ DA_KIEM_TOAN = {
     # ngoại lệ trong bộ lọc làm hỏng chính lời gọi ghi log nên không được ném ra (cùng mẫu zalo-bot/telegram-bot/van-phong).
     ("modules/youtube-phat/module.py", "_nguoi_goi_la_quan_tri"),  # đọc ngữ cảnh người gọi hỏng/thiếu →
     # KHÔNG phải quản trị → hành động lay_khoa bị từ chối (đóng khi lỗi, đường lấy bí mật không được mở theo mặc định lạc quan).
+    # Đã duyệt NV173 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
+    ("modules/openaicodex/module.py", "_than_loi_chuan"),  # chuẩn hoá thân lỗi thượng nguồn hỏng → thông điệp chung đã làm sạch «lỗi từ Codex»; không bao giờ chuyển tiếp nguyên văn thân lạ
+    ("modules/openaicodex/module.py", "_doc_cac_su_kien"),  # dòng SSE hỏng (không phải JSON) → bỏ dòng đó; dòng độc hại không làm hỏng luồng stream
 }
 
 
