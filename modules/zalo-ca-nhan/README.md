@@ -13,12 +13,19 @@ HTTP loopback `127.0.0.1:8703` với Bearer xác thực). Không phải module
 ## Hoạt động
 
 - **Gửi ra** (chuẩn `kenh_ra`): `kenh_ra()` liệt kê hội thoại (bạn bè + nhóm)
-  từ dịch vụ; `gui_tin(dich, noi_dung)` gửi văn bản (`van_ban`) hoặc kèm tệp
-  (`_tep`: `[{ten, kieu, du_lieu (base64)}]`). Gửi tin là **GHI ra ngoài** →
-  qua cổng xác nhận quản trị theo quy ước lõi.
+  từ **bộ đệm** của module — hàm này đồng bộ theo hợp đồng lõi nên không
+  chạm mạng; bộ đệm được làm mới ở các đường async (`cai`, `hoi_vong`,
+  `gui_tin`, TTL 30 s). `gui_tin(dich, noi_dung)` gửi văn bản (`van_ban`)
+  hoặc kèm tệp (`_tep`: `[{ten, kieu, du_lieu (base64)}]`). Gửi tin là
+  **GHI ra ngoài**: lõi chỉ cho khoá khách có phạm vi `gui:zalo-ca-nhan`
+  gọi đường gửi (kèm hạn tần suất của lõi) — **không có bước quản trị xác
+  nhận từng tin**; ai giữ khoá có phạm vi đó gửi được tới mọi đích của tài
+  khoản, nên chỉ cấp phạm vi này cho ứng dụng thật sự cần gửi.
 - **Nhận vào** (chuẩn `hoi_vong`, chu kỳ 5 s): module hỏi dịch vụ
   `/tin-moi?tu=<seq>`, lọc theo `danh_sach_cho_phep` → tin chuẩn cho lõi
-  (`id_tin = "<thread_id>:<seq>"`, `noi_gui = thread_id`, `la_nhom` khi nhóm).
+  (`id_tin = "<thread_id>:<nhãn phiên>:<seq>"`, `noi_gui = thread_id`,
+  `la_nhom` khi nhóm). Dịch vụ khởi động lại (seq về 0) thì module tự đặt
+  lại con trỏ theo nhãn phiên dịch vụ trả kèm — không mất tin lặng lẽ.
   Chỉ nhận người trong danh sách cho phép (**mặc định rỗng = không nhận ai**);
   tin của người lạ bị bỏ lặng lẽ (đếm `bo_qua_nguoi_la` trong `suc_khoe`).
 
@@ -47,7 +54,9 @@ module không bao giờ thấy cookie/imei/userAgent, không log.
 - Mặc định TẮT; khoá Bearer ≥24 ký tự, dịch vụ từ chối khởi động nếu thiếu/yếu.
 - Tin nhận là DỮ LIỆU KHÔNG TIN: kiểm khuôn (`MAU_NGUOI_GUI`), cắt ở
   `TRAN_VAN_BAN` (4000), bỏ ký tự điều khiển, không đưa nội dung vào log.
-- Dịch vụ hạn tốc độ gửi (≥2 s/lần, ≤20/phút) chống tràn tin/bị khoá.
+- Dịch vụ hạn tốc độ gửi (≥2 s/lần, ≤20/phút) chống tràn tin/bị khoá —
+  giữ chỗ nguyên tử ở phía dịch vụ nên gửi đồng thời hay gửi lỗi đều
+  không qua được hạn.
 - Hạn dòng + chống trùng của lõi vẫn áp dụng cho tin nhận.
 - **Chưa kiểm với Zalo thật** trong môi trường nộp bài; xem báo cáo NV172
   («Phần KHÔNG port và vì sao»).

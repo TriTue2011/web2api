@@ -12,7 +12,7 @@ FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18
 
 ENV NODE_ENV=production \
     ZALO_PORT=8703 \
-    ZALO_HOST=127.0.0.1 \
+    ZALO_HOST=0.0.0.0 \
     ZALO_DATA=/data
 
 WORKDIR /app
@@ -30,6 +30,10 @@ USER node
 EXPOSE 8703
 
 # ZALO_KHOA truyền lúc chạy (docker run -e ZALO_KHOA=...), KHÔNG ghi vào ảnh.
-# Dịch vụ chỉ nghe loopback trong container; cổng không publish ra ngoài —
-# module web2api gọi qua mạng nội bộ Docker hoặc cùng máy.
+# Dịch vụ nghe 0.0.0.0 TRONG container (NV172-SUA Z4: nghe loopback trong
+# container thì tiến trình khác không với tới được qua cổng đã publish).
+# Cổng CHỈ được publish về loopback của máy chủ — chạy:
+#   docker run -p 127.0.0.1:8703:8703 ...
+# để module web2api (trên máy chủ) gọi qua 127.0.0.1:8703. TUYỆT ĐỐI không
+# publish 0.0.0.0:8703 hay mở cổng ra LAN/Internet.
 CMD ["node", "server.js"]

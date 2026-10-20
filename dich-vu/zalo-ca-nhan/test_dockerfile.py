@@ -1,7 +1,10 @@
 """Kiểm tĩnh Dockerfile + package của dịch vụ zalo-ca-nhan (NV172).
 
 - Ảnh nền GHIM DIGEST thật (node:22-alpine), không dùng tag trần.
-- Chạy người dùng không root; chỉ nghe loopback; EXPOSE 8703.
+- Chạy người dùng không root; EXPOSE 8703.
+- NV172-SUA Z4: nghe 0.0.0.0 TRONG container (loopback trong container làm
+  cổng đã publish không với tới được), cổng chỉ publish về 127.0.0.1 của
+  máy chủ theo hướng dẫn trong chính Dockerfile/README dịch vụ.
 - package.json ghim zca-js ĐÚNG phiên bản (không «^»); package-lock.json có
   integrity sha512 cho zca-js; `npm ci` trong Dockerfile.
 - Không `curl | sh`, không sửa Dockerfile/docker-compose.yml gốc của repo.
@@ -30,8 +33,11 @@ def test_khong_chay_root():
     assert re.search(r"^USER\s+node\s*$", DOCKERFILE, flags=re.M), "phải USER node (không root)"
 
 
-def test_loopback_va_cong():
-    assert "ZALO_HOST=127.0.0.1" in DOCKERFILE
+def test_bind_trong_container_va_cong():
+    # Nghe mọi interface trong container…
+    assert "ZALO_HOST=0.0.0.0" in DOCKERFILE
+    # …nhưng hướng dẫn publish CHỈ về loopback của máy chủ phải có mặt.
+    assert "127.0.0.1:8703:8703" in DOCKERFILE
     assert "EXPOSE 8703" in DOCKERFILE
 
 

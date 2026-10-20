@@ -19,7 +19,7 @@ phơi một HTTP nội bộ nhỏ cho module `modules/zalo-ca-nhan` của web2ap
 | `GET /qr/<token>` | Trang quét QR (HTML, CSP `default-src 'none'`); token trong URL chỉ dùng **một lần** |
 | `GET /hop-thoai` | `[{thread_id, loai: 0\|1, ten}]` — bạn bè + nhóm của tài khoản |
 | `POST /gui-tin` | `{thread_id, loai, van_ban, tep?: {ten, kieu, du_lieu_base64}}` — hạn tốc độ: ≥2 s/lần, ≤20/phút |
-| `GET /tin-moi?tu=<seq>` | Đệm vòng 200 tin nhận mới nhất (chỉ tin của người khác) |
+| `GET /tin-moi?tu=<seq>` | Đệm vòng 200 tin nhận mới nhất (chỉ tin của người khác); phản hồi kèm `tu_moi` và `phien` (nhãn phiên khởi động — module dùng để phát hiện dịch vụ khởi động lại, seq bị đặt lại) |
 | `POST /dang-xuat` | Đăng xuất + xoá chứng chỉ lưu `cred_*.json` |
 
 ## Chạy
@@ -32,15 +32,20 @@ docker build -t zalo-ca-nhan dich-vu/zalo-ca-nhan
 docker run -d --name zalo-ca-nhan \
   -e ZALO_KHOA='<khoá vừa sinh>' \
   -v zalo-ca-nhan-data:/data \
-  --network <mạng nội bộ của web2api> \
+  -p 127.0.0.1:8703:8703 \
   zalo-ca-nhan
 ```
 
-Dịch vụ chỉ nghe `127.0.0.1:8703` **trong container** (không publish cổng ra
-ngoài); module web2api gọi qua mạng nội bộ Docker hoặc khi chạy cùng máy thì
-qua cổng đã map nội bộ. Biến môi trường: `ZALO_KHOA` (bắt buộc, thiếu/ngắn thì
-dịch vụ **từ chối khởi động**), `ZALO_PORT` (8703), `ZALO_HOST` (chỉ loopback),
-`ZALO_DATA` (`/data`), `ZALO_GUI_CACH_GI_MS` (2000), `ZALO_GUI_TOI_DA_PHUT` (20).
+Dịch vụ nghe `0.0.0.0:8703` **trong container** (nghe loopback trong
+container thì cổng publish không với tới được tiến trình), nhưng cổng
+**chỉ publish về `127.0.0.1` của máy chủ** (`-p 127.0.0.1:8703:8703` như
+trên) — module web2api trên máy chủ gọi qua `127.0.0.1:8703` (đúng kiểm
+loopback của module). **Tuyệt đối không** publish `8703:8703` trần hay mở
+cổng ra LAN/Internet: ai với tới cổng này kèm khoá là gửi/đọc được tin của
+tài khoản. Biến môi trường: `ZALO_KHOA` (bắt buộc, thiếu/ngắn thì dịch vụ
+**từ chối khởi động**), `ZALO_PORT` (8703), `ZALO_HOST` (loopback, hoặc
+`0.0.0.0` trong container như Dockerfile đã đặt), `ZALO_DATA` (`/data`),
+`ZALO_GUI_CACH_GI_MS` (2000), `ZALO_GUI_TOI_DA_PHUT` (20).
 
 ## Đăng nhập
 
@@ -58,7 +63,7 @@ thì phải quét QR lại.
 ## Kiểm tra
 
 ```bash
-npm test   # node --test, adapter GIẢ — không chạm Zalo thật
+npm test   # node --test test/*.test.js, adapter GIẢ — không chạm Zalo thật
 ```
 
 Tài nguyên: chưa đo RAM/đĩa thật (ghi `null` ở manifest module). **Chưa kiểm
