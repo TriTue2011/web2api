@@ -25,12 +25,17 @@ vi phạm điều khoản nền tảng) nên **không port**.
 - Thực thể `facebook.ket_noi` (rủi ro «doc»): `liet_ke_trang` (chỉ id + tên,
   không token) và `kiem_tra` (gọi Graph kiểm từng token Trang còn sống).
 - **Giới hạn tần suất**: tối thiểu 30 giây giữa hai bài trên cùng một Trang
-  (trần tự chọn, chống lỗi Graph 1390008 «đăng quá nhanh»); lõi còn áp trần
-  30 lệnh/phút theo (khoá, thực thể) riêng.
+  (trần tự chọn, chống lỗi Graph 1390008 «đăng quá nhanh»), giữ bằng khoá
+  chống đua theo Trang nên các lệnh đăng đồng thời không lọt qua cùng lúc;
+  lõi còn áp trần 30 lệnh/phút theo (khoá, thực thể) riêng.
 - Lỗi Graph được **dịch tiếng Việt** theo bảng `error_subcode`/`code` (kế
-  thừa từ c2a/Postiz); thử lại tối đa 2 lần với lỗi thoáng qua (429,
-  `is_transient`, mã 4/17/32/613, 5xx) — token hỏng/nội dung vi phạm thì
-  báo ngay, không thử lại vô ích. Mọi lời gọi kèm `appsecret_proof`
+  thừa từ c2a/Postiz); thử lại lỗi thoáng qua CHỈ với GET đọc (429,
+  `is_transient`, mã 4/17/32/613, 5xx) — **POST đăng bài KHÔNG thử lại sau
+  khi yêu cầu đã gửi** (đăng bài không idempotent: thử lại = đăng TRÙNG
+  công khai; lỗi sau gửi trả «không rõ kết quả», dặn người dùng mở Trang
+  kiểm tra trước khi đăng lại; chỉ thử lại lỗi chắc chắn chưa gửi như
+  không nối được máy chủ). Token hỏng/nội dung vi phạm thì báo ngay,
+  không thử lại vô ích. Mọi lời gọi kèm `appsecret_proof`
   (HMAC-SHA256 của token bằng app_secret).
 
 ## Đăng ảnh / video
