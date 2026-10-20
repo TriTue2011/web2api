@@ -5,10 +5,13 @@ KHÔNG phải docker thật: chỉ đóng vai trò «lớp vỏ lệnh» để t
 HỢP ĐỒNG mà dịch vụ sinh ra:
 
 - Mọi lời gọi được GHI LẠI vào thư mục chụp (biến CHAYMA_GIA_THU_MUC):
-  `argv.json` (toàn bộ đối số, gồm cả cờ cách ly), `env.json` (môi trường mà
-  dịch vụ truyền cho tiến trình docker — phải TỐI THIỂU, không chứa khoá),
+  `argv.json` (đối số của lệnh `run` — gồm cả cờ cách ly; chỉ `run` mới ghi
+  đè tệp này), `argv_all.jsonl` (MỌI lời gọi theo thứ tự, một dòng JSON một
+  lượt — để test kiểm kill/rm sau run), `env.json` (môi trường mà dịch vụ
+  truyền cho tiến trình docker — phải TỐI THIỂU, không chứa khoá),
   `thu_muc_chay.json` (danh sách tệp trong thư mục lần chạy + nội dung tệp
-  đầu vào nhỏ, để test thấy tệp đầu vào đã vào đúng thư mục).
+  đầu vào nhỏ + `_mount_uid`/`_mount_mode` của thư mục nguồn mount, để test
+  thấy tệp đầu vào đã vào đúng thư mục và thư mục thuộc uid nào).
 - Chế độ hành vi qua biến CHAYMA_GIA_CHE_DO:
     echo    (mặc định) in «stdout-gia», tạo ket-qua.txt = «42», thoát 0.
     loi     in traceback giả ra stderr, thoát 3.
@@ -41,6 +44,19 @@ def _ghi(ten: str, du_lieu) -> None:
         pass
 
 
+def _ghi_them(ten: str, du_lieu) -> None:
+    """Ghi THÊM một dòng JSON (cho argv_all.jsonl — lịch sử mọi lời gọi)."""
+    thu_muc = os.environ.get("CHAYMA_GIA_THU_MUC", "")
+    if not thu_muc:
+        return
+    try:
+        os.makedirs(thu_muc, exist_ok=True)
+        with open(os.path.join(thu_muc, ten), "a", encoding="utf-8") as f:
+            f.write(json.dumps(du_lieu, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def _tim_thu_muc_chay(argv: list[str]) -> str:
     """Tìm thông số -v «<host>:/lam-viec:rw» trong argv của `docker run`."""
     for i, muc in enumerate(argv):
@@ -51,8 +67,11 @@ def _tim_thu_muc_chay(argv: list[str]) -> str:
 
 def main() -> int:
     argv = sys.argv[1:]
-    _ghi("argv.json", argv)
-    _ghi("env.json", dict(os.environ))
+    _ghi_them("argv_all.jsonl", argv)
+    if argv and argv[0] == "run":
+        # argv.json/env.json = hợp đồng của lệnh run (kill/rm không ghi đè).
+        _ghi("argv.json", argv)
+        _ghi("env.json", dict(os.environ))
     if not argv:
         return 2
     if argv[0] == "--version":
@@ -68,7 +87,9 @@ def main() -> int:
     che_do = os.environ.get("CHAYMA_GIA_CHE_DO", "echo")
     thu_muc_chay = _tim_thu_muc_chay(argv)
     if thu_muc_chay and os.path.isdir(thu_muc_chay):
-        chup = {}
+        st = os.stat(thu_muc_chay)
+        chup = {"_mount_uid": st.st_uid,
+                "_mount_mode": oct(st.st_mode & 0o7777)}
         for ten in sorted(os.listdir(thu_muc_chay)):
             duong = os.path.join(thu_muc_chay, ten)
             muc = {"symlink": os.path.islink(duong)}

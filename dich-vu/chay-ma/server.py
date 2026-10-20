@@ -14,14 +14,19 @@ Kiến trúc an toàn (theo spec NV171, hạng B, rủi ro nguy_hiem):
   (biến môi trường, khoá) không được lộ vào môi trường chạy mã.
 - Lớp thứ hai trong container: bootstrap đặt RLIMIT_CPU/RLIMIT_AS/RLIMIT_FSIZE
   SAU exec (tránh deadlock preexec_fn của server đa luồng).
-- Hết giờ: giết cả process group của docker client + `docker kill <name>` dự
-  phòng; đầu ra stdout/stderr bị cắt ở trần và container bị diệt sớm khi phun
+- Hết giờ/tràn/lỗi/xong: giết cả process group của docker client và
+  `finally` LUÔN `docker kill` + `docker rm -f` container theo tên
+  (NV171-SUA C2 — không container mồ côi); `--log-driver none` để daemon
+  không ghi đĩa máy chủ; giờ tường trong container bằng `timeout`.
+  Đầu ra stdout/stderr bị cắt ở trần và container bị diệt sớm khi phun
   vượt trần cứng (chống đầy bộ nhớ dịch vụ).
 
 Nguồn port (LUẬT PORT, chủ máy 19/10): kho CỦA CHÍNH CHỦ MÁY,
 đường đọc /opt/claude-c2a/chatgpt2api đã KHÔNG CÒN trên VM này nên dùng bản
 sao ~/workspace/c2a-nv146 (cùng commit d879b03 của kho gốc). Chép từ
-services/code_runner.py (417 dòng): boc_code_python, co_the_chay (+ các danh
+services/code_runner.py (417 dòng): boc_code_python, co_the_chay (NV171-SUA
+C3: đổi tên `goi_y_som` + hạ vai trò xuống GỢI Ý SỚM — không phải ranh giới
+an toàn; ranh giới thật là cách ly container) (+ các danh
 sách _KHONG_TU_DU/_CHO_NGUOI/_NGUY_HIEM), _moi_truong_sach (ĐÃ ĐỔI: bỏ biến
 proxy trỏ địa chỉ chết — vì --network none là cách ly mạng THẬT, không cần
 lừa thư viện HTTP), chan_doan_loi, kiem_tinh (+ _ten_da_dinh_nghia/
@@ -43,6 +48,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -106,7 +112,7 @@ class LoiYeuCau(Exception):
         self.loi = loi
 
 
-# ── Port c2a: boc_code_python / co_the_chay / kiem_tinh / chan_doan_loi ─────
+# ── Port c2a: boc_code_python / goi_y_som (c2a: co_the_chay) / kiem_tinh ──
 
 _KHOI_CODE_RE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S)
 
@@ -136,8 +142,18 @@ def boc_code_python(text: str) -> str:
     return ""
 
 
-def co_the_chay(code: str) -> tuple[bool, str]:
-    """Code này có đáng chạy thử không. Trả (được/không, lý do nếu không)."""
+def goi_y_som(code: str) -> tuple[bool, str]:
+    """GỢI Ý SỚM (port c2a `co_the_chay`, ĐỔI VAI TRÒ ở NV171-SUA C3):
+    mã này có ĐÁNG TỐN một lượt container để chạy thử không — mã rỗng/quá
+    dài, mã chắc chắn chờ người gõ hoặc không tự đủ (thiếu dịch vụ của c2a)
+    thì bỏ qua sớm cho khỏi tốn lượt chạy.
+
+    ĐÂY KHÔNG PHẢI RANH GIỚI AN TOÀN và không được tài liệu nào mô tả như
+    vậy: nó là danh sách dấu hiệu chuỗi (kế thừa c2a), lách được dễ dàng
+    (nối chuỗi, getattr, importlib…). Mã lọt qua gợi ý này VẪN chỉ chạy
+    trong container cách ly — cách ly container (--network none, rootfs
+    chỉ đọc, user 65534, cap-drop ALL, trần CPU/RAM/pids/thời gian) mới là
+    ranh giới an toàn thật. Trả (đáng chạy thử không, lý do nếu không)."""
     c = (code or "").strip()
     if not c:
         return False, "không bóc được khối code Python nào"
@@ -146,7 +162,7 @@ def co_the_chay(code: str) -> tuple[bool, str]:
     low = c.lower()
     for dau in _NGUY_HIEM:
         if dau in low:
-            return False, f"code có {dau!r} — chạm hệ thống, không chạy thử"
+            return False, f"code có {dau!r} — gợi ý sớm: nhiều khả năng chạm hệ thống, không tốn lượt chạy thử"
     for dau in _CHO_NGUOI:
         if dau in low:
             return False, f"code có {dau!r} — chờ người gõ hoặc chạy vô hạn"
@@ -154,6 +170,11 @@ def co_the_chay(code: str) -> tuple[bool, str]:
         if dau in low:
             return False, f"code cần {dau!r} — không tự đủ để chạy riêng"
     return True, ""
+
+
+#: Tên cũ thời NV171 — giữ làm alias để mã/test cũ còn import được; vai trò
+#: đã đổi thành «gợi ý sớm» như docstring của goi_y_som (NV171-SUA C3).
+co_the_chay = goi_y_som
 
 
 def chan_doan_loi(stderr: str, code: str) -> str:
@@ -344,6 +365,9 @@ def lay_cau_hinh() -> dict:
         "ram_mb": max(64, _so("CHAYMA_RAM_MB", 512)),
         "pids": max(16, _so("CHAYMA_PIDS", 64)),
         "dong_thoi": max(1, _so("CHAYMA_DONG_THOI", 2)),
+        # C5: trần kết nối HTTP đồng thời + hết giờ socket của handler.
+        "tran_ket_noi": max(1, _so("CHAYMA_KET_NOI_TOI_DA", 32)),
+        "het_gio_socket": max(1, _so("CHAYMA_HET_GIO_SOCKET", 20)),
     }
 
 
@@ -376,15 +400,23 @@ def xay_dung_lenh(docker_bin: str, anh: str, id_chay: str, thu_muc_chay: Path,
       trần CPU/RAM/pids, --pull never (không kéo ảnh lén), mount DUY NHẤT
       thư mục tạm của lần chạy → /lam-viec, env là whitelist tối thiểu.
     - Bootstrap rlimit (CPU/RAM/FSIZE) đặt SAU exec trong container.
+    - NV171-SUA C2: `--log-driver none` — daemon KHÔNG ghi nhật ký container
+      xuống đĩa máy chủ (client gắn trực tiếp vẫn đọc được stdout/stderr);
+      và giờ TƯỜNG trong container bằng `timeout -s KILL <han_giay>` bọc
+      ngoài python3 — RLIMIT_CPU của bootstrap chỉ tính giờ CPU, mã ngủ
+      (sleep) không tốn CPU nên phải có đồng hồ tường riêng trong hộp.
     """
     ram_byte = ram_mb * 1024 * 1024
-    lenh_trong = ["python3", "-I", "-c", BOOTSTRAP,
+    han = max(1, int(han_giay))
+    lenh_trong = ["timeout", "-s", "KILL", str(han),
+                  "python3", "-I", "-c", BOOTSTRAP,
                   f"{DIEM_MOUNT}/{TEN_TEP_MA}",
-                  str(max(1, han_giay)), str(ram_byte), str(_FILE_TRAN_BYTE)]
+                  str(han), str(ram_byte), str(_FILE_TRAN_BYTE)]
     lenh = [
         docker_bin, "run",
         "--rm",
         "--name", f"chayma-{id_chay}",
+        "--log-driver", "none",
         "--network", "none",
         "--read-only",
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=16777216",
@@ -439,13 +471,32 @@ def _env_client_docker() -> dict[str, str]:
     return env
 
 
+def _diet_container(docker_bin: str, ten_container: str) -> None:
+    """NV171-SUA C2: diệt container THEO TÊN — `docker kill` rồi `docker rm -f`.
+
+    `--rm` chỉ tự dọn khi container TỰ thoát; khi dịch vụ giết docker client
+    (hết giờ, phun đầu ra vượt trần) container vẫn chạy tiếp thành MỒ CÔI,
+    giữ 512 MB RAM + 64 tiến trình tới khi ai đó dọn tay. Hàm này chạy trong
+    `finally` của MỌI lượt chạy. Container đã tự thoát (đã bị --rm dọn) thì
+    kill/rm báo lỗi «không có container» — bình thường, nuốt lặng."""
+    for lenh_con in (["kill", ten_container], ["rm", "-f", ten_container]):
+        try:
+            subprocess.run([docker_bin, *lenh_con], capture_output=True,
+                           timeout=10, env=_env_client_docker())
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
 def thuc_thi_lenh(cmd: list[str], docker_bin: str, ten_container: str,
                   han_giay: int) -> dict:
     """Chạy lệnh docker với trần đầu ra + hết giờ.
 
     - Đọc stdout/stderr bằng luồng riêng: giữ lại TRAN_DAU_RA_BYTE mỗi luồng;
       tổng vượt TRAN_CUNG_BYTE thì diệt ngay (chống phun đầy bộ nhớ dịch vụ).
-    - Quá han_giay: killpg tiến trình client + `docker kill <name>` dự phòng.
+    - Quá han_giay: killpg tiến trình client.
+    - NV171-SUA C2: `finally` LUÔN `docker kill` + `docker rm -f` container
+      theo tên — mọi đường thoát (xong, lỗi, hết giờ, tràn, huỷ) đều dọn,
+      không để container mồ côi.
     - Trả dict {ok, ma_thoat, het_gio, stdout, stderr, bi_cat}.
     """
     ket = {"ok": False, "ma_thoat": None, "het_gio": False,
@@ -485,21 +536,22 @@ def thuc_thi_lenh(cmd: list[str], docker_bin: str, ten_container: str,
     t1.start()
     t2.start()
     try:
-        proc.wait(timeout=han_giay)
-    except subprocess.TimeoutExpired:
-        ket["het_gio"] = True
-        _diet_nhom_tien_trinh(proc)
         try:
-            subprocess.run([docker_bin, "kill", ten_container], capture_output=True,
-                           timeout=10, env=_env_client_docker())
-        except (OSError, subprocess.TimeoutExpired):
+            proc.wait(timeout=han_giay)
+        except subprocess.TimeoutExpired:
+            ket["het_gio"] = True
+            _diet_nhom_tien_trinh(proc)
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
             pass
-    t1.join(timeout=10)
-    t2.join(timeout=10)
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        pass
+    finally:
+        # C2: dù thoát bằng đường nào cũng diệt container theo tên.
+        if proc.poll() is None:
+            _diet_nhom_tien_trinh(proc)
+        _diet_container(docker_bin, ten_container)
     ket["ma_thoat"] = proc.returncode
     ket["bi_cat"] = trang_thai["cat"]
     ket["stdout"] = trang_thai["ra"].decode("utf-8", "replace")
@@ -550,6 +602,7 @@ def viet_tep_dau_vao(danh_sach, thu_muc_chay: Path) -> None:
         noi_dung = muc.get("noi_dung", "")
         if not isinstance(noi_dung, str):
             raise LoiYeuCau(400, "ten_tep_khong_hop_le")
+        _kiem_chuoi_utf8(noi_dung, "tep_dau_vao_khong_hop_le")  # C6
         du_lieu = noi_dung.encode("utf-8")
         if len(du_lieu) > TRAN_TEP_BYTE:
             raise LoiYeuCau(400, "tep_dau_vao_qua_lon")
@@ -613,6 +666,40 @@ def thu_tep_ra(thu_muc_chay: Path) -> list[dict]:
 
 # ── Luồng chạy một lần ────────────────────────────────────────────────────
 
+def _kiem_chuoi_utf8(s, ma_loi: str) -> None:
+    """NV171-SUA C6: chuỗi chứa surrogate đơn độc (vd "\\ud800" từ JSON) làm
+    `encode("utf-8")` ném UnicodeEncodeError ở tận lúc ghi tệp — phải chặn
+    NGAY ở cửa vào thành 400 sạch."""
+    if isinstance(s, str):
+        try:
+            s.encode("utf-8")
+        except UnicodeEncodeError:
+            raise LoiYeuCau(400, ma_loi) from None
+
+
+def _chuan_bi_thu_muc_chay(thu_muc_chay: Path) -> None:
+    """NV171-SUA C4: thư mục lần chạy phải THUỘC uid 65534 — container chạy
+    bằng uid đó, thư mục 0o755 của người dùng dịch vụ thì container KHÔNG
+    ghi được tệp ra nào (bản cũ «tệp ra» chỉ xanh nhờ docker giả ghi bằng
+    uid của dịch vụ). TUYỆT ĐỐI không chữa bằng chmod 777: bind-mount ghi
+    được mà không trần dung lượng là đường đầy đĩa máy chủ. Đổi chủ cần
+    dịch vụ chạy bằng root hoặc chính uid 65534 (xem README triển khai);
+    không đổi được thì giữ 0o755 (tệp VÀO vẫn đọc được, tệp RA không ghi
+    được) và CẢNH BÁO to trong log thay vì im lặng."""
+    thu_muc_chay.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chown(thu_muc_chay, 65534, 65534)
+        os.chmod(thu_muc_chay, 0o700)
+    except OSError:
+        try:
+            os.chmod(thu_muc_chay, 0o755)
+        except OSError:
+            pass
+        log.warning("chay-ma: khong doi duoc chu thu muc lan chay sang uid "
+                    "65534 — container co the khong ghi duoc tep ra; hay "
+                    "chay dich vu bang root hoac uid 65534 (README trien khai)")
+
+
 def xu_ly_chay(yeu_cau: dict, cau_hinh: dict) -> dict:
     """Chạy một lượt mã. Trả dict kết quả đầy đủ (không bao giờ ném ra ngoài
     trừ LoiYeuCau cho lỗi khuôn 4xx)."""
@@ -623,14 +710,20 @@ def xu_ly_chay(yeu_cau: dict, cau_hinh: dict) -> dict:
         raise LoiYeuCau(400, "ngon_ngu_khong_ho_tro")
     tho = yeu_cau.get("ma", "")
     ma = boc_code_python(tho) if "```" in str(tho or "") else str(tho or "")
+    _kiem_chuoi_utf8(ma, "ma_khong_hop_le")
+    # C6: int(1e999) ném OverflowError, int(NaN) ném ValueError — bắt đủ và
+    # chặn số float không hữu hạn TRƯỚC khi ép kiểu, tất cả thành 400 sạch.
+    han_tho = yeu_cau.get("han_giay", cau_hinh["het_gio"])
+    if isinstance(han_tho, float) and not math.isfinite(han_tho):
+        raise LoiYeuCau(400, "han_giay_khong_hop_le")
     try:
-        han_giay = int(yeu_cau.get("han_giay", cau_hinh["het_gio"]))
-    except (TypeError, ValueError):
+        han_giay = int(han_tho)
+    except (TypeError, ValueError, OverflowError):
         raise LoiYeuCau(400, "han_giay_khong_hop_le") from None
     han_giay = max(1, min(HAN_GIAY_TOI_DA, han_giay))
 
     kiem = kiem_tinh(ma)
-    duoc, ly_do = co_the_chay(ma)
+    duoc, ly_do = goi_y_som(ma)
     if not duoc:
         log.info("chay_bo_qua ly_do=%s", ly_do[:80])
         return {"ok": False, "da_chay": False, "ly_do_bo_qua": ly_do,
@@ -640,7 +733,7 @@ def xu_ly_chay(yeu_cau: dict, cau_hinh: dict) -> dict:
 
     id_chay = secrets.token_hex(8)
     thu_muc_chay = cau_hinh["thu_muc_goc"] / id_chay
-    thu_muc_chay.mkdir(parents=True, exist_ok=True)
+    _chuan_bi_thu_muc_chay(thu_muc_chay)
     try:
         (thu_muc_chay / TEN_TEP_MA).write_text(ma, encoding="utf-8")
         try:
@@ -669,8 +762,13 @@ def xu_ly_chay(yeu_cau: dict, cau_hinh: dict) -> dict:
 # ── Máy chủ HTTP ──────────────────────────────────────────────────────────
 
 class XuLy(BaseHTTPRequestHandler):
-    """Xử lý HTTP: kiểm Bearer TRƯỚC khi đọc thân (trừ /suc-khoe)."""
+    """Xử lý HTTP: kiểm Bearer TRƯỚC khi đọc thân (trừ /suc-khoe).
 
+    NV171-SUA C5: `timeout` đặt hết giờ cho MỌI socket của handler —
+    kết nối treo (slowloris) bị cắt sau ngần này giây thay vì giữ luồng
+    vô hạn; tao_may_chu ghi đè bằng CHAYMA_HET_GIO_SOCKET."""
+
+    timeout = 20
     khoa_dich_vu: str = ""
     cau_hinh: dict = {}
     semaphore: threading.Semaphore | None = None
@@ -718,11 +816,17 @@ class XuLy(BaseHTTPRequestHandler):
         duong = urlsplit(self.path).path
         try:
             if not self._xac_thuc():
-                try:
-                    self._doc_than(TRAN_THAN)
-                except LoiYeuCau:
-                    pass
-                self._tra_json(401, {"loi": "khong_xac_thuc"})
+                # C5: 401 NGAY, KHÔNG đọc thân — bản cũ đọc ≤1 MB rồi mới
+                # 401 (trái docstring): kẻ treo thân lớn giữ được luồng +
+                # băng thông. Đóng kết nối để đầu kia không bơm tiếp.
+                self.close_connection = True
+                du_lieu = json.dumps({"loi": "khong_xac_thuc"}).encode()
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(du_lieu)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(du_lieu)
                 return
             if duong == "/chay":
                 than = self._doc_than(TRAN_THAN)
@@ -750,8 +854,11 @@ class XuLy(BaseHTTPRequestHandler):
                     raise LoiYeuCau(400, "than_khong_phai_json")
                 tho = yeu_cau.get("ma", "")
                 ma = boc_code_python(tho) if "```" in str(tho or "") else str(tho or "")
-                duoc, ly_do = co_the_chay(ma)
-                self._tra_json(200, {"ok": True, "co_the_chay": duoc,
+                _kiem_chuoi_utf8(ma, "ma_khong_hop_le")  # C6
+                duoc, ly_do = goi_y_som(ma)
+                # NV171-SUA C3: khoá đổi tên «goi_y» — gợi ý sớm, KHÔNG
+                # phải bằng chứng an toàn (xem docstring goi_y_som).
+                self._tra_json(200, {"ok": True, "goi_y": duoc,
                                      "ly_do": ly_do, "kiem_tinh": kiem_tinh(ma)})
             else:
                 self._tra_json(404, {"loi": "khong_co_duong"})
@@ -759,6 +866,47 @@ class XuLy(BaseHTTPRequestHandler):
             self._tra_json(e.ma, {"loi": e.loi})
         except (ConnectionError, BrokenPipeError):
             pass
+        except Exception as exc:  # C6: lưới cuối — KHÔNG bao giờ cắt kết nối
+            # không một lời (bản cũ: han_giay=1e999 và chuỗi surrogate làm
+            # văng ngoại lệ không bắt → RemoteDisconnected). Không lộ chi
+            # tiết nội bộ, chỉ ghi loại lỗi vào log của dịch vụ.
+            log.warning("chay-ma: loi khong du kien o do_POST: %s",
+                        type(exc).__name__)
+            try:
+                self._tra_json(500, {"loi": "loi_noi_bo"})
+            except Exception:
+                pass
+
+
+class MayChuChayMa(ThreadingHTTPServer):
+    """ThreadingHTTPServer CÓ TRẦN KẾT NỐI (NV171-SUA C5).
+
+    Bản cũ: một luồng cho mỗi kết nối, không trần — 150 kết nối treo là
+    150 luồng giữ vô hạn, trong khi tiến trình này cầm docker.sock. Vượt
+    trần thì ĐÓNG kết nối ngay ở cửa (không sinh luồng)."""
+
+    daemon_threads = True
+    _TRAN_KET_NOI = 32
+
+    def __init__(self, *args, **kwargs):
+        self._sem_ket_noi = threading.Semaphore(self._TRAN_KET_NOI)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self._sem_ket_noi.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._sem_ket_noi.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._sem_ket_noi.release()
 
 
 def tao_may_chu() -> tuple[ThreadingHTTPServer, dict]:
@@ -775,8 +923,9 @@ def tao_may_chu() -> tuple[ThreadingHTTPServer, dict]:
     XuLy.khoa_dich_vu = khoa
     XuLy.cau_hinh = cau_hinh
     XuLy.semaphore = threading.Semaphore(cau_hinh["dong_thoi"])
-    srv = ThreadingHTTPServer((cau_hinh["host"], cau_hinh["port"]), XuLy)
-    srv.daemon_threads = True
+    XuLy.timeout = cau_hinh["het_gio_socket"]
+    MayChuChayMa._TRAN_KET_NOI = cau_hinh["tran_ket_noi"]
+    srv = MayChuChayMa((cau_hinh["host"], cau_hinh["port"]), XuLy)
     return srv, cau_hinh
 
 
