@@ -93,6 +93,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `nhin-nha` (Mắt nhà, chuẩn C2 `thiet_bi`, NV168) + dịch vụ `dich-vu/nhin-nha` | Có — client HTTP Bearer + chống SSRF (chỉ loopback/mạng nhà riêng, cấm metadata/IP công khai) tới dịch vụ ML phụ (YOLO26 + SCRFD/ArcFace, port c2a, model tải ngoài có kiểm sha256); 3 thực thể `nhin_nha.mat`/`so_mat`/`nhan_dien`; sổ khuôn mặt (IRIS, ngưỡng tự chỉnh theo dữ liệu nhà) mã hoá khi nghỉ/không thì 0600; embedding không vào log/phản hồi/suc_khoe; nhận diện mặc định TẮT (bật cần quản trị + ghi nhật ký); NV168-SUA: cổng sinh trắc chung cho mọi hành động sổ (trừ xoá), khoá bất đồng bộ cho vòng đọc-sửa-ghi, sự kiện không lưu vector + xoá người triệt để, mặt lạ có trần 50 cụm/hạn 30 ngày + xoá riêng, dịch vụ ML kiểm lại sha256 lúc nạp + trần điểm ảnh trước giải mã; kiểm với dịch vụ ML giả + kiểm tĩnh Dockerfile; **chưa kiểm với model ONNX thật** | 20/10/2026 |
 | Module `maytram` (Máy trạm — điều khiển từ xa qua agent, hạng B, rủi ro cao, NV170): agent trên máy trạm tự kết nối RA, bắt tay HMAC hai chiều (khoá riêng 256 bit mỗi máy, chống phát lại nonce + cửa sổ thời gian), tập lệnh ĐÓNG (không chạy lệnh tuỳ ý — `exec`/`kill` của c2a KHÔNG port), mọi thực thể `rui_ro_mac_dinh: nguy_hiem` qua phê duyệt của lõi, kết quả agent cắt trần + gắn `nguon_ngoai` | Có — kiểm với agent GIẢ trong tiến trình (bắt tay 2 chiều, phát lại, IDOR giữa hai phiên, MAC giả, allowlist hai lớp, thu hồi/xoay khoá); **chưa kiểm với máy trạm thật** (điểm gắn truyền tải trong lõi chưa có) | 20/10/2026 |
 | Module `chay-ma` (Chạy mã Python trong container cách ly, NV171) + dịch vụ `dich-vu/chay-ma` | Có — mỗi lượt chạy là một container docker dùng-một-lần cách ly (`--network none`, rootfs chỉ đọc + tmpfs /tmp, `--user 65534:65534`, `--cap-drop ALL`, `no-new-privileges`, `--cpus 1 --memory 512m --pids-limit 64`, `--pull never`, bind-mount duy nhất thư mục tạm của lần chạy); môi trường container là whitelist tối thiểu — bí mật của lõi không lọt vào; soi tĩnh chỉ là GỢI Ý SỚM (dấu hiệu chuỗi, lách được — KHÔNG phải ranh giới an toàn; NV171-SUA C3), ranh giới thật là container; bootstrap rlimit + `timeout` giờ tường trong container; `--log-driver none`; mọi đường thoát đều `docker kill` + `docker rm -f` theo tên (không container mồ côi, C2); thư mục lần chạy chown uid 65534 (C4); đầu ra cắt ở trần, tệp ra không đi theo symlink. Hành động `chay_python` rủi ro `nguy_hiem` (lõi bắt phê duyệt), `kiem_tinh` chỉ soi tĩnh; tắt mặc định, bật cần khoá dịch vụ riêng; kiểm với docker GIẢ + kiểm tĩnh Dockerfile + bootstrap rlimit chạy thật; **chưa kiểm với Docker thật** (chưa dựng ảnh thật, chưa kiểm các kịch bản thoát hộp cát) | 20/10/2026 |
+| Module `zalo-ca-nhan` (Zalo cá nhân qua dịch vụ phụ Node) + dịch vụ `dich-vu/zalo-ca-nhan` | Có — kênh hai chiều bằng tài khoản CÁ NHÂN: gửi ra chuẩn `kenh_ra` (văn bản + tệp, qua dịch vụ `POST /gui-tin`), nhận vào qua `hoi_vong` (chu kỳ 5 s, lọc `danh_sach_cho_phep` mặc định rỗng = không nhận ai); dịch vụ Node dùng zca-js 2.1.2 (API **không chính thức** — **có thể bị khoá tài khoản**), nghe loopback, Bearer ≥24 ký tự fail-fast, trang QR một lần + CSP, chứng chỉ Zalo 0600, hạn tốc độ gửi; module mặc định TẮT, khoá không vào log, kiểm với dịch vụ/adapter GIẢ; **chưa kiểm với Zalo thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2260,6 +2261,21 @@ tiện ích, không trò chuyện).
   vào (tin từ `chat_id` không khớp đích nào bị bỏ); cấp vai cho từng `from.id` ở
   `/api/kenh-vao/nguoi` (người chưa cấp quyền là người lạ: không lệnh, không trả
   lời). Xem từng bước ở `modules/zalo-bot/README.md`.
+
+### Module zalo-ca-nhan — Zalo cá nhân (kênh hai chiều qua dịch vụ phụ Node)
+
+**Mô tả.** Kênh hai chiều bằng tài khoản Zalo CÁ NHÂN: GỬI RA (chuẩn `kenh_ra`:
+văn bản + tệp, qua dịch vụ `POST /gui-tin`) và NHẬN TIN VÀO qua `hoi_vong`
+(chu kỳ 5 s, module đầu tiên dùng cơ chế hỏi vòng của lõi): module hỏi dịch vụ
+`/tin-moi?tu=<seq>`, chỉ nhận người trong `danh_sach_cho_phep` (**mặc định rỗng
+= không nhận ai**; người lạ bị bỏ lặng lẽ, đếm `bo_qua_nguoi_la`). Dịch vụ
+`dich-vu/zalo-ca-nhan` (Node + zca-js 2.1.2, API **không chính thức** của Zalo —
+**tài khoản có thể bị khoá bất cứ lúc nào**): nghe loopback, Bearer ≥24 ký tự
+fail-fast, đăng nhập bằng trang QR một lần (CSP, token xem 1 lần), chứng chỉ
+Zalo lưu 0600, hạn tốc độ gửi (≥2 s/lần, ≤20/phút), đệm vòng 200 tin. Module
+mặc định TẮT, khoá không vào log, tin nhận là dữ liệu không tin (kiểm khuôn,
+cắt 4000, bỏ ký tự điều khiển). Mã nguồn: `modules/zalo-ca-nhan/`,
+`dich-vu/zalo-ca-nhan/`.
 
 ### Module telegram-bot — Telegram (kênh gửi ra)
 
