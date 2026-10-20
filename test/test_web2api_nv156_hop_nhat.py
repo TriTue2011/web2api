@@ -58,7 +58,8 @@ def test_khong_con_module_vanphong():
 
 def test_ba_thuc_the_trong_mot_module():
     mod = _module()
-    ids = {e["id"] for e in mod.thuc_the(None)}
+    # NV181: thuc_the là async def (hợp đồng lõi) — giữ nguyên tập id kỳ vọng.
+    ids = {e["id"] for e in _chay(mod.thuc_the(None))}
     assert ids == {"van_phong.office_doc", "van_phong.office_ghi",
                    "van_phong.ocr_va_soan_thao"}
 

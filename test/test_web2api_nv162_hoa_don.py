@@ -93,7 +93,9 @@ def test_manifest_hop_le(md):
 
 
 def test_thuc_the_cong_cu_doc(mod):
-    ds = mod.thuc_the()
+    import asyncio
+    # NV181: thuc_the là async def (hợp đồng lõi).
+    ds = asyncio.run(mod.thuc_the())
     assert len(ds) == 1
     e = ds[0]
     assert e["id"] == ID_CONG_CU and e["loai"] == "cong_cu"

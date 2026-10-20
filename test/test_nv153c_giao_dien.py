@@ -67,7 +67,9 @@ STUB = """
     if (u.includes("api/thiet-bi?module=youtube-phat")) return tra(200, { thuc_the: [thucThe] });
     if (u.includes("api/thiet-bi?module=home-assistant")) return tra(200, { thuc_the: loa });
     if (u.includes("/hanh-dong")) {
-      if (u.includes("youtube_phat.dieu_khien")) {
+      // NV181: hành động đọc đi qua «youtube_phat.xem», điều khiển qua
+      // «youtube_phat.dieu_khien» — stub giả lập phải nhận cả hai.
+      if (u.includes("youtube_phat.dieu_khien") || u.includes("youtube_phat.xem")) {
         if (than.hanh_dong === "dung_phien" && window.__dung409) {
           window.__dung409 = false;
           return tra(409, { error: { message: "can_xac_nhan: cần xác nhận" } });

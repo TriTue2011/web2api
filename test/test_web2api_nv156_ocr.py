@@ -87,8 +87,10 @@ def test_manifest_hop_le():
 
 
 def test_thuc_the_co_tinh_nang_ocr():
+    import asyncio
     mod = _module()
-    tts = {e["id"]: e for e in mod.thuc_the(None)}
+    # NV181: thuc_the là async def (hợp đồng lõi).
+    tts = {e["id"]: e for e in asyncio.run(mod.thuc_the(None))}
     assert ID_TT in tts, sorted(tts)
     ten_hanh_dong = {tn["hanh_dong"] for tn in tts[ID_TT]["tinh_nang"]}
     assert {"ocr_anh", "pdf_thanh_anh", "dung_word", "dung_excel",

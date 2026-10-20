@@ -163,11 +163,15 @@ def test_web_files_ton_tai_va_dung_khung():
 def test_thuc_the_khai_du_10_hanh_dong_va_rui_ro_ghi(the):
     nap_gia(the)
     ents = asyncio.run(the.thuc_the(None))
-    assert len(ents) == 1
-    ent = ents[0]
-    assert ent["id"] == "youtube_phat.dieu_khien"
+    # NV181: tách hai thực thể theo rủi ro (xem/doc + dieu_khien/ghi) —
+    # tổng 10 hành động không đổi.
+    assert len(ents) == 2
+    theo_id = {e["id"]: e for e in ents}
+    ent = theo_id["youtube_phat.dieu_khien"]
+    xem = theo_id["youtube_phat.xem"]
     assert ent["rui_ro_mac_dinh"] == "ghi"
-    tn = ent["tinh_nang"]
+    assert xem["rui_ro_mac_dinh"] == "doc"
+    tn = ent["tinh_nang"] + xem["tinh_nang"]
     ten_hd = {t["hanh_dong"] for t in tn}
     assert ten_hd == HANH_DONG_MONG_DOI, ten_hd
     for t in tn:
@@ -201,7 +205,7 @@ def test_tim_goi_dich_vu_va_tra_ket_qua_sach(monkeypatch, mod, the):
     goi = _client_gia(monkeypatch, mod, phan_hoi=_PhanHoiGia(200, TIM_TRA))
     nap_gia(the)
     kq = asyncio.run(the.thuc_hien(
-        "youtube_phat.dieu_khien", "tim",
+        "youtube_phat.xem", "tim",
         {"tu_khoa": "nhạc trẻ", "nguon": "youtube", "gioi_han": 10}))
     assert kq["ok"] is True
     assert len(kq["ket_qua"]) == 2
@@ -217,7 +221,7 @@ def test_tim_mac_dinh_nguon_youtube(monkeypatch, mod, the):
     goi = _client_gia(monkeypatch, mod, phan_hoi=_PhanHoiGia(200, TIM_TRA))
     nap_gia(the)
     kq = asyncio.run(the.thuc_hien(
-        "youtube_phat.dieu_khien", "tim", {"tu_khoa": "x"}))
+        "youtube_phat.xem", "tim", {"tu_khoa": "x"}))
     assert kq["ok"] is True
     assert goi["params"]["source"] == "youtube"
 
@@ -227,7 +231,7 @@ def test_loi_dich_vu_tra_dict_sach_khong_nem_khong_lo_khoa(monkeypatch, mod, the
     _client_gia(monkeypatch, mod, loi=httpx.ConnectError("khong noi duoc"))
     nap_gia(the)
     kq = asyncio.run(the.thuc_hien(
-        "youtube_phat.dieu_khien", "tim", {"tu_khoa": "x"}))
+        "youtube_phat.xem", "tim", {"tu_khoa": "x"}))
     assert kq["ok"] is False
     assert "chưa kết nối được" in kq["loi"] or "không nối được" in kq["loi"]
     assert KHOA_GIA not in kq["loi"]
@@ -237,7 +241,7 @@ def test_dich_vu_401_bao_khoa_sai_sach(monkeypatch, mod, the):
     _client_gia(monkeypatch, mod, phan_hoi=_PhanHoiGia(401, {"error": "sai"}))
     nap_gia(the)
     kq = asyncio.run(the.thuc_hien(
-        "youtube_phat.dieu_khien", "trang_thai", {}))
+        "youtube_phat.xem", "trang_thai", {}))
     assert kq["ok"] is False
     assert "401" in kq["loi"]
     assert KHOA_GIA not in kq["loi"]
@@ -297,7 +301,7 @@ def test_danh_sach_playlist(monkeypatch, mod, the):
         "success": True, "playlists": [{"id": "abcdef012345", "name": "Nhạc Việt"}]}))
     nap_gia(the)
     kq = asyncio.run(the.thuc_hien(
-        "youtube_phat.dieu_khien", "danh_sach_playlist", {}))
+        "youtube_phat.xem", "danh_sach_playlist", {}))
     assert kq["ok"] is True
     assert kq["danh_sach"][0]["id"] == "abcdef012345"
 

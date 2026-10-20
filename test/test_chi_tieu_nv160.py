@@ -61,7 +61,7 @@ def test_manifest_dung_chuan(module):
     assert manif["cung_cap"] == ["thiet_bi"]
     # Không có đường mạng ra: module thuần cục bộ.
     assert manif["tai_nguyen"]["mang_ra"] == []
-    ds = module.thuc_the()
+    ds = asyncio.run(module.thuc_the())  # NV181: thuc_the là async def (hợp đồng lõi)
     assert [e["id"] for e in ds] == [ID_DOC, ID_GHI]
     doc = next(e for e in ds if e["id"] == ID_DOC)
     ghi = next(e for e in ds if e["id"] == ID_GHI)

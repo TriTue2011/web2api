@@ -57,7 +57,10 @@ def test_manifest_hop_le(md):
 
 
 def test_cong_cu_office_du_rui_ro_doc_ghi(mod):
-    thuc_the = {e["id"]: e for e in mod.thuc_the()}
+    import asyncio
+    # NV181: thuc_the là async def (lõi `await m.thuc_the(None)`) — cập nhật
+    # lời gọi, giữ nguyên khẳng định rủi ro doc/ghi.
+    thuc_the = {e["id"]: e for e in asyncio.run(mod.thuc_the())}
     doc = thuc_the["van_phong.office_doc"]
     ghi = thuc_the["van_phong.office_ghi"]
     assert doc["rui_ro_mac_dinh"] == "doc"

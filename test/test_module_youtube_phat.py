@@ -90,7 +90,14 @@ def test_manifest_hop_le(manifest):
     assert manifest["giao_thuc"] == "http-noi-bo"
     assert manifest["yeu_cau_goi"] == ["httpx"]
     truong = {t["khoa"]: t for t in manifest["truong_cau_hinh"]}
-    assert truong["dich_vu_url"]["mac_dinh"] == URL_MAC_DINH
+    # NV181: bỏ mặc định loopback «http://127.0.0.1:8713» — lõi chạy trong
+    # container nên kiem_url_lan chặn loopback ngay lúc cài, mặc định cũ
+    # không bao giờ cài được. Trường thành BẮT BUỘC, không mặc định; quản
+    # trị nhập địa chỉ LAN / tên container Docker (xem mo_ta trường).
+    assert truong["dich_vu_url"]["mac_dinh"] is None
+    assert truong["dich_vu_url"]["bat_buoc"] is True
+    # NV181: module khai thực thể → cung_cap phải có «thiet_bi» để lõi nạp.
+    assert "thiet_bi" in manifest["cung_cap"]
     assert truong["khoa_dich_vu"]["kieu"] == "bi_mat"
     assert truong["khoa_dich_vu"]["bat_buoc"] is True
     mang = manifest["tai_nguyen"]["mang_ra"]
@@ -346,23 +353,26 @@ def test_thuc_the_mo_ta_khong_cong_cu_gia(the):
 
     the.nap({"dich_vu_url": URL_MAC_DINH, "khoa_dich_vu": KHOA_GIA})
     ds = asyncio.run(_chay())
-    assert isinstance(ds, list) and len(ds) == 1
-    e = ds[0]
-    assert e["id"] == "youtube_phat.dieu_khien"
-    assert e["loai"] == "cong_cu"
+    # NV181: TÁCH hai thực thể theo rủi ro (lõi tính rủi ro theo thực thể):
+    # «xem» (doc) giữ hành động đọc, «dieu_khien» (ghi) giữ hành động đổi
+    # trạng thái — tổng vẫn đủ 10 hành động THẬT gọi qua dịch vụ.
+    assert isinstance(ds, list) and len(ds) == 2
+    theo_id = {e["id"]: e for e in ds}
+    e = theo_id["youtube_phat.dieu_khien"]
+    xem = theo_id["youtube_phat.xem"]
+    assert e["loai"] == "cong_cu" and xem["loai"] == "cong_cu"
+    assert e["rui_ro_mac_dinh"] == "ghi"
+    assert xem["rui_ro_mac_dinh"] == "doc"
     # Cho chủ máy thấy URL gốc để dán vào Home Assistant + khoá che …abcd.
     assert e["thuoc_tinh"]["dich_vu_url"] == URL_MAC_DINH
     assert e["thuoc_tinh"]["khoa"] == "…" + KHOA_GIA[-4:]
     assert KHOA_GIA not in json.dumps(ds, ensure_ascii=False)
-    # KHÔNG liệt kê công cụ giả: tinh_nang rỗng, chỉ mô tả bằng chữ.
-    # (Đợt C đổi có chủ ý: thực thể giờ khai 7 hành động THẬT gọi qua dịch vụ,
-    #  không còn rỗng — cập nhật assert theo bài học NV98. Đợt D4 thêm
-    #  bai_ke/bai_truoc/tua → 10 hành động.)
-    assert isinstance(e["tinh_nang"], list) and len(e["tinh_nang"]) == 10
-    assert {t["hanh_dong"] for t in e["tinh_nang"]} == {
-        "tim", "phat_len_loa", "dung_phien", "trang_thai",
-        "danh_sach_playlist", "nhap_ma_chia_se", "lay_khoa",
-        "bai_ke", "bai_truoc", "tua"}
+    ten_dk = {t["hanh_dong"] for t in e["tinh_nang"]}
+    ten_xem = {t["hanh_dong"] for t in xem["tinh_nang"]}
+    assert ten_xem == {"tim", "trang_thai", "danh_sach_playlist"}
+    assert ten_dk == {"phat_len_loa", "dung_phien", "nhap_ma_chia_se",
+                      "lay_khoa", "bai_ke", "bai_truoc", "tua"}
+    assert len(ten_xem) + len(ten_dk) == 10
 
 
 # ── đợt D4: hành động bài kế / bài trước / tua gọi đúng route dịch vụ ─────
