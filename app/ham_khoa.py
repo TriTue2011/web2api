@@ -163,15 +163,20 @@ def lay_khoa_chinh() -> bytes | None:
     if bat_buoc_ma_hoa():
         raise RuntimeError("Bắt buộc mã hoá (WEB2API_BAT_BUOC_MA_HOA=1) nhưng không tìm thấy khoá chính hợp lệ")
 
+    canh_bao = False
     with _KHOA_LUONG:
         if not _DA_CANH_BAO_KHONG_KHOA:
             _DA_CANH_BAO_KHONG_KHOA = True
-            try:
-                from app import nhat_ky
-                nhat_ky.ghi("he_thong", "canh_bao",
-                            "Chưa cấu hình khoá chính (WEB2API_KHOA_CHINH) — bí mật và phiên lưu dạng rõ trên đĩa")
-            except Exception:
-                pass
+            canh_bao = True
+    if canh_bao:
+        # Ghi nhật ký NGOÀI khoá: ghi nhật ký che bí mật bằng khoá quản trị, mà đọc khoá quản trị lại gọi lay_khoa_chinh() —
+        # gọi nhật ký khi còn giữ khoá (không tái nhập) là tự khoá chết (đo: lõi treo khi chưa cấu hình khoá chính mà admin_key còn dạng rõ).
+        try:
+            from app import nhat_ky
+            nhat_ky.ghi("he_thong", "canh_bao",
+                        "Chưa cấu hình khoá chính (WEB2API_KHOA_CHINH) — bí mật và phiên lưu dạng rõ trên đĩa")
+        except Exception:
+            pass
     return None
 
 
