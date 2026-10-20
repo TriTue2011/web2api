@@ -25,9 +25,18 @@ HÀNG RÀO AN TOÀN (bắt buộc của NV169):
 - Điều khiển (mở/đóng) mặc định TẮT (cho_phep_dieu_khien=«tat»); khoá API đám
   mây kiểu bi_mat, không vào log/phản hồi/suc_khoe; lỗi thiết bị chỉ nêu tên
   kiểu, không chép thân phản hồi (có thể chứa khoá).
-- Mọi lần mở/đóng + cấp mã xác nhận đều ghi vào nhật ký BẤT BIẾN
-  (nhat-ky-bat-bien.jsonl, 0600, chỉ ghi thêm — module không có hành động nào
-  xoá/sửa nó): ai, từ đâu (nguồn ngữ cảnh), lúc nào.
+- Mọi lần mở/đóng + cấp mã xác nhận đều ghi vào nhật ký có XÍCH BĂM
+  (nhat-ky-bat-bien.jsonl, thư mục 0700, tệp tạo 0600 bằng os.open, chỉ ghi
+  thêm — module không có hành động nào xoá/sửa nó): ai, từ đâu (nguồn thật
+  trong ngữ cảnh), lúc nào. Mỗi dòng mang băm SHA-256 của dòng trước nên
+  sửa/xoá dòng ở giữa bị phát hiện bằng `kiem_xich_nhat_ky()` (NV169-SUA
+  K4). Ghi nhật ký SAU khi đã có kết quả vật lý mà lỗi thì không lật kết
+  quả; ghi Ý ĐỊNH trước khi chạm thiết bị thì đóng khi lỗi (thà không mở
+  còn hơn mở mà không có dấu vết).
+- MỌI hành động của module (cả đọc nhật ký) chỉ quản trị/nội bộ: một cổng
+  vai dùng chung ở `thuc_hien()`, đóng khi lỗi (NV169-SUA K2 — trước đây
+  «xem_nhat_ky» lọt cổng, khách có thiet_bi:ghi đọc được tên người + giờ
+  mở cửa).
 - Tên học được là dữ liệu cá nhân: lưu 0600 (so-ten.json), không log, xoá được
   (xoa_ten_ma), KHÔNG dùng làm bằng chứng để mở khoá.
 """
@@ -35,10 +44,12 @@ HÀNG RÀO AN TOÀN (bắt buộc của NV169):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import secrets
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,6 +62,8 @@ log = logging.getLogger("web2api.module.khoa_cua")
 
 #: Cửa sổ xác nhận lại của module (giây) — «có hạn hiệu lực ngắn cho mỗi lần xác nhận».
 HET_HAN_MA_XAC_NHAN = 120.0
+#: Băm mở đầu xích nhật ký (dòng đầu tiên không có dòng trước).
+_BAM_DAU_XICH = "0" * 64
 #: Nhịp kiểm sự kiện mặc định (giây).
 NHIP_SU_KIEN_MAC_DINH = 15.0
 #: Hỏi tên tối đa cho MỘT mã — CHÉP c2a (nài thêm chỉ làm phiền).
@@ -101,6 +114,11 @@ class Module:
         self._be = None  # backend: KhoaDamMay hoặc backend giả trong test
         self._step_up: dict[str, dict] = {}  # admin_id -> {"ma", "het"}
         self._khoa = asyncio.Lock()
+        # Khoá cứng cho ghi nhật ký: đọc dòng cuối + nối xích băm + ghi thêm
+        # phải là MỘT thao tác nguyên tử trong tiến trình — nhật ký được ghi
+        # từ nhiều đường (hành động, sự kiện) có thể ở các luồng khác nhau
+        # của lõi, khoá asyncio không bao được luồng khác.
+        self._khoa_nhat_ky = threading.Lock()
         self._nhip_su_kien = NHIP_SU_KIEN_MAC_DINH
 
     # ── đường dẫn dữ liệu ──
@@ -123,9 +141,17 @@ class Module:
         except (OSError, ValueError):
             return {}
 
+    def _dam_bao_thu_muc(self) -> Path:
+        """Thư mục dữ liệu RIÊNG của module: tạo nếu thiếu, luôn 0700 —
+        chứa sổ tên (dữ liệu cá nhân) và nhật ký mở cửa."""
+        p = self._thu_muc()
+        p.mkdir(parents=True, exist_ok=True)
+        os.chmod(p, 0o700)
+        return p
+
     def _ghi_so_ten(self, d: dict) -> None:
         p = self._p_so_ten()
-        p.parent.mkdir(parents=True, exist_ok=True)
+        self._dam_bao_thu_muc()
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
         os.chmod(tmp, 0o600)
@@ -141,23 +167,86 @@ class Module:
             return str(muc.get("ten") or "")
         return ""
 
-    # ── nhật ký bất biến ──
+    # ── nhật ký có xích băm (NV169-SUA K4) ──
 
     def _ghi_nhat_ky(self, su_kien: str, ai: str, nguon: str,
                      chi_tiet: str = "") -> None:
+        """Ghi thêm MỘT dòng có `bam_truoc` = SHA-256 của dòng trước.
+
+        Tệp tạo bằng os.open(..., 0o600) ngay từ đầu (không còn cửa sổ
+        quyền theo umask), thư mục 0700. Đọc-dòng-cuối + ghi nằm trong
+        khoá cứng để hai lần ghi đồng thời không chẽ xích. Hàm NÀY ném lỗi
+        khi ghi hỏng — nơi gọi quyết định đóng (ghi ý định trước khi chạm
+        thiết bị) hay mềm (ghi sau khi đã có kết quả vật lý).
+        """
         p = self._p_nhat_ky()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        dong = json.dumps({
-            "luc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "su_kien": su_kien,
-            "ai": ai,
-            "nguon": nguon,
-            "chi_tiet": chi_tiet,
-        }, ensure_ascii=False)
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(dong + "\n")
-        os.chmod(p, 0o600)
+        with self._khoa_nhat_ky:
+            self._dam_bao_thu_muc()
+            bam_truoc = _BAM_DAU_XICH
+            try:
+                with open(p, "rb") as f:
+                    cuoi = b""
+                    for raw in f:
+                        if raw.strip():
+                            cuoi = raw.rstrip(b"\n")
+                if cuoi:
+                    bam_truoc = hashlib.sha256(cuoi).hexdigest()
+            except FileNotFoundError:
+                pass
+            dong = json.dumps({
+                "luc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "su_kien": su_kien,
+                "ai": ai,
+                "nguon": nguon,
+                "chi_tiet": chi_tiet,
+                "bam_truoc": bam_truoc,
+            }, ensure_ascii=False)
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            try:
+                os.fchmod(fd, 0o600)  # tệp có từ trước với quyền lạ → ép lại
+                os.write(fd, (dong + "\n").encode("utf-8"))
+                os.fsync(fd)
+            finally:
+                os.close(fd)
         # Tuyệt đối không log chi_tiet có thể chứa mã: chỉ log tên sự kiện.
+
+    def _ghi_nhat_ky_mem(self, su_kien: str, ai: str, nguon: str,
+                         chi_tiet: str = "") -> None:
+        """Ghi nhật ký SAU khi đã có kết quả vật lý (cửa đã mở/đóng, lệnh đã
+        bị từ chối…): lỗi ghi (đĩa đầy) chỉ cảnh báo, KHÔNG lật kết quả —
+        báo «thất bại» sau khi cửa đã mở sẽ đánh lừa người dùng."""
+        try:
+            self._ghi_nhat_ky(su_kien, ai, nguon, chi_tiet)
+        except Exception:
+            log.warning("khoa-cua: ghi nhật ký «%s» lỗi (kết quả vật lý "
+                        "không đổi)", su_kien)
+
+    def kiem_xich_nhat_ky(self) -> dict:
+        """Kiểm xích băm của nhật ký: {ok, so_dong, dong_loi}.
+
+        ok=False khi một dòng không phải JSON, hoặc `bam_truoc` của một
+        dòng không bằng SHA-256 của dòng liền trước (sửa/xoá/chèn dòng ở
+        giữa). Giới hạn thật: cắt đuôi tệp hoặc thay cả tệp bằng người có
+        quyền ghi thì xích tự thân không phát hiện được — muốn chống cả
+        việc đó phải neo băm ra ngoài (chưa làm).
+        """
+        p = self._p_nhat_ky()
+        if not p.is_file():
+            return {"ok": True, "so_dong": 0, "dong_loi": None}
+        mong_doi = _BAM_DAU_XICH
+        so_dong = 0
+        for i, raw in enumerate(p.read_bytes().splitlines(), 1):
+            if not raw.strip():
+                continue
+            so_dong = i
+            try:
+                d = json.loads(raw)
+            except ValueError:
+                return {"ok": False, "so_dong": so_dong, "dong_loi": i}
+            if not isinstance(d, dict) or d.get("bam_truoc") != mong_doi:
+                return {"ok": False, "so_dong": so_dong, "dong_loi": i}
+            mong_doi = hashlib.sha256(raw).hexdigest()
+        return {"ok": True, "so_dong": so_dong, "dong_loi": None}
 
     # ── cấu hình ──
 
@@ -214,13 +303,18 @@ class Module:
             return _loi("«access_id» và «access_secret» phải đi cùng nhau.")
         if not access_id:
             return _loi("Chưa khai Access ID/Secret của dự án Tuya IoT.")
-        from .dam_may import MAY_CHU
+        from .dam_may import MAY_CHU, ma_thiet_bi_hop_le
         vung = str(cau_hinh.get("vung") or "america").strip().lower()
         if vung not in MAY_CHU:
             return _loi("«vung» không hợp lệ: " + ", ".join(sorted(MAY_CHU)) + ".")
         ma_tb = str(cau_hinh.get("ma_thiet_bi") or "").strip()
-        if not ma_tb or len(ma_tb) > 128:
+        if not ma_tb:
             return _loi("«ma_thiet_bi» bắt buộc (mã thiết bị khoá trên Tuya).")
+        if not ma_thiet_bi_hop_le(ma_tb):
+            # Mã ghép thẳng vào đường dẫn API Tuya — ký tự lạ («/», «.»,
+            # «?», «#», «%») đổi được đường gọi (NV169-SUA K3).
+            return _loi("«ma_thiet_bi» chỉ gồm chữ, số, «-», «_» và tối đa "
+                        "64 ký tự.")
         dk = str(cau_hinh.get("cho_phep_dieu_khien") or "tat").strip().lower()
         if dk not in ("tat", "bat"):
             return _loi("«cho_phep_dieu_khien» chỉ nhận «tat» hoặc «bat».")
@@ -293,7 +387,7 @@ class Module:
                 "thuoc_tinh": {},
                 "tinh_nang": [
                     {"hanh_dong": "xem_nhat_ky",
-                     "mo_ta": "Đọc nhật ký mở/đóng gần đây (mã mở, tên đã học, thời điểm).",
+                     "mo_ta": "Đọc nhật ký mở/đóng gần đây (mã mở, tên đã học, thời điểm). Chỉ quản trị — chứa dữ liệu cá nhân.",
                      "tham_so": {
                          "type": "object",
                          "additionalProperties": False,
@@ -387,11 +481,20 @@ class Module:
     async def thuc_hien(self, id_thuc_the: str, hanh_dong: str,
                         tham_so: dict) -> dict:
         tham_so = tham_so or {}
+        # CỔNG VAI DÙNG CHUNG (NV169-SUA K2): MỌI hành động của module —
+        # điều khiển lẫn đọc nhật ký/dạy tên — chỉ quản trị/nội bộ, kiểm
+        # MỘT chỗ ở lối vào, đóng khi lỗi (thiếu ngữ cảnh → từ chối).
+        # Trước đây cổng đặt rải trong từng hàm con nên «xem_nhat_ky» lọt:
+        # khách có thiet_bi:ghi đọc được tên người + giờ mở cửa.
+        la_qt, ai, nguon = _nguoi_goi_la_quan_tri()
+        if not la_qt:
+            return {"ok": False,
+                    "loi": "Chỉ quản trị mới được dùng module khoá cửa."}
         tien = f"{self.tien_to}."
         if id_thuc_the == tien + "khoa_chinh":
-            return await self._thuc_hien_khoa(hanh_dong, tham_so)
+            return await self._thuc_hien_khoa(hanh_dong, tham_so, ai, nguon)
         if id_thuc_the == tien + "nhat_ky":
-            return await self._thuc_hien_nhat_ky(hanh_dong, tham_so)
+            return await self._thuc_hien_nhat_ky(hanh_dong, tham_so, ai, nguon)
         return {"ok": False, "loi": "Không thấy thực thể."}
 
     # ── thực thể khoá (nguy_hiem) ──
@@ -405,11 +508,9 @@ class Module:
             return {"ok": False, "loi": "Chưa nối được khoá (thiếu cấu hình đám mây)."}
         return None
 
-    async def _thuc_hien_khoa(self, hanh_dong: str, tham_so: dict) -> dict:
-        la_qt, ai, nguon = _nguoi_goi_la_quan_tri()
-        if not la_qt:
-            return {"ok": False,
-                    "loi": "Chỉ quản trị mới được điều khiển khoá cửa."}
+    async def _thuc_hien_khoa(self, hanh_dong: str, tham_so: dict,
+                              ai: str, nguon: str) -> dict:
+        # Vai đã kiểm ở cổng chung thuc_hien() — hàm này chỉ lo nghiệp vụ.
         chan = self._chan_dieu_khien()
         if hanh_dong == "chuan_bi_mo":
             if chan:
@@ -431,9 +532,9 @@ class Module:
             try:
                 await self._be.dong_khoa()
             except Exception as e:
-                self._ghi_nhat_ky("dong_khoa_loi", ai, nguon, type(e).__name__)
+                self._ghi_nhat_ky_mem("dong_khoa_loi", ai, nguon, type(e).__name__)
                 return {"ok": False, "loi": "Không đóng được khoá (lỗi thiết bị)."}
-            self._ghi_nhat_ky("dong_khoa_thanh_cong", ai, nguon)
+            self._ghi_nhat_ky_mem("dong_khoa_thanh_cong", ai, nguon)
             return {"ok": True, "trang_thai_moi": {"trang_thai": "khoa"}}
         return {"ok": False, "loi": "Hành động không hỗ trợ."}
 
@@ -442,28 +543,32 @@ class Module:
         async with self._khoa:
             ban_ghi = self._step_up.pop(ai, None)  # đơn dùng: lấy là mất
             if not ban_ghi or ban_ghi.get("ma") != ma:
-                self._ghi_nhat_ky("mo_khoa_tu_choi", ai, nguon, "sai_ma")
+                self._ghi_nhat_ky_mem("mo_khoa_tu_choi", ai, nguon, "sai_ma")
                 return {"ok": False,
                         "loi": "Thiếu mã xác nhận hợp lệ — gọi «chuan_bi_mo» trước, "
                                "mỗi mã chỉ dùng một lần."}
             if time.time() > float(ban_ghi.get("het") or 0):
-                self._ghi_nhat_ky("mo_khoa_tu_choi", ai, nguon, "het_han")
+                self._ghi_nhat_ky_mem("mo_khoa_tu_choi", ai, nguon, "het_han")
                 return {"ok": False,
                         "loi": "Mã xác nhận đã hết hạn (120 giây) — gọi lại «chuan_bi_mo»."}
             # Mã hợp lệ: ghi ý định TRƯỚC khi chạm thiết bị (kể cả khi lỗi,
-            # ý định vẫn nằm trong nhật ký bất biến).
+            # ý định vẫn nằm trong nhật ký) — ghi này ĐÓNG khi lỗi: thà
+            # không mở còn hơn mở mà không có dấu vết.
             self._ghi_nhat_ky("mo_khoa_yeu_cau", ai, nguon)
             try:
                 await self._be.mo_khoa()
             except Exception as e:
-                self._ghi_nhat_ky("mo_khoa_loi", ai, nguon, type(e).__name__)
+                self._ghi_nhat_ky_mem("mo_khoa_loi", ai, nguon, type(e).__name__)
                 return {"ok": False, "loi": "Không mở được khoá (lỗi thiết bị)."}
-            self._ghi_nhat_ky("mo_khoa_thanh_cong", ai, nguon)
+            self._ghi_nhat_ky_mem("mo_khoa_thanh_cong", ai, nguon)
             return {"ok": True, "trang_thai_moi": {"trang_thai": "mo"}}
 
-    # ── thực thể nhật ký (doc) ──
+    # ── thực thể nhật ký (độ nhạy dữ liệu cá nhân — vẫn chỉ quản trị) ──
 
-    async def _thuc_hien_nhat_ky(self, hanh_dong: str, tham_so: dict) -> dict:
+    async def _thuc_hien_nhat_ky(self, hanh_dong: str, tham_so: dict,
+                                 ai: str, nguon: str) -> dict:
+        # Vai đã kiểm ở cổng chung thuc_hien() — KỂ CẢ «xem_nhat_ky»: nhật
+        # ký chứa tên người + giờ ra vào (dữ liệu cá nhân), không cho khách.
         if hanh_dong == "xem_nhat_ky":
             so_ngay = tham_so.get("so_ngay", 2)
             try:
@@ -473,10 +578,7 @@ class Module:
             muc = await self._nhat_ky_gan(so_ngay)
             return {"ok": True, "muc": muc, "so_ngay": so_ngay,
                     "nguon_ngoai": True}
-        la_qt, ai, nguon = _nguoi_goi_la_quan_tri()
         if hanh_dong == "dat_ten_ma":
-            if not la_qt:
-                return {"ok": False, "loi": "Chỉ quản trị mới được dạy tên."}
             ma = str(tham_so.get("ma") or "").strip()
             ten = " ".join(str(tham_so.get("ten") or "").split())
             if "#" not in ma or len(ma) > 64 or not ten or len(ten) > 40:
@@ -486,17 +588,15 @@ class Module:
             dem = int(muc.get("da_hoi", 0)) if isinstance(muc, dict) else 0
             so_ten[ma] = {"ten": ten, "da_hoi": dem}
             self._ghi_so_ten(so_ten)
-            self._ghi_nhat_ky("dat_ten_ma", ai, nguon, ma)
+            self._ghi_nhat_ky_mem("dat_ten_ma", ai, nguon, ma)
             return {"ok": True}
         if hanh_dong == "xoa_ten_ma":
-            if not la_qt:
-                return {"ok": False, "loi": "Chỉ quản trị mới được xoá tên."}
             ma = str(tham_so.get("ma") or "").strip()
             so_ten = self._doc_so_ten()
             if ma in so_ten:
                 del so_ten[ma]
                 self._ghi_so_ten(so_ten)
-            self._ghi_nhat_ky("xoa_ten_ma", ai, nguon, ma)
+            self._ghi_nhat_ky_mem("xoa_ten_ma", ai, nguon, ma)
             return {"ok": True}
         return {"ok": False, "loi": "Hành động không hỗ trợ."}
 

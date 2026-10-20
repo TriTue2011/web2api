@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -46,6 +47,17 @@ MAY_CHU: dict[str, str] = {
 }
 
 _HOSTS_DUOC_PHEP = {urlsplit(u).hostname for u in MAY_CHU.values()}
+
+#: Mã thiết bị Tuya ghép THẲNG vào đường dẫn URL (shadow/properties,
+#: door-lock/open-logs, commands) nên chỉ nhận ký tự an toàn cho một đoạn
+#: đường dẫn: chữ/số/gạch — từ chối «/», «.», «?», «#», «%» (NV169-SUA K3:
+#: trước đây chỉ kiểm độ dài, chèn «../» và «?» đổi được đường gọi).
+_MAU_MA_THIET_BI = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def ma_thiet_bi_hop_le(ma: Any) -> bool:
+    """True chỉ khi mã thiết bị an toàn để ghép vào đường dẫn API."""
+    return isinstance(ma, str) and _MAU_MA_THIET_BI.fullmatch(ma) is not None
 
 GIay_XIN_TRUOC_HET_HAN = 60
 TRAN_PHAN_HOI = 2 * 1024 * 1024
@@ -88,6 +100,9 @@ class KhoaDamMay:
         if not co_so or not kiem_mien_tuya(co_so):
             raise LoiKhoaCua("Vùng không hợp lệ — chọn: "
                              + ", ".join(sorted(MAY_CHU)) + ".")
+        if not ma_thiet_bi_hop_le(ma_thiet_bi):
+            raise LoiKhoaCua("Mã thiết bị không hợp lệ — chỉ chữ/số/«-»/«_», "
+                             "tối đa 64 ký tự (mã ghép vào đường dẫn API).")
         self._access_id = str(access_id or "")
         self._secret = str(access_secret or "")
         self._co_so = co_so
