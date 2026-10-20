@@ -1,0 +1,59 @@
+; NGUỒN: TriTue2011/chatgpt2api@d879b034fa21 — deploy/supervisord.conf (TRÍCH NGUYÊN VĂN: Xvfb, Fluxbox, x11vnc, noVNC, captcha-api; chỉ để tham chiếu).
+; ── Headful browser stack (for captcha-solver manual logins via noVNC) ──
+[program:xvfb]
+command=/usr/bin/Xvfb :99 -screen 0 1366x768x24 -ac +extension RANDR
+autorestart=true
+priority=10
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:fluxbox]
+command=/usr/bin/fluxbox
+environment=DISPLAY=":99"
+autorestart=true
+priority=20
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+; Đặt env VNC_PASSWORD trên container để khóa noVNC/x11vnc bằng mật khẩu;
+; không đặt = -nopw như trước (chỉ nên dùng trong LAN, đừng expose 6080 public).
+[program:x11vnc]
+command=/bin/sh -c 'if [ -n "$VNC_PASSWORD" ]; then exec /usr/bin/x11vnc -display :99 -passwd "$VNC_PASSWORD" -forever -shared -rfbport 5900 -quiet; else exec /usr/bin/x11vnc -display :99 -nopw -forever -shared -rfbport 5900 -quiet; fi'
+autorestart=true
+priority=30
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:novnc]
+command=/usr/bin/websockify --web=/usr/share/novnc/ 6080 localhost:5900
+autorestart=true
+priority=40
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+
+; ── captcha-solver API (internal only — the web UI reaches it via the
+;    same-origin /api/captcha proxy; server-side callers use 127.0.0.1:8010) ──
+[program:captcha-api]
+command=/app/.venv/bin/uvicorn src.main:app --host 127.0.0.1 --port 8010 --workers 1
+directory=/app/captcha
+environment=DISPLAY=":99",PYTHONPATH="/app/captcha"
+user=%(ENV_APP_USER)s
+autorestart=true
+priority=50
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+; ── zalo-server (Node zca-js, Zalo cá nhân) ──
+;    Nội bộ 127.0.0.1:3001 cho chatgpt2api (services/zalo_personal.py) gọi;
+;    cũng bind 0.0.0.0:3001 để Home Assistant integration trỏ thẳng vào.

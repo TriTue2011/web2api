@@ -1,0 +1,52 @@
+services:
+  c2a-dang-nhap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BIEN_THE: firefox
+        CAI_PHONG_CJK: 1
+        CAI_GIAI_CAPTCHA: 0
+    image: web2api-c2a-dang-nhap:latest
+    container_name: web2api-c2a-dang-nhap
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    pids_limit: 2048
+    shm_size: 1gb
+    mem_limit: 2g
+    read_only: true
+    tmpfs:
+      - "/tmp:size=256m,mode=1777,uid=1000,gid=1000"
+      - "/run:size=64m,mode=0755,uid=1000,gid=1000"
+      - "/home/appuser:size=256m,mode=0700,uid=1000,gid=1000"
+    environment:
+      # Khoá API do dịch vụ tự sinh vào /khoa/khoa-dich-vu nếu không đặt. Đọc bằng: docker exec web2api-c2a-dang-nhap cat /khoa/khoa-dich-vu
+      CAPTCHA_SOLVER_DATA_DIR: "/data"
+      CAPTCHA_SOLVER_KEY_DIR: "/khoa"
+      ACCOUNTS_DB: "/data/accounts.db"
+      CAPTCHA_SOLVER_TINH_NANG_BAT: "dang_nhap"
+      VAULT_REQUIRE_ENCRYPTION: "1"
+    volumes:
+      - c2a-dang-nhap-data:/data
+      - c2a-dang-nhap-khoa:/khoa
+    networks:
+      - c2a-dang-nhap-rieng
+    expose:
+      - "8010"
+    # KHÔNG công bố cổng ra máy chủ. Muốn gỡ lỗi từ máy chủ thì mở loopback:
+    # ports:
+    #   - "127.0.0.1:8010:8010"
+
+volumes:
+  c2a-dang-nhap-data:
+    name: web2api_c2a_dang_nhap_du_lieu
+  c2a-dang-nhap-khoa:
+    name: web2api_c2a_dang_nhap_khoa
+
+
+networks:
+  c2a-dang-nhap-rieng:
+    name: web2api-c2a-dang-nhap

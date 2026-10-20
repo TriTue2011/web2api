@@ -1,0 +1,5 @@
+# Gói THÊM để chạy test của dịch vụ này ngoài ảnh Docker (pydantic-settings, pyotp: thuần Python, đã đọc mã 19/10/2026).
+# patchright, cloakbrowser, playwright, playwright-recaptcha KHÔNG cần: conftest.py giả các mô-đun đó trong sys.modules.
+#   uv pip install -r dich-vu/c2a-dang-nhap/requirements-kiem-thu.txt
+pydantic-settings==2.15.0
+pyotp==2.10.0

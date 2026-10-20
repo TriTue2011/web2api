@@ -1,0 +1,3 @@
+# Thêm cho biến thể có Chromium vá nguồn (CloakBrowser). cloakbrowser 0.6.0 gọi playwright (Microsoft) thật, không còn dùng patchright làm nền.
+cloakbrowser==0.6.0
+playwright==1.63.0

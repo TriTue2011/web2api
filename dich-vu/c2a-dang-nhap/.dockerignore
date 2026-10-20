@@ -1,0 +1,11 @@
+data/
+*.db
+*.sqlite
+.env
+.venv
+__pycache__
+nguon-c2a/
+test_*.py
+_gia_goi.py
+vault.key
+khoa-dich-vu

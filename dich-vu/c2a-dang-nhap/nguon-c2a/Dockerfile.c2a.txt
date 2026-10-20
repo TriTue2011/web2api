@@ -1,0 +1,86 @@
+# NGUỒN: TriTue2011/chatgpt2api@d879b034fa21 — Dockerfile (TRÍCH NGUYÊN VĂN các đoạn dựng trình duyệt có màn hình; chỉ để tham chiếu khi viết Dockerfile mới, KHÔNG dùng để dựng).
+# ---- dòng 150-172: gói hệ thống (phần captcha: xvfb x11vnc supervisor fluxbox novnc websockify, thư viện Chromium, phông) ----
+# System deps merged from all three services:
+#  - chatgpt2api : git, libpq-dev, gcc, openssl, libcurl, libnss3, wget, cloudflared
+#  - vn-mcp-hub  : tesseract-ocr(+vie), poppler-utils
+#  - captcha     : Xvfb, x11vnc, supervisor, fluxbox, novnc, websockify, chromium libs, fonts
+# BỎ KHỎI RUNTIME (đã chuyển sang stage python-builder): gcc g++ build-essential
+# libpq-dev libcurl4-openssl-dev — 266 MB chỉ dùng lúc biên dịch wheel.
+# psycopg2-binary và curl-cffi tự mang libpq/libssl/libcurl trong wheel (đã kiểm
+# bằng `ldd` trên máy chủ), nên runtime không cần libpq5 hay libcurl4 nào cả.
+# THÊM TƯỜNG MINH libstdc++6 + libatomic1: trước đây chúng vào image nhờ đi kèm
+# g++; bỏ g++ mà quên hai gói này là onnxruntime/chromadb gãy lúc import.
+# GIỮ git: services/storage/git_storage.py dùng GitPython, cần binary git lúc chạy.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git ca-certificates openssl libstdc++6 libatomic1 \
+        wget curl gnupg \
+        tesseract-ocr tesseract-ocr-vie poppler-utils \
+        ffmpeg \
+        xvfb x11vnc supervisor fluxbox novnc websockify \
+        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+        libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+        libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
+        libatspi2.0-0 libxshmfence1 fonts-liberation \
+        fonts-noto-color-emoji fonts-freefont-ttf \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- dòng 255-278: Chrome/Chromium và Firefox ESR ----
+
+ENV OFFICECLI_BIN=/usr/local/bin/officecli \
+    OFFICECLI_WORKSPACE=/app/data/office \
+    OFFICECLI_SKIP_UPDATE=1
+
+# Chrome/Chromium — Patchright stealth prefers genuine Chrome, but Google
+# Chrome ships amd64 ONLY. On arm64 install Debian's chromium instead (the
+# solver's _detect_chrome_major + launch fall back to it). TARGETARCH is
+# provided automatically by buildx for the target platform.
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+        && echo "deb [signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+        && apt-get update && apt-get install -y --no-install-recommends google-chrome-stable ; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends chromium ; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
+
+# Firefox ESR — cho đăng nhập Grok bằng tay qua noVNC (api/grok_firefox.py: mở hồ sơ riêng từng tài khoản, người
+# dùng tự đăng nhập, máy đọc cookie rồi tắt). Đo 02/10/2026: ảnh KHÔNG có Firefox — lần đầu cài tay vào container nên
+# mất khi watchtower đổi ảnh, nút «Đăng nhập» báo «Máy này chưa có Firefox». Chủ máy cho phép thêm (02/10/2026).
+RUN apt-get update && apt-get install -y --no-install-recommends firefox-esr \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- dòng 300-319: CloakBrowser ----
+# Trình duyệt cho captcha-solver: CHỈ CloakBrowser.
+#
+# Trước đây image tải về BỐN bộ máy trình duyệt. Đo trong container đang chạy
+# ngày 24/08/2026: /ms-playwright 957 MB (Chromium 389, headless-shell 262,
+# Firefox 302) + /root/.cloakbrowser 697 MB + Google Chrome 432 MB.
+#
+# Bỏ được hai bộ trong /ms-playwright vì:
+#   • CloakBrowser là đường CHÍNH (log máy chủ chỉ ghi engine=cloakbrowser) và
+#     nó mang Chromium vá sẵn của riêng nó.
+#   • Đường lùi của captcha-solver gọi qua channel="chrome", tức Google Chrome
+#     thật đã cài ở trên — đã chạy thử trong chính container: mở được
+#     example.com với channel="chrome".
+#   • Firefox chỉ chạy khi đặt CAPTCHA_SOLVER_BROWSER=firefox, mặc định là
+#     "chromium" và không nơi nào trong compose/env đặt biến đó.
+#
+# BA CHỖ GỌI đã được sửa để trỏ vào Chrome/Chromium hệ thống thay vì bản tải
+# riêng: captcha-solver/src/browser_pool.py, vn-mcp-hub/src/general/web_reader.py
+# và vn-mcp-hub/src/general/web_agent.py. Nếu bật lại Firefox thì phải thêm lại
+# `patchright install firefox` ở đây.
+RUN /app/.venv/bin/python -m cloakbrowser install
+
+# ---- dòng 136-146: biến môi trường của captcha-solver ----
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    DISPLAY=:99 \
+    MOZ_DISABLE_CONTENT_SANDBOX=1 \
+    MOZ_DISABLE_GMP_SANDBOX=1 \
+    CAPTCHA_SOLVER_DISPLAY=:99 \
+    CAPTCHA_SOLVER_DATA_DIR=/app/data/captcha \
+    ACCOUNTS_DB=/app/data/captcha/accounts.db \
+    CAPTCHA_SOLVER_NOVNC_EXTERNAL_URL=http://localhost:6080/vnc.html?host=localhost&port=6080&autoconnect=1 \
+    MCP_HUB_INTERNAL_URL=http://127.0.0.1:8005
