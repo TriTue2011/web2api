@@ -398,7 +398,7 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html")
         trang.cho("!!document.getElementById('bang-ai')", mo_ta="trang AI")
-        assert con_ai(trang) == ["tai_khoan", "provider"]           # Provider có từ lúc CÀI; không Combo
+        assert con_ai(trang) == ["tai_khoan", "danh_tinh", "provider"]  # Provider có từ lúc CÀI; Danh tính (NV179) cùng lúc CÀI; không Combo
         assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
         assert nhom_tk(trang) == [["API", "0"]]
         assert trang.chu("#nut-them") == "＋ Tài khoản"
@@ -1348,7 +1348,7 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
         assert not trang.js("!!document.querySelector('[data-nav-con]')")
         trang.bam("document.querySelector('[data-nav=\"ai\"]')")
         trang.cho("document.querySelectorAll('[data-nav-con]').length > 0", mo_ta="bảng xổ AI")
-        assert trang.js("[...document.querySelectorAll('[data-nav-con]')].map((a) => a.dataset.navCon)") == ["tai_khoan", "provider"]
+        assert trang.js("[...document.querySelectorAll('[data-nav-con]')].map((a) => a.dataset.navCon)") == ["tai_khoan", "danh_tinh", "provider"]
         bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "mục Provider trong bảng xổ AI")
         trang.cho("location.pathname.endsWith('/He-thong-AI.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'"
                   " && document.getElementById('bang-ai')?.dataset.muc === 'provider'", han=10,
@@ -1358,8 +1358,8 @@ def test_thanh_he_thong_bang_xo_ai_va_thanh_duoi(trang, tmp_path, monkeypatch):
         # Thứ tự thanh Hệ thống của demo: «AI» (nút mở tờ Tài khoản / Provider) rồi «Module» ở chỗ ô «Tiện ích» của demo.
         assert trang.js("[...document.querySelectorAll('[data-nav-duoi]')].map((a) => a.dataset.navDuoi)") == ["ai", "module", "bao_mat"]
         trang.bam("document.querySelector('[data-nav-duoi=\"ai\"]')")
-        trang.cho("document.querySelectorAll('[data-nav-con-duoi]').length === 2", mo_ta="tờ AI ở thanh dưới")
-        assert trang.js("[...document.querySelectorAll('[data-nav-con-duoi]')].map((a) => a.dataset.navConDuoi)") == ["tai_khoan", "provider"]
+        trang.cho("document.querySelectorAll('[data-nav-con-duoi]').length === 3", mo_ta="tờ AI ở thanh dưới")
+        assert trang.js("[...document.querySelectorAll('[data-nav-con-duoi]')].map((a) => a.dataset.navConDuoi)") == ["tai_khoan", "danh_tinh", "provider"]
         bam_chuot(trang, "document.querySelector('[data-nav-con-duoi=\"tai_khoan\"]')", "mục Tài khoản trên tờ ở thanh dưới")
         trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && document.getElementById('bang-ai')?.dataset.muc === 'tai_khoan'",
                   han=10, mo_ta="tới tab Tài khoản từ thanh dưới")

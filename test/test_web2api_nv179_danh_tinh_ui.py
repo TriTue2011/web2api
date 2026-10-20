@@ -81,6 +81,9 @@ def _hang(id_: str) -> str:
 def test_muc_danh_tinh_chrome(trang, moi_truong_ui179, tmp_path):
     w, dv, ids = moi_truong_ui179
     dv.tin_hieu_tra = {"da_dang_nhap"}
+    # Dịch vụ giả (như thật, NV155c-SUA) đọc kho cookie của hồ sơ theo id: hồ sơ phải CÓ ở dịch vụ, nếu không → 404
+    # và lõi coi là «không kiểm được tín hiệu» (giữ nguyên trạng thái).
+    dv.ws[HO_SO_UI] = {"ten": "Hồ sơ danh tính", "loai": "firefox", "mo": False}
     _dang_nhap_quan_tri_lna(trang, w.url, tmp_path)
     _mo_trang_lna(trang, f"{w.url}/He-thong-AI.dc.html#danh-tinh", tmp_path,
                   cho=f"!!{_hang(ids['a'])}")
