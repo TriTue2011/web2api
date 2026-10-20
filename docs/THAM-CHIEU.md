@@ -559,6 +559,12 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     bảo toàn TOTP cũ; đổi mật khẩu/TOTP làm sạch trạng thái thử lại cũ.
   - `DELETE /api/tai-khoan/da-luu/{id}` → `{"da_xoa": true}`; id lạ → `404` (so id
     bằng `hmac.compare_digest`, chống IDOR; dọn sạch trạng thái thử lại).
+  - `POST /api/tai-khoan/da-luu/{id}/tam-dung` (`{"tam_dung": bool}`) → tạm dừng
+    hoặc bật lại tài khoản (`trang_thai` ∈ `""`/`"tam_dung"`, lưu bền, ghi nguyên tử);
+    BẮT BUỘC step-up với phiên web (`403 step_up_required`), khoá quản trị được
+    miễn; id lạ → `404 khong_tim_thay`. Tài khoản tạm dừng bị lõi BỎ QUA: tự đăng
+    nhập lại trả `ly_do: tam_dung`, đường `…/dang-nhap` trả `403 tam_dung`, bí mật
+    không bị chạm; bật lại mới dùng được.
   - `POST /api/tai-khoan/da-luu/{id}/dang-nhap` (`module_id`) → server tự lấy
     bí mật từ kho, gọi hợp đồng `module.dang_nhap(dong)` với `BiMatTam`/
     `BiMatTotp` (CHỈ GỌI, không sửa module); trình duyệt/giao diện KHÔNG nhận
