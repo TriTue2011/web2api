@@ -44,8 +44,10 @@ class HopThu:
         if not ch or not ds:
             return "", ""
         self._don_het_han()
-        while len(self._hang) >= self._tran:
-            cu_nhat = min(self._hang, key=lambda k: self._hang[k]["ts"])
+        # Nguyên tắc: trần chỉ tính câu CHƯA trả lời — câu đã trả lời giữ lại
+        # cho doc_tra_loi cho tới khi hết hạn, không chiếm chỗ của câu mới.
+        while len(self._cau_cho()) >= self._tran:
+            cu_nhat = min(self._cau_cho(), key=lambda k: self._hang[k]["ts"])
             del self._hang[cu_nhat]
         ma = uuid.uuid4().hex[:12]
         self._hang[ma] = {
@@ -84,8 +86,12 @@ class HopThu:
             if co_het_han:
                 return None, "Câu hỏi đã quá hạn nên em bỏ rồi."
             return None, ""
-        # Trả lời cho câu hỏi cũ nhất đang chờ (ngữ nghĩa c2a).
-        ma = min(self._hang, key=lambda k: self._hang[k]["ts"])
+        # Nguyên tắc (lỗi 1, soát độc lập): trả lời cho câu CHƯA trả lời cũ
+        # nhất — câu đã trả lời không được chọn lại để khỏi ghi đè.
+        cho = self._cau_cho()
+        if not cho:
+            return None, "Không còn câu hỏi nào đang chờ trả lời."
+        ma = min(cho, key=lambda k: self._hang[k]["ts"])
         d = self._hang[ma]
         ds = d["lua_chon"]
         chon = ""
@@ -124,8 +130,13 @@ class HopThu:
         self._hang.pop(ma, None)
 
     def so_cau_hoi_cho(self) -> int:
+        """Số câu CHƯA trả lời (lỗi 2: trước đây đếm cả câu đã trả lời)."""
         self._don_het_han()
-        return len(self._hang)
+        return len(self._cau_cho())
+
+    def _cau_cho(self) -> list[str]:
+        """Mã các câu chưa trả lời — một cổng chung cho chọn/đếm/trần."""
+        return [k for k, d in self._hang.items() if not d.get("tra_loi")]
 
     def _don_het_han(self) -> None:
         bay_gio = self._lay_gio()
