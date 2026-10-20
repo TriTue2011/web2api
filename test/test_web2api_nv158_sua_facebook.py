@@ -19,7 +19,10 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
+import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -35,6 +38,10 @@ THU_MUC = GOC / "modules" / "facebook"
 TEN_GOI = "facebook_nv158sua_mod_test"
 
 
+mod_module = None  # nạp TRONG fixture _nap_module_cach_ly, không ở cấp tệp
+Module = None     # (xem fixture — nạp module lần hai ở cấp tệp phá bộ lọc log toàn cục)
+
+
 def _tai_goi():
     for ten in [t for t in list(sys.modules) if t == TEN_GOI or t.startswith(TEN_GOI + ".")]:
         del sys.modules[ten]
@@ -48,8 +55,42 @@ def _tai_goi():
     return mod
 
 
-mod_module = _tai_goi()
-Module = mod_module.Module
+# Logger của thư viện HTTP mà module facebook cài bộ lọc (PHẢI khớp
+# modules/facebook/module.py::_LOGGER_HTTP — fixture kiểm tra bằng assert,
+# đổi module mà quên đổi đây thì test báo ngay).
+_LOGGER_HTTP = ("httpx", "httpcore", "httpcore.connection",
+                "httpcore.http11", "httpcore.http2", "httpcore.proxy")
+
+
+def _anh_chup_bo_loc():
+    """Lưu danh sách bộ lọc hiện tại của các logger HTTP."""
+    return {ten: logging.getLogger(ten).filters[:] for ten in _LOGGER_HTTP}
+
+
+def _khoi_phuc_bo_loc(anh_chup):
+    """Trả lại danh sách bộ lọc như lúc chụp — test không được để lại
+    trạng thái toàn cục khác lúc nó bắt đầu."""
+    for ten, ds in anh_chup.items():
+        logging.getLogger(ten).filters[:] = ds
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _nap_module_cach_ly():
+    # NV158-SUA2: nạp module TRONG fixture, KHÔNG ở cấp tệp. Module facebook
+    # cài bộ lọc log TOÀN CỤC lúc nạp (_cai_bo_loc_log): nạp lần hai ở cấp
+    # tệp (ngay lúc thu thập) gỡ bộ lọc của bản nạp trước và cài bộ lọc mới
+    # với sổ token RỖNG → test cũ (dùng bản nạp đầu) mất bảo vệ khi chạy
+    # chung hai tệp. Fixture chụp bộ lọc trước khi nạp và khôi phục khi xong.
+    truoc = _anh_chup_bo_loc()
+    mod = _tai_goi()
+    assert tuple(mod._LOGGER_HTTP) == _LOGGER_HTTP, \
+        "module đổi danh sách logger — đồng bộ _LOGGER_HTTP ở tệp test này"
+    global mod_module, Module
+    mod_module, Module = mod, mod.Module
+    try:
+        yield
+    finally:
+        _khoi_phuc_bo_loc(truoc)
 MANIFEST = json.loads((THU_MUC / "manifest.json").read_text(encoding="utf-8"))
 
 # Hằng giả — khớp test/test_web2api_nv158_facebook.py (không token thật).
@@ -292,3 +333,24 @@ def test_sua_token_dai_dang_ky_truoc_khi_goi_me_accounts(may_chu):
     assert kq["ok"] is True, kq
     assert _XuLySua.token_da_dang_ky is True, \
         "token dài hạn phải được ghi nhận trước khi gọi me/accounts"
+
+
+# ───────────── khoá lớp lỗi NV158-SUA2 ─────────────
+
+def test_sua2_chay_chung_hai_thu_tu_deu_xanh():
+    # Khoá lớp lỗi «test nạp module lần hai phá bộ lọc log toàn cục»: hai tệp
+    # facebook phải xanh khi chạy chung, theo CẢ HAI thứ tự. Chạy tiến trình
+    # con để mỗi thứ tự là một tiến trình pytest độc lập. Bỏ chọn chính test
+    # này trong tiến trình con (không đệ quy).
+    cu = "test/test_web2api_nv158_facebook.py::test_token_khong_vao_log_qua_get"
+    moi = "test/test_web2api_nv158_sua_facebook.py"
+    bo_chon = ("--deselect",
+               "test/test_web2api_nv158_sua_facebook.py"
+               "::test_sua2_chay_chung_hai_thu_tu_deu_xanh")
+    for args in ([cu, moi], [moi, cu]):
+        kq = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+             *bo_chon, *args],
+            cwd=GOC, capture_output=True, text=True, timeout=300)
+        assert kq.returncode == 0, \
+            f"chạy chung thứ tự {args} đỏ:\n{kq.stdout[-2000:]}\n{kq.stderr[-2000:]}"
