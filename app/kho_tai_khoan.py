@@ -222,7 +222,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                     break
             if cu is None:
                 raise LoiKhoTaiKhoan("khong_tim_thay")
-            if email is None or (isinstance(email, str) and (email.startswith("…") or email == che_email(cu["email"]))):
+            if email is None or (isinstance(email, str) and email == che_email(cu["email"])):
                 email_chuan = cu["email"]
             else:
                 email_chuan = chuan_hoa_email(email)
@@ -404,6 +404,7 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     if ban_ghi is None or not ban_ghi.get("mat_khau"):
         return {"thu": False, "ly_do": "khong_co_tai_khoan"}
     id_ = ban_ghi["id"]
+    cap_nhat_dau = ban_ghi.get("cap_nhat", 0)
     bay_gio = time.time()
     tt = _doc_trang_thai().get(id_, {})
     if int(tt.get("hong_lien_tiep", 0)) >= 2:
@@ -430,10 +431,23 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
         thanh_cong = False
     finally:
         dong.xoa_bi_mat()
-    _ghi_trang_thai({**_doc_trang_thai(), id_: {
-        "hong_lien_tiep": 0 if thanh_cong else int(tt.get("hong_lien_tiep", 0)) + 1,
-        "lan_cuoi": bay_gio,
-    }})
+    # Ghi trạng thái cuối DƯỚI KHOÁ KHO, đọc lại bản ghi trước: trong lúc
+    # lượt thử đang chạy (await ở trên), quản trị có thể đã đổi thông tin
+    # (reset xoá trạng thái) hoặc xoá hẳn tài khoản. Nếu bản ghi đã mất hoặc
+    # `cap_nhat` đã đổi thì BỎ ghi — trạng thái của CẤU HÌNH CŨ không được
+    # hồi sinh rồi chặn oan mật khẩu mới (đua soát chéo NV177).
+    with kho.giu_khoa_kho():
+        try:
+            ban_ghi_moi = _doc().get(id_)
+        except LoiKhoTaiKhoan:
+            ban_ghi_moi = None
+        if ban_ghi_moi is not None and ban_ghi_moi.get("cap_nhat", 0) == cap_nhat_dau:
+            tt_moi = _doc_trang_thai()
+            tt_moi[id_] = {
+                "hong_lien_tiep": 0 if thanh_cong else int(tt.get("hong_lien_tiep", 0)) + 1,
+                "lan_cuoi": bay_gio,
+            }
+            _ghi_trang_thai(tt_moi)
     log.info("tu-dang-nhap-lai: %s %s", che_email(email),
              "xong" if thanh_cong else "hỏng")
     return {"thu": True, "thanh_cong": thanh_cong}

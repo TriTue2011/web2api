@@ -489,3 +489,122 @@ def test_dang_nhap_module_da_cai_nhung_khong_co_ham_dang_nhap_502(moi_truong):
     finally:
         mod.dang_nhap = ham_goc
 
+
+
+# ── NV177B: 3 việc theo dõi sau soát chéo NV177 ─────────────────────────────
+
+def test_id_rong_don_le_duoc_bo_qua_tao_theo_email(moi_truong):
+    """Theo dõi (a): POST id="" + email hợp lệ phải tạo theo email (200),
+    không 404 khong_tim_thay oan như bản sau vá agy."""
+    client, _ = moi_truong
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "id": "", "email": EMAIL, "mat_khau": MAT_KHAU})
+    assert r.status_code == 200, r.text
+    assert r.json()["tai_khoan"]["id"] == ktk.ma_tai_khoan(EMAIL)
+
+
+def test_id_rong_hang_loat_duoc_bo_qua(moi_truong):
+    """Theo dõi (a) đường hàng loạt: mục id="" phải lưu theo email, không lỗi."""
+    client, _ = moi_truong
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "tai_khoan": [{"id": "", "email": EMAIL, "mat_khau": MAT_KHAU}]})
+    assert r.status_code == 200, r.text
+    than = r.json()
+    assert len(than["luu"]) == 1 and than["loi"] == []
+
+
+def test_email_ba_cham_la_khong_con_duoc_coi_la_che(moi_truong):
+    """Theo dõi (c): chỉ email == che_email(email thật) mới giữ email cũ; mọi
+    chuỗi bắt đầu bằng «…» khác phải bị đối xử như email thường (→ 400)."""
+    client, _ = moi_truong
+    tai_id = _luu(client).json()["tai_khoan"]["id"]
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "id": tai_id, "email": "…***@other.invalid", "mat_khau": "MatKhauMoi_111"})
+    assert r.status_code == 400, r.text
+    # Mật khẩu KHÔNG được đổi bởi yêu cầu trên
+    assert ktk.tim_theo_id(tai_id)["mat_khau"] == MAT_KHAU
+    # Email che ĐÚNG vẫn giữ email cũ và cập nhật được
+    r2 = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "id": tai_id, "email": ktk.che_email(EMAIL), "mat_khau": "MatKhauMoi_222"})
+    assert r2.status_code == 200, r2.text
+    ban_ghi = ktk.tim_theo_id(tai_id)
+    assert ban_ghi["email"] == EMAIL and ban_ghi["mat_khau"] == "MatKhauMoi_222"
+
+
+class _ModuleCho:
+    """Module giả: lượt đăng nhập đầu hỏng ngay; lượt sau CHỜ cổng rồi hỏng."""
+
+    def __init__(self):
+        import asyncio
+        self.cổng = asyncio.Event()
+        self.da_vao = asyncio.Event()
+        self.so_lan = 0
+
+    async def dang_nhap(self, tai_khoan):
+        from app.tai_khoan_hang_loat import KetQuaDangNhap
+        self.so_lan += 1
+        if self.so_lan >= 2:
+            self.da_vao.set()
+            await self.cổng.wait()
+        return KetQuaDangNhap(False, ma_loi="sai_mat_khau")
+
+
+def test_dua_doi_mat_khau_khong_hoi_sinh_trang_thai(moi_truong):
+    """Theo dõi (b): lượt thử đang treo mà quản trị đổi mật khẩu (reset xoá
+    trạng thái) thì khi lượt treo hỏng, trạng thái cũ KHÔNG được hồi sinh —
+    tài khoản không bị chặn oan cho mật khẩu MỚI."""
+    import asyncio
+    client, _ = moi_truong
+    tai_id = _luu(client).json()["tai_khoan"]["id"]
+    # Mốc cap_nhat cố định ở quá khứ: lần đổi mật khẩu (time.time() hiện tại)
+    # chắc chắn làm cap_nhat ĐỔI — test không phụ thuộc độ phân giải giây.
+    du_lieu = ktk._doc()
+    du_lieu[tai_id]["cap_nhat"] = 1_000_000
+    ktk._ghi(du_lieu)
+    mod = _ModuleCho()
+
+    async def chay():
+        kq1 = await ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL)
+        assert kq1["thanh_cong"] is False
+        assert ktk._doc_trang_thai()[tai_id]["hong_lien_tiep"] == 1
+        task = asyncio.create_task(
+            ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+        await asyncio.wait_for(mod.da_vao.wait(), timeout=5)
+        # Quản trị đổi mật khẩu mới TRONG LÚC lượt thử đang treo → reset
+        ktk.luu_tai_khoan(EMAIL, "MatKhauMoi_999")
+        assert tai_id not in ktk._doc_trang_thai()
+        mod.cổng.set()
+        kq2 = await task
+        assert kq2["thu"] is True and kq2["thanh_cong"] is False
+        # Trạng thái KHÔNG được hồi sinh sau khi lượt treo ghi kết quả
+        assert tai_id not in ktk._doc_trang_thai()
+        return mod
+
+    mod = asyncio.run(chay())
+    # Và lần thử tiếp theo không bị chặn «hong_2_lien_tiep» oan
+    mod.cổng.set()
+    kq3 = asyncio.run(ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+    assert kq3["thu"] is True
+
+
+def test_dua_xoa_tai_khoan_khong_hoi_sinh_trang_thai(moi_truong):
+    """Theo dõi (b) nhánh xoá: tài khoản bị xoá giữa lượt thử → lượt treo
+    không được ghi lại trạng thái cho một id đã không còn tồn tại."""
+    import asyncio
+    client, _ = moi_truong
+    tai_id = _luu(client).json()["tai_khoan"]["id"]
+    mod = _ModuleCho()
+
+    async def chay():
+        await ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL)
+        assert ktk._doc_trang_thai()[tai_id]["hong_lien_tiep"] == 1
+        task = asyncio.create_task(
+            ktk.thu_dang_nhap_lai(module=mod, module_id=MODULE_ID, dinh_danh=EMAIL))
+        await asyncio.wait_for(mod.da_vao.wait(), timeout=5)
+        assert ktk.xoa_tai_khoan(tai_id) is True
+        assert tai_id not in ktk._doc_trang_thai()
+        mod.cổng.set()
+        await task
+        assert tai_id not in ktk._doc_trang_thai()
+
+    asyncio.run(chay())

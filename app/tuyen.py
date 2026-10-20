@@ -3452,7 +3452,7 @@ async def luu_tai_khoan_da_luu(request: Request):
                     bk = kho_tai_khoan_mod.luu_tai_khoan(
                         muc.get("email"), muc.get("mat_khau"),
                         muc.get("totp_secret"), muc.get("nhan", ""),
-                        id=muc.get("id"))
+                        id=muc.get("id") or None)
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -3472,7 +3472,7 @@ async def luu_tai_khoan_da_luu(request: Request):
             _chuoi_bat_buoc(than, "mat_khau"),
             _chuoi_tuy_chon(than, "totp_secret"),
             _chuoi_tuy_chon(than, "nhan") or "",
-            id=tai_id)
+            id=tai_id or None)
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
             f"Lưu tài khoản đã lưu ({bk['email_che']})",
