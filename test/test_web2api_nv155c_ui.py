@@ -39,7 +39,13 @@ TEN_XSS_UI = '<img src=x onerror="window.__xss=1">'
 
 
 class DichVuWorkspaceNV155c:
-    """Dịch vụ trình duyệt giả theo hợp đồng của module vnc-xa + /tin-hieu."""
+    """Dịch vụ trình duyệt giả theo hợp đồng của module vnc-xa + API hồ sơ.
+
+    NV155c-SUA: dịch vụ THẬT không cho /tin-hieu trên hồ sơ ĐÃ ĐÓNG (404) —
+    kiểm phiên của workspace đã đóng đọc qua KHO COOKIE của hồ sơ
+    (GET /ho-so/{id}/cookie). Tin hiệu giả `tin_hieu_tra` được dịch sang
+    kho cookie tương ứng (có «da_dang_nhap» → có cookie SID của google.com).
+    """
 
     def __init__(self):
         self.ws: dict[str, dict] = {}
@@ -66,10 +72,27 @@ class DichVuWorkspaceNV155c:
             return JSONResponse({"detail": "sai"}, status_code=401)
         return JSONResponse({"tin_hieu": sorted(self.tin_hieu_tra)})
 
+    async def cookie(self, request):
+        # Hợp đồng như dịch vụ THẬT: GET /ho-so/{id}/cookie?mien=<miền> →
+        # {"cookie": "ten=gia_tri; ..."} đọc từ kho của hồ sơ ĐÃ ĐÓNG.
+        if self._sai(request):
+            return JSONResponse({"detail": "sai"}, status_code=401)
+        id_ = request.path_params["id"]
+        if id_ not in self.ws:
+            return JSONResponse({"detail": "không có hồ sơ"}, status_code=404)
+        mien = request.query_params.get("mien", "")
+        chuoi = ""
+        # «da_dang_nhap» giả → kho cookie có cookie phiên của google.com
+        # (khớp quy tắc cookie của ModuleHSG).
+        if "da_dang_nhap" in self.tin_hieu_tra and mien.endswith("google.com"):
+            chuoi = "SID=gia-tri-gia-lap"
+        return JSONResponse({"cookie": chuoi})
+
     def app(self):
         return Starlette(routes=[
             Route("/ho-so", self.ho_so, methods=["GET", "POST"]),
             Route("/ho-so/{id}/tin-hieu", self.tin_hieu, methods=["POST"]),
+            Route("/ho-so/{id}/cookie", self.cookie, methods=["GET"]),
         ])
 
 

@@ -2877,38 +2877,40 @@ async def go_danh_tinh_theo_module(request: Request):
     return {"ok": True, "da_go": dem}
 
 
-async def _kiem_tin_hieu_dang_nhap(request_hoac_app: Any, ho_so: str) -> bool:
+async def _kiem_tin_hieu_dang_nhap(request_hoac_app: Any, ho_so: str
+                                   ) -> tuple[bool, str]:
     """Kiểm TÍN HIỆU phiên của một hồ sơ trình duyệt bằng QUY_TAC_TIN_HIEU của
     module có khả năng «dang_nhap_danh_tinh» (NV155c).
 
-    Cơ chế SẴN CÓ (NV94-b): module khai quy tắc cấu trúc qua `quy_tac_tin_hieu()`,
-    bộ điều khiển của dịch vụ trình duyệt thực thi (`tin_hieu(quy_tac)`) — lõi
-    không tự viết bộ dò thứ hai. Trả True CHỈ khi tín hiệu «da_dang_nhap» có mặt.
-    Không kiểm được (thiếu module/bộ điều khiển, dịch vụ lỗi) → False (đóng cửa:
-    trạng thái mặc định luôn là chua_dang_nhap).
+    NV155c-SUA (A1): đường cũ gọi `tin_hieu()` thẳng trên bộ điều khiển — với
+    dịch vụ trình duyệt THẬT, hồ sơ ĐÃ ĐÓNG trả 404 và hồ sơ mở chưa giành trả
+    409 nên «dang_nhap» không bao giờ đạt được. Nay dùng bộ kiểm chung của lõi
+    `khoi_phuc_phien.kiem_da_dang_nhap` (ưu tiên đọc kho cookie của hồ sơ đã
+    đóng qua API hồ sơ của dịch vụ; dự phòng mở tạm có kiểm soát) — NV179 dùng
+    lại helper này. Trả (ket_qua, nguon).
+
+    Trả (False, …) khi không kiểm được (thiếu module/bộ điều khiển, dịch vụ
+    lỗi) — đóng cửa: trạng thái mặc định luôn là chua_dang_nhap.
     """
     mod_dn = _module_dang_nhap_danh_tinh(request_hoac_app, bat_buoc=False)
     if mod_dn is None:
-        return False
+        return False, "khong_kiem_duoc"
     lay_quy_tac = getattr(mod_dn, "quy_tac_tin_hieu", None)
     if not callable(lay_quy_tac):
-        return False
+        return False, "khong_kiem_duoc"
     try:
         quy_tac = lay_quy_tac() or []
     except Exception as e:
         log.warning("nhan-ho-so: quy_tac_tin_hieu lỗi: %s", type(e).__name__)
-        return False
+        return False, "khong_kiem_duoc"
     try:
         td = _dieu_khien_that(request_hoac_app, ho_so)
     except LoiOpenAI:
-        return False
+        return False, "khong_kiem_duoc"
     try:
-        tin_hieu = await khoi_phuc_phien_mod._tin_hieu_an_toan(td, list(quy_tac))
-    except Exception:
-        return False
+        return await khoi_phuc_phien_mod.kiem_da_dang_nhap(td, list(quy_tac))
     finally:
         await _dong_trinh_duyet_that(td)
-    return "da_dang_nhap" in tin_hieu
 
 
 @danh_tinh.post("/nhan-ho-so")
@@ -2947,10 +2949,13 @@ async def nhan_workspace_lam_tai_khoan(request: Request):
     if ws.get("dang_mo"):
         raise LoiOpenAI(409, "Hồ sơ trình duyệt đang mở. Đóng trình duyệt "
                              "(giữ phiên) rồi nhận lại.", code="ho_so_dang_mo")
-    da_dang_nhap = await _kiem_tin_hieu_dang_nhap(request, ho_so)
-    trang_thai = "dang_nhap" if da_dang_nhap else "chua_dang_nhap"
+    da_dang_nhap, nguon_kiem = await _kiem_tin_hieu_dang_nhap(request, ho_so)
+    trang_thai_kiem = "dang_nhap" if da_dang_nhap else "chua_dang_nhap"
     ban_ghi, da_co_san = danh_tinh_mod.nhan_ho_so(
-        ho_so, email_chuan, nhan_chuan, trang_thai)
+        ho_so, email_chuan, nhan_chuan, trang_thai_kiem)
+    # NV155c-SUA (A2): phản hồi/nhật ký dùng trạng thái ĐÃ LƯU của bản ghi
+    # (nhan_ho_so chỉ nâng, không hạ) — không dùng trị vừa tính lần này.
+    trang_thai = ban_ghi["trang_thai_dang_nhap"]
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
     nhat_ky_mod.ghi(
         "quan_tri", "thong_tin",
@@ -2963,6 +2968,9 @@ async def nhan_workspace_lam_tai_khoan(request: Request):
         "danh_tinh": ban_ghi,
         "ho_so": ho_so,
         "trang_thai_dang_nhap": trang_thai,
+        # NV155c-SUA (A1): nói rõ ĐÃ kiểm thế nào — "cookie_ho_so" (kho cookie
+        # của hồ sơ đã đóng), "phien_truc_tiep" (phiên sống), "khong_kiem_duoc".
+        "kiem_tin_hieu": nguon_kiem,
         "da_co_san": da_co_san,
         "buoc_tiep_theo": "Vào Hệ thống → AI → Thêm tài khoản → Qua danh tính "
                           "để dùng tài khoản này.",
@@ -2983,6 +2991,11 @@ async def xoa_danh_tinh(id: str, request: Request):
     if ban_ghi is None:
         raise LoiOpenAI(404, "Không tìm thấy danh tính.", code="danh_tinh_khong_co")
     ho_so = ban_ghi["ho_so_trinh_duyet"]
+    # NV155c-SUA (A3): hồ sơ gắn qua đường «nhận» (ho_so_do_nhan) là workspace
+    # CÓ SẴN của người dùng (có thể chứa nhiều phiên) — xoá danh tính chỉ GỠ
+    # GẮN: đóng trình duyệt nhưng GIỮ thư mục + phiên (giu_phien=True), không
+    # xoá hẳn như hồ sơ do luồng /dang-nhap tự tạo.
+    giu_phien = bool(ban_ghi.get("ho_so_do_nhan"))
     # Xoá bản ghi TRƯỚC: còn tài khoản provider trỏ tới thì xoa() ném 409 và
     # hồ sơ trình duyệt (phiên đăng nhập) còn nguyên; đóng hồ sơ sau khi xoá thành công.
     danh_tinh_mod.xoa(id)
@@ -2991,7 +3004,7 @@ async def xoa_danh_tinh(id: str, request: Request):
         mod_td = _tim_module_trinh_duyet(request)
         if mod_td is not None:
             try:
-                await mod_td.trinh_duyet_dong(ho_so, giu_phien=False)
+                await mod_td.trinh_duyet_dong(ho_so, giu_phien=giu_phien)
             except Exception as e:
                 log.warning("danh-tinh: đóng hồ sơ trình duyệt %s lỗi: %s",
                             ho_so, type(e).__name__)
@@ -3004,7 +3017,12 @@ async def xoa_danh_tinh(id: str, request: Request):
         nguoi_thuc_hien=nguoi_thuc_hien,
     )
     ket_qua = {"ok": True}
-    if ho_so:
+    if ho_so and giu_phien:
+        ket_qua["canh_bao"] = (
+            "Đã xoá danh tính (chỉ gỡ gắn). Hồ sơ trình duyệt được GIỮ NGUYÊN "
+            "cả thư mục lẫn phiên đăng nhập vì workspace này có sẵn từ trước "
+            "khi «nhận» — kiểm tra trang Workspace nếu muốn tự xoá.")
+    elif ho_so:
         # Cảnh báo: mọi tài khoản dùng chung hồ sơ trình duyệt này coi như
         # đã đăng xuất — kiểm tra lại từng tài khoản.
         ket_qua["canh_bao"] = (

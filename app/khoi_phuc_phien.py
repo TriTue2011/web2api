@@ -184,6 +184,18 @@ class BoDieuKhienTrinhDuyet(abc.ABC):
     @abc.abstractmethod
     async def doc_cookie(self, mien: str) -> dict: ...
 
+    async def doc_cookie_ho_so_da_dong(self, mien: str) -> dict | None:
+        """Cookie của `mien` trong KHO của hồ sơ ĐÃ ĐÓNG (chưa mở trình duyệt).
+
+        Khác `doc_cookie` (đọc từ phiên đang mở qua điều khiển trực tiếp):
+        đường này đọc kho cookie lưu trên đĩa của hồ sơ — dùng để kiểm tín
+        hiệu phiên của workspace ĐÃ ĐÓNG. Mặc định trả None = «không hỗ trợ /
+        không kiểm được» (bộ điều khiển cũ, dịch vụ lỗi, hồ sơ đang mở, hồ sơ
+        Chromium…); cài đặt thật trả dict (rỗng = đã đọc được kho, miền đó
+        không có cookie nào). Giá trị cookie là bí mật — KHÔNG vào log.
+        """
+        return None
+
     @abc.abstractmethod
     async def tin_hieu(self, quy_tac: list | None = None) -> set:
         """Tín hiệu trang hiện tại: script cấu trúc chung (mã mở) ∪ quy tắc của module.
@@ -220,10 +232,16 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
     bí mật nếu ai đó log nó).
     """
 
-    def __init__(self, trang: dict | None = None):
+    def __init__(self, trang: dict | None = None,
+                 cookie_theo_mien: dict | None = None):
         self._trang = dict(trang or {})
         self._hien_tai: str | None = None
         self.hanh_dong: list[tuple] = []
+        #: Kho cookie giả của hồ sơ ĐÃ ĐÓNG: {mien: {ten: gia_tri}} — test đặt
+        #: riêng; None → ghép từ cookie mọi trang đã lập kịch bản.
+        self._cookie_theo_mien = (
+            None if cookie_theo_mien is None
+            else {str(m): dict(c) for m, c in cookie_theo_mien.items()})
 
     async def mo_trang(self, url: str) -> None:
         self._hien_tai = url
@@ -238,6 +256,18 @@ class TrinhDuyetGia(BoDieuKhienTrinhDuyet):
     async def doc_cookie(self, mien: str) -> dict:
         cau_hinh = self._trang.get(self._hien_tai or "", {})
         return dict(cau_hinh.get("cookie") or {})
+
+    async def doc_cookie_ho_so_da_dong(self, mien: str) -> dict | None:
+        if self._cookie_theo_mien is not None:
+            return dict(self._cookie_theo_mien.get(str(mien), {}))
+        gop: dict = {}
+        for cau_hinh in self._trang.values():
+            if isinstance(cau_hinh, dict):
+                ck = cau_hinh.get("cookie")
+                if isinstance(ck, dict):
+                    for ten, gia_tri in ck.items():
+                        gop.setdefault(str(ten), gia_tri)
+        return gop
 
     async def tin_hieu(self, quy_tac: list | None = None) -> set:
         cau_hinh = self._trang.get(self._hien_tai or "", {})
@@ -467,6 +497,79 @@ async def phien_dieu_khien_that(td: BoDieuKhienTrinhDuyet):
     finally:
         if callable(nha):
             await nha()
+
+
+async def tin_hieu_tu_cookie_ho_so_da_dong(trinh_duyet: BoDieuKhienTrinhDuyet,
+                                          quy_tac: list | None) -> set | None:
+    """Đánh giá quy tắc tín hiệu bằng KHO COOKIE của hồ sơ ĐÃ ĐÓNG.
+
+    Dịch vụ trình duyệt chỉ cho `tin_hieu()` qua phiên sống (hồ sơ phải MỞ và
+    đã giành quyền); hồ sơ đã đóng → 404 nên đường kiểm cũ luôn «chua_dang_nhap».
+    Kho cookie trên đĩa (API hồ sơ, không mở trình duyệt) cho phép kiểm đúng
+    với dịch vụ thật ở trạng thái ĐÃ ĐÓNG mà nhan-ho-so yêu cầu.
+
+    NGUYÊN TẮC (không bịa): chỉ quy tắc loai «cookie» (cần `mien` + `ten`) là
+    đánh giá được từ kho; quy tắc url/tieu_de/bo_chon cần trang sống → bỏ qua.
+    (Trong kho này mọi quy tắc «da_dang_nhap» đều là quy tắc cookie.) Mỗi miền
+    chỉ đọc MỘT lần; bất kỳ miền nào đọc lỗi → cả lượt là «không kiểm được».
+
+    Trả:
+    - tập tín hiệu chứng minh được (có thể rỗng = đã kiểm, không khớp cookie);
+    - None = không kiểm được (không có quy tắc cookie nào, bộ điều khiển
+      không hỗ trợ, kho không đọc được).
+    """
+    quy_tac_cookie = [
+        q for q in (quy_tac or [])
+        if isinstance(q, dict) and q.get("loai") == "cookie"
+        and isinstance(q.get("mien"), str) and isinstance(q.get("ten"), str)
+        and isinstance(q.get("tin_hieu"), str) and q["tin_hieu"]
+    ]
+    if not quy_tac_cookie:
+        return None
+    doc = getattr(trinh_duyet, "doc_cookie_ho_so_da_dong", None)
+    if not callable(doc):
+        return None
+    ra: set = set()
+    for mien in sorted({q["mien"] for q in quy_tac_cookie}):
+        try:
+            r = doc(mien)
+            if asyncio.iscoroutine(r):
+                r = await r
+        except Exception:
+            return None
+        if r is None:
+            return None
+        if not isinstance(r, dict):
+            return None
+        for q in quy_tac_cookie:
+            if q["mien"] == mien and q["ten"] in r:
+                ra.add(q["tin_hieu"])
+    return ra
+
+
+async def kiem_da_dang_nhap(trinh_duyet: BoDieuKhienTrinhDuyet,
+                            quy_tac: list | None) -> tuple[bool, str]:
+    """Kiểm «đã đăng nhập» của một hồ sơ bằng bộ kiểm tín hiệu đúng mọi đường.
+
+    1. ĐƯỜNG ƯU TIÊN — kho cookie của hồ sơ ĐÃ ĐÓNG (không mở trình duyệt):
+       đúng với dịch vụ trình duyệt thật ở đúng trạng thái nhan-ho-so yêu cầu.
+    2. DỰ PHÒNG — phiên sống có kiểm soát: giành quyền (dịch vụ TỰ MỞ hồ sơ
+       Firefox đóng, NV94-a) → đọc tín hiệu trang → nhả quyền LUÔN. Chỉ dùng
+       khi đường (1) «không kiểm được» (hồ sơ Chromium, dịch vụ lỗi…).
+    3. Cả hai đều không kiểm được → (False, «khong_kiem_duoc») — ĐÓNG CỬA.
+
+    Trả (ket_qua, nguon) với nguon thuộc {"cookie_ho_so", "phien_truc_tiep",
+    "khong_kiem_duoc"}. NV179 («Kiểm lại đăng nhập») dùng lại helper này.
+    """
+    th_cookie = await tin_hieu_tu_cookie_ho_so_da_dong(trinh_duyet, quy_tac)
+    if th_cookie is not None:
+        return "da_dang_nhap" in th_cookie, "cookie_ho_so"
+    try:
+        async with phien_dieu_khien_that(trinh_duyet):
+            th = await _tin_hieu_an_toan(trinh_duyet, list(quy_tac or []))
+    except Exception:
+        return False, "khong_kiem_duoc"
+    return "da_dang_nhap" in th, "phien_truc_tiep"
 
 
 # ── Đường tới hồ sơ trình duyệt (chống đi ngược thư mục) ─────────────────────

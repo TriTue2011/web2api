@@ -115,8 +115,11 @@ def test_cung_email_hai_module_doc_lap(moi_truong):
     assert dt["gan"] == ["mod-gia-a", "mod-gia-b"]
     # Bản ghi công khai không bao giờ chứa cookie/mật khẩu (quyết định 1.2).
     # NV92 thêm trạng thái đăng nhập + tên hồ sơ trình duyệt (không phải bí mật).
+    # NV155c-SUA thêm cờ «ho_so_do_nhan» (bool, cũng không phải bí mật — bài học NV98:
+    # cập nhật tập trường theo hành vi mới, giữ nguyên ý nghĩa khẳng định).
     assert set(dt) == {"id", "email", "nhan", "ngay_tao", "gan",
-                       "trang_thai_dang_nhap", "ho_so_trinh_duyet"}
+                       "trang_thai_dang_nhap", "ho_so_trinh_duyet",
+                       "ho_so_do_nhan"}
 
     # Gỡ module A → danh tính vẫn còn, chỉ mất gắn của A.
     r = client.post("/api/danh-tinh/go-theo-module", headers=QT,

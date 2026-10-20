@@ -119,6 +119,9 @@ def ban_ghi_cong_khai(d: dict[str, Any]) -> dict[str, Any]:
         "gan": sorted(m for m in (d.get("gan") or []) if isinstance(m, str)),
         "trang_thai_dang_nhap": trang_thai,
         "ho_so_trinh_duyet": ho_so,
+        # NV155c-SUA (A3): hồ sơ được gắn qua đường «nhận» là workspace CÓ SẴN
+        # của người dùng — xoá danh tính chỉ gỡ gắn, GIỮ thư mục/phiên hồ sơ.
+        "ho_so_do_nhan": bool(d.get("ho_so_do_nhan")),
     }
 
 
@@ -277,8 +280,14 @@ def nhan_ho_so(ho_so: str, email: Any, nhan: Any = None,
     - Hồ sơ đã gắn với danh tính KHÁC → 409 `ho_so_da_gan` (không cướp).
     - Email đã có danh tính gắn hồ sơ KHÁC → 409 `email_da_gan_ho_so_khac`.
     - Email có danh tính chưa gắn hồ sơ → gắn (kèm trạng thái mới kiểm) —
-      da_co_san=True; đã gắn ĐÚNG hồ sơ này → luỹ đẳng, chỉ cập nhật trạng thái.
+      da_co_san=True; đã gắn ĐÚNG hồ sơ này → luỹ đẳng và CHỈ NÂNG trạng thái.
     - Email chưa có danh tính → tạo mới kèm hồ sơ + trạng thái — da_co_san=False.
+
+    NV155c-SUA: (A2) khi đã gắn đúng hồ sơ này, trạng thái chỉ NÂNG —
+    `trang_thai` mới kiểm yếu hơn (không kiểm được → «chua_dang_nhap») KHÔNG
+    hạ trạng thái đã kiểm thật trước đó («dang_nhap»/«can_nguoi»/«het_han» giữ
+    nguyên). (A3) mọi gắn qua đường này đều đánh dấu `ho_so_do_nhan=True`:
+    workspace là của người dùng có sẵn, xoá danh tính chỉ gỡ gắn (giữ phiên).
 
     `ho_so` phải ĐÃ qua `MAU_HO_SO_TRINH_DUYET` ở biên (route kiểm trước khi gọi);
     `trang_thai` phải thuộc TRANG_THAI_DANG_NHAP. Trả (bản ghi công khai, da_co_san).
@@ -304,7 +313,14 @@ def nhan_ho_so(ho_so: str, email: Any, nhan: Any = None,
                         loai="invalid_request_error", code="email_da_gan_ho_so_khac")
                 if not hs:
                     d["ho_so_trinh_duyet"] = ho_so
-                d["trang_thai_dang_nhap"] = trang_thai
+                    d["trang_thai_dang_nhap"] = trang_thai
+                elif trang_thai == "dang_nhap":
+                    # A2: lần nhận lại kiểm ĐƯỢC phiên → nâng lên; không bao
+                    # giờ hạ trạng thái đã kiểm (kể cả khi lần này không kiểm
+                    # được gì — «chua_dang_nhap» không ghi đè).
+                    d["trang_thai_dang_nhap"] = "dang_nhap"
+                # A3: qua đường «nhận» → workspace là có sẵn của người dùng.
+                d["ho_so_do_nhan"] = True
                 _ghi(ds)
                 return ban_ghi_cong_khai(d), True
         ban_ghi = {
@@ -315,6 +331,7 @@ def nhan_ho_so(ho_so: str, email: Any, nhan: Any = None,
             "gan": [],
             "trang_thai_dang_nhap": trang_thai,
             "ho_so_trinh_duyet": ho_so,
+            "ho_so_do_nhan": True,
         }
         ds.append(ban_ghi)
         _ghi(ds)

@@ -181,6 +181,30 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
                             ma=r.status_code)
         return kq
 
+    def _get(self, duoi: str, tham_so: dict) -> dict:
+        """GET tới dịch vụ — cùng chính sách lỗi/log như `_post` (NV155c-SUA)."""
+        try:
+            r = self._client.get(
+                self._duong(duoi), params=tham_so,
+                headers={"Authorization": f"Bearer {self._khoa}"},
+            )
+        except httpx.HTTPError as e:
+            raise LoiDichVu(
+                f"Dịch vụ trình duyệt không trả lời ({type(e).__name__}).") from None
+        if r.status_code >= 400:
+            raise LoiDichVu(
+                f"Dịch vụ trình duyệt trả mã lỗi {r.status_code}.",
+                ma=r.status_code)
+        try:
+            kq = r.json()
+        except ValueError:
+            raise LoiDichVu("Dịch vụ trình duyệt trả JSON hỏng.",
+                            ma=r.status_code) from None
+        if not isinstance(kq, dict):
+            raise LoiDichVu("Dịch vụ trình duyệt trả cấu trúc lạ.",
+                            ma=r.status_code)
+        return kq
+
     async def gianh(self) -> None:
         """Giành quyền điều khiển máy cho hồ sơ (409 nếu đang bận/có người)."""
         await asyncio.to_thread(self._post, "/dieu-khien/gianh", {})
@@ -236,6 +260,28 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
             self._post, "/tin-hieu", {"quy_tac": list(quy_tac or [])})
         ds = kq.get("tin_hieu") or []
         return {s for s in ds if isinstance(s, str)}
+
+    async def doc_cookie_ho_so_da_dong(self, mien: str):
+        """Cookie của `mien` trong KHO của hồ sơ ĐÃ ĐÓNG (NV155c-SUA).
+
+        Qua API hồ sơ của dịch vụ: GET /ho-so/{id}/cookie — dịch vụ đọc
+        cookies.sqlite trên đĩa, KHÔNG mở trình duyệt. Trả {tên: giá trị}
+        (rỗng = đã kiểm được, miền đó không có cookie). Dịch vụ lỗi
+        (404 chưa có kho, 409 hồ sơ đang mở, 501 Chromium, mất kết nối…)
+        → None «không kiểm được». Giá trị cookie không vào log.
+        """
+        try:
+            kq = await asyncio.to_thread(self._get, "/cookie", {"mien": mien})
+        except LoiDichVu:
+            return None
+        chuoi = kq.get("cookie") or ""
+        ra: dict[str, str] = {}
+        if isinstance(chuoi, str):
+            for muc in chuoi.split(";"):
+                ten, _, gt = muc.strip().partition("=")
+                if ten:
+                    ra[ten] = gt
+        return ra
 
     async def dong(self) -> None:
         """Nhả quyền và đóng client HTTP."""

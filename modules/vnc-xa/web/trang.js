@@ -258,8 +258,11 @@
       const du = kq.du;
       if (kq.r.ok && du && du.danh_tinh) {
         const tt = du.trang_thai_dang_nhap === 'dang_nhap'
-          ? 'phiên đăng nhập đã kiểm được' : 'chưa kiểm được phiên đăng nhập';
+          ? 'phiên đăng nhập đã kiểm được từ kho cookie của workspace'
+          : 'chưa kiểm được phiên đăng nhập'
+            + (du.kiem_tin_hieu === 'khong_kiem_duoc' ? ' (không kiểm được qua dịch vụ trình duyệt)' : '');
         ketQua.textContent = 'Đã nhận làm tài khoản «' + du.danh_tinh.email + '» (' + tt + '). '
+          + 'Ghi chú: chỉ kiểm được workspace CÓ phiên đăng nhập, không chứng minh phiên thuộc đúng email này. '
           + 'Bước kế: Hệ thống → AI → Thêm tài khoản → Qua danh tính để dùng.';
         thongBao('Đã nhận workspace làm tài khoản.', 'tot');
       } else {
