@@ -233,6 +233,32 @@
     || ('máy chủ trả HTTP ' + ma);
   function taoLoi(tin, ma, code) { const e = new Error(tin); e.ma = ma; e.code = code || null; return e; }
 
+  // Step-up: máy chủ đòi xác nhận lại (403 step_up_required) → hỏi mật khẩu trong hộp thoại (type=password, chỉ textContent),
+  // gửi api/toi/xac-nhan-lai rồi thử lại đúng MỘT lần. Trả null nếu người dùng bỏ qua.
+  function hoiMatKhauXacNhanLai() {
+    return new Promise((xong) => {
+      const hop = document.createElement('dialog');
+      hop.style.cssText = 'max-width:min(92vw,360px);padding:16px;border-radius:12px;border:1px solid #8884';
+      const td = document.createElement('p');
+      td.textContent = 'Thao tác nguy hiểm cần xác nhận lại. Nhập mật khẩu của bạn để tiếp tục.';
+      const o = document.createElement('input');
+      o.type = 'password'; o.autocomplete = 'current-password'; o.setAttribute('aria-label', 'Mật khẩu');
+      o.style.cssText = 'width:100%;box-sizing:border-box;min-height:44px;margin:8px 0';
+      const hang = document.createElement('div');
+      hang.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+      const huy = document.createElement('button'); huy.type = 'button'; huy.textContent = 'Huỷ'; huy.style.minHeight = '44px';
+      const dong = document.createElement('button'); dong.type = 'button'; dong.textContent = 'Xác nhận'; dong.style.minHeight = '44px';
+      let kq = null;
+      huy.onclick = () => hop.close();
+      dong.onclick = () => { kq = o.value || null; hop.close(); };
+      o.onkeydown = (ev) => { if (ev.key === 'Enter') dong.onclick(); };
+      hop.onclose = () => { hop.remove(); xong(kq); };
+      hang.append(huy, dong); hop.append(td, o, hang);
+      document.body.appendChild(hop);
+      hop.showModal(); o.focus();
+    });
+  }
+
   async function goi(duong, tc) {
     tc = tc || {};
     const method = (tc.method || 'GET').toUpperCase();
@@ -285,6 +311,16 @@
         if (hd['X-CSRF-Token']) delete hd['X-CSRF-Token'];
         return await goi(duong, tc);
       } catch (_) {}
+    }
+
+    // Step-up: hỏi mật khẩu, xác nhận lại rồi thử lại MỘT lần (sai mật khẩu → báo đúng lỗi của máy chủ)
+    if (r.status === 403 && code === 'step_up_required' && !tc._daThuLaiStepUp && typeof document !== 'undefined') {
+      tc._daThuLaiStepUp = true;
+      const mk = await hoiMatKhauXacNhanLai();
+      if (mk) {
+        await goi('api/toi/xac-nhan-lai', { method: 'POST', json: { mat_khau: mk } });
+        return await goi(duong, tc);
+      }
     }
 
     // C2: Chỉ chuyển Đăng nhập khi mã lỗi cho thấy PHIÊN không hợp lệ (unauthorized / invalid_api_key)

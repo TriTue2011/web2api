@@ -1919,6 +1919,11 @@ async def thuc_hien_hanh_dong_thiet_bi(id_thuc_the: str, request: Request):
         raise LoiOpenAI(404, f"Không tìm thấy thực thể {id_thuc_the!r}", code="not_found")
     mod_id = item.get("module")
     kiem_tra_pham_vi(request, "thiet_bi:ghi", module=mod_id)
+    # Thực thể nguy hiểm do quản trị tự chạy (không qua hàng chờ) cũng đòi xác nhận lại như mọi thao tác nguy hiểm khác;
+    # khách vẫn đi đường hàng chờ (202), nên không bị chặn ở đây.
+    dt = getattr(request.state, "danh_tinh", None)
+    if item.get("rui_ro") == "nguy_hiem" and isinstance(dt, dict) and dt.get("loai") == "quan_tri":
+        kiem_tra_step_up(request)
 
     ma, kq = await thiet_bi_mod.thuc_hien_hanh_dong_loi(
         id_thuc_the=id_thuc_the,
