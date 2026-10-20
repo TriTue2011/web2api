@@ -3131,26 +3131,38 @@ SHA; hạng là lời khai của tác giả).
 1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "tien-ich-doi-song"`.
 2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/tien-ich-doi-song`
 3. Cài: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/tien-ich-doi-song/cai -H "Content-Type: application/json" -d '{"cau_hinh": {"bat_tim_duong": "1"}}'`
+   "khoa_dich_vu": "<khoa>", "ghi_bat": "0", "thu_muc_len": ""}}` — module
+   kiểm địa chỉ chống SSRF trước khi lưu (chỉ loopback/mạng nội bộ; địa chỉ
+   công khai bị chặn, kiểm ở cả lúc cài và lúc nạp).
 
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `dich_vu_url` | Không | Địa chỉ HTTP nội bộ của dịch vụ dich-vu/rclone (mặc định `http://127.0.0.1:8702`). |
+| `dich_vu_url` | Không | Địa chỉ HTTP nội bộ của dịch vụ dich-vu/rclone (mặc định `http://127.0.0.1:8702`). Chỉ loopback/mạng nội bộ. |
 | `khoa_dich_vu` | Có | Khoá Bearer ≥ 24 ký tự của dịch vụ; TỰ ĐẶT khi chạy container; lưu riêng, không API nào trả lại, bị chặn khỏi log. |
-| `ghi_bat` | Không | Bật hành động ghi (`gui_len`, `chuyen_tep`, `xoa`) lên đám mây; mặc định tắt (`"0"`). |
+| `ghi_bat` | Không | Bật hành động ghi/xoá (`gui_len`, `chuyen_tep`, `xoa`, `xoa_remote`, `them_remote`, `config_ghi`, `drive_exchange`, `luu_khoa_json`); mặc định tắt (`"0"`). |
+| `thu_muc_len` | Không | Thư mục trên máy chạy web2api mà `gui_len` được đọc tệp để tải lên; để trống = `gui_len` tắt. |
 
-**Thực thể và hành động.**
+**Thực thể và hành động.** Mỗi thực thể ĐÚNG một mức rủi ro (lõi tính rủi ro
+theo thực thể): thực thể `nguy_hiem` luôn đòi xác nhận từng lần, kể cả sau
+khi quản trị đã xác nhận thực thể.
 
 | Thực thể | Hành động | Rủi ro |
 |---|---|---|
-| `rclone.kho` | `liet_ke`, `doc_chu`, `tai_ve`, `remotes`, `kiem_tra`, `config_xem`, `drive_start` | `doc` |
+| `rclone.doc` | `liet_ke`, `doc_chu`, `tai_ve`, `remotes`, `kiem_tra`, `config_xem`, `drive_start` | `doc` |
 | `rclone.ghi` | `gui_len`, `chuyen_tep` | `ghi` (cần `ghi_bat`) |
-| `rclone.ghi` | `xoa`, `them_remote`, `xoa_remote`, `config_ghi`, `drive_exchange`, `luu_khoa_json` | `nguy_hiem` (cần `ghi_bat`) |
+| `rclone.xoa` | `xoa`, `xoa_remote` | `nguy_hiem` (cần `ghi_bat`) |
+| `rclone.cau_hinh` | `them_remote`, `config_ghi`, `drive_exchange`, `luu_khoa_json` | `nguy_hiem` (cần `ghi_bat`) |
 
-`config_xem` luôn trả cấu hình **đã che**; `config_ghi`/`drive_exchange` ghi
-hỏng thì dịch vụ giữ bản cũ. `drive_start` + `drive_exchange` là luồng đăng
-nhập Google Drive bằng mã cấp quyền (không cần dòng lệnh).
+`gui_len` nhận `duong_dan_tep` (đường dẫn TRONG `thu_muc_len` trên máy chạy
+web2api) — nội dung tệp không truyền qua tham số hành động (lõi trần 8 KB).
+`config_xem` luôn trả cấu hình **đã che theo cấu trúc** (mặc định che mọi
+giá trị); loại remote và tham số remote là bảng ĐÓNG ở dịch vụ (cấm `local`,
+`sftp` kèm `ssh`, remote chồng…), áp cho cả `them_remote` lẫn `config_ghi`.
+`config_ghi`/`drive_exchange` ghi hỏng thì dịch vụ giữ bản cũ.
+`drive_start` + `drive_exchange` là luồng đăng nhập Google Drive bằng mã
+cấp quyền (không cần dòng lệnh).
 
 **Ví dụ dùng.**
 
@@ -3165,12 +3177,16 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/rclone/suc-khoe
 - `{"ok": false, "loi": "dich_vu_khong_noi_duoc"}` — container dịch vụ chưa chạy
   hoặc sai khoá/địa chỉ (đóng khi lỗi, không lộ chi tiết).
 - `khoa_dich_vu_qua_ngan` lúc cài — khoá < 24 ký tự.
-- `dia_chi_dich_vu_khong_hop_le` lúc cài — địa chỉ trỏ vào dải bị chặn (SSRF).
+- `dia_chi_dich_vu_khong_hop_le` — địa chỉ trỏ vào dải bị chặn (công khai,
+  link-local, 6to4…) hoặc URL đã lưu bị chặn lúc nạp.
+- `chua_khai_thu_muc_len` / `duong_dan_ngoai_thu_muc_len` — `gui_len` khi chưa
+  khai `thu_muc_len`, hoặc `duong_dan_tep` nằm ngoài thư mục đó.
 
 **Giới hạn.**
 - Chưa kiểm với dịch vụ đám mây thật (chỉ nhị phân giả); chưa đo RAM/đĩa
   container phụ; chưa dựng ảnh Docker thật trong hộp cát (không có daemon).
-- `tai_ve`/`gui_len` qua API ≤ 25 MB; `doc_chu` ≤ 2 MB văn bản.
+- `tai_ve`/`gui_len` ≤ 25 MB (trần ở cả dịch vụ lẫn module); `doc_chu` ≤ 2 MB
+  văn bản. Nội dung tệp không đi qua tham số hành động (lõi trần 8 KB).
 - Cấu hình rclone là bề mặt nhạy cảm nhất: volume `/data` không nên sao lưu
   chung hay chia sẻ.
 
