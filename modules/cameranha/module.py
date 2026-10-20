@@ -16,17 +16,20 @@ của ``ve_tinh_camera.py``, ``hik_noi.py`` (SDK hãng), TTS ``noi()`` của c2a
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import ipaddress
 import json
 import logging
 import re
+import socket
 import unicodedata
 import time
 from datetime import datetime, timezone
 
 import httpx
 
-from app import tu_xa
+from app.chuyen_tiep import TransportGhimIp
 
 log = logging.getLogger("web2api.camera")
 
@@ -135,6 +138,82 @@ class LoiCamera(RuntimeError):
 from urllib.parse import urlsplit, urlunsplit  # noqa: E402 — để che_bi_mat chép nguyên bản không cần đổi thứ tự
 
 
+# ── Kiểm địa chỉ camera/dịch vụ nội bộ (soát độc lập C2: C1 + C4) ───────────
+# Lớp lỗi của bản cũ: gọi ``tu_xa._dia_chi_bi_chan(host)`` bằng một CHUỖI —
+# hàm đó nhận ĐỐI TƯỢNG ipaddress và TRẢ lý do chặn (không ném) — nên
+# AttributeError bị ``except`` nuốt thành «địa chỉ bị chặn» cho MỌI camera
+# RTSP, và kể cả khi gọi đúng thì giá trị trả về cũng bị bỏ qua nên IP công
+# khai vẫn lọt. Lớp này sửa theo nguyên tắc:
+#   1. Phân giải tên máy rồi kiểm TỪNG IP bằng ipaddress và ĐỌC kết quả
+#      (cùng khuôn phân giải với app/tu_xa.kiem_url_lan).
+#   2. Chính sách RIÊNG của camera, chặt hơn tu_xa (tu_xa cho IP công khai vì
+#      module từ xa nằm ngoài nhà; tiền lệ cùng cách làm: nhin-nha): địa chỉ
+#      camera chỉ ở mạng riêng (RFC1918/ULA); loopback chỉ dành cho dịch vụ
+#      nội bộ do quản trị khai tường minh (base go2rtc / dich_vu_url).
+
+def _dia_chi_camera_bi_chan(ip, cho_loopback: bool) -> str | None:
+    """Lý do chặn một IP cho camera/dịch vụ nội bộ, hoặc None nếu được qua."""
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_link_local:
+        return "link-local / metadata đám mây (169.254.0.0/16)"
+    if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return "địa chỉ không định tuyến"
+    if ip.is_loopback:
+        return None if cho_loopback else "loopback (camera không nằm trên chính máy chủ)"
+    if ip.is_private:
+        return None
+    return "địa chỉ công khai — camera/dịch vụ nội bộ chỉ ở mạng nhà riêng"
+
+
+async def _kiem_host(host: str, cho_loopback: bool) -> str | None:
+    """Phân giải host → kiểm MỌI IP phân giải được; trả lý do chặn hoặc None."""
+    try:
+        ds = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            thong_tin = await asyncio.get_running_loop().getaddrinfo(
+                host, None, type=socket.SOCK_STREAM)
+        except OSError:
+            return "không phân giải được tên máy"
+        ds = list({ipaddress.ip_address(x[4][0]) for x in thong_tin})
+    if not ds:
+        return "không phân giải được tên máy"
+    for ip in ds:
+        ly_do = _dia_chi_camera_bi_chan(ip, cho_loopback)
+        if ly_do:
+            return f"{ip} — {ly_do}"
+    return None
+
+
+async def _kiem_url_noi_bo(url: str) -> str | None:
+    """Kiểm URL http(s) của dịch vụ nội bộ (base go2rtc, dich_vu_url).
+
+    Trả câu lỗi hoặc None. Loopback được qua vì dịch vụ nội bộ do quản trị
+    khai tường minh có thể chạy cùng máy (đây cũng là lý do mặc định
+    ``http://127.0.0.1:8714`` phải dùng được — bản cũ đẩy qua kiem_url_lan
+    của tu_xa nên bị chính giá trị mặc định làm cai() thất bại).
+    """
+    try:
+        p = urlsplit(str(url or "").strip())
+    except ValueError as exc:
+        return f"không phân tích được ({exc})"
+    if p.scheme.lower() not in ("http", "https"):
+        return "phải bắt đầu bằng http:// hoặc https://"
+    if not p.hostname:
+        return "thiếu địa chỉ máy chủ"
+    if p.username or p.password:
+        return "không được chứa tài khoản/mật khẩu trong URL"
+    ly_do = await _kiem_host(p.hostname, cho_loopback=True)
+    return f"địa chỉ bị chặn ({ly_do})" if ly_do else None
+
+
+def _kiem_ip_khi_goi(ip) -> str | None:
+    """Hàm kiểm cho TransportGhimIp: ghim IP ở MỌI lần gọi ra (chống DNS
+    rebinding cho base/dich_vu_url — kiểm lúc cai chưa đủ, phải kiểm lúc nối)."""
+    return _dia_chi_camera_bi_chan(ip, cho_loopback=True)
+
+
 class CameraModule:
     """Module camera: mỗi camera một thực thể đọc; thực thể ghi chỉ khi bật loa."""
 
@@ -146,12 +225,14 @@ class CameraModule:
         self._canh_bao: list[dict] = []
         self._kich_hoat = False
         self._loi: str = ""
+        self._van_dang_ky: str | None = None
 
     # ── vòng đời ──
 
     def nap(self, cau_hinh: dict) -> None:
         cau_hinh = cau_hinh or {}
         self._cau_hinh = dict(cau_hinh)
+        self._van_dang_ky = None  # cấu hình nạp lại → phải đăng ký lại với dịch vụ phụ
         try:
             danh_sach = json.loads(str(cau_hinh.get("danh_sach_camera") or "[]"))
         except ValueError as exc:
@@ -212,10 +293,9 @@ class CameraModule:
                 if not base:
                     ket["loi"].append(f"camera «{ten}»: thiếu base (địa chỉ go2rtc).")
                 else:
-                    try:
-                        await tu_xa.kiem_url_lan(base)
-                    except Exception as exc:
-                        ket["loi"].append(f"camera «{ten}»: base không hợp lệ ({exc}).")
+                    err = await _kiem_url_noi_bo(base)
+                    if err:
+                        ket["loi"].append(f"camera «{ten}»: base {err}.")
                 if not str(d.get("src") or "").strip():
                     ket["loi"].append(f"camera «{ten}»: thiếu src (tên luồng).")
                 for khoa in ("src_ai",):
@@ -234,10 +314,9 @@ class CameraModule:
         dich_vu_url = str(cau_hinh.get("dich_vu_url") or "").strip()
         dich_vu_khoa = str(cau_hinh.get("dich_vu_khoa") or "")
         if dich_vu_url:
-            try:
-                await tu_xa.kiem_url_lan(dich_vu_url)
-            except Exception as exc:
-                ket["loi"].append(f"dich_vu_url không hợp lệ ({exc}).")
+            err = await _kiem_url_noi_bo(dich_vu_url)
+            if err:
+                ket["loi"].append(f"dich_vu_url {err}.")
             if not dich_vu_khoa or len(dich_vu_khoa) < 24:
                 ket["loi"].append("dich_vu_khoa phải ≥ 24 ký tự khi khai dich_vu_url.")
             elif ket["ok"] is not False:
@@ -267,7 +346,12 @@ class CameraModule:
         return ket
 
     async def _kiem_rtsp(self, url: str) -> str | None:
-        """Kiểm URL RTSP bằng tu_xa: scheme rtsp + host qua _dia_chi_bi_chan."""
+        """Kiểm URL RTSP: scheme rtsp + host phân giải ra địa chỉ RIÊNG.
+
+        Camera không bao giờ ở loopback/công khai/link-local — xem
+        ``_dia_chi_camera_bi_chan`` (bản cũ truyền chuỗi vào hàm nhận đối
+        tượng IP và bỏ qua giá trị trả về nên hỏng cả hai chiều — C1).
+        """
         try:
             p = urlsplit(url)
         except ValueError as exc:
@@ -277,21 +361,23 @@ class CameraModule:
         host = (p.hostname or "").strip("[]")
         if not host:
             return "thiếu địa chỉ máy chủ."
-        try:
-            tu_xa._dia_chi_bi_chan(host)
-        except Exception as exc:
-            return f"địa chỉ bị chặn ({exc})."
-        return None
+        ly_do = await _kiem_host(host, cho_loopback=False)
+        return f"địa chỉ bị chặn ({ly_do})." if ly_do else None
 
     # ── HTTP ra (giả được trong test) ──
+    # Mọi lần gọi ra đều qua TransportGhimIp của lõi: phân giải + kiểm lại
+    # NGAY LÚC NỐI rồi ghim IP đã kiểm (chống DNS rebinding — C4), theo cùng
+    # chính sách địa chỉ như lúc cai().
 
     async def _http_get(self, url: str, headers: dict | None = None, timeout: float = 20.0) -> dict:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False,
+                                     transport=TransportGhimIp(_kiem_ip_khi_goi)) as client:
             r = await client.get(url, headers=headers or {})
             return {"ma": r.status_code, "than": r.content}
 
     async def _http_post(self, url: str, than: dict, headers: dict | None = None, timeout: float = 30.0) -> dict:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False,
+                                     transport=TransportGhimIp(_kiem_ip_khi_goi)) as client:
             r = await client.post(url, json=than, headers=headers or {})
             try:
                 noi_dung = r.json()
@@ -337,10 +423,13 @@ class CameraModule:
                     "id": f"cam.phat_{cam['_id']}",
                     "ten": f"Loa camera {ten_cam}",
                     "loai": "camera_phat",
-                    "rui_ro_mac_dinh": "ghi",
+                    # C3: phát tiếng vào nhà là NGUY HIỂM — khoá khách vào hàng
+                    # chờ và quản trị phải xác nhận TỪNG LẦN (bản cũ ở «ghi»:
+                    # xác nhận thực thể một lần là phát/bộ đàm tự do mãi).
+                    "rui_ro_mac_dinh": "nguy_hiem",
                     "tinh_nang": [
-                        {"ten": "phat", "mo_ta": "Phát âm thanh (base64 WAV/MP3) ra loa — hành động GHI"},
-                        {"ten": "bo_dam_mo", "mo_ta": "Mở kênh bộ đàm hai chiều — hành động GHI"},
+                        {"ten": "phat", "mo_ta": "Phát âm thanh (base64 WAV/MP3) ra loa — NGUY HIỂM, xác nhận từng lần"},
+                        {"ten": "bo_dam_mo", "mo_ta": "Mở kênh bộ đàm hai chiều — NGUY HIỂM, xác nhận từng lần"},
                         {"ten": "bo_dam_them", "mo_ta": "Gửi tiếng alaw (base64) vào kênh bộ đàm"},
                         {"ten": "bo_dam_dong", "mo_ta": "Đóng kênh bộ đàm"},
                     ],
@@ -367,9 +456,6 @@ class CameraModule:
         if hanh_dong == "chup":
             return await self._lam_chup(ten_cam, cam, cho_ai=False)
         if hanh_dong == "chup_cho_ai":
-            if str(self._cau_hinh_get("cho_ai_xem") or "false").lower() != "true":
-                return {"ok": False, "ma": "bi_cam",
-                        "loi": "chưa bật «cho_ai_xem» trong cấu hình — ảnh camera là dữ liệu nhạy cảm"}
             return await self._lam_chup(ten_cam, cam, cho_ai=True)
         if hanh_dong == "canh_bao_moi_nhat":
             return {"ok": True, "canh_bao": list(self._canh_bao)}
@@ -408,12 +494,44 @@ class CameraModule:
             return None, None
         return url.rstrip("/"), khoa
 
+    async def _bao_dang_ky(self, url: str, khoa: str) -> None:
+        """Đăng ký bảng camera với dịch vụ phụ (hợp đồng C2).
+
+        Dịch vụ chỉ còn nhận ``cam_id`` và tra bảng của CHÍNH NÓ (đã kiểm
+        cấu trúc + địa chỉ + ghim IP lúc đăng ký) — module không gửi URL
+        theo từng lời gọi nữa. Chỉ gửi lại khi bảng đổi (vân tay JSON) hoặc
+        sau khi nạp lại cấu hình. Ném LoiCamera khi dịch vụ từ chối.
+        """
+        bang = []
+        for cam in self._danh_sach:
+            ghi = self._ban_ghi_gui(cam.get("name") or "camera", cam)
+            ghi["id"] = cam["_id"]
+            bang.append(ghi)
+        van = json.dumps(bang, sort_keys=True, ensure_ascii=False)
+        if van == self._van_dang_ky:
+            return
+        kq = await self._http_post(f"{url}/dang-ky", {"danh_sach": bang},
+                                   headers={"Authorization": f"Bearer {khoa}"},
+                                   timeout=15.0)
+        noi_dung = kq.get("json") if isinstance(kq.get("json"), dict) else {}
+        if kq.get("ma") != 200 or not noi_dung.get("ok"):
+            loi = str(noi_dung.get("loi") or f"dịch vụ phụ trả mã {kq.get('ma')}")
+            raise LoiCamera(f"dịch vụ phụ từ chối đăng ký bảng camera: {loi[:160]}")
+        self._van_dang_ky = van
+
     async def _lam_chup(self, ten_cam: str, cam: dict, cho_ai: bool) -> dict:
+        # Cổng theo DỮ LIỆU TRẢ RA (C4): mọi hành động trả ảnh đều chảy qua
+        # đây, nên cho_ai_xem=false chặn TẠI ĐÂY — không theo tên hành động
+        # (bản cũ chỉ chặn «chup_cho_ai», còn «chup» trả đúng cùng ảnh).
+        if str(self._cau_hinh_get("cho_ai_xem") or "false").lower() != "true":
+            return {"ok": False, "ma": "bi_cam",
+                    "loi": "chưa bật «cho_ai_xem» trong cấu hình — ảnh camera là dữ liệu nhạy cảm, không hành động nào trả ảnh khi đang tắt"}
         url, khoa = self._dich_vu()
         try:
             if url:
+                await self._bao_dang_ky(url, khoa)
                 kq = await self._http_post(f"{url}/chup",
-                                           {"cam": self._ban_ghi_gui(ten_cam, cam), "cho_ai": cho_ai},
+                                           {"cam_id": cam["_id"], "cho_ai": cho_ai},
                                            headers={"Authorization": f"Bearer {khoa}"}, timeout=30.0)
                 if kq.get("ma") != 200 or not isinstance(kq.get("json"), dict):
                     raise LoiCamera(f"dịch vụ phụ trả mã {kq.get('ma')}")
@@ -460,8 +578,15 @@ class CameraModule:
         if not url:
             return {"ok": False, "ma": "chua_cau_hinh",
                     "loi": "chưa cấu hình dịch vụ phụ (dich_vu_url) — phát/bộ đàm chỉ chạy qua dịch vụ phụ"}
+        try:
+            await self._bao_dang_ky(url, khoa)
+        except LoiCamera as exc:
+            return {"ok": False, "ma": "loi_dich_vu", "loi": str(exc)}
+        except Exception as exc:  # noqa: BLE001
+            log.warning("camera dang ky loi (%s)", type(exc).__name__)
+            return {"ok": False, "ma": "loi_dich_vu", "loi": "không nối được dịch vụ phụ"}
         headers = {"Authorization": f"Bearer {khoa}"}
-        than = {"cam": self._ban_ghi_gui(ten_cam, cam)}
+        than = {"cam_id": cam["_id"]}
         if hanh_dong == "phat":
             am = tham_so.get("am_thanh_b64") or tham_so.get("am_thanh_base64")
             if not isinstance(am, str) or not am:
