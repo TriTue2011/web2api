@@ -197,7 +197,8 @@ class Module:
         log.info("chay-ma: nạp cấu hình, chay_bat=%s", self._bat)
 
     # ── Khai báo thực thể/hành động ──────────────────────────────────────
-    def thuc_the(self) -> list[dict]:
+    async def thuc_the(self, loc: dict | None = None) -> list[dict]:
+        """Liệt kê thực thể qua lõi thật (app/thiet_bi.py gọi await thuc_the(None))."""
         return [
             {
                 "id": "chay_ma.kiem",
@@ -272,11 +273,26 @@ class Module:
             },
         ]
 
+    # ── Trạng thái thực thể cho lõi (GET /api/thiet-bi) ───────────────────
+    async def trang_thai(self, ids: list[str] | None = None) -> dict:
+        """Lõi gọi await trang_thai([...]): không có hàm này lõi báo thiếu thực thể."""
+        ra: dict = {}
+        for e in await self.thuc_the():
+            if ids is not None and e["id"] not in ids:
+                continue
+            ra[e["id"]] = {
+                "bat": self._bat,
+                "dich_vu": "da_cau_hinh" if self._khoa else "chua_cau_hinh",
+                "hop_le": True,
+                "luc": None,
+            }
+        return ra
+
     # ── Thực hiện hành động ───────────────────────────────────────────────
     async def thuc_hien(self, id_thuc_the: str, hanh_dong: str,
                         tham_so: dict | None = None) -> dict:
         tham_so = dict(tham_so or {})
-        thuc_the_map = {e["id"]: e for e in self.thuc_the()}
+        thuc_the_map = {e["id"]: e for e in await self.thuc_the()}
         muc = thuc_the_map.get(id_thuc_the)
         if muc is None:
             return {"ok": False, "loi": "khong_thay_thuc_the"}

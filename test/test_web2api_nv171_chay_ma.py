@@ -59,7 +59,7 @@ def test_manifest_hop_le(md):
 
 
 def test_thuc_the_va_rui_ro(mod):
-    thuc_the = {e["id"]: e for e in mod.thuc_the()}
+    thuc_the = {e["id"]: e for e in asyncio.run(mod.thuc_the())}
     kiem = thuc_the["chay_ma.kiem"]
     chay = thuc_the["chay_ma.chay"]
     assert kiem["rui_ro_mac_dinh"] == "doc"
