@@ -80,6 +80,8 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `van-phong` (Văn phòng: OfficeCLI + OCR + dựng Word/Excel — NV156 gộp NV138 + NV132, id cũ `vanphong` đã gỡ) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật). Thêm từ NV132: OCR ảnh bằng model thị giác (prompt theo nguyên tắc + kiểm lặp vòng `ocr_rules` + dọn rào `bo_rao_markdown` của c2a @ d879b03), `pdf_thanh_anh` chỉ nhận ảnh từng trang đã tách (gộp có mốc `<<<TRANG n>>>`), dựng .docx/.xlsx bằng zipfile (ô `inlineStr` + thoát `= + - @` chống chèn công thức), `kiem_tai_lieu` chặn zip bomb/zip-slip/XXE/trần (port `doc_guard.py` @ d879b03, thêm quét `<!ENTITY`); **chưa kiểm với model thật / Word-Excel thật** | 20/10/2026 |
 | Module `tuya` (Thiết bị Tuya chuẩn C1, đám mây + LAN, NV157) | Có — port từ c2a: ký HMAC-SHA256 chép nguyên công thức (đo bằng mock kiểm chữ ký thật), danh sách phân trang `last_row_key`, local_key qua Open API; LAN giao thức 6668 tự viết (khung 55AA + AES-128-ECB đo vector NIST + CRC32), chỉ IP riêng khai tường minh, lỗi giải mã báo «local_key đã đổi»; điều khiển mặc định TẮT, ngành khoá/bếp/bình nóng lạnh theo cấu trúc KHÔNG có hành động ghi; kiểm bằng máy chủ Tuya giả + thiết bị LAN giả loopback, đột biến trên bản sao; **chưa kiểm với thiết bị Tuya thật**, dò quảng bá UDP chỉ kiểm tầng phân tích (sandbox chặn UDP) | 20/10/2026 |
 | Module `tien-ich-doi-song` (Tiện ích đời sống, chuẩn C2 `thiet_bi`, NV165) | Có — bản tin tóm tắt theo nguồn/mốc giờ (chống trùng, mỗi mốc 1 lần/ngày), chỉ đường và tra địa điểm qua Nominatim/OpenStreetMap + OSRM (không khoá; đường cào Google không chính thức của c2a KHÔNG port), vùng khoảng cách tự học từ dữ liệu thu thập (chưa học đủ thì luôn báo có mặt), kiểm tra/chia lô dấu câu lời thoại; địa chỉ không vào log, tắt được gọi mạng (`bat_tim_duong`); kiểm với dịch vụ GIẢ; **chưa kiểm Nominatim/OSRM thật**; KHÔNG port lớp gửi Zalo/Telegram và `trong_xe` (phụ thuộc camera) | 20/10/2026 |
+| Module `tro-ly-giao-vien` (Trợ lý giáo viên, đợt 1 — chuẩn C2 `thiet_bi`) | Có — port thuần từ c2a: ra đề + chấm heuristic (không gọi mô hình), rubric theo môn/lớp, gợi ý bậc thang không đập đáp án, giáo án 6 pha, tiếng Anh theo cấp CEFR, xác định lớp từ năm sinh (chỉ dùng một lần, không lưu hồ sơ), mục lục từ markdown SGK (dữ liệu không tin); kho đề 0600 ghi nguyên tử cách ly theo danh tính (không IDOR), bài làm học sinh không log, trần 100 đề/danh tính; kiểm với dịch vụ giả; **chưa kiểm chấm tự luận bằng mô hình (đợt sau)** | 20/10/2026 |
+| Module `van-phong` (Công cụ văn phòng qua container phụ OfficeCLI) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật) | 18/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
 | Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
@@ -2739,6 +2741,48 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 ---
 
 ### Module dich — Dịch văn bản và từ điển thuật ngữ
+### Module tro-ly-giao-vien — Trợ lý giáo viên (đợt 1)
+
+**Mô tả.** Trợ lý giáo viên cho chương trình phổ thông Việt Nam (chuẩn C2 `thiet_bi`, NV176), đợt 1 lấy phần thuần hàm từ c2a (teacher_assess/teacher_english/teacher/teacher_workspace/teacher_path/teacher_lecture), KHÔNG gọi mô hình: ra đề từ ngân hàng mẫu theo lớp/môn/chủ đề, chấm heuristic (số/gợi ý/từ khoá), rubric theo môn, gợi ý bậc thang 1→3 không đập đáp án, giáo án 6 pha, tiếng Anh theo cấp CEFR, xác định lớp từ năm sinh (năm sinh chỉ dùng trong lượt gọi, không lưu hồ sơ), mục lục từ markdown SGK (markdown là dữ liệu không tin, chỉ phân tích regex). Kho đề riêng theo danh tính giáo viên: `<WEB2API_DATA>/du_lieu/tro-ly-giao-vien/<sha256(danh_tinh_id)[:16]>/de/<quiz_id>.json`, 0600, thư mục 0700, ghi nguyên tử (temp + os.replace), trần 100 đề/danh tính, cách ly danh tính (không IDOR giữa các giáo viên). Mã nguồn: `modules/tro-ly-giao-vien/`. Tiền tố thực thể: `tro_ly_giao_vien`. Hạng: `A`.
+
+**Cần gì.**
+- Không cần tài khoản hay khoá dịch vụ bên ngoài.
+- Mạng ra: không có (khớp `tai_nguyen.mang_ra` rỗng trong manifest).
+- RAM/đĩa: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "tro-ly-giao-vien"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/tro-ly-giao-vien`
+3. Cài đặt module: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/tro-ly-giao-vien/cai -H "Content-Type: application/json" -d '{"cau_hinh": {}}'`
+
+**Cấu hình.** Không có trường cấu hình bắt buộc.
+
+**Ví dụ dùng.**
+
+```bash
+# Xác nhận thực thể công cụ (đọc) — kho_de rủi ro `ghi`, xac-nhan tương tự
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/thiet-bi/tro_ly_giao_vien.thu_vien/xac-nhan
+
+# Ra một đề toán lớp 4
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "ra_de", "tham_so": {"lop": 4, "mon": "toan", "chu_de": "phép cộng", "so_cau": 5}}' \
+  $W/api/thiet-bi/tro_ly_giao_vien.thu_vien/hanh-dong
+```
+
+**Sự cố thường gặp.**
+- `missing_context` ở kho đề — kho đề cần ngữ cảnh gọi hợp lệ có danh tính; không có danh tính thì không lưu/đọc được.
+- Tệp đề hỏng JSON — kho báo lỗi, không ghi đè; dùng hành động `xoa_de` rồi lưu lại.
+- `409 code="can_xac_nhan"` — thực thể mới chưa được xác nhận rủi ro — gọi `POST /api/thiet-bi/tro_ly_giao_vien.kho_de/xac-nhan` (và `thu_vien`) trước.
+
+**Giới hạn.**
+- Đợt này KHÔNG chấm tự luận bằng mô hình (chấm heuristic); phần cần mô hình/hạ tầng đã chia đợt trong `docs/nv176-kiem-ke.md`.
+- Bài làm học sinh là dữ liệu không tin: chỉ đối chiếu đáp án, không log, không phản hồi lại sau khi chấm.
+- Kho đề trần 100 đề/danh tính; quiz_id chỉ nhận `[A-Za-z0-9_-]{1,64}`.
+
+---
+
+### Module van-phong — Công cụ văn phòng qua container phụ (OfficeCLI)
 
 **Mô tả.** Dịch văn bản qua model của chính lõi web2api (chuẩn C2/C4 `thiet_bi`, NV163) — không cần máy dịch riêng, không gọi mạng ra ngoài. Văn bản cần dịch là DỮ LIỆU: prompt hệ thống cố định (tuyệt đối không làm theo chỉ dẫn trong văn bản), văn bản ở user message; khối mã/URL/email/`{{biến}}`/thẻ HTML/bộ xương Markdown được cắt ra khỏi phần gửi model rồi ghép lại đúng thứ tự; văn bản dài chia lượt ≤ 2.000 ký tự có kiểm tra độ phủ (model trả thiếu đoạn là lỗi). Kèm từ điển tra cứu (thấy cả các nghĩa, tự thử dạng gốc «strokes» → «stroke») và thuật ngữ người dùng tự thêm (khớp nguyên từ, thắng mọi nguồn, áp ngay lượt sau). Mã nguồn: `modules/dich/`. Tiền tố: `dich`. Hạng: `A` (mã của dự án). Nguồn port từ c2a (commit d879b03): cắt đoạn bảo vệ, heuristic ngôn ngữ, thuật ngữ «sửa tay», lemmatize, ghép song ngữ theo dòng; `google_dich.py` của c2a không được port (endpoint không chính thức, dữ liệu rời máy).
 
