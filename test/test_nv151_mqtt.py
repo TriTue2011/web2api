@@ -6,9 +6,10 @@ CONNECT/CONNACK, SUBSCRIBE/SUBACK, PUBLISH/PUBACK, PINGREQ/PINGRESP, DISCONNECT)
 Mọi địa chỉ test đều loopback (cần WEB2API_TEST_CHO_PHEP_LOOPBACK=1) hoặc chuỗi
 GIẢ rõ ràng (mqtt.example.invalid, zigbee2mqtt/den-thu-1). Không mạng thật.
 
-Chuyển từ test_mqtt_nha.py + test_api_mqtt.py của c2a (commit d879b03): dữ liệu
-nhà thật (Bếp, Nhà tắm, Bình nóng lạnh…) đổi hết sang tên GIẢ; phần lịch sử/
-cảnh báo/dự đoán của c2a không thuộc phạm vi NV151 nên test tương ứng bị bỏ.
+Chuyển từ test_mqtt_nha.py + test_api_mqtt.py của c2a (commit d879b03): mọi
+tên phòng/thiết bị và số đo của nhà thật đã đổi hết sang dữ liệu GIẢ rõ ràng;
+phần lịch sử/cảnh báo/dự đoán của c2a không thuộc phạm vi NV151 nên test
+tương ứng bị bỏ.
 """
 
 from __future__ import annotations

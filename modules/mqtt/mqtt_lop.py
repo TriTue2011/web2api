@@ -8,8 +8,8 @@ Chép cấu trúc đang chạy thật, chỉ đổi:
   (b) trạng thái chuyển từ biến toàn cục sang thể hiện của lớp LopMqtt để khớp
       vòng đời module web2api (nap/dung) và để test cô lập được;
   (c) cấu hình do module truyền vào (không đọc config của c2a);
-  (d) bỏ số đo gắn với nhà thật trong chú thích (211 bản ghi, 747 tin/40 giây,
-      tên phòng/thiết bị thật); giữ nguyên chú thích bài học EMQX về `#`;
+  (d) bỏ mọi số đo và tên phòng/thiết bị của nhà thật khỏi chú thích (chỉ
+      giữ mô tả trừu tượng); giữ nguyên chú thích bài học EMQX về `#`;
   (e) trần an toàn mới: payload > 64 KiB bị bỏ, giá trị lưu cắt ở 4096 ký tự,
       chủ đề dài > 1024 ký tự bị bỏ (dữ liệu từ máy chủ MQTT là KHÔNG TIN).
 
