@@ -90,6 +90,36 @@ HTML_2FA = """<html><body><form>
 <input type="tel" name="totpPin" autocomplete="one-time-code">
 </form></body></html>"""
 
+HTML_CHON_HINH = """<html><body>
+<div class="rc-imageselect"><div class="rc-imageselect-target">
+<img src="/recaptcha/image?t=1"><img src="/recaptcha/image?t=2">
+</div><div class="rc-imageselect-instructions">Chọn tất cả hình có xe buýt</div></div>
+<iframe src="https://www.google.com/recaptcha/api2/bframe?hl=vi&v=xyz&k=6LeFAKE"
+        title="recaptcha challenge"></iframe>
+</body></html>"""
+
+HTML_OTP_SMS = """<html><body><form>
+<p>Nhập mã xác minh 6 số chúng tôi vừa gửi qua SMS tới số của bạn</p>
+<input type="text" name="otp" inputmode="numeric">
+</form></body></html>"""
+
+HTML_OTP_EMAIL = """<html><body><form>
+<p>Nhập mã xác minh gửi tới email của bạn</p>
+<input type="text" name="ma_xac_minh" autocomplete="one-time-code">
+</form></body></html>"""
+
+HTML_OTP_PIN = """<html><body><form>
+<p>Mã xác minh</p>
+<input type="tel" name="pin_xac_nhan" inputmode="numeric" maxlength="6">
+</form></body></html>"""
+
+HTML_CAPTCHA_VA_OTP = """<html><body><form>
+<img src="/captcha/image/abc123/" alt="captcha">
+<label>Nhập mã trong hình <input type="text" name="captcha_code"></label>
+<p>Nhập mã xác minh gửi qua SMS</p>
+<input type="text" name="otp" inputmode="numeric">
+</form></body></html>"""
+
 HTML_SACH = """<html><body><h1>Trang thường</h1>
 <form><input type="text" name="q"><button>Tìm</button></form></body></html>"""
 
@@ -145,6 +175,66 @@ def test_phat_hien_2fa_can_nguoi_nhap_ma():
     assert kq["co_thu_thach"] is True
     assert kq["loai"] == "xac_thuc_hai_lop"
     assert kq["can_nguoi"] is True
+
+
+def test_phat_hien_chon_hinh():
+    """Khung chọn ảnh reCAPTCHA (bframe + rc-imageselect): loại RIÊNG
+    `chon_hinh` theo quyết chủ máy 20/10 — không còn gộp trong
+    recaptcha_v2 hay captcha_chu (trang này cũng khớp dấu hiệu captcha_chu
+    vì có chữ «captcha» trong «recaptcha» và thẻ <img>)."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_CHON_HINH, "https://host.example.invalid/login")
+    assert kq["co_thu_thach"] is True
+    assert kq["loai"] == "chon_hinh"
+    assert kq["can_nguoi"] is True
+
+
+def test_phat_hien_ma_otp_sms():
+    """Trang nhập mã OTP gửi qua SMS (trường tên «otp»): loại RIÊNG
+    `ma_otp` theo quyết chủ máy 20/10."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_OTP_SMS, "https://host.example.invalid/xac-minh")
+    assert kq["co_thu_thach"] is True
+    assert kq["loai"] == "ma_otp"
+    assert kq["can_nguoi"] is True
+
+
+def test_phat_hien_ma_otp_email_one_time_code():
+    """Ô nhập có autocomplete="one-time-code" (selector c2a) nhưng tên
+    trường không đặc thù → vẫn là ma_otp, không còn gộp vào
+    xac_thuc_hai_lop như đợt 1."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_OTP_EMAIL, "https://host.example.invalid/xac-minh")
+    assert kq["co_thu_thach"] is True
+    assert kq["loai"] == "ma_otp"
+
+
+def test_phat_hien_ma_otp_pin_so_gioi_han():
+    """Ô nhập số (inputmode numeric) giới hạn maxlength 4–8, tên trường
+    không đặc thù → ma_otp."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_OTP_PIN, "https://host.example.invalid/xac-minh")
+    assert kq["co_thu_thach"] is True
+    assert kq["loai"] == "ma_otp"
+
+
+def test_uu_tien_ma_otp_thang_captcha_chu():
+    """Ca biên: trang VỪA có CAPTCHA chữ VỪA có ô OTP → ưu tiên ma_otp:
+    ô nhập mã là bước người dùng đang bị chặn trực tiếp (cùng quy tắc
+    đợt 1: ô mã thắng CAPTCHA chữ)."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_CAPTCHA_VA_OTP, "https://host.example.invalid/dang-ky")
+    assert kq["co_thu_thach"] is True
+    assert kq["loai"] == "ma_otp"
+
+
+def test_2fa_totppin_van_la_xac_thuc_hai_lop():
+    """Ô totpPin (TOTP đặc thù của luồng Google, trang cũng có
+    one-time-code) → vẫn xac_thuc_hai_lop: dấu hiệu TOTP hẹp thắng dấu
+    hiệu OTP chung."""
+    ph = _tai_phat_hien()
+    kq = ph.phan_loai(HTML_2FA, "https://accounts.google.com/signin/challenge/totp")
+    assert kq["loai"] == "xac_thuc_hai_lop"
 
 
 def test_phat_hien_botguard_qua_url():
@@ -250,6 +340,20 @@ def test_kiem_tra_qua_module_bao_can_nguoi():
     assert "noVNC" in hd
 
 
+def test_kiem_tra_ma_otp_qua_module_bao_can_nguoi():
+    """Qua module: trang OTP → «cần người» + hướng dẫn noVNC (module chỉ
+    nhận diện, TUYỆT ĐỐI không đọc/tự điền mã OTP)."""
+    kq = _kiem_tra(None, {"html": HTML_OTP_SMS,
+                          "url": "https://host.example.invalid/xac-minh"})
+    assert kq["ok"] is True
+    assert kq["ket_qua"]["co_thu_thach"] is True
+    assert kq["ket_qua"]["loai"] == "ma_otp"
+    assert kq["ket_qua"]["can_nguoi"] is True
+    assert kq["ket_qua"]["trang_thai"] == "can_nguoi"
+    hd = " ".join(kq["ket_qua"]["huong_dan"])
+    assert "noVNC" in hd
+
+
 def test_kiem_tra_trang_sach():
     kq = _kiem_tra(None, {"html": HTML_SACH,
                           "url": "https://host.example.invalid/"})
@@ -294,8 +398,10 @@ def test_loai_ho_tro():
     kq = asyncio.run(inst.thuc_hien("thuthach.thu_thach", "loai_ho_tro", {}))
     assert kq["ok"] is True
     loai = {m["loai"] for m in kq["ket_qua"]["loai_ho_tro"]}
-    assert {"recaptcha_v2", "recaptcha_v3", "turnstile", "captcha_chu",
-            "xac_thuc_hai_lop", "botguard"} <= loai
+    assert {"recaptcha_v2", "recaptcha_v3", "turnstile", "chon_hinh",
+            "captcha_chu", "ma_otp", "xac_thuc_hai_lop", "botguard"} <= loai
+    # Bổ sung 20/10: chon_hinh + ma_otp → tổng 9 loại, mọi tài liệu phải khớp.
+    assert len(kq["ket_qua"]["loai_ho_tro"]) == 9
     for m in kq["ket_qua"]["loai_ho_tro"]:
         assert m["cach_xu_ly"] == "can_nguoi"
 
@@ -312,6 +418,7 @@ def test_cai_va_suc_khoe_khong_mang():
     sk = asyncio.run(inst.suc_khoe())
     assert sk["ok"] is True
     assert sk["che_do"] == "chi_nhan_dien"
+    assert sk["so_loai_ho_tro"] == 9
 
 
 def test_ma_nguon_khong_co_duong_giai():

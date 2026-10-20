@@ -13,6 +13,11 @@ CHỈ ĐỌC):
   DẤU HIỆU cấu trúc của widget (iframe ``recaptcha/api2/anchor``,
   ``grecaptcha.execute``, iframe ``challenges.cloudflare.com``). Phần
   GIẢI của hai tệp đó thuộc nhóm (B) — KHÔNG chép (xem báo cáo NV175).
+- Bổ sung theo quyết chủ máy 20/10: loại ``chon_hinh`` (khung chọn ảnh
+  ``recaptcha/api2/bframe`` / ``rc-imageselect`` — tách khỏi
+  recaptcha_v2/captcha_chu) và loại ``ma_otp`` (ô nhập mã một lần:
+  selector ``autocomplete="one-time-code"`` của ``_2FA_CODE_SELECTORS``,
+  tên trường mã xác minh, ô số maxlength 4–8). Cả hai vẫn CHỈ NHẬN DIỆN.
 
 HÀNG RÀO (không thương lượng):
 - Hàm này CHỈ phân loại. Không có đường nào ở đây (hay ở module) giải
@@ -55,34 +60,65 @@ _DAU_HIEU_URL: tuple[tuple[str, str], ...] = (
 )
 
 # ── Dấu hiệu theo cấu trúc HTML ──────────────────────────────────────────
-# Mỗi mục: (mã loại, các chuỗi con phải THẤY ĐỒNG THỜI — ít nhất một chuỗi
-# trong mỗi nhóm). Thứ tự trong _THU_TU_UU_TIEN quyết định khi nhiều dấu
-# hiệu cùng khớp: thử thách NHÌN THẤY được thắng thử thách vô hình.
-_DAU_HIEU_HTML: dict[str, tuple[tuple[str, ...], ...]] = {
-    "turnstile": (
+# Mỗi mục: (mã loại, các NHÓM chuỗi con — trong một mục, MỌI nhóm phải
+# thấy đồng thời, mỗi nhóm chỉ cần một chuỗi khớp). Một loại có thể có
+# NHIỀU mục (các phương án thay thế nhau). Thứ tự trong _THU_TU_UU_TIEN
+# quyết định khi nhiều loại cùng khớp: thử thách NHÌN THẤY được thắng thử
+# thách vô hình; ô nhập mã (TOTP/OTP) thắng CAPTCHA chữ cổ điển vì ô mã là
+# bước người dùng đang bị chặn trực tiếp (trang vừa có CAPTCHA chữ vừa có
+# ô OTP → báo loại OTP).
+_DAU_HIEU_HTML: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
+    ("turnstile", (
         ("challenges.cloudflare.com",),
-    ),
-    "recaptcha_v2": (
+    )),
+    # Khung thử thách chọn hình/quiz của reCAPTCHA (iframe bframe + khối
+    # rc-imageselect) — tách RIÊNG khỏi recaptcha_v2/captcha_chu theo quyết
+    # của chủ máy 20/10: đây là thử thách người dùng đang phải làm thật.
+    ("chon_hinh", (
+        ("recaptcha/api2/bframe", "rc-imageselect"),
+    )),
+    ("recaptcha_v2", (
         ("recaptcha/api2/anchor", "recaptcha/enterprise/anchor",
          'id="recaptcha-anchor"', "id='recaptcha-anchor'"),
-    ),
-    "recaptcha_v3": (
+    )),
+    ("recaptcha_v3", (
         ("grecaptcha.execute",),
-    ),
-    "xac_thuc_hai_lop": (
+    )),
+    # TOTP của luồng đăng nhập (selector totpPin trong _2FA_CODE_SELECTORS
+    # của c2a) — dấu hiệu HẸP và đặc thù nên giữ loại riêng.
+    ("xac_thuc_hai_lop", (
         ('name="totppin"', "name='totppin'",
-         'name="totp_pin"', "name='totp_pin'",
-         'autocomplete="one-time-code"', "autocomplete='one-time-code'"),
-    ),
-    "captcha_chu": (
+         'id="totppin"', "id='totppin'",
+         'name="totp_pin"', "name='totp_pin'"),
+    )),
+    # Mã OTP một lần — phương án 1: thuộc tính chuẩn one-time-code
+    # (selector `input[autocomplete="one-time-code"]` của c2a).
+    ("ma_otp", (
+        ('autocomplete="one-time-code"', "autocomplete='one-time-code'"),
+    )),
+    # Mã OTP — phương án 2: tên trường mã xác minh thường gặp.
+    ("ma_otp", (
+        ('name="otp"', "name='otp'",
+         'name="otp_code"', "name='otp_code'", 'name="otp-code"',
+         'name="ma_otp"', 'name="sms_code"', 'name="email_code"',
+         'name="verification_code"', 'name="verification-code"'),
+    )),
+    # Mã OTP — phương án 3: ô nhập số (bàn phím số) giới hạn 4–8 ký tự.
+    ("ma_otp", (
+        ('inputmode="numeric"', "inputmode='numeric'"),
+        ('maxlength="4"', "maxlength='4'", 'maxlength="5"', "maxlength='5'",
+         'maxlength="6"', "maxlength='6'", 'maxlength="7"', "maxlength='7'",
+         'maxlength="8"', "maxlength='8'"),
+    )),
+    ("captcha_chu", (
         ("captcha",),
         ("<img", "<input"),
-    ),
-}
+    )),
+)
 
 #: Thứ tự ưu tiên phân loại (cao → thấp).
-_THU_TU_UU_TIEN = ("turnstile", "recaptcha_v2", "recaptcha_v3",
-                   "xac_thuc_hai_lop", "captcha_chu")
+_THU_TU_UU_TIEN = ("turnstile", "chon_hinh", "recaptcha_v2", "recaptcha_v3",
+                   "xac_thuc_hai_lop", "ma_otp", "captcha_chu")
 
 
 def _duong_dan_url(url: str) -> str:
@@ -120,7 +156,7 @@ def phan_loai(html: str | None, url: str | None) -> dict:
     duong_dan = _duong_dan_url(url)
 
     loai_theo_html: set[str] = set()
-    for loai, cac_nhom in _DAU_HIEU_HTML.items():
+    for loai, cac_nhom in _DAU_HIEU_HTML:
         if all(any(s in html_thap for s in nhom) for nhom in cac_nhom):
             loai_theo_html.add(loai)
 
@@ -144,16 +180,22 @@ def phan_loai(html: str | None, url: str | None) -> dict:
 
 
 #: Danh mục loại hỗ trợ — `cach_xu_ly` luôn là «can_nguoi» (hàng rào NV175).
+#: Bổ sung theo quyết chủ máy 20/10: `chon_hinh` tách riêng khỏi
+#: recaptcha_v2/captcha_chu; `ma_otp` là loại riêng cho ô nhập mã một lần.
 LOAI_HO_TRO: tuple[dict, ...] = (
-    {"loai": "recaptcha_v2", "ten": "reCAPTCHA v2 (ô «Tôi không phải người máy» / chọn hình)",
+    {"loai": "recaptcha_v2", "ten": "reCAPTCHA v2 (ô «Tôi không phải người máy»)",
      "cach_xu_ly": "can_nguoi"},
     {"loai": "recaptcha_v3", "ten": "reCAPTCHA v3 (vô hình, chấm điểm phía máy chủ)",
      "cach_xu_ly": "can_nguoi"},
     {"loai": "turnstile", "ten": "Cloudflare Turnstile / trang kiểm tra Cloudflare",
      "cach_xu_ly": "can_nguoi"},
+    {"loai": "chon_hinh", "ten": "Thử thách chọn hình / quiz (khung chọn ảnh — người dùng tự chọn)",
+     "cach_xu_ly": "can_nguoi"},
     {"loai": "captcha_chu", "ten": "CAPTCHA chữ/hình cổ điển (ảnh mã + ô nhập)",
      "cach_xu_ly": "can_nguoi"},
-    {"loai": "xac_thuc_hai_lop", "ten": "Mã xác thực hai lớp (TOTP/SMS — người dùng tự nhập mã)",
+    {"loai": "ma_otp", "ten": "Mã OTP một lần (ô nhập mã 4–8 số từ SMS/email/ứng dụng xác thực — người dùng tự nhập)",
+     "cach_xu_ly": "can_nguoi"},
+    {"loai": "xac_thuc_hai_lop", "ten": "Mã xác thực hai lớp TOTP (ô totpPin trong luồng đăng nhập — người dùng tự nhập mã)",
      "cach_xu_ly": "can_nguoi"},
     {"loai": "botguard", "ten": "Google BotGuard / thử thách JavaScript phía Google",
      "cach_xu_ly": "can_nguoi"},

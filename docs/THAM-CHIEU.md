@@ -2537,7 +2537,8 @@ curl -s -H "Authorization: Bearer $K" "$W/api/so-thiet-bi/danh-sach" | head -c 6
 **Mô tả.** Nhận diện sự hiện diện và loại thử thách chống bot trên một trang
 bằng **CẤU TRÚC** — dấu hiệu đường dẫn URL và dấu hiệu trong HTML do người
 gọi đưa vào — rồi phân loại (`recaptcha_v2`, `recaptcha_v3`, `turnstile`,
-`captcha_chu`, `xac_thuc_hai_lop`, `botguard`, `thu_thach_khac`) và báo
+`chon_hinh`, `captcha_chu`, `ma_otp`, `xac_thuc_hai_lop`, `botguard`,
+`thu_thach_khac`) và báo
 **«cần người»** kèm hướng dẫn tự hoàn thành trên noVNC (chuẩn C2 `thiet_bi`,
 công cụ `thuthach.thu_thach`, rủi ro `doc`, NV175). Đây là phần TƯƠNG THÍCH
 của `captcha-solver` (c2a) theo LUẬT PORT: **kho web2api có quy tắc KHÔNG
