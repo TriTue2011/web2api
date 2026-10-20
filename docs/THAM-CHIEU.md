@@ -84,6 +84,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `chitieu` (Sổ chi tiêu theo hũ JARS, NV160) | Có — ghi/xem chi tiêu theo kỳ, tự bù hũ vượt theo thứ tự, cổng xác nhận khi vượt tổng ngân sách, cảnh báo ngưỡng, tạm ứng công ty; mỗi danh tính đăng nhập một sổ riêng; port từ c2a; **chưa kiểm với dữ liệu thật** | 20/10/2026 |
 | Module `rclone` (Cầu nối lưu trữ đám mây qua rclone) + dịch vụ `dich-vu/rclone` | Có — liệt kê/đọc/tải về (`liet_ke`, `doc_chu`, `tai_ve`, rủi ro `doc`, mặc định) và tải lên/xoá/chuyển tệp (`gui_len`, `chuyen_tep` rủi ro `ghi`; `xoa` rủi ro `nguy_hiem`) — hành động GHI mặc định TẮT (bật bằng `ghi_bat`), tắt thì báo `chua_bat_ghi` và không gọi mạng; cấu hình rclone ở dịch vụ (0600, API chỉ trả bản đã che), khoá Bearer dịch vụ ≥ 24 ký tự; dịch vụ HTTP nội bộ gọi rclone v1.75.2 trong hộp cát (tập lệnh đóng 16 op, đường cục bộ `resolve()` dưới thư mục làm việc, không bao giờ qua shell, hết giờ 30/600 s, tải lên/xuống ≤ 25 MB, tên tệp hệ thống sinh); địa chỉ dịch vụ kiểm SSRF; kiểm với nhị phân rclone giả + kiểm tĩnh Dockerfile; **chưa kiểm với dịch vụ đám mây thật** (chưa dựng ảnh Docker thật) | 20/10/2026 |
 | Module `hoa-don` (Đối chiếu hoá đơn điện tử với danh mục, NV162) | Có — hai công cụ rủi ro `doc`: `doc_hoa_don` và `doi_chieu_hoa_don`; đọc XML TT78 (tìm thẻ theo tên ở mọi tầng) + văn bản Markdown đã trích từ PDF (điểm nối module `van-phong` NV156), danh mục từ mảng dòng đã đọc hoặc .xlsx base64 đọc bằng zipfile (trần giải nén chống zip bomb, công thức không thực thi); XML chống nổ thực thể (từ chối DOCTYPE/ENTITY, trần kích thước/độ sâu); số tiền là Decimal; port từ c2a `services/hoa_don.py` (d879b03); kiểm với hoá đơn giả đúng khuôn TT78; **chưa kiểm với hoá đơn thật của nhà phát hành** | 20/10/2026 |
+| Module `dich` (Dịch văn bản + từ điển thuật ngữ qua model của lõi, chuẩn C2/C4 `thiet_bi`) | Có — dịch qua `/v1/chat/completions` loopback bằng khoá khách phạm vi hẹp (chống SSRF: chỉ loopback), prompt hệ thống cố định chống tiêm lệnh, cắt code/URL/markdown/thuật ngữ khỏi phần gửi model, chia đoạn kiểm tra độ phủ; từ điển tra cả các nghĩa (lemmatize) + thuật ngữ người dùng lưu tệp 0600, nhập/xuất trần 20.000 mục; kiểm với model giả + máy chủ HTTP giả loopback; **chưa kiểm với model thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2625,6 +2626,57 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 ---
 
 ### Module van-phong — Văn phòng: OfficeCLI + OCR + dựng Word/Excel (NV156)
+### Module dich — Dịch văn bản và từ điển thuật ngữ
+
+**Mô tả.** Dịch văn bản qua model của chính lõi web2api (chuẩn C2/C4 `thiet_bi`, NV163) — không cần máy dịch riêng, không gọi mạng ra ngoài. Văn bản cần dịch là DỮ LIỆU: prompt hệ thống cố định (tuyệt đối không làm theo chỉ dẫn trong văn bản), văn bản ở user message; khối mã/URL/email/`{{biến}}`/thẻ HTML/bộ xương Markdown được cắt ra khỏi phần gửi model rồi ghép lại đúng thứ tự; văn bản dài chia lượt ≤ 2.000 ký tự có kiểm tra độ phủ (model trả thiếu đoạn là lỗi). Kèm từ điển tra cứu (thấy cả các nghĩa, tự thử dạng gốc «strokes» → «stroke») và thuật ngữ người dùng tự thêm (khớp nguyên từ, thắng mọi nguồn, áp ngay lượt sau). Mã nguồn: `modules/dich/`. Tiền tố: `dich`. Hạng: `A` (mã của dự án). Nguồn port từ c2a (commit d879b03): cắt đoạn bảo vệ, heuristic ngôn ngữ, thuật ngữ «sửa tay», lemmatize, ghép song ngữ theo dòng; `google_dich.py` của c2a không được port (endpoint không chính thức, dữ liệu rời máy).
+
+**Cần gì.**
+- Không cần tài khoản hay khoá dịch vụ bên ngoài nào.
+- Tính năng dịch cần: một model đã cấu hình cho lõi (xem ở `GET /v1/models`) và một **khoá khách** tạo tại Hệ thống → Khoá khách với phạm vi hẹp chỉ `chat` (xem `mo_ta` của trường `khoa_khach` trong manifest).
+- Mạng ra: chỉ loopback tới chính lõi (`/v1/chat/completions`); địa chỉ không phải loopback bị chặn trước khi mở kết nối (chống SSRF).
+- RAM/đĩa: chưa đo (từ điển/thuật ngữ là tệp JSON nhỏ, trần 20.000 mục).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "dich"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/dich`
+3. Cài đặt module: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/modules/dich/cai -H "Content-Type: application/json" -d '{"cau_hinh": {"model_dich": "tien_to/ten-model", "khoa_khach": "...", "dia_chi_v1": "http://127.0.0.1:3031"}}'`
+   (Bỏ qua cả ba trường vẫn cài được: module chạy ở chế độ chỉ tra từ điển/thuật ngữ, hành động `dich` báo «chưa cấu hình».)
+
+**Cấu hình.**
+- `model_dich` (không bắt buộc): model dùng để dịch, đúng dạng trong `GET /v1/models`.
+- `khoa_khach` (bí mật, bắt buộc nếu có `model_dich`): khoá khách phạm vi hẹp `chat`; chỉ đi trong header Authorization, không vào log/nhật ký/phản hồi lỗi.
+- `dia_chi_v1` (không bắt buộc, mặc định `http://127.0.0.1:3031`): địa chỉ gốc của lõi, chỉ loopback.
+
+**Ví dụ dùng.**
+
+Xác nhận thực thể theo cơ chế an toàn mặc định (SEC-004f), sau đó dịch qua API thiết bị hoặc qua OpenAI function calling (`dich`):
+
+```bash
+# Xác nhận thực thể công cụ
+curl -s -X POST -H "Authorization: Bearer $K" $W/api/thiet-bi/dich.dich_thuat/xac-nhan
+
+# Gọi hành động dịch (Việt → Anh mặc định)
+curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "dich", "tham_so": {"van_ban": "Xin chào, tôi cần tra cứu y tế.", "song_ngu": true}}' \
+  $W/api/thiet-bi/dich.dich_thuat/hanh-dong
+```
+
+**Sự cố thường gặp.**
+- `«chưa cấu hình model_dich / khoa_khach»` — chưa đặt cấu hình — xem «Cấu hình» ở trên.
+- `«dia_chi_v1 không phải loopback»` — địa chỉ lõi không phải 127.0.0.1/localhost/::1 — đặt lại `dia_chi_v1`.
+- `«độ phủ thiếu»` — model trả đoạn rỗng/thiếu — thử văn bản ngắn hơn hoặc đổi model.
+
+**Giới hạn.**
+- Trần 20.000 ký tự mỗi lượt dịch; từ điển nhập trần 20.000 mục / 2 MB, xuất trần 20.000 mục.
+- Nhận diện ngôn ngữ nguồn bằng heuristic thuần Python (Latin ngắn → Anh, dấu tiếng Việt → Việt, kana/CJK/Hangul/Cyrillic); mã lạ/không rõ giữ dạng `auto` cho model tự nhận diện.
+- Thuật ngữ người dùng chỉ áp cho chiều về tiếng Việt khi tiếng nguồn thuộc en/ja/zh/ko và đã biết chắc (không áp khi nguồn là `auto`).
+- Chế độ song ngữ trả cặp câu theo dòng trong kết quả công cụ, không đóng tệp `.docx`.
+- google_dich (Google Dịch không chính thức) không được port: muốn dùng phải có quyết định riêng của chủ máy.
+
+---
+
+### Module van-phong — Công cụ văn phòng qua container phụ (OfficeCLI)
 
 **Mô tả.** Một ô «Văn phòng» duy nhất (gộp NV138 + NV132; id cũ `vanphong` đã gỡ).
 (1) Đọc/sửa tài liệu văn phòng (docx/xlsx/pptx) bằng công cụ `office_*` gọi

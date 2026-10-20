@@ -46,7 +46,9 @@ def _danh_sach_nha_cung_cap() -> list[str]:
     if thu_muc_modules.is_dir():
         for d in os.listdir(thu_muc_modules):
             if (thu_muc_modules / d).is_dir():
-                danh_sach.add(d.lower())
+                # id nguyên cũng có thể trùng từ thông dụng (NV163: module «dich»)
+                if d.lower() not in MANH_TU_THONG_DUNG:
+                    danh_sach.add(d.lower())
                 for p in d.lower().split("-"):
                     if len(p) >= 4 and p not in {"api", "apis"} and p not in MANH_TU_THONG_DUNG:
                         danh_sach.add(p)

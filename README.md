@@ -205,6 +205,7 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `lich-ics` | Đọc lịch ICS (Google/Outlook/Nextcloud) qua link bí mật — chỉ đọc, trả sự kiện sắp tới cho trợ lý (chuẩn C2 công cụ) | HTTPS tới máy chủ lịch đã khai | Có sẵn (45 test với máy chủ ICS giả; chưa kiểm với lịch thật) |
 | `chitieu` | Sổ chi tiêu theo hũ (JARS): ghi/xem chi tiêu, tự bù hũ vượt, cảnh báo ngưỡng, tạm ứng công ty — mỗi danh tính một sổ riêng | Cục bộ (thuần Python + SQLite, không mạng) | Có sẵn (chuẩn C2 công cụ; port từ c2a; chưa kiểm với dữ liệu thật) |
 | `hoa-don` | Công cụ đối chiếu hoá đơn điện tử XML (bản gốc pháp lý NĐ 123/2020 + TT 78/2021) với bảng danh mục Excel: báo dòng khớp/lệch và tự kiểm phép tính trên hoá đơn (NV162) | Cục bộ (thuần Python, không mạng, không khoá) | Có sẵn (kiểm với hoá đơn giả đúng khuôn TT78 + xlsx giả; chưa kiểm với hoá đơn thật của nhà phát hành) |
+| `dich` | Dịch văn bản qua model của lõi + từ điển/thuật ngữ người dùng tự thêm lưu cục bộ + chế độ song ngữ (NV163) | Cục bộ (gọi loopback /v1 của chính lõi) | Có sẵn (kiểm với model giả + máy chủ HTTP giả loopback; chưa kiểm với model thật) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.

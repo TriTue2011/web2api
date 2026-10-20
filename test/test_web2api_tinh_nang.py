@@ -381,7 +381,11 @@ def _ten_nha_cung_cap() -> set[str]:
     ten = set()
     for p in (GOC / "modules").glob("*/manifest.json"):
         m = json.loads(p.read_text(encoding="utf-8"))
-        ten.add(m["tien_to"].lower())
+        # Tiền tố trùng nguyên từ thông dụng (NV163: module «dich», tien_to «dich»)
+        # cũng loại như các mảnh của id — nếu không, mã lõi có sẵn từ trước
+        # (LoiDichBiChan, gui_den_dich...) bị suy thành đặc thù nhà cung cấp.
+        if m["tien_to"].lower() not in MANH_TU_THONG_DUNG:
+            ten.add(m["tien_to"].lower())
         ten |= {x for x in m["id"].lower().split("-") if len(x) >= 4 and x not in {"api", "apis"} and x not in MANH_TU_THONG_DUNG}
         for may in m["tai_nguyen"].get("mang_ra", []):
             for nhan in may.lower().split(".")[:-1]:
