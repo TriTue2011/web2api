@@ -434,6 +434,12 @@ def test_loi_khong_mang_dac_thu_nha_cung_cap():
     # zalo, mikrotik...) vẫn bị quét như cũ.
     from app.kham_pha import HOP_DONG_KHA_NANG
     ten = ten - set(HOP_DONG_KHA_NANG)
+    # NV169: «open» là từ CHUNG (mảnh của «OpenAPI» — chuẩn mở, không phải tên
+    # nhà cung cấp): mang_ra «openapi.tuyaus.com» của module khoa-cua bị cắt
+    # hậu tố api → «open», rồi khớp LoiOpenAI/OpenAI đã có khắp lõi từ ngày
+    # đầu. Loại riêng như «gmail» ở test khung dưới; tên NCC thật (tuya...)
+    # vẫn bị quét như cũ.
+    ten = ten - {"open"}
     pham = []
     for p in sorted((GOC / "app").rglob("*.py")):
         for chu in _chu_trong_ma_python(p):
@@ -451,6 +457,9 @@ def test_khung_giao_dien_khong_mang_ten_module():
     # mang_ra "imap.gmail.com" của module mới đưa "gmail" vào danh sách quét
     # nên loại riêng ở đây; các tên NCC khác vẫn bị quét như cũ.
     ten = ten - {"gmail"}
+    # NV169: «open» — xem chú thích ở test_loi_khong_mang_dac_thu_nha_cung_cap
+    # (mảnh chung của «OpenAPI», khớp thuộc tính open/js thông thường).
+    ten = ten - {"open"}
     # Phông chữ tải từ CDN fonts.googleapis.com/fonts.gstatic.com — CDN phông, không phải nhà cung cấp AI.
     cdn_phong = re.compile(r"https://fonts\.(googleapis|gstatic)\.com/[^\"'\s>]*")
     pham = []
