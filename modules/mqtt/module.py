@@ -115,7 +115,10 @@ class Module:
             ly_do = _dia_chi_bi_chan(ip)
             if ly_do:
                 raise ValueError(f"địa chỉ MQTT trỏ vào {ip} — bị chặn: {ly_do}")
-        return f"{host}:{cong}"
+        # IPv6 phải GIỮ ngoặc vuông trong dạng chuẩn hoá: _tach_may_chu cởi
+        # ngoặc khi tách, nên ghép lại trần «host:cong» thì cấu hình đã lưu
+        # nạp lại sẽ bị chính _tach_may_chu từ chối (vòng sửa NV151).
+        return f"[{host}]:{cong}" if ":" in host else f"{host}:{cong}"
 
     def nap(self, cau_hinh: dict) -> None:
         """Nạp cấu hình ĐÃ KIỂM — không gọi mạng đồng bộ, chỉ khởi động luồng nền."""
