@@ -15,7 +15,13 @@ cổng nào — không cổng nào mở ra Internet từ phía agent.
 nào có `async gui(obj)` / `async nhan() -> dict` (ví dụ một WebSocket). Lõi sẽ
 gọi `QuanLyPhien.chay_kenh(kenh)` cho mỗi kết nối tới. Giao thức bắt tay và khung
 được ghi đầy đủ trong `phien_agent.py`; agent GIẢ trong `agent_gia.py` là tài
-liệu sống của phía agent.
+liệu sống của phía agent. Nói thẳng: **bản này CHƯA dùng được với máy thật** —
+mọi kiểm chứng đều qua agent giả trong tiến trình.
+
+**Module tự kiểm vai người gọi:** cả hai thực thể (quản lý + từng máy) chỉ
+nhận người gọi `quan_tri`/`noi_bo`, đóng khi thiếu ngữ cảnh — KHÔNG phụ
+thuộc mức rủi ro lõi gán cho thực thể (quản trị có hạ rủi ro xuống
+«ghi»/«doc» thì khách vẫn bị từ chối ở module).
 
 ## Bắt tay hai chiều (HMAC, chống phát lại)
 
@@ -24,13 +30,19 @@ Mỗi máy có MỘT khoá 256 bit riêng (`khoa_agent`), chỉ trả đúng **m
 sha256 rút gọn để đối chiếu):
 
 1. agent→lõi: `chao {ten, nonce_agent, thoi_gian}`
-2. lõi kiểm: máy tồn tại, đang bật, chưa thu hồi; `|giờ − thoi_gian| ≤ cửa sổ`
-   (mặc định 120 giây); `nonce_agent` chưa dùng (nhớ 10 phút, tối đa 10.000).
+2. lõi kiểm: máy tồn tại, đang bật, chưa thu hồi; `thoi_gian` là số HỮU HẠN
+   (NaN/vô cực/bool bị từ chối) và `|giờ − thoi_gian| ≤ cửa sổ` (mặc định 120
+   giây) — kiểm giờ TRƯỚC nonce nên khung chào sai giờ không đốt được nonce;
+   `nonce_agent` chưa dùng (nhớ 10 phút, tối đa 10.000).
 3. lõi→agent: `thach_thuc {nonce_loi, xac_thuc_loi}` — **lõi chứng minh BIẾT khoá
    trước**: `xac_thuc_loi = HMAC-SHA256(khoa, "loi:"+nonce_agent+":"+nonce_loi)`.
 4. agent→lõi: `dap {xac_thuc_agent}` — **agent chứng minh BIẾT khoá sau**:
    `xac_thuc_agent = HMAC-SHA256(khoa, "agent:"+nonce_agent+":"+nonce_loi)`.
-5. lõi→agent: `san_sang {duong_dan, quyen}` — khoá-phiên được suy ra bằng HMAC,
+5. lõi **nạp lại sổ trong khoá** ngay trước khi lập phiên: khoá đã bị xoay,
+   máy đã bị thu hồi/xoá/tắt TRONG LÚC bắt tay đang dở → bắt tay chết, phiên
+   không lập. Phiên giữ dấu vân của khoá đã lập nó; mỗi lệnh module đối chiếu
+   lại với khoá hiện hành (khoá xoay là phiên cũ chết hẳn).
+6. lõi→agent: `san_sang {duong_dan, quyen}` — khoá-phiên được suy ra bằng HMAC,
    không bao giờ truyền đi.
 
 Mọi khung lệnh/kết quả sau đó mang `mac = HMAC-SHA256(khoá-phiên, nội dung)`:
@@ -61,7 +73,11 @@ trên máy cũng tự kiểm allowlist của chính nó và từ chối lệnh l
 | `thu_hoi` | Khoá chết vĩnh viễn, ngắt phiên đang mở; máy khác không ảnh hưởng. |
 | `xoa` | Gỡ trên máy TRƯỚC (gửi `go_cai_dat` khi còn online), rồi xoá ở sổ. |
 | `xoay_khoa` | Khoá mới (trả MỘT lần); khoá cũ chết, phiên cũ bị ngắt. |
-| `doi_quyen` | Đổi nhãn/thư mục/quyền/bật-tắt; có hiệu lực ngay cả với phiên đang mở. |
+| `doi_quyen` | Đổi nhãn/thư mục/quyền/bật-tắt; có hiệu lực ngay cả với phiên đang mở; `bat=false` NGẮT phiên đang sống ngay. |
+
+Tên máy không được trùng không gian tên của thực thể quản lý (`dang_ky`,
+`thu_hoi`, `xoa`, `xoay_khoa`, `doi_quyen`) — đăng ký bằng các tên đó bị từ
+chối để không sinh hai thực thể cùng id.
 
 Sổ máy lưu ở `<WEB2API_DATA>/du_lieu/maytram/thiet_bi.json`, quyền `0600`,
 ghi nguyên tử qua `app.kho.ghi_bi_mat_tep` (mã hoá khi nghỉ nếu lõi bật).
@@ -69,8 +85,11 @@ Khoá không bao giờ vào log/phản hồi/`suc_khoe` — chỉ dấu vân 12 
 
 ## Kết quả là dữ liệu KHÔNG TIN
 
-Mọi kết quả từ agent được cắt ở `tran_dau_ra` (mặc định 20.000 ký tự) và đóng
-dấu `nguon_ngoai: true, khong_tin: true`. Lõi KHÔNG làm theo chỉ dẫn nằm trong
+Mọi kết quả từ agent được cắt ở `tran_dau_ra` (mặc định 20.000 ký tự) tính
+theo TỔNG ký tự của toàn cấu trúc (không phải từng chuỗi), cộng trần độ sâu
+6 tầng và trần tổng số phần tử; phần bị cắt được đánh dấu `bi_cat`. Kết quả
+đóng dấu `nguon_ngoai: true, khong_tin: true`; cấu trúc lạ làm module trả
+`ok: false` chứ không ném ngoại lệ. Lõi KHÔNG làm theo chỉ dẫn nằm trong
 kết quả này.
 
 ## Tận dụng từ c2a (`~/workspace/c2a-nv146` @ `d879b03`, CHỈ ĐỌC)

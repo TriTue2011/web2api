@@ -2996,8 +2996,18 @@ Hạng: `A` (mã của dự án). Tiền tố thực thể: `maytram`.
 **Giới hạn.**
 - Điểm gắn truyền tải (kênh hai chiều cho agent) trong lõi CHƯA có: module nhận
   bất kỳ đối tượng kênh `gui`/`nhan` nào qua `QuanLyPhien.chay_kenh(kenh)`; hiện
-  agent thật chưa có chỗ nối vào. Kiểm kết nối bằng agent GIẢ trong tiến trình.
+  agent thật chưa có chỗ nối vào — bản này CHƯA dùng được với máy thật. Kiểm
+  kết nối bằng agent GIẢ trong tiến trình.
 - Chưa kiểm với máy trạm thật.
+- Vá NV170-SUA (soát độc lập C1): module tự kiểm vai người gọi (chỉ
+  `quan_tri`/`noi_bo`) ở cả hai thực thể, độc lập mức rủi ro lõi gán (M2);
+  bắt tay nạp lại sổ trong khoá trước khi lập phiên + phiên giữ dấu vân khoá
+  đối chiếu mỗi lệnh — xoay khoá/thu hồi/xoá giữa bắt tay vô hiệu khoá cũ
+  (M1); trần đầu ra theo TỔNG ký tự toàn cấu trúc + độ sâu tối đa 6 tầng,
+  `thuc_hien` không ném ngoại lệ vì kết quả agent (M3); `thoi_gian` bắt tay
+  phải là số hữu hạn, kiểm trước nonce (M4); tên máy không trùng không gian
+  tên của thực thể quản lý (M5); `doi_quyen bat=false` ngắt phiên đang sống
+  ngay (M6).
 
 ---
 
