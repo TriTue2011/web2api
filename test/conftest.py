@@ -10,7 +10,11 @@ về máy chủ giả sẽ tiêu hạn mức thật — nên mọi yêu cầu kh
 vào proxy chết (cổng 9, discard) và hỏng ngay, còn máy chủ giả cục bộ đi thẳng nhờ NO_PROXY.
 """
 
+import asyncio
+import logging
+import os
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
@@ -83,5 +87,96 @@ async def cai_ng_hai_luot(ng, id_: str, nid: str | None = None, **kwargs):
         if nid is not None:
             return await ng.cai_tu_nguon(nid, id_, xac_nhan=True, ma_xac_nhan=e.ma_xac_nhan, **kwargs)
         return await ng.cai(id_, xac_nhan=True, ma_xac_nhan=e.ma_xac_nhan, **kwargs)
+
+
+# ── NV183: bộ test không được phụ thuộc thứ tự chạy ─────────────────────────
+# Đo trên nền NEN179 cho thấy test đỏ theo thứ tự thuộc ba lớp trạng thái
+# toàn cục rò rỉ giữa các test:
+#  (a) Bộ lọc/handler logging: một test gọi POST /api/modules/nap-lai (vd
+#      test_web2api_nv129_doc_viet_tat) khiến lõi nạp lại MỌI module; mỗi
+#      module có `_cai_bo_loc_log()` gỡ bộ lọc của bản nạp trước trên các
+#      logger HTTP (httpx/httpcore/...) và cài bộ lọc mới có sổ token RỖNG
+#      ⇒ test token-khong-vao-log của facebook/telegram đỏ tuỳ thứ tự.
+#  (b) Event loop của MainThread: test dùng `asyncio.run()` kết thúc bằng
+#      `set_event_loop(None)` ⇒ test sau gọi `asyncio.get_event_loop()`
+#      (vd test_web2api_nv165_tien_ich) ném RuntimeError «no current event
+#      loop» ở mọi thứ tự chạy chung.
+#  (c) Biến môi trường / cwd / sys.path / warnings: test đặt trực tiếp (không
+#      qua monkeypatch) thì rò sang test sau.
+# Fixture dưới đây chụp các lớp đó trước mỗi test và khôi phục sau mỗi test,
+# nên trạng thái ở đầu mỗi test luôn bằng trạng thái ở đầu test trước — kết
+# quả hết phụ thuộc thứ tự. `sys.modules` chỉ khôi phục mục bị XOÁ/THAY (giữ
+# mục nạp mới, tránh ép nạp lại ngoài ý muốn).
+
+
+def _tat_ca_logger():
+    """Root + mọi logger thật trong manager (bỏ qua PlaceHolder)."""
+    yield logging.getLogger()
+    for lg in logging.Logger.manager.loggerDict.values():
+        if isinstance(lg, logging.Logger):
+            yield lg
+
+
+def _bao_dam_event_loop():
+    """MainThread phải luôn có một event loop dùng được sau mỗi test."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = None
+    if loop is None or loop.is_closed():
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def _chup_trang_thai_toan_cuc():
+    return {
+        "loggers": {
+            lg.name: (list(lg.filters), list(lg.handlers), lg.level,
+                      lg.propagate, lg.disabled)
+            for lg in _tat_ca_logger()
+        },
+        "env": dict(os.environ),
+        "cwd": os.getcwd(),
+        "sys_path": list(sys.path),
+        "warnings": list(warnings.filters),
+        "modules": dict(sys.modules),
+    }
+
+
+def _khoi_phuc_trang_thai_toan_cuc(ban_chup):
+    for ten, (filters, handlers, level, propagate, disabled) in ban_chup["loggers"].items():
+        lg = logging.getLogger(ten)
+        lg.filters[:] = filters
+        lg.handlers[:] = handlers
+        lg.level = level
+        lg.propagate = propagate
+        lg.disabled = disabled
+    for k in list(os.environ):
+        if k not in ban_chup["env"]:
+            del os.environ[k]
+    os.environ.update(ban_chup["env"])
+    try:
+        os.chdir(ban_chup["cwd"])
+    except OSError:
+        pass
+    sys.path[:] = ban_chup["sys_path"]
+    warnings.filters[:] = ban_chup["warnings"]
+    for k, v in ban_chup["modules"].items():
+        if sys.modules.get(k) is not v:
+            sys.modules[k] = v
+    _bao_dam_event_loop()
+
+
+@pytest.fixture(autouse=True)
+def on_dinh_trang_thai_toan_cuc():
+    """NV183: chụp/khôi phục trạng thái toàn cục quanh MỌI test.
+
+    Khai báo SAU `chan_mang_that` để setup chạy sau (bản chụp đã gồm env do
+    monkeypatch đặt) và teardown chạy trước (trả env về đúng bản chụp rồi
+    monkeypatch mới khôi phục tiếp).
+    """
+    _bao_dam_event_loop()
+    ban_chup = _chup_trang_thai_toan_cuc()
+    yield
+    _khoi_phuc_trang_thai_toan_cuc(ban_chup)
 
 
