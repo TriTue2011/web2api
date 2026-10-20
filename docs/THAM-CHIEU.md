@@ -96,7 +96,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `chay-ma` (Chạy mã Python trong container cách ly, NV171) + dịch vụ `dich-vu/chay-ma` | Có — mỗi lượt chạy là một container docker dùng-một-lần cách ly (`--network none`, rootfs chỉ đọc + tmpfs /tmp, `--user 65534:65534`, `--cap-drop ALL`, `no-new-privileges`, `--cpus 1 --memory 512m --pids-limit 64`, `--pull never`, bind-mount duy nhất thư mục tạm của lần chạy); môi trường container là whitelist tối thiểu — bí mật của lõi không lọt vào; soi tĩnh chỉ là GỢI Ý SỚM (dấu hiệu chuỗi, lách được — KHÔNG phải ranh giới an toàn; NV171-SUA C3), ranh giới thật là container; bootstrap rlimit + `timeout` giờ tường trong container; `--log-driver none`; mọi đường thoát đều `docker kill` + `docker rm -f` theo tên (không container mồ côi, C2); thư mục lần chạy chown uid 65534 (C4); đầu ra cắt ở trần, tệp ra không đi theo symlink. Hành động `chay_python` rủi ro `nguy_hiem` (lõi bắt phê duyệt), `kiem_tinh` chỉ soi tĩnh; tắt mặc định, bật cần khoá dịch vụ riêng; kiểm với docker GIẢ + kiểm tĩnh Dockerfile + bootstrap rlimit chạy thật; **chưa kiểm với Docker thật** (chưa dựng ảnh thật, chưa kiểm các kịch bản thoát hộp cát) | 20/10/2026 |
 | Module `zalo-ca-nhan` (Zalo cá nhân qua dịch vụ phụ Node) + dịch vụ `dich-vu/zalo-ca-nhan` | Có — kênh hai chiều bằng tài khoản CÁ NHÂN: gửi ra chuẩn `kenh_ra` (văn bản + tệp, qua dịch vụ `POST /gui-tin`), nhận vào qua `hoi_vong` (chu kỳ 5 s, lọc `danh_sach_cho_phep` mặc định rỗng = không nhận ai); dịch vụ Node dùng zca-js 2.1.2 (API **không chính thức** — **có thể bị khoá tài khoản**), nghe loopback, Bearer ≥24 ký tự fail-fast, trang QR một lần + CSP, chứng chỉ Zalo 0600, hạn tốc độ gửi; module mặc định TẮT, khoá không vào log, kiểm với dịch vụ/adapter GIẢ; **chưa kiểm với Zalo thật** | 20/10/2026 |
 | Module `zalo-ca-nhan` (Zalo cá nhân qua dịch vụ phụ Node) + dịch vụ `dich-vu/zalo-ca-nhan` | Có — kênh hai chiều bằng tài khoản CÁ NHÂN: gửi ra chuẩn `kenh_ra` (văn bản + tệp, qua dịch vụ `POST /gui-tin`), nhận vào qua `hoi_vong` (chu kỳ 5 s, lọc `danh_sach_cho_phep` mặc định rỗng = không nhận ai); dịch vụ Node dùng zca-js 2.1.2 (API **không chính thức** — **có thể bị khoá tài khoản**), trong container nghe 0.0.0.0 nhưng cổng chỉ publish về 127.0.0.1 của máy chủ, Bearer ≥24 ký tự fail-fast, trang QR một lần + CSP, chứng chỉ Zalo 0600, hạn tốc độ gửi giữ chỗ nguyên tử; module mặc định TẮT, khoá không vào log, kiểm với dịch vụ/adapter GIẢ; **chưa kiểm với Zalo thật** | 20/10/2026 |
-| Module `cameranha` (Camera nhà — go2rtc/RTSP, loa/bộ đàm, NV167) + dịch vụ `dich-vu/camera` | Có — thực thể C1 đọc `cam.<tên>` (chụp, chụp cho AI, cảnh báo chuyển động qua webhook Frigate), ghi `cam.phat_<tên>` chỉ khi bật loa (mặc định TẮT); URL luồng là bí mật, không vào log; phát bị trần thời lượng/giãn cách ở hai lớp; giao thức kênh nói chép từ c2a (NetSDK 37777, HTTP 8086, HCNetSDK); kiểm với go2rtc giả + dịch vụ phụ thật trên loopback; **chưa kiểm với camera thật**, dịch vụ chưa dựng ảnh Docker | 20/10/2026 |
+| Module `cameranha` (Camera nhà — go2rtc/RTSP, loa/bộ đàm, NV167; sửa bảo mật NV173B) + dịch vụ `dich-vu/camera` | Có — thực thể C1 đọc `cam.<tên>` (chụp, chụp cho AI, cảnh báo chuyển động qua webhook Frigate), `cam.phat_<tên>` ở mức nguy_hiem chỉ khi bật loa (mặc định TẮT, xác nhận từng lần); URL luồng là bí mật, không vào log; địa chỉ camera chỉ mạng riêng + ghim IP; dịch vụ phụ chỉ nhận cam_id của bảng đã đăng ký; phát bị trần thời lượng/giãn cách ở hai lớp; giao thức kênh nói chép từ c2a (NetSDK 37777, HTTP 8086, HCNetSDK); kiểm với go2rtc giả + dịch vụ phụ thật trên loopback; **chưa kiểm với camera thật**, dịch vụ chưa dựng ảnh Docker | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3603,16 +3603,26 @@ Việt và link Google Maps. Trạng thái bản tin/vùng lưu tại
 phụ `dich-vu/camera/`), ảnh cho mô hình thị giác theo luồng phụ thu nhỏ, nhận
 cảnh báo chuyển động từ Frigate qua cửa webhook chung của lõi (giữ tối đa 20 sự
 kiện gần nhất trong RAM, không lưu ảnh), và phát tiếng ra loa camera/bộ đàm hai
-chiều khi quản trị bật (`loa_bat=true`, thực thể ghi `cam.phat_<tên>`; mặc định
+chiều khi quản trị bật (`loa_bat=true`, thực thể `cam.phat_<tên>` ở mức rủi ro
+**nguy_hiem** — khoá khách vào hàng chờ, quản trị xác nhận từng lần; mặc định
 **TẮT**). Giao thức kênh nói (NetSDK cổng 37777, HTTP 8086, HCNetSDK cổng 8000)
 và logic chụp/thu nhỏ chép chạy thật từ c2a — xem mục «Tận dụng từ c2a» trong
 báo cáo `nv167-bao-cao.md`. Mã nguồn: `modules/cameranha/`, `dich-vu/camera/`.
 
 **Bảo mật.** URL luồng chứa tài khoản/mật khẩu là trường `bi_mat` — không bao
-giờ vào log/phản hồi/`suc_khoe`/`modules.json`; địa chỉ camera chỉ qua kiểm
-`app/tu_xa.py` (dải riêng tư được phép theo luật tu_xa, loopback/link-local và
-Internet bị chặn); chụp/phát bị trần kích thước; phát bị trần thời lượng
-(mặc định 10 s ở module, 30 s ở dịch vụ phụ) và giãn cách 2 s; dịch vụ phụ là
+giờ vào log/phản hồi/`suc_khoe`/`modules.json`. Kiểm địa chỉ là lớp RIÊNG của
+module/dịch vụ (chặt hơn `app/tu_xa.py`): phân giải tên máy rồi kiểm từng IP —
+chỉ mạng riêng mới qua cho URL camera (công khai/loopback/link-local bị chặn),
+loopback chỉ dành cho `base` go2rtc/`dich_vu_url` khai tường minh; khi gọi ra,
+module ghim IP đã kiểm bằng `TransportGhimIp` của lõi (chống DNS rebinding).
+Dịch vụ phụ chỉ nhận bảng camera ĐÃ ĐĂNG KÝ (`POST /dang-ky`, kiểm cấu
+trúc/scheme/địa chỉ và ghim IP lúc đăng ký) và `cam_id` cho mọi đường còn
+lại — không nhận URL theo từng lời gọi; ffmpeg RTSP chạy với
+`-protocol_whitelist rtsp,tcp,udp,rtp`; khoá dịch vụ được kiểm trước khi
+đọc thân yêu cầu. `cho_ai_xem=false` chặn MỌI hành động trả ảnh (cổng theo
+dữ liệu trả ra). Chụp/phát bị trần kích thước; phát bị trần thời lượng
+(mặc định 10 s ở module, 30 s ở dịch vụ phụ) và giãn cách 2 s; phiên bộ đàm
+có trần số phiên/thời lượng/hết hạn khi im ở dịch vụ phụ; dịch vụ phụ là
 container riêng (user không root, Bearer <redacted>á ≥ 24 ký tự, chỉ nghe loopback
 theo mặc định). Chưa kiểm với camera thật; dịch vụ chưa dựng ảnh Docker.
 
