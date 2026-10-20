@@ -33,7 +33,8 @@
     <p class="phu nho">Bấm Mở rồi bấm liên kết «Vào trình duyệt» (dùng một lần trong 60 giây) để đăng nhập qua noVNC.
       Trang cần mở chỉ áp dụng khi trình duyệt mở mới; workspace đang mở thì gõ địa chỉ ngay trong noVNC.</p>
     <p class="phu nho">Xong thì bấm «Đóng · giữ phiên». Muốn đưa tài khoản vào module, dùng mục «Tái dùng» bên dưới và
-      chọn đúng workspace đã đóng.</p>
+      chọn đúng workspace đã đóng. Nếu workspace đã gắn vào một danh tính (bằng «Nhận làm tài khoản»),
+      hệ thống tự kiểm lại phiên sau khi đóng và cập nhật trạng thái đăng nhập của danh tính.</p>
     <p class="bao bao-loi" id="loi" role="alert" hidden></p>
     <div class="ds-ws" id="ds-ws"></div>
   </section>
@@ -42,6 +43,9 @@
     <h2 id="tieu-de-tai-dung">Tái dùng workspace → thêm vào module</h2>
     <p class="phu">Chọn workspace đã đăng nhập và đã đóng → lấy cookie của tên miền → lưu vào trường bí mật của module.
       Module tự kiểm cookie trước khi lưu. Cookie đi thẳng từ server vào cấu hình module, không hiện ở trang này.</p>
+    <p class="phu nho">Không phải «Qua danh tính»: việc này chép cookie thẳng vào module, không qua danh tính dùng chung.
+      Nếu muốn nguồn AI đăng nhập bằng hồ sơ trình duyệt của danh tính, quản lý ở mục
+      <a href="../../He-thong-AI.dc.html#danh-tinh">Hệ thống → AI → Danh tính</a>.</p>
     <label for="ws-tai-dung">Workspace đã đóng</label>
     <div class="hang-chon">
       <select class="o" id="ws-tai-dung"></select>

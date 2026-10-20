@@ -207,7 +207,16 @@
       delete lienKet[w.ho_so];
       if (!kq.r.ok) throw new Error(loiCua(kq));
       await napWs();
-      thongBao('Đã đóng trình duyệt, giữ dữ liệu đăng nhập.', 'tot');
+      // NV179: hồ sơ có gắn danh tính thì lõi đã kiểm lại tín hiệu phiên sau đóng —
+      // phản hồi kèm «danh_tinh» để báo đúng trạng thái cho người dùng.
+      const dt = kq.du && kq.du.danh_tinh;
+      let tin = 'Đã đóng trình duyệt, giữ dữ liệu đăng nhập.';
+      if (dt && dt.trang_thai_dang_nhap === 'dang_nhap') {
+        tin += ' Danh tính liên kết: đã đăng nhập.';
+      } else if (dt) {
+        tin += ' Danh tính liên kết: trạng thái giữ nguyên (chưa kiểm được phiên).';
+      }
+      thongBao(tin, 'tot');
     });
   }
 

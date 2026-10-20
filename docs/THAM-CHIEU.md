@@ -66,7 +66,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Tác phẩm, Nhà, Đời sống, giọng nói, MCP, nhật ký trên web | Chưa có (chờ module thật đứng sau) | — |
 | Gemini: nhúng (embeddings), video bằng Gemini Omni | Chưa có | — |
 | Chữ ký số cho module | Chưa có (chỉ kiểm chữ ký commit của GitHub, tuỳ chọn) | — |
-| Kho danh tính + API danh tính (`GET`/`POST /api/danh-tinh`, `GET`/`DELETE /api/danh-tinh/{id}`, `POST …/{id}/gan|go`): một email một lần, gắn nhiều provider, xoá bị chặn khi còn tài khoản trỏ tới, kho mã hoá AES-256-GCM quyền 0600 | Có — kiểm với máy chủ giả (NV67 nhóm 1, việc 1–2); **chưa có giao diện** | 17/10/2026 |
+| Kho danh tính + API danh tính (`GET`/`POST /api/danh-tinh`, `GET`/`DELETE /api/danh-tinh/{id}`, `POST …/{id}/gan|go`): một email một lần, gắn nhiều provider, xoá bị chặn khi còn tài khoản trỏ tới, kho mã hoá AES-256-GCM quyền 0600 | Có — kiểm với máy chủ giả (NV67 nhóm 1, việc 1–2); giao diện: mục «Danh tính» ở Hệ thống → AI (NV179) | 17/10/2026 |
 | Sao lưu gồm danh tính: `bi_mat/danh_tinh.json` có bộ kiểm riêng (id đúng khuôn `dt-<16hex>`, email đúng khuôn, không trùng id/email; sai → `400` `sao_luu_khong_hop_le` nêu tên tệp, không ghi đè); bản không mật khẩu không chứa bí mật | Có — kiểm với máy chủ giả (NV67 nhóm 5, việc 11) | 17/10/2026 |
 | Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
@@ -2195,6 +2195,13 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 - `POST /api/danh-tinh` — tạo hồ sơ + tự đăng nhập nền (`email` bắt buộc, `mat_khau`/`ma_2fa`/`nhan`
   tuỳ chọn); không mật khẩu → chỉ kiểm «đi tắt», chưa đăng nhập thì «cần người».
 - `GET /api/danh-tinh/{id}/trang-thai` — bản ghi danh tính + tiến độ đăng nhập (không bí mật).
+- `POST /api/danh-tinh/{id}/kiem-lai` — kiểm lại tín hiệu đăng nhập của hồ sơ đã gắn bằng quy
+  tắc tín hiệu của module đăng nhập danh tính (NV179): chỉ NÂNG trạng thái lên `dang_nhap` khi
+  kiểm được tín hiệu; kiểm không được thì GIỮ NGUYÊN trạng thái cũ (không đoán). Chưa gắn hồ
+  sơ → `400` `chua_co_ho_so`; không có danh tính → `404`. Trả `{danh_tinh, da_dang_nhap}`.
+  Cùng cơ chế này chạy tự động sau `POST /api/trinh-duyet/{module}/{ho_so}/dong` khi đóng
+  GIỮ PHIÊN mà hồ sơ có gắn danh tính — phản hồi đóng kèm trường `danh_tinh`
+  (`{id, trang_thai_dang_nhap}`); lỗi kiểm không bao giờ làm hỏng đường đóng.
 - `POST /api/danh-tinh/{id}/ma-2fa` — gửi mã 2FA khi hồ sơ đang chờ (`{"ma": "..."}`).
 - `DELETE /api/danh-tinh/{id}` — xoá hồ sơ (đóng workspace trình duyệt, xoá danh tính; kèm cảnh
   báo: mọi tài khoản provider dùng chung hồ sơ coi như đã đăng xuất).
@@ -3974,6 +3981,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/danh-tinh` | Có | Liệt kê hồ sơ Google (trạng thái đăng nhập, hồ sơ trình duyệt, module đã gắn) — sổ danh tính của lõi (NV92) |
 | `POST /api/danh-tinh` | Có | Tạo hồ sơ Google + tự đăng nhập nền (`email` bắt buộc; `mat_khau`/`ma_2fa`/`nhan` tuỳ chọn; không mật khẩu → chỉ kiểm «đi tắt»); chạy lần lượt, dừng được (`LuotChay`); đang có lượt chạy → `409` (NV92) |
 | `GET /api/danh-tinh/{id}/trang-thai` | Có | Bản ghi danh tính + tiến độ đăng nhập của hồ sơ (không bí mật); id lạ → `404` (NV92) |
+| `POST /api/danh-tinh/{id}/kiem-lai` | Có | Kiểm lại tín hiệu đăng nhập của hồ sơ đã gắn (quy tắc tín hiệu của module đăng nhập danh tính): chỉ NÂNG lên `dang_nhap` khi kiểm được, không kiểm được thì GIỮ NGUYÊN (không đoán); chưa gắn hồ sơ → `400` `chua_co_ho_so`; id lạ → `404`; cùng cơ chế tự chạy sau «Đóng · giữ phiên» ở `POST /api/trinh-duyet/{module}/{ho_so}/dong` (NV179) |
 | `POST /api/danh-tinh/{id}/ma-2fa` | Có | Gửi mã 2FA khi hồ sơ đang chờ (`{"ma": "..."}`); chưa gắn workspace → `400`; mã không vào phản hồi/log/nhật ký (NV92) |
 | `DELETE /api/danh-tinh/{id}` | Có | Xoá hồ sơ Google (đóng workspace trình duyệt, xoá danh tính); kèm `canh_bao`: tài khoản provider dùng chung coi như đã đăng xuất (NV92) |
 | `POST /api/tai-khoan/tai-dung` | Có | Một provider tái dùng hồ sơ Google (`{"module_id", "ho_so"}`) → chạy `tai_dung_ho_so` → tài khoản mới (khoá dạng che `…abcd`) hoặc `can_nguoi` + `url_novnc`; module chưa cài → `404`, chưa hỗ trợ → `501`, chưa có trình duyệt → `503` (NV92) |
@@ -4036,7 +4044,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/trinh-duyet/{module}` | Có | Liệt kê workspace (hồ sơ) của module: `ho_so`, `ten`, `loai`, `trang_thai`, `dang_mo`, `thu_cong`, `luc_mo` |
 | `POST /api/trinh-duyet/{module}` | Có | Tạo workspace `{"ten"}` → `{"ho_so", "ten"}` (ID ngẫu nhiên, không mở trình duyệt) |
 | `POST /api/trinh-duyet/{module}/{ho_so}/cookie-sang-module` | Có | Lấy cookie của `mien` từ hồ sơ, cài vào trường bí mật `truong` của `module_dich` (phản hồi không chứa cookie) |
-| `POST /api/trinh-duyet/{module}/{ho_so}/dong` | Có | Đóng hồ sơ trình duyệt, thu hồi vé/phiên và đóng WebSocket |
+| `POST /api/trinh-duyet/{module}/{ho_so}/dong` | Có | Đóng hồ sơ trình duyệt, thu hồi vé/phiên và đóng WebSocket; đóng GIỮ PHIÊN mà hồ sơ có gắn danh tính → tự kiểm lại tín hiệu phiên và cập nhật trạng thái danh tính, phản hồi kèm trường `danh_tinh` (NV179) |
 | `DELETE /api/trinh-duyet/phien` | Có | Thu hồi mọi phiên noVNC và đóng các WebSocket đang mở |
 | `GET /novnc/dang-nhap` | Không | Trang nhỏ có nút «Mở trình duyệt» (không script); KHÔNG tiêu thụ vé — bot xem trước liên kết chỉ GET |
 | `POST /novnc/dang-nhap` | Không (vé trong thân form) | Đổi vé (một lần, 60 giây) lấy phiên 8 giờ, 303 sang `/novnc/s/<phien>/vnc.html`; chỉ nhận `application/x-www-form-urlencoded` (khác → `415`, trước khi đọc thân), thân ≤ 4 KiB (quá → `413`, kể cả chunked); `401` vé sai/hết hạn, `429` chạm trần phiên (vé không bị đốt). Không cookie |

@@ -61,7 +61,8 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import dia_chi, gioi_han, kho, nhat_ky, phien_web
+from app import dia_chi, danh_tinh as danh_tinh_mod, gioi_han, kho, nhat_ky, phien_web
+from app import khoi_phuc_phien as khoi_phuc_phien_mod
 from app.kham_pha import ID_HOP_LE, MAU_MIEN
 from app.loi_openai import LoiOpenAI, than_loi
 from app.so_module import LoiSo, SoModule
@@ -619,6 +620,83 @@ async def api_danh_sach_ho_so(module: str, request: Request):
     return [{k: x[k] for k in _TRUONG_DS if k in x} for x in ds if isinstance(x, dict)]
 
 
+# ───────────── Sau «Đóng · giữ phiên»: cập nhật trạng thái danh tính (NV179) ─────────────
+
+KHA_NANG_DANG_NHAP_DANH_TINH = "dang_nhap_danh_tinh"
+
+
+async def _kiem_tin_hieu_danh_tinh(request: Request, ho_so: str) -> bool:
+    """Tín hiệu phiên của hồ sơ theo QUY_TAC_TIN_HIEU của module có khả năng
+    «dang_nhap_danh_tinh» — CÙNG cơ chế NV155c ở `app/tuyen.py`
+    (`_kiem_tin_hieu_dang_nhap`): lõi không tự dò. Không import được từ tuyen vì
+    tuyen import novnc (vòng lặp). True CHỈ khi có tín hiệu «da_dang_nhap»;
+    không kiểm được → False."""
+    so = _so(request)
+    dang_chay = getattr(so, "dang_chay", None) or {}
+    mod_dn = None
+    for mod in dang_chay.values():
+        cung_cap = (getattr(mod, "manifest", None) or {}).get("cung_cap") or []
+        if KHA_NANG_DANG_NHAP_DANH_TINH in cung_cap:
+            mod_dn = mod
+            break
+    if mod_dn is None:
+        return False
+    lay_quy_tac = getattr(mod_dn, "quy_tac_tin_hieu", None)
+    if not callable(lay_quy_tac):
+        return False
+    try:
+        quy_tac = lay_quy_tac() or []
+    except Exception as e:
+        log.warning("dong-ho-so: quy_tac_tin_hieu lỗi: %s", type(e).__name__)
+        return False
+    td = khoi_phuc_phien_mod.lay_trinh_duyet_that(ho_so, dang_chay)
+    if td is None:
+        return False
+    try:
+        tin_hieu = await khoi_phuc_phien_mod._tin_hieu_an_toan(td, list(quy_tac))
+    except Exception:
+        return False
+    finally:
+        dong = getattr(td, "dong", None)
+        if callable(dong):
+            try:
+                await dong()
+            except Exception as e:
+                log.warning("dong-ho-so: dong() bộ điều khiển lỗi: %s",
+                            type(e).__name__)
+    return "da_dang_nhap" in tin_hieu
+
+
+async def _cap_nhat_danh_tinh_sau_dong(request: Request, ho_so: str) -> dict | None:
+    """NV179: hồ sơ vừa đóng (giữ phiên) có gắn danh tính thì kiểm lại tín hiệu
+    phiên và cập nhật trạng thái. Chỉ NÂNG lên «dang_nhap» khi kiểm được; kiểm
+    không được → giữ nguyên (không đoán). Trả {id, trang_thai_dang_nhap} để giao
+    diện báo đúng; không có danh tính gắn hồ sơ → None. MỌI lỗi ở đây chỉ ghi
+    log — không bao giờ làm hỏng đường đóng."""
+    try:
+        ban_ghi = danh_tinh_mod.tim_theo_ho_so(ho_so)
+    except Exception as e:
+        log.warning("dong-ho-so: đọc danh tính theo hồ sơ %s lỗi: %s",
+                    ho_so, type(e).__name__)
+        return None
+    if ban_ghi is None:
+        return None
+    trang_thai = ban_ghi["trang_thai_dang_nhap"]
+    try:
+        if await _kiem_tin_hieu_danh_tinh(request, ho_so):
+            moi = danh_tinh_mod.cap_nhat_trang_thai(ban_ghi["id"], trang_thai="dang_nhap")
+            if moi["trang_thai_dang_nhap"] != trang_thai:
+                trang_thai = moi["trang_thai_dang_nhap"]
+                nhat_ky.ghi("trinh_duyet", "thong_tin",
+                            f"Đóng hồ sơ {ho_so}: danh tính đã đăng nhập (kiểm lại sau đóng)",
+                            ho_so=ho_so, hanh_dong="kiem_lai_danh_tinh",
+                            ket_qua="dang_nhap", id_danh_tinh=ban_ghi["id"])
+    except Exception as e:
+        log.warning("dong-ho-so: kiểm lại danh tính %s lỗi: %s",
+                    ban_ghi["id"], type(e).__name__)
+    return {"id": ban_ghi["id"], "trang_thai_dang_nhap": trang_thai}
+
+
 @api_router.post("/{module}/{ho_so}/dong")
 async def api_dong_trinh_duyet(module: str, ho_so: str, request: Request):
     kiem_tra_ho_so_id(ho_so)
@@ -650,7 +728,15 @@ async def api_dong_trinh_duyet(module: str, ho_so: str, request: Request):
     nhat_ky.ghi("trinh_duyet", "thong_tin", f"Đóng hồ sơ trình duyệt {ho_so} ({module})",
                 module=module, ho_so=ho_so, hanh_dong="dong", ket_qua="thanh_cong", da_thu_hoi=True)
     ok = bool(kq.get("ok", True)) if isinstance(kq, dict) else True
-    return {"ok": ok, "da_thu_hoi": True}
+    ket_qua: dict[str, Any] = {"ok": ok, "da_thu_hoi": True}
+    # NV179: đóng GIỮ PHIÊN mà hồ sơ có gắn danh tính → kiểm lại tín hiệu phiên
+    # và cập nhật trạng thái danh tính; phản hồi kèm trường «danh_tinh» để giao
+    # diện báo đúng. Đóng không giữ phiên (xoá dữ liệu) thì không kiểm.
+    if ok and giu_phien:
+        dt = await _cap_nhat_danh_tinh_sau_dong(request, ho_so)
+        if dt is not None:
+            ket_qua["danh_tinh"] = dt
+    return ket_qua
 
 
 @api_router.delete("/phien")

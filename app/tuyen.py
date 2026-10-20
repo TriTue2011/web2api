@@ -3289,6 +3289,44 @@ def trang_thai_dang_nhap_danh_tinh(id: str, request: Request):
     return {"danh_tinh": ban_ghi, "tien_do": tien_do}
 
 
+@danh_tinh.post("/{id}/kiem-lai")
+async def kiem_lai_dang_nhap_danh_tinh(id: str, request: Request):
+    """Kiểm lại tín hiệu đăng nhập của hồ sơ đã gắn (NV179): dùng QUY TẮC TÍN HIỆU
+    của module «dang_nhap_danh_tinh» (cùng cơ chế NV155c `nhan-ho-so`) — không tự
+    dò. Chỉ NÂNG trạng thái lên «dang_nhap» khi kiểm được tín hiệu; kiểm không
+    được (hết hạn, workspace hỏng, dịch vụ chết) thì GIỮ NGUYÊN trạng thái cũ,
+    không đoán. Chưa gắn hồ sơ → 400 `chua_co_ho_so`; không có danh tính → 404."""
+    ban_ghi = danh_tinh_mod.lay(id)
+    if ban_ghi is None:
+        raise LoiOpenAI(404, "Không tìm thấy danh tính.",
+                        code="danh_tinh_khong_co")
+    ho_so = ban_ghi["ho_so_trinh_duyet"]
+    if not ho_so:
+        raise LoiOpenAI(400, "Danh tính chưa gắn hồ sơ trình duyệt.",
+                        code="chua_co_ho_so")
+    try:
+        da = await _kiem_tin_hieu_dang_nhap(request, ho_so)
+    except Exception as e:
+        log.warning("danh-tinh: kiểm lại đăng nhập %s lỗi: %s",
+                    id, type(e).__name__)
+        da = False
+    if da:
+        try:
+            ban_ghi = danh_tinh_mod.cap_nhat_trang_thai(id, trang_thai="dang_nhap")
+        except Exception as e:
+            log.warning("danh-tinh: cập nhật trạng thái %s lỗi: %s",
+                        id, type(e).__name__)
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Kiểm lại đăng nhập danh tính (id: {_nhac_lai(id)}): "
+        f"{'đã đăng nhập' if da else 'không kiểm được tín hiệu — giữ nguyên trạng thái'}",
+        id_danh_tinh=id, nguoi_thuc_hien=nguoi_thuc_hien)
+    return {"danh_tinh": ban_ghi,
+            "da_dang_nhap": bool(da),
+            "trang_thai_dang_nhap": ban_ghi["trang_thai_dang_nhap"]}
+
+
 @danh_tinh.post("/{id}/ma-2fa")
 async def gui_ma_2fa_danh_tinh(id: str, request: Request):
     """Gửi mã 2FA khi danh tính đang ở trạng thái chờ («cho_2fa»)."""

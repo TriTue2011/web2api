@@ -37,7 +37,10 @@ Trang `web/index.html` (bám thẻ «Workspace trình duyệt» + mục «Tái d
 đầu (Muse, Google, ChatGPT, Claude, Gemini), «Mở» → liên kết «Vào trình duyệt», «Đóng · giữ phiên», và «Tái dùng
 workspace → thêm vào module»: chọn workspace đã đóng + module nhận — trường bí mật + tên miền → «Lấy cookie sang
 module». Cookie đi dịch vụ → lõi → module đích, không bao giờ qua trang. Các bước đầy đủ: `dich-vu/trinh-duyet/README.md`
-mục «Đăng nhập Muse trên server».
+mục «Đăng nhập Muse trên server». Trang cũng ghi rõ mục «Tái dùng» là chép cookie THẲNG vào module —
+khác «Qua danh tính» (đăng nhập bằng hồ sơ của danh tính dùng chung, quản lý ở mục «Danh tính» của
+Hệ thống → AI). Sau «Đóng · giữ phiên», nếu workspace đã gắn danh tính («Nhận làm tài khoản»), lõi tự
+kiểm lại tín hiệu phiên và cập nhật trạng thái đăng nhập của danh tính đó (NV179).
 
 ## Cấu hình
 
