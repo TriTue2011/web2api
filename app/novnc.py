@@ -653,7 +653,8 @@ async def _kiem_tin_hieu_danh_tinh(request: Request, ho_so: str) -> bool:
     if td is None:
         return False
     try:
-        tin_hieu = await khoi_phuc_phien_mod._tin_hieu_an_toan(td, list(quy_tac))
+        # Bộ kiểm chung của lõi (NV155c-SUA): đọc kho cookie hồ sơ ĐÃ ĐÓNG trước, dự phòng phiên sống có kiểm soát.
+        da_dang_nhap, _nguon = await khoi_phuc_phien_mod.kiem_da_dang_nhap(td, list(quy_tac))
     except Exception:
         return False
     finally:
@@ -664,7 +665,7 @@ async def _kiem_tin_hieu_danh_tinh(request: Request, ho_so: str) -> bool:
             except Exception as e:
                 log.warning("dong-ho-so: dong() bộ điều khiển lỗi: %s",
                             type(e).__name__)
-    return "da_dang_nhap" in tin_hieu
+    return bool(da_dang_nhap)
 
 
 async def _cap_nhat_danh_tinh_sau_dong(request: Request, ho_so: str) -> dict | None:

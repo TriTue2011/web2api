@@ -3306,7 +3306,7 @@ async def kiem_lai_dang_nhap_danh_tinh(id: str, request: Request):
         raise LoiOpenAI(400, "Danh tính chưa gắn hồ sơ trình duyệt.",
                         code="chua_co_ho_so")
     try:
-        da = await _kiem_tin_hieu_dang_nhap(request, ho_so)
+        da, _nguon = await _kiem_tin_hieu_dang_nhap(request, ho_so)  # (kết quả, nguồn) — NV155c-SUA
     except Exception as e:
         log.warning("danh-tinh: kiểm lại đăng nhập %s lỗi: %s",
                     id, type(e).__name__)
