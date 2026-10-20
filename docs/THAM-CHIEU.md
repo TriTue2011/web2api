@@ -2255,6 +2255,70 @@ không bot trả lời. Mã nguồn: `modules/telegram-bot/`. Tiền tố model:
 - Mạng ra tới `api.telegram.org` (địa chỉ gọi cố định trong mã — không cho cấu hình
   URL tuỳ ý, chống SSRF).
 
+### Module facebook — Facebook (đăng bài Trang)
+
+**Mô tả.** Đăng bài lên Trang (Page) Facebook qua Graph API chính thức của Meta
+(`https://graph.facebook.com/v23.0`), theo chuẩn thiết bị C1 của lõi: mỗi Trang
+đã kết nối là một thực thể `facebook.trang_<page_id>` với hành động
+`dang_bai` / `dang_anh` / `dang_video` và `rui_ro_mac_dinh: "nguy_hiem"` — lõi
+bắt quản trị xác nhận (SEC-004f) trước khi bất cứ bài nào ra công chúng (lý do
+chọn C1 thay vì `kenh_ra`: kênh gửi ra không có cổng xác nhận cho hành động ghi
+công khai). Ảnh: module tải an toàn qua `app.tai_url_khong_tin` + kiểm bằng
+`app.tep_an_toan.kiem_anh` rồi upload bytes lên `/{page}/photos`; video:
+Graph nhận `file_url` (Facebook tự kéo, URL phải là host công khai). Đăng vào
+**nhóm không hỗ trợ**: Meta đã gỡ Groups API từ 04/2024. Mã nguồn:
+`modules/facebook/`. Hạng: `A` (mã của dự án). Tiền tố thực thể: `facebook`.
+
+**Cần gì.**
+- App Meta tự tạo (developers.facebook.com, loại Business): `app_id` +
+  `app_secret`.
+- User token ngắn hạn từ Graph API Explorer (quyền `pages_manage_posts` +
+  `pages_show_list`); module đổi lấy token dài hạn ~60 ngày, nạp danh sách
+  Trang qua `me/accounts` (phân trang), rồi tự xoá token ngắn hạn khỏi cấu
+  hình đã lưu. Page access token lưu dạng bí mật (`bi_mat`), không API nào
+  trả lại.
+- Mạng ra tới `graph.facebook.com` (địa chỉ gọi cố định trong mã — không cho
+  cấu hình URL tuỳ ý, chống SSRF).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "facebook"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/facebook`
+3. Cài cấu hình: `POST /api/modules/facebook/cai` với thân
+   `{"cau_hinh": {"app_id": "<APP_ID>", "app_secret": "<APP_SECRET>", "user_token": "<USER_TOKEN>"}}`
+   — module kiểm bằng đổi token + nạp Trang THẬT (máy chủ Graph giả khi test).
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `app_id` | Có | Mã ứng dụng Meta. |
+| `app_secret` | Có | App Secret (kèm appsecret_proof vào mọi lời gọi). Lưu bí mật. |
+| `user_token` | Không | Token người dùng ngắn hạn từ Graph API Explorer; chỉ dùng một lần khi Cài, đổi xong bị xoá. |
+| `user_token_long` | Không | Token dài hạn ~60 ngày — module TỰ LƯU. |
+| `pages` | Không | Danh sách Trang kèm Page access token — module TỰ LƯU dạng bí mật. |
+
+**Ví dụ dùng.**
+
+```bash
+# Đăng bài chữ lên Trang (thực thể nguy_hiem → quản trị phải xác nhận trước;
+# chưa xác nhận thì lõi trả 409 theo cổng SEC-004f)
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"hanh_dong": "dang_bai", "tham_so": {"noi_dung": "Chào cả nhà!"}, "xac_nhan": true}' \
+  $W/api/thiet-bi/facebook.trang_111/hanh-dong
+```
+
+**Sự cố thường gặp.**
+- `Token Facebook hết hạn hoặc bị thu hồi — vào Cài đặt ▸ Facebook nối lại` —
+  token dài hạn ~60 ngày hết hạn: dán lại user token mới ở trường `user_token`
+  rồi bấm Cài (mục «làm tươi»).
+- `Đăng quá nhanh — chờ một lát rồi thử lại` — khoảng cách tối thiểu 30 giây
+  giữa hai bài trên cùng một Trang (trần tự chọn).
+
+**Giới hạn.**
+- Chưa kiểm với Facebook thật (test bằng máy chủ Graph giả cục bộ).
+- Không đăng nhóm, không lên lịch đăng, không sửa/xoá bài, không đọc bình luận.
+
 ### Module home-assistant — Home Assistant (thiết bị nhà)
 
 **Mô tả.** Đọc trạng thái và điều khiển có kiểm soát các thực thể Home Assistant (HA)
