@@ -14,12 +14,18 @@ Metadata-only search providers used by the player service."""
 from __future__ import annotations
 
 import gzip
+import ipaddress
 import json
 import re
 import subprocess
 import sys
 from urllib.parse import parse_qs, quote_plus, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import (
+    HTTPRedirectHandler,
+    Request,
+    build_opener,
+    urlopen,
+)
 
 
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -176,6 +182,55 @@ def facebook_share_url(query):
     return text if FACEBOOK_SHARE_PATH.fullmatch(parsed.path) else None
 
 
+_CHUYEN_HUONG_TOI_DA = 5
+
+
+def _host_dich_chuyen_huong(host: str) -> bool:
+    """Host ĐÍCH của một bước chuyển hướng có được phép không (NV153 đợt D3).
+
+    Chỉ tên miền Facebook trong `FACEBOOK_URL_HOSTS`. Đích là IP literal —
+    riêng tư, loopback, link-local hay kể cả IP công cộng — đều TỪ CHỐI:
+    trang Facebook không bao giờ nằm ở một IP trần, và IP literal chính là
+    hình dạng của SSRF (127.0.0.1, IP LAN của máy chủ/Home Assistant)."""
+    host = (host or "").lower().rstrip(".")
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass  # không phải IP literal → xét theo danh sách tên miền
+    else:
+        return False
+    return host in FACEBOOK_URL_HOSTS
+
+
+class _XuLyChuyenHuongFb(HTTPRedirectHandler):
+    """Kiểm host ở MỖI bước chuyển hướng khi lần link chia sẻ Facebook (D3).
+
+    urllib mặc định theo 3xx vô điều kiện: URL đầu đã qua
+    `facebook_share_url` (host Facebook) nhưng đích sau chuyển hướng thì
+    không — một link /share/… bị chuyển hướng độc có thể dẫn dịch vụ tới
+    127.0.0.1 hay IP LAN. Bộ xử lý này từ chối mọi đích ngoài danh sách cho
+    phép / dải riêng tư / loopback, và giới hạn số bước ở
+    `_CHUYEN_HUONG_TOI_DA`. Ném SearchUnavailableError để người gọi dịch
+    thành lỗi tìm kiếm sạch như các lỗi mạng khác.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._buoc = 0
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        self._buoc += 1
+        if self._buoc > _CHUYEN_HUONG_TOI_DA:
+            raise SearchUnavailableError("facebook_redirect_too_many")
+        parsed = urlsplit(newurl)
+        if parsed.scheme not in {"http", "https"} or not _host_dich_chuyen_huong(
+                parsed.hostname or ""):
+            raise SearchUnavailableError("facebook_unsafe_redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def resolve_facebook_share(share_url, *, timeout=20):
     """Mã video đứng sau một link chia sẻ Facebook.
 
@@ -186,8 +241,11 @@ def resolve_facebook_share(share_url, *, timeout=20):
     Vì sao phải làm: mã trong link chia sẻ KHÔNG phải mã video và cũng không suy ra
     được — đo được mã bài viết 1135095972510953 còn mã video 1807802260572674."""
     request = Request(share_url, headers=FACEBOOK_PAGE_HEADERS)
+    # Mở bằng opener có bộ xử lý chuyển hướng riêng (D3) — urlopen mặc định
+    # theo 3xx tới BẤT KỲ host nào.
+    bo_mo = build_opener(_XuLyChuyenHuongFb())
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with bo_mo.open(request, timeout=timeout) as response:
             body = response.read(SEARCH_RESPONSE_LIMIT + 1)
             if len(body) > SEARCH_RESPONSE_LIMIT:
                 raise SearchUnavailableError("search_response_too_large")
