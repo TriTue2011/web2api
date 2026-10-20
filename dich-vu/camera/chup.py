@@ -6,8 +6,10 @@ NGUỒN (LUẬT PORT của chủ máy): chép hàm chạy thật từ
 756 dòng) — chỉ đổi lớp kết nối của web2api, KHÔNG viết lại từ đầu:
 
 - ``_chup_go2rtc``: ``httpx`` → ``urllib`` (dịch vụ phụ chỉ thư viện chuẩn).
-- Sổ camera (``services.config`` của c2a) không có ở đây: các hàm nhận bản ghi
-  ``cam`` trực tiếp — dịch vụ phụ không giữ cấu hình, module gửi từng lượt.
+- Sổ camera (``services.config`` của c2a) không có ở đây: module ĐĂNG KÝ bảng
+  camera một lần (``POST /dang-ky``, xem ``server.py``); các hàm ở đây nhận
+  bản ghi đã qua :func:`kiem_ban_ghi` từ bảng của chính dịch vụ — lời gọi
+  KHÔNG mang URL nữa (soát độc lập C2: C2).
 - ``_chup_rtsp`` giữ NGUYÊN cách c2a (URL RTSP vào argv ffmpeg) — xem chú thích
   dài ở đầu tệp giải thích vì sao (container riêng, user non-root, /proc không
   chia sẻ; dùng env chỉ ẩn khỏi ps chứ không ẩn khỏi root). Log và phản hồi
@@ -20,9 +22,11 @@ phụ), ``_DocBenBi``/``_DocKhungKhoa`` (cv2 + luồng giữ mở — thuộc l�
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import urllib.request
@@ -66,6 +70,147 @@ def che_bi_mat(url: str) -> str:
     if p.port:
         chu += f":{p.port}"
     return urlunsplit((p.scheme, chu, p.path, p.query, p.fragment))
+
+
+# ── Kiểm bản ghi + ghim IP (soát độc lập C2: C2 + C4) ───────────────────────
+# Lớp lỗi của bản cũ: dịch vụ tin URL trong THÂN từng lời gọi — ai có khoá
+# dịch vụ (hoặc chèn được cấu hình vào module) có một proxy SSRF đọc trọn
+# thân tới loopback/metadata/LAN, và `ffmpeg -i` nhận scheme tuỳ ý
+# (file:/concat:/http:). Lớp mới theo nguyên tắc «kiểm một lần ở biên, dùng
+# địa chỉ đã kiểm»:
+#   1. Bản ghi chỉ vào được bảng của dịch vụ qua kiem_ban_ghi (đăng ký):
+#      kind đóng {go2rtc, rtsp}, scheme đóng (base http/https, url rtsp),
+#      host phân giải ra địa chỉ RIÊNG (loopback của chính container cũng
+#      chặn — nó không bao giờ là camera/go2rtc).
+#   2. Đạt kiểm thì GHIM IP đã kiểm vào bản ghi (base → ``_base_ghim``,
+#      url/url_ai viết lại theo IP) — lúc gọi không còn phụ thuộc DNS
+#      (chống rebinding), và ffmpeg chỉ nhận URL từ bảng đã ghim này.
+#   3. ffmpeg RTSP luôn có -protocol_whitelist rtsp,tcp,udp,rtp.
+
+def _cho_loopback_de_test() -> bool:
+    """Chỉ test bật (go2rtc giả chạy trên 127.0.0.1) — khuôn
+    ``WEB2API_TEST_CHO_PHEP_LOOPBACK`` của app/tu_xa trong lõi."""
+    return os.environ.get("CAM_TEST_CHO_PHEP_LOOPBACK") == "1"
+
+
+def _dia_chi_dv_bi_chan(ip) -> str | None:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_link_local:
+        return "link-local / metadata đám mây (169.254.0.0/16)"
+    if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return "địa chỉ không định tuyến"
+    if ip.is_loopback:
+        return None if _cho_loopback_de_test() else "loopback (chính container dịch vụ)"
+    if ip.is_private:
+        return None
+    return "địa chỉ công khai — camera/go2rtc chỉ ở mạng nhà riêng"
+
+
+def _kiem_va_ghim(url: str, schemes: tuple[str, ...]) -> tuple[str | None, str | None]:
+    """Kiểm một URL rồi trả ``(lỗi, url_đã_ghim_IP)`` — giữ nguyên
+    userinfo/đường/cổng, chỉ thay host bằng IP đầu tiên đã kiểm."""
+    try:
+        p = urlsplit(url)
+    except ValueError as exc:
+        return f"không phân tích được ({exc})", None
+    if p.scheme.lower() not in schemes:
+        return f"scheme phải là {'/'.join(schemes)}", None
+    if not p.hostname:
+        return "thiếu địa chỉ máy chủ", None
+    try:
+        ds = [ipaddress.ip_address(p.hostname)]
+    except ValueError:
+        try:
+            thong_tin = socket.getaddrinfo(p.hostname, None, type=socket.SOCK_STREAM)
+        except OSError:
+            return "không phân giải được tên máy", None
+        ds = list({ipaddress.ip_address(x[4][0]) for x in thong_tin})
+    if not ds:
+        return "không phân giải được tên máy", None
+    for ip in ds:
+        ly_do = _dia_chi_dv_bi_chan(ip)
+        if ly_do:
+            return f"địa chỉ bị chặn ({ly_do})", None
+    ip = ds[0]
+    host_moi = f"[{ip}]" if ip.version == 6 else str(ip)
+    netloc = p.netloc
+    if "@" in netloc:
+        tien, hostport = netloc.rsplit("@", 1)
+        tien += "@"
+    else:
+        tien, hostport = "", netloc
+    if hostport.startswith("["):
+        phan_cong = hostport[hostport.index("]") + 1:]
+    elif ":" in hostport:
+        phan_cong = ":" + hostport.split(":", 1)[1]
+    else:
+        phan_cong = ""
+    return None, urlunsplit((p.scheme, tien + host_moi + phan_cong,
+                             p.path, p.query, p.fragment))
+
+
+def kiem_ban_ghi(cam) -> str | None:
+    """Kiểm bản ghi camera LÚC ĐĂNG KÝ. Đạt thì ghim IP vào chính bản ghi;
+    trả câu lỗi (không chứa URL/mật khẩu) hoặc None."""
+    if not isinstance(cam, dict):
+        return "bản ghi camera phải là một đối tượng"
+    ten = cam.get("name")
+    if not isinstance(ten, str) or not ten.strip():
+        return "thiếu name"
+    kind = cam.get("kind")
+    if kind not in KIEU_HOP_LE:
+        return "kind phải là go2rtc hoặc rtsp"
+    if kind == "go2rtc":
+        base = str(cam.get("base") or "")
+        if not base:
+            return "thiếu base"
+        try:
+            if urlsplit(base).username or urlsplit(base).password:
+                return "base không được chứa tài khoản/mật khẩu (khai ở trường username/password)"
+        except ValueError as exc:
+            return f"base không phân tích được ({exc})"
+        loi, ghim = _kiem_va_ghim(base, ("http", "https"))
+        if loi:
+            return f"base: {loi}"
+        cam["_base_ghim"] = ghim
+        for khoa in ("src", "src_ai"):
+            val = str(cam.get(khoa) or "").strip()
+            if khoa == "src" and not val:
+                return "thiếu src"
+            if not val:
+                continue
+            if khoa == "src_ai" and val.lower().startswith("rtsp://"):
+                loi, ghim2 = _kiem_va_ghim(val, ("rtsp",))
+                if loi:
+                    return f"src_ai: {loi}"
+                cam["src_ai"] = ghim2
+            elif "://" in val:
+                return f"{khoa} là URL lạ — chỉ nhận tên luồng go2rtc hoặc rtsp:// (ở src_ai)"
+            elif any(c.isspace() for c in val) or '"' in val or "'" in val:
+                return f"{khoa} chứa ký tự lạ"
+    else:
+        for khoa in ("url", "url_ai"):
+            val = str(cam.get(khoa) or "").strip()
+            if khoa == "url" and not val:
+                return "thiếu url"
+            if val:
+                loi, ghim = _kiem_va_ghim(val, ("rtsp",))
+                if loi:
+                    return f"{khoa}: {loi}"
+                cam[khoa] = ghim
+    for khoa in ("username", "password"):
+        if cam.get(khoa) is not None and not isinstance(cam[khoa], str):
+            return f"{khoa} phải là chuỗi"
+    if cam.get("cho_loa") is not None and not isinstance(cam.get("cho_loa"), bool):
+        return "cho_loa phải là true/false"
+    return None
+
+
+def _base_hieu_luc(cam: dict) -> str:
+    """Địa chỉ go2rtc ĐÃ GHIM lúc đăng ký (dự phòng: base gốc cho lời gọi
+    nội bộ cũ chưa qua đăng ký — vẫn là địa chỉ quản trị đã khai)."""
+    return str(cam.get("_base_ghim") or cam.get("base") or "").rstrip("/")
 
 
 def kich_thuoc_jpeg(jpeg: bytes) -> tuple[int, int] | None:
@@ -126,7 +271,7 @@ def _thu_nho(jpeg: bytes, canh: int) -> bytes:
 
 def _chup_go2rtc(cam: dict, timeout: float) -> bytes:
     """Bóc một khung từ máy chủ go2rtc (``GET base/api/frame.jpeg?src=…``)."""
-    base = str(cam.get("base") or "").rstrip("/")
+    base = _base_hieu_luc(cam)
     src = quote(str(cam.get("src") or ""), safe="")
     req = urllib.request.Request(f"{base}/api/frame.jpeg?src={src}")
     if cam.get("username"):
@@ -160,6 +305,9 @@ def _chup_rtsp(cam: dict, timeout: float) -> bytes:
     try:
         p = subprocess.run(
             ["ffmpeg", "-hide_banner", "-loglevel", "error",
+             # -protocol_whitelist đóng chặt giao thức nạp (C2): thiếu nó thì
+             # scheme/đường lồng (file:, concat:, http:) vẫn lọt tới ffmpeg.
+             "-protocol_whitelist", "rtsp,tcp,udp,rtp",
              "-rtsp_transport", "tcp", "-i", url, "-frames:v", "1",
              "-q:v", "4", "-f", "image2", "pipe:1"],
             capture_output=True, timeout=timeout,
@@ -186,7 +334,7 @@ def url_luong(cam: dict, luong: str = "chinh") -> str:
         src = str(cam.get("src_ai" if phu else "src") or "").strip()
         if src.lower().startswith("rtsp://"):
             return src
-        u = urlsplit(str(cam.get("base") or ""))
+        u = urlsplit(_base_hieu_luc(cam))
         if not src or src.lower().startswith(("http://", "https://")) or not u.hostname:
             raise LoiCamera(f"camera không có luồng {'phụ' if phu else 'go2rtc'} đọc video được")
         tk = ""
@@ -201,9 +349,16 @@ def url_luong(cam: dict, luong: str = "chinh") -> str:
 
 
 def _bocc(cam: dict, timeout: float) -> bytes:
-    """Bóc một khung từ bản ghi đã chốt luồng."""
-    return (_chup_go2rtc(cam, timeout) if cam.get("kind") == "go2rtc"
-            else _chup_rtsp(cam, timeout))
+    """Bóc một khung từ bản ghi đã chốt luồng.
+
+    Kind ĐÓNG (C2): bản cũ rơi mọi kind ≠ go2rtc xuống đường RTSP — URL lạ
+    hoá thành đầu vào ffmpeg. Kind lạ phải lỗi rõ, không gọi gì cả.
+    """
+    if cam.get("kind") == "go2rtc":
+        return _chup_go2rtc(cam, timeout)
+    if cam.get("kind") == "rtsp":
+        return _chup_rtsp(cam, timeout)
+    raise LoiCamera("kind camera không hợp lệ (chỉ go2rtc/rtsp).")
 
 
 def _ban_ghi_luong(cam: dict, phu: bool) -> dict:

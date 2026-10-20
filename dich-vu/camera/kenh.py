@@ -854,7 +854,9 @@ def dia_chi(cam: dict[str, Any]) -> tuple[str, str, str]:
     import urllib.request
     from urllib.parse import quote as _quote
 
-    base = str(cam.get("base") or "").rstrip("/")
+    # Dùng địa chỉ ĐÃ GHIM lúc đăng ký (chup.kiem_ban_ghi) nếu có —
+    # cùng chính sách ghim IP như module của lõi (C4).
+    base = str(cam.get("_base_ghim") or cam.get("base") or "").rstrip("/")
     src = _quote(str(cam.get("src") or ""), safe="")
     req = urllib.request.Request(f"{base}/api/streams?src={src}")
     if cam.get("username"):
@@ -904,12 +906,19 @@ def dat_so(so: dict[str, dict[str, Any]]) -> None:
 
 
 def _lay_cho_phat(ten: str) -> tuple[str, dict[str, Any]]:
-    """Tra camera và kiểm công tắc loa. Tắt thì từ chối (mặc định TẮT theo spec)."""
+    """Tra camera và kiểm công tắc loa.
+
+    Cờ loa là cho-phép-theo-khai-báo (C4): chỉ mở khi bản ghi khai RÕ
+    ``cho_loa=true``. Bản cũ chỉ từ chối khi ``cho_loa is False`` — bản ghi
+    THIẾU trường (module cũ không gửi, hoặc đăng ký tay) lại mở loa theo mặc
+    định: hai đầu bất đối xứng về mặc định cho một quyền nhạy cảm. Thiếu
+    trường = tắt, đúng như thông điệp lỗi cũ đã hứa («mặc định tắt»).
+    """
     ten_that = str(ten or "").strip()
     cam = _SO.get(ten_that)
     if cam is None:
         raise LoiLoa(f"không thấy camera «{ten_that}».")
-    if cam.get("cho_loa") is False:
+    if cam.get("cho_loa") is not True:
         raise LoiLoa(f"Loa của camera «{ten_that}» đang tắt (mặc định tắt, bật ở cấu hình module).")
     return ten_that, cam
 
