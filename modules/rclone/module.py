@@ -14,12 +14,24 @@ Thiết kế bảo mật:
 - Khoá dịch vụ (Bearer) chỉ thêm vào header ở đúng lời gọi mạng; một
   `logging.Filter` (khuôn zalo-bot) chặn mọi dòng log của thư viện HTTP chứa
   khoá — KHÔNG đổi mức log toàn cục.
-- Địa chỉ dịch vụ chỉ được đặt qua cấu hình; lúc `cai` kiểm bằng bộ kiểm SSRF
-  (cho phép loopback/mạng nội bộ — dịch vụ phụ nội bộ; chặn link-local, dải
-  không định tuyến). Không có địa chỉ cố định nào khác trong mã.
-- Hành động ngoài tập của hai thực thể bị từ chối TRƯỚC khi gọi mạng.
-- Hành động GHI/XOÁ (gui_len, chuyen_tep, xoa) mặc định TẮT (`ghi_bat`): tắt thì
-  báo «chua_bat_ghi», không gọi mạng — chống ghi/xoá nhầm khi chưa bật.
+- Địa chỉ dịch vụ chỉ được đặt qua cấu hình; kiểm bằng bộ kiểm của lõi
+  (`app/tu_xa.py`) nới đúng một đầu — loopback ĐƯỢC phép vì dịch vụ phụ nghe
+  loopback — và siết đầu còn lại: địa chỉ CÔNG KHAI bị chặn (dịch vụ chỉ ở
+  loopback/mạng nội bộ). Kiểm ở cả `cai()` (bất đồng bộ) lẫn `nap()` (đồng
+  bộ): URL xấu thì module từ chối gọi mạng. Không có địa chỉ cố định nào
+  khác trong mã.
+- BỐN thực thể, mỗi thực thể MỘT mức rủi ro (lõi tính rủi ro theo THỰC THỂ):
+  `rclone.doc` (doc), `rclone.ghi` (ghi), `rclone.xoa` và `rclone.cau_hinh`
+  (nguy_hiem — luôn đòi xác nhận của lõi, kể cả sau khi thực thể đã được
+  xác nhận một lần). Hành động ngoài tập của thực thể bị từ chối TRƯỚC khi
+  gọi mạng.
+- Hành động GHI/XOÁ mặc định TẮT (`ghi_bat`): tắt thì báo «chua_bat_ghi»,
+  không gọi mạng — chống ghi/xoá nhầm khi chưa bật.
+- `gui_len` KHÔNG nhận nội dung tệp qua tham số hành động (lõi trần tham số
+  8 KB): module đọc tệp tại `duong_dan_tep` nằm TRONG `thu_muc_len` đã khai
+  trên máy chạy web2api, đẩy byte qua đường tệp riêng của dịch vụ.
+- Gọi dịch vụ bằng `httpx.AsyncClient` + semaphore riêng của module: lệnh
+  rclone chậm/treo không chiếm luồng executor mặc định của lõi.
 - Dữ liệu từ đám mây là KHÔNG TIN: đường dẫn qua dịch vụ kiểm (resolve dưới
   thư mục làm việc); nội dung file trả về cắt ở trần.
 
@@ -34,9 +46,12 @@ import ipaddress
 import json
 import logging
 import socket
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
+
+from app.tu_xa import _dia_chi_bi_chan as _chan_loi
 
 log = logging.getLogger(__name__)
 
@@ -45,14 +60,20 @@ TRAN_TAI_VE = 25 * 1024 * 1024
 #: Hết giờ gọi dịch vụ: lệnh truyền dài nhất của dịch vụ là 600 s + biên.
 HET_GIO_GOI = 650
 
-#: Công cụ đọc (rủi ro «doc»): chỉ đọc dữ liệu.
+#: Công cụ đọc (thực thể `rclone.doc`, rủi ro «doc»): chỉ đọc dữ liệu.
 _CONG_CU_DOC = ("liet_ke", "doc_chu", "tai_ve",
                 "remotes", "kiem_tra", "config_xem", "drive_start")
-#: Công cụ ghi (rủi ro «ghi»): đổi trạng thái đám mây, cần ghi_bat.
+#: Công cụ ghi (thực thể `rclone.ghi`, rủi ro «ghi»): đổi trạng thái đám mây.
 _CONG_CU_GHI = ("gui_len", "chuyen_tep")
-#: Công cụ nguy hiểm (rủi ro «nguy_hiem»): cần ghi_bat + xác nhận quản trị.
-_CONG_CU_NGUY_HIEM = ("xoa", "them_remote", "xoa_remote",
-                      "config_ghi", "drive_exchange", "luu_khoa_json")
+#: Công cụ xoá (thực thể `rclone.xoa`, rủi ro «nguy_hiem»): huỷ dữ liệu/kho.
+_CONG_CU_XOA = ("xoa", "xoa_remote")
+#: Công cụ cấu hình (thực thể `rclone.cau_hinh`, rủi ro «nguy_hiem»): đổi
+#: cấu hình + khoá của dịch vụ — bề mặt nhạy cảm nhất.
+_CONG_CU_CAU_HINH = ("them_remote", "config_ghi",
+                     "drive_exchange", "luu_khoa_json")
+
+#: Trần cuộc gọi đồng thời tới dịch vụ của module này (chống nghẽn lõi).
+_SEMA_DICH_VU = asyncio.Semaphore(4)
 
 #: Khoá đang dùng — bộ lọc log chặn mọi dòng của thư viện HTTP chứa một trong các chuỗi này.
 _KHOA_DANG_DUNG: set[str] = set()
@@ -99,18 +120,22 @@ def _bat(gia_tri) -> bool:
     return str(gia_tri or "").strip().lower() in ("1", "bat", "true", "yes", "on")
 
 
-def _dia_chi_bi_chan(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
+def _ip_dich_vu_bi_chan(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
+    """Luật địa chỉ cho DỊCH VỤ PHỤ — dùng chung bộ kiểm của lõi, chỉnh 2 đầu.
+
+    Khác luật lõi (`app/tu_xa.py`) ở đúng hai chỗ: loopback ĐƯỢC phép (dịch
+    vụ phụ nghe loopback/mạng Docker nội bộ) và địa chỉ CÔNG KHAI bị CHẶN
+    (bản cũ cho qua mọi IP công khai kể cả 6to4 mang metadata — phát hiện
+    A5). Mọi lớp còn lại (link-local, không định tuyến, IPv4 nhúng trong
+    6to4/Teredo) dùng ĐÚNG `_dia_chi_bi_chan` của lõi, không bộ kiểm thứ hai.
+    """
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
-    if ip.is_link_local:
-        return "link-local / metadata đám mây (169.254.0.0/16)"
-    if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
-        return "địa chỉ không định tuyến"
     if ip.is_loopback:
-        return None  # Dịch vụ phụ nội bộ nghe loopback
-    if ip.is_private or ip.is_global:
-        return None  # mạng nội bộ Docker / máy chủ
-    return "dải địa chỉ đặc biệt"
+        return None
+    if ip.is_global:
+        return "địa chỉ công khai — dịch vụ phụ chỉ ở loopback/mạng nội bộ"
+    return _chan_loi(ip)
 
 
 async def _kiem_url_dich_vu(url: str) -> str:
@@ -131,10 +156,54 @@ async def _kiem_url_dich_vu(url: str) -> str:
             raise ValueError(f"không phân giải được tên máy {phan.hostname!r}: {e}") from None
         ds = list({ipaddress.ip_address(x[4][0]) for x in thong_tin})
     for ip in ds:
-        ly_do = _dia_chi_bi_chan(ip)
+        ly_do = _ip_dich_vu_bi_chan(ip)
         if ly_do:
             raise ValueError(f"dich_vu_url trỏ vào {ip} — bị chặn: {ly_do}")
     return s
+
+
+def _kiem_url_dong_bo(url: str) -> str | None:
+    """Bản đồng bộ cho `nap()`: trả lý do bị chặn, hoặc None nếu hợp lệ.
+
+    `nap()` là đường cấu hình đi vào lúc nạp module — trước đây đường này
+    KHÔNG kiểm gì, URL xấu lọt thẳng vào các lời gọi mạng (phát hiện A5).
+    """
+    s = str(url or "").strip().rstrip("/")
+    phan = urlsplit(s)
+    if phan.scheme not in ("http", "https") or not phan.hostname:
+        return "dich_vu_url phải dạng http(s)://<máy>[:cổng]"
+    if phan.username or phan.password:
+        return "dich_vu_url không được chứa tài khoản/mật khẩu"
+    try:
+        ds = [ipaddress.ip_address(phan.hostname)]
+    except ValueError:
+        try:
+            thong_tin = socket.getaddrinfo(
+                phan.hostname, phan.port or 0, type=socket.SOCK_STREAM)
+        except OSError:
+            return f"không phân giải được tên máy {phan.hostname!r}"
+        ds = list({ipaddress.ip_address(x[4][0]) for x in thong_tin})
+    for ip in ds:
+        ly_do = _ip_dich_vu_bi_chan(ip)
+        if ly_do:
+            return f"dich_vu_url trỏ vào {ip} — bị chặn: {ly_do}"
+    return None
+
+
+def _duong_trong_thu_muc(duong: str, goc_chu: str) -> Path | None:
+    """Ép đường dẫn tệp tải lên nằm TRONG thư mục gốc đã khai (resolve hết
+    symlink, cùng ràng buộc 1 của dịch vụ). Ngoài thư mục → None."""
+    try:
+        goc = Path(goc_chu).resolve()
+        dd = Path(duong)
+        if not dd.is_absolute():
+            dd = goc / dd
+        that = dd.resolve()
+    except (OSError, RuntimeError):
+        return None
+    if that != goc and goc not in that.parents:
+        return None
+    return that
 
 
 class Module:
@@ -146,6 +215,8 @@ class Module:
         self._url = "http://127.0.0.1:8702"
         self._khoa = ""
         self._ghi_bat = False
+        self._thu_muc_len = ""
+        self._url_loi: str | None = None
 
     # ── vòng đời ──────────────────────────────────────────────────────────
 
@@ -154,6 +225,12 @@ class Module:
         self._ghi_bat = _bat(cau_hinh.get("ghi_bat", False))
         url = str(cau_hinh.get("dich_vu_url") or "http://127.0.0.1:8702").strip().rstrip("/")
         self._url = url
+        # Kiểm URL ngay ở nap(): URL bị chặn → mọi lời gọi mạng bị từ chối
+        # với mã lỗi rõ (không đợi tới cai(), không gọi thử ra ngoài).
+        self._url_loi = _kiem_url_dong_bo(url)
+        if self._url_loi:
+            log.warning("rclone: %s", self._url_loi)
+        self._thu_muc_len = str(cau_hinh.get("thu_muc_len") or "").strip()
         khoa = str(cau_hinh.get("khoa_dich_vu") or "")
         self._khoa = khoa
         if khoa:
@@ -180,6 +257,7 @@ class Module:
                 "dich_vu_url": url_sach,
                 "khoa_dich_vu": khoa,
                 "ghi_bat": "1" if ghi_bat else "0",
+                "thu_muc_len": str(cau_hinh.get("thu_muc_len") or "").strip(),
             },
         }
 
@@ -197,39 +275,80 @@ class Module:
                  "mo_ta": f"Cầu nối rclone «{t}» qua container phụ (dịch vụ dich-vu/rclone)."}
                 for t in nhom]
 
-    def thuc_the(self, loc=None) -> list[dict]:
-        doc = {
-            "id": f"{self.tien_to}.kho",
-            "ten": "Kho lưu trữ đám mây (rclone) — đọc/tải về",
-            "loai": "luu_tru",
-            "thuoc_tinh": {"dich_vu": "dich-vu/rclone"},
-            "tinh_nang": self._cong_cu(_CONG_CU_DOC, "doc"),
-            "rui_ro_mac_dinh": "doc",
-        }
-        ghi = {
-            "id": f"{self.tien_to}.ghi",
-            "ten": "Kho lưu trữ đám mây (rclone) — tải lên/xoá (cần ghi_bat)",
-            "loai": "luu_tru",
-            "thuoc_tinh": {"dich_vu": "dich-vu/rclone"},
-            "tinh_nang": self._cong_cu(_CONG_CU_GHI, "ghi")
-            + self._cong_cu(_CONG_CU_NGUY_HIEM, "nguy_hiem"),
-            "rui_ro_mac_dinh": "ghi",
-        }
-        return [doc, ghi]
+    async def thuc_the(self, loc=None) -> list[dict]:
+        """Bốn thực thể, mỗi thực thể ĐÚNG một mức rủi ro.
+
+        Lõi tính rủi ro theo THỰC THỂ, không theo hành động: bản cũ trộn xoá
+        và ghi cấu hình (nguy_hiem) vào thực thể «ghi» nên chỉ cần quản trị
+        xác nhận thực thể một lần là các hành động nguy hiểm chạy không cần
+        xác nhận nữa (phát hiện A2). Tách ra thì `rclone.xoa`/`rclone.cau_hinh`
+        giữ mức nguy_hiem vĩnh viễn — lõi luôn đòi xác nhận từng lần.
+        """
+        goc = {"loai": "luu_tru", "thuoc_tinh": {"dich_vu": "dich-vu/rclone"}}
+        return [
+            {"id": f"{self.tien_to}.doc",
+             "ten": "Kho lưu trữ đám mây (rclone) — đọc/tải về",
+             **goc,
+             "tinh_nang": self._cong_cu(_CONG_CU_DOC, "doc"),
+             "rui_ro_mac_dinh": "doc"},
+            {"id": f"{self.tien_to}.ghi",
+             "ten": "Kho lưu trữ đám mây (rclone) — tải lên/chuyển (cần ghi_bat)",
+             **goc,
+             "tinh_nang": self._cong_cu(_CONG_CU_GHI, "ghi"),
+             "rui_ro_mac_dinh": "ghi"},
+            {"id": f"{self.tien_to}.xoa",
+             "ten": "Kho lưu trữ đám mây (rclone) — xoá tệp/remote (cần ghi_bat)",
+             **goc,
+             "tinh_nang": self._cong_cu(_CONG_CU_XOA, "nguy_hiem"),
+             "rui_ro_mac_dinh": "nguy_hiem"},
+            {"id": f"{self.tien_to}.cau_hinh",
+             "ten": "Kho lưu trữ đám mây (rclone) — cấu hình remote/khoá (cần ghi_bat)",
+             **goc,
+             "tinh_nang": self._cong_cu(_CONG_CU_CAU_HINH, "nguy_hiem"),
+             "rui_ro_mac_dinh": "nguy_hiem"},
+        ]
+
+    async def trang_thai(self, ids=None) -> dict:
+        """Trạng thái theo thực thể từ op `trang_thai` của dịch vụ.
+
+        Dịch vụ không nối được → mọi thực thể báo ok=False (không ném lỗi —
+        lõi gọi hàm này khi liệt kê, ném lỗi làm cả danh sách thiết bị đỏ).
+        """
+        kq = await self._goi_dich_vu("trang_thai", {}, het_gio=15)
+        remotes = kq.get("remotes")
+        tt = {"ok": bool(kq.get("ok")),
+              "phien_ban_rclone": str(kq.get("version") or ""),
+              "so_remote": len(remotes) if isinstance(remotes, list) else 0}
+        muon = {e["id"] for e in await self.thuc_the()}
+        if ids:
+            muon &= {str(i) for i in ids}
+        return {i: dict(tt) for i in sorted(muon)}
 
     def _tra_loi_dong(self) -> dict:
         return {"ok": False, "loi": "dich_vu_khong_noi_duoc"}
 
-    async def _goi_dich_vu(self, lenh: str, tham_so: dict) -> dict:
-        """POST /lenh."""
+    def _tieu_de(self) -> dict:
+        return {"Authorization": f"Bearer {self._khoa}"}
+
+    async def _goi_dich_vu(self, lenh: str, tham_so: dict, *,
+                           het_gio: float = HET_GIO_GOI) -> dict:
+        """POST /lenh — bằng AsyncClient (phát hiện A7).
+
+        Bản cũ dùng httpx.Client đồng bộ qua `asyncio.to_thread`: lệnh rclone
+        treo chiếm một luồng của executor mặc định mà CẢ LÕI dùng chung.
+        Nay: AsyncClient + semaphore riêng của module, không chạm luồng lõi.
+        """
+        if self._url_loi:
+            return {"ok": False, "loi": "dia_chi_dich_vu_khong_hop_le"}
         try:
-            with httpx.Client(timeout=HET_GIO_GOI) as client:
-                tra_loi = await asyncio.to_thread(
-                    client.post,
-                    self._url + "/lenh",
-                    json={"lenh": lenh, "tham_so": tham_so},
-                    headers={"Authorization": f"Bearer {self._khoa}"},
-                )
+            async with _SEMA_DICH_VU:
+                async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(het_gio, connect=10.0)) as client:
+                    tra_loi = await client.post(
+                        self._url + "/lenh",
+                        json={"lenh": lenh, "tham_so": tham_so},
+                        headers=self._tieu_de(),
+                    )
         except Exception as e:
             log.warning("khong_noi_duoc_dich_vu_rclone: %s", type(e).__name__)
             return self._tra_loi_dong()
@@ -242,31 +361,44 @@ class Module:
         return than
 
     async def _tai_byte_dich_vu(self, id_tep: str) -> bytes | None:
-        """GET /tep-xuong/<id> — lấy byte đã tải về từ đám mây."""
+        """GET /tep-xuong/<id> — lấy byte đã tải về, ĐỌC THEO DÒNG có trần.
+
+        Không nạp cả thân rồi mới so trần như bản cũ: vượt trần là bỏ ngay.
+        """
+        if self._url_loi:
+            return None
         try:
-            with httpx.Client(timeout=HET_GIO_GOI) as client:
-                tra_loi = await asyncio.to_thread(
-                    client.get,
-                    self._url + "/tep-xuong/" + id_tep,
-                    headers={"Authorization": f"Bearer {self._khoa}"},
-                )
-            if tra_loi.status_code != 200:
-                return None
-            return tra_loi.content
+            async with _SEMA_DICH_VU:
+                async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(HET_GIO_GOI, connect=10.0)) as client:
+                    async with client.stream(
+                            "GET", self._url + "/tep-xuong/" + id_tep,
+                            headers=self._tieu_de()) as tra_loi:
+                        if tra_loi.status_code != 200:
+                            return None
+                        dem = bytearray()
+                        async for muc in tra_loi.aiter_bytes(65536):
+                            dem += muc
+                            if len(dem) > TRAN_TAI_VE:
+                                return None
+                        return bytes(dem)
         except Exception as e:
             log.warning("khong_tai_duoc_tep_rclone: %s", type(e).__name__)
             return None
 
     async def _day_byte_len_dich_vu(self, du_lieu: bytes) -> str | None:
         """POST /tep-len — đẩy byte lên dịch vụ trước khi gui_len."""
+        if self._url_loi:
+            return None
         try:
-            with httpx.Client(timeout=HET_GIO_GOI) as client:
-                tra_loi = await asyncio.to_thread(
-                    client.post,
-                    self._url + "/tep-len",
-                    content=du_lieu,
-                    headers={"Authorization": f"Bearer {self._khoa}"},
-                )
+            async with _SEMA_DICH_VU:
+                async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(HET_GIO_GOI, connect=10.0)) as client:
+                    tra_loi = await client.post(
+                        self._url + "/tep-len",
+                        content=du_lieu,
+                        headers=self._tieu_de(),
+                    )
             than = tra_loi.json()
             if than.get("ok"):
                 return than.get("id_tep")
@@ -279,7 +411,7 @@ class Module:
         tham_so = tham_so or {}
         if not isinstance(hanh_dong, str):
             return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
-        thuc_the = {e["id"]: e for e in self.thuc_the()}
+        thuc_the = {e["id"]: e for e in await self.thuc_the()}
         muc = thuc_the.get(id)
         if muc is None:
             return {"ok": False, "loi": "khong_thay_thuc_the"}
@@ -307,6 +439,10 @@ class Module:
             kq = await self._goi_dich_vu("tai_ve", {"duong_dan": _chu("duong_dan")})
             if not kq.get("ok"):
                 return kq
+            # Dịch vụ đã chặn ở trần; kiểm lại cỡ TRƯỚC khi tải byte về.
+            co = kq.get("co")
+            if isinstance(co, int) and co > TRAN_TAI_VE:
+                return {"ok": False, "loi": "tep_qua_lon"}
             id_tep = kq.get("id_tep")
             byte = await self._tai_byte_dich_vu(id_tep) if id_tep else None
             if byte is None:
@@ -327,21 +463,30 @@ class Module:
 
         # ── hành động ghi / nguy hiểm ──
         if hanh_dong == "gui_len":
-            du_lieu = tham_so.get("du_lieu_b64")
-            if not isinstance(du_lieu, str) or not du_lieu:
-                return {"ok": False, "loi": "thieu_du_lieu"}
-            try:
-                byte = base64.b64decode(du_lieu, validate=True)
-            except Exception:
-                return {"ok": False, "loi": "du_lieu_sai"}
-            if len(byte) > TRAN_TAI_VE:
+            # Nội dung tệp KHÔNG đi qua tham số hành động (lõi trần 8 KB —
+            # bản cũ hứa 25 MB qua `du_lieu_b64` là vô dụng trên đường thật,
+            # phát hiện A1). Module đọc tệp tại `duong_dan_tep` TRONG
+            # `thu_muc_len` đã khai trên máy chạy web2api, đẩy byte qua
+            # đường /tep-len riêng của dịch vụ.
+            duong = _chu("duong_dan_tep").strip()
+            if not duong:
+                return {"ok": False, "loi": "thieu_duong_dan_tep"}
+            if not self._thu_muc_len:
+                return {"ok": False, "loi": "chua_khai_thu_muc_len"}
+            tep = _duong_trong_thu_muc(duong, self._thu_muc_len)
+            if tep is None:
+                return {"ok": False, "loi": "duong_dan_ngoai_thu_muc_len"}
+            if not tep.is_file():
+                return {"ok": False, "loi": "khong_thay_tep"}
+            if tep.stat().st_size > TRAN_TAI_VE:
                 return {"ok": False, "loi": "tep_qua_lon"}
+            byte = await asyncio.to_thread(tep.read_bytes)
             id_tep = await self._day_byte_len_dich_vu(byte)
             if not id_tep:
                 return {"ok": False, "loi": "dich_vu_khong_noi_duoc"}
             return await self._goi_dich_vu("gui_len", {"id_tep": id_tep,
                                                        "thu_muc": _chu("thu_muc"),
-                                                       "ten": _chu("ten")})
+                                                       "ten": _chu("ten") or tep.name})
         if hanh_dong == "chuyen_tep":
             return await self._goi_dich_vu("chuyen_tep", {"nguon": _chu("nguon"),
                                                    "dich": _chu("dich")})
