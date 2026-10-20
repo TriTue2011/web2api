@@ -91,6 +91,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `facebook` (Facebook — đăng bài Trang qua Graph API, chuẩn C1) | Có — mỗi Trang một thực thể rủi ro `nguy_hiem`, quản trị xác nhận trước khi đăng (SEC-004f); bài chữ/link, ảnh, video; không đăng nhóm (Meta đã gỡ Groups API); kiểm với máy chủ Graph giả; **chưa kiểm với Facebook thật** | 20/10/2026 |
 | Module `thuthach` (Nhận diện thử thách chống bot, chuẩn C2 `thiet_bi`) | Có — nhận diện reCAPTCHA v2/v3, Turnstile, chọn hình/quiz, CAPTCHA chữ, mã OTP, mã 2FA, BotGuard bằng cấu trúc rồi báo «cần người» + hướng dẫn noVNC — KHÔNG giải; thuần phân tích, không gọi mạng | 20/10/2026 |
 | Module `nhin-nha` (Mắt nhà, chuẩn C2 `thiet_bi`, NV168) + dịch vụ `dich-vu/nhin-nha` | Có — client HTTP Bearer + chống SSRF (chỉ loopback/mạng nhà riêng, cấm metadata/IP công khai) tới dịch vụ ML phụ (YOLO26 + SCRFD/ArcFace, port c2a, model tải ngoài có kiểm sha256); 3 thực thể `nhin_nha.mat`/`so_mat`/`nhan_dien`; sổ khuôn mặt (IRIS, ngưỡng tự chỉnh theo dữ liệu nhà) mã hoá khi nghỉ/không thì 0600; embedding không vào log/phản hồi/suc_khoe; nhận diện mặc định TẮT (bật cần quản trị + ghi nhật ký); NV168-SUA: cổng sinh trắc chung cho mọi hành động sổ (trừ xoá), khoá bất đồng bộ cho vòng đọc-sửa-ghi, sự kiện không lưu vector + xoá người triệt để, mặt lạ có trần 50 cụm/hạn 30 ngày + xoá riêng, dịch vụ ML kiểm lại sha256 lúc nạp + trần điểm ảnh trước giải mã; kiểm với dịch vụ ML giả + kiểm tĩnh Dockerfile; **chưa kiểm với model ONNX thật** | 20/10/2026 |
+| Module `maytram` (Máy trạm — điều khiển từ xa qua agent, hạng B, rủi ro cao, NV170): agent trên máy trạm tự kết nối RA, bắt tay HMAC hai chiều (khoá riêng 256 bit mỗi máy, chống phát lại nonce + cửa sổ thời gian), tập lệnh ĐÓNG (không chạy lệnh tuỳ ý — `exec`/`kill` của c2a KHÔNG port), mọi thực thể `rui_ro_mac_dinh: nguy_hiem` qua phê duyệt của lõi, kết quả agent cắt trần + gắn `nguon_ngoai` | Có — kiểm với agent GIẢ trong tiến trình (bắt tay 2 chiều, phát lại, IDOR giữa hai phiên, MAC giả, allowlist hai lớp, thu hồi/xoay khoá); **chưa kiểm với máy trạm thật** (điểm gắn truyền tải trong lõi chưa có) | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2952,6 +2953,51 @@ Hạng: `A`.
 - RRULE chỉ hỗ trợ tập thường gặp; chưa hỗ trợ BYSETPOS/BYWEEKNO/BYYEARDAY và
   RDATE (sự kiện vẫn hiện ở lần xuất hiện đầu tiên).
 - Chưa kiểm với lịch Google/Outlook/Nextcloud thật; chưa đo RAM/đĩa thật.
+### Module maytram — Máy trạm (điều khiển từ xa qua agent, rủi ro cao)
+
+**Mô tả.** Module `maytram` điều khiển **máy trạm** ở xa (máy khác sau NAT/wifi/4G):
+agent nhỏ chạy trên máy trạm *tự kết nối RA* mở kênh hai chiều tới lõi và chờ lệnh,
+máy trạm không mở cổng nào. Port giao thức từ `services/device_agents.py` +
+`api/devices.py` của c2a (kho của chính chủ máy, bản sao `~/workspace/c2a-nv146` @
+`d879b03`) sang chuẩn C1 `thiet_bi`: đăng ký máy sinh **khoá agent riêng 256 bit**
+(trả đúng MỘT lần; trong sổ chỉ còn dấu vân sha256 rút gọn), xoay khoá, đổi quyền,
+thu hồi từng máy, xoá gỡ-trên-máy-trước. Xác thực **hai chiều** bằng HMAC: lõi
+chứng minh biết khoá trước (`xac_thuc_loi`), agent chứng minh sau
+(`xac_thuc_agent`); chống phát lại bằng nonce dùng-một-lần và cửa sổ thời gian
+(mặc định 120 giây); mọi khung lệnh/kết quả sau đó mang MAC bằng khoá-phiên suy
+ra từ HMAC. Tập lệnh là **TẬP ĐÓNG** — đọc/ghi tệp trong allowlist, thông tin hệ
+thống bằng lệnh cố định của agent, nguồn, ghi màn hình (từng nhóm quyền mặc định
+TẮT, kiểm hai lớp trùng nhau lõi + agent); **không port** `exec`/`kill` của c2a
+(lệnh shell tuỳ ý / tắt tiến trình tuỳ ý). Kết quả từ agent là **dữ liệu không
+tin**: cắt ở trần (mặc định 20.000 ký tự), bọc `{nguon_ngoai: true, khong_tin:
+true}`. Mọi thực thể `rui_ro_mac_dinh: "nguy_hiem"` nên mọi lệnh qua phê duyệt
+của lõi (quản trị cần `xac_nhan: true`, khách vào hàng chờ `202`). Mặc định TẮT
+(trường cấu hình `bat`). Mã nguồn: `modules/maytram/` (thuần thư viện chuẩn).
+Hạng: `A` (mã của dự án). Tiền tố thực thể: `maytram`.
+
+**Cần gì.**
+- Một máy trạm chạy agent tương thích giao thức trong `modules/maytram/phien_agent.py`
+  (agent GIẢ dùng cho test nằm trong `modules/maytram/agent_gia.py`).
+- Khoá agent của chính máy đó: sinh bằng hành động `dang_ky` trên thực thể
+  `maytram.dang_ky`, trả đúng một lần.
+- Mạng: agent kết nối TỚI địa chỉ agent do lõi công bố (lõi không gọi ra).
+- RAM/đĩa: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "maytram"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/maytram`
+3. Cài cấu hình: `POST /api/modules/maytram/cai` với thân
+   `{"cau_hinh": {"bat": "true"}}` (cửa sổ thời gian/trần đầu ra giữ mặc định).
+4. Đăng ký máy: gọi hành động `dang_ky` trên thực thể `maytram.dang_ky`
+   `{"ten_may": "may-van-phong-1", "duong_dan": ["/du-lieu"]}` — lưu khoá trả về
+   (chỉ hiện lần này), nhập khoá vào agent trên máy trạm.
+
+**Giới hạn.**
+- Điểm gắn truyền tải (kênh hai chiều cho agent) trong lõi CHƯA có: module nhận
+  bất kỳ đối tượng kênh `gui`/`nhan` nào qua `QuanLyPhien.chay_kenh(kenh)`; hiện
+  agent thật chưa có chỗ nối vào. Kiểm kết nối bằng agent GIẢ trong tiến trình.
+- Chưa kiểm với máy trạm thật.
 
 ---
 
