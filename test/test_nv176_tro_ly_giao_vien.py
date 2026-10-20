@@ -302,6 +302,18 @@ def test_kho_de_cach_ly_danh_tinh(tmp_path):
     assert xoa["ok"] is True and not p.exists()
 
 
+def test_kho_de_tran_100_de(tmp_path):
+    kho = _tai("kho_de", "kho_de.py")
+    for i in range(100):
+        r = kho.luu_de(tmp_path, "aabbcc11", f"de{i:03d}", {"cau_hoi": []})
+        assert r["ok"] is True, r
+    r101 = kho.luu_de(tmp_path, "aabbcc11", "de101", {"cau_hoi": []})
+    assert r101["ok"] is False  # trần 100 đề/danh tính
+    # ghi đè cùng quiz_id của cùng danh tính vẫn được
+    r_lai = kho.luu_de(tmp_path, "aabbcc11", "de000", {"cau_hoi": [1]})
+    assert r_lai["ok"] is True
+
+
 def test_kho_de_chong_duong_dan(tmp_path):
     kho = _tai("kho_de", "kho_de.py")
     r = kho.luu_de(tmp_path, "aabbcc11", "../xau", {"cau_hoi": []})
