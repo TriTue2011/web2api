@@ -11,6 +11,11 @@ Luật nhà áp ở TẦNG CẤU TRÚC (không dựa vào tên thiết bị):
 - Khoá cửa / ổ khoá / hộp an toàn / bếp / bình nóng lạnh (theo MÃ NGÀNH
   Tuya) KHÔNG BAO GIỜ có hành động ghi — thực thể của chúng không mang
   tinh_nang nào, và thuc_hien() kiểm lại lần nữa trước khi gửi.
+- Ngành QUYẾT MỘT LẦN và chỉ ở MỘT CỬA (vòng sửa NV157, soát độc lập B1):
+  ngành của đám mây thắng ngành LAN tự khai; thiết bị từng bị đám mây báo
+  ngành cấm thì bị cấm suốt phiên (nhớ trong RAM), kể cả khi đám mây mất
+  kết nối; thiết bị vừa có đám mây vừa có LAN chỉ phát MỘT thực thể.
+  Ngành tự khai/không rõ không bao giờ tự mở điều khiển cho loại cấm.
 - Thực thể lạ / ngành lạ: không hành động, rủi ro «nguy_hiem» (fail-closed).
 
 Đường ưu tiên trạng thái: thiết bị có khai LAN thì đọc LAN trước (nhanh,
@@ -22,6 +27,7 @@ trên đám mây. local_key lấy tường minh từ cấu hình; thiếu thì t
 from __future__ import annotations
 
 import json
+import math
 import time
 from typing import Any
 
@@ -88,6 +94,10 @@ class Module:
         self._cache_spec: dict[str, dict] = {}
         self._hanh_dong: dict[str, dict[str, dict]] = {}
         self._nganh_thuc_the: dict[str, str] = {}
+        #: Mã thiết bị mà đám mây TỪNG báo ngành cấm (B1): nhớ qua các lần
+        #: đám mây mất kết nối trong phiên — ngành LAN tự khai không bao giờ
+        #: mở lại được điều khiển cho chúng.
+        self._ma_cam_dieu_khien: set[str] = set()
 
     # ── cấu hình ────────────────────────────────────────────────────────
 
@@ -99,6 +109,10 @@ class Module:
         self._cau_hinh = dict(cau_hinh or {})
         self._dam_may = None
         self._loi_dam_may = None
+        self._cache_spec = {}
+        self._hanh_dong = {}
+        self._nganh_thuc_the = {}
+        self._ma_cam_dieu_khien = set()
         aid = str(self._cau_hinh.get("access_id") or "").strip()
         secret = str(self._cau_hinh.get("access_secret") or "").strip()
         if aid and secret:
@@ -131,10 +145,23 @@ class Module:
             if not isinstance(muc, dict) or not muc.get("id"):
                 continue
             ma = str(muc["id"])
+            # B4: cổng phải là số nguyên 1–65535; khai sai thì loại MỤC ĐÓ,
+            # không ném ValueError làm hỏng cả nap() (cai() báo rõ mục nào).
+            tho_cong = muc.get("cong")
+            cong: int | None = None
+            if tho_cong is None or tho_cong == "":
+                cong = _lan_mod.CONG_MAC_DINH
+            elif not isinstance(tho_cong, bool):
+                try:
+                    cong = int(tho_cong)
+                except (TypeError, ValueError):
+                    cong = None
+            if cong is None or not 1 <= cong <= 65535:
+                continue
             ban_do[ma] = {
                 "id": ma,
                 "ip": str(muc.get("ip") or ""),
-                "cong": int(muc.get("cong") or _lan_mod.CONG_MAC_DINH),
+                "cong": cong,
                 "ten": str(muc.get("ten") or ma),
                 "nganh": str(muc.get("nganh") or ""),
                 "phien_ban": str(muc.get("version") or muc.get("phien_ban") or "3.3"),
@@ -198,6 +225,26 @@ class Module:
                          "«Thiết bị LAN» phải là JSON danh sách "
                          "[{\"id\": ..., \"ip\": ...}].")
                     doc = None
+            # B4: mục bị _doc_ban_do_lan loại vì cổng sai → báo lỗi cấu hình
+            # rõ tên thiết bị ở đây (thay vì nap() ném ValueError / suc_khoe
+            # ném OverflowError như trước).
+            if isinstance(tho_lan, list):
+                tho_ds = tho_lan
+            elif isinstance(tho_lan, str):
+                try:
+                    _doc_lai = json.loads(tho_lan)
+                except ValueError:
+                    _doc_lai = None
+                tho_ds = _doc_lai if isinstance(_doc_lai, list) else []
+            else:
+                tho_ds = []
+            for muc_tho in tho_ds:
+                if isinstance(muc_tho, dict) and muc_tho.get("id") \
+                        and str(muc_tho["id"]) not in danh_sach_lan:
+                    danh("thiet_bi_lan", False,
+                         f"Thiết bị {muc_tho['id']}: «cong» phải là số "
+                         "nguyên từ 1 đến 65535 (mặc định 6668).")
+                    break
             if tung.get("thiet_bi_lan", {}).get("ok") is not False:
                 for ma, bg in danh_sach_lan.items():
                     try:
@@ -255,6 +302,7 @@ class Module:
             noi_duoc = 0
             for bg in self._ban_do_lan.values():
                 try:
+                    await self._dam_bao_khoa_lan(bg)  # B5: tự lấy qua đám mây
                     if not bg.get("khoa"):
                         continue
                     await self._lan.hoi(bg)
@@ -278,12 +326,19 @@ class Module:
     # ── hợp đồng thiết bị C1 ────────────────────────────────────────────
 
     async def _dac_ta(self, ma: str) -> dict:
-        if ma not in self._cache_spec and self._dam_may is not None:
-            try:
-                self._cache_spec[ma] = await self._dam_may.dac_ta(ma)
-            except LoiDamMay:
-                self._cache_spec[ma] = {}
-        return self._cache_spec.get(ma) or {}
+        # KHÔNG đệm kết quả của lần gọi HỎNG: đệm {} vĩnh viễn (như trước)
+        # làm thiết bị mất tính năng tới khi khởi động lại sau một lần đám
+        # mây chớp. Chỉ đệm khi gọi thành công.
+        if ma in self._cache_spec:
+            return self._cache_spec[ma]
+        if self._dam_may is None:
+            return {}
+        try:
+            spec = await self._dam_may.dac_ta(ma)
+        except LoiDamMay:
+            return {}
+        self._cache_spec[ma] = spec if isinstance(spec, dict) else {}
+        return self._cache_spec[ma]
 
     def _tinh_nang_va_hanh_dong(self, ma_day_du: str, ma: str, nganh: str,
                                 dac_ta: dict, nguon: str) -> list[dict]:
@@ -291,7 +346,12 @@ class Module:
         không hành động. Hành động lưu vào bản đồ để thuc_hien() tra đúng."""
         tinh_nang: list[dict] = []
         ban_do = self._hanh_dong.setdefault(ma_day_du, {})
-        if nganh in _dm._NGANH_KHONG_DIEU_KHIEN or _rui_ro(nganh) != "ghi":
+        # MỘT CỬA quyết điều khiển (B1): ngành thuộc danh mục cấm, HOẶC chính
+        # thiết bị này từng bị đám mây báo ngành cấm, HOẶC ngành không thuộc
+        # nhóm ghi (gồm ngành lạ/không rõ — fail-closed) → không hành động.
+        if nganh in _dm._NGANH_KHONG_DIEU_KHIEN \
+                or ma in self._ma_cam_dieu_khien \
+                or _rui_ro(nganh) != "ghi":
             self._nganh_thuc_the[ma_day_du] = nganh
             return tinh_nang
         self._nganh_thuc_the[ma_day_du] = nganh
@@ -325,19 +385,39 @@ class Module:
             elif loai in ("Integer", "Float", "Enum"):
                 hd = f"dat_{code}"
                 mo = f"Đặt {code}"
-                luoc = {"gia_tri": {"kieu": "so_nguyen" if loai == "Integer"
-                                    else "chuoi", "bat_buoc": True}}
+                # B2: khai JSON Schema CHUẨN mà cổng lõi (app/thiet_bi.
+                # kiem_tra_tham_so) hiểu — trước đây khai lược đồ kiểu riêng
+                # nên lõi bỏ qua, giá trị -5/99999999 lọt thẳng tới Tuya.
+                # Khoảng/enum lấy từ đặc tả của CHÍNH thiết bị, đồng thời lưu
+                # vào bản đồ hành động để thuc_hien() kiểm lại (không tin lõi).
+                thuoc: dict[str, Any] = {
+                    "type": "integer" if loai == "Integer"
+                    else "number" if loai == "Float" else "string"}
+                khoang: dict[str, Any] = {}
                 if isinstance(gia_tri, dict):
-                    if "min" in gia_tri:
-                        luoc["gia_tri"]["toi_thieu"] = gia_tri["min"]
-                    if "max" in gia_tri:
-                        luoc["gia_tri"]["toi_da"] = gia_tri["max"]
-                    if gia_tri.get("unit"):
-                        mo += f" (đơn vị {gia_tri['unit']})"
+                    if loai in ("Integer", "Float"):
+                        for khoa_dt, khoa_schema in (("min", "minimum"),
+                                                     ("max", "maximum")):
+                            v = gia_tri.get(khoa_dt)
+                            if isinstance(v, (int, float)) \
+                                    and not isinstance(v, bool):
+                                thuoc[khoa_schema] = v
+                                khoang[khoa_dt] = v
+                        if gia_tri.get("unit"):
+                            mo += f" (đơn vị {gia_tri['unit']})"
+                    else:  # Enum
+                        mien = gia_tri.get("range")
+                        if isinstance(mien, list) and mien:
+                            thuoc["enum"] = list(mien)
+                            khoang["range"] = list(mien)
+                luoc = {"type": "object",
+                        "properties": {"gia_tri": thuoc},
+                        "required": ["gia_tri"],
+                        "additionalProperties": False}
                 tinh_nang.append({"hanh_dong": hd, "mo_ta": mo,
                                   "tham_so": luoc})
                 ban_do[hd] = {"nguon": nguon, "ma": ma, "code": code,
-                              "kieu": loai, "dp": dp}
+                              "kieu": loai, "dp": dp, "khoang": khoang}
         if not tinh_nang and nguon == "lan":
             # LAN không có đặc tả đám mây: công tắc bật/tắt điểm 1
             for tien, gt in (("bat", True), ("tat", False)):
@@ -355,16 +435,29 @@ class Module:
         cac: list[dict] = []
         self._hanh_dong.clear()
         self._nganh_thuc_the.clear()
+        # Ngành quyết MỘT LẦN cho mỗi thiết bị (B1+B3): đám mây là nguồn
+        # ngành có thẩm quyền. Thiết bị vừa có đám mây vừa có mục LAN chỉ
+        # phát MỘT thực thể (đám mây) — trước đây phát hai thực thể trùng id
+        # và vòng LAN ghi đè ngành của nhau trong _nganh_thuc_the.
+        nganh_dam_may: dict[str, str] = {}
+        da_phat: set[str] = set()
+        dam_may_ok = False
         if self._dam_may is not None:
             try:
                 cac_tb = await self._dam_may.danh_sach_thiet_bi()
+                dam_may_ok = True
             except LoiDamMay:
                 cac_tb = []
             for tb in cac_tb:
                 ma = tb["id"]
                 nganh = tb.get("nganh") or ""
+                nganh_dam_may[ma] = nganh
+                if nganh in _dm._NGANH_KHONG_DIEU_KHIEN:
+                    # Nhớ cho cả khi đám mây mất kết nối sau đó (B1).
+                    self._ma_cam_dieu_khien.add(ma)
                 dac_ta = await self._dac_ta(ma)
                 id_day = _TIEN_TO + ma
+                da_phat.add(ma)
                 cac.append({
                     "id": id_day,
                     "ten": tb.get("ten") or ma,
@@ -376,7 +469,22 @@ class Module:
                     "nguon": "dam_may",
                 })
         for ma, bg in self._ban_do_lan.items():
-            nganh = bg.get("nganh") or ""
+            if ma in da_phat:
+                continue  # đã có thực thể đám mây cho đúng mã này
+            # Ngành hiệu lực: đám mây (nếu lần này tra được) thắng; thiết bị
+            # KHÔNG có trên đám mây (đám mây liệt kê được và không thấy) mới
+            # dùng ngành LAN tự khai. Đám mây CÓ cấu hình nhưng lần này
+            # KHÔNG liệt kê được → ngành coi như KHÔNG RÕ (đóng điều khiển
+            # lượt này): ngành chỉ do người khai, không được đám mây xác
+            # nhận, không bao giờ đủ để mở điều khiển (B1). Chế độ LAN thuần
+            # (không cấu hình đám mây) giữ nguyên: ngành khai là nguồn duy
+            # nhất và vẫn qua đúng một cửa cấm như mọi nguồn khác.
+            if ma in nganh_dam_may:
+                nganh = nganh_dam_may[ma]
+            elif self._dam_may is not None and not dam_may_ok:
+                nganh = ""
+            else:
+                nganh = bg.get("nganh") or ""
             dac_ta: dict = {}
             if self._dam_may is not None:  # cùng mã → có đặc tả đám mây
                 dac_ta = await self._dac_ta(ma)
@@ -413,6 +521,19 @@ class Module:
                     "loi": "Thiết bị ngoại tuyến (Tuya báo is_online=false)."}
         return None  # cần shadow — xử lý ở trang_thai
 
+    async def _dam_bao_khoa_lan(self, bg: dict) -> None:
+        """B5: thiết bị LAN chưa khai khoá thì tự lấy qua đường đám mây
+        (như manifest/README đã hứa) — đúng một lần, nhớ vào bản ghi để các
+        lần hỏi sau không hỏi lại. Lấy hỏng thì giữ trống, để đường khác xử lý."""
+        if bg.get("khoa") or self._dam_may is None:
+            return
+        try:
+            khoa = await self._dam_may.lay_local_key(bg["id"])
+        except LoiDamMay:
+            return
+        if khoa:
+            bg["khoa"] = khoa
+
     async def trang_thai(self, ids: list[str]) -> dict[str, dict]:
         kq: dict[str, dict] = {}
         for id_day in ids or []:
@@ -424,21 +545,31 @@ class Module:
             luc = time.time()
             if ma in self._ban_do_lan:
                 bg = self._ban_do_lan[ma]
+                await self._dam_bao_khoa_lan(bg)
+                loi_lan: BaseException | None = None
                 try:
                     dps = await self._lan.hoi(bg)
+                except (LoiLan, ValueError, OSError) as e:
+                    loi_lan = e
+                except Exception as e:  # không sập vì một thiết bị
+                    loi_lan = RuntimeError(
+                        f"Lỗi không mong đợi: {type(e).__name__}.")
+                if loi_lan is None:
                     khoa_chinh = "1" if "1" in dps else next(iter(dps))
                     kq[id_day] = {"gia_tri": _gia_tri_chinh(dps[khoa_chinh]),
                                   "don_vi": None, "luc": luc, "hop_le": True}
-                except (LoiLan, ValueError, OSError) as e:
+                    continue
+                # B5: LAN hỏng thì RƠI VỀ đám mây nếu thiết bị cũng có trên đó
+                # (đúng như tài liệu đã hứa). Không có đám mây thì báo lỗi
+                # LAN như cũ, không nuốt lỗi.
+                tb = await self._thiet_bi_dam_may(ma)
+                if tb is None:
                     kq[id_day] = {"gia_tri": None, "don_vi": None,
                                   "luc": luc, "hop_le": False,
-                                  "loi": str(e)}
-                except Exception as e:  # không sập vì một thiết bị
-                    kq[id_day] = {"gia_tri": None, "don_vi": None,
-                                  "luc": luc, "hop_le": False,
-                                  "loi": f"Lỗi không mong đợi: {type(e).__name__}."}
-                continue
-            tb = await self._thiet_bi_dam_may(ma)
+                                  "loi": str(loi_lan)}
+                    continue
+            else:
+                tb = await self._thiet_bi_dam_may(ma)
             if tb is None:
                 continue  # id lạ không thuộc module — vắng mặt
             loi_off = self._trang_thai_dam_may(tb)
@@ -492,7 +623,12 @@ class Module:
                            "thiết bị này."}
         ma = hd["ma"]
         nganh = self._nganh_thuc_the.get(id, "")
-        if nganh in _dm._NGANH_KHONG_DIEU_KHIEN or _rui_ro(nganh) != "ghi":
+        # Cùng MỘT CỬA với lúc phát hành động (B1): danh mục cấm, hoặc thiết
+        # bị từng bị đám mây báo ngành cấm — kể cả khi ngành hiệu lực hiện
+        # tại do LAN tự khai.
+        if nganh in _dm._NGANH_KHONG_DIEU_KHIEN \
+                or ma in self._ma_cam_dieu_khien \
+                or _rui_ro(nganh) != "ghi":
             return {"ok": False,
                     "loi": "Loại thiết bị này không bao giờ điều khiển được "
                            "(luật nhà: khoá/bếp/bình nóng lạnh chỉ đọc)."}
@@ -502,27 +638,53 @@ class Module:
                            "«cho_phep_dieu_khien» trong cấu hình để điều "
                            "khiển thiết bị an toàn nhỏ."}
         kieu = hd["kieu"]
+        # B2 — lớp kiểm lại của module (không tin cổng lõi đã kiểm): kiểu
+        # phải ĐÚNG (int(True)/int(5.9) cắt lén như trước bị cấm), số phải
+        # nằm trong khoảng min/max và Enum phải thuộc range của đặc tả
+        # thiết bị. Không có khoảng/enum trong đặc tả → chỉ kiểm kiểu.
+        tho_gt = tham_so.get("gia_tri")
+        khoang = hd.get("khoang") or {}
         if kieu == "Boolean":
             gia_tri: Any = bool(hd["gia_tri"])
         elif kieu == "Integer":
-            try:
-                gia_tri = int(tham_so.get("gia_tri"))
-            except (TypeError, ValueError):
+            if isinstance(tho_gt, bool) or not isinstance(tho_gt, int):
                 return {"ok": False,
                         "loi": "tham_so.gia_tri phải là số nguyên."}
+            gia_tri = tho_gt
         elif kieu == "Float":
-            try:
-                gia_tri = float(tham_so.get("gia_tri"))
-            except (TypeError, ValueError):
+            if isinstance(tho_gt, bool) \
+                    or not isinstance(tho_gt, (int, float)) \
+                    or not math.isfinite(tho_gt):
                 return {"ok": False,
                         "loi": "tham_so.gia_tri phải là số."}
+            gia_tri = float(tho_gt)
         else:  # Enum
-            gia_tri = tham_so.get("gia_tri")
+            mien = khoang.get("range")
+            if mien is not None:
+                if tho_gt not in mien:
+                    return {"ok": False,
+                            "loi": "tham_so.gia_tri phải thuộc một trong "
+                                   f"các giá trị thiết bị cho phép: {mien}."}
+            elif not isinstance(tho_gt, str) or not tho_gt:
+                return {"ok": False,
+                        "loi": "tham_so.gia_tri phải là chuỗi giá trị "
+                               "của thiết bị."}
+            gia_tri = tho_gt
+        if kieu in ("Integer", "Float"):
+            if "min" in khoang and gia_tri < khoang["min"]:
+                return {"ok": False,
+                        "loi": f"tham_so.gia_tri nhỏ hơn mức tối thiểu "
+                               f"của thiết bị ({khoang['min']})."}
+            if "max" in khoang and gia_tri > khoang["max"]:
+                return {"ok": False,
+                        "loi": f"tham_so.gia_tri vượt quá mức tối đa "
+                               f"của thiết bị ({khoang['max']})."}
         try:
             if hd["nguon"] == "lan":
                 bg = self._ban_do_lan.get(ma)
                 if bg is None:
                     raise LoiLan("Thiết bị LAN không còn trong cấu hình.")
+                await self._dam_bao_khoa_lan(bg)  # B5: tự lấy nếu chưa khai
                 if not bg.get("khoa"):
                     return {"ok": False,
                             "loi": "Chưa có local_key cho thiết bị LAN này."}

@@ -222,8 +222,14 @@ def kiem_ip_lan(ip: Any) -> str:
 # ── Hỏi/đặt trạng thái qua TCP 6668 ─────────────────────────────────────────
 
 async def _giao_dich(ip: str, cong: int, local_key: str, phien_ban: str,
-                     lenh: int, noi_dung: dict) -> dict:
-    """Một lượt hỏi-đáp TCP: mở nối, gửi một khung, đọc một khung, đóng ngay."""
+                     lenh: int, noi_dung: dict,
+                     chap_nhan_ack_rong: bool = False) -> dict:
+    """Một lượt hỏi-đáp TCP: mở nối, gửi một khung, đọc một khung, đóng ngay.
+
+    `chap_nhan_ack_rong` (chỉ lệnh ĐIỀU KHIỂN dùng): thiết bị 3.3 thật
+    thường trả khung chỉ có 4 byte mã trả, không payload — mã trả 0 nghĩa là
+    lệnh ĐÃ chạy; coi đó là xác nhận thành công thay vì báo «giải mã thất
+    bại» như trước. Mã trả khác 0 vẫn là lỗi."""
     kiem_ip_lan(ip)
     try:
         doc, ghi = await asyncio.wait_for(
@@ -254,7 +260,20 @@ async def _giao_dich(ip: str, cong: int, local_key: str, phien_ban: str,
             raise LoiLan("Thiết bị không trả lời trong thời gian cho phép.") from exc
         if not du_lieu:
             raise LoiLan("Thiết bị đóng kết nối mà không trả lời.")
-        _seq, _lenh_tra, payload = mo_khung(du_lieu, phien_ban, local_key)
+        try:
+            _seq, _lenh_tra, payload = mo_khung(du_lieu, phien_ban, local_key)
+        except LoiLan:
+            if not chap_nhan_ack_rong:
+                raise
+            # Khung ACK rỗng của thiết bị 3.3 thật: payload chỉ là mã trả.
+            # Không bao giờ đoán thành công với payload lạ (bản mã thật).
+            _s, _l, tho, _con = _cat_khung(du_lieu)
+            if len(tho) > 4:
+                raise
+            ma_tra = struct.unpack(">I", tho)[0] if len(tho) == 4 else 0
+            if ma_tra != 0:
+                raise LoiLan(f"Thiết bị từ chối lệnh (mã trả {ma_tra}).")
+            return {}
     finally:
         ghi.close()
         try:
@@ -284,12 +303,15 @@ async def hoi_dps(ip: str, cong: int, local_key: str, phien_ban: str,
 
 async def dat_dps(ip: str, cong: int, local_key: str, phien_ban: str,
                   ma_thiet_bi: str, dps: dict) -> dict:
-    """Đặt dps (điều khiển). Trả dps sau khi thiết bị xác nhận."""
+    """Đặt dps (điều khiển). Trả dps sau khi thiết bị xác nhận; thiết bị 3.3
+    thật có thể chỉ trả mã trả 0 không payload — coi là thành công và trả
+    lại chính dps đã gửi (không bịa dps mới)."""
     import time as _time
     kq = await _giao_dich(ip, cong, local_key, phien_ban, LENH_DIEU_KHIEN,
                           {"gwId": ma_thiet_bi, "devId": ma_thiet_bi,
                            "t": int(_time.time()),
-                           "dps": dps})
+                           "dps": dps},
+                          chap_nhan_ack_rong=True)
     tra = kq.get("dps")
     return {str(k): v for k, v in tra.items()} if isinstance(tra, dict) else dps
 

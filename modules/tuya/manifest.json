@@ -56,7 +56,7 @@
       "kieu": "chuoi",
       "bat_buoc": false,
       "mac_dinh": "[]",
-      "mo_ta": "Danh sách thiết bị Tuya trong mạng nhà, dạng JSON: [{\"id\": \"<mã thiết bị>\", \"ip\": \"192.168.1.50\", \"ten\": \"Tên tuỳ ý\", \"nganh\": \"dj\", \"cong\": 6668}]. «nganh» là mã loại Tuya (vd dj đèn, cz ổ cắm, kg công tắc) để phân loại rủi ro khi không tra được đám mây; bỏ trống khi không rõ. «cong» mặc định 6668, chỉ đổi khi thiết bị thật đổi cổng. IP phải là địa chỉ riêng trong mạng nhà. Mã thiết bị (id) lấy ở iot.tuya.com → Cloud → Devices → chọn thiết bị (cột Device ID)."
+      "mo_ta": "Danh sách thiết bị Tuya trong mạng nhà, dạng JSON: [{\"id\": \"<mã thiết bị>\", \"ip\": \"192.168.1.50\", \"ten\": \"Tên tuỳ ý\", \"nganh\": \"dj\", \"cong\": 6668}]. «nganh» là mã loại Tuya (vd dj đèn, cz ổ cắm, kg công tắc) để phân loại rủi ro khi không tra được đám mây; bỏ trống khi không rõ. «cong» mặc định 6668, phải là số nguyên 1–65535 — khai sai (chữ, số ngoài khoảng) thì cả mục đó bị bỏ qua và sức khoẻ module hiện lỗi cấu hình nêu tên thiết bị. IP phải là địa chỉ riêng trong mạng nhà. Mã thiết bị (id) lấy ở iot.tuya.com → Cloud → Devices → chọn thiết bị (cột Device ID)."
     },
     {
       "khoa": "local_key_lan",

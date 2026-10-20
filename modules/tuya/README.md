@@ -22,9 +22,25 @@ HMAC-SHA256 của c2a; đường LAN TỰ VIẾT bằng thư viện chuẩn + `c
   Tuya: videolock, jtmspro, ms, mk, bxx, dcl, kx, rs) **KHÔNG BAO GIỜ**
   điều khiển được — thực thể không có `tinh_nang` nào; `thuc_hien()` kiểm
   lại lần nữa.
+- **Ngành quyết ở MỘT CỬA** (vòng sửa NV157 sau soát độc lập): ngành của đám
+  mây luôn thắng ngành LAN tự khai. Thiết bị từng bị đám mây báo ngành cấm
+  thì bị cấm suốt phiên, kể cả khi đám mây mất kết nối sau đó. Đám mây có
+  cấu hình nhưng không liệt kê được → mọi thiết bị LAN đóng điều khiển
+  trong lượt đó: ngành chỉ do người khai, chưa được đám mây xác nhận,
+  không bao giờ đủ để mở điều khiển. Thiết bị vừa có đám mây vừa có LAN
+  chỉ phát MỘT thực thể (đám mây). Chế độ LAN thuần (không cấu hình đám
+  mây) giữ nguyên hành vi: ngành khai là nguồn duy nhất.
+- **Giá trị lệnh bị kiểm**: hành động `dat_*` khai JSON Schema chuẩn theo
+  đặc tả của chính thiết bị (khoảng min/max, tập enum) nên cổng lõi kiểm
+  được; `thuc_hien()` còn kiểm lại kiểu thật (int không nhận bool/float)
+  và khoảng trước khi gửi — giá trị ngoài khoảng bị từ chối, không tới
+  Tuya. Hành động không có khoảng trong đặc tả chỉ bị kiểm kiểu.
 - Thực thể trạng thái: đám mây ưu tiên thiết bị `is_online`; LAN ưu tiên
   kết quả `hoi` thật, lỗi giải mã = local_key đã đổi (bài học đo thật của
-  c2a ngày 10/09/2026) — báo rõ, không sập.
+  c2a ngày 10/09/2026) — báo rõ, không sập. LAN hỏng thì trạng thái **rơi
+  về đám mây** nếu thiết bị cũng có trên đó. Lệnh điều khiển (cmd 7) của
+  thiết bị 3.3 thật thường chỉ trả 4 byte mã trả (payload rỗng): mã trả 0
+  được nhận là xác nhận thành công, không báo lỗi giả «local_key đã đổi».
 
 ## Lấy khoá ở đâu
 
