@@ -16,13 +16,28 @@ c2a `services/khoa_cua_nha.py` (commit `d879b03`) — mã lệnh mở/đóng c�
   gắn đúng quản trị đó, hết hạn sau 120 giây**. «mo_khoa» thiếu mã / hết hạn
   / của quản trị khác / mã cũ gửi lại (chống phát lại) → từ chối. Hai lệnh mở
   đồng thời cùng một mã: chỉ một lệnh chạy.
+- **Giới hạn phải nói thẳng của step-up này** (soát độc lập K1): mã xác nhận
+  được trả ngay trong phản hồi cho chính người gọi «chuan_bi_mo» (module
+  chưa có kênh thứ hai để gửi mã), nên nó **chỉ chống bấm nhầm/phát lại,
+  không chống lấy cắp phiên** — ai chiếm được phiên web hoặc khoá của quản
+  trị thì gọi được cả hai lệnh liên tiếp như quản trị thật. Lớp xác nhận
+  lại danh tính ở lõi cho hành động «nguy_hiem» qua phiên cookie do điều
+  phối bổ sung ở lõi (không nằm trong module này).
 - Vì mã xác nhận gắn quản trị, đường hàng chờ phê duyệt của lõi **không dùng
   được cho mo_khoa** (lệnh được duyệt không kèm mã xác nhận của người duyệt).
   Quản trị mở khoá bằng đường trực tiếp: `chuan_bi_mo` → `mo_khoa` kèm
   `xac_nhan: true`.
+- **Mọi hành động của module chỉ dành cho quản trị/nội bộ** — kể cả
+  «xem_nhat_ky»: nhật ký chứa tên người + giờ ra vào (dữ liệu cá nhân),
+  khách có phạm vi `thiet_bi:ghi`/`doc` bị module từ chối ở mọi hành động
+  (một cổng vai dùng chung ở lối vào, đóng khi lỗi).
 - Mọi lần chuẩn bị mở / mở / đóng (kể cả bị từ chối hoặc lỗi thiết bị) đều
-  ghi vào **nhật ký bất biến** `nhat-ky-bat-bien.jsonl` (quyền 0600, chỉ ghi
-  thêm, module không có hành động nào xoá nó): **ai, từ đâu, lúc nào**.
+  ghi vào **nhật ký có xích băm** `nhat-ky-bat-bien.jsonl` (thư mục 0700,
+  tệp tạo 0600, chỉ ghi thêm, module không có hành động nào xoá nó): **ai,
+  từ đâu (nguồn thật trong ngữ cảnh gọi), lúc nào**. Mỗi dòng mang băm
+  SHA-256 của dòng trước nên sửa/xoá/chèn dòng ở giữa bị phát hiện bằng
+  `Module.kiem_xich_nhat_ky()`; giới hạn thật: cắt đuôi tệp hoặc thay cả
+  tệp bởi người có quyền ghi thì xích tự thân không phát hiện được.
 - Điều khiển (mở/đóng) **mặc định TẮT** — chỉ khi cấu hình
   `cho_phep_dieu_khien=bat` mới có; tắt thì module chỉ đọc. **Không có** tính
   năng tự mở khi về nhà.

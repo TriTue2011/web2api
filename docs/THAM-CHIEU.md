@@ -2610,8 +2610,12 @@ Tiền tố thực thể: `khoa_cua`.
 - Module bắt thêm cửa sổ xác nhận lại riêng: «chuan_bi_mo» cấp mã xác nhận
   dùng một lần, gắn đúng quản trị, hết hạn 120 giây; đường hàng chờ của lõi
   không dùng được cho «mo_khoa» vì không kèm mã — quản trị dùng đường trực
-  tiếp. Mọi lần chuẩn bị/mở/đóng ghi `nhat-ky-bat-bien.jsonl` (0600, chỉ ghi
-  thêm): ai, từ đâu, lúc nào.
+  tiếp. Mã trả ngay trong phản hồi nên step-up này chỉ chống bấm nhầm/phát
+  lại, không chống lấy cắp phiên (xác nhận lại danh tính ở lõi do điều phối
+  làm riêng). Mọi hành động của module — kể cả đọc nhật ký — chỉ quản
+  trị/nội bộ (NV169-SUA K2). Mọi lần chuẩn bị/mở/đóng ghi
+  `nhat-ky-bat-bien.jsonl` (thư mục 0700, tệp 0600, xích băm SHA-256 giữa
+  các dòng, kiểm bằng `kiem_xich_nhat_ky()`): ai, từ đâu, lúc nào.
 - Điều khiển mặc định TẮT (`cho_phep_dieu_khien=tat`, chỉ đọc). Mã lệnh
   mở/đóng do chủ máy khai rõ (`lenh_mo`/`lenh_dong` JSON) — module không đoán
   mã DP. **Chưa kiểm với khoá cửa thật.**
