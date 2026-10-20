@@ -23,10 +23,16 @@ khuôn module / xác thực. Khác biệt so với c2a (ghi rõ từng điểm):
    đọc, nó cứ đưa dữ liệu đã đọc qua `danh_muc`/`van_ban_pdf` — điểm nối không đổi.
 
 An toàn — hoá đơn/bảng là DỮ LIỆU KHÔNG TIN:
-- XML: từ chối mọi tài liệu có `<!DOCTYPE`/khai báo ENTITY (ElementTree dùng expat —
-  thực thể nội bộ bị mở rộng, nguy cơ nổ thực thể «billion laughs»), trần kích thước
-  (TRAN_XML), trần độ sâu lồng (TRAN_DO_SAU), trần số phần tử (TRAN_PHAN_TU).
-  Mẫu hoá đơn lạ → báo «không đọc được», không đoán.
+- XML: GIẢI MÃ đúng bảng mã thật (BOM/mẫu byte đầu; khai báo `encoding=` trong prolog
+  phải khớp byte thật, lệch → từ chối) TRƯỚC, rồi mới kiểm DOCTYPE/khai báo ENTITY trên
+  VĂN BẢN ĐÃ GIẢI MÃ — XML mã hoá UTF-16/32 không qua mặt được khâu chặn như khi dò
+  chuỗi trên byte thô (soát độc lập B, E2). Từ chối mọi tài liệu có DOCTYPE/ENTITY
+  (ElementTree dùng expat — thực thể nội bộ bị mở rộng, nguy cơ nổ thực thể
+  «billion laughs»), trần kích thước (TRAN_XML), trần độ sâu lồng (TRAN_DO_SAU),
+  trần số phần tử (TRAN_PHAN_TU). Mẫu hoá đơn lạ → báo «không đọc được», không đoán.
+- Đối chiếu: ghép dòng bằng CHỈ MỤC BĂM theo mã/tên đã gập (tiền tính một lần mỗi dòng),
+  không còn vòng lồng O(n·m); trần TRAN_DONG dòng mỗi bên; phần đối chiếu chạy NGOÀI
+  vòng lặp sự kiện (asyncio.to_thread) để bảng lớn không chặn lõi (soát độc lập B, E3).
 - .xlsx: đọc qua zipfile — trần kích thước nén, trần tổng giải nén, trần tỉ lệ nén
   (chống zip bomb), trần số tệp con, trần dòng/cột; chỉ đọc sheet1.
 - Công thức không thực thi (xem điểm 2).
@@ -36,6 +42,7 @@ An toàn — hoá đơn/bảng là DỮ LIỆU KHÔNG TIN:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import difflib
@@ -45,6 +52,7 @@ import time
 import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
+from collections import Counter, deque
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -70,6 +78,7 @@ TRAN_DONG = 5_000             # số dòng bảng danh mục
 TRAN_COT = 64                 # số cột một dòng
 TRAN_DAU_RA = 80_000          # cắt báo cáo đầu ra (khớp van-phong)
 TRAN_DONG_LIET_KE = 200       # liệt kê tối đa ngần này tên cho mỗi nhóm «chỉ một bên»
+TRAN_UNG_VIEN = 16            # số ứng viên tối đa được chấm SequenceMatcher đầy đủ cho một dòng (đường gần giống)
 TRAN_SHEET = 30               # tìm dòng tiêu đề trong 30 dòng đầu (khớp c2a)
 
 #: Không gian tên OOXML (lưu sẵn để so thẻ theo hậu tố, không liệt kê danh sách phân loại XML).
@@ -139,20 +148,66 @@ def _gap(s: Any) -> str:
 
 
 # ── XML an toàn ─────────────────────────────────────────────────────────────
+def _do_bang_ma(du_lieu: bytes) -> str:
+    """Bảng mã THẬT của tài liệu XML, đoán theo BOM / mẫu byte đầu — đúng cách expat tự
+    nhận diện (chuẩn XML, phụ lục F). Kiểm trên byte thô mà không giải mã là chỗ hở E2:
+    DOCTYPE viết UTF-16 lẫn byte NUL nên mắt dò byte ASCII không thấy."""
+    if du_lieu[:4] in (b"\x00\x00\xfe\xff", b"\x00\x00\x00<"):
+        return "utf-32-be"
+    if du_lieu[:4] in (b"\xff\xfe\x00\x00", b"<\x00\x00\x00"):
+        return "utf-32-le"
+    if du_lieu[:2] == b"\xfe\xff" or du_lieu[:4] == b"\x00<\x00?":
+        return "utf-16-be"
+    if du_lieu[:2] == b"\xff\xfe" or du_lieu[:4] == b"<\x00?\x00":
+        return "utf-16-le"
+    return "utf-8"
+
+
+_RE_KHAI_BAO_MA = re.compile(r"""encoding\s*=\s*["']([^"']+)["']""")
+
+
+def _ten_ma_chuan(s: str) -> str:
+    """«UTF-16» / «utf_16» / «Utf16» → «utf16» để so khớp khai báo với bảng mã thật."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _giai_ma_xml(du_lieu: bytes) -> str:
+    """Giải mã XML không tin về CHUỖI theo đúng bảng mã thật; khai báo `encoding=` trong
+    prolog khác byte thật → từ chối (tài liệu mập mờ về bảng mã là dấu hiệu lẩn tránh)."""
+    ma = _do_bang_ma(du_lieu)
+    try:
+        van_ban = du_lieu.decode(ma)
+    except UnicodeDecodeError:
+        raise LoiDuLieu(f"không giải mã được XML theo bảng mã {ma}") from None
+    van_ban = van_ban.lstrip("\ufeff")  # bỏ dấu BOM đầu tài liệu (nếu có)
+    kb = _RE_KHAI_BAO_MA.search(van_ban[:512])
+    if kb:
+        khai, that = _ten_ma_chuan(kb.group(1)), _ten_ma_chuan(ma)
+        if khai != that and not (khai in ("utf16", "utf32") and that.startswith(khai)):
+            raise LoiDuLieu(f"khai báo encoding «{kb.group(1)}» không khớp bảng mã thật "
+                            f"({ma}) — từ chối")
+    return van_ban
+
+
 def _xml_an_toan(du_lieu: bytes, *, tran: int = TRAN_XML) -> ET.Element:
     """Phân tích XML từ dữ liệu không tin: chặn DOCTYPE/ENTITY, trần kích thước/độ sâu/số phần tử.
 
     ElementTree dùng expat — thực thể nội bộ trong DOCTYPE bị mở rộng (nguy cơ nổ
-    thực thể «billion laughs») nên từ chối bằng CẤU TRÚC, không theo nội dung.
-    Hoá đơn TT78 thật không bao giờ có DOCTYPE.
+    thực thể «billion laughs»). Khâu chặn chạy trên VĂN BẢN ĐÃ GIẢI MÃ đúng bảng mã
+    (xem `_giai_ma_xml`), không dò chuỗi trên byte thô — bản cũ bị qua mặt bằng XML
+    mã hoá UTF-16 (soát độc lập B, E2). Hoá đơn TT78 thật không bao giờ có DOCTYPE.
     """
     if len(du_lieu) > tran:
         raise LoiDuLieu(f"dữ liệu XML {len(du_lieu)} byte vượt trần {tran} byte")
-    thap = du_lieu.lower()
-    if b"<!doctype" in thap or b"<!entity" in thap:
+    van_ban = _giai_ma_xml(du_lieu)
+    thap = van_ban.lower()
+    if "<!doctype" in thap or "<!entity" in thap:
         raise LoiDuLieu("tài liệu XML có DOCTYPE/khai báo ENTITY — từ chối (chống nổ thực thể)")
+    # Đã có chuỗi: bỏ khai báo <?xml ...?> (nó mang encoding= của byte gốc, không còn
+    # ý nghĩa) để bộ phân tích không đọc lệch bảng mã khi mã hoá lại chuỗi.
+    sach = re.sub(r"^<\?xml[\s\S]*?\?>", "", van_ban, count=1)
     try:
-        goc = ET.fromstring(du_lieu)
+        goc = ET.fromstring(sach)
     except ET.ParseError as exc:
         raise LoiDuLieu(f"không đọc được XML: {str(exc)[:120]}") from None
     dem = 0
@@ -198,6 +253,8 @@ def doc_xml(du_lieu: str | bytes) -> dict[str, Any]:
     hh = [e for e in goc.iter() if _ten(e) == "HHDVu"]
     if not hh:
         return {"loi": "XML không có danh sách hàng hóa (DSHHDVu/HHDVu) — có phải hóa đơn theo Thông tư 78?"}
+    if len(hh) > TRAN_DONG:
+        return {"loi": f"hoá đơn có {len(hh)} dòng hàng vượt trần {TRAN_DONG} dòng — từ chối"}
     dong = []
     for e in hh:
         dong.append({"stt": _chu(e, "STT"), "ten": _chu(e, "THHDVu"), "ma": _chu(e, "MHHDVu"),
@@ -533,19 +590,79 @@ def _bang_nhau(a: Decimal | None, b: Decimal | None, tien: bool) -> bool:
 
 def _ghep(hd: list[dict[str, Any]], dm: list[dict[str, Any]]) -> tuple[list[tuple[int, int]], list[int], list[int]]:
     """Cặp (dòng hoá đơn, dòng danh mục): theo MÃ nếu cả hai có, rồi tên khớp đúng, rồi tên gần giống nhất
-    (≥ GIONG_TEN, mỗi dòng danh mục ghép một lần)."""
-    con = set(range(len(dm)))
+    (≥ GIONG_TEN, mỗi dòng danh mục ghép một lần).
+
+    Bản cũ duyệt vòng lồng O(n·m) và gọi `_gap` (NFD + regex) cho MỖI cặp so sánh — hoá
+    đơn 200 dòng × danh mục 200 dòng mất ~7 giây đồng bộ trong vòng lặp sự kiện (soát
+    độc lập B, E3). Bản này: tiền tính khoá đã gập MỘT LẦN mỗi dòng, ghép mã/tên khớp
+    đúng bằng CHỈ MỤC BĂM; đường gần giống chấm cận trên rẻ cho mọi ứng viên còn trống
+    rồi chỉ chấm SequenceMatcher đầy đủ cho tối đa TRAN_UNG_VIEN ứng viên cao nhất;
+    trần TRAN_DONG dòng mỗi bên.
+    """
+    if len(hd) > TRAN_DONG or len(dm) > TRAN_DONG:
+        raise LoiDuLieu(f"đối chiếu tối đa {TRAN_DONG} dòng mỗi bên "
+                        f"(hoá đơn {len(hd)} dòng, danh mục {len(dm)} dòng) — từ chối")
+    ma_hd = [_gap(d.get("ma")) if d.get("ma") else "" for d in hd]
+    ten_hd = [_gap(d.get("ten")) for d in hd]
+    ma_dm = [_gap(d.get("ma")) if d.get("ma") else "" for d in dm]
+    ten_dm = [_gap(d.get("ten")) for d in dm]
+    chi_muc_ma: dict[str, deque[int]] = {}
+    for j, k in enumerate(ma_dm):
+        if k:                       # mã rỗng không phải khoá — không ghép theo mã trống
+            chi_muc_ma.setdefault(k, deque()).append(j)
+    chi_muc_ten: dict[str, deque[int]] = {}
+    for j, k in enumerate(ten_dm):
+        chi_muc_ten.setdefault(k, deque()).append(j)
+
+    def _lay(chi_muc: dict[str, deque[int]], khoa: str, con: set[int]) -> int | None:
+        """Chỉ số danh mục nhỏ nhất còn trống mang khoá này (đúng thứ tự duyệt của bản cũ)."""
+        hang_doi = chi_muc.get(khoa)
+        while hang_doi:
+            j = hang_doi.popleft()
+            if j in con:
+                return j
+        return None
+
+    # Đường gần giống: chấm CẬN TRÊN rẻ (quick ratio theo đếm ký tự, tính sẵn một lần)
+    # cho mọi ứng viên còn trống, chỉ chấm ĐẦY ĐỦ (SequenceMatcher) tối đa TRAN_UNG_VIEN
+    # ứng viên cao nhất — trần số ứng viên theo gợi ý của soát độc lập B (E3). Cặp chọn
+    # ra vẫn phải ≥ GIONG_TEN; ngang điểm thì lấy chỉ số lớn hơn (đúng bản cũ).
+    dem_dm = [Counter(t) for t in ten_dm]
+    dai_dm = [len(t) for t in ten_dm]
+
+    def _can_tren(ca: dict, la: int, cb: dict, lb: int) -> float:
+        if la + lb == 0:
+            return 1.0
+        if len(ca) > len(cb):
+            ca, cb, la, lb = cb, ca, lb, la
+        dung = 0
+        for ch, n in ca.items():
+            m = cb.get(ch)
+            if m:
+                dung += n if n < m else m
+        return 2.0 * dung / (la + lb)
+
+    con: set[int] = set(range(len(dm)))
     cap: list[tuple[int, int]] = []
     chua: list[int] = []
-    for i, d in enumerate(hd):
-        j = next((j for j in con if d.get("ma") and dm[j].get("ma") and _gap(d["ma"]) == _gap(dm[j]["ma"])), None)
+    sm = difflib.SequenceMatcher()
+    for i in range(len(hd)):
+        j = _lay(chi_muc_ma, ma_hd[i], con) if ma_hd[i] else None
         if j is None:
-            j = next((j for j in con if _gap(d["ten"]) == _gap(dm[j]["ten"])), None)
-        if j is None:
-            diem = sorted(((difflib.SequenceMatcher(None, _gap(d["ten"]), _gap(dm[j]["ten"])).ratio(), j)
-                           for j in con), reverse=True)
-            if diem and diem[0][0] >= GIONG_TEN:
-                j = diem[0][1]
+            j = _lay(chi_muc_ten, ten_hd[i], con)
+        if j is None and con:
+            ca, la = Counter(ten_hd[i]), len(ten_hd[i])
+            xep = sorted(((_can_tren(ca, la, dem_dm[k], dai_dm[k]), k) for k in con), reverse=True)
+            sm.set_seq1(ten_hd[i])
+            tot, j_tot = 0.0, None
+            for qr, k in xep[:TRAN_UNG_VIEN]:
+                if qr < GIONG_TEN:
+                    break
+                sm.set_seq2(ten_dm[k])
+                r = sm.ratio()
+                if r >= GIONG_TEN and (j_tot is None or (r, k) > (tot, j_tot)):
+                    tot, j_tot = r, k
+            j = j_tot
         if j is None:
             chua.append(i)
         else:
@@ -806,8 +923,11 @@ class Module:
                 return {"ok": False, "loi": hd["loi"]}
             ten_hd = str(tham_so.get("ten_hd") or "")
             ten_dm = str(tham_so.get("ten_dm") or "")
-            return {"ok": True,
-                    "bao_cao": doi_chieu(hd, dm, ten_hd=ten_hd, ten_dm=ten_dm),
-                    "nguon_ngoai": True}
+            # Đối chiếu là việc CPU thuần (ghép/so khớp bảng lớn) — chạy NGOÀI vòng lặp
+            # sự kiện để không chặn mọi yêu cầu khác của lõi (soát độc lập B, E3).
+            bao_cao = await asyncio.to_thread(doi_chieu, hd, dm, ten_hd=ten_hd, ten_dm=ten_dm)
+            return {"ok": True, "bao_cao": bao_cao, "nguon_ngoai": True}
+        except LoiDuLieu as exc:
+            return {"ok": False, "loi": str(exc)}
         except Exception:
             return {"ok": False, "loi": "loi_noi_bo_khi_xu_ly"}
