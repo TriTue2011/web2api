@@ -33,10 +33,16 @@ Bảo mật:
   tự viết bộ kiểm URL thứ hai.
 - Video: Graph nhận `file_url` để Facebook tự kéo — URL phải qua kiểm tra
   `kiem_url_co_ban` + `kiem_dns_va_ip` (host CÔNG KHAI, không LAN/loopback).
-- Lỗi Graph dịch sang tiếng Việt bằng bảng trong c2a; thử lại tối đa 2 lần lỗi
-  thoáng qua (429, is_transient, mã 4/17/32/613, 5xx): lỗi token hỏng hay nội
-  dung vi phạm thì thử lại vô ích → ném ngay. Kết quả chỉ mang thông điệp đã
-  dịch + mã ngắn, không bao giờ lộ thân lỗi thô chứa token.
+- Lỗi Graph dịch sang tiếng Việt bằng bảng trong c2a. Chính sách thử lại
+  THEO PHƯƠNG THỨC (sửa NV158-SUA, theo soát độc lập C1): GET (đọc —
+  idempotent) thử lại tối đa 2 lần lỗi thoáng qua (429, is_transient, mã
+  4/17/32/613, 5xx); POST đăng bài/ảnh/video KHÔNG thử lại sau khi yêu cầu
+  đã gửi — đăng bài không idempotent, thử lại là ĐĂNG TRÙNG công khai:
+  lỗi sau gửi (mất kết nối chờ trả lời, phản hồi lỗi không có mã Graph)
+  trả «không rõ kết quả» để người dùng mở Trang kiểm tra trước khi đăng
+  lại; POST chỉ thử lại lỗi chắc chắn CHƯA gửi (không nối được máy chủ).
+  Kết quả chỉ mang thông điệp đã dịch + mã ngắn, không bao giờ lộ thân lỗi
+  thô chứa token.
 
 Mã này chạy TRONG tiến trình lõi.
 """
@@ -81,6 +87,13 @@ KHOANG_CACH_BAI_GIAY = 30.0
 _HET_GIO = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
 #: Thời gian nghỉ cơ sở giữa các lần thử lại (test có thể đặt về nhỏ).
 _THOI_GIAN_NGHI = 3.0
+
+#: Lỗi mạng CHẮC CHẮN xảy ra TRƯỚC khi yêu cầu được gửi (không nối được máy
+#: chủ / không lấy được kết nối) — chỉ những lỗi này mới được thử lại với
+#: POST, vì yêu cầu chưa hề tới Facebook. Mọi lỗi mạng khác với POST (đọc
+#: quá giờ, ngắt giữa chừng…) đều mơ hồ: bài có thể đã được đăng.
+_LOI_TRUOC_KHI_GUI = (httpx.ConnectError, httpx.ConnectTimeout,
+                      httpx.PoolTimeout)
 
 log = logging.getLogger("web2api.module.facebook")
 
@@ -197,6 +210,10 @@ class Module:
         # người dùng; chỉ có hiệu lực khi WEB2API_TEST_CHO_PHEP_LOOPBACK=1.
         self._goc_test: str | None = None
         self._lan_dang_cuoi: dict[str, float] = {}   # page_id -> monotonic
+        # Khoá chống đua THEO TRANG: giữ suốt kiểm-tần-suất → đăng → ghi mốc,
+        # để các lệnh đăng đồng thời không cùng lọt qua kiểm-tần-suất
+        # (check-then-act qua nhiều await — soát độc lập C2).
+        self._khoa_dang: dict[str, asyncio.Lock] = {}
         # Trần tự chọn (test có thể hạ để chạy nhanh).
         self._khoang_cach_bai = KHOANG_CACH_BAI_GIAY
 
@@ -265,20 +282,28 @@ class Module:
                          token: str, timeout: float = 30.0,
                          form: bool = False,
                          tep: dict | None = None) -> dict:
-        """Một lời gọi Graph API, tự thử lại lỗi thoáng qua, tự dịch lỗi.
+        """Một lời gọi Graph API, thử lại theo phương thức, tự dịch lỗi.
 
-        Thử lại (tối đa 2 lần, nghỉ 3s/6s): HTTP 429, `is_transient` trong
-        thân, mã rate-limit (4/17/32/613), hoặc 5xx không đọc được lỗi. Các lỗi
-        còn lại ném LoiFacebook ngay — token hỏng hay nội dung vi phạm thì
-        thử lại vô ích.
+        GET (đọc — idempotent): thử lại tối đa 2 lần (nghỉ 3s/6s) với HTTP
+        429, `is_transient` trong thân, mã rate-limit (4/17/32/613), 5xx
+        không đọc được lỗi, và lỗi mạng. Các lỗi còn lại ném LoiFacebook
+        ngay — token hỏng hay nội dung vi phạm thì thử lại vô ích.
+
+        POST (đăng bài/ảnh/video — KHÔNG idempotent): KHÔNG thử lại sau khi
+        yêu cầu đã gửi. Chỉ thử lại lỗi chắc chắn chưa gửi (không nối được
+        máy chủ). Lỗi mạng sau gửi, hoặc phản hồi lỗi mà Graph không cho mã
+        lỗi xác định, ném LoiFacebook «không rõ kết quả» (ma
+        `khong_ro_ket_qua`) — Facebook có thể đã nhận bài; người dùng phải
+        mở Trang kiểm tra trước khi đăng lại, thà thiếu còn hơn đăng trùng.
         """
+        la_get = phuong_thuc.upper() == "GET"
         url = f"{self._goc()}/{duong.lstrip('/')}"
         proof = self._appsecret_proof(token)
         loi_cuoi: LoiFacebook | None = None
         for lan in range(3):
             try:
                 async with httpx.AsyncClient(timeout=_HET_GIO) as client:
-                    if phuong_thuc.upper() == "GET":
+                    if la_get:
                         q = dict(tham_so or {})
                         q["access_token"] = token      # GET: Meta đọc từ query
                         if proof:
@@ -298,10 +323,17 @@ class Module:
                                                     headers={"Content-Type": "application/json"})
             except httpx.HTTPError as exc:
                 # KHÔNG str(exc): ngoại lệ httpx có thể in URL chứa token.
-                loi_cuoi = LoiFacebook(f"Không gọi được Facebook: {type(exc).__name__}",
-                                       ma="mang_loi")
-                await asyncio.sleep(_THOI_GIAN_NGHI * (lan + 1))
-                continue
+                if la_get or isinstance(exc, _LOI_TRUOC_KHI_GUI):
+                    loi_cuoi = LoiFacebook(f"Không gọi được Facebook: {type(exc).__name__}",
+                                           ma="mang_loi")
+                    await asyncio.sleep(_THOI_GIAN_NGHI * (lan + 1))
+                    continue
+                # POST: yêu cầu có thể đã tới Facebook — không đăng lại.
+                raise LoiFacebook(
+                    "Đã gửi yêu cầu đăng lên Facebook nhưng mất kết nối trước "
+                    f"khi có trả lời ({type(exc).__name__}) — KHÔNG rõ bài đã "
+                    "đăng hay chưa. Mở Trang kiểm tra trước khi đăng lại.",
+                    ma="khong_ro_ket_qua") from None
 
             try:
                 than_tra = dap.json()
@@ -314,6 +346,16 @@ class Module:
             if not isinstance(err, dict):
                 err = {"message": "", "code": 0}
             loi = _dich_loi(err)
+            if not la_get:
+                # POST đã có phản hồi: Facebook đã xử lý hoặc đã từ chối dứt
+                # khoát — không bao giờ thử lại (đăng trùng). Không có mã lỗi
+                # Graph xác định thì kết quả mơ hồ → «không rõ kết quả».
+                if not int(err.get("code") or 0) and not int(err.get("error_subcode") or 0):
+                    raise LoiFacebook(
+                        "Facebook trả lỗi mà không có chi tiết — KHÔNG rõ bài "
+                        "đã đăng hay chưa. Mở Trang kiểm tra trước khi đăng lại.",
+                        ma="khong_ro_ket_qua") from None
+                raise loi
             thoang_qua = (dap.status_code == 429
                           or bool(err.get("is_transient"))
                           or int(err.get("code") or 0) in _CODE_THU_LAI
@@ -341,6 +383,10 @@ class Module:
         token_dai = str(doi.get("access_token") or "")
         if not token_dai:
             raise LoiFacebook("Facebook không trả token dài hạn", ma="doi_token_loi")
+        # Ghi nhận NGAY: lời gọi me/accounts ngay sau đây mang token này
+        # trong URL (GET) — bộ lọc log phải biết nó trước khi lời gọi đi qua
+        # (soát độc lập C3; trước đây chỉ ghi nhận ở nap() sau lời gọi).
+        self._ghi_nhan_token(token_dai)
 
         trang: list[dict] = []
         tham_so: dict[str, Any] = {
@@ -667,11 +713,21 @@ class Module:
         trang = self._trang_theo_id(id)
         if trang is None:
             return {"ok": False, "loi": "Trang không có trong cấu hình (kiểm tra lại danh sách Trang đã kết nối)."}
-        # Giới hạn tần suất theo Trang: chỉ kiểm cho hành động đăng ra công chúng.
+        # Hành động đăng ra công chúng: khoá theo Trang bao trọn kiểm tần
+        # suất → đăng → ghi mốc (chống đua check-then-act, soát C2).
         if hanh_dong in ("dang_bai", "dang_anh", "dang_video"):
-            tu_choi = self._kiem_tan_suat(trang["id"])
-            if tu_choi:
-                return {"ok": False, "loi": tu_choi}
+            khoa = self._khoa_dang.setdefault(trang["id"], asyncio.Lock())
+            async with khoa:
+                return await self._dang_va_ghi_moc(trang, hanh_dong, tham_so)
+        return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
+
+    async def _dang_va_ghi_moc(self, trang: dict, hanh_dong: str,
+                               tham_so: dict) -> dict:
+        """Đăng một bài (đã giữ khoá theo Trang): kiểm giới hạn tần suất,
+        thực hiện, và chỉ ghi mốc thời gian khi đăng thành công."""
+        tu_choi = self._kiem_tan_suat(trang["id"])
+        if tu_choi:
+            return {"ok": False, "loi": tu_choi}
         try:
             if hanh_dong == "dang_bai":
                 kq = await self._dang_bai_chu(trang, tham_so)
