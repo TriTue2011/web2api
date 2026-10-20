@@ -177,12 +177,12 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{them.dl.coLoi}}"><p role="alert" id="loi-dl" style="margin:0;font-size:13px;color:#8A2A1E">{{them.dl.loi}}</p></sc-if>
 <div id="dl-danh-sach" style="display:flex;flex-direction:column">
 <sc-for list="{{them.dl.hang}}" as="r">
-<div data-tk-da-luu="{{r.id}}" style="display:flex;align-items:center;gap:10px;padding:8px 0;min-height:44px;border-top:1px solid var(--line);min-width:0">
-<span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{r.emailChe}}</span>
+<div data-tk-da-luu="{{r.id}}" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;min-height:44px;border-top:1px solid var(--line);min-width:0">
+<span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.emailChe}}</span>
 <sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
-<span style="margin-left:auto;display:inline-flex;gap:6px;flex:0 0 auto">
-<button type="button" data-dl-tam-dung="{{r.id}}" onClick="{{r.doiTamDung}}" hidden="{{r.anTamDung}}" style="{{r.tamDungSt}}">{{r.nhanTamDung}}</button>
+<span style="margin-left:auto;display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:100%">
+<sc-if value="{{r.coTamDung}}"><button type="button" data-dl-tam-dung="{{r.id}}" onClick="{{r.doiTamDung}}" style="{{r.tamDungSt}}">{{r.nhanTamDung}}</button></sc-if>
 <button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
 <button type="button" data-dl-xoa="{{r.id}}" onClick="{{r.xoa}}" style="{{r.xoaSt}}">{{r.nhanXoa}}</button>
 </span>
@@ -815,12 +815,13 @@ class Component extends DCLogic {
   }
   async dlDoiTamDung(id, tam_dung) {
     // NV197b: Tạm dừng / Bật lại tài khoản đã lưu. Máy chủ cũ chưa có đường
-    // này (404 không kèm mã lỗi) → ẩn nút, không báo lỗi ầm ĩ.
+    // này (404/405 không kèm mã lỗi) → ẩn nút, không báo lỗi ầm ĩ.
     try {
       const { ma, j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/tam-dung', {
-        method: 'POST', json: { tam_dung: !!tam_dung }, chapNhan: [404]
+        method: 'POST', json: { tam_dung: !!tam_dung }, chapNhan: [404, 405]
       });
-      if (ma === 404 && !(j && j.error && j.error.code)) {
+      // Lõi cũ: đường lạ rơi xuống phục vụ tệp tĩnh — GET trả 404, POST trả 405 (đều không kèm mã lỗi của web2api).
+      if ((ma === 404 || ma === 405) && !(j && j.error && j.error.code)) {
         this.setState({ dlCoTamDung: false });
         return;
       }
@@ -1605,7 +1606,7 @@ class Component extends DCLogic {
             doiTamDung: () => this.dlDoiTamDung(t.id, t.trang_thai !== 'tam_dung'),
             nhanTamDung: t.trang_thai === 'tam_dung' ? 'Bật lại' : 'Tạm dừng',
             tamDungSt: btnSt({}) + 'min-height:44px;',
-            anTamDung: s.dlCoTamDung === false,
+            coTamDung: s.dlCoTamDung !== false,
             dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
             dangNhapSt: btnSt({}) + 'min-height:44px;',
             xoa: () => this.dlXoa(t.id),

@@ -305,4 +305,7 @@ def test_giao_dien_co_nut_tam_dung_bat_lai():
           ).read_text(encoding="utf-8")
     assert "api/tai-khoan/da-luu/" in ma and "/tam-dung" in ma
     assert "Tạm dừng" in ma and "Bật lại" in ma and "Đã tạm dừng" in ma
-    assert "anTamDung" in ma  # chưa có đường trên máy chủ cũ → ẩn nút
+    # Chưa có đường trên máy chủ cũ → bỏ nút khỏi DOM bằng <sc-if> (thuộc tính hidden bị display:inline-flex của nút đè mất;
+    # hành vi thật do test_web2api_ui_nv197b_199b.py::test_a_loi_cu_khong_co_duong_tam_dung_thi_an_nut đo trên Chrome).
+    assert "coTamDung" in ma and "hidden=" not in ma.split('data-dl-tam-dung')[1].split('</button>')[0]
+    assert "chapNhan: [404, 405]" in ma
