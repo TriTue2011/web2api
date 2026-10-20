@@ -27,6 +27,7 @@ Hàng rào an toàn của việc này:
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
 import threading
@@ -56,6 +57,11 @@ NGUONG_LAM_MOI_GIAY = 6 * 3600
 
 #: Số 401 liên tiếp mới vô hiệu tài khoản (một 401 đơn lẻ thường là tạm).
 NGUONG_401_VO_HIEU = 3
+# TRẦN CỨNG số lần làm mới token do 401 trong MỘT lượt chat (tổng mọi tài
+# khoản), độc lập với mọi khoá/tập đã thấy: bảo đảm vòng lặp trong chat() luôn
+# dừng dù định danh tài khoản có xoay thế nào (NV198b). c2a cũng chỉ làm mới
+# một lần rồi trả 401 (openai_oauth.py: 401_after_refresh).
+TRAN_LAM_MOI_MOI_LUOT = 1
 
 TIEU_DE_CODEX = {
     "originator": "codex-cli",
@@ -77,6 +83,9 @@ def _che_email(email: str) -> str:
     return (ten[:1] + "***@" + mien) if ten else "***@" + mien
 
 
+_DEM_MA_ON_DINH = itertools.count(1)
+
+
 def _khoa_tu_token(token: str) -> str:
     """Khoá mờ ổn định của một token: «tk-» + 12 ký tự hex đầu của SHA-256."""
     return "tk-" + hashlib.sha256(str(token).encode("utf-8")).hexdigest()[:12]
@@ -96,9 +105,13 @@ def _la_token_api_only(token: str) -> bool:
 class _TaiKhoan:
     __slots__ = ("access_token", "refresh_token", "email", "plan",
                  "expires_at", "trang_thai", "device_id", "so_401",
-                 "restore_at", "lan_dung_cuoi")
+                 "restore_at", "lan_dung_cuoi", "ma_on_dinh")
 
     def __init__(self, access_token: str, refresh_token: str = ""):
+        # Định danh ỔN ĐỊNH của tài khoản trong tiến trình: KHÔNG xoay theo
+        # access_token/refresh_token như `khoa`. Chỉ dùng làm khoá «đã thử /
+        # đã làm mới trong lượt» ở chat(); không lưu, không ra ngoài.
+        self.ma_on_dinh = f"tkid-{next(_DEM_MA_ON_DINH)}"
         self.access_token = access_token
         self.refresh_token = refresh_token
         tt = han_muc.thong_tin_token(access_token)
@@ -623,7 +636,12 @@ class Module:
             return False
         return exp - time.time() <= NGUONG_LAM_MOI_GIAY
 
-    def _ap_dung_lam_moi(self, tk: _TaiKhoan, kq: dict) -> None:
+    def _ap_dung_lam_moi(self, tk: _TaiKhoan, kq: dict,
+                         giu_so_401: bool = False) -> None:
+        """Áp token mới. `giu_so_401=True` (đường 401 của chat): làm mới KHÔNG
+        chứng minh token chạy được nên không xoá bộ đếm 401 — chỉ lần gọi 200
+        mới xoá. Nếu xoá ở đây thì 401 lặp qua các lượt chat không bao giờ chạm
+        ngưỡng vô hiệu."""
         with self._khoa:
             tk.access_token = str(kq.get("access_token") or tk.access_token)
             moi = str(kq.get("refresh_token") or "")
@@ -632,7 +650,8 @@ class Module:
             if kq.get("expires_at"):
                 tk.expires_at = float(kq["expires_at"])
             tk.trang_thai = "hoat_dong"
-            tk.so_401 = 0
+            if not giu_so_401:
+                tk.so_401 = 0
             tk.restore_at = None
         self._luu_tai_khoan_kho()
 
@@ -647,8 +666,8 @@ class Module:
         log.warning("openaicodex: tài khoản %s vô hiệu (refresh: %s)",
                     tk.khoa, code or "không rõ")
 
-    async def _lam_moi_tai_khoan(self, tk: _TaiKhoan,
-                                 ep: bool = False) -> dict | None:
+    async def _lam_moi_tai_khoan(self, tk: _TaiKhoan, ep: bool = False,
+                                 giu_so_401: bool = False) -> dict | None:
         """Làm mới một tài khoản; phân loại kết quả để người gọi quyết định:
         {"ok": True} | {"loai": "tam"|"chet", "code": ...}.
         `ep=True` (đường 401): bỏ qua cache — token vừa bị từ chối."""
@@ -659,7 +678,7 @@ class Module:
                                        tim_theo_refresh=self._tim_theo_refresh,
                                        bo_qua_cache=ep)
         if kq and "error" not in kq:
-            self._ap_dung_lam_moi(tk, kq)
+            self._ap_dung_lam_moi(tk, kq, giu_so_401=giu_so_401)
             return {"ok": True}
         if kq and kq.get("error") == "unrecoverable":
             return {"loai": "chet", "code": str(kq.get("code") or "")}
@@ -724,14 +743,14 @@ class Module:
     # -- chat qua Codex Responses API (port openai_oauth.py) ------------------
 
     def _chon_tai_khoan(self, da_thu: set[str]) -> _TaiKhoan | None:
-        """Chọn tài khoản cho một lượt gọi: bỏ qua tài khoản (theo KHOÁ mờ)
-        đã thử trong lượt này, đã vô hiệu/deactivated, đang giới hạn chưa tới
+        """Chọn tài khoản cho một lượt gọi: bỏ qua tài khoản (theo MÃ ỔN ĐỊNH,
+        không theo `khoa` vốn xoay khi làm mới) đã thử trong lượt này, đã vô hiệu/deactivated, đang giới hạn chưa tới
         mốc hồi phục, và token API-only (không có claim ChatGPT)."""
         bay_gio = time.time()
         with self._khoa:
             ds = list(self._tai_khoan)
         for tk in ds:
-            if tk.khoa in da_thu:
+            if tk.ma_on_dinh in da_thu:
                 continue
             if tk.trang_thai in ("vo_hieu", "deactivated"):
                 continue
@@ -809,8 +828,11 @@ class Module:
 
         than_responses = _chat_sang_responses(tin_nhan, body)
         than_responses["model"] = ten_model
-        da_thu: set[str] = set()       # khoá mờ đã thử trong lượt gọi này
-        da_lam_moi: set[str] = set()   # khoá mờ đã làm mới trong lượt này
+        # Khoá của hai tập dưới là `ma_on_dinh` (KHÔNG phải `khoa`: `khoa` =
+        # sha256(access_token) đổi sau mỗi lần làm mới thành công).
+        da_thu: set[str] = set()       # tài khoản đã thử trong lượt gọi này
+        da_lam_moi: set[str] = set()   # tài khoản đã làm mới trong lượt này
+        so_lam_moi = 0                 # tổng lần làm mới trong lượt (trần cứng)
         loi_cuoi: tuple[int, bytes] | None = None
 
         while True:
@@ -829,14 +851,23 @@ class Module:
                         _gop_chat_json(su_kien, ten_model, tin_nhan))
             than_loi_bytes = su_kien if isinstance(su_kien, bytes) else b""
             if ma == 401:
-                # Làm mới tối đa MỘT lần cho mỗi tài khoản trong một lượt gọi
-                # rồi thử lại đúng tài khoản đó (khoá chưa vào da_thu).
-                if tk.khoa not in da_lam_moi:
-                    da_lam_moi.add(tk.khoa)
-                    kq = await self._lam_moi_tai_khoan(tk, ep=True)
+                # Làm mới tối đa TRAN_LAM_MOI_MOI_LUOT lần cho CẢ lượt, rồi thử
+                # lại đúng tài khoản đó (chưa vào da_thu).
+                if tk.ma_on_dinh in da_lam_moi:
+                    # Vừa làm mới trong lượt này mà vẫn 401: đếm ĐÚNG MỘT lần
+                    # vào ngưỡng vô hiệu rồi trả 401 (không làm mới nữa).
+                    self._dem_401(tk, "401_sau_lam_moi")
+                elif so_lam_moi < TRAN_LAM_MOI_MOI_LUOT:
+                    so_lam_moi += 1
+                    da_lam_moi.add(tk.ma_on_dinh)
+                    kq = await self._lam_moi_tai_khoan(
+                        tk, ep=True, giu_so_401=True)
                     if kq.get("ok"):
                         continue
-                self._dem_401(tk, "401_khong_lam_moi_duoc")
+                    self._dem_401(tk, "401_khong_lam_moi_duoc")
+                # else: hết trần làm mới của lượt (tài khoản này chưa được
+                # làm mới): token có thể chỉ hết hạn → KHÔNG đếm 401, chuyển
+                # tài khoản kế; lượt sau tự làm mới.
                 loi_cuoi = (401, than_loi_bytes)
             elif ma == 403:
                 tk.trang_thai = "vo_hieu"
@@ -856,9 +887,9 @@ class Module:
                 # 5xx: thử tài khoản kế; 4xx khác (yêu cầu sai): trả ngay.
                 loi_cuoi = (ma, than_loi_bytes)
                 if ma < 500:
-                    da_thu.add(tk.khoa)
+                    da_thu.add(tk.ma_on_dinh)
                     break
-            da_thu.add(tk.khoa)
+            da_thu.add(tk.ma_on_dinh)
 
         if loi_cuoi is not None:
             ma, than = loi_cuoi
