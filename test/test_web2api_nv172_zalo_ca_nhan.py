@@ -21,6 +21,7 @@ import importlib.util
 import json
 import logging
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -46,9 +47,16 @@ def _module_py():
 class MayChuGia:
     """Máy chủ Node GIẢ nói hợp đồng của dich-vu/zalo-ca-nhan."""
 
-    def __init__(self, *, dang_nhap=True, khoa=KHOA_GIA):
+    def __init__(self, *, dang_nhap=True, khoa=KHOA_GIA, phien="phien-gia-1",
+                 co_phien=True, tre_hop_thoai=0.0):
         self.khoa = khoa
         self.dang_nhap = dang_nhap
+        # NV172-SUA Z2: dịch vụ thật trả kèm nhãn phiên (epoch) trong /tin-moi;
+        # co_phien=False mô phỏng dịch vụ CŨ (chưa có nhãn) để kiểm đường dự phòng.
+        self.phien = phien
+        self.co_phien = co_phien
+        self.tre_hop_thoai = tre_hop_thoai
+        self.so_goi_hop_thoai = 0
         self.hop_thoai = [
             {"thread_id": "1111111111", "loai": 0, "ten": "Nguoi A"},
             {"thread_id": "2222222222", "loai": 1, "ten": "Nhom B"},
@@ -90,6 +98,9 @@ class MayChuGia:
                                     "dang_nhap": may.dang_nhap, "so_tin_nhan": len(may.tin),
                                     "che_do": "gia"})
                 elif self.path == "/hop-thoai":
+                    may.so_goi_hop_thoai += 1
+                    if may.tre_hop_thoai:
+                        time.sleep(may.tre_hop_thoai)
                     if not may.dang_nhap:
                         self._tra(409, {"ok": False, "ma": "chua_dang_nhap"})
                     else:
@@ -98,7 +109,10 @@ class MayChuGia:
                     tu = int(urllib.parse.parse_qs(
                         urllib.parse.urlsplit(self.path).query).get("tu", ["0"])[0] or 0)
                     tin = [t for t in may.tin if t["seq"] > tu]
-                    self._tra(200, {"ok": True, "tu_moi": may.seq, "tin": tin})
+                    than = {"ok": True, "tu_moi": may.seq, "tin": tin}
+                    if may.co_phien:
+                        than["phien"] = may.phien
+                    self._tra(200, than)
                 else:
                     self._tra(404, {"ok": False, "ma": "khong_co_route"})
 
@@ -148,6 +162,14 @@ class MayChuGia:
         tin.update(ghi)
         self.tin.append(tin)
         return tin
+
+    def khoi_dong_lai(self, phien_moi=None):
+        """Mô phỏng dịch vụ Node khởi động lại: đệm tin mất, seq về 0,
+        nhãn phiên đổi (nếu cho phien_moi)."""
+        self.tin = []
+        self.seq = 0
+        if phien_moi is not None:
+            self.phien = phien_moi
 
 
 # ── fixture ──────────────────────────────────────────────────────────────────
@@ -239,8 +261,13 @@ def test_cai_bao_khi_dich_vu_khong_noi(md, manifest):
 
 
 def test_kenh_ra_lay_tu_dich_vu(md, manifest):
+    # NV172-SUA Z3: kenh_ra() theo hợp đồng lõi là hàm ĐỒNG BỘ nên chỉ đọc bộ
+    # đệm — danh sách đích được làm mới ở các đường async (cai/hoi_vong/
+    # gui_tin). Test cập nhật theo hành vi mới (bài học NV98): làm mới qua
+    # một vòng hoi_vong rồi mới đọc kenh_ra.
     with MayChuGia() as may_chu:
         m = _mod(md, manifest, may_chu)
+        asyncio.run(m.hoi_vong())
         dich = m.kenh_ra()
         assert {d["id"] for d in dich} == {"1111111111", "2222222222"}
         assert all("ten" in d and "chat_id" not in d and "token" not in d for d in dich)
@@ -312,7 +339,9 @@ def test_hoi_vong_chi_nhan_nguoi_cho_phep(md, manifest):
         assert t["la_nhom"] is False
         assert t["ten_tu_khai"] == "Nguoi A"
         assert t["luc"] == "2026-10-20T00:01:00Z"
-        assert t["id_tin"] == "1111111111:1"
+        # NV172-SUA Z2: id_tin mang nhãn phiên của dịch vụ để không đụng
+        # id của tin trước lần khởi động lại (chống trùng của lõi nuốt trùng).
+        assert t["id_tin"] == "1111111111:phien-gia-1:1"
         # Lần hai không lặp tin cũ
         assert asyncio.run(m.hoi_vong()) == []
 
@@ -346,7 +375,7 @@ def test_hoi_vong_bo_tin_sai_khuon(md, manifest):
 def test_suc_khoe_khong_lo_bi_mat(md, manifest):
     with MayChuGia() as may_chu:
         m = _mod(md, manifest, may_chu)
-        m.kenh_ra()  # nạp danh sách đích trước khi kiểm sức khoẻ
+        asyncio.run(m.hoi_vong())  # làm mới danh sách đích (đường async, Z3)
         sk = asyncio.run(m.suc_khoe())
         assert sk["ok"] is True
         assert sk["bat"] is True
@@ -364,3 +393,105 @@ def test_khoa_khong_vao_log(md, manifest, caplog):
             asyncio.run(m.gui_tin({"kenh_id": "1111111111"}, {"van_ban": "x"}))
             logging.getLogger("httpx").warning("thu %s", f"Bearer {KHOA_GIA}")
     assert KHOA_GIA not in caplog.text, "khoá dịch vụ không được vào log"
+
+
+# ── NV172-SUA: Z2 (khởi động lại dịch vụ), Z3 (kenh_ra chặn vòng lặp),
+#    Z4-phụ (cai() phải nhận ra sai_khoa) ───────────────────────────────────
+
+def test_z2_khoi_dong_lai_dich_vu_khong_mat_tin(md, manifest):
+    """Dịch vụ khởi động lại (seq về 0, nhãn phiên đổi): module phải đặt lại
+    con trỏ và nhận đủ tin mới — bản cũ giữ _seq cũ nên bỏ lặng lẽ."""
+    with MayChuGia() as may_chu:
+        m = _mod(md, manifest, may_chu, cho_phep=("1111111111",))
+        for i in range(3):
+            may_chu.nhan_tin(thread_id="1111111111", nguoi_gui="1111111111",
+                             van_ban=f"truoc {i}", luc="2026-10-20T00:01:00Z")
+        assert len(asyncio.run(m.hoi_vong())) == 3
+        assert m._seq == 3
+        may_chu.khoi_dong_lai(phien_moi="phien-gia-2")
+        may_chu.nhan_tin(thread_id="1111111111", nguoi_gui="1111111111",
+                         van_ban="sau restart 1", luc="2026-10-20T00:02:00Z")
+        may_chu.nhan_tin(thread_id="1111111111", nguoi_gui="1111111111",
+                         van_ban="sau restart 2", luc="2026-10-20T00:03:00Z")
+        tin = asyncio.run(m.hoi_vong())
+        assert [t["van_ban"] for t in tin] == ["sau restart 1", "sau restart 2"], \
+            "tin sau khởi động lại không được mất lặng lẽ"
+        assert tin[0]["id_tin"] == "1111111111:phien-gia-2:1"
+        assert m._seq == 2
+        assert asyncio.run(m.hoi_vong()) == []
+
+
+def test_z2_seq_lui_khi_dich_vu_cu_khong_co_phien(md, manifest):
+    """Dự phòng khi dịch vụ CŨ không trả nhãn phiên: tu_moi < _seq đang giữ
+    ⇒ dịch vụ đã đặt lại seq ⇒ module cũng đặt lại, không bỏ tin."""
+    with MayChuGia(co_phien=False) as may_chu:
+        m = _mod(md, manifest, may_chu, cho_phep=("1111111111",))
+        for i in range(3):
+            may_chu.nhan_tin(thread_id="1111111111", nguoi_gui="1111111111",
+                             van_ban=f"truoc {i}", luc="2026-10-20T00:01:00Z")
+        assert len(asyncio.run(m.hoi_vong())) == 3
+        may_chu.khoi_dong_lai()
+        may_chu.nhan_tin(thread_id="1111111111", nguoi_gui="1111111111",
+                         van_ban="sau restart", luc="2026-10-20T00:02:00Z")
+        tin = asyncio.run(m.hoi_vong())
+        assert [t["van_ban"] for t in tin] == ["sau restart"]
+        assert m._seq == 1
+
+
+def test_z3_kenh_ra_chi_doc_bo_dem_trong_ttl(md, manifest):
+    """Trong hạn TTL, kenh_ra() + hoi_vong() không gọi lại /hop-thoai."""
+    with MayChuGia() as may_chu:
+        m = _mod(md, manifest, may_chu)
+        asyncio.run(m.hoi_vong())
+        assert may_chu.so_goi_hop_thoai == 1
+        assert len(m.kenh_ra()) == 2
+        assert len(m.kenh_ra()) == 2
+        asyncio.run(m.hoi_vong())
+        assert may_chu.so_goi_hop_thoai == 1, "bộ đệm còn tươi thì không gọi mạng lại"
+
+
+def test_z3_kenh_ra_va_gui_tin_khong_chan_vong_lap(md, manifest):
+    """Dịch vụ chậm 1,2 s ở /hop-thoai: kenh_ra() (đồng bộ) phải trả ngay từ
+    bộ đệm; gui_tin chạm đường làm mới ASYNC không được đóng băng vòng lặp
+    sự kiện (bản cũ gọi httpx.get đồng bộ tới 10 s mỗi lần)."""
+    with MayChuGia(tre_hop_thoai=1.2) as may_chu:
+        m = _mod(md, manifest, may_chu)
+
+        t0 = time.monotonic()
+        assert m.kenh_ra() == []
+        assert time.monotonic() - t0 < 0.3, "kenh_ra không được chờ mạng"
+
+        async def chay():
+            dem_nhip = 0
+            dung = asyncio.Event()
+
+            async def nhip():
+                nonlocal dem_nhip
+                while not dung.is_set():
+                    dem_nhip += 1
+                    await asyncio.sleep(0.05)
+
+            tac_vu_nhip = asyncio.create_task(nhip())
+            # gui_tin vào đích có thật nhưng bộ đệm đang lạnh → phải làm mới
+            # qua đường async (không chặn vòng lặp) rồi mới gửi được.
+            kq = await m.gui_tin({"kenh_id": "1111111111"}, {"van_ban": "chao"})
+            dung.set()
+            await tac_vu_nhip
+            return kq, dem_nhip
+
+        kq, dem_nhip = asyncio.run(chay())
+        assert kq == {"ok": True}
+        assert dem_nhip >= 8, \
+            f"vòng lặp bị chặn khi làm mới đích (chỉ {dem_nhip} nhịp trong ~1,2 s)"
+        assert {d["id"] for d in m.kenh_ra()} == {"1111111111", "2222222222"}
+
+
+def test_cai_voi_khoa_sai_bi_tu_choi(md, manifest):
+    """Z4 (đuôi soát): cai() kiểm sống gặp 401 sai_khoa phải báo lỗi —
+    bản cũ chỉ chặn mang_loi nên lưu cấu hình với khoá sai mà vẫn báo ok."""
+    with MayChuGia(khoa="khoa-cua-dich-vu-khac-0123456789") as may_chu:
+        m = md.Module(manifest)
+        r = asyncio.run(m.cai({"bat": "1", "dich_vu_url": may_chu.url,
+                               "khoa_dich_vu": KHOA_GIA}))
+        assert r["ok"] is False
+        assert r["ma"] == "sai_khoa"

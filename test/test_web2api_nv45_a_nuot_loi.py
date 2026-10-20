@@ -57,6 +57,10 @@ DA_KIEM_TOAN = {
     # không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi, không để lọt khoá); ngoại lệ trong bộ lọc
     # làm hỏng chính lời gọi ghi log nên không được ném ra.
     ("modules/zalo-ca-nhan/module.py", "filter"),
+    # Đã duyệt NV172-SUA: _lay_tin_moi nuốt lỗi khi ép kiểu tu_moi của phản hồi dịch vụ — phản hồi sai khuôn
+    # thì coi cả lượt hỏi là hỏng (trả None → hoi_vong trả [] lượt này, không tiến con trỏ seq, không nhận
+    # tin từ phản hồi không tin được); chu kỳ sau hỏi lại bình thường. Đóng khi lỗi, không mở quyền.
+    ("modules/zalo-ca-nhan/module.py", "_lay_tin_moi"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),

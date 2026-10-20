@@ -22,8 +22,10 @@ Thiết kế bảo mật:
   ngoài bị bỏ lặng lẽ, đếm `bo_qua_nguoi_la` (không trả lời, không lưu).
 - Tin nhận là DỮ LIỆU KHÔNG TIN: kiểm khuôn (nguoi_gui khớp MAU_NGUOI_GUI),
   cắt ở TRAN_VAN_BAN, bỏ ký tự điều khiển (lam_sach_*), không đưa vào log.
-- GỬI tin là GHI ra ngoài: lõi đi qua cổng xác nhận quản trị; module không tự
-  quyết việc nhạy cảm.
+- GỬI tin là GHI ra ngoài: lõi chỉ cho khoá khách có phạm vi
+  `gui:zalo-ca-nhan` gọi đường gửi (kèm hạn tần suất của lõi) — KHÔNG có
+  bước quản trị xác nhận từng tin. Ai giữ khoá có phạm vi đó gửi được tới
+  MỌI đích của tài khoản; chỉ cấp phạm vi này cho ứng dụng thật cần gửi.
 - URL ngoài: chỉ URL của dịch vụ (cấu hình). Dịch vụ nói tới Zalo bằng zca-js
   — mạng_ra của module để trống có chủ ý; xem tai_nguyen.
 """
@@ -33,6 +35,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import time
 import urllib.parse
 
 import httpx
@@ -40,6 +43,12 @@ import httpx
 from app.kenh_vao import MAU_NGUOI_GUI, TRAN_VAN_BAN, lam_sach_ten, lam_sach_van_ban
 
 log = logging.getLogger(__name__)
+
+#: Hạn tuổi của bộ đệm danh sách đích (giây). kenh_ra() là hàm ĐỒNG BỘ theo
+#: hợp đồng lõi (lõi gọi thẳng, không await — xem app/gui_ra.py) nên không
+#: được chạm mạng; danh sách đích được làm mới ở các đường async
+#: (cai/hoi_vong/gui_tin) và giữ trong bộ đệm này (NV172-SUA Z3).
+_TTL_DICH_GIAY = 30.0
 
 #: Mã lỗi ngắn trả cho lõi/người gọi — không lộ thân thô của dịch vụ.
 MA_LOI = (
@@ -128,7 +137,9 @@ class Module:
         self._khoa = ""
         self._cho_phep: list[str] = []
         self._seq = 0
+        self._phien_dv: str | None = None  # nhãn phiên (epoch) của dịch vụ, Z2
         self._dich: list[dict] = []
+        self._dich_luc = 0.0  # mốc monotonic lần làm mới đích gần nhất, Z3
         self._bo_qua_nguoi_la = 0
         self._loi_cuoi: str | None = None
 
@@ -147,13 +158,16 @@ class Module:
             self._khoa = khoa
             _KHOA_DANG_DUNG.add(khoa) if khoa else None
             self._seq = 0
+            self._phien_dv = None
             self._dich = []
+            self._dich_luc = 0.0
             self._loi_cuoi = None
         except Exception as e:
             log.warning("zalo-ca-nhan: cấu hình sai (%s) — module tắt", type(e).__name__)
             self._bat = False
             self._khoa = ""
             self._dich = []
+            self._dich_luc = 0.0
             self._cho_phep = []
 
     async def cai(self, cau_hinh: dict) -> dict:
@@ -173,12 +187,23 @@ class Module:
         self._bat, self._dich_vu_url, self._khoa, self._cho_phep = bat, url, khoa, cho_phep
         _KHOA_DANG_DUNG.add(khoa) if khoa else None
         self._seq = 0
+        self._phien_dv = None
+        self._dich = []
+        self._dich_luc = 0.0
         # Kiểm live khi bật: ping /suc-khoe (khuôn telegram-bot — kiểm sống thật).
+        # MỌI mã lỗi của lượt kiểm sống đều làm cai() thất bại — bản cũ chỉ
+        # chặn «mang_loi» nên khoá sai (401 sai_khoa) vẫn lưu cấu hình + báo ok.
         if bat:
             sk = await self._goi("GET", "/suc-khoe")
-            if sk.get("ma") == "mang_loi":
-                return {"ok": False, "ma": "khong_noi_duoc_dich_vu",
-                        "loi": f"không nối được dịch vụ ở {url}"}
+            if "ma" in sk and "ok" not in sk:
+                if sk["ma"] == "mang_loi":
+                    return {"ok": False, "ma": "khong_noi_duoc_dich_vu",
+                            "loi": f"không nối được dịch vụ ở {url}"}
+                return {"ok": False, "ma": sk["ma"],
+                        "loi": f"dịch vụ từ chối khi kiểm sống ({sk['ma']}) — kiểm tra khoa_dich_vu"}
+            # Làm ấm bộ đệm đích ngay khi cài xong để kenh_ra() có dữ liệu
+            # trước vòng hoi_vong đầu tiên (Z3).
+            await self._lam_moi_dich()
         return {"ok": True, "cau_hinh_luu": {
             "bat": "1" if bat else "0",
             "dich_vu_url": url,
@@ -186,34 +211,46 @@ class Module:
             "danh_sach_cho_phep": json.dumps(cho_phep, ensure_ascii=False),
         }}
 
-    def kenh_ra(self) -> list[dict]:
-        """Danh sách đích gửi ra — KHÔNG chứa khoá/cookie. Lấy từ dịch vụ khi bật."""
-        if not self._bat:
-            return []
-        try:
-            r = httpx.get(f"{self._dich_vu_url}/hop-thoai",
-                          headers={"Authorization": f"Bearer {self._khoa}"}, timeout=10.0)
-            than = r.json()
-        except Exception as e:
-            self._loi_cuoi = "mang_loi"
-            log.warning("zalo-ca-nhan: kenh_ra mang_loi (%s)", type(e).__name__)
-            return []
-        if r.status_code == 409:
-            self._loi_cuoi = "chua_dang_nhap"
-            return []
-        if not (isinstance(than, dict) and than.get("ok") is True
-                and isinstance(than.get("hop_thoai"), list)):
+    def _dich_can_lam_moi(self) -> bool:
+        return (time.monotonic() - self._dich_luc) >= _TTL_DICH_GIAY
+
+    async def _lam_moi_dich(self) -> list[dict]:
+        """Làm mới bộ đệm đích từ dịch vụ (đường ASYNC — gọi từ cai/hoi_vong/
+        gui_tin). Lỗi → giữ bộ đệm cũ, chỉ ghi _loi_cuoi."""
+        kq = await self._goi("GET", "/hop-thoai")
+        if "ma" in kq and "ok" not in kq:
+            self._loi_cuoi = kq["ma"]
+            return [{"id": d["id"], "ten": d["ten"]} for d in self._dich]
+        hop_thoai = kq.get("hop_thoai")
+        if not isinstance(hop_thoai, list):
             self._loi_cuoi = "phan_hoi_sai"
-            return []
-        self._dich = []
-        for h in than["hop_thoai"]:
+            return [{"id": d["id"], "ten": d["ten"]} for d in self._dich]
+        dich = []
+        for h in hop_thoai:
             if not isinstance(h, dict):
                 continue
             tid = str(h.get("thread_id") or "").strip()
             if not tid or len(tid) > 64:
                 continue
-            self._dich.append({"id": tid, "ten": str(h.get("ten") or tid),
-                               "loai": 1 if h.get("loai") == 1 else 0})
+            dich.append({"id": tid, "ten": str(h.get("ten") or tid),
+                         "loai": 1 if h.get("loai") == 1 else 0})
+        self._dich = dich
+        self._dich_luc = time.monotonic()
+        return [{"id": d["id"], "ten": d["ten"]} for d in self._dich]
+
+    def kenh_ra(self) -> list[dict]:
+        """Danh sách đích gửi ra — KHÔNG chứa khoá/cookie.
+
+        Hợp đồng lõi gọi hàm này ĐỒNG BỘ (app/gui_ra.py, app/so_thiet_bi.py
+        gọi thẳng không await) nên TUYỆT ĐỐI không chạm mạng ở đây: bản cũ
+        gọi httpx.get đồng bộ tới 10 s ngay trong vòng lặp sự kiện, mỗi lần
+        gửi một (hai) lượt — cả web2api đứng theo khi Zalo chậm (Z3). Nay
+        chỉ đọc bộ đệm; bộ đệm được làm mới ở các đường async với TTL
+        _TTL_DICH_GIAY. Bộ đệm lạnh (vừa khởi động, chưa vòng hoi_vong nào)
+        trả [] — lõi báo «chưa có đích» trong vài giây đầu, đổi lại vòng
+        lặp không bao giờ bị chặn."""
+        if not self._bat:
+            return []
         return [{"id": d["id"], "ten": d["ten"]} for d in self._dich]
 
     async def suc_khoe(self) -> dict:
@@ -271,15 +308,47 @@ class Module:
 
     # ── nhận tin qua hoi_vong (mục 12 CHUAN-MODULE) ──
 
+    async def _lay_tin_moi(self) -> dict | None:
+        """Một lượt hỏi /tin-moi, tự xử lý dịch vụ KHỞI ĐỘNG LẠI (Z2).
+
+        Dịch vụ khởi động lại thì seq về 0 trong khi _seq của module giữ
+        giá trị cũ — bản cũ hỏi `tu=<cũ>` nên mọi tin mới có seq nhỏ hơn
+        đều bị bỏ lặng lẽ (kể cả lệnh của chủ nhà). Nguyên tắc: không bao
+        giờ bỏ tin chỉ vì seq nhỏ hơn. Phát hiện đặt lại bằng nhãn phiên
+        (epoch) dịch vụ trả kèm; dịch vụ cũ không có nhãn thì dùng dấu
+        hiệu tu_moi < _seq. Khi phát hiện: đặt _seq = 0 và hỏi lại từ 0
+        NGAY trong cùng chu kỳ để lấy đủ tin đã lỡ."""
+        kq = await self._goi("GET", f"/tin-moi?tu={self._seq}")
+        if "ma" in kq and "tu_moi" not in kq:
+            self._loi_cuoi = kq["ma"]
+            return None
+        phien = kq.get("phien")
+        doi_phien = bool(phien) and self._phien_dv is not None and str(phien) != self._phien_dv
+        if phien:
+            self._phien_dv = str(phien)
+        try:
+            tu_moi = int(kq.get("tu_moi", self._seq))
+        except Exception:
+            return None
+        if doi_phien or (not phien and tu_moi < self._seq):
+            self._seq = 0
+            kq2 = await self._goi("GET", "/tin-moi?tu=0")
+            if "ma" in kq2 and "tu_moi" not in kq2:
+                self._loi_cuoi = kq2["ma"]
+                return None
+            if kq2.get("phien"):
+                self._phien_dv = str(kq2["phien"])
+            return kq2
+        return kq
+
     async def hoi_vong(self) -> list[dict]:
         """Hỏi dịch vụ /tin-moi, lọc theo danh sách cho phép → tin chuẩn.
 
         Một tin lỗi chỉ ghi log mã ngắn, không làm hỏng chu kỳ hỏi."""
         if not self._bat or not self._khoa:
             return []
-        kq = await self._goi("GET", f"/tin-moi?tu={self._seq}")
-        if "ma" in kq and "tu_moi" not in kq:
-            self._loi_cuoi = kq["ma"]
+        kq = await self._lay_tin_moi()
+        if kq is None:
             return []
         try:
             self._seq = max(self._seq, int(kq.get("tu_moi", self._seq)))
@@ -296,6 +365,10 @@ class Module:
                 continue
             if tin is not None:
                 ra.append(tin)
+        # Làm mới bộ đệm đích ở đường async này (Z3): hoi_vong chạy mỗi
+        # chu kỳ của lõi nên bộ đệm không bao giờ già hơn TTL + một chu kỳ.
+        if self._dich_can_lam_moi():
+            await self._lam_moi_dich()
         return ra
 
     def _chuan_hoa_tin(self, t: dict) -> dict | None:
@@ -317,8 +390,12 @@ class Module:
         if not van_ban:
             return None
         ten_tu_khai = lam_sach_ten(t.get("ten_tu_khai"))
+        # id_tin mang nhãn phiên (Z2): sau khởi động lại, seq chạy lại từ 1
+        # — không có nhãn thì id đụng id cũ và bị chống trùng của lõi nuốt.
+        id_tin = (f"{thread_id}:{self._phien_dv}:{t.get('seq')}" if self._phien_dv
+                  else f"{thread_id}:{t.get('seq')}")
         return {
-            "id_tin": f"{thread_id}:{t.get('seq')}",
+            "id_tin": id_tin,
             "nguoi_gui": nguoi_gui,
             "noi_gui": thread_id,
             "van_ban": van_ban,
@@ -327,7 +404,8 @@ class Module:
             "luc": t.get("luc"),
         }
 
-    # ── gửi tin (chuẩn kenh_ra; là GHI ra ngoài → qua cổng xác nhận quản trị) ──
+    # ── gửi tin (chuẩn kenh_ra; GHI ra ngoài — lõi kiểm phạm vi gui:<module>,
+    #    KHÔNG có bước quản trị xác nhận từng tin, xem đầu tệp) ──
 
     async def gui_tin(self, dich: dict, noi_dung: dict) -> dict:
         """Gửi văn bản (và tệp qua `_tep`) tới đích đã biết."""
@@ -336,9 +414,11 @@ class Module:
         kenh_id = str((dich or {}).get("kenh_id") or (dich or {}).get("id") or "").strip()
         d = next((x for x in self._dich if x["id"] == kenh_id), None)
         if d is None:
-            # Tự làm mới danh sách đích một lần rồi kiểm lại (đích thêm sau khi nạp).
-            if self.kenh_ra():
-                d = next((x for x in self._dich if x["id"] == kenh_id), None)
+            # Làm mới danh sách đích một lần rồi kiểm lại (đích thêm sau khi
+            # nạp) — qua đường ASYNC _lam_moi_dich, không qua kenh_ra đồng
+            # bộ như bản cũ (đường đó chặn vòng lặp sự kiện, Z3).
+            await self._lam_moi_dich()
+            d = next((x for x in self._dich if x["id"] == kenh_id), None)
             if d is None:
                 if self._loi_cuoi == "chua_dang_nhap":
                     return {"ok": False, "ma": "chua_dang_nhap"}
