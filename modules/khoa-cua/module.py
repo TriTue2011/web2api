@@ -546,5 +546,6 @@ class Module:
         if be is not None:
             try:
                 await be.dong()
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("khoa-cua: đóng backend lúc dừng lỗi (%s)",
+                            type(e).__name__)
