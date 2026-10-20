@@ -81,6 +81,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
 | Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
+| Module `chitieu` (Sổ chi tiêu theo hũ JARS, NV160) | Có — ghi/xem chi tiêu theo kỳ, tự bù hũ vượt theo thứ tự, cổng xác nhận khi vượt tổng ngân sách, cảnh báo ngưỡng, tạm ứng công ty; mỗi danh tính đăng nhập một sổ riêng; port từ c2a; **chưa kiểm với dữ liệu thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2905,6 +2906,52 @@ là thêm quyền (NV15b) — cập nhật module cần duyệt 409 một lần.
 **Giới hạn.**
 - **Chưa kiểm với thiết bị Tuya thật** — toàn bộ kiểm bằng máy chủ Tuya đám mây giả (MockTransport, kiểm chữ ký như thật) và thiết bị LAN giả trên loopback; dò quảng bá UDP chỉ kiểm ở tầng phân tích gói vì hộp cát chặn UDP. Giao thức LAN mới hỗ trợ bản 3.1/3.3 (chưa có 3.4/3.5 dùng khoá phiên HMAC).
 - Chưa đo RAM/đĩa thật; chưa hiệu chuẩn hành động `dat_<code>` với thông số Enum phức tạp của thiết bị thật.
+
+---
+
+### Module chitieu — Sổ chi tiêu cá nhân theo hũ (JARS)
+
+**Mô tả.** Sổ chi tiêu cá nhân: ghi khoản chi vào các «hũ» (JARS), xem ngân sách theo kỳ
+lương, tự bù khi một hũ vượt hạn mức, cảnh báo chạm ngưỡng, thu nhập thêm / chi phí đặc biệt,
+tạm ứng công ty và giải chi. Port từ c2a (`services/chi_tieu/` + `api/chi_tieu.py` @ d879b03;
+nguồn gốc chi-tieu-mcp, Quiz99, MIT). Mã nguồn: `modules/chitieu/`. Tiền tố: `chi_tieu`.
+Hạng: `B` (mã chuyển từ kho khác của chủ máy, chưa ghim SHA).
+
+**Cần gì.**
+- Không cần khoá hay tài khoản bên ngoài; không gọi mạng (khớp `tai_nguyen.mang_ra: []`).
+- Dữ liệu: SQLite `<WEB2API_DATA>/du_lieu/chi-tieu/chi_tieu.db` (0600). RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "chitieu"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/chitieu`
+3. Không có trường cấu hình bắt buộc — cài xong là dùng được.
+
+**Cấu hình.** Không có trường cấu hình nào (bảng trống). Cấu hình SỔ (lương kỳ, ngày bắt đầu
+kỳ, ngưỡng cảnh báo, các hũ) là dữ liệu của từng người dùng, đặt qua công cụ `luu_cau_hinh` /
+`them_hu` / `sua_hu`, không nằm trong cấu hình module.
+
+**Ví dụ dùng.** Công cụ qua API thiết bị của lõi (thực thể công cụ của module):
+`chi_tieu.doc` (chỉ đọc: `xem_ngan_sach`, `xem_lich_su`, `thong_ke`, `de_xuat`,
+`xem_canh_bao`, `xem_cong_ty`, `xem_hu`) và `chi_tieu.ghi` (ghi: `ghi_chi`, `sua_chi`,
+`xoa_chi`, `tach_chi`, `thu_nhap_them`, `chi_phi_dac_biet`, `sua_ky`, `xoa_ky`, `them_hu`,
+`sua_hu`, `xoa_hu`, `luu_cau_hinh`, `cong_ty_tam_ung`, `cong_ty_chi`, `cong_ty_sua`,
+`cong_ty_xoa`, `giai_chi`). Gọi: `POST /api/thiet-bi/chi_tieu.ghi/hanh-dong` với thân
+`{"hanh_dong": "ghi_chi", "tham_so": {"hu": "Thiết Yếu", "so_tien": 50000, "ghi_chu": "cơm trưa"}}`
+(cần phạm vi `thiet_bi:ghi`; thực thể phải được xác nhận trước theo SEC-004f). Mỗi danh tính
+đăng nhập có sổ riêng — công cụ không nhận `so_id`, người này không chạm được sổ người kia.
+Khoản làm vượt tổng ngân sách kỳ trả về `can_xac_nhan: true` và chưa ghi; chỉ ghi khi gọi lại
+với `xac_nhan_vuot_tong: true`.
+
+**Sự cố thường gặp.**
+- `du_lieu_hong` — tệp SQLite bị hỏng; module không ghi đè tệp, khôi phục từ bản sao lưu thủ
+  công của thư mục dữ liệu (dữ liệu module chưa nằm trong bản sao lưu của lõi).
+
+**Giới hạn.**
+- Chưa kiểm với dữ liệu thật của nhà.
+- Chưa port phần đọc thư báo biến động (c2a `email_chi.py`): phụ thuộc module `email`
+  (NV125/NV154, chưa gộp vào main) — điểm nối đã ghi trong `modules/chitieu/README.md`.
+- Chưa có trang `tab_web` riêng; thao tác qua công cụ C2.
 
 ---
 
