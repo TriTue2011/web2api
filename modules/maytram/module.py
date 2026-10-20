@@ -33,12 +33,39 @@ from app import kho as kho_loi
 
 from . import phien_agent as pa
 from .agent_gia import AgentGia  # noqa: F401 — phơi cho test và mô tả giao thức
-from .so_thiet_bi import SoThietBi
+from .so_thiet_bi import ID_QUAN_LY, SoThietBi
 
 log = logging.getLogger("web2api.maytram")
 
-_ID_QUAN_LY = "dang_ky"
+_ID_QUAN_LY = ID_QUAN_LY
 _LENH_QUAN_LY = ("dang_ky", "thu_hoi", "xoa", "xoay_khoa", "doi_quyen")
+
+#: Trần độ sâu cấu trúc kết quả agent (như lõi: app/thiet_bi.py
+#: `_kiem_tra_gia_tri_theo_luoc_do` chặn ở 6 tầng) và trần tổng số phần tử —
+#: lớp chặn thứ hai sau ngân sách TỔNG ký tự của `_cat_tran` (NV170-SUA M3).
+_DO_SAU_DAU_RA = 6
+_TRAN_PHAN_TU_DAU_RA = 50_000
+
+
+def _nguoi_goi_la_quan_tri() -> bool:
+    """Module TỰ kiểm vai người gọi (NV170-SUA M2, theo mẫu khoa-cua).
+
+    Lõi tính rủi ro theo THỰC THỂ và cho phép HẠ mức đó — module không được
+    phụ thuộc: quản trị lỡ hạ rủi ro của thực thể maytram xuống «ghi»/«doc»
+    thì khách có `thiet_bi:ghi` cũng KHÔNG được chạm vào module này. Chỉ
+    `quan_tri`/`noi_bo` mới qua; thiếu ngữ cảnh hoặc lỗi khi đọc → False
+    (đóng khi lỗi).
+    """
+    try:
+        from app.ngu_canh import lay  # chỉ đọc, không gọi sâu vào lõi
+
+        nc = lay()
+    except Exception:
+        return False
+    if nc is None:
+        return False
+    dt = nc.danh_tinh or {}
+    return str(dt.get("loai") or "") in ("quan_tri", "noi_bo")
 
 _MO_TA_LENH = {
     "liet_ke": "Liệt kê thư mục trên máy trạm",
@@ -303,6 +330,10 @@ class Module:
         return await self._thuc_hien_may(ten, hanh_dong, tham_so)
 
     async def _thuc_hien_quan_ly(self, hanh_dong: str, tham_so: dict) -> dict:
+        if not _nguoi_goi_la_quan_tri():
+            return {"ok": False,
+                    "loi": "Chỉ quản trị mới được quản lý máy trạm "
+                           "(đăng ký/xoay khoá/thu hồi/đổi quyền/xoá)"}
         if hanh_dong not in _LENH_QUAN_LY:
             return {"ok": False,
                     "loi": f"hành động «{hanh_dong}» không hỗ trợ ở thực thể quản lý"}
@@ -355,9 +386,15 @@ class Module:
                 return {"ok": False, "loi": str(e)}
             if ban_ghi is None:
                 return {"ok": False, "loi": f"không thấy máy «{ten}»"}
-            phien = self._phien.lay(ten)
-            if phien is not None:
-                phien.cfg = self._so.lay(ten) or phien.cfg
+            if "bat" in thay_doi and not thay_doi["bat"]:
+                # M6 (NV170-SUA): tắt máy là NGẮT PHIÊN NGAY (cùng đường với
+                # thu hồi/xoay khoá ở M1) — chỉ đổi sổ thì phiên đang sống vẫn
+                # nhận lệnh qua đường gọi thẳng, thực thể biến mất là chưa đủ.
+                await self._phien.ngat(ten, "máy đã bị tắt trong sổ (doi_quyen)")
+            else:
+                phien = self._phien.lay(ten)
+                if phien is not None:
+                    phien.cfg = self._so.lay(ten) or phien.cfg
             return {"ok": True, "ten_may": ten, "ban_ghi": ban_ghi}
 
         # xoa — gỡ trên MÁY TRƯỚC rồi xoá ở sổ (thứ tự bắt buộc như c2a).
@@ -377,6 +414,9 @@ class Module:
 
     async def _thuc_hien_may(self, ten: str, hanh_dong: str,
                              tham_so: dict) -> dict:
+        if not _nguoi_goi_la_quan_tri():
+            return {"ok": False,
+                    "loi": "Chỉ quản trị mới được điều khiển máy trạm"}
         if hanh_dong not in pa.LENH_DONG:
             return {"ok": False,
                     "loi": (f"hành động «{hanh_dong}» không hỗ trợ — tập lệnh "
@@ -392,6 +432,15 @@ class Module:
         if phien is None:
             return {"ok": False,
                     "loi": f"máy «{ten}» chưa kết nối (agent chưa quay ra)"}
+        # M1 (NV170-SUA): đối chiếu dấu vân khoá của PHIÊN với khoá HIỆN HÀNH
+        # ở mỗi lệnh — phiên nào còn sót lại sau khi khoá đã xoay (chưa kịp
+        # ngắt ở đường quản lý) thì chết tại đây, lệnh không tới kẻ giữ khoá cũ.
+        if str(getattr(phien, "dau_van", "") or "") != str(
+                ban_ghi.get("dau_van") or ""):
+            await self._phien.ngat(ten, "khoá đã đổi — phiên giữ khoá cũ bị ngắt")
+            return {"ok": False,
+                    "loi": f"máy «{ten}» đã đổi khoá — phiên cũ bị ngắt, "
+                           "agent phải kết nối lại bằng khoá hiện hành"}
         # Kiểm quyền ở LÕI trước khi gửi (tầng 1 — agent tự kiểm lại, tầng 2).
         if hanh_dong in pa.LENH_GHI and not ban_ghi.get("co_quyen_ghi"):
             return {"ok": False,
@@ -420,39 +469,88 @@ class Module:
 
     # ── kết quả là dữ liệu KHÔNG TIN ─────────────────────────────────────────
     def _cat_tran(self, obj):
-        """Cắt mọi chuỗi trong kết quả ở trần cấu hình. Trả (bản cắt, đã cắt?)."""
-        if isinstance(obj, str):
-            return (obj[:self._tran], True) if len(obj) > self._tran else (obj, False)
-        if isinstance(obj, dict):
-            ra, da_cat = {}, False
-            for k, v in obj.items():
-                v2, c = self._cat_tran(v)
-                ra[k] = v2
-                da_cat = da_cat or c
-            if da_cat:
-                ra["bi_cat"] = True
-            return ra, da_cat
-        if isinstance(obj, list):
-            ra, da_cat = [], False
-            for v in obj:
-                v2, c = self._cat_tran(v)
-                ra.append(v2)
-                da_cat = da_cat or c
-            return ra, da_cat
-        return obj, False
+        """Cắt kết quả agent ở trần cấu hình. Trả (bản cắt, đã cắt?).
+
+        NV170-SUA M3: trần tính theo TỔNG ký tự của TOÀN cấu trúc (bộ đếm
+        dùng chung cho cả lần đệ quy — bản cũ cắt TỪNG chuỗi nên 2000 khoá ×
+        1 KB với trần 1024 vẫn trả ra ~2 MB), cộng hai lớp chặn độc lập:
+        độ sâu tối đa `_DO_SAU_DAU_RA` (như lõi) và tổng số phần tử
+        `_TRAN_PHAN_TU_DAU_RA` (phần tử vô định như số cũng không phình vô
+        hạn). Nhờ trần độ sâu, hàm này KHÔNG bao giờ đệ quy sâu theo dữ liệu
+        không tin (bản cũ lồng 3000 tầng làm RecursionError thoát thuc_hien).
+        """
+        st = {"con_lai": float(self._tran), "da_cat": False, "phan_tu": 0}
+
+        def di(o, sau: int):
+            if sau > _DO_SAU_DAU_RA or st["phan_tu"] >= _TRAN_PHAN_TU_DAU_RA:
+                st["da_cat"] = True
+                return "…"
+            if isinstance(o, str):
+                st["phan_tu"] += 1
+                cho = max(0, int(st["con_lai"]) - 2)  # trừ hai dấu nháy JSON
+                if len(o) > cho:
+                    st["da_cat"] = True
+                    st["con_lai"] = 0.0
+                    return o[:cho]
+                st["con_lai"] -= len(o) + 2
+                return o
+            if isinstance(o, dict):
+                st["phan_tu"] += 1
+                st["con_lai"] -= 2  # { }
+                ra = {}
+                for k, v in o.items():
+                    ks = str(k)
+                    if st["con_lai"] < len(ks) + 3:
+                        st["da_cat"] = True
+                        break
+                    st["con_lai"] -= len(ks) + 3  # "khoá":
+                    ra[ks] = di(v, sau + 1)
+                if st["da_cat"]:
+                    ra["bi_cat"] = True
+                return ra
+            if isinstance(o, (list, tuple)):
+                st["phan_tu"] += 1
+                st["con_lai"] -= 2  # [ ]
+                ra = []
+                for v in o:
+                    if st["con_lai"] <= 0:
+                        st["da_cat"] = True
+                        break
+                    st["con_lai"] -= 1  # dấu phẩy ngăn cách
+                    ra.append(di(v, sau + 1))
+                return ra
+            # Số/bool/None…: tính theo độ dài dạng JSON, trần cứng cho repr lạ.
+            st["phan_tu"] += 1
+            st["con_lai"] -= min(len(repr(o)), 64)
+            return o
+
+        return di(obj, 0), st["da_cat"]
 
     def _boc_ket_qua(self, kq: dict, ten: str, hanh_dong: str) -> dict:
-        """Bọc kết quả agent: DỮ LIỆU KHÔNG TIN — cắt trần, đóng dấu nguồn ngoài."""
-        if isinstance(kq, dict) and kq.get("ok"):
-            ket_qua, _ = self._cat_tran(kq.get("ket_qua") if "ket_qua" in kq else kq)
-            if isinstance(ket_qua, dict):
-                ket_qua = {k: v for k, v in ket_qua.items() if k != "ok"}
-            return {"ok": True, "ket_qua": ket_qua,
-                    "nguon_ngoai": True, "khong_tin": True,
+        """Bọc kết quả agent: DỮ LIỆU KHÔNG TIN — cắt trần, đóng dấu nguồn ngoài.
+
+        Mọi lỗi khi xử lý kết quả (kể cả RecursionError từ cấu trúc lạ) đều
+        thành `ok: false` — `thuc_hien` không bao giờ ném vì dữ liệu agent.
+        """
+        try:
+            if isinstance(kq, dict) and kq.get("ok"):
+                ket_qua, _ = self._cat_tran(
+                    kq.get("ket_qua") if "ket_qua" in kq else kq)
+                if isinstance(ket_qua, dict):
+                    ket_qua = {k: v for k, v in ket_qua.items() if k != "ok"}
+                return {"ok": True, "ket_qua": ket_qua,
+                        "nguon_ngoai": True, "khong_tin": True,
+                        "thiet_bi": ten, "lenh": hanh_dong}
+            loi = str((kq or {}).get("loi") or "lỗi không rõ")[:500]
+            return {"ok": False, "loi": loi, "nguon_ngoai": True,
                     "thiet_bi": ten, "lenh": hanh_dong}
-        loi = str((kq or {}).get("loi") or "lỗi không rõ")[:500]
-        return {"ok": False, "loi": loi, "nguon_ngoai": True,
-                "thiet_bi": ten, "lenh": hanh_dong}
+        except Exception:
+            log.warning({"su_kien": "maytram_ket_qua_khong_xu_ly_duoc",
+                         "may": ten, "lenh": hanh_dong})
+            return {"ok": False,
+                    "loi": "kết quả từ agent không xử lý được "
+                           "(quá lớn hoặc sai cấu trúc)",
+                    "nguon_ngoai": True, "thiet_bi": ten, "lenh": hanh_dong}
 
     async def suc_khoe(self) -> dict:
         if not self._bat or self._so is None:
