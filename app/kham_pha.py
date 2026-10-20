@@ -580,6 +580,24 @@ def van_tay(thu_muc: Path) -> str:
     return h.hexdigest()
 
 
+def dung_luong_tren_dia(thu_muc: Path) -> int | None:
+    """Tổng byte các tệp của module trên đĩa (bỏ __pycache__, không theo liên kết mềm); None nếu không đọc được.
+
+    Là con số ĐO THẬT cho «sau khi cài tốn thêm bao nhiêu»: gói Python khai ở `yeu_cau_goi` đã có sẵn trong
+    ảnh (kiểm bằng find_spec lúc cài) nên không cộng thêm; dữ liệu sinh ra khi chạy không tính ở đây.
+    """
+    try:
+        tong = 0
+        for p in thu_muc.rglob("*"):
+            if "__pycache__" in p.parts or p.is_symlink():
+                continue
+            if p.is_file():
+                tong += p.stat().st_size
+        return tong
+    except OSError:
+        return None
+
+
 def ten_ma(id_: str, vt: str) -> str:
     return f"web2api_module_{id_.replace('-', '_')}_{vt[:16]}"
 

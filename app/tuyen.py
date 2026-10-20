@@ -53,7 +53,7 @@ from app import (
     xac_thuc_2fa as xac_thuc_2fa_mod,
 )
 from app.goi_kha_nang import goi
-from app.kham_pha import ID_HOP_LE
+from app.kham_pha import ID_HOP_LE, dung_luong_tren_dia
 from app.loi_openai import LoiOpenAI, lam_sach_thong_diep, nhac_lai
 from app.nguon_git import LoiCanXacNhanCaiMoi, LoiGit, NguonGit
 from app.so_module import LoiCanDuyetQuyen, LoiModuleDangDuocCan, LoiSo, SoModule
@@ -1145,7 +1145,8 @@ async def catalog(request: Request):
         ds.append({k: m.get(k) for k in ("id", "ten", "mo_ta", "phien_ban", "loai", "giao_thuc", "tien_to",
                                          "truong_cau_hinh", "tai_nguyen", "yeu_cau_goi", "tab_web", "cung_cap",
                                          "loai_ten", "loai_thu_tu", "nhom", "muc", "can_module")}
-                  | {"nguon": km.nguon, "da_cau_hinh": km.id in so.dang_chay})
+                  | {"nguon": km.nguon, "da_cau_hinh": km.id in so.dang_chay,
+                     "dung_luong_dia": dung_luong_tren_dia(km.thu_muc) if getattr(km, "thu_muc", None) else None})
     return {"modules": ds, "loi": so.loi}
 
 

@@ -27,7 +27,7 @@
       "kieu": "bi_mat",
       "bat_buoc": true,
       "mac_dinh": null,
-      "mo_ta": "Khoá Bearer bí mật để xác thực với dịch vụ trình duyệt."
+      "mo_ta": "Khoá TỰ ĐẶT — không ai cấp. Sinh một chuỗi ngẫu nhiên dài từ 24 ký tự (ví dụ «openssl rand -hex 32»), đặt vào biến TRINH_DUYET_KHOA của dịch vụ dich-vu/trinh-duyet (tệp .env) rồi dán đúng chuỗi đó vào đây."
     }
   ],
   "tai_nguyen": {

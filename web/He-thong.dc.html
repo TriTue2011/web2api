@@ -323,7 +323,7 @@ main.pg{padding:12px 16px 24px}
 
 <sc-if value="{{ct.coTaiNguyen}}">
 <section class="muc-ct" id="can-gi" aria-labelledby="h-can-gi">
-<h3 id="h-can-gi">Cần gì để chạy</h3>
+<h3 id="h-can-gi">Sau khi cài sẽ tốn thêm bao nhiêu</h3>
 <dl class="bang"><sc-for list="{{ct.taiNguyen}}" as="r"><div class="bang-dong"><dt>{{r.nhan}}</dt><dd><sc-if value="{{r.chuaDo}}"><span class="chua-do">chưa đo</span></sc-if><sc-if value="{{r.coGiaTri}}">{{r.giaTri}}</sc-if></dd></div></sc-for></dl>
 <sc-if value="{{ct.huongDan}}"><p class="phu" id="huong-dan" style="color:var(--ink)"><strong>Hướng dẫn:</strong> {{ct.huongDan}}</p></sc-if>
 <sc-if value="{{ct.mayNay}}"><p class="{{ct.lopMayNay}}" id="may-nay">{{ct.mayNay}}</p></sc-if>
@@ -936,13 +936,25 @@ class Component extends DCLogic {
     const taiNguyen = [];
     if (tn) {
       taiNguyen.push(Object.assign({ nhan: 'RAM thêm' }, so(tn.ram_them_mb, 'MB')));
-      taiNguyen.push(Object.assign({ nhan: 'Đĩa' }, so(tn.dia_mb, 'MB')));
+      taiNguyen.push(Object.assign({ nhan: 'Đĩa khi chạy' }, so(tn.dia_mb, 'MB')));
       taiNguyen.push(Object.assign({ nhan: 'GPU' }, tn.gpu === true ? gt('Cần GPU') : tn.gpu === false ? gt('Không cần') : so(null)));
       taiNguyen.push(Object.assign({ nhan: 'Mạng ra' }, Array.isArray(tn.mang_ra) ? gt(tn.mang_ra.length ? tn.mang_ra.join(', ') : 'Không gọi ra ngoài') : so(null)));
     } else if (x.tuXa) taiNguyen.push(Object.assign({ nhan: 'Chạy ở' }, gt('máy khác (module từ xa)')));
-    if (x.g && typeof x.g.dung_luong === 'number') taiNguyen.push(Object.assign({ nhan: 'Dung lượng tải' }, gt(K.dl(x.g.dung_luong) + ' (đo từ cây git)')));
+    // Dung lượng mã: đã cài → ĐO trên đĩa (lõi); chưa cài → đo từ cây git. Gói Python khai ở yeu_cau_goi đã có sẵn
+    // trong ảnh (lõi kiểm lúc cài, thiếu thì từ chối) nên không tốn thêm — chỉ nói vậy khi module đã nạp được.
+    const bDia = x.c && typeof x.c.dung_luong_dia === 'number' ? x.c.dung_luong_dia : null;
+    const bGit = x.g && typeof x.g.dung_luong === 'number' ? x.g.dung_luong : null;
+    const bMa = bDia != null ? bDia : bGit;
+    if (bDia != null) taiNguyen.push(Object.assign({ nhan: 'Dung lượng mã (đã cài)' }, gt(K.dl(bDia) + ' (đo trên đĩa)')));
+    else if (bGit != null) taiNguyen.push(Object.assign({ nhan: 'Dung lượng tải' }, gt(K.dl(bGit) + ' (đo từ cây git)')));
     const goi = x.info.yeu_cau_goi;
-    if (Array.isArray(goi)) taiNguyen.push(Object.assign({ nhan: 'Gói Python' }, gt(goi.length ? goi.join(', ') : 'Không cần gói thêm')));
+    if (Array.isArray(goi)) taiNguyen.push(Object.assign({ nhan: 'Gói Python' }, gt(goi.length ? goi.join(', ') + (x.c ? ' — có sẵn trong lõi, không cài thêm' : '') : 'Không cần gói thêm')));
+    // Một dòng trả lời thẳng câu «cài xong đĩa tăng bao nhiêu»: mã đo được + đĩa khi chạy NẾU module đã khai số.
+    if (bMa != null) {
+      const diaKhaiBytes = tn && typeof tn.dia_mb === 'number' ? tn.dia_mb * MB : 0;
+      const phanChuaDo = tn && typeof tn.dia_mb === 'number' ? '' : ' — chưa gồm dữ liệu sinh ra khi chạy (chưa đo)';
+      taiNguyen.push(Object.assign({ nhan: 'Đĩa tăng sau khi cài' }, gt('≈ ' + K.dl(bMa + diaKhaiBytes) + phanChuaDo)));
+    }
 
     // Một dòng kết luận «Máy này» — chỉ khi đọc được /api/he-thong VÀ module có khai số; không thì không đoán.
     let mayNay = '', lopMayNay = 'phu';

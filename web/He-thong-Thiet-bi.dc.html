@@ -130,6 +130,7 @@ main.pg{padding:12px 16px 24px}
 <strong>{{tb.hienTrangThai}}</strong>
 </div>
 
+<sc-if value="{{tb.choXacNhan}}"><p style="margin:0;font-size:12px;color:var(--mute)">Module khai mức «{{tb.macDinhNhan}}» nhưng chưa được xác nhận, nên đang bị chặn như mức Nguy hiểm. Bấm «{{tb.macDinhNhan}}» bên dưới để xác nhận.</p></sc-if>
 <div class="tb-rui-ro">
 <span>Đặt rủi ro:</span>
 <button type="button" class="nut nut-nho" aria-pressed="{{tb.laDoc}}" onClick="{{tb.datDoc}}">Đọc</button>
@@ -140,7 +141,7 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{tb.coTinhNang}}">
 <div class="tb-hanh-dong">
 <sc-for list="{{tb.cacTinhNang}}" as="tn">
-<button type="button" class="nut nut-nho" onClick="{{tn.chay}}" disabled="{{tb.dangChay}}">{{tn.ma}}</button>
+<button type="button" class="nut nut-nho" onClick="{{tn.chay}}" disabled="{{tn.khoa}}" title="{{tn.goiY}}">{{tn.ma}}</button>
 </sc-for>
 </div>
 </sc-if>
@@ -409,16 +410,30 @@ class Component extends DCLogic {
           let nhanRuiRo = 'Đọc';
           if (tb.rui_ro === 'ghi') { lopRuiRo = 'huy huy-xanh'; nhanRuiRo = 'Ghi'; }
           else if (tb.rui_ro === 'nguy_hiem') { lopRuiRo = 'huy huy-do'; nhanRuiRo = 'Nguy hiểm'; }
+          // SEC-004f: mới/đổi tính năng bị ép «nguy hiểm» tới khi quản trị xác nhận — nói rõ đó là CHỜ XÁC NHẬN,
+          // đừng để trông như kết luận «công cụ này nguy hiểm» (module có thể đã khai Đọc/Ghi).
+          const choXacNhan = tb.cho_xac_nhan === true;
+          const macDinhNhan = tb.rui_ro_mac_dinh === 'ghi' ? 'Ghi' : 'Đọc';
+          if (choXacNhan) { lopRuiRo = 'huy huy-vang'; nhanRuiRo = 'Chờ xác nhận'; }
 
           let hienTrangThai = '—';
           if (tb.trang_thai && tb.trang_thai.gia_tri !== undefined) {
             hienTrangThai = String(tb.trang_thai.gia_tri) + (tb.trang_thai.don_vi ? ' ' + tb.trang_thai.don_vi : '');
           }
 
-          const cacTinhNang = (tb.tinh_nang || []).map((ma) => ({
-            ma,
-            chay: () => this.hanhDong(tb.id, ma, tb.rui_ro),
-          }));
+          // `tinh_nang` có hai dạng hợp lệ: chuỗi (thiết bị) hoặc đối tượng {hanh_dong, mo_ta, tham_so} (công cụ C2).
+          // Hành động có tham số bắt buộc không chạy được từ nút trơn (trang không có ô nhập) → khoá nút, nói rõ.
+          const cacTinhNang = (tb.tinh_nang || []).map((tn) => {
+            const ob = tn && typeof tn === 'object';
+            const ma = ob ? String(tn.hanh_dong || tn.ten || tn.name || '').trim() : String(tn || '').trim();
+            const canThamSo = ob && tn.tham_so && Array.isArray(tn.tham_so.required) && tn.tham_so.required.length > 0;
+            return {
+              ma,
+              khoa: s.dangChayTb === tb.id || canThamSo,
+              goiY: canThamSo ? 'Cần tham số (' + tn.tham_so.required.join(', ') + ') — gọi qua AI hoặc API, không chạy từ nút này.' : (ob && tn.mo_ta ? String(tn.mo_ta) : ma),
+              chay: () => this.hanhDong(tb.id, ma, tb.rui_ro),
+            };
+          }).filter((x) => x.ma);
 
           return {
             id: tb.id,
@@ -429,6 +444,8 @@ class Component extends DCLogic {
             laDoc: tb.rui_ro === 'doc',
             laGhi: tb.rui_ro === 'ghi',
             laNguyHiem: tb.rui_ro === 'nguy_hiem',
+            choXacNhan,
+            macDinhNhan,
             datDoc: () => this.datRuiRo(tb.id, 'doc'),
             datGhi: () => this.datRuiRo(tb.id, 'ghi'),
             datNguyHiem: () => this.datRuiRo(tb.id, 'nguy_hiem'),

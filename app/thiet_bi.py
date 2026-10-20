@@ -369,6 +369,22 @@ def bam_tinh_nang(tinh_nang: Any, rui_ro_mac_dinh: str | None = None) -> str:
     return hashlib.sha256(chuoi.encode("utf-8")).hexdigest()[:16]
 
 
+def tinh_rui_ro_hieu_luc(id_thuc_the: str, e: dict, ghi_de: dict, da_xn: dict) -> tuple[str, str, bool]:
+    """(rủi ro module khai, rủi ro hiệu lực, chờ xác nhận) — MỘT nơi tính cho mọi đường đọc thực thể.
+
+    SEC-004f: thực thể mới hoặc đổi tính năng coi là «nguy_hiem» cho tới khi quản trị xác nhận.
+    «Chờ xác nhận» = hiệu lực bị ép lên «nguy_hiem» CHỈ vì chưa xác nhận, còn module khai thấp hơn;
+    khác với thực thể module tự khai «nguy_hiem» (không có gì để xác nhận lên mức thấp hơn).
+    """
+    rr_mac_dinh = e.get("rui_ro_mac_dinh")
+    if rr_mac_dinh not in RUI_RO_HOP_LE:
+        rr_mac_dinh = "nguy_hiem"
+    b_tn = bam_tinh_nang(e.get("tinh_nang"), rr_mac_dinh)
+    if id_thuc_the not in da_xn or da_xn.get(id_thuc_the) != b_tn:
+        return rr_mac_dinh, "nguy_hiem", rr_mac_dinh != "nguy_hiem"
+    return rr_mac_dinh, ghi_de.get(id_thuc_the, rr_mac_dinh), False
+
+
 def doc_da_xac_nhan() -> dict[str, str]:
     """Đọc từ điển {id_thuc_the: bam_tinh_nang} các thực thể đã được quản trị xác nhận mức rủi ro."""
     with _KHOA_LUONG:
@@ -921,16 +937,8 @@ async def lay_danh_sach_thuc_the(
                 continue
             id_da_co.add(e_id)
 
-            rr_mac_dinh = item.get("rui_ro_mac_dinh")
-            if rr_mac_dinh not in RUI_RO_HOP_LE:
-                rr_mac_dinh = "nguy_hiem"
-
-            # Rủi ro hiệu lực (SEC-004f): Thực thể mới hoặc đổi tinh_nang coi là nguy_hiem cho tới khi quản trị xác nhận
-            b_tn = bam_tinh_nang(item.get("tinh_nang"), rr_mac_dinh)
-            if e_id not in da_xn or da_xn.get(e_id) != b_tn:
-                rr_hieu_luc = "nguy_hiem"
-            else:
-                rr_hieu_luc = ghi_de.get(e_id, rr_mac_dinh)
+            # Rủi ro hiệu lực (SEC-004f): xem tinh_rui_ro_hieu_luc
+            rr_mac_dinh, rr_hieu_luc, cho_xac_nhan = tinh_rui_ro_hieu_luc(e_id, item, ghi_de, da_xn)
 
             muc = {
                 "id": e_id,
@@ -941,6 +949,7 @@ async def lay_danh_sach_thuc_the(
                 "tinh_nang": list(item.get("tinh_nang") or []),
                 "rui_ro_mac_dinh": rr_mac_dinh,
                 "rui_ro": rr_hieu_luc,
+                "cho_xac_nhan": cho_xac_nhan,
                 "module": mod_id,
                 "trang_thai": None,
             }
@@ -1015,14 +1024,7 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
 
     ghi_de = doc_ghi_de_rui_ro()
     da_xn = doc_da_xac_nhan()
-    rr_mac_dinh = tim_thay.get("rui_ro_mac_dinh")
-    if rr_mac_dinh not in RUI_RO_HOP_LE:
-        rr_mac_dinh = "nguy_hiem"
-    b_tn = bam_tinh_nang(tim_thay.get("tinh_nang"), rr_mac_dinh)
-    if id_thuc_the not in da_xn or da_xn.get(id_thuc_the) != b_tn:
-        rr_hieu_luc = "nguy_hiem"
-    else:
-        rr_hieu_luc = ghi_de.get(id_thuc_the, rr_mac_dinh)
+    rr_mac_dinh, rr_hieu_luc, cho_xac_nhan = tinh_rui_ro_hieu_luc(id_thuc_the, tim_thay, ghi_de, da_xn)
 
     trang_thai = None
     try:
@@ -1041,6 +1043,7 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
         "tinh_nang": list(tim_thay.get("tinh_nang") or []),
         "rui_ro_mac_dinh": rr_mac_dinh,
         "rui_ro": rr_hieu_luc,
+        "cho_xac_nhan": cho_xac_nhan,
         "module": mod_id,
         "trang_thai": trang_thai,
     }
@@ -1138,14 +1141,7 @@ async def thuc_hien_hanh_dong_loi(
                         if isinstance(e, dict) and e.get("id") == id_thuc_the:
                             ghi_de = doc_ghi_de_rui_ro()
                             da_xn = doc_da_xac_nhan()
-                            rr_mac_dinh = e.get("rui_ro_mac_dinh")
-                            if rr_mac_dinh not in RUI_RO_HOP_LE:
-                                rr_mac_dinh = "nguy_hiem"
-                            b_tn = bam_tinh_nang(e.get("tinh_nang"), rr_mac_dinh)
-                            if id_thuc_the not in da_xn or da_xn.get(id_thuc_the) != b_tn:
-                                rr_hieu_luc = "nguy_hiem"
-                            else:
-                                rr_hieu_luc = ghi_de.get(id_thuc_the, rr_mac_dinh)
+                            rr_mac_dinh, rr_hieu_luc, cho_xac_nhan = tinh_rui_ro_hieu_luc(id_thuc_the, e, ghi_de, da_xn)
                             item = {
                                 "id": id_thuc_the,
                                 "ten": str(e.get("ten") or id_thuc_the),
@@ -1155,6 +1151,7 @@ async def thuc_hien_hanh_dong_loi(
                                 "tinh_nang": list(e.get("tinh_nang") or []),
                                 "rui_ro_mac_dinh": rr_mac_dinh,
                                 "rui_ro": rr_hieu_luc,
+                                "cho_xac_nhan": cho_xac_nhan,
                                 "module": mod_id_log,
                                 "trang_thai": None,
                             }

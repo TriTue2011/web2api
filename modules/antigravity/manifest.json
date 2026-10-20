@@ -27,7 +27,7 @@
       "kieu": "bi_mat",
       "bat_buoc": true,
       "mac_dinh": null,
-      "mo_ta": "Khoá bí mật khớp với biến AGY_CAU_NOI_KHOA được cấu hình trên máy chủ cầu nối."
+      "mo_ta": "Khoá TỰ ĐẶT — không ai cấp. Sinh một chuỗi dài, ngẫu nhiên (ví dụ «openssl rand -hex 32»), đặt vào biến AGY_CAU_NOI_KHOA của cầu nối dich-vu/antigravity-cau-noi trên máy chủ rồi dán đúng chuỗi đó vào đây."
     }
   ],
   "tai_nguyen": {
