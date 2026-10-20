@@ -87,6 +87,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `hoa-don` (Đối chiếu hoá đơn điện tử với danh mục, NV162) | Có — hai công cụ rủi ro `doc`: `doc_hoa_don` và `doi_chieu_hoa_don`; đọc XML TT78 (tìm thẻ theo tên ở mọi tầng) + văn bản Markdown đã trích từ PDF (điểm nối module `van-phong` NV156), danh mục từ mảng dòng đã đọc hoặc .xlsx base64 đọc bằng zipfile (trần giải nén chống zip bomb, công thức không thực thi); XML chống nổ thực thể (từ chối DOCTYPE/ENTITY, trần kích thước/độ sâu); số tiền là Decimal; port từ c2a `services/hoa_don.py` (d879b03); kiểm với hoá đơn giả đúng khuôn TT78; **chưa kiểm với hoá đơn thật của nhà phát hành** | 20/10/2026 |
 | Module `dich` (Dịch văn bản + từ điển thuật ngữ qua model của lõi, chuẩn C2/C4 `thiet_bi`) | Có — dịch qua `/v1/chat/completions` loopback bằng khoá khách phạm vi hẹp (chống SSRF: chỉ loopback), prompt hệ thống cố định chống tiêm lệnh, cắt code/URL/markdown/thuật ngữ khỏi phần gửi model, chia đoạn kiểm tra độ phủ; từ điển tra cả các nghĩa (lemmatize) + thuật ngữ người dùng lưu tệp 0600, nhập/xuất trần 20.000 mục; kiểm với model giả + máy chủ HTTP giả loopback; **chưa kiểm với model thật** | 20/10/2026 |
 | Module `nhaptaikhoan` (Nhập tài khoản hàng loạt từ 9router/sub2api/CPA — CHỈ xem trước, chưa nối kho, NV164) | Có — 3 hành động `nguy_hiem` chỉ quản trị: `xem_truoc_tep` (tệp 9router `.json`/`.json.gz`: nhận diện `providerConnections` kể cả lồng `data`, trích token codex/cursor/openai `eyJ`, combo đầy đủ; trần base64 8MiB / tệp giải mã 6MiB / bung gzip 10MiB), `xem_truoc_may_chu` (`sub2api`: JWT hoặc `x-api-key`, trang `/api/v1/admin/accounts` phân trang; `cpa`: chỉ liệt kê `/v0/management/auth-files`, không tải token), `ap_dung` luôn từ chối `chua_noi_kho_tai_khoan` (chờ kho lõi NV144/NV72); email/token chỉ hiện dạng che, không log/không vào lỗi; địa chỉ máy chủ qua `app/tu_xa.kiem_url_lan`; **chưa kiểm với sub2api/CPA thật** | 20/10/2026 |
+| Module `nhaptaikhoan` (Nhập tài khoản hàng loạt từ 9router/sub2api/CPA — CHỈ xem trước, chưa nối kho, NV164) | Có — hai thực thể tách rủi ro (NV164-SUA): `nhaptaikhoan.xem_truoc` (`doc`: `xem_truoc_tep`, `xem_truoc_may_chu`) và `nhaptaikhoan.ap_dung` (`nguy_hiem`), mọi hành động vẫn chỉ quản trị: `xem_truoc_tep` (tệp 9router `.json`/`.json.gz`: nhận diện `providerConnections` kể cả lồng `data`, trích token codex/cursor/openai `eyJ`, combo đầy đủ; trần base64 8000 ký tự do trần tham số 8 KB của lõi / bung gzip 10MiB), `xem_truoc_may_chu` (`sub2api`: JWT hoặc `x-api-key`, trang `/api/v1/admin/accounts` phân trang; `cpa`: chỉ liệt kê `/v0/management/auth-files`, không tải token), `ap_dung` luôn từ chối `chua_noi_kho_tai_khoan` (chờ kho lõi NV144/NV72); email/token chỉ hiện dạng che, không log/không vào lỗi; địa chỉ máy chủ qua `app/tu_xa.kiem_url_lan` + ghim IP đã kiểm (chống DNS rebinding); **chưa kiểm với sub2api/CPA thật** | 20/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3278,14 +3279,17 @@ chưa có).
   riêng được phép); lỗi chỉ là mã ngắn, không chép thân phản hồi của máy chủ.
 
 **Nạp sớm / khả năng / hành động.**
-- Nạp sớm: `module.py` đầu tệp. Khả năng: thực thể `nhaptaikhoan.nguon`,
-  `cung_cap: ["tai_lieu"]`. Ba hành động đều `rui_ro: "nguy_hiem"` (quản trị
-  duyệt): `xem_truoc_tep` (dang `ninerouter`, `noi_dung_base64` — trần base64
-  8 MiB, tệp giải mã 6 MiB, bung gzip 10 MiB theo từng khúc; JSON qua
-  `json.loads`, không YAML/pickle), `xem_truoc_may_chu` (loai `sub2api`/`cpa`,
-  `may_chu_url`, `khoa_api` hoặc `email`+`mat_khau`), `ap_dung` (nhận
-  `danh_sach` mục `{nguon, dinh_danh}` — **chưa nối kho lõi NV144/NV72 nên luôn
-  từ chối `chua_noi_kho_tai_khoan`**, không ghi vào đâu).
+- Nạp sớm: `module.py` đầu tệp. Khả năng: `cung_cap: ["tai_lieu", "thiet_bi"]`,
+  hai thực thể tách theo rủi ro (NV164-SUA): `nhaptaikhoan.xem_truoc`
+  (`rui_ro_mac_dinh: "doc"`) với `xem_truoc_tep` (dang `ninerouter`,
+  `noi_dung_base64` — trần **8000 ký tự** do trần tham số 8 KB của lõi; tệp giải
+  mã 6 MiB, bung gzip 10 MiB theo từng khúc; JSON qua `json.loads`, không
+  YAML/pickle) và `xem_truoc_may_chu` (loai `sub2api`/`cpa`, `may_chu_url`,
+  `khoa_api` hoặc `email`+`mat_khau` — nối qua client ghim IP đã kiểm chống DNS
+  rebinding, phản hồi đọc có trần 2 MB); `nhaptaikhoan.ap_dung`
+  (`rui_ro_mac_dinh: "nguy_hiem"`) với `ap_dung` (nhận `danh_sach` mục
+  `{nguon, dinh_danh}` — **chưa nối kho lõi NV144/NV72 nên luôn từ chối
+  `chua_noi_kho_tai_khoan`**, không ghi vào đâu).
 - Mọi lệnh qua `thuc_hien` có cổng quản trị (chỉ `quan_tri`/`noi_bo`; thiếu
   ngữ cảnh thì đóng) — phòng hở giao diện C1 khi lõi chưa tự lọc (NV153).
 - Che bí mật: email → `a***@mien`, khoá/token → `…` + 4 ký tự cuối; URL ký gửi CPA chỉ hiện đuôi 4 ký tự; bộ lọc log httpx chặn dòng `Authorization … Bearer`.

@@ -17,7 +17,13 @@ An toàn:
 - CHỈ quản trị: mọi hành động kiểm danh tính người gọi qua ngữ cảnh lõi
   (app.ngu_canh, SEC-002 — giao diện app.* chỉ đọc thứ hai được phép của module
   này, bên cạnh app.tu_xa) và ĐÓNG KHI LỖI (thiếu ngữ cảnh cũng từ chối).
-  Thực thể khai `rui_ro_mac_dinh: "nguy_hiem"` để lõi bắt xác nhận/xếp hàng chờ.
+  Hai thực thể TÁCH theo mức rủi ro (lõi tính rủi ro theo thực thể):
+  «xem_truoc» chỉ đọc/xem trước (`rui_ro_mac_dinh: "doc"`, mọi hành động vẫn
+  qua cổng quản trị nội bộ của module) và «ap_dung» là đường ghi tương lai
+  (`rui_ro_mac_dinh: "nguy_hiem"`); hành động chỉ chạy dưới thực thể của nó.
+- Đường máy chủ (NV164-SUA): địa chỉ kiểm bằng `app/tu_xa.kiem_url_lan` rồi nối
+  qua client GHIM IP đã kiểm (`TransportGhimIp` của lõi) — chống DNS rebinding;
+  thân phản hồi máy chủ nguồn đọc có trần 2 MB.
 - Bí mật (token/cookie/mật khẩu/khoá API) chỉ hiện DẠNG CHE: khoá `…abcd`,
   email `a***@mien`; không vào log, không vào phản hồi lỗi (lỗi luôn là mã ngắn
   của module, không chép thân phản hồi hay URL chứa thông tin đăng nhập).
@@ -59,8 +65,13 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-#: Trần chuỗi base64 của tệp nhập (ký tự) — khớp lược đồ tham số ở manifest mã.
-TRAN_BASE64 = 8 * 1024 * 1024
+#: Trần chuỗi base64 của tệp nhập (ký tự). Khớp TRẦN 8 KB của lõi: lõi tính
+#: toàn bộ `tham_so` tuần tự hoá JSON ≤ 8192 byte trước khi gọi module
+#: (app/thiet_bi.py `kiem_tra_tham_so`) — lược đồ khai maxLength lớn hơn trần
+#: của lõi là hứa sai: tệp ~100 kết nối 9router (13.356 ký tự base64) bị lõi
+#: trả 400 mơ hồ trong khi module hứa 8 MB (phát hiện (d) của soát độc lập).
+#: 8000 ký tự base64 ≈ 6 KB JSON thô — vẫn đủ phần lớn tệp sao lưu thông thường.
+TRAN_BASE64 = 8000
 #: Trần tệp sau giải mã base64 (byte).
 TRAN_TEP = 6 * 1024 * 1024
 #: Trần nội dung sau khi bung gzip (byte) — chống bom nén.
@@ -71,6 +82,10 @@ TRAN_MUC_XEM_TRUOC = 2000
 TRAN_SO_TRANG = 5
 KICH_THUOC_TRANG = 200
 HET_GIO_GOI = 30
+#: Trần thân phản hồi của máy chủ nguồn (byte) — liệt kê 200 tài khoản/trang chỉ
+#: cần vài trăm KB; máy chủ nguồn ĐỘC trả thân khổng lồ không được nhận hết vào
+#: RAM của lõi (phát hiện B4 của soát độc lập: 60 MB được nhận đủ).
+_TRAN_PHAN_HOI_MAY_CHU = 2 * 1024 * 1024
 
 #: Provider của 9router mà token dùng được như tài khoản ChatGPT (đúng c2a).
 _NHA_CUNG_CAP_NHAP_DUOC = ("codex", "cursor", "openai")
@@ -100,6 +115,16 @@ def _lam_sach_chu(x, toi_da: int = 80) -> str:
     s = str(x or "")
     s = "".join(c for c in s if c.isprintable())
     return s.strip()[:toi_da]
+
+
+def _che_ten(ten_tho) -> str:
+    """B3: `ten` từ nguồn ngoài có DẠNG EMAIL thì che như email_che — tên kết nối
+    9router/tên tài khoản thường CHÍNH là email, để nguyên là lộ (soát độc lập B3).
+    Tên thường (không có «@») giữ nguyên."""
+    ten = _lam_sach_chu(ten_tho)
+    if "@" in ten:
+        return _che_email(ten)
+    return ten
 
 
 # ───────── Bộ lọc log (khuôn zalo-bot/van-phong, vá bài học NV116) ─────────
@@ -157,6 +182,49 @@ def _nguoi_goi_la_quan_tri() -> bool:
     if nc is None:
         return False
     return str((nc.danh_tinh or {}).get("loai") or "") in ("quan_tri", "noi_bo")
+
+
+# ───────── Kết nối chống DNS rebinding + đọc phản hồi có trần ─────────
+
+def _mo_client() -> httpx.AsyncClient:
+    """Client HTTP ghim IP đã kiểm — chống DNS rebinding (phát hiện (c)).
+
+    `kiem_url_lan` phân giải và kiểm một lần TRƯỚC khi nối; httpx phân giải lần
+    nữa LÚC NỐI — tên miền đổi đáp án giữa hai lần (rebind.example: 192.168.1.50
+    → 127.0.0.1) là vượt kiểm SSRF. Dùng đúng cách ghim của lõi (khuôn
+    app/tu_xa.py: `TransportGhimIp(_dia_chi_bi_chan)`): mỗi yêu cầu phân giải
+    lại NGAY TRƯỚC khi gửi, kiểm MỌI IP bằng bộ kiểm SSRF chung của lõi, nối
+    thẳng tới IP đã kiểm; IP bị cấm → `LoiDichBiChan` (là `ConnectError`, module
+    đã bắt `httpx.HTTPError` → «khong_noi_duoc_may_chu»)."""
+    from app.chuyen_tiep import TransportGhimIp  # bộ ghim của lõi, khuôn app/tu_xa.py
+    from app.tu_xa import _dia_chi_bi_chan  # bộ kiểm SSRF chung của lõi
+
+    return httpx.AsyncClient(transport=TransportGhimIp(_dia_chi_bi_chan),
+                             timeout=HET_GIO_GOI, verify=True)
+
+
+class _PhanHoiQuaLon(Exception):
+    """Thân phản hồi của máy chủ nguồn vượt trần (B4) — không kèm chi tiết thô."""
+
+
+async def _doc_json(client: httpx.AsyncClient, method: str, url: str, **kwargs):
+    """Gửi một yêu cầu và đọc JSON với trần cứng (B4).
+
+    Trả (status_code, du_lieu): du_lieu None khi thân không phải JSON. Vượt trần
+    → ném `_PhanHoiQuaLon`; lỗi mạng → `httpx.HTTPError` như trước (người gọi
+    đã bắt)."""
+    from app.chuyen_tiep import PhanHoiQuaLon, doc_phan_hoi_co_tran
+
+    req = client.build_request(method, url, **kwargs)
+    r = await client.send(req, stream=True)
+    try:
+        tho = await doc_phan_hoi_co_tran(r, tran_bytes=_TRAN_PHAN_HOI_MAY_CHU)
+    except PhanHoiQuaLon:
+        raise _PhanHoiQuaLon from None
+    try:
+        return r.status_code, json.loads(tho.decode("utf-8"))
+    except Exception:
+        return r.status_code, None
 
 
 # ───────── 9router (chép từ c2a services/ninerouter_backup_import.py @ d879b03) ─────────
@@ -263,14 +331,14 @@ def _xem_truoc_9router(data: dict) -> dict:
     muc: list[dict] = []
     for t in tat_ca[:TRAN_MUC_XEM_TRUOC]:
         muc.append({
-            "ten": _lam_sach_chu(t["name"]),
-            "nha_cung_cap": t["provider"],
+            "ten": _che_ten(t["name"]),
+            "nha_cung_cap": _lam_sach_chu(t["provider"], 40),
             "co_the_nhap": t["provider"] in _NHA_CUNG_CAP_NHAP_DUOC
                            and t["access_token"].startswith("eyJ"),
             "email_che": _che_email(t["email"]) if t["email"] else None,
             "khoa_che": _che_khoa(t["access_token"]),
             "co_refresh": bool(t["refresh_token"]),
-            "het_han": t["expires_at"],
+            "het_han": _lam_sach_chu(t["expires_at"]) if t["expires_at"] else None,
         })
     return {
         "ok": True,
@@ -323,21 +391,20 @@ def _extract_access_token(credentials) -> str:
 async def _dang_nhap_sub2api(client: httpx.AsyncClient, goc: str, email: str, mat_khau: str) -> str:
     """Chép c2a `_login`: POST /api/v1/auth/login → JWT. Không ghi log thân."""
     try:
-        tra_loi = await client.post(
-            f"{goc}/api/v1/auth/login",
+        status, than = await _doc_json(
+            client, "POST", f"{goc}/api/v1/auth/login",
             json={"email": email, "password": mat_khau},
             headers={"Accept": "application/json", "Content-Type": "application/json"},
         )
     except httpx.HTTPError:
         raise _LoiMayChu from None
-    if tra_loi.status_code in (401, 403):
-        raise _SaiDangNhap
-    if tra_loi.status_code != 200:
-        raise _LoiMayChu
-    try:
-        than = _unwrap_envelope(tra_loi.json())
-    except Exception:
+    except _PhanHoiQuaLon:
         raise _LoiMayChu from None
+    if status in (401, 403):
+        raise _SaiDangNhap
+    if status != 200:
+        raise _LoiMayChu
+    than = _unwrap_envelope(than)
     token = _sach(than.get("access_token")) if isinstance(than, dict) else ""
     if not token:
         raise _LoiMayChu
@@ -356,7 +423,7 @@ async def _xem_truoc_sub2api(url: str, tham_so: dict) -> dict:
     if not khoa_api and not (email and mat_khau):
         return {"ok": False, "loi": "thieu_xac_thuc"}
     goc = url.rstrip("/")
-    async with httpx.AsyncClient(timeout=HET_GIO_GOI, verify=True) as client:
+    async with _mo_client() as client:
         if khoa_api:
             headers = {"x-api-key": khoa_api, "Accept": "application/json"}
         else:
@@ -374,15 +441,13 @@ async def _xem_truoc_sub2api(url: str, tham_so: dict) -> dict:
                                 "page": trang, "page_size": KICH_THUOC_TRANG}
                 if nhom:
                     params["group"] = nhom
-                tra_loi = await client.get(f"{goc}/api/v1/admin/accounts",
-                                           headers=headers, params=params)
-                if tra_loi.status_code in (401, 403):
+                status, payload = await _doc_json(client, "GET", f"{goc}/api/v1/admin/accounts",
+                                                  headers=headers, params=params)
+                if status in (401, 403):
                     return {"ok": False, "loi": "sai_dang_nhap"}
-                if tra_loi.status_code != 200:
+                if status != 200:
                     return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
-                try:
-                    payload = tra_loi.json()
-                except Exception:
+                if payload is None:
                     return {"ok": False, "loi": "phan_hoi_sai"}
                 data, tong = _extract_paged_items(payload)
                 for account in data:
@@ -394,19 +459,21 @@ async def _xem_truoc_sub2api(url: str, tham_so: dict) -> dict:
                     ma = account.get("id")
                     email_tk = _sach(credentials.get("email")) or _sach(account.get("name"))
                     muc.append({
-                        "id": str(ma) if ma is not None else _sach(credentials.get("chatgpt_account_id")),
-                        "ten": _lam_sach_chu(account.get("name")),
+                        "id": _lam_sach_chu(str(ma)) if ma is not None else _lam_sach_chu(_sach(credentials.get("chatgpt_account_id"))),
+                        "ten": _che_ten(account.get("name")),
                         "email_che": _che_email(email_tk) if email_tk else None,
-                        "goi": _sach(credentials.get("plan_type")),
-                        "trang_thai": _sach(account.get("status")),
+                        "goi": _lam_sach_chu(credentials.get("plan_type")),
+                        "trang_thai": _lam_sach_chu(account.get("status")),
                         "co_refresh": bool(_sach(credentials.get("refresh_token"))),
-                        "het_han": _sach(credentials.get("expires_at")) or None,
+                        "het_han": _lam_sach_chu(_sach(credentials.get("expires_at"))) or None,
                     })
                     if len(muc) >= TRAN_MUC_XEM_TRUOC:
                         break
                 if len(muc) >= TRAN_MUC_XEM_TRUOC or not data \
                         or trang * KICH_THUOC_TRANG >= tong or len(data) < KICH_THUOC_TRANG:
                     break
+        except _PhanHoiQuaLon:
+            return {"ok": False, "loi": "phan_hoi_qua_lon"}
         except httpx.HTTPError:
             return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
     return {"ok": True, "nguon": "sub2api", "tong": len(muc), "tai_khoan": muc,
@@ -426,18 +493,18 @@ async def _xem_truoc_cpa(url: str, tham_so: dict) -> dict:
         return {"ok": False, "loi": "thieu_xac_thuc"}
     goc = url.rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=HET_GIO_GOI, verify=True) as client:
-            tra_loi = await client.get(f"{goc}/v0/management/auth-files",
-                                       headers=_management_headers(khoa))
+        async with _mo_client() as client:
+            status, payload = await _doc_json(client, "GET", f"{goc}/v0/management/auth-files",
+                                              headers=_management_headers(khoa))
+    except _PhanHoiQuaLon:
+        return {"ok": False, "loi": "phan_hoi_qua_lon"}
     except httpx.HTTPError:
         return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
-    if tra_loi.status_code in (401, 403):
+    if status in (401, 403):
         return {"ok": False, "loi": "sai_dang_nhap"}
-    if tra_loi.status_code != 200:
+    if status != 200:
         return {"ok": False, "loi": "khong_noi_duoc_may_chu"}
-    try:
-        payload = tra_loi.json()
-    except Exception:
+    if payload is None:
         return {"ok": False, "loi": "phan_hoi_sai"}
     files = payload.get("files") if isinstance(payload, dict) else None
     if not isinstance(files, list):
@@ -450,7 +517,7 @@ async def _xem_truoc_cpa(url: str, tham_so: dict) -> dict:
         if not name:
             continue
         email = _sach(item.get("email") or item.get("account"))
-        muc.append({"ten": _lam_sach_chu(name), "email_che": _che_email(email) if email else None})
+        muc.append({"ten": _che_ten(name), "email_che": _che_email(email) if email else None})
     return {"ok": True, "nguon": "cpa", "tong": len(muc), "tai_khoan": muc,
             "nguon_ngoai": True}
 
@@ -520,7 +587,11 @@ _LUOC_DO_TEP = {
     "properties": {
         "dang": {"type": "string", "enum": ["ninerouter"]},
         "noi_dung_base64": {"type": "string", "minLength": 1,
-                            "maxLength": TRAN_BASE64, "bi_mat": True},
+                            "maxLength": TRAN_BASE64, "bi_mat": True,
+                            "mo_ta": "Nội dung tệp sao lưu 9router mã hoá base64. "
+                                     "Trần 8000 ký tự (≈6 KB tệp thô) do lõi giới "
+                                     "hạn tổng tham số 8 KB — nêu rõ ở đây thay vì "
+                                     "để lõi trả 400 mơ hồ (phát hiện (d))."},
     },
 }
 
@@ -575,26 +646,56 @@ class Module:
         return None
 
     # ── thực thể / hành động ──────────────────────────────────────────────
+    #
+    # (a)+(b) của soát độc lập: trước đây module khai MỘT thực thể đồng bộ,
+    # thiếu `trang_thai`, manifest thiếu «thiet_bi» ⇒ lõi không bao giờ nạp
+    # (404 qua lõi thật dù test gọi thẳng xanh). Nay: đủ ba hàm async +
+    # `cung_cap: [..., "thiet_bi"]`, và TÁCH thực thể theo mức rủi ro vì lõi
+    # tính rủi ro THEO THỰC THỂ: «xem_truoc» chỉ ĐỌC/xem trước (doc), «ap_dung»
+    # là đường GHI tương lai (nguy_hiem). Cổng quản trị nội bộ vẫn kiểm MỌI
+    # hành động (phòng thủ hai lớp).
 
-    def thuc_the(self, loc=None) -> list[dict]:
-        return [{
-            "id": f"{self.tien_to}.nguon",
-            "ten": "Nguồn nhập tài khoản (9router / sub2api / CPA)",
-            "loai": "cong_cu",
-            "thuoc_tinh": {"dich_vu": "nhaptaikhoan"},
-            "tinh_nang": [
-                {"hanh_dong": "xem_truoc_tep", "rui_ro": "nguy_hiem",
-                 "mo_ta": "Phân tích tệp sao lưu 9router (JSON/JSON.gz, gửi base64) và trả danh sách tài khoản DẠNG CHE. Chỉ quản trị.",
-                 "tham_so": _LUOC_DO_TEP},
-                {"hanh_dong": "xem_truoc_may_chu", "rui_ro": "nguy_hiem",
-                 "mo_ta": "Đọc danh sách tài khoản qua API quản trị của máy chủ sub2api / CLIProxyAPI (CPA) và trả DẠNG CHE. Khoá/mật khẩu khai theo từng lần, không lưu. Chỉ quản trị.",
-                 "tham_so": _LUOC_DO_MAY_CHU},
-                {"hanh_dong": "ap_dung", "rui_ro": "nguy_hiem",
-                 "mo_ta": "Áp dụng danh sách đã duyệt vào kho tài khoản — CHƯA nối kho (NV144/NV72), luôn từ chối rõ ràng. Chỉ quản trị.",
-                 "tham_so": _LUOC_DO_AP_DUNG},
-            ],
-            "rui_ro_mac_dinh": "nguy_hiem",
-        }]
+    async def thuc_the(self, loc=None) -> list[dict]:
+        return [
+            {
+                "id": f"{self.tien_to}.xem_truoc",
+                "ten": "Xem trước nguồn nhập tài khoản (9router / sub2api / CPA)",
+                "loai": "cong_cu",
+                "thuoc_tinh": {"dich_vu": "nhaptaikhoan"},
+                "tinh_nang": [
+                    {"hanh_dong": "xem_truoc_tep", "rui_ro": "doc",
+                     "mo_ta": "Phân tích tệp sao lưu 9router (JSON/JSON.gz, gửi base64, tối đa 8000 ký tự base64 ≈ 6 KB tệp thô do trần tham số 8 KB của lõi) và trả danh sách tài khoản DẠNG CHE. Chỉ quản trị.",
+                     "tham_so": _LUOC_DO_TEP},
+                    {"hanh_dong": "xem_truoc_may_chu", "rui_ro": "doc",
+                     "mo_ta": "Đọc danh sách tài khoản qua API quản trị của máy chủ sub2api / CLIProxyAPI (CPA) và trả DẠNG CHE. Khoá/mật khẩu khai theo từng lần, không lưu. Chỉ quản trị.",
+                     "tham_so": _LUOC_DO_MAY_CHU},
+                ],
+                "rui_ro_mac_dinh": "doc",
+            },
+            {
+                "id": f"{self.tien_to}.ap_dung",
+                "ten": "Áp dụng nhập tài khoản vào kho (chưa nối)",
+                "loai": "cong_cu",
+                "thuoc_tinh": {"dich_vu": "nhaptaikhoan"},
+                "tinh_nang": [
+                    {"hanh_dong": "ap_dung", "rui_ro": "nguy_hiem",
+                     "mo_ta": "Áp dụng danh sách đã duyệt vào kho tài khoản — CHƯA nối kho (NV144/NV72), luôn từ chối rõ ràng. Chỉ quản trị.",
+                     "tham_so": _LUOC_DO_AP_DUNG},
+                ],
+                "rui_ro_mac_dinh": "nguy_hiem",
+            },
+        ]
+
+    async def trang_thai(self, ids=None) -> dict:
+        ids = ids or [f"{self.tien_to}.xem_truoc", f"{self.tien_to}.ap_dung"]
+        tt = {}
+        for ent in ids:
+            if ent == f"{self.tien_to}.ap_dung":
+                tt[ent] = {"san_sang": True, "ap_dung": "chua_noi_kho_tai_khoan"}
+            elif ent == f"{self.tien_to}.xem_truoc":
+                tt[ent] = {"san_sang": True,
+                           "dinh_dang": ["ninerouter-json", "ninerouter-json.gz", "sub2api", "cpa"]}
+        return tt
 
     def ap_dung(self, danh_sach) -> dict:
         """HÀM GIAO DIỆN áp dụng — nhận danh sách tài khoản ĐÃ DUYỆT.
@@ -625,8 +726,17 @@ class Module:
         # Cổng quản trị TRƯỚC mọi xử lý: khách không tới được cả bước phân tích.
         if not _nguoi_goi_la_quan_tri():
             return {"ok": False, "loi": "chi_quan_tri"}
-        if id != f"{self.tien_to}.nguon":
+        # Hành động chỉ được chạy dưới thực thể của nó — không gọi hành động
+        # nguy hiểm (ap_dung) qua thực thể rủi ro thấp (xem_truoc).
+        _HANH_DONG_THEO_THUC_THE = {
+            f"{self.tien_to}.xem_truoc": {"xem_truoc_tep", "xem_truoc_may_chu"},
+            f"{self.tien_to}.ap_dung": {"ap_dung"},
+        }
+        cho_phep = _HANH_DONG_THEO_THUC_THE.get(id)
+        if cho_phep is None:
             return {"ok": False, "loi": "khong_thay_thuc_the"}
+        if hanh_dong not in cho_phep:
+            return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
         if hanh_dong == "xem_truoc_tep":
             return _xem_truoc_tep(tham_so)
         if hanh_dong == "xem_truoc_may_chu":

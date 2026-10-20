@@ -9,20 +9,32 @@ tệp sao lưu 9router (JSON / JSON.gz), máy chủ sub2api (đăng nhập JWT h
 > diện nhận danh sách đã duyệt, hiện luôn từ chối rõ ràng
 > `chua_noi_kho_tai_khoan` và không ghi vào đâu.
 
-## Hành động
+## Hành động (NV164-SUA: hai thực thể tách theo mức rủi ro)
 
-Thực thể `nhaptaikhoan.nguon` (rủi ro `nguy_hiem` — quản trị duyệt; **chỉ quản
-trị gọi được**):
+| Thực thể | Rủi ro | Hành động |
+|---|---|---|
+| `nhaptaikhoan.xem_truoc` — xem trước, chỉ đọc | `doc` | `xem_truoc_tep`, `xem_truoc_may_chu` |
+| `nhaptaikhoan.ap_dung` — áp dụng (chưa nối kho) | `nguy_hiem` | `ap_dung` |
+
+**Chỉ quản trị gọi được** (cổng quản trị nội bộ của module kiểm mọi hành động —
+hành động chỉ chạy dưới đúng thực thể của nó):
 
 | Hành động | Tham số | Kết quả |
 |---|---|---|
-| `xem_truoc_tep` | `dang: "ninerouter"`, `noi_dung_base64` (nội dung tệp 9router) | Danh sách kết nối ở dạng che: tên, nhà cung cấp, email `a***@mien`, khoá `…abcd`, số combo |
+| `xem_truoc_tep` | `dang: "ninerouter"`, `noi_dung_base64` (tối đa **8000 ký tự** — trần tham số 8 KB của lõi) | Danh sách kết nối ở dạng che: tên, nhà cung cấp, email `a***@mien`, khoá `…abcd`, số combo |
 | `xem_truoc_may_chu` | `loai: "sub2api"\|"cpa"`, `may_chu_url`, `khoa_api` (hoặc `email`+`mat_khau` cho sub2api) | Danh sách tài khoản/tệp auth dạng che |
 | `ap_dung` | `danh_sach` (mục `{nguon, dinh_danh}`) | Luôn từ chối `chua_noi_kho_tai_khoan` (chờ NV144/NV72) |
 
+> Giới hạn tệp nhập: vì dữ liệu gửi qua tham số hành động của lõi, lõi cắt toàn
+> bộ tham số ở 8 KB → tệp base64 tối đa ~8000 ký tự (≈6 KB tệp thô, ≈60 kết nối
+> 9router). Tệp lớn hơn nhận 400 rõ ràng. Lỗi này là trần của lõi, không nâng
+> được ở phía module.
+
 Khoá/mật khẩu khai **theo từng lần xem trước**, không lưu. Địa chỉ máy chủ qua
 đúng `app/tu_xa.kiem_url_lan` (chống SSRF: chặn loopback/link-local/không định
-tuyến; LAN riêng được phép) trước khi nối.
+tuyến; LAN riêng được phép) trước khi nối, rồi nối qua client **ghim IP đã
+kiểm** (`TransportGhimIp` của lõi — chống DNS rebinding); thân phản hồi máy chủ
+nguồn đọc có trần 2 MB.
 
 ## Định dạng hỗ trợ (NV164)
 
