@@ -1,0 +1,79 @@
+{
+  "id": "tuya",
+  "ten": "Tuya (thiết bị nhà)",
+  "mo_ta": "Thiết bị Tuya chuẩn C1 hai đường: đám mây (Tuya Open API ký HMAC-SHA256, phân trang danh sách) và LAN trong mạng nhà (giao thức 6668 tự viết bằng thư viện chuẩn + cryptography, không thêm thư viện Tuya bên thứ ba). Điều khiển (ghi) mặc định TẮT — chỉ đọc; khoá cửa/bếp/bình nóng lạnh KHÔNG BAO GIỜ điều khiển được, theo luật nhà.",
+  "loai": "nha",
+  "loai_ten": "Nhà",
+  "loai_thu_tu": 30,
+  "giao_thuc": "tuya-openapi+lan",
+  "tien_to": "tuya",
+  "hang": "A",
+  "phien_ban": "0.1.0",
+  "cung_cap": ["thiet_bi"],
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ram_them_mb": null,
+    "gpu": false,
+    "mang_ra": [
+      "openapi.tuyaus.com",
+      "openapi.tuyaeu.com",
+      "openapi.tuyacn.com",
+      "openapi.tuyain.com",
+      "openapi-ueaz.tuyaus.com",
+      "openapi-weaz.tuyaeu.com",
+      "Địa chỉ IP riêng của thiết bị Tuya trong mạng nhà (TCP 6668; nghe quảng bá UDP 6666/6667 khi dò)"
+    ],
+    "ghi_chu": "Chưa đo RAM/đĩa thật (null = chưa đo). Đám mây đi qua TransportGhimIp của lõi (ghim IP đã kiểm, chống DNS rebinding). LAN chỉ nối tới IP riêng khai tường minh trong cấu hình, hết giờ nối 5 giây mỗi thiết bị."
+  },
+  "truong_cau_hinh": [
+    {
+      "khoa": "access_id",
+      "nhan": "Access ID (đám mây)",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Access ID (Client ID) của dự án Tuya IoT — CHỈ bắt buộc khi dùng đường đám mây (bỏ trống nếu chỉ dùng LAN). Lấy ở: iot.tuya.com → đăng nhập → Cloud → Development → chọn dự án → Overview → Access ID/Client ID."
+    },
+    {
+      "khoa": "access_secret",
+      "nhan": "Access Secret (đám mây)",
+      "kieu": "bi_mat",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Access Secret của cùng dự án Tuya IoT (iot.tuya.com → Cloud → Development → dự án → Overview). Chỉ dùng làm khoá ký HMAC-SHA256, không bao giờ gửi nguyên văn, không vào log/phản hồi/ngoại lệ; lưu kho bí mật 0600. CHỈ bắt buộc khi dùng đường đám mây."
+    },
+    {
+      "khoa": "vung",
+      "nhan": "Vùng đám mây",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "america",
+      "mo_ta": "Vùng của TÀI KHOẢN lúc đăng ký app Tuya (không phải nơi ở): america / europe / china / india / west-america / west-europe. Sai vùng là mọi lời gọi trả lỗi «cross-region» — đổi về đúng vùng lúc đăng ký."
+    },
+    {
+      "khoa": "thiet_bi_lan",
+      "nhan": "Thiết bị LAN (JSON)",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "[]",
+      "mo_ta": "Danh sách thiết bị Tuya trong mạng nhà, dạng JSON: [{\"id\": \"<mã thiết bị>\", \"ip\": \"192.168.1.50\", \"ten\": \"Tên tuỳ ý\", \"nganh\": \"dj\", \"cong\": 6668}]. «nganh» là mã loại Tuya (vd dj đèn, cz ổ cắm, kg công tắc) để phân loại rủi ro khi không tra được đám mây; bỏ trống khi không rõ. «cong» mặc định 6668, chỉ đổi khi thiết bị thật đổi cổng. IP phải là địa chỉ riêng trong mạng nhà. Mã thiết bị (id) lấy ở iot.tuya.com → Cloud → Devices → chọn thiết bị (cột Device ID)."
+    },
+    {
+      "khoa": "local_key_lan",
+      "nhan": "Local key của thiết bị LAN",
+      "kieu": "danh_sach_bi_mat",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Mỗi dòng một local key, CÙNG THỨ TỰ với «Thiết bị LAN» — local key là bí mật điều khiển được thiết bị, chỉ giữ trong RAM, không vào log, không API nào trả lại. Cách lấy: module tự lấy qua đường đám mây (GET /v1.0/devices/{id}) khi đã khai Access ID/Secret; hoặc chủ máy tự điền nếu đã có sẵn (lấy bằng Tuya Cloud API cùng đường đó). Bỏ trống toàn bộ thì module tự lấy bằng đám mây."
+    },
+    {
+      "khoa": "cho_phep_dieu_khien",
+      "nhan": "Cho phép điều khiển",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": "tat",
+      "mo_ta": "«bat» mới cho điều khiển các thiết bị an toàn nhỏ (đèn, công tắc, ổ cắm) qua đám mây/LAN. Mặc định «tat» = CHỈ ĐỌC, mọi hành động ghi bị từ chối. Khoá cửa / ổ khoá / bếp / bình nóng lạnh KHÔNG BAO GIỜ điều khiển được, kể cả khi đặt «bat»."
+    }
+  ],
+  "yeu_cau_goi": ["httpx", "cryptography"]
+}

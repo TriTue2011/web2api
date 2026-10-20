@@ -76,6 +76,8 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
 | Module `doc-viettat` (Chuẩn hoá chữ để đọc tiếng Việt chuẩn OpenAI / TTS, chuẩn C2 `thiet_bi`) | Có — chuẩn hoá văn bản tiếng Việt sang dạng đọc cho TTS: số, đơn vị tập đóng SI, viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng), phân biệt tên người/ngữ cảnh thường, tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji; trần 20.000 ký tự, chống ReDoS; thuần Python, không mạng | 18/10/2026 |
 | Module `van-phong` (Văn phòng: OfficeCLI + OCR + dựng Word/Excel — NV156 gộp NV138 + NV132, id cũ `vanphong` đã gỡ) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật). Thêm từ NV132: OCR ảnh bằng model thị giác (prompt theo nguyên tắc + kiểm lặp vòng `ocr_rules` + dọn rào `bo_rao_markdown` của c2a @ d879b03), `pdf_thanh_anh` chỉ nhận ảnh từng trang đã tách (gộp có mốc `<<<TRANG n>>>`), dựng .docx/.xlsx bằng zipfile (ô `inlineStr` + thoát `= + - @` chống chèn công thức), `kiem_tai_lieu` chặn zip bomb/zip-slip/XXE/trần (port `doc_guard.py` @ d879b03, thêm quét `<!ENTITY`); **chưa kiểm với model thật / Word-Excel thật** | 20/10/2026 |
+| Module `van-phong` (Công cụ văn phòng qua container phụ OfficeCLI) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật) | 18/10/2026 |
+| Module `tuya` (Thiết bị Tuya chuẩn C1, đám mây + LAN, NV157) | Có — port từ c2a: ký HMAC-SHA256 chép nguyên công thức (đo bằng mock kiểm chữ ký thật), danh sách phân trang `last_row_key`, local_key qua Open API; LAN giao thức 6668 tự viết (khung 55AA + AES-128-ECB đo vector NIST + CRC32), chỉ IP riêng khai tường minh, lỗi giải mã báo «local_key đã đổi»; điều khiển mặc định TẮT, ngành khoá/bếp/bình nóng lạnh theo cấu trúc KHÔNG có hành động ghi; kiểm bằng máy chủ Tuya giả + thiết bị LAN giả loopback, đột biến trên bản sao; **chưa kiểm với thiết bị Tuya thật**, dò quảng bá UDP chỉ kiểm tầng phân tích (sandbox chặn UDP) | 20/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
 | Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 
@@ -2709,6 +2711,14 @@ thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ng
    `{"cau_hinh": {"dich_vu_url": "http://127.0.0.1:8713",
    "khoa_dich_vu": "<noi-dung-tep-integration_token>"}}` — lõi kiểm địa chỉ
    chống SSRF trước khi lưu; khoá lưu riêng 0600, không API nào trả lại.
+### Module tuya — Tuya (thiết bị nhà, đám mây + LAN)
+
+**Mô tả.** Thiết bị Tuya theo chuẩn C1 (`thuc_the` / `trang_thai` / `thuc_hien`), hai đường: **đám mây** qua Tuya Open API (ký HMAC-SHA256, danh sách thiết bị phân trang, thuộc tính shadow, gửi lệnh) và **LAN** qua giao thức cổng 6668 tự viết bằng thư viện chuẩn + `cryptography` (khung `0x000055AA`, AES-128-ECB bằng `local_key`, CRC32) — không thêm thư viện Tuya bên thứ ba. Port từ c2a (`services/tuya_nha.py`, `services/tuya_local.py`, commit d879b03): công thức ký, bảng vùng, bản đồ ngành và các bài học đo thật (lỗi giải mã = local_key đã đổi; thiết bị pin không mở cổng LAN) chép nguyên. Mã nguồn: `modules/tuya/`. Tiền tố: `tuya`. Hạng: `A`.
+
+**Cần gì.**
+- Đám mây: Access ID + Access Secret của một dự án Tuya IoT (iot.tuya.com → Cloud → Development → dự án → Overview). `vung` phải đúng vùng tài khoản lúc đăng ký app Tuya (america/europe/china/india/west-america/west-europe). Máy chủ chỉ được phép là đúng 6 miền Tuya Open API (kiểm cấu trúc trong `dam_may.kiem_mien_tuya`), gọi qua `TransportGhimIp` của lõi (ghim IP đã kiểm, chống DNS rebinding).
+- LAN: mã thiết bị + IP riêng trong mạng nhà khai tường minh trong `thiet_bi_lan` (JSON); `local_key_lan` một dòng một khoá cùng thứ tự (module tự lấy `local_key` qua đám mây khi đã khai Access ID/Secret; hoặc chủ máy cung cấp). IP công cộng/loopback/link-local đều bị từ chối lúc cài và lúc nối.
+- RAM/đĩa thêm: chưa đo (khai `null` trong manifest).
 
 **Cấu hình.**
 
@@ -2751,6 +2761,24 @@ là thêm quyền (NV15b) — cập nhật module cần duyệt 409 một lần.
 - `thuc_the()` chỉ mô tả (URL gốc để dán vào Home Assistant + khoá che);
   không liệt kê công cụ giả — phát/dừng/chuyển bài do dịch vụ và tích hợp
   Home Assistant đảm nhiệm.
+| `access_id` | Không (bắt buộc khi dùng đám mây) | Access ID (Client ID) của dự án Tuya IoT. |
+| `access_secret` | Không (bắt buộc khi dùng đám mây) | Bí mật — chỉ dùng làm khoá ký HMAC, lưu kho bí mật 0600, không vào log/phản hồi. |
+| `vung` | Không | Mặc định `america`. Sai vùng là mọi lời gọi báo «cross-region». |
+| `thiet_bi_lan` | Không | JSON danh sách `[{"id","ip","ten"?,"nganh"?,"cong"?}]`; cổng mặc định 6668. |
+| `local_key_lan` | Không | Bí mật, danh sách theo từng dòng, cùng thứ tự với `thiet_bi_lan`; chỉ giữ trong RAM. |
+| `cho_phep_dieu_khien` | Không | Mặc định `tat` = chỉ đọc. `bat` mới cho điều khiển ngành an toàn nhỏ. |
+
+**Luật nhà (cấu trúc, không theo tên).** Khoá cửa / ổ khoá / hộp an toàn / bếp / bình nóng lạnh (mã ngành videolock, jtmspro, ms, mk, bxx, dcl, kx, rs) **không bao giờ** có hành động ghi — thực thể `tinh_nang` rỗng, rủi ro `nguy_hiem`, và `thuc_hien()` kiểm lại lần nữa. Ngành lạ cũng `nguy_hiem` không hành động (fail-closed). Trạng thái ưu tiên LAN khi thiết bị có khai LAN và trả lời được; đám mây báo `hop_le=false` khi thiết bị ngoại tuyến.
+
+**Sự cố thường gặp.**
+- «sign invalid» — Access Secret sai hoặc đồng hồ hệ thống lệch giờ.
+- «cross-region» — `vung` không khớp vùng tài khoản lúc đăng ký.
+- «local_key đã đổi» khi đọc LAN — ghép nối lại thiết bị làm Tuya đổi khoá; lấy khoá mới qua đám mây rồi cập nhật cấu hình.
+- Dò/thiết bị LAN rỗng — nhà chỉ có thiết bị pin (khoá, gateway Zigbee) không mở cổng 6668: trạng thái bình thường.
+
+**Giới hạn.**
+- **Chưa kiểm với thiết bị Tuya thật** — toàn bộ kiểm bằng máy chủ Tuya đám mây giả (MockTransport, kiểm chữ ký như thật) và thiết bị LAN giả trên loopback; dò quảng bá UDP chỉ kiểm ở tầng phân tích gói vì hộp cát chặn UDP. Giao thức LAN mới hỗ trợ bản 3.1/3.3 (chưa có 3.4/3.5 dùng khoá phiên HMAC).
+- Chưa đo RAM/đĩa thật; chưa hiệu chuẩn hành động `dat_<code>` với thông số Enum phức tạp của thiết bị thật.
 
 ---
 
