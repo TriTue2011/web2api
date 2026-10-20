@@ -123,6 +123,22 @@ The three lines `mem_limit`, `cpus`, `pids_limit` in compose are safety guardrai
 - `pids_limit`: recommended to keep as a safeguard against process bombs.
 *(Detailed reference: [docs/THAM-CHIEU.md section 5](docs/THAM-CHIEU.md#5-cài-đặt-và-vận-hành-qua-docker)).*
 
+### Step 0 — create the encryption key (once, before `docker compose up`)
+
+The sample compose file sets `WEB2API_BAT_BUOC_MA_HOA=1`: every secret stored on disk (API keys, cookies, identities, login sessions) is **encrypted with AES-256-GCM** under a 32-byte *master key*. If the key is missing or wrong, web2api **refuses to start** instead of silently storing plaintext. You generate the key yourself (nobody issues it):
+
+```bash
+umask 077
+openssl rand -base64 32 > khoa-chinh      # master key, next to docker-compose.yml
+sudo chown 1000:1000 khoa-chinh           # the container runs as uid 1000 and must read it; mode stays 0600
+```
+
+- The `khoa-chinh` file lives **outside** the data directory (`/data`), so a snapshot of the data volume does not contain the key; it is in `.gitignore` — **never commit it**.
+- **Keep a backup copy somewhere safe off this machine** (password manager…): if the key is lost, encrypted secrets cannot be recovered.
+- If the file does not exist yet, `docker compose up` fails with a clear error (it does not create an empty directory).
+- Fresh install: nothing more to do. Upgrading an older deployment that holds plaintext data: **do not enable it directly** — migrate first, see [docs/TRIEN-KHAI.md section 8.3](docs/TRIEN-KHAI.md).
+- Switching to another key later: [docs/TRIEN-KHAI.md section 8.2](docs/TRIEN-KHAI.md). To turn enforcement off (not recommended): delete the two `WEB2API_BAT_BUOC_MA_HOA` / `WEB2API_KHOA_CHINH_TEP` lines and the `type: bind` block in the compose file.
+
 ### 3-Step Setup
 
 1. **Start the container:**

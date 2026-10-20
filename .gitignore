@@ -10,6 +10,7 @@ venv/
 .env
 /data/
 admin_key
+khoa-chinh
 bi_mat/
 *.sqlite
 # Rác soạn thảo / hệ điều hành

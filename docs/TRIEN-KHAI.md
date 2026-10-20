@@ -423,3 +423,46 @@ Bản sao lưu (`POST /api/sao-luu`) của web2api có mã hoá độc lập b�
      http://127.0.0.1:3031/api/khoi-phuc
    ```
 5. Toàn bộ bí mật và phiên sẽ được tự động giải mã từ bản sao lưu và ghi lại lên đĩa với mã hoá bằng **khoá chính mới**.
+
+### 8.3. Di trú dữ liệu dạng rõ sang mã hoá (nâng cấp triển khai đã chạy)
+
+Khi đã có khoá chính **và** bật `WEB2API_BAT_BUOC_MA_HOA=1`, lõi **từ chối đọc** tệp bí mật dạng rõ (chống hạ cấp), và việc đọc không tự mã hoá lại tệp. Triển khai cũ có dữ liệu dạng rõ mà bật cờ thẳng thì các module không đọc được khoá/cookie của chúng. Phải di trú **trước**, khi web2api đang dừng (tránh ghi đồng thời). Quy trình đã chạy thật ngày 20/10/2026 (5 tệp, đọc lại giải mã đúng):
+
+```bash
+# 0. Sao lưu thư mục dữ liệu (đường lùi) — tệp chứa bí mật nên giữ quyền 0600
+umask 077
+tar czf sao-luu-truoc-ma-hoa.tar.gz -C /duong/dan/den/cha-cua data
+
+# 1. Sinh khoá chính NGOÀI thư mục dữ liệu rồi chép bản dự phòng ra ngoài máy
+openssl rand -base64 32 > /duong/ngoai/data/khoa-chinh
+sudo chown 1000:1000 /duong/ngoai/data/khoa-chinh && chmod 600 /duong/ngoai/data/khoa-chinh
+
+# 2. Dừng web2api rồi di trú bằng chính ảnh đang dùng (không mạng, user 1000)
+docker stop web2api
+docker run --rm -i --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges:true \
+  --entrypoint python -v /duong/den/data:/data -v /duong/ngoai/data/khoa-chinh:/run/web2api/khoa-chinh:ro \
+  -e WEB2API_DATA=/data -e WEB2API_KHOA_CHINH_TEP=/run/web2api/khoa-chinh -e WEB2API_CHO_DOC_RO=1 \
+  web2api:latest - <<'PY'
+import os
+from pathlib import Path
+from app import ham_khoa
+goc = Path('/data/bi_mat')
+ds = sorted(p for p in goc.rglob('*.json') if p.is_file())
+for p in ds:
+    if p.read_bytes().startswith(ham_khoa.TIEN_TO_MA_HOA):
+        continue                                   # đã mã hoá sẵn
+    ham_khoa.ghi_bi_mat_tep(p, ham_khoa.doc_bi_mat_tep(p), 0o600)   # đọc bản rõ (CHO_DOC_RO=1) → ghi mã hoá
+os.environ.pop("WEB2API_CHO_DOC_RO", None)         # kiểm lại: tắt cờ đọc rõ, phải giải mã được
+for p in ds:
+    assert p.read_bytes().startswith(ham_khoa.TIEN_TO_MA_HOA), p
+    assert isinstance(ham_khoa.doc_bi_mat_tep(p), dict), p
+    print("ok", p.relative_to(goc))
+PY
+
+# 3. Bật cờ + gắn tệp khoá trong compose (xem README, «Bước 0»), rồi khởi động lại
+docker compose up -d
+```
+
+- Chỉ các tệp `bi_mat/**/*.json` được mã hoá (đúng phạm vi mục 8.1). `bi_mat/khoa_van_tay` và `admin_key` ở bản lõi này vẫn là tệp thường.
+- Lỗi giữa chừng: dừng, giải nén bản sao lưu bước 0 đè lại thư mục dữ liệu, bỏ hai dòng cờ khỏi compose, khởi động lại.
+- Không bao giờ giữ khoá chính trong cùng thư mục dữ liệu hay commit lên git.

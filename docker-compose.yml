@@ -19,6 +19,11 @@ services:
       - "${WEB2API_BIND:-127.0.0.1}:${WEB2API_PORT:-3031}:8000"
     environment:
       WEB2API_DATA: /data
+      # MÃ HOÁ KHI NGHỈ BẮT BUỘC: bí mật (khoá API, cookie, danh tính, phiên) lưu AES-256-GCM. Thiếu hoặc sai khoá chính thì
+      # lõi KHÔNG khởi động (đóng khi lỗi) thay vì lặng lẽ lưu dạng rõ. TẠO KHOÁ TRƯỚC khi `docker compose up`:
+      # README, «Bước 0 — tạo khoá mã hoá». Khoá nằm ở tệp ./khoa-chinh (NGOÀI thư mục dữ liệu) gắn ở volumes bên dưới.
+      WEB2API_BAT_BUOC_MA_HOA: "1"
+      WEB2API_KHOA_CHINH_TEP: /run/web2api/khoa-chinh
       # Nguồn module mặc định = git của dự án: module ở modules/<id>/ của kho TriTue2011/web2api (nhánh
       # main) → web2api báo «có module mới» → quản trị bấm cài trên trang Module. Kho PUBLIC nên đọc
       # ẨN DANH, không cần token (token chỉ cho kho riêng tư — đặt WEB2API_GIT_TOKEN trong .env).
@@ -46,6 +51,14 @@ services:
       # được khoá quản trị và dừng ngay. Muốn dữ liệu ở một thư mục cụ thể: WEB2API_DATA_DIR=./data
       # (hoặc đường tuyệt đối) trong .env, rồi `mkdir -p data && sudo chown 1000:1000 data` trước.
       - ${WEB2API_DATA_DIR:-web2api-data}:/data
+      # Khoá chính (tệp 0600, chủ 1000:1000, KHÔNG nằm trong thư mục dữ liệu; mất khoá = mất bí mật đã mã hoá).
+      # create_host_path: false → chưa tạo tệp thì Docker báo lỗi rõ, không lặng lẽ tạo thư mục rỗng tên khoa-chinh.
+      - type: bind
+        source: ./khoa-chinh
+        target: /run/web2api/khoa-chinh
+        read_only: true
+        bind:
+          create_host_path: false
     user: "1000:1000"
     # Cứng hoá: bỏ mọi đặc quyền Linux (cap_drop) và không cho tiến trình leo thêm đặc quyền; module chạy trong
     # tiến trình lõi nên đây là lớp chặn cuối nếu một module có lỗi.

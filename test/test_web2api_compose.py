@@ -60,3 +60,17 @@ def test_cu_phap_compose_hop_le():
     r = subprocess.run(["docker", "compose", "-f", str(GOC / "docker-compose.yml"), "config", "-q"],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
+
+
+def test_ma_hoa_khi_nghi_bat_buoc_va_khoa_nam_ngoai_du_lieu():
+    """Compose mẫu bật mã hoá bắt buộc; khoá chính là tệp gắn riêng NGOÀI /data, chỉ đọc, thiếu tệp thì lỗi rõ."""
+    assert 'WEB2API_BAT_BUOC_MA_HOA: "1"' in COMPOSE
+    assert "WEB2API_KHOA_CHINH_TEP: /run/web2api/khoa-chinh" in COMPOSE
+    assert not re.search(r"^\s+WEB2API_KHOA_CHINH:", COMPOSE, flags=re.M)  # không nhét khoá vào compose
+    khoi = re.search(r"- type: bind\n\s+source: \./khoa-chinh\n\s+target: (\S+)\n\s+read_only: true\n\s+bind:\n\s+create_host_path: false", COMPOSE)
+    assert khoi, "thiếu khối gắn tệp khoá chính (bind, read_only, create_host_path: false)"
+    assert not khoi.group(1).startswith("/data"), "khoá chính không được nằm trong thư mục dữ liệu"
+    assert re.search(r"^khoa-chinh$", (GOC / ".gitignore").read_text(encoding="utf-8"), flags=re.M)  # không commit khoá
+    for tep in ("README.md", "README.en.md"):
+        txt = (GOC / tep).read_text(encoding="utf-8")
+        assert "openssl rand -base64 32 > khoa-chinh" in txt and "docs/TRIEN-KHAI.md" in txt, f"{tep} thiếu hướng dẫn tạo khoá"

@@ -124,6 +124,22 @@ Ba dòng `mem_limit`, `cpus`, `pids_limit` trong compose chỉ là hàng rào b�
 - `pids_limit`: nên giữ để ngăn chặn module sinh tiến trình vô hạn.
 *(Chi tiết xem tại [docs/THAM-CHIEU.md mục 5](docs/THAM-CHIEU.md#5-cài-đặt-và-vận-hành-qua-docker)).*
 
+### Bước 0 — tạo khoá mã hoá (làm MỘT lần, trước `docker compose up`)
+
+Compose mẫu bật `WEB2API_BAT_BUOC_MA_HOA=1`: mọi bí mật lưu trên đĩa (khoá API, cookie, danh tính, phiên đăng nhập) được **mã hoá AES-256-GCM** bằng một *khoá chính* 32 byte. Thiếu hoặc sai khoá thì web2api **từ chối khởi động**, không lặng lẽ lưu dạng rõ. Khoá do bạn tự sinh (không ai cấp):
+
+```bash
+umask 077
+openssl rand -base64 32 > khoa-chinh      # khoá chính, tạo cạnh docker-compose.yml
+sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đọc được; quyền vẫn 0600
+```
+
+- Tệp `khoa-chinh` nằm **ngoài** thư mục dữ liệu (`/data`) nên chụp ổ dữ liệu không lấy được khoá; đã ghi trong `.gitignore`, **đừng commit**.
+- **Chép một bản dự phòng ra nơi an toàn ngoài máy này** (trình quản lý mật khẩu…): mất khoá thì các bí mật đã mã hoá không giải được nữa.
+- Chưa tạo tệp thì `docker compose up` báo lỗi rõ ràng (không tự tạo thư mục rỗng).
+- Cài mới: không cần gì thêm. Đang chạy bản cũ với dữ liệu dạng rõ: **không bật thẳng** — di trú trước, xem [docs/TRIEN-KHAI.md mục 8.3](docs/TRIEN-KHAI.md).
+- Đổi sang khoá khác về sau: [docs/TRIEN-KHAI.md mục 8.2](docs/TRIEN-KHAI.md). Muốn tắt bắt buộc (không khuyến nghị): xoá hai dòng `WEB2API_BAT_BUOC_MA_HOA` và `WEB2API_KHOA_CHINH_TEP` cùng khối `type: bind` trong compose.
+
 ### 3 bước khởi chạy
 
 1. **Khởi động dịch vụ:**
