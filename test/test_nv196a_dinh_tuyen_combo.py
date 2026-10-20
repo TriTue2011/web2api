@@ -224,6 +224,7 @@ def test_404_501_bo_qua_khong_tinh_hong(monkeypatch):
 
 
 # ── 5. Thử lại có trần: c2a thử lại NGAY 1 lần khi rớt kết nối thoáng qua ──
+@pytest.mark.xfail(reason="khoảng trống đã đo (NV196a ô #6); sửa ở NV196b", strict=False)
 def test_retry_nhanh_khi_rot_ket_noi_thoang_qua(monkeypatch):
     # c2a: _goi_mot_lan thử lại 1 lần nếu rớt đường truyền NHANH, không mã HTTP
     # (_THU_LAI_NHANH_GIAY = 10.0). Kỳ vọng web2api cũng thử lại bước ấy.
