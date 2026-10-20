@@ -454,6 +454,12 @@ def test_loi_khong_mang_dac_thu_nha_cung_cap():
     # «openai» lọt vào danh sách quét; loại riêng như tiền lệ gmail ở test
     # khung giao diện bên dưới. Tên NCC thật khác vẫn bị quét như cũ.
     ten = ten - {"openai"}
+    # NV181b: tiền tố «cam» của module cameranha là mã LOẠI THIẾT BỊ chung
+    # (camera), đồng thời là âm tiết tiếng Việt thông dụng bão hoà trong định
+    # danh của lõi (bi_cam = bị cấm, cam_nul, tay_cam_phien, cam_dieu_khien) —
+    # quét chuỗi con sẽ dương tính giả khắp nơi. Loại riêng như «chay_ma» ở
+    # trên; tên đầy đủ «cameranha» của module vẫn bị quét đầy đủ.
+    ten = ten - {"cam"}
     pham = []
     for p in sorted((GOC / "app").rglob("*.py")):
         for chu in _chu_trong_ma_python(p):

@@ -156,17 +156,17 @@ def cho_phep_loopback(monkeypatch):
 class TestNap:
     async def test_json_sai_tu_choi_nap(self, monkeypatch):
         m = _nap(monkeypatch, {"danh_sach_camera": "{khong phai json"})
-        assert m.thuc_the() == []
+        assert await m.thuc_the() == []
 
     async def test_trung_ten_tu_choi_nap(self, monkeypatch):
         ds = json.dumps([{"name": "Cửa", "kind": "go2rtc", "base": "http://x", "src": "a"},
                          {"name": "cửa", "kind": "go2rtc", "base": "http://x", "src": "b"}])
         m = _nap(monkeypatch, {"danh_sach_camera": ds})
-        assert m.thuc_the() == []
+        assert await m.thuc_the() == []
 
     async def test_khong_camera(self, monkeypatch):
         m = _nap(monkeypatch, {"danh_sach_camera": "[]"})
-        assert m.thuc_the() == []
+        assert await m.thuc_the() == []
         assert m.suc_khoe()["ok"] is True
 
 
@@ -220,8 +220,8 @@ class TestCai:
         m2 = _nap(monkeypatch, {"danh_sach_camera": json.dumps([
             {"name": "<img src=x onerror=alert(1)>", "kind": "go2rtc",
              "base": "http://10.0.0.6:1984", "src": "x"}])})
-        assert m2.thuc_the()[0]["id"] == "cam.img-src-x-onerror-alert-1"
-        assert "<img" not in m2.thuc_the()[0]["id"]
+        assert (await m2.thuc_the())[0]["id"] == "cam.img-src-x-onerror-alert-1"
+        assert "<img" not in (await m2.thuc_the())[0]["id"]
 
 
 # ── 3. Thực thể đọc/ghi theo công tắc ─────────────────────────────────────────
@@ -229,24 +229,24 @@ class TestCai:
 class TestThucThe:
     async def test_chi_thuc_the_doc_mac_dinh(self, monkeypatch, go2rtc_gia):
         m = _nap(monkeypatch, dict(CH_TIEU_BIEU))
-        ett = m.thuc_the()
+        ett = await m.thuc_the()
         assert [e["id"] for e in ett] == ["cam.cua"]
         assert ett[0]["rui_ro_mac_dinh"] == "doc"
 
     async def test_loa_bat_thi_co_thuc_the_ghi(self, monkeypatch):
         ch = dict(CH_TIEU_BIEU, loa_bat="true")
         m = _nap(monkeypatch, ch)
-        ids = [e["id"] for e in m.thuc_the()]
+        ids = [e["id"] for e in await m.thuc_the()]
         assert ids == ["cam.cua", "cam.phat_cua"]
-        assert m.thuc_the()[1]["rui_ro_mac_dinh"] == "ghi"
+        assert (await m.thuc_the())[1]["rui_ro_mac_dinh"] == "ghi"
 
     async def test_loc_theo_ten(self, monkeypatch, go2rtc_gia):
         ch = dict(CH_TIEU_BIEU, **{"danh_sach_camera": json.dumps(
             [{"name": "Cửa", "kind": "go2rtc", "src": "cua"},
              {"name": "Sân", "kind": "go2rtc", "src": "san"}])})
         m = _nap(monkeypatch, ch)
-        assert [e["id"] for e in m.thuc_the({"ten": "cửa"})] == ["cam.cua"]
-        assert m.thuc_the({"ten": "không tồn tại"}) == []
+        assert [e["id"] for e in await m.thuc_the({"ten": "cửa"})] == ["cam.cua"]
+        assert await m.thuc_the({"ten": "không tồn tại"}) == []
 
     async def test_idor_thuc_the_la(self, monkeypatch):
         m = _nap(monkeypatch, dict(CH_TIEU_BIEU))

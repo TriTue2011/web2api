@@ -258,6 +258,12 @@ class CameraModule:
             ket["loi"].append("phat_toi_da_giay phải là số.")
         if ket["loi"]:
             ket["ok"] = False
+            return ket
+        # Lõi chỉ lưu phần cấu hình trong «cau_hinh_luu» (app/so_module.py::_cai);
+        # thiếu trường này thì lõi lưu rỗng và bản phục vụ nạp cấu hình trống.
+        khoa_luu = [t["khoa"] for t in self.manifest.get("truong_cau_hinh", [])]
+        ket["cau_hinh_luu"] = {k: cau_hinh[k] for k in khoa_luu
+                               if cau_hinh.get(k) is not None}
         return ket
 
     async def _kiem_rtsp(self, url: str) -> str | None:
@@ -301,7 +307,7 @@ class CameraModule:
     def _cau_hinh_get(self, khoa: str):
         return (self._cau_hinh or {}).get(khoa)
 
-    def thuc_the(self, loc: dict | None = None) -> list[dict]:
+    async def thuc_the(self, loc: dict | None = None) -> list[dict]:
         if not self._kich_hoat:
             return []
         ds = list(self._danh_sach)
@@ -320,7 +326,7 @@ class CameraModule:
                 "ten": f"Camera {ten_cam}",
                 "loai": "camera",
                 "rui_ro_mac_dinh": "doc",
-                "hanh_dong": [
+                "tinh_nang": [
                     {"ten": "chup", "mo_ta": "Chụp một khung ảnh của camera này"},
                     {"ten": "chup_cho_ai", "mo_ta": "Ảnh cho mô hình thị giác (luồng phụ, thu nhỏ mạnh)"},
                     {"ten": "canh_bao_moi_nhat", "mo_ta": "Danh sách cảnh báo chuyển động gần nhất"},
@@ -332,7 +338,7 @@ class CameraModule:
                     "ten": f"Loa camera {ten_cam}",
                     "loai": "camera_phat",
                     "rui_ro_mac_dinh": "ghi",
-                    "hanh_dong": [
+                    "tinh_nang": [
                         {"ten": "phat", "mo_ta": "Phát âm thanh (base64 WAV/MP3) ra loa — hành động GHI"},
                         {"ten": "bo_dam_mo", "mo_ta": "Mở kênh bộ đàm hai chiều — hành động GHI"},
                         {"ten": "bo_dam_them", "mo_ta": "Gửi tiếng alaw (base64) vào kênh bộ đàm"},
@@ -341,9 +347,9 @@ class CameraModule:
                 })
         return kq
 
-    def trang_thai(self, ids: list[str] | None = None) -> dict[str, dict]:
+    async def trang_thai(self, ids: list[str] | None = None) -> dict[str, dict]:
         tt: dict[str, dict] = {}
-        for e in self.thuc_the():
+        for e in await self.thuc_the():
             if ids is not None and e["id"] not in ids:
                 continue
             tt[e["id"]] = {"ten": e["ten"], "trang_thai": "san_sang",
@@ -508,6 +514,9 @@ class CameraModule:
             "so_canh_bao_giu": len(self._canh_bao),
         }
 
+    async def dung(self) -> None:
+        """Lõi yêu cầu phương thức vòng đời «dung»; module này không giữ tài nguyên."""
+
     def su_kien_id(self, yc: dict) -> str:
         """Trích id sự kiện Frigate để lõi chống phát lại (payload đã xác thực)."""
         try:
@@ -543,3 +552,8 @@ class CameraModule:
         except Exception as exc:  # noqa: BLE001 — đã kiểm toán: webhook không được sập
             log.warning("camera: webhook loi_khong_ngu (%s)", type(exc).__name__)
         return {"ok": True}
+
+
+# Lõi nạp module qua lớp có tên đúng «Module» (app/kham_pha.py). CameraModule giữ
+# tên cũ cho tương thích với các test nội bộ của module.
+Module = CameraModule
