@@ -1,0 +1,33 @@
+/* Trang «YouTube phát» của module youtube-phat (NV153 đợt C) — bố cục theo khung
+   trang Hệ thống, dùng lớp có sẵn của khung.css (.goc .the .nut .o .bao .phu .ds-kq).
+   Mốc điện thoại: một cột, vùng chạm ≥ 44px, chữ ≥ 12px, không tràn ngang ở 360px. */
+.trang-tb{box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+.trang-tb h1{font-family:Newsreader,Georgia,serif;font-size:26px;font-weight:500}
+.trang-tb h2{font-size:16px;font-weight:600}
+.trang-tb label{font-weight:500;display:block;margin-top:4px}
+.trang-tb .quay-lai{align-self:flex-start}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.nho{font-size:12px}
+/* Nút gập mục — theo quy ước data-mo-muc của khung */
+.muc-gap-nut{box-sizing:border-box;width:100%;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.muc-gap-nut .mui{transition:transform .15s}
+.muc-gap-nut[aria-expanded="true"] .mui{transform:rotate(180deg)}
+/* Mỗi dữ liệu một dòng, có gạch phân cách */
+.ds-kq{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column}
+.ds-kq > li{padding:10px 2px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px;min-width:0}
+.ds-kq > li:last-child{border-bottom:1px solid var(--line)}
+.dong-tieu-de{font-weight:600;overflow-wrap:anywhere}
+.dong-phu{font-size:12px;color:var(--mute);overflow-wrap:anywhere}
+.hang-nut{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+/* Chọn loa/tivi */
+.ds-chon{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.lua-chon{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 2px;border-top:1px solid var(--line);cursor:pointer}
+.lua-chon:last-child{border-bottom:1px solid var(--line)}
+.lua-chon input{width:22px;height:22px;flex:none;accent-color:var(--acc)}
+.lua-chon .ten{font-weight:500;overflow-wrap:anywhere}
+.lua-chon .ma{font-size:12px;color:var(--mute);font-family:ui-monospace,monospace;overflow-wrap:anywhere}
+/* Trạng thái đang phát */
+.trang-thai{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere}
+.o-nguon{flex:0 0 auto;width:auto}
+[hidden]{display:none !important}
+.trong-khung .trang-tb .quay-lai{display:none}

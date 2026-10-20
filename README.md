@@ -197,6 +197,7 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `doc-viettat` | Chuẩn hoá chữ để đọc tiếng Việt (TTS: số, đơn vị, viết tắt, hoá học, ký hiệu) | Cục bộ (thuần Python, không mạng) | Có sẵn (chuẩn C2 công cụ `chuan_hoa_doc`, 8 lớp lỗi, chống ReDoS, trần 20.000 ký tự) |
 | `van-phong` | Công cụ `office_*` đọc/sửa tài liệu văn phòng (docx/xlsx/pptx) qua container phụ OfficeCLI — mặc định tắt, chưa bật thì báo «chưa bật» | HTTP nội bộ tới dịch vụ van-phong-office | Có sẵn (kiểm với nhị phân giả + kiểm tĩnh Dockerfile; chưa kiểm với OfficeCLI thật) |
 | `tro-ly` | Trợ lý: dựng prompt theo ngân sách + chọn công cụ theo tầng + X-quang prompt + sổ lỗi (NV136; vòng lặp gọi mô hình là NV135) | Nội bộ (thuần Python) | Có sẵn (11 test xanh; chưa đo trên nhật ký thật; chưa có vòng lặp gọi mô hình) |
+| `youtube-phat` | Máy phát YouTube/Zing qua dịch vụ phụ: giữ địa chỉ + khoá Integration API, hỏi sức khoẻ dịch vụ (NV153 đợt B) | HTTP nội bộ/LAN tới dịch vụ youtube-phat | Có sẵn (kiểm với máy chủ giả; **chưa kiểm với dịch vụ thật**) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.

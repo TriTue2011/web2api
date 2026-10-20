@@ -1,0 +1,49 @@
+# requirements cho dịch vụ youtube-phat (NV153) — RIÊNG của dịch vụ, KHÔNG vào
+# requirements của lõi. Cài bằng: pip install --require-hashes -r requirements.txt
+#
+# Phiên bản ghim ngày 19/10/2026. Hash đo từ wheel tải từ PyPI (linux/x86_64).
+# deno là wheel riêng theo kiến trúc — dựng cho arm64 thì tải lại wheel arm64
+# và thay hash dòng deno (ghi rõ trong README).
+#
+# Bảng gói bên thứ ba (luật cứng số 4) xem README.md mục «Gói bên thứ ba».
+
+fastapi==0.142.4 \
+    --hash=sha256:8a651aa071a9f92c8217cca1d0b044bf9c326f336578be0a728a1a1f22ec52d2
+uvicorn==0.54.0 \
+    --hash=sha256:505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf
+# yt-dlp: giải luồng YouTube. c2a ghim >=2026.8.19 (YouTube đổi cách ký URL vài
+# tuần một lần; bản cũ hơn đợt đổi thì không lấy được luồng).
+yt-dlp==2026.8.19 \
+    --hash=sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf
+# yt-dlp-ejs: bộ script JavaScript để yt-dlp giải thử thách của YouTube.
+yt-dlp-ejs==0.8.0 \
+    --hash=sha256:79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4
+# deno: trình chạy JavaScript cho yt-dlp (streaming.py::deno_path tìm tệp chạy
+# cạnh python của venv). WHEEL RIÊNG linux/x86_64 — xem ghi chú đầu tệp.
+deno==2.9.7 \
+    --hash=sha256:836f2ab5918723b47b638a05bc4fdac99fc35e69b49a6771c24e32b19dff5d8a
+# --- phụ thuộc bắc cầu (pip --require-hashes bắt buộc hash mọi gói cài) ---
+starlette==1.9.0 \
+    --hash=sha256:fd3f159936e882d06c1108f84688f7cda2cf85fc6a592a50edbd175e882c2ddc
+pydantic==2.14.1 \
+    --hash=sha256:9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454
+pydantic-core==2.50.1 \
+    --hash=sha256:93ba4e9d8210d941c200431a56b2c0400b131865947903937ed3ec5404307d2e
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+typing-inspection==0.4.4 \
+    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+annotated-types==0.8.0 \
+    --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0
+annotated-doc==0.0.5 \
+    --hash=sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101
+anyio==4.15.1 \
+    --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101
+idna==3.20 \
+    --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bf0276416d896db81c14582c
+h11==0.16.0 \
+    --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
+click==8.5.0 \
+    --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360
+opentelemetry-api==1.45.1 \
+    --hash=sha256:b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb

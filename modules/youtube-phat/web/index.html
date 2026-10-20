@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>YouTube phát</title>
+<link rel="stylesheet" href="../../khung.css">
+<link rel="stylesheet" href="trang.css">
+<script src="trang.js" defer></script>
+</head>
+<body>
+<div class="goc">
+<main class="trang-tb">
+  <a class="quay-lai" href="../../He-thong.dc.html">← Hệ thống</a>
+  <h1>YouTube phát</h1>
+  <p class="phu">Điều khiển máy phát YouTube/Zing qua dịch vụ youtube-phat. Mọi lệnh đi qua
+    máy chủ (khoá dịch vụ không ra trình duyệt). Mục nào chưa có thì ẩn — không có nút chết.</p>
+  <p class="bao bao-loi" id="loi-chung" role="alert" hidden></p>
+
+  <section class="the" aria-labelledby="tieu-de-ket-noi">
+    <h2 id="tieu-de-ket-noi"><button type="button" class="muc-gap-nut" data-mo-muc="ket-noi"
+        aria-expanded="false" aria-controls="nd-ket-noi">
+      <span>Kết nối Home Assistant</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-ket-noi" hidden>
+      <p class="phu">Trong HA: Thiết bị &amp; dịch vụ → TriTue YouTube Player → Cấu hình lại,
+        dán URL và token dưới đây.</p>
+      <label for="o-url">URL dịch vụ</label>
+      <div class="o-va-nut">
+        <input class="o mono" id="o-url" readonly autocomplete="off" spellcheck="false">
+        <button class="nut nut-nho" id="nut-chep-url" type="button">Chép URL</button>
+      </div>
+      <label for="o-token">Token</label>
+      <div class="o-va-nut">
+        <input class="o mono" id="o-token" readonly type="password" autocomplete="off" spellcheck="false">
+        <button class="nut nut-nho" id="nut-hien-token" type="button" aria-pressed="false">Hiện</button>
+        <button class="nut nut-nho" id="nut-chep-token" type="button">Chép token</button>
+      </div>
+      <p class="phu nho">Token chỉ hiện/được chép khi bạn bấm nút — không lưu trong trình duyệt.</p>
+    </div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-tim">
+    <h2 id="tieu-de-tim"><button type="button" class="muc-gap-nut" data-mo-muc="tim"
+        aria-expanded="false" aria-controls="nd-tim">
+      <span>Tìm nhạc</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-tim" hidden>
+      <label for="o-tu-khoa">Từ khoá</label>
+      <div class="o-va-nut">
+        <input class="o" id="o-tu-khoa" maxlength="120" autocomplete="off"
+               placeholder="Tên bài, ca sĩ…">
+        <select class="o o-nguon" id="o-nguon" aria-label="Nguồn tìm">
+          <option value="youtube">YouTube</option>
+          <option value="zing">Zing MP3</option>
+        </select>
+        <button class="nut nut-chinh" id="nut-tim" type="button">Tìm</button>
+      </div>
+      <p class="bao bao-loi" id="loi-tim" role="alert" hidden></p>
+      <ul class="ds-kq" id="ds-ket-qua" aria-live="polite"></ul>
+    </div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-loa">
+    <h2 id="tieu-de-loa"><button type="button" class="muc-gap-nut" data-mo-muc="loa"
+        aria-expanded="false" aria-controls="nd-loa">
+      <span>Phát lên loa/tivi</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-loa" hidden>
+      <p class="phu">Chọn loa/tivi rồi bấm «Phát» ở từng kết quả tìm kiếm. Danh sách lấy từ
+        module Home Assistant.</p>
+      <p class="bao bao-vang" id="bao-chua-co-ha" hidden>Chưa cài module Home Assistant nên
+        không có danh sách loa/tivi. Cài module rồi quay lại đây.</p>
+      <div class="ds-chon" id="ds-thiet-bi" role="group" aria-label="Chọn loa/tivi"></div>
+      <p class="bao bao-loi" id="loi-loa" role="alert" hidden></p>
+    </div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-dang-phat">
+    <h2 id="tieu-de-dang-phat"><button type="button" class="muc-gap-nut" data-mo-muc="dang-phat"
+        aria-expanded="false" aria-controls="nd-dang-phat">
+      <span>Đang phát</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-dang-phat" hidden>
+      <div class="trang-thai" id="o-trang-thai">
+        <p class="phu">Chưa tải trạng thái.</p>
+      </div>
+      <div class="hang-nut">
+        <button class="nut nut-nho" id="nut-lam-moi-tt" type="button">Làm mới</button>
+        <button class="nut nut-nho" id="nut-tam-dung" type="button">Tạm dừng loa</button>
+        <button class="nut nut-nho" id="nut-tiep-tuc" type="button">Tiếp tục loa</button>
+        <button class="nut nut-nho nut-nguy" id="nut-dung" type="button">Dừng hẳn</button>
+      </div>
+      <p class="bao bao-loi" id="loi-dang-phat" role="alert" hidden></p>
+      <p class="phu nho">«Tạm dừng/Tiếp tục loa» gửi tới loa/tivi đã chọn qua tích hợp Home Assistant.
+        «Dừng hẳn» dừng phiên của dịch vụ: không phát lại, không tự chuyển bài.</p>
+    </div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-playlist">
+    <h2 id="tieu-de-playlist"><button type="button" class="muc-gap-nut" data-mo-muc="playlist"
+        aria-expanded="false" aria-controls="nd-playlist">
+      <span>Playlist</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-playlist" hidden>
+      <ul class="ds-kq" id="ds-playlist" aria-live="polite"></ul>
+      <label for="o-ma-chia-se">Nhập mã chia sẻ playlist</label>
+      <div class="o-va-nut">
+        <input class="o mono" id="o-ma-chia-se" autocomplete="off" spellcheck="false"
+               placeholder="TTPL1.…">
+        <button class="nut nut-chinh" id="nut-nhap-ma" type="button">Nhập</button>
+      </div>
+      <p class="bao bao-loi" id="loi-playlist" role="alert" hidden></p>
+      <p class="bao bao-tot" id="bao-playlist" role="status" hidden></p>
+    </div>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-hang-doi">
+    <h2 id="tieu-de-hang-doi"><button type="button" class="muc-gap-nut" data-mo-muc="hang-doi"
+        aria-expanded="false" aria-controls="nd-hang-doi">
+      <span>Hàng đợi</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-hang-doi" hidden>
+      <ul class="ds-kq" id="ds-hang-doi" aria-live="polite"></ul>
+      <p class="phu nho" id="chu-thich-hang-doi">Hàng đợi của phiên đang chạy trên dịch vụ.</p>
+    </div>
+  </section>
+
+</main>
+</div>
+</body>
+</html>

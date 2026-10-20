@@ -1,0 +1,51 @@
+# docker-compose cho dịch vụ youtube-phat (NV153) — chạy độc lập, không đụng
+# docker-compose.yml gốc của repo.
+#
+# Chạy thử:
+#   cd dich-vu/youtube-phat && docker compose up -d --build
+# Lấy token dán vào Home Assistant:
+#   docker compose exec youtube-phat cat /data/youtube_phat/integration_token
+# (tệp 0600, chỉ root container / chủ máy đọc được)
+
+services:
+  youtube-phat:
+    build: .
+    image: web2api-youtube-phat:1.0.0
+    container_name: web2api-youtube-phat
+    user: "1000:1000"
+    # Mặc định chỉ nghe nội bộ. Muốn HA + loa tới được, mở hai biến dưới:
+    #   YT_HOST: "0.0.0.0"            # nghe mọi card (hoặc IP LAN cụ thể)
+    #   YT_PUBLISH_IP: "192.168.1.50" # IP LAN của máy này — URL ký cho loa dùng
+    # Rủi ro: ai trong LAN cũng gọi được API nếu có token; token lộ là mất.
+    # Không bật UPnP, không mở ra Internet.
+    environment:
+      YT_DATA_DIR: /data
+      YT_HOST: "127.0.0.1"
+      YT_PORT: "8713"
+      # YT_HOST: "0.0.0.0"
+      # YT_PUBLISH_IP: "192.168.1.50"
+    ports:
+      - "127.0.0.1:8713:8713"
+    volumes:
+      # Dữ liệu bền: playlists.json, history.json, integration_token (0600),
+      # hmac_key (0600). Chuyển dữ liệu từ c2a sang = chép tệp từ
+      # <data c2a>/youtube_phat/ vào volume này (xem README).
+      - youtube-phat-data:/data
+    # deno/yt-dlp cần ghi bộ nhớ đệm: tmpfs, không ghi vào ảnh (ảnh chạy read_only).
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1777
+      - /home/youtube-phat:uid=1000,gid=1000,mode=700
+    read_only: true
+    cap_drop:
+      - ALL
+    # Không cần cap nào thêm (chỉ gọi ra 443 khi giải luồng; không bind cổng thấp).
+    stop_grace_period: 10s   # SIGTERM → đóng ngay mọi luồng cho loa (dừng là dừng hẳn #2)
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  youtube-phat-data:

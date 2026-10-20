@@ -77,6 +77,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `doc-viettat` (Chuẩn hoá chữ để đọc tiếng Việt chuẩn OpenAI / TTS, chuẩn C2 `thiet_bi`) | Có — chuẩn hoá văn bản tiếng Việt sang dạng đọc cho TTS: số, đơn vị tập đóng SI, viết tắt (1 nghĩa CC0, mơ hồ, lạ), công thức hoá học (118 nguyên tố, điện tích, phản ứng), phân biệt tên người/ngữ cảnh thường, tiêu đề in hoa, URL/email, hậu xử lý Markdown/LaTeX/emoji; trần 20.000 ký tự, chống ReDoS; thuần Python, không mạng | 18/10/2026 |
 | Module `van-phong` (Công cụ văn phòng qua container phụ OfficeCLI) + dịch vụ `dich-vu/van-phong-office` | Có — công cụ `office_*` (đọc: view/get/query/validate/dump/help rủi ro `doc`; sửa: create/set/add/remove/move/swap/merge/save/import/batch rủi ro `ghi`), mặc định TẮT; dịch vụ HTTP nội bộ gọi OfficeCLI v1.0.140 trong hộp cát (tập lệnh đóng 19 lệnh, `mcp` bị chặn trước khi gọi, hết giờ 60/180 s, đầu ra ≤ 80.000 ký tự, tải lên ≤ 25 MB kiểm magic zip OOXML, tên tệp hệ thống sinh); khoá Bearer chặn khỏi log; địa chỉ dịch vụ kiểm SSRF bằng `app/tu_xa.py`; kiểm với nhị phân giả + kiểm tĩnh Dockerfile; **chưa kiểm với OfficeCLI thật** (chưa dựng ảnh Docker thật) | 18/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
+| Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -2651,6 +2652,78 @@ m.ghi_x_quang(luot_id="...", ho_so_id="...", x_quang=xq,
 - Chưa đo trên nhật ký lượt chạy thật của nhà (cần NV135 chạy một thời gian);
   ngưỡng cổng biên là giá trị mặc định. Chế độ «tự chọn không hỏi» mặc định TẮT.
 - Ước tính token là `số ký tự // 4` (thô), chưa hiệu chỉnh theo tokenizer thật.
+
+---
+
+### Module youtube-phat — Máy phát YouTube/Zing qua dịch vụ phụ (NV153 đợt B)
+
+**Mô tả.** Điều khiển máy phát YouTube/Zing qua dịch vụ `dich-vu/youtube-phat`
+(HTTP nội bộ/LAN): module giữ địa chỉ dịch vụ + khoá Integration API, hỏi sức
+khoẻ `GET /api/integration/health`; bản thân module KHÔNG phát nhạc và không
+gọi ra youtube.com — dịch vụ mới là nơi gọi ra ngoài
+(youtube.com/googlevideo.com/ytimg.com/zingmp3.vn). Khác c2a ở chỗ dịch vụ
+phục vụ ở gốc `/api/integration/*` (không tiền tố `/yt`), Home Assistant chỉ
+cần đổi URL gốc + token mới. Mã nguồn: `modules/youtube-phat/` (module) +
+`dich-vu/youtube-phat/` (dịch vụ: đợt A, worker khác viết song song). Tiền tố
+thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ngoài lõi).
+
+**Cần gì.**
+- Dịch vụ `dich-vu/youtube-phat` đang chạy và tới được từ máy web2api (xem
+  `dich-vu/youtube-phat/README.md`: dựng ảnh, chạy container, mở cổng LAN).
+- Khoá Integration API: đọc tệp `integration_token` trong `/data/youtube_phat`
+  của dịch vụ.
+- Mạng tới dịch vụ (mặc định `http://127.0.0.1:8713`); địa chỉ lúc cài kiểm
+  bằng `app/tu_xa.py` (chống SSRF; cho phép loopback + LAN nội bộ).
+- RAM/đĩa: chưa đo (điền `null` theo khuôn).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "youtube-phat"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/youtube-phat`
+3. Cài cấu hình: `POST /api/modules/youtube-phat/cai` với thân
+   `{"cau_hinh": {"dich_vu_url": "http://127.0.0.1:8713",
+   "khoa_dich_vu": "<noi-dung-tep-integration_token>"}}` — lõi kiểm địa chỉ
+   chống SSRF trước khi lưu; khoá lưu riêng 0600, không API nào trả lại.
+
+**Cấu hình.**
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `dich_vu_url` | Không | Địa chỉ HTTP của dịch vụ youtube-phat (mặc định `http://127.0.0.1:8713`). |
+| `khoa_dich_vu` | Có | Khoá Bearer của dịch vụ (tệp `integration_token`); lưu riêng 0600, bị chặn khỏi log, mọi nơi chỉ thấy dạng che `…abcd`. |
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" $W/api/modules/youtube-phat/suc-khoe
+# → {"ok": true, "dich_vu_url": "http://127.0.0.1:8713", "trang_thai": "ok", "khoa": "…abcd"}
+```
+
+**Đợt C — giao diện web.** Module khai `tab_web` (`{"nhan": "YouTube phát",
+"trang": "web/index.html"}`) nên khi đã cài có tab riêng ở `/m/youtube-phat/`
+(HTML tĩnh theo khung, một cột, điện thoại là chính); gỡ module thì tab biến
+mất. Tab gọi 7 hành động của module qua đường lõi
+`POST /api/thiet-bi/youtube_phat.dieu_khien/hanh-dong` (chuẩn C1, không sửa
+lõi): `tim` (YouTube/Zing + chép mã), `phat_len_loa` (chọn loa/tivi từ module
+home-assistant qua `GET /api/thiet-bi`), `dung_phien` (dừng hẳn), `trang_thai`,
+`danh_sach_playlist` (chép id) + `nhap_ma_chia_se` (`TTPL1.`), `lay_khoa` (chép
+token HA khi bấm có chủ đích). Vì thêm `tinh_nang`, lần đầu quản trị xác nhận
+thực thể một lần ở Hệ thống → Thiết bị (SEC-004f). Ẩn chờ lõi: «Nghe trên máy
+này» (CSP `media-src` chặn luồng khác origin), «Video nhúng» (CSP `frame-src`
+chặn youtube.com), «Bài kế» (dịch vụ chưa có điểm cuối next). Thêm `tab_web`
+là thêm quyền (NV15b) — cập nhật module cần duyệt 409 một lần.
+
+**Sự cố thường gặp.**
+- `{"ok": false, "loi": "chưa kết nối được: ..."}` — sai địa chỉ/khoá hoặc
+  container dịch vụ chưa chạy (không ném, không lộ khoá trong `loi`).
+- `dia_chi_dich_vu_khong_hop_le` lúc cài — địa chỉ trỏ vào dải bị chặn (SSRF).
+
+**Giới hạn.**
+- **CHƯA kiểm với dịch vụ thật** (dịch vụ do đợt A viết song song; test ở đây
+  dùng máy chủ giả); chưa đo RAM/đĩa thêm.
+- `thuc_the()` chỉ mô tả (URL gốc để dán vào Home Assistant + khoá che);
+  không liệt kê công cụ giả — phát/dừng/chuyển bài do dịch vụ và tích hợp
+  Home Assistant đảm nhiệm.
 
 ---
 
