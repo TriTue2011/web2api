@@ -1,0 +1,34 @@
+# Compose MẪU cho dịch vụ chay-ma (NV171, bổ sung NV171-SUA C7).
+#
+# ⚠️ ĐỌC TRƯỚC KHI CHẠY — dịch vụ này cầm /var/run/docker.sock, tức QUYỀN
+# ROOT TRÊN MÁY CHỦ nếu dịch vụ bị chiếm. Vì vậy:
+# - Tệp này chỉ là MẪU: không ai tự bật. Chỉ chạy khi chủ máy đã đọc
+#   README-trien-khai.md (cùng thư mục) và chủ động `up`.
+# - Cổng chỉ publish trên 127.0.0.1 của máy chủ — module lõi gọi qua đó.
+#   TUYỆT ĐỐI không đổi thành 0.0.0.0:8703.
+# - Đường /srv/chay-ma-data phải TRÙNG TUYỆT ĐỐI trong/ngoài container:
+#   daemon Docker hiểu đường -v theo MÁY CHỦ, dịch vụ hiểu theo container;
+#   lệch đường là thư mục lần chạy thành hai nơi khác nhau. Tạo trước:
+#   `mkdir -p /srv/chay-ma-data`.
+# - user root TRONG container riêng này là có chủ đích: dịch vụ cần đọc
+#   docker.sock và chown thư mục lần chạy sang uid 65534 (NV171-SUA C4).
+#   Container chạy mã KHÔNG liên quan: vẫn --user 65534, cách ly đầy đủ.
+services:
+  chay-ma:
+    build: .
+    image: web2api-chay-ma:1.1.0
+    container_name: chay-ma
+    restart: "no"
+    user: "0:0"
+    environment:
+      CHAYMA_KHOA: "${CHAYMA_KHOA:?phai dat CHAYMA_KHOA - sinh bang: openssl rand -hex 32}"
+      CHAYMA_HOST: "0.0.0.0"
+      CHAYMA_PORT: "8703"
+      CHAYMA_THU_MUC_GOC: "/srv/chay-ma-data"
+    ports:
+      - "127.0.0.1:8703:8703"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/chay-ma-data:/srv/chay-ma-data
+    security_opt:
+      - no-new-privileges:true
