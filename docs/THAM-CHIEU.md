@@ -47,6 +47,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Nguồn module từ git: báo module mới/bản mới, cài, tự cài module mới có điều kiện, bản mới của module đã cài luôn chờ duyệt | Có (chưa thử với GitHub thật) | 0.1.0-khung · 10–11/10/2026 |
 | Module `gemini-web` (Gemini bản web, cookie Google) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều tài khoản, kiểm với máy chủ giả; tái dùng hồ sơ Google NV93 + model theo tài khoản (NV91-P3: mã ổn định, `available_cho`, định tuyến theo model); **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
 | Module `chatgpt-web` (ChatGPT bản web, Bearer token) | Thử nghiệm — chat stream/không stream + xoay vòng nhiều token theo mã lỗi, gắn danh_tinh_id của kho danh tính, kiểm với máy chủ giả; tái dùng hồ sơ Google NV93 (gói Free/Plus/Pro suy từ `/backend-api/accounts/check`, model theo gói); **chưa kiểm với dịch vụ thật**; ảnh/video chưa làm | 0.1.0 · 17/10/2026 |
+| Module `openaicodex` (OpenAI Codex, đăng nhập OAuth PKCE) | Có — đăng nhập OAuth (state dùng một lần có hạn, redirect khớp tuyệt đối, bộ nghe callback chỉ loopback và tự đóng), lưu/làm mới token (khoá chống đua + lùi dần + phân loại lỗi theo cấu trúc), theo dõi hạn mức từ header `x-codex-*`/`/wham/usage`, tài khoản deactivated chờ duyệt; kiểm với máy chủ OAuth/Codex giả; **chưa kiểm với tài khoản thật** | 20/10/2026 |
 | Module `grok-web` (Grok Web qua giao thức web grok.com, cookie người dùng) | Thử nghiệm — kiểm với máy chủ WebSocket giả; gắn danh tính chung (NV80, cùng khuôn NV77); tái dùng hồ sơ Google NV93 (Cloudflare → nhận bằng cấu trúc → `can_nguoi`, không tự tích/giải); **chưa kiểm với grok.com thật** (cần cookie tài khoản thật) | 0.1.0 · 17/10/2026 |
 | Module `grok-api` (Grok API, khoá API chính thức xAI qua endpoint OpenAI) | Có — chat stream/không stream, xoay nhiều khoá + cho khoá nghỉ theo phân loại lỗi cấu trúc, kiểm với máy chủ giả; **chưa kiểm với api.x.ai thật** (cần khoá xAI thật) | 17/10/2026 |
 | Module `ho-so-google` + API hồ sơ Google (`GET`/`POST /api/danh-tinh`, `GET …/{id}/trang-thai`, `POST …/{id}/ma-2fa`, `DELETE …/{id}`) và tái dùng provider (`POST /api/tai-khoan/tai-dung`): một hồ sơ = một tài khoản Google đã đăng nhập sống; provider «Đăng nhập bằng Google» trong hồ sơ; CAPTCHA/xác minh → «cần người» + noVNC | Có — kiểm với dịch vụ trình duyệt giả + trình duyệt giả (NV92); **chưa kiểm với Google/dịch vụ thật** | 17/10/2026 |
@@ -3171,6 +3172,44 @@ thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ng
 - Đám mây: Access ID + Access Secret của một dự án Tuya IoT (iot.tuya.com → Cloud → Development → dự án → Overview). `vung` phải đúng vùng tài khoản lúc đăng ký app Tuya (america/europe/china/india/west-america/west-europe). Máy chủ chỉ được phép là đúng 6 miền Tuya Open API (kiểm cấu trúc trong `dam_may.kiem_mien_tuya`), gọi qua `TransportGhimIp` của lõi (ghim IP đã kiểm, chống DNS rebinding).
 - LAN: mã thiết bị + IP riêng trong mạng nhà khai tường minh trong `thiet_bi_lan` (JSON); `local_key_lan` một dòng một khoá cùng thứ tự (module tự lấy `local_key` qua đám mây khi đã khai Access ID/Secret; hoặc chủ máy cung cấp). IP công cộng/loopback/link-local đều bị từ chối lúc cài và lúc nối.
 - RAM/đĩa thêm: chưa đo (khai `null` trong manifest).
+### Module openaicodex — OpenAI Codex (đăng nhập OAuth)
+
+**Mô tả.** Đăng nhập OAuth PKCE vào tài khoản Codex của chính người dùng,
+lưu token trong kho riêng mã hoá của lõi, tự làm mới token, theo dõi hạn mức,
+và chat qua Codex Responses API của chatgpt.com (khác `chatgpt-web` ở chỗ
+đây là luồng OAuth chính thức của Codex CLI — client
+`app_EMoamEEZ73f0CkXaXp7hrann` — chứ không phải Bearer <redacted> token dán từ
+tab web). Mã nguồn: `modules/openaicodex/`. Tiền tố model: `openaicodex`.
+Hạng: `A` (trường `hang` là bắt buộc trong `manifest.json`: "A" = chủ máy đã
+đọc hết mã + ghim SHA; "B" = mã của người khác, chạy ngoài lõi; hang là lời
+khai của tác giả; máy chủ có quyền coi module bên thứ ba là B bất kể lời khai).
+
+**Cần gì.**
+- Một tài khoản ChatGPT/Codex của người dùng (đăng nhập bằng trình duyệt qua
+  luồng OAuth của module; không cần khoá API).
+- Mạng ra tới `auth.openai.com` (đổi mã, làm mới token) và `chatgpt.com`
+  (Codex Responses API, `/wham/usage`) — khớp `tai_nguyen.mang_ra` trong manifest.
+- RAM/đĩa thêm: chưa đo.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "openaicodex"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/openaicodex`
+3. Cài đặt cấu hình (có thể để trống rồi đăng nhập bằng OAuth sau):
+
+   ```bash
+   curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+     -d '{"cau_hinh": {}}' \
+     $W/api/modules/openaicodex/cai
+   ```
+
+4. Đăng nhập: dùng đường thiết bị (chỉ quản trị) — bắt đầu luồng:
+   `POST /api/thiet-bi/openaicodex.dang-nhap/hanh-dong` với thân
+   `{"hanh_dong": "bat_dau_dang_nhap", "tham_so": {}, "xac_nhan": true}` →
+   nhận `auth_url`, mở trong trình duyệt; xong thì gọi lại với
+   `{"hanh_dong": "dan_callback", "tham_so": {"url_callback": "<URL callback đầy đủ>"}, "xac_nhan": true}`
+   (hoặc để trống `url_callback` nếu trình duyệt đã gọi về bộ nghe
+   `127.0.0.1:1455` trên cùng máy — bộ nghe tự đóng sau khi xong).
 
 **Cấu hình.**
 
@@ -3178,6 +3217,8 @@ thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ng
 |---|---|---|
 | `dich_vu_url` | Có | Địa chỉ HTTP của dịch vụ youtube-phat: IP LAN của máy chạy dịch vụ hoặc tên container Docker (KHÔNG dùng 127.0.0.1 — bị chặn khi cài, NV181). |
 | `khoa_dich_vu` | Có | Khoá Bearer của dịch vụ (tệp `integration_token`); lưu riêng 0600, bị chặn khỏi log, mọi nơi chỉ thấy dạng che `…abcd`. |
+| `refresh_token` | Không | Danh sách bí mật: mỗi dòng một refresh_token để thêm tài khoản trực tiếp mà không cần luồng OAuth — lấy từ phiên Codex đã đăng nhập trước đó. Lưu riêng trong kho bí mật, chỉ hiện dạng che, không bao giờ hiện lại. |
+| `co_so_url` | Không | Địa chỉ gốc thay cho `https://chatgpt.com` — CHỈ dùng cho kiểm thử với máy chủ giả; kiểm chống SSRF bằng `app/tu_xa.py`. |
 
 **Ví dụ dùng.**
 
@@ -3399,6 +3440,32 @@ curl -s -H "Authorization: Bearer $K" $W/api/modules/rclone/suc-khoe
   văn bản. Nội dung tệp không đi qua tham số hành động (lõi trần 8 KB).
 - Cấu hình rclone là bề mặt nhạy cảm nhất: volume `/data` không nên sao lưu
   chung hay chia sẻ.
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "openaicodex/gpt-5.5", "messages": [{"role": "user", "content": "Xin chào"}]}' \
+  $W/v1/chat/completions
+```
+
+Model: `openaicodex/gpt-5.5` (mặc định), `openaicodex/gpt-5` (suy từ bản
+tham khảo chatgpt2api; tên lạ → `400`, không âm thầm chạy model khác).
+
+**Sự cố thường gặp.**
+- `503 chua_co_tai_khoan` — chưa có tài khoản nào dùng được: đăng nhập qua
+  hành động thiết bị ở bước 4 hoặc dán `refresh_token` lúc cài.
+- Tài khoản ở trạng thái `gioi_han` — đã chạm hạn mức gói; tự hoạt động lại
+  khi qua mốc hồi phục nhà cung cấp báo (`x-codex-primary-reset-at`), làm mới
+  token không xoá được hạn mức gói.
+- Tài khoản `vo_hieu` sau 3 lần 401 liên tiếp hoặc khi refresh token hết
+  hiệu lực (`invalid_grant`/`refresh_token_reused`…): đăng nhập lại.
+- Tài khoản `deactivated` — OpenAI đã vô hiệu hoá tài khoản: ngừng tự thử
+  lại, chờ quản trị chọn hành động `giu_tai_khoan` hoặc `xoa_tai_khoan`.
+
+**Giới hạn.**
+- CHƯA kiểm với tài khoản Codex thật (kiểm bằng máy chủ OAuth/Codex giả).
+- Không tự khôi phục tài khoản bằng trình duyệt/captcha-solver và không có
+  lệnh chat «xóa <email>/giữ <email>» như bản tham khảo — duyệt deactivated
+  qua hành động thiết bị.
+- Hạn mức chỉ ghi nhận từ dữ liệu nhà cung cấp thật sự trả (header
+  `x-codex-*`, `/wham/usage`); không bịa số.
 
 ---
 
