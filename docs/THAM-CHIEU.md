@@ -2585,7 +2585,7 @@ thư viện chuẩn, `Dockerfile` riêng). Tiền tố thực thể: `van_phong`
 |---|---|---|
 | `office_bat` | Không | Bật công cụ `office_*` (mặc định tắt). Tắt thì mọi công cụ báo «chưa bật» và không gọi mạng. |
 | `dich_vu_url` | Không | Địa chỉ HTTP nội bộ của dịch vụ van-phong-office (mặc định `http://127.0.0.1:8701`). |
-| `khoa_dich_vu` | Không | Khoá Bearer của dịch vụ; lưu riêng, không API nào trả lại, bị chặn khỏi log. |
+| `khoa_dich_vu` | Không | Khoá Bearer của dịch vụ; lưu riêng, chỉ quản trị lấy lại được đầy đủ qua hành động `lay_khoa` (vá bảo mật 2026-10-20), bị chặn khỏi log. |
 
 **Ví dụ dùng.**
 

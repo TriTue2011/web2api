@@ -77,8 +77,14 @@ proxy, và dịch vụ thêm điểm cuối next.
   `Authorization … Bearer` hoặc khoá đã nạp); lỗi dịch vụ trả về không chứa khoá.
 - Mọi nơi chỉ thấy khoá che dạng `…abcd`. Hai đường lấy đầy đủ (đều cần
   phiên quản trị): đọc tệp `integration_token` trong volume dịch vụ, hoặc bấm
-  **«Chép token»** trên tab (gọi hành động `lay_khoa` — cần phạm vi
-  `thiet_bi:ghi`; khoá không vào nhật ký kiểm toán vì lõi chỉ ghi tham số).
+  **«Chép token»** trên tab (gọi hành động `lay_khoa` — **chỉ quản trị**, danh
+  tính `quan_tri`/`noi_bo` theo định nghĩa `la_quan_tri` của lõi; khoá khách
+  giữ phạm vi `thiet_bi:ghi` bị từ chối (trả `ok: False`); khoá
+  không vào nhật ký kiểm toán vì lõi chỉ ghi tham số). Vá bảo mật 2026-10-20
+  (test: `test/test_nv153_va_laykhoa_log.py`).
+- Bộ lọc log giữ filter của MỌI bản module đã nạp (mỗi bản chỉ gắn filter của
+  chính mình) — nạp lại module dưới tên gói khác không làm «cướp» filter và
+  lọt khoá vào log (mẫu vá nv116 cho telegram-bot).
 - Thêm `tab_web` vào manifest là thêm quyền (NV15b): khi cập nhật module, quản
   trị phải duyệt quyền mới một lần (409 `can_duyet_quyen`).
 
@@ -89,5 +95,3 @@ proxy, và dịch vụ thêm điểm cuối next.
 - Chưa đo RAM/đĩa thêm của module (module chỉ gọi HTTP nội bộ/LAN).
 - Chưa bấm tab trên trình duyệt thật (chỉ test Chrome headless 360px);
   chưa thử với Home Assistant thật và loa thật.
-- `lay_khoa` cho người giữ khoá API phạm vi `thiet_bi:ghi` cũng lấy được khoá —
-  chủ máy quyết giữ hay siết (xem báo cáo đợt C).

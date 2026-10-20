@@ -312,9 +312,13 @@ def test_module_chi_import_app_tu_xa():
             if (nut.module or "").startswith("app"):
                 app_imports.add(nut.module)
     # Spec đợt B bắt dùng bộ kiểm chung app/tu_xa.kiem_url_lan, KHÔNG viết bộ
-    # kiểm SSRF thứ hai — app.tu_xa là import app.* duy nhất được phép.
-    assert app_imports <= {"app.tu_xa"}, (
-        f"module import app.* ngoài app.tu_xa: {app_imports}"
+    # kiểm SSRF thứ hai — app.tu_xa là import app.* chính.
+    # Vá bảo mật 2026-10-20 (siết lay_khoa): module được đọc thêm
+    # app.ngu_canh — kênh ngữ cảnh gọi do lõi đóng dấu (SEC-002), CHỈ ĐỌC
+    # danh tính người gọi, không gọi sâu vào lõi; thiếu ngữ cảnh thì đóng
+    # (lay_khoa bị từ chối). Mọi import app.* khác ngoài 2 cái này vẫn bị cấm.
+    assert app_imports <= {"app.tu_xa", "app.ngu_canh"}, (
+        f"module import app.* ngoài app.tu_xa/app.ngu_canh: {app_imports}"
     )
 
 

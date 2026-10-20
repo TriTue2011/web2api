@@ -96,6 +96,12 @@ DA_KIEM_TOAN = {
     ("modules/doc-ma-hop-thu/module.py", "filter"),  # không định dạng được dòng log → bỏ dòng đó (đóng khi lỗi, không để lọt mật khẩu)
     ("modules/doc-ma-hop-thu/module.py", "_xet_thu"),  # phân tích thư hỏng → bỏ thư đó (fail-closed, không trích mã nhầm)
     ("modules/doc-ma-hop-thu/module.py", "_van_ban"),  # trích văn bản hỏng → bỏ (fail-closed)
+    # Đã duyệt vá bảo mật NV153 2026-10-20 (đọc từng hàm, fail-closed, không mở quyền):
+    # filter này đã CÓ từ đợt B nhưng chưa từng đăng ký danh sách kiểm toán — bổ sung cùng đợt vá.
+    ("modules/youtube-phat/module.py", "filter"),  # không định dạng được dòng log → bỏ dòng đó (đóng khi lỗi, không để lọt khoá dịch vụ);
+    # ngoại lệ trong bộ lọc làm hỏng chính lời gọi ghi log nên không được ném ra (cùng mẫu zalo-bot/telegram-bot/van-phong).
+    ("modules/youtube-phat/module.py", "_nguoi_goi_la_quan_tri"),  # đọc ngữ cảnh người gọi hỏng/thiếu →
+    # KHÔNG phải quản trị → hành động lay_khoa bị từ chối (đóng khi lỗi, đường lấy bí mật không được mở theo mặc định lạc quan).
 }
 
 

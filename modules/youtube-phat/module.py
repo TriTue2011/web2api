@@ -22,6 +22,11 @@ Thiết kế bảo mật (khuôn modules/van-phong, NV138):
   Không có địa chỉ cố định nào khác trong mã; KHÔNG viết bộ kiểm SSRF thứ hai.
 - `suc_khoe()` lỗi → «chưa kết nối được: <lý do>», không ném; lý do không
   chứa khoá.
+- Hành động `lay_khoa` (trả khoá đầy đủ) CHỈ dành cho quản trị: module đọc
+  danh tính người gọi qua ngữ cảnh lõi (app.ngu_canh, SEC-002 — giao diện
+  import app.* thứ hai duy nhất được phép, bên cạnh app/tu_xa, và chỉ đọc);
+  thiếu ngữ cảnh hoặc không phải «quan_tri»/«noi_bo» thì từ chối. Vá bảo mật
+  2026-10-20: trước đây bất kỳ ai giữ «thiet_bi:ghi» cũng lấy được khoá.
 
 Chỉ dùng httpx (đã khai `yeu_cau_goi` trong manifest) + thư viện chuẩn.
 
@@ -78,14 +83,43 @@ class _ChanKhoaDichVu(logging.Filter):
 
 
 def _cai_bo_loc_log() -> None:
+    # Mỗi bản module nạp lại có tập khoá RIÊNG (_KHOA_DANG_DUNG ở cấp module).
+    # Giữ filter của mọi bản đã nạp (mỗi filter chặn khoá của chính bản nó);
+    # KHÔNG gỡ filter của bản khác — nếu module nạp lại dưới tên gói khác, gỡ
+    # filter bản cũ làm khoá của bản cũ lọt log (mẫu vá nv116 cho telegram-bot:
+    # bản nạp lại dưới tên gói khác ở test NV113 từng «cướp» filter của bản
+    # NV116). Mỗi bản chỉ gắn đúng một filter của chính mình.
     for ten in _LOGGER_HTTP:
         lg = logging.getLogger(ten)
-        for f in [f for f in lg.filters if getattr(f, "_youtube_phat_loc", False)]:
-            lg.removeFilter(f)  # nạp lại module: bỏ bộ lọc của bản cũ
-        lg.addFilter(_ChanKhoaDichVu())
+        da_co = any(
+            getattr(f, "_youtube_phat_loc", False) and type(f).__module__ == __name__
+            for f in lg.filters
+        )
+        if not da_co:
+            lg.addFilter(_ChanKhoaDichVu())
 
 
 _cai_bo_loc_log()
+
+
+def _nguoi_goi_la_quan_tri() -> bool:
+    """Người gọi hiện tại có phải quản trị không.
+
+    Đọc ngữ cảnh gọi lõi đặt cho mỗi lời gọi (app.ngu_canh, SEC-002 — kênh
+    CHỈ ĐỌC, là giao diện import app.* thứ hai được phép của module này, bên
+    cạnh app/tu_xa), đúng định nghĩa `la_quan_tri` của lõi (app/thiet_bi.py):
+    danh tính «quan_tri» hoặc «noi_bo». Thiếu ngữ cảnh, hoặc bất kỳ lỗi nào
+    khi đọc → KHÔNG (đóng khi lỗi — `lay_khoa` là đường lấy bí mật, không
+    được trả theo mặc định lạc quan)."""
+    try:
+        from app.ngu_canh import lay  # chỉ đọc, không gọi sâu vào lõi
+
+        nc = lay()
+    except Exception:
+        return False
+    if nc is None:
+        return False
+    return str((nc.danh_tinh or {}).get("loai") or "") in ("quan_tri", "noi_bo")
 
 
 def _che_khoa(khoa: str) -> str:
@@ -189,7 +223,8 @@ _TINH_NANG = [
     {
         "hanh_dong": "lay_khoa",
         "mo_ta": ("Lấy khoá Integration API ĐẦY ĐỦ để dán vào Home Assistant — "
-                  "chỉ gọi khi quản trị bấm «Chép token» có chủ đích"),
+                  "CHỈ quản trị (danh tính «quan_tri»/«noi_bo» của lõi) khi bấm "
+                  "«Chép token» có chủ đích; người gọi khác bị từ chối"),
         "tham_so": {"type": "object", "additionalProperties": False, "properties": {}},
     },
 ]
@@ -466,6 +501,13 @@ class Module:
             if hanh_dong == "lay_khoa":
                 if not self._khoa:
                     return {"ok": False, "loi": "chưa cấu hình «Khoá Integration API»"}
+                if not _nguoi_goi_la_quan_tri():
+                    # Khoá Bearer điều khiển toàn bộ dịch vụ — chỉ quản trị
+                    # mới lấy lại được đầy đủ. Khách giữ «thiet_bi:ghi» (đáng
+                    # ra chỉ bật/tắt loa) bị từ chối; khoá KHÔNG vào phản hồi.
+                    log.warning("tu_choi_lay_khoa: nguoi goi khong phai quan tri")
+                    return {"ok": False,
+                            "loi": "lấy khoá đầy đủ chỉ dành cho quản trị"}
                 return {"ok": True, "khoa": self._khoa}
             return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
         except LoiDichVu as e:

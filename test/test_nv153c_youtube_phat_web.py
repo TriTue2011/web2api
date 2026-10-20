@@ -322,10 +322,20 @@ def test_nhap_ma_chia_se_dung_goi_import(monkeypatch, mod, the):
 
 
 def test_lay_khoa_tra_day_du_khi_chu_dich_bam(monkeypatch, mod, the):
+    # Vá bảo mật 2026-10-20: lay_khoa chỉ trả khoá đầy đủ cho QUẢN TRỊ —
+    # test này đặt ngữ cảnh người gọi quản trị (lõi đặt qua app/ngu_canh),
+    # giữ nguyên khẳng định cũ: bấm «Chép token» có chủ đích thì được khoá.
+    from app import ngu_canh
+
     _client_gia(monkeypatch, mod)  # không cần gọi mạng
     nap_gia(the)
-    kq = asyncio.run(the.thuc_hien(
-        "youtube_phat.dieu_khien", "lay_khoa", {}))
+    token = ngu_canh.dat({"loai": "quan_tri", "id": "quan_tri",
+                          "pham_vi": ["*"]}, nguon="nguoi")
+    try:
+        kq = asyncio.run(the.thuc_hien(
+            "youtube_phat.dieu_khien", "lay_khoa", {}))
+    finally:
+        ngu_canh.khoi_phuc(token)
     assert kq["ok"] is True
     assert kq["khoa"] == KHOA_GIA
 
