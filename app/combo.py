@@ -117,6 +117,26 @@ def _co_ma_http(e: BaseException) -> bool:
     return isinstance(ma2, int) and 100 <= ma2 < 600
 
 
+#: Dấu nối các chặng trong tiêu đề `x-web2api-duong` (ASCII để an toàn với mọi HTTP client).
+NOI_DUONG = " > "
+
+
+def _cat_duong(duong: list[str]) -> str:
+    """Nối các chặng «<model>:<mã>:<lý do>» thành tiêu đề; quá `TRAN_DUONG_TIEU_DE` thì GIỮ CÁC CHẶNG MỚI NHẤT."""
+    ra = NOI_DUONG.join(duong)
+    if len(ra) <= TRAN_DUONG_TIEU_DE:
+        return ra
+    giu: list[str] = []
+    do_dai = 0
+    for chang in reversed(duong):  # từ mới nhất về cũ
+        them = len(chang) + (len(NOI_DUONG) if giu else 0)
+        if do_dai + them > TRAN_DUONG_TIEU_DE:
+            break
+        giu.append(chang)
+        do_dai += them
+    return NOI_DUONG.join(reversed(giu))
+
+
 def doc_retry_after(gia_tri: str | None, bay_gio: float) -> float:
     """Số giây nghỉ từ Retry-After (giây hoặc ngày HTTP), kẹp trong [1, NGHI_429_TRAN]."""
     giay = None
@@ -647,6 +667,16 @@ class BoDieuPhoiCombo:
         ra["x-web2api-combo"] = self.ten
         return ra
 
+    def _tieu_de_duong(self, headers: dict, model: str, duong: list[str], viec: str) -> dict:
+        """Tiêu đề trả lời + `x-web2api-duong` (từng bước đã thử, gọn, có trần) + ghi đường đi vào nhật ký.
+        Chỉ dùng mã cố định (model, mã HTTP, lý do ngắn) — không lộ tên tài khoản, khoá, URL nội bộ
+        hay thân lỗi của nhà cung cấp (`_doc_than_loi` đã che trước khi tới đây)."""
+        ra = self._tieu_de(headers, model)
+        ra["x-web2api-duong"] = _cat_duong(duong)
+        nhat_ky.ghi("combo", "thong_tin", f"Combo {self.ten}: đường đi: {NOI_DUONG.join(duong) or '—'}",
+                    combo=self.ten, route=model, viec=viec)
+        return ra
+
     def _ghi_nhan(self, id_: str) -> None:
         """Bước đã trả lời: nhật ký lượt gọi và tiêu đề X-Web2api-Module mang module THẬT."""
         if self.request is not None:
@@ -668,6 +698,7 @@ class BoDieuPhoiCombo:
         loi_400: tuple[int, dict, bytes, dict] | None = None  # (mã, tiêu đề, thân, bước) của 400 ĐẦU TIÊN
         loi_cuoi: tuple[int, dict, bytes, dict] | None = None
         da_thu = 0
+        duong: list[str] = []  # đường đi: từng bước đã thử «<model>:<mã>:<lý do> (<độ trễ>ms)»
         i = 0
         while i < len(hang):
             b = hang[i]
@@ -686,6 +717,7 @@ class BoDieuPhoiCombo:
                 raise self._het_gio()
             da_thu += 1
             ket_qua = None
+            bat_dau_buoc = loop.time()
             try:
                 ket_qua = await self._thu(b, viec, than, goi, stream, han)
             except _Het:
@@ -696,6 +728,8 @@ class BoDieuPhoiCombo:
                     bo_cau_chi.tha(id_, viec)
             ma, headers, noi_dung, dau = ket_qua
             loai = phan_loai(ma)
+            tre_ms = (loop.time() - bat_dau_buoc) * 1000.0
+            duong.append(f"{model}:{ma}:{'ok' if loai == 'thanh_cong' else loai} ({tre_ms:.0f}ms)")
 
             if loai == "thanh_cong":
                 bo_cau_chi.record_success(id_, viec)
@@ -708,8 +742,8 @@ class BoDieuPhoiCombo:
                                 combo=self.ten, route=b400["model"], viec=viec)
                 self._ghi_nhan(id_)
                 if dau is not None:
-                    return ma, self._tieu_de(headers, model), self._phat(dau, noi_dung, id_, model, viec)
-                return ma, self._tieu_de(headers, model), noi_dung
+                    return ma, self._tieu_de_duong(headers, model, duong, viec), self._phat(dau, noi_dung, id_, model, viec)
+                return ma, self._tieu_de_duong(headers, model, duong, viec), noi_dung
 
             if luot == "tham_do" and loai in ("phan_xu", "bo_qua", "het_han_muc", "yeu_cau_sai"):
                 bo_cau_chi.tha(id_, viec)  # không kết luận được về sức khoẻ module
@@ -718,11 +752,11 @@ class BoDieuPhoiCombo:
 
             if loai == "phan_xu":
                 if loi_400 is not None:  # hai bước khác nhau cùng 400 → lỗi của yêu cầu
-                    return self._tra_loi(loi_400)
+                    return self._tra_loi(loi_400, viec, duong)
                 loi_400 = hien_tai
                 continue
             if loai == "yeu_cau_sai":
-                return self._tra_loi(hien_tai)
+                return self._tra_loi(hien_tai, viec, duong)
             loi_cuoi = hien_tai
             if loai == "het_han_muc":
                 giay = doc_retry_after(dict(headers or {}).get("retry-after"), time.time())
@@ -740,7 +774,7 @@ class BoDieuPhoiCombo:
         ket = loi_400 or loi_cuoi
         if ket is None:
             raise self._khong_con_buoc(viec, ly_do)
-        return self._tra_loi(ket)
+        return self._tra_loi(ket, viec, duong)
 
     async def _thu(self, b: dict, viec: str, than: dict, goi, stream: bool, han: float
                    ) -> tuple[int, dict, Any, bytes | None]:
@@ -819,10 +853,11 @@ class BoDieuPhoiCombo:
                               "(WEB2API_COMBO_TOI_DA_GIAY)", code="combo_timeout",
                          headers={"x-web2api-combo": self.ten})
 
-    def _tra_loi(self, ket: tuple[int, dict, bytes, dict]) -> tuple[int, dict, bytes]:
+    def _tra_loi(self, ket: tuple[int, dict, bytes, dict], viec: str, duong: list[str]
+                 ) -> tuple[int, dict, bytes]:
         ma, headers, than_loi, b = ket
         self._ghi_nhan(b["module"])
-        return ma, self._tieu_de(headers, b["model"]), than_loi
+        return ma, self._tieu_de_duong(headers, b["model"], duong, viec), than_loi
 
     async def _phat(self, dau: bytes, it: Any, id_: str, model: str, viec: str):
         """Luồng đã chốt bước: lỗi sau byte đầu → sự kiện SSE lỗi chuẩn rồi kết thúc (như chuyen_tiep), không đổi
