@@ -1,0 +1,120 @@
+{
+  "cung_cap": [
+    "anh",
+    "anh_sua",
+    "thiet_bi"
+  ],
+  "giao_thuc": "openai",
+  "hang": "B",
+  "id": "anh-ai",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 48,
+  "mo_ta": "Tạo và sửa ảnh AI qua 10 nhà cung cấp (Gemini/Imagen, fal.ai, Stability, Black Forest Labs/FLUX, Cloudflare Workers AI, HuggingFace, NVIDIA NIM, SD WebUI, Google Flow, máy chủ OpenAI-compatible tự khai) — port từ c2a (commit d879b03). Mỗi nhà một adapter tệp nhỏ cùng giao diện, chọn bằng preset «nha_cung_cap». Hàng đợi tác vụ ảnh chạy NGAY TRONG module (giới hạn đồng thời cấu hình được, trạng thái queued/running/done/failed, huỷ, dọn tác vụ cũ). Mọi ảnh đầu vào/ra đi qua hàng rào kiểm ảnh (chống bom giải nén). CHƯA kiểm với nhà cung cấp thật.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Module chỉ gọi HTTPS tới nhà cung cấp đã chọn + lưu ảnh đã tạo vào <WEB2API_DATA>/du_lieu/anh-ai/. Chưa đo RAM/đĩa.",
+    "gpu": false,
+    "mang_ra": [
+      "generativelanguage.googleapis.com",
+      "queue.fal.run",
+      "api.stability.ai",
+      "api.bfl.ai",
+      "api.cloudflare.com",
+      "api-inference.huggingface.co",
+      "router.huggingface.co",
+      "ai.api.nvidia.com",
+      "integrate.api.nvidia.com"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "Ảnh AI — tạo/sửa ảnh qua nhiều nhà cung cấp",
+  "tien_to": "anh_ai",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "nha_cung_cap",
+      "kieu": "chuoi",
+      "mac_dinh": "gemini",
+      "mo_ta": "Nhà cung cấp ảnh: gemini | fal_ai | stability_ai | black_forest_labs | cloudflare_ai | huggingface | nvidia_nim_image | sdwebui | flow | custom:<id-may-chu>. Model gọi qua API có dạng anh_ai/<nhà>/<tên model>, ví dụ anh_ai/gemini/imagen-3.0-generate-001. Danh sách đầy đủ và chỗ lấy khoá của từng nhà: xem README của module.",
+      "nhan": "Nhà cung cấp ảnh"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "api_key",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Khoá API của nhà cung cấp đã chọn (một khoá). Lấy ở đâu: xem bảng «Lấy khoá ở đâu» trong README của module (mỗi nhà một chỗ, ví dụ Gemini: https://aistudio.google.com/apikey). Lưu riêng, không trả lại qua API; sức khoẻ chỉ hiện dạng …abcd.",
+      "nhan": "Khoá API"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "api_keys",
+      "kieu": "danh_sach_bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Nhiều khoá để xoay vòng khi hết hạn mức (429) — các nhà hỗ trợ nhiều khoá: gemini, nvidia_nim_image, flow, custom. Khoá hết hạn mức được cho nghỉ tạm rồi dùng khoá kế.",
+      "nhan": "Nhiều khoá API (xoay vòng)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "base_url",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ gốc TỰ KHAI — chỉ dùng cho: sdwebui (mặc định http://127.0.0.1:7860, máy chạy AUTOMATIC1111), custom (BẮT BUỘC: địa chỉ máy chủ OpenAI-compatible của bạn, ví dụ http://192.168.1.10:8000), gemini (proxy khi bị chặn vùng). Đi qua kiểm SSRF app/tu_xa.py lúc cài; không được chứa tài khoản/mật khẩu.",
+      "nhan": "Địa chỉ máy chủ (custom/sdwebui/gemini)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "account_id",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Cloudflare Account ID — CHỈ dùng khi nha_cung_cap=cloudflare_ai. Lấy ở trang tổng quan Cloudflare (mục Workers & Pages → Overview, cột Account ID). Kèm api_key là API Token có quyền Workers AI.",
+      "nhan": "ID tài khoản (nếu nhà cung cấp cần)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "dong_thoi_toi_da",
+      "kieu": "chuoi",
+      "mac_dinh": "6",
+      "mo_ta": "Trần tác vụ ảnh chạy đồng thời TOÀN HỆ THỐNG (số nguyên 1–20, mặc định 6). Gửi vượt trần → 429, không xếp hàng vô hạn.",
+      "nhan": "Số tác vụ chạy đồng thời tối đa"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "dong_thoi_moi_nguoi",
+      "kieu": "chuoi",
+      "mac_dinh": "2",
+      "mo_ta": "Trần tác vụ ảnh chạy đồng thời MỖI NGƯỜI GỌI (số nguyên 1–10, mặc định 2).",
+      "nhan": "Số tác vụ đồng thời mỗi người"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "giu_tac_vu_ngay",
+      "kieu": "chuoi",
+      "mac_dinh": "30",
+      "mo_ta": "Số ngày giữ kết quả tác vụ đã xong (done/failed) trong sổ JSON (số nguyên 1–365, mặc định 30). Quá hạn tự dọn khi liệt kê/gửi tác vụ mới.",
+      "nhan": "Giữ lịch sử tác vụ (ngày)"
+    },
+    {
+      "khoa": "solver_url",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ REST của captcha-solver — CHỈ dùng khi nha_cung_cap=flow (VD http://127.0.0.1:8010). Đi qua kiểm SSRF app/tu_xa.py lúc cài; không được chứa tài khoản/mật khẩu.",
+      "nhan": "Địa chỉ captcha-solver (flow)"
+    },
+    {
+      "khoa": "flow_accounts",
+      "kieu": "chuoi",
+      "bat_buoc": false,
+      "mac_dinh": null,
+      "mo_ta": "Danh sách tài khoản Google Flow dạng JSON: [{\"profile\": \"...\", \"project_id\": \"...\"}] — CHỈ dùng khi nha_cung_cap=flow. Mỗi tài khoản là một browser profile + project Flow; xoay nghiêm ngặt theo thứ tự, tài khoản hết ngạch tự nghỉ cooldown. Lấy project_id từ phiên đăng nhập thủ công trên máy có captcha-solver.",
+      "nhan": "Tài khoản flow (JSON)"
+    }
+  ],
+  "yeu_cau_goi": [
+    "curl_cffi",
+    "PIL"
+  ]
+}

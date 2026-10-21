@@ -102,6 +102,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `register` (Đăng ký tài khoản có người trong vòng lặp, NV174) | Có — chuẩn `thiet_bi` hai thực thể: `dang_ky.luot` (nguy hiểm: bắt đầu/đợi mã/ghi nhận người xử lý/xác nhận hoàn tất/huỷ) và `dang_ky.trang_thai` (đọc); mặc định TẮT; mỗi lần MỘT tài khoản, trần lượt/ngày (mặc định 1, cứng 5); tải trang đăng ký qua bộ kiểm URL không tin của lõi (ghim IP chống tái gắn DNS) và NHẬN DIỆN CẤU TRÚC: form sẵn sàng/thử thách chống bot (iframe/script của nhà cung cấp widget + `data-sitekey`)/xác minh điện thoại/mã một lần/trang lạ; gặp thử thách, xác minh điện thoại hay trang lạ → DỪNG «can_nguoi» không đi tiếp, người thật xử lý trên trình duyệt từ xa (noVNC) — module TUYỆT ĐỐI không giải/vượt thử thách, không tự điền biểu mẫu; hộp thư tạm Inbucket tự host (đường API qua bộ kiểm URL LAN của lõi), mật khẩu sinh bằng `secrets`, bí mật lưu kho bí mật của lõi 0600, chỉ hiện MỘT lần, không vào log/trạng thái/sức khoẻ; **chưa kiểm với nhà cung cấp thật và noVNC thật** (test bằng trang và hộp thư GIẢ) | 20/10/2026 |
 | Module `mqtt` (Thiết bị nhà qua MQTT, không cần Home Assistant — chuẩn C1, NV151, port từ c2a): khám phá phổ quát bằng `+` nhiều độ sâu (**không bao giờ** đăng ký `#`, giữ nguyên bài học EMQX), đọc bản tự khai báo Home Assistant discovery (Zigbee2MQTT/Tasmota) + nhận dạng Frigate; GHI (publish lệnh) mặc định TẮT tới khi bật ô «Cho phép điều khiển»; loại nguy_hiem (lock/alarm_control_panel/water_heater/valve/siren — phân loại bằng **cấu trúc** component, không bằng chữ trong tên) **không bao giờ** điều khiển được; chủ đề đích chỉ từ bản khai đã nạp; địa chỉ kiểm SSRF bằng `app/tu_xa.py` (cho LAN, chặn loopback/link-local/metadata); mật khẩu kiểu `bi_mat` (kho 0600, bọc `_BiMat` chống lộ qua `repr`); dữ liệu MQTT không tin (payload > 64 KiB bỏ, giá trị cắt 4096 ký tự, tối đa 5000 chủ đề); mất kết nối ≠ 0 thiết bị | Có — kiểm với máy chủ MQTT giả cục bộ (49 test NV151); **chưa kiểm với máy chủ MQTT thật**; cần `paho-mqtt==2.1.0` trong container (khai `yeu_cau_goi`, không trong requirements của lõi) | 19/10/2026 |
 | Module `may-dang-nhap` (Client Đăng nhập tự động qua container phụ may-dang-nhap) + dịch vụ `dich-vu/may-dang-nhap` | Có — client HTTP mỏng gọi dịch vụ may-dang-nhap (cổng 8010, Bearer), kiểm SSRF, ghim IP chống DNS rebinding, trần stream 1 MiB, bảng hành động đóng, allowlist cấu trúc, cắt trần 80.000 ký tự, chuẩn `thiet_bi` cho AI; mật khẩu/2FA qua `BiMatTam` và xoá ngay; kiểm với dịch vụ may-dang-nhap thật cục bộ; **chưa kiểm với luồng đăng nhập nhà cung cấp bên ngoài thật** | 19/10/2026 |
+| Module `anh-ai` (Tạo/sửa ảnh AI, NV192, port từ c2a): tạo qua `/v1/images/generations`, sửa/inpaint qua `/v1/images/edits` (model `anh_ai/<nhà>/<tên>`), 10 adapter (gemini, fal_ai, stability_ai, black_forest_labs, cloudflare_ai, huggingface, nvidia_nim_image, sdwebui, flow, custom OpenAI-compatible); hàng đợi tác vụ trong module (queued/running/done/failed, huỷ, dọn, phân tách theo chủ) — thực thể công cụ `anh_ai.hang_doi_anh`; xoay khoá 400/401/403/429; `base_url`/`solver_url` qua kiểm SSRF của lõi lúc cài; khoá kiểu `bi_mat` + bộ lọc log chặn mọi dòng Authorization Bearer; ảnh trả về là dữ liệu không tin (hàng rào chống bom giải nén, tên tệp uuid); không port phần gỡ dấu nước (`hoi-nv192-gemini-watermark.md` — khuyến nghị không làm) | Có — kiểm với nhà cung cấp GIẢ (39 test NV192, 8/8 đột biến bị giết, qua lõi thật bằng TestClient); **chưa kiểm với nhà cung cấp thật** | 21/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -4107,6 +4108,41 @@ ngày, tự dọn), xoá riêng bằng `xoa_mat_la`. Đổi bộ model phải d�
 (không lưu ảnh cắt). Dịch vụ ML: khoá so trên bytes (401 sạch với đầu
 ngoài ASCII), `Content-Length` âm/lạ → 400, trần 25 triệu điểm ảnh đọc từ
 tiêu đề ảnh trước giải mã, sha256 model kiểm lại lúc nạp.
+
+### Module anh-ai — Tạo/sửa ảnh AI (port c2a, NV192)
+
+**Mô tả.** Tạo ảnh (`POST /v1/images/generations`) và sửa/inpaint ảnh
+(`POST /v1/images/edits`) qua 10 nhà cung cấp (gemini, fal_ai, stability_ai,
+black_forest_labs, cloudflare_ai, huggingface, nvidia_nim_image, sdwebui, flow,
+custom:<id> OpenAI-compatible). Model gọi dạng `anh_ai/<nhà>/<tên model>`.
+Hàng đợi tác vụ tạo/sửa chạy NGAY TRONG module (queued/running/done/failed,
+huỷ, dọn, phân tách theo chủ) — thực thể công cụ `anh_ai.hang_doi_anh`
+(chuẩn C2). Mã nguồn: `modules/anh-ai/`. Tiền tố: `anh_ai`. Hạng: `B`.
+
+**Cần gì.** Khoá API của nhà cung cấp đã chọn (mỗi khoá có `mo_ta` LẤY Ở ĐÂU
+trong `manifest.json`); mạng ra tới API nhà cung cấp (trừ sdwebui chạy local).
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "anh-ai"`.
+2. `POST /api/modules/anh-ai/cai` với thân `{"cau_hinh": {"nha_cung_cap": "gemini", "api_key": "..."}}`.
+   Với `custom:<id>`: bắt buộc `base_url` (đi qua kiểm SSRF); với `flow`:
+   bắt buộc `solver_url` + `flow_accounts`.
+
+**Bảo mật.** Khoá kiểu `bi_mat` — không vào log/phản hồi/`suc_khoe`/thông báo
+lỗi; bộ lọc log chặn mọi dòng `Authorization … Bearer` và mọi khoá đã nạp.
+Ảnh trả về là dữ liệu không tin: kiểm hàng rào (chống bom giải nén) trước khi
+lưu; tên tệp do module sinh (uuid). Xoay khoá khi nhà cung cấp trả
+400/401/403/429. Không port phần gỡ dấu nước (`hoi-nv192-gemini-watermark.md`
+— khuyến nghị không làm).
+
+**Ví dụ dùng.**
+
+```bash
+curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model": "anh_ai/gemini/imagen-3.0-generate-001", "prompt": "con mèo", "n": 1}' \
+  $W/v1/images/generations
+```
 
 ## 6. Vận hành
 
