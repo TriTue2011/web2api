@@ -134,6 +134,25 @@ QUY_TAC_MAU = [
 
 
 class TestTinHieuTheoQuyTac:
+    @staticmethod
+    def _tai_module_ho_so_google():
+        """NV200: nạp modules/ho-so-google/module.py dưới tên duy nhất, KHÔNG dùng
+        tên toàn cục «module» (test camera nạp «module» của cameranha vào
+        sys.modules trước, importlib.import_module("module") sẽ lấy nhầm)."""
+        import importlib.util
+        import sys
+        from pathlib import Path
+        ten = "nv94_phan2_ho_so_google_module"
+        mod = sys.modules.get(ten)
+        if mod is None:
+            duong = Path("modules/ho-so-google/module.py")
+            spec = importlib.util.spec_from_file_location(ten, duong)
+            assert spec is not None and spec.loader is not None, duong
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[ten] = mod
+            spec.loader.exec_module(mod)
+        return mod
+
     def test_trinh_duyet_gia_danh_gia_quy_tac_cookie(self):
         from app.khoi_phuc_phien import TrinhDuyetGia
         td = TrinhDuyetGia({"https://myaccount.google.com/":
@@ -158,43 +177,33 @@ class TestTinHieuTheoQuyTac:
         assert "thu_thach_truy_cap" in asyncio.run(chay())
 
     def test_ho_so_google_khai_quy_tac_cau_truc(self):
-        import sys
-        sys.path.insert(0, "modules/ho-so-google")
-        try:
-            import importlib
-            mod = importlib.import_module("module")
-            m = mod.Module({})
-            qt = m.quy_tac_tin_hieu()
-            assert isinstance(qt, list) and qt
-            for q in qt:
-                assert q["loai"] in ("cookie", "url_chua", "tieu_de_chua", "bo_chon")
-                assert "tin_hieu" in q
-            # Không dò chữ: không quy tắc nào mang nội dung văn bản trang
-            assert not any("van_ban" in q or "text" in q for q in qt)
-            ten_th = {q["tin_hieu"] for q in qt}
-            assert "da_dang_nhap" in ten_th
-        finally:
-            sys.path.remove("modules/ho-so-google")
+        mod = self._tai_module_ho_so_google()
+        m = mod.Module({})
+        qt = m.quy_tac_tin_hieu()
+        assert isinstance(qt, list) and qt
+        for q in qt:
+            assert q["loai"] in ("cookie", "url_chua", "tieu_de_chua", "bo_chon")
+            assert "tin_hieu" in q
+        # Không dò chữ: không quy tắc nào mang nội dung văn bản trang
+        assert not any("van_ban" in q or "text" in q for q in qt)
+        ten_th = {q["tin_hieu"] for q in qt}
+        assert "da_dang_nhap" in ten_th
 
     def test_ho_so_google_di_tat_bang_quy_tac(self):
-        import asyncio, sys
-        sys.path.insert(0, "modules/ho-so-google")
-        try:
-            import importlib
-            mod = importlib.import_module("module")
-            from app.khoi_phuc_phien import TrinhDuyetGia
-            m = mod.Module({})
-            td = TrinhDuyetGia({"https://myaccount.google.com/":
-                                {"cookie": {"SID": "abc"}}})
+        import asyncio
+        mod = self._tai_module_ho_so_google()
+        from app.khoi_phuc_phien import TrinhDuyetGia
+        m = mod.Module({})
+        td = TrinhDuyetGia({"https://myaccount.google.com/":
+                            {"cookie": {"SID": "abc"}}})
 
-            async def chay():
-                return await m.dang_nhap("abcd1234abcd1234", "a@b.c", None, td)
+        async def chay():
+            return await m.dang_nhap("abcd1234abcd1234", "a@b.c", None, td)
 
-            kq = asyncio.run(chay())
-            assert kq.thanh_cong and kq.buoc == "di_tat", \
-                "quy tắc cấu trúc chưa được truyền qua tin_hieu"
-        finally:
-            sys.path.remove("modules/ho-so-google")
+        kq = asyncio.run(chay())
+        assert kq.thanh_cong and kq.buoc == "di_tat", \
+            "quy tắc cấu trúc chưa được truyền qua tin_hieu"
+
 
 
 # ── (c) bộ chọn chỉ CSS chuẩn ─────────────────────────────────────────────

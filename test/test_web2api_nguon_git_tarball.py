@@ -26,7 +26,7 @@ from app import kho, nguon_git, so_module
 from app.nguon_git import TEN_BI_MAT, LoiGit, NguonGit
 from app.so_module import SoModule
 from conftest import cai_ng_hai_luot
-from test.gia import GitHubGia, MayChuThat, tep_echo, tep_kho
+from gia import GitHubGia, MayChuThat, tep_echo, tep_kho
 
 REPO = "chu-may/c2a"
 TOKEN_GIA = "ghp_TOKENRIENG1234567890"  # Có trong allowlist .gitleaks.toml

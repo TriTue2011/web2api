@@ -23,7 +23,7 @@ from app import loi_openai
 from app.loi_openai import TRAN_THONG_DIEP, lam_sach_thong_diep
 TRAN_TOKEN = getattr(loi_openai, "TRAN_TOKEN", 120)
 from app.main import app
-from test.test_web2api_ma_tran_quyen import (
+from test_web2api_ma_tran_quyen import (
     KHOA_QT,
     cac_phuong_thuc_chinh,
     phan_loai_route,

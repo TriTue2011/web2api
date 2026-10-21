@@ -86,7 +86,11 @@ class _SoGia:
         return module_id
 
 
+_APP_GOC = None  # NV200: object app gốc trước reload (để trả lại sau test)
+
+
 def _nap_app(tmp_path, monkeypatch, mods: list):
+    global _APP_GOC
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA)
     import importlib
@@ -96,11 +100,26 @@ def _nap_app(tmp_path, monkeypatch, mods: list):
     somod._KHOA_CHINH_DA_DOI = True
     import app.main as main
 
+    if _APP_GOC is None:
+        # Lần đầu: chụp object app gốc. importlib.reload bên dưới tạo app MỚI và
+        # đăng ký lại dat_nguon_so trỏ sang nó — phải trả lại sau test (rò thứ tự).
+        _APP_GOC = main.app
     importlib.reload(main)
     client = TestClient(main.app)
     client.app.state.so = _SoGia(mods)
     somod._KHOA_CHINH_DA_DOI = False
     return client
+
+
+def _tra_lai_app_goc():
+    """NV200: reload đã đăng ký lại dat_nguon_so trỏ sang app mới của riêng file
+    này — trả về app gốc mà mọi test khác đang giữ (chống rò thứ tự)."""
+    import app.main as _main
+    from app import xac_thuc as _xt
+
+    _main.app = _APP_GOC
+    _xt.dat_nguon_so(lambda: getattr(_APP_GOC.state, "so", None))
+    khoa_khach.dat_nguon_so(lambda: getattr(_APP_GOC.state, "so", None))
 
 
 @pytest.fixture()
@@ -111,6 +130,7 @@ def api(tmp_path, monkeypatch):
     client = _nap_app(tmp_path, monkeypatch, [_ModTD(dk), ModuleHSG(MANIFEST_HSG)])
     yield client, dk
     client.close()
+    _tra_lai_app_goc()
 
 
 def _tao(api_, email: str, *, ho_so: str | None = None, trang_thai: str = "chua_dang_nhap") -> str:
@@ -203,6 +223,7 @@ def api_dong(tmp_path, monkeypatch):
     client = _nap_app(tmp_path, monkeypatch, [_ModTD(dk), ModuleHSG(MANIFEST_HSG)])
     yield client, dk
     client.close()
+    _tra_lai_app_goc()
     novnc._VE.clear()
     novnc._PHIEN.clear()
     novnc._HO_SO.clear()

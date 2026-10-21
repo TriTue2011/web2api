@@ -20,8 +20,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from app.nut_gpu import lam_sach_telemetry_gpu
-from test.gia import MayChuThat
-from test.ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
+from gia import MayChuThat
+from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
 
 
 # ───────────────────────────── KIỂM TRA TĨNH GIAO DIỆN (LUÔN CHẠY) ─────────────────────────────
