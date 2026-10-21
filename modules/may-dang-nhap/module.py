@@ -20,6 +20,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import time
@@ -29,7 +30,7 @@ from typing import Any
 import httpx
 
 from app.chuyen_tiep import TransportGhimIp, doc_phan_hoi_co_tran, PhanHoiQuaLon
-from app.tai_khoan_hang_loat import BiMatTam
+from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangNhap
 from app.tu_xa import _dia_chi_bi_chan, kiem_url_lan
 
 log = logging.getLogger(__name__)
@@ -217,6 +218,84 @@ DICH_VU_DANG_NHAP = {
 
 
 # ── Lớp Module ───────────────────────────────────────────────────────────────
+
+
+
+# ── NV145b: hợp đồng dang_nhap / nhap_ma_2fa / tien_do / trinh_duyet_cookie ────
+# Nút «Lưu và đăng nhập» (POST /api/tai-khoan/da-luu/{id}/dang-nhap) và tự đăng
+# nhập lại (thu_dang_nhap_lai) gọi module.dang_nhap(dong: DongDaTach).
+# Mật khẩu/TOTP chỉ tồn tại trong bộ nhớ của lượt gọi: gửi sang KÉT CỦA DỊCH VỤ
+# (POST /v1/accounts/saved) rồi ghi đè ngay — module KHÔNG giữ bản nào sau đó.
+# Kho NV144 vẫn giữ bản ghi tài khoản (nhãn + bí mật mã hoá) vì lõi bắt buộc đọc
+# bí mật từ kho trước khi gọi module; đó là kiến trúc lõi, NV145b không đổi.
+
+def _so_nguyen_moi_truong(ten: str, mac_dinh: int, cho_phep_0: bool = False) -> int:
+    try:
+        v = int(str(os.environ.get(ten, "") or "").strip())
+    except ValueError:
+        return mac_dinh
+    if v < 0 or (v == 0 and not cho_phep_0):
+        return mac_dinh
+    return v
+
+
+def _tran_thu_moi_gio() -> int:
+    """Trần số lần thử đăng nhập mỗi giờ cho mỗi tài khoản Google (mặc định 3)."""
+    return _so_nguyen_moi_truong("C2A_DN_TRAN_THU_GIO", 3)
+
+
+def _cua_so_tran_thu_giay() -> int:
+    return _so_nguyen_moi_truong("C2A_DN_CUA_SO_GIO_GIAY", 3600)
+
+
+def _cho_dang_nhap_giay() -> int:
+    """Hết giờ chờ một lượt đăng nhập nền (mặc định 180s): không treo HTTP quá lâu."""
+    return _so_nguyen_moi_truong("C2A_DN_CHO_DANG_NHAP_GIAY", 180)
+
+
+def _nghi_luy_thua_co_so() -> int:
+    """Cơ số nghỉ luỹ thừa sau các lần hỏng liên tiếp (giây, mặc định 5; 0 = tắt)."""
+    return _so_nguyen_moi_truong("C2A_DN_NGHI_LUY_THUA_GIAY", 5, cho_phep_0=True)
+
+
+def _phan_loai_loi_vinh_vien(loi: str) -> str | None:
+    """Lỗi vĩnh viễn (sai mật khẩu / bị khoá / cần xác minh điện thoại) → mã lõi;
+    None = lỗi tạm thời, được thử lại trong trần."""
+    s = (loi or "").lower()
+    if any(k in s for k in ("sai mật khẩu", "wrong password", "incorrect password",
+                            "invalid password", "mật khẩu không đúng")):
+        return "sai_mat_khau"
+    if any(k in s for k in ("bị khoá", "bi khoa", "locked", "disabled", "vô hiệu",
+                            "vo hieu", "suspended")):
+        return "tai_khoan_bi_khoa"
+    if any(k in s for k in ("xác minh", "xac minh", "điện thoại", "dien thoai",
+                            "phone verification", "verify it's you")):
+        return "can_xac_minh_dien_thoai"
+    return None
+
+
+def _ket_qua_dang_nhap(thanh_cong: bool, ma_loi: str = "",
+                       ma_trang_thai: int | None = None, can_nguoi: bool = False,
+                       cho_2fa: bool = False, huong_dan: str = "") -> "KetQuaDangNhap":
+    """Dựng kết quả theo khuôn lõi (KetQuaDangNhap) + 3 tín hiệu mở rộng mà
+    tuyến /da-luu/{id}/dang-nhap đọc qua getattr: can_nguoi, cho_2fa, huong_dan.
+    KHÔNG bao giờ đính kèm mật khẩu/cookie/token."""
+    kq = KetQuaDangNhap(thanh_cong=thanh_cong, cookie=None, ma_loi=ma_loi,
+                        ma_trang_thai=ma_trang_thai)
+    object.__setattr__(kq, "can_nguoi", bool(can_nguoi))
+    object.__setattr__(kq, "cho_2fa", bool(cho_2fa))
+    object.__setattr__(kq, "huong_dan", str(huong_dan or ""))
+    return kq
+
+
+#: Tên miền → đường xuất cookie phiên Google trên dịch vụ (dùng cho trinh_duyet_cookie)
+_MIEN_SANG_DUONG_COOKIE = {
+    "gemini.google.com": "/v1/gemini-web/{ho_so}/cookies",
+}
+
+#: Regex kiểm chuỗi cookie 'k1=v1; k2=v2' (không ký tự điều khiển)
+_RE_CHUOI_COOKIE = re.compile(r"^[ -~]+$")
+
 
 class Module:
     """Module client mỏng kết nối dịch vụ may-dang-nhap."""
@@ -825,3 +904,276 @@ class Module:
         duong = mau_duong.replace("{ho_so}", hs_sach)
         return await self._goi(phuong_thuc, duong)
 
+    # ── NV145b: hợp đồng dang_nhap / nhap_ma_2fa / tien_do ────────────────────
+
+    def _nv145b_trang_thai(self) -> dict:
+        """Sổ theo dõi lượt thử theo tài khoản (khởi tạo lười)."""
+        st = self.__dict__.get("_nv145b")
+        if st is None:
+            st = {"thu": {}, "vinh_vien": {}, "hong_lt": {}}
+            self.__dict__["_nv145b"] = st
+        return st
+
+    async def dang_nhap(self, dong: DongDaTach) -> KetQuaDangNhap:
+        """Đăng nhập Google qua dịch vụ c2a-dang-nhap (NV145b).
+
+        Nhận email/mật khẩu/TOTP qua DongDaTach (BiMatTam/BiMatTotp), gửi sang
+        KÉT CỦA DỊCH VỤ (POST /v1/accounts/saved) rồi ghi đè bộ đệm bí mật ngay,
+        gọi auto-login-saved và chờ kết quả trong trần C2A_DN_CHO_DANG_NHAP_GIAY.
+        Trả kết quả theo khuôn lõi: thành công / cần 2FA / cần người / lỗi có mã.
+        KHÔNG trả mật khẩu, cookie, token trong kết quả hay log.
+        """
+        # 0. Kiểm tra tham số trước khi chạm bí mật
+        email_tho = str(getattr(dong, "email", "") or "").strip()
+        try:
+            _kiem_email(email_tho)
+        except ValueError:
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        mat_khau = getattr(dong, "mat_khau", None)
+        if not isinstance(mat_khau, BiMatTam) or mat_khau.da_xoa():
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        khoa_tk = email_tho.lower()
+        st = self._nv145b_trang_thai()
+
+        # 1. Lỗi vĩnh viễn đã đánh dấu: dừng hẳn, không thử lại
+        vv = st["vinh_vien"].get(khoa_tk)
+        if vv:
+            return _ket_qua_dang_nhap(
+                False, ma_loi=vv, can_nguoi=True,
+                huong_dan="Tài khoản đã bị đánh dấu «cần người» (lỗi vĩnh viễn: "
+                           "sai mật khẩu / bị khoá / cần xác minh điện thoại). "
+                           "Kiểm tra thủ công rồi lưu lại tài khoản để thử tiếp.")
+
+        # 2. Trần 3 lần thử / giờ / tài khoản (chống Google khoá tài khoản)
+        bay_gio = time.time()
+        cua_so = _cua_so_tran_thu_giay()
+        lich_su = [t for t in st["thu"].get(khoa_tk, []) if bay_gio - t < cua_so]
+        if len(lich_su) >= _tran_thu_moi_gio():
+            return _ket_qua_dang_nhap(
+                False, ma_loi="qua_tran_thu",
+                huong_dan="Đã thử quá trần cho phép trong một giờ cho tài khoản "
+                           "này — đợi hết giờ rồi thử lại, tránh bị Google khoá.")
+        # Nghỉ luỹ thừa sau các lần hỏng liên tiếp
+        hong_lt = st["hong_lt"].get(khoa_tk, 0)
+        co_so_nghi = _nghi_luy_thua_co_so()
+        if hong_lt > 0 and co_so_nghi > 0:
+            await asyncio.sleep(min(2 ** min(hong_lt, 6) * co_so_nghi, 120))
+        lich_su.append(time.time())
+        st["thu"][khoa_tk] = lich_su
+
+        # 3. Lấy bí mật rồi GHI ĐÈ NGAY (lay_va_xoa ghi đè bộ đệm bằng 0)
+        try:
+            mk = mat_khau.lay_va_xoa()
+        except Exception:
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        if not mk:
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        totp = getattr(dong, "totp", None)
+        # Cần KHOÁ TOTP GỐC cho két dịch vụ (BiMatTotp.lay() chỉ trả mã 6 số
+        # tại thời điểm gọi — mã đó hết hạn sau 30s, không dùng được cho lượt
+        # đăng nhập nền kéo dài nhiều phút của dịch vụ).
+        totp_secret = BiMatTam.lay(totp) if isinstance(totp, BiMatTotp) else ""
+
+        # 4. Gửi sang KÉT CỦA DỊCH VỤ (kho bí mật gốc cho lượt đăng nhập này),
+        # rồi huỷ bản sao cục bộ ngay sau lời gọi.
+        try:
+            luu = await self._goi("POST", "/v1/accounts/saved", json_body={
+                "email": email_tho, "password": mk,
+                "totp_secret": totp_secret, "loai": "google"})
+        finally:
+            mk = "\x00" * len(mk)
+            totp_secret = "\x00" * len(totp_secret)
+            del mk, totp_secret
+        if not isinstance(luu, dict) or not luu.get("ok"):
+            st["hong_lt"][khoa_tk] = hong_lt + 1
+            return self._loi_dich_vu_thanh_ket_qua(luu, khoa_tk)
+
+        # 5. Bắt đầu lượt đăng nhập nền trên dịch vụ (trả ngay phía dịch vụ)
+        bat_dau = await self._goi(
+            "POST", "/v1/session/auto-login-saved",
+            json_body={"profile": email_tho})
+        if not isinstance(bat_dau, dict) or not bat_dau.get("ok"):
+            st["hong_lt"][khoa_tk] = hong_lt + 1
+            return self._loi_dich_vu_thanh_ket_qua(bat_dau, khoa_tk)
+        if bat_dau.get("state") == "failed":
+            return self._ket_qua_tu_phien_dich_vu(bat_dau, khoa_tk, st)
+
+        # 6. Chờ kết quả trong trần (nghỉ luỹ thừa giữa các lần hỏi trạng thái)
+        return await self._cho_ket_qua_dang_nhap(email_tho, khoa_tk, st)
+
+    def _loi_dich_vu_thanh_ket_qua(self, kq_goi: Any, khoa_tk: str) -> KetQuaDangNhap:
+        """Lỗi gọi dịch vụ (mạng/HTTP/xác thực) → kết quả lõi, không lộ chi tiết."""
+        ma = kq_goi.get("ma_loi") if isinstance(kq_goi, dict) else ""
+        if ma == "sai_khoa_dich_vu":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="sai_khoa_dich_vu",
+                huong_dan="Khoá dịch vụ c2a-dang-nhap không đúng — kiểm tra cấu "
+                           "hình module (khoa_dich_vu).")
+        if ma in ("khong_noi_duoc_dich_vu", "het_gio"):
+            return _ket_qua_dang_nhap(
+                False, ma_loi="dich_vu_sap",
+                huong_dan="Không nối được dịch vụ c2a-dang-nhap — kiểm tra "
+                           "container dịch vụ có đang chạy không.")
+        return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
+
+    def _ket_qua_tu_phien_dich_vu(self, phien: dict, khoa_tk: str,
+                                 st: dict) -> KetQuaDangNhap:
+        """Ánh xạ trạng thái phiên dịch vụ → kết quả theo khuôn lõi."""
+        trang_thai = str(phien.get("state") or "none")
+        loi = str(phien.get("error") or phien.get("message") or "")
+        if trang_thai == "success":
+            st["hong_lt"].pop(khoa_tk, None)
+            return _ket_qua_dang_nhap(True)
+        if trang_thai == "need_code":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="cho_2fa", cho_2fa=True,
+                huong_dan="Google đang chờ mã 2FA — nhập mã vào ô «Mã 2FA» rồi "
+                           "bấm gửi (dịch vụ tự điền mã TOTP nếu tài khoản đã "
+                           "lưu khoá TOTP).")
+        if trang_thai == "need_captcha":
+            # KHÔNG giải CAPTCHA (spec NV145b): đánh dấu cần người
+            st["vinh_vien"][khoa_tk] = "gap_captcha"
+            return _ket_qua_dang_nhap(
+                False, ma_loi="gap_captcha", can_nguoi=True,
+                huong_dan="Google hiện thử thách CAPTCHA — hệ thống không tự "
+                           "giải. Mở trình duyệt xử lý thủ công rồi đăng nhập lại.")
+        if trang_thai == "failed":
+            ma_vv = _phan_loai_loi_vinh_vien(loi)
+            if ma_vv:
+                st["vinh_vien"][khoa_tk] = ma_vv
+                return _ket_qua_dang_nhap(
+                    False, ma_loi=ma_vv, can_nguoi=True,
+                    huong_dan="Lỗi vĩnh viễn, hệ thống dừng thử để bảo vệ tài "
+                               "khoản — kiểm tra thủ công rồi lưu lại tài khoản.")
+            st["hong_lt"][khoa_tk] = st["hong_lt"].get(khoa_tk, 0) + 1
+            return _ket_qua_dang_nhap(False, ma_loi="dang_nhap_that_bai")
+        # need_tap: Google gửi yêu cầu chạm lên điện thoại — chờ người bấm
+        if trang_thai == "need_tap":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="can_nguoi", can_nguoi=True,
+                huong_dan="Google đang chờ bạn chạm «Có, đó là tôi» trên điện "
+                           "thoại — bấm trên điện thoại rồi bấm «Kiểm tra lại».")
+        return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
+
+    async def _cho_ket_qua_dang_nhap(self, email_tho: str, khoa_tk: str,
+                                    st: dict) -> KetQuaDangNhap:
+        """Hỏi trạng thái phiên tới khi có kết quả cuối hoặc hết trần chờ."""
+        try:
+            hs = _kiem_ho_so(email_tho)
+        except ValueError:
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        han = time.time() + _cho_dang_nhap_giay()
+        nghi = 2.0
+        while True:
+            # Hỏi ngay lần đầu (lỗi nhanh như sai mật khẩu trả về sớm),
+            # các lần sau nghỉ luỹ thừa giữa các lần hỏi.
+            tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
+            if isinstance(tt, dict) and tt.get("ok"):
+                trang_thai = str(tt.get("state") or "none")
+                if trang_thai in ("success", "need_code", "need_captcha",
+                                  "failed"):
+                    return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st)
+                if trang_thai == "need_tap" and time.time() >= han:
+                    # Hết trần mà người dùng chưa chạm điện thoại
+                    return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st)
+            # Chưa có kết quả cuối (starting/running/need_tap/none/lỗi hỏi):
+            # nghỉ rồi hỏi tiếp tới hết trần.
+            if time.time() >= han:
+                break
+            await asyncio.sleep(min(nghi, max(0.0, han - time.time())))
+            nghi = min(nghi * 1.5, 10.0)
+        # Hết trần mà phiên vẫn chạy: trả ngay, giao diện hỏi tiếp qua tien_do
+        return _ket_qua_dang_nhap(
+            False, ma_loi="dang_chay",
+            huong_dan="Lượt đăng nhập vẫn đang chạy — bấm «Kiểm tra trạng thái» "
+                       "để hỏi tiếp, không bấm đăng nhập lại.")
+
+    async def nhap_ma_2fa(self, ho_so: str, ma: Any, trinh_duyet=None,
+                          url_novnc: str | None = None) -> dict:
+        """Gửi mã 2FA cho phiên đang ở trạng thái need_code (hợp đồng NV145b).
+
+        Nhận mã qua BiMatTam (xoá ngay sau khi gửi) hoặc chuỗi. Không log mã.
+        """
+        try:
+            hs = _kiem_ho_so(ho_so)
+        except ValueError:
+            return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
+        ma_str = ma.lay_va_xoa() if isinstance(ma, BiMatTam) else str(ma or "").strip()
+        try:
+            if not re.fullmatch(r"[0-9]{6,8}", ma_str):
+                return {"ok": False, "ma_loi": "ma_2fa_sai_dinh_dang"}
+            kq = await self._goi(
+                "POST", f"/v1/session/{hs}/auto-login-2fa-code",
+                json_body={"code": ma_str})
+        finally:
+            ma_str = "\x00" * len(ma_str)
+            del ma_str
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            ma_loi = kq.get("ma_loi") if isinstance(kq, dict) else ""
+            # 409 của dịch vụ = phiên không ở trạng thái cần mã
+            if ma_loi == "loi_dich_vu":
+                return {"ok": False, "ma_loi": "khong_cho_2fa",
+                        "huong_dan": "Phiên không còn chờ mã 2FA — đăng nhập lại."}
+            return {"ok": False, "ma_loi": "dich_vu_loi"}
+        return {"ok": True}
+
+    async def tien_do(self, ho_so: str) -> dict:
+        """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b).
+
+        Trả: giai_doan (dang_chay/cho_2fa/can_nguoi/thanh_cong/loi), buoc (câu
+        trạng thái), cho_2fa, can_nguoi, ma_loi, huong_dan. Không bí mật.
+        """
+        try:
+            hs = _kiem_ho_so(ho_so)
+        except ValueError:
+            return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
+        tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
+        if not isinstance(tt, dict) or not tt.get("ok"):
+            return {"ok": False, "ma_loi": "dich_vu_loi"}
+        trang_thai = str(tt.get("state") or "none")
+        buoc = str(tt.get("message") or "")
+        if trang_thai == "success":
+            return {"ok": True, "giai_doan": "thanh_cong", "buoc": buoc,
+                    "cho_2fa": False, "can_nguoi": False, "ma_loi": ""}
+        if trang_thai == "need_code":
+            return {"ok": True, "giai_doan": "cho_2fa", "buoc": buoc,
+                    "cho_2fa": True, "can_nguoi": False, "ma_loi": "cho_2fa",
+                    "huong_dan": "Nhập mã 2FA rồi bấm gửi."}
+        if trang_thai in ("need_captcha", "need_tap"):
+            return {"ok": True, "giai_doan": "can_nguoi", "buoc": buoc,
+                    "cho_2fa": False, "can_nguoi": True, "ma_loi": "can_nguoi",
+                    "huong_dan": "Mở điện thoại/trình duyệt xử lý bước xác minh "
+                                 "rồi bấm «Kiểm tra lại»."}
+        if trang_thai == "failed":
+            return {"ok": True, "giai_doan": "loi", "buoc": buoc,
+                    "cho_2fa": False, "can_nguoi": True, "ma_loi": "loi",
+                    "huong_dan": "Lượt đăng nhập hỏng — kiểm tra rồi thử lại."}
+        return {"ok": True, "giai_doan": "dang_chay", "buoc": buoc,
+                "cho_2fa": False, "can_nguoi": False, "ma_loi": "dang_chay"}
+
+    async def trinh_duyet_cookie(self, ho_so: str, mien: str) -> dict:
+        """Xuất cookie phiên Google của hồ sơ đã đăng nhập (NV145b).
+
+        Khả năng `trinh_duyet_cookie`: tuyến /api/trinh-duyet/{module}/{ho_so}/
+        cookie-sang-module dùng sẵn để chuyển phiên sang trường nhan_cookie của
+        module AI đích (vd gemini-web). Cookie không đi qua log/phản hồi thừa.
+        """
+        try:
+            hs = _kiem_ho_so(ho_so)
+        except ValueError:
+            return {"ok": False, "loi": "tham_so_khong_hop_le"}
+        mau = _MIEN_SANG_DUONG_COOKIE.get(str(mien or "").strip().lower())
+        if not mau:
+            return {"ok": False, "loi": "mien_khong_ho_tro"}
+        kq = await self._goi("GET", mau.replace("{ho_so}", hs))
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            return {"ok": False, "loi": "khong_doc_duoc_cookie"}
+        cookies = kq.get("cookies")
+        if not isinstance(cookies, dict) or not cookies:
+            return {"ok": False, "loi": "chua_co_phien"}
+        chuoi = "; ".join(f"{ten}={gia_tri}" for ten, gia_tri in cookies.items()
+                          if isinstance(ten, str) and isinstance(gia_tri, str)
+                          and ten and gia_tri)
+        if not chuoi or not _RE_CHUOI_COOKIE.fullmatch(chuoi) or len(chuoi) > 16384:
+            return {"ok": False, "loi": "cookie_khong_hop_le"}
+        return {"cookie": chuoi}

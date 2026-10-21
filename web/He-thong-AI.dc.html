@@ -198,6 +198,15 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
 <button type="button" data-dl-xoa="{{r.id}}" onClick="{{r.xoa}}" style="{{r.xoaSt}}">{{r.nhanXoa}}</button>
 </span>
+<sc-if value="{{r.cho2faDl}}">
+<div data-dl-nhap-2fa="{{r.id}}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px;width:100%">
+<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)">
+<span>Mã 2FA:</span>
+<input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" value="{{r.ma2faDlVal}}" onInput="{{r.doiMa2faDl}}" style="width:110px;min-height:44px;box-sizing:border-box;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:16px">
+</label>
+<button type="button" data-dl-gui-2fa="{{r.id}}" onClick="{{r.guiMa2faDl}}" style="{{r.dangNhapSt}}">Gửi mã</button>
+</div>
+</sc-if>
 </div>
 </sc-for>
 </div>
@@ -792,17 +801,66 @@ class Component extends DCLogic {
   }
   async dlDangNhapDaLuu(chon, id) {
     if (!chon) { this.setState({ dlLoi: 'Chọn một nguồn AI trước.' }); return; }
-    this.setState({ dlLoi: '' });
+    this.setState({ dlLoi: '', dlCho2faId: '', dlCho2faModule: '', dlMa2fa: '' });
     try {
       const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/dang-nhap', {
         method: 'POST', json: { module_id: chon.id }
       });
-      if (j && j.thanh_cong) this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false);
-      else if (j && j.can_nguoi) this.msg('Cần bạn xử lý thêm trong trình duyệt.', true);
-      else this.setState({ dlLoi: 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') });
+      if (j && j.thanh_cong) { this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
+      else if (j && j.cho_2fa) {
+        // NV145b: dịch vụ chờ mã 2FA → hiện ô nhập mã cho tài khoản này
+        this.setState({ dlCho2faId: id, dlCho2faModule: chon.id });
+        this.msg('Google đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+      }
+      else if (j && j.ma_loi === 'dang_chay') {
+        // NV145b: lượt đăng nhập nền vẫn chạy → hỏi trạng thái định kỳ
+        this.msg('Đang đăng nhập trên dịch vụ — tự động cập nhật trạng thái…', false);
+        this.dlHoiTrangThai(id, chon.id, 0);
+      }
+      else if (j && j.can_nguoi) this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true);
+      else this.setState({ dlLoi: 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : '') });
     } catch (e) {
       this.setState({ dlLoi: (e && e.message) || 'Không đăng nhập được.' });
     }
+  }
+  async dlGuiMa2fa() {
+    // NV145b: gửi mã 2FA cho lượt đăng nhập đang chờ (xoá mã khỏi state ngay khi gửi)
+    const s = this.state;
+    const id = s.dlCho2faId || '', moduleId = s.dlCho2faModule || '';
+    const ma = (s.dlMa2fa || '').trim();
+    if (!id || !moduleId || !ma) return;
+    this.setState({ dlMa2fa: '' });
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/ma-2fa', {
+        method: 'POST', json: { module_id: moduleId, ma }
+      });
+      if (j && j.thanh_cong) {
+        this.setState({ dlCho2faId: '', dlCho2faModule: '' });
+        this.msg('Đã gửi mã — đang chờ dịch vụ xác nhận…', false);
+        this.dlHoiTrangThai(id, moduleId, 0);
+      } else {
+        this.setState({ dlLoi: 'Gửi mã chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') });
+      }
+    } catch (e) {
+      this.setState({ dlLoi: (e && e.message) || 'Không gửi được mã.' });
+    }
+  }
+  async dlHoiTrangThai(id, moduleId, lan) {
+    // NV145b: hỏi trạng thái lượt đăng nhập nền (mỗi 5 giây, tối đa ~5 phút)
+    if (lan > 60) { this.setState({ dlLoi: 'Lượt đăng nhập quá lâu — bấm «Đăng nhập» để kiểm tra lại.' }); return; }
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/dang-nhap-trang-thai?module_id=' + encodeURIComponent(moduleId), {});
+      const gd = j && j.giai_doan;
+      if (gd === 'thanh_cong') { this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); return; }
+      if (gd === 'cho_2fa') {
+        this.setState({ dlCho2faId: id, dlCho2faModule: moduleId });
+        this.msg('Google đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        return;
+      }
+      if (gd === 'can_nguoi') { this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); return; }
+      if (gd === 'loi') { this.setState({ dlLoi: 'Đăng nhập chưa được' + (j.ma_loi ? ' (' + j.ma_loi + ').' : '.') }); return; }
+    } catch (e) { /* hỏi lại lần sau */ }
+    setTimeout(() => this.dlHoiTrangThai(id, moduleId, lan + 1), 5000);
   }
   async dlChiDangNhap(chon) {
     const s = this.state;
@@ -1637,6 +1695,10 @@ class Component extends DCLogic {
             coTamDung: s.dlCoTamDung !== false,
             dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
             dangNhapSt: btnSt({}) + 'min-height:44px;',
+            cho2faDl: s.dlCho2faId === t.id,
+            ma2faDlVal: s.dlMa2fa || '',
+            doiMa2faDl: (e) => this.setState({ dlMa2fa: e.target.value }),
+            guiMa2faDl: () => this.dlGuiMa2fa(),
             xoa: () => this.dlXoa(t.id),
             xoaSt: btnSt({ bad: (s.dlXoaChon || '') === t.id }) + 'min-height:44px;',
             nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá',

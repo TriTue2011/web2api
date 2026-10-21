@@ -3724,8 +3724,65 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     return {
         "thanh_cong": thanh_cong,
         "can_nguoi": bool(getattr(kq, "can_nguoi", False)),
+        "cho_2fa": bool(getattr(kq, "cho_2fa", False)),
+        "huong_dan": getattr(kq, "huong_dan", "") or "",
         "ma_loi": getattr(kq, "ma_loi", "") or "",
     }
+
+
+@tai_khoan.post("/da-luu/{id}/ma-2fa")
+async def gui_ma_2fa_tai_khoan_da_luu(id: str, request: Request):
+    """Gửi mã 2FA cho lượt đăng nhập đang chờ mã (module triển khai `nhap_ma_2fa`,
+    vd c2a-dn — NV145b). Mã đi qua BiMatTam và bị xoá ngay sau khi gửi.
+
+    Thao tác chạm bí mật: phiên web phải đã xác nhận lại (step-up);
+    Bearer <redacted>ản trị được miễn."""
+    kiem_tra_step_up(request)
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    if ban_ghi is None:
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+    email = ban_ghi.get("email") or ""
+    mod = request.app.state.so.dang_chay.get(module_id)
+    ham = getattr(mod, "nhap_ma_2fa", None) if mod is not None else None
+    if not callable(ham):
+        raise LoiOpenAI(502, "Module chưa triển khai nhập mã 2FA.", code="chua_ho_tro")
+    ma = _chuoi_bat_buoc(than, "ma")
+    bi_mat_ma = tai_khoan_hang_loat_mod.BiMatTam(ma)
+    try:
+        kq = await ham(email, bi_mat_ma)
+    finally:
+        bi_mat_ma.xoa()
+    if not isinstance(kq, dict):
+        kq = {}
+    return {"thanh_cong": bool(kq.get("ok")),
+            "ma_loi": kq.get("ma_loi", "") or "",
+            "huong_dan": kq.get("huong_dan", "") or ""}
+
+
+@tai_khoan.get("/da-luu/{id}/dang-nhap-trang-thai")
+async def trang_thai_dang_nhap_tai_khoan(id: str, request: Request,
+                                        module_id: str = ""):
+    """Hỏi trạng thái lượt đăng nhập nền (module triển khai `tien_do`, vd c2a-dn
+    — NV145b). Chỉ đọc, không chạm bí mật nên không cần step-up; id tài khoản
+    không đoán được (chống IDOR như các tuyến da-luu khác)."""
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    if ban_ghi is None:
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+    email = ban_ghi.get("email") or ""
+    mod = request.app.state.so.dang_chay.get(module_id)
+    ham = getattr(mod, "tien_do", None) if mod is not None else None
+    if not callable(ham):
+        raise LoiOpenAI(502, "Module chưa triển khai theo dõi tiến trình.",
+                        code="chua_ho_tro")
+    kq = await ham(email)
+    if not isinstance(kq, dict):
+        kq = {"ok": False}
+    return {k: kq.get(k) for k in ("ok", "giai_doan", "buoc", "cho_2fa",
+                                  "can_nguoi", "ma_loi", "huong_dan")}
 
 
 @tai_khoan.get("/tu-dang-nhap-lai")
