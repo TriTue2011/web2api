@@ -292,6 +292,41 @@ def kiem_dich_dung(dich_dung, nhom, loai) -> str:
     if d not in cho_phep:
         raise LoiKhoTaiKhoan("invalid_value")
     return d
+#: NV223: cách đăng nhập của tài khoản dịch vụ — «truc_tiep» = đăng nhập
+#: thẳng bằng bí mật của chính tài khoản; «google» = đăng nhập QUA một tài
+#: khoản Google đã lưu khác (``tai_khoan_google_id``). "" = chưa khai (giữ
+#: hành vi cũ theo module sở hữu). Danh sách ĐÓNG — không dò chuỗi email.
+DANG_NHAP_BANG_CHO_PHEP = ("", "truc_tiep", "google")
+
+
+def kiem_dang_nhap_bang(dang_nhap_bang) -> str:
+    """Kiểm trường «đăng nhập bằng» (NV223): None → "" (chưa khai)."""
+    if dang_nhap_bang is None:
+        return ""
+    if isinstance(dang_nhap_bang, bool) or not isinstance(dang_nhap_bang, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    s = dang_nhap_bang.strip().lower()
+    if s not in DANG_NHAP_BANG_CHO_PHEP:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return s
+
+
+def kiem_tai_khoan_google_id(tai_khoan_google_id) -> str:
+    """Kiểm id bản ghi tài khoản Google dùng để đăng nhập hộ (NV223).
+
+    None → "". Chỉ là một id bản ghi trong kho — kho không tự kiểm sự tồn
+    tại ở đây (tầng route kiểm khi đăng nhập: thiếu/tạm dừng → lỗi rõ).
+    """
+    if tai_khoan_google_id is None:
+        return ""
+    if isinstance(tai_khoan_google_id, bool) \
+            or not isinstance(tai_khoan_google_id, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(tai_khoan_google_id, "tai_khoan_google_id")
+    s = tai_khoan_google_id.strip()
+    if len(s) > DOI_DAI_MODULE_ID:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return s
 
 
 def ma_tai_khoan(email_chuan: str) -> str:
@@ -408,6 +443,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         # NV218: loại + đích dùng theo bảng khai báo ("" = chưa phân loại).
         "loai_tai_khoan": ban_ghi.get("loai_tai_khoan", ""),
         "dich_dung": ban_ghi.get("dich_dung", ""),
+        # NV223: cách đăng nhập + id tài khoản Google đăng nhập hộ (không bí mật)
+        "dang_nhap_bang": ban_ghi.get("dang_nhap_bang", ""),
+        "tai_khoan_google_id": ban_ghi.get("tai_khoan_google_id", ""),
         "co_mat_khau": bool(ban_ghi.get("mat_khau")),
         "co_totp": bool(ban_ghi.get("totp_secret")),
         "trang_thai": ban_ghi.get("trang_thai", ""),
@@ -429,7 +467,8 @@ def _tom_tat_dung(id_: str) -> dict:
 
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                   trang_thai=None, id=None, module_id=None, nhom=None,
-                  bac_goi=None, loai_tai_khoan=None, dich_dung=None) -> dict:
+                  bac_goi=None, loai_tai_khoan=None, dich_dung=None, dang_nhap_bang=None,
+                  tai_khoan_google_id=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
@@ -439,6 +478,9 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     truyền vào — kho không tự suy.
     `loai_tai_khoan`/`dich_dung` (NV218): None → giữ nguyên cũ; "" hoặc giá trị
     trong bảng khai báo của đúng (nhóm, loại) → đặt mới.
+    `dang_nhap_bang`/`tai_khoan_google_id` (NV223): None → giữ nguyên cũ;
+    kiểm chéo SAU khi hợp nhất: ``dang_nhap_bang == "google"`` mà thiếu
+    ``tai_khoan_google_id`` → ``invalid_value`` (không lưu dở).
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
     mk = kiem_mat_khau(mat_khau)
@@ -503,6 +545,15 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         elif dich_dung_moi and dich_dung_moi not in DICH_DUNG_THEO_NHOM_LOAI.get(
                 (nhom_moi, loai_moi), ()):
             dich_dung_moi = ""
+        # NV223: None → giữ nguyên cũ; kiểm chéo sau hợp nhất.
+        dnb_moi = cu.get("dang_nhap_bang", "") if cu else ""
+        if dang_nhap_bang is not None:
+            dnb_moi = kiem_dang_nhap_bang(dang_nhap_bang)
+        tk_gg_moi = cu.get("tai_khoan_google_id", "") if cu else ""
+        if tai_khoan_google_id is not None:
+            tk_gg_moi = kiem_tai_khoan_google_id(tai_khoan_google_id)
+        if dnb_moi == "google" and not tk_gg_moi:
+            raise LoiKhoTaiKhoan("invalid_value")
 
         ban_ghi = {
             "id": id_,
@@ -516,6 +567,8 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "bac_goi": bac_goi_moi,
             "loai_tai_khoan": loai_moi,
             "dich_dung": dich_dung_moi,
+            "dang_nhap_bang": dnb_moi,
+            "tai_khoan_google_id": tk_gg_moi,
             "cap_nhat": int(time.time()),
         }
         du_lieu[id_] = ban_ghi
