@@ -3733,7 +3733,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
 @tai_khoan.post("/da-luu/{id}/ma-2fa")
 async def gui_ma_2fa_tai_khoan_da_luu(id: str, request: Request):
     """Gửi mã 2FA cho lượt đăng nhập đang chờ mã (module triển khai `nhap_ma_2fa`,
-    vd may-dang-nhap — NV145b). Mã đi qua BiMatTam và bị xoá ngay sau khi gửi.
+    NV145b). Mã đi qua BiMatTam và bị xoá ngay sau khi gửi.
 
     Thao tác chạm bí mật: phiên web phải đã xác nhận lại (step-up);
     Bearer <redacted>ản trị được miễn."""
@@ -3765,7 +3765,7 @@ async def gui_ma_2fa_tai_khoan_da_luu(id: str, request: Request):
 @tai_khoan.get("/da-luu/{id}/dang-nhap-trang-thai")
 async def trang_thai_dang_nhap_tai_khoan(id: str, request: Request,
                                         module_id: str = ""):
-    """Hỏi trạng thái lượt đăng nhập nền (module triển khai `tien_do`, vd may-dang-nhap
+    """Hỏi trạng thái lượt đăng nhập nền (module triển khai `tien_do`
     — NV145b). Chỉ đọc, không chạm bí mật nên không cần step-up; id tài khoản
     không đoán được (chống IDOR như các tuyến da-luu khác)."""
     _kiem_module_da_cai_tai_khoan(request, module_id)

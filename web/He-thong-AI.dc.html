@@ -810,7 +810,7 @@ class Component extends DCLogic {
       else if (j && j.cho_2fa) {
         // NV145b: dịch vụ chờ mã 2FA → hiện ô nhập mã cho tài khoản này
         this.setState({ dlCho2faId: id, dlCho2faModule: chon.id });
-        this.msg('Google đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        this.msg('Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
       }
       else if (j && j.ma_loi === 'dang_chay') {
         // NV145b: lượt đăng nhập nền vẫn chạy → hỏi trạng thái định kỳ
@@ -854,7 +854,7 @@ class Component extends DCLogic {
       if (gd === 'thanh_cong') { this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); return; }
       if (gd === 'cho_2fa') {
         this.setState({ dlCho2faId: id, dlCho2faModule: moduleId });
-        this.msg('Google đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        this.msg('Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
         return;
       }
       if (gd === 'can_nguoi') { this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); return; }
@@ -1631,7 +1631,6 @@ class Component extends DCLogic {
         const dlDs = Array.isArray(s.dlDs) ? s.dlDs : [];
         const locNhomDl = s.dlLocNhom || '';
         const dsNhomDl = [...new Set(dlDs.map((t) => t.nhom || '').filter(Boolean))].sort();
-        return {
         const dlEmailTrim = (s.dlEmail || '').trim();
         const dlCoChungThuc = !!(dlEmailTrim && (s.dlMatKhau || ''));
         return {
