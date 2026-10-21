@@ -127,6 +127,41 @@ def _la_luong_chatgpt(module_cua: Any) -> bool:
     return str(module_cua or "").strip() in _LUONG_CHATGPT_MODULE_ID
 
 
+#: NV223: module sở hữu → «luồng» của tài khoản (dữ liệu khai báo; KHÔNG suy
+#: từ email/tên miền). Chỉ các module có đường onboard riêng phía dịch vụ.
+_LUONG_THEO_MODULE_ID = {
+    "chatgpt-web": "chatgpt",
+    "claude-web": "claude",
+    "grok-web": "grok",
+}
+
+#: NV223: (luồng, ``dang_nhap_bang``) → khoá đường onboard trong
+#: ``DICH_VU_DANG_NHAP``. Cặp KHÔNG có trong bảng = không hỗ trợ → lỗi rõ,
+#: không tiến hành đăng nhập. «truc_tiep» chỉ có ở ChatGPT (đường
+#: openai-native của dịch vụ); Claude/Grok phía dịch vụ chỉ có đường qua
+#: Google. ``dang_nhap_bang == ""`` (chưa khai) KHÔNG qua bảng này — giữ
+#: nguyên hai đường cũ NV145b/NV210.
+_DUONG_ONBOARD_THEO_LUONG = {
+    ("chatgpt", "google"): "chatgpt",
+    ("chatgpt", "truc_tiep"): "openai",
+    ("claude", "google"): "claude-web",
+    ("grok", "google"): "grok-web",
+}
+
+_DANG_NHAP_BANG_HOP_LE = ("", "truc_tiep", "google")
+
+
+def _ten_ho_so_theo_dich_vu(dich_vu: str, email: str) -> str:
+    """Tên hồ sơ cho đường onboard NV223: tiền tố theo KHOÁ DỊCH VỤ (phần
+    trước «-web» nếu có — dữ liệu trong ``DICH_VU_DANG_NHAP``) + slug
+    localpart của email TÀI KHOẢN (hồ sơ thuộc về tài khoản đích, không
+    thuộc về tài khoản Google đăng nhập hộ)."""
+    s = str(email or "").strip().lower()
+    phan_dau = re.sub(r"[^a-z0-9]", "-", s.split("@", 1)[0])[:56]
+    tien_to = str(dich_vu or "").split("-", 1)[0]
+    return (f"{tien_to}-{phan_dau}") if phan_dau.strip("-") else ""
+
+
 def _ten_ho_so_chatgpt(email: str) -> str:
     """Tên hồ sơ ChatGPT mà dịch vụ chấp nhận: ``chatgpt-`` + slug localpart.
 
@@ -1110,6 +1145,40 @@ class Module:
         mat_khau = getattr(dong, "mat_khau", None)
         if not isinstance(mat_khau, BiMatTam) or mat_khau.da_xoa():
             return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        # NV223: kiểm «đăng nhập bằng» + cặp (luồng, cách đăng nhập) hỗ trợ
+        # TRƯỚC khi chạm bí mật — sai giá trị / cặp không hỗ trợ / thiếu bí
+        # mật Google → dừng ngay, dịch vụ không bị gọi, bí mật không bị lấy.
+        dang_nhap_bang = str(
+            getattr(dong, "dang_nhap_bang", "") or "").strip().lower()
+        if dang_nhap_bang not in _DANG_NHAP_BANG_HOP_LE:
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        dich_vu_key = None
+        if dang_nhap_bang:
+            luong = _LUONG_THEO_MODULE_ID.get(
+                str(getattr(dong, "module_cua_tai_khoan", "") or "").strip())
+            dich_vu_key = _DUONG_ONBOARD_THEO_LUONG.get(
+                (luong, dang_nhap_bang)) if luong else None
+            if dich_vu_key is None:
+                return _ket_qua_dang_nhap(
+                    False, ma_loi="khong_ho_tro", can_nguoi=True,
+                    huong_dan="Cách đăng nhập này chưa được hỗ trợ cho tài "
+                              "khoản thuộc module này — chọn cách đăng nhập "
+                              "khác hoặc đăng nhập thủ công.")
+            if dang_nhap_bang == "google":
+                google_email = str(
+                    getattr(dong, "google_email", "") or "").strip()
+                google_mk = getattr(dong, "google_mat_khau", None)
+                try:
+                    _kiem_email(google_email)
+                except ValueError:
+                    return _ket_qua_dang_nhap(
+                        False, ma_loi="tham_so_khong_hop_le")
+                if not isinstance(google_mk, BiMatTam) or google_mk.da_xoa():
+                    return _ket_qua_dang_nhap(
+                        False, ma_loi="thieu_tai_khoan_google", can_nguoi=True,
+                        huong_dan="Tài khoản khai đăng nhập qua Google nhưng "
+                                  "chưa gắn được tài khoản Google đã lưu — "
+                                  "kiểm tra lại trường «Đăng nhập bằng».")
         khoa_tk = email_tho.lower()
         st = self._nv145b_trang_thai()
 
@@ -1152,7 +1221,12 @@ class Module:
         # đăng nhập nền kéo dài nhiều phút của dịch vụ).
         totp_secret = BiMatTam.lay(totp) if isinstance(totp, BiMatTotp) else ""
 
-        # 4. Chọn luồng theo module sở hữu của tài khoản (dữ liệu)
+        # 4. Chọn luồng: NV223 — khi tài khoản KHAI «đăng nhập bằng» thì đi
+        # đường onboard theo bảng khai báo; chưa khai → giữ hai đường cũ.
+        if dich_vu_key is not None:
+            return await self._dang_nhap_theo_bang(
+                dong, email_tho, khoa_tk, st, hong_lt, mk, totp_secret,
+                dang_nhap_bang, dich_vu_key)
         if _la_luong_chatgpt(getattr(dong, "module_cua_tai_khoan", "")):
             return await self._dang_nhap_chatgpt(
                 email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
@@ -1238,6 +1312,201 @@ class Module:
 
         # 6. Chờ kết quả trong trần
         return await self._cho_ket_qua_chatgpt(email_tho, khoa_tk, st, hs)
+
+    async def _dang_nhap_theo_bang(self, dong: DongDaTach, email_tho: str,
+                                   khoa_tk: str, st: dict, hong_lt: int,
+                                   mk: str, totp_secret: str,
+                                   dang_nhap_bang: str,
+                                   dich_vu_key: str) -> KetQuaDangNhap:
+        """Luồng NV223: onboard theo ``dang_nhap_bang`` + bảng khai báo.
+
+        - «google»: bí mật gửi két dịch vụ là của TÀI KHOẢN GOOGLE được chọn
+          (loai «google», email Google — dịch vụ tự bù khi onboard theo
+          email); bí mật của chính tài khoản đích KHÔNG dùng, huỷ ngay.
+        - «truc_tiep»: bí mật của chính tài khoản (loai «openai»).
+        Hồ sơ luôn theo email của TÀI KHOẢN ĐÍCH. Nhận bí mật thô; PHẢI ghi
+        đè trước khi hàm trả về, mọi nhánh.
+        """
+        muc = DICH_VU_DANG_NHAP[dich_vu_key]
+        if dang_nhap_bang == "google":
+            mk = "\x00" * len(mk)
+            totp_secret = "\x00" * len(totp_secret)
+            del mk, totp_secret
+            email_dn = str(getattr(dong, "google_email", "") or "").strip()
+            google_mk = getattr(dong, "google_mat_khau", None)
+            try:
+                mk_dn = google_mk.lay_va_xoa() \
+                    if isinstance(google_mk, BiMatTam) else ""
+            except Exception:
+                mk_dn = ""
+            google_totp = getattr(dong, "google_totp", None)
+            totp_dn = BiMatTam.lay(google_totp) \
+                if isinstance(google_totp, BiMatTotp) else ""
+            loai_ket = "google"
+            if not mk_dn:
+                totp_dn = "\x00" * len(totp_dn)
+                del totp_dn
+                return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        else:
+            email_dn, mk_dn, totp_dn = email_tho, mk, totp_secret
+            loai_ket = "openai"
+        hs = _ten_ho_so_theo_dich_vu(dich_vu_key, email_tho)
+        if not hs:
+            mk_dn = "\x00" * len(mk_dn)
+            totp_dn = "\x00" * len(totp_dn)
+            del mk_dn, totp_dn
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        # Gửi sang KÉT CỦA DỊCH VỤ rồi huỷ bản sao cục bộ ngay sau lời gọi.
+        try:
+            luu = await self._goi("POST", "/v1/accounts/saved", json_body={
+                "email": email_dn, "password": mk_dn,
+                "totp_secret": totp_dn, "loai": loai_ket})
+        finally:
+            mk_dn = "\x00" * len(mk_dn)
+            totp_dn = "\x00" * len(totp_dn)
+            del mk_dn, totp_dn
+        if not isinstance(luu, dict) or not luu.get("ok"):
+            st["hong_lt"][khoa_tk] = hong_lt + 1
+            return self._loi_dich_vu_thanh_ket_qua(luu, khoa_tk)
+        # Bắt đầu lượt onboard (dịch vụ tự bù bí mật từ két theo email)
+        bat_dau = await self._goi(
+            muc["bat_dau"][0], muc["bat_dau"][1],
+            json_body={"profile": hs, "email": email_dn,
+                       "password": "", "totp_secret": ""})
+        if not isinstance(bat_dau, dict) or not bat_dau.get("ok"):
+            st["hong_lt"][khoa_tk] = hong_lt + 1
+            return self._loi_dich_vu_thanh_ket_qua(bat_dau, khoa_tk)
+        if str(bat_dau.get("state") or "") in (
+                "failed", "need_code", "need_captcha", "need_tap",
+                "need_human", "need_manual"):
+            return self._ket_qua_onboard_tu_phien(bat_dau, khoa_tk, st, hs)
+        return await self._cho_ket_qua_onboard(
+            email_tho, khoa_tk, st, hs, dich_vu_key)
+
+    async def _cho_ket_qua_onboard(self, email_tho: str, khoa_tk: str,
+                                   st: dict, hs: str,
+                                   dich_vu_key: str) -> KetQuaDangNhap:
+        """Hỏi trạng thái onboard (đường theo bảng) tới kết quả cuối/trần.
+
+        Trạng thái cuối cần người (need_manual — vd hàng rào chống bot phía
+        dịch vụ) trả NGAY khi thấy: không thử lại vòng, không tự vượt.
+        """
+        muc = DICH_VU_DANG_NHAP[dich_vu_key]
+        duong_tt = muc["trang_thai"][1].format(ho_so=hs)
+        han = time.time() + _cho_dang_nhap_giay()
+        nghi = 2.0
+        while True:
+            tt = await self._goi(muc["trang_thai"][0], duong_tt)
+            if isinstance(tt, dict) and tt.get("ok"):
+                trang_thai = str(tt.get("state") or "none")
+                if trang_thai == "success":
+                    return await self._hoan_tat_onboard(
+                        email_tho, hs, khoa_tk, st, dich_vu_key)
+                if trang_thai in ("need_code", "need_captcha", "need_tap",
+                                  "need_human", "need_manual", "failed"):
+                    return self._ket_qua_onboard_tu_phien(tt, khoa_tk, st, hs)
+            if time.time() >= han:
+                break
+            await asyncio.sleep(min(nghi, max(0.0, han - time.time())))
+            nghi = min(nghi * 1.5, 10.0)
+        return _ket_qua_dang_nhap(
+            False, ma_loi="dang_chay",
+            huong_dan="Lượt đăng nhập vẫn đang chạy — bấm «Kiểm tra trạng "
+                      "thái» để hỏi tiếp, không bấm đăng nhập lại.")
+
+    async def _hoan_tat_onboard(self, email_tho: str, hs: str, khoa_tk: str,
+                                st: dict, dich_vu_key: str) -> KetQuaDangNhap:
+        """Đóng gói kết quả khi onboard NV223 thành công, theo khoá dịch vụ:
+        chatgpt → JWT qua refresh-jwt (tái dùng NV210); openai → access
+        token qua endpoint token; claude-web/grok-web → gắn ``ho_so`` để lõi
+        nối cookie phiên vào module sở hữu (NV214)."""
+        if dich_vu_key == "chatgpt":
+            return await self._lay_jwt_chatgpt(email_tho, hs, khoa_tk, st)
+        st["hong_lt"].pop(khoa_tk, None)
+        if dich_vu_key == "openai":
+            muc = DICH_VU_DANG_NHAP[dich_vu_key]
+            kq = await self._goi(
+                muc["cookie"][0], muc["cookie"][1].format(ho_so=hs))
+            token = str(kq.get("access_token") or "") \
+                if isinstance(kq, dict) else ""
+            if not token:
+                st["hong_lt"][khoa_tk] = st["hong_lt"].get(khoa_tk, 0) + 1
+                return _ket_qua_dang_nhap(
+                    False, ma_loi="khong_lay_duoc_jwt",
+                    huong_dan="Onboard xong nhưng chưa lấy được token — bấm "
+                              "«Kiểm tra trạng thái» để thử lại.")
+            email = _email_tu_jwt(token) \
+                or str(kq.get("email") or "") or email_tho
+            jwt_moi = {"access_token": token, "ho_so": hs, "email": email}
+            moc = self._moc_gan_jwt
+            if callable(moc):
+                try:
+                    moc(email, token, hs)
+                except Exception as e:
+                    log.warning("openai-native: móc gắn token vào khoá sổ "
+                                "lỗi: %s", type(e).__name__)
+            return _ket_qua_dang_nhap(True, jwt_moi=jwt_moi)
+        return _ket_qua_dang_nhap(True, ho_so=hs)
+
+    def _ket_qua_onboard_tu_phien(self, phien: dict, khoa_tk: str,
+                                  st: dict, ho_so: str = "") -> KetQuaDangNhap:
+        """Ánh xạ trạng thái onboard (bảng NV223) → kết quả lõi.
+
+        Thông điệp trung tính (không nêu tên nhà cung cấp — đường này dùng
+        chung). ``need_manual``/``need_captcha``: KHÔNG tự vượt chống bot,
+        KHÔNG giải CAPTCHA — trả «cần người». Lỗi vĩnh viễn dùng đúng bộ
+        phân loại chung ``_phan_loai_loi_vinh_vien``.
+        """
+        trang_thai = str(phien.get("state") or "none")
+        loi = str(phien.get("error") or phien.get("message") or "")
+        if trang_thai == "success":
+            st["hong_lt"].pop(khoa_tk, None)
+            return _ket_qua_dang_nhap(True, ho_so=ho_so)
+        if trang_thai == "need_code":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="cho_2fa", cho_2fa=True,
+                huong_dan="Dịch vụ đang chờ mã 2FA — nhập mã vào ô «Mã 2FA» "
+                          "rồi bấm gửi (dịch vụ tự điền mã TOTP nếu tài "
+                          "khoản đăng nhập đã lưu khoá TOTP).")
+        if trang_thai == "need_captcha":
+            st["vinh_vien"][khoa_tk] = "gap_captcha"
+            return _ket_qua_dang_nhap(
+                False, ma_loi="gap_captcha", can_nguoi=True,
+                huong_dan="Trang đăng nhập hiện thử thách CAPTCHA — hệ "
+                          "thống không tự giải. Mở trình duyệt xử lý thủ "
+                          "công rồi đăng nhập lại.")
+        if trang_thai == "need_tap":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="can_nguoi", can_nguoi=True,
+                huong_dan="Đang chờ bạn xác nhận trên điện thoại — bấm xác "
+                          "nhận rồi bấm «Kiểm tra lại».")
+        if trang_thai == "need_manual":
+            # Hàng rào chống bot phía dịch vụ: cần người, không thử lại vòng
+            return _ket_qua_dang_nhap(
+                False, ma_loi="can_nguoi", can_nguoi=True,
+                huong_dan="Trang đăng nhập cần người xử lý thủ công (hàng "
+                          "rào chống bot) — hệ thống không tự vượt. Xử lý "
+                          "thủ công rồi đăng nhập lại.")
+        if trang_thai == "need_human":
+            ma_loi = _sach_ma_loi_can_nguoi(str(phien.get("error") or "")) \
+                or "can_nguoi"
+            if ma_loi in _LOI_VINH_VIEN_CAN_NGUOI:
+                st["vinh_vien"][khoa_tk] = ma_loi
+            return _ket_qua_dang_nhap(
+                False, ma_loi=ma_loi, can_nguoi=True,
+                huong_dan=_huong_dan_can_nguoi(ma_loi))
+        if trang_thai == "failed":
+            ma_vv = _phan_loai_loi_vinh_vien(loi)
+            if ma_vv:
+                st["vinh_vien"][khoa_tk] = ma_vv
+                return _ket_qua_dang_nhap(
+                    False, ma_loi=ma_vv, can_nguoi=True,
+                    huong_dan="Lỗi vĩnh viễn, hệ thống dừng thử để bảo vệ "
+                              "tài khoản — kiểm tra thủ công rồi lưu lại "
+                              "tài khoản.")
+            st["hong_lt"][khoa_tk] = st["hong_lt"].get(khoa_tk, 0) + 1
+            return _ket_qua_dang_nhap(False, ma_loi="dang_nhap_that_bai")
+        return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
 
     def _ket_qua_chatgpt_tu_phien(self, phien: dict, khoa_tk: str,
                                  st: dict) -> KetQuaDangNhap:
