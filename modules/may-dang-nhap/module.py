@@ -115,7 +115,7 @@ def _ten_ho_so_dich_vu(dinh_danh: Any) -> str:
 
 
 def _kiem_ho_so(ho_so: Any) -> str:
-    s = str(ho_so or "").strip()
+    s = _ten_ho_so_dich_vu(ho_so) if "@" in str(ho_so or "") else str(ho_so or "").strip()
     if not s or len(s) > 64:
         raise ValueError("tham_so_khong_hop_le")
     for cam in _KY_TU_CAM_DUONG_DAN:
