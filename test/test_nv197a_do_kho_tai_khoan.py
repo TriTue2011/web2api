@@ -166,7 +166,6 @@ def test_quet_suc_khoe_phien_dinh_ky(moi_truong):
 
 # ── (d) hạn mức + lượng dùng ────────────────────────────────────────────────
 
-@pytest.mark.xfail(reason="khoảng trống đã đo (NV197a ô #6: theo dõi hạn mức); chưa giao việc sửa", strict=False)
 def test_theo_doi_han_muc(moi_truong):
     """c2a quota_watcher/codex_usage → web2api KHÔNG CÓ: ĐỎ."""
     client, _so = moi_truong
@@ -178,7 +177,6 @@ def test_theo_doi_han_muc(moi_truong):
     assert "han_muc" in r.json()["tai_khoan"][0]
 
 
-@pytest.mark.xfail(reason="khoảng trống đã đo (NV197a ô #7: theo dõi lượng dùng); chưa giao việc sửa", strict=False)
 def test_theo_doi_luong_dung(moi_truong):
     """c2a usage_tracker.log_usage → web2api KHÔNG CÓ (theo tài khoản): ĐỎ."""
     client, _so = moi_truong
