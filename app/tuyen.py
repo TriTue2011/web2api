@@ -3433,6 +3433,20 @@ def _ham_dang_nhap_cua_module(request: Request, module_id: str):
 
 # ───────────── TÀI KHOẢN ĐÃ LƯU (NV144, QT) ─────────────
 # Kho tài khoản đã lưu: email + nhãn + mật khẩu + TOTP secret (tuỳ chọn).
+
+
+def _nhom_cua_module(request: Request, module_id: str) -> str:
+    """Nhóm của module theo manifest (NV197c): ``manifest.nhom.id``.
+
+    Thiếu → chính ``module_id`` (vẫn suy từ module, không đoán từ email/token).
+    """
+    try:
+        km = request.app.state.so.catalog.get(module_id)
+        man = km.manifest if km is not None else {}
+        nhom = str((man.get("nhom") or {}).get("id") or "").strip()
+    except Exception:
+        nhom = ""
+    return nhom or module_id
 # Mọi đường đều cần khoá quản trị (QT). Bí mật KHÔNG BAO GIỜ rời server qua
 # các đường này — giao diện/trình duyệt không nhận lại mật khẩu.
 
@@ -3450,13 +3464,19 @@ def _loi_kho_tai_khoan(e: kho_tai_khoan_mod.LoiKhoTaiKhoan) -> LoiOpenAI:
 
 
 @tai_khoan.get("/da-luu")
-def liet_ke_tai_khoan_da_luu():
-    """Liệt kê tài khoản đã lưu: email CHE, nhãn, cờ có/không bí mật, trạng
-    thái. KHÔNG bao giờ trả mật khẩu/TOTP secret."""
+def liet_ke_tai_khoan_da_luu(nhom: str | None = None):
+    """Liệt kê tài khoản đã lưu: email CHE, nhãn, nhóm, bậc gói, cờ có/không
+    bí mật, trạng thái. KHÔNG bao giờ trả mật khẩu/TOTP secret.
+
+    NV197c: ``?nhom=<id-nhom>`` lọc theo nhóm (so khớp chính xác).
+    """
     try:
-        return {"tai_khoan": kho_tai_khoan_mod.liet_ke()}
+        ds = kho_tai_khoan_mod.liet_ke()
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
         raise _loi_kho_tai_khoan(e) from None
+    if nhom is not None:
+        ds = [b for b in ds if b.get("nhom") == nhom]
+    return {"tai_khoan": ds}
 
 
 @tai_khoan.get("/han-muc")
@@ -3527,10 +3547,33 @@ async def luu_tai_khoan_da_luu(request: Request):
     qua {"tai_khoan": [{email, mat_khau, totp_secret?, nhan?}]}.
 
     Thao tác chạm bí mật bên thứ ba: phiên web phải đã xác nhận lại (step-up);
-    Bearer quản trị được miễn (đã gửi khoá bí mật cao nhất)."""
+    Bearer quản trị được miễn (đã gửi khoá bí mật cao nhất).
+
+    NV197c: nhận thêm ``module_id`` (module đã cài — nhóm suy từ manifest của
+    nó) và ``bac_goi`` (bậc gói do người dùng khai, không đoán). Không truyền
+    → giữ nguyên giá trị cũ; ``module_id: ""`` → xoá gắn kết."""
     kiem_tra_step_up(request)
     than = await _than_json(request)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+
+    def _module_va_nhom(muc: dict) -> tuple:
+        """``(module_id, nhom)`` từ một mục body.
+
+        Không có key → ``(None, None)`` (giữ nguyên cũ); ``""`` → ``("", "")``
+        (xoá gắn kết); module chưa cài → 404; nhom suy từ
+        ``manifest.nhom.id`` của module đó.
+        """
+        mid = muc.get("module_id")
+        if mid is None:
+            return None, None
+        if not isinstance(mid, str):
+            raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
+        mid = mid.strip()
+        if not mid:
+            return "", ""
+        _kiem_module_da_cai_tai_khoan(request, mid)
+        return mid, _nhom_cua_module(request, mid)
+
     try:
         ds = than.get("tai_khoan")
         if isinstance(ds, list):
@@ -3539,11 +3582,14 @@ async def luu_tai_khoan_da_luu(request: Request):
                 try:
                     if not isinstance(muc, dict):
                         raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
+                    mid, nhom = _module_va_nhom(muc)
                     bk = kho_tai_khoan_mod.luu_tai_khoan(
                         muc.get("email"), muc.get("mat_khau"),
                         muc.get("totp_secret"), muc.get("nhan", ""),
                         trang_thai=muc.get("trang_thai"),
-                        id=muc.get("id") or None)
+                        id=muc.get("id") or None,
+                        module_id=mid, nhom=nhom,
+                        bac_goi=muc.get("bac_goi"))
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -3558,13 +3604,16 @@ async def luu_tai_khoan_da_luu(request: Request):
         email_val = _chuoi_tuy_chon(than, "email")
         if not tai_id and not email_val:
             raise LoiOpenAI(400, "Thiếu trường «email».", code="invalid_value")
+        mid, nhom = _module_va_nhom(than)
         bk = kho_tai_khoan_mod.luu_tai_khoan(
             email_val,
             _chuoi_bat_buoc(than, "mat_khau"),
             _chuoi_tuy_chon(than, "totp_secret"),
             _chuoi_tuy_chon(than, "nhan") or "",
             trang_thai=_chuoi_tuy_chon(than, "trang_thai"),
-            id=tai_id or None)
+            id=tai_id or None,
+            module_id=mid, nhom=nhom,
+            bac_goi=_chuoi_tuy_chon(than, "bac_goi"))
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
             f"Lưu tài khoản đã lưu ({bk['email_che']})",
@@ -3664,6 +3713,14 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     finally:
         dong.xoa_bi_mat()
     thanh_cong = bool(getattr(kq, "thanh_cong", False))
+    if thanh_cong:
+        # NV197c: học module sở hữu từ lần đăng nhập THÀNH CÔNG — nhóm suy từ
+        # manifest của module đó. Ghi sổ phụ: lỗi không làm hỏng kết quả đăng nhập.
+        try:
+            kho_tai_khoan_mod.dat_module(
+                id, module_id, _nhom_cua_module(request, module_id))
+        except Exception:
+            log.warning("tai-khoan: không ghi được module sở hữu cho %s", id)
     return {
         "thanh_cong": thanh_cong,
         "can_nguoi": bool(getattr(kq, "can_nguoi", False)),

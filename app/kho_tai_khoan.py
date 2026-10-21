@@ -51,6 +51,12 @@ DOI_DAI_EMAIL = 254
 DOI_DAI_MAT_KHAU = 256
 DOI_DAI_TOTP = 256
 DOI_DAI_NHAN = 120
+DOI_DAI_MODULE_ID = 64
+DOI_DAI_NHOM = 64
+DOI_DAI_BAC_GOI = 64
+
+#: Giá trị hiển thị khi chưa biết bậc gói (NV197c) — KHÔNG đoán từ dữ liệu khác.
+BAC_GOI_KHONG_BIET = "khong_biet"
 
 _MAU_KY_TU_CAM = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TIEN_TO_ID = "tk-"
@@ -162,6 +168,57 @@ def kiem_trang_thai(trang_thai) -> str:
     return t
 
 
+def kiem_module_id(module_id) -> str:
+    """Kiểm id module sở hữu tài khoản (NV197c): "" = chưa gắn module nào.
+
+    None → "". Không liệt kê đóng — module nào đã cài cũng nhận (tầng route
+    kiểm module đã cài trước khi truyền vào).
+    """
+    if module_id is None:
+        return ""
+    if isinstance(module_id, bool) or not isinstance(module_id, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(module_id, "module_id")
+    m = module_id.strip()
+    if len(m) > DOI_DAI_MODULE_ID:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return m
+
+
+def kiem_nhom(nhom) -> str:
+    """Kiểm nhóm tài khoản (NV197c): "" = chưa có nhóm.
+
+    None → "". Không liệt kê đóng theo từ khoá — nhóm suy từ
+    ``manifest.nhom.id`` của module sở hữu ở tầng route, kho chỉ lưu.
+    """
+    if nhom is None:
+        return ""
+    if isinstance(nhom, bool) or not isinstance(nhom, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(nhom, "nhom")
+    n = nhom.strip()
+    if len(n) > DOI_DAI_NHOM:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return n
+
+
+def kiem_bac_goi(bac_goi) -> str:
+    """Kiểm bậc gói (NV197c): "" = chưa biết (hiển thị ``khong_biet``).
+
+    None → "". Chỉ nhận giá trị đã biết (người dùng nhập tay hoặc nguồn tin
+    cậy cung cấp) — KHÔNG đoán từ email/token/tên miền.
+    """
+    if bac_goi is None:
+        return ""
+    if isinstance(bac_goi, bool) or not isinstance(bac_goi, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(bac_goi, "bac_goi")
+    b = bac_goi.strip()
+    if len(b) > DOI_DAI_BAC_GOI:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return b
+
+
 def ma_tai_khoan(email_chuan: str) -> str:
     """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256)."""
     return _TIEN_TO_ID + hashlib.sha256(email_chuan.encode("utf-8")).hexdigest()[:16]
@@ -215,6 +272,10 @@ def _doc() -> dict:
             or id_ != ma_tai_khoan(ban_ghi["email"])
         ):
             raise LoiKhoTaiKhoan("kho_hong")
+        # Trường NV197c (tuỳ chọn, bản ghi cũ không có): có thì phải là chuỗi.
+        for truong in ("module_id", "nhom", "bac_goi"):
+            if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
+                raise LoiKhoTaiKhoan("kho_hong")
     return du_lieu
 
 
@@ -227,16 +288,24 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
     """Dạng công khai: email CHE, cờ có/không bí mật — KHÔNG bí mật thô.
 
     Nhãn được escape HTML ở biên ra (chống XSS khi giao diện chèn vào DOM).
+    NV197c: thêm ``module_id``/``nhom``/``bac_goi`` (nhóm suy từ module sở
+    hữu, bậc gói chỉ khi đã biết — chưa biết hiển thị ``khong_biet``).
     """
     if ban_ghi.get("loai") == "nhap":
         # Bản ghi token nhập (NV197e): không bao giờ lộ bi_mat hay dinh_danh thô
         # (dinh_danh thường chính là email ở nguồn ngoài).
+        # NV197c: bản ghi nhập nhóm theo NGUỒN NHẬP (danh sách đóng
+        # NGUON_NHAP_CHO_PHEP), không ghi đè bằng module.
         email = ban_ghi.get("email", "")
         id_ = ban_ghi.get("id", "")
+        nguon = ban_ghi.get("nguon", "")
         return {
             "id": id_,
             "loai": "nhap",
-            "nguon": ban_ghi.get("nguon", ""),
+            "nguon": nguon,
+            "nhom": nguon,
+            "bac_goi": ban_ghi.get("bac_goi") or BAC_GOI_KHONG_BIET,
+            "module_id": "",
             "email_che": che_email(email) if email else None,
             "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
             "co_bi_mat": bool(ban_ghi.get("bi_mat")),
@@ -251,6 +320,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         "id": id_,
         "email_che": che_email(email),
         "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
+        "module_id": ban_ghi.get("module_id", ""),
+        "nhom": ban_ghi.get("nhom", ""),
+        "bac_goi": ban_ghi.get("bac_goi") or BAC_GOI_KHONG_BIET,
         "co_mat_khau": bool(ban_ghi.get("mat_khau")),
         "co_totp": bool(ban_ghi.get("totp_secret")),
         "trang_thai": ban_ghi.get("trang_thai", ""),
@@ -271,11 +343,15 @@ def _tom_tat_dung(id_: str) -> dict:
 
 
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
-                  trang_thai=None, id=None) -> dict:
+                  trang_thai=None, id=None, module_id=None, nhom=None,
+                  bac_goi=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
     → đặt mới (kiểm qua ``kiem_trang_thai``, giá trị khác → invalid_value).
+    `module_id`/`nhom`/`bac_goi` (NV197c): None → giữ nguyên cũ; "" hoặc chuỗi
+    hợp lệ → đặt mới. `nhom` do tầng route suy từ manifest module trước khi
+    truyền vào — kho không tự suy.
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
     mk = kiem_mat_khau(mat_khau)
@@ -315,6 +391,17 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         if trang_thai is not None:
             tt_moi = kiem_trang_thai(trang_thai)
 
+        # NV197c: None → giữ nguyên cũ; "" / chuỗi hợp lệ → đặt mới.
+        module_moi = cu.get("module_id", "") if cu else ""
+        if module_id is not None:
+            module_moi = kiem_module_id(module_id)
+        nhom_moi = cu.get("nhom", "") if cu else ""
+        if nhom is not None:
+            nhom_moi = kiem_nhom(nhom)
+        bac_goi_moi = cu.get("bac_goi", "") if cu else ""
+        if bac_goi is not None:
+            bac_goi_moi = kiem_bac_goi(bac_goi)
+
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
@@ -322,6 +409,9 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "mat_khau": mk,
             "totp_secret": totp_cuoi,
             "trang_thai": tt_moi,
+            "module_id": module_moi,
+            "nhom": nhom_moi,
+            "bac_goi": bac_goi_moi,
             "cap_nhat": int(time.time()),
         }
         du_lieu[id_] = ban_ghi
@@ -521,6 +611,37 @@ def da_tam_dung(id_) -> bool:
     """Tài khoản có đang tạm dừng không (id lạ → False)."""
     ban_ghi = tim_theo_id(id_)
     return bool(ban_ghi) and ban_ghi.get("trang_thai") == TRANG_THAI_TAM_DUNG
+
+
+def dat_module(id_, module_id, nhom) -> dict | None:
+    """Ghi nhận module sở hữu tài khoản (NV197c) — gọi sau ĐĂNG NHẬP THÀNH CÔNG.
+
+    `module_id`/`nhom` đã được kiểm ở tầng route (module đã cài, `nhom` suy từ
+    ``manifest.nhom.id``). Ghi nguyên tử dưới khoá kho; bản ghi nhập (loại
+    "nhap") giữ nhóm theo nguồn nhập, không ghi đè. Trả bản công khai;
+    id lạ → None.
+    """
+    mid = kiem_module_id(module_id)
+    nh = kiem_nhom(nhom)
+    if isinstance(id_, bool) or not isinstance(id_, str):
+        return None
+    with kho.giu_khoa_kho():
+        du_lieu = _doc()
+        muc_tieu = None
+        for k in du_lieu:
+            if hmac.compare_digest(k, id_):
+                muc_tieu = k
+                break
+        if muc_tieu is None:
+            return None
+        ban_ghi = du_lieu[muc_tieu]
+        if ban_ghi.get("loai") == "nhap":
+            return ban_cong_khai(ban_ghi)
+        ban_ghi["module_id"] = mid
+        ban_ghi["nhom"] = nh
+        ban_ghi["cap_nhat"] = int(time.time())
+        _ghi(du_lieu)
+        return ban_cong_khai(ban_ghi)
 
 
 def lay_bi_mat_dang_nhap(id_: str) -> tuple[BiMatTam, BiMatTotp | None] | None:

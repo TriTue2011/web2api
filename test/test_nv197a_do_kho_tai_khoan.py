@@ -129,9 +129,10 @@ def test_nhan_tai_khoan(moi_truong):
     assert thay["nhan"] == "nhom-do"
 
 
-@pytest.mark.xfail(reason="khoảng trống đã đo (NV197a ô #4: nhóm tài khoản/bậc gói); chưa giao việc sửa", strict=False)
 def test_nhom_tai_khoan(moi_truong):
-    """c2a account_group (free/codex/openai/…) → web2api KHÔNG CÓ: ĐỎ."""
+    """c2a account_group (free/codex/openai/…) → web2api NV197c: CÓ.
+
+    Trường ``nhom`` luôn có trong bản công khai (rỗng = chưa gắn module)."""
     client, _so = moi_truong
     _them_tai_khoan(client, "nhom@example.com")
     r = client.get("/api/tai-khoan/da-luu", headers=_QT)
