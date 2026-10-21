@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# NV206: BIEN_THE chỉ là build-arg — ánh xạ sang CAPTCHA_SOLVER_BROWSER lúc chạy
+# cho khớp với trình duyệt đã dựng trong ảnh (mặc định compose BIEN_THE=firefox).
+# Người vận hành vẫn có thể ghi đè bằng biến môi trường.
+if [ -z "$CAPTCHA_SOLVER_BROWSER" ]; then
+    case "${BIEN_THE_ANH:-firefox}" in
+        firefox) export CAPTCHA_SOLVER_BROWSER=firefox ;;
+        *) export CAPTCHA_SOLVER_BROWSER=chromium ;;
+    esac
+fi
+
 # Đảm bảo thư mục dữ liệu /data, thư mục khoá /khoa và thư mục tạm tồn tại
 mkdir -p /data /khoa /tmp /run/supervisor
 mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix

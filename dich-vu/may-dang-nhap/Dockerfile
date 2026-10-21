@@ -4,6 +4,10 @@
 FROM python:3.13-slim@sha256:9662417aace5ae7b8e2609cce472b72a8958e134ba372808abe9cc1a0c0125e6
 
 ARG BIEN_THE=firefox
+# NV206: ghi lại biến thể đã dựng vào ảnh để entrypoint tự đặt CAPTCHA_SOLVER_BROWSER
+# mặc định cho khớp (trước đây BIEN_THE chỉ là build-arg, settings.browser mặc định
+# "chromium" → ảnh firefox chạy với cấu hình chromium mà không có nhị phân).
+ENV BIEN_THE_ANH=${BIEN_THE}
 # Gói giải captcha âm thanh tắt ở BA lớp: build-arg CAI_GIAI_CAPTCHA, nhóm giai_captcha, và cổng trong luồng đăng nhập
 ARG CAI_GIAI_CAPTCHA=0
 ARG CAI_PHONG_CJK=1
@@ -40,19 +44,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài đặt các gói Python đã ghim bằng hash sha256
-COPY requirements-nen.txt requirements-chromium.txt requirements-captcha.txt /tmp/
+# NV206: biến thể firefox cài thêm requirements-firefox.txt (playwright CHÍNH GỐC —
+# patchright chỉ vá cho Chromium/CDP, driver của nó hỏng mọi thao tác trang trên
+# Firefox; đã đo playwright chính gốc + Firefox: goto/evaluate/click/cookie đều đạt).
+COPY requirements-nen.txt requirements-firefox.txt requirements-chromium.txt requirements-captcha.txt /tmp/
 RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements-nen.txt \
+    && if [ "$BIEN_THE" = "firefox" ] || [ "$BIEN_THE" = "ca-hai" ]; then pip install --no-cache-dir --require-hashes -r /tmp/requirements-firefox.txt; fi \
     && if [ "$BIEN_THE" != "firefox" ]; then pip install --no-cache-dir --require-hashes -r /tmp/requirements-chromium.txt; fi \
     && if [ "$CAI_GIAI_CAPTCHA" = "1" ]; then pip install --no-cache-dir --require-hashes -r /tmp/requirements-captcha.txt; fi \
     && rm -rf /tmp/requirements-*.txt
 
 # Trình duyệt tự động hoá:
 # - CloakBrowser: nhị phân đóng, tải từ máy chủ nhà phát hành lúc dựng, có xác minh chữ ký Ed25519 do gói tự thực hiện (tắt cập nhật lúc chạy bằng CLOAKBROWSER_AUTO_UPDATE=false).
-# - Patchright: cài đặt nhị phân trình duyệt Firefox cùng thư viện hệ thống (--with-deps) cho biến thể tương ứng lúc dựng.
+# - Firefox: playwright CHÍNH GỐC cài nhị phân Firefox chính thức của Mozilla (--with-deps).
+#   KHÔNG dùng `patchright install firefox`: patchright chỉ vá cho Chromium (CDP),
+#   các bản vá làm hỏng driver Firefox (đo NV206: set_content/evaluate/click đều lỗi).
 RUN mkdir -p /opt/ms-playwright /opt/cloakbrowser \
     && if [ "$BIEN_THE" != "firefox" ]; then python -m cloakbrowser install; fi \
     && if [ "$BIEN_THE" != "chromium" ]; then \
-        python -m patchright install --with-deps firefox \
+        python -m playwright install --with-deps firefox \
         && rm -rf /var/lib/apt/lists/*; \
     fi \
     && chown -R 1000:1000 /opt/cloakbrowser \

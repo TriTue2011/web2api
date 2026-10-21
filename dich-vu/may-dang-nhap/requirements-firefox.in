@@ -1,0 +1,5 @@
+# Biến thể Firefox: playwright CHÍNH GỐC (Microsoft) lái Firefox — KHÔNG dùng patchright.
+# Đo NV206: patchright 1.63.0 chỉ vá cho Chromium (CDP); driver của nó làm hỏng
+# mọi thao tác trang trên Firefox (set_content/evaluate/click đều lỗi), trong khi
+# playwright chính gốc 1.63.0 + Firefox chạy goto/evaluate/click/cookie đều đạt.
+playwright==1.63.0

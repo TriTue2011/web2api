@@ -29,6 +29,9 @@ services:
       ACCOUNTS_DB: "/data/accounts.db"
       CAPTCHA_SOLVER_TINH_NANG_BAT: "dang_nhap"
       VAULT_REQUIRE_ENCRYPTION: "1"
+      # NV206: khớp với BIEN_THE: firefox ở trên — ảnh mặc định chỉ có Firefox
+      # (playwright chính gốc). Đổi BIEN_THE khi dựng thì đổi biến này theo.
+      CAPTCHA_SOLVER_BROWSER: "firefox"
     volumes:
       - may-dang-nhap-data:/data
       - may-dang-nhap-khoa:/khoa

@@ -86,9 +86,10 @@ def kiem_dockerfile(df: str) -> list[str]:
     if "firefox-esr" in df:
         loi.append("Dockerfile không được cài firefox-esr (thay bằng patchright install --with-deps firefox)")
 
-    # 8. Có --with-deps firefox
+    # 8. Có --with-deps firefox (NV206: bằng playwright CHÍNH GỐC — patchright chỉ
+    # vá cho Chromium/CDP, driver của nó hỏng mọi thao tác trang trên Firefox)
     if "--with-deps firefox" not in df:
-        loi.append("Dockerfile phải dùng 'patchright install --with-deps firefox'")
+        loi.append("Dockerfile phải dùng 'playwright install --with-deps firefox'")
 
     # 9. Phân nhánh BIEN_THE: tồn tại điều kiện [ "$BIEN_THE" ... ] cho firefox và chromium
     co_nhanh_firefox = bool(re.search(r'\[\s*"\$BIEN_THE"\s*!=\s*"chromium"\s*\]', df) or re.search(r'\[\s*"\$BIEN_THE"\s*=\s*"firefox"', df))

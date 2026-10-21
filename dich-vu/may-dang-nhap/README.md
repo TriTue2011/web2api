@@ -54,10 +54,18 @@ Tệp `docker-compose.yml` đã được cấu hình chuẩn:
 ### 2.3. Khởi chạy bằng lệnh Docker trực tiếp
 
 ```bash
-# 1. Dựng ảnh. CẢNH BÁO (đo 21/10/2026): biến thể firefox KHỞI ĐỘNG được nhưng KHÔNG thao tác được trên trang (patchright chỉ vá cho Chromium:
-#    evaluate/click/locator lỗi «Cannot read properties of undefined (reading '_client')») nên đăng nhập tự động sẽ hỏng. Muốn đăng nhập chạy thật hãy dựng
-#    biến thể chromium (tải CloakBrowser — nhị phân đóng, giấy phép CHƯA kiểm; xem Dockerfile). NV206 đang sửa tận gốc.
-docker build -t web2api-may-dang-nhap:latest --build-arg BIEN_THE=chromium .
+# 1. Dựng ảnh. Mặc định BIEN_THE=firefox: ảnh chỉ chứa Firefox + playwright CHÍNH GỐC.
+#    NV206 đã sửa tận gốc lỗi "firefox không thao tác được trên trang": patchright chỉ vá
+#    cho Chromium (CDP) nên driver của nó hỏng mọi thao tác trang trên Firefox (đo
+#    21/10/2026: set_content/evaluate/click đều lỗi); playwright chính gốc + Firefox đã đo:
+#    goto/evaluate/click/đọc cookie đều đạt. Biến thể chromium tải thêm CloakBrowser
+#    (nhị phân đóng, giấy phép CHƯA kiểm; xem Dockerfile).
+#    entrypoint tự đặt CAPTCHA_SOLVER_BROWSER theo BIEN_THE đã dựng (firefox/chromium);
+#    có thể ghi đè bằng biến môi trường. Cấu hình trình duyệt không dùng được → dịch vụ
+#    TỪ CHỐI khởi động với lỗi tiếng Việt rõ ràng (fail-fast NV206).
+docker build -t web2api-may-dang-nhap:latest .
+# Muốn biến thể chromium (apt chromium + cloakbrowser):
+# docker build -t web2api-may-dang-nhap:latest --build-arg BIEN_THE=chromium .
 
 # 2. Chạy container với quyền hạn tối thiểu và mạng riêng
 docker run -d \
@@ -78,6 +86,28 @@ docker run -d \
 
 > [!WARNING]
 > **Lưu ý sống còn về Volume `/khoa`**: Mất volume `/khoa` = mất khả năng đọc mật khẩu đã lưu; bắt buộc phải sao lưu `/khoa` cẩn thận (giữ riêng quyền 0700).
+
+### 2.4. Kiểm tra trình duyệt chạy thật trong container (NV206)
+
+Test `test_c2a_trinh_duyet_that.py` mở hồ sơ bền qua `src.browser_pool.pool.page(...)`,
+phục vụ một trang tĩnh từ máy chủ cục bộ 127.0.0.1 rồi `goto` + `evaluate` + `click` +
+đọc cookie — trình duyệt THẬT, không giả; gồm test «cấu hình không dùng được → dịch vụ
+từ chối khởi động». Test tự skip có lý do rõ khi môi trường không có trình duyệt.
+Chạy trong container đang chạy:
+
+```bash
+docker exec -i web2api-may-dang-nhap python - < test_c2a_trinh_duyet_that.py
+```
+
+Hoặc chạy qua pytest trên máy đã cài trình duyệt:
+
+```bash
+python -m pytest test_c2a_trinh_duyet_that.py -v
+```
+
+Mẫu kết quả thật (NV206, playwright chính gốc 1.63.0 + Firefox): test trình duyệt thật
+`1 passed in 14.44s` — goto 1.2s, evaluate 0.04s («Xin chao»), click 0.47s («DA-NHAN»),
+đọc cookie `phien_do` đạt.
 
 ---
 
@@ -222,6 +252,11 @@ Tất cả các điểm điều chỉnh tối thiểu nhằm thích ứng với 
    - Truyền dependency kiểm tra tính năng `can_tinh_nang` vào `create_router` để bảo vệ các tuyến đường `/v1/workspaces`.
 7. **`src/gemini_web_login.py`**:
    - Loại bỏ ký tự Byte Order Mark (BOM `\ufeff`) ở đầu tệp để tương thích hoàn toàn với Python 3.13.
+8. **`src/browser_pool.py` + `Dockerfile` + `entrypoint.sh` + `docker-compose.yml`** (NV206):
+   - Firefox dùng playwright CHÍNH GỐC (`_playwright_goc`) thay vì patchright — patchright chỉ vá cho Chromium (CDP), driver của nó hỏng mọi thao tác trang trên Firefox (đo thật 21/10/2026).
+   - Thêm `_chon_runtime()` / `trinh_duyet_san_sang()` / `kiem_tra_trinh_duyet()`: fail-fast trong `start()` — cấu hình trình duyệt không dùng được (thiếu gói, thiếu nhị phân, giá trị sai) → `RuntimeError` tiếng Việt, dịch vụ từ chối khởi động.
+   - Sửa lỗi gốc thứ hai: `BIEN_THE` (build-arg) được ánh xạ sang `CAPTCHA_SOLVER_BROWSER` lúc chạy (`ENV BIEN_THE_ANH` trong ảnh + `entrypoint.sh` tự đặt mặc định + `docker-compose.yml` ghim `CAPTCHA_SOLVER_BROWSER: "firefox"` khớp `BIEN_THE: firefox`) — trước đây ảnh firefox chạy với cấu hình chromium mà không có nhị phân.
+   - `Dockerfile`: biến thể firefox cài `requirements-firefox.txt` (playwright chính gốc, ghim hash) + `python -m playwright install --with-deps firefox` thay cho `patchright install firefox`.
 
 ---
 
@@ -229,7 +264,7 @@ Tất cả các điểm điều chỉnh tối thiểu nhằm thích ứng với 
 
 Do các ràng buộc cách ly của môi trường sandbox phát triển:
 1. **Chưa dựng ảnh Docker thật**: Môi trường hộp cát không có Docker daemon (`docker build` và `docker compose up` chưa thực hiện trực tiếp).
-2. **Chưa chạy trình duyệt thật**: Các gói trình duyệt nhân Chromium, Firefox và màn hình ảo Xvfb/x11vnc/noVNC chưa chạy thật (được mock bằng `_gia_goi.py` phục vụ unit test).
+2. **Trình duyệt thật**: NV206 đã chạy Firefox THẬT bằng playwright chính gốc 1.63.0 trong sandbox qua `test_c2a_trinh_duyet_that.py` (goto/evaluate/click/đọc cookie đều đạt, 14.44s); **CHƯA kiểm trong container** (sandbox không có Docker daemon) — chạy lệnh ở mục 2.4 sau khi dựng ảnh để kiểm.
 3. **Chưa thực hiện đăng nhập thật**: Chưa thực hiện các luồng đăng nhập thật với các nhà cung cấp bên ngoài (Google, OpenAI, Claude, Gemini, Grok) do môi trường không có kết nối Internet ra ngoài.
 
 ---
@@ -239,7 +274,7 @@ Do các ràng buộc cách ly của môi trường sandbox phát triển:
 | Gói | Giấy phép | Nhị phân | Mạng lúc cài / lúc chạy |
 |---|---|---|---|
 | patchright 1.63.0 | Apache-2.0 (bản vá của bên thứ ba trên Playwright của Microsoft) | Có sẵn trình điều khiển Node (~143 MB giải nén); JS đã đóng gói, KHÔNG đọc hết được | Chỉ `patchright install` tải trình duyệt từ `cdn.playwright.dev`/`playwright.download.prss.microsoft.com`; grep không thấy máy chủ thu thập số liệu |
-| playwright 1.63.0 | Apache-2.0 | như trên (cloakbrowser 0.6.0 gọi gói này thật) | như trên |
+| playwright 1.63.0 | Apache-2.0 | như trên | như trên (NV206: dùng cho biến thể Firefox — patchright hỏng Firefox, xem mục 2.3) |
 | cloakbrowser 0.6.0 | MIT (phần bao Python) | Chromium vá tải về từ `cloakbrowser.dev` hoặc GitHub Releases (nhị phân ĐÓNG, giấy phép riêng của nhị phân CHƯA kiểm); gói tự xác minh chữ ký Ed25519 | Tự cập nhật nền + hỏi PyPI mỗi tiến trình (TẮT bằng `CLOAKBROWSER_AUTO_UPDATE=false`, đã đặt trong Dockerfile); máy chủ cấp phép chỉ gọi khi có khoá Pro; tra IP công cộng chỉ khi `geoip=True` (c2a không bật) |
 | pyotp 2.10.0 | MIT | không | không gọi mạng |
 | pydantic-settings 2.15.0 | MIT | không | không gọi mạng (đọc `.env` tại thư mục chạy nếu có) |

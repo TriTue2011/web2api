@@ -23,8 +23,12 @@ Robustness:
 from __future__ import annotations
 
 import asyncio
+import importlib  # W2A: NV206 — importlib/os/shutil/sys phục vụ chọn runtime lái trình duyệt + tìm nhị phân
 import logging
+import os
 import re
+import shutil
+import sys
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -202,6 +206,132 @@ Object.defineProperty(navigator, 'plugins', {
 def _select_stealth_script() -> str:
     """Return the stealth init script appropriate for the configured browser."""
     return _STEALTH_SCRIPT_FIREFOX if settings.browser.lower() == "firefox" else _STEALTH_SCRIPT_CHROMIUM
+
+
+# ── NV206: chọn runtime lái trình duyệt theo SỐ ĐO, không theo thói quen ──
+# W2A: NV206 — Firefox dùng playwright chính gốc (patchright hỏng Firefox); fail-fast cấu hình lúc khởi động
+# Đo thật (21/10/2026 trên máy chủ; đo lại trong sandbox bằng playwright chính gốc
+# 1.63.0 + Firefox): patchright chỉ vá cho Chromium (CDP) — driver của nó làm hỏng
+# mọi thao tác trang trên Firefox (Page.set_content: _sessionForFrame is not a
+# function; Page.evaluate: _client undefined; Page.click timeout 30s). playwright
+# chính gốc + Firefox: launch/goto/evaluate/click/đọc cookie đều đạt.
+# → Firefox LUÔN dùng playwright chính gốc ("playwright-goc"), KHÔNG patchright.
+
+def _goi_that(ten_goi: str) -> bool:
+    """True khi gói Python được CÀI THẬT (không phải MagicMock do _gia_goi dựng
+    khi chạy test trên máy thiếu gói)."""
+    try:
+        importlib.import_module(ten_goi)
+    except ImportError:
+        return False
+    mod = sys.modules.get(ten_goi)
+    ten_file = getattr(mod, "__file__", "") or ""
+    return not (type(mod).__name__ == "MagicMock" or ten_file.startswith("<mock_"))
+
+
+def _tim_firefox() -> str | None:
+    """Đường dẫn nhị phân Firefox nếu có (PLAYWRIGHT_BROWSERS_PATH, cache
+    playwright, hoặc firefox hệ thống)."""
+    goc = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip() or os.path.expanduser(
+        "~/.cache/ms-playwright"
+    )
+    try:
+        for muc in sorted(Path(goc).glob("firefox-*")):
+            ung_vien = muc / "firefox" / "firefox"
+            if ung_vien.is_file() and os.access(ung_vien, os.X_OK):
+                return str(ung_vien)
+    except Exception:
+        pass
+    for _bin in ("firefox", "firefox-esr"):
+        p = shutil.which(_bin)
+        if p:
+            return p
+    return None
+
+
+def _tim_chromium() -> str | None:
+    # W2A: NV206 — kiểm nhị phân Chromium thật (ảnh firefox không có chromium).
+    """Đường dẫn nhị phân Chromium/Chrome nếu có (trình duyệt hệ thống hoặc bản
+    patchright/cloakbrowser đã tải trong PLAYWRIGHT_BROWSERS_PATH)."""
+    for _bin in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+        p = shutil.which(_bin)
+        if p:
+            return p
+    for _duong in ("/usr/bin/chromium", "/usr/bin/chromium-browser"):
+        if os.path.exists(_duong):
+            return _duong
+    goc = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip() or os.path.expanduser(
+        "~/.cache/ms-playwright"
+    )
+    try:
+        for muc in sorted(Path(goc).glob("chromium-*")):
+            ung_vien = muc / "chrome-linux" / "chrome"
+            if ung_vien.is_file() and os.access(ung_vien, os.X_OK):
+                return str(ung_vien)
+    except Exception:
+        pass
+    return None
+
+
+def _chon_runtime(browser: str) -> str:
+    """Tên runtime lái trình duyệt cho cấu hình `browser` ("chromium"|"firefox").
+    - "firefox" → "playwright-goc" (playwright chính gốc; patchright hỏng Firefox — đo NV206).
+    - "chromium" → "cloakbrowser" nếu có gói cloakbrowser, ngược lại "patchright"."""
+    b = (browser or "").strip().lower()
+    if b == "firefox":
+        return "playwright-goc"
+    if _goi_that("cloakbrowser"):
+        return "cloakbrowser"
+    return "patchright"
+
+
+def trinh_duyet_san_sang(browser: str | None = None) -> tuple[bool, str]:
+    """(sẵn_sàng, lý_do). Kiểm tra cấu hình trình duyệt có thật sự lái được
+    trang không — dùng cho fail-fast trước khi dịch vụ khởi động."""
+    b = (browser if browser is not None else settings.browser).strip().lower()
+    if b not in ("chromium", "firefox"):
+        return False, (
+            f"giá trị {b!r} không hợp lệ — chỉ chấp nhận 'chromium' hoặc 'firefox' "
+            "(biến môi trường CAPTCHA_SOLVER_BROWSER)"
+        )
+    if b == "firefox":
+        if not _goi_that("playwright"):
+            return False, (
+                "thiếu gói 'playwright' chính gốc (Microsoft) — patchright không lái "
+                "được Firefox (đo NV206: mọi thao tác trang đều lỗi); "
+                "dựng lại ảnh với BIEN_THE=firefox để cài playwright"
+            )
+        if _tim_firefox() is None:
+            return False, (
+                "không tìm thấy nhị phân Firefox "
+                "(PLAYWRIGHT_BROWSERS_PATH hoặc ~/.cache/ms-playwright)"
+            )
+        return True, "playwright-goc + Firefox"
+    if _goi_that("cloakbrowser"):
+        return True, "cloakbrowser"
+    if _goi_that("patchright"):
+        # patchright có cài nhưng chưa chắc có nhị phân Chromium (biến thể ảnh
+        # firefox không tải chromium) — kiểm nhị phân thật, không đoán.
+        if _tim_chromium() is None:
+            return False, (
+                "có gói patchright nhưng không tìm thấy nhị phân Chromium/Chrome "
+                "(ảnh dựng với BIEN_THE=firefox chỉ có Firefox — "
+                "đặt CAPTCHA_SOLVER_BROWSER=firefox hoặc dựng lại với BIEN_THE=chromium)"
+            )
+        return True, "patchright-chromium"
+    return False, "thiếu cả cloakbrowser lẫn patchright"
+
+
+def kiem_tra_trinh_duyet(browser: str | None = None) -> None:
+    """Fail-fast lúc khởi động: cấu hình trình duyệt phải là tổ hợp đã biết
+    chạy được. Ném RuntimeError tiếng Việt khi không."""
+    b = browser if browser is not None else settings.browser
+    san_sang, ly_do = trinh_duyet_san_sang(b)
+    if not san_sang:
+        raise RuntimeError(
+            "Dịch vụ may-dang-nhap từ chối khởi động: cấu hình trình duyệt "
+            f"CAPTCHA_SOLVER_BROWSER={str(b).strip()!r} không dùng được — {ly_do}."
+        )
 # Chrome single-instance lock files that linger after a crash and block
 # the next launch with "Profile is already in use".
 # Tên profile hợp lệ: chỉ chữ/số/gạch. Không dấu chấm, không gạch chéo → không
@@ -246,6 +376,10 @@ class BrowserPool:
 
     def __init__(self) -> None:
         self._playwright = None
+        # W2A: NV206 — _playwright_goc: runtime playwright CHÍNH GỐC dùng riêng cho
+        # Firefox (patchright chỉ vá cho Chromium/CDP; driver của nó hỏng mọi thao
+        # tác trang trên Firefox — đo thật).
+        self._playwright_goc = None
         self._contexts: dict[str, _PoolEntry] = {}
         self._manual_profiles: set[str] = set()
         self._locks: dict[str, asyncio.Lock] = {}
@@ -289,6 +423,19 @@ class BrowserPool:
 
     async def start(self) -> None:
         browser = settings.browser.lower()
+        # W2A: NV206 — điều kiện chung: dịch vụ KHÔNG được khởi động bình thường
+        # với một cấu hình trình duyệt mà nó biết là không thao tác được.
+        kiem_tra_trinh_duyet(browser)
+        if browser == "firefox":
+            # W2A: NV206 — Firefox dùng playwright CHÍNH GỐC (đo thật: goto/evaluate/
+            # click/đọc cookie đều đạt). patchright chỉ vá cho Chromium (CDP).
+            if self._playwright_goc is None:
+                from playwright.async_api import async_playwright
+                self._playwright_goc = await async_playwright().start()
+                if self._evict_task is None:
+                    self._evict_task = asyncio.create_task(self._eviction_loop())
+                logger.info("playwright (chinh goc) started (engine=firefox)")
+            return
         if _CLOAK_AVAILABLE and browser != "firefox":
             # CloakBrowser is Chromium-only — skip if Firefox is preferred
             if self._evict_task is None:
@@ -314,6 +461,10 @@ class BrowserPool:
         if self._playwright is not None:
             await self._playwright.stop()
             self._playwright = None
+        # W2A: NV206 — dừng cả runtime playwright gốc của Firefox.
+        if self._playwright_goc is not None:
+            await self._playwright_goc.stop()
+            self._playwright_goc = None
 
     async def _eviction_loop(self) -> None:
         while True:
@@ -549,10 +700,13 @@ class BrowserPool:
                     launch_kwargs.pop("proxy", None)
                 context = await _cloak_launch(**launch_kwargs)
         elif browser == "firefox":
-            # Firefox: no Google Safe Browsing → bypasses "unsafe browser" error
-            # Google trusts Firefox sign-in more than automated Chromium on VPS IPs.
-            assert self._playwright is not None
-            context = await self._playwright.firefox.launch_persistent_context(
+            # W2A: NV206 — Firefox dùng playwright CHÍNH GỐC; patchright chỉ vá cho
+            # Chromium (CDP); driver của nó làm hỏng mọi thao tác trang trên
+            # Firefox (đo thật 21/10/2026: set_content/evaluate/click đều lỗi).
+            # Đã đo playwright chính gốc + Firefox: launch/goto/evaluate/click/
+            # đọc cookie đều đạt.
+            assert self._playwright_goc is not None
+            context = await self._playwright_goc.firefox.launch_persistent_context(
                 user_data_dir=str(user_data_dir),
                 headless=headless,
                 viewport=_DEFAULT_VIEWPORT,
@@ -613,7 +767,7 @@ class BrowserPool:
         pages = context.pages
         page = pages[0] if pages else await context.new_page()
         if browser == "firefox":
-            mode = "patchright-firefox"
+            mode = "playwright-firefox (goc)"  # W2A: NV206 — nhãn đúng runtime thật
         elif _CLOAK_AVAILABLE:
             mode = "cloakbrowser"
         else:
