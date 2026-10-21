@@ -1,8 +1,8 @@
 """NV45 (A): kiểm toán «nuốt lỗi» (except trần / except Exception với thân chỉ
 pass/continue/return mặc định) trên app/ và modules/*/module.py.
 
-- test_danh_sach_nuot_loi_khong_tang (XANH): chốt danh sách 23 điểm đã kiểm
-  toán thủ công; thêm điểm mới mà chưa phân loại -> test đỏ, bắt buộc xem lại.
+- test_danh_sach_nuot_loi_khong_tang (XANH): chốt danh sách 73 điểm đã kiểm
+  toán thủ công (55 điểm cũ + 18 điểm mới trên main 604f754, duyệt NV188b); thêm điểm mới mà chưa phân loại -> test đỏ, bắt buộc xem lại.
 
 Phân loại (chi tiết trong báo cáo NV45):
 - AN TOÀN (17 điểm): dọn dẹp best-effort (novnc x2, muse2api.bo), fail-closed
@@ -132,6 +132,35 @@ DA_KIEM_TOAN = {
     # Đã duyệt NV173 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
     ("modules/openaicodex/module.py", "_than_loi_chuan"),  # chuẩn hoá thân lỗi thượng nguồn hỏng → thông điệp chung đã làm sạch «lỗi từ Codex»; không bao giờ chuyển tiếp nguyên văn thân lạ
     ("modules/openaicodex/module.py", "_doc_cac_su_kien"),  # dòng SSE hỏng (không phải JSON) → bỏ dòng đó; dòng độc hại không làm hỏng luồng stream
+    # Đã duyệt NV188b trên main 604f754 (đọc từng hàm, 21/10/2026): 18 điểm mới,
+    # toàn bộ AN TOÀN/đã xử lý, không mở quyền — không nới trần.
+    # AN TOÀN — dọn dẹp best-effort, không được làm hỏng luồng chính:
+    ("app/chuyen_tiep.py", "_ghi_so_lieu"),  # ghi sổ lượng dùng: lỗi sổ → bỏ qua, đường gọi module thật không được hỏng vì sổ
+    ("app/so_module.py", "kiem_tra_tu_xa"),  # finally đóng kết nối kiểm: lỗi đóng không làm hỏng kết quả kiểm
+    ("modules/anh-ai/module.py", "_chay"),  # gán adapter.tai_tu_url best-effort: adapter không nhận thì dùng đường tải riêng của nó
+    ("modules/anh-ai/module.py", "_tai_tu_url_da_kiem"),  # finally đóng response tải ảnh: lỗi đóng không làm hỏng ảnh đã tải
+    # AN TOÀN — bộ lọc log chặn bí mật (cùng mẫu zalo-bot/telegram-bot đã duyệt):
+    # không định dạng được dòng log → BỎ dòng đó (đóng khi lỗi, không để lọt bí mật).
+    ("modules/anh-ai/module.py", "filter"),
+    ("modules/email/module.py", "filter"),  # chặn mật khẩu hộp thư đang dùng
+    ("modules/nhin-nha/module.py", "filter"),  # chặn khoá dịch vụ đang dùng
+    # AN TOÀN — phân tích dữ liệu KHÔNG TIN (thư/hộp thư): hỏng → bỏ phần đó, fail-closed:
+    ("modules/email/module.py", "_attachment_text"),  # đính kèm không đọc được → "" (docstring ghi rõ không raise)
+    ("modules/email/module.py", "_extract_body"),  # phần thư hỏng → bỏ qua phần đó, thư khác vẫn đọc
+    ("modules/email/module.py", "_luc_iso"),  # Date hỏng → None
+    ("modules/email/module.py", "_uidvalidity"),  # không trích được UIDVALIDITY → 0 → sổ cũ bị bỏ (fail-closed)
+    # AN TOÀN — fail-closed, đóng khi lỗi:
+    ("modules/maytram/module.py", "_nguoi_goi_la_quan_tri"),  # cùng mẫu nhaptaikhoan đã duyệt: lỗi đọc ngữ cảnh → False (không phải quản trị)
+    ("modules/tuvanhanh/module.py", "_trinh_duyet_cho"),  # không lấy được trình duyệt thật → None → provider trả can_nguoi
+    ("modules/register/module.py", "_doc_chi_tiet"),  # gọi API hộp thư hỏng → None (bên gọi xử lý)
+    ("modules/register/module.py", "_host_cua"),  # urlparse defensive → "" khi URL lạ
+    ("modules/register/module.py", "kiem_tra"),  # kiểm tra sức khoẻ hỏng → False
+    ("modules/register/module.py", "phan_loai_trang"),  # phân tích HTML hỏng → trich rỗng → rơi về «khong_ro» → dừng can_nguoi
+    # ĐÃ XỬ LÝ — app/kho_tai_khoan._con_het_han_muc: lỗi đọc sổ hạn mức → 0
+    # (coi như không hết hạn mức). Hạn mức là QoS (bỏ qua tài khoản vừa cạn),
+    # không phải ranh bảo mật; docstring ghi rõ «Không bao giờ ném» — luồng
+    # tự đăng nhập lại không được chặn vì lỗi sổ.
+    ("app/kho_tai_khoan.py", "_con_het_han_muc"),
 }
 
 

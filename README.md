@@ -201,7 +201,6 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `van-phong` | Văn phòng: công cụ `office_*` qua container phụ OfficeCLI (mặc định tắt) + OCR bằng model thị giác qua điểm chat do quản trị khai + dựng Word/Excel bằng zipfile + `kiem_tai_lieu` chặn zip bomb/zip-slip/XXE | HTTP nội bộ tới dịch vụ van-phong-office + điểm chat do quản trị khai | Có sẵn (kiểm với nhị phân giả + máy chủ chat giả + kiểm tĩnh Dockerfile; chưa kiểm với OfficeCLI/model thật) |
 | `rclone` | Cầu nối lưu trữ đám mây qua rclone: liệt kê/đọc/tải về/tải lên/xoá/chuyển tệp trên 150+ backend (Google Drive, S3/R2, OneDrive, WebDAV…); hành động ghi/xoá mặc định TẮT | HTTP nội bộ tới dịch vụ dich-vu/rclone | Có sẵn (NV161; kiểm với nhị phân rclone giả; **chưa kiểm với dịch vụ đám mây thật**) |
 | `thuthach` | Nhận diện thử thách chống bot (reCAPTCHA v2/v3, Turnstile, chọn hình/quiz, CAPTCHA chữ, mã OTP, mã 2FA, BotGuard) bằng cấu trúc rồi báo «cần người» + hướng dẫn noVNC — KHÔNG giải (chuẩn C2 `thiet_bi`) | Không gọi mạng (thuần phân tích chuỗi trong tiến trình lõi) | Có sẵn (33 test; phần giải của captcha-solver không port — quy tắc kho: không giải CAPTCHA) |
-| `tro-ly-giao-vien` | Trợ lý giáo viên (đợt 1: ra đề + chấm thuần hàm không gọi mô hình, rubric, gợi ý bậc thang, kho đề 0600 theo danh tính) | Cục bộ (thuần Python, không mạng) | Có sẵn (chuẩn C2 thực thể thu_vien + kho_de; kho đề 0600 ghi nguyên tử, IDOR theo danh tính; bài học sinh là dữ liệu không tin, không log) |
 | `tro-ly-giao-vien` | Trợ lý giáo viên (đợt 1: ra đề + chấm thuần hàm không gọi mô hình, rubric, gợi ý bậc thang, kho đề 0600 theo danh tính; đợt 2: chấm tự luận bằng model của lõi, điểm là đề xuất cho giáo viên xác nhận) | Cục bộ (thuần Python; đợt 2 chỉ gọi loopback /v1 khi đã cấu hình model + khoá khách) | Có sẵn (chuẩn C2 thực thể thu_vien + kho_de + ket_qua_cham; kho 0600 ghi nguyên tử, IDOR theo danh tính; bài học sinh là dữ liệu không tin, không log, không lưu cùng kết quả) |
 | `khoa-cua` | Khoá cửa Tuya: trạng thái khoá + nhật ký mở/đóng + học tên người từ mã mở (thiết bị C1). Mở khoá LUÔN nguy_hiem theo cấu trúc, chỉ quản trị sau cửa sổ xác nhận lại, mọi lần mở ghi nhật ký bất biến, điều khiển mặc định TẮT | HTTPS (Tuya Open API) | Có sẵn (kiểm với khoá giả + MockTransport; chưa kiểm với khoá cửa thật) |
 | `chay-ma` | Chạy đoạn mã Python trong container docker dùng-một-lần cách ly (không mạng, rootfs chỉ đọc, user không-root, trần CPU/RAM/thời gian/đầu ra) qua dịch vụ phụ chay-ma — mặc định tắt; `chay_python` rủi ro `nguy_hiem` (lõi bắt phê duyệt), `kiem_tinh` soi tĩnh không chạy | HTTP nội bộ tới dịch vụ chay-ma | Có sẵn (kiểm với docker giả + kiểm tĩnh Dockerfile + bootstrap rlimit chạy thật; chưa kiểm với Docker thật) |
@@ -241,30 +240,22 @@ Mọi khoá đều do **bạn tự sinh** và phải dán **đúng cùng một g
 | `rclone` | `rclone` | Container riêng (chỉ công bố `127.0.0.1:8702`): `cd dich-vu/rclone && docker build -t rclone-bridge:1.0 .` rồi `docker run -d` với `-e RCLONE_KHOA=<khoá>` trên mạng Docker nội bộ (lệnh đầy đủ trong README của dịch vụ). Chi tiết: [dich-vu/rclone/README.md](dich-vu/rclone/README.md) | `RCLONE_KHOA` tự sinh (chuỗi ngẫu nhiên dài); dán cùng giá trị vào module `rclone` |
 | `gpu-node` | Các nút GPU từ xa (nghe/thị giác/tách âm) | Chạy trên **máy có card NVIDIA** (thường là máy khác): `cd dich-vu/gpu-node && cp .env.mau .env` (đặt `GPU_NODE_BIND` là IP LAN của máy GPU), `docker compose up -d`. Chi tiết: [dich-vu/gpu-node/README.md](dich-vu/gpu-node/README.md) | Khoá nút **tự sinh** lần đầu và chỉ in một lần: `docker logs gpu-node-cong 2>&1 \| grep "KHOA NUT GPU"`; dán khoá đó khi «Thêm máy GPU» trong web2api |
 | `muse-web` | (công cụ dòng lệnh, không phải module) | Không phải dịch vụ nền: chạy tay từ gốc kho `./.venv/bin/python dich-vu/muse-web/muse_web.py …` để giao việc cho agent Muse. Chi tiết: [dich-vu/muse-web/README.md](dich-vu/muse-web/README.md) | Không có khoá dịch vụ; cookie tài khoản nạp qua stdin hoặc tệp quyền 0600 trong `$MUSE_WEB_DIR` (mặc định `~/.config/muse-web`) |
+| `camera` | `cameranha` | Container riêng (chỉ thư viện chuẩn, cổng nội bộ 8714): `docker build -t camera-dv dich-vu/camera && docker run -d --network <mạng-nội-bộ> -e CAM_KHOA=<khoá> camera-dv` (chụp go2rtc/RTSP, phát loa NetSDK). Chi tiết: [dich-vu/camera/README.md](dich-vu/camera/README.md) | `CAM_KHOA` tự sinh (≥ 24 ký tự); dán cùng giá trị vào trường `dich_vu_khoa` của module `cameranha` |
+| `chay-ma` | `chay-ma` | Container riêng (chạy mã Python trong container dùng-một-lần cách ly). Chi tiết: [dich-vu/chay-ma/README.md](dich-vu/chay-ma/README.md) | Không có khoá dịch vụ |
+| `may-dang-nhap` | `may-dang-nhap` | Container riêng (tự động hoá bước đăng nhập hợp lệ + giải Captcha). Chi tiết: [dich-vu/may-dang-nhap/README.md](dich-vu/may-dang-nhap/README.md) | Xem README của dịch vụ |
+| `nhin-nha` | `nhin-nha` | Container riêng (YOLO/SCRFD/ArcFace cho module `nhin-nha`). Chi tiết: [dich-vu/nhin-nha/README.md](dich-vu/nhin-nha/README.md) | Không có khoá dịch vụ |
+| `zalo-ca-nhan` | `zalo` | Container riêng (Node, kết nối Zalo tài khoản cá nhân qua API không chính thức). Chi tiết: [dich-vu/zalo-ca-nhan/README.md](dich-vu/zalo-ca-nhan/README.md) | Xem README của dịch vụ |
 ### Module anh-ai — Ảnh AI: tạo/sửa ảnh qua nhiều nhà cung cấp
 
-Port từ c2a (NV192): tạo và sửa ảnh qua 10 nhà cung cấp (Gemini/Imagen, fal.ai, Stability,
-Black Forest Labs/FLUX, Cloudflare, HuggingFace, NVIDIA NIM, SDWebUI, flow, custom);
-xếp hàng đợi, chặn ảnh xấu theo cấu trúc. Chi tiết: [modules/anh-ai/README.md](modules/anh-ai/README.md).
+Port từ c2a (NV192): tạo và sửa ảnh qua 10 nhà cung cấp (Gemini/Imagen, fal.ai, Stability, Black Forest Labs/FLUX, Cloudflare, HuggingFace, NVIDIA NIM, SDWebUI, flow, custom); xếp hàng đợi, chặn ảnh xấu theo cấu trúc. Chi tiết: [modules/anh-ai/README.md](modules/anh-ai/README.md).
 
 ### Module nha-tien-ich — Nhà tiện ích: kịch bản, cảnh báo, cảm biến
 
-Port từ c2a (NV195): kịch bản nhà (thử khô mặc định), cảnh báo chống dội, nhận diện tình
-huống, giám sát điện/UPS và cảm biến; chặn SSRF bằng allowlist cấu trúc (dải tài liệu + private).
+Port từ c2a (NV195): kịch bản nhà (thử khô mặc định), cảnh báo chống dội, nhận diện tình huống, giám sát điện/UPS và cảm biến; chặn SSRF bằng allowlist cấu trúc.
 
 ### Module mqtt — Thiết bị nhà qua MQTT (không cần Home Assistant)
 
-Đường thứ hai biết nhà (port từ c2a, NV151): nối máy chủ MQTT trong mạng nhà,
-khám phá phổ quát bằng `+` nhiều độ sâu (**không bao giờ** đăng ký `#` — giữ
-nguyên bài học EMQX), đọc bản tự khai báo Home Assistant discovery
-(Zigbee2MQTT/Tasmota) + nhận dạng Frigate, trả thành thực thể chuẩn C1
-(`mqtt.<tên>`). GHI (publish lệnh) mặc định **TẮT** tới khi bật ô «Cho phép
-điều khiển»; loại nguy hiểm (khoá cửa, báo động, bình nóng lạnh, van, còi —
-phân loại bằng cấu trúc component) **không bao giờ** điều khiển được. Mật khẩu
-kiểu `bi_mat`, lưu kho 0600 của lõi. Phụ thuộc duy nhất `paho-mqtt==2.1.0`
-(khai `yeu_cau_goi`, không trong requirements của lõi). Chi tiết:
-[modules/mqtt/README.md](modules/mqtt/README.md). **Chưa kiểm với máy chủ
-MQTT thật.**
+Đường thứ hai biết nhà (port từ c2a, NV151): nối máy chủ MQTT trong mạng nhà, khám phá bằng `+` nhiều độ sâu (không `#`), đọc bản tự khai báo Home Assistant discovery + nhận dạng Frigate. GHI mặc định TẮT; loại nguy hiểm không bao giờ điều khiển được. Chi tiết: [modules/mqtt/README.md](modules/mqtt/README.md). **Chưa kiểm với máy chủ MQTT thật.**
 
 ## Cấu hình
 
@@ -327,46 +318,19 @@ Cổng dịch vụ mặc định là `3031` (ánh xạ `3031:8000`), dữ liệu
 3. Thêm biến môi trường cần thiết ở mục **Environment variables** (như `WEB2API_BIND`).
 4. Bấm **Deploy the stack**. Để cập nhật bản mới sau này, bấm **Pull and redeploy**. Lấy mã thiết lập bằng `docker exec web2api cat /data/ma_thiet_lap` trong console container để kích hoạt tài khoản admin lần đầu (mã không bao giờ in ra log).
 
-### Synology NAS (Container Manager)
-1. Mở **Container Manager** → **Project** → **Create**.
-2. Đặt tên dự án, chọn thư mục lưu trữ dữ liệu `/volume1/docker/web2api`. Thư mục gắn từ máy chủ (bind) nếu chưa có thì Docker tạo thuộc `root`, container uid 1000 không ghi được và dừng ngay: hãy chạy `sudo chown -R 1000:1000 /volume1/docker/web2api` qua SSH trước khi khởi chạy.
-3. Dán nội dung compose, đổi volume thành `/volume1/docker/web2api:/data`.
-4. Hoàn tất khởi chạy dự án, mở Terminal container rồi chạy `cat /data/ma_thiet_lap` để lấy mã thiết lập.
-
-### QNAP NAS (Container Station)
-1. Mở **Container Station** → **Applications** → **Create**.
-2. Đặt tên ứng dụng và dán nội dung docker-compose.
-3. Đảm bảo volume gắn thư mục dữ liệu trên NAS vào `/data` của container, gán quyền `chown -R 1000:1000` cho thư mục lưu trữ trên NAS trước khi chạy, và cấu hình user `1000:1000`.
-4. Bấm **Create** để hệ thống khởi chạy, sau đó mở Terminal container và chạy `cat /data/ma_thiet_lap` để lấy mã thiết lập (mã không in ra log).
-
-### Unraid
-1. Mở tab **Docker** (hoặc dùng plugin Compose Manager).
-2. Dán nội dung compose hoặc cấu hình container từ ảnh `ghcr.io/tritue2011/web2api:latest`.
-3. Thư mục `/mnt/user/appdata/web2api` cần được gán quyền `chown -R 1000:1000` trước khi chạy.
-4. Ánh xạ cổng `127.0.0.1:3031:8000` (nếu đặt `3031:8000` là đang mở cổng ra toàn mạng LAN), đường dẫn dữ liệu `/mnt/user/appdata/web2api` vào `/data`, user `1000:1000`.
+### NAS (Synology / QNAP / Unraid)
+Tạo project/stack mới, dán nội dung compose, rồi gán quyền thư mục dữ liệu cho uid 1000 **trước khi chạy** (`sudo chown -R 1000:1000 <thư-mục-dữ-liệu>` — Synology: `/volume1/docker/web2api`; QNAP: thư mục NAS gắn vào `/data`; Unraid: `/mnt/user/appdata/web2api`), cấu hình user `1000:1000`. Sau khi khởi chạy, mở Terminal container và chạy `cat /data/ma_thiet_lap` để lấy mã thiết lập (mã không in ra log). Unraid: ánh xạ cổng `127.0.0.1:3031:8000` (đặt `3031:8000` là mở ra toàn mạng LAN).
 
 ### Chạy trong LXC / Proxmox
 Khi chạy web2api trong container LXC hoặc máy ảo Proxmox, cơ chế cgroups có thể khiến container không đọc được số dung lượng RAM và số nhân CPU thực tế của máy chủ vật lý. Khai báo hai biến `WEB2API_MAY_RAM_MB` (ví dụ `8192` cho 8 GB RAM) và `WEB2API_MAY_CPU` (ví dụ `4` cho 4 nhân) trong tệp `.env` để hệ thống hiển thị chính xác tài nguyên trên trang Hệ thống.
 
 ## Kho riêng tư (Private Repository)
 
-Có hai loại token cho hai mục đích hoàn toàn khác nhau — không nhầm lẫn:
+Có hai loại token cho hai mục đích hoàn toàn khác nhau — không nhầm lẫn. Chi tiết đầy đủ: [docs/TRIEN-KHAI.md](docs/TRIEN-KHAI.md).
 
-### 1. Tải ảnh Docker từ ghcr.io khi gói riêng tư
-Gói GHCR mặc định riêng tư (chủ kho có thể chuyển sang Public ở trang Packages của GitHub):
-- Tạo GitHub Personal Access Token (classic) có quyền `read:packages`.
-- Đăng nhập trên máy Docker:
-  ```bash
-  echo $TOKEN | docker login ghcr.io -u <tên-github> --password-stdin
-  ```
-  Thông tin lưu vào `~/.docker/config.json`, không đặt token vào compose.
-- **Portainer**: Vào **Registries** → **Add registry** → chọn Custom/GitHub với URL `ghcr.io`, điền username + token, chọn registry này khi deploy stack.
-- **Synology / QNAP / Unraid**: SSH vào thiết bị và chạy lệnh `docker login ghcr.io` như trên.
+**1. Tải ảnh Docker từ ghcr.io khi gói riêng tư:** tạo GitHub Personal Access Token (classic) quyền `read:packages`, rồi `echo $TOKEN | docker login ghcr.io -u <tên-github> --password-stdin` (lưu vào `~/.docker/config.json`, không đặt token vào compose). Portainer: **Registries** → **Add registry** → Custom/GitHub với URL `ghcr.io`.
 
-### 2. Nguồn module từ kho GitHub riêng tư
-Khi lấy module từ kho GitHub riêng tư hoặc tránh hạn mức 60 yêu cầu/giờ/IP của GitHub:
-- Tạo GitHub Fine-grained PAT có quyền **Repository permissions → Contents: Read-only** cho đúng kho chứa module.
-- Khai báo biến môi trường `WEB2API_GITHUB_TOKEN` (hoặc `WEB2API_GIT_TOKEN`) trong compose hoặc `.env`. Hệ thống sẽ đọc `WEB2API_GITHUB_TOKEN` trước rồi đến `WEB2API_GIT_TOKEN`.
+**2. Nguồn module từ kho GitHub riêng tư:** tạo GitHub Fine-grained PAT quyền **Repository permissions → Contents: Read-only**, khai báo `WEB2API_GITHUB_TOKEN` (hoặc `WEB2API_GIT_TOKEN`) trong compose/`.env` (cũng dùng để tránh hạn mức 60 yêu cầu/giờ/IP).
 
 ## Cập nhật, sao lưu, gỡ lỗi
 

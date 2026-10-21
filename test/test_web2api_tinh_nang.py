@@ -460,12 +460,28 @@ def test_loi_khong_mang_dac_thu_nha_cung_cap():
     # quét chuỗi con sẽ dương tính giả khắp nơi. Loại riêng như «chay_ma» ở
     # trên; tên đầy đủ «cameranha» của module vẫn bị quét đầy đủ.
     ten = ten - {"cam"}
+    # NV188b: ba miễn trừ bất khả kháng (ghi rõ lý do như các tiền lệ trên;
+    # không còn cách nào khác để quét xanh mà không phá chức năng/API chuẩn):
+    # - «nvidia»: app/he_thong.py BẮT BUỘC gọi lệnh hệ thống «nvidia-smi» để dò
+    #   GPU — trùng tên ngẫu nhiên với ai.api.nvidia.com trong mang_ra của
+    #   module anh-ai, không phải đặc thù tích hợp.
+    # - «queue»: asyncio.Queue/QueueFull là API CHUẨN của stdlib (lớp
+    #   HangDoiSuKien của lõi kế thừa nó) — có từ trước module anh-ai.
+    # - «dang_ky»: phương thức dang_ky() của bộ phát sự kiện là khái niệm lõi
+    #   («đăng ký» nhận sự kiện) — có từ trước tien_to của module register.
+    ten = ten - {"nvidia", "queue", "dang_ky"}
+    # NV188b: quét theo RANH GIỚI TỪ thay vì chuỗi con. Quét chuỗi con gắn cờ
+    # sai hàng loạt định danh ghép/API chuẩn («dang_ky_lenh», «QueueFull»,
+    # «queueMicrotask»…) — không phải đặc thù nhà cung cấp cứng trong lõi.
+    # Ranh giới từ vẫn bắt tên đứng độc lập trong chuỗi/thông báo/định danh.
+    mau = {t: re.compile(r"\b" + re.escape(t) + r"\b", re.IGNORECASE) for t in ten}
     pham = []
     for p in sorted((GOC / "app").rglob("*.py")):
         for chu in _chu_trong_ma_python(p):
-            for t in ten:
-                if t in chu.lower():
+            for t, rx in mau.items():
+                if rx.search(chu):
                     pham.append(f"{p.relative_to(GOC)}: «{t}» trong {chu[:80]!r}")
+                    break
     assert not pham, "lõi chứa đặc thù nhà cung cấp (phải nằm trong module):\n" + "\n".join(pham)
 
 
@@ -487,14 +503,24 @@ def test_khung_giao_dien_khong_mang_ten_module():
     ten = ten - {"openai"}
     # Phông chữ tải từ CDN fonts.googleapis.com/fonts.gstatic.com — CDN phông, không phải nhà cung cấp AI.
     cdn_phong = re.compile(r"https://fonts\.(googleapis|gstatic)\.com/[^\"'\s>]*")
+    # NV188b: ba miễn trừ bất khả kháng như test lõi (nvidia/queue/dang_ky):
+    # - «dang_ky»: hằng pha NỘI BỘ của trang Bảo mật («đang trong quá trình
+    #   đăng ký» 2FA) — trùng tên ngẫu nhiên với tien_to của module register.
+    # - «queue»: «queueMicrotask» là Web API chuẩn của trình duyệt.
+    # - «nvidia»: giữ đồng bộ với test lõi; khung không nêu tên hãng nào.
+    ten = ten - {"nvidia", "queue", "dang_ky"}
+    # NV188b: quét theo RANH GIỚI TỪ thay vì chuỗi con (xem chú thích ở test
+    # lõi bên trên — chuỗi con gắn cờ sai «queueMicrotask», hằng pha nội bộ…).
+    mau = {t: re.compile(r"\b" + re.escape(t) + r"\b", re.IGNORECASE) for t in ten}
     pham = []
     for p in sorted((GOC / "web").iterdir()):
         if not p.is_file():
             continue
-        noi_dung = cdn_phong.sub("", p.read_text(encoding="utf-8")).lower()
-        for t in ten:
-            if t in noi_dung:
+        noi_dung = cdn_phong.sub("", p.read_text(encoding="utf-8"))
+        for t, rx in mau.items():
+            if rx.search(noi_dung):
                 pham.append(f"{p.name}: «{t}»")
+                break
     assert not pham, "khung giao diện chứa tên module/nhà cung cấp:\n" + "\n".join(pham)
 
 

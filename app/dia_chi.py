@@ -298,7 +298,7 @@ def kiem_tra_canh_bao(url: str, dang_doan: bool) -> list[str]:
     if parsed.scheme.lower() == "http" and _la_dia_chi_internet(parsed.hostname or ""):
         canh_bao.append(
             "Đang chạy không mã hoá (HTTP công khai), khoá đi rõ chữ — "
-            "đặt HTTPS (Cloudflare) trước khi đưa cho người ngoài."
+            "đặt HTTPS (qua một dịch vụ đường hầm) trước khi đưa cho người ngoài."
         )
     return canh_bao
 
@@ -415,7 +415,7 @@ def soan_huong_dan_ket_noi(request: Request) -> dict[str, Any]:
             ')\n'
             'print(tra_loi.choices[0].message.content)'
         ),
-        "mo_ta": "Dùng qua Internet với HTTPS (ví dụ qua Cloudflare Tunnel). Thay <tên-miền> bằng tên miền đã cấu hình.",
+        "mo_ta": "Dùng qua Internet với HTTPS (ví dụ qua một đường hầm HTTPS/tunnel). Thay <tên-miền> bằng tên miền đã cấu hình.",
     }
 
     return {

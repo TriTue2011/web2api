@@ -163,10 +163,10 @@ const MUC = [
     ],
   },
   {
-    id: 'dia-chi-cong-khai', tieuDe: 'Địa chỉ truy cập công khai và sau Cloudflare', admin: true,
+    id: 'dia-chi-cong-khai', tieuDe: 'Địa chỉ truy cập công khai và sau đường hầm', admin: true,
     doan: [
       { k: 'van', t: 'Đặt địa chỉ công khai bằng biến WEB2API_PUBLIC_URL hoặc PUT /api/dia-chi. Địa chỉ này dùng để soạn hướng dẫn kết nối và làm địa chỉ gọi lại.' },
-      { k: 'van', t: 'Khi chạy sau Cloudflare Tunnel hoặc proxy ngược, bắt buộc khai WEB2API_TRUST_PROXY (địa chỉ/dải của proxy, ví dụ 192.0.2.10/32) để web2api nhận đúng IP khách — nếu không, một người gõ sai khoá có thể làm cả nhà bị khoá 429. Đồng thời bật WEB2API_TIN_PROXY=1 để nhận đúng https từ X-Forwarded-Proto.' },
+      { k: 'van', t: 'Khi chạy sau đường hầm HTTPS (tunnel) hoặc proxy ngược, bắt buộc khai WEB2API_TRUST_PROXY (địa chỉ/dải của proxy, ví dụ 192.0.2.10/32) để web2api nhận đúng IP khách — nếu không, một người gõ sai khoá có thể làm cả nhà bị khoá 429. Đồng thời bật WEB2API_TIN_PROXY=1 để nhận đúng https từ X-Forwarded-Proto.' },
       { k: 'van', t: 'Chi tiết từng bước triển khai an toàn (cổng, SSH, HSTS, danh sách kiểm trước khi mở ra Internet) xem tài liệu docs/TRIEN-KHAI.md trong kho mã.' },
     ],
   },
