@@ -17,6 +17,7 @@ Thiết kế bảo mật:
 from __future__ import annotations
 
 import asyncio
+import base64
 import ipaddress
 import json
 import logging
@@ -112,6 +113,70 @@ def _ten_ho_so_dich_vu(dinh_danh: Any) -> str:
         return s
     phan_dau = re.sub(r"[^a-z0-9]", "-", s.split("@", 1)[0])[:56]
     return ("google-" + phan_dau) if phan_dau.strip("-") else ""
+
+
+#: Module ID của các tài khoản đi luồng đăng nhập ChatGPT — DỮ LIỆU từ bản ghi
+#: tài khoản đã lưu (NV197c ghi sau lần đăng nhập thành công). KHÔNG đoán theo
+#: chuỗi email: email chứa chuỗi «chatgpt» nhưng module_id khác vẫn đi luồng
+#: Google; email trần nhưng module_id thuộc tập này vẫn đi luồng ChatGPT.
+_LUONG_CHATGPT_MODULE_ID = frozenset({"chatgpt-web"})
+
+
+def _la_luong_chatgpt(module_cua: Any) -> bool:
+    """Tài khoản có thuộc luồng ChatGPT không — theo module sở hữu (dữ liệu)."""
+    return str(module_cua or "").strip() in _LUONG_CHATGPT_MODULE_ID
+
+
+def _ten_ho_so_chatgpt(email: str) -> str:
+    """Tên hồ sơ ChatGPT mà dịch vụ chấp nhận: ``chatgpt-`` + slug localpart.
+
+    Cùng quy tắc slug với Google (chỉ chữ/số/«-»/«_», ≤ 64 ký tự); gửi email
+    trần làm tên hồ sơ làm lượt đăng nhập sập ngay (đo thật 21/10/2026).
+    Dịch vụ ghép hồ sơ với tài khoản theo localpart TRONG CÙNG MỘT KHO
+    (kho ``openai`` cho ChatGPT) — không suy kiểu tài khoản bằng chuỗi.
+    """
+    s = str(email or "").strip().lower()
+    phan_dau = re.sub(r"[^a-z0-9]", "-", s.split("@", 1)[0])[:56]
+    return ("chatgpt-" + phan_dau) if phan_dau.strip("-") else ""
+
+
+def _ho_so_theo_luong(dinh_danh: Any, module_cua: Any = "") -> str:
+    """Tên hồ sơ dịch vụ cho email/hồ sơ, theo ĐÚNG luồng của tài khoản.
+
+    Nhận cả email (lõi truyền email) hoặc tên hồ sơ đã có. Luồng ChatGPT dùng
+    tiền tố ``chatgpt-``; các luồng khác giữ nguyên quy ước cũ.
+    """
+    s = str(dinh_danh or "")
+    if "@" not in s:
+        return _kiem_ho_so(s)
+    if _la_luong_chatgpt(module_cua):
+        return _kiem_ho_so(_ten_ho_so_chatgpt(s))
+    return _kiem_ho_so_dich_vu(s)
+
+
+def _email_tu_jwt(token: str) -> str:
+    """Claim email trong JWT — giải mã payload KHÔNG xác thực chữ ký.
+
+    Chỉ đọc claim của token mà dịch vụ vừa trả cho chính lượt này (dữ liệu
+    chắc chắn để ghép khoá, không đoán chuỗi). Token hỏng → "".
+    """
+    try:
+        phan = str(token or "").split(".")
+        if len(phan) != 3:
+            return ""
+        dem = "=" * (-len(phan[1]) % 4)
+        tai_lieu = json.loads(base64.urlsafe_b64decode(phan[1] + dem))
+        if not isinstance(tai_lieu, dict):
+            return ""
+        ho_so = tai_lieu.get("https://api.openai.com/profile")
+        if isinstance(ho_so, dict):
+            email = ho_so.get("email")
+            if isinstance(email, str) and email.strip():
+                return email.strip()
+        email = tai_lieu.get("email")
+        return email.strip() if isinstance(email, str) else ""
+    except Exception:
+        return ""
 
 
 def _kiem_ho_so(ho_so: Any) -> str:
@@ -335,15 +400,21 @@ def _huong_dan_can_nguoi(ma_loi: str) -> str:
 
 def _ket_qua_dang_nhap(thanh_cong: bool, ma_loi: str = "",
                        ma_trang_thai: int | None = None, can_nguoi: bool = False,
-                       cho_2fa: bool = False, huong_dan: str = "") -> "KetQuaDangNhap":
+                       cho_2fa: bool = False, huong_dan: str = "",
+                       jwt_moi: dict | None = None) -> "KetQuaDangNhap":
     """Dựng kết quả theo khuôn lõi (KetQuaDangNhap) + 3 tín hiệu mở rộng mà
     tuyến /da-luu/{id}/dang-nhap đọc qua getattr: can_nguoi, cho_2fa, huong_dan.
-    KHÔNG bao giờ đính kèm mật khẩu/cookie/token."""
+    KHÔNG bao giờ đính kèm mật khẩu/cookie/token — ngoại lệ NV210: ``jwt_moi``
+    (JWT vừa lấy + ``ho_so``) chỉ để tầng ứng dụng đưa vào khoá sổ chatgpt-web
+    qua đường cai {giu, them}; tuyến lõi không trả nó ra trình duyệt.
+    """
     kq = KetQuaDangNhap(thanh_cong=thanh_cong, cookie=None, ma_loi=ma_loi,
                         ma_trang_thai=ma_trang_thai)
     object.__setattr__(kq, "can_nguoi", bool(can_nguoi))
     object.__setattr__(kq, "cho_2fa", bool(cho_2fa))
     object.__setattr__(kq, "huong_dan", str(huong_dan or ""))
+    object.__setattr__(kq, "jwt_moi",
+                       dict(jwt_moi) if isinstance(jwt_moi, dict) else None)
     return kq
 
 
@@ -367,6 +438,20 @@ class Module:
         self._suc_khoe_cache: dict | None = None
         self._suc_khoe_cache_luc: float = 0.0
         self._CACHE_TTL_GIAY: float = 15.0
+        #: Móc nối tầng ứng dụng (NV210): callable(email, token, ho_so) được gọi
+        #: sau khi luồng ChatGPT thành công để đưa JWT vào khoá sổ chatgpt-web
+        #: qua đường cai {giu, them}. Mặc định None (không gắn).
+        self._moc_gan_jwt = None
+
+    def dat_moc_gan_jwt(self, ham) -> None:
+        """Đặt móc gắn JWT (NV210).
+
+        Tầng khởi động ứng dụng nối: ``mod.dat_moc_gan_jwt(gan_jwt_vao_khoa)``
+        để sau mỗi lần đăng nhập ChatGPT thành công, JWT mới + ``ho_so`` được
+        đưa vào khoá sổ chatgpt-web (thay khoá cũ có cùng claim email hoặc thêm
+        mới). Móc không được ném; lỗi móc không làm hỏng kết quả đăng nhập.
+        """
+        self._moc_gan_jwt = ham if callable(ham) else None
 
     # ── Vòng đời ─────────────────────────────────────────────────────────────
 
@@ -999,13 +1084,18 @@ class Module:
         return st
 
     async def dang_nhap(self, dong: DongDaTach) -> KetQuaDangNhap:
-        """Đăng nhập Google qua dịch vụ may-dang-nhap (NV145b).
+        """Đăng nhập qua dịch vụ may-dang-nhap (NV145b + NV210).
 
         Nhận email/mật khẩu/TOTP qua DongDaTach (BiMatTam/BiMatTotp), gửi sang
-        KÉT CỦA DỊCH VỤ (POST /v1/accounts/saved) rồi ghi đè bộ đệm bí mật ngay,
-        gọi auto-login-saved và chờ kết quả trong trần C2A_DN_CHO_DANG_NHAP_GIAY.
+        KÉT CỦA DỊCH VỤ (POST /v1/accounts/saved) rồi ghi đè bộ đệm bí mật ngay.
+        Chọn luồng theo module sở hữu của tài khoản (``dong.module_cua_tai_khoan``,
+        dữ liệu — KHÔNG đoán theo chuỗi email):
+          - module_id thuộc luồng ChatGPT (vd ``chatgpt-web``) → luồng
+            ``POST /v1/chatgpt/onboard`` (NV210);
+          - còn lại → luồng Google ``auto-login-saved`` (NV145b).
         Trả kết quả theo khuôn lõi: thành công / cần 2FA / cần người / lỗi có mã.
-        KHÔNG trả mật khẩu, cookie, token trong kết quả hay log.
+        KHÔNG trả mật khẩu, cookie, token trong kết quả hay log — ngoại lệ
+        NV210: ``jwt_moi`` chỉ để tầng ứng dụng đưa vào khoá sổ chatgpt-web.
         """
         # 0. Kiểm tra tham số trước khi chạm bí mật
         email_tho = str(getattr(dong, "email", "") or "").strip()
@@ -1028,7 +1118,7 @@ class Module:
                            "sai mật khẩu / bị khoá / cần xác minh điện thoại). "
                            "Kiểm tra thủ công rồi lưu lại tài khoản để thử tiếp.")
 
-        # 2. Trần 3 lần thử / giờ / tài khoản (chống Google khoá tài khoản)
+        # 2. Trần thử / giờ / tài khoản (chống nhà cung cấp khoá tài khoản)
         bay_gio = time.time()
         cua_so = _cua_so_tran_thu_giay()
         lich_su = [t for t in st["thu"].get(khoa_tk, []) if bay_gio - t < cua_so]
@@ -1036,7 +1126,7 @@ class Module:
             return _ket_qua_dang_nhap(
                 False, ma_loi="qua_tran_thu",
                 huong_dan="Đã thử quá trần cho phép trong một giờ cho tài khoản "
-                           "này — đợi hết giờ rồi thử lại, tránh bị Google khoá.")
+                           "này — đợi hết giờ rồi thử lại, tránh bị khoá.")
         # Nghỉ luỹ thừa sau các lần hỏng liên tiếp
         hong_lt = st["hong_lt"].get(khoa_tk, 0)
         co_so_nghi = _nghi_luy_thua_co_so()
@@ -1058,6 +1148,21 @@ class Module:
         # đăng nhập nền kéo dài nhiều phút của dịch vụ).
         totp_secret = BiMatTam.lay(totp) if isinstance(totp, BiMatTotp) else ""
 
+        # 4. Chọn luồng theo module sở hữu của tài khoản (dữ liệu)
+        if _la_luong_chatgpt(getattr(dong, "module_cua_tai_khoan", "")):
+            return await self._dang_nhap_chatgpt(
+                email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
+        return await self._dang_nhap_google(
+            email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
+
+    async def _dang_nhap_google(self, email_tho: str, khoa_tk: str, st: dict,
+                                hong_lt: int, mk: str,
+                                totp_secret: str) -> KetQuaDangNhap:
+        """Luồng Google (NV145b): auto-login-saved + chờ kết quả.
+
+        Nhận bí mật thô (đã lấy ra khỏi BiMatTam ở ``dang_nhap``); PHẢI ghi đè
+        trước khi hàm trả về, mọi nhánh.
+        """
         # 4. Gửi sang KÉT CỦA DỊCH VỤ (kho bí mật gốc cho lượt đăng nhập này),
         # rồi huỷ bản sao cục bộ ngay sau lời gọi.
         try:
@@ -1084,6 +1189,145 @@ class Module:
 
         # 6. Chờ kết quả trong trần (nghỉ luỹ thừa giữa các lần hỏi trạng thái)
         return await self._cho_ket_qua_dang_nhap(email_tho, khoa_tk, st)
+
+    async def _dang_nhap_chatgpt(self, email_tho: str, khoa_tk: str, st: dict,
+                                 hong_lt: int, mk: str,
+                                 totp_secret: str) -> KetQuaDangNhap:
+        """Luồng ChatGPT (NV210): onboard qua ``POST /v1/chatgpt/onboard``.
+
+        Dịch vụ tự bù mật khẩu/TOTP từ két của nó (``bu_credential``) nên lời
+        gọi onboard chỉ cần ``profile`` + ``email``. Thành công → lấy JWT mới
+        qua ``refresh-jwt``, trả trong ``jwt_moi`` (kèm ``ho_so``) để tầng ứng
+        dụng đưa vào khoá sổ chatgpt-web; đồng thời gọi móc ``_moc_gan_jwt``
+        nếu đã nối. Nhận bí mật thô; PHẢI ghi đè trước khi hàm trả về.
+        """
+        hs = _ten_ho_so_chatgpt(email_tho)
+        if not hs:
+            mk = "\x00" * len(mk)
+            totp_secret = "\x00" * len(totp_secret)
+            del mk, totp_secret
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        # 4. Gửi sang KÉT CỦA DỊCH VỤ (kho ``openai`` — tách khỏi kho Google
+        # của cùng email), rồi huỷ bản sao cục bộ ngay sau lời gọi.
+        try:
+            luu = await self._goi("POST", "/v1/accounts/saved", json_body={
+                "email": email_tho, "password": mk,
+                "totp_secret": totp_secret, "loai": "openai"})
+        finally:
+            mk = "\x00" * len(mk)
+            totp_secret = "\x00" * len(totp_secret)
+            del mk, totp_secret
+        if not isinstance(luu, dict) or not luu.get("ok"):
+            st["hong_lt"][khoa_tk] = hong_lt + 1
+            return self._loi_dich_vu_thanh_ket_qua(luu, khoa_tk)
+
+        # 5. Bắt đầu lượt onboard nền (dịch vụ tự bù bí mật từ két)
+        bat_dau = await self._goi(
+            "POST", "/v1/chatgpt/onboard",
+            json_body={"profile": hs, "email": email_tho,
+                       "password": "", "totp_secret": ""})
+        if not isinstance(bat_dau, dict) or not bat_dau.get("ok"):
+            st["hong_lt"][khoa_tk] = hong_lt + 1
+            return self._loi_dich_vu_thanh_ket_qua(bat_dau, khoa_tk)
+        if bat_dau.get("state") == "failed":
+            return self._ket_qua_chatgpt_tu_phien(bat_dau, khoa_tk, st)
+
+        # 6. Chờ kết quả trong trần
+        return await self._cho_ket_qua_chatgpt(email_tho, khoa_tk, st, hs)
+
+    def _ket_qua_chatgpt_tu_phien(self, phien: dict, khoa_tk: str,
+                                 st: dict) -> KetQuaDangNhap:
+        """Ánh xạ trạng thái phiên ChatGPT → kết quả theo khuôn lõi.
+
+        Phân loại lỗi vĩnh viễn dùng đúng bộ phân loại chung
+        ``_phan_loai_loi_vinh_vien`` (KHÔNG thêm danh sách từ khoá riêng cho
+        ChatGPT). Lỗi vĩnh viễn → «cần người», không thử lại. Nhánh ``success``
+        trả thành công trần — JWT lấy riêng ở ``_lay_jwt_chatgpt``.
+        """
+        trang_thai = str(phien.get("state") or "none")
+        loi = str(phien.get("error") or phien.get("message") or "")
+        if trang_thai == "success":
+            st["hong_lt"].pop(khoa_tk, None)
+            return _ket_qua_dang_nhap(True)
+        if trang_thai == "need_code":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="cho_2fa", cho_2fa=True,
+                huong_dan="ChatGPT đang chờ mã 2FA — nhập mã vào ô «Mã 2FA» "
+                           "rồi bấm gửi (dịch vụ tự điền mã TOTP nếu tài khoản "
+                           "đã lưu khoá TOTP).")
+        if trang_thai == "need_captcha":
+            # KHÔNG giải CAPTCHA: đánh dấu cần người
+            st["vinh_vien"][khoa_tk] = "gap_captcha"
+            return _ket_qua_dang_nhap(
+                False, ma_loi="gap_captcha", can_nguoi=True,
+                huong_dan="ChatGPT hiện thử thách CAPTCHA — hệ thống không tự "
+                           "giải. Mở trình duyệt xử lý thủ công rồi đăng nhập lại.")
+        if trang_thai == "need_tap":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="can_nguoi", can_nguoi=True,
+                huong_dan="ChatGPT đang chờ bạn chạm «Có, đó là tôi» trên điện "
+                           "thoại — bấm trên điện thoại rồi bấm «Kiểm tra lại».")
+        if trang_thai == "failed":
+            ma_vv = _phan_loai_loi_vinh_vien(loi)
+            if ma_vv:
+                st["vinh_vien"][khoa_tk] = ma_vv
+                return _ket_qua_dang_nhap(
+                    False, ma_loi=ma_vv, can_nguoi=True,
+                    huong_dan="Lỗi vĩnh viễn, hệ thống dừng thử để bảo vệ tài "
+                               "khoản — kiểm tra thủ công rồi lưu lại tài khoản.")
+            st["hong_lt"][khoa_tk] = st["hong_lt"].get(khoa_tk, 0) + 1
+            return _ket_qua_dang_nhap(False, ma_loi="dang_nhap_that_bai")
+        return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
+
+    async def _cho_ket_qua_chatgpt(self, email_tho: str, khoa_tk: str,
+                                   st: dict, hs: str) -> KetQuaDangNhap:
+        """Hỏi trạng thái onboard ChatGPT tới khi có kết quả cuối hoặc hết trần."""
+        han = time.time() + _cho_dang_nhap_giay()
+        nghi = 2.0
+        while True:
+            tt = await self._goi("GET", f"/v1/chatgpt/{hs}/onboard-status")
+            if isinstance(tt, dict) and tt.get("ok"):
+                trang_thai = str(tt.get("state") or "none")
+                if trang_thai == "success":
+                    return await self._lay_jwt_chatgpt(
+                        email_tho, hs, khoa_tk, st)
+                if trang_thai in ("need_code", "need_captcha", "failed"):
+                    return self._ket_qua_chatgpt_tu_phien(tt, khoa_tk, st)
+                if trang_thai == "need_tap" and time.time() >= han:
+                    return self._ket_qua_chatgpt_tu_phien(tt, khoa_tk, st)
+            if time.time() >= han:
+                break
+            await asyncio.sleep(min(nghi, max(0.0, han - time.time())))
+            nghi = min(nghi * 1.5, 10.0)
+        return _ket_qua_dang_nhap(
+            False, ma_loi="dang_chay",
+            huong_dan="Lượt đăng nhập ChatGPT vẫn đang chạy — bấm «Kiểm tra "
+                       "trạng thái» để hỏi tiếp, không bấm đăng nhập lại.")
+
+    async def _lay_jwt_chatgpt(self, email_tho: str, hs: str,
+                               khoa_tk: str, st: dict) -> KetQuaDangNhap:
+        """Lấy JWT mới qua ``GET /v1/chatgpt/{ho_so}/refresh-jwt`` sau onboard
+        thành công; đóng gói ``jwt_moi`` + gọi móc gắn khoá sổ."""
+        jwt = await self.lam_moi_jwt(hs)
+        if not isinstance(jwt, dict) or not jwt.get("ok") \
+                or not jwt.get("access_token"):
+            st["hong_lt"][khoa_tk] = st["hong_lt"].get(khoa_tk, 0) + 1
+            return _ket_qua_dang_nhap(
+                False, ma_loi="khong_lay_duoc_jwt",
+                huong_dan="Onboard xong nhưng chưa lấy được JWT — bấm "
+                           "«Kiểm tra trạng thái» để thử lại.")
+        token = str(jwt.get("access_token") or "")
+        email = _email_tu_jwt(token) or str(jwt.get("captured_email") or "") \
+            or email_tho
+        jwt_moi = {"access_token": token, "ho_so": hs, "email": email}
+        moc = self._moc_gan_jwt
+        if callable(moc):
+            try:
+                moc(email, token, hs)
+            except Exception as e:
+                log.warning("chatgpt: móc gắn JWT vào khoá sổ lỗi: %s",
+                            type(e).__name__)
+        return _ket_qua_dang_nhap(True, jwt_moi=jwt_moi)
 
     def _loi_dich_vu_thanh_ket_qua(self, kq_goi: Any, khoa_tk: str) -> KetQuaDangNhap:
         """Lỗi gọi dịch vụ (mạng/HTTP/xác thực) → kết quả lõi, không lộ chi tiết."""
@@ -1186,22 +1430,30 @@ class Module:
                        "để hỏi tiếp, không bấm đăng nhập lại.")
 
     async def nhap_ma_2fa(self, ho_so: str, ma: Any, trinh_duyet=None,
-                          url_novnc: str | None = None) -> dict:
+                          url_novnc: str | None = None,
+                          module_cua_tai_khoan: str = "") -> dict:
         """Gửi mã 2FA cho phiên đang ở trạng thái need_code (hợp đồng NV145b).
 
         Nhận mã qua BiMatTam (xoá ngay sau khi gửi) hoặc chuỗi. Không log mã.
+        ``module_cua_tai_khoan`` chọn đúng đường 2FA của luồng (ChatGPT dùng
+        ``/v1/chatgpt/{ho_so}/onboard-2fa-code``).
         """
         try:
-            hs = _kiem_ho_so_dich_vu(ho_so)
+            hs = _ho_so_theo_luong(ho_so, module_cua_tai_khoan)
         except ValueError:
             return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
         ma_str = ma.lay_va_xoa() if isinstance(ma, BiMatTam) else str(ma or "").strip()
         try:
             if not re.fullmatch(r"[0-9]{6,8}", ma_str):
                 return {"ok": False, "ma_loi": "ma_2fa_sai_dinh_dang"}
-            kq = await self._goi(
-                "POST", f"/v1/session/{hs}/auto-login-2fa-code",
-                json_body={"code": ma_str})
+            if _la_luong_chatgpt(module_cua_tai_khoan):
+                kq = await self._goi(
+                    "POST", f"/v1/chatgpt/{hs}/onboard-2fa-code",
+                    json_body={"code": ma_str})
+            else:
+                kq = await self._goi(
+                    "POST", f"/v1/session/{hs}/auto-login-2fa-code",
+                    json_body={"code": ma_str})
         finally:
             ma_str = "\x00" * len(ma_str)
             del ma_str
@@ -1214,17 +1466,22 @@ class Module:
             return {"ok": False, "ma_loi": "dich_vu_loi"}
         return {"ok": True}
 
-    async def tien_do(self, ho_so: str) -> dict:
-        """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b).
+    async def tien_do(self, ho_so: str, module_cua_tai_khoan: str = "") -> dict:
+        """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b + NV210).
 
+        ``module_cua_tai_khoan`` chọn đúng đường trạng thái của luồng (ChatGPT
+        dùng ``/v1/chatgpt/{ho_so}/onboard-status``).
         Trả: giai_doan (dang_chay/cho_2fa/can_nguoi/thanh_cong/loi), buoc (câu
         trạng thái), cho_2fa, can_nguoi, ma_loi, huong_dan. Không bí mật.
         """
         try:
-            hs = _kiem_ho_so_dich_vu(ho_so)
+            hs = _ho_so_theo_luong(ho_so, module_cua_tai_khoan)
         except ValueError:
             return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
-        tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
+        if _la_luong_chatgpt(module_cua_tai_khoan):
+            tt = await self._goi("GET", f"/v1/chatgpt/{hs}/onboard-status")
+        else:
+            tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
         if not isinstance(tt, dict) or not tt.get("ok"):
             return {"ok": False, "ma_loi": "dich_vu_loi"}
         trang_thai = str(tt.get("state") or "none")

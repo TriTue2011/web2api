@@ -3724,6 +3724,9 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         raise LoiOpenAI(502, "Module chưa triển khai đăng nhập.", code="chua_ho_tro")
     dong = tai_khoan_hang_loat_mod.DongDaTach(
         dong=0, email=email, loai="mat_khau", mat_khau=mat_khau, totp=totp)
+    # NV210: module sở hữu của tài khoản (dữ liệu) để module đăng nhập chọn
+    # đúng luồng; lõi không đoán.
+    dong.module_cua_tai_khoan = ban_ghi.get("module_id") or "" if ban_ghi else ""
     try:
         kq = await ham(dong)
     finally:
@@ -3768,7 +3771,9 @@ async def gui_ma_2fa_tai_khoan_da_luu(id: str, request: Request):
     ma = _chuoi_bat_buoc(than, "ma")
     bi_mat_ma = tai_khoan_hang_loat_mod.BiMatTam(ma)
     try:
-        kq = await ham(email, bi_mat_ma)
+        # NV210: module sở hữu để module chọn đúng đường 2FA của luồng
+        kq = await ham(email, bi_mat_ma,
+                       module_cua_tai_khoan=ban_ghi.get("module_id") or "")
     finally:
         bi_mat_ma.xoa()
     if not isinstance(kq, dict):
@@ -3794,7 +3799,7 @@ async def trang_thai_dang_nhap_tai_khoan(id: str, request: Request,
     if not callable(ham):
         raise LoiOpenAI(502, "Module chưa triển khai theo dõi tiến trình.",
                         code="chua_ho_tro")
-    kq = await ham(email)
+    kq = await ham(email, module_cua_tai_khoan=ban_ghi.get("module_id") or "")
     if not isinstance(kq, dict):
         kq = {"ok": False}
     return {k: kq.get(k) for k in ("ok", "giai_doan", "buoc", "cho_2fa",
@@ -3915,6 +3920,89 @@ def dung_dang_nhap_hang_loat(request: Request):
         nguoi_thuc_hien=nguoi_thuc_hien,
     )
     return {"ok": True}
+
+
+@tai_khoan.post("/da-luu/dang-nhap-theo-module")
+async def dang_nhap_da_luu_theo_module(request: Request):
+    """Đăng nhập hàng loạt các tài khoản đã lưu thuộc một module sở hữu (NV210).
+
+    Thân: {"module_id": "<executor>", "module_so_huu": "<owning>",
+    "chi_chua_co_ho_so": true}. Lọc theo DỮ LIỆU (``module_id`` của bản ghi —
+    NV197c), không đoán. ``chi_chua_co_ho_so``: loại tài khoản mà module sở
+    hữu đã có ``ho_so`` (qua khả năng ``liet_ke_tai_khoan`` nếu module khai).
+    Chạy TUẦN TỰ, giãn cách, dừng sớm qua ``QuanLyLuotChay`` (không dồn dập từ
+    một IP). Chạm bí mật → cần step-up; Bearer quản trị được miễn.
+    """
+    kiem_tra_step_up(request)
+    than = await _than_json(request)
+    module_id = _chuoi_bat_buoc(than, "module_id")
+    _kiem_module_da_cai_tai_khoan(request, module_id)
+    module_so_huu = _chuoi_bat_buoc(than, "module_so_huu")
+    _kiem_module_da_cai_tai_khoan(request, module_so_huu)
+    chi_chua_co_ho_so = bool(than.get("chi_chua_co_ho_so", True))
+    mod = request.app.state.so.dang_chay.get(module_id)
+    ham = getattr(mod, "dang_nhap", None) if mod is not None else None
+    if not callable(ham):
+        raise LoiOpenAI(502, "Module chưa triển khai đăng nhập.", code="chua_ho_tro")
+    # Email đã có hồ sơ ở module sở hữu → bỏ qua khi chỉ lấy «chưa có hồ sơ»
+    da_co_ho_so: set[str] = set()
+    if chi_chua_co_ho_so:
+        mod_sh = request.app.state.so.dang_chay.get(module_so_huu)
+        liet_ke = getattr(mod_sh, "liet_ke_tai_khoan", None)
+        if callable(liet_ke):
+            try:
+                for r in liet_ke() or []:
+                    if isinstance(r, dict) and r.get("ho_so"):
+                        e = str(r.get("email") or "").strip().lower()
+                        if e:
+                            da_co_ho_so.add(e)
+            except Exception:
+                pass
+    chon: list = []
+    for bg in kho_tai_khoan_mod.liet_ke():
+        if not isinstance(bg, dict):
+            continue
+        if str(bg.get("module_id") or "") != module_so_huu:
+            continue
+        if str(bg.get("trang_thai") or "") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
+            continue
+        email = str(bg.get("email") or "")
+        if chi_chua_co_ho_so and email.strip().lower() in da_co_ho_so:
+            continue
+        bm = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(bg.get("id"))
+        if bm is None:
+            continue
+        mat_khau, totp = bm
+        d = tai_khoan_hang_loat_mod.DongDaTach(
+            0, email, "mat_khau", mat_khau=mat_khau, totp=totp)
+        d.module_cua_tai_khoan = module_so_huu
+        chon.append(d)
+    if not chon:
+        raise LoiOpenAI(400, "Không có tài khoản nào đủ điều kiện để chạy.",
+                        code="khong_co_tai_khoan")
+
+    async def ham_chay(dong):
+        return await ham(dong)
+
+    quan_ly = request.app.state.quan_ly_luot_chay
+    try:
+        thong_tin = quan_ly.bat_dau(chon, ham_chay, module_id)
+    except tai_khoan_hang_loat_mod.DaCoLuotChay:
+        for d in chon:
+            d.xoa_bi_mat()
+        raise LoiOpenAI(409, "Đã có một lượt đăng nhập hàng loạt đang chạy.",
+                        code="da_co_luot_chay") from None
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri",
+        "thong_tin",
+        f"Bắt đầu lượt đăng nhập hàng loạt theo module «{_nhac_lai(module_so_huu)}»: "
+        f"{thong_tin['tong']} tài khoản",
+        module=module_id,
+        luot_id=thong_tin["luot_id"],
+        nguoi_thuc_hien=nguoi_thuc_hien,
+    )
+    return thong_tin
 
 
 # ───────────── ĐĂNG NHẬP TỰ ĐỘNG + KHÔI PHỤC NHIỀU TẦNG (QT) — NV88 ─────────────

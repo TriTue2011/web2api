@@ -211,6 +211,12 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </sc-for>
 </div>
 <div><button type="button" id="nut-dl-luu-tat-ca" onClick="{{them.dl.luuTatCa}}" style="{{them.dl.luuTatCaSt}}">Lưu tất cả ({{them.dl.soHangCoDuLieu}})</button></div>
+<sc-if value="{{them.dl.coDnTatCaNhom}}"><div style="margin-top:8px"><button type="button" id="nut-dl-dang-nhap-tat-ca" onClick="{{them.dl.dnTatCa}}" disabled="{{them.dl.dnTatCaDangChay}}" style="{{them.dl.dnTatCaSt}}">{{them.dl.nhanDnTatCa}}</button>
+<sc-if value="{{them.dl.dnTatCaDangChay}}"><span style="font-size:12px;color:var(--mute);margin-left:8px">Đang chạy…</span></sc-if>
+</div>
+<div id="dl-dang-nhap-tat-ca-kq" style="display:flex;flex-direction:column;margin-top:6px">
+<sc-for list="{{them.dl.dnTatCaKq}}" as="k"><div style="display:flex;gap:10px;font-size:12px;color:var(--mute);padding:3px 0;border-top:1px solid var(--line)"><span style="font-weight:600;color:var(--ink)">{{k.email}}</span><span>{{k.trang_thai}}</span><sc-if value="{{k.ma_loi}}"><span>({{k.ma_loi}})</span></sc-if></div></sc-for>
+</div></sc-if>
 </div>
 </details>
 <sc-if value="{{them.td.coLoi}}"><p role="alert" id="loi-tu-dong" style="margin:0;font-size:13px;color:#8A2A1E">{{them.td.loi}}</p></sc-if>
@@ -862,6 +868,56 @@ class Component extends DCLogic {
       if (gd === 'loi') { this.setState({ dlLoi: 'Đăng nhập chưa được' + (j.ma_loi ? ' (' + j.ma_loi + ').' : '.') }); return; }
     } catch (e) { /* hỏi lại lần sau */ }
     setTimeout(() => this.dlHoiTrangThai(id, moduleId, lan + 1), 5000);
+  }
+  async dlDangNhapTatCaNhom() {
+    // NV210: đăng nhập tất cả tài khoản đã lưu của nhóm đang lọc mà module sở
+    // hữu chưa có hồ sơ. Xác nhận trước, nêu số lượng; chạy tuần tự giãn cách
+    // phía máy chủ; hiển thị trạng thái từng tài khoản bên dưới.
+    const s = this.state;
+    if (s.dlDnTatCaDangChay) return;
+    const nhom = s.dlLocNhom || '';
+    const ds = (s.dlDs || []).filter((t) => t && (t.nhom || '') === nhom
+      && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung');
+    if (!ds.length) { this.setState({ dlLoi: 'Không có tài khoản nào trong nhóm này để đăng nhập.' }); return; }
+    const dem = {};
+    ds.forEach((t) => { dem[t.module_id] = (dem[t.module_id] || 0) + 1; });
+    const moduleSoHuu = Object.keys(dem).sort((a, b) => dem[b] - dem[a])[0];
+    const thucHien = (s.mods || []).find((m) => m && Array.isArray(m.cung_cap)
+      && m.cung_cap.includes('dang_nhap_trinh_duyet'));
+    if (!thucHien) { this.setState({ dlLoi: 'Chưa cài module đăng nhập qua dịch vụ.' }); return; }
+    if (!window.confirm('Đăng nhập ' + ds.length + ' tài khoản nhóm «' + nhom + '» chưa có hồ sơ? Các tài khoản đăng nhập tuần tự, giãn cách.')) return;
+    this.setState({ dlDnTatCaDangChay: true, dlLoi: '', dlDnTatCaKq: [] });
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu/dang-nhap-theo-module', {
+        method: 'POST',
+        json: { module_id: thucHien.id, module_so_huu: moduleSoHuu, chi_chua_co_ho_so: true }
+      });
+      this.msg('Đã bắt đầu lượt đăng nhập ' + (j.tong || ds.length) + ' tài khoản — theo dõi bên dưới.', false);
+      this.dlHoiTrangThaiHangLoat(0);
+    } catch (e) {
+      this.setState({ dlDnTatCaDangChay: false, dlLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' });
+    }
+  }
+  async dlHoiTrangThaiHangLoat(lan) {
+    // NV210: hỏi tiến độ lượt đăng nhập hàng loạt (mỗi 5 giây, tối đa ~10 phút)
+    if (lan > 120) { this.setState({ dlDnTatCaDangChay: false }); return; }
+    try {
+      const { j } = await K.goi('api/tai-khoan/dang-nhap-hang-loat/trang-thai', {});
+      const kq = (j && Array.isArray(j.ket_qua)) ? j.ket_qua : [];
+      this.setState({
+        dlDnTatCaKq: kq.map((r) => ({
+          email: r.email || '', trang_thai: r.trang_thai || '', ma_loi: r.ma_loi || ''
+        }))
+      });
+      if (j && j.trang_thai_luot === 'hoan_thanh') {
+        this.setState({ dlDnTatCaDangChay: false });
+        const t = j.tom_tat || {};
+        this.msg('Xong lượt đăng nhập: ' + (t.xong | 0) + '/' + (t.tong | 0) + ' thành công.', false);
+        await this.taiDlDs();
+        return;
+      }
+    } catch (e) { /* hỏi lại lần sau */ }
+    setTimeout(() => this.dlHoiTrangThaiHangLoat(lan + 1), 5000);
   }
   async dlChiDangNhap(chon) {
     const s = this.state;
@@ -1727,7 +1783,19 @@ class Component extends DCLogic {
           })),
           soHangCoDuLieu: (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length,
           luuTatCa: () => this.dlLuuTatCa(),
-          luuTatCaSt: btnSt({}) + 'min-height:44px;'
+          luuTatCaSt: btnSt({}) + 'min-height:44px;',
+          // NV210: đăng nhập tất cả tài khoản của nhóm đang lọc mà module sở
+          // hữu chưa có hồ sơ (xác nhận trước, nêu số lượng)
+          dnTatCaNhom: dlDs.filter((t) => t && (t.nhom || '') === locNhomDl
+            && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung'),
+          coDnTatCaNhom: !!locNhomDl,
+          nhanDnTatCa: 'Đăng nhập tất cả (' + dlDs.filter((t) => t && (t.nhom || '') === locNhomDl
+            && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung').length
+            + ') — nhóm «' + locNhomDl + '»',
+          dnTatCa: () => this.dlDangNhapTatCaNhom(),
+          dnTatCaSt: btnSt({ pri: true }) + 'min-height:44px;',
+          dnTatCaDangChay: !!s.dlDnTatCaDangChay,
+          dnTatCaKq: Array.isArray(s.dlDnTatCaKq) ? s.dlDnTatCaKq : []
         };
       })(),
       fields: trChon.map((t, j) => ({ khoa: t.khoa, nhan: t.nhan || t.khoa, biMat: laBiMat(t), chu: !laBiMat(t), idO: 'them-' + j + '-' + s.lan,

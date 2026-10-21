@@ -81,6 +81,17 @@ def gian_cach_giay() -> float:
     return min(max(gia_tri, 0.0), GIAN_CACH_TOI_DA_GIAY)
 
 
+def so_hong_lien_tiep_dung() -> int:
+    """Dừng cả hàng khi hỏng liên tiếp từng này tài khoản (NV210: cấu hình được
+    qua ``WEB2API_DANG_NHAP_HONG_LIEN_TIEP_DUNG``, mặc định 2)."""
+    try:
+        v = int(str(os.environ.get("WEB2API_DANG_NHAP_HONG_LIEN_TIEP_DUNG", "")
+                    or "").strip())
+    except (TypeError, ValueError):
+        v = 0
+    return v if v > 0 else SO_HONG_LIEN_TIEP_DUNG
+
+
 # ── Bí mật tạm trong bộ nhớ ──────────────────────────────────────────────────
 
 class BiMatTam:
@@ -645,7 +656,7 @@ class LuotChay:
                 ban_ghi.ma_loi = _ma_loi_an_toan(ket_qua)
                 ban_ghi.ma_trang_thai = ket_qua.ma_trang_thai
                 hong_lien_tiep += 1
-                if hong_lien_tiep >= SO_HONG_LIEN_TIEP_DUNG:
+                if hong_lien_tiep >= so_hong_lien_tiep_dung():
                     # Hỏng liên tiếp: dừng cả hàng để khỏi «đẻ thêm thử thách».
                     self._danh_dau_con_lai(i + 1, _MA_HONG_LIEN_TIEP)
                     break
