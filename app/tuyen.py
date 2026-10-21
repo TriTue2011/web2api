@@ -3631,6 +3631,34 @@ def gom_tai_khoan_theo_nhom_loai():
     return {"nhom_loai": gom}
 
 
+@tai_khoan.get("/bang-phan-loai")
+def doc_bang_phan_loai_tai_khoan():
+    """Bảng phân loại tài khoản (NV225): đổ 3 bảng khai báo của kho cho
+    giao diện vẽ 5 nhóm và ô chọn xếp tầng nhóm → loại → đích dùng.
+
+    Nguồn duy nhất là các bảng dữ liệu trong ``kho_tai_khoan``
+    (``NHOM_AI`` / ``LOAI_TAI_KHOAN_THEO_NHOM`` /
+    ``DICH_DUNG_THEO_NHOM_LOAI``) — không chép lại bảng trong giao diện.
+    Đích dùng trả theo khoá ``"nhom|loai"``. Đây là dữ liệu khai báo
+    tĩnh, không chứa thông tin tài khoản nào.
+    """
+    return {
+        "nhom": list(kho_tai_khoan_mod.NHOM_AI),
+        "loai_theo_nhom": {
+            nhom: list(loai)
+            for nhom, loai in kho_tai_khoan_mod.LOAI_TAI_KHOAN_THEO_NHOM.items()
+        },
+        "dich_dung_theo_nhom_loai": {
+            f"{nhom}|{loai}": list(ds)
+            for (nhom, loai), ds
+            in kho_tai_khoan_mod.DICH_DUNG_THEO_NHOM_LOAI.items()
+        },
+        "ten_nhom": dict(kho_tai_khoan_mod.TEN_NHOM_AI),
+        "ten_loai": dict(kho_tai_khoan_mod.TEN_LOAI_TAI_KHOAN),
+        "ten_dich_dung": dict(kho_tai_khoan_mod.TEN_DICH_DUNG),
+    }
+
+
 @tai_khoan.get("/han-muc")
 def doc_han_muc_tai_khoan():
     """Hạn mức THỤ ĐỘNG đã đọc được từ tiêu đề phản hồi nhà cung cấp, theo từng

@@ -109,6 +109,24 @@ def _thu_tu_dich_dung(dich_dung) -> int:
         return THU_TU_UU_TIEN_DICH_DUNG.index(dich_dung)
     except ValueError:
         return len(THU_TU_UU_TIEN_DICH_DUNG)
+#: Tên HIỂN THỊ của nhóm/loại/đích dùng (NV225) — dữ liệu trình bày đi kèm
+#: bảng phân loại, để giao diện lõi chỉ việc dùng, không chép tên nhà
+#: cung cấp vào mã trang (luật độc lập mã lõi).
+TEN_NHOM_AI = {
+    "google": "Google",
+    "chatgpt": "ChatGPT",
+    "grok": "Grok",
+    "claude": "Claude",
+    "muse": "Muse",
+}
+TEN_LOAI_TAI_KHOAN = {"api": "API", "web": "Web", "gmail": "Gmail"}
+TEN_DICH_DUNG = {
+    "api": "API",
+    "web": "Web",
+    "gemini": "Gemini",
+    "antigravity": "Antigravity",
+    "codex": "Codex",
+}
 
 #: Giá trị hiển thị khi chưa biết bậc gói (NV197c) — KHÔNG đoán từ dữ liệu khác.
 BAC_GOI_KHONG_BIET = "khong_biet"

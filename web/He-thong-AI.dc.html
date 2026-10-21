@@ -176,6 +176,26 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <option value="">— Chọn tài khoản Google —</option>
 <sc-for list="{{them.dl.dsTkGoogle}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
 </select></label></sc-if>
+<sc-if value="{{them.dl.bangCo}}">
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<label style="flex:1 1 140px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Nhóm
+<select id="dl-nhom" value="{{them.dl.nhomChon}}" onChange="{{them.dl.doiNhomChon}}" aria-label="Nhóm của tài khoản" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chưa chọn —</option>
+<sc-for list="{{them.dl.dsNhomChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+</select></label>
+<label style="flex:1 1 140px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Loại tài khoản
+<select id="dl-loai-tk" value="{{them.dl.loaiChon}}" onChange="{{them.dl.doiLoaiChon}}" aria-label="Loại tài khoản" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chưa phân loại —</option>
+<sc-for list="{{them.dl.dsLoaiChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+</select></label>
+<sc-if value="{{them.dl.coDichChon}}"><label style="flex:1 1 140px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Đích dùng
+<select id="dl-dich-dung" value="{{them.dl.dichChon}}" onChange="{{them.dl.doiDichChon}}" aria-label="Đích dùng của tài khoản" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chưa khai —</option>
+<sc-for list="{{them.dl.dsDichChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+</select></label></sc-if>
+</div>
+<p style="margin:0;font-size:11px;color:var(--mute);line-height:1.4">Phân loại theo bảng của máy chủ: chọn nhóm → loại → đích dùng. Nhóm thật của tài khoản được suy từ module sở hữu khi lưu.</p>
+</sc-if>
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
 <button type="button" id="nut-dl-luu" disabled="{{them.dl.thieuLuu}}" onClick="{{them.dl.luu}}" style="{{them.dl.luuSt}}">Lưu tài khoản</button>
 <button type="button" id="nut-dl-luu-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.luuVaDangNhap}}" style="{{them.dl.luuVaDangNhapSt}}">Lưu và đăng nhập</button>
@@ -190,12 +210,25 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-for list="{{them.dl.dsNhom}}" as="n"><option value="{{n}}">{{n}}</option></sc-for>
 </select></label></sc-if>
 <div id="dl-danh-sach" style="display:flex;flex-direction:column">
-<sc-for list="{{them.dl.hang}}" as="r">
+<sc-for list="{{them.dl.nhomDs}}" as="g">
+<div data-tk-nhom="{{g.nhom}}" style="padding:6px 0 2px">
+<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0 2px">
+<strong style="font-size:14px">{{g.ten}}</strong>
+<span style="font-size:12px;color:var(--mute)">{{g.dem}} tài khoản</span>
+</div>
+<sc-if value="{{g.rong}}"><p style="font-size:12px;color:var(--mute);margin:2px 0 6px">Chưa có tài khoản nào trong nhóm này.</p></sc-if>
+<sc-for list="{{g.loaiDs}}" as="l">
+<div data-tk-loai="{{l.loai}}">
+<sc-if value="{{l.coNhan}}"><div style="font-size:12px;font-weight:600;color:var(--mute);padding:4px 0 0">{{l.nhan}}</div></sc-if>
+<sc-for list="{{l.hang}}" as="r">
 <div data-tk-da-luu="{{r.id}}" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;min-height:44px;border-top:1px solid var(--line);min-width:0">
 <span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.emailChe}}</span>
+<sc-if value="{{r.dangDung1}}"><span style="{{r.stDangDung1}}">ĐANG DÙNG #1</span></sc-if>
 <sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
 <sc-if value="{{r.coNhom}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">Nhóm: {{r.nhom}}</span></sc-if>
+<sc-if value="{{r.coDichDung}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">Đích: {{r.nhanDichDung}}</span></sc-if>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">Gói: {{r.bacGoi}}</span>
+<span style="font-size:12px;color:var(--mute);white-space:nowrap">Hạn mức: {{r.hanMuc}}</span>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
 <sc-if value="{{r.coDongDung}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.dongDung}}</span></sc-if>
 <span style="margin-left:auto;display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:100%">
@@ -212,6 +245,10 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <button type="button" data-dl-gui-2fa="{{r.id}}" onClick="{{r.guiMa2faDl}}" style="{{r.dangNhapSt}}">Gửi mã</button>
 </div>
 </sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
 </div>
 </sc-for>
 </div>
@@ -473,6 +510,22 @@ function chuHm(h) {
   if (h.hoi_luc) c += (h.trang_thai === 'het_han_muc' ? ', hồi lúc ' : ', thử lại lúc ') + K.ngayGio(h.hoi_luc);
   return { chu: c, tone, ngan: chu };
 }
+// NV225: tên hiển thị nhóm/loại/đích dùng của «Tài khoản» đi KÈM bảng
+// phân loại từ API /api/tai-khoan/bang-phan-loai (trường ten_nhom /
+// ten_loai / ten_dich_dung) — trang lõi KHÔNG chép tên nhà cung cấp
+// (luật độc lập mã lõi, NV101). Thiếu bảng → hiện id thô.
+const tenTrongBangTk = (bang, khoa, id) => (bang && bang[khoa] && bang[khoa][id]) || id || '';
+// NV225: dòng hạn mức của một tài khoản đã lưu. Chưa có số liệu nhà cung
+// cấp (han_muc = 'khong_biet') → «chưa rõ», TUYỆT ĐỐI không bịa số.
+function nhanHanMucTk(t) {
+  const hm = t && t.han_muc;
+  if (!hm || typeof hm !== 'object') return 'chưa rõ';
+  const p = [];
+  if (hm.con_lai != null) p.push('còn ' + hm.con_lai + ' lượt');
+  if (hm.con_lai_token != null) p.push('còn ' + hm.con_lai_token + ' token');
+  if (hm.cua_so && hm.cua_so.da_dung_pct != null) p.push('đã dùng ' + hm.cua_so.da_dung_pct + '% cửa sổ');
+  return p.length ? p.join(' · ') : 'chưa rõ';
+}
 // Bộ đếm dùng của MỘT khoá (trường TUỲ CHỌN của …/suc-khoe; module không báo thì null → giao diện ẩn phần đó).
 function suDung(k, soKhoa) {
   if (!k) return null;
@@ -539,7 +592,10 @@ class Component extends DCLogic {
       tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdDangXem: false, tdDangChay: false, tdLoi: '', tdLuot: null,
       tdMoDan: false,
       tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
-      tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null };
+      tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
+      // NV225: bảng phân loại (từ /bang-phan-loai), gom nhóm→loại kèm cờ
+      // dang_dung (từ /nhom-loai) và 3 ô chọn xếp tầng của form tài khoản.
+      dlBang: null, dlGom: null, dlNhom: '', dlLoaiTk: '', dlDichDung: '' };
     this._den = den;
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
@@ -749,6 +805,17 @@ class Component extends DCLogic {
     } catch (e) {
       this.setState({ dlDs: [] });
     }
+    // NV225: gom nhóm → loại kèm cờ «đang dùng #1» + bảng phân loại cho
+    // ô chọn xếp tầng. Lõi cũ chưa có hai đường này → trang vẫn chạy:
+    // gom tự suy từ trường nhom/loai của từng bản ghi, ô chọn ẩn đi.
+    try {
+      const { j } = await K.goi('api/tai-khoan/nhom-loai');
+      this.setState({ dlGom: (j && j.nhom_loai) || null });
+    } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
+    try {
+      const { j } = await K.goi('api/tai-khoan/bang-phan-loai');
+      this.setState({ dlBang: j || null });
+    } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
     try {
       const { j } = await K.goi('api/tai-khoan/tu-dang-nhap-lai');
       if (j && typeof j.bat === 'boolean') this.setState({ dlTuDongLai: j.bat });
@@ -762,7 +829,11 @@ class Component extends DCLogic {
       dlNhan: t ? (t.nhan || '') : '',
       dlDangNhapBang: t ? (t.dang_nhap_bang || '') : '',
       dlTkGoogleId: t ? (t.tai_khoan_google_id || '') : '',
-      dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: ''
+      dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: '',
+      // NV225: điền sẵn 3 ô phân loại từ chính tài khoản đã chọn.
+      dlNhom: t ? (t.nhom || '') : '',
+      dlLoaiTk: t ? (t.loai_tai_khoan || '') : '',
+      dlDichDung: t ? (t.dich_dung || '') : ''
     });
   }
   dlXoaBiMatKhoiDom() {
@@ -800,7 +871,16 @@ class Component extends DCLogic {
     }
     if (dangNhapBang) payload.dang_nhap_bang = dangNhapBang;
     if (dangNhapBang === 'google') payload.tai_khoan_google_id = s.dlTkGoogleId;
+    // NV225: phân loại nhóm → loại → đích dùng chọn ở form (bảng backend
+    // kiểm lại phía máy chủ; nhóm thật suy từ module sở hữu/bản ghi cũ).
+    const loaiTk = (s.dlLoaiTk || '').trim();
+    if (loaiTk) payload.loai_tai_khoan = loaiTk;
+    const dichDung = (s.dlDichDung || '').trim();
+    if (dichDung) payload.dich_dung = dichDung;
     if (vaDangNhap && chon && chon.id) payload.module_id = chon.id;
+    // Đã chọn phân loại mà không đăng nhập kèm: gắn module đang mở để
+    // backend có nhóm mà kiểm loại/đích (module_id đã hỗ trợ ở POST).
+    if (!vaDangNhap && chon && chon.id && loaiTk) payload.module_id = chon.id;
     this.dlXoaBiMatKhoiDom();
     this.setState({ dlDangLuu: true, dlLoi: '' });
     try {
@@ -1594,7 +1674,7 @@ class Component extends DCLogic {
           tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
           tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false,
           dlDs: [], dlChonId: '', dlEmail: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
-          dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkGoogleId: '',
+          dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkGoogleId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
           dlXoaChon: '', dlMoDS: true, dlTuDongLai: true
         });
@@ -1615,6 +1695,91 @@ class Component extends DCLogic {
         const dsNhomDl = [...new Set(dlDs.map((t) => t.nhom || '').filter(Boolean))].sort();
         const dlEmailTrim = (s.dlEmail || '').trim();
         const dlCoChungThuc = !!(dlEmailTrim && (s.dlMatKhau || ''));
+        // NV225: cờ «đang dùng #1» lấy từ /nhom-loai (dlGom) — bản ghi tự nó
+        // không mang cờ này. Thiếu dlGom (lõi cũ) → không tài khoản nào #1.
+        const dangDungTk = {};
+        if (s.dlGom) for (const nTk of Object.keys(s.dlGom)) {
+          const theoLoai = s.dlGom[nTk] || {};
+          for (const lTk of Object.keys(theoLoai)) {
+            for (const t of ((theoLoai[lTk] || {}).tai_khoan || [])) {
+              if (t && t.id) dangDungTk[t.id] = !!t.dang_dung;
+            }
+          }
+        }
+        const bangTk = s.dlBang || null;
+        const hangTk = dlDs.filter((t) => !locNhomDl || (t.nhom || '') === locNhomDl).map((t) => ({
+          id: t.id,
+          emailChe: t.email_che || '',
+          coNhan: !!(t.nhan || ''),
+          nhan: t.nhan || '',
+          nhom: t.nhom || '',
+          coNhom: !!(t.nhom || ''),
+          loaiTk: t.loai_tai_khoan || '',
+          nhanLoaiTk: (t.loai_tai_khoan || '') ? tenTrongBangTk(bangTk, 'ten_loai', t.loai_tai_khoan) : '',
+          dichDung: t.dich_dung || '',
+          coDichDung: !!(t.dich_dung || ''),
+          nhanDichDung: (t.dich_dung || '') ? tenTrongBangTk(bangTk, 'ten_dich_dung', t.dich_dung) : '',
+          bacGoi: t.bac_goi || 'khong_biet',
+          trangThai: t.trang_thai === 'tam_dung' ? 'Đã tạm dừng' : (t.co_totp ? 'đã lưu · 2FA' : 'đã lưu'),
+          tamDung: t.trang_thai === 'tam_dung',
+          doiTamDung: () => this.dlDoiTamDung(t.id, t.trang_thai !== 'tam_dung'),
+          nhanTamDung: t.trang_thai === 'tam_dung' ? 'Bật lại' : 'Tạm dừng',
+          tamDungSt: btnSt({}) + 'min-height:44px;',
+          coTamDung: s.dlCoTamDung !== false,
+          dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
+          dangNhapSt: btnSt({}) + 'min-height:44px;',
+          cho2faDl: s.dlCho2faId === t.id,
+          ma2faDlVal: s.dlMa2fa || '',
+          doiMa2faDl: (e) => this.setState({ dlMa2fa: e.target.value }),
+          guiMa2faDl: () => this.dlGuiMa2fa(),
+          xoa: () => this.dlXoa(t.id),
+          xoaSt: btnSt({ bad: (s.dlXoaChon || '') === t.id }) + 'min-height:44px;',
+          nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá',
+          dangDung1: !!dangDungTk[t.id],
+          stDangDung1: DD_ST,
+          hanMuc: nhanHanMucTk(t),
+          coDongDung: !!((t.dung && ((t.dung.hom_nay | 0) > 0 || (t.dung['7_ngay'] | 0) > 0)) || (t.han_muc && typeof t.han_muc === 'object')),
+          dongDung: (() => { const d = t.dung || {}, hm = t.han_muc;
+            let x = 'Hôm nay ' + (d.hom_nay | 0) + ' lượt · 7 ngày ' + (d['7_ngay'] | 0) + ' lượt';
+            if (hm && typeof hm === 'object' && hm.con_lai != null) x += ' · còn ' + hm.con_lai;
+            return x; })()
+        }));
+        // NV225: gom hàng theo nhóm → loại. Thứ tự nhóm/loại theo BẢNG đổ
+        // từ API (dlBang); nhóm ngoài bảng hoặc chưa có nhóm → xô cuối
+        // «Chưa phân nhóm» để không tài khoản nào biến mất khỏi giao diện.
+        const thuTuNhomTk = (bangTk && Array.isArray(bangTk.nhom) && bangTk.nhom.length)
+          ? bangTk.nhom : [...new Set(hangTk.map((r) => r.nhom).filter(Boolean))];
+        const nhomDsTk = [];
+        const daXepTk = new Set();
+        for (const nTk of thuTuNhomTk) {
+          const cacHang = hangTk.filter((r) => r.nhom === nTk);
+          cacHang.forEach((r) => daXepTk.add(r.id));
+          const loaiBang = (bangTk && bangTk.loai_theo_nhom && bangTk.loai_theo_nhom[nTk]) || [];
+          const loaiCo = [...new Set(cacHang.map((r) => r.loaiTk))];
+          const thuTuLoai = [...loaiBang.filter((l) => loaiCo.includes(l)),
+            ...loaiCo.filter((l) => !loaiBang.includes(l))];
+          nhomDsTk.push({
+            nhom: nTk, ten: tenTrongBangTk(bangTk, 'ten_nhom', nTk), dem: String(cacHang.length),
+            rong: cacHang.length === 0,
+            loaiDs: thuTuLoai.map((l) => ({
+              loai: l, coNhan: true,
+              nhan: l ? tenTrongBangTk(bangTk, 'ten_loai', l) : 'Chưa phân loại',
+              hang: cacHang.filter((r) => r.loaiTk === l)
+            }))
+          });
+        }
+        const thuaTk = hangTk.filter((r) => !daXepTk.has(r.id));
+        if (thuaTk.length) nhomDsTk.push({
+          nhom: '__chua_phan_nhom', ten: 'Chưa phân nhóm', dem: String(thuaTk.length),
+          rong: false,
+          loaiDs: [{ loai: '', coNhan: false, nhan: '', hang: thuaTk }]
+        });
+        // NV225: options của 3 ô chọn xếp tầng — ĐỔ TỪ BẢNG API (dlBang).
+        const dlNhomChon = s.dlNhom || '';
+        const dlLoaiChon = s.dlLoaiTk || '';
+        const loaiTuyChonTk = (bangTk && bangTk.loai_theo_nhom && bangTk.loai_theo_nhom[dlNhomChon]) || [];
+        const dichTuyChonTk = (bangTk && bangTk.dich_dung_theo_nhom_loai
+          && bangTk.dich_dung_theo_nhom_loai[dlNhomChon + '|' + dlLoaiChon]) || [];
         return {
           moDS: s.dlMoDS !== false,
           doiMoDS: (e) => { const mo = !!e.target.open; if ((s.dlMoDS !== false) !== mo) this.setState({ dlMoDS: mo }); },
@@ -1670,35 +1835,19 @@ class Component extends DCLogic {
           duongTrinhDuyet: td.duongTrinhDuyet,
           nhanTrinhDuyet: td.nhanTrinhDuyet,
           trinhDuyetSt: btnSt({}) + 'min-height:44px;text-decoration:none;display:inline-flex;align-items:center;',
-          hang: dlDs.filter((t) => !locNhomDl || (t.nhom || '') === locNhomDl).map((t) => ({
-            id: t.id,
-            emailChe: t.email_che || '',
-            coNhan: !!(t.nhan || ''),
-            nhan: t.nhan || '',
-            nhom: t.nhom || '',
-            coNhom: !!(t.nhom || ''),
-            bacGoi: t.bac_goi || 'khong_biet',
-            trangThai: t.trang_thai === 'tam_dung' ? 'Đã tạm dừng' : (t.co_totp ? 'đã lưu · 2FA' : 'đã lưu'),
-            tamDung: t.trang_thai === 'tam_dung',
-            doiTamDung: () => this.dlDoiTamDung(t.id, t.trang_thai !== 'tam_dung'),
-            nhanTamDung: t.trang_thai === 'tam_dung' ? 'Bật lại' : 'Tạm dừng',
-            tamDungSt: btnSt({}) + 'min-height:44px;',
-            coTamDung: s.dlCoTamDung !== false,
-            dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
-            dangNhapSt: btnSt({}) + 'min-height:44px;',
-            cho2faDl: s.dlCho2faId === t.id,
-            ma2faDlVal: s.dlMa2fa || '',
-            doiMa2faDl: (e) => this.setState({ dlMa2fa: e.target.value }),
-            guiMa2faDl: () => this.dlGuiMa2fa(),
-            xoa: () => this.dlXoa(t.id),
-            xoaSt: btnSt({ bad: (s.dlXoaChon || '') === t.id }) + 'min-height:44px;',
-            nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá',
-            coDongDung: !!((t.dung && ((t.dung.hom_nay | 0) > 0 || (t.dung['7_ngay'] | 0) > 0)) || (t.han_muc && typeof t.han_muc === 'object')),
-            dongDung: (() => { const d = t.dung || {}, hm = t.han_muc;
-              let s = 'Hôm nay ' + (d.hom_nay | 0) + ' lượt · 7 ngày ' + (d['7_ngay'] | 0) + ' lượt';
-              if (hm && typeof hm === 'object' && hm.con_lai != null) s += ' · còn ' + hm.con_lai;
-              return s; })()
-          })),
+          hang: hangTk,
+          nhomDs: nhomDsTk,
+          bangCo: !!bangTk,
+          nhomChon: dlNhomChon,
+          doiNhomChon: (e) => this.setState({ dlNhom: e.target.value || '', dlLoaiTk: '', dlDichDung: '' }),
+          dsNhomChon: (bangTk && Array.isArray(bangTk.nhom) ? bangTk.nhom : []).map((n) => ({ id: n, nhan: tenTrongBangTk(bangTk, 'ten_nhom', n), chon: n === dlNhomChon })),
+          loaiChon: dlLoaiChon,
+          doiLoaiChon: (e) => this.setState({ dlLoaiTk: e.target.value || '', dlDichDung: '' }),
+          dsLoaiChon: loaiTuyChonTk.map((l) => ({ id: l, nhan: tenTrongBangTk(bangTk, 'ten_loai', l), chon: l === dlLoaiChon })),
+          dichChon: s.dlDichDung || '',
+          doiDichChon: (e) => this.setState({ dlDichDung: e.target.value || '' }),
+          dsDichChon: dichTuyChonTk.map((d) => ({ id: d, nhan: tenTrongBangTk(bangTk, 'ten_dich_dung', d), chon: d === (s.dlDichDung || '') })),
+          coDichChon: dichTuyChonTk.length > 0,
           soHangCoDuLieu: (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length,
           luuTatCa: () => this.dlLuuTatCa(),
           luuTatCaSt: btnSt({}) + 'min-height:44px;',
