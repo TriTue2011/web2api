@@ -639,8 +639,14 @@ class BoDieuPhoiCombo:
 
     def _xep(self, hop_le: list[dict[str, Any]], viec: str, khoa: str | None) -> list[dict[str, Any]]:
         """Thứ tự thử: [bước dính] + bước tốt + bước bị hạ bậc + bước cầu chì đang chặn (vẫn thử — không chặn lựa
-        chọn cuối). Mỗi nhóm giữ THỨ TỰ GỐC, nên hết hạn hạ bậc/nghỉ là bước tự về chỗ cũ."""
+        chọn cuối). Mỗi nhóm giữ THỨ TỰ GỐC, nên hết hạn hạ bậc/nghỉ là bước tự về chỗ cũ.
+
+        Ô3: nếu KHÔNG còn bước nào HOÀN TOÀN khoẻ (cầu chì đóng hẳn + không hạ bậc) — mọi bước đều
+        mở/đang thăm dò/nửa mở/hạ bậc vì SỨC KHOẺ — thử lại DANH SÁCH GỐC theo thứ tự gốc thay vì 503
+        ngay (hạ bậc/thăm dò có thể đã hồi phục). Bước nửa mở vẫn giữ thăm dò có kiểm soát qua `chiem`
+        trong `_chay`; bước tắt tuyệt đối không gọi (đã loại ở `_hop_le`)."""
         tot, ha, chan = [], [], []
+        co_khoe = False
         for b in hop_le:
             tt = bo_cau_chi.trang_thai(b["module"], viec)
             if tt in ("mo", "dang_tham_do"):
@@ -649,7 +655,14 @@ class BoDieuPhoiCombo:
             elif bo_han_muc.dang_ha(b["module"], b["model"], viec):
                 ha.append(b)
             else:
-                tot.append(b)
+                tot.append(b)  # "dong" hoặc "cho_tham_do" (nửa mở: thăm dò qua chiem như thường)
+                if tt == "dong":
+                    co_khoe = True
+        if not co_khoe and hop_le:
+            nhat_ky.ghi("combo", "canh_bao", f"Combo {self.ten}: lọc sạch → thử danh sách gốc "
+                        f"({len(hop_le)} bước: {len(ha)} hạ bậc, {len(chan)} cầu chì, {len(tot)} nửa mở)",
+                        combo=self.ten, viec=viec)
+            return hop_le
         dinh = bo_dinh_phien.get(self.ten, viec, khoa)
         if dinh is not None:
             vi_tri = next((i for i, b in enumerate(tot) if b["model"] == dinh), None)
