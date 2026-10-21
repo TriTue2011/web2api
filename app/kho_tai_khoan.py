@@ -84,6 +84,32 @@ DICH_DUNG_THEO_NHOM_LOAI = {
     ("chatgpt", "web"): ("web", "codex"),
 }
 
+#: Bí danh nhóm CŨ → nhóm AI hiện hành (NV224) — BẢNG KHAI BÁO. Trước NV224
+#: module openaicodex khai nhóm riêng «openai»; thiết kế chủ máy chốt Codex
+#: là ĐÍCH của nhóm chatgpt, không phải nhóm riêng. Bản ghi cũ mang nhóm
+#: «openai» vẫn đọc được: nhãn hiệu lực đổi êm sang «chatgpt» ở lớp đọc
+#: (``ban_cong_khai``), dữ liệu gốc trong kho không bị viết lại/mất.
+NHOM_CU_SANG_NHOM_AI = {"openai": "chatgpt"}
+
+#: Thứ tự ưu tiên ĐÍCH DÙNG khi chọn «đang dùng #1» (NV224) — BẢNG KHAI BÁO:
+#: trong một nhóm, tài khoản đích đứng trước trong bảng được ưu tiên (chủ
+#: máy chốt: Codex trước web — dùng Codex trước, hết/lỗi mới sang web).
+#: Đích không có trong bảng (kể cả "") xếp sau cùng, giữ thứ tự liệt kê.
+THU_TU_UU_TIEN_DICH_DUNG = ("codex", "web", "gemini", "antigravity", "api")
+
+
+def nhom_hieu_luc(nhom: str) -> str:
+    """Nhóm hiệu lực của một bản ghi: bí danh cũ → nhóm hiện hành (NV224)."""
+    return NHOM_CU_SANG_NHOM_AI.get(nhom, nhom)
+
+
+def _thu_tu_dich_dung(dich_dung) -> int:
+    """Vị trí ưu tiên của một đích dùng trong bảng khai báo (NV224)."""
+    try:
+        return THU_TU_UU_TIEN_DICH_DUNG.index(dich_dung)
+    except ValueError:
+        return len(THU_TU_UU_TIEN_DICH_DUNG)
+
 #: Giá trị hiển thị khi chưa biết bậc gói (NV197c) — KHÔNG đoán từ dữ liệu khác.
 BAC_GOI_KHONG_BIET = "khong_biet"
 
@@ -329,6 +355,36 @@ def kiem_tai_khoan_google_id(tai_khoan_google_id) -> str:
     return s
 
 
+def kiem_dung_cho(dung_cho, nhom, loai) -> list:
+    """Kiểm DANH SÁCH đích dùng (NV224): một tài khoản dùng cho nhiều đích.
+
+    Phải là list/tuple; mỗi mục kiểm như ``kiem_dich_dung`` của đúng
+    (nhóm, loại); khử trùng giữ thứ tự; mục "" bị bỏ (chưa khai báo).
+    """
+    if isinstance(dung_cho, (str, bytes)) or not isinstance(dung_cho, (list, tuple)):
+        raise LoiKhoTaiKhoan("invalid_value")
+    kq: list[str] = []
+    for muc in dung_cho:
+        d = kiem_dich_dung(muc, nhom, loai)
+        if d and d not in kq:
+            kq.append(d)
+    return kq
+
+
+def _dung_cho_hieu_luc(ban_ghi: dict) -> list:
+    """Danh sách đích dùng hiệu lực của bản ghi (NV224).
+
+    Bản ghi cũ chưa có trường ``dung_cho``: suy từ ``dich_dung`` đơn đã lưu
+    (không mất đích nào). ``dich_dung`` hiện tại luôn có mặt trong danh sách.
+    """
+    tho = ban_ghi.get("dung_cho")
+    kq = [d for d in tho if isinstance(d, str) and d] if isinstance(tho, list) else []
+    dd = ban_ghi.get("dich_dung") or ""
+    if dd and dd not in kq:
+        kq.append(dd)
+    return kq
+
+
 def ma_tai_khoan(email_chuan: str) -> str:
     """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256)."""
     return _TIEN_TO_ID + hashlib.sha256(email_chuan.encode("utf-8")).hexdigest()[:16]
@@ -390,6 +446,12 @@ def _doc() -> dict:
         for truong in ("loai_tai_khoan", "dich_dung"):
             if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
                 raise LoiKhoTaiKhoan("kho_hong")
+        # Trường NV224 (tuỳ chọn, bản ghi cũ không có): danh sách chuỗi.
+        if "dung_cho" in ban_ghi:
+            dc = ban_ghi["dung_cho"]
+            if not isinstance(dc, list) or any(
+                    not isinstance(x, str) for x in dc):
+                raise LoiKhoTaiKhoan("kho_hong")
     return du_lieu
 
 
@@ -422,6 +484,7 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
             # NV218: bản ghi nhập chưa phân loại AI.
             "loai_tai_khoan": "",
             "dich_dung": "",
+            "dung_cho": [],
             "module_id": "",
             "email_che": che_email(email) if email else None,
             "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
@@ -438,7 +501,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         "email_che": che_email(email),
         "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
         "module_id": ban_ghi.get("module_id", ""),
-        "nhom": ban_ghi.get("nhom", ""),
+        # NV224: nhãn nhóm hiệu lực — bí danh cũ («openai») đổi êm sang nhóm
+        # hiện hành («chatgpt») ở lớp đọc, dữ liệu gốc không đổi.
+        "nhom": nhom_hieu_luc(ban_ghi.get("nhom", "")),
         "bac_goi": ban_ghi.get("bac_goi") or BAC_GOI_KHONG_BIET,
         # NV218: loại + đích dùng theo bảng khai báo ("" = chưa phân loại).
         "loai_tai_khoan": ban_ghi.get("loai_tai_khoan", ""),
@@ -446,6 +511,8 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         # NV223: cách đăng nhập + id tài khoản Google đăng nhập hộ (không bí mật)
         "dang_nhap_bang": ban_ghi.get("dang_nhap_bang", ""),
         "tai_khoan_google_id": ban_ghi.get("tai_khoan_google_id", ""),
+        # NV224: MỌI đích dùng của bản ghi (tích lũy, không đè).
+        "dung_cho": _dung_cho_hieu_luc(ban_ghi),
         "co_mat_khau": bool(ban_ghi.get("mat_khau")),
         "co_totp": bool(ban_ghi.get("totp_secret")),
         "trang_thai": ban_ghi.get("trang_thai", ""),
@@ -468,7 +535,7 @@ def _tom_tat_dung(id_: str) -> dict:
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                   trang_thai=None, id=None, module_id=None, nhom=None,
                   bac_goi=None, loai_tai_khoan=None, dich_dung=None, dang_nhap_bang=None,
-                  tai_khoan_google_id=None) -> dict:
+                  tai_khoan_google_id=None, dung_cho=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
@@ -481,6 +548,9 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     `dang_nhap_bang`/`tai_khoan_google_id` (NV223): None → giữ nguyên cũ;
     kiểm chéo SAU khi hợp nhất: ``dang_nhap_bang == "google"`` mà thiếu
     ``tai_khoan_google_id`` → ``invalid_value`` (không lưu dở).
+    `dung_cho` (NV224): danh sách MỌI đích dùng của bản ghi — None → giữ
+    nguyên; truyền vào thì CỘNG THÊM (khử trùng, không đè mất đích cũ);
+    `dich_dung` đặt mới cũng được cộng vào danh sách.
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
     mk = kiem_mat_khau(mat_khau)
@@ -555,6 +625,20 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         if dnb_moi == "google" and not tk_gg_moi:
             raise LoiKhoTaiKhoan("invalid_value")
 
+        # NV224: dung_cho TÍCH LŨY — bắt đầu từ danh sách hiệu lực cũ, cộng
+        # thêm các đích truyền vào (đã kiểm theo bảng của (nhóm, loại) MỚI),
+        # cộng cả dich_dung vừa đặt; cuối cùng lọc theo bảng của (nhóm,
+        # loại) mới như NV218 (đổi nhóm/loại làm đích cũ mất hiệu lực).
+        dung_cho_moi = _dung_cho_hieu_luc(cu) if cu else []
+        if dung_cho is not None:
+            for d in kiem_dung_cho(dung_cho, nhom_moi, loai_moi):
+                if d not in dung_cho_moi:
+                    dung_cho_moi.append(d)
+        if dich_dung_moi and dich_dung_moi not in dung_cho_moi:
+            dung_cho_moi.append(dich_dung_moi)
+        _cho_phep_dc = set(DICH_DUNG_THEO_NHOM_LOAI.get((nhom_moi, loai_moi), ()))
+        dung_cho_moi = [d for d in dung_cho_moi if d in _cho_phep_dc]
+
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
@@ -569,6 +653,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "dich_dung": dich_dung_moi,
             "dang_nhap_bang": dnb_moi,
             "tai_khoan_google_id": tk_gg_moi,
+            "dung_cho": dung_cho_moi,
             "cap_nhat": int(time.time()),
         }
         du_lieu[id_] = ban_ghi
@@ -601,9 +686,12 @@ def gom_theo_nhom_loai() -> dict:
 
     Trả ``{nhom: {loai: {"tai_khoan": [...], "dang_dung": <id>|None}}}``.
     ``dang_dung`` = id tài khoản đang được chọn đầu trong (nhóm, loại):
-    tài khoản dùng được đầu tiên theo thứ tự liệt kê (bỏ qua ``tam_dung``
-    và tài khoản đang hết hạn mức theo ``luong_dung_tai_khoan``); None khi
-    không có tài khoản dùng được. Mỗi tài khoản mang thêm cờ ``dang_dung``.
+    bỏ qua ``tam_dung`` và tài khoản đang hết hạn mức theo
+    ``luong_dung_tai_khoan``; trong số còn lại ƯU TIÊN theo đích dùng —
+    bảng ``THU_TU_UU_TIEN_DICH_DUNG`` (NV224: Codex trước web), hoà thì
+    giữ thứ tự liệt kê. None khi không có tài khoản dùng được. Mỗi tài
+    khoản mang thêm cờ ``dang_dung``. Nhóm là nhãn HIỆU LỰC (bản ghi cũ
+    nhóm «openai» gom về «chatgpt» — NV224).
     """
     try:
         from app import luong_dung_tai_khoan as ldtk
@@ -619,7 +707,12 @@ def gom_theo_nhom_loai() -> dict:
     for g_nhom in gom.values():
         for muc in g_nhom.values():
             chon = None
-            for b in muc["tai_khoan"]:
+            # NV224: xét theo thứ tự ưu tiên đích dùng trước (bảng khai
+            # báo), ổn định theo thứ tự liệt kê khi hoà.
+            thu_tu_xet = sorted(
+                enumerate(muc["tai_khoan"]),
+                key=lambda p: (_thu_tu_dich_dung(p[1].get("dich_dung")), p[0]))
+            for _i, b in thu_tu_xet:
                 if b.get("trang_thai") == TRANG_THAI_TAM_DUNG:
                     continue
                 if ldtk is not None:
