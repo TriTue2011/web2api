@@ -3910,6 +3910,16 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
                 id, module_id, _nhom_cua_module(request, module_id))
         except Exception:
             log.warning("tai-khoan: không ghi được module sở hữu cho %s", id)
+        # NV214: nối cookie phiên vào module sở hữu (nếu module đó khai
+        # nhan_cookie và module thực thi báo ho_so_dang_nhap) — lỗi nối
+        # không làm hỏng kết quả đăng nhập, cookie không ra phản hồi/log.
+        try:
+            await _noi_cookie_dang_nhap_vao_module(
+                request.app.state.so, mod,
+                (ban_ghi.get("module_id") or "") if ban_ghi else "", kq)
+        except Exception as e:
+            log.warning("tai-khoan: nối cookie đăng nhập lỗi: %s",
+                        type(e).__name__)
     return {
         "thanh_cong": thanh_cong,
         "can_nguoi": bool(getattr(kq, "can_nguoi", False)),
@@ -4169,6 +4179,11 @@ async def dang_nhap_da_luu_theo_module(request: Request):
         if getattr(kq, "thanh_cong", False):
             # NV210: mỗi tài khoản đăng nhập xong thì gắn JWT mới + hồ sơ vào module sở hữu.
             gan_ket_qua_dang_nhap_mod.ap_dung(so_loi, kq, module_so_huu)
+            # NV214: và nối cookie phiên vào module sở hữu — lỗi nối không làm hỏng kết quả từng dòng.
+            try:
+                await _noi_cookie_dang_nhap_vao_module(so_loi, mod, module_so_huu, kq)
+            except Exception as e:
+                log.warning("dang-nhap-theo-module: nối cookie lỗi: %s", type(e).__name__)
         return kq
 
     quan_ly = request.app.state.quan_ly_luot_chay
@@ -4255,6 +4270,83 @@ async def _luu_chung_chi_vao_module(so: Any, module: Any, module_id: str, chung_
         raise LoiOpenAI(502, "Không lưu được tài khoản mới.", code="loi_luu") from None
     finally:
         chung_chi = None  # noqa: F841 — không giữ chuỗi thô
+
+
+def _truong_nhan_cookie_cua_module(module) -> tuple[str, bool, str] | None:
+    """Trường cấu hình mà manifest module khai ``nhan_cookie`` (nhận cookie
+    phiên từ lượt đăng nhập): (khoá trường, là_danh_sách, tên miền). Không
+    khai → None. Lõi chỉ đọc KHẢ NĂNG, không biết tên nhà cung cấp nào."""
+    truong = (getattr(module, "manifest", None) or {}).get("truong_cau_hinh") or []
+    for t in truong:
+        if not isinstance(t, dict):
+            continue
+        nc = t.get("nhan_cookie")
+        if not isinstance(nc, dict):
+            continue
+        mien = nc.get("mien")
+        khoa = t.get("khoa")
+        if (not isinstance(mien, str) or not mien
+                or not isinstance(khoa, str) or not khoa
+                or t.get("kieu") not in kho.KIEU_BI_MAT):
+            continue
+        return khoa, t.get("kieu") == "danh_sach_bi_mat", mien
+    return None
+
+
+async def _noi_cookie_dang_nhap_vao_module(so: Any, mod_thuc_thi: Any,
+                                           module_so_huu: str, kq: Any) -> bool:
+    """NV214 — nối nốt chuỗi đăng nhập: module thực thi đăng nhập THÀNH CÔNG
+    thì lấy cookie phiên qua khả năng ``trinh_duyet_cookie`` của nó (đúng tên
+    miền do module sở hữu khai ``nhan_cookie`` trong manifest) rồi đưa vào
+    module sở hữu bằng ``so.cai`` {giu, them} (thêm + khử trùng chuỗi y hệt).
+
+    Không thay «cookie cũ của tài khoản đó» theo chuỗi email: dữ liệu đã lưu
+    không ánh xạ cookie→tài khoản nên không nhận diện được bằng dữ liệu chắc
+    chắn — thêm mới thay vì đoán (cùng ngữ nghĩa với tuyến cookie-sang-module).
+
+    Mọi lỗi ở đây chỉ ghi log (kiểu lỗi, KHÔNG nội dung cookie) — không bao giờ
+    làm hỏng kết quả đăng nhập. Cookie thô bị xoá ngay sau khi dùng. Trả True
+    nếu đã nối được cookie vào module sở hữu."""
+    ho_so = getattr(kq, "ho_so_dang_nhap", "") or ""
+    if not isinstance(ho_so, str) or not ho_so:
+        return False
+    mod_sh = (getattr(so, "dang_chay", None) or {}).get(module_so_huu)
+    if mod_sh is None:
+        return False
+    truong = _truong_nhan_cookie_cua_module(mod_sh)
+    if truong is None:
+        return False
+    khoa_truong, la_danh_sach, mien = truong
+    lay = getattr(mod_thuc_thi, "trinh_duyet_cookie", None)
+    if not callable(lay):
+        return False
+    cookie: str | None = None
+    try:
+        try:
+            kq_lay = await lay(ho_so, mien)
+        except Exception as e:
+            log.warning("noi-cookie: lấy cookie từ module thực thi lỗi: %s",
+                        type(e).__name__)
+            return False
+        cookie = kq_lay.get("cookie") if isinstance(kq_lay, dict) else None
+        if (not isinstance(cookie, str) or not cookie
+                or len(cookie) > novnc_mod.TRAN_COOKIE
+                or not novnc_mod.MAU_CHUOI_COOKIE.fullmatch(cookie)):
+            log.warning("noi-cookie: kết quả lấy cookie sai cấu trúc (%s)",
+                        type(cookie).__name__)
+            return False
+        try:
+            kq_cai = await so.cai(
+                module_so_huu,
+                {khoa_truong: {"them": [cookie]} if la_danh_sach else cookie})
+        except Exception as e:
+            # Lỗi của sổ/kho/module: chỉ ghi kiểu lỗi, không nội dung cookie.
+            log.warning("noi-cookie: cài cookie vào module sở hữu lỗi: %s",
+                        type(e).__name__)
+            return False
+        return bool(kq_cai.get("ok"))
+    finally:
+        cookie = None  # noqa: F841 — không giữ chuỗi thô
 
 
 async def _xu_ly_ket_qua_tai_dung(

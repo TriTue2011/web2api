@@ -401,12 +401,15 @@ def _huong_dan_can_nguoi(ma_loi: str) -> str:
 def _ket_qua_dang_nhap(thanh_cong: bool, ma_loi: str = "",
                        ma_trang_thai: int | None = None, can_nguoi: bool = False,
                        cho_2fa: bool = False, huong_dan: str = "",
-                       jwt_moi: dict | None = None) -> "KetQuaDangNhap":
+                       jwt_moi: dict | None = None,
+                       ho_so: str | None = None) -> "KetQuaDangNhap":
     """Dựng kết quả theo khuôn lõi (KetQuaDangNhap) + 3 tín hiệu mở rộng mà
     tuyến /da-luu/{id}/dang-nhap đọc qua getattr: can_nguoi, cho_2fa, huong_dan.
     KHÔNG bao giờ đính kèm mật khẩu/cookie/token — ngoại lệ NV210: ``jwt_moi``
     (JWT vừa lấy + ``ho_so``) chỉ để tầng ứng dụng đưa vào khoá sổ chatgpt-web
     qua đường cai {giu, them}; tuyến lõi không trả nó ra trình duyệt.
+    NV214: ``ho_so`` (tên hồ sơ dịch vụ vừa đăng nhập xong) để tầng ứng dụng
+    nối cookie phiên vào module sở hữu qua ``trinh_duyet_cookie``.
     """
     kq = KetQuaDangNhap(thanh_cong=thanh_cong, cookie=None, ma_loi=ma_loi,
                         ma_trang_thai=ma_trang_thai)
@@ -415,6 +418,7 @@ def _ket_qua_dang_nhap(thanh_cong: bool, ma_loi: str = "",
     object.__setattr__(kq, "huong_dan", str(huong_dan or ""))
     object.__setattr__(kq, "jwt_moi",
                        dict(jwt_moi) if isinstance(jwt_moi, dict) else None)
+    object.__setattr__(kq, "ho_so_dang_nhap", str(ho_so or ""))
     return kq
 
 
@@ -1345,13 +1349,13 @@ class Module:
         return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
 
     def _ket_qua_tu_phien_dich_vu(self, phien: dict, khoa_tk: str,
-                                 st: dict) -> KetQuaDangNhap:
+                                 st: dict, ho_so: str = "") -> KetQuaDangNhap:
         """Ánh xạ trạng thái phiên dịch vụ → kết quả theo khuôn lõi."""
         trang_thai = str(phien.get("state") or "none")
         loi = str(phien.get("error") or phien.get("message") or "")
         if trang_thai == "success":
             st["hong_lt"].pop(khoa_tk, None)
-            return _ket_qua_dang_nhap(True)
+            return _ket_qua_dang_nhap(True, ho_so=ho_so)
         if trang_thai == "need_code":
             return _ket_qua_dang_nhap(
                 False, ma_loi="cho_2fa", cho_2fa=True,
@@ -1413,10 +1417,10 @@ class Module:
                 # NV209: need_human là trạng thái cuối — trả ngay, không chờ hết trần
                 if trang_thai in ("success", "need_code", "need_captcha",
                                   "need_human", "failed"):
-                    return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st)
+                    return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st, hs)
                 if trang_thai == "need_tap" and time.time() >= han:
                     # Hết trần mà người dùng chưa chạm điện thoại
-                    return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st)
+                    return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st, hs)
             # Chưa có kết quả cuối (starting/running/need_tap/none/lỗi hỏi):
             # nghỉ rồi hỏi tiếp tới hết trần.
             if time.time() >= han:
