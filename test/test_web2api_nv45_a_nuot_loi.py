@@ -167,6 +167,15 @@ DA_KIEM_TOAN = {
     # (đã ghi log trong _vong_lap/_vong_dong_bo).
     ("app/lam_moi_jwt.py", "dung"),
     ("app/lam_moi_jwt.py", "huy_tat_ca"),
+    # Đã duyệt NV210 (điều phối đọc hàm + test đột biến, 21/10/2026): đưa JWT mới vào module sở hữu là
+    # việc PHỤ sau khi đăng nhập đã thành công; lỗi ở đây không được làm hỏng kết quả đăng nhập (người dùng
+    # vẫn thấy «đã đăng nhập»). Lỗi KHÔNG im lặng: ghi log kiểu lỗi (không kèm token) và trả False; token luôn bị
+    # xoá khỏi kết quả (test_ap_dung_luon_xoa_jwt_moi…, test_ap_dung_khong_nem…).
+    ("app/gan_ket_qua_dang_nhap.py", "ap_dung"),
+    # Đã duyệt NV210: giải mã claim email của JWT mà dịch vụ vừa trả; token hỏng → "" (đóng khi lỗi). Phía gọi
+    # rơi về email CỦA CHÍNH tài khoản vừa đăng nhập (dữ liệu chắc chắn), không đoán email lạ; không có quyết định
+    # bảo mật nào dựa trên kết quả rỗng.
+    ("modules/may-dang-nhap/module.py", "_email_tu_jwt"),
 }
 
 

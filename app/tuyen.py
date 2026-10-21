@@ -43,6 +43,7 @@ from app import (
     tai_khoan_hang_loat as tai_khoan_hang_loat_mod,
     lam_moi_model as lam_moi_model_mod,
     khoi_phuc_phien as khoi_phuc_phien_mod,
+    gan_ket_qua_dang_nhap as gan_ket_qua_dang_nhap_mod,
     thiet_bi as thiet_bi_mod,
     tri_thuc as tri_thuc_mod,
     novnc as novnc_mod,
@@ -3733,6 +3734,9 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         dong.xoa_bi_mat()
     thanh_cong = bool(getattr(kq, "thanh_cong", False))
     if thanh_cong:
+        # NV210: đưa JWT mới (nếu module đăng nhập trả) vào module SỞ HỮU tài khoản — theo khả năng
+        # module khai, không theo tên; token bị xoá khỏi kết quả ngay sau đó.
+        gan_ket_qua_dang_nhap_mod.ap_dung(request.app.state.so, kq, dong.module_cua_tai_khoan)
         # NV197c: học module sở hữu từ lần đăng nhập THÀNH CÔNG — nhóm suy từ
         # manifest của module đó. Ghi sổ phụ: lỗi không làm hỏng kết quả đăng nhập.
         try:
@@ -3956,8 +3960,14 @@ async def dang_nhap_da_luu_theo_module(request: Request):
                         e = str(r.get("email") or "").strip().lower()
                         if e:
                             da_co_ho_so.add(e)
-            except Exception:
-                pass
+            except Exception as e:
+                # KHÔNG nuốt: không biết tài khoản nào đã có hồ sơ thì «đăng nhập hết» là mở rộng thao tác
+                # trên tài khoản thật (nguy cơ bị nhà cung cấp hạn chế). Dừng, báo rõ, không chạy gì.
+                log.warning("đăng nhập hàng loạt: không đọc được danh sách hồ sơ của %s: %s",
+                            module_so_huu, type(e).__name__)
+                raise LoiOpenAI(502, "Không đọc được danh sách hồ sơ hiện có của module sở hữu — không chạy "
+                                     "hàng loạt để tránh đăng nhập lại những tài khoản đã có hồ sơ.",
+                                code="khong_doc_duoc_ho_so") from None
     chon: list = []
     for bg in kho_tai_khoan_mod.liet_ke():
         if not isinstance(bg, dict):
@@ -3966,7 +3976,12 @@ async def dang_nhap_da_luu_theo_module(request: Request):
             continue
         if str(bg.get("trang_thai") or "") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
             continue
-        email = str(bg.get("email") or "")
+        # `liet_ke()` chỉ trả dạng CÔNG KHAI (email đã che, không có trường «email»): lấy email thật từ
+        # bản ghi nội bộ theo id. Bản đầu dùng bg["email"] nên email luôn rỗng → mọi dòng hỏng.
+        noi_bo = kho_tai_khoan_mod.tim_theo_id(bg.get("id"))
+        email = str((noi_bo or {}).get("email") or "")
+        if not email:
+            continue
         if chi_chua_co_ho_so and email.strip().lower() in da_co_ho_so:
             continue
         bm = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(bg.get("id"))
@@ -3981,8 +3996,14 @@ async def dang_nhap_da_luu_theo_module(request: Request):
         raise LoiOpenAI(400, "Không có tài khoản nào đủ điều kiện để chạy.",
                         code="khong_co_tai_khoan")
 
+    so_loi = request.app.state.so
+
     async def ham_chay(dong):
-        return await ham(dong)
+        kq = await ham(dong)
+        if getattr(kq, "thanh_cong", False):
+            # NV210: mỗi tài khoản đăng nhập xong thì gắn JWT mới + hồ sơ vào module sở hữu.
+            gan_ket_qua_dang_nhap_mod.ap_dung(so_loi, kq, module_so_huu)
+        return kq
 
     quan_ly = request.app.state.quan_ly_luot_chay
     try:

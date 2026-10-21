@@ -844,6 +844,75 @@ class Module:
         self._luu_ban_ghi_tai_khoan()
         return {"ok": True, "khoa_moi": self._khoa_tu_token(token_moi)}
 
+    def gan_jwt_tu_dang_nhap(self, email: str, token: str, ho_so: str | None = None) -> dict:
+        """NV210 (điều phối nối): đưa JWT vừa đăng nhập thành công vào khoá sổ và GẮN ``ho_so``.
+
+        Nhận diện tài khoản bằng EMAIL (claim trong JWT / email của chính tài khoản vừa đăng nhập —
+        dữ liệu chắc chắn, không đoán chuỗi). Đúng MỘT khoá cùng email → thay token cũ bằng token mới
+        (``_thay_token_jwt``: đọc-ghép-lưu cấu hình bền trong khoá module); chưa có khoá nào → thêm mới;
+        NHIỀU khoá cùng email → từ chối (mơ hồ, không đoán). Rồi gắn email/hồ sơ vào bản ghi để NV207
+        làm mới được về sau. Không log token. Trả {ok, khoa?, thay_the?, ma_loi?}."""
+        token = str(token or "").strip()
+        email_chuan = str(email or "").strip().lower()
+        if not token or not email_chuan:
+            return {"ok": False, "ma_loi": "thieu_du_lieu"}
+        with self._khoa:
+            da_co = any(tk.token == token for tk in self._tai_khoan)
+            khop = [tk for tk in self._tai_khoan
+                    if (tk.email or "").strip().lower() == email_chuan and tk.token != token]
+            khoa_cu = self._khoa_tu_token(khop[0].token) if len(khop) == 1 else None
+        if len(khop) > 1:
+            return {"ok": False, "ma_loi": "mo_ho_nhieu_khoa_cung_email"}
+        thay_the = False
+        if not da_co:
+            if khoa_cu is not None:
+                kq = self._thay_token_jwt(khoa_cu, token)
+                if not kq.get("ok"):
+                    return {"ok": False, "ma_loi": kq.get("ma_loi") or "loi_thay_token"}
+                thay_the = True
+            else:
+                kq = self._them_token_ben(token)
+                if not kq.get("ok"):
+                    return {"ok": False, "ma_loi": kq.get("ma_loi") or "loi_them_token"}
+        with self._khoa:
+            tk = next((t for t in self._tai_khoan if t.token == token), None)
+            if tk is None:
+                return {"ok": False, "ma_loi": "khong_thay_khoa_sau_khi_gan"}
+            if not tk.email:
+                tk.email = email_chuan
+            if ho_so:
+                tk.ho_so = str(ho_so)
+        self._luu_ban_ghi_tai_khoan()
+        return {"ok": True, "khoa": self._khoa_tu_token(token), "thay_the": thay_the}
+
+    def _them_token_ben(self, token: str) -> dict:
+        """Thêm MỘT token mới vào cấu hình bền (giữ nguyên các token đang có) rồi vào bộ nhớ.
+        Cùng đường đọc-ghép-lưu với ``_thay_token_jwt``; không log token."""
+        from app import kho as kho_loi
+        with self._khoa:
+            try:
+                truong = self._truong_cau_hinh_jwt()
+                muc = None
+                ds_mod, _canh_bao = kho_loi.doc_modules()
+                for m in ds_mod or []:
+                    if isinstance(m, dict) and m.get("id") == MODULE_ID:
+                        muc = m
+                        break
+                da_luu = kho_loi.doc_cau_hinh(MODULE_ID, truong, muc) if muc else {}
+                cu = da_luu.get("tai_khoan")
+                cu = list(cu) if isinstance(cu, list) else []
+                ghep = kho_loi.ghep_cau_hinh(
+                    truong, da_luu,
+                    {"tai_khoan": {"giu": list(range(len(cu))), "them": [token]}})
+                kho_loi.luu_cai_dat(MODULE_ID, truong, ghep)
+            except Exception as e:
+                log.warning("chatgpt-web: lưu cấu hình khi thêm khoá lỗi: %s", type(e).__name__)
+                return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
+            if not any(t.token == token for t in self._tai_khoan):
+                self._tai_khoan.append(_TaiKhoan(token))
+        self._xoa_khoi_go_bo(self._khoa_tu_token(token))
+        return {"ok": True}
+
     def _doc_trang_thai_jwt(self) -> dict:
         """Sổ trạng thái làm mới JWT (kho riêng, không bí mật)."""
         if self.kho is None:
