@@ -288,7 +288,6 @@ def test_d_tam_dung_bo_qua_dang_nhap_tay_hang_loat_tu_dang_nhap_lai(moi_truong):
 # dùng là danh sách ``dung_cho`` TÍCH LŨY (lưu thêm không đè). Test này
 # viết lại theo mô hình đó (bài học NV98: cập nhật test cũ theo hành vi mới).
 
-@pytest.mark.xfail(strict=True, reason="NV218: kho khoá chính theo email, chưa tách được hai bản ghi cùng email khác đích dùng (thiết kế chủ máy 21/10: google → gemini / antigravity)")
 def test_e_hai_tai_khoan_cung_email_module_id_khac_nhau(moi_truong):
     from app import kho_tai_khoan as ktk
 
