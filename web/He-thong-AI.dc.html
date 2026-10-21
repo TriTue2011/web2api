@@ -506,6 +506,17 @@ function nhanNghi(k, sd) {
 }
 const laBiMat = (t) => !!t && (t.kieu === 'bi_mat' || t.kieu === 'danh_sach_bi_mat');
 const chuThuong = (s) => String(s || '').charAt(0).toLowerCase() + String(s || '').slice(1);
+// NV212: dòng kết quả «Thử chat» thật — đạt/không + độ trễ + mã lỗi tiếng Việt dễ hiểu + lần thử cuối.
+function chuThuChat(tc) {
+  if (!tc || (!tc.dang && !tc.kq && !tc.loi)) return 'chưa thử chat';
+  if (tc.dang) return 'đang thử…';
+  if (tc.loi) return 'không thử được — ' + tc.loi;
+  const kq = tc.kq || {};
+  const khi = kq.lan_thu ? ' · lần thử ' + K.ngayGio(kq.lan_thu) : '';
+  if (kq.ok) return 'đạt' + (kq.tra_loi_ngan ? ' — «' + kq.tra_loi_ngan + '»' : '')
+    + (kq.do_tre_ms != null ? ' (' + kq.do_tre_ms + ' ms)' : '') + khi;
+  return 'không đạt — ' + (kq.thong_diep_ngan || 'không rõ lý do') + khi;
+}
 
 class Component extends DCLogic {
   constructor(props) {
@@ -513,6 +524,8 @@ class Component extends DCLogic {
     const den = this.neoTk();
     this.state = { nguoiDung: null, tn: null, tnLoi: '', cat: [], mods: [], models: [], dangTai: true,
       tab: den ? 'tai_khoan' : tabTheoNeo(), sk: {}, menuMo: null, ghi: '', ghiLoi: false,
+      // NV212: kết quả «Thử chat» thật từng module AI (theo id module) — {dang, kq, loi}; chưa thử → «chưa thử chat».
+      tc: {},
       tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
@@ -1245,6 +1258,17 @@ class Component extends DCLogic {
     try { const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/suc-khoe'); v = { kq: j || {} }; }
     catch (e) { this.loi(e); v = { loi: e.message }; }
     this.setState((s) => ({ sk: Object.assign({}, s.sk, { [id]: v }) }));
+  }
+  // NV212: «Thử chat» thật — gửi một câu hỏi ngắn qua /v1/chat/completions nội bộ của module,
+  // tách khỏi «Kiểm tra» (sức khoẻ). Mỗi lần thử tốn lượt của tài khoản thật nên chỉ chạy khi bấm.
+  async thuChat(id) {
+    const cu = this.state.tc || {};
+    if (cu[id] && cu[id].dang) return;
+    this.setState((s) => ({ tc: Object.assign({}, s.tc, { [id]: { dang: true } }) }));
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/thu-chat', { method: 'POST', json: {} });
+      this.setState((s) => ({ tc: Object.assign({}, s.tc, { [id]: { dang: false, kq: j || {} } }) }));
+    } catch (e) { this.setState((s) => ({ tc: Object.assign({}, s.tc, { [id]: { dang: false, loi: e.message } }) })); }
   }
   // NV207: trạng thái JWT từng khoá (hết hạn/làm mới). Theo KHẢ NĂNG của module, không theo tên:
   // module không khai `jwt_trang_thai` thì máy chủ trả 404 → ghi nhận «không hỗ trợ» và không hiện gì.
@@ -2016,10 +2040,14 @@ class Component extends DCLogic {
       }
       const goc = (this.state.sk[r.m.id] && this.state.sk[r.m.id].kq && this.state.sk[r.m.id].kq.base_url) || r.ck.base_url || '';
       if (goc) kv.push({ ma: 'goc', k: 'Địa chỉ gốc', v: goc });
+      // NV212: «Thử chat» thật cạnh «Làm mới» (kiểm sức khoẻ) — gửi một câu hỏi ngắn qua /v1/chat/completions.
+      const tc = (this.state.tc || {})[r.m.id] || {};
+      kv.push({ ma: 'thu-chat', k: 'Thử chat', v: chuThuChat(tc) });
       const acts = [];
       if (k && !k.ok && r.t) acts.push({ hd: 'nhap-moi', nhan: 'Nhập khoá mới', st: btnSt({ pri: true }), dang: false,
         pick: () => { this.chonTab('tai_khoan'); this.setState({ tkMo: r.key, tkSua: r.key, fSua: '' }); } });
       if (coKhoaQt) acts.push({ hd: 'lam-moi', nhan: sk.dang ? 'Đang kiểm…' : 'Làm mới', st: btnSt(), dang: sk.dang, pick: () => this.kiem(r.m.id) });
+      if (coKhoaQt) acts.push({ hd: 'thu-chat', nhan: tc.dang ? 'Đang thử…' : 'Thử chat', st: btnSt(), dang: tc.dang, pick: () => this.thuChat(r.m.id) });
       return { so: String(r.i), ten: r.m.ten,
         sub: (r.che ? 'Khoá API · ' + r.che : 'Khoá API · không cần') + (sd && sd.coLuot ? ' · đã dùng ' + sd.luot + ' lượt' : '')
           + (sd && sd.cuoi ? ' · dùng cuối ' + K.tuongDoi(sd.cuoi) : '') + (k && k.do_tre_ms != null ? ' · ' + k.do_tre_ms + ' ms' : ''),

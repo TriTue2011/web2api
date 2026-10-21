@@ -1290,6 +1290,172 @@ async def jwt_trang_thai(id_: str, request: Request):
     return fn()
 
 
+#: NV212: nút «Thử chat» thật cho từng nhà cung cấp AI (tách khỏi «Kiểm tra» sức khoẻ).
+#: Mỗi lần thử tốn lượt của tài khoản thật nên chỉ chạy khi quản trị bấm tay — không tự gọi định kỳ.
+_THU_CHAT_TRA_LOI_TOI_DA = 80
+
+
+def _thu_chat_tran_giay() -> float:
+    """Trần thời gian một lượt thử chat (WEB2API_THU_CHAT_TRAN_GIAY, mặc định 60 giây).
+    Giá trị không phải số dương hữu hạn → mặc định: đặt sai không được tắt trần."""
+    try:
+        val = float(os.environ.get("WEB2API_THU_CHAT_TRAN_GIAY", "60"))
+    except ValueError:
+        return 60.0
+    return val if val > 0 and math.isfinite(val) else 60.0
+
+
+def _thu_chat_gian_cach_giay() -> float:
+    """Giãn tối thiểu giữa hai lần thử của cùng một module, chống bấm dồn
+    (WEB2API_THU_CHAT_GIAN_CACH_GIAY, mặc định 5 giây)."""
+    try:
+        val = float(os.environ.get("WEB2API_THU_CHAT_GIAN_CACH_GIAY", "5"))
+    except ValueError:
+        return 5.0
+    return val if val >= 0 and math.isfinite(val) else 5.0
+
+
+_THU_CHAT_KHOA: dict[str, asyncio.Lock] = {}
+_THU_CHAT_LAN_CUOI: dict[str, float] = {}
+
+
+def _phan_loai_loi_thu_chat(ma: int | None) -> tuple[str, str]:
+    """(ma_loi, thong_diep_ngan) theo MÃ HTTP / mã chuẩn của lõi — không dò chuỗi, không tên nhà cung cấp."""
+    if ma == 401:
+        return "token_bi_tu_choi", "Token bị từ chối (401)"
+    if ma == 403:
+        return "bi_chan_chong_bot", "Bị chặn chống bot (403)"
+    if ma == 404:
+        return "khong_tim_thay", "Không tìm thấy (404)"
+    if ma == 429:
+        return "het_han_muc", "Hết hạn mức (429)"
+    if isinstance(ma, int) and 500 <= ma <= 599:
+        return "dich_vu_loi", f"Dịch vụ lỗi ({ma})"
+    if isinstance(ma, int) and 400 <= ma <= 499:
+        return "loi_yeu_cau", f"Yêu cầu không hợp lệ ({ma})"
+    return "loi_khac", "Lỗi không xác định"
+
+
+def _lam_sach_tra_loi(s: str) -> str:
+    sach = "".join(c for c in s.strip() if c.isprintable() or c in "\n\t")
+    return " ".join(sach.split())[:_THU_CHAT_TRA_LOI_TOI_DA]
+
+
+def _trich_tra_loi_ngan(noi_dung: bytes) -> str | None:
+    try:
+        j = json.loads(noi_dung)
+    except (ValueError, RecursionError):
+        return None
+    choices = j.get("choices") if isinstance(j, dict) else None
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return None
+    msg = choices[0].get("message")
+    nd = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(nd, str) or not nd.strip():
+        return None
+    return _lam_sach_tra_loi(nd) or None
+
+
+async def _model_thu_chat(so: SoModule, id_: str, m, model_goi) -> str:
+    """Model dùng để thử chat: người gọi chỉ định (phải thuộc module) hoặc model đầu tiên
+    khả dụng của module (ưu tiên model có khả năng chat)."""
+    if isinstance(model_goi, str) and model_goi.strip():
+        model_goi = model_goi.strip()
+        tien_to, gach, _ = model_goi.partition("/")
+        if not gach or so.tim_theo_tien_to(tien_to) != id_:
+            raise LoiOpenAI(400, f"Model {model_goi!r} không thuộc module {id_!r} "
+                                 f"(xem GET /api/modules/{id_}/model)", code="model_khong_thuoc_module")
+        return model_goi
+    fn = getattr(m, "models", None)
+    if not callable(fn):
+        raise LoiOpenAI(502, f"Module {id_!r} không liệt kê được model", code="khong_co_model")
+    try:
+        tat = set(kho.doc_cai_dat_model_module(id_).get("tat", []))
+    except kho.KhoHong:
+        tat = set()
+    try:
+        ds = await fn()
+    except Exception as e:
+        raise LoiOpenAI(502, f"Module {id_!r} lỗi khi liệt kê model: {type(e).__name__}",
+                        code="khong_co_model") from None
+    ung_vien = [muc["id"] for muc in (ds or [])
+                if isinstance(muc, dict) and isinstance(muc.get("id"), str)
+                and muc["id"] and muc["id"] not in tat]
+    for muc in (ds or []):
+        if isinstance(muc, dict) and muc.get("id") in ung_vien:
+            kn = muc.get("kha_nang")
+            if not isinstance(kn, list) or "chat" in kn:
+                return muc["id"]
+    if ung_vien:
+        return ung_vien[0]
+    raise LoiOpenAI(502, f"Module {id_!r} không có model nào khả dụng", code="khong_co_model")
+
+
+@modules.post("/{id_}/thu-chat", dependencies=QT)
+async def thu_chat(id_: str, request: Request):
+    """NV212: thử chat THẬT một model của module — gửi một câu hỏi ngắn qua ĐÚNG đường
+    /v1/chat/completions nội bộ (cùng `goi(m, "chat", ...)` và cùng chuẩn hoá như người dùng
+    thật, không đường tắt). Trả {ok, model, do_tre_ms, tra_loi_ngan, ma_loi, thong_diep_ngan,
+    lan_thu}: không bao giờ trả token/khoá/thân lỗi thô của nhà cung cấp. Chỉ quản trị.
+    Mỗi module một lượt đồng thời (khoá) + giãn tối thiểu giữa hai lần (chống bấm dồn);
+    mỗi lần thử tốn lượt của tài khoản thật nên không tự gọi định kỳ."""
+    so = _so(request)
+    m = so.dang_chay.get(id_)
+    if m is None:
+        raise LoiOpenAI(404, f"Module {id_!r} đã cài nhưng chưa có khoá/cấu hình — chưa có gì để thử"
+                        if id_ in so.catalog else f"Không có module {id_!r}")
+    _can_phuong_thuc(m, id_, "trò chuyện", "chat")
+    than_qt = await _than_json(request)
+    model = await _model_thu_chat(so, id_, m, than_qt.get("model"))
+
+    bay_gio = time.monotonic()
+    gian_cach = _thu_chat_gian_cach_giay()
+    lan_cuoi = _THU_CHAT_LAN_CUOI.get(id_, 0.0)
+    if bay_gio - lan_cuoi < gian_cach:
+        raise LoiOpenAI(429, f"Đang thử dồn — thử lại sau {gian_cach - (bay_gio - lan_cuoi):.0f} giây",
+                        code="thu_chat_qua_nhanh")
+    khoa = _THU_CHAT_KHOA.setdefault(id_, asyncio.Lock())
+    if khoa.locked():
+        raise LoiOpenAI(429, "Đang có một lượt thử chat cho module này — chờ xong rồi thử lại",
+                        code="thu_chat_dang_chay")
+    _THU_CHAT_LAN_CUOI[id_] = bay_gio
+
+    than = {"model": model,
+            "messages": [{"role": "user", "content": "Trả lời đúng một từ: OK"}],
+            "max_tokens": 16, "stream": False}
+    bat_dau = time.monotonic()
+    async with khoa:
+        try:
+            async with asyncio.timeout(_thu_chat_tran_giay()):
+                ma, _headers, noi_dung = await goi(m, "chat", than, stream=False)
+        except TimeoutError:
+            do_tre = int((time.monotonic() - bat_dau) * 1000)
+            return {"ok": False, "model": model, "do_tre_ms": do_tre, "tra_loi_ngan": None,
+                    "ma_loi": "het_gio", "thong_diep_ngan": "Hết thời gian chờ",
+                    "lan_thu": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        except LoiOpenAI as e:
+            ma_loi, thong_diep = _phan_loai_loi_thu_chat(e.ma)
+            do_tre = int((time.monotonic() - bat_dau) * 1000)
+            return {"ok": False, "model": model, "do_tre_ms": do_tre, "tra_loi_ngan": None,
+                    "ma_loi": ma_loi, "thong_diep_ngan": thong_diep,
+                    "lan_thu": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        except Exception:
+            do_tre = int((time.monotonic() - bat_dau) * 1000)
+            return {"ok": False, "model": model, "do_tre_ms": do_tre, "tra_loi_ngan": None,
+                    "ma_loi": "loi_ket_noi", "thong_diep_ngan": "Lỗi kết nối",
+                    "lan_thu": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    do_tre = int((time.monotonic() - bat_dau) * 1000)
+    lan_thu = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if ma == 200 and isinstance(noi_dung, bytes):
+        noi_dung = _chuan_hoa_chat_thuong(noi_dung)
+        return {"ok": True, "model": model, "do_tre_ms": do_tre,
+                "tra_loi_ngan": _trich_tra_loi_ngan(noi_dung), "ma_loi": None,
+                "thong_diep_ngan": None, "lan_thu": lan_thu}
+    ma_loi, thong_diep = _phan_loai_loi_thu_chat(ma if isinstance(ma, int) else None)
+    return {"ok": False, "model": model, "do_tre_ms": do_tre, "tra_loi_ngan": None,
+            "ma_loi": ma_loi, "thong_diep_ngan": thong_diep, "lan_thu": lan_thu}
+
+
 @modules.get("/{id_}/cau-hinh", dependencies=QT)
 async def cau_hinh(id_: str, request: Request):
     """Hợp đồng của form cấu hình trên web: trường của manifest + giá trị ĐÃ LƯU, bí mật chỉ ở dạng che
