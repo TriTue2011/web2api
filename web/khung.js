@@ -54,7 +54,7 @@
     // Provider hiện từ lúc CÀI (chủ máy 11/10: «cài AI rồi phải thấy có tài khoản, có provider như demo») — chưa có khoá
     // thì trang hiện provider với tab Model / Tài khoản rỗng, chỉ chỗ thêm khoá.
     provider: { nhan: 'Provider', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'provider', bieu_tuong: 'provider' },
-    combo: { nhan: 'Combo', can: [AI], toi_thieu: 2, chua_co: 'Combo chưa có backend ở bản này', thuoc: 'ai', neo: 'combo', bieu_tuong: 'combo' },
+    combo: { nhan: 'Combo', can: [AI], toi_thieu: 2, thuoc: 'ai', neo: 'combo', bieu_tuong: 'combo' },
     studio: { nhan: 'Studio', can: ['chat'], pham_vi: 'da_cai', trang: 'Studio.dc.html', bieu_tuong: 'chat' },
     studio_chat: { nhan: 'Chat', can: ['chat'], pham_vi: 'da_cai', thuoc: 'studio' },
     studio_anh: { nhan: 'Ảnh', can: ['anh'], pham_vi: 'da_cai', thuoc: 'studio' },
@@ -379,7 +379,8 @@
   // (chủ máy 11/10: tab quản lý module mang nhãn «Module»), tiếp theo là các tab riêng của module đã liên kết (tab_web),
   // và cuối cùng là «Bảo mật & người dùng». Mục còn lại của demo chưa có backend → không vẽ.
   // `soTb`: số module mới/có bản mới trên git (GET /api/modules → thong_bao_so) → chấm đỏ ở mục Module.
-  // Mục AI có danh sách con — chỉ các dòng DIEU_KIEN `thuoc: 'ai'` ĐANG đủ điều kiện; dòng `chua_co` (Combo) không vào.
+  // Mục AI có danh sách con — chỉ các dòng DIEU_KIEN `thuoc: 'ai'` ĐANG đủ điều kiện
+  // (Combo hiện khi có ≥ 2 module AI đã liên kết, đếm theo dữ liệu thật).
   function navHeThong(tn, hienTai, soTb) {
     const nd = layNguoiDung();
     const laUser = nd && nd.vai !== 'admin';

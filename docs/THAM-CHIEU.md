@@ -59,7 +59,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
 | Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
-| Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Đã có backend API (`/api/combo`) và điều phối ở lõi — tab giao diện giữ ở việc sau | 0.1.0-khung · 13/10/2026 |
+| Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Đã có backend API (`/api/combo`) và điều phối ở lõi; tab giao diện ở Hệ thống → AI (NV221) | 0.1.0-khung · 13/10/2026 |
 | «Địa chỉ truy cập công khai» (`GET`/`PUT /api/dia-chi`, `GET /api/ket-noi`, proxy ngược) | Có | 0.1.0-khung · 12/10/2026 |
 | Khoá khách có phạm vi, sổ thao tác quản trị, Bảo mật & người dùng | Có | 0.1.0-khung · 12/10/2026 |
 | Sao lưu và khôi phục cấu hình (`POST /api/sao-luu`, `POST /api/khoi-phuc`, mã hoá AES-256-GCM, giữ khoá khách) | Có | 0.2.0 · 13/10/2026 |
@@ -671,7 +671,7 @@ viên trạng thái trong trang suy từ `/api/tinh-nang`: xanh «Mọi dịch v
 của demo) các tab chuyển xuống thanh dưới đáy. Thanh Hệ thống theo demo: «Quay lại» (về trang chính đầu tiên đang có;
 chưa có trang chính nào thì là logo), rồi «AI ▾» (bảng xổ các tab con đang có: Tài khoản, Provider) và «Module» ở chỗ
 ô «Tiện ích» của demo; trên điện thoại «AI» mở tờ nhỏ phía trên thanh dưới. Combo đủ điều kiện (≥ 2 nguồn AI đã liên kết) vẫn không hiện: backend đã có
-(`/api/combo`, mục 2 «Combo»), giao diện là việc sau.
+(`/api/combo`, mục 2 «Combo»), giao diện ở Hệ thống → AI (NV221).
 
 **Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được
 chọn sẵn; thẻ trắng viền mảnh bo góc như dòng Tiện ích của demo, ô đang chọn viền xanh 2px): ô biểu tượng, tên, viên
@@ -726,7 +726,7 @@ curl -s $W/api/tinh-nang
 | Hệ thống → Module | luôn; trang đầu khi chưa cài gì |
 | Hệ thống → AI, AI → Tài khoản | `can: ["ai"]`, `da_cai` |
 | AI → Provider | `can: ["ai"]`, `da_cai` (chưa khoá thì tab rỗng chỉ chỗ thêm khoá) |
-| AI → Combo | `can: ["ai"]`, `toi_thieu: 2`, chưa có giao diện (`chua_co`) → không hiện; backend ở `/api/combo` |
+| AI → Combo | `can: ["ai"]`, `toi_thieu: 2` → hiện khi ≥ 2 module AI đã liên kết (đếm theo dữ liệu thật); backend ở `/api/combo`, tab ở Hệ thống → AI (NV221) |
 | Studio (trang chính) và chế độ Chat | `can: ["chat"]`, `da_cai` |
 | Chế độ Ảnh / Video | `can: ["anh"]` / `["video"]`, `da_cai` |
 | Hệ thống → Tích hợp & công cụ | luôn (chỉ quản trị viên; cần thêm dòng `tich_hop` vào `navHeThong` trong `web/khung.js` — xem báo cáo NV39) |
@@ -4621,7 +4621,7 @@ còn lại thành điểm bắt đầu mới, `neo_dau` đổi). Tắt khẩn c�
 
 ### Giới hạn và việc chưa làm
 
-- **Combo**: Đã có backend API (`/api/combo`) và điều phối định tuyến dự phòng đa nguồn/model ở lõi; tab giao diện giữ ở việc kế tiếp.
+- **Combo**: Đã có backend API (`/api/combo`) và điều phối định tuyến dự phòng đa nguồn/model ở lõi; tab giao diện ở Hệ thống → AI (NV221).
 - «Cần gì để chạy» mới là **hướng dẫn bằng chữ** từ manifest: chưa có checklist ✔/✖ từng yêu cầu, chưa tự cài gói
   Python; trần dung lượng tải module (50 MB tổng, 5 MB/tệp, 200 tệp) vẫn còn.
 - Chưa có màn Tác phẩm, Nhà, Đời sống, giọng nói, MCP, sao lưu, nhật ký — sẽ vào khi có module thật đứng sau.
@@ -4759,6 +4759,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/tim-kiem/muc-luc` | Có | Lấy cây mục lục phân cấp của tài liệu (chương → mục → tiểu mục); trần độ sâu 6, trần số nút 2000 |
 | `GET /api/combo` | Có | Mọi combo hợp lệ đã lưu (`combos`) và `so_muc_hong` — số mục hỏng trong `combo.json` bị bỏ qua |
 | `GET /api/combo/trang-thai` | Có | Từng (combo, bước): module phân giải được (`dung_duoc`, `ly_do`), cầu chì theo nhóm việc (`cau_chi`), hạ bậc (`ha_bac`), số phiên dính |
+| `GET /api/combo/goi-y` | Có | Gợi ý bước combo mặc định theo thứ tự chủ máy: Codex trước → web sau (cùng nhóm), nhóm theo `nhom.id` trong manifest; trả `goi_y`, `bo_qua`, `nguyen_tac` |
 | `GET /api/combo/{ten}` | Có | Một combo theo tên; tên sai mẫu → `400`, không có → `404` |
 | `PUT /api/combo/{ten}` | Có | Tạo/ghi đè combo. Thân `{"buoc": [{"model": "<tiền tố>/<tên>", "bat": true}], "kha_nang": ["chat"], "mo_ta": ""}`. Sai kiểu → `400`, không lưu; bước trỏ module/model chưa dùng được vẫn lưu, nêu ở `bo_qua: [{"buoc": n, "ly_do": mã}]` |
 | `DELETE /api/combo/{ten}` | Có | Xoá một combo |

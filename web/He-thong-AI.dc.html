@@ -418,6 +418,29 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </div>
 </sc-if>
 
+<sc-if value="{{laCb}}">
+<div data-combo-tab style="display:flex;flex-direction:column;gap:12px;min-width:0">
+<div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap"><span style="font-weight:600">Combo</span><span style="font-size:12px;color:var(--mute)">Model ảo chạy lần lượt nhiều bậc, lùi theo mã HTTP. Gọi bằng model <span style="font-family:ui-monospace,Menlo,Consolas,monospace">combo/&lt;tên&gt;</span>.</span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-goi-y-combo" onClick="{{cb.goiY}}" disabled="{{cb.dangGoiY}}" style="{{cb.goiYSt}}">{{cb.goiYnhan}}</button></div>
+<sc-if value="{{cb.coGoiY}}">
+<div data-goi-y-combo style="border:1px dashed #CFCCC3;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:12px;color:var(--mute)">{{cb.nguyenTac}}</div>
+<div style="display:flex;flex-direction:column;gap:4px"><sc-for list="{{cb.goiYbuoc}}" as="b"><div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap"><span style="{{b.vtSt}}">{{b.vt}}</span><span style="font-family:ui-monospace,Menlo,Consolas,monospace">{{b.model}}</span><span style="color:var(--mute)">{{b.tenModule}}</span></div></sc-for></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="ten-combo-moi" placeholder="Tên combo…" aria-label="Tên combo" value="{{cb.tenMoi}}" onInput="{{cb.doiTen}}" style="min-height:36px;box-sizing:border-box;border:1px solid var(--line);border-radius:16px;padding:0 12px;font:inherit;font-size:13px;background:var(--card);color:var(--ink);width:200px;max-width:100%"><button type="button" id="nut-tao-combo" onClick="{{cb.tao}}" disabled="{{cb.dangTao}}" style="{{cb.taoSt}}">Tạo combo</button></div>
+</div>
+</sc-if>
+<sc-if value="{{cb.coDs}}">
+<div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{cb.ds}}" as="c">
+<div data-combo="{{c.ten}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:600">{{c.ten}}</span><span style="font-size:12px;color:var(--mute)">gọi: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">combo/{{c.ten}}</span></span><span style="flex:1 1 auto"></span><button type="button" data-xoa-combo="{{c.ten}}" onClick="{{c.xoa}}" disabled="{{c.dangXoa}}" style="{{c.xoaSt}}">{{c.xoaNhan}}</button></div>
+<div style="display:flex;flex-direction:column;gap:4px"><sc-for list="{{c.buoc}}" as="b"><div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap"><span style="{{b.vtSt}}">{{b.vt}}</span><span style="font-family:ui-monospace,Menlo,Consolas,monospace">{{b.model}}</span><sc-if value="{{b.dau}}"><span data-dang-dung-1 style="{{b.ddSt}}">Đang dùng #1</span></sc-if></div></sc-for></div>
+</div>
+</sc-for></div>
+</sc-if>
+<sc-if value="{{cb.trong}}"><div style="border:1px dashed #CFCCC3;border-radius:14px;padding:32px 16px;text-align:center;color:var(--mute)">Chưa có combo nào — bấm «Gợi ý combo mặc định» rồi tạo.</div></sc-if>
+</div>
+</sc-if>
+
 </section>
 </sc-if>
 </main>
@@ -434,7 +457,8 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 //   Tài khoản = mỗi khoá đã lưu của một nguồn AI đã cài (GET /api/modules: cau_hinh_cong_khai dạng che, thứ tự = chỉ số
 //   dùng cho dạng sửa {"giu","them"} của POST …/cai) — thêm / thay / xoá từng khoá; nhãn nhỏ = sức khoẻ thật (…/suc-khoe).
 //   Provider = mỗi nguồn AI ĐÃ CÀI (chưa khoá vẫn hiện, tab rỗng chỉ chỗ thêm khoá); Model = /v1/models theo tiền tố,
-//   chia nhóm thu gọn; Tài khoản = sức khoẻ + bộ đếm dùng từng khoá (trường tuỳ chọn — thiếu thì ẩn). Combo chưa có backend → không có trong DOM (DIEU_KIEN.combo.chua_co).
+//   chia nhóm thu gọn; Tài khoản = sức khoẻ + bộ đếm dùng từng khoá (trường tuỳ chọn — thiếu thì ẩn).
+//   Combo (NV221): tab riêng — liệt kê combo, tạo/xoá, thứ tự bậc, ô «Đang dùng #1», nút gợi ý thứ tự mặc định.
 // Tab chọn bằng bảng xổ «AI ▾» (như demo — trang không có hàng tab riêng) và neo #<neo> của dòng DIEU_KIEN; #tk-<id>
 // (Studio, trang Module trỏ về) mở Tài khoản với biểu mẫu thêm khoá của đúng module. Không tên module nào ở đây.
 const K = window.Khung;
@@ -526,6 +550,8 @@ class Component extends DCLogic {
       tab: den ? 'tai_khoan' : tabTheoNeo(), sk: {}, menuMo: null, ghi: '', ghiLoi: false,
       // NV212: kết quả «Thử chat» thật từng module AI (theo id module) — {dang, kq, loi}; chưa thử → «chưa thử chat».
       tc: {},
+      // NV221: tab Combo — danh sách combo, gợi ý thứ tự mặc định, tạo/xoá.
+      cbDs: [], cbDangTai: false, cbGoiY: null, cbTenMoi: '', cbDangTao: false, cbDangGoiY: false, cbDangXoa: null,
       tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
@@ -702,6 +728,45 @@ class Component extends DCLogic {
     }
   }
   loi(e) {}
+  // ---- Combo (NV221): liệt kê / gợi ý / tạo / xoá ----
+  async taiCombo() {
+    this.setState({ cbDangTai: true });
+    try {
+      const { j } = await K.goi('api/combo');
+      this.setState({ cbDs: (j && j.combos) || [], cbDangTai: false });
+    } catch (e) { this.setState({ cbDangTai: false }); this.msg('Không tải được danh sách combo: ' + (e && e.message), true); }
+  }
+  async cbGoiY() {
+    this.setState({ cbDangGoiY: true });
+    try {
+      const { j } = await K.goi('api/combo/goi-y');
+      this.setState({ cbGoiY: j || null, cbDangGoiY: false });
+      if (!((j && j.goi_y) || []).length) this.msg('Không có provider nào dùng được để gợi ý combo.', true);
+    } catch (e) { this.setState({ cbDangGoiY: false }); this.msg('Không gợi ý được combo: ' + (e && e.message), true); }
+  }
+  async cbTao() {
+    const ten = (this.state.cbTenMoi || '').trim();
+    const buoc = ((this.state.cbGoiY && this.state.cbGoiY.goi_y) || []).map((g) => ({ model: g.model }));
+    if (!ten) { this.msg('Nhập tên combo trước khi tạo.', true); return; }
+    if (!buoc.length) { this.msg('Chưa có bước nào — bấm «Gợi ý combo mặc định» trước.', true); return; }
+    this.setState({ cbDangTao: true });
+    try {
+      await K.goi('api/combo/' + encodeURIComponent(ten), { method: 'PUT', json: { buoc } });
+      this.setState({ cbTenMoi: '', cbGoiY: null, cbDangTao: false });
+      this.msg('Đã tạo combo «' + ten + '» với ' + buoc.length + ' bậc.');
+      await this.taiCombo();
+    } catch (e) { this.setState({ cbDangTao: false }); this.msg('Không tạo được combo: ' + (e && e.message), true); }
+  }
+  async cbXoa(ten) {
+    if (this.state.cbDangXoa) return;
+    this.setState({ cbDangXoa: ten });
+    try {
+      await K.goi('api/combo/' + encodeURIComponent(ten), { method: 'DELETE' });
+      this.setState({ cbDangXoa: null });
+      this.msg('Đã xoá combo «' + ten + '».');
+      await this.taiCombo();
+    } catch (e) { this.setState({ cbDangXoa: null }); this.msg('Không xoá được combo: ' + (e && e.message), true); }
+  }
   async taiDanhTinh() {
     try {
       const { j } = await K.goi('api/danh-tinh');
@@ -1284,6 +1349,7 @@ class Component extends DCLogic {
     this.setState({ tab: id, ghi: '', xoa: null, pvDd: false, mdLoc: '' });
     history.replaceState(null, '', id === TAB[0] ? location.pathname : '#' + K.DIEU_KIEN[id].neo);
     if (id === 'danh_tinh') this.taiDanhTinh();
+    if (id === 'combo') this.taiCombo();
   }
   msg(chu, loi) { this.setState({ ghi: chu, ghiLoi: !!loi }); }
 
@@ -2117,6 +2183,33 @@ class Component extends DCLogic {
       tkGhiChu: 'Nơi lưu khoá API của từng nguồn AI đã cài. Khoá nằm trên máy chủ (tệp chỉ chủ tiến trình đọc được) và chỉ hiện dạng che …abcd — không có nút xem lại; khoá mới được thử bằng một lời gọi thật trước khi lưu. «#n» là thứ tự khoá (xoay vòng); «Đang dùng» là khoá vừa phục vụ yêu cầu gần nhất; số lượt đếm từ lần khởi động hoặc lưu khoá gần nhất.',
       laDt: !!tn && s.tab === 'danh_tinh', dt,
       laPv: !!tn && s.tab === 'provider' && !!pvCur, pv: { id: pvCur ? pvCur.id : '', ten: pvCur ? pvCur.ten : '' }, pvHang, c3,
+      // ---- Combo (NV221) ----
+      laCb: !!tn && s.tab === 'combo',
+      cb: (() => {
+        const ds = s.cbDs || [];
+        return {
+          goiYnhan: s.cbDangGoiY ? 'Đang gợi ý…' : 'Gợi ý combo mặc định',
+          goiYSt: btnSt({ pri: true, off: !!s.cbDangGoiY }),
+          goiY: () => this.cbGoiY(), dangGoiY: !!s.cbDangGoiY,
+          coGoiY: !!(s.cbGoiY && (s.cbGoiY.goi_y || []).length),
+          nguyenTac: (s.cbGoiY && s.cbGoiY.nguyen_tac) || '',
+          goiYbuoc: ((s.cbGoiY && s.cbGoiY.goi_y) || []).map((g, i) => ({
+            vt: '#' + (i + 1), vtSt: VT_ST, model: g.model, tenModule: g.ten_module || '',
+          })),
+          tenMoi: s.cbTenMoi || '', doiTen: (e) => this.setState({ cbTenMoi: e.target.value }),
+          taoSt: btnSt({ pri: true, off: !!s.cbDangTao }), tao: () => this.cbTao(), dangTao: !!s.cbDangTao,
+          coDs: ds.length > 0, trong: !s.cbDangTai && ds.length === 0,
+          ds: ds.map((c) => ({
+            ten: c.ten,
+            buoc: (c.buoc || []).map((b, i) => ({
+              vt: '#' + (i + 1), vtSt: VT_ST, model: b.model, dau: i === 0, ddSt: DD_ST,
+            })),
+            xoaNhan: s.cbDangXoa === c.ten ? 'Đang xoá…' : 'Xoá',
+            xoaSt: btnSt({ bad: true, off: !!s.cbDangXoa }),
+            xoa: () => this.cbXoa(c.ten), dangXoa: s.cbDangXoa === c.ten,
+          })),
+        };
+      })(),
       coMdDau: pvTab === 'model' && lienKet && tkCur.length > 0, coMd: pvTab === 'model' && lienKet && tkCur.length > 0 && nhomDs.length > 0, md,
       pvRows, coPvRows: pvRows.length > 0, pvTrong
     };

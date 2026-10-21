@@ -2278,6 +2278,64 @@ async def xem_trang_thai_combo(request: Request):
     return {"trang_thai": combo_mod.trang_thai_tat_ca(_so(request), _phan_giai(request))}
 
 
+@combo.get("/goi-y")
+async def goi_y_combo(request: Request):
+    """Gợi ý bước combo mặc định theo thứ tự chủ máy (21/10/2026): Codex trước → web sau (cùng nhóm).
+
+    Dựa trên DỮ LIỆU THẬT: module AI đã liên kết có khả năng chat + model đầu tiên
+    của mỗi module trong GET /v1/models. «Codex» đọc từ định danh do CHÍNH module
+    khai (id chứa «codex») — không phải bảng tên nhà cung cấp; khi kho tài khoản
+    có trường loại tài khoản tường minh thì chuyển sang dùng trường đó.
+    """
+    so = _so(request)
+    ds = await _danh_sach_models(request)
+    model_dau: dict[str, str] = {}
+    for muc in ds:
+        mid = muc.get("id", "")
+        tt, g, _ = mid.partition("/")
+        if g and tt not in model_dau:
+            model_dau[tt] = mid
+    ung_vien: list[dict] = []
+    bo_qua: list[dict] = []
+    for id_, mod in so.dang_chay.items():
+        mf: dict = {}
+        try:
+            km = so.catalog.get(id_)
+            if km is not None and getattr(km, "manifest", None):
+                mf = dict(km.manifest)
+        except Exception:
+            mf = {}
+        if not mf:
+            mf = getattr(mod, "manifest", None) or {}
+        if mf.get("loai") != "ai":
+            continue
+        if "chat" not in (mf.get("cung_cap") or []):
+            bo_qua.append({"module_id": id_, "ly_do": "không có khả năng chat"})
+            continue
+        tien_to = mf.get("tien_to") or ""
+        model = model_dau.get(tien_to)
+        if not model:
+            bo_qua.append({"module_id": id_, "ly_do": "không có model nào trong /v1/models"})
+            continue
+        nhom = mf.get("nhom") or {}
+        ung_vien.append({
+            "model": model,
+            "module_id": id_,
+            "ten_module": mf.get("ten") or id_,
+            "nhom": nhom.get("id") or "",
+            "ten_nhom": nhom.get("ten") or "",
+            "la_codex": "codex" in id_.lower(),
+        })
+    # Cùng nhóm: Codex trước → web sau; các nhóm sắp theo id nhóm.
+    ung_vien.sort(key=lambda u: (u["nhom"], 0 if u["la_codex"] else 1, u["ten_module"]))
+    return {
+        "goi_y": ung_vien,
+        "bo_qua": bo_qua,
+        "nguyen_tac": "Codex trước → web sau (cùng nhóm); nhóm theo nhom.id trong manifest; "
+                      "«codex» đọc từ id do chính module khai",
+    }
+
+
 @combo.get("/{ten:path}")
 async def lay_mot_combo(ten: str):
     muc = combo_mod.lay(combo_mod.kiem_ten(ten))
