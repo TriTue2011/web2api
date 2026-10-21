@@ -115,7 +115,7 @@ def _ten_ho_so_dich_vu(dinh_danh: Any) -> str:
 
 
 def _kiem_ho_so(ho_so: Any) -> str:
-    s = _ten_ho_so_dich_vu(ho_so) if "@" in str(ho_so or "") else str(ho_so or "").strip()
+    s = str(ho_so or "").strip()
     if not s or len(s) > 64:
         raise ValueError("tham_so_khong_hop_le")
     for cam in _KY_TU_CAM_DUONG_DAN:
@@ -127,6 +127,13 @@ def _kiem_ho_so(ho_so: Any) -> str:
     if not _RE_HO_SO.match(s):
         raise ValueError("tham_so_khong_hop_le")
     return urllib.parse.quote(s, safe="@")
+
+
+def _kiem_ho_so_dich_vu(dinh_danh: Any) -> str:
+    """Như ``_kiem_ho_so`` nhưng nhận cả EMAIL của tài khoản (lõi truyền email) và đổi sang
+    tên hồ sơ dịch vụ chấp nhận. Chỉ dùng ở các đường NV145b (đăng nhập, mã 2FA, tiến độ,
+    cookie); đường cũ (``bat_dau_dang_nhap``…) vẫn so khớp theo email nên giữ ``_kiem_ho_so``."""
+    return _kiem_ho_so(_ten_ho_so_dich_vu(dinh_danh) if "@" in str(dinh_danh or "") else dinh_danh)
 
 
 def _kiem_email(email: Any) -> str:
@@ -1075,7 +1082,7 @@ class Module:
                                     st: dict) -> KetQuaDangNhap:
         """Hỏi trạng thái phiên tới khi có kết quả cuối hoặc hết trần chờ."""
         try:
-            hs = _kiem_ho_so(email_tho)
+            hs = _kiem_ho_so_dich_vu(email_tho)
         except ValueError:
             return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
         han = time.time() + _cho_dang_nhap_giay()
@@ -1111,7 +1118,7 @@ class Module:
         Nhận mã qua BiMatTam (xoá ngay sau khi gửi) hoặc chuỗi. Không log mã.
         """
         try:
-            hs = _kiem_ho_so(ho_so)
+            hs = _kiem_ho_so_dich_vu(ho_so)
         except ValueError:
             return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
         ma_str = ma.lay_va_xoa() if isinstance(ma, BiMatTam) else str(ma or "").strip()
@@ -1140,7 +1147,7 @@ class Module:
         trạng thái), cho_2fa, can_nguoi, ma_loi, huong_dan. Không bí mật.
         """
         try:
-            hs = _kiem_ho_so(ho_so)
+            hs = _kiem_ho_so_dich_vu(ho_so)
         except ValueError:
             return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
         tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
@@ -1175,7 +1182,7 @@ class Module:
         module AI đích (vd gemini-web). Cookie không đi qua log/phản hồi thừa.
         """
         try:
-            hs = _kiem_ho_so(ho_so)
+            hs = _kiem_ho_so_dich_vu(ho_so)
         except ValueError:
             return {"ok": False, "loi": "tham_so_khong_hop_le"}
         mau = _MIEN_SANG_DUONG_COOKIE.get(str(mien or "").strip().lower())
