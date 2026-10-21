@@ -231,6 +231,37 @@ def test_ban_ghi_cu_khong_co_dung_cho_van_doc_duoc(moi_truong):
     assert ds and ds[0]["dung_cho"] == ["codex"], ds
 
 
+def test_ban_ghi_dung_cho_sai_kieu_la_kho_hong(moi_truong):
+    """dung_cho sai kiểu (chuỗi thay vì danh sách) → kho bị coi là hỏng,
+    không đọc dở (bảo toàn quy tắc toàn vẹn của _doc)."""
+    client, so = moi_truong
+    from app import kho_tai_khoan as k
+
+    bk = k.luu_tai_khoan("hong-nv224@example.com", "MatKhauGia123!",
+                         nhom="chatgpt", loai_tai_khoan="web",
+                         dich_dung="codex")
+    tho = k._doc()
+    tho[bk["id"]]["dung_cho"] = "codex"
+    k._ghi(tho)
+    with pytest.raises(k.LoiKhoTaiKhoan):
+        k.liet_ke()
+
+
+def test_doi_dich_dung_khong_mat_dich_cu(moi_truong):
+    """Đặt dich_dung codex rồi đổi sang web: dung_cho ĐÃ LƯU giữ cả hai
+    (đích cũ không mất khi đích chính đổi — giết đột biến M6)."""
+    client, so = moi_truong
+    _cai_module(so, "nv224-web", nhom_id="chatgpt")
+    bk = _them(client, "doi-nv224@example.com", module_id="nv224-web",
+               loai_tai_khoan="web", dich_dung="codex")
+    assert bk["dung_cho"] == ["codex"], bk
+    bk2 = _them(client, "doi-nv224@example.com", module_id="nv224-web",
+                loai_tai_khoan="web", dich_dung="web")
+    assert bk2["id"] == bk["id"]
+    assert bk2["dich_dung"] == "web", bk2
+    assert bk2["dung_cho"] == ["codex", "web"], bk2
+
+
 # ── 4. gợi ý combo đọc trường dich_dung của tài khoản, không dò id ──────────
 
 @pytest.fixture()
