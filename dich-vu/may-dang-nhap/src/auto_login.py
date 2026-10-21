@@ -556,6 +556,104 @@ async def _already_logged_in(ctx) -> bool:
         return False
 
 
+# ── NV209: bảng phân loại thử thách xác minh danh tính (MỘT chỗ duy nhất) ──
+#
+# Bằng chứng đo thật 21/10/2026 09:52: sau khi TOTP được chấp nhận, Google
+# chuyển sang /verification/selfie/precollection; vòng 2FA chỉ còn lặp
+# «vòng 2FA — trang=/verification/selfie/precollection, 0 dòng chọn,
+# khung reCAPTCHA=False», phiên đứng ở state=running,
+# message="Đã gửi mã, đang xác minh..." tới hết trần — giao diện không nói
+# được «cần người», hệ thống không biết dừng.
+#
+# Phân loại theo NGUYÊN TẮC: tiền tố đường dẫn URL + tín hiệu cấu trúc DOM
+# (ô tải ảnh/camera). CẤM danh sách từ khoá/chuỗi lỗi theo từng nhà cung cấp.
+# Mỗi mục: (tiền tố đường dẫn, mã lỗi, vĩnh viễn).
+_THU_THACH_DUONG_DAN = (
+    ("/verification/selfie", "xac_minh_selfie", False),
+    ("/signin/v2/challenge/ipp", "xac_minh_dien_thoai", False),
+    ("/signin/v2/challenge/dp", "xac_minh_dien_thoai_tap", False),
+    ("/signin/rejected", "dang_nhap_bi_tu_choi", True),
+    ("/signin/v2/disabled", "tai_khoan_bi_khoa", True),
+)
+# Họ đường dẫn "đang trong luồng xác minh danh tính" nhưng chưa ánh xạ cụ thể
+# (số điện thoại dự phòng, email khôi phục, ...): cho vài vòng ngắn để trang
+# kịp hiện bước dịch vụ đã biết, rồi mới kết luận need_human.
+_THU_THACH_HO_DUONG_DAN = ("/verification/",)
+# Số vòng tối đa cho trang thử thách lạ trước khi kết luận need_human.
+_THU_THACH_LA_VONG_TOI_DA = 4
+
+# Tin nhắn ngắn cho từng mã lỗi (không bí mật, không query URL — query mang
+# TL= là mã phiên, không được rơi vào log/message).
+_TIN_NHAN_CAN_NGUOI = {
+    "xac_minh_selfie": "Cần người: Google đòi xác minh bằng ảnh selfie",
+    "xac_minh_dien_thoai": "Cần người: Google đòi xác minh qua điện thoại (gọi/SMS)",
+    "xac_minh_khac": "Cần người: Google đòi bước xác minh danh tính khác",
+    "tai_khoan_bi_khoa": "Cần người: tài khoản Google bị khoá/vô hiệu hoá",
+    "dang_nhap_bi_tu_choi": "Cần người: Google từ chối lượt đăng nhập",
+}
+
+
+def _ma_loi_thu_thach_theo_duong_dan(duong_dan: str) -> tuple[str, bool] | None:
+    """Phân loại thuần theo đường dẫn URL (không cần trình duyệt).
+
+    Trả (ma_loi, vinh_vien) hoặc None khi không phải trang thử thách
+    (bước dịch vụ đã biết: mật khẩu/TOTP/chọn phương thức/captcha, hoặc
+    trang consent/app)."""
+    d = (duong_dan or "").lower()
+    for tien_to, ma, vv in _THU_THACH_DUONG_DAN:
+        if d.startswith(tien_to):
+            return ma, vv
+    if any(d.startswith(h) for h in _THU_THACH_HO_DUONG_DAN):
+        return "xac_minh_khac", False
+    return None
+
+
+async def _co_o_chup_anh(page) -> bool:
+    """Tín hiệu cấu trúc: ô tải ảnh / camera (trang selfie) — không dò chữ."""
+    try:
+        return await page.locator(
+            'input[type="file"][accept*="image"], input[type="file"][capture]'
+        ).count() > 0
+    except Exception:
+        return False
+
+
+async def _phan_loai_thu_thach(page, duong_trang: str,
+                              so_dong_chon: int, co_khung_captcha: bool
+                              ) -> tuple[str, bool, bool] | None:
+    """Trang mà _detect_state không nhận ra ('working'): có phải thử thách xác
+    minh danh tính mà dịch vụ không tự xử lý được?
+
+    Trả (ma_loi, vinh_vien, dung_ngay) hoặc None.
+    - dung_ngay=True: bằng chứng chắc (URL trong bảng / ô chụp ảnh) → dừng ngay.
+    - dung_ngay=False: trang lạ trong họ /verification/ → vài vòng ngắn.
+    Luồng captcha giữ quyền xử lý trang của nó (không ghi đè need_captcha)."""
+    if co_khung_captcha:
+        return None
+    ma_vv = _ma_loi_thu_thach_theo_duong_dan(duong_trang)
+    if ma_vv is not None:
+        ma_loi, vv = ma_vv
+        dung_ngay = ma_loi != "xac_minh_khac"
+        if dung_ngay or so_dong_chon == 0:
+            return ma_loi, vv, dung_ngay
+        return None
+    # Tín hiệu cấu trúc: ô tải ảnh/camera dù URL không khớp bảng.
+    if await _co_o_chup_anh(page):
+        return "xac_minh_selfie", False, True
+    return None
+
+
+def _dat_need_human(session: LoginSession, ma_loi: str) -> None:
+    """Đặt phiên sang need_human: dừng vòng 2FA, _run đóng trình duyệt,
+    module ánh xạ sang can_nguoi + hướng dẫn. Không lặp tới hết trần."""
+    session.state = "need_human"
+    session.error = ma_loi
+    session.message = _TIN_NHAN_CAN_NGUOI.get(ma_loi, "Cần người xử lý bước xác minh")
+    session.completed_at = time.time()
+    logger.info("auto_login: need_human profile=%s ma_loi=%s",
+                session.profile, ma_loi)
+
+
 async def _detect_state(page) -> tuple[str, Optional[str]]:
     """Inspect the current Google sign-in page and classify it.
 
@@ -1194,8 +1292,20 @@ async def do_google_login_steps(
         session.completed_at = time.time()
         return False
 
-    # ── 2FA poll loop ──
-    deadline = time.time() + 240
+    # ── 2FA poll loop (NV209: tách thành _vong_2fa để kiểm thử được) ──
+    return await _vong_2fa(session, page, ctx)
+
+
+async def _vong_2fa(session: LoginSession, page, ctx,
+                    han_giay: float = 240.0) -> bool:
+    """Vòng chờ 2FA / thử thách sau khi đã gửi mật khẩu.
+
+    Trả True khi đăng nhập xong, False khi hỏng / cần người. NV209: trang nào
+    không phải bước dịch vụ biết tự xử lý (mật khẩu, TOTP, chọn phương thức,
+    captcha, chạm điện thoại) thì đặt state=need_human (hoặc need_tap nếu đúng
+    là chạm điện thoại), ĐÓNG tài nguyên trình duyệt ở `_run`, và KHÔNG lặp
+    tới hết trần."""
+    deadline = time.time() + han_giay
     picker_clicked = False
     # Vòng này TRƯỚC 12/09/2026 không ghi lại thứ nó nhìn thấy. Lượt hỏng
     # 21:35–21:39 vì thế chỉ để lại bốn phút log "method-picker ..." giống hệt
@@ -1206,6 +1316,8 @@ async def do_google_login_steps(
     so_dong_chon = 0
     co_khung_captcha = False
     captcha_sau_mk_da_thu = False
+    # NV209: đếm vòng liên tiếp gặp trang thử thách lạ (xac_minh_khac).
+    dem_thu_thach_la = 0
     while time.time() < deadline:
         await asyncio.sleep(2.0)
 
@@ -1511,11 +1623,39 @@ async def do_google_login_steps(
             await asyncio.sleep(5.0)
             continue
 
+        # NV209 — tới đây _detect_state trả "working": trang không khớp bước
+        # dịch vụ biết tự xử lý (mật khẩu, TOTP, chọn phương thức, captcha,
+        # chạm điện thoại). Phân loại thử thách xác minh danh tính → need_human
+        # (hoặc need_tap nếu đúng là chạm điện thoại), DỪNG ngay thay vì quay
+        # tới hết trần như trước.
+        thu_thach = await _phan_loai_thu_thach(page, duong_trang,
+                                              so_dong_chon, co_khung_captcha)
+        if thu_thach is not None:
+            ma_loi, _vv, dung_ngay = thu_thach
+            if ma_loi == "xac_minh_dien_thoai_tap":
+                # Đúng là chạm điện thoại (tín hiệu cấu trúc từ URL dp):
+                # giữ need_tap để người dùng bấm «Có» rồi vòng sau thành công.
+                session.state = "need_tap"
+                session.tap_number = None
+                session.message = ("Google gửi yêu cầu xác minh lên điện thoại "
+                                   "— mở app Gmail/Google và bấm 'Có, đó là tôi'")
+                dem_thu_thach_la = 0
+                continue
+            if dung_ngay:
+                _dat_need_human(session, ma_loi)
+                return False
+            dem_thu_thach_la += 1
+            if dem_thu_thach_la >= _THU_THACH_LA_VONG_TOI_DA:
+                _dat_need_human(session, ma_loi)
+                return False
+        else:
+            dem_thu_thach_la = 0
+
     session.state = "failed"
     # Nói ĐANG Ở TRANG NÀO. Bản cũ chỉ có "Hết 4 phút mà chưa hoàn tất 2FA",
     # nên lượt 12/09/2026 21:39 không cho biết gì ngoài việc nó đã hết giờ.
     session.error = (
-        f"Hết 4 phút mà chưa hoàn tất 2FA (trang={duong_trang or '?'}, "
+        f"Hết {int(han_giay / 60)} phút mà chưa hoàn tất 2FA (trang={duong_trang or '?'}, "
         f"{so_dong_chon} dòng chọn, "
         f"khung reCAPTCHA={'có' if co_khung_captcha else 'không'})"
     )
@@ -1534,10 +1674,11 @@ async def _run(session: LoginSession, password: str) -> None:
         await _run_inner(session, password)
     finally:
         pool.xong_dang_nhap(session.profile)
-    if session.state in ("failed", "success"):
+    if session.state in ("failed", "success", "need_human"):
         try:
             # Lượt của MÌNH đã xong (cờ vừa được gỡ ở trên). Cờ còn bật nghĩa là
             # một lượt đăng nhập KHÁC đang chạy trên cùng hồ sơ — đừng đóng.
+            # NV209: need_human cũng đóng trình duyệt (đã dừng, không chờ nữa).
             await pool.close_profile(session.profile, bo_qua_khi_dang_nhap=True)
             logger.info("closed browser after onboard profile=%s state=%s", session.profile, session.state)
         except Exception:

@@ -297,6 +297,42 @@ def _phan_loai_loi_vinh_vien(loi: str) -> str | None:
     return None
 
 
+# ── NV209: mã «cần người» của dịch vụ may-dang-nhap (bảng DUY NHẤT ở module;
+# phân loại URL→mã lỗi nằm ở dịch vụ dich-vu/may-dang-nhap/src/auto_login.py) ──
+_HUONG_DAN_CAN_NGUOI = {
+    "xac_minh_selfie": "Google đòi xác minh bằng ảnh selfie — mở tài khoản trên "
+        "điện thoại/máy tính của chủ tài khoản, hoàn tất một lần, rồi bấm "
+        "Đăng nhập lại.",
+    "xac_minh_dien_thoai": "Google đòi xác minh qua điện thoại (gọi điện/SMS) — "
+        "mở app Gmail/Google trên điện thoại của chủ tài khoản, hoàn tất một "
+        "lần, rồi bấm Đăng nhập lại.",
+    "xac_minh_khac": "Google đòi một bước xác minh danh tính khác — mở tài "
+        "khoản trên điện thoại/máy tính của chủ tài khoản, hoàn tất một lần, "
+        "rồi bấm Đăng nhập lại.",
+    "tai_khoan_bi_khoa": "Tài khoản Google đã bị khoá/vô hiệu hoá — kiểm tra "
+        "thủ công, xử lý xong rồi lưu lại tài khoản để thử tiếp.",
+    "dang_nhap_bi_tu_choi": "Google từ chối lượt đăng nhập — kiểm tra thủ công, "
+        "xử lý xong rồi lưu lại tài khoản để thử tiếp.",
+}
+_HUONG_DAN_CAN_NGUOI_CHUNG = "Cần người xử lý bước xác minh của Google — mở tài " \
+    "khoản trên điện thoại/máy tính của chủ tài khoản, hoàn tất một lần, rồi " \
+    "bấm Đăng nhập lại."
+# Mã lỗi vĩnh viễn trong nhóm cần người: không thể tự hết → đánh dấu, KHÔNG thử lại.
+_LOI_VINH_VIEN_CAN_NGUOI = frozenset({"tai_khoan_bi_khoa", "dang_nhap_bi_tu_choi"})
+
+
+def _sach_ma_loi_can_nguoi(ma: str) -> str:
+    """Mã lỗi cần người từ dịch vụ: chỉ chữ/số/gạch dưới, ≤ 64 ký tự.
+    Dịch vụ có thể thêm mã mới (tương lai) — vẫn đi qua với hướng dẫn chung."""
+    ma = (ma or "").strip().lower()
+    return ma if re.fullmatch(r"[a-z0-9_]{1,64}", ma) else ""
+
+
+def _huong_dan_can_nguoi(ma_loi: str) -> str:
+    """Hướng dẫn tiếng Việt cho mã cần người; mã lạ → hướng dẫn chung."""
+    return _HUONG_DAN_CAN_NGUOI.get(ma_loi, _HUONG_DAN_CAN_NGUOI_CHUNG)
+
+
 def _ket_qua_dang_nhap(thanh_cong: bool, ma_loi: str = "",
                        ma_trang_thai: int | None = None, can_nguoi: bool = False,
                        cho_2fa: bool = False, huong_dan: str = "") -> "KetQuaDangNhap":
@@ -1101,6 +1137,18 @@ class Module:
                 False, ma_loi="can_nguoi", can_nguoi=True,
                 huong_dan="Google đang chờ bạn chạm «Có, đó là tôi» trên điện "
                            "thoại — bấm trên điện thoại rồi bấm «Kiểm tra lại».")
+        # NV209: dịch vụ đã nhận ra trang xác minh danh tính và DỪNG
+        # (need_human kèm mã lỗi) — module ánh xạ sang can_nguoi + hướng dẫn
+        # tiếng Việt cụ thể. Lỗi vĩnh viễn (bị khoá, bị từ chối) → đánh dấu,
+        # KHÔNG thử lại; lỗi có thể tự hết (selfie, điện thoại) → được thử lại.
+        if trang_thai == "need_human":
+            ma_loi = _sach_ma_loi_can_nguoi(str(phien.get("error") or "")) \
+                or "can_nguoi"
+            if ma_loi in _LOI_VINH_VIEN_CAN_NGUOI:
+                st["vinh_vien"][khoa_tk] = ma_loi
+            return _ket_qua_dang_nhap(
+                False, ma_loi=ma_loi, can_nguoi=True,
+                huong_dan=_huong_dan_can_nguoi(ma_loi))
         return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
 
     async def _cho_ket_qua_dang_nhap(self, email_tho: str, khoa_tk: str,
@@ -1118,8 +1166,9 @@ class Module:
             tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
             if isinstance(tt, dict) and tt.get("ok"):
                 trang_thai = str(tt.get("state") or "none")
+                # NV209: need_human là trạng thái cuối — trả ngay, không chờ hết trần
                 if trang_thai in ("success", "need_code", "need_captcha",
-                                  "failed"):
+                                  "need_human", "failed"):
                     return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st)
                 if trang_thai == "need_tap" and time.time() >= han:
                     # Hết trần mà người dùng chưa chạm điện thoại
@@ -1192,6 +1241,13 @@ class Module:
                     "cho_2fa": False, "can_nguoi": True, "ma_loi": "can_nguoi",
                     "huong_dan": "Mở điện thoại/trình duyệt xử lý bước xác minh "
                                  "rồi bấm «Kiểm tra lại»."}
+        # NV209: need_human của dịch vụ → can_nguoi + mã lỗi + hướng dẫn
+        if trang_thai == "need_human":
+            ma_loi = _sach_ma_loi_can_nguoi(str(tt.get("error") or "")) \
+                or "can_nguoi"
+            return {"ok": True, "giai_doan": "can_nguoi", "buoc": buoc,
+                    "cho_2fa": False, "can_nguoi": True, "ma_loi": ma_loi,
+                    "huong_dan": _huong_dan_can_nguoi(ma_loi)}
         if trang_thai == "failed":
             return {"ok": True, "giai_doan": "loi", "buoc": buoc,
                     "cho_2fa": False, "can_nguoi": True, "ma_loi": "loi",
