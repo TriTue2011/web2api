@@ -8,9 +8,18 @@ Gọi: `model = combo/<tên>` hoặc tên trần `<tên>` (không «/»). Module
 combo bằng tên trần) — xem `tuyen._module_theo_model`.
 
 Luật chạy (một vòng chung cho chat và ảnh, một bộ phân loại `phan_loai`):
-- Lọc HỢP LỆ trước: bước tắt, model tắt, module chưa liên kết, thiếu phương thức của việc → không bao giờ gọi; không
-  còn bước hợp lệ → 503 `no_available_routes`. «Không chặn lựa chọn cuối» chỉ áp trên tập đã hợp lệ (cầu chì mở,
-  bước bị hạ bậc vẫn được thử, xếp cuối, theo thứ tự gốc).
+- Lọc CẤU TRÚC trước: bước tắt, phân giải hỏng, thiếu phương thức của việc → không bao giờ gọi (kể cả khi lọc
+  sạch); không còn bước hợp lệ → 503 `no_available_routes`. Sức khoẻ (cầu chì mở/đang thăm dò, đang hạ bậc) KHÔNG
+  loại ở đây: mọi bước hợp lệ đều yếu vì sức khoẻ → «lọc sạch → thử danh sách gốc» theo thứ tự gốc (NV196b, theo
+  c2a `_loc_thanh_vien_song`); còn bước khoẻ thì khoẻ trước, hạ bậc sau, cầu chì chặn cuối («không chặn lựa chọn
+  cuối», mỗi nhóm giữ thứ tự gốc).
+- Rớt kết nối thoáng qua (ngoại lệ KHÔNG mang mã HTTP, rớt NHANH trong `thu_lai_nhanh_giay()` giây — mặc định 10
+  như c2a `_THU_LAI_NHANH_GIAY`): thử lại NGAY đúng 1 lần rồi mới tính lỗi + sang bước kế. Không thử lại khi ngoại
+  lệ đã có mã HTTP, khi rớt chậm, hay khi luồng đã gửi byte đầu; lần thử lại vẫn nằm trong trần `toi_da_giay()`
+  chung (không cộng thêm giờ).
+- Đường đi: từng bước đã thử (kết quả: bỏ qua/lỗi/mã, lý do ngắn, độ trễ) vào tiêu đề `x-web2api-duong` (gọn, trần
+  `TRAN_DUONG_TIEU_DE` ký tự) và nhật ký — ngoài `x-web2api-route` hiện có; chỉ dùng mã cố định, không lộ tên tài
+  khoản, khoá, URL nội bộ hay thân lỗi của nhà cung cấp.
 - 2xx chốt; 400 PHÂN XỬ bằng so sánh (bước hợp lệ kế trả 200 → 400 là của (module, model) ấy: hạ bậc có hạn trong
   nhóm việc đó; bước kế cũng 400 → lỗi của yêu cầu, trả 400 đầu nguyên văn, không thử thêm); 413/404/501 sang bước kế,
   không tính hỏng; 429 hạ bậc tới hết Retry-After; 401/403 cầu chì (module, việc) mở NGAY; 5xx/lỗi gọi tính một lỗi
@@ -86,6 +95,26 @@ def thoi_gian_dinh_phien() -> float:
 
 def toi_da_giay() -> float:
     return _so_env("WEB2API_COMBO_TOI_DA_GIAY", 300.0, 0.1)
+
+
+def thu_lai_nhanh_giay() -> float:
+    """Trần «rớt nhanh» cho thử lại ngay 1 lần (giây) — như c2a `_THU_LAI_NHANH_GIAY` = 10.0."""
+    return _so_env("WEB2API_COMBO_THU_LAI_NHANH_GIAY", 10.0, 0.0)
+
+
+#: Trần độ dài tiêu đề `x-web2api-duong` (đường đi từng bước đã thử); quá trần thì giữ các chặng mới nhất.
+TRAN_DUONG_TIEU_DE = 2048
+
+
+def _co_ma_http(e: BaseException) -> bool:
+    """Ngoại lệ đã mang mã HTTP theo tín hiệu cấu trúc (không dò chuỗi): thuộc tính `ma`
+    (như `LoiOpenAI`) hoặc `response.status_code` (như lỗi HTTP client) là số 100–599."""
+    ma = getattr(e, "ma", None)
+    if isinstance(ma, int) and 100 <= ma < 600:
+        return True
+    phan_hoi = getattr(e, "response", None)
+    ma2 = getattr(phan_hoi, "status_code", None)
+    return isinstance(ma2, int) and 100 <= ma2 < 600
 
 
 def doc_retry_after(gia_tri: str | None, bay_gio: float) -> float:
@@ -716,35 +745,67 @@ class BoDieuPhoiCombo:
     async def _thu(self, b: dict, viec: str, than: dict, goi, stream: bool, han: float
                    ) -> tuple[int, dict, Any, bytes | None]:
         """Gọi MỘT bước trong trần thời gian còn lại (tới byte đầu nếu stream). Lỗi gọi/lỗi trước byte đầu → 502
-        JSON của lõi; hết trần → _Het. Luồng bỏ dở luôn được đóng."""
+        JSON của lõi; hết trần → _Het. Luồng bỏ dở luôn được đóng.
+
+        Rớt kết nối THOÁNG QUA ở PHA GỌI (ngoại lệ từ chính cuộc gọi, KHÔNG mang mã HTTP, rớt NHANH trong
+        `thu_lai_nhanh_giay()` giây — như c2a `_goi_mot_lan` bọc `_dispatch` với `_THU_LAI_NHANH_GIAY`):
+        thử lại NGAY đúng 1 lần rồi mới tính lỗi + sang bước kế. Không thử lại khi ngoại lệ đã có mã HTTP,
+        khi rớt chậm, hay khi luồng đã gửi byte đầu; lần thử lại vẫn nằm trong trần `han` chung của combo
+        (không cộng thêm giờ)."""
         than_buoc = dict(than)  # bản sao nông: mỗi bước nhận thân gốc, không thấy sửa đổi của bước trước
         than_buoc["model"] = b["model"]
+        ma: int | None = None
+        headers: dict = {}
         noi_dung: Any = None
-        cm = asyncio.timeout_at(han)
-        try:
-            async with cm:
-                ma, headers, noi_dung = await goi(b["the_hien"], than_buoc)
-                if stream and 200 <= ma < 300 and hasattr(noi_dung, "__aiter__"):
-                    it = noi_dung.__aiter__()
-                    noi_dung = it
-                    try:
-                        dau = await it.__anext__()
-                    except StopAsyncIteration:
-                        await _dong(it)
-                        return ma, headers, b"", None
-                    return ma, headers, it, dau
-                return ma, headers, noi_dung, None
-        except asyncio.CancelledError:  # khách ngắt khi đang chờ byte đầu: đóng thượng nguồn ngay, không chờ GC
-            await _dong(noi_dung)
-            raise
-        except TimeoutError:
-            await _dong(noi_dung)
-            if cm.expired():
-                raise _Het() from None
-            return self._loi_goi(b, "TimeoutError")
-        except Exception as e:
-            await _dong(noi_dung)
-            return self._loi_goi(b, type(e).__name__)
+        for lan in (1, 2):  # lần 1 + tối đa 1 lần thử lại ngay (chỉ cho pha GỌI)
+            moc = time.monotonic()
+            try:
+                async with asyncio.timeout_at(han):
+                    ma, headers, noi_dung = await goi(b["the_hien"], than_buoc)
+            except asyncio.CancelledError:  # khách ngắt khi đang gọi: đóng thượng nguồn ngay, không chờ GC
+                await _dong(noi_dung)
+                raise
+            except TimeoutError:
+                await _dong(noi_dung)
+                if time.monotonic() >= han:
+                    raise _Het() from None  # trần tổng của combo
+                return self._loi_goi(b, "TimeoutError")
+            except Exception as e:
+                await _dong(noi_dung)
+                nhanh = (time.monotonic() - moc) <= thu_lai_nhanh_giay()
+                if (lan == 1 and nhanh and not _co_ma_http(e)
+                        and time.monotonic() < han):
+                    nhat_ky.ghi("combo", "canh_bao",
+                                f"Combo {self.ten}: bước {b['model']} rớt nhanh ({type(e).__name__}), "
+                                "thử lại ngay 1 lần", combo=self.ten, route=b["model"], viec=viec,
+                                kieu_loi=type(e).__name__)
+                    noi_dung = None
+                    continue
+                return self._loi_goi(b, type(e).__name__)
+            break
+        # Gọi thành công: nếu stream thì chờ byte đầu (vẫn trong trần chung); lỗi ở đây KHÔNG thử lại.
+        if stream and ma is not None and 200 <= ma < 300 and hasattr(noi_dung, "__aiter__"):
+            it = noi_dung.__aiter__()
+            try:
+                async with asyncio.timeout_at(han):
+                    dau = await it.__anext__()
+            except asyncio.CancelledError:
+                await _dong(it)
+                raise
+            except StopAsyncIteration:
+                await _dong(it)
+                return ma, headers, b"", None
+            except TimeoutError:
+                await _dong(it)
+                if time.monotonic() >= han:
+                    raise _Het() from None
+                return self._loi_goi(b, "TimeoutError")
+            except Exception as e:
+                await _dong(it)
+                return self._loi_goi(b, type(e).__name__)
+            return ma, headers, it, dau
+        assert ma is not None  # ra khỏi vòng chỉ khi gọi thành công (break)
+        return ma, headers, noi_dung, None
 
     def _loi_goi(self, b: dict, kieu: str) -> tuple[int, dict, bytes, None]:
         nhat_ky.ghi("combo", "canh_bao", f"Combo {self.ten}: bước {b['model']} lỗi khi gọi ({kieu})",
