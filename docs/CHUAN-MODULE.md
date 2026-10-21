@@ -482,3 +482,48 @@ không in mật khẩu.
 **Khuyến nghị giảm rủi ro** (nói rõ trong README module): dùng một Gmail PHỤ chỉ
 để nhận mã (đặt bộ lọc Gmail tự chuyển tiếp các thư mã xác minh sang Gmail phụ)
 thay vì Gmail chính, vì mật khẩu ứng dụng cho quyền đọc TOÀN BỘ hộp thư.
+
+## 14. Hợp đồng tự làm mới JWT (NV207, tuỳ chọn)
+
+Module lưu khoá là JWT (vd `chatgpt-web`) có thể khai hợp đồng này để vòng nền
+lõi (`app/lam_moi_jwt.py`) tự làm mới token khi gần hết hạn mà không gọi mạng
+thừa:
+
+- `async lam_moi_jwt(khoa: str) -> dict`: MỘT lượt làm mới cho một khoá (khoá =
+  định danh mờ do module đặt, không phải token). KHÔNG ném — lỗi trả trong dict
+  (`{"ok": False, "ma": ..., "can_nguoi": ...}`). Vòng nền gọi, KHÔNG phải người dùng.
+- `jwt_trang_thai() -> dict`: trạng thái JWT từng khoá cho giao diện
+  (`GET /api/modules/{id}/jwt-trang-thai`, yêu cầu quyền quản trị):
+  `{"khoa": [{"khoa", "email", "het_han" (ISO từ claim `exp`), "con_lai_ngay",
+  "lam_moi": {"trang_thai", "lan_lam_moi", "ma_loi"}, "canh_bao"}], "nguong_ngay"}`.
+  Không chứa bí mật (khoá đã mờ).
+
+Móc nối được bảo vệ (được vòng gọi qua `getattr`, mẫu triển khai ở
+`modules/chatgpt-web/lam_moi_jwt.py` + `module.py`):
+
+| Móc | Việc |
+|---|---|
+| `_tim__tai_khoan_obj(khoa)` | trả đối tượng tài khoản có khoá mờ khớp, hoặc None |
+| `_thay_token_jwt(khoa_cu, token_moi)` | thay token BẰNG ĐƯỜNG `cai {giu, them}` trong khoá sổ: đọc-ghép-lưu cấu hình đã lưu bằng `kho.ghep_cau_hinh` + `kho.luu_cai_dat` TRONG KHOÁ MODULE, rồi cập nhật bộ nhớ; không để hai lượt đè nhau |
+| `_doc_trang_thai_jwt()` / `_luu_trang_thai_jwt(tt)` | sổ trạng thái làm mới (kho riêng, không bí mật) |
+| `_sau_lam_moi_jwt(khoa_moi, email_moi, ho_so)` | làm giàu bản ghi sau khi thay (email từ claim token mới) |
+
+Nguyên tắc bắt buộc:
+
+1. Kiểm hạn bằng GIẢI MÃ claim `exp` (không gọi mạng); chỉ dưới ngưỡng
+   (`jwt_nguong_ngay`, mặc định 2 ngày, cấu hình được) mới gọi dịch vụ làm mới
+   cho đúng hồ sơ trình duyệt.
+2. Ghép khoá → hồ sơ bằng thông tin CHẮC CHẮN (`ho_so` đã lưu còn tồn tại trong
+   `GET /v1/profiles` của dịch vụ). KHÔNG đoán chuỗi (vd không khớp email→tên hồ
+   sơ); không ghép được → đánh dấu `can_nguoi`, KHÔNG làm mới bừa.
+3. Token KHÔNG vào log/phản hồi/nhật ký; nhật ký chỉ ghi «đã làm mới khoá …XXXX»
+   (4 ký tự cuối).
+4. Trần thử N lần/ngày/khoá + nghỉ luỹ thừa; 401 (hồ sơ đăng xuất) là lỗi VĨNH
+   VIỄN → dừng, đánh dấu cần người theo đường NV145b («cần đăng nhập lại»),
+   KHÔNG thử lại mãi.
+5. URL dịch vụ qua cùng bộ kiểm SSRF; chỉ quản trị gọi/đọc; step-up giữ nguyên
+   cho thao tác ghi bí mật.
+
+Vòng nền: `WEB2API_JWT_LAM_MOI_BAT` (mặc định bật), `WEB2API_JWT_LAM_MOI_KHOANG_GIAY`
+(mặc định 21600 = 6 giờ, tối thiểu 300). Vòng quét mọi module đang chạy có
+`lam_moi_jwt` callable, một lần mỗi khoảng, bắt đầu ngay khi máy chạy.

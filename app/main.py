@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kenh_vao, kho, khoa_khach, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
+from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kenh_vao, kho, khoa_khach, lam_moi_jwt, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -84,6 +84,9 @@ async def lifespan(app: FastAPI):
     # NV91-P2: vòng tự làm mới phiên định kỳ (đồng bộ với sổ module mỗi 60s;
     # tắt gọn khi dừng máy — không tác vụ nền mồ côi).
     tu_lam_moi.quan_ly().bat_dau(lambda: so.dang_chay)
+    # NV207: vòng tự làm mới JWT (giải mã claim exp, chỉ gọi dịch vụ khi dưới
+    # ngưỡng; tắt gọn khi dừng máy).
+    lam_moi_jwt.quan_ly().bat_dau(lambda: so.dang_chay)
     vong_model = lam_moi_model.VongLamMoiModel(lambda: so.dang_chay)
     app.state.vong_model = vong_model
     vong_model.bat_dau()
@@ -106,6 +109,8 @@ async def lifespan(app: FastAPI):
         khoa_khach.dong_bo_dia()
         await tu_lam_moi.quan_ly().dung()
         await tu_lam_moi.huy_tat_ca()
+        await lam_moi_jwt.quan_ly().dung()
+        await lam_moi_jwt.huy_tat_ca()
         await ng.dung()
         await vong_model.dung()
         await vong_stb.dung()

@@ -30,6 +30,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
@@ -68,8 +69,20 @@ from .converter import (
     tach_tien_to,
     tao_hoan_thanh_id,
 )
+from .lam_moi_jwt import (
+    NGUONG_NGAY_MAC_DINH as _JWT_NGUONG_MAC_DINH,
+    TRAN_THU_NGAY_MAC_DINH as _JWT_TRAN_MAC_DINH,
+    BoLamMoiJWT,
+    con_lai_ngay as _jwt_con_lai_ngay,
+    exp_cua as _jwt_exp_cua,
+    het_han_iso as _jwt_het_han_iso,
+)
 
 log = logging.getLogger("web2api.module.chatgpt-web")
+
+#: NV207: id module + thư mục module (đọc manifest khi cần trường cấu hình).
+MODULE_ID = "chatgpt-web"
+_THU_MUC_MODULE = Path(__file__).resolve().parent
 
 
 def _lay_danh_tinh(id_: str):
@@ -178,6 +191,34 @@ def _gio_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _so_thuc_duong(gia_tri: object, mac_dinh: float) -> float:
+    """Số thực dương từ cấu hình; sai khuôn/không dương → mặc định + cảnh báo."""
+    try:
+        v = float(str(gia_tri).strip())
+    except (TypeError, ValueError, AttributeError):
+        v = mac_dinh
+    if not (v > 0):
+        if str(gia_tri or "").strip():
+            log.warning("chatgpt-web: jwt_nguong_ngay %r sai khuôn — dùng mặc định %s",
+                        gia_tri, mac_dinh)
+        v = mac_dinh
+    return v
+
+
+def _so_nguyen_duong(gia_tri: object, mac_dinh: int) -> int:
+    """Số nguyên dương từ cấu hình; sai khuôn/không dương → mặc định + cảnh báo."""
+    try:
+        v = int(float(str(gia_tri).strip()))
+    except (TypeError, ValueError, AttributeError):
+        v = mac_dinh
+    if not (v > 0):
+        if str(gia_tri or "").strip():
+            log.warning("chatgpt-web: jwt_tran_thu_ngay %r sai khuôn — dùng mặc định %s",
+                        gia_tri, mac_dinh)
+        v = mac_dinh
+    return v
+
+
 # ---------------------------------------------------------------------------
 # Bảng model theo gói (dự phòng khi nguồn thật thất bại) — CHƯA KIỂM trên dịch vụ thật.
 #
@@ -255,6 +296,14 @@ class Module:
         self._tai_khoan: list[_TaiKhoan] = []
         self._co_so_url: str | None = None
         self._danh_tinh_id: str | None = None
+        # NV207: cấu hình dịch vụ may-dang-nhap cho vòng làm mới JWT.
+        self._dich_vu_dang_nhap_url: str | None = None
+        self._khoa_dich_vu_dang_nhap: str = ""
+        self._jwt_nguong_ngay: float = _JWT_NGUONG_MAC_DINH
+        self._jwt_tran_thu_ngay: int = _JWT_TRAN_MAC_DINH
+        # NV207: khoá single-flight cho từng khoá đang làm mới JWT.
+        self._khoa_lam_moi_jwt: dict[str, object] = {}
+        self._bo_lam_moi_jwt = BoLamMoiJWT(self)
         # Khoá tài khoản đã đánh dấu hỏng (tầng c bỏ qua khi chọn kế).
         self._hong: set[str] = set()
         # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV88):
@@ -694,6 +743,176 @@ class Module:
         """NV91-P2: tài khoản khoẻ lại sau tự khôi phục → bỏ đánh dấu hỏng."""
         self._hong.discard(str(khoa))
 
+    # -- tự làm mới JWT (NV207) ------------------------------------------------
+    # Hợp đồng với vòng nền app/lam_moi_jwt.py: `lam_moi_jwt(khoa) -> dict`
+    # (không ném; dict có `ma` nêu kết quả). Các móc nối gạch dưới do
+    # modules/chatgpt-web/lam_moi_jwt.py gọi qua getattr.
+
+    async def lam_moi_jwt(self, khoa: str) -> dict:
+        """NV207: một lượt làm mới JWT cho một khoá (vòng nền gọi)."""
+        try:
+            return await self._bo_lam_moi_jwt.lam_moi(khoa)
+        except Exception as e:  # không để vòng nền vỡ vì một khoá
+            log.warning("chatgpt-web: lam_moi_jwt(%s) lỗi không ngờ: %s",
+                        khoa, type(e).__name__)
+            return {"ok": False, "khoa": str(khoa), "ma": "loi_noi_bo"}
+
+    def _tim__tai_khoan_obj(self, khoa: str):
+        """_TaiKhoan có khoá mờ == khoa, hoặc None."""
+        khoa = str(khoa or "")
+        with self._khoa:
+            for tk in self._tai_khoan:
+                if self._khoa_tu_token(tk.token) == khoa:
+                    return tk
+        return None
+
+    def _truong_cau_hinh_jwt(self) -> list:
+        """Định nghĩa trường cấu hình từ manifest (dùng cho ghep/luu_cai_dat)."""
+        global _TRUONG_CAU_HINH_CACHE
+        try:
+            return _TRUONG_CAU_HINH_CACHE
+        except NameError:
+            pass
+        try:
+            with open(_THU_MUC_MODULE / "manifest.json", encoding="utf-8") as f:
+                man = json.load(f)
+            _TRUONG_CAU_HINH_CACHE = man.get("truong_cau_hinh") or []
+        except Exception:
+            _TRUONG_CAU_HINH_CACHE = []
+        return _TRUONG_CAU_HINH_CACHE
+
+    def _thay_token_jwt(self, khoa_cu: str, token_moi: str) -> dict:
+        """Thay token cũ bằng token mới BẰNG ĐƯỜNG cai {giu, them}.
+
+        Đọc-ghép-lưu trong khoá module (không để hai lượt làm mới đè nhau):
+        đọc cấu hình đã lưu → `kho.ghep_cau_hinh` với {giu: mọi chỉ số trừ
+        mục cũ, them: [token mới]} → `kho.luu_cai_dat`. Rồi cập nhật bộ nhớ
+        + bản ghi kho riêng. Không log token.
+        """
+        from app import kho as kho_loi
+        khoa_cu = str(khoa_cu or "")
+        token_moi = str(token_moi or "")
+        if not token_moi:
+            return {"ok": False, "ma_loi": "token_moi_rong"}
+        with self._khoa:
+            ds_khoa = [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
+            if khoa_cu not in ds_khoa:
+                return {"ok": False, "ma_loi": "token_da_doi"}
+            token_cu = self._tai_khoan[ds_khoa.index(khoa_cu)].token
+            if token_cu == token_moi:
+                return {"ok": False, "ma_loi": "token_da_doi"}
+            # Đọc-ghép-lưu cấu hình đã lưu (đường {giu, them} của kho).
+            try:
+                truong = self._truong_cau_hinh_jwt()
+                muc = None
+                ds_mod, _canh_bao = kho_loi.doc_modules()
+                for m in ds_mod or []:
+                    if isinstance(m, dict) and m.get("id") == MODULE_ID:
+                        muc = m
+                        break
+                da_luu = kho_loi.doc_cau_hinh(MODULE_ID, truong, muc) \
+                    if muc else {}
+                cu = da_luu.get("tai_khoan")
+                cu = list(cu) if isinstance(cu, list) else []
+                try:
+                    idx_luu = cu.index(token_cu)
+                except ValueError:
+                    idx_luu = None
+                if idx_luu is None:
+                    # Cấu hình lưu lệch khỏi bộ nhớ (ai đó vừa sửa tay):
+                    # giữ nguyên đã lưu + thêm mới (ghep tự khử trùng).
+                    giu = list(range(len(cu)))
+                else:
+                    giu = [i for i in range(len(cu)) if i != idx_luu]
+                ghep = kho_loi.ghep_cau_hinh(
+                    truong, da_luu,
+                    {"tai_khoan": {"giu": giu, "them": [token_moi]}})
+                kho_loi.luu_cai_dat(MODULE_ID, truong, ghep)
+            except Exception as e:
+                log.warning("lam-moi-jwt: lưu cấu hình sau thay token lỗi: %s",
+                            type(e).__name__)
+                return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
+            # Cập nhật bộ nhớ (giữ email/gói/hồ sơ đã làm giàu).
+            ds_khoa = [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
+            if khoa_cu not in ds_khoa:  # ai đó đã thay trong lúc mình lưu
+                return {"ok": False, "ma_loi": "token_da_doi"}
+            tk = self._tai_khoan[ds_khoa.index(khoa_cu)]
+            tk.token = token_moi
+            tk.client = None
+            tk.khoe = True
+            tk.loai_loi = None
+        self._luu_ban_ghi_tai_khoan()
+        return {"ok": True, "khoa_moi": self._khoa_tu_token(token_moi)}
+
+    def _doc_trang_thai_jwt(self) -> dict:
+        """Sổ trạng thái làm mới JWT (kho riêng, không bí mật)."""
+        if self.kho is None:
+            return {}
+        try:
+            tt = self.kho.doc("jwt_lam_moi") or {}
+        except Exception:
+            return {}
+        return tt if isinstance(tt, dict) else {}
+
+    def _luu_trang_thai_jwt(self, tt: dict) -> None:
+        if self.kho is None:
+            return
+        try:
+            self.kho.luu("jwt_lam_moi", dict(tt))
+        except Exception as e:
+            log.warning("lam-moi-jwt: không lưu được trạng thái: %s",
+                        type(e).__name__)
+
+    def _sau_lam_moi_jwt(self, khoa_moi: str, email_moi: str,
+                         ho_so: str | None) -> None:
+        """Làm giàu bản ghi sau làm mới (email đọc từ claim token mới)."""
+        tk = self._tim__tai_khoan_obj(khoa_moi)
+        if tk is None:
+            return
+        with self._khoa:
+            if email_moi and not tk.email:
+                tk.email = email_moi
+            if ho_so and not tk.ho_so:
+                tk.ho_so = ho_so
+        self._luu_ban_ghi_tai_khoan()
+
+    def jwt_trang_thai(self) -> dict:
+        """NV207: trạng thái JWT từng khoá cho giao diện (không bí mật).
+
+        Mỗi mục: khoa (mờ), email, het_han (ISO từ exp), con_lai_ngay,
+        lam_moi {trang_thai, lan_lam_moi, ma_loi}, canh_bao (còn < ngưỡng
+        mà chưa làm mới được).
+        """
+        from .lam_moi_jwt import con_lai_ngay as _con_lai, exp_cua as _exp, \
+            het_han_iso as _iso
+        nguong = float(getattr(self, "_jwt_nguong_ngay", 2.0) or 2.0)
+        tt = self._doc_trang_thai_jwt()
+        ra = []
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        for tk in ds:
+            khoa = self._khoa_tu_token(tk.token)
+            exp = _exp(tk.token)
+            con_lai = _con_lai(exp)
+            muc = tt.get(khoa) if isinstance(tt.get(khoa), dict) else {}
+            trang_thai = str(muc.get("trang_thai") or "")
+            da_lam_moi = trang_thai == "da_lam_moi"
+            canh_bao = bool(exp is not None and con_lai is not None
+                            and con_lai <= nguong and not da_lam_moi)
+            ra.append({
+                "khoa": khoa,
+                "email": tk.email,
+                "het_han": _iso(exp),
+                "con_lai_ngay": round(con_lai, 2) if con_lai is not None else None,
+                "lam_moi": {
+                    "trang_thai": trang_thai or None,
+                    "lan_lam_moi": muc.get("lan_lam_moi"),
+                    "ma_loi": muc.get("ma_loi"),
+                },
+                "canh_bao": canh_bao,
+            })
+        return {"khoa": ra, "nguong_ngay": nguong}
+
     # -- tạo client: mối nối để test chích máy chủ giả ---------------------
 
     def _tao_client(self, token: str) -> ChatGPTWebClient:
@@ -750,10 +969,19 @@ class Module:
             tai_khoan.append(tk)
         danh_tinh_id = str(cau_hinh.get("danh_tinh_id") or "").strip() or None
         co_so = str(cau_hinh.get("co_so_url") or "").strip().rstrip("/") or None
+        # NV207: cấu hình vòng làm mới JWT (số sai khuôn → mặc định + cảnh báo).
+        url_dn = str(cau_hinh.get("dich_vu_dang_nhap_url") or "").strip().rstrip("/") or None
+        khoa_dn = str(cau_hinh.get("khoa_dich_vu_dang_nhap") or "")
+        nguong = _so_thuc_duong(cau_hinh.get("jwt_nguong_ngay"), _JWT_NGUONG_MAC_DINH)
+        tran = _so_nguyen_duong(cau_hinh.get("jwt_tran_thu_ngay"), _JWT_TRAN_MAC_DINH)
         with self._khoa:
             self._tai_khoan = tai_khoan
             self._danh_tinh_id = danh_tinh_id
             self._co_so_url = co_so
+            self._dich_vu_dang_nhap_url = url_dn
+            self._khoa_dich_vu_dang_nhap = khoa_dn
+            self._jwt_nguong_ngay = nguong
+            self._jwt_tran_thu_ngay = tran
         log.info("chatgpt-web: đã nạp %d tài khoản%s", len(tai_khoan),
                  f" (danh tính {danh_tinh_id})" if danh_tinh_id else "")
 
@@ -796,6 +1024,14 @@ class Module:
             await self._kiem_co_so_url()
         except ValueError as e:
             return {"ok": False, "ket_qua_tung_khoa": [], "loi": str(e)}
+        # NV207: kiểm URL dịch vụ may-dang-nhap bằng cùng bộ kiểm SSRF của lõi.
+        if self._dich_vu_dang_nhap_url:
+            try:
+                self._dich_vu_dang_nhap_url = await kiem_url_lan(
+                    self._dich_vu_dang_nhap_url)
+            except ValueError as e:
+                return {"ok": False, "ket_qua_tung_khoa": [],
+                        "loi": f"dich_vu_dang_nhap_url không hợp lệ: {e}"}
         try:
             self._kiem_danh_tinh(self._danh_tinh_id)
         except ValueError as e:

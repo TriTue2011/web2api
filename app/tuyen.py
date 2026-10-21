@@ -1273,6 +1273,22 @@ async def suc_khoe(id_: str, request: Request):
     return await m.suc_khoe()
 
 
+@modules.get("/{id_}/jwt-trang-thai", dependencies=QT)
+async def jwt_trang_thai(id_: str, request: Request):
+    """NV207: trạng thái JWT từng khoá của một module (ngày hết hạn từ claim
+    exp, trạng thái làm mới gần nhất, cờ cảnh báo). Module không khai
+    `jwt_trang_thai()` → 404. Không bí mật (khoá đã mờ)."""
+    so = _so(request)
+    m = so.dang_chay.get(id_)
+    if m is None:
+        raise LoiOpenAI(404, f"Module {id_!r} đã cài nhưng chưa có khoá/cấu hình — chưa có gì để kiểm"
+                        if id_ in so.catalog else f"Không có module {id_!r}")
+    fn = getattr(m, "jwt_trang_thai", None)
+    if not callable(fn):
+        raise LoiOpenAI(404, f"Module {id_!r} không hỗ trợ trạng thái JWT")
+    return fn()
+
+
 @modules.get("/{id_}/cau-hinh", dependencies=QT)
 async def cau_hinh(id_: str, request: Request):
     """Hợp đồng của form cấu hình trên web: trường của manifest + giá trị ĐÃ LƯU, bí mật chỉ ở dạng che

@@ -581,6 +581,7 @@ class Component extends DCLogic {
       soTb: mods.status === 'fulfilled' ? (mods.value.j.thong_bao_so || 0) : 0, dangTai: false });
     for (const m of this.dsAi()) if (m.da_lien_ket) {
       this.kiem(m.id);
+      this.jwt(m.id); // NV207: trạng thái JWT (chỉ chatgpt-web có, còn lại bỏ qua)
       this.taiModelModule(m.id);
     }
     await this.taiModel();
@@ -1189,6 +1190,15 @@ class Component extends DCLogic {
     catch (e) { this.loi(e); v = { loi: e.message }; }
     this.setState((s) => ({ sk: Object.assign({}, s.sk, { [id]: v }) }));
   }
+  // NV207: trạng thái JWT từng khoá (hết hạn/làm mới) — chỉ chatgpt-web hỗ trợ.
+  async jwt(id) {
+    if (id !== 'chatgpt-web') return;
+    const cu = this.state.jwt || {};
+    if (cu[id] && (cu[id].kq || cu[id].loi)) return;
+    this.setState((s) => ({ jwt: Object.assign({}, s.jwt, { [id]: { dang: true } }) }));
+    try { const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/jwt-trang-thai'); this.setState((s) => ({ jwt: Object.assign({}, s.jwt, { [id]: { kq: j || {} } }) })); }
+    catch (e) { this.setState((s) => ({ jwt: Object.assign({}, s.jwt, { [id]: { loi: e.message } }) })); }
+  }
   chonTab(id) {
     this.setState({ tab: id, ghi: '', xoa: null, pvDd: false, mdLoc: '' });
     history.replaceState(null, '', id === TAB[0] ? location.pathname : '#' + K.DIEU_KIEN[id].neo);
@@ -1269,6 +1279,13 @@ class Component extends DCLogic {
     const ds = (v.kq && v.kq.khoa) || [];
     const k = ds.length === so ? ds[r.i] : null;
     return { dang: !!v.dang, k: k && (!r.che || (k.khoa_che || k.khoa) === r.che) ? k : null, loi: v.loi || '' };
+  }
+  // NV207: trạng thái JWT của MỘT khoá chatgpt-web — ghép theo chỉ số (cùng thứ tự đã lưu) như sức khoẻ.
+  jwtCua(r, so) {
+    if (r.m.id !== 'chatgpt-web') return null;
+    const v = (this.state.jwt && this.state.jwt['chatgpt-web']) || {};
+    const ds = (v.kq && v.kq.khoa) || [];
+    return ds.length === so ? (ds[r.i] || null) : null;
   }
 
   renderVals() {
@@ -1751,6 +1768,15 @@ class Component extends DCLogic {
         if (sd && sd.vt) chips.push({ ma: 'vt', t: '#' + sd.vt, tip: 'Thứ tự trong danh sách khoá (xoay vòng)', st: VT_ST });
         if (sd && sd.dang) chips.push({ ma: 'dang-dung', t: 'Đang dùng', tip: 'Khoá vừa phục vụ yêu cầu gần nhất', st: DD_ST });
         chips.push({ ma: 'suc-khoe', t: chip[0], tip: '', st: pillSt(chip[1]) });
+        // NV207: chip trạng thái JWT cho từng khoá chatgpt-web (hết hạn / làm mới / cảnh báo).
+        const mucJwt = this.jwtCua(r, ds.length);
+        if (mucJwt) {
+          if (mucJwt.canh_bao) chips.push({ ma: 'jwt-canh-bao', t: 'Sắp hết hạn, chưa làm mới được!', tip: 'JWT còn dưới ngưỡng mà vòng làm mới chưa thành công — kiểm tra hồ sơ trình duyệt trong máy đăng nhập', st: pillSt('bad') });
+          else if (mucJwt.het_han) chips.push({ ma: 'jwt-het-han', t: 'JWT hết hạn ' + K.ngayGio(mucJwt.het_han), tip: 'Ngày hết hạn từ claim exp của JWT', st: PHU_ST });
+          const lmJwt = mucJwt.lam_moi || {};
+          if (lmJwt.trang_thai === 'da_lam_moi') chips.push({ ma: 'jwt-da-lam-moi', t: 'Đã làm mới' + (lmJwt.lan_lam_moi ? ' ' + K.tuongDoi(lmJwt.lan_lam_moi) : ''), tip: '', st: pillSt('ok') });
+          else if (lmJwt.trang_thai === 'can_nguoi') chips.push({ ma: 'jwt-can-nguoi', t: 'JWT cần người xử lý', tip: lmJwt.ma_loi || '', st: pillSt('bad') });
+        }
         if (sd && sd.coLuot) chips.push({ ma: 'luot', t: 'Đã dùng ' + sd.luot + ' lượt', tip: 'Kể từ lần khởi động hoặc lưu khoá gần nhất', st: PHU_ST });
         if (sd && sd.cuoi) chips.push({ ma: 'dung-cuoi', t: 'Lần dùng cuối ' + K.tuongDoi(sd.cuoi), tip: K.ngayGio(sd.cuoi), st: PHU_ST });
         if (sd) chips.push(...sd.canh);
@@ -1759,6 +1785,12 @@ class Component extends DCLogic {
         if (goc) kv.push({ k: 'Địa chỉ gốc', v: goc, mono: true, acts: [{ nhan: 'Chép', al: 'Chép địa chỉ gốc', st: btnSt(), pick: () => { try { navigator.clipboard.writeText(goc); } catch (e) { /* trình duyệt chặn */ } this.msg('Đã chép địa chỉ gốc.'); } }] });
         kv.push(r.che ? { k: r.t ? (r.t.nhan || 'Khoá API') : 'Khoá API', v: r.che, mono: true } : { k: 'Khoá API', v: r.m.tu_xa ? 'Không khoá' : 'Không cần khoá', mute: true });
         kv.push({ k: 'Số khoá', v: r.m.tu_xa ? 'Đặt lúc đăng ký module từ xa — muốn đổi thì gỡ ở Hệ thống → Module rồi đăng ký lại' : ds.length + ' khoá của nguồn này' });
+        // NV207: chi tiết JWT từng khoá chatgpt-web.
+        if (mucJwt) {
+          kv.push({ k: 'JWT hết hạn', v: mucJwt.het_han ? K.ngayGio(mucJwt.het_han) + (mucJwt.con_lai_ngay != null ? ' (còn ' + mucJwt.con_lai_ngay + ' ngày)' : '') : 'không đọc được claim exp' });
+          const lmJ = mucJwt.lam_moi || {};
+          kv.push({ k: 'Làm mới JWT', v: lmJ.trang_thai === 'da_lam_moi' ? 'đã làm mới' + (lmJ.lan_lam_moi ? ' lúc ' + K.ngayGio(lmJ.lan_lam_moi) : '') : lmJ.trang_thai === 'can_nguoi' ? 'cần người xử lý (' + (lmJ.ma_loi || '') + ')' : 'chưa làm mới' });
+        }
         if (sd) kv.push(...sd.kv);
         const coSua = !!r.t && coKhoaQt;
         // Bớt khoá cuối cùng của trường bắt buộc thì lõi từ chối (module cần ít nhất một khoá) → không vẽ «Xoá».

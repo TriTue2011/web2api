@@ -672,6 +672,31 @@ class Module:
         duong = mau_duong.replace("{ho_so}", hs_sach)
         return await self._goi(phuong_thuc, duong)
 
+    # -- NV207: làm mới JWT qua hồ sơ trình duyệt (module chatgpt-web gọi) -----
+
+    async def danh_sach_ho_so(self) -> dict:
+        """GET /v1/profiles — danh sách hồ sơ trình duyệt của dịch vụ.
+
+        NV207: vòng làm mới JWT của chatgpt-web dùng để kiểm hồ sơ đã lưu
+        còn tồn tại trước khi gọi làm mới (ghép chắc chắn, không đoán chuỗi).
+        """
+        return await self._goi("GET", "/v1/profiles")
+
+    async def lam_moi_jwt(self, ho_so: str) -> dict:
+        """GET /v1/chatgpt/{ho_so}/refresh-jwt — làm mới JWT qua hồ sơ.
+
+        NV207: `ho_so` đã kiểm khuôn (chống path traversal). Kết quả theo hợp
+        đồng của dịch vụ: {"ok": True, "access_token": ...} hoặc
+        {"ok": False, "ma_loi": ...} — HTTP 401 (ma_loi "sai_khoa_dich_vu")
+        nghĩa là hồ sơ đã đăng xuất (lỗi vĩnh viễn phía hồ sơ).
+        """
+        try:
+            hs_sach = _kiem_ho_so(ho_so)
+        except ValueError:
+            return {"ok": False, "ma_loi": "tham_so_khong_hop_le",
+                    "loi": "Tên hồ sơ không hợp lệ", "nguon_ngoai": True}
+        return await self._goi("GET", f"/v1/chatgpt/{hs_sach}/refresh-jwt")
+
     async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None = None) -> dict:
         tham_so = tham_so or {}
 
