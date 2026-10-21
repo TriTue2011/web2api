@@ -151,6 +151,18 @@ _DUONG_ONBOARD_THEO_LUONG = {
 _DANG_NHAP_BANG_HOP_LE = ("", "truc_tiep", "google")
 
 
+def _dang_nhap_bang_mac_dinh(module_cua: Any) -> str:
+    """Cách đăng nhập mặc định khi tài khoản chưa khai ``dang_nhap_bang``.
+
+    Theo DỮ LIỆU module sở hữu (không đoán từ đuôi email): nhóm chatgpt →
+    «truc_tiep» (OpenAI gốc — đúng như c2a đo thật 21/10: 30/30 tài khoản
+    ChatGPT đều OpenAI gốc, đi đường Google cũ chỉ cho log «không phiên
+    Google, không mật khẩu → bỏ lượt»); các nhóm khác → "" (giữ đường cũ).
+    """
+    luong = _LUONG_THEO_MODULE_ID.get(str(module_cua or "").strip())
+    return "truc_tiep" if luong == "chatgpt" else ""
+
+
 def _ten_ho_so_theo_dich_vu(dich_vu: str, email: str) -> str:
     """Tên hồ sơ cho đường onboard NV223: tiền tố theo KHOÁ DỊCH VỤ (phần
     trước «-web» nếu có — dữ liệu trong ``DICH_VU_DANG_NHAP``) + slug
@@ -212,6 +224,67 @@ def _email_tu_jwt(token: str) -> str:
         return email.strip() if isinstance(email, str) else ""
     except Exception:
         return ""
+
+
+#: NV235-b3: ngưỡng «sắp hết» khi kiểm exp của token mà refresh-jwt vừa trả —
+#: dưới ngưỡng này coi như phiên chết (c2a từng nhận token hết hạn 42h mà
+#: vẫn báo ok=true/method=scrape; web2api KHÔNG chép lỗi đó).
+_NGUONG_TOKEN_SAP_HET_GIAY = 24 * 3600
+
+
+def _exp_cua_jwt(token: str) -> int | None:
+    """Claim ``exp`` của JWT — giải mã payload KHÔNG xác thực chữ ký.
+
+    Chỉ đọc token mà dịch vụ vừa trả cho chính lượt này. Hỏng/thiếu/không
+    phải số nguyên dương → None (coi như không đọc được hạn)."""
+    try:
+        phan = str(token or "").split(".")
+        if len(phan) != 3:
+            return None
+        dem = "=" * (-len(phan[1]) % 4)
+        tai_lieu = json.loads(base64.urlsafe_b64decode(phan[1] + dem))
+        if not isinstance(tai_lieu, dict):
+            return None
+        exp = tai_lieu.get("exp")
+        if isinstance(exp, bool):
+            return None
+        exp = int(exp)
+        return exp if exp > 0 else None
+    except Exception:
+        return None
+
+
+def _jwt_con_han(token: str, bay_gio: float | None = None) -> bool:
+    """Token còn hạn dùng tốt không — exp phải sau (hiện tại + ngưỡng).
+
+    Không đọc được exp → False (an toàn: coi như chết, đăng nhập lại).
+    """
+    exp = _exp_cua_jwt(token)
+    if exp is None:
+        return False
+    moc = bay_gio if bay_gio is not None else time.time()
+    return exp > moc + _NGUONG_TOKEN_SAP_HET_GIAY
+
+
+def _dich_vu_key_tu_ho_so(ho_so: str) -> str | None:
+    """Khoá ``DICH_VU_DANG_NHAP`` suy từ tiền tố hồ sơ (dữ liệu, không đoán
+    theo module sở hữu).
+
+    NV235-b6 (gộp NV229): 2FA/tiến độ cho mọi đường dùng CHUNG bảng khai báo
+    với đăng nhập — trước đây ``nhap_ma_2fa``/``tien_do`` chọn đường bằng
+    ``_la_luong_chatgpt`` nên Claude/Grok khai «google» đi sai đường
+    ``/v1/session/``.
+    """
+    s = str(ho_so or "").strip().lower()
+    for tien_to, khoa in (("openai-", "openai"),
+                          ("chatgpt-", "chatgpt"),
+                          ("claude-", "claude-web"),
+                          ("grok-", "grok-web"),
+                          ("google-", "google"),
+                          ("gemini-", "gemini-web")):
+        if s.startswith(tien_to):
+            return khoa
+    return None
 
 
 def _kiem_ho_so(ho_so: Any) -> str:
@@ -338,6 +411,58 @@ DICH_VU_DANG_NHAP = {
         "cookie": ("GET", "/v1/openai-native/{ho_so}/token"),
     },
 }
+
+
+#: NV235-b4 — đăng nhập Google: MỘT phiên toàn hệ thống tại một thời điểm
+#: (theo c2a ``_freshen_google``/``_glogin_serial``). Khoá giữ suốt lượt poll
+#: nên tài khoản sau chỉ bắt đầu khi tài khoản trước đã xong.
+_KHOA_DANG_NHAP_GOOGLE = asyncio.Lock()
+#: Mốc phiên Google gần nhất xong (đặt dưới khoá).
+_LAN_DANG_NHAP_GOOGLE_XONG = 0.0
+#: Captcha hold toàn cục (theo c2a ``_glogin_captcha_until/_profile``): gặp
+#: CAPTCHA thì cả hệ thống nghỉ, không bắn thêm; chỉ hết hạn theo giờ.
+_CAPTCHA_HOLD_DEN = 0.0
+_CAPTCHA_HOLD_HO_SO = ""
+#: Cooldown theo tài khoản (giây) — đặt dưới khoá.
+_LAN_DANG_NHAP_GOOGLE_THEO_TK: dict[str, float] = {}
+
+
+def _khoang_cach_google_giay() -> float:
+    """Giãn cách tối thiểu giữa 2 phiên Google (c2a ``_GLOGIN_GAP_S`` = 25)."""
+    try:
+        return float(os.environ.get("C2A_DN_GAP_GOOGLE_GIAY", "") or 25)
+    except ValueError:
+        return 25.0
+
+
+def _thoi_gian_captcha_hold_giay() -> float:
+    """Thời gian hold khi gặp CAPTCHA (c2a = 6 giờ)."""
+    try:
+        return float(os.environ.get("C2A_DN_CAPTCHA_HOLD_GIAY", "") or 6 * 3600)
+    except ValueError:
+        return 6 * 3600.0
+
+
+def _thoi_gian_cooldown_google_giay() -> float:
+    """Cooldown mỗi tài khoản giữa 2 lượt đăng nhập Google (c2a = 1800s)."""
+    try:
+        return float(os.environ.get("C2A_DN_COOLDOWN_GOOGLE_GIAY", "") or 1800)
+    except ValueError:
+        return 1800.0
+
+
+def _ghi_captcha_hold(ho_so: str) -> None:
+    """Ghi captcha hold toàn cục khi một hồ sơ gặp CAPTCHA."""
+    global _CAPTCHA_HOLD_DEN, _CAPTCHA_HOLD_HO_SO
+    _CAPTCHA_HOLD_DEN = time.time() + _thoi_gian_captcha_hold_giay()
+    _CAPTCHA_HOLD_HO_SO = ho_so
+
+
+def _dang_trong_captcha_hold() -> str:
+    """Tên hồ sơ đang giữ captcha hold, "" nếu không trong hold."""
+    if time.time() < _CAPTCHA_HOLD_DEN:
+        return _CAPTCHA_HOLD_HO_SO
+    return ""
 
 
 # ── Lớp Module ───────────────────────────────────────────────────────────────
@@ -1152,6 +1277,10 @@ class Module:
             getattr(dong, "dang_nhap_bang", "") or "").strip().lower()
         if dang_nhap_bang not in _DANG_NHAP_BANG_HOP_LE:
             return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        # NV235-b2: chưa khai → mặc định theo nhóm (chatgpt = truc_tiep).
+        if not dang_nhap_bang:
+            dang_nhap_bang = _dang_nhap_bang_mac_dinh(
+                getattr(dong, "module_cua_tai_khoan", ""))
         dich_vu_key = None
         if dang_nhap_bang:
             luong = _LUONG_THEO_MODULE_ID.get(
@@ -1236,11 +1365,56 @@ class Module:
     async def _dang_nhap_google(self, email_tho: str, khoa_tk: str, st: dict,
                                 hong_lt: int, mk: str,
                                 totp_secret: str) -> KetQuaDangNhap:
-        """Luồng Google (NV145b): auto-login-saved + chờ kết quả.
+        """Luồng Google (NV145b + NV235-b4): MỘT phiên toàn hệ thống.
 
-        Nhận bí mật thô (đã lấy ra khỏi BiMatTam ở ``dang_nhap``); PHẢI ghi đè
+        Theo c2a ``_freshen_google``: cooldown 1800s/tài khoản (kiểm TRƯỚC khi
+        xếp hàng); khoá toàn cục giữ suốt lượt poll; captcha hold chặn lượt
+        khác; giãn cách tối thiểu giữa 2 phiên. Nhận bí mật thô; PHẢI ghi đè
         trước khi hàm trả về, mọi nhánh.
         """
+        global _LAN_DANG_NHAP_GOOGLE_XONG
+        # Cooldown theo tài khoản — từ chối ngay, không xếp hàng, không gọi
+        # dịch vụ.
+        lan_cuoi = _LAN_DANG_NHAP_GOOGLE_THEO_TK.get(khoa_tk, 0.0)
+        if time.time() - lan_cuoi < _thoi_gian_cooldown_google_giay():
+            mk = "\x00" * len(mk)
+            totp_secret = "\x00" * len(totp_secret)
+            del mk, totp_secret
+            return _ket_qua_dang_nhap(
+                False, ma_loi="dang_trong_cooldown",
+                huong_dan="Tài khoản này vừa đăng nhập Google chưa lâu — "
+                          "đợi hết thời gian giãn cách rồi thử lại, tránh "
+                          "Google tăng mức chặn.")
+        async with _KHOA_DANG_NHAP_GOOGLE:
+            # Captcha hold toàn cục: một hồ sơ gặp CAPTCHA → cả hệ thống nghỉ.
+            chu_hold = _dang_trong_captcha_hold()
+            if chu_hold:
+                mk = "\x00" * len(mk)
+                totp_secret = "\x00" * len(totp_secret)
+                del mk, totp_secret
+                return _ket_qua_dang_nhap(
+                    False, ma_loi="blocked_captcha_window", can_nguoi=True,
+                    huong_dan="Hệ thống đang hoãn tự đăng nhập vì CAPTCHA ở "
+                              f"hồ sơ «{chu_hold}» — xử lý CAPTCHA ở hồ sơ đó "
+                              "rồi thử lại; chưa kết luận tài khoản này lỗi.")
+            # Giãn cách như bấm tay lần lượt.
+            cho = _khoang_cach_google_giay() - (
+                time.time() - _LAN_DANG_NHAP_GOOGLE_XONG)
+            if cho > 0:
+                await asyncio.sleep(cho)
+            try:
+                return await self._dang_nhap_google_khi_toi_luot(
+                    email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
+            finally:
+                bay_gio = time.time()
+                _LAN_DANG_NHAP_GOOGLE_XONG = bay_gio
+                _LAN_DANG_NHAP_GOOGLE_THEO_TK[khoa_tk] = bay_gio
+
+    async def _dang_nhap_google_khi_toi_luot(
+            self, email_tho: str, khoa_tk: str, st: dict,
+            hong_lt: int, mk: str, totp_secret: str) -> KetQuaDangNhap:
+        """Phần trong của luồng Google — chạy khi đã tới lượt (đang giữ khoá
+        toàn cục NV235-b4). Nhận bí mật thô; PHẢI ghi đè trước khi trả về."""
         # 4. Gửi sang KÉT CỦA DỊCH VỤ (kho bí mật gốc cho lượt đăng nhập này),
         # rồi huỷ bản sao cục bộ ngay sau lời gọi.
         try:
@@ -1313,6 +1487,44 @@ class Module:
         # 6. Chờ kết quả trong trần
         return await self._cho_ket_qua_chatgpt(email_tho, khoa_tk, st, hs)
 
+    async def _thu_refresh_jwt_openai_goc(self, email_tho: str, hs: str,
+                                          khoa_tk: str, st: dict):
+        """BƯỚC 1 cho ChatGPT OpenAI gốc (NV235-b3, theo c2a ``_cgf_openai``).
+
+        ``GET /v1/chatgpt/{ho_so}/refresh-jwt`` quét phiên rẻ trước; token
+        trả về phải QUA KIỂM exp (giải mã claim, không xác thực chữ ký) —
+        hết hạn/sắp hết/không đọc được → coi phiên chết → trả None để luồng
+        onboard mật khẩu+TOTP chạy tiếp. Token còn hạn tốt → đóng gói
+        ``jwt_moi`` + gọi móc gắn khoá sổ, trả kết quả thành công ngay.
+        """
+        try:
+            rj = await self._goi("GET", f"/v1/chatgpt/{hs}/refresh-jwt")
+        except Exception:
+            return None
+        if not isinstance(rj, dict) or not rj.get("ok"):
+            return None
+        token = str(rj.get("access_token") or "")
+        if not token or token.count(".") != 2:
+            return None
+        if not _jwt_con_han(token):
+            # Thành công giả kiểu c2a (ok=true nhưng token hết hạn) → phiên
+            # chết, để luồng onboard mật khẩu+TOTP xử lý tiếp.
+            log.info("openai-goc: refresh-jwt tra token het han/sap het "
+                     "(method=%s) — coi phien chet", rj.get("method"))
+            return None
+        st["hong_lt"].pop(khoa_tk, None)
+        email = _email_tu_jwt(token) or str(rj.get("captured_email") or "") \
+            or email_tho
+        jwt_moi = {"access_token": token, "ho_so": hs, "email": email}
+        moc = self._moc_gan_jwt
+        if callable(moc):
+            try:
+                moc(email, token, hs)
+            except Exception as e:
+                log.warning("openai-goc: móc gắn token vào khoá sổ lỗi: %s",
+                            type(e).__name__)
+        return _ket_qua_dang_nhap(True, jwt_moi=jwt_moi)
+
     async def _dang_nhap_theo_bang(self, dong: DongDaTach, email_tho: str,
                                    khoa_tk: str, st: dict, hong_lt: int,
                                    mk: str, totp_secret: str,
@@ -1368,11 +1580,26 @@ class Module:
         if not isinstance(luu, dict) or not luu.get("ok"):
             st["hong_lt"][khoa_tk] = hong_lt + 1
             return self._loi_dich_vu_thanh_ket_qua(luu, khoa_tk)
+        # NV235-b3: BƯỚC 1 cho ChatGPT OpenAI gốc (theo c2a _cgf_openai):
+        # GET /v1/chatgpt/{ho_so}/refresh-jwt TRƯỚC (quét phiên rẻ), rồi KIỂM
+        # exp — c2a từng nhận ok=true/method=scrape với token HẾT HẠN 42h,
+        # web2api không chép lỗi đó: hết hạn/sắp hết → coi phiên chết → chạy
+        # tiếp onboard mật khẩu+TOTP bên dưới.
+        if dich_vu_key == "openai":
+            kq_som = await self._thu_refresh_jwt_openai_goc(
+                email_tho, hs, khoa_tk, st)
+            if kq_som is not None:
+                return kq_som
         # Bắt đầu lượt onboard (dịch vụ tự bù bí mật từ két theo email)
+        than_bat_dau = {"profile": hs, "email": email_dn,
+                        "password": "", "totp_secret": ""}
+        if dich_vu_key == "chatgpt":
+            # NV235-b3: ChatGPT-qua-Google reuse phiên Google trong hồ sơ
+            # trước (đúng c2a _cgf_reuse: ĐÚNG MỘT lượt, reuse_session=True);
+            # thiếu phiên mới đăng nhập Google.
+            than_bat_dau["reuse_session"] = True
         bat_dau = await self._goi(
-            muc["bat_dau"][0], muc["bat_dau"][1],
-            json_body={"profile": hs, "email": email_dn,
-                       "password": "", "totp_secret": ""})
+            muc["bat_dau"][0], muc["bat_dau"][1], json_body=than_bat_dau)
         if not isinstance(bat_dau, dict) or not bat_dau.get("ok"):
             st["hong_lt"][khoa_tk] = hong_lt + 1
             return self._loi_dich_vu_thanh_ket_qua(bat_dau, khoa_tk)
@@ -1435,6 +1662,16 @@ class Module:
                     False, ma_loi="khong_lay_duoc_jwt",
                     huong_dan="Onboard xong nhưng chưa lấy được token — bấm "
                               "«Kiểm tra trạng thái» để thử lại.")
+            # NV235-b3: KIỂM exp cả sau khi onboard xong — dịch vụ có thể trả
+            # «Hồ sơ đã có phiên» giả với token chết (lỗi c2a đã đo); vẫn hết
+            # hạn → «cần người», không báo thành công giả.
+            if not _jwt_con_han(token):
+                st["hong_lt"][khoa_tk] = st["hong_lt"].get(khoa_tk, 0) + 1
+                return _ket_qua_dang_nhap(
+                    False, ma_loi="phien_chet", can_nguoi=True,
+                    huong_dan="Đăng nhập xong nhưng token nhận được đã hết "
+                              "hạn — cần người kiểm tra thủ công rồi đăng "
+                              "nhập lại.")
             email = _email_tu_jwt(token) \
                 or str(kq.get("email") or "") or email_tho
             jwt_moi = {"access_token": token, "ho_so": hs, "email": email}
@@ -1634,6 +1871,9 @@ class Module:
         if trang_thai == "need_captcha":
             # KHÔNG giải CAPTCHA (spec NV145b): đánh dấu cần người
             st["vinh_vien"][khoa_tk] = "gap_captcha"
+            # NV235-b4: captcha hold toàn cục như c2a — gặp CAPTCHA thì cả hệ
+            # thống nghỉ, không bắn thêm lượt Google nào.
+            _ghi_captcha_hold(ho_so or khoa_tk)
             return _ket_qua_dang_nhap(
                 False, ma_loi="gap_captcha", can_nguoi=True,
                 huong_dan="Google hiện thử thách CAPTCHA — hệ thống không tự "
@@ -1719,7 +1959,16 @@ class Module:
         try:
             if not re.fullmatch(r"[0-9]{6,8}", ma_str):
                 return {"ok": False, "ma_loi": "ma_2fa_sai_dinh_dang"}
-            if _la_luong_chatgpt(module_cua_tai_khoan):
+            # NV235-b6: chọn đường 2FA theo bảng khai báo dùng chung với
+            # đăng nhập (suy khoá dịch vụ từ tiền tố hồ sơ — dữ liệu).
+            dich_vu_key = _dich_vu_key_tu_ho_so(hs)
+            muc = DICH_VU_DANG_NHAP.get(dich_vu_key or "")
+            if muc and "2fa" in muc:
+                phuong_thuc, mau_duong = muc["2fa"]
+                kq = await self._goi(
+                    phuong_thuc, mau_duong.format(ho_so=hs),
+                    json_body={"code": ma_str})
+            elif _la_luong_chatgpt(module_cua_tai_khoan):
                 kq = await self._goi(
                     "POST", f"/v1/chatgpt/{hs}/onboard-2fa-code",
                     json_body={"code": ma_str})
@@ -1751,7 +2000,14 @@ class Module:
             hs = _ho_so_theo_luong(ho_so, module_cua_tai_khoan)
         except ValueError:
             return {"ok": False, "ma_loi": "tham_so_khong_hop_le"}
-        if _la_luong_chatgpt(module_cua_tai_khoan):
+        # NV235-b6: chọn đường trạng thái theo bảng khai báo dùng chung với
+        # đăng nhập (suy khoá dịch vụ từ tiền tố hồ sơ — dữ liệu).
+        dich_vu_key = _dich_vu_key_tu_ho_so(hs)
+        muc = DICH_VU_DANG_NHAP.get(dich_vu_key or "")
+        if muc and "trang_thai" in muc:
+            phuong_thuc, mau_duong = muc["trang_thai"][0], muc["trang_thai"][1]
+            tt = await self._goi(phuong_thuc, mau_duong.format(ho_so=hs))
+        elif _la_luong_chatgpt(module_cua_tai_khoan):
             tt = await self._goi("GET", f"/v1/chatgpt/{hs}/onboard-status")
         else:
             tt = await self._goi("GET", f"/v1/session/{hs}/auto-login-status")
