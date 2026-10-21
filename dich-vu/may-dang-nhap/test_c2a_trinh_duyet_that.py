@@ -133,37 +133,25 @@ def test_bien_the_dung_anh_xa_sang_cau_hinh_chay():
 def test_cau_hinh_khong_dung_duoc_pool_tu_choi_khoi_dong():
     """Điều kiện chung NV206: pool.start() với cấu hình trình duyệt không dùng
     được phải ném RuntimeError tiếng Việt, không khởi động bình thường.
-    (Kiểm HÀNH VI qua pool.start(), không chỉ gọi hàm kiểm trực tiếp.)"""
-    # Giả lập firefox nhưng thiếu playwright chính gốc → phải từ chối.
+    (Kiểm HÀNH VI qua pool.start(), không chỉ gọi hàm kiểm trực tiếp.)
+
+    Giả lập «thiếu playwright chính gốc» ĐÚNG CHỖ mã thật kiểm: ``_goi_that`` (importlib). Bản
+    đầu chặn ``builtins.__import__`` — importlib.import_module KHÔNG đi qua đó nên chỉ «đúng» khi
+    máy thử không cài sẵn playwright; trong ảnh thật (có playwright) test đỏ oan (đo 21/10/2026)."""
     import src.browser_pool as bp
 
-    da_luu = dict(sys.modules)
+    goc = bp._goi_that
+    bp._goi_that = lambda ten_goi: False if ten_goi == "playwright" else goc(ten_goi)
     try:
-        # Ép playwright thành "không có" để kiểm nhánh fail-fast.
-        for ten in [t for t in sys.modules if t == "playwright" or t.startswith("playwright.")]:
-            del sys.modules[ten]
-        import builtins
-        goc_import = builtins.__import__
-
-        def _chan_playwright(name, *a, **k):
-            if name == "playwright" or name.startswith("playwright."):
-                raise ImportError("khong co playwright (gia lap cho test)")
-            return goc_import(name, *a, **k)
-
-        builtins.__import__ = _chan_playwright
-        try:
-            ok, ly_do = trinh_duyet_san_sang("firefox")
-            assert ok is False, "thiếu playwright chính gốc mà vẫn báo sẵn sàng"
-            assert "playwright" in ly_do.lower()
-            # pool.start() PHẢI từ chối khởi động — không được chạy bình thường.
-            pool = bp.BrowserPool()
-            with pytest.raises(RuntimeError, match="từ chối khởi động"):
-                asyncio.run(pool.start())
-        finally:
-            builtins.__import__ = goc_import
+        ok, ly_do = trinh_duyet_san_sang("firefox")
+        assert ok is False, "thiếu playwright chính gốc mà vẫn báo sẵn sàng"
+        assert "playwright" in ly_do.lower()
+        # pool.start() PHẢI từ chối khởi động — không được chạy bình thường.
+        pool = bp.BrowserPool()
+        with pytest.raises(RuntimeError, match="từ chối khởi động"):
+            asyncio.run(pool.start())
     finally:
-        sys.modules.clear()
-        sys.modules.update(da_luu)
+        bp._goi_that = goc
 
 
 if __name__ == "__main__":

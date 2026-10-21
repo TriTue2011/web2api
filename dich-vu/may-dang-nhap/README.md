@@ -93,10 +93,17 @@ Test `test_c2a_trinh_duyet_that.py` mở hồ sơ bền qua `src.browser_pool.po
 phục vụ một trang tĩnh từ máy chủ cục bộ 127.0.0.1 rồi `goto` + `evaluate` + `click` +
 đọc cookie — trình duyệt THẬT, không giả; gồm test «cấu hình không dùng được → dịch vụ
 từ chối khởi động». Test tự skip có lý do rõ khi môi trường không có trình duyệt.
-Chạy trong container đang chạy:
+Ảnh dịch vụ KHÔNG có `pytest` (chỉ gói chạy dịch vụ). Chạy bằng container tạm từ chính ảnh đó
+(không đụng container đang chạy; cài `pytest` vào thư mục tạm của container, mất khi thoát):
 
 ```bash
-docker exec -i web2api-may-dang-nhap python - < test_c2a_trinh_duyet_that.py
+cd dich-vu/may-dang-nhap
+docker run --rm --entrypoint sh --shm-size 1g --cap-drop ALL --security-opt no-new-privileges \
+  --memory 2g --tmpfs /tmp:size=512m,mode=1777,uid=1000,gid=1000 \
+  --tmpfs /home/appuser:size=256m,mode=0700,uid=1000,gid=1000 \
+  -e CAPTCHA_SOLVER_DATA_DIR=/data -e CAPTCHA_SOLVER_KEY_DIR=/khoa \
+  -v "$PWD":/t:ro -w /app web2api-may-dang-nhap:latest -c \
+  'pip install -q --target /tmp/pt pytest; PYTHONPATH=/tmp/pt:/app python -m pytest /t/test_c2a_trinh_duyet_that.py -v'
 ```
 
 Hoặc chạy qua pytest trên máy đã cài trình duyệt:
