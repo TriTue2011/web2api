@@ -164,6 +164,18 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <span style="font-size:11px;color:var(--mute);line-height:1.4">VD: free, go, plus, pro — để trống nếu không biết (không đoán).</span>
 <input id="dl-bac-goi" type="text" autocomplete="off" spellcheck="false" placeholder="VD: plus" value="{{them.dl.bacGoi}}" onInput="{{them.dl.doiBacGoi}}" aria-label="Bậc gói tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
 </label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Đăng nhập bằng
+<span style="font-size:11px;color:var(--mute);line-height:1.4">«Trực tiếp» = đăng nhập bằng chính tài khoản này; «Qua tài khoản Google» = đăng nhập hộ bằng một tài khoản Google đã lưu. Để trống = theo mặc định của module.</span>
+<select id="dl-dang-nhap-bang" value="{{them.dl.dangNhapBang}}" onChange="{{them.dl.doiDangNhapBang}}" aria-label="Đăng nhập bằng" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chưa khai (mặc định) —</option>
+<option value="truc_tiep">Trực tiếp bằng tài khoản này</option>
+<option value="google">Qua tài khoản Google đã lưu</option>
+</select></label>
+<sc-if value="{{them.dl.coDangNhapGoogle}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản Google dùng để đăng nhập
+<select id="dl-tk-google" value="{{them.dl.tkGoogleId}}" onChange="{{them.dl.doiTkGoogle}}" aria-label="Chọn tài khoản Google" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chọn tài khoản Google —</option>
+<sc-for list="{{them.dl.dsTkGoogle}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+</select></label></sc-if>
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
 <button type="button" id="nut-dl-luu" disabled="{{them.dl.thieuLuu}}" onClick="{{them.dl.luu}}" style="{{them.dl.luuSt}}">Lưu tài khoản</button>
 <button type="button" id="nut-dl-luu-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.luuVaDangNhap}}" style="{{them.dl.luuVaDangNhapSt}}">Lưu và đăng nhập</button>
@@ -748,6 +760,8 @@ class Component extends DCLogic {
       dlChonId: id || '',
       dlEmail: t ? (t.email_che || '') : '',
       dlNhan: t ? (t.nhan || '') : '',
+      dlDangNhapBang: t ? (t.dang_nhap_bang || '') : '',
+      dlTkGoogleId: t ? (t.tai_khoan_google_id || '') : '',
       dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: ''
     });
   }
@@ -779,6 +793,13 @@ class Component extends DCLogic {
     if (nhan) payload.nhan = nhan;
     const bacGoi = (s.dlBacGoi || '').trim();
     if (bacGoi) payload.bac_goi = bacGoi;
+    const dangNhapBang = (s.dlDangNhapBang || '').trim();
+    if (dangNhapBang === 'google' && !(s.dlTkGoogleId || '')) {
+      this.setState({ dlLoi: 'Chọn tài khoản Google dùng để đăng nhập hộ.' });
+      return;
+    }
+    if (dangNhapBang) payload.dang_nhap_bang = dangNhapBang;
+    if (dangNhapBang === 'google') payload.tai_khoan_google_id = s.dlTkGoogleId;
     if (vaDangNhap && chon && chon.id) payload.module_id = chon.id;
     this.dlXoaBiMatKhoiDom();
     this.setState({ dlDangLuu: true, dlLoi: '' });
@@ -1573,7 +1594,7 @@ class Component extends DCLogic {
           tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
           tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false,
           dlDs: [], dlChonId: '', dlEmail: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
-          dlBacGoi: '', dlLocNhom: '',
+          dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkGoogleId: '',
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
           dlXoaChon: '', dlMoDS: true, dlTuDongLai: true
         });
@@ -1604,6 +1625,16 @@ class Component extends DCLogic {
           coLocNhom: dsNhomDl.length > 0,
           bacGoi: s.dlBacGoi || '',
           doiBacGoi: (e) => this.setState({ dlBacGoi: e.target.value }),
+          dangNhapBang: s.dlDangNhapBang || '',
+          doiDangNhapBang: (e) => this.setState({ dlDangNhapBang: e.target.value }),
+          coDangNhapGoogle: (s.dlDangNhapBang || '') === 'google',
+          dsTkGoogle: dlDs.filter((t) => (t.nhom || '') === 'google').map((t) => ({
+            id: t.id,
+            nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : ''),
+            chon: t.id === s.dlTkGoogleId
+          })),
+          tkGoogleId: s.dlTkGoogleId || '',
+          doiTkGoogle: (e) => this.setState({ dlTkGoogleId: e.target.value }),
           tuyChon: dlDs.map((t) => ({
             id: t.id,
             nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
