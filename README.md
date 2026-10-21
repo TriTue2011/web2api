@@ -221,6 +221,9 @@ sudo chown 1000:1000 khoa-chinh           # container chạy uid 1000 phải đ�
 | `tuvanhanh` | Bộ tự vận hành: lập lịch nền làm mới phiên/token, tự đăng nhập lại, theo dõi sức khoẻ nguồn, tự khôi phục, cảnh báo đĩa; kênh báo/hỏi một đường qua kênh ra của lõi (trả lời `cl <số>`) | Nội bộ (qua cổng `gui_ra`/`kenh_vao` của lõi) | Có sẵn (19 test xanh; port từ c2a; chưa kiểm với kênh thật) |
 | `mqtt` | Thiết bị nhà qua MQTT, không cần Home Assistant (port từ c2a): khám phá phổ quát bằng `+` nhiều độ sâu (không bao giờ `#`), bản tự khai báo Home Assistant discovery, nhận dạng Frigate; GHI mặc định TẮT, loại nguy hiểm không bao giờ điều khiển được | MQTT (TCP, mặc định 1883) | Có sẵn (kiểm với máy chủ MQTT giả cục bộ; **chưa kiểm với máy chủ MQTT thật**; cần `paho-mqtt==2.1.0` trong container) |
 | `may-dang-nhap` | Đăng nhập tự động & quản lý phiên qua container phụ `dich-vu/may-dang-nhap` | HTTP nội bộ | Có sẵn (client mỏng gọi container phụ; chuẩn `thiet_bi` cho AI; kiểm với dịch vụ may-dang-nhap thật cục bộ; chưa kiểm với dịch vụ bên ngoài thật) |
+| `c2a-dn` | Đăng nhập tự động & quản lý phiên qua container phụ `dich-vu/c2a-dang-nhap` | HTTP nội bộ | Có sẵn (client mỏng gọi container phụ; chuẩn `thiet_bi` cho AI; kiểm với dịch vụ c2a-dang-nhap thật cục bộ; chưa kiểm với dịch vụ bên ngoài thật) |
+| `anh-ai` | Tạo/sửa ảnh AI qua 10 nhà cung cấp (Gemini/Imagen, fal.ai, Stability, Black Forest Labs/FLUX, Cloudflare, HuggingFace, NVIDIA NIM, SDWebUI, flow, custom) — xếp hàng đợi, chặn ảnh xấu theo cấu trúc | HTTPS tới API của nhà cung cấp đã khai khoá | Có sẵn (kiểm với nhà cung cấp giả HTTP; **chưa kiểm với nhà cung cấp ảnh thật**) |
+| `nha-tien-ich` | Nhà tiện ích (port từ c2a): kịch bản nhà, cảnh báo chống dội, nhận diện tình huống, giám sát điện/UPS, cảm biến | Cục bộ (thuần Python; kịch bản/cảnh báo không gọi mạng) | Có sẵn (kiểm với cảm biến/UPS giả; **chưa kiểm với thiết bị nhà thật**) |
 
 - **Cách cài đặt module**: Vào tab **Hệ thống → Module**, duyệt danh sách module tìm thấy từ nguồn git, bấm **Cài đặt**.
 - **Cấu hình nguồn git**: Qua biến `WEB2API_GIT_REPO` (mặc định `TriTue2011/web2api`, nhánh `main`, thư mục `modules`). Tính năng tự cài ngầm mặc định TẮT (`tu_dong: false`) — hệ thống chỉ báo khi có bản mới để quản trị viên duyệt quyền trước khi nạp.
@@ -240,6 +243,17 @@ Mọi khoá đều do **bạn tự sinh** và phải dán **đúng cùng một g
 | `rclone` | `rclone` | Container riêng (chỉ công bố `127.0.0.1:8702`): `cd dich-vu/rclone && docker build -t rclone-bridge:1.0 .` rồi `docker run -d` với `-e RCLONE_KHOA=<khoá>` trên mạng Docker nội bộ (lệnh đầy đủ trong README của dịch vụ). Chi tiết: [dich-vu/rclone/README.md](dich-vu/rclone/README.md) | `RCLONE_KHOA` tự sinh (chuỗi ngẫu nhiên dài); dán cùng giá trị vào module `rclone` |
 | `gpu-node` | Các nút GPU từ xa (nghe/thị giác/tách âm) | Chạy trên **máy có card NVIDIA** (thường là máy khác): `cd dich-vu/gpu-node && cp .env.mau .env` (đặt `GPU_NODE_BIND` là IP LAN của máy GPU), `docker compose up -d`. Chi tiết: [dich-vu/gpu-node/README.md](dich-vu/gpu-node/README.md) | Khoá nút **tự sinh** lần đầu và chỉ in một lần: `docker logs gpu-node-cong 2>&1 \| grep "KHOA NUT GPU"`; dán khoá đó khi «Thêm máy GPU» trong web2api |
 | `muse-web` | (công cụ dòng lệnh, không phải module) | Không phải dịch vụ nền: chạy tay từ gốc kho `./.venv/bin/python dich-vu/muse-web/muse_web.py …` để giao việc cho agent Muse. Chi tiết: [dich-vu/muse-web/README.md](dich-vu/muse-web/README.md) | Không có khoá dịch vụ; cookie tài khoản nạp qua stdin hoặc tệp quyền 0600 trong `$MUSE_WEB_DIR` (mặc định `~/.config/muse-web`) |
+### Module anh-ai — Ảnh AI: tạo/sửa ảnh qua nhiều nhà cung cấp
+
+Port từ c2a (NV192): tạo và sửa ảnh qua 10 nhà cung cấp (Gemini/Imagen, fal.ai, Stability,
+Black Forest Labs/FLUX, Cloudflare, HuggingFace, NVIDIA NIM, SDWebUI, flow, custom);
+xếp hàng đợi, chặn ảnh xấu theo cấu trúc. Chi tiết: [modules/anh-ai/README.md](modules/anh-ai/README.md).
+
+### Module nha-tien-ich — Nhà tiện ích: kịch bản, cảnh báo, cảm biến
+
+Port từ c2a (NV195): kịch bản nhà (thử khô mặc định), cảnh báo chống dội, nhận diện tình
+huống, giám sát điện/UPS và cảm biến; chặn SSRF bằng allowlist cấu trúc (dải tài liệu + private).
+
 ### Module mqtt — Thiết bị nhà qua MQTT (không cần Home Assistant)
 
 Đường thứ hai biết nhà (port từ c2a, NV151): nối máy chủ MQTT trong mạng nhà,

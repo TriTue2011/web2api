@@ -8,8 +8,9 @@ module vào lõi tạm bằng đúng API quản trị, rồi đi qua các tuyế
 
 Với MỖI thư mục modules/* có manifest.json:
   (a) cài vào lõi tạm (khuôn `moi_truong` của test_web2api_thiet_bi.py) với
-      cấu hình TỐI THIỂU sinh tự động từ manifest (trường bắt buộc → giá trị
-      giả hợp lệ theo `kieu`; URL → máy chủ giả loopback,
+      cấu hình TỐI THIỂU sinh tự động từ manifest (trường bắt buộc → dùng
+      `mac_dinh` của manifest nếu có — giá trị hợp lệ theo định nghĩa, NV205;
+      còn lại giá trị giả hợp lệ theo `kieu`; URL → máy chủ giả loopback,
       `WEB2API_TEST_CHO_PHEP_LOOPBACK=1`); module khai `can_module` thì cài
       module phụ thuộc trước bằng cùng cơ chế; module cần gói/dịch vụ ngoài
       → `skip` KÈM LÝ DO cụ thể (không skip trống);
@@ -286,6 +287,13 @@ def _gia_tri_truong(t: dict, url_goc: str):
     if "email" in khoa.lower() or "thu_dien_tu" in khoa.lower():
         return "smoke-nv184@example.invalid"
     if kieu == "chuoi":
+        # Nguyên tắc NV205: trường chuỗi CÓ mac_dinh thì dùng đúng mặc định
+        # của manifest (giá trị hợp lệ theo định nghĩa của tác giả module) —
+        # smoke sinh chuỗi giả cho mọi trường chuoi có thể bị module từ chối
+        # lúc cài (vd anh-ai.nha_cung_cap mac_dinh "gemini" bị 400 khi nhận
+        # "gia-tri-smoke-nv184"). Không thêm danh sách ngoại lệ cho từng module.
+        if t.get("mac_dinh") is not None:
+            return t["mac_dinh"]
         return "gia-tri-smoke-nv184"
     if kieu in ("so", "so_nguyen", "so_thuc"):
         return 1
