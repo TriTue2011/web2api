@@ -1157,6 +1157,69 @@ async def thong_bao(request: Request):
     return _ng(request).thong_bao()
 
 
+def _ban_do_ngoai_tu_nguon_git(request: Request) -> dict:
+    """can_module của các module nguồn git BIẾT mà máy chưa cài (NV222):
+    trích từ `quyen` (can_module là một quyền — app/quyen_module.py)."""
+    ra: dict[str, list[str]] = {}
+    for m in (_ng(request).trang_thai.get("modules") or []):
+        if not isinstance(m, dict) or not m.get("id"):
+            continue
+        deps = sorted({q.get("ten") for q in (m.get("quyen") or [])
+                       if isinstance(q, dict) and q.get("loai") == "can_module" and q.get("ten")})
+        if deps:
+            ra[m["id"]] = deps
+    return ra
+
+
+@modules.get("/do-thi-phu-thuoc", dependencies=QT)
+async def do_thi_phu_thuoc(request: Request):
+    """Đồ thị phụ thuộc toàn cục cho giao diện vẽ sơ đồ (NV222):
+    {"nut": [{id, ten, da_cai, loai}], "canh": [{tu, den}], "thu_tu_goi_y": [...]}."""
+    try:
+        return _so(request).do_thi_phu_thuoc(_ban_do_ngoai_tu_nguon_git(request))
+    except LoiSo as e:
+        raise _loi_so(e) from None
+
+
+@modules.get("/{id_}/ke-hoach-cai", dependencies=QT)
+async def ke_hoach_cai(id_: str, request: Request):
+    """Kế hoạch cài các phụ thuộc còn thiếu của module (NV222) — chỉ tính toán,
+    không cài gì. Giao diện hiện kế hoạch này rồi mới cho 1 bấm xác nhận."""
+    try:
+        return _so(request).ke_hoach_cai(id_, _ban_do_ngoai_tu_nguon_git(request))
+    except LoiSo as e:
+        raise _loi_so(e) from None
+
+
+@modules.post("/cai-theo-ke-hoach", dependencies=QT)
+async def cai_theo_ke_hoach(request: Request):
+    """Cài các phụ thuộc còn thiếu theo đúng kế hoạch rồi cài chính module (NV222).
+    Thân: {"id_": "<id>", "ke_hoach": [...], "xac_nhan"?: bool, "ma_xac_nhan"?: str}.
+    Kế hoạch phải khớp đúng với tính lại lúc chạy (chống thân giả) → 409
+    `ke_hoach_cu`. Cài hỏng ở đâu DỪNG ở đó — không cài lén tiếp, trả tiến độ."""
+    than = await _than_json(request)
+    id_ = than.get("id_")
+    if not isinstance(id_, str) or not id_:
+        raise LoiOpenAI(400, 'Thân cần {"id_": "<id module>", "ke_hoach": [...]}')
+    ke_hoach = than.get("ke_hoach")
+    if not isinstance(ke_hoach, list):
+        raise LoiOpenAI(400, 'Thân cần {"id_": "<id module>", "ke_hoach": [...]}')
+    xac_nhan = bool(than.get("xac_nhan"))
+    ma_xac_nhan = than.get("ma_xac_nhan")
+    ng = _ng(request)
+
+    async def ham_cai(dep_id: str):
+        return await ng.cai(dep_id, xac_nhan=xac_nhan, ma_xac_nhan=ma_xac_nhan)
+
+    try:
+        kq = await _so(request).cai_theo_ke_hoach(id_, ke_hoach, ham_cai)
+    except LoiSo as e:
+        raise _loi_so(e) from None
+    if not kq["ok"]:
+        return JSONResponse(kq, status_code=kq.get("ma_http") or 400)
+    return kq
+
+
 @modules.post("/nap-lai", dependencies=QT)
 async def nap_lai(request: Request):
     return await _so(request).nap_lai()

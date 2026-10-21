@@ -151,6 +151,26 @@ main.pg{padding:12px 16px 24px}
 <div class="loc" role="group" aria-label="Lọc theo trạng thái" id="loc-tt"><sc-for list="{{chipTT}}" as="c"><button type="button" class="chip" data-loc-tt="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
 </div>
 <p class="mo-ta-trang">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. Bấm một ô để xem module cần gì để chạy, rồi bấm biểu tượng tải về để cài — cài không cần khoá API; khoá thêm sau ở Hệ thống → AI → Tài khoản.</p>
+<div class="hang-cc" style="margin-top:8px">
+<button type="button" class="chip" id="nut-so-do" aria-pressed="{{hienSoDo}}" onClick="{{doiSoDo}}"><span>Sơ đồ phụ thuộc</span></button>
+</div>
+<sc-if value="{{hienSoDo}}">
+<section class="muc-ct" id="so-do-phu-thuoc" aria-labelledby="h-so-do" style="margin-top:8px">
+<h3 id="h-so-do">Sơ đồ phụ thuộc module</h3>
+<sc-if value="{{dangTaiSoDo}}"><p role="status" class="bao-cho">Đang đọc đồ thị phụ thuộc…</p></sc-if>
+<sc-if value="{{soDoLoi}}"><p role="alert" class="bao bao-loi">{{soDoLoi}}</p></sc-if>
+<sc-if value="{{coSoDo}}">
+<div style="overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--nen,#fff)">
+<svg viewBox="0 0 {{soDo.w}} {{soDo.h}}" width="{{soDo.w}}" height="{{soDo.h}}" role="img" aria-label="Sơ đồ phụ thuộc module">
+<defs><marker id="mui-ten-can" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="7" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L8 3L0 6z" fill="currentColor"></path></marker></defs>
+<sc-for list="{{soDo.canh}}" as="c"><line x1="{{c.x1}}" y1="{{c.y1}}" x2="{{c.x2}}" y2="{{c.y2}}" stroke="currentColor" stroke-width="1.6" marker-end="url(#mui-ten-can)" opacity="0.7"></line></sc-for>
+<sc-for list="{{soDo.nut}}" as="n"><g><rect x="{{n.x}}" y="{{n.y}}" width="200" height="52" rx="8" fill="none" stroke="currentColor" stroke-width="{{n.vien}}" stroke-dasharray="{{n.netDut}}"></rect><text x="{{n.tx}}" y="{{n.ty1}}" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">{{n.tenNgan}}</text><text x="{{n.tx}}" y="{{n.ty2}}" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.75">{{n.nhan}}</text></g></sc-for>
+</svg>
+</div>
+<p class="phu" style="margin:6px 0 0">Mũi tên «A → B» nghĩa là A cần B. Nét đứt = chưa cài. Thứ tự cài đề xuất: {{soDo.thuTuNhan}}</p>
+</sc-if>
+</section>
+</sc-if>
 </div>
 
 <div class="bo-cuc">
@@ -333,6 +353,25 @@ main.pg{padding:12px 16px 24px}
 </section>
 </sc-if>
 
+<sc-if value="{{ct.coPhuThuoc}}">
+<section class="muc-ct" id="phu-thuoc" aria-labelledby="h-phu-thuoc">
+<h3 id="h-phu-thuoc">Phụ thuộc</h3>
+<sc-if value="{{ct.coCan}}"><p class="phu" style="color:var(--ink);margin:0 0 8px"><strong>Cần:</strong> <sc-for list="{{ct.can}}" as="d"><span class="{{d.lop}}" style="margin-right:6px">{{d.nhan}}</span></sc-for></p></sc-if>
+<sc-if value="{{ct.coDuocCan}}"><p class="phu" style="color:var(--ink);margin:0 0 8px"><strong>Được cần bởi:</strong> {{ct.duocCanNhan}}</p></sc-if>
+<sc-if value="{{ct.coKeHoachChuaDu}}"><p class="phu" style="color:var(--ink)">Còn thiếu {{ct.keHoachThieu}}: {{ct.keHoachNhan}}</p>
+<div class="dong-nut"><button type="button" class="nut-chu" onClick="{{ct.layKeHoach}}" disabled="{{ct.dangKeHoach}}">{{ct.nhanKeHoach}}</button></div></sc-if>
+<sc-if value="{{ct.keHoachLoi}}"><p role="alert" class="bao bao-loi">{{ct.keHoachLoi}}</p></sc-if>
+<sc-if value="{{ct.keHoach}}">
+<div role="alertdialog" aria-label="Xác nhận cài phụ thuộc" class="bao bao-vang" style="display:flex;flex-direction:column;gap:10px">
+<div>Kế hoạch cài (theo thứ tự): <strong>{{ct.keHoachNhan2}}</strong></div>
+<div class="phu" style="color:var(--ink)">Bấm «Cài tất cả» để cài từng cái theo đúng thứ tự, rồi cài module này. Dừng ngay nếu một cái hỏng — không cài lén tiếp.</div>
+<div class="dong-nut"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" onClick="{{ct.caiTheoKeHoach}}" disabled="{{ct.dangCaiKeHoach}}">{{ct.nhanCaiKeHoach}}</button><button type="button" class="nut-chu" onClick="{{ct.huyKeHoach}}">Huỷ</button></div>
+</div>
+</sc-if>
+<sc-if value="{{ct.keHoachTin}}"><p role="status" class="bao bao-tot">{{ct.keHoachTin}}</p></sc-if>
+</section>
+</sc-if>
+
 <sc-if value="{{ct.coTaiNguyen}}">
 <section class="muc-ct" id="can-gi" aria-labelledby="h-can-gi">
 <h3 id="h-can-gi">Sau khi cài sẽ tốn thêm bao nhiêu</h3>
@@ -483,7 +522,10 @@ class Component extends DCLogic {
       dangGpuB1: false, gpuLoiB1: '', gpuTinB1: '',
       dangGpuB2: false, gpuLoiB2: '', gpuTinB2: '',
       dangGpuB3: false, gpuLoiB3: '', gpuTinB3: '',
-      sk: {}
+      sk: {},
+      hienSoDo: false, soDo: null, dangTaiSoDo: false, soDoLoi: '',
+      keHoach: null, keHoachId: null, dangKeHoach: false, keHoachLoi: '',
+      keHoachTin: '', dangCaiKeHoach: false
     };
     if (this.state.chon) this.state.chon = decodeURIComponent(this.state.chon);
   }
@@ -903,6 +945,98 @@ class Component extends DCLogic {
     }
   }
 
+  // ---------- NV222: sơ đồ + kế hoạch cài phụ thuộc ----------
+  doiSoDo() {
+    const mo = !this.state.hienSoDo;
+    this.setState({ hienSoDo: mo });
+    if (mo && !this.state.soDo && !this.state.dangTaiSoDo) this.taiSoDo();
+  }
+  async taiSoDo() {
+    this.setState({ dangTaiSoDo: true, soDoLoi: '' });
+    try {
+      const { j } = await K.goi('api/modules/do-thi-phu-thuoc');
+      this.setState({ dangTaiSoDo: false, soDo: this.boCucSoDo(j) });
+    } catch (e) {
+      this.loiKhoa(e);
+      this.setState({ dangTaiSoDo: false, soDoLoi: 'Không đọc được đồ thị: ' + e.message });
+    }
+  }
+  boCucSoDo(g) {
+    const nut = (g && g.nut) || [], canh = (g && g.canh) || [];
+    const coCanh = nut.filter((n) => canh.some((c) => c.tu === n.id || c.den === n.id));
+    const depCua = {};
+    coCanh.forEach((n) => { depCua[n.id] = []; });
+    canh.forEach((c) => { if (depCua[c.tu]) depCua[c.tu].push(c.den); });
+    const sau = {}, dang = {};
+    const tinhSau = (id) => {
+      if (sau[id] != null) return sau[id];
+      if (dang[id]) return 0;
+      dang[id] = true;
+      let m = 0;
+      (depCua[id] || []).forEach((d) => { m = Math.max(m, tinhSau(d)); });
+      delete dang[id];
+      sau[id] = m + ((depCua[id] || []).length ? 1 : 0);
+      return sau[id];
+    };
+    coCanh.forEach((n) => tinhSau(n.id));
+    const lop = {};
+    coCanh.forEach((n) => { (lop[sau[n.id]] = lop[sau[n.id]] || []).push(n); });
+    const RONG = 230, CAO = 68, WN = 200, HN = 52;
+    const nutVe = [];
+    Object.keys(lop).map(Number).sort((a, b) => a - b).forEach((k) => {
+      lop[k].forEach((n, i2) => {
+        const x = k * RONG + 20, y = i2 * CAO + 20;
+        const ten = n.ten || n.id;
+        nutVe.push({ id: n.id, x, y, tx: x + WN / 2, ty1: y + 22, ty2: y + 40,
+          tenNgan: ten.length > 26 ? ten.slice(0, 25) + '…' : ten,
+          nhan: n.id + (n.da_cai ? ' · đã cài' : ' · chưa cài'),
+          vien: n.da_cai ? 2 : 1.2, netDut: n.da_cai ? 'none' : '5 4' });
+      });
+    });
+    const viTri = {};
+    nutVe.forEach((n) => { viTri[n.id] = n; });
+    const canhVe = canh.filter((c) => viTri[c.tu] && viTri[c.den]).map((c) => {
+      const can = viTri[c.tu], biCan = viTri[c.den];
+      return { x1: can.x, y1: can.y + HN / 2, x2: biCan.x + WN, y2: biCan.y + HN / 2 };
+    });
+    const w = nutVe.length ? Math.max.apply(null, nutVe.map((n) => n.x)) + WN + 40 : 300;
+    const h = nutVe.length ? Math.max.apply(null, nutVe.map((n) => n.y)) + HN + 40 : 120;
+    const thuTu = ((g && g.thu_tu_goi_y) || []).filter((id) => viTri[id]);
+    return { nut: nutVe, canh: canhVe, w, h, thuTuNhan: thuTu.join(' → ') || '—' };
+  }
+  async layKeHoach(id) {
+    this.setState({ dangKeHoach: true, keHoachLoi: '', keHoachTin: '', keHoach: null, keHoachId: id });
+    try {
+      const { j } = await K.goi('api/modules/' + encodeURIComponent(id) + '/ke-hoach-cai');
+      this.setState({ dangKeHoach: false, keHoach: j });
+    } catch (e) {
+      this.loiKhoa(e);
+      this.setState({ dangKeHoach: false, keHoachLoi: 'Không lấy được kế hoạch: ' + e.message });
+    }
+  }
+  huyKeHoach() { this.setState({ keHoach: null, keHoachId: null, keHoachLoi: '', keHoachTin: '' }); }
+  async caiTheoKeHoach() {
+    const st = this.state, kh = st.keHoach;
+    if (!kh || !kh.id) return;
+    this.setState({ dangCaiKeHoach: true, keHoachLoi: '', keHoachTin: '' });
+    try {
+      const res = await K.goi('api/modules/cai-theo-ke-hoach',
+        { method: 'POST', json: { id_: kh.id, ke_hoach: kh.ke_hoach }, chapNhan: [400, 409] });
+      const ma = res.ma, j = res.j;
+      if (ma >= 400 || (j && j.ok === false)) {
+        const msg = (j && (j.thong_diep || (j.error && j.error.message))) || ('Máy chủ trả HTTP ' + ma);
+        const daCai = j && j.da_cai && j.da_cai.length ? ' Đã cài được: ' + j.da_cai.join(', ') + '.' : '';
+        this.setState({ dangCaiKeHoach: false, keHoachLoi: 'Chưa cài xong: ' + msg + daCai });
+        return;
+      }
+      this.setState({ dangCaiKeHoach: false, keHoach: null,
+        keHoachTin: 'Đã cài xong ' + kh.id + ' cùng ' + (kh.ke_hoach || []).length + ' phụ thuộc.' });
+      await this.taiLai();
+    } catch (e) {
+      this.loiKhoa(e);
+      this.setState({ dangCaiKeHoach: false, keHoachLoi: 'Chưa cài được: ' + e.message });
+    }
+  }
   async batTatModule(id, bat) {
     try {
       await K.goi('api/modules/' + encodeURIComponent(id) + '/bat-tat', { method: 'POST', json: { bat } });
@@ -1053,7 +1187,26 @@ class Component extends DCLogic {
         if (typeof q === 'string') return { loai: 'Quyền', ten: q };
         return { loai: (q && q.loai) || 'Quyền', ten: (q && (q.ten || q.mo_ta)) || '' };
       }) : [];
-      hoiCaiVM = {
+      // ---------- NV222: thông tin phụ thuộc ----------
+    const canTuInfo = (info) => {
+      if (!info) return [];
+      if (Array.isArray(info.can_module)) return info.can_module.filter((d) => typeof d === 'string');
+      const qq = Array.isArray(info.quyen) ? info.quyen : [];
+      return qq.filter((e) => e && e.loai === 'can_module' && e.ten).map((e) => e.ten);
+    };
+    const tatCaO222 = this.dungO();
+    const tenCua222 = {}, daCai222 = {};
+    tatCaO222.forEach((t) => { tenCua222[t.id] = (t.info && t.info.ten) || t.id; if (t.daCai) daCai222[t.id] = true; });
+    const canIds222 = canTuInfo(x.info);
+    const can222 = canIds222.map((id) => ({ id,
+      nhan: (tenCua222[id] || id) + (daCai222[id] ? ' · đã cài' : ' · chưa cài'),
+      lop: daCai222[id] ? 'vien' : 'vien v-mute' }));
+    const duocCan222 = tatCaO222.filter((t) => t.id !== x.id && canTuInfo(t.info).indexOf(x.id) >= 0)
+      .map((t) => tenCua222[t.id] || t.id);
+    const thieu222 = canIds222.filter((id) => !daCai222[id]);
+    const kh222 = this.state.keHoach && this.state.keHoachId === x.id ? this.state.keHoach : null;
+    const khKeHoach222 = kh222 && Array.isArray(kh222.ke_hoach) ? kh222.ke_hoach : [];
+    hoiCaiVM = {
         ten: x.info.ten || x.id,
         repo: hc.repo || '',
         sha: (hc.sha_commit || '').slice(0, 7),
@@ -1095,6 +1248,24 @@ class Component extends DCLogic {
       coTrangThai: !chiHoiCai,
       lopTT: TT[x.tt][1], cungCap: Array.isArray(x.info.cung_cap) ? x.info.cung_cap : [],
       coCungCap: !chiHoiCai && Array.isArray(x.info.cung_cap) && x.info.cung_cap.length > 0,
+      coPhuThuoc: !chiHoiCai && (can222.length > 0 || duocCan222.length > 0),
+      coCan: can222.length > 0, can: can222,
+      coDuocCan: duocCan222.length > 0, duocCan: duocCan222,
+      duocCanNhan: duocCan222.join(', '),
+      coKeHoachChuaDu: !chiHoiCai && !x.daCai && thieu222.length > 0,
+      keHoachThieu: thieu222.length,
+      keHoachNhan: thieu222.map((id) => tenCua222[id] || id).join(', '),
+      layKeHoach: () => this.layKeHoach(x.id),
+      dangKeHoach: !!this.state.dangKeHoach && this.state.keHoachId === x.id,
+      nhanKeHoach: this.state.dangKeHoach ? 'Đang tính…' : 'Xem kế hoạch cài',
+      keHoachLoi: this.state.keHoachId === x.id ? this.state.keHoachLoi : '',
+      keHoach: kh222,
+      keHoachNhan2: khKeHoach222.map((id) => tenCua222[id] || id).join(' → '),
+      caiTheoKeHoach: () => this.caiTheoKeHoach(),
+      huyKeHoach: () => this.huyKeHoach(),
+      dangCaiKeHoach: !!this.state.dangCaiKeHoach,
+      nhanCaiKeHoach: this.state.dangCaiKeHoach ? 'Đang cài…' : 'Cài tất cả',
+      keHoachTin: this.state.keHoachId === x.id ? this.state.keHoachTin : '',
       moTa: chiHoiCai ? '' : (x.info.mo_ta || ''), loi: x.loi ? 'Không dùng được: ' + x.loi : '', ghiChuGit: (x.g && x.g.ghi_chu) || '',
       taiNguyen, coTaiNguyen: !chiHoiCai && taiNguyen.length > 0, huongDan: (tn && tn.ghi_chu) || '', mayNay, lopMayNay,
       coMuc: !chiHoiCai && muc.length > 0, coMucDu: mucDu.length > 0, mucDu, mucThieu,
@@ -1261,7 +1432,9 @@ class Component extends DCLogic {
       coCanDangNhap: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0,
       canDangNhapChu: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0 ? (((tn && tn.phien && tn.phien.can_dang_nhap) || 0) + ' tài khoản cần đăng nhập lại') : '',
       // lưới
-      tim: s.tim, goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT, coLoai: dsKhu.length > 0,
+      tim: s.tim, hienSoDo: s.hienSoDo, doiSoDo: () => this.doiSoDo(),
+      coSoDo: !!s.soDo, soDo: s.soDo, dangTaiSoDo: s.dangTaiSoDo, soDoLoi: s.soDoLoi,
+      goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT, coLoai: dsKhu.length > 0,
       dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
       khu, chiOThem: !s.dangTai && khu.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
       // chi tiết

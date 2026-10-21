@@ -279,6 +279,124 @@ class SoModule:
         cm = km.manifest.get("can_module") or []
         return [d for d in cm if isinstance(d, str) and d not in self.catalog]
 
+    # ───────────── kế hoạch cài + đồ thị phụ thuộc (NV222) ─────────────
+
+    def ban_do_can_module(self, ban_do_ngoai: dict | None = None) -> dict:
+        """Bản đồ id → danh sách id phụ thuộc (đã sắp xếp), gộp module ĐÃ cài
+        (từ manifest) và module CHƯA cài mà nguồn ngoài biết (vd nguồn git —
+        truyền qua `ban_do_ngoai`, route tự trích từ `quyen`)."""
+        ra: dict[str, list[str]] = {}
+        for id_, km in self.catalog.items():
+            cm = km.manifest.get("can_module") or []
+            ra[id_] = sorted({d for d in cm if isinstance(d, str)})
+        for id_, deps in (ban_do_ngoai or {}).items():
+            if id_ not in ra:
+                ra[id_] = sorted({d for d in (deps or []) if isinstance(d, str)})
+        return ra
+
+    def _thu_tu_topo(self, ban_do: dict, goc: list[str]) -> list[str]:
+        """Thứ tự topo (cái được cần đứng trước) của các nút đạt được từ `goc`.
+        Vòng phụ thuộc → LoiSo 409 mã `vong_phu_thuoc` kèm đường vòng."""
+        trang_thai: dict[str, int] = {}  # 1 = đang thăm, 2 = xong
+        thu_tu: list[str] = []
+        duong: list[str] = []
+
+        def tham(nut: str):
+            st = trang_thai.get(nut, 0)
+            if st == 2:
+                return
+            if st == 1:
+                vong = duong[duong.index(nut):] + [nut]
+                err = LoiSo(409, "Vòng phụ thuộc module: " + " → ".join(vong),
+                            code="vong_phu_thuoc")
+                err.duong_vong = vong
+                raise err
+            trang_thai[nut] = 1
+            duong.append(nut)
+            for dep in ban_do.get(nut, []):
+                tham(dep)
+            duong.pop()
+            trang_thai[nut] = 2
+            thu_tu.append(nut)
+
+        for g in goc:
+            tham(g)
+        return thu_tu
+
+    def ke_hoach_cai(self, id_: str, ban_do_ngoai: dict | None = None) -> dict:
+        """Kế hoạch cài các phụ thuộc còn thiếu của module `id_` (NV222):
+        {"id", "ke_hoach": [dep...], "da_du": bool} — `ke_hoach` đã sắp topo
+        (cái được cần đứng trước), mỗi id một lần, chỉ gồm cái CHƯA cài.
+        Chưa biết id → 404. Vòng phụ thuộc → 409 `vong_phu_thuoc`.
+        KHÔNG cài gì cả — chỉ tính toán để giao diện hiện + 1 bấm xác nhận."""
+        ban_do = self.ban_do_can_module(ban_do_ngoai)
+        if id_ not in ban_do:
+            raise LoiSo(404, f"Không có module {id_!r}")
+        thu_tu = self._thu_tu_topo(ban_do, [id_])
+        ke_hoach = [d for d in thu_tu if d != id_ and d not in self.catalog]
+        return {"id": id_, "ke_hoach": ke_hoach, "da_du": not ke_hoach}
+
+    def do_thi_phu_thuoc(self, ban_do_ngoai: dict | None = None) -> dict:
+        """Đồ thị phụ thuộc toàn cục cho giao diện vẽ sơ đồ (NV222):
+        {"nut": [{id, ten, da_cai, loai}], "canh": [{tu, den}],
+         "thu_tu_goi_y": [...]} — `tu` là module cần, `den` là module bị cần;
+        `thu_tu_goi_y` là thứ tự topo toàn đồ thị (cài theo thứ tự này thì
+        không bao giờ thiếu phụ thuộc)."""
+        ban_do = self.ban_do_can_module(ban_do_ngoai)
+        ten: dict[str, str] = {}
+        loai: dict[str, str] = {}
+        for id_, km in self.catalog.items():
+            ten[id_] = km.manifest.get("ten") or id_
+            loai[id_] = km.manifest.get("loai") or ""
+        for id_, deps in (ban_do_ngoai or {}).items():
+            if id_ not in ten:
+                ten[id_] = id_
+        tat_ca = set(ban_do)
+        for ds in ban_do.values():
+            tat_ca.update(ds)
+        nut = [{"id": i, "ten": ten.get(i, i), "da_cai": i in self.catalog,
+                "loai": loai.get(i, "")} for i in sorted(tat_ca)]
+        canh = [{"tu": t, "den": d} for t, ds in sorted(ban_do.items()) for d in ds]
+        thu_tu = self._thu_tu_topo(ban_do, sorted(ban_do))
+        return {"nut": nut, "canh": canh, "thu_tu_goi_y": thu_tu}
+
+    async def cai_theo_ke_hoach(self, id_: str, ke_hoach: list,
+                                ham_cai) -> dict:
+        """Cài các phụ thuộc còn thiếu theo đúng `ke_hoach` rồi cài chính module
+        (NV222) — `ham_cai(dep_id)` do route truyền vào (mặc định: cài từ nguồn
+        git; test chích hàm giả để kiểm thứ tự/dừng-lỗi mà không cần mạng).
+
+        Kế hoạch phải KHỚP ĐÚNG với tính lại lúc chạy (chống thân giả) → sai:
+        LoiSo 409 `ke_hoach_cu`, chưa cài gì. Cài hỏng ở đâu DỪNG ở đó (không
+        cài lén tiếp), trả tiến độ `da_cai` + `loi_o` + mã lỗi gốc."""
+        ke_hoach_moi = self.ke_hoach_cai(id_)["ke_hoach"]
+        if list(ke_hoach or []) != ke_hoach_moi:
+            raise LoiSo(409, "Kế hoạch đã cũ — lấy lại kế hoạch mới rồi xác nhận",
+                        code="ke_hoach_cu")
+        ket_qua: dict = {}
+        da_cai: list[str] = []
+        for dep in ke_hoach_moi:
+            if dep in self.catalog:
+                ket_qua[dep] = {"bo_qua": True, "ly_do": "da_cai"}
+                continue
+            try:
+                ket_qua[dep] = await ham_cai(dep)
+            except Exception as e:  # noqa: BLE001 — giữ mã lỗi gốc trả về cho giao diện
+                return {"ok": False, "id": id_, "ma": getattr(e, "code", None) or "loi_cai",
+                        "ma_http": getattr(e, "ma", 400), "loi_o": dep,
+                        "thong_diep": str(e), "da_cai": da_cai, "ket_qua": ket_qua,
+                        "ma_xac_nhan": getattr(e, "ma_xac_nhan", None)}
+            da_cai.append(dep)
+        try:
+            chinh = await ham_cai(id_)
+        except Exception as e:  # noqa: BLE001 — như trên
+            return {"ok": False, "id": id_, "ma": getattr(e, "code", None) or "loi_cai",
+                    "ma_http": getattr(e, "ma", 400), "loi_o": id_,
+                    "thong_diep": str(e), "da_cai": da_cai, "ket_qua": ket_qua,
+                    "ma_xac_nhan": getattr(e, "ma_xac_nhan", None)}
+        return {"ok": True, "id": id_, "ke_hoach": ke_hoach_moi,
+                "ket_qua": ket_qua, "chinh": chinh}
+
     def tinh_nang(self) -> dict:
         """«Tính năng đang có» cho khung giao diện (GET /api/tinh-nang) — suy từ manifest module ĐÃ CÀI và trạng thái
         liên kết, không từ danh sách tên: mỗi module góp mã `loai` của nó và các mã `cung_cap` vào tập khả năng
