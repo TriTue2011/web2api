@@ -54,8 +54,10 @@ Tệp `docker-compose.yml` đã được cấu hình chuẩn:
 ### 2.3. Khởi chạy bằng lệnh Docker trực tiếp
 
 ```bash
-# 1. Dựng ảnh (mặc định biến thể firefox an toàn; hoặc ca-hai, chromium khi cần)
-docker build -t web2api-may-dang-nhap:latest --build-arg BIEN_THE=firefox .
+# 1. Dựng ảnh. CẢNH BÁO (đo 21/10/2026): biến thể firefox KHỞI ĐỘNG được nhưng KHÔNG thao tác được trên trang (patchright chỉ vá cho Chromium:
+#    evaluate/click/locator lỗi «Cannot read properties of undefined (reading '_client')») nên đăng nhập tự động sẽ hỏng. Muốn đăng nhập chạy thật hãy dựng
+#    biến thể chromium (tải CloakBrowser — nhị phân đóng, giấy phép CHƯA kiểm; xem Dockerfile). NV206 đang sửa tận gốc.
+docker build -t web2api-may-dang-nhap:latest --build-arg BIEN_THE=chromium .
 
 # 2. Chạy container với quyền hạn tối thiểu và mạng riêng
 docker run -d \
