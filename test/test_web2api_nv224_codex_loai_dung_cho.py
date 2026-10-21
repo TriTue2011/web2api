@@ -274,9 +274,11 @@ def test_goi_y_doc_dich_dung_khong_do_id(moi_truong_goi_y):
     from test_web2api_combo import QT
 
     client = moi_truong_goi_y
-    bk = _them(client, "goiy-nv224@example.com", module_id="mx-web",
-               loai_tai_khoan="web", dich_dung="codex")
-    assert bk["module_id"] == "mx-web"
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "email": "goiy-nv224@example.com", "mat_khau": "MatKhauGia123!",
+        "module_id": "mx-web", "loai_tai_khoan": "web", "dich_dung": "codex"})
+    assert r.status_code == 200, r.text
+    assert r.json()["tai_khoan"]["module_id"] == "mx-web"
     r = client.get("/api/combo/goi-y", headers=QT)
     assert r.status_code == 200, r.text
     goi_y = r.json()["goi_y"]

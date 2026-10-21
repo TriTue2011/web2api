@@ -2346,12 +2346,22 @@ async def goi_y_combo(request: Request):
     """Gợi ý bước combo mặc định theo thứ tự chủ máy (21/10/2026): Codex trước → web sau (cùng nhóm).
 
     Dựa trên DỮ LIỆU THẬT: module AI đã liên kết có khả năng chat + model đầu tiên
-    của mỗi module trong GET /v1/models. «Codex» đọc từ định danh do CHÍNH module
-    khai (id chứa «codex») — không phải bảng tên nhà cung cấp; khi kho tài khoản
-    có trường loại tài khoản tường minh thì chuyển sang dùng trường đó.
+    của mỗi module trong GET /v1/models. «Codex» (NV224) đọc từ TRƯỜNG DỮ LIỆU
+    của tài khoản đã lưu gắn với module — ``dich_dung == "codex"`` hoặc
+    ``"codex"`` trong ``dung_cho`` — KHÔNG dò chuỗi trong id module nữa.
     """
     so = _so(request)
     ds = await _danh_sach_models(request)
+    # NV224: module nào có tài khoản đích codex (theo kho tài khoản).
+    module_co_codex: set[str] = set()
+    try:
+        for bk in kho_tai_khoan_mod.liet_ke():
+            mid_tk = bk.get("module_id") or ""
+            if mid_tk and (bk.get("dich_dung") == "codex"
+                           or "codex" in (bk.get("dung_cho") or [])):
+                module_co_codex.add(mid_tk)
+    except Exception:
+        module_co_codex = set()
     model_dau: dict[str, str] = {}
     for muc in ds:
         mid = muc.get("id", "")
@@ -2387,7 +2397,7 @@ async def goi_y_combo(request: Request):
             "ten_module": mf.get("ten") or id_,
             "nhom": nhom.get("id") or "",
             "ten_nhom": nhom.get("ten") or "",
-            "la_codex": "codex" in id_.lower(),
+            "la_codex": id_ in module_co_codex,
         })
     # Cùng nhóm: Codex trước → web sau; các nhóm sắp theo id nhóm.
     ung_vien.sort(key=lambda u: (u["nhom"], 0 if u["la_codex"] else 1, u["ten_module"]))
@@ -2395,7 +2405,7 @@ async def goi_y_combo(request: Request):
         "goi_y": ung_vien,
         "bo_qua": bo_qua,
         "nguyen_tac": "Codex trước → web sau (cùng nhóm); nhóm theo nhom.id trong manifest; "
-                      "«codex» đọc từ id do chính module khai",
+                      "«codex» đọc từ trường dich_dung/dung_cho của tài khoản đã lưu (NV224)",
     }
 
 
@@ -2441,6 +2451,18 @@ _KHOA_THIET_LAP = asyncio.Lock()
 def _chuoi_tuy_chon(than: dict, ten: str) -> str | None:
     """Kiểm KIỂU ở biên: trường vắng/null → None; có thì phải là chuỗi hợp lệ (không surrogate), sai → 400."""
     return kiem_bien.kiem_chuoi(than.get(ten), cho_phep_none=True, ten_truong=ten)
+
+
+def _dung_cho_tuy_chon(than: dict):
+    """Trường ``dung_cho`` (NV224): vắng/null → None (giữ nguyên cũ); có thì
+    phải là DANH SÁCH (kiểm từng mục ở kho theo bảng khai báo), sai kiểu →
+    lỗi ``invalid_value`` (route đổi thành 400)."""
+    if "dung_cho" not in than or than.get("dung_cho") is None:
+        return None
+    v = than.get("dung_cho")
+    if not isinstance(v, list):
+        raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
+    return v
 
 
 def _chuoi_bat_buoc(than: dict, ten: str) -> str:
@@ -3683,7 +3705,9 @@ async def luu_tai_khoan_da_luu(request: Request):
     nó) và ``bac_goi`` (bậc gói do người dùng khai, không đoán). Không truyền
     → giữ nguyên giá trị cũ; ``module_id: ""`` → xoá gắn kết.
     NV218: nhận thêm ``loai_tai_khoan`` + ``dich_dung`` (phân loại theo bảng
-    khai báo của đúng nhóm; sai bảng → 400). Không truyền → giữ nguyên cũ."""
+    khai báo của đúng nhóm; sai bảng → 400). Không truyền → giữ nguyên cũ.
+    NV224: nhận thêm ``dung_cho`` (danh sách mọi đích dùng; cộng thêm không
+    đè; mục sai bảng → 400)."""
     kiem_tra_step_up(request)
     than = await _than_json(request)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
@@ -3725,7 +3749,8 @@ async def luu_tai_khoan_da_luu(request: Request):
                         loai_tai_khoan=_chuoi_tuy_chon(muc, "loai_tai_khoan"),
                         dich_dung=_chuoi_tuy_chon(muc, "dich_dung"),
                         dang_nhap_bang=muc.get("dang_nhap_bang"),
-                        tai_khoan_google_id=muc.get("tai_khoan_google_id"))
+                        tai_khoan_google_id=muc.get("tai_khoan_google_id"),
+                        dung_cho=_dung_cho_tuy_chon(muc))
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -3753,7 +3778,8 @@ async def luu_tai_khoan_da_luu(request: Request):
             loai_tai_khoan=_chuoi_tuy_chon(than, "loai_tai_khoan"),
             dich_dung=_chuoi_tuy_chon(than, "dich_dung"),
             dang_nhap_bang=_chuoi_tuy_chon(than, "dang_nhap_bang"),
-            tai_khoan_google_id=_chuoi_tuy_chon(than, "tai_khoan_google_id"))
+            tai_khoan_google_id=_chuoi_tuy_chon(than, "tai_khoan_google_id"),
+            dung_cho=_dung_cho_tuy_chon(than))
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
             f"Lưu tài khoản đã lưu ({bk['email_che']})",
