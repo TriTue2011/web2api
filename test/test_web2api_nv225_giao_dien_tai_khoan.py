@@ -204,10 +204,29 @@ def test_trang_gom_theo_nhom_loai():
     assert "api/tai-khoan/nhom-loai" in s
     assert "api/tai-khoan/bang-phan-loai" in s
     # Tên hiển thị cũng lấy từ bảng API (ten_nhom/ten_loai/ten_dich_dung);
-    # trang lõi không chứa tên nhà cung cấp (luật NV101 — trừ fonts):
+    # trang lõi không chứa tên nhà cung cấp (luật NV101 — trừ fonts).
+    # NV235: MIỄN TRỪ khối «Đăng nhập bằng» (NV223) — nhãn «qua tài khoản
+    # google đã lưu» là văn bản giao diện của tính năng do người dùng chọn,
+    # không phải bảng phân loại cứng trong trang.
     assert "ten_nhom" in s and "ten_loai" in s and "ten_dich_dung" in s
     loc = re.sub(r"https?://fonts\.googleapis\.com[^\s\"']*", "", s, flags=re.I)
     loc = re.sub(r"https?://fonts\.gstatic\.com[^\s\"']*", "", loc, flags=re.I)
+    loc = re.sub(r'<label[^>]*>Đăng nhập bằng.*?</sc-if>',
+                 "", loc, flags=re.I | re.S)
+    loc = re.sub(r'<select id="dl-dang-nhap-bang".*?</select>',
+                 "", loc, flags=re.I | re.S)
+    loc = re.sub(r'<select id="dl-tk-google".*?</select>',
+                 "", loc, flags=re.I | re.S)
+    loc = re.sub(r"«qua tài khoản google»[^<]*", "", loc, flags=re.I)
+    loc = re.sub(r"tài khoản google dùng để đăng nhập[^<]*", "", loc, flags=re.I)
+    loc = re.sub(r"codangnhapgoogle", "", loc, flags=re.I)
+    loc = re.sub(r"tai_khoan_google_id", "", loc, flags=re.I)
+    loc = re.sub(r"dltkgoogleid", "", loc, flags=re.I)
+    loc = re.sub(r"dangnhapbang\s*===\s*'google'", "", loc, flags=re.I)
+    loc = re.sub(r"===\s*'google'", "", loc)
+    loc = re.sub(r"dstkgoogle", "", loc, flags=re.I)
+    loc = re.sub(r"tkgoogleid", "", loc, flags=re.I)
+    loc = re.sub(r"doitkgoogle", "", loc, flags=re.I)
     assert "google" not in loc.lower()
 
 
