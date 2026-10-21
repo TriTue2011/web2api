@@ -177,7 +177,10 @@ def test_ban_cong_khai_co_nhom_bac_goi_va_khong_lo_bi_mat(moi_truong):
     assert "JBSWY3DPEHPK3PXP" not in raw
     assert "a197c-9@example.com" not in raw  # email thô không lộ
     bk = r.json()["tai_khoan"][0]
-    assert bk["nhom"] == "openai"
+    # NV224: «openai» là bí danh CŨ của nhóm chatgpt (bảng
+    # NHOM_CU_SANG_NHOM_AI ở kho) — nhãn công khai đổi êm sang «chatgpt»,
+    # module sở hữu giữ nguyên. (Cập nhật theo hành vi mới — bài học NV98.)
+    assert bk["nhom"] == "chatgpt"
     assert bk["bac_goi"] == "pro"
     assert bk["module_id"] == "openai-codex"
     assert "mat_khau" not in bk and "totp_secret" not in bk

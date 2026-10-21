@@ -104,8 +104,18 @@ def moi_truong_221(tmp_path, monkeypatch):
 
 
 def test_goi_y_combo_codex_truoc_web_sau_cung_nhom(moi_truong_221):
-    """GET /api/combo/goi-y: Codex trước → web sau (cùng nhóm), nhóm theo nhom.id."""
+    """GET /api/combo/goi-y: Codex trước → web sau (cùng nhóm), nhóm theo nhom.id.
+
+    NV224: «codex» không còn dò id module nữa — đọc từ trường dich_dung của
+    tài khoản đã lưu gắn module. Test cập nhật theo hành vi mới (NV98):
+    gieo tài khoản đích codex cho module mx-codex trước khi gợi ý.
+    """
     client, _ = moi_truong_221
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "email": "goiy-nv221@example.com", "mat_khau": "MatKhauGia123!",
+        "module_id": "mx-codex", "loai_tai_khoan": "web",
+        "dich_dung": "codex"})
+    assert r.status_code == 200, r.text
     r = client.get("/api/combo/goi-y", headers=QT)
     assert r.status_code == 200, r.text
     goi_y = r.json()["goi_y"]

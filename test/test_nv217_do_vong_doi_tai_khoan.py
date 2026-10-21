@@ -282,7 +282,11 @@ def test_d_tam_dung_bo_qua_dang_nhap_tay_hang_loat_tu_dang_nhap_lai(moi_truong):
     assert exe.dang_nhap_goi == goi_truoc
 
 
-# ── e. hai tài khoản Google cùng email, module_id khác nhau ─────────────────
+# ── e. MỘT tài khoản Google dùng cho nhiều đích (NV224 viết lại) ────────────
+# Bản NV217 mong kho tách 2 bản ghi cùng email theo module_id. Chủ máy chốt
+# mô hình khác ở NV224: MỘT bản ghi/email giữ user + mật khẩu + OTP; đích
+# dùng là danh sách ``dung_cho`` TÍCH LŨY (lưu thêm không đè). Test này
+# viết lại theo mô hình đó (bài học NV98: cập nhật test cũ theo hành vi mới).
 
 @pytest.mark.xfail(strict=True, reason="NV218: kho khoá chính theo email, chưa tách được hai bản ghi cùng email khác đích dùng (thiết kế chủ máy 21/10: google → gemini / antigravity)")
 def test_e_hai_tai_khoan_cung_email_module_id_khac_nhau(moi_truong):
@@ -290,16 +294,22 @@ def test_e_hai_tai_khoan_cung_email_module_id_khac_nhau(moi_truong):
 
     client = moi_truong
     so = client.app.state.so
-    _cai(so, "gemini-web", SimpleNamespace(manifest={"id": "gemini-web"}))
-    _cai(so, "may-dang-nhap", SimpleNamespace(manifest={"id": "may-dang-nhap"}))
+    _MAN_GOOGLE = {"nhom": {"id": "google", "ten": "Google"}}
+    _cai(so, "gemini-web", SimpleNamespace(manifest={"id": "gemini-web"}),
+         manifest={"id": "gemini-web", **_MAN_GOOGLE})
+    _cai(so, "antigravity", SimpleNamespace(manifest={"id": "antigravity"}),
+         manifest={"id": "antigravity", **_MAN_GOOGLE})
     email = "chung-nv217@example.com"
-    _luu(client, email, module_id="gemini-web")
-    _luu(client, email, module_id="may-dang-nhap")  # tài khoản chỉ làm đăng nhập hộ
+    _luu(client, email, module_id="gemini-web",
+         loai_tai_khoan="gmail", dich_dung="gemini")
+    _luu(client, email, module_id="antigravity",
+         loai_tai_khoan="gmail", dich_dung="antigravity")
     ds = [b for b in ktk.liet_ke() if (ktk.tim_theo_id(b["id"]) or {}).get("email") == email]
-    # Mong muốn: kho phân biệt được 2 tài khoản cùng email theo module_id.
-    assert len(ds) == 2, f"chỉ còn {len(ds)} bản ghi cho cùng email: {ds}"
-    mid = { (ktk.tim_theo_id(b["id"]) or {}).get("module_id") for b in ds }
-    assert mid == {"gemini-web", "may-dang-nhap"}, mid
+    # Mô hình NV224: vẫn đúng MỘT bản ghi cho email đó…
+    assert len(ds) == 1, f"phải còn đúng 1 bản ghi cho cùng email: {ds}"
+    # …giữ cả mật khẩu + TOTP, và dung_cho tích lũy cả hai đích.
+    assert ds[0]["co_mat_khau"] is True and ds[0]["co_totp"] is True, ds
+    assert ds[0]["dung_cho"] == ["gemini", "antigravity"], ds
 
 
 # ── f. API không lộ mật khẩu / TOTP / token ──────────────────────────────────
