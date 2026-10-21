@@ -54,6 +54,35 @@ DOI_DAI_NHAN = 120
 DOI_DAI_MODULE_ID = 64
 DOI_DAI_NHOM = 64
 DOI_DAI_BAC_GOI = 64
+DOI_DAI_LOAI_TK = 64
+DOI_DAI_DICH_DUNG = 64
+
+# ── Phân loại AI theo thiết kế chủ máy 21/10/2026 (NV218) ────────────────────
+# «Tài khoản» lưu theo 5 NHÓM; mỗi nhóm có các LOẠI; một số (nhóm, loại) có
+# ĐÍCH DÙNG. Tất cả là BẢNG KHAI BÁO (dữ liệu), kiểm hợp lệ tra bảng — không
+# rải if theo tên nhà cung cấp. Codex KHÔNG là nhóm riêng: tài khoản chatgpt
+# loại web có dich_dung="codex" (dùng Codex trước, hết/lỗi mới sang web).
+
+#: 5 nhóm tài khoản AI — danh sách ĐÓNG.
+NHOM_AI = ("google", "chatgpt", "grok", "claude", "muse")
+
+#: Loại tài khoản theo nhóm AI — danh sách ĐÓNG theo nhóm.
+LOAI_TAI_KHOAN_THEO_NHOM = {
+    "google": ("api", "gmail"),
+    "chatgpt": ("api", "web"),
+    "grok": ("api", "web"),
+    "claude": ("api", "web"),
+    "muse": ("web",),
+}
+
+#: Đích dùng theo (nhóm, loại) — danh sách ĐÓNG; (nhóm, loại) chưa khai báo
+#: thì không có đích dùng (chỉ nhận "").
+DICH_DUNG_THEO_NHOM_LOAI = {
+    ("google", "api"): ("api",),
+    ("google", "gmail"): ("gemini", "antigravity"),
+    ("chatgpt", "api"): ("api",),
+    ("chatgpt", "web"): ("web", "codex"),
+}
 
 #: Giá trị hiển thị khi chưa biết bậc gói (NV197c) — KHÔNG đoán từ dữ liệu khác.
 BAC_GOI_KHONG_BIET = "khong_biet"
@@ -219,6 +248,52 @@ def kiem_bac_goi(bac_goi) -> str:
     return b
 
 
+def kiem_loai_tai_khoan(loai, nhom) -> str:
+    """Kiểm loại tài khoản (NV218): "" = chưa phân loại.
+
+    None → "". Loại phải thuộc bảng ``LOAI_TAI_KHOAN_THEO_NHOM[nhom]`` —
+    tra BẢNG DỮ LIỆU, không rải if theo tên nhà cung cấp. Nhóm ngoài 5 nhóm
+    AI (hoặc chưa có nhóm) thì chưa phân loại được → chỉ nhận "".
+    """
+    if loai is None:
+        return ""
+    if isinstance(loai, bool) or not isinstance(loai, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(loai, "loai_tai_khoan")
+    l = loai.strip()
+    if len(l) > DOI_DAI_LOAI_TK:
+        raise LoiKhoTaiKhoan("invalid_value")
+    if not l:
+        return ""
+    cho_phep = LOAI_TAI_KHOAN_THEO_NHOM.get(nhom, ())
+    if l not in cho_phep:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return l
+
+
+def kiem_dich_dung(dich_dung, nhom, loai) -> str:
+    """Kiểm đích dùng (NV218): "" = chưa khai báo.
+
+    None → "". Đích dùng phải thuộc bảng
+    ``DICH_DUNG_THEO_NHOM_LOAI[(nhom, loai)]`` — tra BẢNG DỮ LIỆU.
+    (nhóm, loại) chưa khai báo thì chỉ nhận "".
+    """
+    if dich_dung is None:
+        return ""
+    if isinstance(dich_dung, bool) or not isinstance(dich_dung, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(dich_dung, "dich_dung")
+    d = dich_dung.strip()
+    if len(d) > DOI_DAI_DICH_DUNG:
+        raise LoiKhoTaiKhoan("invalid_value")
+    if not d:
+        return ""
+    cho_phep = DICH_DUNG_THEO_NHOM_LOAI.get((nhom, loai), ())
+    if d not in cho_phep:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return d
+
+
 def ma_tai_khoan(email_chuan: str) -> str:
     """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256)."""
     return _TIEN_TO_ID + hashlib.sha256(email_chuan.encode("utf-8")).hexdigest()[:16]
@@ -276,6 +351,10 @@ def _doc() -> dict:
         for truong in ("module_id", "nhom", "bac_goi"):
             if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
                 raise LoiKhoTaiKhoan("kho_hong")
+        # Trường NV218 (tuỳ chọn, bản ghi cũ không có): có thì phải là chuỗi.
+        for truong in ("loai_tai_khoan", "dich_dung"):
+            if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
+                raise LoiKhoTaiKhoan("kho_hong")
     return du_lieu
 
 
@@ -305,6 +384,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
             "nguon": nguon,
             "nhom": nguon,
             "bac_goi": ban_ghi.get("bac_goi") or BAC_GOI_KHONG_BIET,
+            # NV218: bản ghi nhập chưa phân loại AI.
+            "loai_tai_khoan": "",
+            "dich_dung": "",
             "module_id": "",
             "email_che": che_email(email) if email else None,
             "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
@@ -323,6 +405,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         "module_id": ban_ghi.get("module_id", ""),
         "nhom": ban_ghi.get("nhom", ""),
         "bac_goi": ban_ghi.get("bac_goi") or BAC_GOI_KHONG_BIET,
+        # NV218: loại + đích dùng theo bảng khai báo ("" = chưa phân loại).
+        "loai_tai_khoan": ban_ghi.get("loai_tai_khoan", ""),
+        "dich_dung": ban_ghi.get("dich_dung", ""),
         "co_mat_khau": bool(ban_ghi.get("mat_khau")),
         "co_totp": bool(ban_ghi.get("totp_secret")),
         "trang_thai": ban_ghi.get("trang_thai", ""),
@@ -344,7 +429,7 @@ def _tom_tat_dung(id_: str) -> dict:
 
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                   trang_thai=None, id=None, module_id=None, nhom=None,
-                  bac_goi=None) -> dict:
+                  bac_goi=None, loai_tai_khoan=None, dich_dung=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
@@ -352,6 +437,8 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     `module_id`/`nhom`/`bac_goi` (NV197c): None → giữ nguyên cũ; "" hoặc chuỗi
     hợp lệ → đặt mới. `nhom` do tầng route suy từ manifest module trước khi
     truyền vào — kho không tự suy.
+    `loai_tai_khoan`/`dich_dung` (NV218): None → giữ nguyên cũ; "" hoặc giá trị
+    trong bảng khai báo của đúng (nhóm, loại) → đặt mới.
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
     mk = kiem_mat_khau(mat_khau)
@@ -402,6 +489,21 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         if bac_goi is not None:
             bac_goi_moi = kiem_bac_goi(bac_goi)
 
+        # NV218: None → giữ nguyên cũ; "" / giá trị trong bảng → đặt mới.
+        # Kiểm chéo với NHÓM MỚI (nhom_moi đã chốt ở trên). Đổi nhóm làm loại/
+        # đích dùng cũ mất hiệu lực → xoá phân loại (không đoán loại mới).
+        loai_moi = cu.get("loai_tai_khoan", "") if cu else ""
+        if loai_tai_khoan is not None:
+            loai_moi = kiem_loai_tai_khoan(loai_tai_khoan, nhom_moi)
+        elif loai_moi and loai_moi not in LOAI_TAI_KHOAN_THEO_NHOM.get(nhom_moi, ()):
+            loai_moi = ""
+        dich_dung_moi = cu.get("dich_dung", "") if cu else ""
+        if dich_dung is not None:
+            dich_dung_moi = kiem_dich_dung(dich_dung, nhom_moi, loai_moi)
+        elif dich_dung_moi and dich_dung_moi not in DICH_DUNG_THEO_NHOM_LOAI.get(
+                (nhom_moi, loai_moi), ()):
+            dich_dung_moi = ""
+
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
@@ -412,6 +514,8 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "module_id": module_moi,
             "nhom": nhom_moi,
             "bac_goi": bac_goi_moi,
+            "loai_tai_khoan": loai_moi,
+            "dich_dung": dich_dung_moi,
             "cap_nhat": int(time.time()),
         }
         du_lieu[id_] = ban_ghi
@@ -437,6 +541,46 @@ def liet_ke() -> list[dict]:
     ds = [ban_cong_khai(b) for b in du_lieu.values()]
     ds.sort(key=lambda d: d["cap_nhat"], reverse=True)
     return ds
+
+
+def gom_theo_nhom_loai() -> dict:
+    """Gom tài khoản theo nhóm → loại (NV218, thiết kế chủ máy 21/10).
+
+    Trả ``{nhom: {loai: {"tai_khoan": [...], "dang_dung": <id>|None}}}``.
+    ``dang_dung`` = id tài khoản đang được chọn đầu trong (nhóm, loại):
+    tài khoản dùng được đầu tiên theo thứ tự liệt kê (bỏ qua ``tam_dung``
+    và tài khoản đang hết hạn mức theo ``luong_dung_tai_khoan``); None khi
+    không có tài khoản dùng được. Mỗi tài khoản mang thêm cờ ``dang_dung``.
+    """
+    try:
+        from app import luong_dung_tai_khoan as ldtk
+    except Exception:
+        ldtk = None
+    gom: dict[str, dict[str, dict]] = {}
+    for b in liet_ke():
+        nhom = b.get("nhom") or ""
+        loai = b.get("loai_tai_khoan") or ""
+        muc = gom.setdefault(nhom, {}).setdefault(
+            loai, {"tai_khoan": [], "dang_dung": None})
+        muc["tai_khoan"].append(b)
+    for g_nhom in gom.values():
+        for muc in g_nhom.values():
+            chon = None
+            for b in muc["tai_khoan"]:
+                if b.get("trang_thai") == TRANG_THAI_TAM_DUNG:
+                    continue
+                if ldtk is not None:
+                    try:
+                        if ldtk.con_het_han_muc(b["id"]):
+                            continue
+                    except Exception:
+                        pass
+                chon = b["id"]
+                break
+            muc["dang_dung"] = chon
+            for b in muc["tai_khoan"]:
+                b["dang_dung"] = (chon is not None and b["id"] == chon)
+    return gom
 
 
 def tim_theo_id(id_) -> dict | None:

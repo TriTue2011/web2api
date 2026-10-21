@@ -3662,6 +3662,22 @@ def liet_ke_tai_khoan_da_luu(nhom: str | None = None):
     return {"tai_khoan": ds}
 
 
+@tai_khoan.get("/nhom-loai")
+def gom_tai_khoan_theo_nhom_loai():
+    """Gom tài khoản theo nhóm → loại (NV218, thiết kế chủ máy 21/10).
+
+    Trả ``{"nhom_loai": {nhom: {loai: {"tai_khoan": [...], "dang_dung": <id>|None}}}}``.
+    ``dang_dung`` = id tài khoản đang được chọn đầu trong (nhóm, loại)
+    (dùng được: không ``tam_dung``, chưa hết hạn mức). KHÔNG bao giờ trả
+    mật khẩu/TOTP secret.
+    """
+    try:
+        gom = kho_tai_khoan_mod.gom_theo_nhom_loai()
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    return {"nhom_loai": gom}
+
+
 @tai_khoan.get("/han-muc")
 def doc_han_muc_tai_khoan():
     """Hạn mức THỤ ĐỘNG đã đọc được từ tiêu đề phản hồi nhà cung cấp, theo từng
@@ -3734,7 +3750,9 @@ async def luu_tai_khoan_da_luu(request: Request):
 
     NV197c: nhận thêm ``module_id`` (module đã cài — nhóm suy từ manifest của
     nó) và ``bac_goi`` (bậc gói do người dùng khai, không đoán). Không truyền
-    → giữ nguyên giá trị cũ; ``module_id: ""`` → xoá gắn kết."""
+    → giữ nguyên giá trị cũ; ``module_id: ""`` → xoá gắn kết.
+    NV218: nhận thêm ``loai_tai_khoan`` + ``dich_dung`` (phân loại theo bảng
+    khai báo của đúng nhóm; sai bảng → 400). Không truyền → giữ nguyên cũ."""
     kiem_tra_step_up(request)
     than = await _than_json(request)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
@@ -3772,7 +3790,9 @@ async def luu_tai_khoan_da_luu(request: Request):
                         trang_thai=muc.get("trang_thai"),
                         id=muc.get("id") or None,
                         module_id=mid, nhom=nhom,
-                        bac_goi=muc.get("bac_goi"))
+                        bac_goi=muc.get("bac_goi"),
+                        loai_tai_khoan=_chuoi_tuy_chon(muc, "loai_tai_khoan"),
+                        dich_dung=_chuoi_tuy_chon(muc, "dich_dung"))
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -3796,7 +3816,9 @@ async def luu_tai_khoan_da_luu(request: Request):
             trang_thai=_chuoi_tuy_chon(than, "trang_thai"),
             id=tai_id or None,
             module_id=mid, nhom=nhom,
-            bac_goi=_chuoi_tuy_chon(than, "bac_goi"))
+            bac_goi=_chuoi_tuy_chon(than, "bac_goi"),
+            loai_tai_khoan=_chuoi_tuy_chon(than, "loai_tai_khoan"),
+            dich_dung=_chuoi_tuy_chon(than, "dich_dung"))
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
             f"Lưu tài khoản đã lưu ({bk['email_che']})",
