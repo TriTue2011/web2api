@@ -230,6 +230,8 @@ class ModuleTuXa:
             kha_nang=("noi", "nghe", "anh_sua"),
             kiem_ip=_dia_chi_bi_chan,
             header_them=header_them,
+            # NV197d: liên kết tuỳ chọn tới tài khoản đã lưu để theo dõi lượng dùng/hạn mức.
+            tai_khoan_id=ban_ghi.get("tai_khoan_id"),
         )
 
         self._gpu_telemetry: list[dict] = []

@@ -181,6 +181,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.emailChe}}</span>
 <sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
+<sc-if value="{{r.coDongDung}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.dongDung}}</span></sc-if>
 <span style="margin-left:auto;display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:100%">
 <sc-if value="{{r.coTamDung}}"><button type="button" data-dl-tam-dung="{{r.id}}" onClick="{{r.doiTamDung}}" style="{{r.tamDungSt}}">{{r.nhanTamDung}}</button></sc-if>
 <button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
@@ -1611,7 +1612,12 @@ class Component extends DCLogic {
             dangNhapSt: btnSt({}) + 'min-height:44px;',
             xoa: () => this.dlXoa(t.id),
             xoaSt: btnSt({ bad: (s.dlXoaChon || '') === t.id }) + 'min-height:44px;',
-            nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá'
+            nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá',
+            coDongDung: !!((t.dung && ((t.dung.hom_nay | 0) > 0 || (t.dung['7_ngay'] | 0) > 0)) || (t.han_muc && typeof t.han_muc === 'object')),
+            dongDung: (() => { const d = t.dung || {}, hm = t.han_muc;
+              let s = 'Hôm nay ' + (d.hom_nay | 0) + ' lượt · 7 ngày ' + (d['7_ngay'] | 0) + ' lượt';
+              if (hm && typeof hm === 'object' && hm.con_lai != null) s += ' · còn ' + hm.con_lai;
+              return s; })()
           })),
           soHangCoDuLieu: (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length,
           luuTatCa: () => this.dlLuuTatCa(),

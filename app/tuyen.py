@@ -3459,6 +3459,68 @@ def liet_ke_tai_khoan_da_luu():
         raise _loi_kho_tai_khoan(e) from None
 
 
+@tai_khoan.get("/han-muc")
+def doc_han_muc_tai_khoan():
+    """Hạn mức THỤ ĐỘNG đã đọc được từ tiêu đề phản hồi nhà cung cấp, theo từng
+    tài khoản (chỉ vai quản trị). «khong_biet» khi nhà cung cấp không gửi tiêu đề
+    — không bịa số."""
+    from app import luong_dung_tai_khoan as ldtk
+    try:
+        ds = [{"id": tk["id"], "han_muc": ldtk.lay_han_muc(tk["id"]) or "khong_biet"}
+              for tk in kho_tai_khoan_mod.liet_ke()]
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    return {"tai_khoan": ds}
+
+
+@tai_khoan.get("/luong-dung")
+def doc_luong_dung(request: Request):
+    """Thống kê lượng dùng theo tài khoản (chỉ vai quản trị; không lộ của người khác
+    vì chỉ quản trị được gọi). Không có tai_khoan_id → tổng quan mọi tài khoản có số
+    liệu. Có tai_khoan_id → chi tiết theo ngày. Tham số: tai_khoan_id (tuỳ chọn),
+    tu_ngay, den_ngay (YYYY-MM-DD, tuỳ chọn), trang (mặc định 1), moi_trang (mặc định
+    30, tối đa 100)."""
+    from app import luong_dung_tai_khoan as ldtk
+    qp = request.query_params
+    try:
+        trang = int(qp.get("trang") or 1)
+        moi_trang = int(qp.get("moi_trang") or 30)
+    except (TypeError, ValueError):
+        raise LoiOpenAI(400, "trang/moi_trang phải là số nguyên.", code="invalid_value") from None
+    if trang < 1 or not 1 <= moi_trang <= 100:
+        raise LoiOpenAI(400, "trang ≥ 1; moi_trang trong 1..100.", code="invalid_value")
+    tai_khoan_id = (qp.get("tai_khoan_id") or "").strip()
+    if not tai_khoan_id:
+        tom = ldtk.tom_tat_moi_tai_khoan()
+        hang = [{"tai_khoan_id": id_, "hom_nay": tt["dung"]["hom_nay"],
+                 "7_ngay": tt["dung"]["7_ngay"],
+                 "han_muc": tt["han_muc"]} for id_, tt in sorted(tom.items())]
+        bat_dau = (trang - 1) * moi_trang
+        return {"tai_khoan": hang[bat_dau:bat_dau + moi_trang],
+                "trang": trang, "moi_trang": moi_trang, "tong_hang": len(hang)}
+    try:
+        tk = kho_tai_khoan_mod.liet_ke()
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if not any(t.get("id") == tai_khoan_id for t in tk):
+        raise LoiOpenAI(404, "Tài khoản không có.", code="not_found")
+    for truong in ("tu_ngay", "den_ngay"):
+        gia_tri = qp.get(truong)
+        if gia_tri and (not isinstance(gia_tri, str) or len(gia_tri) != 10 or gia_tri[4] != "-" or gia_tri[7] != "-"):
+            raise LoiOpenAI(400, f"{truong} phải dạng YYYY-MM-DD.", code="invalid_value")
+    ket_qua = ldtk.thong_ke(tai_khoan_id, tu_ngay=qp.get("tu_ngay") or None,
+                            den_ngay=qp.get("den_ngay") or None)
+    if ket_qua is None:
+        return {"tai_khoan_id": tai_khoan_id, "ngay": [], "tong": None,
+                "trang": trang, "moi_trang": moi_trang, "tong_hang": 0}
+    hang = ket_qua["ngay"]
+    bat_dau = (trang - 1) * moi_trang
+    return {"tai_khoan_id": tai_khoan_id,
+            "ngay": hang[bat_dau:bat_dau + moi_trang],
+            "tong": ket_qua["tong"],
+            "trang": trang, "moi_trang": moi_trang, "tong_hang": len(hang)}
+
+
 @tai_khoan.post("/da-luu")
 async def luu_tai_khoan_da_luu(request: Request):
     """Lưu/cập nhật một tài khoản (theo email hoặc id, trùng → cập nhật) hoặc hàng loạt

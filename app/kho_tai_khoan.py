@@ -232,8 +232,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         # Bản ghi token nhập (NV197e): không bao giờ lộ bi_mat hay dinh_danh thô
         # (dinh_danh thường chính là email ở nguồn ngoài).
         email = ban_ghi.get("email", "")
+        id_ = ban_ghi.get("id", "")
         return {
-            "id": ban_ghi.get("id", ""),
+            "id": id_,
             "loai": "nhap",
             "nguon": ban_ghi.get("nguon", ""),
             "email_che": che_email(email) if email else None,
@@ -241,17 +242,32 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
             "co_bi_mat": bool(ban_ghi.get("bi_mat")),
             "trang_thai": ban_ghi.get("trang_thai", ""),
             "cap_nhat": ban_ghi.get("cap_nhat", 0),
+            # NV197d: lượng dùng hôm nay/7 ngày + hạn mức thụ động («khong_biet» khi chưa có số liệu).
+            **_tom_tat_dung(id_),
         }
     email = ban_ghi.get("email", "")
+    id_ = ban_ghi.get("id", "")
     return {
-        "id": ban_ghi.get("id", ""),
+        "id": id_,
         "email_che": che_email(email),
         "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
         "co_mat_khau": bool(ban_ghi.get("mat_khau")),
         "co_totp": bool(ban_ghi.get("totp_secret")),
         "trang_thai": ban_ghi.get("trang_thai", ""),
         "cap_nhat": ban_ghi.get("cap_nhat", 0),
+        # NV197d: lượng dùng hôm nay/7 ngày + hạn mức thụ động («khong_biet» khi chưa có số liệu).
+        **_tom_tat_dung(id_),
     }
+
+
+def _tom_tat_dung(id_: str) -> dict:
+    """Tóm tắt lượng dùng/hạn mức cho ban_cong_khai — không bao giờ ném."""
+    try:
+        from app import luong_dung_tai_khoan as ldtk
+        tt = ldtk.tom_tat(id_)
+        return {"dung": tt["dung"], "han_muc": tt["han_muc"]}
+    except Exception:
+        return {"dung": {"hom_nay": 0, "7_ngay": 0}, "han_muc": "khong_biet"}
 
 
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
@@ -552,6 +568,15 @@ def gian_cach_giay() -> float:
         return 300.0
 
 
+def _con_het_han_muc(id_: str) -> int:
+    """Epoch «hết hạn mức tới» còn hiệu lực, 0 nếu hết/không có (NV197d). Không bao giờ ném."""
+    try:
+        from app import luong_dung_tai_khoan as ldtk
+        return ldtk.con_het_han_muc(id_)
+    except Exception:
+        return 0
+
+
 def _doc_trang_thai() -> dict:
     try:
         du_lieu = kho.doc_bi_mat(TEN_TRANG_THAI)
@@ -574,6 +599,8 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     - `{"thu": False, "ly_do": "tam_dung"}` — tài khoản đã tạm dừng (NV197b):
       bị BỎ QUA, không chạm bí mật, không gọi module; lỗi rõ ràng để tầng trên
       biết không còn tài khoản khả dụng.
+    - `{"thu": False, "ly_do": "het_han_muc"}` — tài khoản hết hạn mức tới một
+      giờ nào đó (NV197d): bị BỎ QUA đúng đến lúc đặt lại, không chạm bí mật.
     - `{"thu": False, "ly_do": "hong_2_lien_tiep"}` — đã hỏng 2 liên tiếp,
       dừng hẳn.
     - `{"thu": False, "ly_do": "gian_cach"}` — chưa hết giãn cách
@@ -599,6 +626,10 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
         # không gọi module.dang_nhap; lỗi rõ ràng, không âm thầm dùng.
         return {"thu": False, "ly_do": "tam_dung"}
     id_ = ban_ghi["id"]
+    if _con_het_han_muc(id_):
+        # NV197d: tài khoản hết hạn mức tới một giờ nào đó bị BỎ QUA đúng đến lúc
+        # đặt lại — không chạm bí mật, không gọi module; lõi chọn tài khoản khác.
+        return {"thu": False, "ly_do": "het_han_muc"}
     cap_nhat_dau = ban_ghi.get("cap_nhat", 0)
     bay_gio = time.time()
     tt = _doc_trang_thai().get(id_, {})

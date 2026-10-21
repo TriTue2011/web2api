@@ -759,6 +759,15 @@ class SoModule:
         api_key = than.get("api_key") or None
         if api_key is not None and not isinstance(api_key, str):
             raise LoiSo(400, "api_key phải là chuỗi")
+        # NV197d: liên kết tuỳ chọn tới tài khoản đã lưu để theo dõi lượng dùng/hạn mức.
+        tai_khoan_id = than.get("tai_khoan_id")
+        if tai_khoan_id is not None:
+            if not isinstance(tai_khoan_id, str) or not tai_khoan_id.strip():
+                raise LoiSo(400, "tai_khoan_id phải là chuỗi id tài khoản đã lưu")
+            from app import kho_tai_khoan as _ktk
+            if _ktk.tim_theo_id(tai_khoan_id.strip()) is None:
+                raise LoiSo(400, f"tai_khoan_id {tai_khoan_id!r} không có trong kho tài khoản đã lưu")
+            tai_khoan_id = tai_khoan_id.strip()
         sach = await kiem_ban_ghi_tu_xa(than, api_key)
         # Dict thật cho vận hành (đã kiểm cấu trúc ở trên — gọi lại hàm thuần để lấy giá trị).
         header_them = kiem_header_them(than.get("header_them"), co_khoa=bool(api_key))
@@ -784,6 +793,8 @@ class SoModule:
                 ban_ghi["kha_nang"] = sach["kha_nang"]
             if "kha_nang_bat" in sach:
                 ban_ghi["kha_nang_bat"] = sach["kha_nang_bat"]
+            if tai_khoan_id is not None:
+                ban_ghi["tai_khoan_id"] = tai_khoan_id
 
             try:
                 kho.luu_tu_xa(ban_ghi, api_key, header_them or None)

@@ -440,10 +440,14 @@ class ChuyenTiepOpenAI:
         goi_y_tu_choi_kha_nang: str = "",
         kiem_ip: Callable[[ipaddress.IPv4Address | ipaddress.IPv6Address], str | None] | None = None,
         header_them: dict | None = None,
+        tai_khoan_id: str | None = None,
     ):
         self.ten = ten
         self.tien_to = tien_to
         self.base_url = base_url.rstrip("/")
+        # Liên kết tới tài khoản đã lưu trong app/kho_tai_khoan (NV197d, tuỳ chọn):
+        # mọi lượt gọi qua thể hiện này được ghi vào sổ lượng dùng/hạn mức của tài khoản đó.
+        self._tai_khoan_id = tai_khoan_id.strip() if isinstance(tai_khoan_id, str) and tai_khoan_id.strip() else None
         # Không khoá (dịch vụ trong LAN không đòi) = một "khe" rỗng, không gửi Authorization.
         self.khoa = list(khoa) or [""]
         # Header thêm theo bản ghi module từ xa (NV199c) — đã kiểm cấu trúc ở đăng ký
@@ -590,6 +594,32 @@ class ChuyenTiepOpenAI:
             d["so_429"] += 1
             d["lan_429_cuoi"] = bay_gio
 
+    def _ghi_so_lieu(self, ma: int, viec: str, headers=None, noi_dung: bytes | None = None) -> None:
+        """Ghi lượng dùng vào SỔ THEO TÀI KHOẢN (NV197d) — điểm chung duy nhất, không chép vào từng module.
+
+        Chỉ ghi khi thể hiện được liên kết `tai_khoan_id`. Token đọc từ thân phản hồi chat
+        kiểu OpenAI (usage.prompt_tokens/completion_tokens); không bao giờ ghi thân phản hồi,
+        nội dung hội thoại hay bí mật. Không bao giờ ném ra ngoài — đường gọi thật không được
+        hỏng vì sổ.
+        """
+        if not self._tai_khoan_id:
+            return
+        try:
+            from app import luong_dung_tai_khoan as ldtk
+            token_vao = token_ra = 0
+            if noi_dung and len(noi_dung) <= 4 * 1024 * 1024:
+                try:
+                    usage = json.loads(noi_dung).get("usage") if isinstance(noi_dung, (bytes, bytearray)) else None
+                    if isinstance(usage, dict):
+                        token_vao = max(0, int(usage.get("prompt_tokens") or 0))
+                        token_ra = max(0, int(usage.get("completion_tokens") or 0))
+                except (ValueError, TypeError, AttributeError):
+                    pass
+            ldtk.ghi_luot(self._tai_khoan_id, viec=viec, ma=ma,
+                          token_vao=token_vao, token_ra=token_ra, headers=headers)
+        except Exception:
+            pass  # như c2a ghi_nhan_tu_header: lỗi đọc không được phép hỏng câu trả lời
+
     def _han_muc(self, khoa: str, bay_gio: float) -> list[dict]:
         """Hạn mức theo việc của MỘT khoá (hợp đồng `han_muc` ở app/kham_pha.py), dựng từ dữ liệu đã có — không dò chữ.
         Trạng thái: «het_han_muc» = đang nghỉ vì 429 sau khi đã dùng được; «bi_tu_choi» = 401/403/400 bị đánh dấu, hoặc
@@ -684,6 +714,7 @@ class ChuyenTiepOpenAI:
                                          nhac_lai(model), NGHI_MODEL_KHONG_CO)
                     hd = tieu_de_cho_khach(r, "application/json")
                     if stream:
+                        self._ghi_so_lieu(200, "chat", r.headers)
                         return 200, hd, self._chuyen_dong(r)
                     try:
                         noi_dung = await doc_phan_hoi_co_tran(r)
@@ -693,6 +724,7 @@ class ChuyenTiepOpenAI:
                     except TimeoutError:
                         return tra_loi_json(504, {"error": {"message": f"{self.ten} ({may}) không trả lời kịp: quá thời gian đọc",
                                                             "type": "api_error", "code": "upstream_timeout"}})
+                    self._ghi_so_lieu(200, "chat", r.headers, noi_dung)
                     return 200, hd, noi_dung
                 try:
                     noi_dung = await doc_phan_hoi_co_tran(r)
@@ -713,6 +745,7 @@ class ChuyenTiepOpenAI:
                     self._nghi[khoa] = bay_gio + nghi
                     self._nghi_ma[khoa] = 429
                     self._ghi_dung(khoa, "chat", 429)
+                    self._ghi_so_lieu(429, "chat", r.headers)
                     self.log.warning("%s: khoá %s hết hạn mức (429), nghỉ %.0f s", self.ten, self.nhan_khoa(khoa), nghi)
                     continue
                 if loai == "khoa_hong":
@@ -878,6 +911,7 @@ class ChuyenTiepOpenAI:
                 if stream and 200 <= ma < 300:
                     self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
                     self._ghi_dung(khoa, kha_nang, ma)
+                    self._ghi_so_lieu(ma, kha_nang, r.headers)
                     for k in nghi_ngo:  # cùng thân yêu cầu, khoá này được còn khoá kia 400 → lỗi của khoá kia
                         self._ghi_kn(k, kha_nang, dung_duoc=False, ma=400, den=bay_gio + NGHI_KHA_NANG)
                         self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
@@ -899,6 +933,7 @@ class ChuyenTiepOpenAI:
                 if 200 <= ma < 300:
                     self._ghi_kn(khoa, kha_nang, dung_duoc=True, ma=None, den=0.0)
                     self._ghi_dung(khoa, kha_nang, ma)
+                    self._ghi_so_lieu(ma, kha_nang, r.headers, noi_dung)
                     for k in nghi_ngo:  # cùng thân yêu cầu, khoá này được còn khoá kia 400 → lỗi của khoá kia
                         self._ghi_kn(k, kha_nang, dung_duoc=False, ma=400, den=bay_gio + NGHI_KHA_NANG)
                         self.log.warning("%s: khoá %s bị từ chối %s (400 trong khi khoá khác được), nghỉ %.0f s",
@@ -920,6 +955,7 @@ class ChuyenTiepOpenAI:
                     nghi = doc_retry_after(r.headers.get("retry-after"), bay_gio) if da_duoc else NGHI_KHA_NANG
                     self._ghi_kn(khoa, kha_nang, ma=429, den=bay_gio + nghi)
                     self._ghi_dung(khoa, kha_nang, 429)
+                    self._ghi_so_lieu(429, kha_nang, r.headers)
                     self.log.warning("%s: khoá %s hết hạn mức %s (429), nghỉ %.0f s", self.ten,
                                      self.nhan_khoa(khoa), viec, nghi)
                     continue
