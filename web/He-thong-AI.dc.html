@@ -443,7 +443,7 @@ const tabTheoNeo = () => TAB.find((ma) => K.DIEU_KIEN[ma].neo && location.hash =
 // ---- chép nguyên từ Bo-nao.dc.html ----
 const TONE = { ok: 'background:#E2F0ED;color:#0B5A53', warn: 'background:#FBEFD5;color:#7A4B00', bad: 'background:#FBE4E1;color:#B42318', mute: 'background:#EFEDE8;color:#66645F' };
 const pillSt = (t) => 'flex:0 0 auto;padding:3px 12px;border-radius:14px;font-size:12px;font-weight:500;white-space:nowrap;' + TONE[t];
-const btnSt = (o) => 'flex:0 0 auto;min-height:40px;padding:0 16px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;' + (o && o.pri ? 'background:#181816;border-color:#181816;color:#fff;' : '') + (o && o.bad ? 'background:#FBE4E1;border-color:#B42318;color:#B42318;' : '') + (o && o.off ? 'opacity:.45;' : '');
+const btnSt = (o) => 'flex:0 0 auto;min-height:44px;padding:0 16px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;' + (o && o.pri ? 'background:#181816;border-color:#181816;color:#fff;' : '') + (o && o.bad ? 'background:#FBE4E1;border-color:#B42318;color:#B42318;' : '') + (o && o.off ? 'opacity:.45;' : '');
 const chipSt = (on) => btnSt({ pri: on });
 const vSt = (x) => 'min-width:0;overflow-wrap:anywhere;font-size:14px;' + (x.mono ? 'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;' : '') + (x.mute ? 'color:var(--mute);' : '');
 // Màu chấm của provider: demo tô màu thương hiệu từng nhà; provider không có trong bảng của demo thì dùng #6B7280 —
