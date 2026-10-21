@@ -77,17 +77,10 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{them.canKhoaQt}}"><span style="font-size:12px;color:var(--mute)">Dán khoá quản trị ở khối «Khoá quản trị» phía trên để thêm khoá.</span></sc-if>
 <sc-if value="{{them.laTaiKhoan}}"><div id="khung-tu-dong" style="display:flex;flex-direction:column;gap:10px;min-width:0">
 <sc-if value="{{them.td.coCaHaiKieu}}">
-<div role="group" aria-label="Kiểu đăng nhập" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" data-kieu="truc_tiep" aria-pressed="{{them.td.kieuTrucTiep.on}}" onClick="{{them.td.kieuTrucTiep.pick}}" style="{{them.td.kieuTrucTiep.st}}">Trực tiếp</button><button type="button" data-kieu="danh_tinh" aria-pressed="{{them.td.kieuDanhTinh.on}}" onClick="{{them.td.kieuDanhTinh.pick}}" style="{{them.td.kieuDanhTinh.st}}">{{them.td.nhanKieuDanhTinh}}</button></div>
+<div role="group" aria-label="Kiểu đăng nhập" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" data-kieu="truc_tiep" aria-pressed="{{them.td.kieuTrucTiep.on}}" onClick="{{them.td.kieuTrucTiep.pick}}" style="{{them.td.kieuTrucTiep.st}}">Trực tiếp</button></div>
 </sc-if>
 <sc-if value="{{them.td.chiMotKieu}}"><span style="font-size:12px;color:var(--mute)">Kiểu: {{them.td.nhanKieuHienTai}}</span></sc-if>
 <span style="font-size:12px;color:var(--mute)">{{them.td.goiYKieu}}</span>
-<sc-if value="{{them.td.coDanhTinh}}">
-<details open style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
-<summary style="padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Tài khoản đã đăng nhập sẵn</summary>
-<sc-for list="{{them.td.dsDanhTinh}}" as="d"><label data-danh-tinh="{{d.id}}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;border-top:1px solid var(--line);cursor:pointer;min-width:0"><input type="checkbox" checked="{{d.on}}" onChange="{{d.doi}}" aria-label="Chọn tài khoản {{d.emailChe}}"><span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{d.emailChe}}</span><span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:var(--mute)">{{d.nhanTt}}</span></label></sc-for>
-<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--mute);flex-wrap:wrap"><span>Địa chỉ email hiển thị dạng đã che.</span><button type="button" onClick="{{them.td.moDanhTinh}}" style="border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:12px;cursor:pointer;min-height:36px;padding:0 12px">Quản lý danh tính</button></div>
-</details>
-</sc-if>
 <div id="danh-sach-hang-nhap" style="display:flex;flex-direction:column;gap:12px;min-width:0">
 <sc-for list="{{them.td.hangNhap}}" as="hn">
 <div data-hang-nhap="{{hn.idx}}" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px">
@@ -316,35 +309,6 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </sc-if>
 </sc-if>
 
-<sc-if value="{{laDt}}">
-<div id="muc-danh-tinh" style="display:flex;flex-direction:column;gap:12px;min-width:0">
-<p style="margin:0;font-size:13px;color:var(--mute);line-height:1.55">Danh tính là một địa chỉ email đã đăng nhập trong một hồ sơ trình duyệt, dùng chung cho nhiều nguồn AI. Mục này liệt kê <b>mọi</b> danh tính — kể cả danh tính chưa gắn hồ sơ trình duyệt (trước đây những danh tính đó không hiện ở đâu). Địa chỉ email hiển thị dạng <b>đã che</b>.</p>
-<div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--mute);display:flex;flex-direction:column;gap:6px">
-<span><b style="color:var(--ink)">Hai việc khác nhau cùng tên «tái dùng»:</b></span>
-<span>· <b style="color:var(--ink)">Qua danh tính</b> (trong «Thêm tài khoản»): nguồn AI đăng nhập bằng hồ sơ trình duyệt của danh tính — không chép cookie đi đâu. Quản lý các danh tính đó ở chính mục này.</span>
-<span>· <b style="color:var(--ink)">Lấy cookie sang module</b> (trang Workspace trình duyệt, mục «Tái dùng»): chép cookie của một workspace đã đóng thẳng vào cấu hình của một module — không qua danh tính.<sc-if value="{{dt.duongTrinhDuyet}}"> <a href="{{dt.duongTrinhDuyet}}" style="color:inherit;text-decoration:underline">Mở trang Workspace trình duyệt</a></sc-if></span>
-</div>
-<sc-if value="{{dt.trong}}"><div style="border:1px dashed var(--line);border-radius:12px;padding:16px;font-size:13px;color:var(--mute);line-height:1.55">Chưa có danh tính nào. Danh tính sinh ra khi bạn đăng nhập bằng «Qua danh tính» ở mục Tài khoản, hoặc «Nhận làm tài khoản» một workspace đã đóng ở trang Workspace trình duyệt.</div></sc-if>
-<sc-for list="{{dt.rows}}" as="d">
-<div data-muc-danh-tinh="{{d.id}}" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
-<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0">
-<span style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{d.emailChe}}</span>
-<sc-if value="{{d.coNhan}}"><span style="font-size:12px;color:var(--mute)">{{d.nhan}}</span></sc-if>
-<span style="margin-left:auto;font-size:12px;font-weight:600">{{d.nhanTt}}</span>
-</div>
-<div style="display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:var(--mute)">
-<span>{{d.hoSoChu}}</span>
-<sc-if value="{{d.coGan}}"><span>Đã gắn: {{d.gan}}</span></sc-if>
-<sc-if value="{{d.coNgayTao}}"><span>Tạo: {{d.ngayTao}}</span></sc-if>
-</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<sc-if value="{{d.coHoSo}}"><button type="button" data-dt-kiem="{{d.id}}" disabled="{{d.dangKiem}}" onClick="{{d.kiem}}" style="{{d.kiemSt}}">{{d.kiemNhan}}</button></sc-if>
-<button type="button" data-dt-xoa="{{d.id}}" disabled="{{d.dangXoa}}" onClick="{{d.xoa}}" style="{{d.xoaSt}}">{{d.xoaNhan}}</button>
-</div>
-</div>
-</sc-for>
-</div>
-</sc-if>
 
 <sc-if value="{{laPv}}">
 <div data-provider="{{pv.id}}" style="display:flex;flex-direction:column;gap:12px;min-width:0">
@@ -558,9 +522,8 @@ class Component extends DCLogic {
       mdLoc: '',
       tkPvMo: den ? { [den]: true } : {},
       // Tự đăng nhập (td*): nhóm/loại chọn, kiểu đăng nhập, danh tính tick sẵn, văn bản dán, xem trước, bỏ chọn, lượt chạy
-      tkNhomThem: null, tkLoaiThem: null, tdKieu: 'truc_tiep', tdDaChon: {}, dsDanhTinh: [],
+      tkNhomThem: null, tkLoaiThem: null, tdKieu: 'truc_tiep', tdDaChon: {},
       // Mục «Danh tính» (NV179): TOÀN BỘ danh tính (kể cả chưa gắn hồ sơ) + trạng thái nút của mục.
-      dsDanhTinhTatCa: [], dtXoa: null, dtDangKiem: {}, dtDangXoa: null,
       tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdDangXem: false, tdDangChay: false, tdLoi: '', tdLuot: null,
       tdMoDan: false,
       tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
@@ -612,7 +575,6 @@ class Component extends DCLogic {
       if (!K.chanNeuThieu(tab, this.state.tn)) this.chonTab(tab);
     });
     await this.taiLai();
-    if (this.state.tab === 'danh_tinh') await this.taiDanhTinh();
     if (this._den) {
       this.denForm();
       this.denKhoi(this._den);
@@ -766,56 +728,6 @@ class Component extends DCLogic {
       this.msg('Đã xoá combo «' + ten + '».');
       await this.taiCombo();
     } catch (e) { this.setState({ cbDangXoa: null }); this.msg('Không xoá được combo: ' + (e && e.message), true); }
-  }
-  async taiDanhTinh() {
-    try {
-      const { j } = await K.goi('api/danh-tinh');
-      const raw = (j && Array.isArray(j.danh_tinh)) ? j.danh_tinh : (Array.isArray(j) ? j : []);
-      // dsDanhTinh: CHỈ danh tính ĐÃ gắn hồ sơ — khối chọn «Tài khoản đã đăng nhập sẵn»
-      // chỉ dùng được hồ sơ. dsDanhTinhTatCa: TOÀN BỘ, cho mục «Danh tính» (NV179):
-      // danh tính chưa gắn hồ sơ vẫn phải hiện để người dùng thấy và xử lý.
-      const ds = raw.filter((d) => d && d.ho_so_trinh_duyet);
-      this.setState({ dsDanhTinh: ds, dsDanhTinhTatCa: raw.filter((d) => d) });
-    } catch (e) {
-      this.setState({ dsDanhTinh: [], dsDanhTinhTatCa: [] });
-    }
-  }
-  // NV179 — mục «Danh tính»: kiểm lại tín hiệu đăng nhập của hồ sơ đã gắn.
-  // Chỉ NÂNG trạng thái khi máy chủ kiểm được; không kiểm được thì giữ nguyên.
-  async dtKiemLai(d) {
-    if (!d || !d.id) return;
-    this.setState((st) => ({ dtDangKiem: Object.assign({}, st.dtDangKiem, { [d.id]: true }) }));
-    try {
-      const { j } = await K.goi('api/danh-tinh/' + encodeURIComponent(d.id) + '/kiem-lai', { method: 'POST' });
-      if (j && j.danh_tinh) {
-        this.setState((st) => ({
-          dsDanhTinhTatCa: (st.dsDanhTinhTatCa || []).map((x) => (x.id === d.id ? j.danh_tinh : x)),
-          dsDanhTinh: (st.dsDanhTinh || []).map((x) => (x.id === d.id ? j.danh_tinh : x))
-        }));
-      }
-      const ten = d.nhan || cheEmail(d.email);
-      this.msg(j && j.da_dang_nhap
-        ? 'Đã kiểm lại: «' + ten + '» đang đăng nhập.'
-        : 'Chưa kiểm được tín hiệu đăng nhập của «' + ten + '» — trạng thái giữ nguyên.');
-    } catch (e) { this.loi(e); }
-    this.setState((st) => ({ dtDangKiem: Object.assign({}, st.dtDangKiem, { [d.id]: false }) }));
-  }
-  // NV179 — mục «Danh tính»: xoá danh tính (nút đã xác nhận 2 lần bấm ở render).
-  // Máy chủ chặn 409 khi còn tài khoản provider trỏ tới — lỗi hiện nguyên văn.
-  async dtXoa(d) {
-    if (!d || !d.id) return;
-    this.setState({ dtDangXoa: d.id });
-    try {
-      const { j } = await K.goi('api/danh-tinh/' + encodeURIComponent(d.id), { method: 'DELETE' });
-      this.setState((st) => ({
-        dsDanhTinhTatCa: (st.dsDanhTinhTatCa || []).filter((x) => x.id !== d.id),
-        dsDanhTinh: (st.dsDanhTinh || []).filter((x) => x.id !== d.id),
-        dtXoa: null
-      }));
-      const ten = d.nhan || cheEmail(d.email);
-      this.msg('Đã xoá danh tính «' + ten + '».' + (j && j.canh_bao ? ' ' + j.canh_bao : ''));
-    } catch (e) { this.setState({ dtXoa: null }); this.loi(e); }
-    this.setState({ dtDangXoa: null });
   }
   // ===== Tài khoản đã lưu (NV144) =====
   async taiDlDs() {
@@ -1093,13 +1005,6 @@ class Component extends DCLogic {
     }
     return lines.join('\n');
   }
-  doiDanhTinh(email) {
-    this.setState((st) => {
-      const dc = Object.assign({}, st.tdDaChon);
-      dc[email] = !dc[email];
-      return { tdDaChon: dc, tdXem: null, tdBo: {}, tdLoi: '' };
-    });
-  }
   tdDatLoi(chu) { this.setState({ tdLoi: chu || '' }); }
   themHangTk() {
     this.setState((st) => {
@@ -1144,13 +1049,7 @@ class Component extends DCLogic {
     }));
   }
   tdLayKieu(m) {
-    if (!m) return this.state.tdKieu || 'truc_tiep';
-    const tn = this.state.tn;
-    const coModDt = !!(tn && (tn.modules || []).some((x) => (x.cung_cap || []).includes('dang_nhap_danh_tinh')));
-    const coTt = !!m.dang_nhap_tu_dong;
-    const coDt = !!m.tai_dung_ho_so && coModDt;
-    if (coTt && coDt) return (this.state.tdKieu === 'danh_tinh') ? 'danh_tinh' : 'truc_tiep';
-    if (coDt) return 'danh_tinh';
+    // NV219: bỏ kiểu đăng nhập qua danh tính khỏi phần AI — luôn trực tiếp.
     return 'truc_tiep';
   }
   async tdChayHangNhap(m) {
@@ -1207,69 +1106,11 @@ class Component extends DCLogic {
       }));
       return;
     }
-    const kieu = this.state.tdKieuDangChay || this.tdLayKieu(m);
-    if (kieu !== 'danh_tinh') {
-      this.setState((st) => ({
-        tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: 'Chế độ trực tiếp: vui lòng mở tab trình duyệt để hoàn tất xác minh.' })
-      }));
-      return;
-    }
-    let ds = this.state.dsDanhTinh || [];
-    let dt = ds.find((d) => d.email && d.email.toLowerCase() === email.toLowerCase());
-    if (!dt) {
-      await this.taiDanhTinh();
-      ds = this.state.dsDanhTinh || [];
-      dt = ds.find((d) => d.email && d.email.toLowerCase() === email.toLowerCase());
-    }
-    if (!dt) {
-      this.setState((st) => ({
-        tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: 'Không tìm thấy danh tính tương ứng.' })
-      }));
-      return;
-    }
-    // Xoá mã khỏi state ngay khi gửi
-    this.setState((st) => {
-      const m2 = Object.assign({}, st.tdMa2Fa); delete m2[email];
-      const l2 = Object.assign({}, st.tdLoi2Fa); delete l2[email];
-      const g2 = Object.assign({}, st.tdDangGui2Fa); g2[email] = true;
-      return { tdMa2Fa: m2, tdLoi2Fa: l2, tdDangGui2Fa: g2 };
-    });
-    try {
-      const { j } = await K.goi('api/danh-tinh/' + encodeURIComponent(dt.id) + '/ma-2fa', {
-        method: 'POST',
-        json: { ma },
-        chapNhan: [400]
-      });
-      this.setState((st) => {
-        const g2 = Object.assign({}, st.tdDangGui2Fa); delete g2[email];
-        return { tdDangGui2Fa: g2 };
-      });
-      if (j && j.thanh_cong) {
-        // Mã đúng: tự động gọi lại bat-dau với dòng chỉ có email và cùng kiểu danh_tinh
-        await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', {
-          method: 'POST',
-          json: { module_id: m.id, van_ban: email, kieu: 'danh_tinh' }
-        });
-        this.tdTheoDoi();
-      } else {
-        const maLoi = (j && j.ma_loi) || '';
-        let msg = 'Lỗi gửi mã OTP.';
-        if (maLoi === 'ma_2fa_sai') msg = 'Mã chưa đúng, thử mã mới.';
-        else if (maLoi === 'khong_cho_2fa') msg = 'Đã hết hạn chờ hoặc không còn yêu cầu 2FA. Vui lòng đăng nhập lại.';
-        else if (j && j.huong_dan) msg = j.huong_dan;
-        this.setState((st) => ({
-          tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: msg })
-        }));
-      }
-    } catch (e) {
-      this.setState((st) => {
-        const g2 = Object.assign({}, st.tdDangGui2Fa); delete g2[email];
-        return {
-          tdDangGui2Fa: g2,
-          tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: (e && e.message) || 'Lỗi gửi mã 2FA.' })
-        };
-      });
-    }
+    // NV219: chỉ còn chế độ trực tiếp — mã 2FA xử lý ở tab trình duyệt.
+    this.setState((st) => ({
+      tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: 'Chế độ trực tiếp: vui lòng mở tab trình duyệt để hoàn tất xác minh.' })
+    }));
+    return;
   }
   async tdXemTruoc(m) {
     const van_ban = this.layVanBanGop();
@@ -1306,7 +1147,6 @@ class Component extends DCLogic {
       if (tt) this.setState({ tdLuot: tt });
       if (tt && tt.trang_thai_luot === 'hoan_thanh') {
         await this.taiLai();
-        await this.taiDanhTinh();
         return;
       }
       this._tdHen = setTimeout(vong, 2000);
@@ -1348,7 +1188,6 @@ class Component extends DCLogic {
   chonTab(id) {
     this.setState({ tab: id, ghi: '', xoa: null, pvDd: false, mdLoc: '' });
     history.replaceState(null, '', id === TAB[0] ? location.pathname : '#' + K.DIEU_KIEN[id].neo);
-    if (id === 'danh_tinh') this.taiDanhTinh();
     if (id === 'combo') this.taiCombo();
   }
   msg(chu, loi) { this.setState({ ghi: chu, ghiLoi: !!loi }); }
@@ -1452,7 +1291,7 @@ class Component extends DCLogic {
 
     // Kiểu đăng nhập module làm được (suy từ cấu trúc: hàm `dang_nhap`, `tai_dung_ho_so` + module danh tính/trình duyệt đã liên kết).
     const coTrucTiep = (m) => !!m.dang_nhap_tu_dong;
-    const modCoDanhTinh = (m) => !!m.tai_dung_ho_so && !!(tn && tn.kha_nang_lien_ket && tn.kha_nang_lien_ket.dang_nhap_danh_tinh > 0 && tn.kha_nang_lien_ket.trinh_duyet > 0);
+    const modCoDanhTinh = (m) => false;  // NV219: bỏ kiểu đăng nhập qua danh tính khỏi phần AI
     const coKieuDangNhap = (m) => coTrucTiep(m) || modCoDanhTinh(m);
     // Module chẳng có gì để thêm (không trường dán khoá, không kiểu đăng nhập) thì ẨN — không để nút chết.
     const themDuoc = (m) => ((catId.get(m.id) || {}).truong_cau_hinh || []).length > 0 || coKieuDangNhap(m);
@@ -1606,23 +1445,10 @@ class Component extends DCLogic {
     const coCaHaiKieu = chonCoTrucTiep && chonCoDanhTinh;
     const chiMotKieu = (chonCoTrucTiep && !chonCoDanhTinh) || (!chonCoTrucTiep && chonCoDanhTinh);
 
-    let kieuHienTai = 'truc_tiep';
-    if (coCaHaiKieu) {
-      kieuHienTai = (s.tdKieu === 'danh_tinh') ? 'danh_tinh' : 'truc_tiep';
-    } else if (chonCoDanhTinh) {
-      kieuHienTai = 'danh_tinh';
-    } else {
-      kieuHienTai = 'truc_tiep';
-    }
+    const kieuHienTai = 'truc_tiep';  // NV219: bỏ kiểu đăng nhập qua danh tính
+    const nhanKieuHienTai = 'Trực tiếp';
 
-    // Nhãn chip danh tính ghép từ dữ liệu module đăng nhập danh tính
-    const modDn = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('dang_nhap_danh_tinh'));
-    const nhanKieuDanhTinh = (modDn && modDn.nhom && modDn.nhom.ten) ? ('Qua ' + modDn.nhom.ten) : 'Qua danh tính';
-    const nhanKieuHienTai = (kieuHienTai === 'danh_tinh') ? nhanKieuDanhTinh : 'Trực tiếp';
-
-    const goiYKieu = (kieuHienTai === 'danh_tinh')
-      ? 'đăng nhập một lần trong hồ sơ trình duyệt rồi dùng lại; có mã 2FA thì thêm ở cột thứ 3'
-      : '2FA ở kiểu trực tiếp: sẽ cần bạn xử lý';
+    const goiYKieu = '2FA ở kiểu trực tiếp: sẽ cần bạn xử lý';
 
     const cheEmail = (email) => {
       if (!email || typeof email !== 'string') return '';
@@ -1631,28 +1457,11 @@ class Component extends DCLogic {
       return email.charAt(0) + '***' + email.slice(at);
     };
 
-    const NHAN_TT_DANH_TINH = {
-      dang_nhap: 'đã đăng nhập',
-      can_nguoi: 'cần xử lý',
-      chua_dang_nhap: 'chưa đăng nhập',
-      het_han: 'hết hạn'
-    };
-
-    const dsDanhTinhHien = (kieuHienTai === 'danh_tinh' && Array.isArray(s.dsDanhTinh)) ? s.dsDanhTinh.map((d) => ({
-      id: d.id,
-      emailChe: cheEmail(d.email),
-      nhanTt: NHAN_TT_DANH_TINH[d.trang_thai_dang_nhap] || d.trang_thai_dang_nhap || '',
-      on: !!(s.tdDaChon && s.tdDaChon[d.email]),
-      doi: () => this.doiDanhTinh(d.email)
-    })) : [];
-    const coDanhTinh = kieuHienTai === 'danh_tinh' && dsDanhTinhHien.length > 0;
-
     const NHAN_LOAI = { mat_khau: 'mật khẩu', cookie: 'cookie', dang_nhap_lai: 'đăng nhập lại' };
     const NHAN_TT = { cho: ['Đang chờ', 'var(--mute)'], dang_chay: ['Đang đăng nhập…', 'var(--mute)'], xong: ['Xong', '#0B5A53'], loi: ['Lỗi', '#8A2A1E'], bo_qua: ['Bỏ qua', 'var(--mute)'] };
     const NHAN_LOI = {
       can_nguoi: 'Cần bạn xử lý',
       cho_2fa: 'Cần mã 2FA',
-      thieu_module_dang_nhap_danh_tinh: 'Thiếu module đăng nhập danh tính',
       sai_mat_khau: 'Sai mật khẩu'
     };
     const xem = s.tdXem;
@@ -1692,7 +1501,6 @@ class Component extends DCLogic {
     const moDan = !!(s.tdMoDan || (s.tdVanBan && s.tdVanBan.trim()) || s.tdXem || s.tdDangXem);
     const td = {
       moDan,
-      moDanhTinh: () => this.chonTab('danh_tinh'),
       bamSummary: () => this.setState((st) => ({ tdMoDan: !moDan })),
       doiMoDan: (e) => { const mo = !!e.target.open; if (s.tdMoDan !== mo) this.setState({ tdMoDan: mo }); },
       focusVanBan: () => { if (!s.tdMoDan) this.setState({ tdMoDan: true }); },
@@ -1718,8 +1526,8 @@ class Component extends DCLogic {
       luotHang: luot ? (luot.ket_qua || []).map((b) => {
         const t = NHAN_TT[b.trang_thai] || [b.trang_thai, 'var(--mute)'];
         const nhan = b.trang_thai === 'loi' ? (NHAN_LOI[b.ma_loi] || ('Lỗi' + (b.ma_loi ? ' (' + b.ma_loi + ')' : ''))) : t[0];
-        const cho2fa = (kieuHienTaiLuot === 'danh_tinh') && b.trang_thai === 'loi' && b.ma_loi === 'cho_2fa';
-        const canNguoi = b.trang_thai === 'loi' && (b.ma_loi === 'can_nguoi' || (!cho2fa && b.ma_loi === 'cho_2fa'));
+        const cho2fa = false;  // NV219: bỏ kiểu danh_tinh — không còn luồng 2FA qua danh tính
+        const canNguoi = b.trang_thai === 'loi' && (b.ma_loi === 'can_nguoi' || b.ma_loi === 'cho_2fa');
         const em = b.email || '';
         return {
           emailGoc: em,
@@ -1742,23 +1550,13 @@ class Component extends DCLogic {
       coCaHaiKieu,
       chiMotKieu,
       nhanKieuHienTai,
-      nhanKieuDanhTinh,
       goiYKieu,
-      coDanhTinh,
-      dsDanhTinh: dsDanhTinhHien,
       kieuTrucTiep: {
         on: kieuHienTai === 'truc_tiep',
         st: chipSt(kieuHienTai === 'truc_tiep'),
         pick: () => this.setState({ tdKieu: 'truc_tiep', tdXem: null, tdBo: {}, tdLoi: '' })
       },
-      kieuDanhTinh: {
-        on: kieuHienTai === 'danh_tinh',
-        st: chipSt(kieuHienTai === 'danh_tinh'),
-        pick: () => {
-          this.setState({ tdKieu: 'danh_tinh', tdXem: null, tdBo: {}, tdLoi: '' });
-          this.taiDanhTinh();
-        }
-      },
+
       coCanNguoi,
       coDuongTrinhDuyet,
       duongTrinhDuyet,
@@ -1779,7 +1577,6 @@ class Component extends DCLogic {
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
           dlXoaChon: '', dlMoDS: true, dlTuDongLai: true
         });
-        if (mo) this.taiDanhTinh();
         if (mo) this.taiDlDs();
       }},
       hienNhom, dsNhom, chuaChonNhom, coNhomChon,
@@ -2135,35 +1932,6 @@ class Component extends DCLogic {
     const ql = tn ? K.quayLai(tn) : null;
     const tieuMuc = (K.DIEU_KIEN[s.tab] || {}).nhan || '';
     const laTk = !!tn && s.tab === 'tai_khoan';
-    // ===== Danh tính (NV179): TOÀN BỘ danh tính, kể cả chưa gắn hồ sơ =====
-    const dtRows = (s.dsDanhTinhTatCa || []).map((d) => {
-      const coHoSo = !!d.ho_so_trinh_duyet;
-      const dangKiem = !!(s.dtDangKiem || {})[d.id];
-      const dangXoa = s.dtDangXoa === d.id;
-      const xoaCho = s.dtXoa === d.id && !dangXoa;
-      return {
-        id: d.id,
-        emailChe: cheEmail(d.email),
-        nhan: d.nhan || '',
-        coNhan: !!d.nhan,
-        nhanTt: NHAN_TT_DANH_TINH[d.trang_thai_dang_nhap] || d.trang_thai_dang_nhap || '',
-        coHoSo,
-        hoSoChu: coHoSo ? 'Đã gắn hồ sơ trình duyệt' : 'Chưa gắn hồ sơ trình duyệt',
-        gan: (d.gan || []).join(', '),
-        coGan: (d.gan || []).length > 0,
-        ngayTao: d.ngay_tao ? K.ngayGio(d.ngay_tao) : '',
-        coNgayTao: !!d.ngay_tao,
-        dangKiem,
-        kiemNhan: dangKiem ? 'Đang kiểm…' : 'Kiểm lại đăng nhập',
-        kiemSt: btnSt({ pri: true }),
-        kiem: () => this.dtKiemLai(d),
-        dangXoa,
-        xoaNhan: dangXoa ? 'Đang xoá…' : (xoaCho ? 'Bấm lần nữa để xoá' : 'Xoá'),
-        xoaSt: btnSt(xoaCho ? { do: true } : {}),
-        xoa: () => { if (xoaCho) this.dtXoa(d); else this.setState({ dtXoa: d.id }); }
-      };
-    });
-    const dt = { rows: dtRows, trong: dtRows.length === 0, duongTrinhDuyet };
     return {
       hinh: K.BIEU_TUONG, navHT: K.menuNav(this, K.navHeThong(tn, 'ai', s.soTb), s.tab), menuMo: !!s.menuMo,
       dongMenu: () => this.setState({ menuMo: null }), phimNav: (e) => { if (e.key === 'Escape') this.setState({ menuMo: null, pvDd: false }); },
@@ -2181,7 +1949,6 @@ class Component extends DCLogic {
       tkTrong: tkKhoi.length === 0,
       tkTrongGhi: 'Chưa có tài khoản API nào — bấm « ＋ » ở trên để thêm.',
       tkGhiChu: 'Nơi lưu khoá API của từng nguồn AI đã cài. Khoá nằm trên máy chủ (tệp chỉ chủ tiến trình đọc được) và chỉ hiện dạng che …abcd — không có nút xem lại; khoá mới được thử bằng một lời gọi thật trước khi lưu. «#n» là thứ tự khoá (xoay vòng); «Đang dùng» là khoá vừa phục vụ yêu cầu gần nhất; số lượt đếm từ lần khởi động hoặc lưu khoá gần nhất.',
-      laDt: !!tn && s.tab === 'danh_tinh', dt,
       laPv: !!tn && s.tab === 'provider' && !!pvCur, pv: { id: pvCur ? pvCur.id : '', ten: pvCur ? pvCur.ten : '' }, pvHang, c3,
       // ---- Combo (NV221) ----
       laCb: !!tn && s.tab === 'combo',

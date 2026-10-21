@@ -313,10 +313,6 @@ class Module:
         """Module có biết khoá này không?"""
         return self._tim_acc(khoa) is not None
 
-    def danh_tinh_id_cua(self, khoa: str) -> str | None:
-        """muse.ai không qua SSO Google nên không có danh tính hồ sơ (NV94-d)."""
-        return None
-
     def quy_tac_tin_hieu(self) -> list:
         """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
 

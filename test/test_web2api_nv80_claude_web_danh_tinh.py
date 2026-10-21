@@ -1,33 +1,26 @@
-"""Test NV80 — claude-web gắn danh tính chung (theo khuôn NV77).
+"""Test NV80 (cập nhật NV219) — claude-web KHÔNG còn gắn danh tính chung.
 
-Hợp đồng:
-- Tài khoản cũ (cookie, không danh_tinh_id) nạp y như trước khi chưa gắn.
-- Gắn danh_tinh_id: hiển thị tên theo danh tính (che email), đăng ký tham chiếu
-  với kho danh tính của lõi (danh_tinh.gan) để xoá danh tính bị chặn 409 khi còn
-  tài khoản trỏ tới; gỡ gắn/dung() thì gỡ tham chiếu.
-- Gắn danh tính không tồn tại → lỗi rõ ràng ngay ở nap().
-- Manifest khai can_module ["vnc-xa"].
-- Mapping gắn bền qua khởi động nhờ kho riêng của module (hash cookie → danh_tinh_id).
+NV219 gỡ «danh tính» khỏi phần AI theo thiết kế chủ máy (00-thiet-ke-ai-chu-may-21-10.txt).
+File test gốc kiểm tra khuôn NV77 (gắn danh_tinh_id, tham chiếu kho danh tính);
+nay cập nhật theo bài học NV98: mã đổi hành vi có chủ ý → cập nhật test cũ.
+
+Hành vi mới:
+- Module nạp bình thường với cookie, không cần danh tính.
+- Cấu hình có khoá «danh_tinh» (dữ liệu cũ) bị bỏ qua êm, không lỗi.
+- Không còn thuộc tính/hàm/phương thức nào nhắc danh_tinh.
 """
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
-import json
 import sys
 import types
 from pathlib import Path
 
-import pytest
-
-from app import danh_tinh, kho
-from app.kham_pha import kiem_manifest
-from app.loi_openai import LoiOpenAI
 
 GOC = Path(__file__).resolve().parents[1]
 THU_MUC = GOC / "modules" / "claude-web"
-TEN_GOI = "claude_web_nv80_test"
+TEN_GOI = "claude_web_nv219_test"
 
 
 def _tai_goi():
@@ -47,151 +40,31 @@ def _tai_goi():
 
 mod_module = _tai_goi()
 Module = mod_module.Module
-MANIFEST = json.loads((THU_MUC / "manifest.json").read_text(encoding="utf-8"))
-
-EMAIL = "ban@gmail.com"
 
 
-def chay(coro):
-    return asyncio.run(coro)
+def test_ma_nguon_khong_nhac_danh_tinh():
+    """Mã nguồn module không còn chuỗi 'danh_tinh' (NV219)."""
+    src = (THU_MUC / "module.py").read_text(encoding="utf-8")
+    assert "danh_tinh" not in src
 
 
-def ck(suf):
-    return f"sessionKey=sk-{suf}; __cf_bm=bm-{suf}"
+def test_khong_con_ham_danh_tinh_id_cua():
+    """Không còn phương thức danh_tinh_id_cua (NV94-d đã gỡ)."""
+    assert not hasattr(Module, "danh_tinh_id_cua")
 
 
-@pytest.fixture
-def moi_truong(tmp_path, monkeypatch):
-    data = tmp_path / "data"
-    data.mkdir()
-    monkeypatch.setenv("WEB2API_DATA", str(data))
-    return data
+def test_nap_cookie_thuong_khong_can_danh_tinh():
+    """Nạp cookie bình thường, không cần danh tính — chạy y như trước."""
+    m = Module({})
+    m.nap({"cookies": ["cookie-gia-1234567890"]})
+    assert len(m._accs) == 1
+    # Tên hiển thị là dạng che cookie, không phải tên danh tính
+    assert m._accs[0].ten_hien_thi() == m._accs[0].ten_che
 
 
-def _tao_danh_tinh(email=EMAIL, nhan="Ban"):
-    return danh_tinh.tao(email, nhan)
-
-
-def _mod(moi_truong):
-    mod = Module(MANIFEST)
-    mod.kho = kho.kho_rieng("claude-web")
-    return mod
-
-
-# ---------------------------------------------------------------------------
-# Tương thích ngược.
-# ---------------------------------------------------------------------------
-
-def test_tai_khoan_cu_chay_khong_can_danh_tinh(moi_truong):
-    """Cookie cũ (không danh_tinh_id): nap ok, không chạm kho danh tính."""
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("cu")]})
-    assert len(mod._accs) == 1
-    acc = mod._accs[0]
-    assert acc.danh_tinh_id is None
-    assert acc.ten_hien_thi() == acc.ten_che
-    assert acc.ten_che.startswith("…")
-    assert danh_tinh.danh_sach() == []
-
-
-# ---------------------------------------------------------------------------
-# Gắn danh tính.
-# ---------------------------------------------------------------------------
-
-def test_gan_danh_tinh_hien_thi_theo_danh_tinh(moi_truong):
-    dt = _tao_danh_tinh(nhan="")
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    acc = mod._accs[0]
-    assert acc.danh_tinh_id == dt["id"]
-    assert acc.ten_hien_thi() == "b***@gmail.com"  # che email, không lộ nguyên
-    assert EMAIL not in acc.ten_hien_thi()
-
-
-def test_gan_danh_tinh_dung_nhan_neu_co(moi_truong):
-    dt = _tao_danh_tinh(nhan="Gmail ca nhan")
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    assert mod._accs[0].ten_hien_thi() == "Gmail ca nhan"
-
-
-def test_gan_danh_tinh_khong_ton_tai_loi_ro_rang(moi_truong):
-    mod = _mod(moi_truong)
-    with pytest.raises(ValueError, match="dt-khong-co.*không tồn tại"):
-        mod.nap({"cookies": [ck("a")], "danh_tinh": ["dt-khong-co"]})
-    assert mod._accs == []
-
-
-def test_danh_tinh_sai_do_dai_loi_ro_rang(moi_truong):
-    mod = _mod(moi_truong)
-    with pytest.raises(ValueError, match="danh_tinh"):
-        mod.nap({"cookies": [ck("a"), ck("b")], "danh_tinh": ["dt-x"]})
-
-
-def test_xoa_danh_tinh_bi_chan_khi_module_dang_gan(moi_truong):
-    dt = _tao_danh_tinh()
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    with pytest.raises(LoiOpenAI) as exc:
-        danh_tinh.xoa(dt["id"])
-    assert exc.value.code == "con_tai_khoan"
-    assert exc.value.status_code == 409
-
-
-def test_go_gan_roi_xoa_duoc(moi_truong):
-    dt = _tao_danh_tinh()
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [None]})
-    assert mod._accs[0].danh_tinh_id is None
-    assert danh_tinh.xoa(dt["id"]) is True
-
-
-def test_dung_go_tham_chieu(moi_truong):
-    dt = _tao_danh_tinh()
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    chay(mod.dung())
-    assert danh_tinh.xoa(dt["id"]) is True
-
-
-def test_dung_khong_go_cua_the_hien_moi(moi_truong):
-    dt = _tao_danh_tinh()
-    cu = _mod(moi_truong)
-    cu.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    moi = _mod(moi_truong)
-    moi.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    chay(cu.dung())  # thể hiện cũ dung sau: không được gỡ tham chiếu của mới
-    with pytest.raises(LoiOpenAI) as exc:
-        danh_tinh.xoa(dt["id"])
-    assert exc.value.code == "con_tai_khoan"
-
-
-def test_gan_ben_qua_nap_lai(moi_truong):
-    """Mapping gắn bền qua lần nap sau: đọc từ kho riêng theo hash cookie."""
-    dt = _tao_danh_tinh(nhan="")
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a")], "danh_tinh": [dt["id"]]})
-    mod2 = _mod(moi_truong)
-    mod2.nap({"cookies": [ck("a")]})  # cấu hình đã lưu không có danh_tinh
-    acc = mod2._accs[0]
-    assert acc.danh_tinh_id == dt["id"]
-    assert acc.ten_hien_thi() == "b***@gmail.com"
-
-
-def test_hon_hop_gan_va_khong_gan(moi_truong):
-    dt = _tao_danh_tinh(nhan="")
-    mod = _mod(moi_truong)
-    mod.nap({"cookies": [ck("a"), ck("b")], "danh_tinh": [dt["id"], None]})
-    assert mod._accs[0].ten_hien_thi() == "b***@gmail.com"
-    assert mod._accs[1].ten_hien_thi() == mod._accs[1].ten_che
-
-
-# ---------------------------------------------------------------------------
-# Manifest.
-# ---------------------------------------------------------------------------
-
-def test_manifest_khai_can_module_vnc_xa():
-    assert MANIFEST["can_module"] == ["vnc-xa"]
-    assert MANIFEST["hang"] == "A"
-    assert kiem_manifest(MANIFEST) is None
+def test_cau_hinh_cu_co_danh_tinh_bo_qua_em():
+    """Dữ liệu cũ có khoá «danh_tinh»: bỏ qua êm, không lỗi (NV219)."""
+    m = Module({})
+    # Không vỡ khi cấu hình còn sót khoá danh_tinh từ bản cũ
+    m.nap({"cookies": ["cookie-gia-1234567890"], "danh_tinh": ["dt-cu"]})
+    assert len(m._accs) == 1

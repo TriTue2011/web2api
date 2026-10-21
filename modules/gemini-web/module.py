@@ -22,7 +22,6 @@ import re
 import threading
 import time
 
-from app import danh_tinh
 from app import model_bo_sung
 from app import tu_lam_moi
 from app.kho import che
@@ -91,20 +90,8 @@ def _hash_cookie(chuoi: str) -> str:
     return hashlib.sha256(str(chuoi or "").strip().encode("utf-8")).hexdigest()
 
 
-def _che_email(email: str) -> str:
-    """Che email khi hiển thị theo danh tính: giữ ký tự đầu + miền."""
-    email = str(email or "")
-    cuc_bo, _, mien = email.partition("@")
-    dau = (cuc_bo[:1] + "***") if cuc_bo else "***"
-    return f"{dau}@{mien}" if mien else dau
-
-
 class _TaiKhoan:
     """Một bộ cookie: client tạo lười, trạng thái sức khoẻ do module giữ.
-
-    Có thể gắn một danh tính chung của lõi (``danh_tinh_id``): gắn rồi thì hiển
-    thị tên theo danh tính thay vì dạng che của cookie. Tài khoản không gắn
-    chạy y như trước (tương thích ngược).
 
     NV93: thêm email/ho_so/goi/trang_thai/lan_dung_cuoi/model (model theo
     TÀI KHOẢN — khám phá từ trang chủ, NV91-P3).
@@ -118,8 +105,6 @@ class _TaiKhoan:
         self.loai_loi: str | None = None  # khoa_hong | het_han_muc | may_chu_loi | None
         self.lan_429_cuoi: str | None = None
         self.chuoi_goc: str = ""
-        self.danh_tinh_id: str | None = None
-        self.ten_danh_tinh: str | None = None
         # -- NV93 ------------------------------------------------------------
         self.email: str = ""
         self.ho_so: str | None = None
@@ -131,7 +116,7 @@ class _TaiKhoan:
         self.model: list[str] = list(MO_HINH_HO_TRO)
 
     def ten_che(self) -> str:
-        return self.ten_danh_tinh or che(self.psid)
+        return che(self.psid)
 
     def ban_ghi(self, khoa: str) -> dict:
         """Bản ghi làm giàu lưu kho riêng (KHÔNG bí mật thô — psid chỉ có ở
@@ -279,15 +264,6 @@ class Module:
         if self._tim_tai_khoan(khoa) is not None:
             return True
         return self.mat_khau_da_luu(khoa) is not None
-
-    def danh_tinh_id_cua(self, khoa: str) -> str | None:
-        """id danh tính của tài khoản (NV94-d: cầu nối trình duyệt thật đi qua
-        danh tính → ho_so hex, không đoán từ ho_so_trinh_duyet)."""
-        try:
-            tk = self._tim_tai_khoan(str(khoa or "").strip().lower())
-        except Exception:
-            return None
-        return tk.danh_tinh_id if tk is not None else None
 
     def quy_tac_tin_hieu(self) -> list:
         """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
@@ -699,96 +675,11 @@ class Module:
         """NV91-P2: tài khoản khoẻ lại sau tự khôi phục → bỏ đánh dấu hỏng."""
         self._hong.discard(str(khoa))
 
-    # -- gắn danh tính chung (NV77) -------------------------------------------
-
-    def _doc_lien_ket(self) -> dict:
-        """Ánh xạ hash cookie → danh_tinh_id trong kho riêng của module. Đọc hỏng
-        thì coi như chưa gắn (tài khoản cũ vẫn chạy), không vỡ module."""
-        try:
-            if self.kho is None:
-                return {}
-            du_lieu = self.kho.doc("danh_tinh") or {}
-            anh_xa = du_lieu.get("anh_xa") or {}
-            return {str(k): v for k, v in anh_xa.items() if isinstance(v, str)}
-        except Exception as e:
-            log.warning("gemini-web: không đọc được liên kết danh tính: %s",
-                        type(e).__name__)
-            return {}
-
-    def _luu_lien_ket(self, anh_xa: dict) -> None:
-        if self.kho is None:
-            return
-        try:
-            cu = self.kho.doc("danh_tinh") or {}
-        except Exception:
-            cu = {}
-        try:
-            self.kho.luu("danh_tinh", {"anh_xa": anh_xa,
-                                       "gan": cu.get("gan") or [],
-                                       "chu_so_huu": cu.get("chu_so_huu")})
-        except Exception as e:
-            log.warning("gemini-web: không lưu được liên kết danh tính: %s",
-                        type(e).__name__)
-
-    def _ten_theo_danh_tinh(self, dt_id: str) -> str | None:
-        """Tên hiển thị theo danh tính: nhãn do người dùng đặt, không thì email che."""
-        try:
-            dt = danh_tinh.lay(dt_id)
-        except Exception as e:
-            log.warning("gemini-web: không đọc được danh tính %s: %s",
-                        dt_id, type(e).__name__)
-            return None
-        if not dt:
-            return None
-        nhan = str(dt.get("nhan") or "").strip()
-        if nhan:
-            return nhan
-        return _che_email(dt.get("email") or "")
-
-    def _dong_bo_tham_chieu(self, tap_moi: set[str]) -> None:
-        """Đăng ký/gỡ tham chiếu với kho danh tính của lõi theo chênh lệch tuyệt đối.
-
-        Lõi chặn xoá danh tính còn tài khoản trỏ tới (409 con_tai_khoan) dựa trên
-        chính các tham chiếu này. Trạng thái đã gắn + chủ sở hữu được nhớ trong
-        kho riêng để dung() của thể hiện cũ không gỡ nhầm của thể hiện mới.
-        """
-        cu: set[str] = set()
-        if self.kho is not None:
-            try:
-                cu = set((self.kho.doc("danh_tinh") or {}).get("gan") or [])
-            except Exception as e:
-                log.warning("gemini-web: không đọc được trạng thái gắn danh tính: %s",
-                            type(e).__name__)
-        for dt_id in sorted(cu - tap_moi):
-            try:
-                danh_tinh.go(dt_id, "gemini-web")
-            except Exception as e:
-                log.warning("gemini-web: gỡ tham chiếu danh tính %s: %s",
-                            dt_id, type(e).__name__)
-        for dt_id in sorted(tap_moi - cu):
-            # Đã kiểm tồn tại ở nap(); kho danh tính hỏng lúc này thì để 503 lan ra
-            # (đóng khi lỗi) thay vì âm thầm chạy không tham chiếu.
-            danh_tinh.gan(dt_id, "gemini-web")
-        if self.kho is not None:
-            try:
-                du_lieu = self.kho.doc("danh_tinh") or {}
-                self.kho.luu("danh_tinh", {"anh_xa": du_lieu.get("anh_xa") or {},
-                                           "gan": sorted(tap_moi),
-                                           "chu_so_huu": id(self)})
-            except Exception as e:
-                log.warning("gemini-web: không lưu được trạng thái gắn danh tính: %s",
-                            type(e).__name__)
-
     # -- hợp đồng lõi -------------------------------------------------------
 
     def nap(self, cau_hinh: dict) -> None:
         """Nạp cấu hình ĐÃ KIỂM — không gọi mạng, chỉ tách cookie.
 
-        Khoá phụ «danh_tinh» (không khai trong manifest, lõi cho qua): danh sách
-        cùng thứ tự với «cookies», mỗi phần tử là id danh tính hoặc null. id lạ
-        → ValueError rõ ràng, chưa gắn gì. Không có khoá này thì tra liên kết đã
-        nhớ trong kho riêng theo hash cookie (bền qua khởi động); tài khoản không
-        gắn chạy y như trước.
         """
         cau_hinh = cau_hinh or {}
         danh_sach = cau_hinh.get("cookies") or []
@@ -796,21 +687,6 @@ class Module:
             danh_sach = [danh_sach]
         if isinstance(danh_sach, dict):
             raise ValueError("«cookies» phải là danh sách chuỗi cookie.")
-        gan_moi = cau_hinh.get("danh_tinh")
-        if gan_moi is not None:
-            if not isinstance(gan_moi, list) or len(gan_moi) != len(danh_sach):
-                raise ValueError(
-                    "«danh_tinh» phải là danh sách cùng độ dài với «cookies» "
-                    f"(nhận {len(gan_moi) if isinstance(gan_moi, list) else type(gan_moi).__name__}, "
-                    f"cần {len(danh_sach)}); mỗi phần tử là id danh tính hoặc null.")
-            for dt_id in gan_moi:
-                if dt_id is None:
-                    continue
-                if not isinstance(dt_id, str) or danh_tinh.lay(dt_id) is None:
-                    raise ValueError(
-                        f"danh_tinh_id {dt_id!r} không tồn tại trong sổ danh tính "
-                        "(tạo trước ở «Hệ thống → AI → Danh tính»).")
-        lien_ket = self._doc_lien_ket()
         go_bo = self._doc_go_bo()
         ban_ghi = self._doc_ban_ghi()
         tai_khoan = []
@@ -825,29 +701,12 @@ class Module:
             tk = _TaiKhoan(psid, psidts)
             tk.chuoi_goc = chuoi if isinstance(chuoi, str) else ""
             tk.ap_dung_ban_ghi(ban_ghi.get(khoa))
-            if gan_moi is not None:
-                tk.danh_tinh_id = gan_moi[i]
-            else:
-                tk.danh_tinh_id = lien_ket.get(_hash_cookie(tk.chuoi_goc))
-            if tk.danh_tinh_id:
-                tk.ten_danh_tinh = self._ten_theo_danh_tinh(tk.danh_tinh_id)
             tai_khoan.append(tk)
-        if gan_moi is not None:
-            for tk in tai_khoan:
-                h = _hash_cookie(tk.chuoi_goc)
-                if tk.danh_tinh_id:
-                    lien_ket[h] = tk.danh_tinh_id
-                else:
-                    lien_ket.pop(h, None)
-            self._luu_lien_ket(lien_ket)
         co_so = str(cau_hinh.get("co_so_url") or "").strip().rstrip("/") or None
         with self._khoa:
             self._tai_khoan = tai_khoan
             self._co_so_url = co_so
-        self._dong_bo_tham_chieu({tk.danh_tinh_id for tk in tai_khoan
-                                  if tk.danh_tinh_id})
-        log.info("gemini-web: đã nạp %d tài khoản (%d gắn danh tính)",
-                 len(tai_khoan), sum(1 for tk in tai_khoan if tk.danh_tinh_id))
+        log.info("gemini-web: đã nạp %d tài khoản", len(tai_khoan))
 
     async def _kiem_co_so_url(self) -> None:
         if self._co_so_url:
@@ -1354,25 +1213,6 @@ class Module:
                 "chu_thich_tham_so": "các tham số temperature, top_p, max_tokens, parallel_tool_calls, safety không có tác dụng trên giao diện web"}
 
     async def dung(self):
-        # Gỡ tham chiếu danh tính mà CHÍNH thể hiện này đã đăng ký. Thể hiện thay
-        # thế (nap sau) đã ghi đè chu_so_huu nên không bị gỡ nhầm; thể hiện tạm
-        # dùng để kiểm ở bước cài cũng tự dọn sau finally.
-        try:
-            if self.kho is not None:
-                du_lieu = self.kho.doc("danh_tinh") or {}
-                if du_lieu.get("chu_so_huu") == id(self):
-                    for dt_id in du_lieu.get("gan") or []:
-                        try:
-                            danh_tinh.go(dt_id, "gemini-web")
-                        except Exception as e:
-                            log.warning("gemini-web: gỡ tham chiếu danh tính %s khi dừng: %s",
-                                        dt_id, type(e).__name__)
-                    self.kho.luu("danh_tinh",
-                                 {"anh_xa": du_lieu.get("anh_xa") or {},
-                                  "gan": [], "chu_so_huu": id(self)})
-        except Exception as e:
-            log.warning("gemini-web: dọn tham chiếu danh tính khi dừng: %s",
-                        type(e).__name__)
         with self._khoa:
             ds = list(self._tai_khoan)
             self._tai_khoan = []

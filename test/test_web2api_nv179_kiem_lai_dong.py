@@ -145,74 +145,24 @@ def _tao(api_, email: str, *, ho_so: str | None = None, trang_thai: str = "chua_
 # ── Kiểm lại đăng nhập ────────────────────────────────────────────────────────
 
 
-def test_kiem_lai_can_quan_tri(api):
+def test_kiem_lai_da_go_khoi_ai_nv219(api):
+    """NV219: POST /api/danh-tinh/{id}/kiem-lai đã gỡ khỏi phần AI (cùng tab Danh tính).
+
+    Cập nhật theo bài học NV98: endpoint kiểm lại đăng nhập qua danh tính không
+    còn; các ca kiểm tín hiệu cũ được thay bằng khẳng định 404/405.
+    """
     client, _ = api
     id_ = _tao(api, "a@example.com", ho_so=HO_SO)
-    assert client.post(f"/api/danh-tinh/{id_}/kiem-lai").status_code == 401
-    assert client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=_khach()).status_code == 403
-
-
-def test_kiem_lai_khong_co_danh_tinh_404(api):
-    client, _ = api
-    r = client.post("/api/danh-tinh/dt-khong-co/kiem-lai", headers=QT179)
-    assert r.status_code == 404
-    assert r.json()["error"]["code"] == "danh_tinh_khong_co"
-
-
-def test_kiem_lai_chua_co_ho_so_400(api):
-    client, _ = api
-    id_ = _tao(api, "chua-gan@example.com")
     r = client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=QT179)
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "chua_co_ho_so"
+    assert r.status_code in (404, 405), r.text
 
 
-def test_kiem_lai_co_tin_hieu_nang_trang_thai(api):
-    client, dk = api
-    id_ = _tao(api, "co-phien@example.com", ho_so=HO_SO)
-    dk.cookie = {"SID": "x"}  # hồ sơ còn cookie phiên → tín hiệu đã đăng nhập
-    r = client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=QT179)
-    assert r.status_code == 200, r.text
-    j = r.json()
-    assert j["da_dang_nhap"] is True
-    assert j["danh_tinh"]["trang_thai_dang_nhap"] == "dang_nhap"
-    assert danh_tinh.lay(id_)["trang_thai_dang_nhap"] == "dang_nhap"
-
-
-def test_kiem_lai_khong_tin_hieu_giu_nguyen(api):
-    client, dk = api
-    id_ = _tao(api, "khong-phien@example.com", ho_so=HO_SO)
-    dk.cookie = {}  # không cookie nào → không tín hiệu
-    r = client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=QT179)
-    assert r.status_code == 200, r.text
-    j = r.json()
-    assert j["da_dang_nhap"] is False
-    assert j["danh_tinh"]["trang_thai_dang_nhap"] == "chua_dang_nhap"
-    assert danh_tinh.lay(id_)["trang_thai_dang_nhap"] == "chua_dang_nhap"
-
-
-def test_kiem_lai_loi_tin_hieu_khong_ha_trang_thai(api):
-    """Bộ điều khiển ném lỗi (dịch vụ/workspace chết) → KHÔNG đoán: trạng thái đã
-    `dang_nhap` vẫn giữ nguyên, đường vẫn 200 với `da_dang_nhap=false`."""
-    client, dk = api
-    id_ = _tao(api, "da-dang-nhap@example.com", ho_so=HO_SO, trang_thai="dang_nhap")
-    dk.loi = RuntimeError("dịch vụ workspace chết")
-    r = client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=QT179)
-    assert r.status_code == 200, r.text
-    assert r.json()["da_dang_nhap"] is False
-    assert danh_tinh.lay(id_)["trang_thai_dang_nhap"] == "dang_nhap"
-
-
-def test_kiem_lai_khong_lo_bi_mat(api):
-    client, dk = api
-    id_ = _tao(api, "bi-mat@example.com", ho_so=HO_SO)
-    dk.cookie = {"SID": "gia-tri-cookie-bi-mat"}
-    r = client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=QT179)
-    assert r.status_code == 200
-    assert "gia-tri-cookie-bi-mat" not in r.text
-
-
-# ── Đóng · giữ phiên → cập nhật danh tính ─────────────────────────────────────
+def _dong(client, ho_so: str, giu_phien: bool = True):
+    return client.post(
+        f"/api/trinh-duyet/trinh-duyet-gia179/{ho_so}/dong",
+        json={"giu_phien": giu_phien},
+        headers=QT179,
+    )
 
 
 @pytest.fixture()
@@ -225,17 +175,6 @@ def api_dong(tmp_path, monkeypatch):
     client.close()
     _tra_lai_app_goc()
     novnc._VE.clear()
-    novnc._PHIEN.clear()
-    novnc._HO_SO.clear()
-    novnc._WS.clear()
-
-
-def _dong(client, ho_so: str, giu_phien: bool = True):
-    return client.post(
-        f"/api/trinh-duyet/trinh-duyet-gia179/{ho_so}/dong",
-        json={"giu_phien": giu_phien},
-        headers=QT179,
-    )
 
 
 def test_dong_can_quan_tri(api_dong):
@@ -312,21 +251,14 @@ def test_dong_khong_giu_phien_khong_kiem(api_dong):
 
 
 def test_khung_dang_ky_muc_danh_tinh():
-    """khung.js: mục «Danh tính» đăng ký trong DIEU_KIEN với neo #danh-tinh, cùng
-    điều kiện với «Tài khoản» (can AI, đã cài) — giao diện hiện mục mới mà không
-    cần sửa khung ở nơi khác."""
+    """NV219: mục «Danh tính» đã GỠ khỏi DIEU_KIEN trong khung.js (bỏ tab Danh tính
+    khỏi phần AI theo thiết kế chủ máy). Cập nhật theo bài học NV98."""
     import re
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[1] / "web" / "khung.js").read_text(encoding="utf-8")
     m = re.search(r"danh_tinh:\s*\{([^}]*)\}", src)
-    assert m, "khung.js chưa có dòng danh_tinh trong DIEU_KIEN"
-    dong = m.group(1)
-    assert "nhan: 'Danh tính'" in dong
-    assert "neo: 'danh-tinh'" in dong
-    assert "thuoc: 'ai'" in dong
-    assert "pham_vi: 'da_cai'" in dong
-    assert re.search(r"can:\s*\[AI\]", dong)
+    assert m is None, "khung.js vẫn còn dòng danh_tinh trong DIEU_KIEN (NV219 đã gỡ)"
 
 
 def test_trang_vnc_xa_phan_biet_hai_nghia_tai_dung():
@@ -343,12 +275,11 @@ def test_trang_vnc_xa_phan_biet_hai_nghia_tai_dung():
 
 
 def test_dong_sau_kiem_lai_nhat_quan(api_dong):
-    """Hai đường dùng CÙNG cơ chế: đóng giữ phiên cập nhật rồi kiểm-lại vẫn khớp."""
+    """NV219: endpoint kiem-lai đã gỡ; chỉ kiểm đường «đóng giữ phiên» vẫn cập
+    nhật trạng thái danh tính (phần giữ lại cho vnc-xa)."""
     client, dk = api_dong
     id_ = _tao(api_dong, "nhat-quan@example.com", ho_so=HO_SO)
     dk.cookie = {"SID": "x"}
     assert _dong(client, HO_SO).status_code == 200
-    r = client.post(f"/api/danh-tinh/{id_}/kiem-lai", headers=QT179)
-    assert r.status_code == 200
-    assert r.json()["da_dang_nhap"] is True
+    # Trạng thái được cập nhật qua đường đóng (không cần gọi kiem-lai riêng)
     assert danh_tinh.lay(id_)["trang_thai_dang_nhap"] == "dang_nhap"

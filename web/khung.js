@@ -50,7 +50,6 @@
     thiet_bi: { nhan: 'Thiết bị', can: ['thiet_bi'], pham_vi: 'da_cai' },
     ai: { nhan: 'AI', can: [AI], pham_vi: 'da_cai' },
     tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'tai-khoan', bieu_tuong: 'tai_khoan' },
-    danh_tinh: { nhan: 'Danh tính', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'danh-tinh', bieu_tuong: 'tai_khoan' },
     // Provider hiện từ lúc CÀI (chủ máy 11/10: «cài AI rồi phải thấy có tài khoản, có provider như demo») — chưa có khoá
     // thì trang hiện provider với tab Model / Tài khoản rỗng, chỉ chỗ thêm khoá.
     provider: { nhan: 'Provider', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'provider', bieu_tuong: 'provider' },

@@ -9,11 +9,6 @@ Hỗ trợ nhiều token và tự chuyển tài khoản khi lỗi, phân loại 
 CHƯA KIỂM trên dịch vụ thật); model không tài khoản nào có → lỗi rõ, không
 fallback âm thầm.
 
-KHÁC các module web trước: mỗi cấu hình có thể gắn ``danh_tinh_id`` của kho
-danh tính lõi (``app/danh_tinh.py``) — một Gmail nhập một lần ở lõi, module chỉ
-giữ token của MÌNH trỏ về danh tính đó. Khi gắn, module tự ghi mình vào sổ
-``gan`` của danh tính (lũy đẳng) để lõi chặn xoá danh tính còn tài khoản trỏ tới.
-
 Luồng giao tiếp học từ kho tham khảo chatgpt2api
 (``services/openai_backend_api.py``, ``services/account_service.py``,
 ``services/codex_token_refresh.py``): GET /backend-api/me kiểm token →
@@ -84,27 +79,6 @@ log = logging.getLogger("web2api.module.chatgpt-web")
 #: NV207: id module + thư mục module (đọc manifest khi cần trường cấu hình).
 MODULE_ID = "chatgpt-web"
 _THU_MUC_MODULE = Path(__file__).resolve().parent
-
-
-def _lay_danh_tinh(id_: str):
-    """Bản ghi công khai của danh tính; None nếu không có. Bọc để test chích."""
-    from app import danh_tinh
-    return danh_tinh.lay(id_)
-
-
-def _gan_danh_tinh(id_: str, module_id: str = TIEN_TO):
-    """Ghi module vào sổ gắn của danh tính (lũy đẳng). Bọc để test chích."""
-    from app import danh_tinh
-    return danh_tinh.gan(id_, module_id)
-
-
-def _che_email(email: str) -> str:
-    """Che email để hiển thị theo danh tính: giữ ký tự đầu + …@ + miền."""
-    email = str(email or "")
-    if "@" not in email:
-        return "…"
-    dau, mien = email.split("@", 1)
-    return f"{dau[:1]}…@{mien}" if dau else f"…@{mien}"
 
 
 class _TaiKhoan:
@@ -296,7 +270,6 @@ class Module:
         self._khoa = threading.Lock()
         self._tai_khoan: list[_TaiKhoan] = []
         self._co_so_url: str | None = None
-        self._danh_tinh_id: str | None = None
         # NV207: cấu hình dịch vụ may-dang-nhap cho vòng làm mới JWT.
         self._dich_vu_dang_nhap_url: str | None = None
         self._khoa_dich_vu_dang_nhap: str = ""
@@ -565,16 +538,6 @@ class Module:
         if self._tim_token(khoa) is not None:
             return True
         return self.mat_khau_da_luu(khoa) is not None
-
-    def danh_tinh_id_cua(self, khoa: str) -> str | None:
-        """id danh tính của tài khoản (NV94-d). Module gắn một danh tính cho
-        toàn bộ tài khoản trong cấu hình; tài khoản lạ → None."""
-        try:
-            if self._tim_token(str(khoa or "").strip().lower()) is None:
-                return None
-        except Exception:
-            return None
-        return self._danh_tinh_id
 
     def quy_tac_tin_hieu(self) -> list:
         """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
@@ -988,29 +951,6 @@ class Module:
     def _tao_client(self, token: str) -> ChatGPTWebClient:
         return ChatGPTWebClient(token, base_url=self._co_so_url or MAY_CHU_MAC_DINH)
 
-    # -- danh tính chung ----------------------------------------------------
-
-    def _kiem_danh_tinh(self, danh_tinh_id: str | None) -> dict | None:
-        """Kiểm danh tính tồn tại; không tồn tại → ValueError với thông điệp rõ."""
-        if not danh_tinh_id:
-            return None
-        ban_ghi = _lay_danh_tinh(danh_tinh_id)
-        if ban_ghi is None:
-            raise ValueError(
-                f"danh_tinh_id {danh_tinh_id!r} không tồn tại trong kho danh tính "
-                "— tạo trước ở /api/danh-tinh rồi gắn lại.")
-        return ban_ghi
-
-    def _thong_tin_danh_tinh(self) -> dict | None:
-        """Thông tin hiển thị theo danh tính (email đã che)."""
-        if not self._danh_tinh_id:
-            return None
-        ban_ghi = _lay_danh_tinh(self._danh_tinh_id) or {}
-        email = str(ban_ghi.get("email") or "")
-        return {"id": self._danh_tinh_id,
-                "nhan": str(ban_ghi.get("nhan") or ""),
-                "email_che": _che_email(email)}
-
     # -- hợp đồng lõi -------------------------------------------------------
 
     def nap(self, cau_hinh: dict) -> None:
@@ -1037,7 +977,6 @@ class Module:
             tk = _TaiKhoan(token)
             tk.ap_dung_ban_ghi(ban_ghi.get(khoa))
             tai_khoan.append(tk)
-        danh_tinh_id = str(cau_hinh.get("danh_tinh_id") or "").strip() or None
         co_so = str(cau_hinh.get("co_so_url") or "").strip().rstrip("/") or None
         # NV207: cấu hình vòng làm mới JWT (số sai khuôn → mặc định + cảnh báo).
         url_dn = str(cau_hinh.get("dich_vu_dang_nhap_url") or "").strip().rstrip("/") or None
@@ -1046,14 +985,12 @@ class Module:
         tran = _so_nguyen_duong(cau_hinh.get("jwt_tran_thu_ngay"), _JWT_TRAN_MAC_DINH)
         with self._khoa:
             self._tai_khoan = tai_khoan
-            self._danh_tinh_id = danh_tinh_id
             self._co_so_url = co_so
             self._dich_vu_dang_nhap_url = url_dn
             self._khoa_dich_vu_dang_nhap = khoa_dn
             self._jwt_nguong_ngay = nguong
             self._jwt_tran_thu_ngay = tran
-        log.info("chatgpt-web: đã nạp %d tài khoản%s", len(tai_khoan),
-                 f" (danh tính {danh_tinh_id})" if danh_tinh_id else "")
+        log.info("chatgpt-web: đã nạp %d tài khoản", len(tai_khoan))
 
     async def _kiem_co_so_url(self) -> None:
         if self._co_so_url:
@@ -1102,13 +1039,6 @@ class Module:
             except ValueError as e:
                 return {"ok": False, "ket_qua_tung_khoa": [],
                         "loi": f"dich_vu_dang_nhap_url không hợp lệ: {e}"}
-        try:
-            self._kiem_danh_tinh(self._danh_tinh_id)
-        except ValueError as e:
-            return {"ok": False, "ket_qua_tung_khoa": [], "loi": str(e)}
-        with self._khoa:
-            ds = list(self._tai_khoan)
-            danh_tinh_id = self._danh_tinh_id
         if not ds:
             return {"ok": False, "ket_qua_tung_khoa": [],
                     "loi": "Chưa nhập token nào (trường tai_khoan)."}
@@ -1146,21 +1076,11 @@ class Module:
                 ket_qua.append({"khoa": tk.ten_che(), "ok": True,
                                 "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
                                 "loi": None})
-        if danh_tinh_id and tot:
-            # Gắn vào sổ của danh tính để lõi biết còn tài khoản trỏ tới
-            # (chặn xoá danh tính khi còn tài khoản — NV72).
-            try:
-                _gan_danh_tinh(danh_tinh_id)
-            except Exception as e:
-                log.warning("chatgpt-web: không gắn được danh tính %s: %s",
-                            danh_tinh_id, type(e).__name__)
         if not tot:
             return {"ok": False, "ket_qua_tung_khoa": ket_qua,
                     "loi": "Không tài khoản nào dùng được (xem chi tiết từng khoá)."}
         ds_token = cau_hinh.get("tai_khoan") or []
         luu = {"tai_khoan": [ds_token[i] for i in tot if i < len(ds_token)]}
-        if danh_tinh_id:
-            luu["danh_tinh_id"] = danh_tinh_id
         if self._co_so_url:
             luu["co_so_url"] = self._co_so_url
         return {"ok": True, "ket_qua_tung_khoa": ket_qua, "loi": None,
@@ -1465,7 +1385,6 @@ class Module:
     async def suc_khoe(self):
         with self._khoa:
             ds = list(self._tai_khoan)
-        tt_danh_tinh = self._thong_tin_danh_tinh()
         muc = []
         for i, tk in enumerate(ds, start=1):
             bat_dau = time.monotonic()
@@ -1474,20 +1393,20 @@ class Module:
             except LoiXacThuc as e:
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": 0, "loi": str(e), "danh_tinh": tt_danh_tinh})
+                            "so_model": 0, "loi": str(e)})
             except LoiChatGPTWeb as e:
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": 0, "loi": str(e), "danh_tinh": tt_danh_tinh})
+                            "so_model": 0, "loi": str(e)})
             except Exception as e:
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": 0, "loi": type(e).__name__, "danh_tinh": tt_danh_tinh})
+                            "so_model": 0, "loi": type(e).__name__})
             else:
                 muc.append({"khoa": tk.ten_che(), "ok": True, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
                             "so_model": len(tk.model_duoc()), "loi": None,
-                            "danh_tinh": tt_danh_tinh})
+})
         ok = any(m["ok"] for m in muc)
         return {"ok": ok, "khoa": muc,
                 "ghi_chu": None if ds else "chưa cấu hình tài khoản nào"}
