@@ -235,11 +235,25 @@ class TestXoayTaiKhoan:
         assert mod._tai_khoan[0].khoe is False
         assert mod._tai_khoan[0].loai_loi == "khoa_hong"
 
-    def test_403_chuyen_tai_khoan(self, monkeypatch):
-        mod = nap_module(monkeypatch, {"token-hong": "403"}, ["token-hong", "token-tot"])
+    def test_403_o_buoc_chat_la_chan_bot_khong_dot_khoa(self, monkeypatch):
+        """403 ở bước chat (token đã qua /me) = chặn lượt tự động, KHÔNG phải
+        khoá hỏng: dừng ngay, không đánh dấu, không thử khoá kế (đỡ đốt cả kho)."""
+        mod = nap_module(monkeypatch, {"token-bi-chan": "403"},
+                         ["token-bi-chan", "token-tot"])
         ma, _, raw = chay(mod.chat(than_chat(), False))
-        assert ma == 200
-        assert "tra-loi-tich-luy" in raw.decode()
+        assert ma == 403
+        thong_diep = json.loads(raw.decode())["error"]["message"]
+        assert "openaicodex" in thong_diep
+        assert mod._tai_khoan[0].loai_loi is None
+        assert mod._tai_khoan[1].lan_dung_cuoi in (None, "")  # khoá kế không bị thử
+
+    def test_403_chan_bot_qua_luong_sse(self, monkeypatch):
+        mod = nap_module(monkeypatch, {"token-bi-chan": "403"},
+                         ["token-bi-chan", "token-tot"])
+        raw = chay(_thu_raw_sse(mod, than_chat()))
+        assert b"tra-loi-tich-luy" not in raw
+        assert mod._tai_khoan[0].loai_loi is None
+        assert mod._tai_khoan[1].lan_dung_cuoi in (None, "")
 
     def test_429_chuyen_roi_het_thi_429(self, monkeypatch):
         mod = nap_module(monkeypatch, {"token-hl": "429"}, ["token-hl", "token-tot"])

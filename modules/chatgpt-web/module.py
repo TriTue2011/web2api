@@ -27,7 +27,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -47,9 +46,8 @@ from .client import (
     MODEL_MAC_DINH,
     MO_HINH_HO_TRO,
     ChatGPTWebClient,
-    LoiCanThuCong,
-    LoiChanBot,
     LoiChatGPTWeb,
+    LoiChanBot,
     LoiHanMuc,
     LoiHetGio,
     LoiMayChu,
@@ -1169,15 +1167,7 @@ class Module:
                 "cau_hinh_luu": luu}
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
-        """Phân loại bằng mã HTTP + tín hiệu cấu trúc (bước gọi) — không dò chữ.
-
-        403 ở bước cài/xác thực token = khoá hỏng; 403 ở bước chat sau khi
-        token đã qua xác thực (đã lấy được chat-requirements) = lỗi TẠM của
-        lượt (chống bot), không phải lỗi khoá (NV211).
-        """
-        if ma == 403 and isinstance(boi_canh, dict) \
-                and boi_canh.get("buoc") == "chat" and boi_canh.get("da_xac_thuc"):
-            return "loi_tam"
+        """Phân loại bằng mã HTTP — không dò chữ trong thông điệp."""
         if ma in (401, 403):
             return "khoa_hong"
         if ma == 429:
@@ -1198,14 +1188,6 @@ class Module:
         return sorted(ds, key=lambda t: 0 if t.khoe else 1)
 
     def _danh_dau_loi(self, tk: _TaiKhoan, loai: str, chi_so: int) -> None:
-        if loai in ("bot_chan", "can_thu_cong"):
-            # NV211: lỗi TẠM của lượt (chống bot) hoặc cần xử lý thủ công —
-            # KHÔNG phải lỗi khoá: giữ khoẻ, không kích hoạt tự khôi phục,
-            # người gọi DỪNG xoay khoá (không đốt các khoá còn lại).
-            tk.loai_loi = loai
-            log.warning("chatgpt-web: tài khoản #%d (%s) lỗi %s — giữ khoá, dừng xoay",
-                        chi_so, tk.ten_che(), loai)
-            return
         tk.khoe = False
         tk.loai_loi = loai
         log.warning("chatgpt-web: tài khoản #%d (%s) lỗi %s, chuyển tài khoản",
@@ -1215,16 +1197,6 @@ class Module:
             # dò chữ) → kích hoạt tự khôi phục MỘT lần cho ĐÚNG tài khoản này
             # (single-flight trong app/tu_lam_moi; module vẫn chuyển tài khoản kế ngay).
             tu_lam_moi.bao_loi_phien(self, self._khoa_tu_token(tk.token))
-
-    def _toi_da_tai_khoan_moi_yeu_cau(self) -> int:
-        """Trần số khoá thử cho MỖI yêu cầu (NV211: không quét hết kho).
-
-        Đọc WEB2API_CHATGPT_TOI_DA_TAI_KHOAN, mặc định 3.
-        """
-        try:
-            return max(1, int(os.environ.get("WEB2API_CHATGPT_TOI_DA_TAI_KHOAN", "3")))
-        except (TypeError, ValueError):
-            return 3
 
     def _tai_khoan_cho_model(self, ten_than_thien: str) -> list[_TaiKhoan]:
         """Tài khoản khoẻ trước, CHỈ những tài khoản có model này (theo gói).
@@ -1309,17 +1281,14 @@ class Module:
             return 200, tieu_de, self._luong_chat(ds, tin_nhan, model_id, ten_model, slug_da_giai=slug_da_giai)
 
         loi_cuoi: LoiChatGPTWeb | None = None
-        # NV211: thử TỐI ĐA một vài khoá mỗi yêu cầu, không quét hết kho.
-        ds = ds[:self._toi_da_tai_khoan_moi_yeu_cau()]
         for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.token)
                 van_ban = await tk.client.generate_content(tin_nhan, ten_model, slug_da_giai=slug_da_giai)
-            except (LoiChanBot, LoiCanThuCong) as e:
-                # Lỗi TẠM của lượt / cần xử lý thủ công: giữ khoá, DỪNG xoay.
-                self._danh_dau_loi(
-                    tk, "bot_chan" if isinstance(e, LoiChanBot) else "can_thu_cong", i)
+            except LoiChanBot as e:
+                # Chặn lượt tự động: không phải lỗi khoá → không đánh dấu hỏng,
+                # không thử tiếp các khoá khác (cùng bị chặn, chỉ tốn lượt).
                 loi_cuoi = e
                 break
             except LoiXacThuc as e:
@@ -1352,8 +1321,7 @@ class Module:
         ma = loi_cuoi.ma if loi_cuoi else 502
         thong_diep = {
             401: "Mọi tài khoản chatgpt-web đều bị từ chối — token hết hạn hoặc không hợp lệ, dán lại.",
-            403: "chatgpt.com tạm từ chối lượt chat (chống bot hoặc cần xác minh thủ công) — "
-                 "không phải lỗi token, thử lại sau.",
+            403: "chatgpt.com chặn lượt chat tự động — không phải lỗi token. Dùng module openaicodex hoặc khoá API để chat ChatGPT.",
             429: "Mọi tài khoản chatgpt-web đều bị giới hạn lượt — thử lại sau.",
             504: "chatgpt.com không phản hồi kịp.",
         }.get(ma, "chatgpt.com lỗi phía máy chủ.")
@@ -1367,8 +1335,6 @@ class Module:
         tao_luc = int(time.time())
         yield chunk_vai_tro(model_id, hoan_thanh_id, tao_luc)
         loi_cuoi: LoiChatGPTWeb | None = None
-        # NV211: thử TỐI ĐA một vài khoá mỗi yêu cầu, không quét hết kho.
-        ds = ds[:self._toi_da_tai_khoan_moi_yeu_cau()]
         for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
@@ -1377,10 +1343,7 @@ class Module:
                 async for delta in tk.client.generate_content_stream(tin_nhan, ten_model, slug_da_giai=slug_da_giai):
                     da_ra_du_lieu = True
                     yield chunk_delta(model_id, hoan_thanh_id, tao_luc, delta)
-            except (LoiChanBot, LoiCanThuCong) as e:
-                # Lỗi TẠM của lượt / cần xử lý thủ công: giữ khoá, DỪNG xoay.
-                self._danh_dau_loi(
-                    tk, "bot_chan" if isinstance(e, LoiChanBot) else "can_thu_cong", i)
+            except LoiChanBot as e:
                 loi_cuoi = e
                 break
             except LoiXacThuc as e:
@@ -1499,48 +1462,32 @@ class Module:
             })
         return ra
 
-    async def suc_khoe(self, sau: bool = False):
-        """Kiểm sức khoẻ từng khoá.
-
-        Mặc định: /backend-api/me (rẻ — chỉ chứng minh «token còn sống»).
-        sau=True (NV211, tuỳ chọn): thêm sentinel + một lượt chat-requirements
-        (KHÔNG tốn lượt chat) để báo «sẵn sàng chat», tách khỏi «token còn sống».
-        """
+    async def suc_khoe(self):
         with self._khoa:
             ds = list(self._tai_khoan)
         tt_danh_tinh = self._thong_tin_danh_tinh()
         muc = []
         for i, tk in enumerate(ds, start=1):
             bat_dau = time.monotonic()
-            san_sang = None
             try:
                 await self._init_tai_khoan(tk)
-                if sau:
-                    if tk.client is None:
-                        tk.client = self._tao_client(tk.token)
-                    san_sang = await tk.client.kiem_tra_san_sang_chat()
             except LoiXacThuc as e:
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": 0, "loi": str(e), "danh_tinh": tt_danh_tinh,
-                            "san_sang_chat": False})
-                continue
+                            "so_model": 0, "loi": str(e), "danh_tinh": tt_danh_tinh})
             except LoiChatGPTWeb as e:
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": 0, "loi": str(e), "danh_tinh": tt_danh_tinh,
-                            "san_sang_chat": False})
+                            "so_model": 0, "loi": str(e), "danh_tinh": tt_danh_tinh})
             except Exception as e:
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
-                            "so_model": 0, "loi": type(e).__name__, "danh_tinh": tt_danh_tinh,
-                            "san_sang_chat": False})
+                            "so_model": 0, "loi": type(e).__name__, "danh_tinh": tt_danh_tinh})
             else:
                 muc.append({"khoa": tk.ten_che(), "ok": True, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
                             "so_model": len(tk.model_duoc()), "loi": None,
-                            "danh_tinh": tt_danh_tinh,
-                            "san_sang_chat": san_sang})
+                            "danh_tinh": tt_danh_tinh})
         ok = any(m["ok"] for m in muc)
         return {"ok": ok, "khoa": muc,
                 "ghi_chu": None if ds else "chưa cấu hình tài khoản nào"}
