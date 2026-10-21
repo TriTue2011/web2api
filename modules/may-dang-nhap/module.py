@@ -98,8 +98,24 @@ _kiem_url_dich_vu = kiem_url_lan
 
 # ── An toàn tham số ──────────────────────────────────────────────────────────
 
+def _ten_ho_so_dich_vu(dinh_danh: Any) -> str:
+    """Tên hồ sơ trình duyệt mà DỊCH VỤ chấp nhận, suy từ địa chỉ email.
+
+    Dịch vụ chỉ nhận chữ/số/«-»/«_» (browser_pool._PROFILE_SLUG) và tự ghép hồ sơ với
+    tài khoản trong két theo phần trước «@» (accounts_db.resolve_account). Quy ước
+    của c2a: ``google-`` + phần trước «@» với MỌI ký tự không phải chữ/số đổi thành
+    «-». Truyền thẳng email làm tên hồ sơ làm lượt đăng nhập sập ngay
+    (ValueError «Tên profile không hợp lệ») — đo thật 21/10/2026. Đã là tên hồ sơ
+    (không có «@») thì giữ nguyên."""
+    s = str(dinh_danh or "").strip().lower()
+    if "@" not in s:
+        return s
+    phan_dau = re.sub(r"[^a-z0-9]", "-", s.split("@", 1)[0])[:56]
+    return ("google-" + phan_dau) if phan_dau.strip("-") else ""
+
+
 def _kiem_ho_so(ho_so: Any) -> str:
-    s = str(ho_so or "").strip()
+    s = _ten_ho_so_dich_vu(ho_so) if "@" in str(ho_so or "") else str(ho_so or "").strip()
     if not s or len(s) > 64:
         raise ValueError("tham_so_khong_hop_le")
     for cam in _KY_TU_CAM_DUONG_DAN:
@@ -991,7 +1007,7 @@ class Module:
         # 5. Bắt đầu lượt đăng nhập nền trên dịch vụ (trả ngay phía dịch vụ)
         bat_dau = await self._goi(
             "POST", "/v1/session/auto-login-saved",
-            json_body={"profile": email_tho})
+            json_body={"profile": _ten_ho_so_dich_vu(email_tho)})
         if not isinstance(bat_dau, dict) or not bat_dau.get("ok"):
             st["hong_lt"][khoa_tk] = hong_lt + 1
             return self._loi_dich_vu_thanh_ket_qua(bat_dau, khoa_tk)

@@ -13,6 +13,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -51,6 +52,8 @@ class DichVuGia:
     def __init__(self):
         self.che_do = "thanh_cong"
         self.da_luu = []          # thân POST /v1/accounts/saved
+        self.ho_so_nhan = []      # tên hồ sơ nhận ở auto-login-saved
+        self.ho_so_hoi = []       # tên hồ sơ nhận ở auto-login-status
         self.ma_2fa = []          # mã đã gửi tới /auto-login-2fa-code
         self.so_lan_goi = 0
         self._chuoi = []
@@ -99,12 +102,20 @@ class DichVuGia:
             than = await request.json()
             dv._dat_chuoi()
             dv.so_lan_goi += 1
+            dv.ho_so_nhan.append(than.get("profile"))
+            # Như dịch vụ THẬT (browser_pool._PROFILE_SLUG): tên hồ sơ chỉ chữ/số/-/_ ≤ 64 ký tự,
+            # sai thì lượt đăng nhập sập ngay (state=failed). Dịch vụ giả cũ nhận mọi tên nên lỗi
+            # «gửi nguyên email làm tên hồ sơ» lọt (đo thật 21/10/2026).
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", str(than.get("profile") or "")):
+                return JSONResponse({"profile": than.get("profile"), "state": "failed",
+                                     "message": "", "error": "Tên profile không hợp lệ", "ok": True})
             return JSONResponse({"profile": than.get("profile"),
                                  "state": "starting", "message": "Khởi tạo"})
 
         async def trang_thai(request):
             tt = dv._tiep()
             dv.so_lan_goi += 1
+            dv.ho_so_hoi.append(request.path_params["profile"])
             tra = {"profile": request.path_params["profile"], "state": tt,
                    "message": f"giả: {tt}", "error": ""}
             if tt == "failed" and dv.che_do == "sai_mat_khau":
@@ -193,6 +204,24 @@ def test_dang_nhap_thanh_cong(mod, dich_vu_gia):
     assert than["password"] == MAT_KHAU
     assert than["totp_secret"] == TOTP_SECRET
     assert than["loai"] == "google"
+
+
+@pytest.mark.parametrize("email, ten_mong_doi", [
+    ("nguoi.mot@example.com", "google-nguoi-mot"),
+    ("Nguoi.E+Nhan@Example.com", "google-nguoi-e-nhan"),
+    ("abc_def@example.com", "google-abc-def"),
+])
+def test_ten_ho_so_gui_dich_vu_hop_le_khong_phai_email(mod, dich_vu_gia, email, ten_mong_doi):
+    """Đo thật 21/10/2026: gửi NGUYÊN email làm tên hồ sơ → dịch vụ thật sập («Tên profile không hợp lệ»).
+    Tên hồ sơ phải theo quy ước dịch vụ: google- + phần trước @, ký tự lạ → «-»; cả lúc khởi động lẫn lúc hỏi tiến độ."""
+    dich_vu_gia.che_do = "thanh_cong"
+    kq = _chay(mod.dang_nhap(_dong(email=email)))
+    assert kq.thanh_cong is True, kq
+    assert dich_vu_gia.ho_so_nhan == [ten_mong_doi]
+    assert dich_vu_gia.ho_so_hoi and all(h == ten_mong_doi for h in dich_vu_gia.ho_so_hoi)
+    # tien_do nhận email của tài khoản (lõi truyền email) → cũng đổi sang tên hồ sơ hợp lệ
+    _chay(mod.tien_do(email))
+    assert dich_vu_gia.ho_so_hoi[-1] == ten_mong_doi
 
 
 def test_dang_nhap_can_2fa_roi_gui_ma(mod, dich_vu_gia):
