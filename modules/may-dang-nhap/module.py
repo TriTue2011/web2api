@@ -476,19 +476,19 @@ class Module:
 
     async def thuc_the(self, loc: dict | None = None) -> list[dict]:
         doc_actions = [
-            {"hanh_dong": k, "rui_ro": "doc", "mo_ta": f"Hành động đọc «{k}» trên dịch vụ c2a."}
+            {"hanh_dong": k, "rui_ro": "doc", "mo_ta": f"Hành động đọc «{k}» trên dịch vụ máy đăng nhập."}
             for k, v in HANH_DONG.items()
             if v[2] == "doc"
         ]
         ghi_actions = [
-            {"hanh_dong": k, "rui_ro": "ghi", "mo_ta": f"Hành động ghi «{k}» trên dịch vụ c2a."}
+            {"hanh_dong": k, "rui_ro": "ghi", "mo_ta": f"Hành động ghi «{k}» trên dịch vụ máy đăng nhập."}
             for k, v in HANH_DONG.items()
             if v[2] == "ghi"
         ]
         return [
             {
                 "id": f"{self.tien_to}.cong_cu_doc",
-                "ten": "Công cụ đọc trạng thái đăng nhập c2a",
+                "ten": "Công cụ đọc trạng thái máy đăng nhập",
                 "loai": "cong_cu",
                 "khu": "he_thong",
                 "thuoc_tinh": {"dich_vu": "may-dang-nhap"},
@@ -497,7 +497,7 @@ class Module:
             },
             {
                 "id": f"{self.tien_to}.cong_cu_ghi",
-                "ten": "Công cụ thao tác đăng nhập c2a",
+                "ten": "Công cụ thao tác máy đăng nhập",
                 "loai": "cong_cu",
                 "khu": "he_thong",
                 "thuoc_tinh": {"dich_vu": "may-dang-nhap"},
