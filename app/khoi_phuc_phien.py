@@ -27,6 +27,7 @@ import asyncio
 import contextlib
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -924,3 +925,161 @@ def _ho_so_cua(module: Any, module_id: str, khoa: str) -> str:
         except Exception as e:
             log.warning("khoi-phuc: ho_so_trinh_duyet lỗi: %s", type(e).__name__)
     return f"{module_id}-{khoa}"
+
+
+# ── NV235-b5: thang khôi phục T0–T3 theo đúng c2a ──────────────────────────
+# Ánh xạ từ c2a ``services/account_recovery.py::_dang_nhap_lai_theo_thang``:
+#   T0  kiểm phiên rẻ (không trình duyệt) — provider tự định nghĩa
+#       ``kiem_phien() -> 'ok'|'mat'|'ban'|'chua_ro'``; 'ban'/'chua_ro' = hoãn
+#       im lặng, không báo động (đúng c2a).
+#   T1  nghỉ rồi kiểm lại (rẻ, không mời captcha) — tối đa 2 lượt.
+#   T2  đăng nhập lại (``dang_nhap_tu_dong`` của module; với tài khoản
+#       Google-SSO phía dịch vụ đi ``relogin-via-google``/``auto-login-saved``).
+#   T3  đăng nhập xong kiểm lại vài lượt; chỉ 'ok' mới xác nhận khôi phục.
+# Debounce 1800s/(module, khoá); ngân sách 1200s KHÔNG tính giờ xếp hàng.
+
+#: T1/T3: nghỉ giữa các lượt kiểm lại (giây) — c2a ``_FLOW_NGHI_S``.
+T1_NGHI_GIAY = 45.0
+#: T1/T3: tối đa lượt kiểm lại — c2a ``_FLOW_KIEM_LAI``.
+T1_KIEM_LAI_TOI_DA = 2
+#: Debounce mỗi (module, khoá) — c2a ``_GRELOGIN_COOLDOWN_S``.
+T_DEBOUNCE_GIAY = 1800.0
+#: Ngân sách khôi phục — c2a ``_RECOVER_BUDGET_S`` (không tính giờ xếp hàng).
+T_NGAN_SACH_GIAY = 1200.0
+
+_LAN_KHOI_PHUC_THEO_KHOA: dict[str, float] = {}
+
+
+def _khoa_debounce(module_id: str, khoa: str) -> str:
+    return f"{module_id}:{khoa}"
+
+
+def _qua_debounce(module_id: str, khoa: str) -> bool:
+    """Còn trong debounce 1800s không (c2a: bỏ lượt im lặng)."""
+    lan = _LAN_KHOI_PHUC_THEO_KHOA.get(_khoa_debounce(module_id, khoa), 0.0)
+    return time.time() - lan < T_DEBOUNCE_GIAY
+
+
+def _ghi_debounce(module_id: str, khoa: str) -> None:
+    _LAN_KHOI_PHUC_THEO_KHOA[_khoa_debounce(module_id, khoa)] = time.time()
+
+
+async def khoi_phuc_theo_tang_c2a(
+        module: Any, tai_khoan: TaiKhoanCanKhoiPhuc, *,
+        kiem_phien=None,
+        mo_novnc=None,
+        nguoi_dung_id: str | None = None) -> KetQuaKhoiPhuc:
+    """Khôi phục một tài khoản theo thang T0–T3 của c2a.
+
+    - ``kiem_phien``: hàm async ``-> 'ok'|'mat'|'ban'|'chua_ro'`` do provider
+      định nghĩa, RẺ và không mở trình duyệt (vd Claude: đọc sessionKey trên
+      đĩa + verify thật; ChatGPT: kiểm JWT trong kho). None → dùng tầng (a)
+      ``lam_moi_phien`` của module làm T0.
+    - Mỗi tầng ghi log; hết đường → tầng (d) cần người kèm danh sách đã thử.
+    - Grok ``need_manual`` (Cloudflare) → «cần người» + hướng dẫn noVNC,
+      KHÔNG thử lại vòng (đúng c2a).
+    Không ném ngoại lệ ra ngoài.
+    """
+    module_id = _id_cua_module(module)
+    khoa = kiem_khoa(tai_khoan.khoa)
+    if _qua_debounce(module_id, khoa):
+        log.info("khoi-phuc-t0t3: %s/%s còn trong debounce, bỏ lượt",
+                 module_id, khoa)
+        return KetQuaKhoiPhuc(False, tang="T0", ma_loi="dang_trong_debounce")
+    _ghi_debounce(module_id, khoa)
+
+    bat_dau = time.time()
+    da_thu: list[str] = []
+
+    def _con_gio() -> bool:
+        return time.time() - bat_dau < T_NGAN_SACH_GIAY
+
+    async def _kiem() -> str:
+        """'ok'|'mat'|'ban'|'chua_ro' — không ném."""
+        if kiem_phien is not None:
+            try:
+                tt = await kiem_phien()
+            except Exception as e:
+                log.warning("khoi-phuc-t0t3: kiem_phien lỗi: %s",
+                            type(e).__name__)
+                return "chua_ro"
+            return tt if tt in ("ok", "mat", "ban", "chua_ro") else "chua_ro"
+        fn = getattr(module, "lam_moi_phien", None)
+        if not callable(fn):
+            return "chua_ro"
+        kq = await _goi_an_toan(fn, TANG_A, khoa)
+        if kq.thanh_cong:
+            return "ok"
+        if kq.can_nguoi:
+            return "ban"
+        return "mat"
+
+    async def _can_nguoi(ly_do: str, huong_dan: str = "") -> KetQuaKhoiPhuc:
+        return await _vao_can_nguoi(
+            module_id, khoa, ly_do, mo_novnc, nguoi_dung_id,
+            _ho_so_cua(module, module_id, khoa), huong_dan)
+
+    # ── T0: phiên còn sống không? ──
+    tt = await _kiem()
+    if tt in ("ban", "chua_ro"):
+        log.info("khoi-phuc-t0t3: %s/%s hoãn (phiên %s)", module_id, khoa, tt)
+        return KetQuaKhoiPhuc(False, tang="T0", ma_loi="hoan_phien_ban")
+    da_thu.append("T0-kiem-phien")
+    if tt == "ok":
+        _dat_lai_hong_b(module_id, khoa)
+        log.info("khoi-phuc-t0t3: %s/%s xong ở T0 (phiên còn sống)",
+                 module_id, khoa)
+        return KetQuaKhoiPhuc(True, tang="T0")
+
+    # ── T1: nghỉ rồi kiểm lại — rẻ, không mời captcha ──
+    for lan in range(1, T1_KIEM_LAI_TOI_DA + 1):
+        if not _con_gio():
+            break
+        da_thu.append(f"T1-kiem-lai-{lan}")
+        await asyncio.sleep(T1_NGHI_GIAY)
+        tt = await _kiem()
+        if tt == "ok":
+            _dat_lai_hong_b(module_id, khoa)
+            log.info("khoi-phuc-t0t3: %s/%s xong ở T1 (phiên lên lại)",
+                     module_id, khoa)
+            return KetQuaKhoiPhuc(True, tang="T1")
+        if tt in ("ban", "chua_ro"):
+            return KetQuaKhoiPhuc(False, tang="T1", ma_loi="hoan_phien_ban")
+
+    # ── T2: đăng nhập lại ──
+    dang_nhap_td = getattr(module, "dang_nhap_tu_dong", None)
+    dang_nhap_ok = False
+    if _con_gio() and callable(dang_nhap_td):
+        da_thu.append("T2-dang-nhap-lai")
+        tk = TaiKhoanCanKhoiPhuc(khoa=khoa, email=tai_khoan.email,
+                                 mat_khau=tai_khoan.mat_khau)
+        kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk, None)
+        if kq.can_nguoi:
+            # Grok need_manual (Cloudflare) và mọi tín hiệu cần người khác:
+            # dừng ngay, hướng dẫn noVNC, KHÔNG thử lại vòng.
+            return await _can_nguoi(
+                kq.ma_loi or "can_nguoi",
+                kq.huong_dan or "Mở noVNC xử lý bước xác minh rồi bấm "
+                                "«Kiểm tra lại».")
+        dang_nhap_ok = kq.thanh_cong
+
+    # ── T3: đăng nhập xong kiểm lại vài lượt ──
+    if dang_nhap_ok:
+        for lan in range(1, T1_KIEM_LAI_TOI_DA + 1):
+            if not _con_gio():
+                break
+            da_thu.append(f"T3-kiem-lai-{lan}")
+            tt = await _kiem()
+            if tt in ("ban", "chua_ro"):
+                return KetQuaKhoiPhuc(False, tang="T3", ma_loi="hoan_phien_ban")
+            if tt == "ok":
+                _dat_lai_hong_b(module_id, khoa)
+                log.info("khoi-phuc-t0t3: %s/%s xong ở T3", module_id, khoa)
+                return KetQuaKhoiPhuc(True, tang="T3")
+            if lan < T1_KIEM_LAI_TOI_DA:
+                await asyncio.sleep(T1_NGHI_GIAY)
+
+    # ── Hết đường: nói ĐÃ THỬ GÌ ──
+    return await _can_nguoi(
+        "khong_tu_khoi_phuc_duoc",
+        f"Đã thử: {' → '.join(da_thu) or 'không có tầng nào chạy được'}.")
