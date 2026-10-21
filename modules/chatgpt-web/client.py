@@ -33,9 +33,14 @@ Module này CHƯA làm: token do người dùng dán tay; hết hạn thì dán 
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import hashlib
 import json
 import logging
+import random
 import re
+import time
 import uuid
 
 import httpx
@@ -97,8 +102,131 @@ class LoiHetGio(LoiChatGPTWeb):
         super().__init__(504, thong_diep)
 
 
+class LoiChanBot(LoiChatGPTWeb):
+    """403 ở bước hội thoại SAU KHI token đã qua xác thực và đã lấy được
+    chat-requirements — lỗi TẠM của lượt (chống bot), KHÔNG phải lỗi token.
+
+    Phân loại theo bản chất (mã HTTP + bước gọi), không dò chuỗi đáp án.
+    """
+
+    def __init__(self, thong_diep: str = "chatgpt.com tạm từ chối lượt chat "
+               "(chống bot) — không phải lỗi token, thử lại sau"):
+        super().__init__(403, thong_diep)
+
+
+class LoiCanThuCong(LoiChatGPTWeb):
+    """chat-requirements đòi turnstile — KHÔNG tự giải CAPTCHA."""
+
+    def __init__(self, thong_diep: str = "chatgpt.com yêu cầu xác minh thủ công "
+               "(turnstile) — cần xử lý thủ công"):
+        super().__init__(403, thong_diep)
+
+
+class LoiPoWHetGio(LoiChatGPTWeb):
+    """Không giải xong bằng chứng công việc (PoW) trong trần thời gian."""
+
+    def __init__(self, thong_diep: str = "không giải được bằng chứng công việc kịp thời"):
+        super().__init__(504, thong_diep)
+
+
 class ModelKhongCo(ValueError):
     """Tên model người dùng chỉ đích danh nhưng module không biết → 400."""
+
+
+# ---------------------------------------------------------------------------
+# Lớp chống bot sentinel + bằng chứng công việc (PoW) — NV211.
+#
+# Luồng HỌC từ kho tham khảo chatgpt2api (chỉ đọc, viết lại sạch):
+#  1. POST /backend-api/sentinel/chat-requirements với {"p": <token "p" kiểu cũ>}
+#     → {"token": ..., "proofofwork": {"required", "seed", "difficulty"},
+#        "turnstile": {"required", "dx"}}
+#  2. Nếu proofofwork.required: giải sha3_512(seed + b64(cấu hình)) sao cho
+#     tiền tố digest ≤ difficulty → "gAAAAAB" + đáp án, gửi trong tiêu đề
+#     OpenAI-Sentinel-Proof-Token.
+#  3. Nếu turnstile.required: KHÔNG tự giải CAPTCHA → LoiCanThuCong.
+# PoW chạy đồng bộ (tốn CPU) — phía gọi bọc trong executor, LUÔN có trần thời
+# gian để không treo vòng sự kiện (chống DoS).
+# ---------------------------------------------------------------------------
+
+_DUONG_CHAT_REQUIREMENTS = "/backend-api/sentinel/chat-requirements"
+_POW_SDK_MAC_DINH = "https://chatgpt.com/backend-api/sentinel/sdk.js"
+
+_SEC_CH_UA = ('"Chromium";v="126", "Google Chrome";v="126", "Not-A.Brand";v="99"')
+
+
+def _cau_hinh_pow(user_agent: str) -> list:
+    """Cấu hình môi trường trình duyệt đưa vào PoW (cấu trúc theo giao thức)."""
+    return [
+        random.choice([3000, 4000, 5000]),
+        time.strftime("%a %b %d %Y %H:%M:%S") + " GMT-0500 (Eastern Standard Time)",
+        4294705152,
+        0,
+        user_agent,
+        _POW_SDK_MAC_DINH,
+        "",
+        "en-US",
+        "en-US,es-US,en,es",
+        0,
+        "webdriver−false",
+        "location",
+        random.choice(["window", "self", "document", "navigator"]),
+        time.perf_counter() * 1000,
+        str(uuid.uuid4()),
+        "",
+        random.choice([8, 16, 24, 32]),
+        time.time() * 1000 - (time.perf_counter() * 1000),
+    ]
+
+
+def giai_proof_of_work(seed: str, difficulty: str, user_agent: str,
+                       thoi_gian_toi_da: float = 10.0) -> str:
+    """Giải PoW: tìm i sao cho sha3_512(seed + b64(cấu hình(i))) có tiền tố
+    digest ≤ difficulty. Trả "gAAAAAB" + đáp án. Hết trần → LoiPoWHetGio.
+
+    Hàm đồng bộ tốn CPU — phía gọi phải chạy trong executor.
+    """
+    try:
+        muc_tieu = bytes.fromhex(difficulty)
+    except ValueError as e:
+        raise LoiMayChu("độ khó PoW không đúng cấu trúc") from e
+    do_dai = len(muc_tieu)
+    if do_dai == 0 or do_dai > 64:
+        raise LoiMayChu("độ khó PoW không đúng cấu trúc")
+    seed_b = seed.encode("utf-8")
+    cau_hinh = _cau_hinh_pow(user_agent)
+    tinh_1 = (json.dumps(cau_hinh[:3], separators=(",", ":"))[:-1] + ",").encode()
+    tinh_2 = ("," + json.dumps(cau_hinh[4:9], separators=(",", ":"))[1:-1] + ",").encode()
+    tinh_3 = ("," + json.dumps(cau_hinh[10:], separators=(",", ":"))[1:]).encode()
+    han = time.monotonic() + max(0.1, thoi_gian_toi_da)
+    i = 0
+    while True:
+        if i % 2048 == 0 and time.monotonic() > han:
+            raise LoiPoWHetGio(
+                f"không giải xong PoW trong {thoi_gian_toi_da}s (seed đã cho)")
+        cuoi = tinh_1 + str(i).encode() + tinh_2 + str(i >> 1).encode() + tinh_3
+        ma_hoa = base64.b64encode(cuoi)
+        if hashlib.sha3_512(seed_b + ma_hoa).digest()[:do_dai] <= muc_tieu:
+            return "gAAAAAB" + ma_hoa.decode("ascii")
+        i += 1
+
+
+def token_yeu_cau_chat(user_agent: str) -> str:
+    """Token "p" kiểu cũ cho lần gọi chat-requirements đầu (độ khó thấp cố định)."""
+    seed = format(random.random())
+    cau_hinh = _cau_hinh_pow(user_agent)
+    muc_tieu = bytes.fromhex("0fffff")
+    do_dai = len(muc_tieu)
+    seed_b = seed.encode("utf-8")
+    tinh_1 = (json.dumps(cau_hinh[:3], separators=(",", ":"))[:-1] + ",").encode()
+    tinh_2 = ("," + json.dumps(cau_hinh[4:9], separators=(",", ":"))[1:-1] + ",").encode()
+    tinh_3 = ("," + json.dumps(cau_hinh[10:], separators=(",", ":"))[1:]).encode()
+    for i in range(500000):
+        cuoi = tinh_1 + str(i).encode() + tinh_2 + str(i >> 1).encode() + tinh_3
+        ma_hoa = base64.b64encode(cuoi)
+        if hashlib.sha3_512(seed_b + ma_hoa).digest()[:do_dai] <= muc_tieu:
+            return "gAAAAAC" + ma_hoa.decode("ascii")
+    # Dự phòng (hiếm): vẫn trả token đúng định dạng để máy chủ tự quyết.
+    return "gAAAAAC" + base64.b64encode(f'"{seed}"'.encode()).decode("ascii")
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +428,10 @@ class ChatGPTWebClient:
         self._token = token
         self._da_init = False
         self._dong = False
+        # oai-device-id ỔN ĐỊNH cho mỗi khoá: suy ra quyết định từ token
+        # (không lưu thêm trạng thái), khoá khác nhau → id khác nhau.
+        self._device_id = str(uuid.uuid5(
+            uuid.NAMESPACE_OID, hashlib.sha256(token.encode("utf-8")).hexdigest()))
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             transport=transport,
@@ -311,6 +443,12 @@ class ChatGPTWebClient:
                 "Authorization": f"Bearer {token}",
                 "Origin": MAY_CHU_MAC_DINH,
                 "Referer": MAY_CHU_MAC_DINH + "/",
+                # Nhất quán với UA Chrome 126 ở mọi lượt gọi (NV211).
+                "Sec-Ch-Ua": _SEC_CH_UA,
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "oai-device-id": self._device_id,
+                "oai-language": "vi-VN",
             },
         )
 
@@ -411,24 +549,109 @@ class ChatGPTWebClient:
                 break
         return ket_qua
 
-    def _tieu_de_hoi_thoai(self) -> dict:
-        return {
+    def _tieu_de_hoi_thoai(self, sentinel: dict | None = None) -> dict:
+        td = {
             "Accept": "text/event-stream",
             "Content-Type": "application/json",
             "X-OpenAI-Target-Path": _DUONG_HOI_THOAI,
             "X-OpenAI-Target-Route": _DUONG_HOI_THOAI,
         }
+        if sentinel:
+            # Không bao giờ ghi token sentinel ra nhật ký (chỉ gắn vào tiêu đề).
+            td["OpenAI-Sentinel-Chat-Requirements-Token"] = sentinel["token"]
+            if sentinel.get("proof"):
+                td["OpenAI-Sentinel-Proof-Token"] = sentinel["proof"]
+        return td
+
+    def _kiem_ma_chat(self, ma: int, co_sentinel: bool) -> None:
+        """Phân loại mã ở bước hội thoại theo bản chất:
+
+        - 401: token bị từ chối → LoiXacThuc (khoá hỏng).
+        - 403 mà token vừa qua chat-requirements (co_sentinel): máy chủ đã
+          chấp nhận token nhưng chặn lượt này (chống bot) → LoiChanBot, lỗi
+          TẠM của lượt, KHÔNG đánh dấu khoá hỏng.
+        - 403 khi không lấy được sentinel (máy chủ không hỗ trợ): giữ hành vi
+          cũ → LoiXacThuc.
+        """
+        if ma == 401:
+            raise LoiXacThuc(f"token không được chấp nhận ở bước chat (HTTP 401)")
+        if ma == 403:
+            if co_sentinel:
+                raise LoiChanBot()
+            raise LoiXacThuc(f"token không được chấp nhận ở bước chat (HTTP 403)")
+        if ma == 429:
+            raise LoiHanMuc("giới hạn lượt gọi ở bước chat")
+        if ma >= 500:
+            raise LoiMayChu(f"máy chủ lỗi ở bước chat (HTTP {ma})")
+        if ma >= 400:
+            raise LoiMayChu(f"đáp án lạ ở bước chat (HTTP {ma})")
+
+    async def _lay_sentinel(self, thoi_gian_pow: float = 10.0) -> dict | None:
+        """Lấy chat-requirements + giải PoW nếu cần.
+
+        Trả {"token", "proof"} hoặc None khi máy chủ không có endpoint này
+        (tương thích ngược với máy chủ giả cũ — khi đó hội thoại gửi không
+        kèm tiêu đề sentinel như trước NV211).
+        """
+        if self._dong:
+            raise LoiMayChu("client đã đóng")
+        try:
+            r = await self._client.post(
+                _DUONG_CHAT_REQUIREMENTS, json={"p": token_yeu_cau_chat(_UA)})
+        except httpx.TimeoutException as e:
+            raise LoiHetGio(f"hết giờ chờ chat-requirements: {type(e).__name__}") from None
+        except httpx.HTTPError as e:
+            raise LoiMayChu(f"không nối được chatgpt.com: {type(e).__name__}") from None
+        if r.status_code in (401, 403):
+            raise LoiXacThuc(
+                f"token không được chấp nhận ở bước chat-requirements "
+                f"(HTTP {r.status_code})")
+        if r.status_code != 200:
+            log.debug("chatgpt-web: máy chủ không có chat-requirements (HTTP %s)",
+                      r.status_code)
+            return None
+        try:
+            du_lieu = r.json()
+        except ValueError:
+            return None
+        if not isinstance(du_lieu, dict) or not du_lieu.get("token"):
+            return None
+        turnstile = du_lieu.get("turnstile") or {}
+        if isinstance(turnstile, dict) and turnstile.get("required"):
+            # KHÔNG tự giải CAPTCHA/Turnstile — trả lỗi rõ để người xử lý.
+            raise LoiCanThuCong()
+        pow_info = du_lieu.get("proofofwork") or {}
+        proof = ""
+        if isinstance(pow_info, dict) and pow_info.get("required"):
+            seed = str(pow_info.get("seed") or "")
+            do_kho = str(pow_info.get("difficulty") or "")
+            if not seed or not do_kho:
+                raise LoiMayChu("chat-requirements thiếu seed/difficulty")
+            # PoW tốn CPU — chạy trong executor, LUÔN có trần thời gian.
+            proof = await asyncio.to_thread(
+                giai_proof_of_work, seed, do_kho, _UA, thoi_gian_pow)
+        return {"token": str(du_lieu["token"]), "proof": proof}
+
+    async def kiem_tra_san_sang_chat(self) -> bool:
+        """Mức «sâu» của kiểm sức khoẻ: sentinel + chat-requirements qua được
+        (KHÔNG tốn lượt chat)."""
+        try:
+            return await self._lay_sentinel() is not None
+        except LoiChatGPTWeb:
+            return False
 
     async def generate_content_stream(self, tin_nhan: list[dict], model: str | None = None, slug_da_giai: str | None = None):
         """Async generator ra từng delta văn bản của assistant."""
         slug = slug_da_giai if slug_da_giai is not None else slug_cua_model(giai_quyet_model(model))
         payload = dung_payload(tin_nhan, slug)
+        # NV211: lấy sentinel + giải PoW TRƯỚC mỗi hội thoại (cả stream).
+        sentinel = await self._lay_sentinel()
         try:
             async with self._client.stream(
                 "POST", _DUONG_HOI_THOAI,
-                headers=self._tieu_de_hoi_thoai(), json=payload,
+                headers=self._tieu_de_hoi_thoai(sentinel), json=payload,
             ) as r:
-                self._kiem_ma(r.status_code, "chat")
+                self._kiem_ma_chat(r.status_code, co_sentinel=sentinel is not None)
                 truoc = ""
                 da_thay_su_kien = False
                 async for dong in r.aiter_lines():
