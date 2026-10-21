@@ -72,10 +72,10 @@ DA_KIEM_TOAN = {
     ("modules/rclone/module.py", "filter"),
     # tuya.thuc_hien: lỗi trả {"ok": False, "loi": ...} chứ không giả thành công; pass là làm mới bảng hành động best-effort, thiếu thì báo hành động lạ.
     ("modules/tuya/module.py", "thuc_hien"),
-    # Đã duyệt NV145 (cùng mẫu van-phong/zalo-bot): bộ lọc log chặn khoá dịch vụ c2a-dang-nhap —
+    # Đã duyệt NV145 (cùng mẫu van-phong/zalo-bot): bộ lọc log chặn khoá dịch vụ may-dang-nhap —
     # không định dạng được dòng log thì BỎ dòng đó (đóng khi lỗi, không để lọt khoá); ngoại lệ trong bộ lọc
     # làm hỏng chính lời gọi ghi log nên không được ném ra.
-    ("modules/c2a-dn/module.py", "filter"),
+    ("modules/may-dang-nhap/module.py", "filter"),
     ("app/chuyen_tiep.py", "lam_sach_ten_tep"),
     ("app/dia_chi.py", "dia_chi_cong_khai_da_cau_hinh"),
     ("app/goi_kha_nang.py", "goi"),

@@ -1,6 +1,6 @@
-# Module c2a-dn — Client dịch vụ Đăng nhập tự động
+# Module may-dang-nhap — Client dịch vụ Đăng nhập tự động
 
-Module client HTTP mỏng kết nối tới container dịch vụ phụ `dich-vu/c2a-dang-nhap` (FastAPI, cổng 8010, xác thực Bearer).
+Module client HTTP mỏng kết nối tới container dịch vụ phụ `dich-vu/may-dang-nhap` (FastAPI, cổng 8010, xác thực Bearer).
 
 Module chỉ đóng vai trò cầu nối nội bộ: mọi tác vụ nặng (Chromium, Patchright, màn hình ảo Xvfb, giải captcha âm thanh) và két lưu trữ tài khoản mã hoá AES-256-GCM đều được cách ly hoàn toàn trong container riêng.
 
@@ -8,30 +8,30 @@ Module chỉ đóng vai trò cầu nối nội bộ: mọi tác vụ nặng (Chr
 
 ## 1. Hướng dẫn từng bước triển khai & kết nối
 
-### Bước 1: Khởi động dịch vụ phụ c2a-dang-nhap
-Trong thư mục `dich-vu/c2a-dang-nhap/`:
+### Bước 1: Khởi động dịch vụ phụ may-dang-nhap
+Trong thư mục `dich-vu/may-dang-nhap/`:
 ```bash
 docker compose up -d --build
 ```
-Dịch vụ khởi động với mạng Docker riêng biệt `web2api-c2a-dang-nhap` và lắng nghe cổng 8010 (nội bộ).
+Dịch vụ khởi động với mạng Docker riêng biệt `web2api-may-dang-nhap` và lắng nghe cổng 8010 (nội bộ).
 
 ### Bước 2: Đọc khoá xác thực dịch vụ
 Dịch vụ tự động sinh khoá Bearer ngẫu nhiên an toàn tại `/khoa/khoa-dich-vu` (quyền 0600):
 ```bash
-docker exec web2api-c2a-dang-nhap cat /khoa/khoa-dich-vu
+docker exec web2api-may-dang-nhap cat /khoa/khoa-dich-vu
 ```
 *(Hoặc sử dụng giá trị khoá đã khai báo trước qua biến `CAPTCHA_SOLVER_API_KEY`).*
 
 ### Bước 3: Nối mạng Docker
-Đảm bảo container chính của `web2api` có thể kết nối tới container `web2api-c2a-dang-nhap` (ví dụ cùng nối vào mạng Docker `web2api-c2a-dang-nhap`, hoặc ánh xạ cổng loopback `127.0.0.1:8010`).
+Đảm bảo container chính của `web2api` có thể kết nối tới container `web2api-may-dang-nhap` (ví dụ cùng nối vào mạng Docker `web2api-may-dang-nhap`, hoặc ánh xạ cổng loopback `127.0.0.1:8010`).
 
-### Bước 4: Cài đặt module c2a-dn
+### Bước 4: Cài đặt module may-dang-nhap
 Trên giao diện web2api:
-- Truy cập **Hệ thống → Module**, tìm ô **c2a-dn** và bấm **Cài đặt**.
+- Truy cập **Hệ thống → Module**, tìm ô **may-dang-nhap** và bấm **Cài đặt**.
 - Hoặc sử dụng API:
   ```bash
   curl -s -X POST -H "Authorization: Bearer $WEB2API_ADMIN_KEY" \
-    http://127.0.0.1:3031/api/nguon-git/cai/c2a-dn
+    http://127.0.0.1:3031/api/nguon-git/cai/may-dang-nhap
   ```
 
 ### Bước 5: Cấu hình địa chỉ & khoá dịch vụ
@@ -41,19 +41,19 @@ curl -s -X POST -H "Authorization: Bearer $WEB2API_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "cau_hinh": {
-      "dich_vu_url": "http://web2api-c2a-dang-nhap:8010",
+      "dich_vu_url": "http://web2api-may-dang-nhap:8010",
       "khoa_dich_vu": "<khoá_đọc_được_ở_bước_2>"
     }
   }' \
-  http://127.0.0.1:3031/api/modules/c2a-dn/cai
+  http://127.0.0.1:3031/api/modules/may-dang-nhap/cai
 ```
 
 ### Bước 6: Kiểm tra sức khoẻ kết nối
 ```bash
 curl -s -H "Authorization: Bearer $WEB2API_ADMIN_KEY" \
-  http://127.0.0.1:3031/api/modules/c2a-dn/suc-khoe
+  http://127.0.0.1:3031/api/modules/may-dang-nhap/suc-khoe
 ```
-Kết quả trả về `{"ok": true, "dich_vu_url": "http://web2api-c2a-dang-nhap:8010"}`.
+Kết quả trả về `{"ok": true, "dich_vu_url": "http://web2api-may-dang-nhap:8010"}`.
 
 ---
 
@@ -72,8 +72,8 @@ Chỉ các hành động an toàn sau đây được phép gọi qua công cụ 
 | `tai_khoan_da_luu_danh_sach` | GET | `/v1/accounts/saved` | `doc` | `ok`, `accounts` (chỉ trường không bí mật), `count` |
 
 Module cung cấp chuẩn `thiet_bi` (`thuc_the`, `trang_thai`, `thuc_hien`) với hai thực thể:
-- `c2a_dn.cong_cu_doc` (các hành động đọc: `ho_so_danh_sach`, `phien_trang_thai`, `dang_nhap_trang_thai`, `tai_khoan_da_luu_danh_sach` — rủi ro mặc định `doc`).
-- `c2a_dn.cong_cu_ghi` (các thao tác ghi: `dang_nhap_bat_dau`, `ho_so_dong` — rủi ro `ghi`, cần xác nhận khi mới nạp theo SEC-004f).
+- `may_dang_nhap.cong_cu_doc` (các hành động đọc: `ho_so_danh_sach`, `phien_trang_thai`, `dang_nhap_trang_thai`, `tai_khoan_da_luu_danh_sach` — rủi ro mặc định `doc`).
+- `may_dang_nhap.cong_cu_ghi` (các thao tác ghi: `dang_nhap_bat_dau`, `ho_so_dong` — rủi ro `ghi`, cần xác nhận khi mới nạp theo SEC-004f).
 Toàn bộ kết nối HTTP nội bộ được bảo vệ bằng `TransportGhimIp` (chống DNS rebinding), kiểm SSRF chặt chẽ, và đọc stream có trần 1 MiB (`PhanHoiQuaLon`).
 
 ### 2.2. Vì sao các tuyến nhạy cảm KHÔNG lộ qua công cụ AI

@@ -1,14 +1,14 @@
 {
-  "id": "c2a-dn",
+  "id": "may-dang-nhap",
   "ten": "Đăng nhập tự động — client dịch vụ c2a-đăng-nhập",
-  "mo_ta": "Client HTTP mỏng gọi dịch vụ dich-vu/c2a-dang-nhap (cổng 8010, Bearer) để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản. Module chỉ là cầu nối; mọi logic đăng nhập nằm ở dịch vụ. Đầu ra dịch vụ là dữ liệu không tin: cắt ở trần, gắn nguon_ngoai.",
+  "mo_ta": "Client HTTP mỏng gọi dịch vụ dich-vu/may-dang-nhap (cổng 8010, Bearer) để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản. Module chỉ là cầu nối; mọi logic đăng nhập nằm ở dịch vụ. Đầu ra dịch vụ là dữ liệu không tin: cắt ở trần, gắn nguon_ngoai.",
   "phien_ban": "0.1.0",
   "hang": "B",
   "loai": "tien_ich",
   "loai_ten": "Tiện ích",
   "loai_thu_tu": 44,
   "giao_thuc": "http-noi-bo",
-  "tien_to": "c2a_dn",
+  "tien_to": "may_dang_nhap",
   "cung_cap": ["dang_nhap_trinh_duyet", "thiet_bi"],
   "yeu_cau_goi": ["httpx"],
   "truong_cau_hinh": [
@@ -17,7 +17,7 @@
       "nhan": "Địa chỉ dịch vụ đăng nhập tự động",
       "kieu": "chuoi",
       "bat_buoc": false,
-      "mac_dinh": "http://web2api-c2a-dang-nhap:8010",
+      "mac_dinh": "http://web2api-may-dang-nhap:8010",
       "mo_ta": "Địa chỉ HTTP dịch vụ c2a-đăng-nhập. Cho phép loopback và mạng Docker nội bộ; chặn link-local, multicast, reserved."
     },
     {
@@ -32,6 +32,6 @@
   "tai_nguyen": {
     "ram_them_mb": null,
     "mang_ra": [],
-    "ghi_chu": "Module chỉ gọi HTTP nội bộ tới dịch vụ c2a-đăng-nhập (mạng Docker nội bộ hoặc loopback); bản thân module không gọi ra ngoài. Tài nguyên nặng (Chromium, Xvfb) nằm ở container riêng dich-vu/c2a-dang-nhap."
+    "ghi_chu": "Module chỉ gọi HTTP nội bộ tới dịch vụ c2a-đăng-nhập (mạng Docker nội bộ hoặc loopback); bản thân module không gọi ra ngoài. Tài nguyên nặng (Chromium, Xvfb) nằm ở container riêng dich-vu/may-dang-nhap."
   }
 }

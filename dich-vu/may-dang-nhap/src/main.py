@@ -229,7 +229,7 @@ async def health(request: Request) -> Any:
     ket_ok, ket_msg = vault.trang_thai_ket()
     kq: dict[str, Any] = {
         "status": "ok" if ket_ok else "degraded",
-        "dich_vu": "c2a-dang-nhap",
+        "dich_vu": "may-dang-nhap",
         "novnc": _novnc_url(request) if bat_novnc else None,
     }
     if not ket_ok:

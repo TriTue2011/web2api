@@ -17,7 +17,7 @@ import _gia_goi  # noqa: F401  (dữ liệu tạm + mô-đun giả; xem _gia_goi
 KHOA_TEST = "khoa-gia-0123456789abcdef-ghi-ro-la-gia"
 HEADER_AUTH = {"Authorization": f"Bearer {KHOA_TEST}"}
 
-# Bảng phân nhóm route mong muốn cho TOÀN BỘ route của c2a-dang-nhap
+# Bảng phân nhóm route mong muốn cho TOÀN BỘ route của may-dang-nhap
 BANG_NHOM_MONG_MUON = {
     # Mở
     ("GET", "/health"): "mo",

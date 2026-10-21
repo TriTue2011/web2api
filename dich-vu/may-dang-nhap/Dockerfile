@@ -1,5 +1,5 @@
-# Dockerfile cho dịch vụ c2a-dang-nhap (web2api - Chuẩn C6)
-# Lưu ý: Tệp mới trong dich-vu/c2a-dang-nhap/, không sửa Dockerfile gốc của repo.
+# Dockerfile cho dịch vụ may-dang-nhap (web2api - Chuẩn C6)
+# Lưu ý: Tệp mới trong dich-vu/may-dang-nhap/, không sửa Dockerfile gốc của repo.
 # W2A: Ghim digest đầy đủ lấy từ Dockerfile gốc của repo (đồng bộ khi Dockerfile gốc đổi).
 FROM python:3.13-slim@sha256:9662417aace5ae7b8e2609cce472b72a8958e134ba372808abe9cc1a0c0125e6
 

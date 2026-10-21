@@ -101,7 +101,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `cameranha` (Camera nhà — go2rtc/RTSP, loa/bộ đàm, NV167; sửa bảo mật NV173B) + dịch vụ `dich-vu/camera` | Có — thực thể C1 đọc `cam.<tên>` (chụp, chụp cho AI, cảnh báo chuyển động qua webhook Frigate), `cam.phat_<tên>` ở mức nguy_hiem chỉ khi bật loa (mặc định TẮT, xác nhận từng lần); URL luồng là bí mật, không vào log; địa chỉ camera chỉ mạng riêng + ghim IP; dịch vụ phụ chỉ nhận cam_id của bảng đã đăng ký; phát bị trần thời lượng/giãn cách ở hai lớp; giao thức kênh nói chép từ c2a (NetSDK 37777, HTTP 8086, HCNetSDK); kiểm với go2rtc giả + dịch vụ phụ thật trên loopback; **chưa kiểm với camera thật**, dịch vụ chưa dựng ảnh Docker | 20/10/2026 |
 | Module `register` (Đăng ký tài khoản có người trong vòng lặp, NV174) | Có — chuẩn `thiet_bi` hai thực thể: `dang_ky.luot` (nguy hiểm: bắt đầu/đợi mã/ghi nhận người xử lý/xác nhận hoàn tất/huỷ) và `dang_ky.trang_thai` (đọc); mặc định TẮT; mỗi lần MỘT tài khoản, trần lượt/ngày (mặc định 1, cứng 5); tải trang đăng ký qua bộ kiểm URL không tin của lõi (ghim IP chống tái gắn DNS) và NHẬN DIỆN CẤU TRÚC: form sẵn sàng/thử thách chống bot (iframe/script của nhà cung cấp widget + `data-sitekey`)/xác minh điện thoại/mã một lần/trang lạ; gặp thử thách, xác minh điện thoại hay trang lạ → DỪNG «can_nguoi» không đi tiếp, người thật xử lý trên trình duyệt từ xa (noVNC) — module TUYỆT ĐỐI không giải/vượt thử thách, không tự điền biểu mẫu; hộp thư tạm Inbucket tự host (đường API qua bộ kiểm URL LAN của lõi), mật khẩu sinh bằng `secrets`, bí mật lưu kho bí mật của lõi 0600, chỉ hiện MỘT lần, không vào log/trạng thái/sức khoẻ; **chưa kiểm với nhà cung cấp thật và noVNC thật** (test bằng trang và hộp thư GIẢ) | 20/10/2026 |
 | Module `mqtt` (Thiết bị nhà qua MQTT, không cần Home Assistant — chuẩn C1, NV151, port từ c2a): khám phá phổ quát bằng `+` nhiều độ sâu (**không bao giờ** đăng ký `#`, giữ nguyên bài học EMQX), đọc bản tự khai báo Home Assistant discovery (Zigbee2MQTT/Tasmota) + nhận dạng Frigate; GHI (publish lệnh) mặc định TẮT tới khi bật ô «Cho phép điều khiển»; loại nguy_hiem (lock/alarm_control_panel/water_heater/valve/siren — phân loại bằng **cấu trúc** component, không bằng chữ trong tên) **không bao giờ** điều khiển được; chủ đề đích chỉ từ bản khai đã nạp; địa chỉ kiểm SSRF bằng `app/tu_xa.py` (cho LAN, chặn loopback/link-local/metadata); mật khẩu kiểu `bi_mat` (kho 0600, bọc `_BiMat` chống lộ qua `repr`); dữ liệu MQTT không tin (payload > 64 KiB bỏ, giá trị cắt 4096 ký tự, tối đa 5000 chủ đề); mất kết nối ≠ 0 thiết bị | Có — kiểm với máy chủ MQTT giả cục bộ (49 test NV151); **chưa kiểm với máy chủ MQTT thật**; cần `paho-mqtt==2.1.0` trong container (khai `yeu_cau_goi`, không trong requirements của lõi) | 19/10/2026 |
-| Module `c2a-dn` (Client Đăng nhập tự động qua container phụ c2a-dang-nhap) + dịch vụ `dich-vu/c2a-dang-nhap` | Có — client HTTP mỏng gọi dịch vụ c2a-dang-nhap (cổng 8010, Bearer), kiểm SSRF, ghim IP chống DNS rebinding, trần stream 1 MiB, bảng hành động đóng, allowlist cấu trúc, cắt trần 80.000 ký tự, chuẩn `thiet_bi` cho AI; mật khẩu/2FA qua `BiMatTam` và xoá ngay; kiểm với dịch vụ c2a-dang-nhap thật cục bộ; **chưa kiểm với luồng đăng nhập nhà cung cấp bên ngoài thật** | 19/10/2026 |
+| Module `may-dang-nhap` (Client Đăng nhập tự động qua container phụ may-dang-nhap) + dịch vụ `dich-vu/may-dang-nhap` | Có — client HTTP mỏng gọi dịch vụ may-dang-nhap (cổng 8010, Bearer), kiểm SSRF, ghim IP chống DNS rebinding, trần stream 1 MiB, bảng hành động đóng, allowlist cấu trúc, cắt trần 80.000 ký tự, chuẩn `thiet_bi` cho AI; mật khẩu/2FA qua `BiMatTam` và xoá ngay; kiểm với dịch vụ may-dang-nhap thật cục bộ; **chưa kiểm với luồng đăng nhập nhà cung cấp bên ngoài thật** | 19/10/2026 |
 
 ## 2. Kiến trúc
 
@@ -3968,35 +3968,35 @@ ba công tắc rủi ro (tự cài module, giải CAPTCHA, tự đăng ký) mặ
 
 ---
 
-### Module c2a-dn — Đăng nhập tự động qua container phụ c2a-dang-nhap
+### Module may-dang-nhap — Đăng nhập tự động qua container phụ may-dang-nhap
 
-**Mô tả.** Module client HTTP mỏng kết nối tới dịch vụ độc lập `dich-vu/c2a-dang-nhap` (FastAPI cổng 8010, Bearer) trong mạng Docker riêng để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản (Google, OpenAI, Claude, Gemini, Grok) và quản lý phiên. Cung cấp chuẩn `thiet_bi` (`thuc_the`, `trang_thai`, `thuc_hien`) cho AI và tích hợp quản lý phiên `/api/phien`. Lõi chỉ là cầu nối; toàn bộ logic nặng và trình duyệt (Playwright/Patchright/Chromium/Firefox) nằm ở container phụ. Đầu ra dịch vụ là dữ liệu không tin: kiểm SSRF, ghim IP chống DNS rebinding, trần tải stream 1 MiB, bảng hành động đóng, allowlist cấu trúc trường, cắt ở trần 80.000 ký tự, gắn `nguon_ngoai: true`. Mã nguồn: `modules/c2a-dn/`. Tiền tố: `c2a_dn`. Hạng: `B`.
+**Mô tả.** Module client HTTP mỏng kết nối tới dịch vụ độc lập `dich-vu/may-dang-nhap` (FastAPI cổng 8010, Bearer) trong mạng Docker riêng để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản (Google, OpenAI, Claude, Gemini, Grok) và quản lý phiên. Cung cấp chuẩn `thiet_bi` (`thuc_the`, `trang_thai`, `thuc_hien`) cho AI và tích hợp quản lý phiên `/api/phien`. Lõi chỉ là cầu nối; toàn bộ logic nặng và trình duyệt (Playwright/Patchright/Chromium/Firefox) nằm ở container phụ. Đầu ra dịch vụ là dữ liệu không tin: kiểm SSRF, ghim IP chống DNS rebinding, trần tải stream 1 MiB, bảng hành động đóng, allowlist cấu trúc trường, cắt ở trần 80.000 ký tự, gắn `nguon_ngoai: true`. Mã nguồn: `modules/may-dang-nhap/`. Tiền tố: `may_dang_nhap`. Hạng: `B`.
 
 **Cần gì.**
-- Dịch vụ phụ `dich-vu/c2a-dang-nhap` đang chạy và khoá Bearer (đọc từ `docker exec web2api-c2a-dang-nhap cat /khoa/khoa-dich-vu`).
+- Dịch vụ phụ `dich-vu/may-dang-nhap` đang chạy và khoá Bearer (đọc từ `docker exec web2api-may-dang-nhap cat /khoa/khoa-dich-vu`).
 - Mạng ra: `[]` (module chỉ gọi HTTP nội bộ tới dịch vụ phụ, bản thân module không gọi ra ngoài).
-- RAM/đĩa/GPU thêm: `chưa đo` (tài nguyên nặng nằm ở container phụ `dich-vu/c2a-dang-nhap`).
+- RAM/đĩa/GPU thêm: `chưa đo` (tài nguyên nặng nằm ở container phụ `dich-vu/may-dang-nhap`).
 
 **Cách cài.**
 
-1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "c2a-dn"`.
-2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/c2a-dn`
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "may-dang-nhap"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/may-dang-nhap`
 3. Cài đặt và cấu hình:
 ```bash
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
-  -d '{"cau_hinh": {"dich_vu_url": "http://web2api-c2a-dang-nhap:8010", "khoa_dich_vu": "<khoá-đọc-từ-container>"}}' \
-  $W/api/modules/c2a-dn/cai
+  -d '{"cau_hinh": {"dich_vu_url": "http://web2api-may-dang-nhap:8010", "khoa_dich_vu": "<khoá-đọc-từ-container>"}}' \
+  $W/api/modules/may-dang-nhap/cai
 ```
 
 **Cấu hình.**
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `dich_vu_url` | Không | Địa chỉ HTTP dịch vụ c2a-đăng-nhập (mặc định `http://web2api-c2a-dang-nhap:8010`). Chỉ nhận loopback hoặc mạng nội bộ Docker (chống SSRF). |
+| `dich_vu_url` | Không | Địa chỉ HTTP dịch vụ c2a-đăng-nhập (mặc định `http://web2api-may-dang-nhap:8010`). Chỉ nhận loopback hoặc mạng nội bộ Docker (chống SSRF). |
 | `khoa_dich_vu` | Có | Khoá Bearer của dịch vụ c2a-đăng-nhập. Lưu riêng trong két bí mật, không trả lại qua API, không ghi vào log. |
 
 **Sự cố thường gặp.**
-- `khong_noi_duoc_dich_vu` — container `web2api-c2a-dang-nhap` chưa chạy hoặc chưa cùng mạng Docker — kiểm tra `docker compose ps` và mạng nối.
+- `khong_noi_duoc_dich_vu` — container `web2api-may-dang-nhap` chưa chạy hoặc chưa cùng mạng Docker — kiểm tra `docker compose ps` và mạng nối.
 - `sai_khoa_dich_vu` — khoá dịch vụ không khớp với khoá trong container phụ — đọc lại `/khoa/khoa-dich-vu` và cập nhật cấu hình.
 - `tinh_nang_tat` — tính năng trên máy chủ dịch vụ chưa được kích hoạt qua `CAPTCHA_SOLVER_TINH_NANG_BAT`.
 - `tham_so_khong_hop_le` — hồ sơ hoặc email chứa ký tự đặc biệt hoặc sai định dạng — kiểm tra lại chuỗi gửi vào.

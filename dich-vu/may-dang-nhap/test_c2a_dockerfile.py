@@ -382,14 +382,14 @@ def test_bien_the_du_goi_phu_thuoc_trong_in():
 
 def test_compose_tach_volume_khoa_va_du_lieu():
     """Kiểm tra:
-    (a) Compose có đúng 2 volume tên riêng: web2api_c2a_dang_nhap_khoa và web2api_c2a_dang_nhap_du_lieu.
+    (a) Compose có đúng 2 volume tên riêng: web2api_may_dang_nhap_khoa và web2api_may_dang_nhap_du_lieu.
     (b) /data và /khoa là hai điểm gắn riêng biệt.
     (c) Không tệp khoá nào (vault.key, khoa-dich-vu, mat-khau-vnc) trong entrypoint.sh và supervisord.conf trỏ vào /data.
     (d) Dockerfile tạo /khoa với quyền 0700 và khai báo VOLUME có /khoa.
     """
     comp = _doc_compose()
-    assert "web2api_c2a_dang_nhap_khoa" in comp, "Compose thiếu volume web2api_c2a_dang_nhap_khoa"
-    assert "web2api_c2a_dang_nhap_du_lieu" in comp, "Compose thiếu volume web2api_c2a_dang_nhap_du_lieu"
+    assert "web2api_may_dang_nhap_khoa" in comp, "Compose thiếu volume web2api_may_dang_nhap_khoa"
+    assert "web2api_may_dang_nhap_du_lieu" in comp, "Compose thiếu volume web2api_may_dang_nhap_du_lieu"
     assert ":/data" in comp, "Compose thiếu điểm gắn /data"
     assert ":/khoa" in comp, "Compose thiếu điểm gắn /khoa"
 

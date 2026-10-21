@@ -1,4 +1,4 @@
-"""Bộ kiểm thử cho module client đăng nhập tự động c2a-dn (NV145 - Giai đoạn 2).
+"""Bộ kiểm thử cho module client đăng nhập tự động may-dang-nhap (NV145 - Giai đoạn 2).
 
 Các ca kiểm thử tuân thủ ranh giới an toàn, kiểm leo thang quyền/IDOR, allowlist cấu trúc đầu ra,
 chống lộ bí mật trong log/phản hồi, kiểm SSRF, và kiểm AST không chứa asyncio.run.
@@ -27,14 +27,14 @@ import pytest
 from app.tai_khoan_hang_loat import BiMatTam
 
 GOC = Path(__file__).resolve().parents[1]
-THU_MUC_MOD = GOC / "modules" / "c2a-dn"
+THU_MUC_MOD = GOC / "modules" / "may-dang-nhap"
 
 # Chuỗi khoá GIẢ tuân thủ allowlist .gitleaks.toml
 KHOA_DICH_VU_GIA = "test-auth-key-0123456789abcdef"
 KHOA_LÕI_QT = "khoa-quan-tri-test-0123456789abcdef"
 KHOA_LÕI_KHÁCH = "khoa-khach-test-0123456789abcdef"
 
-DV_C2A_DIR = GOC / "dich-vu" / "c2a-dang-nhap"
+DV_C2A_DIR = GOC / "dich-vu" / "may-dang-nhap"
 if str(DV_C2A_DIR) not in sys.path:
     sys.path.insert(0, str(DV_C2A_DIR))
 import _gia_goi  # noqa: F401
@@ -251,7 +251,7 @@ def _lay_module_py():
     t = THU_MUC_MOD / "module.py"
     if not t.is_file():
         pytest.fail(f"Chưa tạo tệp {t}")
-    spec = importlib.util.spec_from_file_location("c2a_dn_mod", t)
+    spec = importlib.util.spec_from_file_location("may_dang_nhap_mod", t)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -291,8 +291,8 @@ def test_a_manifest_va_cai_ssrf(md, manifest, may_chu_dich_vu):
     from app.kham_pha import kiem_manifest
     loi_mf = kiem_manifest(manifest)
     assert loi_mf is None, f"Manifest không hợp lệ: {loi_mf}"
-    assert manifest["id"] == "c2a-dn"
-    assert manifest["tien_to"] == "c2a_dn"
+    assert manifest["id"] == "may-dang-nhap"
+    assert manifest["tien_to"] == "may_dang_nhap"
     assert manifest["giao_thuc"] == "http-noi-bo"
     assert manifest["hang"] == "B"
 
@@ -331,7 +331,7 @@ def test_b_bearer_va_phan_loai_401(mod_instance, may_chu_dich_vu):
     server.lich_su_goi.clear()
 
     # Gọi một hành động hợp lệ
-    kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "ho_so_danh_sach", {}))
+    kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "ho_so_danh_sach", {}))
     assert kq["ok"] is True
     assert len(server.lich_su_goi) == 1
     goi = server.lich_su_goi[0]
@@ -340,7 +340,7 @@ def test_b_bearer_va_phan_loai_401(mod_instance, may_chu_dich_vu):
 
     # Đổi khoá sai trong instance để dịch vụ giả trả 401
     mod_instance._khoa = "khoa-sai-hoan-toan"
-    kq_sai = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "ho_so_danh_sach", {}))
+    kq_sai = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "ho_so_danh_sach", {}))
     assert kq_sai["ok"] is False
     assert kq_sai.get("ma_loi") == "sai_khoa_dich_vu"
     # Tuyệt đối không đưa thân lỗi thô của dịch vụ ra ngoài
@@ -354,7 +354,7 @@ def test_c_bang_hanh_dong_dong(mod_instance, may_chu_dich_vu):
 
     cac_hanh_dong_la = ["xoa_he_thong", "chay_ma_doc", "exec_shell", "reveal_password"]
     for hd in cac_hanh_dong_la:
-        kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", hd, {}))
+        kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", hd, {}))
         assert kq["ok"] is False
         assert "hanh_dong_khong_ho_tro" in kq.get("loi", "")
         assert kq.get("nguon_ngoai") is True
@@ -380,7 +380,7 @@ def test_d_an_toan_tham_so_idor(mod_instance, may_chu_dich_vu):
         "hs#1",
     ]
     for hs in ho_so_doc_hai:
-        kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "phien_trang_thai", {"ho_so": hs}))
+        kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "phien_trang_thai", {"ho_so": hs}))
         assert kq["ok"] is False
         assert kq.get("loi") == "tham_so_khong_hop_le"
 
@@ -401,7 +401,7 @@ def test_d_an_toan_tham_so_idor(mod_instance, may_chu_dich_vu):
     assert len(server.lich_su_goi) == 0
 
     # Hồ sơ hợp lệ được quote khi gửi
-    kq_ok = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "phien_trang_thai", {"ho_so": "hs_test_1"}))
+    kq_ok = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "phien_trang_thai", {"ho_so": "hs_test_1"}))
     assert kq_ok["ok"] is True
     assert len(server.lich_su_goi) == 1
     assert server.lich_su_goi[0]["duong"] == "/v1/session/hs_test_1/status"
@@ -410,7 +410,7 @@ def test_d_an_toan_tham_so_idor(mod_instance, may_chu_dich_vu):
 # (e) Allowlist đầu ra: dịch vụ trả thêm trường nhạy cảm -> bị lọc sạch; khoá giả không vào log, repr, suc_khoe, ngoại lệ
 def test_e_allowlist_dau_ra_va_khong_lo_khoa(mod_instance, caplog):
     # Dịch vụ giả trả thêm password, totp_secret, cookie, access_token
-    kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "ho_so_danh_sach", {}))
+    kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "ho_so_danh_sach", {}))
     assert kq["ok"] is True
     chuoi_kq = json.dumps(kq)
     assert "BI_MAT_CAN_LOC" not in chuoi_kq
@@ -418,14 +418,14 @@ def test_e_allowlist_dau_ra_va_khong_lo_khoa(mod_instance, caplog):
     assert "totp_secret" not in kq
 
     # Gọi tai_khoan_da_luu_danh_sach
-    kq_acc = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "tai_khoan_da_luu_danh_sach", {}))
+    kq_acc = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "tai_khoan_da_luu_danh_sach", {}))
     assert kq_acc["ok"] is True
     chuoi_acc = json.dumps(kq_acc)
     assert "BI_MAT_CAN_LOC" not in chuoi_acc
     assert "truong_la_xyz" not in chuoi_acc
 
     # Gọi phien_trang_thai
-    kq_st = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "phien_trang_thai", {"ho_so": "hs_test_1"}))
+    kq_st = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "phien_trang_thai", {"ho_so": "hs_test_1"}))
     assert kq_st["ok"] is True
     assert "BI_MAT_COOKIE_CAN_LOC" not in json.dumps(kq_st)
     assert "TOKEN_CAN_LOC" not in json.dumps(kq_st)
@@ -462,7 +462,7 @@ def test_g_het_gio_va_ngat_ket_noi(md, manifest, monkeypatch):
     # Đặt timeout cực ngắn cho test
     monkeypatch.setattr(md, "HET_GIO_GOI", 0.05)
 
-    kq = asyncio.run(m.thuc_hien("c2a_dn.cong_cu_doc", "ho_so_danh_sach", {}))
+    kq = asyncio.run(m.thuc_hien("may_dang_nhap.cong_cu_doc", "ho_so_danh_sach", {}))
     assert kq["ok"] is False
     assert kq.get("ma_loi") in ("khong_noi_duoc_dich_vu", "het_gio")
     assert kq.get("nguon_ngoai") is True
@@ -492,22 +492,22 @@ def test_i_di_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_LÕI_QT)
     monkeypatch.setenv("WEB2API_AUTH_KEY", KHOA_LÕI_KHÁCH)
-    # Chỉ nạp MỘT module (bản sao c2a-dn) vào thư mục tạm: nạp lại nóng cả modules/ của kho làm các module khác
+    # Chỉ nạp MỘT module (bản sao may-dang-nhap) vào thư mục tạm: nạp lại nóng cả modules/ của kho làm các module khác
     # (vd telegram-bot) tạo lại bộ lọc log rỗng và làm hỏng test log của chúng khi chạy chung một lượt pytest.
     import shutil
-    thu_muc_mod = tmp_path / "modules_chi_c2a_dn"
-    shutil.copytree(GOC / "modules" / "c2a-dn", thu_muc_mod / "c2a-dn", ignore=shutil.ignore_patterns("__pycache__"))
+    thu_muc_mod = tmp_path / "modules_chi_may_dang_nhap"
+    shutil.copytree(GOC / "modules" / "may-dang-nhap", thu_muc_mod / "may-dang-nhap", ignore=shutil.ignore_patterns("__pycache__"))
     monkeypatch.setattr(so_module, "THU_MUC_ANH", thu_muc_mod)
 
     with TestClient(app) as client:
-        # Nạp lại nóng để lõi khám phá modules/c2a-dn
+        # Nạp lại nóng để lõi khám phá modules/may-dang-nhap
         r_nap = client.post("/api/modules/nap-lai", headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"})
         assert r_nap.status_code == 200
 
         cfg = {"dich_vu_url": url, "khoa_dich_vu": KHOA_DICH_VU_GIA}
 
         # 1. Không có khoá -> 401
-        r_ko_khoa = client.post("/api/modules/c2a-dn/cai", json={"cau_hinh": cfg})
+        r_ko_khoa = client.post("/api/modules/may-dang-nhap/cai", json={"cau_hinh": cfg})
         assert r_ko_khoa.status_code == 401
 
         # 2. Khoá khách / vai thấp -> 403 (tạo khoá khách có phạm vi hẹp)
@@ -520,7 +520,7 @@ def test_i_di_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu):
         khoa_khach = r_tao_kh.json()["khoa"]["khoa"]
 
         r_khach = client.post(
-            "/api/modules/c2a-dn/cai",
+            "/api/modules/may-dang-nhap/cai",
             json={"cau_hinh": cfg},
             headers={"Authorization": f"Bearer {khoa_khach}"},
         )
@@ -528,7 +528,7 @@ def test_i_di_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu):
 
         # 3. Khoá quản trị -> 200
         r_qt = client.post(
-            "/api/modules/c2a-dn/cai",
+            "/api/modules/may-dang-nhap/cai",
             json={"cau_hinh": cfg},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -537,7 +537,7 @@ def test_i_di_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu):
         assert KHOA_DICH_VU_GIA not in r_qt.text
 
         # 4. Kiểm tra sức khoẻ qua lõi
-        r_sk = client.get("/api/modules/c2a-dn/suc-khoe", headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"})
+        r_sk = client.get("/api/modules/may-dang-nhap/suc-khoe", headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"})
         assert r_sk.status_code == 200
         assert KHOA_DICH_VU_GIA not in r_sk.text
 
@@ -635,7 +635,7 @@ def test_dot_bien_3_bo_allowlist_truong(mod_instance, monkeypatch):
         return {"ok": True, "password": "LO_MAT_KHAU_DOC_BIEN", "profiles": ["hs1"], "nguon_ngoai": True}
 
     monkeypatch.setattr(mod_instance, "_goi", _goi_gia)
-    kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "ho_so_danh_sach", {}))
+    kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "ho_so_danh_sach", {}))
     # Nhờ allowlist có sẵn, password không thể lọt qua!
     assert "password" not in kq
 
@@ -705,7 +705,7 @@ def test_1_luu_tai_khoan_totp_none_khong_422(mod_instance):
 
 def test_1_tai_khoan_da_luu_danh_sach_chieu_list(mod_instance):
     """tai_khoan_da_luu_danh_sach: dịch vụ trả list, module chiếu theo allowlist và không được rỗng."""
-    kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "tai_khoan_da_luu_danh_sach", {}))
+    kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "tai_khoan_da_luu_danh_sach", {}))
     assert kq["ok"] is True
     assert "accounts" in kq, "Kết quả phải chứa danh sách accounts"
     assert len(kq["accounts"]) > 0, "Danh sách accounts không được rỗng khi solver đã có tài khoản"
@@ -717,7 +717,7 @@ def test_1_tai_khoan_da_luu_danh_sach_chieu_list(mod_instance):
 
 def test_1_phien_trang_thai_chieu_cac_truong_that(mod_instance):
     """phien_trang_thai: dịch vụ trả loaded/pages/cookies; chiếu các trường thật, cookies chỉ trả số lượng."""
-    kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_doc", "phien_trang_thai", {"ho_so": "hs_test_1"}))
+    kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_doc", "phien_trang_thai", {"ho_so": "hs_test_1"}))
     assert kq["ok"] is True
     assert kq.get("profile") == "hs_test_1"
     assert "loaded" in kq, "Phải chiếu trường loaded"
@@ -728,7 +728,7 @@ def test_1_phien_trang_thai_chieu_cac_truong_that(mod_instance):
 
 def test_1_dang_nhap_bat_dau_that_bai_khi_khong_co_credential(mod_instance):
     """dang_nhap_bat_dau trên hồ sơ chưa lưu credential: dịch vụ trả 200 state='failed' -> ok=False, ma_loi='dang_nhap_that_bai'."""
-    kq = asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_ghi", "dang_nhap_bat_dau", {"ho_so": "hs_chua_co_cred"}))
+    kq = asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_ghi", "dang_nhap_bat_dau", {"ho_so": "hs_chua_co_cred"}))
     assert kq["ok"] is False, "Khi state là failed, ok phải là False"
     assert kq.get("ma_loi") == "dang_nhap_that_bai"
     assert kq.get("nguon_ngoai") is True
@@ -836,8 +836,8 @@ def test_4_tran_kich_thuoc_phan_hoi(md, manifest, may_chu_toi_gian):
 
 # ── Mục 5: Công cụ AI qua lõi ─────────────────────────────────────────────────
 
-def test_5_c2a_dn_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu, md, manifest):
-    """Công cụ AI c2a-dn phải tới được qua /api/thiet-bi của lõi, tuân thủ SEC-004f."""
+def test_5_may_dang_nhap_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu, md, manifest):
+    """Công cụ AI may-dang-nhap phải tới được qua /api/thiet-bi của lõi, tuân thủ SEC-004f."""
     url, server = may_chu_dich_vu
     from fastapi.testclient import TestClient
     from app import so_module
@@ -848,15 +848,15 @@ def test_5_c2a_dn_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu
     monkeypatch.setenv("WEB2API_AUTH_KEY", KHOA_LÕI_KHÁCH)
 
     import shutil
-    thu_muc_mod = tmp_path / "modules_chi_c2a_dn"
-    shutil.copytree(GOC / "modules" / "c2a-dn", thu_muc_mod / "c2a-dn", ignore=shutil.ignore_patterns("__pycache__"))
+    thu_muc_mod = tmp_path / "modules_chi_may_dang_nhap"
+    shutil.copytree(GOC / "modules" / "may-dang-nhap", thu_muc_mod / "may-dang-nhap", ignore=shutil.ignore_patterns("__pycache__"))
     monkeypatch.setattr(so_module, "THU_MUC_ANH", thu_muc_mod)
 
     with TestClient(app) as client:
         client.post("/api/modules/nap-lai", headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"})
         # Cài cấu hình hợp lệ
         r_cai = client.post(
-            "/api/modules/c2a-dn/cai",
+            "/api/modules/may-dang-nhap/cai",
             json={"cau_hinh": {"dich_vu_url": url, "khoa_dich_vu": KHOA_DICH_VU_GIA}},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -866,23 +866,23 @@ def test_5_c2a_dn_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu
         r_401 = client.get("/api/thiet-bi")
         assert r_401.status_code == 401
 
-        # 2. GET /api/thiet-bi với khoá quản trị -> 200 và thấy thực thể c2a_dn.*
+        # 2. GET /api/thiet-bi với khoá quản trị -> 200 và thấy thực thể may_dang_nhap.*
         r_tb = client.get("/api/thiet-bi", headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"})
         assert r_tb.status_code == 200
         ds_ids = [e["id"] for e in r_tb.json().get("thuc_the", [])]
-        assert "c2a_dn.cong_cu_doc" in ds_ids, f"c2a_dn.cong_cu_doc không có trong /api/thiet-bi: {ds_ids}"
-        assert "c2a_dn.cong_cu_ghi" in ds_ids, f"c2a_dn.cong_cu_ghi không có trong /api/thiet-bi: {ds_ids}"
+        assert "may_dang_nhap.cong_cu_doc" in ds_ids, f"may_dang_nhap.cong_cu_doc không có trong /api/thiet-bi: {ds_ids}"
+        assert "may_dang_nhap.cong_cu_ghi" in ds_ids, f"may_dang_nhap.cong_cu_ghi không có trong /api/thiet-bi: {ds_ids}"
 
         # 3. Quản trị xác nhận công cụ đọc (SEC-004f) -> chuyển rủi ro từ nguy_hiem về doc
         r_xn_doc = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_doc/xac-nhan",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_doc/xac-nhan",
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
         assert r_xn_doc.status_code == 200
 
         # Gọi hành động đọc -> 200 ok
         r_doc = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_doc/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_doc/hanh-dong",
             json={"hanh_dong": "ho_so_danh_sach", "tham_so": {}},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -891,7 +891,7 @@ def test_5_c2a_dn_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu
 
         # 4. Hành động ghi chưa xác nhận (SEC-004f: thực thể mới tự bị xếp nguy_hiem) -> 409 can_xac_nhan
         r_ghi_chua_xn = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong",
             json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs_test_1"}},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -899,7 +899,7 @@ def test_5_c2a_dn_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu
 
         # 5. Hành động ghi có xac_nhan: true -> 200 ok
         r_ghi_xn = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong",
             json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs_test_1"}, "xac_nhan": True},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -908,7 +908,7 @@ def test_5_c2a_dn_cong_cu_ai_qua_loi_that(tmp_path, monkeypatch, may_chu_dich_vu
 
         # 6. Hành động lạ -> 400
         r_la = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_doc/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_doc/hanh-dong",
             json={"hanh_dong": "hanh_dong_khong_ton_tai"},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -928,14 +928,14 @@ def test_e1_quyen_khoa_khach_va_idor(tmp_path, monkeypatch, may_chu_dich_vu, md,
     monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_LÕI_QT)
 
     import shutil
-    thu_muc_mod = tmp_path / "modules_chi_c2a_dn"
-    shutil.copytree(GOC / "modules" / "c2a-dn", thu_muc_mod / "c2a-dn", ignore=shutil.ignore_patterns("__pycache__"))
+    thu_muc_mod = tmp_path / "modules_chi_may_dang_nhap"
+    shutil.copytree(GOC / "modules" / "may-dang-nhap", thu_muc_mod / "may-dang-nhap", ignore=shutil.ignore_patterns("__pycache__"))
     monkeypatch.setattr(so_module, "THU_MUC_ANH", thu_muc_mod)
 
     with TestClient(app) as client:
         client.post("/api/modules/nap-lai", headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"})
         r_cai = client.post(
-            "/api/modules/c2a-dn/cai",
+            "/api/modules/may-dang-nhap/cai",
             json={"cau_hinh": {"dich_vu_url": url, "khoa_dich_vu": KHOA_DICH_VU_GIA}},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -950,50 +950,50 @@ def test_e1_quyen_khoa_khach_va_idor(tmp_path, monkeypatch, may_chu_dich_vu, md,
         hdr_tb_doc = {"Authorization": f"Bearer {k_tb_doc}"}
         hdr_tb_ghi = {"Authorization": f"Bearer {k_tb_ghi}"}
 
-        # 1. Khoá khách phạm vi "chat" -> 403 trên cả 4 đường /api/thiet-bi của c2a-dn
+        # 1. Khoá khách phạm vi "chat" -> 403 trên cả 4 đường /api/thiet-bi của may-dang-nhap
         r1 = client.get("/api/thiet-bi", headers=hdr_chat)
         assert r1.status_code == 403, f"Khoá chat gọi GET /api/thiet-bi phải 403: {r1.status_code}"
 
-        r2 = client.get("/api/thiet-bi/c2a_dn.cong_cu_doc", headers=hdr_chat)
+        r2 = client.get("/api/thiet-bi/may_dang_nhap.cong_cu_doc", headers=hdr_chat)
         assert r2.status_code == 403, f"Khoá chat gọi GET chi tiết thực thể phải 403: {r2.status_code}"
 
-        r3 = client.post("/api/thiet-bi/c2a_dn.cong_cu_doc/hanh-dong", json={"hanh_dong": "ho_so_danh_sach"}, headers=hdr_chat)
+        r3 = client.post("/api/thiet-bi/may_dang_nhap.cong_cu_doc/hanh-dong", json={"hanh_dong": "ho_so_danh_sach"}, headers=hdr_chat)
         assert r3.status_code == 403, f"Khoá chat gọi POST hanh-dong doc phải 403: {r3.status_code}"
 
-        r4 = client.post("/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong", json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs1"}}, headers=hdr_chat)
+        r4 = client.post("/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong", json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs1"}}, headers=hdr_chat)
         assert r4.status_code == 403, f"Khoá chat gọi POST hanh-dong ghi phải 403: {r4.status_code}"
 
         # 2. Phạm vi "thiet_bi:doc" gọi hành động -> 403
-        r_doc_act1 = client.post("/api/thiet-bi/c2a_dn.cong_cu_doc/hanh-dong", json={"hanh_dong": "ho_so_danh_sach"}, headers=hdr_tb_doc)
+        r_doc_act1 = client.post("/api/thiet-bi/may_dang_nhap.cong_cu_doc/hanh-dong", json={"hanh_dong": "ho_so_danh_sach"}, headers=hdr_tb_doc)
         assert r_doc_act1.status_code == 403, "thiet_bi:doc không được phép gọi hành động"
 
-        r_doc_act2 = client.post("/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong", json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs1"}}, headers=hdr_tb_doc)
+        r_doc_act2 = client.post("/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong", json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs1"}}, headers=hdr_tb_doc)
         assert r_doc_act2.status_code == 403, "thiet_bi:doc không được phép gọi hành động ghi"
 
         # Nhưng thiet_bi:doc đọc được thông tin thực thể
-        r_doc_get = client.get("/api/thiet-bi/c2a_dn.cong_cu_doc", headers=hdr_tb_doc)
+        r_doc_get = client.get("/api/thiet-bi/may_dang_nhap.cong_cu_doc", headers=hdr_tb_doc)
         assert r_doc_get.status_code == 200
 
         # 3. Phạm vi "thiet_bi:ghi" -> 202 chờ duyệt đối với hành động ghi chưa xác nhận
         r_ghi_202 = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong",
             json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "hs1"}},
             headers=hdr_tb_ghi,
         )
         assert r_ghi_202.status_code == 202, f"Khách gọi hành động ghi chưa duyệt phải nhận 202: {r_ghi_202.status_code}"
 
         # 4. Hành động chéo thực thể -> 400
-        # Gọi hành động ghi "dang_nhap_bat_dau" trên thực thể đọc "c2a_dn.cong_cu_doc"
+        # Gọi hành động ghi "dang_nhap_bat_dau" trên thực thể đọc "may_dang_nhap.cong_cu_doc"
         r_cheo_1 = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_doc/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_doc/hanh-dong",
             json={"hanh_dong": "dang_nhap_bat_dau", "tham_so": {"ho_so": "hs1"}},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
         assert r_cheo_1.status_code == 400, "Hành động ghi gọi trên thực thể đọc phải trả 400"
 
-        # Gọi hành động đọc "ho_so_danh_sach" trên thực thể ghi "c2a_dn.cong_cu_ghi"
+        # Gọi hành động đọc "ho_so_danh_sach" trên thực thể ghi "may_dang_nhap.cong_cu_ghi"
         r_cheo_2 = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong",
             json={"hanh_dong": "ho_so_danh_sach", "tham_so": {}},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -1002,14 +1002,14 @@ def test_e1_quyen_khoa_khach_va_idor(tmp_path, monkeypatch, may_chu_dich_vu, md,
         # 5. IDOR (đổi id thực thể / hồ sơ)
         # ID thực thể không tồn tại -> 404
         r_idor_tt = client.get(
-            "/api/thiet-bi/c2a_dn.thuc_the_la_khong_ton_tai",
+            "/api/thiet-bi/may_dang_nhap.thuc_the_la_khong_ton_tai",
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
         assert r_idor_tt.status_code == 404
 
         # Hồ sơ IDOR path traversal -> từ chối tham_so_khong_hop_le
         r_idor_hs = client.post(
-            "/api/thiet-bi/c2a_dn.cong_cu_ghi/hanh-dong",
+            "/api/thiet-bi/may_dang_nhap.cong_cu_ghi/hanh-dong",
             json={"hanh_dong": "ho_so_dong", "tham_so": {"ho_so": "../../../etc/passwd"}, "xac_nhan": True},
             headers={"Authorization": f"Bearer {KHOA_LÕI_QT}"},
         )
@@ -1023,7 +1023,7 @@ def test_6_dang_nhap_bat_dau_gui_ho_so_sach(mod_instance, may_chu_dich_vu):
     """dang_nhap_bat_dau phải gửi ho_so đã strip/kiểm tra vào body thay vì ho_so thô."""
     url, server = may_chu_dich_vu
     server.lich_su_goi.clear()
-    asyncio.run(mod_instance.thuc_hien("c2a_dn.cong_cu_ghi", "dang_nhap_bat_dau", {"ho_so": "  hs_test_1  "}))
+    asyncio.run(mod_instance.thuc_hien("may_dang_nhap.cong_cu_ghi", "dang_nhap_bat_dau", {"ho_so": "  hs_test_1  "}))
     assert len(server.lich_su_goi) == 1
     goi = server.lich_su_goi[0]
     assert goi["than"]["profile"] == "hs_test_1", f"Dịch vụ phải nhận bản ho_so sạch: {goi['than']}"
@@ -1055,12 +1055,12 @@ def test_b_khoa_dich_vu_duong_dan_khong_chua_data():
     manifest_mod = (THU_MUC_MOD / "manifest.json").read_text(encoding="utf-8")
     tham_chieu = (GOC / "docs" / "THAM-CHIEU.md").read_text(encoding="utf-8")
 
-    assert "/data/khoa-dich-vu" not in readme_mod, "modules/c2a-dn/README.md không được chứa /data/khoa-dich-vu"
-    assert "/data/khoa-dich-vu" not in manifest_mod, "modules/c2a-dn/manifest.json không được chứa /data/khoa-dich-vu"
+    assert "/data/khoa-dich-vu" not in readme_mod, "modules/may-dang-nhap/README.md không được chứa /data/khoa-dich-vu"
+    assert "/data/khoa-dich-vu" not in manifest_mod, "modules/may-dang-nhap/manifest.json không được chứa /data/khoa-dich-vu"
     assert "/data/khoa-dich-vu" not in tham_chieu, "docs/THAM-CHIEU.md không được chứa /data/khoa-dich-vu"
 
-    assert "/khoa/khoa-dich-vu" in readme_mod, "modules/c2a-dn/README.md phải chứa /khoa/khoa-dich-vu"
-    assert "/khoa/khoa-dich-vu" in manifest_mod, "modules/c2a-dn/manifest.json phải chứa /khoa/khoa-dich-vu"
+    assert "/khoa/khoa-dich-vu" in readme_mod, "modules/may-dang-nhap/README.md phải chứa /khoa/khoa-dich-vu"
+    assert "/khoa/khoa-dich-vu" in manifest_mod, "modules/may-dang-nhap/manifest.json phải chứa /khoa/khoa-dich-vu"
     assert "/khoa/khoa-dich-vu" in tham_chieu, "docs/THAM-CHIEU.md phải chứa /khoa/khoa-dich-vu"
 
     from src.settings import Settings as C2ASettings
@@ -1114,34 +1114,34 @@ def test_c3_trang_thai_hoi_dich_vu_that_hoac_bao_loi(mod_instance, monkeypatch):
 
     monkeypatch.setattr(mod_instance, "_goi", _goi_loi)
     # mod_instance đã có _khoa giả
-    st = asyncio.run(mod_instance.trang_thai(["c2a_dn.cong_cu_doc"]))
-    assert "c2a_dn.cong_cu_doc" in st
-    assert st["c2a_dn.cong_cu_doc"]["hop_le"] is False, (
-        f"Khi dịch vụ lỗi, trang_thai phải trả hop_le=False, nhận: {st['c2a_dn.cong_cu_doc']}"
+    st = asyncio.run(mod_instance.trang_thai(["may_dang_nhap.cong_cu_doc"]))
+    assert "may_dang_nhap.cong_cu_doc" in st
+    assert st["may_dang_nhap.cong_cu_doc"]["hop_le"] is False, (
+        f"Khi dịch vụ lỗi, trang_thai phải trả hop_le=False, nhận: {st['may_dang_nhap.cong_cu_doc']}"
     )
-    assert st["c2a_dn.cong_cu_doc"]["gia_tri"] != "san_sang"
+    assert st["may_dang_nhap.cong_cu_doc"]["gia_tri"] != "san_sang"
 
     # Khi dịch vụ hoạt động bình thường
     async def _goi_ok(phuong_thuc, duong, **kwargs):
         if duong == "/health":
-            return {"ok": True, "status": "ok", "dich_vu": "c2a-dang-nhap"}
+            return {"ok": True, "status": "ok", "dich_vu": "may-dang-nhap"}
         return {"ok": True, "profiles": ["hs1"]}
 
     monkeypatch.setattr(mod_instance, "_goi", _goi_ok)
     mod_instance._suc_khoe_cache = None  # Xoá cache để kiểm tra lại
-    st_ok = asyncio.run(mod_instance.trang_thai(["c2a_dn.cong_cu_doc"]))
-    assert st_ok["c2a_dn.cong_cu_doc"]["hop_le"] is True
-    assert st_ok["c2a_dn.cong_cu_doc"]["gia_tri"] == "san_sang"
+    st_ok = asyncio.run(mod_instance.trang_thai(["may_dang_nhap.cong_cu_doc"]))
+    assert st_ok["may_dang_nhap.cong_cu_doc"]["hop_le"] is True
+    assert st_ok["may_dang_nhap.cong_cu_doc"]["gia_tri"] == "san_sang"
 
 
 # ── Mục C6: cai() từ chối HTML / 5xx / sai danh tính và KHÔNG lưu khoá ───────
 
 def test_c6_cai_tu_choi_html_hoac_5xx_khong_luu_khoa(mod_instance, monkeypatch):
-    """C6: cai() chỉ lưu khi /health đúng khuôn c2a-dang-nhap; máy trả 200 HTML hoặc 500 phải trả ok: False và KHÔNG lưu khoá."""
-    mod_instance._url = "http://web2api-c2a-dang-nhap:8010"
+    """C6: cai() chỉ lưu khi /health đúng khuôn may-dang-nhap; máy trả 200 HTML hoặc 500 phải trả ok: False và KHÔNG lưu khoá."""
+    mod_instance._url = "http://web2api-may-dang-nhap:8010"
     mod_instance._khoa = ""
 
-    # Trường hợp 1: Máy trả 200 nhưng là HTML (không phải JSON dịch vụ c2a-dang-nhap)
+    # Trường hợp 1: Máy trả 200 nhưng là HTML (không phải JSON dịch vụ may-dang-nhap)
     async def _goi_html(phuong_thuc, duong, **kwargs):
         if duong == "/health":
             return {"ok": False, "ma_loi": "phan_hoi_khong_phai_json", "loi": "HTML 200"}
@@ -1151,7 +1151,7 @@ def test_c6_cai_tu_choi_html_hoac_5xx_khong_luu_khoa(mod_instance, monkeypatch):
     async def _kiem_url_gia(url):
         return url
     # Nếu dùng kiem_url_lan hoặc _kiem_url_dich_vu
-    monkeypatch.setattr("modules.c2a-dn.module._kiem_url_dich_vu", _kiem_url_gia, raising=False)
+    monkeypatch.setattr("modules.may-dang-nhap.module._kiem_url_dich_vu", _kiem_url_gia, raising=False)
 
     kq1 = asyncio.run(mod_instance.cai({"dich_vu_url": "http://192.0.2.99:8010", "khoa_dich_vu": "khoa_bi_mat_123"}))
     assert kq1["ok"] is False, "Máy trả HTML không được coi là cài thành công!"

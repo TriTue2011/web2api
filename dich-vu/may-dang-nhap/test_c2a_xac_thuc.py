@@ -1,4 +1,4 @@
-# test_c2a_xac_thuc.py — Kiểm tra xác thực nội bộ bắt buộc cho c2a-dang-nhap
+# test_c2a_xac_thuc.py — Kiểm tra xác thực nội bộ bắt buộc cho may-dang-nhap
 from __future__ import annotations
 
 import hmac

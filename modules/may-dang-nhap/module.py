@@ -1,4 +1,4 @@
-"""Module client mỏng c2a-dn — cầu nối gọi dịch vụ dich-vu/c2a-dang-nhap (NV145 - Giai đoạn 2).
+"""Module client mỏng may-dang-nhap — cầu nối gọi dịch vụ dich-vu/may-dang-nhap (NV145 - Giai đoạn 2).
 
 Chỉ đóng vai trò cầu nối HTTP nội bộ (FastAPI cổng 8010, Bearer).
 Mọi logic đăng nhập, điều khiển trình duyệt và két mật khẩu đều nằm ở container riêng.
@@ -65,7 +65,7 @@ class _ChanKhoaDichVu(logging.Filter):
     Chặn theo giá trị: mọi khoá trong _KHOA_DANG_DUNG.
     """
 
-    _c2a_dn_loc = True
+    _may_dang_nhap_loc = True
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
@@ -82,7 +82,7 @@ class _ChanKhoaDichVu(logging.Filter):
 def _cai_bo_loc_log() -> None:
     for ten in _LOGGER_HTTP:
         lg = logging.getLogger(ten)
-        for f in [f for f in lg.filters if getattr(f, "_c2a_dn_loc", False)]:
+        for f in [f for f in lg.filters if getattr(f, "_may_dang_nhap_loc", False)]:
             lg.removeFilter(f)
         lg.addFilter(_ChanKhoaDichVu())
 
@@ -219,12 +219,12 @@ DICH_VU_DANG_NHAP = {
 # ── Lớp Module ───────────────────────────────────────────────────────────────
 
 class Module:
-    """Module client mỏng kết nối dịch vụ c2a-dang-nhap."""
+    """Module client mỏng kết nối dịch vụ may-dang-nhap."""
 
     def __init__(self, manifest: dict, _goc_kiem_thu: str | None = None) -> None:
         self.manifest = manifest
-        self.tien_to = str(manifest.get("tien_to") or "c2a_dn")
-        self._url = "http://web2api-c2a-dang-nhap:8010"
+        self.tien_to = str(manifest.get("tien_to") or "may_dang_nhap")
+        self._url = "http://web2api-may-dang-nhap:8010"
         self._khoa = ""
         self._suc_khoe_cache: dict | None = None
         self._suc_khoe_cache_luc: float = 0.0
@@ -234,7 +234,7 @@ class Module:
 
     def nap(self, cau_hinh: dict) -> None:
         cau_hinh = cau_hinh or {}
-        url = str(cau_hinh.get("dich_vu_url") or "http://web2api-c2a-dang-nhap:8010").strip().rstrip("/")
+        url = str(cau_hinh.get("dich_vu_url") or "http://web2api-may-dang-nhap:8010").strip().rstrip("/")
         self._url = url
         khoa = str(cau_hinh.get("khoa_dich_vu") or "").strip()
         self._khoa = khoa
@@ -243,14 +243,14 @@ class Module:
 
     async def cai(self, cau_hinh: dict) -> dict:
         cau_hinh = cau_hinh or {}
-        url = str(cau_hinh.get("dich_vu_url") or "http://web2api-c2a-dang-nhap:8010")
+        url = str(cau_hinh.get("dich_vu_url") or "http://web2api-may-dang-nhap:8010")
         try:
             url_sach = await _kiem_url_dich_vu(url)
         except ValueError as e:
             return {"ok": False, "loi": f"dia_chi_dich_vu_khong_hop_le: {e}"}
         khoa = str(cau_hinh.get("khoa_dich_vu") or "").strip()
 
-        # Kiểm tra xác thực với dịch vụ thật: phải đúng danh tính c2a-dang-nhap và status: ok
+        # Kiểm tra xác thực với dịch vụ thật: phải đúng danh tính may-dang-nhap và status: ok
         url_cu, khoa_cu = self._url, self._khoa
         self._url, self._khoa = url_sach, khoa
         try:
@@ -259,18 +259,18 @@ class Module:
         finally:
             self._url, self._khoa = url_cu, khoa_cu
 
-        # Kiểm tra /health phải trả đúng JSON khuôn dịch vụ c2a-dang-nhap
+        # Kiểm tra /health phải trả đúng JSON khuôn dịch vụ may-dang-nhap
         if (
             not isinstance(kq_health, dict)
             or not kq_health.get("ok")
-            or kq_health.get("dich_vu") != "c2a-dang-nhap"
+            or kq_health.get("dich_vu") != "may-dang-nhap"
             or kq_health.get("status") != "ok"
         ):
             loi_msg = (
                 kq_health.get("loi")
                 if isinstance(kq_health, dict)
-                else "Dịch vụ không phản hồi đúng danh tính c2a-dang-nhap"
-            ) or "Dịch vụ không phản hồi đúng khuôn /health của c2a-dang-nhap"
+                else "Dịch vụ không phản hồi đúng danh tính may-dang-nhap"
+            ) or "Dịch vụ không phản hồi đúng khuôn /health của may-dang-nhap"
             return {"ok": False, "loi": f"dich_vu_khong_hop_le: {loi_msg}"}
 
         # Kiểm tra /v1/profiles xác thực khoá dịch vụ
@@ -491,7 +491,7 @@ class Module:
                 "ten": "Công cụ đọc trạng thái đăng nhập c2a",
                 "loai": "cong_cu",
                 "khu": "he_thong",
-                "thuoc_tinh": {"dich_vu": "c2a-dang-nhap"},
+                "thuoc_tinh": {"dich_vu": "may-dang-nhap"},
                 "tinh_nang": doc_actions,
                 "rui_ro_mac_dinh": "doc",
             },
@@ -500,7 +500,7 @@ class Module:
                 "ten": "Công cụ thao tác đăng nhập c2a",
                 "loai": "cong_cu",
                 "khu": "he_thong",
-                "thuoc_tinh": {"dich_vu": "c2a-dang-nhap"},
+                "thuoc_tinh": {"dich_vu": "may-dang-nhap"},
                 "tinh_nang": ghi_actions,
                 "rui_ro_mac_dinh": "ghi",
             },

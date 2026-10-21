@@ -1,4 +1,4 @@
-# Dịch vụ Đăng nhập & Giải Captcha (c2a-dang-nhap) cho web2api
+# Dịch vụ Đăng nhập & Giải Captcha (may-dang-nhap) cho web2api
 
 Dịch vụ độc lập chạy trong container Docker riêng biệt, cung cấp API tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản (Google, OpenAI, Claude, Gemini, Grok, Codex...) và giải Captcha (Cloudflare Turnstile, reCAPTCHA audio...) được port từ thành phần `captcha-solver` của kho `chatgpt2api`.
 
@@ -30,17 +30,17 @@ Lõi `web2api` giao tiếp với dịch vụ này qua giao thức HTTP nội b�
 
 ### 2.2. Khởi chạy bằng Docker Compose (Khuyến nghị)
 
-Trong thư mục `dich-vu/c2a-dang-nhap/`:
+Trong thư mục `dich-vu/may-dang-nhap/`:
 
 ```bash
 docker compose up -d --build
 ```
 
 Tệp `docker-compose.yml` đã được cấu hình chuẩn:
-- Mạng nội bộ riêng biệt `web2api-c2a-dang-nhap`.
+- Mạng nội bộ riêng biệt `web2api-may-dang-nhap`.
 - Tách biệt hai volume riêng:
-  - `c2a-dang-nhap-data` gắn vào `/data` (lưu trữ hồ sơ trình duyệt, `accounts.db`).
-  - `c2a-dang-nhap-khoa` gắn vào `/khoa` (lưu trữ `khoa-dich-vu`, `vault.key`, `mat-khau-vnc` với quyền 0700).
+  - `may-dang-nhap-data` gắn vào `/data` (lưu trữ hồ sơ trình duyệt, `accounts.db`).
+  - `may-dang-nhap-khoa` gắn vào `/khoa` (lưu trữ `khoa-dich-vu`, `vault.key`, `mat-khau-vnc` với quyền 0700).
 - Chế độ chỉ đọc: `read_only: true` kèm các gắn tạm `tmpfs`:
   - `/tmp:size=256m,mode=1777,uid=1000,gid=1000`
   - `/run:size=64m,mode=0755,uid=1000,gid=1000`
@@ -55,13 +55,13 @@ Tệp `docker-compose.yml` đã được cấu hình chuẩn:
 
 ```bash
 # 1. Dựng ảnh (mặc định biến thể firefox an toàn; hoặc ca-hai, chromium khi cần)
-docker build -t web2api-c2a-dang-nhap:latest --build-arg BIEN_THE=firefox .
+docker build -t web2api-may-dang-nhap:latest --build-arg BIEN_THE=firefox .
 
 # 2. Chạy container với quyền hạn tối thiểu và mạng riêng
 docker run -d \
-  --name web2api-c2a-dang-nhap \
-  -v c2a-dang-nhap-data:/data \
-  -v c2a-dang-nhap-khoa:/khoa \
+  --name web2api-may-dang-nhap \
+  -v may-dang-nhap-data:/data \
+  -v may-dang-nhap-khoa:/khoa \
   --read-only \
   --tmpfs /tmp:size=256m,mode=1777,uid=1000,gid=1000 \
   --tmpfs /run:size=64m,mode=0755,uid=1000,gid=1000 \
@@ -71,7 +71,7 @@ docker run -d \
   --pids-limit 2048 \
   --memory 2g \
   --shm-size 1g \
-  web2api-c2a-dang-nhap:latest
+  web2api-may-dang-nhap:latest
 ```
 
 > [!WARNING]
@@ -90,7 +90,7 @@ Mọi yêu cầu gọi tới API (ngoại trừ `GET /health`) đều bắt bu�
   - Nếu khai báo biến `CAPTCHA_SOLVER_API_KEY`: Bắt buộc phải có độ dài tối thiểu 24 ký tự, có ít nhất 10 ký tự khác nhau và không được là giá trị mặc định `"change-me"`. Nếu sai khuôn, dịch vụ dừng ngay lập tức khi khởi động với ngoại lệ `RuntimeError` (thông báo tiếng Việt không chứa giá trị khoá).
   - Nếu không khai báo biến: Dịch vụ tự động sinh khoá ngẫu nhiên an toàn bằng `secrets.token_urlsafe(32)` và ghi sẵn vào `/khoa/khoa-dich-vu` với quyền `0600` theo cơ chế nguyên tử (tệp tạm rồi `os.replace`). Người dùng có thể đọc ngay sau khi container lên:
     ```bash
-    docker exec web2api-c2a-dang-nhap cat /khoa/khoa-dich-vu
+    docker exec web2api-may-dang-nhap cat /khoa/khoa-dich-vu
     ```
 - **So sánh chống timing attack**: So sánh khoá bằng `hmac.compare_digest`.
 - **Bảo mật log**: Tuyệt đối không in giá trị khoá API ra stdout/stderr hay nhật ký hệ thống.
@@ -111,7 +111,7 @@ Mọi yêu cầu gọi tới API (ngoại trừ `GET /health`) đều bắt bu�
 
 ### 3.4. Tách biệt Volume và Quy trình Sao lưu An toàn
 
-- **Tách volume**: Thư mục `/khoa` (chứa các tệp nhạy cảm `khoa-dich-vu`, `vault.key`, `mat-khau-vnc`) được gắn vào volume riêng `web2api_c2a_dang_nhap_khoa` với quyền `0700`, hoàn toàn tách biệt khỏi volume dữ liệu `/data` (`web2api_c2a_dang_nhap_du_lieu`).
+- **Tách volume**: Thư mục `/khoa` (chứa các tệp nhạy cảm `khoa-dich-vu`, `vault.key`, `mat-khau-vnc`) được gắn vào volume riêng `web2api_may_dang_nhap_khoa` với quyền `0700`, hoàn toàn tách biệt khỏi volume dữ liệu `/data` (`web2api_may_dang_nhap_du_lieu`).
 - **Sao lưu**: Quản trị viên có thể sao lưu volume dữ liệu `/data` (chứa hồ sơ duyệt web và `accounts.db` đã mã hoá) mà không vô tình kéo theo các tệp khoá giải mã trong `/khoa`. Volume `/khoa` cần được bảo vệ với mức độ an ninh cao nhất của máy chủ.
 
 ---
@@ -168,7 +168,7 @@ Mã nguồn được kế thừa nguyên văn từ thành phần `captcha-solver
 | 8 | `captcha-solver/src/gemini_web_login.py` | `d879b03` | Chỉnh `# W2A:` | Bỏ ký tự BOM `\ufeff` ở đầu tệp tránh SyntaxError trên Python 3.13 |
 | 9 | `captcha-solver/src/github_codex_onboard.py` | `d879b03` | Giữ nguyên băm | Không sửa đổi |
 | 10 | `captcha-solver/src/grok_web_login.py` | `d879b03` | Giữ nguyên băm | Không sửa đổi |
-| 11 | `captcha-solver/src/main.py` | `d879b03` | Chỉnh `# W2A:` | Xác thực Bearer `hmac.compare_digest`; kiểm tra fail-fast; kiểm soát nhóm tính năng `can_tinh_nang`; `GET /health` khai danh tính `c2a-dang-nhap` và cảnh báo thiếu khoá; dùng `_PROFILE_SLUG` + `resolve()` trong `api_delete_profile` |
+| 11 | `captcha-solver/src/main.py` | `d879b03` | Chỉnh `# W2A:` | Xác thực Bearer `hmac.compare_digest`; kiểm tra fail-fast; kiểm soát nhóm tính năng `can_tinh_nang`; `GET /health` khai danh tính `may-dang-nhap` và cảnh báo thiếu khoá; dùng `_PROFILE_SLUG` + `resolve()` trong `api_delete_profile` |
 | 12 | `captcha-solver/src/openai_native_login.py` | `d879b03` | Giữ nguyên băm | Không sửa đổi |
 | 13 | `captcha-solver/src/settings.py` | `d879b03` | Chỉnh `# W2A:` | Bỏ khoá mặc định `change-me`; tách `key_dir` ra `/khoa`; thêm công tắc `tinh_nang_bat` và `bat_novnc` |
 | 14 | `captcha-solver/src/solvers/__init__.py` | `d879b03` | Giữ nguyên băm | Không sửa đổi |
@@ -208,7 +208,7 @@ Tất cả các điểm điều chỉnh tối thiểu nhằm thích ứng với 
    - Kiểm tra khoá fail-fast trong `lifespan`: dừng khởi động nếu khoá sai định dạng, tự sinh tệp khoá 0600 trong `key_dir` nếu chưa cấu hình.
    - Tắt các endpoint tài liệu (`docs_url=None`, `redoc_url=None`, `openapi_url=None`).
    - Tắt middleware CORS mở rộng toàn bộ (`allow_origins=["*"]`).
-   - Endpoint `GET /health` là ngoại lệ mở duy nhất có chú thích lý do rõ ràng; khai danh tính dịch vụ `c2a-dang-nhap` và báo trạng thái degraded/503 khi két thiếu khoá; chỉ trả URL `novnc` khi bật qua biến `CAPTCHA_SOLVER_BAT_NOVNC=1`.
+   - Endpoint `GET /health` là ngoại lệ mở duy nhất có chú thích lý do rõ ràng; khai danh tính dịch vụ `may-dang-nhap` và báo trạng thái degraded/503 khi két thiếu khoá; chỉ trả URL `novnc` khi bật qua biến `CAPTCHA_SOLVER_BAT_NOVNC=1`.
    - Tuyến đường `DELETE /v1/profiles/{profile}` kiểm tra an toàn bằng `_PROFILE_SLUG` và `resolve()` kiểm tra relative_to để chống path traversal.
    - Tích hợp bộ kiểm soát công tắc tính năng `can_tinh_nang(...)` và `LoiTinhNangTat` trả lỗi 403 chuẩn hoá; xếp các tuyến đường `/reveal` và `/totp` vào nhóm `lo_bi_mat` (tắt mặc định).
    - Vô hiệu hoá mặc định việc tự động đẩy token ra ngoài.
@@ -247,7 +247,7 @@ Do các ràng buộc cách ly của môi trường sandbox phát triển:
 
 ## 9. Tệp c2a CỐ Ý không chép
 
-Các tệp sau từ kho `chatgpt2api` (thư mục `captcha-solver/` và liên quan) cố ý không được chép vào dịch vụ `c2a-dang-nhap`:
+Các tệp sau từ kho `chatgpt2api` (thư mục `captcha-solver/` và liên quan) cố ý không được chép vào dịch vụ `may-dang-nhap`:
 
 - **Các kịch bản dò Flow một lần**: `capture_body.py`, `capture_real_body.py`, `capture_real_v2.py`, `capture_route.py`, `debug_fetch.py`, `debug_fetch2.py`, `find_api_fields.py`, `log_requests.py`, `probe_api.py`, `probe_api_v2.py`, `test_flow.py`
   - *Lý do*: Kịch bản dò dùng một lần trong quá trình phân tích API ban đầu của tác giả c2a, chứa dữ liệu/thông tin thăm dò tạm thời của nhà, không thuộc thành phần chạy của dịch vụ web.

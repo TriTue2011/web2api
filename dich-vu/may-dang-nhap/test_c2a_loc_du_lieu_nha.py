@@ -118,10 +118,10 @@ def kiem_khoa(txt: str) -> list[str]:
 
 def _duyet_tep_van_ban():
     cac_tap = []
-    # 1. dich-vu/c2a-dang-nhap/
+    # 1. dich-vu/may-dang-nhap/
     cac_tap.extend(GOC_DICH_VU.rglob("*"))
-    # 2. modules/c2a-dn/
-    mod_dir = GOC_REPO / "modules" / "c2a-dn"
+    # 2. modules/may-dang-nhap/
+    mod_dir = GOC_REPO / "modules" / "may-dang-nhap"
     if mod_dir.is_dir():
         cac_tap.extend(mod_dir.rglob("*"))
     # 3. test/test_web2api_dang_nhap_tu_dong.py

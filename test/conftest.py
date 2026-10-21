@@ -29,8 +29,9 @@ if str(GOC_WEB2API) not in sys.path:
 #: «open» là tiền tố của chuẩn mở OpenAI (LoiOpenAI, opened_at…), lộ ra khi cắt «api» khỏi nhãn «openapi» của mang_ra.
 #: «router» là từ kỹ thuật (APIRouter của FastAPI) — lộ ra từ nhãn đầu «router» của host router.project-osrm.org trong mang_ra.
 #: «hoa_don» (tiền tố module hoa-don) là cụm từ tiếng Việt thông dụng, trùng đoạn của «khoa_dong_bo» trong lõi khi dò theo chuỗi con.
+#: «dang», «nhap» (module may-dang-nhap) là từ tiếng Việt thông dụng («đang chạy», «nhập»), lộ ra khi tách id module; tên đầy đủ của module vẫn bị quét.
 #: Tên đầy đủ của module («home-assistant», «van-phong», «youtube-phat», «lich-ics») và tiền tố vẫn bị quét bình thường.
-MANH_TU_THONG_DUNG = frozenset({"assistant", "chay", "dich", "email", "giao", "hoa_don", "khoa", "lich", "ma", "nhan", "open", "phat", "phong", "router", "song", "tien", "vien"})
+MANH_TU_THONG_DUNG = frozenset({"assistant", "chay", "dang", "dich", "email", "giao", "hoa_don", "khoa", "lich", "ma", "nhan", "nhap", "open", "phat", "phong", "router", "song", "tien", "vien"})
 
 #: Biến môi trường dùng chung cho test trong tiến trình VÀ tiến trình uvicorn con (test_web2api_kiem_nghiem).
 MOI_TRUONG_CHAN_MANG = {

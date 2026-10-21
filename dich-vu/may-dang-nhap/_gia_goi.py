@@ -1,4 +1,4 @@
-# _gia_goi.py — hỗ trợ test của dich-vu/c2a-dang-nhap (KHÔNG đặt tên conftest.py: tên đó trùng test/conftest.py và làm hỏng `from conftest import …` của các test lõi khi chạy chung một lượt pytest).
+# _gia_goi.py — hỗ trợ test của dich-vu/may-dang-nhap (KHÔNG đặt tên conftest.py: tên đó trùng test/conftest.py và làm hỏng `from conftest import …` của các test lõi khi chạy chung một lượt pytest).
 # Mỗi tệp test_c2a_*.py `import _gia_goi` ở đầu tệp để có thư mục dữ liệu tạm và mô-đun giả.
 import os
 import sys

@@ -1,4 +1,4 @@
-# Gói nền của dịch vụ c2a-dang-nhap (mọi biến thể ảnh). Ghim đúng bản đang chạy thật ở c2a (đo trong container c2a 19/10/2026),
+# Gói nền của dịch vụ may-dang-nhap (mọi biến thể ảnh). Ghim đúng bản đang chạy thật ở c2a (đo trong container c2a 19/10/2026),
 # trừ fastapi/uvicorn/pydantic/httpx dùng đúng bản của lõi web2api (đã kiểm cùng nhau trên Python 3.13).
 # KHÔNG đưa vào requirements*.txt của lõi.
 fastapi==0.142.4
