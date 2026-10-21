@@ -1,6 +1,6 @@
-"""Test NV145b — nối module c2a-dn vào nút «Lưu và đăng nhập» + tự đăng nhập lại.
+"""Test NV145b — nối module may-dang-nhap vào nút «Lưu và đăng nhập» + tự đăng nhập lại.
 
-Đỏ→xanh QUA LÕI THẬT với dịch vụ c2a-dang-nhap GIẢ (Starlette chạy thật trên
+Đỏ→xanh QUA LÕI THẬT với dịch vụ may-dang-nhap GIẢ (Starlette chạy thật trên
 127.0.0.1): mọi lời gọi HTTP của module đi qua mạng loopback thật, không mock
 httpx. Các kiểu tài khoản trong test đều GIẢ rõ ràng (@example.com).
 
@@ -33,7 +33,7 @@ from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangN
 
 def _tai_module():
     spec = importlib.util.spec_from_file_location(
-        "c2a_dn_mod_nv145b", str(GOC / "modules" / "c2a-dn" / "module.py"))
+        "may_dang_nhap_mod_nv145b", str(GOC / "modules" / "may-dang-nhap" / "module.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -46,7 +46,7 @@ TOTP_SECRET = "JBSWY3DPEHPK3PXP"
 
 
 class DichVuGia:
-    """Dịch vụ c2a-dang-nhap giả với kịch bản điều khiển được."""
+    """Dịch vụ may-dang-nhap giả với kịch bản điều khiển được."""
 
     def __init__(self):
         self.che_do = "thanh_cong"
@@ -83,7 +83,7 @@ class DichVuGia:
         dv = self
 
         async def health(request):
-            return JSONResponse({"ok": True, "dich_vu": "c2a-dang-nhap",
+            return JSONResponse({"ok": True, "dich_vu": "may-dang-nhap",
                                  "status": "ok"})
 
         async def profiles(request):
@@ -149,7 +149,7 @@ def mod(dich_vu_gia, monkeypatch):
     monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
     monkeypatch.setenv("C2A_DN_CHO_DANG_NHAP_GIAY", "25")
     monkeypatch.setenv("C2A_DN_NGHI_LUY_THUA_GIAY", "0")
-    manifest = {"tien_to": "c2a_dn", "ten": "c2a-dn (test)"}
+    manifest = {"tien_to": "may_dang_nhap", "ten": "may-dang-nhap (test)"}
     m = MOD.Module(manifest)
     m._url = dich_vu_gia.url
     m._khoa = "khoa-gia"
@@ -349,17 +349,17 @@ def moi_truong_loi(tmp_path, monkeypatch, dich_vu_gia):
     monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
 
     tep = {}
-    for p in (GOC / "modules" / "c2a-dn").iterdir():
+    for p in (GOC / "modules" / "may-dang-nhap").iterdir():
         if p.is_file():
             tep[p.name] = p.read_bytes()
-    ghi_thu_muc(data_dir / "modules" / "c2a-dn", tep)
+    ghi_thu_muc(data_dir / "modules" / "may-dang-nhap", tep)
 
     with TestClient(app) as client:
         so = SoModule()
         client.app.state.so = so
         r = client.post("/api/modules/nap-lai", headers=QT)
         assert r.status_code == 200, r.text
-        r = client.post("/api/modules/c2a-dn/cai", headers=QT, json={
+        r = client.post("/api/modules/may-dang-nhap/cai", headers=QT, json={
             "cau_hinh": {"dich_vu_url": dich_vu_gia.url,
                          "khoa_dich_vu": "khoa-gia"}})
         assert r.status_code == 200, r.text
@@ -368,18 +368,18 @@ def moi_truong_loi(tmp_path, monkeypatch, dich_vu_gia):
 
 
 def test_loi_tinh_nang_bao_dang_nhap_tu_dong(moi_truong_loi):
-    """Giao diện suy dang_nhap_tu_dong từ cấu trúc (có hàm dang_nhap) → c2a-dn
+    """Giao diện suy dang_nhap_tu_dong từ cấu trúc (có hàm dang_nhap) → may-dang-nhap
     hiện trong danh sách nguồn của nút «Lưu và đăng nhập» (mã cũ: false)."""
     client, so = moi_truong_loi
     r = client.get("/api/tinh-nang", headers=QT)
     assert r.status_code == 200, r.text
-    muc = [m for m in r.json()["modules"] if m["id"] == "c2a-dn"]
-    assert muc, "c2a-dn phải có trong tính năng"
+    muc = [m for m in r.json()["modules"] if m["id"] == "may-dang-nhap"]
+    assert muc, "may-dang-nhap phải có trong tính năng"
     assert muc[0]["dang_nhap_tu_dong"] is True
 
 
 def test_tuyen_dang_nhap_bang_tai_khoan_da_luu(moi_truong_loi, dich_vu_gia):
-    """POST /api/tai-khoan/da-luu/{id}/dang-nhap {module_id: c2a-dn} qua lõi thật."""
+    """POST /api/tai-khoan/da-luu/{id}/dang-nhap {module_id: may-dang-nhap} qua lõi thật."""
     dich_vu_gia.che_do = "thanh_cong"
     client, so = moi_truong_loi
     # Lưu tài khoản vào kho lõi (bước «Lưu» của nút «Lưu và đăng nhập»)
@@ -390,7 +390,7 @@ def test_tuyen_dang_nhap_bang_tai_khoan_da_luu(moi_truong_loi, dich_vu_gia):
     tai_khoan_id = r.json()["tai_khoan"]["id"]
     # Bấm «đăng nhập»: lõi tự lấy bí mật từ kho rồi gọi module.dang_nhap
     r = client.post(f"/api/tai-khoan/da-luu/{tai_khoan_id}/dang-nhap",
-                    headers=QT, json={"module_id": "c2a-dn"})
+                    headers=QT, json={"module_id": "may-dang-nhap"})
     assert r.status_code == 200, r.text
     kq = r.json()
     assert kq["thanh_cong"] is True, kq
@@ -416,14 +416,14 @@ def test_tuyen_ma_2fa_qua_loi_that(moi_truong_loi, dich_vu_gia):
     client, so = moi_truong_loi
     tai_khoan_id = _luu_tai_khoan_qua_loi(client)
     r = client.post(f"/api/tai-khoan/da-luu/{tai_khoan_id}/ma-2fa",
-                    headers=QT, json={"module_id": "c2a-dn", "ma": "654321"})
+                    headers=QT, json={"module_id": "may-dang-nhap", "ma": "654321"})
     assert r.status_code == 200, r.text
     assert r.json()["thanh_cong"] is True, r.text
     assert dich_vu_gia.ma_2fa == ["654321"]
     assert MAT_KHAU not in r.text and "654321" not in r.text
     # id lạ → 404, không lộ có/không
     r2 = client.post("/api/tai-khoan/da-luu/id-la-0123456789/ma-2fa",
-                     headers=QT, json={"module_id": "c2a-dn", "ma": "654321"})
+                     headers=QT, json={"module_id": "may-dang-nhap", "ma": "654321"})
     assert r2.status_code == 404
 
 
@@ -434,13 +434,13 @@ def test_tuyen_trang_thai_dang_nhap_qua_loi_that(moi_truong_loi, dich_vu_gia):
     tai_khoan_id = _luu_tai_khoan_qua_loi(client)
     # Bắt đầu một lượt đăng nhập để có phiên (không đợi xong)
     r = client.post(f"/api/tai-khoan/da-luu/{tai_khoan_id}/dang-nhap",
-                    headers=QT, json={"module_id": "c2a-dn"})
+                    headers=QT, json={"module_id": "may-dang-nhap"})
     assert r.status_code == 200, r.text
     assert r.json()["cho_2fa"] is True  # tuyến mới trả thêm cho_2fa
     # Hỏi trạng thái
     r2 = client.get(
         f"/api/tai-khoan/da-luu/{tai_khoan_id}/dang-nhap-trang-thai",
-        params={"module_id": "c2a-dn"}, headers=QT)
+        params={"module_id": "may-dang-nhap"}, headers=QT)
     assert r2.status_code == 200, r2.text
     tt = r2.json()
     assert tt["ok"] is True

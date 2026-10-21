@@ -1,8 +1,8 @@
-# Kiểm thử đăng nhập Google qua c2a-dn (NV145b)
+# Kiểm thử đăng nhập Google qua may-dang-nhap (NV145b)
 
 ## Cài đặt
-1. Cài module `c2a-dn`, nhập URL dịch vụ c2a-dang-nhap + khoá dịch vụ.
-2. Hệ thống → AI → Tài khoản đã lưu: chọn nguồn **c2a-dn** (hiện vì module đã
+1. Cài module `may-dang-nhap`, nhập URL dịch vụ may-dang-nhap + khoá dịch vụ.
+2. Hệ thống → AI → Tài khoản đã lưu: chọn nguồn **may-dang-nhap** (hiện vì module đã
    có hợp đồng `dang_nhap`).
 
 ## Đăng nhập

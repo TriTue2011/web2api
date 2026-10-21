@@ -915,7 +915,7 @@ class Module:
         return st
 
     async def dang_nhap(self, dong: DongDaTach) -> KetQuaDangNhap:
-        """Đăng nhập Google qua dịch vụ c2a-dang-nhap (NV145b).
+        """Đăng nhập Google qua dịch vụ may-dang-nhap (NV145b).
 
         Nhận email/mật khẩu/TOTP qua DongDaTach (BiMatTam/BiMatTotp), gửi sang
         KÉT CỦA DỊCH VỤ (POST /v1/accounts/saved) rồi ghi đè bộ đệm bí mật ngay,
@@ -1007,12 +1007,12 @@ class Module:
         if ma == "sai_khoa_dich_vu":
             return _ket_qua_dang_nhap(
                 False, ma_loi="sai_khoa_dich_vu",
-                huong_dan="Khoá dịch vụ c2a-dang-nhap không đúng — kiểm tra cấu "
+                huong_dan="Khoá dịch vụ may-dang-nhap không đúng — kiểm tra cấu "
                            "hình module (khoa_dich_vu).")
         if ma in ("khong_noi_duoc_dich_vu", "het_gio"):
             return _ket_qua_dang_nhap(
                 False, ma_loi="dich_vu_sap",
-                huong_dan="Không nối được dịch vụ c2a-dang-nhap — kiểm tra "
+                huong_dan="Không nối được dịch vụ may-dang-nhap — kiểm tra "
                            "container dịch vụ có đang chạy không.")
         return _ket_qua_dang_nhap(False, ma_loi="dich_vu_loi")
 
