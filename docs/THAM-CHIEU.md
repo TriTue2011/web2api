@@ -3992,8 +3992,8 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `dich_vu_url` | Không | Địa chỉ HTTP dịch vụ c2a-đăng-nhập (mặc định `http://web2api-may-dang-nhap:8010`). Chỉ nhận loopback hoặc mạng nội bộ Docker (chống SSRF). |
-| `khoa_dich_vu` | Có | Khoá Bearer của dịch vụ c2a-đăng-nhập. Lưu riêng trong két bí mật, không trả lại qua API, không ghi vào log. |
+| `dich_vu_url` | Không | Địa chỉ HTTP dịch vụ máy đăng nhập (mặc định `http://web2api-may-dang-nhap:8010`). Chỉ nhận loopback hoặc mạng nội bộ Docker (chống SSRF). |
+| `khoa_dich_vu` | Có | Khoá Bearer của dịch vụ máy đăng nhập. Lưu riêng trong két bí mật, không trả lại qua API, không ghi vào log. |
 
 **Sự cố thường gặp.**
 - `khong_noi_duoc_dich_vu` — container `web2api-may-dang-nhap` chưa chạy hoặc chưa cùng mạng Docker — kiểm tra `docker compose ps` và mạng nối.

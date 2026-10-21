@@ -1,6 +1,6 @@
 {
   "id": "may-dang-nhap",
-  "ten": "Đăng nhập tự động — client dịch vụ c2a-đăng-nhập",
+  "ten": "Máy đăng nhập tự động — client của dịch vụ máy đăng nhập",
   "mo_ta": "Client HTTP mỏng gọi dịch vụ dich-vu/may-dang-nhap (cổng 8010, Bearer) để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản. Module chỉ là cầu nối; mọi logic đăng nhập nằm ở dịch vụ. Đầu ra dịch vụ là dữ liệu không tin: cắt ở trần, gắn nguon_ngoai.",
   "phien_ban": "0.1.0",
   "hang": "B",
@@ -18,7 +18,7 @@
       "kieu": "chuoi",
       "bat_buoc": false,
       "mac_dinh": "http://web2api-may-dang-nhap:8010",
-      "mo_ta": "Địa chỉ HTTP dịch vụ c2a-đăng-nhập. Cho phép loopback và mạng Docker nội bộ; chặn link-local, multicast, reserved."
+      "mo_ta": "Địa chỉ HTTP dịch vụ máy đăng nhập. Cho phép loopback và mạng Docker nội bộ; chặn link-local, multicast, reserved."
     },
     {
       "khoa": "khoa_dich_vu",
@@ -26,12 +26,12 @@
       "kieu": "bi_mat",
       "bat_buoc": true,
       "mac_dinh": null,
-      "mo_ta": "Khoá Bearer của dịch vụ c2a-đăng-nhập (đọc bằng docker exec ... cat /khoa/khoa-dich-vu). Lưu an toàn, không bao giờ lộ ra log hay API."
+      "mo_ta": "Khoá Bearer của dịch vụ máy đăng nhập (đọc bằng docker exec ... cat /khoa/khoa-dich-vu). Lưu an toàn, không bao giờ lộ ra log hay API."
     }
   ],
   "tai_nguyen": {
     "ram_them_mb": null,
     "mang_ra": [],
-    "ghi_chu": "Module chỉ gọi HTTP nội bộ tới dịch vụ c2a-đăng-nhập (mạng Docker nội bộ hoặc loopback); bản thân module không gọi ra ngoài. Tài nguyên nặng (Chromium, Xvfb) nằm ở container riêng dich-vu/may-dang-nhap."
+    "ghi_chu": "Module chỉ gọi HTTP nội bộ tới dịch vụ máy đăng nhập (mạng Docker nội bộ hoặc loopback); bản thân module không gọi ra ngoài. Tài nguyên nặng (Chromium, Xvfb) nằm ở container riêng dich-vu/may-dang-nhap."
   }
 }
