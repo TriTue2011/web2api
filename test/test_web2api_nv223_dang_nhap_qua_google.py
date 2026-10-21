@@ -85,6 +85,7 @@ class DichVuGiaNV223:
         self.onboard = []           # (duong, than) mọi lượt onboard
         self.google_bat_dau = []    # thân POST /v1/session/auto-login-saved
         self.jwt_lay = []           # hồ sơ gọi refresh-jwt
+        self.refresh_jwt_ok = True  # False = refresh-jwt trượt (phiên chết)
         self.token_lay = []         # hồ sơ gọi openai-native token
         self.trang_thai_cuoi = {}   # (dich_vu, ho_so) -> state cuối
         self._da_hoi = set()
@@ -132,6 +133,9 @@ class DichVuGiaNV223:
         async def refresh_jwt(request):
             ho_so = request.path_params["profile"]
             dv.jwt_lay.append(ho_so)
+            if not dv.refresh_jwt_ok:
+                return JSONResponse({"profile": ho_so, "ok": False,
+                                     "error": "phiên chết"})
             return JSONResponse({"profile": ho_so, "ok": True, "method": "scrape",
                                  "access_token": _jwt_gia(EMAIL_GOOGLE),
                                  "captured_email": EMAIL_GOOGLE})
@@ -245,9 +249,13 @@ def test_o1_chatgpt_qua_google_dung_bi_mat_google(mod, dich_vu_gia):
 # ── Ô (2): ChatGPT trực tiếp — đường openai-native, bí mật của chính tk ────
 
 def test_o2_chatgpt_truc_tiep_di_openai_native(mod, dich_vu_gia):
+    # NV235-b3: refresh-jwt trượt (phiên chết) → mới onboard openai-native
+    # bằng bí mật của CHÍNH tài khoản (loai «openai»).
+    dich_vu_gia.refresh_jwt_ok = False
     d = _dong(dang_nhap_bang="truc_tiep")
     kq = _chay(mod.dang_nhap(d))
     assert kq.thanh_cong, getattr(kq, "ma_loi", "")
+    assert dich_vu_gia.jwt_lay, "phải thử refresh-jwt trước"
     assert len(dich_vu_gia.da_luu) == 1
     luu = dich_vu_gia.da_luu[0]
     assert luu["email"] == EMAIL_GPT
@@ -328,14 +336,15 @@ def test_o5_jwt_gan_dung_module_so_huu(mod, dich_vu_gia):
 # ── Legacy: không đặt dang_nhap_bang → hành vi cũ nguyên vẹn ────────────────
 
 def test_legacy_khong_truong_moi_giu_duong_cu(mod, dich_vu_gia):
+    # NV235-b2: chatgpt-web không khai dang_nhap_bang → mặc định truc_tiep
+    # (đường openai: refresh-jwt trước), KHÔNG còn đường Google cũ
+    # POST /v1/chatgpt/onboard.
     d = _dong()  # module chatgpt-web, không dang_nhap_bang
     kq = _chay(mod.dang_nhap(d))
     assert kq.thanh_cong, getattr(kq, "ma_loi", "")
-    assert len(dich_vu_gia.da_luu) == 1
-    assert dich_vu_gia.da_luu[0]["loai"] == "openai"
-    assert dich_vu_gia.da_luu[0]["email"] == EMAIL_GPT
-    assert len(_onboard_cua(dich_vu_gia, "chatgpt")) == 1
-    assert _onboard_cua(dich_vu_gia, "openai") == []
+    assert dich_vu_gia.jwt_lay, "phải thử refresh-jwt trước"
+    assert _onboard_cua(dich_vu_gia, "chatgpt") == []
+    assert dich_vu_gia.google_bat_dau == []
 
 
 def test_gia_tri_dang_nhap_bang_sai_bi_tu_choi(mod, dich_vu_gia):

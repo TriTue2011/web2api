@@ -64,10 +64,14 @@ class DichVuGiaNV235:
     def __init__(self):
         self.onboard = []          # (dich_vu, than) mọi lượt onboard
         self.jwt_lay = []          # hồ sơ gọi refresh-jwt
+        self.refresh_jwt_ok = True  # False = refresh-jwt trượt (phiên chết)
         self.token_lay = []        # hồ sơ gọi openai-native token
         self.google_bat_dau = []   # thân POST auto-login-saved
+        self.google_dang_chay = 0    # đếm đồng thời (đo khoá toàn cục)
+        self.google_dong_thoi_max = 0
         self.trang_thai_cuoi = {}  # (dich_vu, ho_so) -> state cuối
         self.jwt_theo_ho_so = {}   # ho_so -> access_token trả ở refresh-jwt
+        self.token_het_han = False  # True = openai-native/token trả token chết
         self.google_trang_thai = "success"
         self._da_hoi = set()
 
@@ -103,6 +107,9 @@ class DichVuGiaNV235:
         async def refresh_jwt(request):
             ho_so = request.path_params["profile"]
             dv.jwt_lay.append(ho_so)
+            if not dv.refresh_jwt_ok:
+                return JSONResponse({"profile": ho_so, "ok": False,
+                                     "error": "phiên chết"})
             token = dv.jwt_theo_ho_so.get(ho_so, _jwt_gia(EMAIL_GPT))
             # Mô phỏng đúng khuôn dịch vụ thật: ok/method/access_token
             return JSONResponse({"profile": ho_so, "ok": True, "method": "scrape",
@@ -112,12 +119,20 @@ class DichVuGiaNV235:
         async def token_openai(request):
             ho_so = request.path_params["profile"]
             dv.token_lay.append(ho_so)
+            token = _jwt_gia(EMAIL_GPT, het_han_giay=-3600) if dv.token_het_han \
+                else _jwt_gia(EMAIL_GPT)
             return JSONResponse({"profile": ho_so, "email": EMAIL_GPT,
-                                 "access_token": _jwt_gia(EMAIL_GPT)})
+                                 "access_token": token})
 
         async def google_bat_dau(request):
             than = await request.json()
             dv.google_bat_dau.append(than)
+            # Đo đồng thời thật: giữ 0.3s trong «lượt» để lộ việc chạy song song
+            dv.google_dang_chay += 1
+            dv.google_dong_thoi_max = max(dv.google_dong_thoi_max,
+                                          dv.google_dang_chay)
+            await asyncio.sleep(0.3)
+            dv.google_dang_chay -= 1
             return JSONResponse({"profile": than.get("profile"), "state": "starting",
                                  "message": "Khởi tạo", "ok": True})
 
@@ -241,6 +256,18 @@ def test_b3_refresh_jwt_token_het_han_42h_phien_chet(mod, dich_vu_gia):
     assert token_moi and token_moi != dich_vu_gia.jwt_theo_ho_so[hs]
 
 
+def test_b3_refresh_jwt_token_het_han_1h_van_phien_chet(mod, dich_vu_gia):
+    """Token hết hạn 1h (trong ngưỡng 24h «sắp hết») → vẫn coi phiên chết →
+    onboard lại. Giết đột biến đảo ngưỡng exp."""
+    hs = "openai-chu-openai-goc"
+    dich_vu_gia.jwt_theo_ho_so[hs] = _jwt_gia(EMAIL_GPT, het_han_giay=-3600)
+    kq = asyncio.get_event_loop().run_until_complete(
+        mod.dang_nhap(_dong(dang_nhap_bang="truc_tiep")))
+    assert kq.thanh_cong
+    duong = [d for d, _ in dich_vu_gia.onboard]
+    assert "openai" in duong
+
+
 def test_b3_chatgpt_qua_google_reuse_session(mod, dich_vu_gia):
     """ChatGPT-qua-Google: onboard gửi reuse_session=True (đúng c2a _cgf_reuse),
     thiếu phiên mới đăng nhập Google."""
@@ -251,25 +278,26 @@ def test_b3_chatgpt_qua_google_reuse_session(mod, dich_vu_gia):
     assert than_chatgpt and than_chatgpt[0].get("reuse_session") is True
 
 
+def test_b3_onboard_xong_token_chet_can_nguoi(mod, dich_vu_gia):
+    """Mô phỏng «Hồ sơ đã có phiên» giả: onboard xong nhưng token trả về đã
+    chết → KHÔNG báo thành công giả → «cần người». Giết đột biến bỏ kiểm exp
+    sau onboard."""
+    dich_vu_gia.refresh_jwt_ok = False
+    dich_vu_gia.token_het_han = True
+    kq = asyncio.get_event_loop().run_until_complete(
+        mod.dang_nhap(_dong(dang_nhap_bang="truc_tiep")))
+    assert not kq.thanh_cong
+    assert kq.ma_loi == "phien_chet" and kq.can_nguoi
+
+
 # ── b4: Google — một phiên toàn hệ thống + captcha hold + cooldown ────────
 
 def test_b4_hai_luot_google_tuan_tu_khoa_toan_cuc(mod, dich_vu_gia, monkeypatch):
-    """Hai lượt đăng nhập Google đồng thời → khoá toàn cục xếp hàng tuần tự."""
+    """Hai lượt đăng nhập Google đồng thời → khoá toàn cục xếp hàng tuần tự
+    (đồng thời tối đa = 1, đúng c2a _glogin_serial)."""
     monkeypatch.setenv("C2A_DN_GAP_GOOGLE_GIAY", "0")
-    thu_tu = []
-
-    orig = mod._dang_nhap_google
-
-    async def goi_cham(*a, **k):
-        thu_tu.append("vao")
-        r = await orig(*a, **k)
-        thu_tu.append("ra")
-        return r
 
     async def chay():
-        d1 = _dong(email="a1@example.com", module_cua="gemini-web", dang_nhap_bang="")
-        d2 = _dong(email="a2@example.com", module_cua="gemini-web", dang_nhap_bang="")
-        # đi thẳng đường Google để đo khoá
         await asyncio.gather(
             mod._dang_nhap_google("a1@example.com", "a1@example.com", mod._nv145b_trang_thai(), 0, "mk1", ""),
             mod._dang_nhap_google("a2@example.com", "a2@example.com", mod._nv145b_trang_thai(), 0, "mk2", ""),
@@ -277,6 +305,8 @@ def test_b4_hai_luot_google_tuan_tu_khoa_toan_cuc(mod, dich_vu_gia, monkeypatch)
 
     asyncio.get_event_loop().run_until_complete(chay())
     assert len(dich_vu_gia.google_bat_dau) == 2
+    assert dich_vu_gia.google_dong_thoi_max == 1, \
+        "hai lượt Google không được chạy đồng thời"
 
 
 def test_b4_captcha_hold_chan_luot_khac(mod, dich_vu_gia, monkeypatch):

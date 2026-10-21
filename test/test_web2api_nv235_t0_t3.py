@@ -84,14 +84,18 @@ def test_t2_t3_dang_nhap_roi_kiem_lai():
 
 
 def test_t0_ban_hoan_im_lang():
+    """T0 gặp 'ban' → hoãn NGAY (đúng 1 lần kiểm), không vào T1/T2."""
     mod = ModuleGiaT0T3()
+    dem = {"n": 0}
 
     async def kiem_phien():
+        dem["n"] += 1
         return "ban"
 
     kq = chay(khoi_phuc_theo_tang_c2a(mod, _tk(), kiem_phien=kiem_phien))
     assert not kq.thanh_cong and kq.ma_loi == "hoan_phien_ban"
     assert mod.da_goi_b == 0
+    assert dem["n"] == 1, "T0 ban phải hoãn ngay, không kiểm lại"
 
 
 def test_need_manual_can_nguoi_khong_thu_lai_vong():
