@@ -161,6 +161,12 @@ DA_KIEM_TOAN = {
     # không phải ranh bảo mật; docstring ghi rõ «Không bao giờ ném» — luồng
     # tự đăng nhập lại không được chặn vì lỗi sổ.
     ("app/kho_tai_khoan.py", "_con_het_han_muc"),
+    # Đã duyệt NV207 (điều phối đọc hàm, 21/10/2026): dọn tác vụ nền làm mới JWT lúc TẮT MÁY. `await task` sau khi
+    # đã `cancel()` nuốt CancelledError/lỗi của CHÍNH tác vụ đang bị huỷ — không có kết quả nào để mất, không đụng
+    # bí mật; cùng mẫu với app/tu_lam_moi.py::huy_cua_module. Lỗi của vòng làm mới trong lúc chạy KHÔNG đi qua đây
+    # (đã ghi log trong _vong_lap/_vong_dong_bo).
+    ("app/lam_moi_jwt.py", "dung"),
+    ("app/lam_moi_jwt.py", "huy_tat_ca"),
 }
 
 
