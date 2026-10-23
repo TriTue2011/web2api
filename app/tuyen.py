@@ -4081,13 +4081,13 @@ async def dat_tam_dung_tai_khoan_da_luu(id: str, request: Request):
     return {"tai_khoan": bk}
 
 
-def _gan_dang_nhap_google(dong, ban_ghi) -> list:
+def _gan_bi_mat_dang_nhap_ho(dong, ban_ghi) -> list:
     """NV223: gắn thông tin «đăng nhập bằng» của bản ghi vào ``DongDaTach``.
 
-    Trả danh sách bí mật Google đã gắn (tầng gọi xoá trong finally; có thể
-    chứa None cho TOTP). ``dang_nhap_bang != "google"`` → chỉ gắn trường
-    khai, KHÔNG chạm kho Google. Khi là «google»: bản ghi Google THIẾU →
-    404, TẠM DỪNG → 403 — lỗi rõ TRƯỚC khi module được gọi; bí mật Google
+    Trả danh sách bí mật đăng nhập hộ đã gắn (tầng gọi xoá trong finally; có
+    thể chứa None cho TOTP). Không phải chế độ «qua tài khoản lưu» → chỉ gắn
+    trường khai, KHÔNG chạm kho bí mật. Khi là chế độ đăng nhập hộ: bản ghi
+    THIẾU → 404, TẠM DỪNG → 403 — lỗi rõ TRƯỚC khi module được gọi; bí mật
     lấy từ kho qua ``lay_bi_mat_dang_nhap`` (không qua trình duyệt).
     """
     dang_nhap_bang = str((ban_ghi or {}).get("dang_nhap_bang") or "")
@@ -4095,27 +4095,27 @@ def _gan_dang_nhap_google(dong, ban_ghi) -> list:
     if dang_nhap_bang != kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
         return []
     gid = str((ban_ghi or {}).get("tai_khoan_google_id") or "")
-    ban_ghi_google = kho_tai_khoan_mod.tim_theo_id(gid) if gid else None
-    if ban_ghi_google is None:
+    ban_ghi_dnh = kho_tai_khoan_mod.tim_theo_id(gid) if gid else None
+    if ban_ghi_dnh is None:
         raise LoiOpenAI(
             404, "Không tìm thấy tài khoản đã chọn để đăng nhập hộ.",
             code="khong_tim_thay")
-    if ban_ghi_google.get("trang_thai") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
+    if ban_ghi_dnh.get("trang_thai") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
         raise LoiOpenAI(
             403, "Tài khoản đã tạm dừng; bật lại mới đăng nhập được.",
             code="tam_dung")
     try:
-        bi_mat_google = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(gid)
+        bi_mat_dnh = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(gid)
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
         raise _loi_kho_tai_khoan(e) from None
-    if bi_mat_google is None:
+    if bi_mat_dnh is None:
         raise LoiOpenAI(
             404, "Không tìm thấy tài khoản đã chọn để đăng nhập hộ.",
             code="khong_tim_thay")
-    mk_g, totp_g = bi_mat_google
-    dong.google_email = ban_ghi_google.get("email") or ""
-    dong.google_mat_khau = mk_g
-    dong.google_totp = totp_g
+    mk_g, totp_g = bi_mat_dnh
+    dong.dnh_email = ban_ghi_dnh.get("email") or ""
+    dong.dnh_mat_khau = mk_g
+    dong.dnh_totp = totp_g
     return [mk_g, totp_g]
 
 
@@ -4160,10 +4160,10 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     # NV210: module sở hữu của tài khoản (dữ liệu) để module đăng nhập chọn
     # đúng luồng; lõi không đoán.
     dong.module_cua_tai_khoan = ban_ghi.get("module_id") or "" if ban_ghi else ""
-    # NV223: gắn «đăng nhập bằng» + bí mật tài khoản Google đăng nhập hộ
+    # NV223: gắn «đăng nhập bằng» + bí mật tài khoản đăng nhập hộ
     # (lỗi rõ 404/403 ở đây — module chưa được gọi, bí mật được dọn sạch).
     try:
-        bi_mat_google = _gan_dang_nhap_google(dong, ban_ghi)
+        bi_mat_dnh = _gan_bi_mat_dang_nhap_ho(dong, ban_ghi)
     except Exception:
         dong.xoa_bi_mat()
         raise
@@ -4171,7 +4171,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         kq = await ham(dong)
     finally:
         dong.xoa_bi_mat()
-        for _bm in bi_mat_google:
+        for _bm in bi_mat_dnh:
             if _bm is not None:
                 _bm.xoa()
     thanh_cong = bool(getattr(kq, "thanh_cong", False))
@@ -4443,10 +4443,10 @@ async def dang_nhap_da_luu_theo_module(request: Request):
         d = tai_khoan_hang_loat_mod.DongDaTach(
             0, email, "mat_khau", mat_khau=mat_khau, totp=totp)
         d.module_cua_tai_khoan = module_so_huu
-        # NV223: gắn «đăng nhập bằng» + bí mật Google đăng nhập hộ. Tài
-        # khoản Google thiếu/tạm dừng → BỎ QUA dòng này (không gọi module).
+        # NV223: gắn «đăng nhập bằng» + bí mật đăng nhập hộ. Tài khoản
+        # đăng nhập hộ thiếu/tạm dừng → BỎ QUA dòng này (không gọi module).
         try:
-            d._bi_mat_google_nv223 = _gan_dang_nhap_google(d, noi_bo)
+            d._bi_mat_dnh_nv223 = _gan_bi_mat_dang_nhap_ho(d, noi_bo)
         except LoiOpenAI:
             mat_khau.xoa()
             if totp is not None:
@@ -4463,8 +4463,8 @@ async def dang_nhap_da_luu_theo_module(request: Request):
         try:
             kq = await ham(dong)
         finally:
-            # NV223: dọn bí mật Google đăng nhập hộ sau mỗi dòng
-            for _bm in getattr(dong, "_bi_mat_google_nv223", None) or []:
+            # NV223: dọn bí mật đăng nhập hộ sau mỗi dòng
+            for _bm in getattr(dong, "_bi_mat_dnh_nv223", None) or []:
                 if _bm is not None:
                     _bm.xoa()
         if getattr(kq, "thanh_cong", False):

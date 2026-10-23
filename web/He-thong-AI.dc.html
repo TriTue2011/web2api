@@ -169,10 +169,10 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <select id="dl-dang-nhap-bang" value="{{them.dl.dangNhapBang}}" onChange="{{them.dl.doiDangNhapBang}}" aria-label="Đăng nhập bằng" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
 <sc-for list="{{them.dl.dsDangNhapBang}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
 </select></label>
-<sc-if value="{{them.dl.coDangNhapGoogle}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản dùng để đăng nhập hộ
-<select id="dl-tk-luu" value="{{them.dl.tkGoogleId}}" onChange="{{them.dl.doiTkGoogle}}" aria-label="Chọn tài khoản dùng để đăng nhập hộ" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<sc-if value="{{them.dl.coDangNhapHo}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản dùng để đăng nhập hộ
+<select id="dl-tk-luu" value="{{them.dl.tkDnhId}}" onChange="{{them.dl.doiTkDnh}}" aria-label="Chọn tài khoản dùng để đăng nhập hộ" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
 <option value="">— Chọn tài khoản —</option>
-<sc-for list="{{them.dl.dsTkGoogle}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+<sc-for list="{{them.dl.dsTkDnh}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
 </select></label></sc-if>
 <sc-if value="{{them.dl.bangCo}}">
 <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -853,7 +853,7 @@ class Component extends DCLogic {
       dlEmail: t ? (t.email_che || '') : '',
       dlNhan: t ? (t.nhan || '') : '',
       dlDangNhapBang: t ? (t.dang_nhap_bang || '') : '',
-      dlTkGoogleId: t ? (t.tai_khoan_google_id || '') : '',
+      dlTkDnhId: t ? (t.tai_khoan_google_id || '') : '',
       dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: '',
       // NV225: điền sẵn 3 ô phân loại từ chính tài khoản đã chọn.
       dlNhom: t ? (t.nhom || '') : '',
@@ -892,12 +892,12 @@ class Component extends DCLogic {
     const dangNhapBang = (s.dlDangNhapBang || '').trim();
     // NV256: giá trị «qua tài khoản lưu» lấy từ API /bang-phan-loai, không chép cứng.
     const quaTaiKhoanLuu = s.dlDangNhapBangQuaLuu || '';
-    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu && !(s.dlTkGoogleId || '')) {
+    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu && !(s.dlTkDnhId || '')) {
       this.setState({ dlLoi: 'Chọn tài khoản dùng để đăng nhập hộ.' });
       return;
     }
     if (dangNhapBang) payload.dang_nhap_bang = dangNhapBang;
-    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu) payload.tai_khoan_google_id = s.dlTkGoogleId;
+    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu) payload.tai_khoan_google_id = s.dlTkDnhId;
     // NV225: phân loại nhóm → loại → đích dùng chọn ở form (bảng backend
     // kiểm lại phía máy chủ; nhóm thật suy từ module sở hữu/bản ghi cũ).
     const loaiTk = (s.dlLoaiTk || '').trim();
@@ -1745,7 +1745,7 @@ class Component extends DCLogic {
           tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
           tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false,
           dlDs: [], dlChonId: '', dlEmail: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
-          dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkGoogleId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
+          dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkDnhId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
           dlXoaChon: '', dlMoDS: true, dlTuDongLai: true, dlCanNguoi: {}
         });
@@ -1917,14 +1917,14 @@ class Component extends DCLogic {
           dangNhapBang: s.dlDangNhapBang || '',
           doiDangNhapBang: (e) => this.setState({ dlDangNhapBang: e.target.value }),
           dsDangNhapBang: dsDangNhapBang,
-          coDangNhapGoogle: !!quaTaiKhoanLuu && (s.dlDangNhapBang || '') === quaTaiKhoanLuu,
-          dsTkGoogle: dlDs.filter((t) => nhomTaiKhoanLuu && (t.nhom || '') === nhomTaiKhoanLuu).map((t) => ({
+          coDangNhapHo: !!quaTaiKhoanLuu && (s.dlDangNhapBang || '') === quaTaiKhoanLuu,
+          dsTkDnh: dlDs.filter((t) => nhomTaiKhoanLuu && (t.nhom || '') === nhomTaiKhoanLuu).map((t) => ({
             id: t.id,
             nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : ''),
-            chon: t.id === s.dlTkGoogleId
+            chon: t.id === s.dlTkDnhId
           })),
-          tkGoogleId: s.dlTkGoogleId || '',
-          doiTkGoogle: (e) => this.setState({ dlTkGoogleId: e.target.value }),
+          tkDnhId: s.dlTkDnhId || '',
+          doiTkDnh: (e) => this.setState({ dlTkDnhId: e.target.value }),
           tuyChon: dlDs.map((t) => ({
             id: t.id,
             nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),

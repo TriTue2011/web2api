@@ -220,9 +220,9 @@ def _dong(email=EMAIL_GPT, mk=MK_GPT, totp=TOTP_GPT, module_cua="chatgpt-web",
     if dang_nhap_bang is not None:
         d.dang_nhap_bang = dang_nhap_bang
     if google:
-        d.google_email = EMAIL_GOOGLE
-        d.google_mat_khau = BiMatTam(MK_GOOGLE)
-        d.google_totp = BiMatTotp(TOTP_GOOGLE)
+        d.dnh_email = EMAIL_GOOGLE
+        d.dnh_mat_khau = BiMatTam(MK_GOOGLE)
+        d.dnh_totp = BiMatTotp(TOTP_GOOGLE)
     return d
 
 
@@ -256,7 +256,7 @@ def test_o1_chatgpt_qua_google_dung_bi_mat_google(mod, dich_vu_gia):
     assert _onboard_cua(dich_vu_gia, "openai") == []
     assert dich_vu_gia.google_bat_dau == []
     # Ô (6): bí mật Google đã bị xoá sau lượt gọi; kết quả không chứa bí mật
-    assert d.google_mat_khau.da_xoa()
+    assert d.dnh_mat_khau.da_xoa()
     assert MK_GOOGLE not in json.dumps(getattr(kq, "jwt_moi", None) or {})
     assert MK_GPT not in json.dumps(getattr(kq, "jwt_moi", None) or {})
 
@@ -497,10 +497,10 @@ def test_route_dang_nhap_gan_bi_mat_google_vao_dong(moi_truong):
     assert len(fake.da_nhan) == 1
     dong = fake.da_nhan[0]
     assert getattr(dong, "dang_nhap_bang", "") == "google"
-    assert getattr(dong, "google_email", "") == EMAIL_GOOGLE
-    assert getattr(dong, "google_mat_khau", None) is not None
+    assert getattr(dong, "dnh_email", "") == EMAIL_GOOGLE
+    assert getattr(dong, "dnh_mat_khau", None) is not None
     # Bí mật Google đã bị xoá sau lượt gọi (route dọn trong finally)
-    assert dong.google_mat_khau.da_xoa()
+    assert dong.dnh_mat_khau.da_xoa()
     # Đáp không lộ bí mật nào
     assert MK_GOOGLE not in r.text and MK_GPT not in r.text
 

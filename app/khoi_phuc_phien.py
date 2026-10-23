@@ -934,7 +934,7 @@ def _ho_so_cua(module: Any, module_id: str, khoa: str) -> str:
 #       im lặng, không báo động (đúng c2a).
 #   T1  nghỉ rồi kiểm lại (rẻ, không mời captcha) — tối đa 2 lượt.
 #   T2  đăng nhập lại (``dang_nhap_tu_dong`` của module; với tài khoản
-#       Google-SSO phía dịch vụ đi ``relogin-via-google``/``auto-login-saved``).
+#       SSO phía dịch vụ đi đường đăng nhập lại của dịch vụ).
 #   T3  đăng nhập xong kiểm lại vài lượt; chỉ 'ok' mới xác nhận khôi phục.
 # Debounce 1800s/(module, khoá); ngân sách 1200s KHÔNG tính giờ xếp hàng.
 
@@ -972,11 +972,11 @@ async def khoi_phuc_theo_tang_c2a(
     """Khôi phục một tài khoản theo thang T0–T3 của c2a.
 
     - ``kiem_phien``: hàm async ``-> 'ok'|'mat'|'ban'|'chua_ro'`` do provider
-      định nghĩa, RẺ và không mở trình duyệt (vd Claude: đọc sessionKey trên
-      đĩa + verify thật; ChatGPT: kiểm JWT trong kho). None → dùng tầng (a)
+      định nghĩa, RẺ và không mở trình duyệt (vd: đọc sessionKey trên
+      đĩa + verify thật; kiểm JWT trong kho). None → dùng tầng (a)
       ``lam_moi_phien`` của module làm T0.
     - Mỗi tầng ghi log; hết đường → tầng (d) cần người kèm danh sách đã thử.
-    - Grok ``need_manual`` (Cloudflare) → «cần người» + hướng dẫn noVNC,
+    - Tín hiệu ``need_manual`` → «cần người» + hướng dẫn noVNC,
       KHÔNG thử lại vòng (đúng c2a).
     Không ném ngoại lệ ra ngoài.
     """
@@ -1055,7 +1055,7 @@ async def khoi_phuc_theo_tang_c2a(
                                  mat_khau=tai_khoan.mat_khau)
         kq = await _goi_an_toan(dang_nhap_td, TANG_B, tk, None)
         if kq.can_nguoi:
-            # Grok need_manual (Cloudflare) và mọi tín hiệu cần người khác:
+            # Tín hiệu need_manual và mọi tín hiệu cần người khác:
             # dừng ngay, hướng dẫn noVNC, KHÔNG thử lại vòng.
             return await _can_nguoi(
                 kq.ma_loi or "can_nguoi",

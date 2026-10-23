@@ -219,9 +219,9 @@ def _dong(email=EMAIL_GPT, mk=MK_GPT, totp=TOTP_GPT, module_cua="chatgpt-web",
     if dang_nhap_bang is not None:
         d.dang_nhap_bang = dang_nhap_bang
     if google:
-        d.google_email = EMAIL_GOOGLE
-        d.google_mat_khau = BiMatTam("mat-khau-google-gia-02")
-        d.google_totp = BiMatTotp(TOTP_GPT)
+        d.dnh_email = EMAIL_GOOGLE
+        d.dnh_mat_khau = BiMatTam("mat-khau-google-gia-02")
+        d.dnh_totp = BiMatTotp(TOTP_GPT)
     return d
 
 

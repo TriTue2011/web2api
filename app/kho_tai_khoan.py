@@ -371,7 +371,7 @@ def kiem_dich_dung(dich_dung, nhom, loai) -> str:
 #: NV223: cách đăng nhập của tài khoản dịch vụ — «truc_tiep» = đăng nhập
 #: thẳng bằng bí mật của chính tài khoản; giá trị «qua tài khoản lưu» (xem
 #: ``DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU``) = đăng nhập QUA một tài khoản đã
-#: lưu khác (``tai_khoan_google_id``). "" = chưa khai (giữ hành vi cũ theo
+#: lưu khác (xem trường id tài khoản đăng nhập hộ). "" = chưa khai (giữ hành vi cũ theo
 #: module sở hữu). Danh sách ĐÓNG — không dò chuỗi email.
 _DANG_NHAP_BANG = _BANG_PHAN_LOAI_AI["dang_nhap_bang"]
 DANG_NHAP_BANG_CHO_PHEP = tuple(_DANG_NHAP_BANG["cho_phep"])
@@ -402,11 +402,12 @@ def kiem_dang_nhap_bang(dang_nhap_bang) -> str:
     return s
 
 
-def kiem_tai_khoan_google_id(tai_khoan_google_id) -> str:
-    """Kiểm id bản ghi tài khoản Google dùng để đăng nhập hộ (NV223).
+def kiem_tai_khoan_dnh_id(tai_khoan_google_id) -> str:
+    """Kiểm id bản ghi tài khoản dùng để đăng nhập hộ (NV223).
 
     None → "". Chỉ là một id bản ghi trong kho — kho không tự kiểm sự tồn
     tại ở đây (tầng route kiểm khi đăng nhập: thiếu/tạm dừng → lỗi rõ).
+    Tên tham số giữ nguyên theo contract trường dữ liệu.
     """
     if tai_khoan_google_id is None:
         return ""
@@ -716,7 +717,7 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         # NV218: loại + đích dùng theo bảng khai báo ("" = chưa phân loại).
         "loai_tai_khoan": ban_ghi.get("loai_tai_khoan", ""),
         "dich_dung": ban_ghi.get("dich_dung", ""),
-        # NV223: cách đăng nhập + id tài khoản Google đăng nhập hộ (không bí mật)
+        # NV223: cách đăng nhập + id tài khoản đăng nhập hộ (không bí mật)
         "dang_nhap_bang": ban_ghi.get("dang_nhap_bang", ""),
         "tai_khoan_google_id": ban_ghi.get("tai_khoan_google_id", ""),
         # NV224: MỌI đích dùng của bản ghi (tích lũy, không đè).
@@ -830,10 +831,10 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         dnb_moi = cu.get("dang_nhap_bang", "") if cu else ""
         if dang_nhap_bang is not None:
             dnb_moi = kiem_dang_nhap_bang(dang_nhap_bang)
-        tk_gg_moi = cu.get("tai_khoan_google_id", "") if cu else ""
+        tk_dnh_moi = cu.get("tai_khoan_google_id", "") if cu else ""
         if tai_khoan_google_id is not None:
-            tk_gg_moi = kiem_tai_khoan_google_id(tai_khoan_google_id)
-        if dnb_moi == DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU and not tk_gg_moi:
+            tk_dnh_moi = kiem_tai_khoan_dnh_id(tai_khoan_google_id)
+        if dnb_moi == DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU and not tk_dnh_moi:
             raise LoiKhoTaiKhoan("invalid_value")
 
         # NV224: dung_cho TÍCH LŨY — bắt đầu từ danh sách hiệu lực cũ, cộng
@@ -892,7 +893,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "loai_tai_khoan": loai_moi,
             "dich_dung": dich_dung_moi,
             "dang_nhap_bang": dnb_moi,
-            "tai_khoan_google_id": tk_gg_moi,
+            "tai_khoan_google_id": tk_dnh_moi,
             "dung_cho": dung_cho_moi,
             "trang_thai_duong": tt_duong_moi,
             "cap_nhat": int(time.time()),

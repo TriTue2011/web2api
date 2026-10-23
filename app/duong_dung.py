@@ -262,7 +262,7 @@ def che_email_kieu_module(email):
     """Mặt nạ email theo ĐÚNG kiểu module dùng (``a***@mien``).
 
     Quy ước chung giữa các module trong lõi: tên[:1] + "***@" + miền
-    (email, nhaptaikhoan, openaicodex đều dùng). Dùng để đối chiếu
+    (mọi module OAuth đều dùng). Dùng để đối chiếu
     ``email_che`` module trả về với email tài khoản đã lưu — khớp mới coi
     liên kết là của đúng tài khoản.
     """

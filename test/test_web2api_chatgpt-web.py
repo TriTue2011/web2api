@@ -121,7 +121,7 @@ def nap_module(monkeypatch, che_do, tai_khoan, **cau_hinh_them):
         return mod_client.ChatGPTWebClient(token, transport=transport)
 
     monkeypatch.setattr(Module, "_tao_client", tao_client)
-    # Mặc định không đụng kho danh tính thật: chỉ khi test danh tính mới chích riêng.
+    # NV219 đã bỏ tính năng danh tính: không còn gì để chích kho danh tính.
     mod = Module(MANIFEST)
     cau_hinh = {"tai_khoan": list(tai_khoan)}
     cau_hinh.update(cau_hinh_them)
@@ -163,12 +163,13 @@ class TestManifestVaChuan:
         assert MANIFEST["id"] == "chatgpt-web"
         assert MANIFEST["tien_to"] == "chatgpt-web"
         assert MANIFEST["hang"] == "A"
-        assert MANIFEST["can_module"] == ["vnc-xa"]
+        assert MANIFEST["can_module"] == ["vnc-xa", "may-dang-nhap"]
         assert MANIFEST["tai_nguyen"]["mang_ra"] == ["chatgpt.com"]
         truong = {t["khoa"]: t for t in MANIFEST["truong_cau_hinh"]}
         assert truong["tai_khoan"]["kieu"] == "danh_sach_bi_mat"
-        assert truong["danh_tinh_id"]["kieu"] == "chuoi"
-        assert truong["danh_tinh_id"]["bat_buoc"] is False
+        # NV219 đã bỏ trường danh_tinh_id khỏi manifest: manifest hiện chỉ có
+        # tai_khoan và co_so_url.
+        assert set(truong) == {"tai_khoan", "co_so_url"}
         assert MANIFEST["yeu_cau_goi"] == []
 
     def test_dung_chuan_module(self):
@@ -307,66 +308,23 @@ class TestXoayTaiKhoan:
 
 
 # ---------------------------------------------------------------------------
-# Danh tính chung: gắn / kiểm / hiển thị.
+# Danh tính: tính năng đã BỎ ở NV219 (không còn trường danh_tinh_id trong
+# manifest, không còn _danh_tinh_id/_lay_danh_tinh/_gan_danh_tinh/_che_email
+# trong mã). Các ca cũ test_cai_gan_danh_tinh_ton_tai,
+# test_cai_danh_tinh_khong_ton_tai_loi_ro, test_suc_khoe_hien_danh_tinh_che_email,
+# test_che_email_don_vi gắn với tính năng đã xoá nên được XOÁ (không hạ assert:
+# không còn hành vi nào để giữ). Giữ lại đúng một ca tương thích ngược: cấu
+# hình cũ còn dư trường danh_tinh_id phải được bỏ qua êm, cài vẫn chạy.
 # ---------------------------------------------------------------------------
 
 class TestDanhTinh:
-    def test_cai_khong_danh_tinh_van_chay(self, monkeypatch):
+    def test_cai_bo_qua_truong_danh_tinh_id_cu(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, ["token-tot"])
-        kq = chay(mod.cai({"tai_khoan": ["token-tot"]}))
-        assert kq["ok"] is True
-        assert mod._danh_tinh_id is None
-
-    def test_cai_gan_danh_tinh_ton_tai(self, monkeypatch):
-        da_gan = []
-
-        def lay_gia(id_):
-            # Kho thật luôn casefold email khi tạo, nên email trong kho luôn thường.
-            return {"id": id_, "email": "ban@example.com",
-                    "nhan": "Tài khoản chính", "ngay_tao": "x", "gan": []}
-
-        def gan_gia(id_, module_id="chatgpt-web"):
-            da_gan.append((id_, module_id))
-            return {"id": id_}
-
-        monkeypatch.setattr(mod_module, "_lay_danh_tinh", lay_gia)
-        monkeypatch.setattr(mod_module, "_gan_danh_tinh", gan_gia)
-        mod = nap_module(monkeypatch, {}, ["token-tot"], danh_tinh_id="dt-abcdef1234567890")
         kq = chay(mod.cai({"tai_khoan": ["token-tot"],
-                           "danh_tinh_id": "dt-abcdef1234567890"}))
+                           "danh_tinh_id": "dt-cu-da-bo"}))
         assert kq["ok"] is True
-        assert kq["cau_hinh_luu"]["danh_tinh_id"] == "dt-abcdef1234567890"
-        assert da_gan == [("dt-abcdef1234567890", "chatgpt-web")]
-        tt = mod._thong_tin_danh_tinh()
-        assert tt["id"] == "dt-abcdef1234567890"
-        assert tt["nhan"] == "Tài khoản chính"
-        # Email che: giữ ký tự đầu + …@ + miền, không lộ đầy đủ.
-        assert tt["email_che"] == "b…@example.com"
-        assert "ban@example.com" not in json.dumps(tt)
-
-    def test_cai_danh_tinh_khong_ton_tai_loi_ro(self, monkeypatch):
-        monkeypatch.setattr(mod_module, "_lay_danh_tinh", lambda id_: None)
-        mod = nap_module(monkeypatch, {}, ["token-tot"], danh_tinh_id="dt-khong-co")
-        kq = chay(mod.cai({"tai_khoan": ["token-tot"], "danh_tinh_id": "dt-khong-co"}))
-        assert kq["ok"] is False
-        assert "không tồn tại" in kq["loi"]
-
-    def test_suc_khoe_hien_danh_tinh_che_email(self, monkeypatch):
-        monkeypatch.setattr(
-            mod_module, "_lay_danh_tinh",
-            lambda id_: {"id": id_, "email": "user@example.com", "nhan": "",
-                         "ngay_tao": "x", "gan": []})
-        mod = nap_module(monkeypatch, {}, ["token-tot"], danh_tinh_id="dt-1")
-        sk = chay(mod.suc_khoe())
-        assert sk["ok"] is True
-        dt = sk["khoa"][0]["danh_tinh"]
-        assert dt["email_che"] == "u…@example.com"
-        assert "user@example.com" not in json.dumps(sk)
-
-    def test_che_email_don_vi(self):
-        assert mod_module._che_email("Ban@Example.com") == "B…@Example.com"
-        assert mod_module._che_email("khong-co-a-còng") == "…"
-        assert mod_module._che_email("") == "…"
+        assert "danh_tinh_id" not in kq["cau_hinh_luu"]
+        assert not hasattr(mod, "_danh_tinh_id")
 
 
 # ---------------------------------------------------------------------------

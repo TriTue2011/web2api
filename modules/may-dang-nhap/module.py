@@ -1338,8 +1338,8 @@ class Module:
                               "khác hoặc đăng nhập thủ công.")
             if dang_nhap_bang == "google":
                 google_email = str(
-                    getattr(dong, "google_email", "") or "").strip()
-                google_mk = getattr(dong, "google_mat_khau", None)
+                    getattr(dong, "dnh_email", "") or "").strip()
+                google_mk = getattr(dong, "dnh_mat_khau", None)
                 try:
                     _kiem_email(google_email)
                 except ValueError:
@@ -1604,14 +1604,14 @@ class Module:
             mk = "\x00" * len(mk)
             totp_secret = "\x00" * len(totp_secret)
             del mk, totp_secret
-            email_dn = str(getattr(dong, "google_email", "") or "").strip()
-            google_mk = getattr(dong, "google_mat_khau", None)
+            email_dn = str(getattr(dong, "dnh_email", "") or "").strip()
+            google_mk = getattr(dong, "dnh_mat_khau", None)
             try:
                 mk_dn = google_mk.lay_va_xoa() \
                     if isinstance(google_mk, BiMatTam) else ""
             except Exception:
                 mk_dn = ""
-            google_totp = getattr(dong, "google_totp", None)
+            google_totp = getattr(dong, "dnh_totp", None)
             totp_dn = BiMatTam.lay(google_totp) \
                 if isinstance(google_totp, BiMatTotp) else ""
             loai_ket = "google"
