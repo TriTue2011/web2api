@@ -151,15 +151,17 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("ai-gia"), han=15, mo_ta="ô ai-gia (Chưa cài) từ git")
         assert trang.js(o("ai-gia") + ".dataset.tt") == "chua-cai"
-        # NV255 (sửa selector + hành vi): mặc định hiện TẤT CẢ các làn; bấm tên làn thì lọc chỉ làn đó, bấm lại thì về tất cả.
+        # NV255 (sửa selector + hành vi): mặc định hiện TẤT CẢ các làn; bấm tên làn thì lọc chỉ làn đó; về tất cả bằng nút gốc (NV259).
         assert trang.js("!!" + o("ai-gia")) and trang.js("!!" + o("mang-gia"))
         assert trang.js("document.querySelector(\"[data-lane='mang'] .lane-ten\").textContent").startswith("Mạng")
         assert trang.js("document.querySelector('[data-loc-lan=\"mang\"]').getAttribute('aria-pressed')") == "false"
         trang.bam("document.querySelector('[data-loc-lan=\"mang\"]')")
         trang.cho(o("mang-gia") + " && !" + o("ai-gia"), mo_ta="lọc chỉ làn Mạng")
         assert trang.js("document.querySelector('[data-loc-lan=\"mang\"]').getAttribute('aria-pressed')") == "true"
-        trang.bam("document.querySelector('[data-loc-lan=\"mang\"]')")
-        trang.cho(o("ai-gia") + " && " + o("mang-gia"), mo_ta="bấm lại thì về tất cả")
+        # NV259 (đổi hành vi có chủ ý, test_web2api_nv259_trang_module khẳng định): bấm lại tên làn vẫn CHỌN làn đó;
+        # muốn xem tất cả thì bấm nút gốc «web2api».
+        trang.bam("document.querySelector('[data-goc]')")
+        trang.cho(o("ai-gia") + " && " + o("mang-gia"), mo_ta="bấm nút gốc thì về tất cả")
 
         # Bảng chi tiết: «Cần gì để chạy» TRƯỚC khi cài.
         trang.bam(o("ai-gia"))
@@ -170,7 +172,9 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         assert "Không cần cài gì thêm" in trang.chu("#huong-dan")
         assert trang.chu("#nut-cai") == "Cài"
         trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
-        trang.cho("!document.getElementById('chi-tiet')", mo_ta="đóng bảng chi tiết")
+        # NV259: Esc bỏ chọn module → bảng chuyển về «Tổng web2api» (không biến mất); chi tiết module không còn hiện.
+        trang.cho("document.getElementById('chi-tiet-ten')?.textContent.trim() === 'Tổng web2api' && !document.getElementById('can-gi')",
+                  mo_ta="Esc về bảng tổng, hết chi tiết module")
 
         # NV255 (tính năng đổi — sửa flow): không còn nút hành động riêng trên ô; nút «Cài» nằm trong bảng chi tiết.
         # Ô là một nút duy nhất — không lồng button/a trong button.

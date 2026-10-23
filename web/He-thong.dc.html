@@ -1736,7 +1736,7 @@ class Component extends DCLogic {
       dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && lanHien.length === 0,
       lanes: lanHien, coChuThichDep, chuThichDep,
       gocOn: !s.chon && !s.tdCon && !s.tdNhom, chonGoc: () => this.chonGoc(),
-      chiOThem: !s.dangTai && lanHien.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
+      chiOThem: !s.dangTai, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
       // chi tiết
       coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(), lopMo: s.bangMo ? ' mo' : '',
       phimChiTiet: (e) => { if (e.key === 'Escape') { e.preventDefault(); this.dongChiTiet(); } },
