@@ -638,6 +638,14 @@ class BrowserPool:
         if proxy_url:
             proxy_cfg = {"server": proxy_url}
             logger.info("browser proxy enabled for profile=%s server=%s", profile, proxy_url.split("@")[-1])
+        # MỌI nhánh launch bên dưới ĐỀU phải truyền `proxy_cfg` này. Đo thật
+        # 23/10/2026: nhánh CloakBrowser truyền từ đầu, nhưng nhánh Firefox và
+        # nhánh Patchright-Chromium từng không truyền — proxy đã cấu hình mà
+        # trình duyệt mở ra không hề dùng, nên trong môi trường bắt buộc qua
+        # proxy (egress proxy của sandbox, proxy dân cư khi triển khai) mọi
+        # `goto` chết SSL_ERROR_UNKNOWN/không tải được trang, trong khi log vẫn
+        # in "browser proxy enabled". Lượt onboard ChatGPT gốc chỉ chạy được
+        # sau khi Firefox nhận proxy. Test: test_c2a_proxy_trinh_duyet.py.
         
         browser = settings.browser.lower()
         if _CLOAK_AVAILABLE and browser != "firefox":
@@ -715,6 +723,9 @@ class BrowserPool:
                 user_agent=_get_user_agent(),
                 env=env,
                 ignore_default_args=["--enable-automation"],
+                # Proxy đã cấu hình phải tới được nhánh này (xem ghi chú ở
+                # chỗ dựng `proxy_cfg` — thiếu nó là Firefox mở không proxy).
+                **({"proxy": proxy_cfg} if proxy_cfg else {}),
             )
             await context.add_init_script(_select_stealth_script())
         else:
@@ -760,6 +771,9 @@ class BrowserPool:
                 ],
                 ignore_default_args=["--enable-automation"],
                 **_CHROME_LAUNCH_KWARGS,
+                # Proxy đã cấu hình phải tới được nhánh này (xem ghi chú ở
+                # chỗ dựng `proxy_cfg` — thiếu nó là Chromium mở không proxy).
+                **({"proxy": proxy_cfg} if proxy_cfg else {}),
             )
             await context.add_init_script(_select_stealth_script())
 
