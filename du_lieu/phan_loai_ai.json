@@ -1,1 +1,113 @@
-{"_ghi_chu":"Bảng phân loại tài khoản AI (NV218/NV224/NV225, dữ liệu hoá ở NV256). Lõi (app/) KHÔNG được chép tên nhà cung cấp/module cụ thể vào mã nguồn (cổng kiến trúc test_dieu_kien_3 / test_loi_khong_mang_dac_thu_nha_cung_cap) — mọi tên cụ thể sống ở ĐÂY (dữ liệu) và trong manifest.json của từng module (trường nhom). Kho nạp file này lúc import; nhóm mới xuất hiện trong manifest (nhom.id chưa có ở đây) được hợp nhất tự động vào danh sách nhóm.","dang_nhap_bang":{"cho_phep":["","truc_tiep","google"],"nhom_tai_khoan_luu":"google","qua_tai_khoan_luu":"google","tuy_chon":[{"id":"","nhan":"— Chưa khai (mặc định) —"},{"id":"truc_tiep","nhan":"Trực tiếp bằng tài khoản này"},{"id":"google","nhan":"Qua tài khoản Google đã lưu"}]},"dich_dung":{"chatgpt":{"api":["api"],"web":["web","codex"]},"google":{"api":["api"],"gmail":["gemini","antigravity"]}},"loai_theo_nhom":{"chatgpt":["api","web"],"claude":["api","web"],"google":["api","gmail"],"grok":["api","web"],"muse":["web"]},"nhom":["google","chatgpt","grok","claude","muse"],"nhom_cu_sang_nhom_ai":{"openai":"chatgpt"},"ten_dich_dung":{"antigravity":"Antigravity","api":"API","codex":"Codex","gemini":"Gemini","web":"Web"},"ten_loai":{"api":"API","gmail":"Gmail","web":"Web"},"ten_nhom":{"chatgpt":"ChatGPT","claude":"Claude","google":"Google","grok":"Grok","muse":"Muse"},"thu_tu_uu_tien_dich_dung":["codex","web","gemini","antigravity","api"]}
+{
+  "_ghi_chu": "Bảng phân loại tài khoản AI (NV218/NV224/NV225, dữ liệu hoá ở NV256). Lõi (app/) KHÔNG được chép tên nhà cung cấp/module cụ thể vào mã nguồn (cổng kiến trúc test_dieu_kien_3 / test_loi_khong_mang_dac_thu_nha_cung_cap) — mọi tên cụ thể sống ở ĐÂY (dữ liệu) và trong manifest.json của từng module (trường nhom). Kho nạp file này lúc import; nhóm mới xuất hiện trong manifest (nhom.id chưa có ở đây) được hợp nhất tự động vào danh sách nhóm.",
+  "dang_nhap_bang": {
+    "cho_phep": [
+      "",
+      "truc_tiep",
+      "google"
+    ],
+    "nhom_tai_khoan_luu": "google",
+    "qua_tai_khoan_luu": "google",
+    "tuy_chon": [
+      {
+        "id": "",
+        "nhan": "— Chưa khai (mặc định) —"
+      },
+      {
+        "id": "truc_tiep",
+        "nhan": "Trực tiếp bằng tài khoản này"
+      },
+      {
+        "id": "google",
+        "nhan": "Qua tài khoản Google đã lưu"
+      }
+    ]
+  },
+  "tai_khoan_dnh": {
+    "_ghi_chu": "NV262: tên trường id bản ghi tài khoản dùng để đăng nhập hộ. Lõi dùng tên CHUNG (không nêu nhà cung cấp); tên khoá cũ nằm ở đây (bi_danh_cu) để lõi đọc lúc import — tương thích ngược với bản ghi thật đã lưu từ NV223 mà không chép cứng tên cũ trong mã. Giá trị dang_nhap_bang của bản ghi cũ nằm ở mục dang_nhap_bang (gia_tri_cu dưới đây chỉ để ghi nhận, lõi so sánh qua hằng đọc từ dữ liệu).",
+    "ten_moi": "tai_khoan_dnh_id",
+    "bi_danh_cu": [
+      "tai_khoan_google_id"
+    ],
+    "gia_tri_cu": [
+      "google"
+    ]
+  },
+  "dich_dung": {
+    "chatgpt": {
+      "api": [
+        "api"
+      ],
+      "web": [
+        "web",
+        "codex"
+      ]
+    },
+    "google": {
+      "api": [
+        "api"
+      ],
+      "gmail": [
+        "gemini",
+        "antigravity"
+      ]
+    }
+  },
+  "loai_theo_nhom": {
+    "chatgpt": [
+      "api",
+      "web"
+    ],
+    "claude": [
+      "api",
+      "web"
+    ],
+    "google": [
+      "api",
+      "gmail"
+    ],
+    "grok": [
+      "api",
+      "web"
+    ],
+    "muse": [
+      "web"
+    ]
+  },
+  "nhom": [
+    "google",
+    "chatgpt",
+    "grok",
+    "claude",
+    "muse"
+  ],
+  "nhom_cu_sang_nhom_ai": {
+    "openai": "chatgpt"
+  },
+  "ten_dich_dung": {
+    "antigravity": "Antigravity",
+    "api": "API",
+    "codex": "Codex",
+    "gemini": "Gemini",
+    "web": "Web"
+  },
+  "ten_loai": {
+    "api": "API",
+    "gmail": "Gmail",
+    "web": "Web"
+  },
+  "ten_nhom": {
+    "chatgpt": "ChatGPT",
+    "claude": "Claude",
+    "google": "Google",
+    "grok": "Grok",
+    "muse": "Muse"
+  },
+  "thu_tu_uu_tien_dich_dung": [
+    "codex",
+    "web",
+    "gemini",
+    "antigravity",
+    "api"
+  ]
+}

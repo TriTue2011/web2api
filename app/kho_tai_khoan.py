@@ -389,6 +389,37 @@ DANG_NHAP_BANG_TUY_CHON = tuple(
     (tuy_chon["id"], tuy_chon["nhan"]) for tuy_chon in _DANG_NHAP_BANG["tuy_chon"]
 )
 
+# ── NV262: tên trường id tài khoản đăng nhập hộ ───────────────────────────
+# Lõi dùng tên CHUNG (không nêu nhà cung cấp); tên khoá cũ nằm trong DỮ LIỆU
+# (``bi_danh_cu``) để lõi đọc lúc import — không chép cứng trong mã (cổng
+# kiến trúc). Bản ghi thật đã lưu từ NV223 mang khoá cũ vẫn đọc được ở lớp
+# đọc; ghi/cập nhật luôn dùng tên mới và xoá khoá cũ.
+_TAI_KHOAN_DNH = _BANG_PHAN_LOAI_AI["tai_khoan_dnh"]
+
+#: Tên trường mới — id bản ghi tài khoản dùng để đăng nhập hộ.
+TRUONG_TAI_KHOAN_DNH_ID = _TAI_KHOAN_DNH["ten_moi"]
+
+#: Bí danh tên trường CŨ (bản ghi thật đã lưu từ NV223).
+BI_DANH_CU_TAI_KHOAN_DNH = tuple(_TAI_KHOAN_DNH.get("bi_danh_cu", ()))
+
+
+def lay_tai_khoan_dnh_id(ban_ghi: dict) -> str:
+    """Đọc id tài khoản đăng nhập hộ, tương thích ngược (NV262).
+
+    Bản ghi có tên mới thì dùng; không thì thử các bí danh cũ theo thứ tự;
+    vắng → "". Không ném với bản ghi lạ (kẻ gọi quyết định tiếp).
+    """
+    if not isinstance(ban_ghi, dict):
+        return ""
+    v = ban_ghi.get(TRUONG_TAI_KHOAN_DNH_ID)
+    if isinstance(v, str) and v:
+        return v
+    for bi_danh in BI_DANH_CU_TAI_KHOAN_DNH:
+        v = ban_ghi.get(bi_danh)
+        if isinstance(v, str) and v:
+            return v
+    return ""
+
 
 def kiem_dang_nhap_bang(dang_nhap_bang) -> str:
     """Kiểm trường «đăng nhập bằng» (NV223): None → "" (chưa khai)."""
@@ -402,20 +433,19 @@ def kiem_dang_nhap_bang(dang_nhap_bang) -> str:
     return s
 
 
-def kiem_tai_khoan_dnh_id(tai_khoan_google_id) -> str:
-    """Kiểm id bản ghi tài khoản dùng để đăng nhập hộ (NV223).
+def kiem_tai_khoan_dnh_id(tai_khoan_dnh_id) -> str:
+    """Kiểm id bản ghi tài khoản dùng để đăng nhập hộ (NV223, đổi tên NV262).
 
     None → "". Chỉ là một id bản ghi trong kho — kho không tự kiểm sự tồn
     tại ở đây (tầng route kiểm khi đăng nhập: thiếu/tạm dừng → lỗi rõ).
-    Tên tham số giữ nguyên theo contract trường dữ liệu.
     """
-    if tai_khoan_google_id is None:
+    if tai_khoan_dnh_id is None:
         return ""
-    if isinstance(tai_khoan_google_id, bool) \
-            or not isinstance(tai_khoan_google_id, str):
+    if isinstance(tai_khoan_dnh_id, bool) \
+            or not isinstance(tai_khoan_dnh_id, str):
         raise LoiKhoTaiKhoan("invalid_value")
-    _kiem_ky_tu(tai_khoan_google_id, "tai_khoan_google_id")
-    s = tai_khoan_google_id.strip()
+    _kiem_ky_tu(tai_khoan_dnh_id, TRUONG_TAI_KHOAN_DNH_ID)
+    s = tai_khoan_dnh_id.strip()
     if len(s) > DOI_DAI_MODULE_ID:
         raise LoiKhoTaiKhoan("invalid_value")
     return s
@@ -710,16 +740,19 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         "email_che": che_email(email),
         "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
         "module_id": ban_ghi.get("module_id", ""),
-        # NV224: nhãn nhóm hiệu lực — bí danh cũ («openai») đổi êm sang nhóm
-        # hiện hành («chatgpt») ở lớp đọc, dữ liệu gốc không đổi.
+        # NV224: nhãn nhóm hiệu lực — bí danh nhóm cũ đổi êm sang nhóm
+        # hiện hành ở lớp đọc, dữ liệu gốc không đổi.
         "nhom": nhom_hieu_luc(ban_ghi.get("nhom", "")),
         "bac_goi": ban_ghi.get("bac_goi") or BAC_GOI_KHONG_BIET,
         # NV218: loại + đích dùng theo bảng khai báo ("" = chưa phân loại).
         "loai_tai_khoan": ban_ghi.get("loai_tai_khoan", ""),
         "dich_dung": ban_ghi.get("dich_dung", ""),
-        # NV223: cách đăng nhập + id tài khoản đăng nhập hộ (không bí mật)
+        # NV223: cách đăng nhập + id tài khoản đăng nhập hộ (không bí mật).
+        # NV262: tên trường chung; kèm bí danh cũ CÙNG giá trị trong giai
+        # đoạn chuyển để giao diện cũ/ứng dụng khác không vỡ.
         "dang_nhap_bang": ban_ghi.get("dang_nhap_bang", ""),
-        "tai_khoan_google_id": ban_ghi.get("tai_khoan_google_id", ""),
+        TRUONG_TAI_KHOAN_DNH_ID: lay_tai_khoan_dnh_id(ban_ghi),
+        **{bd: lay_tai_khoan_dnh_id(ban_ghi) for bd in BI_DANH_CU_TAI_KHOAN_DNH},
         # NV224: MỌI đích dùng của bản ghi (tích lũy, không đè).
         "dung_cho": _dung_cho_hieu_luc(ban_ghi),
         # NV232: trạng thái TỪNG ĐƯỜNG (đã chuẩn hoá: het_han_muc quá mốc
@@ -747,7 +780,7 @@ def _tom_tat_dung(id_: str) -> dict:
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                   trang_thai=None, id=None, module_id=None, nhom=None,
                   bac_goi=None, loai_tai_khoan=None, dich_dung=None, dang_nhap_bang=None,
-                  tai_khoan_google_id=None, dung_cho=None) -> dict:
+                  tai_khoan_dnh_id=None, dung_cho=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
@@ -757,9 +790,11 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     truyền vào — kho không tự suy.
     `loai_tai_khoan`/`dich_dung` (NV218): None → giữ nguyên cũ; "" hoặc giá trị
     trong bảng khai báo của đúng (nhóm, loại) → đặt mới.
-    `dang_nhap_bang`/`tai_khoan_google_id` (NV223): None → giữ nguyên cũ;
-    kiểm chéo SAU khi hợp nhất: ``dang_nhap_bang == "google"`` mà thiếu
-    ``tai_khoan_google_id`` → ``invalid_value`` (không lưu dở).
+    `dang_nhap_bang`/`tai_khoan_dnh_id` (NV223, đổi tên NV262): None → giữ
+    nguyên cũ; kiểm chéo SAU khi hợp nhất: ``dang_nhap_bang`` ở chế độ qua
+    tài khoản lưu (hằng ``DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU``, giá trị đọc từ
+    dữ liệu) mà thiếu id tài khoản đăng nhập hộ → ``invalid_value``
+    (không lưu dở).
     `dung_cho` (NV224): danh sách MỌI đích dùng của bản ghi — None → giữ
     nguyên; truyền vào thì CỘNG THÊM (khử trùng, không đè mất đích cũ);
     `dich_dung` đặt mới cũng được cộng vào danh sách.
@@ -831,9 +866,9 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         dnb_moi = cu.get("dang_nhap_bang", "") if cu else ""
         if dang_nhap_bang is not None:
             dnb_moi = kiem_dang_nhap_bang(dang_nhap_bang)
-        tk_dnh_moi = cu.get("tai_khoan_google_id", "") if cu else ""
-        if tai_khoan_google_id is not None:
-            tk_dnh_moi = kiem_tai_khoan_dnh_id(tai_khoan_google_id)
+        tk_dnh_moi = lay_tai_khoan_dnh_id(cu) if cu else ""
+        if tai_khoan_dnh_id is not None:
+            tk_dnh_moi = kiem_tai_khoan_dnh_id(tai_khoan_dnh_id)
         if dnb_moi == DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU and not tk_dnh_moi:
             raise LoiKhoTaiKhoan("invalid_value")
 
@@ -893,7 +928,9 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "loai_tai_khoan": loai_moi,
             "dich_dung": dich_dung_moi,
             "dang_nhap_bang": dnb_moi,
-            "tai_khoan_google_id": tk_dnh_moi,
+            # NV262: luôn ghi tên mới; bản ghi cũ mang khoá cũ được chuyển
+            # êm sang tên mới ở lần cập nhật (khoá cũ bị loại khỏi bản lưu).
+            TRUONG_TAI_KHOAN_DNH_ID: tk_dnh_moi,
             "dung_cho": dung_cho_moi,
             "trang_thai_duong": tt_duong_moi,
             "cap_nhat": int(time.time()),
@@ -933,7 +970,7 @@ def gom_theo_nhom_loai() -> dict:
     bảng ``THU_TU_UU_TIEN_DICH_DUNG`` (NV224: Codex trước web), hoà thì
     giữ thứ tự liệt kê. None khi không có tài khoản dùng được. Mỗi tài
     khoản mang thêm cờ ``dang_dung``. Nhóm là nhãn HIỆU LỰC (bản ghi cũ
-    nhóm «openai» gom về «chatgpt» — NV224).
+    mang bí danh nhóm cũ được gom về nhóm hiện hành — NV224).
     """
     try:
         from app import luong_dung_tai_khoan as ldtk

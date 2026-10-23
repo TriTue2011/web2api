@@ -853,7 +853,7 @@ class Component extends DCLogic {
       dlEmail: t ? (t.email_che || '') : '',
       dlNhan: t ? (t.nhan || '') : '',
       dlDangNhapBang: t ? (t.dang_nhap_bang || '') : '',
-      dlTkDnhId: t ? (t.tai_khoan_google_id || '') : '',
+      dlTkDnhId: t ? (t.tai_khoan_dnh_id || '') : '',
       dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: '',
       // NV225: điền sẵn 3 ô phân loại từ chính tài khoản đã chọn.
       dlNhom: t ? (t.nhom || '') : '',
@@ -897,7 +897,7 @@ class Component extends DCLogic {
       return;
     }
     if (dangNhapBang) payload.dang_nhap_bang = dangNhapBang;
-    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu) payload.tai_khoan_google_id = s.dlTkDnhId;
+    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu) payload.tai_khoan_dnh_id = s.dlTkDnhId;
     // NV225: phân loại nhóm → loại → đích dùng chọn ở form (bảng backend
     // kiểm lại phía máy chủ; nhóm thật suy từ module sở hữu/bản ghi cũ).
     const loaiTk = (s.dlLoaiTk || '').trim();

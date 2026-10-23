@@ -2454,6 +2454,18 @@ def _chuoi_tuy_chon(than: dict, ten: str) -> str | None:
     return kiem_bien.kiem_chuoi(than.get(ten), cho_phep_none=True, ten_truong=ten)
 
 
+def _tai_khoan_dnh_id_tuy_chon(than: dict) -> str | None:
+    """Id tài khoản đăng nhập hộ (NV262): chấp nhận CẢ HAI tên trường, tên
+    mới ưu tiên (đọc từ kho — không chép cứng tên trong mã lõi); vắng/null
+    → None (giữ nguyên cũ); sai kiểu → 400."""
+    for ten in (kho_tai_khoan_mod.TRUONG_TAI_KHOAN_DNH_ID,
+                *kho_tai_khoan_mod.BI_DANH_CU_TAI_KHOAN_DNH):
+        if ten in than and than.get(ten) is not None:
+            return kiem_bien.kiem_chuoi(than.get(ten), cho_phep_none=False,
+                                        ten_truong=ten)
+    return None
+
+
 def _dung_cho_tuy_chon(than: dict):
     """Trường ``dung_cho`` (NV224): vắng/null → None (giữ nguyên cũ); có thì
     phải là DANH SÁCH (kiểm từng mục ở kho theo bảng khai báo), sai kiểu →
@@ -3991,7 +4003,7 @@ async def luu_tai_khoan_da_luu(request: Request):
                         loai_tai_khoan=_chuoi_tuy_chon(muc, "loai_tai_khoan"),
                         dich_dung=_chuoi_tuy_chon(muc, "dich_dung"),
                         dang_nhap_bang=muc.get("dang_nhap_bang"),
-                        tai_khoan_google_id=muc.get("tai_khoan_google_id"),
+                        tai_khoan_dnh_id=_tai_khoan_dnh_id_tuy_chon(muc),
                         dung_cho=_dung_cho_tuy_chon(muc))
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
@@ -4020,7 +4032,7 @@ async def luu_tai_khoan_da_luu(request: Request):
             loai_tai_khoan=_chuoi_tuy_chon(than, "loai_tai_khoan"),
             dich_dung=_chuoi_tuy_chon(than, "dich_dung"),
             dang_nhap_bang=_chuoi_tuy_chon(than, "dang_nhap_bang"),
-            tai_khoan_google_id=_chuoi_tuy_chon(than, "tai_khoan_google_id"),
+            tai_khoan_dnh_id=_tai_khoan_dnh_id_tuy_chon(than),
             dung_cho=_dung_cho_tuy_chon(than))
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
@@ -4094,7 +4106,7 @@ def _gan_bi_mat_dang_nhap_ho(dong, ban_ghi) -> list:
     dong.dang_nhap_bang = dang_nhap_bang
     if dang_nhap_bang != kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
         return []
-    gid = str((ban_ghi or {}).get("tai_khoan_google_id") or "")
+    gid = kho_tai_khoan_mod.lay_tai_khoan_dnh_id(ban_ghi or {})
     ban_ghi_dnh = kho_tai_khoan_mod.tim_theo_id(gid) if gid else None
     if ban_ghi_dnh is None:
         raise LoiOpenAI(
