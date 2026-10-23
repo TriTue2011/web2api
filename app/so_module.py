@@ -447,7 +447,11 @@ class SoModule:
             t = man.get("tab_web")
             if t and id_ in self.dang_chay:
                 # Đường TƯƠNG ĐỐI: web2api sau proxy ở thư mục con vẫn mở đúng.
-                tab.append({"module": id_, "nhan": t["nhan"], "duong": f"m/{id_}/{t['trang'].removeprefix('web/')}"})
+                # NV263: `an_khoi_thanh` đi theo để khung.js ẩn khỏi thanh điều hướng;
+                # trang vẫn mở được bằng đường dẫn trực tiếp (duong).
+                tab.append({"module": id_, "nhan": t["nhan"],
+                            "duong": f"m/{id_}/{t['trang'].removeprefix('web/')}",
+                            "an_khoi_thanh": bool(t.get("an_khoi_thanh"))})
             muc += [{"module": id_, "id": x["id"], "nhan": x["nhan"], "can": list(x["can"])} for x in man.get("muc", [])]
         for id_ in sorted(self.tu_xa):
             m = self.dang_chay.get(id_)

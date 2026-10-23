@@ -403,6 +403,9 @@
     ra.push({ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.phich, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] });
     for (const t of (tn && tn.tab) || []) {
       // Tab riêng của module nằm TRONG Hệ thống (trang chủ chứa khung), không rời sang trang rời.
+      // NV263: module khai `tab_web.an_khoi_thanh` (vd vnc-xa) thì ẨN KHỎI thanh điều hướng —
+      // trang vẫn mở được bằng đường dẫn trực tiếp (t.duong) và qua He-thong-Module.dc.html?m=<id>.
+      if (t.an_khoi_thanh) continue;
       if (lienKetAnToan(t.duong)) ra.push({ id: 'm-' + t.module, nhan: t.nhan, href: 'He-thong-Module.dc.html?m=' + encodeURIComponent(t.module), d: BIEU_TUONG.module, cham: false, nhanCham: '', con: [] });
     }
     if (!tn || du('bao_mat', tn)) {

@@ -478,6 +478,8 @@ def kiem_manifest(m) -> str | None:
         if (not isinstance(tab, dict) or not isinstance(tab.get("nhan"), str) or not isinstance(trang, str)
                 or not trang.startswith("web/") or ".." in trang.split("/") or "\\" in trang):
             return "tab_web cần {\"nhan\": chuỗi, \"trang\": \"web/<tệp>\"} (không «..»)"
+        if "an_khoi_thanh" in tab and not isinstance(tab["an_khoi_thanh"], bool):
+            return "tab_web.an_khoi_thanh (nếu khai) phải là true/false"
     wh = m.get("webhook")
     if wh is not None:
         # Cửa webhook chung của lõi (app/webhook.py): khai báo là quyền (xem diff_quyen).

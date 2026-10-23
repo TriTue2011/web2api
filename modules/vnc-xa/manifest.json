@@ -11,7 +11,7 @@
   "tien_to": "vncxa",
   "yeu_cau_goi": ["httpx"],
   "cung_cap": ["trinh_duyet"],
-  "tab_web": {"nhan": "Trình duyệt", "trang": "web/index.html"},
+  "tab_web": {"nhan": "Trình duyệt", "trang": "web/index.html", "an_khoi_thanh": true},
   "truong_cau_hinh": [
     {
       "khoa": "dich_vu_url",
