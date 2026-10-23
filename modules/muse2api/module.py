@@ -24,6 +24,12 @@ muse.ai đăng nhập qua SSO của Meta — KHÔNG có form email/mật khẩu 
 (tầng a); tầng (b) trả `can_nguoi` kèm hướng dẫn mở noVNC (trung thực, không
 đoán luồng không có). Cookie phiên giữ nguyên cơ chế hiện có (chuỗi cookie
 trong `_TaiKhoan`, kiểm bằng bootstrap).
+
+NV230: tầng (a) khi bootstrap TỪ CHỐI cookie còn thử tự lấy cookie MỚI từ
+workspace Firefox ĐÃ GẮN với khoá (bản ghi NV93) qua dịch vụ trình duyệt —
+xem `lam_moi_cookie.py`. Đây là đường đọc cookie từ hồ sơ trình duyệt bền
+đã có sẵn của hệ thống (client vnc-xa), không phải lấy cookie lén từ máy
+người dùng.
 """
 
 from __future__ import annotations
@@ -36,17 +42,24 @@ import secrets
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import AsyncIterator
 
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 
 from .chat import ChatSession, build_prompt
+from .lam_moi_cookie import BoLamMoiCookie
 from .protocol import AuthError, Gateway, GatewayError, fetch_access_token, fetch_session_info
 
 log = logging.getLogger("web2api.module.muse2api")
 
 MODEL_ID = "muse"
+
+#: ID module trong sổ cấu hình của lõi (khớp manifest ``id``).
+MODULE_ID = "muse2api"
+_THU_MUC_MODULE = Path(__file__).resolve().parent
+_TRUONG_CAU_HINH_CACHE: list | None = None
 
 
 def phan_loai_loi(ma: int, loi: dict, boi_canh: dict) -> str | None:
@@ -193,6 +206,12 @@ class Module:
         self._hong: set[str] = set()  # khoá tài khoản tầng (c) đã đánh dấu hỏng
         # Tài khoản từ đường tái dùng hồ sơ Google (NV93): khoá «tk-<băm>».
         self._tai_khoan_nv93: list[_TaiKhoanNV93] = []
+        # NV230: bộ tự lấy cookie MỚI từ workspace Firefox đã gắn với khoá.
+        self._bo_lam_moi_cookie = BoLamMoiCookie(self)
+        self._khoa_thay_cookie = threading.Lock()
+        self._dich_vu_trinh_duyet_url = ""
+        self._khoa_dich_vu_trinh_duyet = ""
+        self._cookie_tran_thu_ngay = 5
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
         return phan_loai_loi(ma, loi, boi_canh)
@@ -204,7 +223,21 @@ class Module:
 
         NV93: bỏ qua cookie đã bị go_tai_khoan gỡ (sổ go_bo trong kho riêng);
         khôi phục email/hồ sơ đã làm giàu từ bản ghi kho riêng.
+
+        NV230: cấu hình dịch vụ trình duyệt cho bộ tự lấy cookie mới
+        (để trống = tắt, giữ hành vi hết hạn như cũ).
         """
+        self._dich_vu_trinh_duyet_url = str(
+            cau_hinh.get("dich_vu_trinh_duyet_url") or "").strip()
+        self._khoa_dich_vu_trinh_duyet = str(
+            cau_hinh.get("khoa_dich_vu_trinh_duyet") or "")
+        try:
+            self._cookie_tran_thu_ngay = int(float(
+                cau_hinh.get("cookie_tran_thu_ngay") or 5))
+        except (TypeError, ValueError):
+            self._cookie_tran_thu_ngay = 5
+        if self._cookie_tran_thu_ngay <= 0:
+            self._cookie_tran_thu_ngay = 5
         cookies = _ds_cookie(cau_hinh.get("cookies"))
         go_bo = self._doc_go_bo_nv93()
         ban_ghi = self._doc_ban_ghi_nv93()
@@ -354,7 +387,14 @@ class Module:
             tai_khoan.xoa_bi_mat()
 
     async def lam_moi_phien(self, khoa: str) -> KetQuaKhoiPhuc:
-        """Tầng (a): kiểm lại cookie bằng bootstrap (rẻ, không tốn tiền)."""
+        """Tầng (a): kiểm lại cookie bằng bootstrap (rẻ, không tốn tiền).
+
+        NV230: bootstrap TỪ CHỐI cookie (401/AuthError) → thử tự lấy cookie
+        MỚI từ workspace Firefox ĐÃ GẮN với khoá (xem lam_moi_cookie.py)
+        trước khi tuyên bố hết hạn. Cần người (hồ sơ đang mở/không có
+        hatch_sess) → can_nguoi ngay ở tầng (a); lỗi tạm → giữ het_han như
+        cũ (bộ làm mới đã ghi nghỉ luỹ thừa, không thử lại mãi).
+        """
         acc = self._tim_acc(khoa)
         if acc is None:
             return KetQuaKhoiPhuc(False, tang="a", ma_loi="khoa_khong_co")
@@ -371,6 +411,15 @@ class Module:
             return KetQuaKhoiPhuc(True, tang="a")
         acc.khoe = False
         if bi_tu_choi:
+            kq_lm = await self._bo_lam_moi_cookie.lam_moi(khoa)
+            if kq_lm.get("ok"):
+                acc.khoe = True
+                return KetQuaKhoiPhuc(True, tang="a",
+                                      khoa_moi=kq_lm.get("khoa_moi"))
+            if kq_lm.get("can_nguoi"):
+                return KetQuaKhoiPhuc(
+                    False, tang="a", ma_loi="can_nguoi", can_nguoi=True,
+                    huong_dan=str(kq_lm.get("huong_dan") or ""))
             return KetQuaKhoiPhuc(False, tang="a", ma_loi="het_han",
                                   ma_trang_thai=401)
         return KetQuaKhoiPhuc(False, tang="a", ma_loi="loi_may_chu")
@@ -399,6 +448,149 @@ class Module:
     def danh_dau_hong(self, khoa: str, ma_loi: str) -> None:
         """Đánh dấu tài khoản hỏng để tầng (c) bỏ qua."""
         self._hong.add(str(khoa))
+
+    # ── NV230: tự lấy cookie mới từ workspace Firefox đã gắn ─────────────
+
+    def khoa_tai_khoan(self) -> list[str]:
+        """Mọi khoá tài khoản hiện có — hợp đồng vòng tự làm mới của lõi
+        (VongTuLamMoi quét các khoá này rồi gọi lam_moi_phien từng khoá)."""
+        return [self._khoa_tu_cookies(a.cookies) for a in self._accs]
+
+    def danh_dau_khoe(self, khoa: str) -> None:
+        """Đánh dấu một khoá khoẻ trở lại (vòng nền gọi sau khi thấy khoá
+        dùng được, vd chat 200)."""
+        acc = self._tim_acc(khoa)
+        if acc is not None:
+            acc.khoe = True
+
+    def _ho_so_gan_voi_khoa(self, khoa: str) -> str | None:
+        """Hồ sơ Firefox GẮN CHẮC CHẮN với khoá, hoặc None.
+
+        Ghép qua chính hatch_sess của cookie hiện tại → bản ghi kho riêng
+        NV93 (trường ``ho_so`` do tai_dung_ho_so ghi). KHÔNG đoán từ tên
+        hồ sơ/email. Không gắn → None (bộ làm mới không làm mới bừa).
+        """
+        acc = self._tim_acc(khoa)
+        if acc is None:
+            return None
+        hs = _hatch_sess_tu_cookie(acc.cookies)
+        if not hs:
+            return None
+        khoa93 = self._khoa_tu_hatch_sess(hs)
+        for tk in self._tai_khoan_nv93:
+            if self._khoa_tu_hatch_sess(tk.hatch_sess) == khoa93 and tk.ho_so:
+                return tk.ho_so
+        bg = self._doc_ban_ghi_nv93().get(khoa93)
+        if isinstance(bg, dict):
+            ho_so = bg.get("ho_so")
+            if isinstance(ho_so, str) and ho_so:
+                return ho_so
+        return None
+
+    def _truong_cau_hinh_cookie(self) -> list:
+        """Định nghĩa trường cấu hình từ manifest (đệm) — cho _thay_cookie."""
+        global _TRUONG_CAU_HINH_CACHE
+        if _TRUONG_CAU_HINH_CACHE is not None:
+            return _TRUONG_CAU_HINH_CACHE
+        try:
+            with open(_THU_MUC_MODULE / "manifest.json",
+                      encoding="utf-8") as f:
+                man = json.load(f)
+            _TRUONG_CAU_HINH_CACHE = man.get("truong_cau_hinh") or []
+        except Exception:
+            _TRUONG_CAU_HINH_CACHE = []
+        return _TRUONG_CAU_HINH_CACHE
+
+    def _thay_cookie(self, khoa_cu: str, cookie_moi: str) -> dict:
+        """Thay cookie của khoá BẰNG ĐƯỜNG cai {giu, them} (như NV207).
+
+        Đọc-ghép-lưu trong khoá module (không để hai lượt làm mới đè nhau):
+        đọc cấu hình đã lưu → `kho.ghep_cau_hinh` với {giu: mọi chỉ số trừ
+        mục cũ, them: [cookie mới]} → `kho.luu_cai_dat`. Rồi cập nhật bộ nhớ
+        (đóng Gateway cũ dựng bằng cookie cũ) + bản ghi NV93 đi theo
+        hatch_sess mới (giữ email/hồ sơ đã gắn). Không log cookie.
+        """
+        from app import kho as kho_loi
+        khoa_cu = str(khoa_cu or "")
+        cookie_moi = str(cookie_moi or "").strip()
+        if not cookie_moi:
+            return {"ok": False, "ma_loi": "cookie_moi_rong"}
+        with self._khoa_thay_cookie:
+            acc = self._tim_acc(khoa_cu)
+            if acc is None or acc.cookies == cookie_moi:
+                # Khoá đã đổi chủ trong lúc làm mới (lượt khác nhanh hơn).
+                return {"ok": False, "ma_loi": "cookie_da_doi"}
+            cookie_cu = acc.cookies
+            # Đọc-ghép-lưu cấu hình đã lưu (đường {giu, them} của kho).
+            try:
+                truong = self._truong_cau_hinh_cookie()
+                muc = None
+                ds_mod, _canh_bao = kho_loi.doc_modules()
+                for m in ds_mod or []:
+                    if isinstance(m, dict) and m.get("id") == MODULE_ID:
+                        muc = m
+                        break
+                da_luu = kho_loi.doc_cau_hinh(MODULE_ID, truong, muc) \
+                    if muc else {}
+                cu = da_luu.get("cookies")
+                cu = list(cu) if isinstance(cu, list) else []
+                try:
+                    idx_luu = cu.index(cookie_cu)
+                except ValueError:
+                    idx_luu = None
+                if idx_luu is None:
+                    # Cấu hình lưu lệch khỏi bộ nhớ: giữ nguyên + thêm mới.
+                    giu = list(range(len(cu)))
+                else:
+                    giu = [i for i in range(len(cu)) if i != idx_luu]
+                ghep = kho_loi.ghep_cau_hinh(
+                    truong, da_luu,
+                    {"cookies": {"giu": giu, "them": [cookie_moi]}})
+                kho_loi.luu_cai_dat(MODULE_ID, truong, ghep)
+            except Exception as e:
+                log.warning("muse2api: lưu cấu hình sau thay cookie lỗi: %s",
+                            type(e).__name__)
+                return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
+            # Cập nhật bộ nhớ (tìm lại: ai đó có thể đã thay trong lúc lưu).
+            acc = self._tim_acc(khoa_cu)
+            if acc is None:
+                return {"ok": False, "ma_loi": "cookie_da_doi"}
+            sess_cu = _hatch_sess_tu_cookie(cookie_cu)
+            sess_moi = _hatch_sess_tu_cookie(cookie_moi)
+            acc.cookies = cookie_moi
+            acc.bo()  # Gateway cũ giữ cookie cũ — bỏ để dựng lại
+            acc.khoe = True
+            if sess_cu and sess_moi and sess_cu != sess_moi:
+                for tk in self._tai_khoan_nv93:
+                    if tk.hatch_sess == sess_cu:
+                        tk.hatch_sess = sess_moi
+                        tk.trang_thai = "hoat_dong"
+                self._luu_ban_ghi_nv93()
+        return {"ok": True, "khoa_moi": self._khoa_tu_cookies(cookie_moi)}
+
+    # -- sổ trạng thái làm mới cookie (kho riêng, KHÔNG bí mật) -----------
+
+    def _doc_trang_thai_cookie(self) -> dict:
+        """{khoa: trạng thái làm mới} từ kho riêng; chưa gán/hỏng → {}."""
+        if self.kho is None:
+            return {}
+        try:
+            du_lieu = self.kho.doc("lam_moi_cookie") or {}
+        except Exception:
+            return {}
+        tt = du_lieu.get("trang_thai") if isinstance(du_lieu, dict) else None
+        return tt if isinstance(tt, dict) else {}
+
+    def _luu_trang_thai_cookie(self, tt: dict) -> None:
+        """Lưu sổ trạng thái làm mới cookie (chỉ số đếm/thời điểm/mã lỗi)."""
+        if self.kho is None:
+            return
+        try:
+            self.kho.luu("lam_moi_cookie", {"trang_thai": tt})
+        except Exception as e:
+            log.warning("muse2api: không lưu được trạng thái làm mới "
+                        "cookie: %s", type(e).__name__)
+
     # ── tái dùng hồ sơ Google (NV93) ─────────────────────────────────────
 
     _URL_TAI_DUNG = "https://muse.ai/"

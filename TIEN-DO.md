@@ -67,3 +67,40 @@
   để chạy pytest — không ảnh hưởng patch.
 - Diff hiện tại còn ở working tree (chưa commit): auto_login.py +
   test_nv209 (modified), test_nv231 (untracked).
+
+
+# NV230 — TIẾN ĐỘ (nền lại nv230.patch lên ebdfcc6, tiếp quản worker cron chết, 2026-10-23 ~23:10 +07)
+
+Patch gốc: 1 commit, 5 tệp, nền 0b7435c (NV223). Nền mới ebdfcc6 = main 7726157 + NV262 + NV263 + sửa chú thích.
+Áp sạch 4/5 tệp (`git apply --exclude=TIEN-DO.md`); TIEN-DO.md giữ CẢ HAI bên, nối mục này.
+
+## Yêu cầu (spec viec-nv230)
+- Khi cookie muse2api hỏng (401/AuthError) hoặc sắp hết hạn: tầng (a) MỚI tìm hồ sơ Firefox GẮN CHẮC CHẮN với khoá (trường ho_so trong kho riêng như NV93/NV207, không đoán từ tên), đọc cookie muse.ai qua đường SẴN CÓ của lõi (không viết bộ đọc thứ hai), kiểm bằng bootstrap, qua thì THAY cookie của khoá (đường cai {giu, them} như NV207), ghi trạng thái, KHÔNG lộ cookie.
+- Không có hồ sơ gắn / hồ sơ đang mở (409) / không có hatch_sess → «cần người» rõ lý do, không thử lại mãi (trần/ngày + nghỉ luỹ thừa như NV207). Vòng nền dùng chung cơ chế khôi phục hiện có. Không đóng cưỡng bức hồ sơ đang mở.
+- Đo qua lõi thật + dịch vụ trình duyệt GIẢ: (a) cookie cũ hỏng + hồ sơ có cookie mới → thay, chat 200; (b) 409 → cần người, không thử lại; (c) không hatch_sess → cần người; (d) cookie mới cũng hỏng → không thay, nghỉ luỹ thừa; (e) không lộ cookie; (f) khoá không gắn hồ sơ → không làm mới bừa. ≥8 đột biến.
+## Bước a — ĐO hiện trạng (2026-10-23)
+- `modules/muse2api/module.py::lam_moi_phien` (tầng a hiện tại): CHỈ kiểm lại đúng cookie đã có bằng bootstrap (`_kiem_cookie`); AuthError → `het_han` 401. KHÔNG có đường kéo cookie mới từ workspace → đúng như điều phối đã đo: chat báo 401 «cookies expired» dù workspace còn đăng nhập.
+- `dang_nhap_tu_dong` (tầng b): trả can_nguoi (SSO Meta, không form mật khẩu) — giữ nguyên.
+- Ghép khoá → hồ sơ: tài khoản NV93 có trường `ho_so` trong bản ghi kho riêng (`tai_khoan_nv93` / `_TaiKhoanNV93.ho_so`, khôi phục ở `nap()`), ghép chắc chắn qua giá trị hatch_sess. Khoá dán tay (ms-) không có bản ghi → không gắn hồ sơ.
+- Đường đọc cookie sẵn có: module `vnc-xa` (cung cấp khả năng trình duyệt) có `trinh_duyet_ds()` + `trinh_duyet_cookie(ho_so, mien)` → GET /ho-so/{id}/cookie của dịch vụ trình duyệt; lỗi mang `.ma` (409 hồ sơ đang mở, 404 chưa có cookie, 501 Chromium). KHÔNG viết bộ đọc thứ hai: nạp vnc-xa qua importlib như NV207 nạp may-dang-nhap.
+- Thay cookie: đường cai {giu, them} qua app/kho (doc_modules/doc_cau_hinh/ghep_cau_hinh/luu_cai_dat) như `_thay_token_jwt` của chatgpt-web, trường `cookies`.
+- Vòng nền: `app/tu_lam_moi.VongTuLamMoi` đã gọi `lam_moi_phien` cho module có `khoa_tai_khoan()` — muse2api CHƯA có `khoa_tai_khoan()` nên vòng bỏ qua. Thêm `khoa_tai_khoan()` + `danh_dau_khoe()` = dùng cơ chế hiện có, không thêm vòng mới.
+- hatch_sess là chuỗi mờ (không giải mã được exp) → «sắp hết hạn» không đo được từ cookie; tín hiệu đo được là bootstrap từ chối (401/AuthError). Ghi rõ trong báo cáo.
+- Số test nền trước khi sửa: cụm muse2api (6 file) = **253 passed, exit 0**.
+## Thiết kế (theo mẫu NV207)
+- Mới: `modules/muse2api/lam_moi_cookie.py` — `BoLamMoiCookie` (bản sao cấu trúc BoLamMoiJWT): ghép hồ sơ chắc chắn, trần 5 lần/ngày/khoá, nghỉ luỹ thừa 300·2^n trần 6h, single-flight theo khoá, trạng thái ở kho riêng (khoá `lam_moi_cookie`), không lộ cookie.
+- `module.py`: `lam_moi_phien` — bootstrap từ chối (AuthError) → thử `BoLamMoiCookie.lam_moi(khoa)`: thành công → tầng (a) thành công; can_nguoi (409/không hatch_sess/hồ sơ biến mất) → KetQuaKhoiPhuc can_nguoi + hướng dẫn; lỗi tạm (cookie mới cũng hỏng/dịch vụ sập/giống cũ) → giữ nguyên `het_han` như cũ; không gắn hồ sơ → KHÔNG gọi dịch vụ, giữ nguyên `het_han` (ca f).
+- `module.py`: `_thay_cookie(khoa_cu, cookie_moi)` (đường cai {giu, them} + cập nhật bộ nhớ + bản ghi NV93), `_doc/_luu_trang_thai_cookie`, `khoa_tai_khoan()`, `danh_dau_khoe()`, cấu hình dịch vụ trình duyệt đọc ở `nap()` (`dich_vu_trinh_duyet_url`, `khoa_dich_vu_trinh_duyet`, `cookie_tran_thu_ngay`) như NV207 đọc cấu hình may-dang-nhap.
+
+## Trạng thái
+- [x] Bước a ĐO: đọc code + ghi hiện trạng ở trên.
+- [x] Test đỏ tái hiện (a)-(f): 15 test mới, lượt đầu **14 failed / 1 passed** (đúng kỳ vọng).
+- [x] Triển khai tới xanh: `lam_moi_cookie.py` mới + tích hợp `module.py` + manifest thêm 3 trường cấu hình (phien_ban 0.2.2).
+- [x] Cụm test: NV230 **15 passed**; cụm muse2api + cookie-sang-module **402 passed, exit 0** (không hồi quy so với nền 253 ở 6 file gốc). Cụm rộng liên quan (khoi_phuc/tu_lam_moi/kham_pha/manifest…): 147 passed, 2 failed — cả 2 KHÔNG phải hồi quy: `test_danh_sach_nuot_loi_khong_tang` đỏ sẵn trên nền sạch (điểm bị gắn cờ duy nhất ở app/kho_tai_khoan.py, code NV230 cộng 0 điểm mới); `test_hieu_nang_doc_phien_khong_doi_bac` là test đo thời gian trên app/phien.py, flaky khi máy tải nặng (load 7.59, qua khi chạy lại lúc rảnh).
+- [x] Đột biến: **12/12 chết** bởi assert thật (M5 làm lại sạch sau khi bản đầu chết vì lỗi cú pháp của chính đột biến).
+- [ ] Commit + patch + apply --check clone sạch.
+- [ ] Báo cáo + upload outbox + xoá inbox + da_thay + dang-lam.
+
+## Ghi chú nền lại (NV265)
+- Trạng thái trong mục gốc đã chốt trên nền cũ; lượt này kiểm lại trên nền mới theo spec viec-nv265.
+- CHƯA kiểm: chạy với workspace Firefox thật; đo đường cookie hết hạn ngoài đời.
