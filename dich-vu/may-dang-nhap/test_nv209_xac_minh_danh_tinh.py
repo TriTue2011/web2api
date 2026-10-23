@@ -107,7 +107,11 @@ class _CtxGia:
         return [self._trang]
 
     async def cookies(self):
-        return [{"name": n, "value": "gia"} for n in self._cookie]
+        # NV231 (cập nhật CÓ CHỦ Ý): _already_logged_in giờ kiểm phiên NGHIÊM
+        # (miền google.com + chưa hết hạn), nên cookie giả mang đủ trường như
+        # Playwright thật; expires=-1 = cookie phiên, hợp lệ.
+        return [{"name": n, "value": "gia", "domain": ".google.com",
+                 "expires": -1} for n in self._cookie]
 
 
 COOKIE_DANG_NHAP = ("__Secure-1PSID", "SID")

@@ -529,10 +529,52 @@ _SIGNIN_URL_MARKERS = (
 )
 
 
-async def _already_logged_in(ctx) -> bool:
+async def _co_phien_google(ctx) -> bool:
+    """Phiên Google ĐÃ CÓ? — kiểm KẾT QUẢ THẬT thay vì đoán theo URL (NV231).
+
+    True khi ``context.cookies()`` có cookie đăng nhập chính của Google nằm
+    trong MỘT bảng ``_GOOGLE_LOGIN_COOKIES`` (khai báo một chỗ duy nhất),
+    thỏa ĐỒNG THỜI:
+      - miền thuộc google.com (``.google.com`` / ``google.com``);
+      - giá trị khác rỗng;
+      - chưa hết hạn (``expires`` < 0 = cookie phiên, hoặc > hiện tại).
+    Cookie cũ/hết hạn/rỗng/sai miền → False (fail closed): bên gọi giữ
+    need_human như NV209, không báo thành công giả. Không bao giờ ghi tên,
+    giá trị cookie hay URL vào log.
+    """
     try:
         cookies = await ctx.cookies()
-        if not any(c["name"] in _GOOGLE_LOGIN_COOKIES for c in cookies):
+    except Exception:
+        return False
+    bay_gio = time.time()
+    for c in cookies or ():
+        try:
+            ten = c.get("name")
+            mien = (c.get("domain") or "").lower()
+        except Exception:
+            continue
+        if ten not in _GOOGLE_LOGIN_COOKIES:
+            continue
+        if "google.com" not in mien:
+            continue
+        if not c.get("value"):
+            continue
+        try:
+            het_han = float(c.get("expires", -1))
+        except (TypeError, ValueError):
+            het_han = -1
+        if het_han >= 0 and het_han <= bay_gio:
+            continue  # cookie đã hết hạn → không tính là phiên
+        return True
+    return False
+
+
+async def _already_logged_in(ctx) -> bool:
+    try:
+        # NV231: kiểm phiên NGHIÊM (miền + hạn + giá trị) qua _co_phien_google,
+        # thay vì chỉ so tên cookie — cookie cũ/hết hạn không được tính là
+        # «đã đăng nhập».
+        if not await _co_phien_google(ctx):
             return False
         # Cookie presence ≠ live session. If any open page is sitting on a
         # Google sign-in / challenge URL, we are actively being asked to
@@ -1352,8 +1394,33 @@ async def _vong_2fa(session: LoginSession, page, ctx,
         # Đo 13/09/2026 13:29 (nguoi-a): đã vào tới trang `/` của Gemini, quay
         # đủ 4 phút rồi báo "Hết 4 phút mà chưa hoàn tất 2FA" — trong khi phiên
         # Flow kiểm lại ngay sau đó là `ok`.
+        # NV231 — đặt TRƯỚC kiểm «đã đăng nhập» chung ở dưới: trang xác minh
+        # DANH TÍNH (mọi mã «xac_minh_*») mà PHIÊN GOOGLE ĐÃ CÓ → tính là
+        # THÀNH CÔNG ngay, không cần người (chủ máy 21/10). Kiểm KẾT QUẢ THẬT
+        # (cookie phiên) thay vì đoán theo URL; KHÔNG bấm/điền gì vào trang
+        # xác minh. Không phiên → rơi xuống luồng NV209 (fail closed). Lỗi
+        # vĩnh viễn (dang_nhap_bi_tu_choi/tai_khoan_bi_khoa) không thuộc họ
+        # «xac_minh_*» nên không bị biến thành success.
+        thu_thach_som = await _phan_loai_thu_thach(page, duong_trang,
+                                                  so_dong_chon,
+                                                  co_khung_captcha)
+        if (thu_thach_som is not None
+                and thu_thach_som[0].startswith("xac_minh_")
+                and await _co_phien_google(ctx)):
+            ma_loi_som = thu_thach_som[0]
+            session.state = "success"
+            session.message = ("Đăng nhập Google thành công — bỏ qua trang "
+                               "xác minh danh tính khi phiên đã đăng nhập")
+            session.completed_at = time.time()
+            logger.info("auto_login: bo qua trang xac minh (%s): phien "
+                        "Google da co, profile=%s (trang=%s)",
+                        ma_loi_som, session.profile, duong_trang or "?")
+            return True
+
         if await _already_logged_in(ctx):
             session.message = "Google login OK"
+            session.state = "success"
+            session.completed_at = time.time()
             logger.info("auto_login: vòng 2FA — đã đăng nhập (trang=%s) cho %s",
                         duong_trang or "?", session.profile)
             return True
