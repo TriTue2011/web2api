@@ -4193,11 +4193,21 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         gan_ket_qua_dang_nhap_mod.ap_dung(request.app.state.so, kq, dong.module_cua_tai_khoan)
         # NV197c: học module sở hữu từ lần đăng nhập THÀNH CÔNG — nhóm suy từ
         # manifest của module đó. Ghi sổ phụ: lỗi không làm hỏng kết quả đăng nhập.
-        try:
-            kho_tai_khoan_mod.dat_module(
-                id, module_id, _nhom_cua_module(request, module_id))
-        except Exception:
-            log.warning("tai-khoan: không ghi được module sở hữu cho %s", id)
+        #
+        # CHỈ học khi bản ghi CHƯA có module sở hữu. Đo thật 23/10/2026:
+        # tài khoản ChatGPT (sở hữu «chatgpt-web») đăng nhập thành công QUA
+        # module thực thi «may-dang-nhap»; ghi đè vô điều kiện biến sở hữu
+        # thành module thực thi, lần đăng nhập sau lõi đọc sở hữu sai nên
+        # chọn sai luồng (ChatGPT rơi xuống đường Google) — hỏng hẳn từ lần
+        # thứ hai. Module thực thi chỉ được học làm sở hữu khi tài khoản
+        # chưa thuộc về module nào. Test:
+        # test_loi_so_huu_dang_nhap_uy_quyen.py.
+        if not dong.module_cua_tai_khoan:
+            try:
+                kho_tai_khoan_mod.dat_module(
+                    id, module_id, _nhom_cua_module(request, module_id))
+            except Exception:
+                log.warning("tai-khoan: không ghi được module sở hữu cho %s", id)
         # NV214: nối cookie phiên vào module sở hữu (nếu module đó khai
         # nhan_cookie và module thực thi báo ho_so_dang_nhap) — lỗi nối
         # không làm hỏng kết quả đăng nhập, cookie không ra phản hồi/log.
