@@ -1039,6 +1039,8 @@ class Module:
             except ValueError as e:
                 return {"ok": False, "ket_qua_tung_khoa": [],
                         "loi": f"dich_vu_dang_nhap_url không hợp lệ: {e}"}
+        with self._khoa:
+            ds = list(self._tai_khoan)
         if not ds:
             return {"ok": False, "ket_qua_tung_khoa": [],
                     "loi": "Chưa nhập token nào (trường tai_khoan)."}
