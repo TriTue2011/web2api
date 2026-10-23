@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, gioi_han, ham_khoa, he_thong, kenh_vao, kho, khoa_khach, lam_moi_jwt, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
+from app import che_log, dia_chi, do_tai_nguyen, gioi_han, ham_khoa, he_thong, kenh_vao, kho, khoa_khach, lam_moi_jwt, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -389,6 +389,34 @@ def health():
 @app.get("/api/he-thong", dependencies=tuyen.QT)
 def api_he_thong():
     return he_thong.tong_hop(thu_muc_du_lieu(), PHIEN_BAN)
+
+
+# NV261: đo tài nguyên CHỈ khi người dùng bấm (không đo nền, không hẹn giờ). POST vì tốn
+# tài nguyên và không idempotent; chỉ khoá quản trị; no-store; giới hạn 1 lần/giây/người dùng
+# (mốc tính từ lúc đo XONG, và không cho hai lượt đo của cùng một người chạy đè nhau).
+_LAN_DO_CUOI: dict[str, float] = {}
+_DANG_DO: set[str] = set()
+
+
+@app.post("/api/he-thong/do-tai-nguyen", dependencies=tuyen.QT + tuyen.KHONG_LUU)
+async def api_do_tai_nguyen(request: Request):
+    import time as _time
+
+    nguoi = getattr(request.state, "nguoi_goi", "quan_tri")
+    if nguoi in _DANG_DO or _time.monotonic() - _LAN_DO_CUOI.get(nguoi, 0.0) < 1.0:
+        return JSONResponse(
+            {"loi": "Đo quá dày: mỗi người dùng chỉ được đo 1 lần/giây."},
+            status_code=429, headers={"Retry-After": "1", "Cache-Control": "no-store"})
+    _DANG_DO.add(nguoi)
+    try:
+        # Phép đo chạy ~2–5 giây (cửa sổ lấy mẫu CPU + quét RAM): cho vào luồng phụ, không chặn vòng lặp.
+        return await asyncio.to_thread(do_tai_nguyen.do_tat_ca, request.app.state.so)
+    finally:
+        _DANG_DO.discard(nguoi)
+        _LAN_DO_CUOI[nguoi] = _time.monotonic()
+
+
+do_tai_nguyen.bat_tracemalloc_neu_can()  # WEB2API_DO_CHUAN=1 → tracemalloc từ lúc khởi động (chẩn đoán)
 
 
 app.include_router(tuyen.v1)

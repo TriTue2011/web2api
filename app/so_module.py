@@ -744,6 +744,11 @@ class SoModule:
         km = self.catalog.get(id_)
         if km is None:
             raise LoiSo(404, f"Không có module {id_!r} (xem GET /api/modules/catalog)")
+        # NV261: chi phí nạp = hiệu VmRSS trước/sau lần cài thành công (một lần, chỉ lúc người dùng
+        # bấm cài) — lưu vào trạng thái module qua app/do_tai_nguyen (công khai, không bí mật).
+        from app import do_tai_nguyen
+
+        rss_truoc = do_tai_nguyen.doc_vmrss_mb()
         async with self.khoa:
             muc = self.muc_da_luu(id_)
             try:
@@ -753,7 +758,12 @@ class SoModule:
                 raise LoiSo(500, f"Không đọc được cấu hình đã lưu: {e}") from None
             except ValueError as e:
                 raise LoiSo(400, str(e)) from None
-            return await self._cai(km, day_du)
+            kq = await self._cai(km, day_du)
+            if kq.get("ok") and rss_truoc is not None:
+                rss_sau = do_tai_nguyen.doc_vmrss_mb()
+                if rss_sau is not None:
+                    do_tai_nguyen.ghi_chi_phi_nap(id_, rss_sau - rss_truoc)
+            return kq
 
     async def _cai(self, km: ModuleKhamPha, cau_hinh: dict) -> dict:
         moi = km.tao()

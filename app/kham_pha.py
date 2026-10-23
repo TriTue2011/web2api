@@ -214,6 +214,8 @@ HANG_HOP_LE = frozenset({"A", "B"})
 #: Phương thức BẮT BUỘC chung: chỉ vòng đời. Khả năng (chat, ảnh, …) theo `cung_cap` — xem HOP_DONG_KHA_NANG.
 PHUONG_THUC = ("nap", "cai", "suc_khoe", "dung")
 _TEN_GOI = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
+#: Tên container dịch vụ phụ (NV261): tên docker thường (chữ, số, _ . -), tối đa 64 ký tự.
+_TEN_CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 #: Mẫu mã khả năng trong `cung_cap`, mã loại `loai` và mã trong `can` — kiểm dạng, KHÔNG liệt kê mã hợp lệ
 #: (loại/khả năng mới không phải sửa lõi).
 MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}\Z")
@@ -459,6 +461,10 @@ def kiem_manifest(m) -> str | None:
         return 'can_module phải là danh sách id module không trùng (ví dụ ["mod-phu"])'
     if m["id"] in can:
         return "can_module không được chứa chính id của module"
+    dvp = m.get("dich_vu_phu", [])
+    if (not isinstance(dvp, list) or not all(isinstance(x, str) and _TEN_CONTAINER.match(x) for x in dvp)
+            or len(set(dvp)) != len(dvp)):
+        return 'dich_vu_phu phải là danh sách tên container không trùng (chữ, số, _ . -; ví dụ ["dich-vu-phu-1"])'
     muc = m.get("muc", [])
     if not isinstance(muc, list):
         return 'muc phải là danh sách [{"id", "nhan", "can": [mã…]}]'

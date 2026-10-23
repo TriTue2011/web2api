@@ -33,6 +33,9 @@ _TRUONG_KHONG_QUYEN = frozenset({
     "loai_ten", "loai_thu_tu", "nhom", "muc",
     "truong_cau_hinh", "tai_nguyen", "phien_ban",
     "yeu_cau_goi", "cung_cap", "can_module",
+    # NV261: `dich_vu_phu` là khai báo nơi module chạy nặng (container riêng) để lõi ĐO bằng
+    # cgroup — khía cạnh của nó được xử lý theo cấu trúc riêng như can_module, không phải quyền.
+    "dich_vu_phu",
 })
 
 #: Khoá đã biết trong mỗi phần tử `truong_cau_hinh` (ngoài `nhan_cookie` mang quyền).
