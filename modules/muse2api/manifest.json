@@ -1,1 +1,85 @@
-{"cung_cap":["chat"],"hang":"A","giao_thuc":"muse-web","id":"muse2api","loai":"ai","loai_ten":"AI","loai_thu_tu":21,"mo_ta":"Trò chuyện với Muse qua giao thức trực tiếp của web app muse.ai (WebSocket + Noise XX), xác thực bằng cookie — miễn phí, không cần API key, không browser.","muc":[{"can":["chat"],"id":"chat","nhan":"Trò chuyện"}],"phien_ban":"0.2.2","tai_nguyen":{"dia_mb":null,"ghi_chu":"Dùng giao thức nội bộ của web app muse.ai (đã reverse-engineer, không chính thức). Meta đổi web có thể làm module ngừng hoạt động; điều khoản của Muse cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.","gpu":false,"mang_ra":["muse.ai","hatch.metaaivm.com"],"ram_them_mb":null},"ten":"Muse Web (muse.ai, direct protocol)","tien_to":"muse2api","truong_cau_hinh":[{"bat_buoc":true,"khoa":"cookies","kieu":"danh_sach_bi_mat","mac_dinh":null,"mo_ta":"Một hoặc nhiều bộ cookie từ tab muse.ai đã đăng nhập (DevTools F12 → Application → Cookies), dạng 'k1=v1; k2=v2'. Cần ít nhất hatch_sess. Nhiều bộ thì xoay vòng; cookie hết hạn thì export lại.","nhan":"Cookie muse.ai","nhan_cookie":{"mien":"muse.ai"}},{"bat_buoc":false,"khoa":"dich_vu_trinh_duyet_url","kieu":"chuoi","mac_dinh":null,"mo_ta":"Địa chỉ gốc HTTP của dịch vụ trình duyệt (dịch vụ mà module vnc-xa cũng dùng). NV230: khi cookie bị muse.ai từ chối, module tự đọc cookie MỚI từ hồ sơ Firefox đã gắn với tài khoản qua dịch vụ này. Để trống = tắt tự lấy cookie mới.","nhan":"Dịch vụ trình duyệt (tự lấy cookie mới)"},{"bat_buoc":false,"khoa":"khoa_dich_vu_trinh_duyet","kieu":"bi_mat","mac_dinh":null,"mo_ta":"Khoá của dịch vụ trình duyệt (khớp biến TRINH_DUYET_KHOA phía dịch vụ). Chỉ cần khi đã điền địa chỉ dịch vụ trình duyệt.","nhan":"Khoá dịch vụ trình duyệt"},{"bat_buoc":false,"khoa":"cookie_tran_thu_ngay","kieu":"chuoi","mac_dinh":"5","mo_ta":"Trần số lần tự lấy cookie mới mỗi ngày cho mỗi tài khoản (NV230), kèm nghỉ luỹ thừa sau lỗi tạm. Mặc định 5.","nhan":"Trần tự lấy cookie mới/ngày"}],"yeu_cau_goi":["curl_cffi","noise","google"],"nhom":{"id":"muse","ten":"Muse"}}
+{
+  "cung_cap": [
+    "chat"
+  ],
+  "hang": "A",
+  "giao_thuc": "muse-web",
+  "id": "muse2api",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 21,
+  "nhom_con": {
+    "id": "nha-cung-cap",
+    "ten": "Nhà cung cấp AI",
+    "thu_tu": 2
+  },
+  "mo_ta": "Trò chuyện với Muse qua giao thức trực tiếp của web app muse.ai (WebSocket + Noise XX), xác thực bằng cookie — miễn phí, không cần API key, không browser.",
+  "muc": [
+    {
+      "can": [
+        "chat"
+      ],
+      "id": "chat",
+      "nhan": "Trò chuyện"
+    }
+  ],
+  "phien_ban": "0.2.2",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Dùng giao thức nội bộ của web app muse.ai (đã reverse-engineer, không chính thức). Meta đổi web có thể làm module ngừng hoạt động; điều khoản của Muse cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.",
+    "gpu": false,
+    "mang_ra": [
+      "muse.ai",
+      "hatch.metaaivm.com"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "Muse Web (muse.ai, direct protocol)",
+  "tien_to": "muse2api",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "cookies",
+      "kieu": "danh_sach_bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Một hoặc nhiều bộ cookie từ tab muse.ai đã đăng nhập (DevTools F12 → Application → Cookies), dạng 'k1=v1; k2=v2'. Cần ít nhất hatch_sess. Nhiều bộ thì xoay vòng; cookie hết hạn thì export lại.",
+      "nhan": "Cookie muse.ai",
+      "nhan_cookie": {
+        "mien": "muse.ai"
+      }
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "dich_vu_trinh_duyet_url",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ gốc HTTP của dịch vụ trình duyệt (dịch vụ mà module vnc-xa cũng dùng). NV230: khi cookie bị muse.ai từ chối, module tự đọc cookie MỚI từ hồ sơ Firefox đã gắn với tài khoản qua dịch vụ này. Để trống = tắt tự lấy cookie mới.",
+      "nhan": "Dịch vụ trình duyệt (tự lấy cookie mới)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "khoa_dich_vu_trinh_duyet",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Khoá của dịch vụ trình duyệt (khớp biến TRINH_DUYET_KHOA phía dịch vụ). Chỉ cần khi đã điền địa chỉ dịch vụ trình duyệt.",
+      "nhan": "Khoá dịch vụ trình duyệt"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "cookie_tran_thu_ngay",
+      "kieu": "chuoi",
+      "mac_dinh": "5",
+      "mo_ta": "Trần số lần tự lấy cookie mới mỗi ngày cho mỗi tài khoản (NV230), kèm nghỉ luỹ thừa sau lỗi tạm. Mặc định 5.",
+      "nhan": "Trần tự lấy cookie mới/ngày"
+    }
+  ],
+  "yeu_cau_goi": [
+    "curl_cffi",
+    "noise",
+    "google"
+  ],
+  "nhom": {
+    "id": "muse",
+    "ten": "Muse"
+  }
+}

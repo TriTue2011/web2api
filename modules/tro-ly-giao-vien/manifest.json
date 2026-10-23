@@ -5,9 +5,14 @@
   "giao_thuc": "cuc_bo",
   "hang": "A",
   "id": "tro-ly-giao-vien",
-  "loai": "tien_ich",
-  "loai_ten": "Tiện ích",
-  "loai_thu_tu": 44,
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "cong-cu-ai",
+    "ten": "Trợ lý và công cụ dùng AI",
+    "thu_tu": 3
+  },
   "mo_ta": "Trợ lý giáo viên VN (đợt 1 + đợt 2): ra đề + chấm bài thuần hàm (không gọi mô hình), bảng môn theo lớp, xác định lớp từ năm sinh, mạch kiến thức, gợi ý bậc thang, giáo án 6 pha, tiếng Anh theo cấp, kho đề 0600 cách ly theo danh tính; đợt 2: chấm tự luận bằng model của lõi qua loopback (điểm là ĐỀ XUẤT tới khi giáo viên xác nhận).",
   "phien_ban": "0.2.0",
   "tai_nguyen": {

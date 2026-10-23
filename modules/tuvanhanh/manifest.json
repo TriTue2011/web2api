@@ -1,1 +1,100 @@
-{"cung_cap":[],"giao_thuc":"noi-bo","hang":"A","id":"tuvanhanh","loai":"tien_ich","loai_ten":"Tiện ích","loai_thu_tu":43,"mo_ta":"Bộ tự vận hành: lập lịch nền làm mới phiên/token, tự đăng nhập lại khi hết hạn, theo dõi sức khoẻ nguồn, tự khôi phục module lỗi, cảnh báo đĩa đầy; kênh báo/hỏi một đường qua kênh ra của lõi (trả lời bằng lệnh cl <số>). Port từ c2a của chủ máy.","phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Thuần tính toán + gọi cổng gui_ra của lõi; không gọi mạng trực tiếp. Chưa đo RAM/đĩa thật (null = chưa đo).","gpu":false,"mang_ra":[],"ram_them_mb":null},"ten":"Tự vận hành","tien_to":"tuvanhanh","truong_cau_hinh":[{"bat_buoc":true,"khoa":"kenh_module","kieu":"chuoi","mac_dinh":null,"mo_ta":"Id module kênh dùng để gửi báo/hỏi (ví dụ telegram-bot). Đích nêu đích danh — không gửi nhầm kênh.","nhan":"Module kênh gửi"},{"bat_buoc":true,"khoa":"kenh_id","kieu":"chuoi","mac_dinh":null,"mo_ta":"Id đích trong kenh_ra() của module kênh (ví dụ nha).","nhan":"Id đích gửi"},{"bat_buoc":false,"khoa":"bat_tu_dang_nhap_lai","kieu":"chuoi","mac_dinh":"1","mo_ta":"Tự đăng nhập lại khi phiên hết hạn: «1» = bật (mặc định), còn lại = tắt.","nhan":"Tự đăng nhập lại"},{"bat_buoc":false,"khoa":"bat_lam_moi","kieu":"chuoi","mac_dinh":"1","mo_ta":"Làm mới phiên/token định kỳ: «1» = bật (mặc định), còn lại = tắt.","nhan":"Làm mới định kỳ"},{"bat_buoc":false,"khoa":"bat_chuyen_nguon","kieu":"chuoi","mac_dinh":"1","mo_ta":"Theo dõi sức khoẻ nguồn/model: «1» = bật (mặc định), còn lại = tắt.","nhan":"Theo dõi nguồn"},{"bat_buoc":false,"khoa":"bat_don_dep","kieu":"chuoi","mac_dinh":"1","mo_ta":"Cảnh báo đĩa > 85% và dọn dữ liệu tạm của module: «1» = bật (mặc định), còn lại = tắt.","nhan":"Dọn dẹp đĩa"},{"bat_buoc":false,"khoa":"bat_tu_cai_module","kieu":"chuoi","mac_dinh":"0","mo_ta":"Tự cài module quyền cao: «1» = bật, còn lại = tắt (mặc định TẮT — rủi ro).","nhan":"Tự cài module (rủi ro)"},{"bat_buoc":false,"khoa":"bat_giai_captcha","kieu":"chuoi","mac_dinh":"0","mo_ta":"Tự giải CAPTCHA: «1» = bật, còn lại = tắt (mặc định TẮT — rủi ro).","nhan":"Giải CAPTCHA (rủi ro)"},{"bat_buoc":false,"khoa":"bat_tu_dang_ky","kieu":"chuoi","mac_dinh":"0","mo_ta":"Tự đăng ký tài khoản: «1» = bật, còn lại = tắt (mặc định TẮT — rủi ro).","nhan":"Tự đăng ký (rủi ro)"}],"yeu_cau_goi":[]}
+{
+  "cung_cap": [],
+  "giao_thuc": "noi-bo",
+  "hang": "A",
+  "id": "tuvanhanh",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "nen-tai-khoan",
+    "ten": "Nền và tài khoản: cài trước",
+    "thu_tu": 1
+  },
+  "mo_ta": "Bộ tự vận hành: lập lịch nền làm mới phiên/token, tự đăng nhập lại khi hết hạn, theo dõi sức khoẻ nguồn, tự khôi phục module lỗi, cảnh báo đĩa đầy; kênh báo/hỏi một đường qua kênh ra của lõi (trả lời bằng lệnh cl <số>). Port từ c2a của chủ máy.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Thuần tính toán + gọi cổng gui_ra của lõi; không gọi mạng trực tiếp. Chưa đo RAM/đĩa thật (null = chưa đo).",
+    "gpu": false,
+    "mang_ra": [],
+    "ram_them_mb": null
+  },
+  "ten": "Tự vận hành",
+  "tien_to": "tuvanhanh",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "kenh_module",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Id module kênh dùng để gửi báo/hỏi (ví dụ telegram-bot). Đích nêu đích danh — không gửi nhầm kênh.",
+      "nhan": "Module kênh gửi"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "kenh_id",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Id đích trong kenh_ra() của module kênh (ví dụ nha).",
+      "nhan": "Id đích gửi"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_tu_dang_nhap_lai",
+      "kieu": "chuoi",
+      "mac_dinh": "1",
+      "mo_ta": "Tự đăng nhập lại khi phiên hết hạn: «1» = bật (mặc định), còn lại = tắt.",
+      "nhan": "Tự đăng nhập lại"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_lam_moi",
+      "kieu": "chuoi",
+      "mac_dinh": "1",
+      "mo_ta": "Làm mới phiên/token định kỳ: «1» = bật (mặc định), còn lại = tắt.",
+      "nhan": "Làm mới định kỳ"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_chuyen_nguon",
+      "kieu": "chuoi",
+      "mac_dinh": "1",
+      "mo_ta": "Theo dõi sức khoẻ nguồn/model: «1» = bật (mặc định), còn lại = tắt.",
+      "nhan": "Theo dõi nguồn"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_don_dep",
+      "kieu": "chuoi",
+      "mac_dinh": "1",
+      "mo_ta": "Cảnh báo đĩa > 85% và dọn dữ liệu tạm của module: «1» = bật (mặc định), còn lại = tắt.",
+      "nhan": "Dọn dẹp đĩa"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_tu_cai_module",
+      "kieu": "chuoi",
+      "mac_dinh": "0",
+      "mo_ta": "Tự cài module quyền cao: «1» = bật, còn lại = tắt (mặc định TẮT — rủi ro).",
+      "nhan": "Tự cài module (rủi ro)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_giai_captcha",
+      "kieu": "chuoi",
+      "mac_dinh": "0",
+      "mo_ta": "Tự giải CAPTCHA: «1» = bật, còn lại = tắt (mặc định TẮT — rủi ro).",
+      "nhan": "Giải CAPTCHA (rủi ro)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "bat_tu_dang_ky",
+      "kieu": "chuoi",
+      "mac_dinh": "0",
+      "mo_ta": "Tự đăng ký tài khoản: «1» = bật, còn lại = tắt (mặc định TẮT — rủi ro).",
+      "nhan": "Tự đăng ký (rủi ro)"
+    }
+  ],
+  "yeu_cau_goi": []
+}

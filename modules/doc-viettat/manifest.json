@@ -7,9 +7,16 @@
   "loai": "tien_ich",
   "loai_ten": "Tiện ích",
   "loai_thu_tu": 45,
+  "nhom_con": {
+    "id": "doi-song-va-giai-tri",
+    "ten": "Đời sống và giải trí",
+    "thu_tu": 3
+  },
   "giao_thuc": "cuc_bo",
   "tien_to": "doc_viettat",
-  "cung_cap": ["thiet_bi"],
+  "cung_cap": [
+    "thiet_bi"
+  ],
   "tai_nguyen": {
     "dia_mb": null,
     "gpu": false,

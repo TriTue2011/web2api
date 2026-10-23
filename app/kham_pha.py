@@ -370,6 +370,37 @@ class ModuleKhamPha:
         return {"nhan": tab["nhan"], "duong": f"/m/{self.id}/{tab['trang'].removeprefix('web/')}"}
 
 
+def _chuan_hoa_nhom_con(m: dict) -> None:
+    """NV255: nhóm con hiển thị của module (tab Module kiểu làn). Trường tuỳ chọn
+    `nhom_con` {id, ten, thu_tu}: khung giao diện chỉ đọc trường này để xếp ô vào
+    nhóm con trong làn — không viết cứng id module nào trong web/ hay app/.
+    Sai định dạng → cảnh báo và bỏ trường (không chặn nạp module)."""
+    if "nhom_con" not in m:
+        return
+    nc = m["nhom_con"]
+    mod_id = m.get("id", "chua_ro")
+    if not isinstance(nc, dict):
+        log.warning("Module %s: nhom_con không phải đối tượng", mod_id)
+        m.pop("nhom_con", None)
+        return
+    id_nc = nc.get("id")
+    ten_nc = nc.get("ten")
+    thu_tu = nc.get("thu_tu")
+    if not isinstance(id_nc, str) or not MAU_NHOM_ID.match(id_nc):
+        log.warning("Module %s: nhom_con.id không hợp lệ", mod_id)
+        m.pop("nhom_con", None)
+        return
+    if not isinstance(ten_nc, str) or not ten_nc.strip() or len(ten_nc.strip()) > 40:
+        log.warning("Module %s: nhom_con.ten không hợp lệ", mod_id)
+        m.pop("nhom_con", None)
+        return
+    if thu_tu is not None and type(thu_tu) is not int:
+        log.warning("Module %s: nhom_con.thu_tu phải là số nguyên", mod_id)
+        m.pop("nhom_con", None)
+        return
+    m["nhom_con"] = {"id": id_nc, "ten": ten_nc.strip(), "thu_tu": thu_tu}
+
+
 def _chuan_hoa_nhom(m: dict) -> None:
     if "nhom" not in m:
         return
@@ -398,6 +429,7 @@ def kiem_manifest(m) -> str | None:
     if not isinstance(m, dict):
         return "manifest phải là đối tượng JSON"
     _chuan_hoa_nhom(m)
+    _chuan_hoa_nhom_con(m)
     for k in TRUONG_CHUOI_BAT_BUOC:
         if not isinstance(m.get(k), str) or not m[k].strip():
             return f"thiếu hoặc sai trường «{k}» (cần chuỗi khác rỗng)"

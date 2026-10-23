@@ -36,33 +36,55 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .khoa-gon > .bao{padding:4px 12px;font-size:13px}
 .bo-cuc{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
 .cot-luoi{flex:999 1 460px;min-width:0;display:flex;flex-direction:column;gap:22px}
-.khu{display:flex;flex-direction:column;gap:10px}
-.khu-ten{display:flex;align-items:baseline;gap:8px;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
-.khu-ten .dem{font-size:12px;font-weight:400;letter-spacing:0;text-transform:none}
-/* Lưới ô đều nhau như bàn cờ: grid-auto-rows:1fr → mọi hàng cao bằng hàng cao nhất. */
-.luoi-o{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(230px,100%),1fr));grid-auto-rows:1fr;gap:12px}
-/* Ô = khung chứa (div) gồm nút CHỌN Ô (thân, bấm mở bảng chi tiết) và chân ô với các nút ANH EM (Cài / Cập nhật / Thêm
-   khoá / Gỡ). Không lồng nút trong nút: mỗi cú bấm chỉ tới đúng một nút. */
-.o-mod{box-sizing:border-box;min-width:0;width:100%;height:100%;text-align:left;border:1px solid #E4E2DC;border-radius:14px;background:#fff;color:var(--ink);padding:0;display:flex;flex-direction:column}
-.o-mod.o-dang-chon{border:2px solid #0F766E}
-.o-chon{flex:1 1 auto;box-sizing:border-box;min-width:0;width:100%;text-align:left;border:0;border-radius:13px;background:transparent;color:inherit;padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px}
-.o-dang-chon .o-chon{padding:13px 15px 9px}
-.o-hd{display:flex;align-items:center;gap:2px;padding:0 4px 4px 16px;min-height:44px}
-.o-dang-chon .o-hd{padding:0 3px 3px 15px}
-.o-hd .nut-chu{margin-right:auto}
-.o-hd .gian{margin-right:auto}
-.o-dau{display:flex;align-items:center;gap:10px;min-width:0}
-.bieu-tuong{flex:0 0 auto;width:40px;height:40px;border-radius:12px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center}
-.o-ten{font-weight:600;font-size:15px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-.o-mo-ta{flex:1 1 auto;font-size:13px;color:var(--mute);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-.o-chan{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.o-tn{font-size:12px;color:var(--mute);overflow-wrap:anywhere}
+/* NV255: LÀN theo nhóm (mẫu chủ máy đã duyệt). web2api là gốc, bên dưới là các làn nhóm;
+   bấm tên nhóm thì lọc chỉ nhóm đó. Màu mỗi làn theo mã loại (ai/nha/thiet_bi/tien_ich);
+   loại lạ dùng màu dự phòng theo băm mã — không danh sách loại nào trong mã trang. */
+.lan-khung{--lc-bg:var(--bg);--lc-card:var(--card);--lc-ink:var(--ink);--lc-mute:var(--mute);--lc-line:var(--line);--lc-dep:#1d4ed8}
+@media (prefers-color-scheme:dark){
+.lan-khung{--lc-bg:#141412;--lc-card:#1f1f1c;--lc-ink:#ecebe6;--lc-mute:#a3a29a;--lc-line:#3a3935;--lc-dep:#8fb0ff}
+}
+.goc-lan{display:inline-flex;align-items:center;background:var(--lc-ink);color:var(--lc-bg);font-weight:700;border-radius:999px;padding:8px 18px;font-size:14px;font-family:inherit;border:0;cursor:pointer}
+.goc-lan[aria-pressed="true"]{box-shadow:0 0 0 2px var(--lc-card),0 0 0 4.5px var(--lc-ink)}
+.lanes{position:relative;margin:14px 0 0 20px;padding:14px 0 0 26px;display:flex;flex-direction:column;gap:16px;border-left:2px solid var(--lc-line)}
+.lane{position:relative;display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px;align-items:start;--cl:var(--c,#475569)}
+@media (prefers-color-scheme:dark){.lane{--cl:var(--c-toi,var(--c,#a3b1c6))}}
+@media (max-width:640px){.lane{grid-template-columns:minmax(0,1fr)}}
+.lane::before{content:"";position:absolute;left:-26px;top:18px;width:26px;border-top:2px solid var(--lc-line)}
+.lane-ten{font:inherit;font-weight:700;font-size:13px;text-align:left;cursor:pointer;color:var(--lc-ink);background:color-mix(in srgb,var(--cl) 16%,var(--lc-card));border:1.5px solid var(--cl);border-radius:10px;padding:8px 12px;min-height:36px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.lane-ten[aria-pressed=true]{background:var(--cl);color:#fff}
+.lane-ten .n{font-variant-numeric:tabular-nums;opacity:.75;font-weight:600}
+.noi-dung{display:flex;flex-direction:column;gap:12px;min-width:0}
+.con-ten{font-size:12px;font-weight:600;color:var(--lc-mute);margin:0 0 6px;letter-spacing:.03em;background:none;border:0;padding:0;cursor:pointer;font-family:inherit;text-align:left;display:block}
+.con-ten[aria-pressed="true"]{color:var(--lc-ink);text-decoration:underline;text-underline-offset:3px}
+.con-ten b{color:var(--cl);font-weight:700}
+.pills{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+/* Ô module: đã cài = tô đậm theo màu nhóm; chưa cài = nền trắng nét đứt; khoá = nhạt, nét chấm, ổ khoá. */
+.pill{font:inherit;font-size:12.5px;font-weight:600;color:var(--lc-ink);cursor:pointer;min-height:34px;background:color-mix(in srgb,var(--cl) 22%,var(--lc-card));border:1.8px solid var(--cl);border-radius:9px;padding:5px 11px;display:inline-flex;align-items:center;gap:7px;max-width:100%}
+.pill:hover:not(:disabled){background:color-mix(in srgb,var(--cl) 34%,var(--lc-card))}
+.pill.chua{background:var(--lc-card);border-style:dashed;border-width:1.3px;color:var(--lc-mute);font-weight:400}
+.pill.chon{border-width:3px;background:color-mix(in srgb,var(--cl) 42%,var(--lc-card))}
+.pill.khoa,.pill:disabled{background:var(--lc-bg);border:1.3px dotted var(--lc-line);color:var(--lc-mute);font-weight:400;cursor:not-allowed}
+.pill svg{flex:none}
+.pill .b{flex:none;width:18px;height:18px;border-radius:50%;background:var(--lc-dep);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.pill .chu{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;font-weight:700;color:var(--lc-dep);border:1.5px solid var(--lc-dep);border-radius:5px;padding:0 5px;background:var(--lc-card);line-height:16px}
+.pill .can{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:400;color:var(--lc-mute)}
+.khoa-chuthich{margin:8px 0 0;font-size:12.5px;color:var(--lc-mute)}
+.khoa-chuthich b{color:var(--lc-ink)}
+.chuthich{color:var(--lc-mute);font-size:12.5px;margin:12px 0 0;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.chuthich span{display:inline-flex;align-items:center;gap:6px}
+.mau{width:22px;height:14px;border-radius:5px;display:inline-block;border:1.8px solid var(--cl,#475569);background:color-mix(in srgb,var(--cl,#475569) 22%,var(--lc-card))}
+.mau.chua{background:var(--lc-card);border:1.3px dashed var(--cl,#475569)}
+.mau.khoa{background:var(--lc-bg);border:1.3px dotted var(--lc-mute)}
+.chu-nho{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;font-weight:700;color:var(--lc-dep);border:1.5px solid var(--lc-dep);border-radius:5px;padding:0 5px;background:var(--card);line-height:16px;margin-right:4px}
 /* Viên trạng thái / loại — pillSt + TONE của demo (Bo-nao.dc.html). */
 .vien{flex:0 0 auto;padding:3px 12px;border-radius:14px;font-size:12px;font-weight:500;white-space:nowrap}
 .v-ok{background:#E2F0ED;color:#0B5A53}
 .v-warn{background:#FBEFD5;color:#7A4B00}
 .v-bad{background:#FBE4E1;color:#B42318}
 .v-mute{background:#EFEDE8;color:#66645F}
+.bieu-tuong{flex:0 0 auto;width:40px;height:40px;border-radius:12px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center}
+.o-them{border:1px dashed var(--line);border-radius:14px;align-items:center;justify-content:center;text-align:center;color:var(--mute);min-height:64px;padding:14px 16px;gap:8px;background:transparent;width:100%;box-sizing:border-box;display:flex;font:inherit;font-size:13px;cursor:pointer;margin-top:12px}
+.o-them .bieu-tuong{background:#EEECE7;color:var(--ink);font-size:22px}
 /* Nút biểu tượng của dòng Tiện ích (iconBtn): 44×44 bo 12; «Cài» = nền đen như ô chưa cài của demo; xoá lần đầu = nền đỏ nhạt. */
 .nut-bt{flex:0 0 auto;width:44px;height:44px;border-radius:12px;border:0;background:transparent;color:#181816;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
 .nut-bt.den{background:#181816;color:#fff}
@@ -91,9 +113,27 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .chi-tiet .truong label{font-size:13px;font-weight:400}
 .nut-dong{flex:0 0 auto;width:40px;height:40px;border-radius:20px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;padding:0;margin-left:auto}
 .ket-noi{border-color:#B7DDD5;background:#F1F7F5}
+/* NV259: dòng chia trong bảng TỔNG (nhóm/nhóm con/module) + danh sách «Dùng nhiều nhất» + nền mờ popup. */
+.dong-tong{display:flex;width:100%;box-sizing:border-box;align-items:center;justify-content:space-between;gap:10px;font:inherit;font-size:13px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);padding:8px 2px;cursor:pointer;color:var(--ink)}
+.dong-tong:disabled{cursor:not-allowed;opacity:.55}
+.dong-tong .phu{white-space:nowrap}
+.ds-dung-nhieu{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ds-dung-nhieu li{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line);font-size:13px}
+.nen-mo{display:none}
 @media (max-width:1023px){
 main.pg{padding:12px 16px 24px}
-.chi-tiet{position:static;max-height:none;overflow:visible}
+}
+/* NV259: ≥720px HAI CỘT — bảng chi tiết cột phải ~320px sticky, luôn trong tầm nhìn cùng danh sách;
+   <720px bảng chi tiết là POPUP giữa màn hình (position: fixed), nền mờ phía sau, cao vừa nội dung. */
+@media (min-width:720px){
+.bo-cuc{flex-wrap:nowrap}
+.cot-luoi{flex:1 1 auto}
+.chi-tiet{flex:0 0 320px;max-width:320px}
+}
+@media (max-width:719px){
+.chi-tiet{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);max-width:92vw;max-height:min(78vh,600px);overflow:auto;z-index:70;display:none}
+.chi-tiet.mo{display:flex}
+.nen-mo.mo{display:block;position:fixed;inset:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:69;border:0;padding:0;cursor:pointer}
 }
 </style>
 </helmet>
@@ -146,43 +186,10 @@ main.pg{padding:12px 16px 24px}
 <div class="cong-cu">
 <div class="hang-cc">
 <label class="tim" for="tim"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4-4"></path></svg><span class="an-chu">Tìm module</span><input id="tim" type="search" placeholder="Tìm module" value="{{tim}}" onInput="{{goTim}}"></label>
-<sc-if value="{{coLoai}}"><div class="loc" role="group" aria-label="Lọc theo loại" id="loc-loai"><sc-for list="{{chipLoai}}" as="c"><button type="button" class="chip" data-loc-loai="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}"><span>{{c.ten}}</span><span class="dem">{{c.dem}}</span></button></sc-for></div>
-<span class="vach" aria-hidden="true"></span></sc-if>
+<span class="vach" aria-hidden="true"></span>
 <div class="loc" role="group" aria-label="Lọc theo trạng thái" id="loc-tt"><sc-for list="{{chipTT}}" as="c"><button type="button" class="chip" data-loc-tt="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
 </div>
-<p class="mo-ta-trang">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. Bấm một ô để xem module cần gì để chạy, rồi bấm biểu tượng tải về để cài — cài không cần khoá API; khoá thêm sau ở Hệ thống → AI → Tài khoản.</p>
-<div class="hang-cc" style="margin-top:8px">
-<button type="button" class="chip" id="nut-so-do" aria-pressed="{{hienSoDo}}" onClick="{{doiSoDo}}"><span>Sơ đồ phụ thuộc</span></button>
-</div>
-<sc-if value="{{hienSoDo}}">
-<section class="muc-ct" id="so-do-phu-thuoc" aria-labelledby="h-so-do" style="margin-top:8px">
-<h3 id="h-so-do">Sơ đồ phụ thuộc module</h3>
-<sc-if value="{{dangTaiSoDo}}"><p role="status" class="bao-cho">Đang đọc đồ thị phụ thuộc…</p></sc-if>
-<sc-if value="{{soDoLoi}}"><p role="alert" class="bao bao-loi">{{soDoLoi}}</p></sc-if>
-<sc-if value="{{coSoDo}}">
-<div style="overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--nen,#fff)">
-<svg viewBox="0 0 {{soDo.w}} {{soDo.h}}" width="{{soDo.w}}" height="{{soDo.h}}" role="img" aria-label="Sơ đồ phụ thuộc module">
-<defs><marker id="mui-ten-can" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="7" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L8 3L0 6z" fill="currentColor"></path></marker></defs>
-<sc-for list="{{soDo.canh}}" as="c"><line x1="{{c.x1}}" y1="{{c.y1}}" x2="{{c.x2}}" y2="{{c.y2}}" stroke="currentColor" stroke-width="1.6" marker-end="url(#mui-ten-can)" opacity="0.7"></line></sc-for>
-<sc-for list="{{soDo.nut}}" as="n"><g><rect x="{{n.x}}" y="{{n.y}}" width="200" height="52" rx="8" fill="none" stroke="currentColor" stroke-width="{{n.vien}}" stroke-dasharray="{{n.netDut}}"></rect><text x="{{n.tx}}" y="{{n.ty1}}" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">{{n.tenNgan}}</text><text x="{{n.tx}}" y="{{n.ty2}}" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.75">{{n.nhan}}</text></g></sc-for>
-</svg>
-</div>
-<p class="phu" style="margin:6px 0 0">Mũi tên «A → B» nghĩa là A cần B. Nét đứt = chưa cài. Thứ tự cài đề xuất: {{soDo.thuTuNhan}}</p>
-</sc-if>
-</section>
-</sc-if>
-<section class="muc-ct" id="tai-nguyen" aria-labelledby="h-tai-nguyen" style="margin-top:8px">
-<h3 id="h-tai-nguyen">Tài nguyên — đo theo yêu cầu</h3>
-<p class="phu">Chỉ đo khi bạn bấm; mở trang không tự đo. Một lần đo chụp một ảnh dùng chung cho mọi module: RAM lõi quét theo tham chiếu (ước lượng), dịch vụ phụ đọc cgroup của chính container (đo), CPU lấy mẫu ngăn xếp mọi luồng.</p>
-<sc-if value="{{tnChuaDo}}"><p style="margin:8px 0 0"><span class="vien v-mute">Chưa đo</span> <button type="button" class="nut nut-nho" id="nut-do-tai-nguyen" onClick="{{doTaiNguyen}}">Đo ngay</button></p></sc-if>
-<sc-if value="{{dangDo}}"><p role="status" class="bao-cho">Đang đo… (khoảng 1–2 giây)</p></sc-if>
-<sc-if value="{{tnDaDo}}"><p style="margin:8px 0 0"><span>Đo lúc {{tnDoLuc}}</span> <button type="button" class="nut nut-nho" id="nut-do-lai-tai-nguyen" onClick="{{doTaiNguyen}}">Đo lại</button></p></sc-if>
-<sc-if value="{{tnDoLoi}}"><p role="alert" class="bao bao-loi">{{tnDoLoi}}</p></sc-if>
-<sc-if value="{{tnDoChuan}}"><p role="alert" class="bao bao-vang">Đang bật chế độ chẩn đoán chính xác (tracemalloc) — web2api chạy chậm hơn đáng kể. Tắt bằng cách bỏ biến WEB2API_DO_CHUAN rồi khởi động lại.</p></sc-if>
-<sc-if value="{{coTnTong}}"><dl class="bang" id="bang-tong-tai-nguyen"><sc-for list="{{tnTong}}" as="r"><div class="bang-dong"><dt>{{r.nhan}}</dt><dd>{{r.giaTri}}</dd></div></sc-for></dl></sc-if>
-<sc-if value="{{coTnDungNhieu}}"><div class="hang-cc" style="margin-top:8px"><span class="phu">Dùng nhiều nhất:</span><sc-for list="{{chipXepTn}}" as="c"><button type="button" class="chip" data-xep-tn="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
-<ol id="dung-nhieu-nhat" style="margin:6px 0 0;padding-left:20px"><sc-for list="{{tnDungNhieu}}" as="d"><li>{{d.ten}} — {{d.giaTri}} <span class="phu">({{d.nhanNguon}})</span></li></sc-for></ol></sc-if>
-</section>
+<p class="mo-ta-trang">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. web2api ở giữa, các làn bên dưới chia theo nhóm — bấm tên nhóm để lọc chỉ nhóm đó. Bấm một ô để xem module cần gì để chạy, rồi bấm «Cài» trong bảng chi tiết — cài không cần khoá API; khoá thêm sau ở Hệ thống → AI → Tài khoản.</p>
 </div>
 
 <div class="bo-cuc">
@@ -190,36 +197,60 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{coTin}}"><div role="status" class="tin" id="tin-module"><span>{{tin}}</span><button type="button" aria-label="Đóng thông báo" onClick="{{dongTin}}">×</button></div></sc-if>
 <sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang đọc danh sách module…</p></sc-if>
 <sc-if value="{{khongKhop}}"><p class="rong" id="khong-khop">Không có module nào khớp bộ lọc.</p></sc-if>
-<sc-for list="{{khu}}" as="k">
-<section class="khu" data-khu="{{k.ma}}" aria-labelledby="{{k.idTen}}">
-<h2 class="khu-ten" id="{{k.idTen}}">{{k.ten}} <span class="dem">{{k.dem}} module</span></h2>
-<div class="luoi-o">
-<sc-for list="{{k.o}}" as="o">
-<div class="{{o.lop}}" data-o-khung="{{o.id}}">
-<button type="button" class="o-chon" data-o="{{o.id}}" data-tt="{{o.tt}}" aria-pressed="{{o.chon}}" aria-label="{{o.aria}}" onClick="{{o.chonO}}">
-<span class="o-dau"><span class="bieu-tuong" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{o.hinh}}"></path></svg></span><span class="o-ten">{{o.ten}}</span><sc-if value="{{o.chamDungNhieu}}"><span class="cham-dung-nhieu" role="img" aria-label="Thuộc 3 module dùng nhiều RAM hoặc CPU nhất theo lần đo gần nhất" title="Dùng nhiều nhất (theo lần đo gần nhất)" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#e8710a;margin-left:6px;flex:0 0 auto"></span></sc-if></span>
-<span class="o-chan"><span class="vien v-mute">{{o.loaiTen}}</span><span class="{{o.lopTT}}">{{o.nhanTT}}</span></span>
-<span class="o-mo-ta">{{o.moTa}}</span>
-<span class="o-tn">{{o.taiNguyen}}</span>
-</button>
-<sc-if value="{{o.coHd}}"><div class="o-hd">
-<sc-if value="{{o.coNutChu}}"><button type="button" class="nut-chu" data-hanh-dong="{{o.hd}}" aria-label="{{o.ariaNut}}" onClick="{{o.lam}}">{{o.nhanNut}}</button></sc-if>
-<sc-if value="{{o.coLienKet}}"><a class="nut-chu" data-hanh-dong="{{o.hd}}" aria-label="{{o.ariaNut}}" href="{{o.href}}">{{o.nhanNut}}</a></sc-if>
-<sc-if value="{{o.coGian}}"><span class="gian"></span></sc-if>
-<sc-if value="{{o.coTai}}"><button type="button" class="{{o.lopTai}}" data-hanh-dong="{{o.hd}}" aria-label="{{o.ariaNut}}" title="{{o.ariaNut}}" onClick="{{o.lam}}" disabled="{{o.dangLam}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11 M7 11l5 5 5-5 M5 20h14"></path></svg></button></sc-if>
-<sc-if value="{{o.coXoa}}"><button type="button" class="{{o.lopXoa}}" data-go-o="{{o.id}}" aria-label="{{o.ariaXoa}}" title="{{o.ariaXoa}}" onClick="{{o.xoa}}" disabled="{{o.dangXoa}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6"></path></svg></button></sc-if>
-</div></sc-if>
+<!-- NV255: làn theo nhóm — nhóm/nhóm con ĐỌC TỪ MANIFEST (nhom_con), không viết cứng id module nào.
+     Số trong vòng tròn = bước cài; chữ trong ô vuông = mã module nền; mọi số/chữ tự tính lại mỗi lần vẽ. -->
+<div class="lan-khung">
+<button type="button" class="goc-lan" data-goc aria-pressed="{{gocOn}}" onClick="{{chonGoc}}" title="web2api — lõi nhận yêu cầu và chuyển cho module. Bấm để xem tổng toàn bộ và bỏ lọc nhóm">web2api</button>
+<div class="lanes">
+<sc-for list="{{lanes}}" as="l">
+<section class="lane" data-lane="{{l.ma}}" style="{{l.mauStyle}}" aria-label="{{l.ten}}">
+<button type="button" class="lane-ten" data-loc-lan="{{l.ma}}" aria-pressed="{{l.on}}" onClick="{{l.chon}}"><span>{{l.ten}}</span><span class="n">{{l.dem}}</span></button>
+<div class="noi-dung">
+<sc-for list="{{l.con}}" as="c">
+<div>
+<sc-if value="{{c.coTen}}"><button type="button" class="con-ten" data-loc-con="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.chonCon}}">{{c.ten}} <b>· {{c.dem}}</b></button></sc-if>
+<div class="pills">
+<sc-for list="{{c.o}}" as="o">
+<button type="button" class="pill{{o.lop}}" data-o="{{o.id}}" data-tt="{{o.tt}}" aria-pressed="{{o.chon}}" aria-label="{{o.aria}}" title="{{o.chuThich}}" disabled="{{o.khoa}}" onClick="{{o.chonO}}"><sc-if value="{{o.khoa}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z"></path></svg></sc-if><sc-if value="{{o.coBuoc}}"><span class="b" aria-hidden="true">{{o.buoc}}</span></sc-if><span>{{o.tenNgan}}</span><sc-if value="{{o.chu}}"><span class="chu" title="Mã module nền">{{o.chu}}</span></sc-if><sc-if value="{{o.coCan}}"><span class="can">cần<sc-for list="{{o.canChu}}" as="cc"><span class="chu">{{cc}}</span></sc-for></span></sc-if></button>
+</sc-for>
+</div>
 </div>
 </sc-for>
-<sc-if value="{{k.coThem}}"><button type="button" class="o-mod o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></sc-if>
 </div>
 </section>
 </sc-for>
-<sc-if value="{{chiOThem}}"><div class="luoi-o"><button type="button" class="o-mod o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></div></sc-if>
+</div>
+<sc-if value="{{coChuThichDep}}"><p class="khoa-chuthich" id="chu-thich-dep">{{chuThichDep}}</p></sc-if>
+<p class="chuthich">
+<span><i class="mau"></i>Đã cài</span><span><i class="mau chua"></i>Chưa cài</span>
+<span><i class="mau khoa"></i>Khoá: cần cài module nền trước</span>
+</p>
+</div>
+<sc-if value="{{chiOThem}}"><button type="button" class="o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></sc-if>
 </div>
 
 <sc-if value="{{coChiTiet}}">
-<aside class="chi-tiet" id="chi-tiet" aria-labelledby="chi-tiet-ten" onKeyDown="{{phimChiTiet}}">
+<button type="button" class="nen-mo{{lopMo}}" aria-label="Đóng bảng chi tiết" onClick="{{dongChiTiet}}"></button>
+<aside class="chi-tiet{{lopMo}}" id="chi-tiet" aria-labelledby="chi-tiet-ten" onKeyDown="{{phimChiTiet}}">
+
+<sc-if value="{{ct.laTong}}">
+<div class="chi-tiet-dau"><h2 id="chi-tiet-ten" tabindex="-1">{{ct.tieuDe}}</h2><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
+<dl class="bang">
+<div class="bang-dong"><dt>Đĩa đang dùng</dt><dd><span id="tong-dia" data-byte="{{ct.diaByte}}">{{ct.diaNhan}}</span></dd></div>
+<div class="bang-dong"><dt>Đã cài</dt><dd><span id="tong-dem">{{ct.demNhan}}</span></dd></div>
+<div class="bang-dong"><dt>Tài nguyên</dt><dd><button type="button" class="nut-chu" id="nut-do-lai" onClick="{{ct.doLai}}" disabled="{{ct.dangDo}}">{{ct.nhanDo}}</button> <span class="phu" id="do-luc">{{ct.doLucNhan}}</span></dd></div>
+</dl>
+<section class="muc-ct" aria-labelledby="h-chia">
+<h3 id="h-chia">{{ct.tieuDeChia}}</h3>
+<div><sc-for list="{{ct.chia}}" as="r"><button type="button" class="dong-tong" data-tong-loai="{{r.loai}}" data-tong-ma="{{r.ma}}" data-byte="{{r.diaByte}}" onClick="{{r.chon}}" disabled="{{r.khoa}}"><span>{{r.ten}}</span><span class="phu">{{r.phu}}</span></button></sc-for></div>
+</section>
+<section class="muc-ct" aria-labelledby="h-dung-nhieu">
+<h3 id="h-dung-nhieu">Dùng nhiều nhất</h3>
+<div class="loc" role="group" aria-label="Xếp «Dùng nhiều nhất» theo"><sc-for list="{{ct.xep}}" as="xx"><button type="button" class="chip" data-xep="{{xx.ma}}" aria-pressed="{{xx.on}}" onClick="{{xx.chon}}">{{xx.ten}}</button></sc-for></div>
+<sc-if value="{{ct.chuaDoXep}}"><p class="phu" id="dung-nhieu-chua-do">chưa đo</p></sc-if>
+<sc-if value="{{ct.coDungNhieu}}"><ul class="ds-dung-nhieu"><sc-for list="{{ct.dungNhieu}}" as="d"><li><span>{{d.ten}}</span><span class="phu">{{d.diaNhan}}</span></li></sc-for></ul></sc-if>
+</section>
+</sc-if>
 
 <sc-if value="{{ct.laThem}}">
 <div class="chi-tiet-dau"><h2 id="chi-tiet-ten" tabindex="-1">Thêm module</h2><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
@@ -335,6 +366,7 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.laModule}}">
 <div class="chi-tiet-dau"><span class="bieu-tuong" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ct.hinh}}"></path></svg></span><div style="display:flex;flex-direction:column;min-width:0"><h2 id="chi-tiet-ten" tabindex="-1">{{ct.ten}}</h2><span class="ct-phu">{{ct.phu}}</span></div><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
 <sc-if value="{{ct.coTrangThai}}"><div class="dong-nut" style="gap:6px"><span class="{{ct.lopTT}}" id="ct-trang-thai">{{ct.nhanTT}}</span></div></sc-if>
+<sc-if value="{{ct.coDungLuong}}"><p class="phu" id="dung-luong" style="color:var(--ink)">{{ct.dungLuongNhan}}</p></sc-if>
 <sc-if value="{{ct.moTa}}"><p style="text-wrap:pretty;overflow-wrap:anywhere;margin-top:-6px">{{ct.moTa}}</p></sc-if>
 <sc-if value="{{ct.loi}}"><p role="alert" class="bao bao-loi" id="ct-loi">{{ct.loi}}</p></sc-if>
 <sc-if value="{{ct.ghiChuGit}}"><p class="bao bao-vang">{{ct.ghiChuGit}}</p></sc-if>
@@ -368,7 +400,7 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.coPhuThuoc}}">
 <section class="muc-ct" id="phu-thuoc" aria-labelledby="h-phu-thuoc">
 <h3 id="h-phu-thuoc">Phụ thuộc</h3>
-<sc-if value="{{ct.coCan}}"><p class="phu" style="color:var(--ink);margin:0 0 8px"><strong>Cần:</strong> <sc-for list="{{ct.can}}" as="d"><span class="{{d.lop}}" style="margin-right:6px">{{d.nhan}}</span></sc-for></p></sc-if>
+<sc-if value="{{ct.coCan}}"><p class="phu" style="color:var(--ink);margin:0 0 8px"><strong>Cần:</strong> <sc-for list="{{ct.can}}" as="d"><span style="margin-right:6px;white-space:nowrap"><sc-if value="{{d.chu}}"><span class="chu-nho" title="Mã module nền">{{d.chu}}</span></sc-if><span class="{{d.lop}}">{{d.nhan}}</span></span></sc-for></p></sc-if>
 <sc-if value="{{ct.coDuocCan}}"><p class="phu" style="color:var(--ink);margin:0 0 8px"><strong>Được cần bởi:</strong> {{ct.duocCanNhan}}</p></sc-if>
 <sc-if value="{{ct.coKeHoachChuaDu}}"><p class="phu" style="color:var(--ink)">Còn thiếu {{ct.keHoachThieu}}: {{ct.keHoachNhan}}</p>
 <div class="dong-nut"><button type="button" class="nut-chu" onClick="{{ct.layKeHoach}}" disabled="{{ct.dangKeHoach}}">{{ct.nhanKeHoach}}</button></div></sc-if>
@@ -404,6 +436,12 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.caiCanKhoa}}"><p class="rong">Dán khoá quản trị ở khối «Khoá quản trị» để cài hay thêm khoá.</p></sc-if>
 <sc-if value="{{ct.coNutCai}}">
 <div class="dong-nut"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-cai" onClick="{{ct.cai}}" disabled="{{ct.dangCai}}">{{ct.nhanCai}}</button><span class="phu">{{ct.goiYCai}}</span></div>
+</sc-if>
+<sc-if value="{{ct.coNutThemKhoa}}">
+<div class="dong-nut"><button type="button" class="nut-chu" id="nut-them-khoa" onClick="{{ct.themKhoa}}">Thêm khoá</button></div>
+</sc-if>
+<sc-if value="{{ct.coLienKetThemKhoa}}">
+<div class="dong-nut"><a class="nut-chu" id="lk-them-khoa" href="{{ct.themKhoaHref}}">Thêm khoá</a></div>
 </sc-if>
 <sc-if value="{{ct.dangHoiCai}}">
 <div role="alertdialog" aria-label="Xác nhận cài module" class="bao bao-vang" id="xac-nhan-cai" style="display:flex;flex-direction:column;gap:10px">
@@ -475,7 +513,8 @@ main.pg{padding:12px 16px 24px}
 </sc-if>
 
 <sc-if value="{{ct.coGo}}">
-<div class="dong-nut"><button type="button" class="nut-chu" style="border-color:#E2A59D;color:#8A1C12" id="nut-go" onClick="{{ct.hoiGo}}">Gỡ</button></div>
+<sc-if value="{{ct.coChanGo}}"><p class="bao bao-vang" role="note" id="chan-go">Chưa gỡ được: {{ct.chanGoNhan}} đang cần module này. Gỡ chúng trước.</p></sc-if>
+<div class="dong-nut"><button type="button" class="nut-chu" style="border-color:#E2A59D;color:#8A1C12" id="nut-go" onClick="{{ct.hoiGo}}" disabled="{{ct.coChanGo}}">Gỡ</button></div>
 <sc-if value="{{ct.dangHoiGo}}">
 <div role="alertdialog" aria-label="Xác nhận gỡ" class="bao bao-vang" id="xac-nhan-go" style="display:flex;flex-direction:column;gap:10px">
 <span>Gỡ <strong>{{ct.ten}}</strong>? Mã, cấu hình và khoá đã lưu của module này bị xoá; ứng dụng đang gọi model của nó sẽ nhận lỗi.</span>
@@ -499,8 +538,10 @@ main.pg{padding:12px 16px 24px}
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{}'>
-// Hệ thống → Module: lưới ô theo loại, bảng chi tiết, luồng Cài → Thêm khoá → Liên kết. Mọi chuỗi động đi qua
-// {{ }} của dc-lite (đã thoát HTML) — kể cả tên module/commit lấy từ git. Không có tên module nào trong mã trang.
+// Hệ thống → Module (NV255): LÀN theo nhóm — web2api là gốc, bên dưới là các làn nhóm (AI, Nhà, Thiết bị, Tiện ích);
+// nhóm con ĐỌC TỪ MANIFEST (nhom_con). Số bước cài + chữ cái nền TỰ TÍNH từ can_module mỗi lần vẽ (this._pt).
+// Bảng chi tiết, luồng Cài → Thêm khoá → Liên kết. Mọi chuỗi động đi qua {{ }} của dc-lite (đã thoát HTML) —
+// kể cả tên module/commit lấy từ git. Không có tên module/nhà cung cấp nào trong mã trang.
 const K = window.Khung;
 // Viên trạng thái theo TONE của demo (ok / warn / bad / mute — demo không có màu thứ năm).
 const TT = {
@@ -511,6 +552,11 @@ const TT = {
 };
 const LOC_TT = [['tat-ca', 'Tất cả'], ['da-cai', 'Đã cài'], ['chua-cai', 'Chưa cài'], ['ban-moi', 'Có bản mới']];
 const MB = 1024 * 1024;
+// NV255: màu làn theo mã loại (mẫu chủ máy duyệt) — [sáng, tối]; loại lạ: băm mã vào bảng dự phòng.
+// Đây là cấu hình hiển thị, không phải tên module/nhà cung cấp.
+const MAU_LAN = { ai: ['#0F766E', '#2dd4bf'], nha: ['#B45309', '#fbbf24'], thiet_bi: ['#7C3AED', '#b69cff'], tien_ich: ['#475569', '#a3b1c6'] };
+const MAU_LAN_PHU = ['#0F766E', '#B45309', '#7C3AED', '#475569', '#0369a1', '#be123c'];
+const NHOM_CON_MAC_DINH = { id: 'khac', ten: '', thu_tu: 99 };
 
 class Component extends DCLogic {
   constructor(props) {
@@ -535,14 +581,14 @@ class Component extends DCLogic {
       dangGpuB2: false, gpuLoiB2: '', gpuTinB2: '',
       dangGpuB3: false, gpuLoiB3: '', gpuTinB3: '',
       sk: {},
-      hienSoDo: false, soDo: null, dangTaiSoDo: false, soDoLoi: '',
       keHoach: null, keHoachId: null, dangKeHoach: false, keHoachLoi: '',
       keHoachTin: '', dangCaiKeHoach: false,
-      // NV261 — đo tài nguyên theo yêu cầu: tnDo là MỘT ảnh đo dùng chung cho mọi module/phạm vi;
-      // null = chưa đo (mở trang KHÔNG tự đo, không hẹn giờ — chỉ đo khi người dùng bấm).
-      tnDo: null, dangDo: false, tnDoLoi: '', xepTn: 'ram'
+      // NV259: MỘT TIÊU ĐIỂM — gốc (tdGoc) / nhóm (tdNhom) / nhóm con (tdCon) / module (chon).
+      // bangMo: bảng chi tiết đang mở dạng popup ở màn hẹp (<720px). xepTheo/doLuc: khối tài nguyên ở bảng tổng.
+      tdNhom: null, tdCon: null, tdGoc: false, bangMo: false, xepTheo: 'dia', dangDo: false, doLuc: ''
     };
     if (this.state.chon) this.state.chon = decodeURIComponent(this.state.chon);
+    if (this.state.chon) this.state.bangMo = true;
   }
 
   loiKhoa(e) {
@@ -563,6 +609,10 @@ class Component extends DCLogic {
       const m = location.hash.match(/^#module-(.+)$/);
       if (m) this.chonO(decodeURIComponent(m[1]));
     });
+    // NV259: bấm ra ngoài (xét bằng composedPath) hoặc Esc → bỏ chọn module/nhóm con, về tổng của phạm vi đang xem.
+    document.addEventListener('click', (e) => this.bamNgoai(e));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.state.menuMo) this.boChon(); });
+    window.addEventListener('resize', () => this.capNhatPopup());
     this.timerTelemetry = setInterval(() => {
       if (!document.hidden) this.lamMoiTelemetry();
     }, 15000);
@@ -599,37 +649,21 @@ class Component extends DCLogic {
     const p = Promise.all([this.taiCoBan(), this.taiQuanTri()]);
     const id = this.state.chon;
     if (id && id !== '+them') K.cauHinh.tai(this, id);
-    // NV261: đã từng đo thì sau khi dữ liệu đổi (cài/gỡ/lưu cấu hình…) chụp lại một ảnh mới;
-    // chưa từng đo thì KHÔNG tự đo (đo chỉ bắt đầu bằng nút bấm của người dùng).
-    if (this.state.tnDo && !this.state.dangDo) this.doTaiNguyen();
     return p;
-  }
-
-  // ---------- NV261: đo tài nguyên theo yêu cầu ----------
-  async doTaiNguyen() {
-    if (this.state.dangDo) return;
-    this.setState({ dangDo: true, tnDoLoi: '' });
-    try {
-      const { j } = await K.goi('api/he-thong/do-tai-nguyen', { method: 'POST' });
-      this.setState({ dangDo: false, tnDo: j || null });
-    } catch (e) {
-      this.setState({ dangDo: false, tnDoLoi: (e && e.message) || 'Không đo được tài nguyên.' });
-      this.loiKhoa(e);
-    }
   }
 
   // ---------- chọn ô ----------
   // `denForm`: mở thẳng ở bước thêm khoá (nút «Thêm khoá» trên ô) — đợi form đọc xong cấu hình rồi đặt focus vào ô
   // nhập đầu tiên của nó.
   chonO(id, denForm) {
-    this.setState((s) => ({ chon: id, hoiGo: null, hoiCai: (s.hoiCai && s.hoiCai.id === id) ? s.hoiCai : null, tin: '', xoaO: null }));
+    this.setState((s) => ({ chon: id, tdNhom: null, tdCon: null, tdGoc: false, bangMo: true, hoiGo: null, hoiCai: (s.hoiCai && s.hoiCai.id === id) ? s.hoiCai : null, tin: '', xoaO: null }));
     const tai = id !== '+them' ? K.cauHinh.tai(this, id) : Promise.resolve();
     if (id && id !== '+them') {
       K.goi('api/modules/' + encodeURIComponent(id) + '/suc-khoe').then(({ j }) => {
         if (j) this.setState((st) => ({ sk: Object.assign({}, st.sk, { [id]: j }) }));
       }).catch(() => {});
     }
-    setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth > 1023 }); }, 30);
+    setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth >= 720 }); this.capNhatPopup(); }, 30);
     if (denForm) tai.then(() => setTimeout(() => {
       const f = document.getElementById('lien-ket');
       const o = f && f.querySelector('textarea, input');
@@ -638,11 +672,152 @@ class Component extends DCLogic {
       if (o) o.focus({ preventScroll: true });
     }, 30));
   }
-  dongChiTiet() {
-    const id = this.state.chon;
-    this.setState({ chon: null, hoiGo: null, hoiCai: null });
+  // NV259: «Đóng» = bỏ chọn module/nhóm con, về TỔNG của phạm vi đang xem (nhóm đang lọc, hoặc gốc).
+  dongChiTiet() { this.boChon(); }
+
+  boChon() {
+    const s = this.state;
+    if (!s.chon && !s.tdCon && !s.bangMo) return;
+    const idCu = s.chon;
+    // Phạm vi đang xem = làn đang lọc (locLoai), không có thì gốc web2api.
+    const locLan = (s.locLoai && s.locLoai !== 'tat-ca') ? s.locLoai : null;
+    let dich = null;
+    if (idCu && idCu !== '+them') dich = '[data-o="' + CSS.escape(idCu) + '"]';
+    else if (idCu === '+them') dich = '#o-them';
+    else if (s.tdCon) dich = '[data-loc-con="' + CSS.escape(s.tdCon.con) + '"]';
+    else if (s.tdNhom) dich = '[data-loc-lan="' + CSS.escape(s.tdNhom) + '"]';
+    else dich = '[data-goc]';
+    this.setState({ chon: null, tdCon: null, tdNhom: locLan, tdGoc: !locLan, bangMo: false, hoiGo: null, hoiCai: null });
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
-    setTimeout(() => { const o = document.querySelector(id === '+them' ? '#o-them' : '[data-o="' + CSS.escape(id || '') + '"]'); if (o) o.focus(); }, 30);
+    setTimeout(() => { const o = dich && document.querySelector(dich); if (o) o.focus(); this.capNhatPopup(); }, 30);
+  }
+
+  // NV259: bấm ra ngoài — xét bằng e.composedPath() (KHÔNG e.target.closest()): vùng KHÔNG tính ra ngoài
+  // là ô module, tên làn, tên nhóm con, chip, nút gốc và toàn bộ bảng chi tiết.
+  bamNgoai(e) {
+    const s = this.state;
+    if (s.menuMo || (!s.chon && !s.tdCon)) return;
+    const duong = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    const AN_TOAN = '[data-o],.lane-ten,.con-ten,.chip,.goc-lan,#chi-tiet,#o-them';
+    const trong = duong.some((n) => n && n.nodeType === 1 && typeof n.matches === 'function' && n.matches(AN_TOAN));
+    if (!trong) this.boChon();
+  }
+
+  // NV259: chọn tiêu điểm gốc/nhóm/nhóm con — luôn CHỌN (không bật/tắt); xem tất cả thì bấm nút gốc.
+  chonGoc() {
+    this.setState({ locLoai: 'tat-ca', tdGoc: true, tdNhom: null, tdCon: null, chon: null, bangMo: true, hoiGo: null, hoiCai: null, tin: '' });
+    this.moBang();
+  }
+  chonNhom(ma) {
+    this.setState({ locLoai: ma, tdNhom: ma, tdCon: null, tdGoc: false, chon: null, bangMo: true, hoiGo: null, hoiCai: null, tin: '' });
+    this.moBang();
+  }
+  chonCon(ma, con) {
+    this.setState({ tdCon: { ma, con }, tdNhom: null, tdGoc: false, chon: null, bangMo: true, hoiGo: null, hoiCai: null, tin: '' });
+    this.moBang();
+  }
+  moBang() {
+    setTimeout(() => { const h = document.getElementById('chi-tiet-ten'); if (h) h.focus({ preventScroll: window.innerWidth >= 720 }); this.capNhatPopup(); }, 30);
+  }
+  capNhatPopup() {
+    // <720px bảng là popup: khoá cuộn nền + role dialog/modal; ≥720px là cột thường, bỏ hai thứ đó.
+    const hep = window.innerWidth < 720;
+    document.body.style.overflow = (hep && this.state.bangMo) ? 'hidden' : '';
+    const ct = document.getElementById('chi-tiet');
+    if (ct) {
+      if (hep) { ct.setAttribute('role', 'dialog'); ct.setAttribute('aria-modal', 'true'); }
+      else { ct.removeAttribute('role'); ct.removeAttribute('aria-modal'); }
+    }
+  }
+
+  // NV259: «Đo lại» ở bảng tổng — đọc lại dữ liệu module (đĩa đo trên đĩa theo catalog) và đóng dấu «Đo lúc».
+  // Đo tài nguyên sâu theo yêu cầu (RAM/CPU từng module) là NV261; ở đây RAM/CPU vẫn «chưa đo».
+  async doLaiTaiNguyen() {
+    if (this.state.dangDo) return;
+    this.setState({ dangDo: true });
+    try { await this.taiCoBan(); } catch (e) { /* taiCoBan tự xử lý lỗi từng phần */ }
+    const d = new Date();
+    const gio = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    this.setState({ dangDo: false, doLuc: gio });
+  }
+
+  // ---------- NV259: bảng TỔNG theo phạm vi tiêu điểm ----------
+  tongCua(ds) {
+    let byte = 0, coByte = false, daCai = 0;
+    for (const x of ds) {
+      if (!x.daCai) continue;
+      daCai++;
+      const v = x.c && typeof x.c.dung_luong_dia === 'number' ? x.c.dung_luong_dia : null;
+      if (v != null) { byte += v; coByte = true; }
+    }
+    return { byte, coByte, daCai, tong: ds.length };
+  }
+  nhanTong(t) {
+    return (t.coByte ? (this.dinhDangDungLuong(t.byte) || '0 KB') : 'chưa đo') + ' · ' + t.daCai + '/' + t.tong + ' đã cài';
+  }
+  dungNhieuNhat(ds) {
+    return ds.filter((x) => x.daCai && x.c && typeof x.c.dung_luong_dia === 'number')
+      .sort((a, b) => b.c.dung_luong_dia - a.c.dung_luong_dia).slice(0, 5)
+      .map((x) => ({ ten: String(x.info.ten || x.id).split(' (')[0], diaNhan: this.dinhDangDungLuong(x.c.dung_luong_dia) || 'chưa đo' }));
+  }
+  dongModuleTong(x, pt) {
+    return { loai: 'module', ma: x.id, ten: String(x.info.ten || x.id).split(' (')[0],
+      diaByte: x.daCai && x.c && typeof x.c.dung_luong_dia === 'number' ? x.c.dung_luong_dia : '',
+      phu: x.daCai ? (this.dinhDangDungLuong(x.c && x.c.dung_luong_dia) || 'chưa đo') : 'chưa cài',
+      khoa: pt.biKhoa(x), chon: () => this.chonO(x.id) };
+  }
+  tongVMCoBan(tieuDe, tieuDeChia, ds, chia) {
+    const t = this.tongCua(ds);
+    const theoDia = this.state.xepTheo === 'dia';
+    const dn = theoDia ? this.dungNhieuNhat(ds) : [];
+    return {
+      laTong: true, laModule: false, laThem: false, tieuDe, tieuDeChia, chia,
+      diaByte: t.coByte ? t.byte : '', diaNhan: t.coByte ? (this.dinhDangDungLuong(t.byte) || '0 KB') : 'chưa đo',
+      demNhan: t.daCai + ' trên ' + t.tong + ' module đã cài',
+      xep: [['dia', 'Đĩa'], ['ram', 'RAM'], ['cpu', 'CPU']].map(([ma, ten]) => ({ ma, ten, on: this.state.xepTheo === ma, chon: () => this.setState({ xepTheo: ma }) })),
+      coDungNhieu: dn.length > 0, dungNhieu: dn, chuaDoXep: dn.length === 0,
+      doLai: () => this.doLaiTaiNguyen(), dangDo: !!this.state.dangDo,
+      nhanDo: this.state.dangDo ? 'Đang đo…' : 'Đo lại',
+      doLucNhan: this.state.doLuc ? 'Đo lúc ' + this.state.doLuc : 'chưa đo'
+    };
+  }
+  tongGocVM(tatCa, dsLan) {
+    const chia = dsLan
+      .map((l) => {
+        const ds = tatCa.filter((x) => x.ma === l.ma);
+        const t = this.tongCua(ds);
+        return { loai: 'nhom', ma: l.ma, ten: l.ten, diaByte: t.coByte ? t.byte : '', phu: this.nhanTong(t), khoa: false, chon: () => this.chonNhom(l.ma), dem: ds.length };
+      })
+      .filter((r) => r.dem > 0);
+    return this.tongVMCoBan('Tổng web2api', 'Theo nhóm', tatCa, chia);
+  }
+  tongNhomVM(ma, tatCa, pt) {
+    const ds = tatCa.filter((x) => x.ma === ma);
+    const ten = ds.length ? ds[0].loaiTen : ma;
+    const theoCon = new Map();
+    for (const x of ds) {
+      const nc = this.nhomConCua(x);
+      if (!theoCon.has(nc.id)) theoCon.set(nc.id, { nc, o: [] });
+      theoCon.get(nc.id).o.push(x);
+    }
+    const cacCon = [...theoCon.values()].sort((a, b) => (a.nc.thuTu - b.nc.thuTu) || String(a.nc.ten).localeCompare(String(b.nc.ten), 'vi'));
+    const coConTen = cacCon.some((c) => c.nc.ten !== '');
+    let chia;
+    if (coConTen) {
+      chia = cacCon.map((c) => {
+        const t = this.tongCua(c.o);
+        return { loai: 'con', ma: c.nc.id, ten: c.nc.ten || 'Khác', diaByte: t.coByte ? t.byte : '', phu: this.nhanTong(t), khoa: false, chon: () => this.chonCon(ma, c.nc.id) };
+      });
+    } else {
+      chia = ds.slice().sort((a, b) => String(a.info.ten || a.id).localeCompare(String(b.info.ten || b.id), 'vi')).map((x) => this.dongModuleTong(x, pt));
+    }
+    return this.tongVMCoBan('Tổng nhóm ' + ten, coConTen ? 'Theo nhóm con' : 'Theo module', ds, chia);
+  }
+  tongConVM(ma, con, tatCa, pt) {
+    const ds = tatCa.filter((x) => x.ma === ma && this.nhomConCua(x).id === con);
+    const ten = ds.length ? (this.nhomConCua(ds[0]).ten || con) : con;
+    const chia = ds.slice().sort((a, b) => String(a.info.ten || a.id).localeCompare(String(b.info.ten || b.id), 'vi')).map((x) => this.dongModuleTong(x, pt));
+    return this.tongVMCoBan('Nhóm con: ' + ten, 'Theo module', ds, chia);
   }
 
   // ---------- cài / cập nhật từ git ----------
@@ -702,7 +877,10 @@ class Component extends DCLogic {
 
   async xacNhanCai(id) {
     const hc = this.state.hoiCai;
-    if (!hc || hc.id !== id || hc.dang) return;
+    // NV255: chống gửi đúp — cờ toàn cục (không phụ thuộc instance), vì hai click đồng bộ
+    // xảy ra trước khi setState kịp vẽ lại nút disabled; .click() lập trình vẫn kích hoạt dù nút đã disabled.
+    if (!hc || hc.id !== id || hc.dang || window.__dangCaiNV255) return;
+    window.__dangCaiNV255 = true;
     this.setState((s) => ({
       hoiCai: Object.assign({}, s.hoiCai, { dang: true, loi: '' })
     }));
@@ -715,6 +893,7 @@ class Component extends DCLogic {
       });
     } catch (e) {
       this.loiKhoa(e);
+      window.__dangCaiNV255 = false;
       this.setState((s) => ({
         hoiCai: s.hoiCai ? Object.assign({}, s.hoiCai, { dang: false, loi: e.message }) : null
       }));
@@ -723,6 +902,7 @@ class Component extends DCLogic {
     const { ma, j } = res;
     if (ma >= 400 || !j || !j.ok) {
       const msg = (j && j.error && j.error.message) || (j && j.detail) || (j && j.ly_do) || ('Lỗi HTTP ' + ma);
+      window.__dangCaiNV255 = false;
       this.setState((s) => ({
         hoiCai: s.hoiCai ? Object.assign({}, s.hoiCai, { dang: false, loi: msg + ' — vui lòng huỷ rồi bấm Cài lại.' }) : null
       }));
@@ -739,6 +919,7 @@ class Component extends DCLogic {
   }
 
   huyCai() {
+    window.__dangCaiNV255 = false;
     this.setState((s) => ({
       hoiCai: null,
       chon: (s.hoiCai && s.hoiCai.tuO) ? null : s.chon
@@ -976,65 +1157,6 @@ class Component extends DCLogic {
     }
   }
 
-  // ---------- NV222: sơ đồ + kế hoạch cài phụ thuộc ----------
-  doiSoDo() {
-    const mo = !this.state.hienSoDo;
-    this.setState({ hienSoDo: mo });
-    if (mo && !this.state.soDo && !this.state.dangTaiSoDo) this.taiSoDo();
-  }
-  async taiSoDo() {
-    this.setState({ dangTaiSoDo: true, soDoLoi: '' });
-    try {
-      const { j } = await K.goi('api/modules/do-thi-phu-thuoc');
-      this.setState({ dangTaiSoDo: false, soDo: this.boCucSoDo(j) });
-    } catch (e) {
-      this.loiKhoa(e);
-      this.setState({ dangTaiSoDo: false, soDoLoi: 'Không đọc được đồ thị: ' + e.message });
-    }
-  }
-  boCucSoDo(g) {
-    const nut = (g && g.nut) || [], canh = (g && g.canh) || [];
-    const coCanh = nut.filter((n) => canh.some((c) => c.tu === n.id || c.den === n.id));
-    const depCua = {};
-    coCanh.forEach((n) => { depCua[n.id] = []; });
-    canh.forEach((c) => { if (depCua[c.tu]) depCua[c.tu].push(c.den); });
-    const sau = {}, dang = {};
-    const tinhSau = (id) => {
-      if (sau[id] != null) return sau[id];
-      if (dang[id]) return 0;
-      dang[id] = true;
-      let m = 0;
-      (depCua[id] || []).forEach((d) => { m = Math.max(m, tinhSau(d)); });
-      delete dang[id];
-      sau[id] = m + ((depCua[id] || []).length ? 1 : 0);
-      return sau[id];
-    };
-    coCanh.forEach((n) => tinhSau(n.id));
-    const lop = {};
-    coCanh.forEach((n) => { (lop[sau[n.id]] = lop[sau[n.id]] || []).push(n); });
-    const RONG = 230, CAO = 68, WN = 200, HN = 52;
-    const nutVe = [];
-    Object.keys(lop).map(Number).sort((a, b) => a - b).forEach((k) => {
-      lop[k].forEach((n, i2) => {
-        const x = k * RONG + 20, y = i2 * CAO + 20;
-        const ten = n.ten || n.id;
-        nutVe.push({ id: n.id, x, y, tx: x + WN / 2, ty1: y + 22, ty2: y + 40,
-          tenNgan: ten.length > 26 ? ten.slice(0, 25) + '…' : ten,
-          nhan: n.id + (n.da_cai ? ' · đã cài' : ' · chưa cài'),
-          vien: n.da_cai ? 2 : 1.2, netDut: n.da_cai ? 'none' : '5 4' });
-      });
-    });
-    const viTri = {};
-    nutVe.forEach((n) => { viTri[n.id] = n; });
-    const canhVe = canh.filter((c) => viTri[c.tu] && viTri[c.den]).map((c) => {
-      const can = viTri[c.tu], biCan = viTri[c.den];
-      return { x1: can.x, y1: can.y + HN / 2, x2: biCan.x + WN, y2: biCan.y + HN / 2 };
-    });
-    const w = nutVe.length ? Math.max.apply(null, nutVe.map((n) => n.x)) + WN + 40 : 300;
-    const h = nutVe.length ? Math.max.apply(null, nutVe.map((n) => n.y)) + HN + 40 : 120;
-    const thuTu = ((g && g.thu_tu_goi_y) || []).filter((id) => viTri[id]);
-    return { nut: nutVe, canh: canhVe, w, h, thuTuNhan: thuTu.join(' → ') || '—' };
-  }
   async layKeHoach(id) {
     this.setState({ dangKeHoach: true, keHoachLoi: '', keHoachTin: '', keHoach: null, keHoachId: id });
     try {
@@ -1086,6 +1208,83 @@ class Component extends DCLogic {
     } catch (err) {
       this.loiKhoa(err);
     }
+  }
+
+  // ---------- NV255: đồ thị phụ thuộc cho làn ----------
+  // Mọi số (bước cài) và chữ (mã module nền) đều TỰ TÍNH từ `can_module` của mọi module mỗi lần vẽ:
+  // module mới xuất hiện, hoặc module cũ khai thêm can_module, thì số/chữ tự đổi — không lưu cứng, không khai tay.
+  canCuaInfo(info) {
+    if (!info) return [];
+    if (Array.isArray(info.can_module)) return info.can_module.filter((d) => typeof d === 'string');
+    const qq = Array.isArray(info.quyen) ? info.quyen : [];
+    return qq.filter((e) => e && e.loai === 'can_module' && e.ten).map((e) => e.ten);
+  }
+  phuThuoc(tatCa) {
+    const theoId = new Map(tatCa.map((x) => [x.id, x]));
+    const canCua = new Map(), duocCan = new Map();
+    for (const x of tatCa) {
+      const ds = this.canCuaInfo(x.info).filter((d) => theoId.has(d));
+      canCua.set(x.id, ds);
+      for (const d of ds) {
+        if (!duocCan.has(d)) duocCan.set(d, []);
+        duocCan.get(d).push(x.id);
+      }
+    }
+    // Bước cài = 1 + bước lớn nhất của module nền, bỏ qua chu trình.
+    const buoc = new Map();
+    const tinh = (id, vet) => {
+      if (buoc.has(id)) return buoc.get(id);
+      if (vet.has(id)) return 0;
+      vet.add(id);
+      const ds = canCua.get(id) || [];
+      const b = ds.length ? 1 + Math.max.apply(null, ds.map((d) => tinh(d, vet))) : 0;
+      vet.delete(id);
+      buoc.set(id, b);
+      return b;
+    };
+    for (const x of tatCa) tinh(x.id, new Set());
+    // Chữ cái cho module nền (đang được module khác cần): bước thấp trước, rồi tên.
+    const tenHien = (id) => String((theoId.get(id) || {}).info && theoId.get(id).info.ten || id);
+    const chuCai = new Map([...duocCan.keys()]
+      .sort((a, b) => (buoc.get(a) - buoc.get(b)) || tenHien(a).localeCompare(tenHien(b), 'vi'))
+      .map((id, i) => [id, this.chuThuTu(i)]));
+    const daCai = new Set(tatCa.filter((x) => x.daCai).map((x) => x.id));
+    // NV255: tập module tham gia quan hệ phụ thuộc (có nền hoặc là nền của module khác) —
+    // chỉ những ô này mới hiện số bước cài, theo đúng quy ước mẫu chủ máy duyệt.
+    const thamGia = new Set();
+    for (const x of tatCa) {
+      const ds = canCua.get(x.id) || [];
+      if (ds.length) { thamGia.add(x.id); ds.forEach((d) => thamGia.add(d)); }
+    }
+    return { theoId, canCua, duocCan, buoc, chuCai, daCai, thamGia, tenHien,
+      thieuNen: (x) => (canCua.get(x.id) || []).filter((d) => !daCai.has(d)),
+      biKhoa: (x) => !x.daCai && (canCua.get(x.id) || []).some((d) => !daCai.has(d)),
+      dangDuocCanBoi: (x) => (duocCan.get(x.id) || []).filter((d) => daCai.has(d)) };
+  }
+  chuThuTu(i) {
+    // A..Z, rồi AA..AZ, BA.. — đủ cho số module nền thực tế.
+    let s = '';
+    do { s = String.fromCharCode(65 + (i % 26)) + s; i = Math.floor(i / 26) - 1; } while (i >= 0);
+    return s;
+  }
+  mauLan(ma) {
+    if (MAU_LAN[ma]) return MAU_LAN[ma];
+    let h = 0;
+    for (const ch of String(ma)) h = ((h * 31) + ch.charCodeAt(0)) >>> 0;
+    const c = MAU_LAN_PHU[h % MAU_LAN_PHU.length];
+    return [c, c];
+  }
+  nhomConCua(x) {
+    const nc = x.info && x.info.nhom_con;
+    if (nc && typeof nc === 'object' && typeof nc.id === 'string' && nc.id) {
+      return { id: nc.id, ten: String(nc.ten || nc.id), thuTu: typeof nc.thu_tu === 'number' ? nc.thu_tu : 50 };
+    }
+    return NHOM_CON_MAC_DINH;
+  }
+  dinhDangDungLuong(byte) {
+    if (typeof byte !== 'number' || !(byte >= 0)) return null;
+    return byte >= MB ? (Math.round(byte / MB * 10) / 10).toLocaleString('vi-VN') + ' MB'
+      : Math.max(1, Math.round(byte / 1024)).toLocaleString('vi-VN') + ' KB';
   }
 
   // ---------- dựng ô ----------
@@ -1153,12 +1352,6 @@ class Component extends DCLogic {
     p.push(typeof tn.dia_mb === 'number' ? 'đĩa ' + tn.dia_mb.toLocaleString('vi-VN') + ' MB' : 'đĩa chưa đo');
     p.push(tn.gpu === true ? 'cần GPU' : tn.gpu === false ? 'không cần GPU' : 'GPU chưa rõ');
     if (x.g && typeof x.g.dung_luong === 'number') p.push('tải ' + K.dl(x.g.dung_luong));
-    // NV261: có ảnh đo thì ô hiện SỐ ĐO thật thay cho khai báo/chưa đo (RAM đầu, CPU chèn sau RAM).
-    const anh = this.state.tnDo && this.state.tnDo.module ? this.state.tnDo.module[x.id] : null;
-    if (anh) {
-      if (typeof anh.ram_mb === 'number') p[0] = 'RAM ' + (anh.goc === 'cgroup' ? '' : '≈ ') + anh.ram_mb.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' MB';
-      if (typeof anh.cpu_pct === 'number') p.splice(1, 0, 'CPU ' + anh.cpu_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%');
-    }
     return p.join(' · ');
   }
 
@@ -1188,21 +1381,6 @@ class Component extends DCLogic {
       const diaKhaiBytes = tn && typeof tn.dia_mb === 'number' ? tn.dia_mb * MB : 0;
       const phanChuaDo = tn && typeof tn.dia_mb === 'number' ? '' : ' — chưa gồm dữ liệu sinh ra khi chạy (chưa đo)';
       taiNguyen.push(Object.assign({ nhan: 'Đĩa tăng sau khi cài' }, gt('≈ ' + K.dl(bMa + diaKhaiBytes) + phanChuaDo)));
-    }
-
-    // NV261: số ĐO của module này trong ảnh đo chung (chỉ có sau khi người dùng bấm đo). Mọi số đều
-    // kèm nhãn nguồn: «đo» (cgroup) / «ước lượng ±15%» (quét tham chiếu) / «lấy mẫu N giây» (CPU) /
-    // «dùng chung lõi» / «chưa đo».
-    const anhDo = s.tnDo && s.tnDo.module ? s.tnDo.module[x.id] : null;
-    if (anhDo) {
-      const mb = (v) => v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' MB';
-      if (typeof anhDo.ram_mb === 'number') taiNguyen.push(Object.assign({ nhan: 'RAM đo' }, gt((anhDo.goc === 'cgroup' ? '' : '≈ ') + mb(anhDo.ram_mb) + (anhDo.goc === 'cgroup' ? ' (đo)' : ' (ước lượng ±15%)'))));
-      else taiNguyen.push(Object.assign({ nhan: 'RAM đo' }, so(null)));
-      if (typeof anhDo.cpu_pct === 'number') taiNguyen.push(Object.assign({ nhan: 'CPU đo' }, gt(anhDo.cpu_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '% (lấy mẫu ' + String(s.tnDo.cua_so_cpu_giay).replace('.', ',') + ' giây)')));
-      else taiNguyen.push(Object.assign({ nhan: 'CPU đo' }, so(null)));
-      if (typeof anhDo.nap_mb === 'number') taiNguyen.push(Object.assign({ nhan: 'RAM lúc nạp' }, gt('+' + mb(anhDo.nap_mb) + ' (đo)')));
-      taiNguyen.push(Object.assign({ nhan: 'Tiến trình' }, gt(anhDo.rieng ? 'riêng (dịch vụ phụ)' : 'dùng chung lõi')));
-      if (anhDo.gpu) taiNguyen.push(Object.assign({ nhan: 'GPU trên máy này' }, gt(anhDo.gpu)));
     }
 
     // Một dòng kết luận «Máy này» — chỉ khi đọc được /api/he-thong VÀ module có khai số; không thì không đoán.
@@ -1253,6 +1431,17 @@ class Component extends DCLogic {
     const duocCan222 = tatCaO222.filter((t) => t.id !== x.id && canTuInfo(t.info).indexOf(x.id) >= 0)
       .map((t) => tenCua222[t.id] || t.id);
     const thieu222 = canIds222.filter((id) => !daCai222[id]);
+    // ---------- NV255: phụ thuộc dùng chung this._pt (tính một lần trong renderVals) ----------
+    // Số/chữ/khoá đều suy từ can_module mỗi lần vẽ — module mới hoặc khai thêm can_module thì tự đổi.
+    // Đặt ngoài if (hc): dùng cho cả bảng chi tiết thường lẫn hộp xác nhận cài.
+    const pt = this._pt || this.phuThuoc(this.dungO());
+    const canIds = pt.canCua.get(x.id) || [];
+    const can = canIds.map((id) => ({ id,
+      chu: pt.chuCai.get(id) || '',
+      nhan: pt.tenHien(id) + (pt.daCai.has(id) ? ' · đã cài' : ' · chưa cài'),
+      lop: pt.daCai.has(id) ? 'vien' : 'vien v-mute' }));
+    const duocCan = pt.dangDuocCanBoi(x).map((id) => pt.tenHien(id));
+    const thieu = pt.thieuNen(x);
     const kh222 = this.state.keHoach && this.state.keHoachId === x.id ? this.state.keHoach : null;
     const khKeHoach222 = kh222 && Array.isArray(kh222.ke_hoach) ? kh222.ke_hoach : [];
     if (hc) {
@@ -1260,7 +1449,8 @@ class Component extends DCLogic {
         if (typeof q === 'string') return { loai: 'Quyền', ten: q };
         return { loai: (q && q.loai) || 'Quyền', ten: (q && (q.ten || q.mo_ta)) || '' };
       }) : [];
-      hoiCaiVM = {
+      // ---------- NV222: thông tin phụ thuộc ----------
+    hoiCaiVM = {
         ten: x.info.ten || x.id,
         repo: hc.repo || '',
         sha: (hc.sha_commit || '').slice(0, 7),
@@ -1292,8 +1482,15 @@ class Component extends DCLogic {
          : 'Nửa mở (đang thử lại)')
       : 'Bình thường';
 
+    // NV255: «Thêm khoá» trong bảng chi tiết (kế thừa logic chân ô cũ nutO): module đã cài, đang chờ khoá,
+    // chưa liên kết — thuộc tab module thì mở bảng chi tiết ở bước thêm khoá, ngược lại liên kết sang trang Tài khoản.
+    const noiKhoa = (!chiHoiCai && x.tt === 'cho-khoa')
+      ? K.noiThemKhoa(x.t || { id: x.id, loai: x.info.loai, cung_cap: x.info.cung_cap }, s.tn) : null;
+    // NV255: chặn gỡ khi còn module ĐÃ CÀI đang cần module này (backend go() cũng chặn — LoiModuleDangDuocCan).
+    const dangCanBoi = pt.dangDuocCanBoi(x);
+
     return {
-      laModule: true, laThem: false, id: x.id, ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
+      laModule: true, laThem: false, laTong: false, id: x.id, ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
       // «phiên bản 2.1 · Kênh chat» của demo; module không khai phiên bản thì «—» như demo.
       phu: 'phiên bản ' + ((x.c && x.c.phien_ban) || (x.g && x.g.phien_ban_moi) || '—') + ' · ' + x.loaiTen,
       nhanTT: TT[x.tt][0] + (x.tt === 'ban-moi' && x.g ? ' ' + (x.g.phien_ban_cu || '') + ' → ' + (x.g.phien_ban_moi || '') : ''),
@@ -1302,25 +1499,30 @@ class Component extends DCLogic {
       coTrangThai: !chiHoiCai,
       lopTT: TT[x.tt][1], cungCap: Array.isArray(x.info.cung_cap) ? x.info.cung_cap : [],
       coCungCap: !chiHoiCai && Array.isArray(x.info.cung_cap) && x.info.cung_cap.length > 0,
-      coPhuThuoc: !chiHoiCai && (can222.length > 0 || duocCan222.length > 0),
-      coCan: can222.length > 0, can: can222,
-      coDuocCan: duocCan222.length > 0, duocCan: duocCan222,
-      duocCanNhan: duocCan222.join(', '),
-      coKeHoachChuaDu: !chiHoiCai && !x.daCai && thieu222.length > 0,
-      keHoachThieu: thieu222.length,
-      keHoachNhan: thieu222.map((id) => tenCua222[id] || id).join(', '),
+      coPhuThuoc: !chiHoiCai && (can.length > 0 || duocCan.length > 0),
+      coCan: can.length > 0, can: can,
+      coDuocCan: duocCan.length > 0, duocCan: duocCan,
+      duocCanNhan: duocCan.join(', '),
+      coKeHoachChuaDu: !chiHoiCai && !x.daCai && thieu.length > 0,
+      keHoachThieu: thieu.length,
+      keHoachNhan: thieu.map((id) => pt.tenHien(id)).join(', '),
       layKeHoach: () => this.layKeHoach(x.id),
       dangKeHoach: !!this.state.dangKeHoach && this.state.keHoachId === x.id,
       nhanKeHoach: this.state.dangKeHoach ? 'Đang tính…' : 'Xem kế hoạch cài',
       keHoachLoi: this.state.keHoachId === x.id ? this.state.keHoachLoi : '',
       keHoach: kh222,
-      keHoachNhan2: khKeHoach222.map((id) => tenCua222[id] || id).join(' → '),
+      keHoachNhan2: khKeHoach222.map((id) => pt.tenHien(id)).join(' → '),
       caiTheoKeHoach: () => this.caiTheoKeHoach(),
       huyKeHoach: () => this.huyKeHoach(),
       dangCaiKeHoach: !!this.state.dangCaiKeHoach,
       nhanCaiKeHoach: this.state.dangCaiKeHoach ? 'Đang cài…' : 'Cài tất cả',
       keHoachTin: this.state.keHoachId === x.id ? this.state.keHoachTin : '',
       moTa: chiHoiCai ? '' : (x.info.mo_ta || ''), loi: x.loi ? 'Không dùng được: ' + x.loi : '', ghiChuGit: (x.g && x.g.ghi_chu) || '',
+      // NV255: dung lượng — đã cài → «Đang chiếm», chưa cài → «Dung lượng cài thêm»; không có số thì «chưa đo», không bịa.
+      coDungLuong: !chiHoiCai,
+      dungLuongNhan: x.daCai
+        ? 'Đang chiếm: ' + (this.dinhDangDungLuong(x.c && x.c.dung_luong_dia) || 'chưa đo')
+        : 'Dung lượng cài thêm: ' + (this.dinhDangDungLuong(x.g && x.g.dung_luong) || 'chưa đo'),
       taiNguyen, coTaiNguyen: !chiHoiCai && taiNguyen.length > 0, huongDan: (tn && tn.ghi_chu) || '', mayNay, lopMayNay,
       coMuc: !chiHoiCai && muc.length > 0, coMucDu: mucDu.length > 0, mucDu, mucThieu,
       caiCanKhoa: !coKhoa && x.tt !== 'loi', coNutCai,
@@ -1329,7 +1531,8 @@ class Component extends DCLogic {
       cai: () => this.caiTuGit(x.id, x.tt === 'chua-cai'), dangCai: !!cg.dang, caiLoi: cg.loi ? 'Chưa ' + (x.tt === 'ban-moi' ? 'cập nhật' : 'cài') + ' được: ' + cg.loi : '',
       caiTin: cg.tin ? cg.tin + (x.tt === 'cho-khoa' ? ' Bước tiếp theo: thêm tài khoản/khoá API bên dưới rồi bấm «Kiểm tra và lưu».' : '') : '',
       dangHoiCai: !!hoiCaiVM, hoiCai: hoiCaiVM || {},
-      dongYCai: () => this.xacNhanCai(x.id), huyCai: () => this.huyCai(),
+      dongYCai: (e) => { if (e && e.target) e.target.disabled = true; this.xacNhanCai(x.id); },
+      huyCai: () => this.huyCai(),
       coForm, buocTiep: !x.lienKet, tabMoi,
       laNutGpu: !!x.laNutGpu,
       coCard: !!(g0 && g0.ten),
@@ -1345,42 +1548,16 @@ class Component extends DCLogic {
       batTat: () => this.batTatModule(x.id, !(x.t && x.t.bat !== false)),
       nhanBatTat: (x.t && x.t.bat === false) ? 'Bật lại' : 'Tắt tạm thời',
       kiemTraLai: () => this.kiemTraLai(x.id),
+      coNutThemKhoa: !!noiKhoa && noiKhoa.tab === 'module',
+      themKhoa: () => this.chonO(x.id, true),
+      coLienKetThemKhoa: !!noiKhoa && noiKhoa.tab !== 'module',
+      themKhoaHref: noiKhoa ? noiKhoa.href : '',
       coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),
+      coChanGo: dangCanBoi.length > 0,
+      chanGoNhan: dangCanBoi.map((id) => pt.tenHien(id)).join(', '),
       hoiGo: () => this.setState({ hoiGo: x.id }), dangHoiGo: s.hoiGo === x.id, thoiGo: () => this.setState({ hoiGo: null }),
       go: () => this.go(x.id, x.info.ten || x.id), dangGo: s.dangGo === x.id, goLoi: s.goLoi[x.id] || ''
     };
-  }
-
-  // Chân ô — nút như dòng Tiện ích của demo: biểu tượng TẢI VỀ (nền đen khi chưa cài = «Cài»; trong suốt = «Cập nhật» khi
-  // có bản mới), biểu tượng XOÁ (gỡ, bấm hai lần: lần đầu nền đỏ nhạt + dải báo, lần hai mới gỡ), và nút chữ «Thêm khoá»
-  // (đã cài, cần khoá, chưa liên kết — LIÊN KẾT tới Hệ thống → AI → Tài khoản khi module thuộc tab đó, ngược lại mở bảng
-  // chi tiết ở bước thêm khoá). Công tắc bật/tắt của demo không vẽ: chưa có backend bật/tắt.
-  nutO(x, coKhoa) {
-    const s = this.state;
-    const ten = x.info.ten || x.id;
-    const ra = { coHd: false, coNutChu: false, coLienKet: false, coGian: false, coTai: false, coXoa: false, hd: '', nhanNut: '', ariaNut: '',
-      lopTai: 'nut-bt', lam: null, dangLam: false, href: '', lopXoa: 'nut-bt', ariaXoa: '', xoa: null, dangXoa: false };
-    if (coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi')) {
-      const cg = s.caiGit[x.id] || {};
-      const laCai = x.tt === 'chua-cai';
-      Object.assign(ra, { coTai: true, hd: laCai ? 'cai' : 'cap-nhat', lopTai: 'nut-bt' + (laCai ? ' den' : ''),
-        ariaNut: cg.dang ? (laCai ? 'Đang cài ' : 'Đang cập nhật ') + ten : (laCai ? 'Cài ' : 'Cập nhật ') + ten,
-        lam: () => this.caiTuGit(x.id, laCai), dangLam: !!cg.dang });
-    } else if (x.tt === 'cho-khoa') {
-      const noi = K.noiThemKhoa(x.t || { id: x.id, loai: x.info.loai, cung_cap: x.info.cung_cap }, s.tn);
-      Object.assign(ra, { hd: 'them-khoa', nhanNut: 'Thêm khoá', ariaNut: 'Thêm khoá cho ' + ten },
-        noi.tab === 'module' ? { coNutChu: true, lam: () => this.chonO(x.id, true) } : { coLienKet: true, href: noi.href });
-    }
-    // Gỡ được: như nút «Gỡ» của bảng chi tiết (module đi kèm ảnh mà chưa liên kết thì không có gì để gỡ).
-    if (coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet)) {
-      const xo = s.xoaO === x.id;
-      Object.assign(ra, { coXoa: true, lopXoa: 'nut-bt' + (xo ? ' do' : ''), ariaXoa: xo ? 'Bấm lần nữa để gỡ ' + ten : 'Gỡ ' + ten,
-        dangXoa: s.dangGo === x.id,
-        xoa: () => { if (!xo) return this.setState({ xoaO: x.id, tin: 'Bấm biểu tượng xoá lần nữa để gỡ «' + ten + '».' }); this.go(x.id, ten); } });
-    }
-    ra.coGian = !ra.coNutChu && !ra.coLienKet;
-    ra.coHd = ra.coTai || ra.coXoa || ra.coNutChu || ra.coLienKet;
-    return ra;
   }
 
 
@@ -1390,52 +1567,111 @@ class Component extends DCLogic {
     const coKhoa = true;
     const tatCa = this.dungO();
 
-    // NV261: 3 module đứng đầu RAM hoặc CPU theo ẢNH ĐO gần nhất → chấm đánh dấu trên ô (chỉ sau khi đã đo).
-    const topTn = new Set();
-    if (s.tnDo && s.tnDo.module) {
-      const theo = (k) => Object.entries(s.tnDo.module).filter(([, m]) => typeof m[k] === 'number')
-        .sort((a, b) => b[1][k] - a[1][k]).slice(0, 3);
-      for (const [id] of theo('ram_mb').concat(theo('cpu_pct'))) topTn.add(id);
-    }
+    // NV255: đồ thị phụ thuộc tính MỘT LẦN mỗi lần vẽ — chiTiet() dùng lại qua this._pt.
+    // Số (bước cài) và chữ (mã module nền) đều suy từ can_module: module mới hoặc khai thêm
+    // can_module thì tự đổi, không lưu cứng, không khai tay.
+    const pt = this.phuThuoc(tatCa);
+    this._pt = pt;
 
-    // Khu theo loại có trong dữ liệu, xếp theo loai_thu_tu (khai trong manifest) rồi mã — không danh sách loại nào ở đây.
+    // Làn theo nhóm (mã loại), xếp theo loai_thu_tu (khai trong manifest) rồi mã — không danh sách loại nào ở đây.
+    // Nhóm con ĐỌC TỪ MANIFEST (nhom_con) — không viết cứng id module nào.
     const theoMa = new Map();
     for (const x of tatCa) {
-      if (!theoMa.has(x.ma)) theoMa.set(x.ma, { ma: x.ma, ten: x.loaiTen, thuTu: x.thuTu, o: [] });
+      if (!theoMa.has(x.ma)) theoMa.set(x.ma, { ma: x.ma, ten: x.loaiTen, thuTu: x.thuTu });
       const k = theoMa.get(x.ma);
       if (k.thuTu == null && x.thuTu != null) k.thuTu = x.thuTu;
-      k.o.push(x);
     }
-    const dsKhu = [...theoMa.values()].sort((a, b) => (a.thuTu == null) - (b.thuTu == null) || (a.thuTu || 0) - (b.thuTu || 0) || a.ma.localeCompare(b.ma));
-    // Mặc định chọn khu ĐẦU (thứ tự nhỏ nhất) — «tab AI đang chọn» khi AI khai thứ tự đầu; không viết cứng mã nào.
-    const locLoai = s.locLoai || (dsKhu.length ? dsKhu[0].ma : 'tat-ca');
+    const dsLan = [...theoMa.values()].sort((a, b) => (a.thuTu == null) - (b.thuTu == null) || (a.thuTu || 0) - (b.thuTu || 0) || a.ma.localeCompare(b.ma));
+    // Mặc định hiện TẤT CẢ các làn; bấm tên làn thì lọc chỉ làn đó, bấm lại thì về tất cả.
+    const locLan = (s.locLoai && s.locLoai !== 'tat-ca' && theoMa.has(s.locLoai)) ? s.locLoai : 'tat-ca';
     const q = K.boDau(s.tim.trim());
     const khop = (x) => (!q || K.boDau([x.info.ten, x.id, x.info.mo_ta].join(' ')).includes(q))
       && (s.locTT === 'tat-ca' || (s.locTT === 'da-cai' ? x.daCai : s.locTT === 'chua-cai' ? !x.daCai : x.tt === 'ban-moi'));
-    const khuHien = dsKhu.filter((k) => locLoai === 'tat-ca' || k.ma === locLoai)
-      .map((k) => Object.assign({}, k, { o: k.o.filter(khop).sort((a, b) => String(a.info.ten || a.id).localeCompare(String(b.info.ten || b.id), 'vi')) }))
-      .filter((k) => k.o.length);
-    const khu = khuHien.map((k, i) => ({
-      ma: k.ma, ten: k.ten, idTen: 'khu-' + i, dem: k.o.length, coThem: i === khuHien.length - 1,
-      o: k.o.map((x) => {
-        const laHoiCaiTuO = !!(s.hoiCai && s.hoiCai.id === x.id && s.hoiCai.tuO);
-        const dangChon = s.chon === x.id && !laHoiCaiTuO;
-        return Object.assign({
-          id: x.id, tt: x.tt, chon: dangChon, lop: 'o-mod' + (dangChon ? ' o-dang-chon' : ''),
-          chamDungNhieu: topTn.has(x.id),
-          ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
-          loaiTen: x.loaiTen, nhanTT: TT[x.tt][0], lopTT: TT[x.tt][1], moTa: x.info.mo_ta || '', taiNguyen: this.taiNguyenO(x),
-          aria: (x.info.ten || x.id) + ' — ' + TT[x.tt][0], chonO: () => this.chonO(x.id)
-        }, this.nutO(x, coKhoa));
+    const tenNgan = (x) => String(x.info.ten || x.id).split(' (')[0];
+    const pillCua = (x) => {
+      const dangChon = s.chon === x.id;
+      const khoa = pt.biKhoa(x);
+      const deps = pt.canCua.get(x.id) || [];
+      const canChu = deps.map((d) => pt.chuCai.get(d)).filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+      const buoc = pt.buoc.get(x.id) || 0;
+      const coBuoc = pt.thamGia.has(x.id);
+      let chuThich = pt.tenHien(x.id) + ' — ' + TT[x.tt][0];
+      if (khoa) {
+        // Khoá: chú giải nêu nền còn thiếu (kèm dung lượng từng cái) + tổng cả chuỗi cài thêm.
+        const thieu = pt.thieuNen(x);
+        const tenDl = thieu.map((d) => {
+          const tx = pt.theoId.get(d);
+          const dl = tx ? this.dinhDangDungLuong(tx.g && tx.g.dung_luong) : null;
+          return pt.tenHien(d) + (dl ? ' (' + dl + ')' : '');
+        });
+        const thay = new Set(); let tong = 0;
+        const gom = (id) => {
+          if (thay.has(id)) return; thay.add(id);
+          const tx = pt.theoId.get(id);
+          if (tx && !pt.daCai.has(id) && tx.g && typeof tx.g.dung_luong === 'number') tong += tx.g.dung_luong;
+          (pt.canCua.get(id) || []).forEach(gom);
+        };
+        gom(x.id);
+        chuThich = 'Cần cài trước: ' + tenDl.join(', ') + '. Cả chuỗi cài thêm ' + (tong > 0 ? this.dinhDangDungLuong(tong) : 'chưa đo');
+      } else if (coBuoc) {
+        chuThich += ' — bước cài ' + (buoc + 1) + (canChu.length ? ', cần ' + canChu.join(' và ') : '');
+      }
+      return {
+        id: x.id, tt: x.tt, chon: dangChon,
+        lop: (dangChon ? ' chon' : '') + (khoa ? ' khoa' : (x.daCai ? '' : ' chua')),
+        tenNgan: tenNgan(x),
+        aria: pt.tenHien(x.id) + ' — ' + TT[x.tt][0] + (khoa ? ' — đang khoá, cần cài module nền trước' : ''),
+        chuThich, khoa, coBuoc, buoc: buoc + 1, chu: pt.chuCai.get(x.id) || '',
+        coCan: canChu.length > 0, canChu,
+        chonO: () => this.chonO(x.id)
+      };
+    };
+    const lanHien = dsLan
+      .filter((l) => locLan === 'tat-ca' || l.ma === locLan)
+      .map((l) => {
+        const ds = tatCa.filter((x) => x.ma === l.ma && khop(x))
+          .sort((a, b) => String(a.info.ten || a.id).localeCompare(String(b.info.ten || b.id), 'vi'));
+        const theoCon = new Map();
+        for (const x of ds) {
+          const nc = this.nhomConCua(x);
+          if (!theoCon.has(nc.id)) theoCon.set(nc.id, { id: nc.id, ten: nc.ten, thuTu: nc.thuTu, o: [] });
+          theoCon.get(nc.id).o.push(x);
+        }
+        const dsCon = [...theoCon.values()]
+          .sort((a, b) => (a.thuTu - b.thuTu) || String(a.ten).localeCompare(String(b.ten), 'vi'))
+          .map((c) => ({ coTen: c.ten !== '', id: c.id, ten: c.ten, dem: c.o.length,
+            on: !!(s.tdCon && s.tdCon.ma === l.ma && s.tdCon.con === c.id && !s.chon),
+            chonCon: () => this.chonCon(l.ma, c.id),
+            o: c.o.map(pillCua) }));
+        const col = this.mauLan(l.ma);
+        return {
+          ma: l.ma, ten: l.ten, dem: ds.length,
+          mauStyle: '--c:' + col[0] + ';--c-toi:' + col[1],
+          // NV259: aria-pressed theo TIÊU ĐIỂM (không theo lọc) — chọn module/nhóm con thì tên làn hết tô.
+          on: s.tdNhom === l.ma && !s.chon && !s.tdCon,
+          // NV259: bấm nhóm luôn CHỌN nhóm đó (không bật/tắt) + lọc làn về nhóm đó.
+          chon: () => this.chonNhom(l.ma),
+          con: dsCon
+        };
       })
-    }));
-    const chipLoai = [{ ma: 'tat-ca', ten: 'Tất cả', dem: String(tatCa.length) }].concat(dsKhu.map((k) => ({ ma: k.ma, ten: k.ten, dem: String(k.o.length) })))
-      .map((c) => Object.assign(c, { on: c.ma === locLoai, chon: () => this.setState({ locLoai: c.ma }) }));
+      .filter((l) => l.dem > 0);
+    // Chú thích chữ cái nền dưới các làn — chữ có thể dịch chuyển khi có nền mới nên nói rõ là chấp nhận.
+    const csDep = [...pt.chuCai.keys()].sort((a, b) => pt.chuCai.get(a).localeCompare(pt.chuCai.get(b)));
+    const coChuThichDep = csDep.length > 0;
+    const chuThichDep = 'Cách đọc phụ thuộc: số trong vòng tròn là bước cài (1 cài trước, 2 cài sau). '
+      + csDep.map((id) => pt.chuCai.get(id) + ' = ' + pt.tenHien(id)).join('; ')
+      + '. Chữ có thể dịch chuyển khi có nền mới — chấp nhận.';
     const chipTT = LOC_TT.map(([ma, ten]) => ({ ma, ten, on: s.locTT === ma, chon: () => this.setState({ locTT: ma }) }));
 
-    // Chi tiết
+    // Chi tiết / tổng theo TIÊU ĐIỂM (NV259): module → chi tiết; nhóm con/nhóm/gốc → bảng tổng tương ứng.
     const xChon = s.chon && s.chon !== '+them' ? tatCa.find((x) => x.id === s.chon) : null;
-    const ct = s.chon === '+them' ? { laThem: true, laModule: false } : xChon ? this.chiTiet(xChon) : null;
+    let ct = null;
+    if (s.chon === '+them') ct = { laThem: true, laModule: false, laTong: false };
+    else if (xChon) ct = this.chiTiet(xChon);
+    else if (s.tdCon) ct = this.tongConVM(s.tdCon.ma, s.tdCon.con, tatCa, pt);
+    else if (s.tdNhom) ct = this.tongNhomVM(s.tdNhom, tatCa, pt);
+    else if (s.tdGoc) ct = this.tongGocVM(tatCa, dsLan);
     const f = xChon && ct && ct.coForm ? K.cauHinh.vm(this, xChon.id, 'ct', (id) => this.daLienKet(id)) : {};
 
     // Nguồn git (khối Thêm module)
@@ -1477,33 +1713,6 @@ class Component extends DCLogic {
     const gpuNhiet = gpuG0 ? (gpuG0.nhiet_c != null ? gpuG0.nhiet_c : gpuG0.nhiet_do_c) : null;
     const dsMoHinh = (tlG && (tlG.mo_hinh_da_nap || tlG.mo_hinh || [])) || [];
 
-    // NV261 — bảng Tổng của ảnh đo + «Dùng nhiều nhất» (xếp được theo RAM/CPU/Đĩa; Đĩa dùng số đã có).
-    const tnDo = s.tnDo;
-    const fmtMB = (v) => typeof v === 'number' ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' MB' : 'chưa đo';
-    const nhanCpu = tnDo ? 'lấy mẫu ' + String(tnDo.cua_so_cpu_giay).replace('.', ',') + ' giây' : '';
-    const tnTong = [];
-    if (tnDo && tnDo.tong) {
-      const t = tnDo.tong;
-      tnTong.push({ nhan: 'RAM máy', giaTri: fmtMB(t.ram_may) });
-      tnTong.push({ nhan: 'RAM lõi web2api', giaTri: fmtMB(t.ram_loi_mb) + ' (đo)' });
-      tnTong.push({ nhan: 'CPU lõi web2api', giaTri: typeof t.cpu_loi_pct === 'number' ? t.cpu_loi_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '% (' + nhanCpu + ')' : 'chưa đo' });
-      tnTong.push({ nhan: 'GPU', giaTri: Array.isArray(t.gpu) && t.gpu.length ? t.gpu.map((g) => (g.ten || 'GPU') + (g.vram_dung_mb != null && g.vram_tong_mb != null ? ' ' + g.vram_dung_mb + '/' + g.vram_tong_mb + ' MB' : '')).join('; ') : 'Không có GPU' });
-      tnTong.push({ nhan: 'Chưa quy cho module', giaTri: fmtMB(t.chua_quy_cho_module_mb) });
-    }
-    const giaTriXep = (x) => {
-      const a = tnDo && tnDo.module ? tnDo.module[x.id] : null;
-      if (s.xepTn === 'ram') return a && typeof a.ram_mb === 'number' ? { v: a.ram_mb, hien: fmtMB(a.ram_mb), nguon: a.goc === 'cgroup' ? 'đo' : 'ước lượng ±15%' } : null;
-      if (s.xepTn === 'cpu') return a && typeof a.cpu_pct === 'number' ? { v: a.cpu_pct, hien: a.cpu_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%', nguon: nhanCpu } : null;
-      const b = x.c && typeof x.c.dung_luong_dia === 'number' ? x.c.dung_luong_dia : x.g && typeof x.g.dung_luong === 'number' ? x.g.dung_luong : null;
-      return b != null ? { v: b, hien: K.dl(b), nguon: 'đo trên đĩa' } : null;
-    };
-    const tnDungNhieu = tatCa.map((x) => ({ ten: x.info.ten || x.id, g: giaTriXep(x) }))
-      .filter((d) => d.g).sort((a, b) => b.g.v - a.g.v).slice(0, 5)
-      .map((d) => ({ ten: d.ten, giaTri: d.g.hien, nhanNguon: d.g.nguon }));
-    const chipXepTn = [['ram', 'RAM'], ['cpu', 'CPU'], ['dia', 'Đĩa']]
-      .map(([ma, ten]) => ({ ma, ten, on: s.xepTn === ma, chon: () => this.setState({ xepTn: ma }) }));
-    const tnDoLuc = tnDo && tnDo.luc ? new Date(tnDo.luc).toLocaleTimeString('vi-VN', { hour12: false }) : '';
-
     const ql = tn ? K.quayLai(tn) : null;
     const coLienKet = !!tn && (tn.modules || []).some((m) => m.da_lien_ket);
     const diaChiV1 = K.diaChiV1();
@@ -1521,20 +1730,15 @@ class Component extends DCLogic {
       coLoiKhamPha: (s.loiKhamPha || []).length > 0, loiKhamPha: s.loiKhamPha || [],
       coCanDangNhap: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0,
       canDangNhapChu: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0 ? (((tn && tn.phien && tn.phien.can_dang_nhap) || 0) + ' tài khoản cần đăng nhập lại') : '',
-      // lưới
-      tim: s.tim, hienSoDo: s.hienSoDo, doiSoDo: () => this.doiSoDo(),
-      // NV261 — đo tài nguyên theo yêu cầu
-      tnChuaDo: !s.tnDo && !s.dangDo, dangDo: s.dangDo, tnDaDo: !!s.tnDo && !s.dangDo,
-      tnDoLoi: s.tnDoLoi, tnDoLuc, doTaiNguyen: () => this.doTaiNguyen(),
-      tnDoChuan: !!(s.tnDo && s.tnDo.do_chuan && s.tnDo.do_chuan.tracemalloc),
-      coTnTong: tnTong.length > 0, tnTong,
-      coTnDungNhieu: tnDungNhieu.length > 0, tnDungNhieu, chipXepTn,
-      coSoDo: !!s.soDo, soDo: s.soDo, dangTaiSoDo: s.dangTaiSoDo, soDoLoi: s.soDoLoi,
-      goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT, coLoai: dsKhu.length > 0,
-      dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
-      khu, chiOThem: !s.dangTai && khu.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
+      // làn
+      tim: s.tim,
+      goTim: (e) => this.setState({ tim: e.target.value }), chipTT,
+      dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && lanHien.length === 0,
+      lanes: lanHien, coChuThichDep, chuThichDep,
+      gocOn: !s.chon && !s.tdCon && !s.tdNhom, chonGoc: () => this.chonGoc(),
+      chiOThem: !s.dangTai && lanHien.length === 0, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
       // chi tiết
-      coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(),
+      coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(), lopMo: s.bangMo ? ' mo' : '',
       phimChiTiet: (e) => { if (e.key === 'Escape') { e.preventDefault(); this.dongChiTiet(); } },
       coTin: !!s.tin, tin: s.tin, dongTin: () => this.setState({ tin: '', xoaO: null }),
       // nguồn git

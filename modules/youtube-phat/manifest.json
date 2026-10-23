@@ -1,1 +1,58 @@
-{"cung_cap":["tai_lieu","thiet_bi"],"giao_thuc":"http-noi-bo","hang":"B","id":"youtube-phat","loai":"tien_ich","loai_ten":"Ti\u1ec7n \u00edch","loai_thu_tu":47,"mo_ta":"\u0110i\u1ec1u khi\u1ec3n m\u00e1y ph\u00e1t YouTube/Zing qua d\u1ecbch v\u1ee5 dich-vu/youtube-phat (HTTP n\u1ed9i b\u1ed9/LAN): gi\u1eef \u0111\u1ecba ch\u1ec9 d\u1ecbch v\u1ee5 + kho\u00e1 Integration API (bi_mat, l\u01b0u ri\u00eang 0600, kh\u00f4ng v\u00e0o log), h\u1ecfi s\u1ee9c kho\u1ebb GET /api/integration/health. B\u1ea3n th\u00e2n module kh\u00f4ng ph\u00e1t nh\u1ea1c v\u00e0 kh\u00f4ng g\u1ecdi ra youtube.com \u2014 d\u1ecbch v\u1ee5 m\u1edbi l\u00e0 n\u01a1i g\u1ecdi ra ngo\u00e0i. Ph\u1ea7n NV153 \u0111\u1ee3t B (d\u1ecbch v\u1ee5 do \u0111\u1ee3t A l\u00e0m song song). CH\u01afA ki\u1ec3m v\u1edbi d\u1ecbch v\u1ee5 th\u1eadt.","phien_ban":"0.1.0","tab_web":{"nhan":"YouTube ph\u00e1t","trang":"web/index.html"},"tai_nguyen":{"dia_mb":null,"ghi_chu":"Module ch\u1ec9 g\u1ecdi HTTP t\u1edbi d\u1ecbch v\u1ee5 youtube-phat; d\u1ecbch v\u1ee5 g\u1ecdi ra youtube.com/googlevideo.com/ytimg.com/zingmp3.vn. Ch\u01b0a \u0111o RAM/\u0111\u0129a.","gpu":false,"mang_ra":["youtube.com","googlevideo.com","ytimg.com","zingmp3.vn"],"ram_them_mb":null},"ten":"YouTube ph\u00e1t \u2014 m\u00e1y ph\u00e1t YouTube/Zing","tien_to":"youtube_phat","truong_cau_hinh":[{"bat_buoc":true,"khoa":"dich_vu_url","kieu":"chuoi","mac_dinh":null,"mo_ta":"\u0110\u1ecba ch\u1ec9 d\u1ecbch v\u1ee5 dich-vu/youtube-phat \u2014 B\u1eaeT BU\u1ed8C, kh\u00f4ng c\u00f2n m\u1eb7c \u0111\u1ecbnh. Nh\u1eadp IP LAN c\u1ee7a m\u00e1y ch\u1ea1y d\u1ecbch v\u1ee5 (v\u00ed d\u1ee5 http://192.168.1.10:8713) ho\u1eb7c t\u00ean container trong m\u1ea1ng Docker n\u1ed9i b\u1ed9 (v\u00ed d\u1ee5 http://youtube-phat:8713). KH\u00d4NG nh\u1eadp 127.0.0.1/localhost: l\u00f5i ch\u1ea1y trong container n\u00ean \u0111\u1ecba ch\u1ec9 loopback tr\u1ecf v\u00e0o ch\u00ednh container v\u00e0 b\u1ecb ch\u1eb7n l\u00fac c\u00e0i (ki\u1ec3m b\u1eb1ng app/tu_xa.kiem_url_lan). L\u1ea5y \u0111\u1ecba ch\u1ec9: xem README dich-vu/youtube-phat (c\u1ed5ng d\u1ecbch v\u1ee5 m\u1eb7c \u0111\u1ecbnh 8713).","nhan":"\u0110\u1ecba ch\u1ec9 d\u1ecbch v\u1ee5 youtube-phat"},{"bat_buoc":true,"khoa":"khoa_dich_vu","kieu":"bi_mat","mac_dinh":null,"mo_ta":"Kho\u00e1 Bearer c\u1ee7a d\u1ecbch v\u1ee5 (t\u1ec7p integration_token trong /data/youtube_phat c\u1ee7a d\u1ecbch v\u1ee5). L\u01b0u ri\u00eang 0600, kh\u00f4ng v\u00e0o log; ch\u1ec9 qu\u1ea3n tr\u1ecb m\u1edbi l\u1ea5y l\u1ea1i \u0111\u01b0\u1ee3c \u0111\u1ea7y \u0111\u1ee7 qua h\u00e0nh \u0111\u1ed9ng lay_khoa khi b\u1ea5m \u00abCh\u00e9p token\u00bb c\u00f3 ch\u1ee7 \u0111\u00edch.","nhan":"Kho\u00e1 Integration API"}],"yeu_cau_goi":["httpx"]}
+{
+  "cung_cap": [
+    "tai_lieu",
+    "thiet_bi"
+  ],
+  "giao_thuc": "http-noi-bo",
+  "hang": "B",
+  "id": "youtube-phat",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 47,
+  "nhom_con": {
+    "id": "doi-song-va-giai-tri",
+    "ten": "Đời sống và giải trí",
+    "thu_tu": 3
+  },
+  "mo_ta": "Điều khiển máy phát YouTube/Zing qua dịch vụ dich-vu/youtube-phat (HTTP nội bộ/LAN): giữ địa chỉ dịch vụ + khoá Integration API (bi_mat, lưu riêng 0600, không vào log), hỏi sức khoẻ GET /api/integration/health. Bản thân module không phát nhạc và không gọi ra youtube.com — dịch vụ mới là nơi gọi ra ngoài. Phần NV153 đợt B (dịch vụ do đợt A làm song song). CHƯA kiểm với dịch vụ thật.",
+  "phien_ban": "0.1.0",
+  "tab_web": {
+    "nhan": "YouTube phát",
+    "trang": "web/index.html"
+  },
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Module chỉ gọi HTTP tới dịch vụ youtube-phat; dịch vụ gọi ra youtube.com/googlevideo.com/ytimg.com/zingmp3.vn. Chưa đo RAM/đĩa.",
+    "gpu": false,
+    "mang_ra": [
+      "youtube.com",
+      "googlevideo.com",
+      "ytimg.com",
+      "zingmp3.vn"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "YouTube phát — máy phát YouTube/Zing",
+  "tien_to": "youtube_phat",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "dich_vu_url",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ dịch vụ dich-vu/youtube-phat — BẮT BUỘC, không còn mặc định. Nhập IP LAN của máy chạy dịch vụ (ví dụ http://192.168.1.10:8713) hoặc tên container trong mạng Docker nội bộ (ví dụ http://youtube-phat:8713). KHÔNG nhập 127.0.0.1/localhost: lõi chạy trong container nên địa chỉ loopback trỏ vào chính container và bị chặn lúc cài (kiểm bằng app/tu_xa.kiem_url_lan). Lấy địa chỉ: xem README dich-vu/youtube-phat (cổng dịch vụ mặc định 8713).",
+      "nhan": "Địa chỉ dịch vụ youtube-phat"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "khoa_dich_vu",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Khoá Bearer của dịch vụ (tệp integration_token trong /data/youtube_phat của dịch vụ). Lưu riêng 0600, không vào log; chỉ quản trị mới lấy lại được đầy đủ qua hành động lay_khoa khi bấm «Chép token» có chủ đích.",
+      "nhan": "Khoá Integration API"
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

@@ -2,9 +2,14 @@
   "id": "tro-ly",
   "ten": "Trợ lý (vòng lặp agent)",
   "tien_to": "tro_ly",
-  "loai": "tien_ich",
-  "loai_ten": "Tiện ích",
-  "loai_thu_tu": 43,
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "cong-cu-ai",
+    "ten": "Trợ lý và công cụ dùng AI",
+    "thu_tu": 3
+  },
   "mo_ta": "Vòng lặp agent: bộ dựng prompt theo ngân sách, bộ chọn công cụ theo tầng, X-quang prompt và sổ lỗi công cụ (NV136). Chưa gồm vòng lặp gọi mô hình (NV135).",
   "phien_ban": "0.1.0",
   "hang": "B",

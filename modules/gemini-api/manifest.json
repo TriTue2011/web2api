@@ -7,11 +7,25 @@
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 10,
-  "nhom": {"id": "google", "ten": "Google"},
+  "nhom_con": {
+    "id": "nha-cung-cap",
+    "ten": "Nhà cung cấp AI",
+    "thu_tu": 2
+  },
+  "nhom": {
+    "id": "google",
+    "ten": "Google"
+  },
   "giao_thuc": "openai",
   "tien_to": "gemini",
-  "yeu_cau_goi": ["httpx"],
-  "cung_cap": ["chat", "anh", "video"],
+  "yeu_cau_goi": [
+    "httpx"
+  ],
+  "cung_cap": [
+    "chat",
+    "anh",
+    "video"
+  ],
   "truong_cau_hinh": [
     {
       "khoa": "api_keys",
@@ -42,7 +56,9 @@
     "ram_them_mb": null,
     "dia_mb": null,
     "gpu": false,
-    "mang_ra": ["generativelanguage.googleapis.com"],
+    "mang_ra": [
+      "generativelanguage.googleapis.com"
+    ],
     "ghi_chu": "Chưa đo RAM/đĩa thật (null = chưa đo). Ở Việt Nam Google có thể chặn vùng (lỗi «User location is not supported») — khi đó đặt base_url qua proxy, ví dụ deploy/cloudflare-gemini-proxy.js."
   }
 }

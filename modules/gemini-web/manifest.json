@@ -1,2 +1,69 @@
-{"can_module": ["vnc-xa"], "cung_cap": ["chat"], "giao_thuc": "gemini-web-batchexecute", "hang": "A", "id": "gemini-web", "loai": "ai", "loai_ten": "AI", "loai_thu_tu": 22, "nhom": {"id": "google", "ten": "Google"}, "mo_ta": "Trò chuyện với Gemini bản web qua giao thức nội bộ của gemini.google.com (batchexecute), xác thực bằng cookie Google — miễn phí, không cần API key, không browser.", "muc": [{"can": ["chat"], "id": "chat", "nhan": "Trò chuyện"}], "phien_ban": "0.1.0", "tai_nguyen": {"dia_mb": null, "ghi_chu": "Dùng giao thức nội bộ của web app gemini.google.com (học luồng từ gói gemini_webapi qua kho tham khảo, không chính thức). Google đổi web có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro. Giai đoạn này chưa gửi/nhận ảnh, video.", "gpu": false, "mang_ra": ["gemini.google.com", "accounts.google.com"], "ram_them_mb": null}, "ten": "Gemini Web (gemini.google.com, cookie)", "tien_to": "gemini-web", "truong_cau_hinh": [{"bat_buoc": true, "khoa": "cookies", "kieu": "danh_sach_bi_mat", "mac_dinh": null, "mo_ta": "Một hoặc nhiều bộ cookie từ tab gemini.google.com đã đăng nhập (DevTools F12 → Application → Cookies), dạng 'k1=v1; k2=v2'. Cần ít nhất __Secure-1PSID; __Secure-1PSIDTS giúp phiên bền hơn. Nhiều bộ thì xoay vòng; cookie hết hạn thì export lại.", "nhan": "Cookie Google", "nhan_cookie": {"mien": "gemini.google.com"}}, {"bat_buoc": false, "khoa": "co_so_url", "kieu": "chuoi", "mac_dinh": null, "mo_ta": "Địa chỉ gốc thay cho https://gemini.google.com — CHỈ dùng cho kiểm thử với máy chủ giả. Để trống dùng địa chỉ thật.", "nhan": "Địa chỉ gốc (kiểm thử)"}], "yeu_cau_goi": [],"dang_nhap_bang":"gmail"
+{
+  "can_module": [
+    "vnc-xa"
+  ],
+  "cung_cap": [
+    "chat"
+  ],
+  "giao_thuc": "gemini-web-batchexecute",
+  "hang": "A",
+  "id": "gemini-web",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 22,
+  "nhom_con": {
+    "id": "nha-cung-cap",
+    "ten": "Nhà cung cấp AI",
+    "thu_tu": 2
+  },
+  "nhom": {
+    "id": "google",
+    "ten": "Google"
+  },
+  "mo_ta": "Trò chuyện với Gemini bản web qua giao thức nội bộ của gemini.google.com (batchexecute), xác thực bằng cookie Google — miễn phí, không cần API key, không browser.",
+  "muc": [
+    {
+      "can": [
+        "chat"
+      ],
+      "id": "chat",
+      "nhan": "Trò chuyện"
+    }
+  ],
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Dùng giao thức nội bộ của web app gemini.google.com (học luồng từ gói gemini_webapi qua kho tham khảo, không chính thức). Google đổi web có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro. Giai đoạn này chưa gửi/nhận ảnh, video.",
+    "gpu": false,
+    "mang_ra": [
+      "gemini.google.com",
+      "accounts.google.com"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "Gemini Web (gemini.google.com, cookie)",
+  "tien_to": "gemini-web",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "cookies",
+      "kieu": "danh_sach_bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Một hoặc nhiều bộ cookie từ tab gemini.google.com đã đăng nhập (DevTools F12 → Application → Cookies), dạng 'k1=v1; k2=v2'. Cần ít nhất __Secure-1PSID; __Secure-1PSIDTS giúp phiên bền hơn. Nhiều bộ thì xoay vòng; cookie hết hạn thì export lại.",
+      "nhan": "Cookie Google",
+      "nhan_cookie": {
+        "mien": "gemini.google.com"
+      }
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "co_so_url",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ gốc thay cho https://gemini.google.com — CHỈ dùng cho kiểm thử với máy chủ giả. Để trống dùng địa chỉ thật.",
+      "nhan": "Địa chỉ gốc (kiểm thử)"
+    }
+  ],
+  "yeu_cau_goi": [],
+  "dang_nhap_bang": "gmail"
 }

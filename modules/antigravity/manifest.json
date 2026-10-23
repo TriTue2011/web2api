@@ -7,11 +7,23 @@
   "loai": "ai",
   "loai_ten": "AI",
   "loai_thu_tu": 20,
-  "nhom": {"id": "google", "ten": "Google"},
+  "nhom_con": {
+    "id": "nha-cung-cap",
+    "ten": "Nhà cung cấp AI",
+    "thu_tu": 2
+  },
+  "nhom": {
+    "id": "google",
+    "ten": "Google"
+  },
   "giao_thuc": "openai",
   "tien_to": "antigravity",
-  "yeu_cau_goi": ["httpx"],
-  "cung_cap": ["chat"],
+  "yeu_cau_goi": [
+    "httpx"
+  ],
+  "cung_cap": [
+    "chat"
+  ],
   "truong_cau_hinh": [
     {
       "khoa": "dia_chi_cau_noi",
@@ -34,7 +46,9 @@
     "ram_them_mb": null,
     "dia_mb": null,
     "gpu": false,
-    "mang_ra": ["địa chỉ cầu nối trên máy chủ"],
+    "mang_ra": [
+      "địa chỉ cầu nối trên máy chủ"
+    ],
     "ghi_chu": "Cần chạy cầu nối dich-vu/antigravity-cau-noi/ trên máy chủ (ngoài container) với agy đã đăng nhập, mỗi tài khoản một HOME có toolPermission «proceed-in-sandbox» và enableTerminalSandbox bật; đặt AGY_CAU_NOI_KHOA rồi điền cùng khoá ở đây. Mỗi lượt tốn ≈12.500 token hạn mức — dùng làm nguồn dự phòng. Không gọi API Google trực tiếp từ container."
   }
 }

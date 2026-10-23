@@ -10,6 +10,7 @@ quản trị) không rò từ test này sang test khác. Chuyển nguyên văn t
 from __future__ import annotations
 
 import base64
+import html
 import json
 import os
 import shutil
@@ -27,6 +28,26 @@ THU_MUC_ANH = os.environ.get("WEB2API_THU_MUC_ANH", "")
 CO_CHROME = Path(CHROME).exists()
 
 # ───────────────────────────── CDP ─────────────────────────────
+
+# Bootstrap vượt chặn LNA (mượn cơ chế NV251 đã đo thật trên Chromium 152):
+# điều hướng thẳng about:blank → http://127.0.0.1 bị chặn (ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS),
+# nhưng file:// → http://127.0.0.1 thì ĐƯỢC PHÉP. Chỉ dùng trong test giao diện.
+_THU_MUC_BOOT_LNA: Path | None = None
+
+
+def _di_qua_file_bootstrap(trang: "Trang", url: str) -> None:
+    """Mở `url` qua trang đệm file:// + meta-refresh (vượt chặn LNA của Chromium 152)."""
+    global _THU_MUC_BOOT_LNA
+    if _THU_MUC_BOOT_LNA is None:
+        _THU_MUC_BOOT_LNA = Path(tempfile.gettempdir()) / "w2a-lna-boot"
+        _THU_MUC_BOOT_LNA.mkdir(parents=True, exist_ok=True)
+    boot = _THU_MUC_BOOT_LNA / f"boot-{abs(hash(url)) % 1000000}.html"
+    boot.write_text(
+        f'<!doctype html><meta http-equiv="refresh" content="0;url={html.escape(url, quote=True)}">',
+        encoding="utf-8",
+    )
+    trang.cdp.goi("Page.navigate", {"url": f"file://{boot}"}, trang.s)
+
 
 class CDP:
     """Một kết nối WebSocket tới trình duyệt (chế độ flatten: lệnh của từng trang mang sessionId)."""

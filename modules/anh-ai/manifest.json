@@ -7,9 +7,14 @@
   "giao_thuc": "openai",
   "hang": "B",
   "id": "anh-ai",
-  "loai": "tien_ich",
-  "loai_ten": "Tiện ích",
-  "loai_thu_tu": 48,
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "cong-cu-ai",
+    "ten": "Trợ lý và công cụ dùng AI",
+    "thu_tu": 3
+  },
   "mo_ta": "Tạo và sửa ảnh AI qua 10 nhà cung cấp (Gemini/Imagen, fal.ai, Stability, Black Forest Labs/FLUX, Cloudflare Workers AI, HuggingFace, NVIDIA NIM, SD WebUI, Google Flow, máy chủ OpenAI-compatible tự khai) — port từ c2a (commit d879b03). Mỗi nhà một adapter tệp nhỏ cùng giao diện, chọn bằng preset «nha_cung_cap». Hàng đợi tác vụ ảnh chạy NGAY TRONG module (giới hạn đồng thời cấu hình được, trạng thái queued/running/done/failed, huỷ, dọn tác vụ cũ). Mọi ảnh đầu vào/ra đi qua hàng rào kiểm ảnh (chống bom giải nén). CHƯA kiểm với nhà cung cấp thật.",
   "phien_ban": "0.1.0",
   "tai_nguyen": {

@@ -53,8 +53,8 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             o = "document.querySelector('[data-o=\"gemini-api\"]')"
             trang.cho(o, han=15, mo_ta="ô gemini-api từ git")
             assert trang.js(o + ".dataset.tt") == "chua-cai"
-            assert trang.js(o + ".closest('[data-khu]').dataset.khu") == "ai"
-            assert trang.js("document.querySelector(\"[data-khu='ai'] .khu-ten\").textContent").startswith("AI")   # loai_ten từ manifest thật
+            assert trang.js(o + ".closest('[data-lane]').dataset.lane") == "ai"   # NV255: làn thay khu (sửa selector)
+            assert trang.js("document.querySelector(\"[data-lane='ai'] .lane-ten\").textContent").startswith("AI")   # loai_ten từ manifest thật (sửa selector)
             trang.js("window.__khongTaiLai = 1")
 
             trang.bam(o)

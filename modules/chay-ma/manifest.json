@@ -1,1 +1,53 @@
-{"cung_cap":["thiet_bi"],"giao_thuc":"http-noi-bo","hang":"B","id":"chay-ma","loai":"tien_ich","loai_ten":"Tiện ích","loai_thu_tu":46,"mo_ta":"Chạy đoạn mã Python do người dùng/mô hình đưa vào qua dịch vụ phụ (dich-vu/chay-ma, cổng 8703): mỗi lượt chạy là một container docker dùng-một-lần cách ly (--network none, rootfs chỉ đọc, user không-root, trần CPU/RAM/thời gian/đầu ra, không mount dữ liệu lõi, không docker.sock). Hành động chay_python rủi ro nguy_hiem (lõi bắt phê duyệt — mô hình không tự gọi được), kiem_tinh chỉ soi tĩnh không chạy. Tắt mặc định; chỉ bật khi quản trị đặt khoá dịch vụ riêng CHAYMA_KHOA. Soi tĩnh của dịch vụ chỉ là GỢI Ý SỚM (dấu hiệu chuỗi, lách được — KHÔNG phải ranh giới an toàn; ranh giới thật là container cách ly); gợi ý + chẩn đoán chép từ c2a CỦA CHÍNH CHỦ MÁY — xem đầu tệp dich-vu/chay-ma/server.py.","phien_ban":"1.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Module chỉ gọi HTTP nội bộ tới dịch vụ chay-ma: địa chỉ qua bộ kiểm SSRF của lõi app/tu_xa.py (phân giải rồi kiểm từng IP, ghim IP khi gọi); loopback là ngoại lệ có chủ đích cho dịch vụ cục bộ do quản trị đặt, ngoài ra chỉ mạng riêng RFC1918/ULA. Thực thi thật nằm ở container phụ của dịch vụ, không ở tiến trình lõi. Lõi giới hạn tổng tham số một lần gọi ≤ 8 KB nên lược đồ chay_python để ma/tệp ≤ 8.000 ký tự."},"ten":"Chạy mã Python (container cách ly)","tien_to":"chay_ma","truong_cau_hinh":[{"bat_buoc":false,"khoa":"chay_bat","kieu":"chuoi","mac_dinh":"0","mo_ta":"Mặc định TẮT («1»/«bat» = bật). Chạy mã là bề mặt nguy hiểm nhất: chỉ bật khi dịch vụ phụ chay-ma đã chạy (container cách ly) và khoá dịch vụ riêng đã đặt. Khi tắt, cả chay_python lẫn kiem_tinh đều báo «chưa bật» và không gọi mạng.","nhan":"Bật chạy mã?"},{"bat_buoc":false,"khoa":"dich_vu_url","kieu":"chuoi","mac_dinh":"http://127.0.0.1:8703","mo_ta":"Địa chỉ dịch vụ chay-ma chạy container cách ly. Kiểm bằng app/tu_xa.py trên IP SAU KHI phân giải (host dạng số/hex trỏ vào 169.254.169.254 bị chặn như IP chữ) và ghim IP khi gọi; loopback được phép vì đây là dịch vụ cục bộ do quản trị đặt; ngoài loopback chỉ chấp nhận mạng riêng RFC1918/ULA. Bị từ chối khi cài/nạp nếu trỏ vào dải bị chặn.","nhan":"Địa chỉ dịch vụ chay-ma"},{"bat_buoc":false,"khoa":"khoa_dich_vu","kieu":"bi_mat","mac_dinh":null,"mo_ta":"Khoá Bearer riêng của dịch vụ chay-ma (biến CHAYMA_KHOA lúc chạy dịch vụ). Chỉ bắt buộc khi BẬT (từ chối lưu nếu thiếu hoặc yếu hơn 24 ký tự/10 ký tự khác nhau). Sinh bằng: openssl rand -hex 32. Lưu riêng, không API nào trả lại, không vào log.","nhan":"Khoá dịch vụ chay-ma"}],"yeu_cau_goi":["httpx"]}
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "http-noi-bo",
+  "hang": "B",
+  "id": "chay-ma",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "cong-cu-ai",
+    "ten": "Trợ lý và công cụ dùng AI",
+    "thu_tu": 3
+  },
+  "mo_ta": "Chạy đoạn mã Python do người dùng/mô hình đưa vào qua dịch vụ phụ (dich-vu/chay-ma, cổng 8703): mỗi lượt chạy là một container docker dùng-một-lần cách ly (--network none, rootfs chỉ đọc, user không-root, trần CPU/RAM/thời gian/đầu ra, không mount dữ liệu lõi, không docker.sock). Hành động chay_python rủi ro nguy_hiem (lõi bắt phê duyệt — mô hình không tự gọi được), kiem_tinh chỉ soi tĩnh không chạy. Tắt mặc định; chỉ bật khi quản trị đặt khoá dịch vụ riêng CHAYMA_KHOA. Soi tĩnh của dịch vụ chỉ là GỢI Ý SỚM (dấu hiệu chuỗi, lách được — KHÔNG phải ranh giới an toàn; ranh giới thật là container cách ly); gợi ý + chẩn đoán chép từ c2a CỦA CHÍNH CHỦ MÁY — xem đầu tệp dich-vu/chay-ma/server.py.",
+  "phien_ban": "1.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Module chỉ gọi HTTP nội bộ tới dịch vụ chay-ma: địa chỉ qua bộ kiểm SSRF của lõi app/tu_xa.py (phân giải rồi kiểm từng IP, ghim IP khi gọi); loopback là ngoại lệ có chủ đích cho dịch vụ cục bộ do quản trị đặt, ngoài ra chỉ mạng riêng RFC1918/ULA. Thực thi thật nằm ở container phụ của dịch vụ, không ở tiến trình lõi. Lõi giới hạn tổng tham số một lần gọi ≤ 8 KB nên lược đồ chay_python để ma/tệp ≤ 8.000 ký tự."
+  },
+  "ten": "Chạy mã Python (container cách ly)",
+  "tien_to": "chay_ma",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": false,
+      "khoa": "chay_bat",
+      "kieu": "chuoi",
+      "mac_dinh": "0",
+      "mo_ta": "Mặc định TẮT («1»/«bat» = bật). Chạy mã là bề mặt nguy hiểm nhất: chỉ bật khi dịch vụ phụ chay-ma đã chạy (container cách ly) và khoá dịch vụ riêng đã đặt. Khi tắt, cả chay_python lẫn kiem_tinh đều báo «chưa bật» và không gọi mạng.",
+      "nhan": "Bật chạy mã?"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "dich_vu_url",
+      "kieu": "chuoi",
+      "mac_dinh": "http://127.0.0.1:8703",
+      "mo_ta": "Địa chỉ dịch vụ chay-ma chạy container cách ly. Kiểm bằng app/tu_xa.py trên IP SAU KHI phân giải (host dạng số/hex trỏ vào 169.254.169.254 bị chặn như IP chữ) và ghim IP khi gọi; loopback được phép vì đây là dịch vụ cục bộ do quản trị đặt; ngoài loopback chỉ chấp nhận mạng riêng RFC1918/ULA. Bị từ chối khi cài/nạp nếu trỏ vào dải bị chặn.",
+      "nhan": "Địa chỉ dịch vụ chay-ma"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "khoa_dich_vu",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Khoá Bearer riêng của dịch vụ chay-ma (biến CHAYMA_KHOA lúc chạy dịch vụ). Chỉ bắt buộc khi BẬT (từ chối lưu nếu thiếu hoặc yếu hơn 24 ký tự/10 ký tự khác nhau). Sinh bằng: openssl rand -hex 32. Lưu riêng, không API nào trả lại, không vào log.",
+      "nhan": "Khoá dịch vụ chay-ma"
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

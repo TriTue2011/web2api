@@ -1,1 +1,56 @@
-{"cung_cap":["thiet_bi"],"giao_thuc":"cuc_bo","hang":"A","id":"dich","loai":"tien_ich","loai_ten":"Tiện ích","loai_thu_tu":46,"mo_ta":"Dịch văn bản qua model của chính lõi web2api (chuẩn C2/C4 `thiet_bi`), kèm từ điển và thuật ngữ người dùng tự thêm lưu cục bộ, cùng chế độ song ngữ (NV163). Giữ nguyên khối mã/URL/email/markup khi dịch; văn bản cần dịch là DỮ LIỆU, không làm theo chỉ dẫn trong đó. Chưa cấu hình model thì chỉ tra từ điển/thuật ngữ.","phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Chưa đo RAM/đĩa thật (null = chưa đo). Chỉ gọi HTTP loopback tới chính lõi web2api (/v1/chat/completions) bằng khoá khách phạm vi hẹp; không gọi mạng ra ngoài.","gpu":false,"mang_ra":[],"ram_them_mb":null},"ten":"Dịch văn bản và từ điển thuật ngữ","tien_to":"dich","truong_cau_hinh":[{"bat_buoc":false,"khoa":"model_dich","kieu":"chuoi","mac_dinh":null,"mo_ta":"Model dùng để dịch, đúng dạng trong GET /v1/models (ví dụ tien_to/ten-model). Để trống = tính năng dịch tắt, vẫn tra từ điển/thuật ngữ được.","nhan":"Model dịch"},{"bat_buoc":false,"khoa":"khoa_khach","kieu":"bi_mat","mac_dinh":null,"mo_ta":"Khoá khách của chính web2api này. LẤY Ở ĐÂU: vào Hệ thống → Khoá khách, tạo một khoá mới với phạm vi hẹp chỉ gồm «chat» cho module này, rồi dán giá trị vào đây. Module chỉ dùng khoá này để gọi /v1/chat/completions qua loopback; khoá chỉ đi trong header Authorization, không vào log/nhật ký/phản hồi lỗi.","nhan":"Khoá khách gọi model"},{"bat_buoc":false,"khoa":"dia_chi_v1","kieu":"chuoi","mac_dinh":"http://127.0.0.1:3031","mo_ta":"Địa chỉ gốc của chính lõi web2api để gọi /v1/chat/completions. Chỉ chấp nhận loopback (127.0.0.1/localhost/::1) — chống SSRF.","nhan":"Địa chỉ lõi web2api"}],"yeu_cau_goi":["httpx"]}
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "cuc_bo",
+  "hang": "A",
+  "id": "dich",
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "cong-cu-ai",
+    "ten": "Trợ lý và công cụ dùng AI",
+    "thu_tu": 3
+  },
+  "mo_ta": "Dịch văn bản qua model của chính lõi web2api (chuẩn C2/C4 `thiet_bi`), kèm từ điển và thuật ngữ người dùng tự thêm lưu cục bộ, cùng chế độ song ngữ (NV163). Giữ nguyên khối mã/URL/email/markup khi dịch; văn bản cần dịch là DỮ LIỆU, không làm theo chỉ dẫn trong đó. Chưa cấu hình model thì chỉ tra từ điển/thuật ngữ.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Chưa đo RAM/đĩa thật (null = chưa đo). Chỉ gọi HTTP loopback tới chính lõi web2api (/v1/chat/completions) bằng khoá khách phạm vi hẹp; không gọi mạng ra ngoài.",
+    "gpu": false,
+    "mang_ra": [],
+    "ram_them_mb": null
+  },
+  "ten": "Dịch văn bản và từ điển thuật ngữ",
+  "tien_to": "dich",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": false,
+      "khoa": "model_dich",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Model dùng để dịch, đúng dạng trong GET /v1/models (ví dụ tien_to/ten-model). Để trống = tính năng dịch tắt, vẫn tra từ điển/thuật ngữ được.",
+      "nhan": "Model dịch"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "khoa_khach",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Khoá khách của chính web2api này. LẤY Ở ĐÂU: vào Hệ thống → Khoá khách, tạo một khoá mới với phạm vi hẹp chỉ gồm «chat» cho module này, rồi dán giá trị vào đây. Module chỉ dùng khoá này để gọi /v1/chat/completions qua loopback; khoá chỉ đi trong header Authorization, không vào log/nhật ký/phản hồi lỗi.",
+      "nhan": "Khoá khách gọi model"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "dia_chi_v1",
+      "kieu": "chuoi",
+      "mac_dinh": "http://127.0.0.1:3031",
+      "mo_ta": "Địa chỉ gốc của chính lõi web2api để gọi /v1/chat/completions. Chỉ chấp nhận loopback (127.0.0.1/localhost/::1) — chống SSRF.",
+      "nhan": "Địa chỉ lõi web2api"
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

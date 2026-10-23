@@ -1,1 +1,68 @@
-{"cung_cap":["kenh_ra"],"giao_dien":null,"giao_thuc":"http-noi-bo","hang":"B","hoi_vong":{"chu_ky_giay":5},"id":"zalo-ca-nhan","loai":"tien_ich","loai_ten":"Tiện ích","loai_thu_tu":44,"mo_ta":"Gửi/nhận tin Zalo bằng tài khoản CÁ NHÂN qua dịch vụ phụ dich-vu/zalo-ca-nhan (Node + zca-js, container riêng, HTTP loopback). CẢNH BÁO: API không chính thức của Zalo — tài khoản có thể bị khoá bất cứ lúc nào, chủ máy tự chịu. Mặc định TẮT (bật bằng bat). Chỉ nhận tin từ người trong danh sách cho phép (mặc định rỗng = không nhận ai). Chứng chỉ đăng nhập Zalo do DỊCH VỤ giữ (cred_*.json 0600), module không bao giờ thấy. Hành động gửi tin là GHI ra ngoài: lõi chỉ cho khoá khách có phạm vi gui:zalo-ca-nhan gọi đường gửi (kèm hạn tần suất của lõi), KHÔNG có bước quản trị xác nhận từng tin — ai giữ khoá có phạm vi đó gửi được tới mọi đích của tài khoản. Phần NV172.","phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"Bản thân module chỉ gọi HTTP nội bộ tới dịch vụ zalo-ca-nhan (127.0.0.1 hoặc mạng Docker nội bộ); dịch vụ dùng zca-js nối tới Zalo (xem dich-vu/zalo-ca-nhan/README.md về phụ thuộc npm và tài nguyên). Chưa đo RAM/đĩa thật (null = chưa đo). Chưa kiểm với Zalo thật.","gpu":false,"mang_ra":[],"ram_them_mb":null},"ten":"Zalo cá nhân qua dịch vụ phụ (Node)","tien_to":"zalo_ca_nhan","truong_cau_hinh":[{"bat_buoc":false,"khoa":"bat","kieu":"chuoi","mac_dinh":"0","mo_ta":"Bật kênh Zalo cá nhân: «1»/«bat» = bật, còn lại = tắt (mặc định tắt). Tắt thì kenh_ra trống, gui_tin báo «chua_bat», hoi_vong không hỏi và không gọi mạng.","nhan":"Bật module"},{"bat_buoc":false,"khoa":"dich_vu_url","kieu":"chuoi","mac_dinh":"http://127.0.0.1:8703","mo_ta":"Địa chỉ HTTP nội bộ của dịch vụ dich-vu/zalo-ca-nhan. CHỈ nhận loopback (127.0.0.0/8, ::1, localhost) — chống SSRF; địa chỉ khác bị từ chối khi cài. Module không gọi ra ngoài (trừ dịch vụ này qua loopback/HTTP).","nhan":"Địa chỉ dịch vụ zalo-ca-nhan"},{"bat_buoc":false,"khoa":"khoa_dich_vu","kieu":"bi_mat","mac_dinh":null,"mo_ta":"Khoá Bearer xác thực với dịch vụ zalo-ca-nhan (biến ZALO_KHOA lúc chạy container dịch vụ). TỰ ĐẶT khi dựng container: `openssl rand -hex 32` rồi dùng đúng giá trị đó ở đây (dài ≥24 ký tự; bắt buộc khi bat=1). Lưu riêng, không API nào trả lại, không vào log (có bộ lọc log).","nhan":"Khoá Bearer của dịch vụ"},{"bat_buoc":false,"khoa":"danh_sach_cho_phep","kieu":"chuoi","mac_dinh":"[]","mo_ta":"Chuỗi JSON mảng id người gửi được phép nhận tin (ví dụ [\"1234567890\"]). Lấy id từ phản hồi của dịch vụ (mục hop_thoai của trang QR/trang hợp đồng). Mặc định [] = KHÔNG nhận tin của ai. Tin của người ngoài danh sách bị bỏ lặng lẽ (đếm bo_qua_nguoi_la).","nhan":"Danh sách người gửi được nhận"}],"yeu_cau_goi":["httpx"]}
+{
+  "cung_cap": [
+    "kenh_ra"
+  ],
+  "giao_dien": null,
+  "giao_thuc": "http-noi-bo",
+  "hang": "B",
+  "hoi_vong": {
+    "chu_ky_giay": 5
+  },
+  "id": "zalo-ca-nhan",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 44,
+  "nhom_con": {
+    "id": "nhan-tin-va-kenh",
+    "ten": "Nhắn tin và kênh",
+    "thu_tu": 1
+  },
+  "mo_ta": "Gửi/nhận tin Zalo bằng tài khoản CÁ NHÂN qua dịch vụ phụ dich-vu/zalo-ca-nhan (Node + zca-js, container riêng, HTTP loopback). CẢNH BÁO: API không chính thức của Zalo — tài khoản có thể bị khoá bất cứ lúc nào, chủ máy tự chịu. Mặc định TẮT (bật bằng bat). Chỉ nhận tin từ người trong danh sách cho phép (mặc định rỗng = không nhận ai). Chứng chỉ đăng nhập Zalo do DỊCH VỤ giữ (cred_*.json 0600), module không bao giờ thấy. Hành động gửi tin là GHI ra ngoài: lõi chỉ cho khoá khách có phạm vi gui:zalo-ca-nhan gọi đường gửi (kèm hạn tần suất của lõi), KHÔNG có bước quản trị xác nhận từng tin — ai giữ khoá có phạm vi đó gửi được tới mọi đích của tài khoản. Phần NV172.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Bản thân module chỉ gọi HTTP nội bộ tới dịch vụ zalo-ca-nhan (127.0.0.1 hoặc mạng Docker nội bộ); dịch vụ dùng zca-js nối tới Zalo (xem dich-vu/zalo-ca-nhan/README.md về phụ thuộc npm và tài nguyên). Chưa đo RAM/đĩa thật (null = chưa đo). Chưa kiểm với Zalo thật.",
+    "gpu": false,
+    "mang_ra": [],
+    "ram_them_mb": null
+  },
+  "ten": "Zalo cá nhân qua dịch vụ phụ (Node)",
+  "tien_to": "zalo_ca_nhan",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": false,
+      "khoa": "bat",
+      "kieu": "chuoi",
+      "mac_dinh": "0",
+      "mo_ta": "Bật kênh Zalo cá nhân: «1»/«bat» = bật, còn lại = tắt (mặc định tắt). Tắt thì kenh_ra trống, gui_tin báo «chua_bat», hoi_vong không hỏi và không gọi mạng.",
+      "nhan": "Bật module"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "dich_vu_url",
+      "kieu": "chuoi",
+      "mac_dinh": "http://127.0.0.1:8703",
+      "mo_ta": "Địa chỉ HTTP nội bộ của dịch vụ dich-vu/zalo-ca-nhan. CHỈ nhận loopback (127.0.0.0/8, ::1, localhost) — chống SSRF; địa chỉ khác bị từ chối khi cài. Module không gọi ra ngoài (trừ dịch vụ này qua loopback/HTTP).",
+      "nhan": "Địa chỉ dịch vụ zalo-ca-nhan"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "khoa_dich_vu",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Khoá Bearer xác thực với dịch vụ zalo-ca-nhan (biến ZALO_KHOA lúc chạy container dịch vụ). TỰ ĐẶT khi dựng container: `openssl rand -hex 32` rồi dùng đúng giá trị đó ở đây (dài ≥24 ký tự; bắt buộc khi bat=1). Lưu riêng, không API nào trả lại, không vào log (có bộ lọc log).",
+      "nhan": "Khoá Bearer của dịch vụ"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "danh_sach_cho_phep",
+      "kieu": "chuoi",
+      "mac_dinh": "[]",
+      "mo_ta": "Chuỗi JSON mảng id người gửi được phép nhận tin (ví dụ [\"1234567890\"]). Lấy id từ phản hồi của dịch vụ (mục hop_thoai của trang QR/trang hợp đồng). Mặc định [] = KHÔNG nhận tin của ai. Tin của người ngoài danh sách bị bỏ lặng lẽ (đếm bo_qua_nguoi_la).",
+      "nhan": "Danh sách người gửi được nhận"
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

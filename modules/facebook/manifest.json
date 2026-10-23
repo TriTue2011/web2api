@@ -1,1 +1,74 @@
-{"cung_cap": ["thiet_bi"], "giao_thuc": "graph-api", "hang": "A", "id": "facebook", "loai": "tien_ich", "loai_ten": "Tiện ích", "loai_thu_tu": 44, "mo_ta": "Đăng bài lên Trang (Page) Facebook qua Graph API CHÍNH THỨC: bài chữ/link, bài ảnh (tải ảnh an toàn rồi upload), bài video (file_url). Mỗi Trang là một thực thể rủi ro «nguy_hiem» — lõi bắt quản trị xác nhận trước khi bất cứ bài nào ra công chúng. Đăng vào NHÓM không hỗ trợ: Meta đã gỡ Groups API từ 04/2024, đường trình duyệt tự động là không chính thức nên không làm.", "phien_ban": "0.1.0", "tai_nguyen": {"dia_mb": null, "ghi_chu": "Chỉ gọi https://graph.facebook.com/v23.0 (cố định trong mã, không cho cấu hình URL tuỳ ý — chống SSRF). Cài đặt: tạo app Meta (developers.facebook.com, loại Business) → cài app_id + app_secret → dán user token từ Graph API Explorer (quyền pages_manage_posts, pages_show_list) → bấm Cài để module đổi token dài hạn và nạp danh sách Trang. Chưa đo RAM/đĩa thật (null = chưa đo).", "gpu": false, "mang_ra": ["graph.facebook.com"], "ram_them_mb": null}, "ten": "Facebook (đăng bài Trang)", "tien_to": "facebook", "truong_cau_hinh": [{"bat_buoc": true, "khoa": "app_id", "kieu": "chuoi", "mac_dinh": null, "mo_ta": "Mã của ứng dụng Meta tự tạo ở developers.facebook.com (Ứng dụng của tôi → Tạo ứng dụng, loại Business). Admin/developer của app có sẵn quyền pages_manage_posts nên tự dùng không cần App Review.", "nhan": "App ID"}, {"bat_buoc": true, "khoa": "app_secret", "kieu": "bi_mat", "mac_dinh": null, "mo_ta": "App Secret của ứng dụng đó (developers.facebook.com → app → Cài đặt → Cơ bản → App Secret → Hiện). Module kèm appsecret_proof (HMAC-SHA256 của token) vào mọi lời gọi Graph. Lưu riêng dạng bí mật: không vào log, phản hồi hay nhật ký.", "nhan": "App Secret"}, {"bat_buoc": false, "khoa": "user_token", "kieu": "bi_mat", "mac_dinh": null, "mo_ta": "Token NGƯỜI DÙNG ngắn hạn lấy ở Graph API Explorer (developers.facebook.com/tools/explorer): chọn đúng app của mình, bấm «Generate Access Token» với quyền pages_manage_posts và pages_show_list. Token Explorer sống 1–2 giờ — chỉ dùng MỘT LẦN khi bấm Cài để đổi lấy token dài hạn (~60 ngày); đổi xong module tự xoá trường này khỏi cấu hình đã lưu.", "nhan": "User token (Graph API Explorer)"}, {"bat_buoc": false, "khoa": "user_token_long", "kieu": "bi_mat", "mac_dinh": null, "mo_ta": "Token người dùng DÀI HẠN (~60 ngày) — MODULE TỰ LƯU sau khi đổi thành công, không cần tự nhập. Hết hạn thì dán lại user token mới rồi bấm Cài (mục «làm tươi»).", "nhan": "User token dài hạn (tự lưu)"}, {"bat_buoc": false, "khoa": "pages", "kieu": "bi_mat", "mac_dinh": null, "mo_ta": "Danh sách Trang kèm Page access token — MODULE TỰ LƯU sau khi đổi token thành công (Page access token lấy từ token người dùng dài hạn thực tế không hết hạn, chỉ chết khi đổi mật khẩu/thu hồi quyền của Facebook). Chứa token nên lưu dạng bí mật, không API nào trả lại.", "nhan": "Danh sách Trang (tự lưu)"}], "yeu_cau_goi": ["httpx"]}
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "graph-api",
+  "hang": "A",
+  "id": "facebook",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 44,
+  "nhom_con": {
+    "id": "nhan-tin-va-kenh",
+    "ten": "Nhắn tin và kênh",
+    "thu_tu": 1
+  },
+  "mo_ta": "Đăng bài lên Trang (Page) Facebook qua Graph API CHÍNH THỨC: bài chữ/link, bài ảnh (tải ảnh an toàn rồi upload), bài video (file_url). Mỗi Trang là một thực thể rủi ro «nguy_hiem» — lõi bắt quản trị xác nhận trước khi bất cứ bài nào ra công chúng. Đăng vào NHÓM không hỗ trợ: Meta đã gỡ Groups API từ 04/2024, đường trình duyệt tự động là không chính thức nên không làm.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Chỉ gọi https://graph.facebook.com/v23.0 (cố định trong mã, không cho cấu hình URL tuỳ ý — chống SSRF). Cài đặt: tạo app Meta (developers.facebook.com, loại Business) → cài app_id + app_secret → dán user token từ Graph API Explorer (quyền pages_manage_posts, pages_show_list) → bấm Cài để module đổi token dài hạn và nạp danh sách Trang. Chưa đo RAM/đĩa thật (null = chưa đo).",
+    "gpu": false,
+    "mang_ra": [
+      "graph.facebook.com"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "Facebook (đăng bài Trang)",
+  "tien_to": "facebook",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "app_id",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Mã của ứng dụng Meta tự tạo ở developers.facebook.com (Ứng dụng của tôi → Tạo ứng dụng, loại Business). Admin/developer của app có sẵn quyền pages_manage_posts nên tự dùng không cần App Review.",
+      "nhan": "App ID"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "app_secret",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "App Secret của ứng dụng đó (developers.facebook.com → app → Cài đặt → Cơ bản → App Secret → Hiện). Module kèm appsecret_proof (HMAC-SHA256 của token) vào mọi lời gọi Graph. Lưu riêng dạng bí mật: không vào log, phản hồi hay nhật ký.",
+      "nhan": "App Secret"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "user_token",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Token NGƯỜI DÙNG ngắn hạn lấy ở Graph API Explorer (developers.facebook.com/tools/explorer): chọn đúng app của mình, bấm «Generate Access Token» với quyền pages_manage_posts và pages_show_list. Token Explorer sống 1–2 giờ — chỉ dùng MỘT LẦN khi bấm Cài để đổi lấy token dài hạn (~60 ngày); đổi xong module tự xoá trường này khỏi cấu hình đã lưu.",
+      "nhan": "User token (Graph API Explorer)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "user_token_long",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Token người dùng DÀI HẠN (~60 ngày) — MODULE TỰ LƯU sau khi đổi thành công, không cần tự nhập. Hết hạn thì dán lại user token mới rồi bấm Cài (mục «làm tươi»).",
+      "nhan": "User token dài hạn (tự lưu)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "pages",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Danh sách Trang kèm Page access token — MODULE TỰ LƯU sau khi đổi token thành công (Page access token lấy từ token người dùng dài hạn thực tế không hết hạn, chỉ chết khi đổi mật khẩu/thu hồi quyền của Facebook). Chứa token nên lưu dạng bí mật, không API nào trả lại.",
+      "nhan": "Danh sách Trang (tự lưu)"
+    }
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ]
+}

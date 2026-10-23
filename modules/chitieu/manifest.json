@@ -1,1 +1,29 @@
-{"cung_cap":["thiet_bi"],"giao_thuc":"cuc_bo","hang":"B","id":"chitieu","loai":"tien_ich","loai_ten":"Tiện ích","loai_thu_tu":46,"mo_ta":"Sổ chi tiêu theo hũ (JARS): ghi khoản chi, xem ngân sách theo kỳ, tự bù hũ vượt, cảnh báo chạm ngưỡng, tạm ứng công ty. Mỗi danh tính đăng nhập có sổ riêng. Thuần Python + SQLite, không mạng. Port từ c2a.","phien_ban":"0.1.0","tai_nguyen":{"dia_mb":null,"ghi_chu":"SQLite ở <WEB2API_DATA>/du_lieu/chi-tieu/chi_tieu.db (vài trăm KB với sổ gia đình). Chưa đo RAM/đĩa thật (null = chưa đo).","gpu":false,"mang_ra":[],"ram_them_mb":null},"ten":"Sổ chi tiêu cá nhân","tien_to":"chi_tieu","truong_cau_hinh":[],"yeu_cau_goi":[]}
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "cuc_bo",
+  "hang": "B",
+  "id": "chitieu",
+  "loai": "tien_ich",
+  "loai_ten": "Tiện ích",
+  "loai_thu_tu": 46,
+  "nhom_con": {
+    "id": "van-phong-va-tai-lieu",
+    "ten": "Văn phòng và tài liệu",
+    "thu_tu": 2
+  },
+  "mo_ta": "Sổ chi tiêu theo hũ (JARS): ghi khoản chi, xem ngân sách theo kỳ, tự bù hũ vượt, cảnh báo chạm ngưỡng, tạm ứng công ty. Mỗi danh tính đăng nhập có sổ riêng. Thuần Python + SQLite, không mạng. Port từ c2a.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "SQLite ở <WEB2API_DATA>/du_lieu/chi-tieu/chi_tieu.db (vài trăm KB với sổ gia đình). Chưa đo RAM/đĩa thật (null = chưa đo).",
+    "gpu": false,
+    "mang_ra": [],
+    "ram_them_mb": null
+  },
+  "ten": "Sổ chi tiêu cá nhân",
+  "tien_to": "chi_tieu",
+  "truong_cau_hinh": [],
+  "yeu_cau_goi": []
+}

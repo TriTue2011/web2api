@@ -803,7 +803,8 @@ class NguonGit:
             truoc = cu_theo_id.get(ten)
             # Thư mục không đổi → khỏi tải lại manifest (tiết kiệm hạn mức). Bản tóm tắt do lõi CŨ ghi (chưa có
             # `loai`) thì đọc lại một lần: thiếu `loai` thì trang Module không xếp được ô «Chưa cài» vào khu nào.
-            if truoc and truoc.get("tree_sha") == sha_tm and (truoc.get("loi") or ("loai" in truoc and "quyen" in truoc)):
+            # NV259: cùng lý do với `nhom_con` — thiếu thì ô chưa cài mất nhóm con trên trang Module.
+            if truoc and truoc.get("tree_sha") == sha_tm and (truoc.get("loi") or ("loai" in truoc and "quyen" in truoc and "nhom_con" in truoc)):
                 ra.append({**truoc, "dung_luong": dung_luong.get(ten, 0)})
                 continue
             muc = {"id": ten, "tree_sha": sha_tm, "loi": None, "dung_luong": dung_luong.get(ten, 0)}
@@ -819,12 +820,15 @@ class NguonGit:
             if ly_do:
                 muc["loi"] = ly_do
             else:
+                from app.kham_pha import _chuan_hoa_nhom_con
                 from app.quyen_module import diff_quyen
+                _chuan_hoa_nhom_con(m)  # NV259: chuẩn hoá như đường catalog — sai định dạng thì bỏ trường
                 quyen_ds = diff_quyen({}, m).get("them") or []
                 muc.update(ten=m["ten"], mo_ta=m["mo_ta"], phien_ban=m.get("phien_ban"),
                            yeu_cau_goi=m.get("yeu_cau_goi", []), mang_ra=m["tai_nguyen"].get("mang_ra", []),
                            tai_nguyen=m["tai_nguyen"], loai=m["loai"], loai_ten=m.get("loai_ten"),
-                           loai_thu_tu=m.get("loai_thu_tu"), nhom=m.get("nhom"), cung_cap=m.get("cung_cap", []),
+                           loai_thu_tu=m.get("loai_thu_tu"), nhom=m.get("nhom"), nhom_con=m.get("nhom_con"),
+                           cung_cap=m.get("cung_cap", []),
                            quyen=quyen_ds)
             ra.append(muc)
         return ra
@@ -872,7 +876,7 @@ class NguonGit:
                 "phien_ban_cu": km.manifest.get("phien_ban") if km else None,
                 "phien_ban_moi": m.get("phien_ban"),
                 # Tóm tắt manifest trên git: trang Module xếp ô «Chưa cài» vào khu theo `loai` và hiện «Cần gì để chạy».
-                **{k: m.get(k) for k in ("mo_ta", "loai", "loai_ten", "loai_thu_tu", "nhom", "cung_cap", "tai_nguyen",
+                **{k: m.get(k) for k in ("mo_ta", "loai", "loai_ten", "loai_thu_tu", "nhom", "nhom_con", "cung_cap", "tai_nguyen",
                                          "yeu_cau_goi", "dung_luong", "quyen")},
                 "commit": {k: commit.get(k) for k in ("sha", "tac_gia", "thong_diep")},
                 "ly_do": ly_do,

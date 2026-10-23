@@ -4,14 +4,27 @@
   "mo_ta": "Cầu nối điều khiển dịch vụ trình duyệt từ xa qua noVNC để đăng nhập tay và lưu giữ hồ sơ phiên bền vững.",
   "phien_ban": "0.2.0",
   "hang": "A",
-  "loai": "tien_ich",
-  "loai_ten": "Tiện ích",
-  "loai_thu_tu": 40,
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "nen-tai-khoan",
+    "ten": "Nền và tài khoản: cài trước",
+    "thu_tu": 1
+  },
   "giao_thuc": "http",
   "tien_to": "vncxa",
-  "yeu_cau_goi": ["httpx"],
-  "cung_cap": ["trinh_duyet"],
-  "tab_web": {"nhan": "Trình duyệt", "trang": "web/index.html", "an_khoi_thanh": true},
+  "yeu_cau_goi": [
+    "httpx"
+  ],
+  "cung_cap": [
+    "trinh_duyet"
+  ],
+  "tab_web": {
+    "nhan": "Trình duyệt",
+    "trang": "web/index.html",
+    "an_khoi_thanh": true
+  },
   "truong_cau_hinh": [
     {
       "khoa": "dich_vu_url",

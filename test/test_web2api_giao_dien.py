@@ -107,7 +107,7 @@ def khong_tran(trang) -> bool:
 def test_ca_0_module_chi_co_module_va_go_tay_bi_chuyen(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(w.url + "/")  # NV256: qua di() để vượt chặn LNA của Chromium
+        trang.di(w.url + "/", mo_muc=False)  # NV255: dùng di() để vượt chặn LNA (thay Page.navigate trực tiếp)
         trang.cho("location.pathname.endsWith('/He-thong.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'",
                   mo_ta="địa chỉ gốc dẫn tới Hệ thống → Module")
         trang.cho("document.getElementById('ket-noi')", mo_ta="khối Kết nối với web2api")
@@ -120,7 +120,7 @@ def test_ca_0_module_chi_co_module_va_go_tay_bi_chuyen(trang, tmp_path, monkeypa
         # Gõ tay trang chưa đủ điều kiện → về Module kèm một dòng «cần gì», không dựng màn đó.
         for duong, chu in (("/Studio.dc.html", "chat"), ("/He-thong-AI.dc.html", "AI")):
             trang.js("window.__trangCu = 1")  # đánh dấu trang hiện tại: chỉ chấp nhận trang MỚI sau điều hướng
-            trang.di(w.url + duong)  # NV256: qua di() để vượt chặn LNA của Chromium
+            trang.di(w.url + duong, mo_muc=False)  # NV255: dùng di() để vượt chặn LNA
             trang.cho("!window.__trangCu && document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.search.includes('thieu=') && !!document.getElementById('thieu')",
                       mo_ta=f"{duong} chuyển về Module")
             dong = trang.chu("#thieu")
@@ -130,9 +130,8 @@ def test_ca_0_module_chi_co_module_va_go_tay_bi_chuyen(trang, tmp_path, monkeypa
 
 # ───────────── luồng chính (chủ máy 11/10): Cài → vào Studio ngay → thêm khoá ở Hệ thống → AI ─────────────
 
-def nut_o(id_: str) -> str:
-    """Nút hành động trên ô (Cài / Cập nhật / Thêm khoá) — anh em của nút chọn ô, không lồng trong nó."""
-    return f"document.querySelector('[data-o-khung={json.dumps(id_)}] [data-hanh-dong]')"
+# NV255: đã xoá nut_o() — không còn nút hành động riêng trên ô (Cài/Cập nhật/Thêm khoá/Xoá);
+# mọi hành động nằm trong bảng chi tiết (nút #nut-cai, #nut-go, #nut-them-khoa).
 
 
 # Đếm lời gọi cài trong sessionStorage: trang tự chuyển sang Studio sau khi cài, biến trên window mất theo trang.
@@ -152,13 +151,15 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("ai-gia"), han=15, mo_ta="ô ai-gia (Chưa cài) từ git")
         assert trang.js(o("ai-gia") + ".dataset.tt") == "chua-cai"
-        # Khu mặc định là loại có loai_thu_tu nhỏ nhất (AI); ô loại «mang» chỉ hiện khi chọn chip của nó.
-        assert trang.js("document.querySelector('[data-loc-loai=\"ai\"]').getAttribute('aria-pressed')") == "true"
-        assert not trang.js("!!" + o("mang-gia"))
-        trang.bam("document.querySelector('[data-loc-loai=\"mang\"]')")
-        trang.cho(o("mang-gia"), mo_ta="ô mang-gia dưới chip Mạng")
-        assert trang.js("document.querySelector(\"[data-khu='mang'] .khu-ten\").textContent").startswith("Mạng")
-        trang.bam("document.querySelector('[data-loc-loai=\"ai\"]')")
+        # NV255 (sửa selector + hành vi): mặc định hiện TẤT CẢ các làn; bấm tên làn thì lọc chỉ làn đó, bấm lại thì về tất cả.
+        assert trang.js("!!" + o("ai-gia")) and trang.js("!!" + o("mang-gia"))
+        assert trang.js("document.querySelector(\"[data-lane='mang'] .lane-ten\").textContent").startswith("Mạng")
+        assert trang.js("document.querySelector('[data-loc-lan=\"mang\"]').getAttribute('aria-pressed')") == "false"
+        trang.bam("document.querySelector('[data-loc-lan=\"mang\"]')")
+        trang.cho(o("mang-gia") + " && !" + o("ai-gia"), mo_ta="lọc chỉ làn Mạng")
+        assert trang.js("document.querySelector('[data-loc-lan=\"mang\"]').getAttribute('aria-pressed')") == "true"
+        trang.bam("document.querySelector('[data-loc-lan=\"mang\"]')")
+        trang.cho(o("ai-gia") + " && " + o("mang-gia"), mo_ta="bấm lại thì về tất cả")
 
         # Bảng chi tiết: «Cần gì để chạy» TRƯỚC khi cài.
         trang.bam(o("ai-gia"))
@@ -171,27 +172,24 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
         trang.cho("!document.getElementById('chi-tiet')", mo_ta="đóng bảng chi tiết")
 
-        # Nút «Cài» NGAY TRÊN Ô (biểu tượng tải về nền đen như ô chưa cài của demo Tiện ích): không lồng trong nút chọn ô;
-        # bấm hai lần liền → MỘT lần cài ở lượt 1, mở hộp xác nhận cài mới (NV61).
-        assert trang.js(nut_o("ai-gia") + ".getAttribute('aria-label')") == "Cài AI giả"
-        assert "den" in trang.js(nut_o("ai-gia") + ".className")
-        assert trang.js(nut_o("ai-gia") + ".dataset.hanhDong") == "cai"
-        assert trang.js(nut_o("ai-gia") + ".closest('button[data-o]') === null && " + o("ai-gia") + ".querySelector('button, a') === null")
+        # NV255 (tính năng đổi — sửa flow): không còn nút hành động riêng trên ô; nút «Cài» nằm trong bảng chi tiết.
+        # Ô là một nút duy nhất — không lồng button/a trong button.
+        assert trang.js(o("ai-gia") + ".querySelector('button, a') === null")
+        trang.bam(o("ai-gia"))
+        trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài trong bảng chi tiết")
+        assert trang.chu("#nut-cai") == "Cài"
         trang.js(DEM_CAI)
-        trang.js(f"(() => {{ const b = {nut_o('ai-gia')}; b.click(); b.click(); }})()")
-        trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mới")
+        trang.bam("document.getElementById('nut-cai')")
+        trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mới (NV61)")
         assert "Cài module" in trang.chu("#xac-nhan-cai")
-        assert trang.js("sessionStorage.demCai") == "1"
-        assert trang.js(o("ai-gia") + ".getAttribute('aria-pressed')") == "false"
-        assert not trang.js("!!document.getElementById('can-gi')")  # bảng chi tiết bình thường của ô không mở, chỉ có hộp xác nhận
-        # Bấm Đồng ý cài: bấm hai lần liền cũng chỉ gửi MỘT lần cài ở lượt 2 (chống gửi đúp)
+        # Bấm Đồng ý hai lần liền cũng chỉ gửi MỘT lần cài (chống gửi đúp)
         trang.js("(() => { const b = document.getElementById('nut-dong-y-cai'); if (b) { b.click(); b.click(); } })()")
 
         # Cài xong (module khai chat) → tự sang Studio; MỘT dòng nhỏ «Chưa có khoá cho … — Thêm khoá» dẫn tới chỗ thêm
         # khoá (không dải «Đã cài …» — bản demo không có), viên trạng thái của demo chuyển vàng «Chờ khoá».
         trang.cho("location.pathname.endsWith('/Studio.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'"
                   " && !!document.getElementById('studio-chua-khoa')", han=20, mo_ta="tự sang Studio sau khi cài")
-        assert trang.js("sessionStorage.demCai") == "2"
+        assert trang.js("sessionStorage.demCai") == "2"   # lượt 1 (bấm Cài) + lượt 2 (bấm đúp Đồng ý chỉ gửi 1 lần)
         assert "da_cai" not in trang.js("location.search")          # tham số chỉ dùng một lần, bỏ khỏi địa chỉ
         assert not trang.js("!!document.getElementById('da-cai')")
         assert trang.chu("#trang-thai-chung") == "Chờ khoá"
@@ -258,12 +256,15 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.cho("document.getElementById('trang-thai')?.innerText === 'Xong.'", han=10, mo_ta="chat xong")
         assert trang.chu("[data-vai='assistant']") == "Xin chào, tôi là model giả."
 
-        # Module loại LẠ (`mang`) không ứng tab chính nào: cài xong (bằng nút trên ô) ở lại trang Module.
+        # Module loại LẠ (`mang`) không ứng tab chính nào: cài xong (bằng nút Cài trong bảng chi tiết) ở lại trang Module.
+        # NV255 (sửa selector + flow): [data-loc-loai] → [data-loc-lan]; nút Cài nằm trong bảng chi tiết.
         trang.di(w.url + "/He-thong.dc.html")
-        trang.bam("document.querySelector('[data-loc-loai=\"mang\"]')")
-        trang.cho(nut_o("mang-gia"), mo_ta="nút Cài trên ô mang-gia")
+        trang.bam("document.querySelector('[data-loc-lan=\"mang\"]')")
+        trang.cho(o("mang-gia"), han=15, mo_ta="ô mang-gia")
         trang.js("window.__oLai = 1")
-        trang.bam(nut_o("mang-gia"))
+        trang.bam(o("mang-gia"))
+        trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài trong bảng chi tiết")
+        trang.bam("document.getElementById('nut-cai')")
         trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mang-gia")
         trang.bam("document.getElementById('nut-dong-y-cai')")
         trang.cho(o("mang-gia") + "?.dataset.tt === 'dang-chay'", han=15, mo_ta="mang-gia cài xong")
@@ -280,11 +281,12 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("ai-gia") + "?.dataset.tt === 'cho-khoa'", han=15, mo_ta="ô «Đã cài — chờ khoá»")
-        # Nút trên ô «Thêm khoá»: module mang mã của tab Tài khoản → dẫn tới Hệ thống → AI → Tài khoản đúng module.
-        assert trang.js(nut_o("ai-gia") + ".dataset.hanhDong") == "them-khoa"
-        assert trang.js(nut_o("ai-gia") + ".getAttribute('href')").endswith("He-thong-AI.dc.html#tk-ai-gia")
         trang.js("window.__khongTaiLai = 1")
         trang.bam(o("ai-gia"))
+        # NV255 (sửa selector): liên kết «Thêm khoá» nằm trong bảng chi tiết (không còn nút riêng trên ô);
+        # module mang mã của tab Tài khoản → dẫn tới Hệ thống → AI → Tài khoản đúng module.
+        trang.cho("document.getElementById('lk-them-khoa')", han=15, mo_ta="liên kết Thêm khoá")
+        assert trang.js("document.getElementById('lk-them-khoa').getAttribute('href')").endswith("He-thong-AI.dc.html#tk-ai-gia")
         trang.cho("document.querySelector('#chi-tiet form.form-cau-hinh')", han=15, mo_ta="bước Thêm tài khoản/khoá API")
         assert trang.chu("#ct-trang-thai") == "Đã cài — chờ khoá"
         assert trang.chu("#moi-nhat") == "Đã là bản mới nhất trên git."   # A0: da_cai_dung
@@ -311,7 +313,7 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
         trang.cho("!document.getElementById('ket-noi')", mo_ta="Kết nối ẩn sau liên kết đầu tiên")
         assert trang.js("window.__khongTaiLai") == 1
         assert trang.chu("#ct-trang-thai") == "Đang chạy"
-        assert not trang.js("!!" + nut_o("ai-gia"))                           # đang chạy, mới nhất: không nút trên ô
+        # NV255: không còn nút riêng trên ô để kiểm — trạng thái «Đang chạy» của ô là đủ.
 
         luu = json.loads((tmp_path / "bi_mat" / "ai-gia.json").read_text())
         assert luu["api_keys"] == [K_TOT]
@@ -343,12 +345,12 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
                   han=15, mo_ta="Studio và AI biến mất sau khi gỡ")
         assert trang.js("window.__khongTaiLai") == 1
         trang.cho(o("ai-gia") + "?.dataset.tt === 'chua-cai'", han=15, mo_ta="còn trên git → lại «Chưa cài»")
-        assert trang.js(nut_o("ai-gia") + ".dataset.hanhDong") == "cai"
+        # NV255: không còn nút hành động riêng trên ô (nut_o đã xoá) — trạng thái ô «chua-cai» là đủ.
 
 
 def test_them_khoa_tren_o_module_khong_co_tab_tai_khoan_mo_bang_chi_tiet(trang, tmp_path, monkeypatch):
-    """Module cần khoá nhưng KHÔNG mang mã của tab Tài khoản (loại «app»): nút «Thêm khoá» trên ô mở bảng chi
-    tiết ngay ở bước thêm khoá, một lần bấm, không rời trang."""
+    """Module cần khoá nhưng KHÔNG mang mã của tab Tài khoản (loại «app»): nút «Thêm khoá» TRONG BẢNG CHI TIẾT
+    (NV255: không còn nút riêng trên ô) mở bảng chi tiết ngay ở bước thêm khoá, một lần bấm, không rời trang."""
     tep = module_ai("app-khoa", "App cần khoá", "appk", ())
     m = json.loads(tep["manifest.json"])
     m.update(loai="app", loai_ten="App", loai_thu_tu=20)
@@ -356,11 +358,13 @@ def test_them_khoa_tren_o_module_khong_co_tab_tai_khoan_mo_bang_chi_tiet(trang, 
     with loi_that(tmp_path, monkeypatch, modules={"app-khoa": tep}) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        trang.cho(nut_o("app-khoa"), han=15, mo_ta="nút trên ô")
-        assert trang.js(nut_o("app-khoa") + ".tagName") == "BUTTON"
-        assert trang.chu("[data-o-khung='app-khoa'] [data-hanh-dong]") == "Thêm khoá"
+        trang.cho(o("app-khoa"), han=15, mo_ta="ô app-khoa")
+        trang.bam(o("app-khoa"))
+        trang.cho("document.getElementById('nut-them-khoa')", han=15, mo_ta="nút Thêm khoá trong bảng chi tiết")
+        assert trang.js("document.getElementById('nut-them-khoa').tagName") == "BUTTON"
+        assert trang.chu("#nut-them-khoa") == "Thêm khoá"
         trang.js("window.__oLai = 1")
-        trang.bam(nut_o("app-khoa"))
+        trang.bam("document.getElementById('nut-them-khoa')")
         trang.cho("document.activeElement?.closest('#lien-ket') && document.activeElement.tagName === 'TEXTAREA'",
                   han=10, mo_ta="focus vào ô khoá trong bảng chi tiết")
         assert trang.js("window.__oLai") == 1
@@ -1408,9 +1412,9 @@ def test_chi_tiet_khong_chen_html(trang, tmp_path, monkeypatch):
         trang.cho("document.getElementById('chi-tiet-ten')", mo_ta="chi tiết")
         assert trang.chu("#chi-tiet-ten") == XSS_TEN
         assert not trang.js("window.__xss") and not trang.js("!!document.querySelector('#chi-tiet img, #chi-tiet b')")
-        # Esc đóng bảng chi tiết, focus về ô.
+        # NV259: Esc bỏ chọn module → bảng chuyển về TỔNG của phạm vi đang xem (không biến mất), focus về ô.
         trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
-        trang.cho("!document.getElementById('chi-tiet') && document.activeElement?.dataset.o === 'xss-gia'", mo_ta="đóng + focus")
+        trang.cho("document.getElementById('chi-tiet-ten')?.textContent.trim() === 'Tổng web2api' && document.activeElement?.dataset.o === 'xss-gia'", mo_ta="Esc về tổng + focus về ô")
 
 
 # ───────────── điện thoại 390px, ô bằng nhau ─────────────
@@ -1426,21 +1430,20 @@ def test_khong_tran_ngang_va_o_cao_bang_nhau(trang, tmp_path, monkeypatch, rong,
         trang.khung(rong, cao, dt)
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
-        # Chip lọc loại chỉ có khi đã đọc xong danh sách module (lõi rỗng thì không có hàng chip loại).
-        trang.cho("document.querySelector('[data-loc-loai=\"tat-ca\"]')", mo_ta="chip loại")
-        trang.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
+        # NV255 (sửa selector): không còn hàng chip loại — mặc định hiện tất cả các làn; chờ ô hiện là đủ.
         trang.cho("document.querySelectorAll('[data-o]').length === 4", mo_ta="4 ô")
         assert khong_tran(trang)
-        # Ô là khung chứa nút chọn ô + nút hành động anh em (không lồng button trong button) — đo cả khung ô.
-        cao_o = trang.js("[...document.querySelectorAll('[data-khu=\"app\"] .luoi-o > .o-mod')].map((b) => Math.round(b.getBoundingClientRect().height))")
-        assert len(set(cao_o)) == 1, cao_o
+        # NV255 (sửa selector + ý nghĩa): ô là MỘT nút duy nhất (pill) — không lồng button/a trong button.
+        assert trang.js("document.querySelectorAll('.pill button, .pill a').length") == 0
+        assert trang.js("document.querySelectorAll('[data-lane=\"app\"] .pill').length") == 2
         trang.bam(o("ai-gia"))
         trang.cho("document.getElementById('chi-tiet')", mo_ta="chi tiết")
         assert khong_tran(trang)
-        if dt:  # như demo Tiện ích ở 390px: bảng chi tiết nằm DƯỚI lưới (không phải tờ nổi), cuộn tới khi chọn ô
-            assert trang.js("getComputedStyle(document.getElementById('chi-tiet')).position") == "static"
-            assert trang.js("document.getElementById('chi-tiet').getBoundingClientRect().top + scrollY"
-                            " >= Math.max(...[...document.querySelectorAll('.o-mod')].map((e) => e.getBoundingClientRect().bottom + scrollY))")
+        if dt:  # NV259: ở điện thoại (<720px) bảng chi tiết là POPUP giữa màn hình (position: fixed) — thay bố cục
+            # «bảng nằm dưới lưới» cũ; popup phải nằm gọn trong khung hình, không tràn ngang/dọc.
+            assert trang.js("getComputedStyle(document.getElementById('chi-tiet')).position") == "fixed"
+            assert trang.js("(() => { const r = document.getElementById('chi-tiet').getBoundingClientRect();"
+                            " return r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1; })()")
         for duong in ("/He-thong-AI.dc.html", "/Studio.dc.html"):
             trang.di(w.url + duong)
             assert khong_tran(trang), duong
@@ -1467,30 +1470,6 @@ def test_moc_1023_thanh_dieu_huong_va_noi_dung_cung_moc(trang, tmp_path, monkeyp
             le = trang.js("parseFloat(getComputedStyle(document.querySelector('main.pg')).paddingLeft)")
             assert (bn, tab, le) == ((True, False, 16) if dien_thoai else (False, True, 32)), (duong, bn, tab, le)
             assert khong_tran(trang), duong
-
-
-def test_go_tren_o_bam_hai_lan(trang, tmp_path, monkeypatch):
-    """Biểu tượng xoá trên ô (như dòng Tiện ích của demo): lần đầu chỉ đổi nền đỏ nhạt và báo «bấm lần nữa», lần hai mới gỡ."""
-    with loi_that(tmp_path, monkeypatch, modules={"mang-gia": module_mang()}) as w:
-        lien_ket(w, "mang-gia")
-        dang_nhap_quan_tri(trang, w.url)
-        trang.di(w.url + "/He-thong.dc.html")
-        trang.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
-        xoa = "document.querySelector('[data-go-o=\"mang-gia\"]')"
-        trang.cho(xoa, han=15, mo_ta="biểu tượng xoá trên ô")
-        assert trang.js(xoa + ".getAttribute('aria-label')") == "Gỡ Mạng giả"
-        assert not trang.js(xoa + ".hasAttribute('data-hanh-dong')")       # nút hành động chính vẫn là [data-hanh-dong]
-        trang.bam(xoa)
-        trang.cho("(document.getElementById('tin-module')?.innerText || '').includes('Bấm biểu tượng xoá lần nữa')", mo_ta="hỏi lại")
-        assert " do" in trang.js(xoa + ".className") and trang.js(o("mang-gia") + ".dataset.tt") == "dang-chay"
-        trang.bam(xoa)
-        trang.cho("!document.querySelector('[data-o=\"mang-gia\"]')", han=15, mo_ta="đã gỡ")
-        assert "Đã gỡ «Mạng giả»" in trang.chu("#tin-module")
-        assert not (tmp_path / "modules" / "mang-gia").exists()
-
-
-# ───────────── «Cập nhật» (A0) và «＋ Thêm module» ─────────────
-
 def test_ban_moi_tren_git_hien_cap_nhat(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, git={"ai-gia": module_ai()}) as w:
         r = cai_git_hai_luot(httpx, "ai-gia", headers=QT, duong_dan=f"{w.url}/api/nguon-git/cai/ai-gia")
@@ -1537,7 +1516,7 @@ def test_them_module_tu_xa_va_nguon_git_qua_giao_dien(trang, tmp_path, monkeypat
         trang.bam("document.querySelector('#tu-xa button[type=submit]')")
         # Module từ xa là dịch vụ chat chuẩn OpenAI → tính «ai» + «chat»: ô Đang chạy ở khu AI, Studio hiện ngay.
         trang.cho(o("may-gpu") + "?.dataset.tt === 'dang-chay'", han=15, mo_ta="ô module từ xa")
-        assert trang.js(o("may-gpu") + ".closest('[data-khu]').dataset.khu") == "ai"
+        assert trang.js(o("may-gpu") + ".closest('[data-lane]').dataset.lane") == "ai"   # NV255: sửa selector
         trang.cho("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href').endsWith('Studio.dc.html')",
                   mo_ta="Studio hiện")
         assert trang.js("window.__khongTaiLai") == 1
@@ -1552,5 +1531,5 @@ def test_them_module_tu_xa_va_nguon_git_qua_giao_dien(trang, tmp_path, monkeypat
         trang.bam("document.querySelector('form.form-ng button[type=submit]')")
         trang.cho("(document.querySelector('#nguon-git [role=status]')?.innerText || '').startsWith('Đã lưu')", han=10,
                   mo_ta="đã lưu nguồn git")
-        trang.bam("document.querySelector('[data-loc-loai=\"tat-ca\"]')")
+        # NV255: không còn chip loại — mặc định đã hiện tất cả các làn; chỉ chờ ô hiện.
         trang.cho(o("mang-gia") + "?.dataset.tt === 'chua-cai'", han=15, mo_ta="ô từ kho mới")

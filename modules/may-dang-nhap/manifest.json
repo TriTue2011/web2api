@@ -4,13 +4,23 @@
   "mo_ta": "Client HTTP mỏng gọi dịch vụ dich-vu/may-dang-nhap (cổng 8010, Bearer) để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản. Module chỉ là cầu nối; mọi logic đăng nhập nằm ở dịch vụ. Đầu ra dịch vụ là dữ liệu không tin: cắt ở trần, gắn nguon_ngoai.",
   "phien_ban": "0.1.0",
   "hang": "B",
-  "loai": "tien_ich",
-  "loai_ten": "Tiện ích",
-  "loai_thu_tu": 44,
+  "loai": "ai",
+  "loai_ten": "AI",
+  "loai_thu_tu": 11,
+  "nhom_con": {
+    "id": "nen-tai-khoan",
+    "ten": "Nền và tài khoản: cài trước",
+    "thu_tu": 1
+  },
   "giao_thuc": "http-noi-bo",
   "tien_to": "may_dang_nhap",
-  "cung_cap": ["dang_nhap_trinh_duyet", "thiet_bi"],
-  "yeu_cau_goi": ["httpx"],
+  "cung_cap": [
+    "dang_nhap_trinh_duyet",
+    "thiet_bi"
+  ],
+  "yeu_cau_goi": [
+    "httpx"
+  ],
   "truong_cau_hinh": [
     {
       "khoa": "dich_vu_url",
