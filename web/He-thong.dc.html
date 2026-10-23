@@ -1182,12 +1182,9 @@ class Component extends DCLogic {
     const hc = s.hoiCai && s.hoiCai.id === x.id ? s.hoiCai : null;
     const chiHoiCai = !!(hc && hc.tuO);
     let hoiCaiVM = null;
-    if (hc) {
-      const dsQuyen = Array.isArray(hc.quyen) ? hc.quyen.map((q) => {
-        if (typeof q === 'string') return { loai: 'Quyền', ten: q };
-        return { loai: (q && q.loai) || 'Quyền', ten: (q && (q.ten || q.mo_ta)) || '' };
-      }) : [];
-      // ---------- NV222: thông tin phụ thuộc ----------
+    // ---------- NV222: thông tin phụ thuộc (NV256: đưa ra khỏi if (hc) — các const này
+    // được dùng ở return bên dưới, để trong block gây ReferenceError «can222 is not defined»
+    // mỗi khi mở panel chi tiết module) ----------
     const canTuInfo = (info) => {
       if (!info) return [];
       if (Array.isArray(info.can_module)) return info.can_module.filter((d) => typeof d === 'string');
@@ -1206,7 +1203,12 @@ class Component extends DCLogic {
     const thieu222 = canIds222.filter((id) => !daCai222[id]);
     const kh222 = this.state.keHoach && this.state.keHoachId === x.id ? this.state.keHoach : null;
     const khKeHoach222 = kh222 && Array.isArray(kh222.ke_hoach) ? kh222.ke_hoach : [];
-    hoiCaiVM = {
+    if (hc) {
+      const dsQuyen = Array.isArray(hc.quyen) ? hc.quyen.map((q) => {
+        if (typeof q === 'string') return { loai: 'Quyền', ten: q };
+        return { loai: (q && q.loai) || 'Quyền', ten: (q && (q.ten || q.mo_ta)) || '' };
+      }) : [];
+      hoiCaiVM = {
         ten: x.info.ten || x.id,
         repo: hc.repo || '',
         sha: (hc.sha_commit || '').slice(0, 7),

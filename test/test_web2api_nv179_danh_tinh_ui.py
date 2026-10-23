@@ -83,7 +83,11 @@ def test_muc_danh_tinh_chrome(trang, moi_truong_ui179, tmp_path):
     dv.ws[HO_SO_UI] = {"ten": "Hồ sơ danh tính", "loai": "firefox", "mo": False}
     _dang_nhap_quan_tri_lna(trang, w.url, tmp_path)
     _mo_trang_lna(trang, f"{w.url}/He-thong-AI.dc.html", tmp_path,
-                  cho="!!document.getElementById('bang-ai')")
+                  cho="!!document.getElementById('bang-ai') && "
+                      "!document.getElementById('bang-ai').dataset.muc.includes('{{')")
+    # NOTE (NV256): dc-lite dựng lại <section id="bang-ai"> khi dữ liệu tab về
+    # (data-muc "{{tab}}" → giá trị thật) — chờ tới khi dựng xong mới assert,
+    # nếu không sẽ flaky vì khoảng trống giữa lần gỡ và lần dựng lại.
 
     # Không còn khối danh tính nào trên trang AI
     assert trang.js("document.querySelectorAll('[data-muc-danh-tinh]').length") == 0

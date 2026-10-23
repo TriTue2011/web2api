@@ -115,10 +115,8 @@ DA_KIEM_TOAN = {
     # Đã duyệt NV94 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
     ("app/khoi_phuc_phien.py", "khoi_phuc"),  # giành trình duyệt lỗi (409 bận/không mở) → log.warning + tầng (b) hỏng mã trinh_duyet_ban → sang tầng kế; finally dong() best-effort
     ("app/tu_lam_moi.py", "_dang_chay_hien_tai"),  # registry dang_chay hỏng → None → khoi_phuc chạy không cầu nối (đường cũ)
-    ("modules/chatgpt-web/module.py", "danh_tinh_id_cua"),  # kho danh tính hỏng → "" → không qua cầu nối trình duyệt thật → đường cũ
-    ("modules/claude-web/module.py", "danh_tinh_id_cua"),  # như trên
-    ("modules/gemini-web/module.py", "danh_tinh_id_cua"),  # như trên
-    ("modules/grok-web/module.py", "danh_tinh_id_cua"),  # như trên
+    # NV256: 4 hàm danh_tinh_id_cua của chatgpt/claude/gemini/grok-web đã bị gỡ cùng tính năng «danh tính»
+    # ở NV219 — không còn điểm nuốt lỗi nào để kiểm toán, xoá entry stale (bài học NV98).
     # Đã duyệt NV121 (đọc từng hàm): bỏ qua lỗi theo hướng AN TOÀN, không mở quyền.
     ("modules/doc-ma-hop-thu/module.py", "filter"),  # không định dạng được dòng log → bỏ dòng đó (đóng khi lỗi, không để lọt mật khẩu)
     ("modules/doc-ma-hop-thu/module.py", "_xet_thu"),  # phân tích thư hỏng → bỏ thư đó (fail-closed, không trích mã nhầm)
@@ -176,6 +174,26 @@ DA_KIEM_TOAN = {
     # rơi về email CỦA CHÍNH tài khoản vừa đăng nhập (dữ liệu chắc chắn), không đoán email lạ; không có quyết định
     # bảo mật nào dựa trên kết quả rỗng.
     ("modules/may-dang-nhap/module.py", "_email_tu_jwt"),
+    # Đã duyệt NV256 (đọc hàm, 23/10/2026): giải mã payload JWT KHÔNG xác thực chữ ký, chỉ để đọc claim exp;
+    # token hỏng → None → phía gọi coi như hết hạn/không đọc được (đóng khi lỗi). Không có quyết định bảo mật
+    # nào coi token hỏng là còn hạn.
+    ("modules/may-dang-nhap/module.py", "_payload_jwt"),
+    # Đã duyệt NV256 (đọc hàm, 23/10/2026): đọc claim exp của JWT mà dịch vụ vừa trả cho chính lượt này;
+    # hỏng/thiếu/không phải số nguyên dương → None → _jwt_con_han False → coi phiên chết, chạy tiếp luồng
+    # onboard đầy đủ (đóng khi lỗi, không dùng token không đọc được).
+    ("modules/may-dang-nhap/module.py", "_exp_cua_jwt"),
+    # Đã duyệt NV256 (đọc hàm, 23/10/2026): quét phiên rẻ qua refresh-jwt; gọi HTTP lỗi → None → luồng
+    # onboard mật khẩu+TOTP chạy tiếp (đường an toàn đầy đủ, không dùng phiên nửa vời). Móc gắn token
+    # vào khoá sổ lỗi thì chỉ ghi log kiểu lỗi (không im lặng, không kèm token).
+    ("modules/may-dang-nhap/module.py", "_thu_refresh_jwt_openai_goc"),
+    # Đã duyệt NV256 (đọc hàm, 23/10/2026): tìm module OAuth theo nhóm — liệt kê thực thể của một module
+    # lỗi → bỏ qua module đó, thử module tiếp theo (không để một module hỏng chặn cả vòng tìm). Trả None
+    # khi không tìm được (phía gọi xử lý None, không giả có).
+    ("app/duong_dung.py", "tim_module_oauth"),
+    # Đã duyệt NV256 (đọc hàm, 23/10/2026): kiểm hạn mức từng tài khoản khi chọn «đang dùng»; lỗi đọc sổ
+    # hạn mức → coi như chưa hết (cùng mẫu đã duyệt app/kho_tai_khoan._con_het_han_muc: hạn mức là QoS,
+    # không phải ranh bảo mật — tài khoản vẫn phải qua đăng nhập thật ở lượt dùng).
+    ("app/kho_tai_khoan.py", "gom_theo_nhom_loai"),
 }
 
 

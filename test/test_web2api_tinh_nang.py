@@ -222,7 +222,8 @@ TOM_TAT_KHUNG = """({
 def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
     """Chủ máy 11/10: Studio (tab «chính» theo khả năng) hiện khi module ĐÃ CÀI, không đợi khoá; chỉ GỌI /v1 được
     khi đã liên kết. Provider cũng hiện từ lúc cài (tab rỗng chỉ chỗ thêm khoá — chủ máy: «cài AI rồi phải thấy có
-    tài khoản, có provider»); Combo không bao giờ (chưa có backend)."""
+    tài khoản, có provider»); Combo hiện khi ≥ 2 module AI đã LIÊN KẾT (NV221: backend /api/combo có thật,
+    bỏ cờ chua_co stale — NV256 cập nhật kỳ vọng cũ «Combo không bao giờ»)."""
     dat(du_lieu, "chat-gia", tep_gia("chat-gia", cung_cap=["chat", "anh"]))          # cài, CHƯA liên kết
     with TestClient(app) as c:
         rong = _khung(tn(c) | {"modules": [], "kha_nang_da_cai": {}, "kha_nang_lien_ket": {}},
@@ -250,11 +251,11 @@ def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
         assert k["dung_duoc"] == ["studio_chat", "studio_anh"] and k["provider"] is True and k["combo"] is False, k
         assert _khung(tn(c), "K.chuaKhoaCho('studio_chat', tn)") == []
 
-        # Hai nguồn AI đã liên kết: đủ «≥ 2» nhưng Combo chưa có backend → vẫn không.
+        # Hai nguồn AI đã liên kết: đủ «≥ 2» → Combo hiện (NV221: backend /api/combo có thật).
         dat(du_lieu, "chat-hai", tep_gia("chat-hai", cung_cap=["chat"]))
         assert c.post("/api/modules/nap-lai", headers=QT).status_code == 200
         assert c.post("/api/modules/chat-hai/cai", json={"cau_hinh": {}}, headers=QT).json()["ok"]
-        assert _khung(tn(c), "K.du('combo', tn)") is False
+        assert _khung(tn(c), "K.du('combo', tn)") is True
 
         # Gỡ hết → trở lại như ca 0.
         for id_ in ("chat-gia", "chat-hai"):

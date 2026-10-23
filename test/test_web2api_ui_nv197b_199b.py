@@ -233,6 +233,7 @@ def _mo_o_tu_xa(trang, w):
     dang_nhap_quan_tri(trang, w.url)
     trang.di(w.url + "/He-thong.dc.html")
     trang.js("window.__khongTaiLai = 1")
+    trang.cho("document.getElementById('o-them')", mo_ta="nút Thêm module")  # NV256: chờ nút hiện (mobile chậm hơn), tránh race
     trang.bam("document.getElementById('o-them')")
     trang.cho("document.getElementById('tu-xa')", mo_ta="khối Từ xa")
 

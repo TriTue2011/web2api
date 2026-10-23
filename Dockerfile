@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY VERSION ./
 COPY app ./app
 COPY web ./web
+COPY du_lieu ./du_lieu
 
 # Không chạy bằng root: container này chưa có xác thực, nên càng không nên có quyền thừa.
 RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin web2api \

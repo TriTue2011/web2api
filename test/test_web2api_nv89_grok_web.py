@@ -160,12 +160,12 @@ def test_dang_nhap_cookie_hop_le(mod):
     assert isinstance(kq, KetQuaDangNhap)
     assert kq.thanh_cong and kq.cookie == chuoi
     assert tk.cookie.da_xoa()
-    # jar được giữ trong danh sách, khoá mờ song song với _dt_id
+    # jar được giữ trong danh sách, khoá mờ dùng được để tìm lại jar
+    # (NV219: bỏ danh tính → module không còn thuộc tính _dt_id)
     khoa = mod._khoa_tu_jar(_jar_gia())
     tim = mod._tim_jar(khoa)
     assert tim is not None and tim[1]["sso"] == SSO_GIA_OK
-    assert len(mod._tai_khoan) == len(mod._dt_id) == 1
-    assert mod._dt_id[0] is None
+    assert len(mod._tai_khoan) == 1
 
 
 def test_dang_nhap_cookie_thieu_sso(mod):

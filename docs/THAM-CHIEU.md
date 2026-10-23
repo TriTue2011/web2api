@@ -2241,11 +2241,11 @@ không trò chuyện).
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"email": "ban@gmail.com", "mat_khau": "<mat-khau>"}' \
   $W/api/danh-tinh
-# Trạng thái/tiến độ
-curl -s -H "Authorization: Bearer $K" $W/api/danh-tinh/dt-0123456789abcdef/trang-thai
-# Gửi mã 2FA khi đang chờ
+# Xem bản ghi danh tính
+curl -s -H "Authorization: Bearer $K" $W/api/danh-tinh/dt-0123456789abcdef
+# Gửi mã 2FA cho tài khoản đang chờ (đường tài khoản đã lưu)
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
-  -d '{"ma": "123456"}' $W/api/danh-tinh/dt-0123456789abcdef/ma-2fa
+  -d '{"ma": "123456"}' $W/api/tai-khoan/da-luu/tk-0123456789ab/ma-2fa
 # Provider tái dùng hồ sơ (đăng nhập bằng Google trong hồ sơ đó)
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
   -d '{"module_id": "chatgpt-web", "ho_so": "ab0123456789abcdef"}' \
@@ -2256,17 +2256,12 @@ curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json
 - `GET /api/danh-tinh` — liệt kê hồ sơ (trạng thái đăng nhập, hồ sơ trình duyệt, module đã gắn).
 - `POST /api/danh-tinh` — tạo hồ sơ + tự đăng nhập nền (`email` bắt buộc, `mat_khau`/`ma_2fa`/`nhan`
   tuỳ chọn); không mật khẩu → chỉ kiểm «đi tắt», chưa đăng nhập thì «cần người».
-- `GET /api/danh-tinh/{id}/trang-thai` — bản ghi danh tính + tiến độ đăng nhập (không bí mật).
-- `POST /api/danh-tinh/{id}/kiem-lai` — kiểm lại tín hiệu đăng nhập của hồ sơ đã gắn bằng quy
-  tắc tín hiệu của module đăng nhập danh tính (NV179): chỉ NÂNG trạng thái lên `dang_nhap` khi
-  kiểm được tín hiệu; kiểm không được thì GIỮ NGUYÊN trạng thái cũ (không đoán). Chưa gắn hồ
-  sơ → `400` `chua_co_ho_so`; không có danh tính → `404`. Trả `{danh_tinh, da_dang_nhap}`.
-  Cùng cơ chế này chạy tự động sau `POST /api/trinh-duyet/{module}/{ho_so}/dong` khi đóng
-  GIỮ PHIÊN mà hồ sơ có gắn danh tính — phản hồi đóng kèm trường `danh_tinh`
-  (`{id, trang_thai_dang_nhap}`); lỗi kiểm không bao giờ làm hỏng đường đóng.
-- `POST /api/danh-tinh/{id}/ma-2fa` — gửi mã 2FA khi hồ sơ đang chờ (`{"ma": "..."}`).
+- `GET /api/danh-tinh/{id}` — bản ghi danh tính của hồ sơ.
 - `DELETE /api/danh-tinh/{id}` — xoá hồ sơ (đóng workspace trình duyệt, xoá danh tính; kèm cảnh
   báo: mọi tài khoản provider dùng chung hồ sơ coi như đã đăng xuất).
+- (NV219 đã gỡ khỏi phần AI: `POST /api/danh-tinh/dang-nhap`, `GET /api/danh-tinh/{id}/trang-thai`,
+  `POST /api/danh-tinh/{id}/kiem-lai`, `POST /api/danh-tinh/{id}/ma-2fa` — gửi mã 2FA cho tài khoản
+  đã lưu dùng `POST /api/tai-khoan/da-luu/{id}/ma-2fa`.)
 - `POST /api/tai-khoan/tai-dung` — một provider tái dùng hồ sơ (`{"module_id", "ho_so"}`) → tài
   khoản mới (khoá dạng che `…abcd`) hoặc `can_nguoi`; hai provider cùng một hồ sơ → tài khoản
   độc lập (lưu riêng từng module).
@@ -4647,6 +4642,9 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/modules/do-nut-gpu` | Có | Dò nút GPU (đọc health và w2a-node, kiểm SSRF) trước khi đăng ký |
 | `POST /api/modules/{id_}/bat-tat` | Có | Bật hoặc tắt module từ xa / máy GPU (thân `{"bat": bool}`) |
 | `POST /api/modules/{id}/cai` | Có | Kiểm và lưu cấu hình module (thân `{"cau_hinh": {...}}`; trường vắng mặt giữ giá trị đã lưu; `danh_sach_bi_mat` nhận `{"giu": [...], "them": [...]}`) |
+| `GET /api/modules/do-thi-phu-thuoc` | Có | Đồ thị phụ thuộc toàn cục cho giao diện vẽ sơ đồ (`nut`, `canh`, `thu_tu_goi_y`) (NV222) |
+| `GET /api/modules/{id_}/ke-hoach-cai` | Có | Kế hoạch cài các phụ thuộc còn thiếu của module — chỉ tính toán, không cài; giao diện hiện kế hoạch rồi mới cho xác nhận (NV222) |
+| `POST /api/modules/cai-theo-ke-hoach` | Có | Cài phụ thuộc còn thiếu theo đúng kế hoạch rồi cài chính module (thân `{"id_", "ke_hoach"}`, kế hoạch phải khớp tính lại lúc chạy → `409`; cài hỏng ở đâu dừng ở đó) (NV222) |
 
 | `GET /api/modules/{id}/cau-hinh` | Có | Trường cấu hình của manifest + giá trị đã lưu, bí mật chỉ dạng che theo thứ tự chỉ số |
 | `DELETE /api/modules/{id}` | Có | Gỡ module. Còn module đã cài khai `can_module` cần nó → `409` `{"ma": "module_dang_duoc_can", "dang_duoc_can_boi": [...]}`. Gỡ module cuối cùng còn cần một module chung → phản hồi có `hoi_giu_phu_thuoc: [...]` để hỏi giữ hay gỡ theo (xem «Phụ thuộc giữa các module») |
@@ -4717,11 +4715,14 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `GET /api/tai-khoan/khoi-phuc/trang-thai` | Có | Trạng thái khôi phục của tài khoản (`hong_b_lien_tiep`, `ngung_tu_dang_nhap`, `can_nguoi`…) — không chứa bí mật (NV88) |
 | `GET /api/danh-tinh` | Có | Liệt kê hồ sơ Google (trạng thái đăng nhập, hồ sơ trình duyệt, module đã gắn) — sổ danh tính của lõi (NV92) |
 | `POST /api/danh-tinh` | Có | Tạo hồ sơ Google + tự đăng nhập nền (`email` bắt buộc; `mat_khau`/`ma_2fa`/`nhan` tuỳ chọn; không mật khẩu → chỉ kiểm «đi tắt»); chạy lần lượt, dừng được (`LuotChay`); đang có lượt chạy → `409` (NV92) |
-| `GET /api/danh-tinh/{id}/trang-thai` | Có | Bản ghi danh tính + tiến độ đăng nhập của hồ sơ (không bí mật); id lạ → `404` (NV92) |
-| `POST /api/danh-tinh/{id}/kiem-lai` | Có | Kiểm lại tín hiệu đăng nhập của hồ sơ đã gắn (quy tắc tín hiệu của module đăng nhập danh tính): chỉ NÂNG lên `dang_nhap` khi kiểm được, không kiểm được thì GIỮ NGUYÊN (không đoán); chưa gắn hồ sơ → `400` `chua_co_ho_so`; id lạ → `404`; cùng cơ chế tự chạy sau «Đóng · giữ phiên» ở `POST /api/trinh-duyet/{module}/{ho_so}/dong` (NV179) |
-| `POST /api/danh-tinh/{id}/ma-2fa` | Có | Gửi mã 2FA khi hồ sơ đang chờ (`{"ma": "..."}`); chưa gắn workspace → `400`; mã không vào phản hồi/log/nhật ký (NV92) |
 | `DELETE /api/danh-tinh/{id}` | Có | Xoá hồ sơ Google (đóng workspace trình duyệt, xoá danh tính); kèm `canh_bao`: tài khoản provider dùng chung coi như đã đăng xuất (NV92) |
 | `POST /api/tai-khoan/tai-dung` | Có | Một provider tái dùng hồ sơ Google (`{"module_id", "ho_so"}`) → chạy `tai_dung_ho_so` → tài khoản mới (khoá dạng che `…abcd`) hoặc `can_nguoi` + `url_novnc`; module chưa cài → `404`, chưa hỗ trợ → `501`, chưa có trình duyệt → `503` (NV92) |
+| `GET /api/tai-khoan/nhom-loai` | Có | Gom tài khoản theo nhóm → loại (`tai_khoan`, `dang_dung` = id đang chọn đầu); không bao giờ trả mật khẩu/TOTP (NV218) |
+| `GET /api/tai-khoan/bang-phan-loai` | Có | Bảng phân loại cho giao diện vẽ ô chọn xếp tầng nhóm → loại → đích dùng (`nhom`, `loai_theo_nhom`, `dich_dung_theo_nhom_loai`, tên hiển thị, tuỳ chọn «đăng nhập bằng») — dữ liệu khai báo tĩnh, không chứa tài khoản nào (NV225, NV256) |
+| `GET /api/tai-khoan/duong-dung` | Có | Trạng thái TỪNG ĐƯỜNG dùng của mọi tài khoản đã lưu (`dich`, `trang_thai`, `han_muc`, đường đang dùng) (NV232) |
+| `POST /api/tai-khoan/da-luu/{id}/lien-ket-codex` | Có | Bắt đầu liên kết Codex cho tài khoản đã lưu: trả `auth_url` để người dùng mở (luồng OAuth thiết bị của module); cần step-up phiên web (NV232) |
+| `POST /api/tai-khoan/da-luu/{id}/lien-ket-codex/hoan-tat` | Có | Hoàn tất liên kết Codex (thân `{"url_callback"}`): email module trả về khớp tài khoản → đường codex `san_sang`; cần xác minh điện thoại → `can_xac_minh_dien_thoai` (NV232) |
+| `POST /api/tai-khoan/da-luu/{id}/thu-lai-codex` | Có | Mở lại luồng OAuth Codex khi liên kết dang dở (`can_xac_minh_dien_thoai`/`can_dang_nhap_lai`/`chua_lien_ket`); đã `san_sang`/`het_han_muc` → `409` (NV232) |
 | `POST /api/danh-tinh/nhan-ho-so` | Có | «Nhận workspace làm tài khoản» (`{"ho_so", "email", "nhan"?}`): gắn hồ sơ trình duyệt ĐÃ ĐÓNG vào danh tính (tạo mới hoặc gắn vào danh tính có sẵn) — hồ sơ đang mở → `409` `ho_so_dang_mo`; đã gắn danh tính khác → `409` `ho_so_da_gan`; email đã gắn hồ sơ khác → `409` `email_da_gan_ho_so_khac`; hồ sơ không có ở dịch vụ trình duyệt → `404` `ho_so_khong_co`; trạng thái `dang_nhap` CHỈ khi kiểm được tín hiệu phiên bằng quy tắc của module đăng nhập danh tính: ưu tiên đọc KHO COOKIE của hồ sơ đã đóng qua API hồ sơ của dịch vụ (không mở trình duyệt), dự phòng mở tạm có kiểm soát; không kiểm được → `chua_dang_nhap`; phản hồi có `kiem_tin_hieu` thuộc {`cookie_ho_so`, `phien_truc_tiep`, `khong_kiem_duoc`}; nhận lại hồ sơ đã kiểm chỉ NÂNG trạng thái, không hạ; bản ghi đánh dấu `ho_so_do_nhan` nên xoá danh tính chỉ gỡ gắn (giữ thư mục/phiên hồ sơ); có nhật ký người thực hiện; lỗi không nêu email (NV155c, sửa NV155c-SUA) |
 | `POST /api/tai-khoan/khoi-phuc/xoa-can-nguoi` | Có | Người bấm tiếp sau khi xử lý tay: xoá trạng thái `can_nguoi` và bộ đếm hỏng (NV88) |
 | `GET /api/bao-mat/trang-thai` | Có | Trạng thái bảo mật cho trang quản trị: cờ cổng IP quản trị bật/tắt (`cong_ip_quan_tri_trong`), chuỗi băng rôn tĩnh (`bang_ron`) và số mạng cấu hình (`so_mang`); không lộ IP nội bộ |

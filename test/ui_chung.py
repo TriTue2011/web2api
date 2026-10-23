@@ -93,10 +93,16 @@ class Trang:
 
     def di(self, url: str, mo_muc: bool = True):
         """Mở trang và đợi dựng xong. Trang có mục thu gọn (`[data-mo-muc]`, mặc định ĐÓNG theo quy ước giao diện) được
-        mở hết để test thao tác như cũ; test kiểm «mặc định đóng» truyền mo_muc=False."""
-        self.cdp.goi("Page.navigate", {"url": url}, self.s)
+        mở hết để test thao tác như cũ; test kiểm «mặc định đóng» truyền mo_muc=False.
+
+        NV256 (cơ chế từ NV251): mở qua đệm file:// + meta-refresh để vượt chặn Local Network Access
+        của Chromium ≥138 (about:blank là «public» nên bị chặn khi điều hướng thẳng tới 127.0.0.1).
+        Cookie/phiên vẫn dùng chung ngữ cảnh trình duyệt."""
+        boot = Path(tempfile.gettempdir()) / f"w2a-boot-{abs(hash(url)) % 1000000}.html"
+        boot.write_text(f'<meta http-equiv="refresh" content="0;url={url}">', encoding="utf-8")
+        self.cdp.goi("Page.navigate", {"url": f"file://{boot}"}, self.s)
         self.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'",
-                 mo_ta="dc-lite dựng xong trang")
+                 han=20, mo_ta="dc-lite dựng xong trang (qua LNA bypass)")
         if mo_muc:
             self.mo_het_muc()
 

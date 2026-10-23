@@ -165,15 +165,13 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <input id="dl-bac-goi" type="text" autocomplete="off" spellcheck="false" placeholder="VD: plus" value="{{them.dl.bacGoi}}" onInput="{{them.dl.doiBacGoi}}" aria-label="Bậc gói tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
 </label>
 <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Đăng nhập bằng
-<span style="font-size:11px;color:var(--mute);line-height:1.4">«Trực tiếp» = đăng nhập bằng chính tài khoản này; «Qua tài khoản Google» = đăng nhập hộ bằng một tài khoản Google đã lưu. Để trống = theo mặc định của module.</span>
+<span style="font-size:11px;color:var(--mute);line-height:1.4">«Trực tiếp» = đăng nhập bằng chính tài khoản này; mục «Qua tài khoản…» = đăng nhập hộ bằng một tài khoản đã lưu. Để trống = theo mặc định của module.</span>
 <select id="dl-dang-nhap-bang" value="{{them.dl.dangNhapBang}}" onChange="{{them.dl.doiDangNhapBang}}" aria-label="Đăng nhập bằng" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chưa khai (mặc định) —</option>
-<option value="truc_tiep">Trực tiếp bằng tài khoản này</option>
-<option value="google">Qua tài khoản Google đã lưu</option>
+<sc-for list="{{them.dl.dsDangNhapBang}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
 </select></label>
-<sc-if value="{{them.dl.coDangNhapGoogle}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản Google dùng để đăng nhập
-<select id="dl-tk-google" value="{{them.dl.tkGoogleId}}" onChange="{{them.dl.doiTkGoogle}}" aria-label="Chọn tài khoản Google" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chọn tài khoản Google —</option>
+<sc-if value="{{them.dl.coDangNhapGoogle}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản dùng để đăng nhập hộ
+<select id="dl-tk-luu" value="{{them.dl.tkGoogleId}}" onChange="{{them.dl.doiTkGoogle}}" aria-label="Chọn tài khoản dùng để đăng nhập hộ" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<option value="">— Chọn tài khoản —</option>
 <sc-for list="{{them.dl.dsTkGoogle}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
 </select></label></sc-if>
 <sc-if value="{{them.dl.bangCo}}">
@@ -828,7 +826,13 @@ class Component extends DCLogic {
     } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
     try {
       const { j } = await K.goi('api/tai-khoan/bang-phan-loai');
-      this.setState({ dlBang: j || null });
+      // NV256: cấu hình «đăng nhập bằng» từ API — giao diện không chép cứng giá trị.
+      const dnb = (j && j.dang_nhap_bang) || {};
+      this.setState({
+        dlBang: j || null,
+        dlDangNhapBangQuaLuu: dnb.qua_tai_khoan_luu || '',
+        dlDangNhapBangNhomLuu: dnb.nhom_tai_khoan_luu || '',
+      });
     } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
     // NV232: trạng thái từng đường dùng (codex/web…) + đường đang dùng của
     // mỗi tài khoản. Lõi cũ chưa có đường này → trang vẫn chạy, nút liên
@@ -886,12 +890,14 @@ class Component extends DCLogic {
     const bacGoi = (s.dlBacGoi || '').trim();
     if (bacGoi) payload.bac_goi = bacGoi;
     const dangNhapBang = (s.dlDangNhapBang || '').trim();
-    if (dangNhapBang === 'google' && !(s.dlTkGoogleId || '')) {
-      this.setState({ dlLoi: 'Chọn tài khoản Google dùng để đăng nhập hộ.' });
+    // NV256: giá trị «qua tài khoản lưu» lấy từ API /bang-phan-loai, không chép cứng.
+    const quaTaiKhoanLuu = s.dlDangNhapBangQuaLuu || '';
+    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu && !(s.dlTkGoogleId || '')) {
+      this.setState({ dlLoi: 'Chọn tài khoản dùng để đăng nhập hộ.' });
       return;
     }
     if (dangNhapBang) payload.dang_nhap_bang = dangNhapBang;
-    if (dangNhapBang === 'google') payload.tai_khoan_google_id = s.dlTkGoogleId;
+    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu) payload.tai_khoan_google_id = s.dlTkGoogleId;
     // NV225: phân loại nhóm → loại → đích dùng chọn ở form (bảng backend
     // kiểm lại phía máy chủ; nhóm thật suy từ module sở hữu/bản ghi cũ).
     const loaiTk = (s.dlLoaiTk || '').trim();
@@ -1772,6 +1778,13 @@ class Component extends DCLogic {
           }
         }
         const bangTk = s.dlBang || null;
+        // NV256: tuỳ chọn «đăng nhập bằng» từ API — không chép cứng giá trị/nhãn.
+        const dnbApi = (bangTk && bangTk.dang_nhap_bang) || {};
+        const quaTaiKhoanLuu = dnbApi.qua_tai_khoan_luu || s.dlDangNhapBangQuaLuu || '';
+        const nhomTaiKhoanLuu = dnbApi.nhom_tai_khoan_luu || s.dlDangNhapBangNhomLuu || '';
+        const dsDangNhapBang = (Array.isArray(dnbApi.tuy_chon) ? dnbApi.tuy_chon : []).map((o) => ({
+          id: o.id || '', nhan: o.nhan || '', chon: (o.id || '') === (s.dlDangNhapBang || ''),
+        }));
         // NV232: trạng thái từng đường dùng theo tài khoản (từ /duong-dung).
         // Không có dữ liệu (lõi cũ) → hàng không có chip đường, nút ẩn.
         const duongTheoTk = {};
@@ -1903,8 +1916,9 @@ class Component extends DCLogic {
           doiBacGoi: (e) => this.setState({ dlBacGoi: e.target.value }),
           dangNhapBang: s.dlDangNhapBang || '',
           doiDangNhapBang: (e) => this.setState({ dlDangNhapBang: e.target.value }),
-          coDangNhapGoogle: (s.dlDangNhapBang || '') === 'google',
-          dsTkGoogle: dlDs.filter((t) => (t.nhom || '') === 'google').map((t) => ({
+          dsDangNhapBang: dsDangNhapBang,
+          coDangNhapGoogle: !!quaTaiKhoanLuu && (s.dlDangNhapBang || '') === quaTaiKhoanLuu,
+          dsTkGoogle: dlDs.filter((t) => nhomTaiKhoanLuu && (t.nhom || '') === nhomTaiKhoanLuu).map((t) => ({
             id: t.id,
             nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : ''),
             chon: t.id === s.dlTkGoogleId

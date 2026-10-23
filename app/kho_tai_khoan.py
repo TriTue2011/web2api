@@ -73,44 +73,73 @@ DOI_DAI_LOAI_TK = 64
 DOI_DAI_DICH_DUNG = 64
 
 # ── Phân loại AI theo thiết kế chủ máy 21/10/2026 (NV218) ────────────────────
-# «Tài khoản» lưu theo 5 NHÓM; mỗi nhóm có các LOẠI; một số (nhóm, loại) có
+# «Tài khoản» lưu theo NHÓM; mỗi nhóm có các LOẠI; một số (nhóm, loại) có
 # ĐÍCH DÙNG. Tất cả là BẢNG KHAI BÁO (dữ liệu), kiểm hợp lệ tra bảng — không
-# rải if theo tên nhà cung cấp. Codex KHÔNG là nhóm riêng: tài khoản chatgpt
-# loại web có dich_dung="codex" (dùng Codex trước, hết/lỗi mới sang web).
+# rải if theo tên cụ thể.
+#
+# NV256 (cổng kiến trúc): tên cụ thể KHÔNG còn chép cứng trong mã lõi —
+# nguồn duy nhất là tệp dữ liệu ``du_lieu/phan_loai_ai.json`` ở gốc repo
+# (đọc lúc import) + trường ``nhom`` trong ``manifest.json`` của từng module
+# (hợp nhất lúc import: module khai nhóm mới thì nhóm đó tự thành nhóm hợp
+# lệ mà không phải sửa mã lõi; bảng trong tệp dữ liệu vẫn là gốc cho
+# loại/đích dùng/tên hiển thị/thứ tự ưu tiên).
 
-#: 5 nhóm tài khoản AI — danh sách ĐÓNG.
-NHOM_AI = ("google", "chatgpt", "grok", "claude", "muse")
+def _tai_bang_phan_loai_ai() -> dict:
+    """Đọc bảng phân loại AI từ tệp dữ liệu + hợp nhất ``nhom`` của module."""
+    import json
+    from pathlib import Path
 
-#: Loại tài khoản theo nhóm AI — danh sách ĐÓNG theo nhóm.
+    goc = Path(__file__).resolve().parent.parent
+    try:
+        bang = json.loads((goc / "du_lieu" / "phan_loai_ai.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise RuntimeError(f"không đọc được bảng phân loại AI: {e}") from e
+    try:
+        thu_muc_module = goc / "modules"
+        if thu_muc_module.is_dir():
+            for man in sorted(thu_muc_module.glob("*/manifest.json")):
+                try:
+                    nhom = json.loads(man.read_text(encoding="utf-8")).get("nhom") or {}
+                except (OSError, ValueError):
+                    continue
+                nid = nhom.get("id")
+                if isinstance(nid, str) and nid and nid not in bang["nhom"]:
+                    bang["nhom"].append(nid)
+                    nten = nhom.get("ten")
+                    bang["ten_nhom"][nid] = nten if isinstance(nten, str) and nten else nid
+    except OSError:
+        pass
+    return bang
+
+
+_BANG_PHAN_LOAI_AI = _tai_bang_phan_loai_ai()
+
+#: Nhóm tài khoản AI — đọc từ dữ liệu (giữ đúng thứ tự trong tệp).
+NHOM_AI = tuple(_BANG_PHAN_LOAI_AI["nhom"])
+
+#: Loại tài khoản theo nhóm AI.
 LOAI_TAI_KHOAN_THEO_NHOM = {
-    "google": ("api", "gmail"),
-    "chatgpt": ("api", "web"),
-    "grok": ("api", "web"),
-    "claude": ("api", "web"),
-    "muse": ("web",),
+    nhom: tuple(_BANG_PHAN_LOAI_AI["loai_theo_nhom"].get(nhom, ()))
+    for nhom in NHOM_AI
 }
 
-#: Đích dùng theo (nhóm, loại) — danh sách ĐÓNG; (nhóm, loại) chưa khai báo
-#: thì không có đích dùng (chỉ nhận "").
+#: Đích dùng theo (nhóm, loại); (nhóm, loại) chưa khai báo thì không có
+#: đích dùng (chỉ nhận "").
 DICH_DUNG_THEO_NHOM_LOAI = {
-    ("google", "api"): ("api",),
-    ("google", "gmail"): ("gemini", "antigravity"),
-    ("chatgpt", "api"): ("api",),
-    ("chatgpt", "web"): ("web", "codex"),
+    (nhom, loai): tuple(ds)
+    for nhom, theo_loai in _BANG_PHAN_LOAI_AI["dich_dung"].items()
+    for loai, ds in theo_loai.items()
 }
 
-#: Bí danh nhóm CŨ → nhóm AI hiện hành (NV224) — BẢNG KHAI BÁO. Trước NV224
-#: module openaicodex khai nhóm riêng «openai»; thiết kế chủ máy chốt Codex
-#: là ĐÍCH của nhóm chatgpt, không phải nhóm riêng. Bản ghi cũ mang nhóm
-#: «openai» vẫn đọc được: nhãn hiệu lực đổi êm sang «chatgpt» ở lớp đọc
-#: (``ban_cong_khai``), dữ liệu gốc trong kho không bị viết lại/mất.
-NHOM_CU_SANG_NHOM_AI = {"openai": "chatgpt"}
+#: Bí danh nhóm CŨ → nhóm AI hiện hành (NV224) — BẢNG KHAI BÁO. Bản ghi cũ
+#: mang nhóm cũ vẫn đọc được: nhãn hiệu lực đổi êm sang nhóm hiện hành ở
+#: lớp đọc (``ban_cong_khai``), dữ liệu gốc trong kho không bị viết lại/mất.
+NHOM_CU_SANG_NHOM_AI = dict(_BANG_PHAN_LOAI_AI["nhom_cu_sang_nhom_ai"])
 
 #: Thứ tự ưu tiên ĐÍCH DÙNG khi chọn «đang dùng #1» (NV224) — BẢNG KHAI BÁO:
-#: trong một nhóm, tài khoản đích đứng trước trong bảng được ưu tiên (chủ
-#: máy chốt: Codex trước web — dùng Codex trước, hết/lỗi mới sang web).
+#: trong một nhóm, tài khoản đích đứng trước trong bảng được ưu tiên.
 #: Đích không có trong bảng (kể cả "") xếp sau cùng, giữ thứ tự liệt kê.
-THU_TU_UU_TIEN_DICH_DUNG = ("codex", "web", "gemini", "antigravity", "api")
+THU_TU_UU_TIEN_DICH_DUNG = tuple(_BANG_PHAN_LOAI_AI["thu_tu_uu_tien_dich_dung"])
 
 
 def nhom_hieu_luc(nhom: str) -> str:
@@ -125,23 +154,11 @@ def _thu_tu_dich_dung(dich_dung) -> int:
     except ValueError:
         return len(THU_TU_UU_TIEN_DICH_DUNG)
 #: Tên HIỂN THỊ của nhóm/loại/đích dùng (NV225) — dữ liệu trình bày đi kèm
-#: bảng phân loại, để giao diện lõi chỉ việc dùng, không chép tên nhà
-#: cung cấp vào mã trang (luật độc lập mã lõi).
-TEN_NHOM_AI = {
-    "google": "Google",
-    "chatgpt": "ChatGPT",
-    "grok": "Grok",
-    "claude": "Claude",
-    "muse": "Muse",
-}
-TEN_LOAI_TAI_KHOAN = {"api": "API", "web": "Web", "gmail": "Gmail"}
-TEN_DICH_DUNG = {
-    "api": "API",
-    "web": "Web",
-    "gemini": "Gemini",
-    "antigravity": "Antigravity",
-    "codex": "Codex",
-}
+#: bảng phân loại, để giao diện lõi chỉ việc dùng, không chép tên cụ thể
+#: vào mã trang (luật độc lập mã lõi).
+TEN_NHOM_AI = dict(_BANG_PHAN_LOAI_AI["ten_nhom"])
+TEN_LOAI_TAI_KHOAN = dict(_BANG_PHAN_LOAI_AI["ten_loai"])
+TEN_DICH_DUNG = dict(_BANG_PHAN_LOAI_AI["ten_dich_dung"])
 
 #: Giá trị hiển thị khi chưa biết bậc gói (NV197c) — KHÔNG đoán từ dữ liệu khác.
 BAC_GOI_KHONG_BIET = "khong_biet"
@@ -352,10 +369,25 @@ def kiem_dich_dung(dich_dung, nhom, loai) -> str:
         raise LoiKhoTaiKhoan("invalid_value")
     return d
 #: NV223: cách đăng nhập của tài khoản dịch vụ — «truc_tiep» = đăng nhập
-#: thẳng bằng bí mật của chính tài khoản; «google» = đăng nhập QUA một tài
-#: khoản Google đã lưu khác (``tai_khoan_google_id``). "" = chưa khai (giữ
-#: hành vi cũ theo module sở hữu). Danh sách ĐÓNG — không dò chuỗi email.
-DANG_NHAP_BANG_CHO_PHEP = ("", "truc_tiep", "google")
+#: thẳng bằng bí mật của chính tài khoản; giá trị «qua tài khoản lưu» (xem
+#: ``DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU``) = đăng nhập QUA một tài khoản đã
+#: lưu khác (``tai_khoan_google_id``). "" = chưa khai (giữ hành vi cũ theo
+#: module sở hữu). Danh sách ĐÓNG — không dò chuỗi email.
+_DANG_NHAP_BANG = _BANG_PHAN_LOAI_AI["dang_nhap_bang"]
+DANG_NHAP_BANG_CHO_PHEP = tuple(_DANG_NHAP_BANG["cho_phep"])
+
+#: Giá trị «đăng nhập bằng» nghĩa là qua một tài khoản đã lưu khác — mã so
+#: sánh bằng hằng này, không chép cứng giá trị cụ thể (cổng kiến trúc).
+DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU = _DANG_NHAP_BANG["qua_tai_khoan_luu"]
+
+#: Nhóm của tài khoản được dùng để đăng nhập hộ.
+DANG_NHAP_BANG_NHOM_TAI_KHOAN_LUU = _DANG_NHAP_BANG["nhom_tai_khoan_luu"]
+
+#: Tuỳ chọn «đăng nhập bằng» cho giao diện — danh sách (id, nhãn), nguồn
+#: duy nhất cho API ``/api/tai-khoan/bang-phan-loai`` và trang quản trị.
+DANG_NHAP_BANG_TUY_CHON = tuple(
+    (tuy_chon["id"], tuy_chon["nhan"]) for tuy_chon in _DANG_NHAP_BANG["tuy_chon"]
+)
 
 
 def kiem_dang_nhap_bang(dang_nhap_bang) -> str:
@@ -801,7 +833,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         tk_gg_moi = cu.get("tai_khoan_google_id", "") if cu else ""
         if tai_khoan_google_id is not None:
             tk_gg_moi = kiem_tai_khoan_google_id(tai_khoan_google_id)
-        if dnb_moi == "google" and not tk_gg_moi:
+        if dnb_moi == DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU and not tk_gg_moi:
             raise LoiKhoTaiKhoan("invalid_value")
 
         # NV224: dung_cho TÍCH LŨY — bắt đầu từ danh sách hiệu lực cũ, cộng

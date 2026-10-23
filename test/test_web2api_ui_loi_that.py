@@ -47,7 +47,7 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
         monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
         with MayChuThat(app, lifespan="on") as w:
             dang_nhap_quan_tri(trang, w.url)
-            trang.cdp.goi("Page.navigate", {"url": w.url + "/"}, trang.s)
+            trang.di(w.url + "/", mo_muc=False)  # NV256: qua di() để vượt chặn LNA của Chromium ≥138
             trang.cho("location.pathname.endsWith('/He-thong.dc.html') && document.querySelector('x-dc')?.dataset.dc === 'san-sang'",
                       mo_ta="địa chỉ gốc → Hệ thống → Module")
             o = "document.querySelector('[data-o=\"gemini-api\"]')"

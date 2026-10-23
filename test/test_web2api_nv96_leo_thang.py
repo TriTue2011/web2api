@@ -3,8 +3,9 @@
 Phạm vi: các route mới đăng ký sau commit 45950c8, đọc từ app/tuyen.py:
   /api/danh-tinh (GET, POST), /api/danh-tinh/chua-gan, /api/danh-tinh/tao-va-gan,
   /api/danh-tinh/go-theo-module, /api/danh-tinh/{id}, /api/danh-tinh/{id}/gan,
-  /api/danh-tinh/{id}/go, /api/danh-tinh/dang-nhap, /api/danh-tinh/{id}/trang-thai,
-  /api/danh-tinh/{id}/ma-2fa, DELETE /api/danh-tinh/{id},
+  /api/danh-tinh/{id}/go, DELETE /api/danh-tinh/{id},
+  (đã gỡ ở NV219 «BỎ danh tính»: /api/danh-tinh/dang-nhap, /api/danh-tinh/{id}/trang-thai,
+  /api/danh-tinh/{id}/ma-2fa — các test cho 3 đường này đã xoá, không khôi phục route),
   /api/tai-khoan/dan-hang-loat, /api/tai-khoan/dang-nhap-hang-loat/*,
   /api/tai-khoan/dang-nhap-tu-dong/bat-dau, /api/tai-khoan/khoi-phuc*,
   /api/tai-khoan/tai-dung, /api/phien (GET, DELETE, POST kiem).
@@ -90,9 +91,6 @@ DUONG_QT = [
     ("POST", "/api/danh-tinh/dt-khong-ton-tai/gan", {"module_id": "x"}),
     ("POST", "/api/danh-tinh/dt-khong-ton-tai/go", {"module_id": "x"}),
     ("DELETE", "/api/danh-tinh/dt-khong-ton-tai", None),
-    ("POST", "/api/danh-tinh/dang-nhap", {"email": "a@example.com"}),
-    ("GET", "/api/danh-tinh/dt-khong-ton-tai/trang-thai", None),
-    ("POST", "/api/danh-tinh/dt-khong-ton-tai/ma-2fa", {}),
     ("POST", "/api/tai-khoan/dan-hang-loat", {}),
     ("POST", "/api/tai-khoan/dang-nhap-hang-loat/bat-dau", {}),
     ("GET", "/api/tai-khoan/dang-nhap-hang-loat/trang-thai", None),
@@ -216,16 +214,3 @@ def test_nv96_leo_thang_2_tu_nang_vai_admin(moi_truong):
     nd2 = nguoi_dung.tim_theo_id(nd["id"])
     assert nd2["vai"] == "user", nd2
 
-
-def test_nv96_leo_thang_3_danh_tinh_chiem_ho_so_admin(moi_truong):
-    """Leo thang 3: người dùng thường tạo danh tính cho mình rồi gọi
-    POST /api/danh-tinh/dang-nhap để mở hồ sơ trình duyệt (tài nguyên quản trị)
-    → phải 403; và không có hồ sơ nào được tạo cho họ."""
-    client, _ = moi_truong
-    nd = _tao_nguoi("user", "user-leo3-nv96")
-    headers, jar = _phien_user(client, nd["id"])
-    for k, v in jar.items():
-        client.cookies.set(k, v)
-    r = client.post("/api/danh-tinh/dang-nhap",
-                    json={"email": "user-leo3@example.com"}, headers=headers)
-    assert r.status_code == 403, r.text

@@ -3634,8 +3634,9 @@ def gom_tai_khoan_theo_nhom_loai():
 
 @tai_khoan.get("/bang-phan-loai")
 def doc_bang_phan_loai_tai_khoan():
-    """Bảng phân loại tài khoản (NV225): đổ 3 bảng khai báo của kho cho
-    giao diện vẽ 5 nhóm và ô chọn xếp tầng nhóm → loại → đích dùng.
+    """Bảng phân loại tài khoản (NV225, NV256): đổ 3 bảng khai báo của kho cho
+    giao diện vẽ 5 nhóm và ô chọn xếp tầng nhóm → loại → đích dùng, kèm tuỳ
+    chọn «đăng nhập bằng» (NV223).
 
     Nguồn duy nhất là các bảng dữ liệu trong ``kho_tai_khoan``
     (``NHOM_AI`` / ``LOAI_TAI_KHOAN_THEO_NHOM`` /
@@ -3658,6 +3659,16 @@ def doc_bang_phan_loai_tai_khoan():
         "ten_nhom": dict(kho_tai_khoan_mod.TEN_NHOM_AI),
         "ten_loai": dict(kho_tai_khoan_mod.TEN_LOAI_TAI_KHOAN),
         "ten_dich_dung": dict(kho_tai_khoan_mod.TEN_DICH_DUNG),
+        # NV256: tuỳ chọn «đăng nhập bằng» cũng từ dữ liệu — giao diện dựng
+        # ô chọn và so sánh bằng giá trị do API trả, không chép cứng.
+        "dang_nhap_bang": {
+            "tuy_chon": [
+                {"id": id_, "nhan": nhan}
+                for id_, nhan in kho_tai_khoan_mod.DANG_NHAP_BANG_TUY_CHON
+            ],
+            "qua_tai_khoan_luu": kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU,
+            "nhom_tai_khoan_luu": kho_tai_khoan_mod.DANG_NHAP_BANG_NHOM_TAI_KHOAN_LUU,
+        },
         # NV232: nhãn hiển thị trạng thái từng đường dùng.
         "ten_trang_thai_duong": {
             k: v["ten"] for k, v in dd_mod.BANG_TRANG_THAI_DUONG.items()
@@ -4081,17 +4092,17 @@ def _gan_dang_nhap_google(dong, ban_ghi) -> list:
     """
     dang_nhap_bang = str((ban_ghi or {}).get("dang_nhap_bang") or "")
     dong.dang_nhap_bang = dang_nhap_bang
-    if dang_nhap_bang != "google":
+    if dang_nhap_bang != kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
         return []
     gid = str((ban_ghi or {}).get("tai_khoan_google_id") or "")
     ban_ghi_google = kho_tai_khoan_mod.tim_theo_id(gid) if gid else None
     if ban_ghi_google is None:
         raise LoiOpenAI(
-            404, "Không tìm thấy tài khoản Google đã chọn để đăng nhập hộ.",
+            404, "Không tìm thấy tài khoản đã chọn để đăng nhập hộ.",
             code="khong_tim_thay")
     if ban_ghi_google.get("trang_thai") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
         raise LoiOpenAI(
-            403, "Tài khoản Google đã tạm dừng; bật lại mới đăng nhập được.",
+            403, "Tài khoản đã tạm dừng; bật lại mới đăng nhập được.",
             code="tam_dung")
     try:
         bi_mat_google = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(gid)
@@ -4099,7 +4110,7 @@ def _gan_dang_nhap_google(dong, ban_ghi) -> list:
         raise _loi_kho_tai_khoan(e) from None
     if bi_mat_google is None:
         raise LoiOpenAI(
-            404, "Không tìm thấy tài khoản Google đã chọn để đăng nhập hộ.",
+            404, "Không tìm thấy tài khoản đã chọn để đăng nhập hộ.",
             code="khong_tim_thay")
     mk_g, totp_g = bi_mat_google
     dong.google_email = ban_ghi_google.get("email") or ""

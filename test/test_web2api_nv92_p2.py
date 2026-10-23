@@ -5,10 +5,10 @@
 - Module ho-so-google (khả năng «dang_nhap_danh_tinh»): ngữ nghĩa 4 bước
   (di_tat / bam_google / cho_phien / can_nguoi), gửi mã 2FA khi chờ, bí mật bị
   xoá sau khi dùng, lỗi lạ đóng cửa. Lõi gọi module theo KHẢ NĂNG, không theo tên.
-- API danh tính (chỉ quản trị): 401/403/404, liệt kê kèm trạng thái đăng nhập
-  (GET /api/danh-tinh), tạo + tự đăng nhập (POST /api/danh-tinh/dang-nhap,
-  dịch vụ trình duyệt GIẢ), trạng thái/tiến độ (GET .../{id}/trang-thai),
-  gửi mã 2FA (POST .../{id}/ma-2fa), xoá kèm đóng hồ sơ (DELETE .../{id}).
+- API danh tính (chỉ quản trị, NV219 đã gỡ các đường đăng nhập qua danh
+  tính: POST /api/danh-tinh/dang-nhap, GET .../{id}/trang-thai,
+  POST .../{id}/ma-2fa): liệt kê kèm trạng thái đăng nhập
+  (GET /api/danh-tinh), xoá kèm đóng hồ sơ (DELETE .../{id}).
 - Mật khẩu/mã 2FA GIẢ không lộ ở bất kỳ phản hồi nào.
 """
 
@@ -360,13 +360,6 @@ def _nap_dang_nhap_va_trinh_duyet(so, tin_hieu=frozenset({"da_dang_nhap"})):
     return mod_dn_inst, mod_td
 
 
-def test_hsg_401(api):
-    client, _ = api
-    assert client.post("/api/danh-tinh/dang-nhap", json={}).status_code == 401
-    assert client.get("/api/danh-tinh/dt-x/trang-thai").status_code == 401
-    assert client.post("/api/danh-tinh/dt-x/ma-2fa", json={}).status_code == 401
-
-
 def test_hsg_403_khoa_khach(api):
     client, _ = api
     _, khoa_tho = khoa_khach.tao_khoa(nhan="khach-nv92", pham_vi=["chat"])
@@ -391,41 +384,6 @@ def test_hsg_liet_ke_kem_trang_thai(api):
                and h["ho_so_trinh_duyet"] == "" for h in ds)
 
 
-def test_hsg_tao_503_khi_thieu_trinh_duyet(api):
-    """Có module khả năng «dang_nhap_danh_tinh» nhưng chưa có module trình
-    duyệt → 503 đóng cửa."""
-    client, so = api
-    so.dang_chay["mod-dang-nhap-gia"] = ModuleHSG(MANIFEST_HSG)
-    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
-                    json={"email": "a@example.com", "mat_khau": MAT_KHAU_GIA})
-    assert r.status_code == 503
-
-
-def test_hsg_tao_501_khi_thieu_module_dang_nhap(api):
-    """Có module trình duyệt nhưng chưa có module khả năng
-    «dang_nhap_danh_tinh» → 501 (tìm theo khả năng, không theo tên)."""
-    client, so = api
-    so.dang_chay["mod-trinh-duyet-gia"] = _ModTrinhDuyetGiaP2()
-    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
-                    json={"email": "a@example.com", "mat_khau": MAT_KHAU_GIA})
-    assert r.status_code == 501
-
-
-def test_hsg_tao_va_tu_dang_nhap_thanh_cong(api):
-    client, so = api
-    _nap_dang_nhap_va_trinh_duyet(so)
-    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
-                    json={"email": "taomoi@example.com", "mat_khau": MAT_KHAU_GIA})
-    assert r.status_code == 201, r.text
-    du_lieu = r.json()
-    assert du_lieu["ho_so"] == HO_SO_GIA
-    assert du_lieu["danh_tinh"]["email"] == "taomoi@example.com"
-    assert du_lieu["danh_tinh"]["ho_so_trinh_duyet"] == HO_SO_GIA
-    # Mật khẩu giả không lộ ở bất kỳ đâu trong phản hồi.
-    assert MAT_KHAU_GIA not in r.text
-    assert "luot" in du_lieu
-
-
 def test_hsg_trang_thai_404_va_id_xau(api):
     client, so = api
     _nap_dang_nhap_va_trinh_duyet(so)
@@ -433,55 +391,6 @@ def test_hsg_trang_thai_404_va_id_xau(api):
     assert r.status_code == 404
     r = client.get("/api/danh-tinh/..%2F..%2Fx/trang-thai", headers=QT)
     assert r.status_code in (404, 422)
-
-
-def test_hsg_trang_thai_200(api):
-    client, so = api
-    _nap_dang_nhap_va_trinh_duyet(so)
-    dt = danh_tinh.tao("tt@example.com")
-    r = client.get(f"/api/danh-tinh/{dt['id']}/trang-thai", headers=QT)
-    assert r.status_code == 200, r.text
-    du_lieu = r.json()
-    assert du_lieu["danh_tinh"]["id"] == dt["id"]
-    assert isinstance(du_lieu["tien_do"], dict)
-
-
-def test_hsg_ma2fa_404(api):
-    client, so = api
-    _nap_dang_nhap_va_trinh_duyet(so)
-    r = client.post("/api/danh-tinh/dt-khong-co/ma-2fa", headers=QT,
-                    json={"ma": MA_2FA_GIA})
-    assert r.status_code == 404
-    assert MA_2FA_GIA not in r.text
-
-
-def test_hsg_ma2fa_400_khi_chua_co_workspace(api):
-    client, so = api
-    _nap_dang_nhap_va_trinh_duyet(so)
-    dt = danh_tinh.tao("chuaco@example.com")
-    r = client.post(f"/api/danh-tinh/{dt['id']}/ma-2fa", headers=QT,
-                    json={"ma": MA_2FA_GIA})
-    assert r.status_code == 400
-    assert MA_2FA_GIA not in r.text
-
-
-def test_hsg_ma2fa_thanh_cong_khi_dang_cho(api):
-    client, so = api
-    mod_dn_inst, mod_td = _nap_dang_nhap_va_trinh_duyet(so)
-    dt = danh_tinh.tao("cho2fa@example.com")
-    danh_tinh.cap_nhat_trang_thai(dt["id"], ho_so=HO_SO_GIA)
-    mod_td.sau_bam_2fa = {mod_hsg.BO_CHON_TIEP_MA_2FA: {None: {"da_dang_nhap"}}}
-    mod_dn_inst._dat_tien_do(HO_SO_GIA, cho_2fa=True, giai_doan="cho_2fa",
-                             buoc="cho_phien")
-    r = client.post(f"/api/danh-tinh/{dt['id']}/ma-2fa", headers=QT,
-                    json={"ma": MA_2FA_GIA})
-    assert r.status_code == 200, r.text
-    assert r.json()["thanh_cong"] is True
-    assert MA_2FA_GIA not in r.text
-    assert danh_tinh.lay(dt["id"])["trang_thai_dang_nhap"] == "dang_nhap"
-    # Giành trước, nhả sau — hồ sơ thật không kẹt «đang bận».
-    assert mod_td.dieu_khien_da_cap, "chưa hề cấp bộ điều khiển"
-    assert mod_td.dieu_khien_da_cap[-1].thu_tu_gianh == ["gianh", "nha"]
 
 
 def test_hsg_xoa_404_va_thanh_cong(api):
@@ -521,29 +430,6 @@ def test_hsg_xoa_409_khi_con_gan_khong_dong_ho_so(api):
     assert mod_td.da_dong == []
     assert danh_tinh.lay(dt["id"]) is not None
 
-
-def test_hsg_dang_nhap_loi_giua_chung_khong_de_danh_tinh_mo_coi(api):
-    """Dịch vụ trình duyệt hỏng lúc tạo hồ sơ → 502 và KHÔNG còn danh tính dở;
-    thử lại cùng email sau khi dịch vụ khoẻ lại thì thành công (không 400)."""
-    client, so = api
-    _, mod_td = _nap_dang_nhap_va_trinh_duyet(so)
-    tao_that = mod_td.trinh_duyet_tao
-
-    async def hong(ten):
-        raise RuntimeError("dich vu chet")
-    mod_td.trinh_duyet_tao = hong
-    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
-                    json={"email": "dolang@example.com", "mat_khau": MAT_KHAU_GIA})
-    assert r.status_code == 502, r.text
-    assert danh_tinh.danh_sach() == []
-
-    mod_td.trinh_duyet_tao = tao_that
-    r = client.post("/api/danh-tinh/dang-nhap", headers=QT,
-                    json={"email": "dolang@example.com", "mat_khau": MAT_KHAU_GIA})
-    assert r.status_code == 201, r.text
-
-
-# ───────────── Đo bằng Firefox thật (18/10/2026): bộ chọn và trang từ chối ─────────────
 
 def test_bo_chon_khop_cau_truc_trang_google_that():
     """Ô email thật: <input type="text" name="identifier" id="identifierId"> (không phải type=email).
