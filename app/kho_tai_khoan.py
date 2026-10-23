@@ -47,6 +47,21 @@ TEN_TRANG_THAI = "_tai_khoan_da_luu_trang_thai"
 #: {"status": "disabled"}). Không tự bật lại theo giờ.
 TRANG_THAI_TAM_DUNG = "tam_dung"
 
+#: Trạng thái TỪNG ĐƯỜNG DÙNG của một tài khoản (NV232) — danh sách ĐÓNG.
+#: Một tài khoản có nhiều đường (đích dùng trong ``dung_cho``), mỗi đường một
+#: trạng thái riêng: «san_sang» dùng được ngay; «het_han_muc» bỏ qua tới
+#: ``moc_hoi_lai`` (epoch) rồi tự hồi; «can_xac_minh_dien_thoai» và
+#: «can_dang_nhap_lai» cần người xử lý, không tự thử lại; «chua_lien_ket»
+#: đường chưa gắn thông tin đăng nhập riêng. Bảng hành vi/hiển thị của các
+#: trạng thái này nằm ở ``app/duong_dung.py`` (bảng khai báo).
+TRANG_THAI_DUONG_HOP_LE = (
+    "san_sang",
+    "het_han_muc",
+    "can_xac_minh_dien_thoai",
+    "can_dang_nhap_lai",
+    "chua_lien_ket",
+)
+
 DOI_DAI_EMAIL = 254
 DOI_DAI_MAT_KHAU = 256
 DOI_DAI_TOTP = 256
@@ -403,6 +418,133 @@ def _dung_cho_hieu_luc(ban_ghi: dict) -> list:
     return kq
 
 
+def _dich_duong_cua_ban_ghi(ban_ghi: dict) -> list:
+    """Mọi đường dùng của bản ghi (NV232): đích đã khai báo cho (nhóm, loại)
+    của bản ghi CỘNG các đích trong ``dung_cho`` hiệu lực."""
+    nhom = nhom_hieu_luc(ban_ghi.get("nhom", "") or "")
+    loai = ban_ghi.get("loai_tai_khoan", "") or ""
+    kq = list(DICH_DUNG_THEO_NHOM_LOAI.get((nhom, loai), ()))
+    for d in _dung_cho_hieu_luc(ban_ghi):
+        if d not in kq:
+            kq.append(d)
+    return kq
+
+
+def lay_trang_thai_duong(id_hoac_ban_ghi) -> dict:
+    """Trạng thái TỪNG ĐƯỜNG của một tài khoản (NV232), đã CHUẨN HOÁ.
+
+    Nhận id (chuỗi) hoặc chính bản ghi nội bộ. Trả
+    ``{dich: {"trang_thai": <giá trị đóng>, "moc_hoi_lai": epoch}}`` cho
+    mọi đường của tài khoản. Đường chưa từng ghi trạng thái: đường trùng
+    ``dich_dung`` chính → ``san_sang`` (đã có thông tin đăng nhập của chính
+    tài khoản), đường khác → ``chua_lien_ket``. ``het_han_muc`` đã qua
+    ``moc_hoi_lai`` → đọc thành ``san_sang`` (tự hồi, không cần ghi lại).
+    Id lạ/bản ghi nhập → {}.
+    """
+    if isinstance(id_hoac_ban_ghi, dict):
+        ban_ghi = id_hoac_ban_ghi
+    elif isinstance(id_hoac_ban_ghi, str) and not isinstance(id_hoac_ban_ghi, bool):
+        ban_ghi = tim_theo_id(id_hoac_ban_ghi)
+    else:
+        return {}
+    if not isinstance(ban_ghi, dict) or ban_ghi.get("loai") == "nhap":
+        return {}
+    luu = ban_ghi.get("trang_thai_duong")
+    luu = luu if isinstance(luu, dict) else {}
+    bay_gio = int(time.time())
+    dich_chinh = ban_ghi.get("dich_dung") or ""
+    kq: dict = {}
+    for dich in _dich_duong_cua_ban_ghi(ban_ghi):
+        muc = luu.get(dich)
+        if isinstance(muc, dict) and muc.get("trang_thai") in TRANG_THAI_DUONG_HOP_LE:
+            tt = muc["trang_thai"]
+            moc = muc.get("moc_hoi_lai", 0)
+            moc = moc if isinstance(moc, int) and not isinstance(moc, bool) else 0
+            if tt == "het_han_muc" and (not moc or moc <= bay_gio):
+                tt, moc = "san_sang", 0
+            kq[dich] = {"trang_thai": tt, "moc_hoi_lai": moc if tt == "het_han_muc" else 0}
+        else:
+            kq[dich] = {
+                "trang_thai": "san_sang" if dich == dich_chinh else "chua_lien_ket",
+                "moc_hoi_lai": 0,
+            }
+    return kq
+
+
+def dat_trang_thai_duong(id_, duong, trang_thai, moc=None):
+    """Đặt trạng thái MỘT ĐƯỜNG của tài khoản (NV232).
+
+    ``trang_thai`` phải thuộc ``TRANG_THAI_DUONG_HOP_LE``; ``duong`` phải là
+    đường dùng của bản ghi (đã khai báo cho (nhóm, loại) hoặc trong
+    ``dung_cho`` hiệu lực). ``het_han_muc`` bắt buộc ``moc`` là số nguyên
+    dương (epoch giây — thời điểm đường tự hồi ``san_sang`` khi đọc);
+    trạng thái khác luôn lưu ``moc_hoi_lai = 0`` (bỏ qua moc truyền vào).
+    Id lạ → None (không tạo bản ghi mới). Bản ghi nhập → lỗi invalid_value
+    (bản ghi nhập không có mô hình đường dùng). Trả dạng công khai đã cập nhật.
+    """
+    if not isinstance(id_, str) or not id_:
+        return None
+    du_lieu = _doc()
+    ban_ghi = du_lieu.get(id_)
+    if ban_ghi is None:
+        return None
+    if not isinstance(ban_ghi, dict) or ban_ghi.get("loai") == "nhap":
+        raise LoiKhoTaiKhoan("invalid_value")
+    if not isinstance(duong, str) or duong not in _dich_duong_cua_ban_ghi(ban_ghi):
+        raise LoiKhoTaiKhoan("invalid_value")
+    if not isinstance(trang_thai, str) or trang_thai not in TRANG_THAI_DUONG_HOP_LE:
+        raise LoiKhoTaiKhoan("invalid_value")
+    if trang_thai == "het_han_muc":
+        if isinstance(moc, bool) or not isinstance(moc, int) or moc <= 0:
+            raise LoiKhoTaiKhoan("invalid_value")
+        moc_luu = moc
+    else:
+        moc_luu = 0
+    tt = ban_ghi.get("trang_thai_duong")
+    tt = dict(tt) if isinstance(tt, dict) else {}
+    tt[duong] = {"trang_thai": trang_thai, "moc_hoi_lai": moc_luu}
+    ban_ghi["trang_thai_duong"] = tt
+    _ghi(du_lieu)
+    return ban_cong_khai(ban_ghi)
+
+
+def them_dung_cho(id_, dich):
+    """Thêm đích dùng vào ``dung_cho`` (NV232) + tạo mục trạng thái đường.
+
+    ``dich`` phải thuộc bảng khai báo của (nhóm, loại) hiệu lực của bản ghi,
+    nếu không → ``LoiKhoTaiKhoan("invalid_value")``. Thêm trùng → giữ nguyên
+    (không nhân đôi). Đường mới chưa có mục trạng thái → ``chua_lien_ket``
+    (trừ khi đã có mục hợp lệ — giữ nguyên). Id lạ → None. Bản ghi nhập →
+    lỗi invalid_value. Trả dạng công khai đã cập nhật.
+    """
+    if not isinstance(id_, str) or not id_:
+        return None
+    du_lieu = _doc()
+    ban_ghi = du_lieu.get(id_)
+    if ban_ghi is None:
+        return None
+    if not isinstance(ban_ghi, dict) or ban_ghi.get("loai") == "nhap":
+        raise LoiKhoTaiKhoan("invalid_value")
+    nhom = nhom_hieu_luc(ban_ghi.get("nhom", "") or "")
+    loai = ban_ghi.get("loai_tai_khoan", "") or ""
+    if not isinstance(dich, str) \
+            or dich not in DICH_DUNG_THEO_NHOM_LOAI.get((nhom, loai), ()):
+        raise LoiKhoTaiKhoan("invalid_value")
+    dung_cho = _dung_cho_hieu_luc(ban_ghi)
+    if dich not in dung_cho:
+        dung_cho.append(dich)
+    ban_ghi["dung_cho"] = dung_cho
+    tt = ban_ghi.get("trang_thai_duong")
+    tt = dict(tt) if isinstance(tt, dict) else {}
+    muc = tt.get(dich)
+    if not (isinstance(muc, dict)
+            and muc.get("trang_thai") in TRANG_THAI_DUONG_HOP_LE):
+        tt[dich] = {"trang_thai": "chua_lien_ket", "moc_hoi_lai": 0}
+    ban_ghi["trang_thai_duong"] = tt
+    _ghi(du_lieu)
+    return ban_cong_khai(ban_ghi)
+
+
 def ma_tai_khoan(email_chuan: str) -> str:
     """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256)."""
     return _TIEN_TO_ID + hashlib.sha256(email_chuan.encode("utf-8")).hexdigest()[:16]
@@ -470,6 +612,20 @@ def _doc() -> dict:
             if not isinstance(dc, list) or any(
                     not isinstance(x, str) for x in dc):
                 raise LoiKhoTaiKhoan("kho_hong")
+        # Trường NV232 (tuỳ chọn, bản ghi cũ không có): bản đồ đích dùng →
+        # {"trang_thai": <giá trị đóng>, "moc_hoi_lai": epoch >= 0}.
+        if "trang_thai_duong" in ban_ghi:
+            tt_duong = ban_ghi["trang_thai_duong"]
+            if not isinstance(tt_duong, dict):
+                raise LoiKhoTaiKhoan("kho_hong")
+            for dich, muc in tt_duong.items():
+                if not isinstance(dich, str) or not isinstance(muc, dict):
+                    raise LoiKhoTaiKhoan("kho_hong")
+                if muc.get("trang_thai") not in TRANG_THAI_DUONG_HOP_LE:
+                    raise LoiKhoTaiKhoan("kho_hong")
+                moc = muc.get("moc_hoi_lai", 0)
+                if isinstance(moc, bool) or not isinstance(moc, int) or moc < 0:
+                    raise LoiKhoTaiKhoan("kho_hong")
     return du_lieu
 
 
@@ -503,6 +659,8 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
             "loai_tai_khoan": "",
             "dich_dung": "",
             "dung_cho": [],
+            # NV232: bản ghi nhập không có mô hình đường dùng.
+            "trang_thai_duong": {},
             "module_id": "",
             "email_che": che_email(email) if email else None,
             "nhan": html.escape(ban_ghi.get("nhan", ""), quote=False),
@@ -531,6 +689,9 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         "tai_khoan_google_id": ban_ghi.get("tai_khoan_google_id", ""),
         # NV224: MỌI đích dùng của bản ghi (tích lũy, không đè).
         "dung_cho": _dung_cho_hieu_luc(ban_ghi),
+        # NV232: trạng thái TỪNG ĐƯỜNG (đã chuẩn hoá: het_han_muc quá mốc
+        # đọc thành san_sang) — giao diện hiện theo từng đường.
+        "trang_thai_duong": lay_trang_thai_duong(ban_ghi),
         "co_mat_khau": bool(ban_ghi.get("mat_khau")),
         "co_totp": bool(ban_ghi.get("totp_secret")),
         "trang_thai": ban_ghi.get("trang_thai", ""),
@@ -657,6 +818,35 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         _cho_phep_dc = set(DICH_DUNG_THEO_NHOM_LOAI.get((nhom_moi, loai_moi), ()))
         dung_cho_moi = [d for d in dung_cho_moi if d in _cho_phep_dc]
 
+        # NV232: trạng thái từng đường — giữ nguyên mục đã lưu còn hợp lệ;
+        # đường thuộc (nhóm, loại) MỚI hoặc dung_cho MỚI mà chưa có mục thì
+        # mặc định: đường trùng đích chính → san_sang, còn lại chua_lien_ket.
+        # Đường không còn thuộc bản ghi (đổi nhóm/loại) bị loại khỏi bản đồ.
+        tt_duong_moi: dict = {}
+        if cu and isinstance(cu.get("trang_thai_duong"), dict):
+            for d, muc in cu["trang_thai_duong"].items():
+                if (isinstance(d, str) and isinstance(muc, dict)
+                        and muc.get("trang_thai") in TRANG_THAI_DUONG_HOP_LE):
+                    moc_cu = muc.get("moc_hoi_lai", 0)
+                    tt_duong_moi[d] = {
+                        "trang_thai": muc["trang_thai"],
+                        "moc_hoi_lai": moc_cu if isinstance(moc_cu, int)
+                        and not isinstance(moc_cu, bool) and moc_cu >= 0 else 0,
+                    }
+        _dich_ban_ghi_moi = list(
+            DICH_DUNG_THEO_NHOM_LOAI.get((nhom_moi, loai_moi), ()))
+        for d in dung_cho_moi:
+            if d not in _dich_ban_ghi_moi:
+                _dich_ban_ghi_moi.append(d)
+        for d in _dich_ban_ghi_moi:
+            if d not in tt_duong_moi:
+                tt_duong_moi[d] = {
+                    "trang_thai": "san_sang" if d == dich_dung_moi
+                    else "chua_lien_ket",
+                    "moc_hoi_lai": 0,
+                }
+        tt_duong_moi = {d: m for d, m in tt_duong_moi.items()
+                        if d in _dich_ban_ghi_moi}
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
@@ -672,6 +862,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             "dang_nhap_bang": dnb_moi,
             "tai_khoan_google_id": tk_gg_moi,
             "dung_cho": dung_cho_moi,
+            "trang_thai_duong": tt_duong_moi,
             "cap_nhat": int(time.time()),
         }
         du_lieu[id_] = ban_ghi

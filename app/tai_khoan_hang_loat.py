@@ -184,6 +184,10 @@ class DongDaTach:
     #: None = không tích; True = dùng hộp thư trùng email tài khoản;
     #: chuỗi email = dùng hộp thư đó (quản trị chỉ định rõ).
     ma_tu_hop_thu: bool | str | None = None
+    #: NV248 — cờ «Kiểm tra lại» tường minh: lần thử do NGƯỜI DÙNG bấm lại
+    #: nút đăng nhập sau khi nhận «cần người» (không đoán). Module
+    #: may-dang-nhap bỏ qua kiểm tra cooldown theo tài khoản khi cờ này bật.
+    kiem_tra_lai: bool = False
 
     def xoa_bi_mat(self) -> None:
         """Xoá mọi bí mật thô của dòng này khỏi bộ nhớ."""

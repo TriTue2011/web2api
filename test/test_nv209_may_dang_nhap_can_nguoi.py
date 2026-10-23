@@ -140,6 +140,28 @@ def mod(dich_vu_gia, monkeypatch):
     return m
 
 
+@pytest.fixture(autouse=True)
+def _don_trang_thai_dang_nhap_google():
+    """NV248: dọn trạng thái TOÀN CỤC của luồng Google (NV235-b4) trước và
+    sau mỗi test. Test nạp module ĐỘNG (importlib) nhưng KHÔNG đăng ký vào
+    sys.modules nên phải dọn đúng bản đó qua biến MOD của file test — quét
+    sys.modules chỉ bắt được bản lõi thật nạp qua kham_pha.tai_module
+    (test tuyến). Chạy lẻ xanh, chạy chung đỏ nếu sót."""
+    def _don():
+        for m in [MOD] + list(sys.modules.values()):
+            if m is not None and hasattr(m, "_LAN_DANG_NHAP_GOOGLE_THEO_TK"):
+                try:
+                    m._LAN_DANG_NHAP_GOOGLE_THEO_TK.clear()
+                    m._LAN_DANG_NHAP_GOOGLE_XONG = 0.0
+                    m._CAPTCHA_HOLD_DEN = 0.0
+                    m._CAPTCHA_HOLD_HO_SO = ""
+                except Exception:
+                    pass
+    _don()
+    yield
+    _don()
+
+
 def _dong(email=EMAIL, mk=MAT_KHAU, totp=TOTP_SECRET):
     return DongDaTach(dong=0, email=email, loai="mat_khau",
                       mat_khau=BiMatTam(mk),
@@ -176,6 +198,37 @@ def test_selfie_khong_phai_loi_vinh_vien_duoc_thu_lai(mod, dich_vu_gia):
     kq2 = _chay(mod.dang_nhap(_dong()))
     assert kq2.ma_loi == "xac_minh_selfie"
     assert dich_vu_gia.so_lan_goi > goi_truoc, "lỗi tạm/cần người: được thử lại"
+
+
+def test_can_nguoi_khong_ghi_cooldown_thu_lai_ngay_duoc(mod, dich_vu_gia):
+    """NV248: phiên kết thúc «cần người» (need_human) KHÔNG ghi cooldown
+    theo tài khoản — người dùng xử lý xong bấm «Kiểm tra lại» không bị
+    chặn oan 30 phút."""
+    dich_vu_gia.che_do = "can_nguoi_selfie"
+    kq1 = _chay(mod.dang_nhap(_dong()))
+    assert kq1.ma_loi == "xac_minh_selfie"
+    assert getattr(kq1, "can_nguoi", False) is True
+    # Không có mốc cooldown nào được ghi cho tài khoản này.
+    assert EMAIL.lower() not in MOD._LAN_DANG_NHAP_GOOGLE_THEO_TK
+    kq2 = _chay(mod.dang_nhap(_dong()))
+    assert kq2.ma_loi != "dang_trong_cooldown"
+    assert kq2.ma_loi == "xac_minh_selfie"
+
+
+def test_kiem_tra_lai_sau_can_nguoi_chay_ngay(mod, dich_vu_gia, monkeypatch):
+    """NV248: «Kiểm tra lại» của người dùng sau need_human → chạy ngay, kể
+    cả khi có mốc cooldown cũ tồn tại (cờ tường minh bỏ qua kiểm tra)."""
+    monkeypatch.setenv("C2A_DN_GAP_GOOGLE_GIAY", "0")
+    dich_vu_gia.che_do = "can_nguoi_selfie"
+    kq1 = _chay(mod.dang_nhap(_dong()))
+    assert kq1.ma_loi == "xac_minh_selfie"
+    # Giả lập mốc cooldown cũ còn sót (vd từ phiên thành công trước đó).
+    MOD._LAN_DANG_NHAP_GOOGLE_THEO_TK[EMAIL.lower()] = time.time()
+    d = _dong()
+    d.kiem_tra_lai = True
+    kq2 = _chay(mod.dang_nhap(d))
+    assert kq2.ma_loi != "dang_trong_cooldown"
+    assert dich_vu_gia.so_lan_goi > 0
 
 
 @pytest.mark.parametrize("che_do, ma_mong", [

@@ -10,6 +10,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import inspect
 import json
 import logging
 import math
@@ -3642,6 +3643,7 @@ def doc_bang_phan_loai_tai_khoan():
     Đích dùng trả theo khoá ``"nhom|loai"``. Đây là dữ liệu khai báo
     tĩnh, không chứa thông tin tài khoản nào.
     """
+    from app import duong_dung as dd_mod
     return {
         "nhom": list(kho_tai_khoan_mod.NHOM_AI),
         "loai_theo_nhom": {
@@ -3656,7 +3658,208 @@ def doc_bang_phan_loai_tai_khoan():
         "ten_nhom": dict(kho_tai_khoan_mod.TEN_NHOM_AI),
         "ten_loai": dict(kho_tai_khoan_mod.TEN_LOAI_TAI_KHOAN),
         "ten_dich_dung": dict(kho_tai_khoan_mod.TEN_DICH_DUNG),
+        # NV232: nhãn hiển thị trạng thái từng đường dùng.
+        "ten_trang_thai_duong": {
+            k: v["ten"] for k, v in dd_mod.BANG_TRANG_THAI_DUONG.items()
+        },
     }
+
+
+@tai_khoan.get("/duong-dung")
+def doc_duong_dung_tai_khoan():
+    """Trạng thái TỪNG ĐƯỜNG của mọi tài khoản đã lưu (NV232).
+
+    Mỗi tài khoản: danh sách đường ``[{dich, trang_thai, moc_hoi_lai,
+    han_muc}]`` + ``dang_dung_duong`` (đường sẽ chạy đầu lượt mới: codex
+    trước, rồi web). ``han_muc`` = ``khong_biet`` khi chưa có số liệu
+    RIÊNG của đường — không bịa số cấp tài khoản cho một đường. Không lộ
+    bí mật (dùng dạng công khai của kho).
+    """
+    from app import duong_dung as dd_mod
+    from app import luong_dung_tai_khoan as ldtk
+    try:
+        ds = []
+        for bk in kho_tai_khoan_mod.liet_ke():
+            tt = kho_tai_khoan_mod.lay_trang_thai_duong(bk["id"])
+            duong = [{
+                "dich": d,
+                "trang_thai": m["trang_thai"],
+                "moc_hoi_lai": m["moc_hoi_lai"],
+                "han_muc": dd_mod.han_muc_theo_duong(ldtk, bk["id"], d),
+            } for d, m in tt.items()]
+            ds.append({
+                "id": bk["id"],
+                "email_che": bk.get("email_che", ""),
+                "nhom": bk.get("nhom", ""),
+                "duong": duong,
+                "dang_dung_duong": dd_mod.chon_duong(tt),
+            })
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    return {"tai_khoan": ds}
+
+
+async def _goi_hanh_dong_module(mod, entity_id, hanh_dong, tham_so):
+    """Gọi hành động thiết bị của module (NV232): chịu cả thuc_hien đồng bộ
+    lẫn coroutine (module thật dùng async)."""
+    kq = mod.thuc_hien(entity_id, hanh_dong, tham_so)
+    if inspect.isawaitable(kq):
+        kq = await kq
+    return kq if isinstance(kq, dict) else {}
+
+
+async def _oauth_codex_cho_tai_khoan(request, ban_ghi):
+    """Tìm (module, entity_id) OAuth Codex cho tài khoản (NV232).
+
+    Quét module của đúng nhóm tài khoản, tái dùng luồng đăng nhập thiết bị
+    sẵn có (bat_dau_dang_nhap / dan_callback). Không có module hợp lệ →
+    409. Trả (mod, entity_id)."""
+    from app import duong_dung as dd_mod
+    nhom = kho_tai_khoan_mod.nhom_hieu_luc(ban_ghi.get("nhom", "") or "")
+    so = _so(request)
+    tim = await dd_mod.tim_module_oauth(so, nhom)
+    if tim is None:
+        raise LoiOpenAI(
+            409,
+            f"Chưa có module đăng nhập Codex cho nhóm «{nhom}» "
+            "(cần thực thể «dang_nhap» phơi bat_dau_dang_nhap + dan_callback).",
+            code="thieu_module")
+    mid, entity_id = tim
+    return so.dang_chay[mid], entity_id
+
+
+def _ban_ghi_tai_khoan_lien_ket_duoc(id: str):
+    """Bản ghi tài khoản dùng được cho luồng liên kết Codex (NV232).
+
+    Id lạ / bản ghi nhập → 404 (không lộ có/không). Lỗi kho → lỗi đóng."""
+    try:
+        ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if ban_ghi is None or ban_ghi.get("loai") == "nhap":
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.",
+                        code="khong_tim_thay")
+    return ban_ghi
+
+
+@tai_khoan.post("/da-luu/{id}/lien-ket-codex")
+async def bat_dau_lien_ket_codex(id: str, request: Request):
+    """Bắt đầu liên kết Codex cho tài khoản đã lưu (NV232): mở luồng OAuth
+    thiết bị của module nhóm tài khoản, trả ``auth_url`` để người dùng mở.
+
+    Thao tác chạm bí mật bên thứ ba → phiên web phải xác nhận lại (step-up)
+    như tam-dung; Bearer <redacted>ản trị được miễn. Id lạ → 404."""
+    kiem_tra_step_up(request)
+    ban_ghi = _ban_ghi_tai_khoan_lien_ket_duoc(id)
+    mod, entity_id = await _oauth_codex_cho_tai_khoan(request, ban_ghi)
+    kq = await _goi_hanh_dong_module(mod, entity_id, "bat_dau_dang_nhap", {})
+    ttm = kq.get("trang_thai_moi")
+    auth_url = (ttm.get("auth_url") if isinstance(ttm, dict) else None) \
+        or kq.get("auth_url")
+    if not isinstance(auth_url, str) or not auth_url:
+        raise LoiOpenAI(502, "Module đăng nhập không trả auth_url.",
+                        code="thieu_auth_url")
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Mở liên kết Codex cho tài khoản đã lưu ({ban_ghi.get('email_che', '')})",
+        nguoi_thuc_hien=nguoi_thuc_hien)
+    return {"auth_url": auth_url}
+
+
+@tai_khoan.post("/da-luu/{id}/lien-ket-codex/hoan-tat")
+async def hoan_tat_lien_ket_codex(id: str, request: Request):
+    """Hoàn tất liên kết Codex (NV232). Body: ``{"url_callback": "..."}``
+    (URL trình duyệt điều hướng tới sau khi người dùng cho phép).
+
+    Gọi ``dan_callback`` của module. Thành công + ``email_che`` module trả
+    về KHỚP tài khoản đã lưu (mặt nạ ``a***@mien`` đúng kiểu module) →
+    đường codex = ``san_sang`` (+ thêm codex vào ``dung_cho``). Thất bại vì
+    cần xác minh điện thoại (tín hiệu cấu trúc ``ma_loi``/cờ boolean) →
+    codex = ``can_xac_minh_dien_thoai``, ``can_nguoi`` = true. Email không
+    khớp → không ghi trạng thái đường nào. Step-up như tam-dung."""
+    kiem_tra_step_up(request)
+    from app import duong_dung as dd_mod
+    than = await _than_json(request)
+    url_callback = than.get("url_callback", "")
+    if not isinstance(url_callback, str):
+        raise LoiOpenAI(400, "Thiếu trường «url_callback» (chuỗi).",
+                        code="invalid_value")
+    ban_ghi = _ban_ghi_tai_khoan_lien_ket_duoc(id)
+    mod, entity_id = await _oauth_codex_cho_tai_khoan(request, ban_ghi)
+    kq = await _goi_hanh_dong_module(
+        mod, entity_id, "dan_callback",
+        {"url": url_callback} if url_callback else {})
+    nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+    ttm = kq.get("trang_thai_moi")
+    if kq.get("ok") is True and isinstance(ttm, dict):
+        email_che = ttm.get("email_che")
+        mask = dd_mod.che_email_kieu_module(ban_ghi.get("email", ""))
+        if isinstance(email_che, str) and email_che and email_che == mask:
+            try:
+                kho_tai_khoan_mod.them_dung_cho(id, "codex")
+                kho_tai_khoan_mod.dat_trang_thai_duong(
+                    id, "codex", "san_sang")
+            except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+                raise _loi_kho_tai_khoan(e) from None
+            nhat_ky_mod.ghi(
+                "quan_tri", "thong_tin",
+                "Liên kết Codex thành công "
+                f"({kho_tai_khoan_mod.che_email(ban_ghi.get('email', ''))})",
+                nguoi_thuc_hien=nguoi_thuc_hien)
+            return {"thanh_cong": True, "can_nguoi": False,
+                    "tai_khoan": kho_tai_khoan_mod.ban_cong_khai(
+                        kho_tai_khoan_mod.tim_theo_id(id))}
+        # Email module trả về không khớp tài khoản đã lưu: không ghi gì.
+        return {"thanh_cong": False, "can_nguoi": False,
+                "ma_loi": "email_khong_khop",
+                "huong_dan": "Tài khoản Codex vừa cho phép không khớp email "
+                             "tài khoản đã lưu; kiểm tra lại rồi thử liên kết "
+                             "lại."}
+    loai, ma_loi, huong_dan = dd_mod.phan_loai_lien_ket_that_bai(kq)
+    can_nguoi = loai == "can_xac_minh_dien_thoai"
+    if can_nguoi:
+        try:
+            kho_tai_khoan_mod.dat_trang_thai_duong(
+                id, "codex", "can_xac_minh_dien_thoai")
+        except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+            raise _loi_kho_tai_khoan(e) from None
+        nhat_ky_mod.ghi(
+            "quan_tri", "thong_tin",
+            "Liên kết Codex cần xác minh điện thoại "
+            f"({kho_tai_khoan_mod.che_email(ban_ghi.get('email', ''))})",
+            nguoi_thuc_hien=nguoi_thuc_hien)
+    return {"thanh_cong": False, "can_nguoi": can_nguoi,
+            "ma_loi": ma_loi, "huong_dan": huong_dan}
+
+
+@tai_khoan.post("/da-luu/{id}/thu-lai-codex")
+async def thu_lai_lien_ket_codex(id: str, request: Request):
+    """Mở lại luồng OAuth Codex khi liên kết dang dở (NV232).
+
+    Chỉ khi đường codex đang ở trạng thái cần người (``can_xac_minh_dien_thoai``,
+    ``can_dang_nhap_lai``) hoặc ``chua_lien_ket``; đường đã ``san_sang`` hoặc
+    đang ``het_han_muc`` → 409. Step-up như tam-dung."""
+    kiem_tra_step_up(request)
+    ban_ghi = _ban_ghi_tai_khoan_lien_ket_duoc(id)
+    try:
+        tt = kho_tai_khoan_mod.lay_trang_thai_duong(id)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    tt_codex = (tt.get("codex") or {}).get("trang_thai")
+    if tt_codex not in ("can_xac_minh_dien_thoai", "can_dang_nhap_lai",
+                        "chua_lien_ket"):
+        raise LoiOpenAI(409, "Đường Codex không ở trạng thái cần thử liên kết "
+                             "lại.", code="khong_can_thiet")
+    mod, entity_id = await _oauth_codex_cho_tai_khoan(request, ban_ghi)
+    kq = await _goi_hanh_dong_module(mod, entity_id, "bat_dau_dang_nhap", {})
+    ttm = kq.get("trang_thai_moi")
+    auth_url = (ttm.get("auth_url") if isinstance(ttm, dict) else None) \
+        or kq.get("auth_url")
+    if not isinstance(auth_url, str) or not auth_url:
+        raise LoiOpenAI(502, "Module đăng nhập không trả auth_url.",
+                        code="thieu_auth_url")
+    return {"auth_url": auth_url}
 
 
 @tai_khoan.get("/han-muc")
@@ -3940,6 +4143,9 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         raise LoiOpenAI(502, "Module chưa triển khai đăng nhập.", code="chua_ho_tro")
     dong = tai_khoan_hang_loat_mod.DongDaTach(
         dong=0, email=email, loai="mat_khau", mat_khau=mat_khau, totp=totp)
+    # NV248 — cờ «Kiểm tra lại» tường minh từ giao diện: người dùng bấm lại
+    # nút đăng nhập sau khi nhận «cần người» (không đoán từ lịch sử).
+    dong.kiem_tra_lai = bool(than.get("kiem_tra_lai", False))
     # NV210: module sở hữu của tài khoản (dữ liệu) để module đăng nhập chọn
     # đúng luồng; lõi không đoán.
     dong.module_cua_tai_khoan = ban_ghi.get("module_id") or "" if ban_ghi else ""

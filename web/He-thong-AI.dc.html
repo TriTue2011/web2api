@@ -230,12 +230,26 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">Gói: {{r.bacGoi}}</span>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">Hạn mức: {{r.hanMuc}}</span>
 <span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
+<sc-if value="{{r.coDuongDs}}"><span data-duong-ds="{{r.id}}" style="display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center"><sc-for list="{{r.duongDs}}" as="d"><span title="{{d.ghiChu}}" style="{{d.st}}">{{d.nhan}}</span></sc-for></span></sc-if>
 <sc-if value="{{r.coDongDung}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.dongDung}}</span></sc-if>
 <span style="margin-left:auto;display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:100%">
 <sc-if value="{{r.coTamDung}}"><button type="button" data-dl-tam-dung="{{r.id}}" onClick="{{r.doiTamDung}}" style="{{r.tamDungSt}}">{{r.nhanTamDung}}</button></sc-if>
 <button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
+<sc-if value="{{r.coLienKetCodex}}"><button type="button" data-lien-ket-codex="{{r.id}}" onClick="{{r.lienKetCodex}}" style="{{r.dangNhapSt}}">Liên kết Codex</button></sc-if>
+<sc-if value="{{r.coThuLaiCodex}}"><button type="button" data-thu-lai-codex="{{r.id}}" onClick="{{r.thuLaiCodex}}" style="{{r.dangNhapSt}}">Thử liên kết Codex lại</button></sc-if>
 <button type="button" data-dl-xoa="{{r.id}}" onClick="{{r.xoa}}" style="{{r.xoaSt}}">{{r.nhanXoa}}</button>
 </span>
+<sc-if value="{{r.choHoanTatCodex}}">
+<div data-hoan-tat-codex="{{r.id}}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px;width:100%">
+<sc-if value="{{r.authUrlCodex}}"><a href="{{r.authUrlCodex}}" target="_blank" rel="noreferrer" style="font-size:12px">Mở trang cho phép Codex</a></sc-if>
+<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)">
+<span>URL điều hướng về:</span>
+<input type="text" autocomplete="off" placeholder="https://…/callback?code=…" value="{{r.callbackUrlVal}}" onInput="{{r.doiCallbackUrl}}" style="width:280px;min-height:44px;box-sizing:border-box;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:13px">
+</label>
+<button type="button" data-hoan-tat-codex-nut="{{r.id}}" onClick="{{r.hoanTatLienKet}}" style="{{r.dangNhapSt}}">Hoàn tất liên kết</button>
+<button type="button" onClick="{{r.huyHoanTat}}" style="{{r.dangNhapSt}}">Huỷ</button>
+</div>
+</sc-if>
 <sc-if value="{{r.cho2faDl}}">
 <div data-dl-nhap-2fa="{{r.id}}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px;width:100%">
 <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)">
@@ -816,6 +830,13 @@ class Component extends DCLogic {
       const { j } = await K.goi('api/tai-khoan/bang-phan-loai');
       this.setState({ dlBang: j || null });
     } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
+    // NV232: trạng thái từng đường dùng (codex/web…) + đường đang dùng của
+    // mỗi tài khoản. Lõi cũ chưa có đường này → trang vẫn chạy, nút liên
+    // kết ẩn đi.
+    try {
+      const { j } = await K.goi('api/tai-khoan/duong-dung');
+      this.setState({ dlDuong: (j && Array.isArray(j.tai_khoan)) ? j.tai_khoan : [] });
+    } catch (e) { this.setState({ dlDuong: [] }); }
     try {
       const { j } = await K.goi('api/tai-khoan/tu-dang-nhap-lai');
       if (j && typeof j.bat === 'boolean') this.setState({ dlTuDongLai: j.bat });
@@ -901,10 +922,15 @@ class Component extends DCLogic {
     if (!chon) { this.setState({ dlLoi: 'Chọn một nguồn AI trước.' }); return; }
     this.setState({ dlLoi: '', dlCho2faId: '', dlCho2faModule: '', dlMa2fa: '' });
     try {
+      // NV248: lần bấm lại sau khi nhận «cần người» gửi cờ tường minh
+      // kiem_tra_lai để server bỏ qua cooldown theo tài khoản.
+      const s0 = this.state || {};
+      const canNguoiTruoc = !!((s0.dlCanNguoi || {})[id]);
       const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/dang-nhap', {
-        method: 'POST', json: { module_id: chon.id }
+        method: 'POST', json: { module_id: chon.id, kiem_tra_lai: canNguoiTruoc }
       });
-      if (j && j.thanh_cong) { this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
+      const cn = Object.assign({}, (this.state || {}).dlCanNguoi);
+      if (j && j.thanh_cong) { delete cn[id]; this.setState({ dlCanNguoi: cn }); this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
       else if (j && j.cho_2fa) {
         // NV145b: dịch vụ chờ mã 2FA → hiện ô nhập mã cho tài khoản này
         this.setState({ dlCho2faId: id, dlCho2faModule: chon.id });
@@ -915,7 +941,7 @@ class Component extends DCLogic {
         this.msg('Đang đăng nhập trên dịch vụ — tự động cập nhật trạng thái…', false);
         this.dlHoiTrangThai(id, chon.id, 0);
       }
-      else if (j && j.can_nguoi) this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true);
+      else if (j && j.can_nguoi) { cn[id] = true; this.setState({ dlCanNguoi: cn }); this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); }
       else this.setState({ dlLoi: 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : '') });
     } catch (e) {
       this.setState({ dlLoi: (e && e.message) || 'Không đăng nhập được.' });
@@ -1050,6 +1076,45 @@ class Component extends DCLogic {
       this.msg(tam_dung ? 'Đã tạm dừng tài khoản.' : 'Đã bật lại tài khoản.', false);
     } catch (e) {
       this.setState({ dlLoi: (e && e.message) || 'Không đổi được trạng thái.' });
+    }
+  }
+  // NV232: liên kết Codex cho tài khoản đã lưu (mở OAuth → dán callback URL
+  // → hoàn tất). Lõi cũ chưa có đường này (404/405 không kèm mã lỗi) → ẩn
+  // nút, không báo lỗi ầm ĩ.
+  async dlLienKetCodex(id, thuLai) {
+    try {
+      const duong = thuLai ? 'thu-lai-codex' : 'lien-ket-codex';
+      const { ma, j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/' + duong, {
+        method: 'POST', json: {}, chapNhan: [404, 405, 409]
+      });
+      if ((ma === 404 || ma === 405) && !(j && j.error && j.error.code)) {
+        this.setState({ dlDuong: [] });
+        return;
+      }
+      if (j && j.auth_url) {
+        this.setState({ dlHoanTatCodexId: id, dlCallbackUrl: '', dlAuthUrl: j.auth_url });
+        this.msg('Đã mở luồng liên kết Codex — mở trang cho phép, dán URL điều hướng về rồi bấm «Hoàn tất liên kết».', false);
+      } else {
+        this.msg('Không mở được luồng liên kết: ' + ((j && j.error && j.error.message) || 'không rõ'), true);
+      }
+    } catch (e) {
+      this.msg('Không mở được liên kết Codex: ' + (e && e.message), true);
+    }
+  }
+  async dlHoanTatLienKet(id) {
+    try {
+      const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/lien-ket-codex/hoan-tat', {
+        method: 'POST', json: { url_callback: this.state.dlCallbackUrl || '' }
+      });
+      if (j && j.thanh_cong) {
+        this.msg('Đã liên kết Codex cho tài khoản.', false);
+        this.setState({ dlHoanTatCodexId: '', dlCallbackUrl: '', dlAuthUrl: '' });
+      } else {
+        this.msg('Chưa liên kết được: ' + ((j && (j.huong_dan || j.ma_loi)) || 'không rõ'), true);
+      }
+      await this.taiDlDs();
+    } catch (e) {
+      this.msg('Không hoàn tất được liên kết Codex: ' + (e && e.message), true);
     }
   }
   async dlXoa(id) {
@@ -1676,7 +1741,7 @@ class Component extends DCLogic {
           dlDs: [], dlChonId: '', dlEmail: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
           dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkGoogleId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
-          dlXoaChon: '', dlMoDS: true, dlTuDongLai: true
+          dlXoaChon: '', dlMoDS: true, dlTuDongLai: true, dlCanNguoi: {}
         });
         if (mo) this.taiDlDs();
       }},
@@ -1707,6 +1772,13 @@ class Component extends DCLogic {
           }
         }
         const bangTk = s.dlBang || null;
+        // NV232: trạng thái từng đường dùng theo tài khoản (từ /duong-dung).
+        // Không có dữ liệu (lõi cũ) → hàng không có chip đường, nút ẩn.
+        const duongTheoTk = {};
+        for (const m of (Array.isArray(s.dlDuong) ? s.dlDuong : [])) {
+          if (m && m.id) duongTheoTk[m.id] = m;
+        }
+        const chipDuongSt = 'font-size:12px;white-space:nowrap;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mute);';
         const hangTk = dlDs.filter((t) => !locNhomDl || (t.nhom || '') === locNhomDl).map((t) => ({
           id: t.id,
           emailChe: t.email_che || '',
@@ -1737,6 +1809,45 @@ class Component extends DCLogic {
           nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá',
           dangDung1: !!dangDungTk[t.id],
           stDangDung1: DD_ST,
+          // NV232: chip từng đường dùng (nhãn đổ từ bảng API
+          // ten_dich_dung + ten_trang_thai_duong) + nút liên kết Codex.
+          duongDs: (() => {
+            const m = duongTheoTk[t.id];
+            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
+            return ds.map((d) => ({
+              nhan: tenTrongBangTk(bangTk, 'ten_dich_dung', d.dich) + ': '
+                + tenTrongBangTk(bangTk, 'ten_trang_thai_duong', d.trang_thai),
+              ghiChu: 'Đường dùng ' + (d.dich || ''),
+              st: chipDuongSt,
+            }));
+          })(),
+          coDuongDs: (() => { const m = duongTheoTk[t.id]; return !!(m && Array.isArray(m.duong) && m.duong.length); })(),
+          ttCodex: (() => {
+            const m = duongTheoTk[t.id];
+            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
+            const c = ds.find((d) => d && d.dich === 'codex');
+            return (c && c.trang_thai) || '';
+          })(),
+          coLienKetCodex: (() => {
+            const m = duongTheoTk[t.id];
+            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
+            const c = ds.find((d) => d && d.dich === 'codex');
+            return !!(c && c.trang_thai === 'chua_lien_ket');
+          })(),
+          coThuLaiCodex: (() => {
+            const m = duongTheoTk[t.id];
+            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
+            const c = ds.find((d) => d && d.dich === 'codex');
+            return !!(c && (c.trang_thai === 'can_xac_minh_dien_thoai' || c.trang_thai === 'can_dang_nhap_lai'));
+          })(),
+          lienKetCodex: () => this.dlLienKetCodex(t.id, false),
+          thuLaiCodex: () => this.dlLienKetCodex(t.id, true),
+          choHoanTatCodex: s.dlHoanTatCodexId === t.id,
+          authUrlCodex: s.dlAuthUrl || '',
+          callbackUrlVal: s.dlCallbackUrl || '',
+          doiCallbackUrl: (e) => this.setState({ dlCallbackUrl: e.target.value }),
+          hoanTatLienKet: () => this.dlHoanTatLienKet(t.id),
+          huyHoanTat: () => this.setState({ dlHoanTatCodexId: '', dlCallbackUrl: '', dlAuthUrl: '' }),
           hanMuc: nhanHanMucTk(t),
           coDongDung: !!((t.dung && ((t.dung.hom_nay | 0) > 0 || (t.dung['7_ngay'] | 0) > 0)) || (t.han_muc && typeof t.han_muc === 'object')),
           dongDung: (() => { const d = t.dung || {}, hm = t.han_muc;

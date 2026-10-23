@@ -167,6 +167,28 @@ def mod(dich_vu_gia, monkeypatch):
     return m
 
 
+@pytest.fixture(autouse=True)
+def _don_trang_thai_dang_nhap_google():
+    """NV248: dọn trạng thái TOÀN CỤC của luồng Google (NV235-b4) trước và
+    sau mỗi test. Test nạp module ĐỘNG (importlib) nhưng KHÔNG đăng ký vào
+    sys.modules nên phải dọn đúng bản đó qua biến MOD của file test — quét
+    sys.modules chỉ bắt được bản lõi thật nạp qua kham_pha.tai_module
+    (test tuyến). Chạy lẻ xanh, chạy chung đỏ nếu sót."""
+    def _don():
+        for m in [MOD] + list(sys.modules.values()):
+            if m is not None and hasattr(m, "_LAN_DANG_NHAP_GOOGLE_THEO_TK"):
+                try:
+                    m._LAN_DANG_NHAP_GOOGLE_THEO_TK.clear()
+                    m._LAN_DANG_NHAP_GOOGLE_XONG = 0.0
+                    m._CAPTCHA_HOLD_DEN = 0.0
+                    m._CAPTCHA_HOLD_HO_SO = ""
+                except Exception:
+                    pass
+    _don()
+    yield
+    _don()
+
+
 def _dong(email=EMAIL, mk=MAT_KHAU, totp=TOTP_SECRET):
     return DongDaTach(dong=0, email=email, loai="mat_khau",
                       mat_khau=BiMatTam(mk),
@@ -345,6 +367,59 @@ def test_dang_nhap_loi_tam_thoi_duoc_thu_lai(mod, dich_vu_gia):
     assert dich_vu_gia.so_lan_goi > goi_truoc
 
 
+# ── NV248: ngữ nghĩa ghi cooldown theo tài khoản ──────────────────────────────
+
+def test_cooldown_ghi_khi_thanh_cong_thu_lai_ngay_bi_chan(
+        mod, dich_vu_gia, monkeypatch):
+    """Phiên chạm Google và thành công → ghi cooldown: thử lại ngay bị chặn."""
+    monkeypatch.setenv("C2A_DN_GAP_GOOGLE_GIAY", "0")
+    dich_vu_gia.che_do = "thanh_cong"
+    kq1 = _chay(mod.dang_nhap(_dong()))
+    assert kq1.thanh_cong is True
+    kq2 = _chay(mod.dang_nhap(_dong()))
+    assert kq2.thanh_cong is False
+    assert kq2.ma_loi == "dang_trong_cooldown"
+
+
+def test_cooldown_khong_ghi_khi_dich_vu_sap_thu_lai_ngay_duoc(
+        mod, monkeypatch):
+    """Dịch vụ sập (chưa chạm Google) → KHÔNG ghi cooldown: thử lại ngay được."""
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    mod._url = "http://127.0.0.1:9"  # cổng chết: không ai nghe
+    kq1 = _chay(mod.dang_nhap(_dong()))
+    assert kq1.thanh_cong is False
+    assert kq1.ma_loi == "dich_vu_sap"
+    kq2 = _chay(mod.dang_nhap(_dong()))
+    assert kq2.thanh_cong is False
+    assert kq2.ma_loi == "dich_vu_sap"  # không bị dang_trong_cooldown chặn
+
+
+def test_kiem_tra_lai_cua_nguoi_dung_bo_qua_cooldown(
+        mod, dich_vu_gia, monkeypatch):
+    """Cờ «Kiểm tra lại» tường minh của người dùng → bỏ qua kiểm tra cooldown
+    theo tài khoản (không đoán từ lịch sử)."""
+    monkeypatch.setenv("C2A_DN_GAP_GOOGLE_GIAY", "0")
+    dich_vu_gia.che_do = "thanh_cong"
+    kq1 = _chay(mod.dang_nhap(_dong()))
+    assert kq1.thanh_cong is True
+    d = _dong()
+    d.kiem_tra_lai = True
+    kq2 = _chay(mod.dang_nhap(d))
+    assert kq2.ma_loi != "dang_trong_cooldown"
+    assert kq2.thanh_cong is True
+
+
+def test_cooldown_ghi_khi_google_tu_choi_ro(mod, dich_vu_gia):
+    """Google từ chối rõ (sai mật khẩu — lỗi vĩnh viễn) → ghi cooldown."""
+    dich_vu_gia.che_do = "sai_mat_khau"
+    kq1 = _chay(mod.dang_nhap(_dong()))
+    assert kq1.thanh_cong is False
+    assert kq1.ma_loi == "sai_mat_khau"
+    # Tài khoản đã bị đánh dấu vĩnh viễn nên dừng trước cả cooldown;
+    # kiểm trực tiếp mốc cooldown đã được ghi.
+    assert EMAIL.lower() in MOD._LAN_DANG_NHAP_GOOGLE_THEO_TK
+
+
 def test_trinh_duyet_cookie_xuat_phien(mod, dich_vu_gia):
     kq = _chay(mod.trinh_duyet_cookie(EMAIL, "gemini.google.com"))
     assert "cookie" in kq
@@ -428,6 +503,35 @@ def test_tuyen_dang_nhap_bang_tai_khoan_da_luu(moi_truong_loi, dich_vu_gia):
     # Mật khẩu đã tới két dịch vụ đúng một lần
     assert len(dich_vu_gia.da_luu) == 1
     assert dich_vu_gia.da_luu[0]["password"] == MAT_KHAU
+
+
+def test_tuyen_kiem_tra_lai_bo_qua_cooldown(moi_truong_loi, dich_vu_gia,
+                                            monkeypatch):
+    """NV248 (qua lõi thật): POST /api/tai-khoan/da-luu/{id}/dang-nhap với
+    kiem_tra_lai=true → bỏ qua cooldown theo tài khoản; không có cờ → bị
+    chặn dang_trong_cooldown."""
+    monkeypatch.setenv("C2A_DN_GAP_GOOGLE_GIAY", "0")
+    dich_vu_gia.che_do = "thanh_cong"
+    client, so = moi_truong_loi
+    r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
+        "email": EMAIL, "mat_khau": MAT_KHAU, "totp_secret": TOTP_SECRET,
+        "nhan": "test nv248 kiem-tra-lai"})
+    assert r.status_code == 200, r.text
+    tai_khoan_id = r.json()["tai_khoan"]["id"]
+    # Lần 1: thành công → ghi cooldown theo tài khoản
+    r1 = client.post(f"/api/tai-khoan/da-luu/{tai_khoan_id}/dang-nhap",
+                     headers=QT, json={"module_id": "may-dang-nhap"})
+    assert r1.json()["thanh_cong"] is True, r1.text
+    # Lần 2: không có cờ → bị cooldown chặn
+    r2 = client.post(f"/api/tai-khoan/da-luu/{tai_khoan_id}/dang-nhap",
+                     headers=QT, json={"module_id": "may-dang-nhap"})
+    assert r2.json()["ma_loi"] == "dang_trong_cooldown", r2.text
+    # Lần 3: cờ kiem_tra_lai tường minh → chạy tiếp, không bị chặn
+    r3 = client.post(f"/api/tai-khoan/da-luu/{tai_khoan_id}/dang-nhap",
+                     headers=QT, json={"module_id": "may-dang-nhap",
+                                       "kiem_tra_lai": True})
+    assert r3.json()["ma_loi"] != "dang_trong_cooldown", r3.text
+    assert r3.json()["thanh_cong"] is True, r3.text
 
 
 def _luu_tai_khoan_qua_loi(client):

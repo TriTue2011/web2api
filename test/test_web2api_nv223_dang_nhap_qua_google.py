@@ -196,6 +196,21 @@ def mod(dich_vu_gia, monkeypatch):
     return m
 
 
+@pytest.fixture(autouse=True)
+def _don_trang_thai_dang_nhap_google():
+    """NV248: dọn trạng thái TOÀN CỤC của luồng Google (NV235-b4) trước và
+    sau mỗi test. Test nạp module ĐỘNG (importlib) nên phải dọn đúng bản
+    module đó — chạy lẻ xanh, chạy chung đỏ nếu sót."""
+    def _don():
+        MOD._LAN_DANG_NHAP_GOOGLE_THEO_TK.clear()
+        MOD._LAN_DANG_NHAP_GOOGLE_XONG = 0.0
+        MOD._CAPTCHA_HOLD_DEN = 0.0
+        MOD._CAPTCHA_HOLD_HO_SO = ""
+    _don()
+    yield
+    _don()
+
+
 def _dong(email=EMAIL_GPT, mk=MK_GPT, totp=TOTP_GPT, module_cua="chatgpt-web",
           dang_nhap_bang=None, google=False):
     d = DongDaTach(dong=0, email=email, loai="mat_khau",

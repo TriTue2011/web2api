@@ -232,19 +232,27 @@ def _email_tu_jwt(token: str) -> str:
 _NGUONG_TOKEN_SAP_HET_GIAY = 24 * 3600
 
 
-def _exp_cua_jwt(token: str) -> int | None:
-    """Claim ``exp`` của JWT — giải mã payload KHÔNG xác thực chữ ký.
-
-    Chỉ đọc token mà dịch vụ vừa trả cho chính lượt này. Hỏng/thiếu/không
-    phải số nguyên dương → None (coi như không đọc được hạn)."""
+def _payload_jwt(token: str) -> dict | None:
+    """Payload của JWT (dict) — giải mã KHÔNG xác thực chữ ký; hỏng → None."""
     try:
         phan = str(token or "").split(".")
         if len(phan) != 3:
             return None
         dem = "=" * (-len(phan[1]) % 4)
         tai_lieu = json.loads(base64.urlsafe_b64decode(phan[1] + dem))
-        if not isinstance(tai_lieu, dict):
-            return None
+        return tai_lieu if isinstance(tai_lieu, dict) else None
+    except Exception:
+        return None
+
+
+def _exp_cua_jwt(token: str) -> int | None:
+    """Claim ``exp`` của JWT. Hỏng/thiếu/không phải số nguyên dương → None.
+
+    Chỉ đọc token mà dịch vụ vừa trả cho chính lượt này."""
+    tai_lieu = _payload_jwt(token)
+    if tai_lieu is None:
+        return None
+    try:
         exp = tai_lieu.get("exp")
         if isinstance(exp, bool):
             return None
@@ -255,10 +263,19 @@ def _exp_cua_jwt(token: str) -> int | None:
 
 
 def _jwt_con_han(token: str, bay_gio: float | None = None) -> bool:
-    """Token còn hạn dùng tốt không — exp phải sau (hiện tại + ngưỡng).
+    """Token còn dùng được không.
 
-    Không đọc được exp → False (an toàn: coi như chết, đăng nhập lại).
+    * Payload hỏng → False (không phải JWT dùng được).
+    * KHÔNG có claim ``exp`` → True: không biết hạn chứ không phải «đã chết».
+      Hạn thật của token do provider báo khi dùng (401), không phải việc của
+      đăng nhập.
+    * Có ``exp`` thì phải sau (hiện tại + ngưỡng); ``exp`` có nhưng sai kiểu → False.
     """
+    tai_lieu = _payload_jwt(token)
+    if tai_lieu is None:
+        return False
+    if "exp" not in tai_lieu:
+        return True
     exp = _exp_cua_jwt(token)
     if exp is None:
         return False
@@ -425,6 +442,32 @@ _CAPTCHA_HOLD_DEN = 0.0
 _CAPTCHA_HOLD_HO_SO = ""
 #: Cooldown theo tài khoản (giây) — đặt dưới khoá.
 _LAN_DANG_NHAP_GOOGLE_THEO_TK: dict[str, float] = {}
+
+#: NV248 — mã lỗi nghĩa là phiên Google đã thật sự chạm Google và bị từ
+#: chối RÕ (không phải cần người / 2FA / CAPTCHA / lỗi tạm thời / dịch vụ
+#: sập). Chỉ các mã này (và thành công) mới ghi cooldown 1800s — theo c2a
+#: ``_freshen_google`` gỡ mốc ``_last_attempt`` khi gặp cần người / captcha
+#: hold. Lưu ý: «tai_khoan_bi_khoa» cũng có thể tới từ nhánh need_human (đã
+#: bị đánh dấu vinh_vien chặn trước nên mốc cooldown nếu ghi cũng không
+#: bao giờ được đọc).
+_MA_LOI_GOOGLE_TU_CHOI_RO = frozenset({
+    "sai_mat_khau", "tai_khoan_bi_khoa", "can_xac_minh_dien_thoai",
+})
+
+
+def _nen_ghi_cooldown_google(kq) -> bool:
+    """NV248: có nên ghi cooldown 1800s/tài khoản sau phiên Google không.
+
+    Chỉ ghi khi phiên đã thật sự chạm Google và kết thúc thành công hoặc
+    bị Google từ chối rõ. KHÔNG ghi khi need_human / need_code / CAPTCHA /
+    lỗi tạm thời / dịch vụ sập / ngoại lệ — để lần thử lại ngay (kể cả
+    «Kiểm tra lại» của người dùng) không bị chặn oan 30 phút.
+    """
+    if kq is None:
+        return False
+    if bool(getattr(kq, "thanh_cong", False)):
+        return True
+    return str(getattr(kq, "ma_loi", "") or "") in _MA_LOI_GOOGLE_TU_CHOI_RO
 
 
 def _khoang_cach_google_giay() -> float:
@@ -1359,32 +1402,43 @@ class Module:
         if _la_luong_chatgpt(getattr(dong, "module_cua_tai_khoan", "")):
             return await self._dang_nhap_chatgpt(
                 email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
+        # NV248: cờ «Kiểm tra lại» tường minh trên dong — lần thử do người
+        # dùng bấm lại sau cần-người không bị cooldown theo tài khoản chặn.
         return await self._dang_nhap_google(
-            email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
+            email_tho, khoa_tk, st, hong_lt, mk, totp_secret,
+            kiem_tra_lai=bool(getattr(dong, "kiem_tra_lai", False)))
 
     async def _dang_nhap_google(self, email_tho: str, khoa_tk: str, st: dict,
                                 hong_lt: int, mk: str,
-                                totp_secret: str) -> KetQuaDangNhap:
+                                totp_secret: str,
+                                kiem_tra_lai: bool = False) -> KetQuaDangNhap:
         """Luồng Google (NV145b + NV235-b4): MỘT phiên toàn hệ thống.
 
         Theo c2a ``_freshen_google``: cooldown 1800s/tài khoản (kiểm TRƯỚC khi
         xếp hàng); khoá toàn cục giữ suốt lượt poll; captcha hold chặn lượt
         khác; giãn cách tối thiểu giữa 2 phiên. Nhận bí mật thô; PHẢI ghi đè
         trước khi hàm trả về, mọi nhánh.
+
+        NV248: ``kiem_tra_lai`` = lần thử do NGƯỜI DÙNG bấm «Kiểm tra lại»
+        sau cần-người (cờ tường minh trên dong — không đoán) → bỏ qua kiểm
+        tra cooldown theo tài khoản. Cooldown chỉ được GHI khi phiên đã thật
+        sự chạm Google và kết thúc thành công hoặc bị Google từ chối rõ.
         """
         global _LAN_DANG_NHAP_GOOGLE_XONG
         # Cooldown theo tài khoản — từ chối ngay, không xếp hàng, không gọi
-        # dịch vụ.
-        lan_cuoi = _LAN_DANG_NHAP_GOOGLE_THEO_TK.get(khoa_tk, 0.0)
-        if time.time() - lan_cuoi < _thoi_gian_cooldown_google_giay():
-            mk = "\x00" * len(mk)
-            totp_secret = "\x00" * len(totp_secret)
-            del mk, totp_secret
-            return _ket_qua_dang_nhap(
-                False, ma_loi="dang_trong_cooldown",
-                huong_dan="Tài khoản này vừa đăng nhập Google chưa lâu — "
-                          "đợi hết thời gian giãn cách rồi thử lại, tránh "
-                          "Google tăng mức chặn.")
+        # dịch vụ. NV248: người dùng bấm «Kiểm tra lại» sau cần-người không
+        # bị chặn bởi mốc này.
+        if not kiem_tra_lai:
+            lan_cuoi = _LAN_DANG_NHAP_GOOGLE_THEO_TK.get(khoa_tk, 0.0)
+            if time.time() - lan_cuoi < _thoi_gian_cooldown_google_giay():
+                mk = "\x00" * len(mk)
+                totp_secret = "\x00" * len(totp_secret)
+                del mk, totp_secret
+                return _ket_qua_dang_nhap(
+                    False, ma_loi="dang_trong_cooldown",
+                    huong_dan="Tài khoản này vừa đăng nhập Google chưa lâu — "
+                              "đợi hết thời gian giãn cách rồi thử lại, tránh "
+                              "Google tăng mức chặn.")
         async with _KHOA_DANG_NHAP_GOOGLE:
             # Captcha hold toàn cục: một hồ sơ gặp CAPTCHA → cả hệ thống nghỉ.
             chu_hold = _dang_trong_captcha_hold()
@@ -1402,13 +1456,19 @@ class Module:
                 time.time() - _LAN_DANG_NHAP_GOOGLE_XONG)
             if cho > 0:
                 await asyncio.sleep(cho)
+            kq: KetQuaDangNhap | None = None
             try:
-                return await self._dang_nhap_google_khi_toi_luot(
+                kq = await self._dang_nhap_google_khi_toi_luot(
                     email_tho, khoa_tk, st, hong_lt, mk, totp_secret)
+                return kq
             finally:
                 bay_gio = time.time()
                 _LAN_DANG_NHAP_GOOGLE_XONG = bay_gio
-                _LAN_DANG_NHAP_GOOGLE_THEO_TK[khoa_tk] = bay_gio
+                # NV248: chỉ ghi cooldown theo tài khoản khi phiên đã thật
+                # sự chạm Google và kết thúc thành công hoặc bị Google từ
+                # chối rõ (như c2a gỡ mốc khi gặp cần người / captcha hold).
+                if _nen_ghi_cooldown_google(kq):
+                    _LAN_DANG_NHAP_GOOGLE_THEO_TK[khoa_tk] = bay_gio
 
     async def _dang_nhap_google_khi_toi_luot(
             self, email_tho: str, khoa_tk: str, st: dict,

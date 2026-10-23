@@ -1,17 +1,12 @@
-"""NV179 — Chrome THẬT: mục «Danh tính» ở Hệ thống → AI (He-thong-AI.dc.html#danh-tinh).
+"""NV179 — Chrome THẬT: (NV219 cập nhật, NV248 — bài học NV98) mục «Danh tính»
+đã BỎ KHỎI phần AI (He-thong-AI.dc.html) có chủ ý — trang AI không còn tab
+#danh-tinh, không còn khối [data-muc-danh-tinh]; kho danh_tinh lõi vẫn tồn
+tại cho các module khác dùng.
 
 Soát NV155b (4.1/4.2/4.3 + liên kết chéo 5.2) chỉ ra: khối chọn danh tính của
 «Thêm tài khoản» lọc bỏ danh tính CHƯA gắn hồ sơ trình duyệt — những danh tính đó
 không hiện ở đâu; email đã che không có chú thích; hai nghĩa «tái dùng» không
 liên kết chéo. Test này mở trang thật và kiểm:
-
-- Mục «Danh tính» liệt kê MỌI danh tính: cả danh tính chưa gắn hồ sơ.
-- Email hiện dạng che + có chú thích «đã che»; email thô không xuất hiện.
-- Nhãn chứa HTML hiện thành CHỮ, không chạy (XSS).
-- Nút «Kiểm lại đăng nhập» chỉ có ở danh tính đã gắn hồ sơ; bấm → trạng thái
-  đổi theo tín hiệu của dịch vụ giả («đã đăng nhập»).
-- Xoá cần HAI lần bấm (hỏi lại); xoá xong mất khỏi danh sách và khỏi kho.
-- Có đoạn phân biệt hai nghĩa «tái dùng» + liên kết tới mục này ở khối chọn.
 """
 
 from __future__ import annotations
@@ -79,55 +74,24 @@ def _hang(id_: str) -> str:
 
 @pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 def test_muc_danh_tinh_chrome(trang, moi_truong_ui179, tmp_path):
+    """NV219 cập nhật (NV248, bài học NV98): mục «Danh tính» đã bỏ khỏi phần
+    AI có chủ ý — trang AI không còn tab #danh-tinh, không còn khối
+    [data-muc-danh-tinh], nav không còn liên kết tới nó. Kho danh_tinh lõi
+    vẫn tồn tại (cho module khác dùng) nhưng không hiện ở trang AI."""
     w, dv, ids = moi_truong_ui179
     dv.tin_hieu_tra = {"da_dang_nhap"}
-    # Dịch vụ giả (như thật, NV155c-SUA) đọc kho cookie của hồ sơ theo id: hồ sơ phải CÓ ở dịch vụ, nếu không → 404
-    # và lõi coi là «không kiểm được tín hiệu» (giữ nguyên trạng thái).
     dv.ws[HO_SO_UI] = {"ten": "Hồ sơ danh tính", "loai": "firefox", "mo": False}
     _dang_nhap_quan_tri_lna(trang, w.url, tmp_path)
-    _mo_trang_lna(trang, f"{w.url}/He-thong-AI.dc.html#danh-tinh", tmp_path,
-                  cho=f"!!{_hang(ids['a'])}")
+    _mo_trang_lna(trang, f"{w.url}/He-thong-AI.dc.html", tmp_path,
+                  cho="!!document.getElementById('bang-ai')")
 
-    # MỌI danh tính đều hiện — kể cả danh tính chưa gắn hồ sơ (phát hiện 4.1)
-    assert trang.js("document.querySelectorAll('[data-muc-danh-tinh]').length") == 3
-    assert "Chưa gắn hồ sơ trình duyệt" in trang.js(f"{_hang(ids['b'])}.textContent")
-    assert "Đã gắn hồ sơ trình duyệt" in trang.js(f"{_hang(ids['a'])}.textContent")
-    # Khung đã đăng ký mục «Danh tính» và tab đang mở đúng là nó
-    assert trang.js("document.querySelector('#bang-ai').dataset.muc") == "danh_tinh"
-    assert "Danh tính" in trang.js("document.querySelector('h1').textContent")
-    # Điều hướng thật: mở bảng xổ «AI» → có liên kết tới #danh-tinh
-    trang.bam("[...document.querySelectorAll('nav button')].find((b) => b.textContent.trim() === 'AI')",
-              mo_ta="mở bảng xổ AI")
-    trang.cho("!![...document.querySelectorAll('nav a')].find((a) => (a.getAttribute('href') || '').endsWith('#danh-tinh'))",
-              han=10, mo_ta="liên kết Danh tính trong bảng xổ")
-
-    # Email che + chú thích «đã che»; email thô không lọt ra trang (4.3)
-    assert "c***@example.com" in trang.js(f"{_hang(ids['a'])}.textContent")
-    assert "co-phien@example.com" not in trang.js("document.body.innerText")
-    assert "đã che" in trang.js("document.getElementById('muc-danh-tinh').textContent")
-
-    # Nhãn thù địch hiện thành CHỮ, không chạy
-    assert trang.js("window.__xss179 === undefined")
-    assert "<img src=x" in trang.js(f"{_hang(ids['c'])}.textContent")
-
-    # Phân biệt hai nghĩa «tái dùng» (liên kết chéo 5.2)
-    chu_muc = trang.js("document.getElementById('muc-danh-tinh').textContent")
-    assert "Qua danh tính" in chu_muc and "Lấy cookie sang module" in chu_muc
-
-    # «Kiểm lại đăng nhập»: chỉ danh tính có hồ sơ mới có nút; bấm → đã đăng nhập
-    assert trang.js(f"!{_hang(ids['b'])}.querySelector('[data-dt-kiem]')")
-    trang.bam(f"{_hang(ids['a'])}.querySelector('[data-dt-kiem]')", mo_ta="Kiểm lại đăng nhập")
-    trang.cho(f"{_hang(ids['a'])}.textContent.includes('đã đăng nhập')",
-              han=10, mo_ta="trạng thái sau kiểm lại")
-    assert danh_tinh.lay(ids["a"])["trang_thai_dang_nhap"] == "dang_nhap"
-
-    # Xoá: lần bấm đầu chỉ HỎI LẠI, danh tính còn nguyên; lần hai mới xoá
-    trang.bam(f"{_hang(ids['b'])}.querySelector('[data-dt-xoa]')", mo_ta="Xoá (lần 1)")
-    trang.cho(f"{_hang(ids['b'])}.querySelector('[data-dt-xoa]').textContent.includes('Bấm lần nữa')",
-              han=10, mo_ta="nút xoá đổi nhãn hỏi lại")
-    assert trang.js(f"!!{_hang(ids['b'])}")
+    # Không còn khối danh tính nào trên trang AI
+    assert trang.js("document.querySelectorAll('[data-muc-danh-tinh]').length") == 0
+    assert trang.js("document.getElementById('muc-danh-tinh')") is None
+    # Tab AI không còn mục danh_tinh
+    assert trang.js("document.querySelector('#bang-ai').dataset.muc") != "danh_tinh"
+    # Nav không còn liên kết tới #danh-tinh
+    assert trang.js("[...document.querySelectorAll('nav a')].every((a) => !(a.getAttribute('href') || '').endsWith('#danh-tinh'))")
+    # Kho lõi vẫn còn (NV219 giữ lõi cho module khác) — chỉ không hiện ở AI
+    assert danh_tinh.lay(ids["a"]) is not None
     assert danh_tinh.lay(ids["b"]) is not None
-    trang.bam(f"{_hang(ids['b'])}.querySelector('[data-dt-xoa]')", mo_ta="Xoá (lần 2)")
-    trang.cho(f"!{_hang(ids['b'])}", han=10, mo_ta="danh tính biến mất sau xoá")
-    assert danh_tinh.lay(ids["b"]) is None
-    assert trang.js("window.__xss179 === undefined")

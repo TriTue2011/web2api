@@ -58,6 +58,13 @@ def _jwt_gia(email: str, het_han_giay: int = 30 * 86400) -> str:
     return f"aaa.{b64}.bbb"
 
 
+def _jwt_gia_khong_exp(email: str) -> str:
+    """JWT hợp lệ nhưng KHÔNG có claim exp (không biết hạn)."""
+    payload = {"https://api.openai.com/profile": {"email": email}}
+    b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
+    return f"aaa.{b64}.bbb"
+
+
 class DichVuGiaNV235:
     """Dịch vụ giả mô phỏng ĐÚNG hành vi c2a đã đo 21/10, kể cả lỗi của c2a."""
 
@@ -72,6 +79,7 @@ class DichVuGiaNV235:
         self.trang_thai_cuoi = {}  # (dich_vu, ho_so) -> state cuối
         self.jwt_theo_ho_so = {}   # ho_so -> access_token trả ở refresh-jwt
         self.token_het_han = False  # True = openai-native/token trả token chết
+        self.token_khong_exp = False  # True = openai-native/token trả JWT không có exp
         self.google_trang_thai = "success"
         self._da_hoi = set()
 
@@ -120,6 +128,7 @@ class DichVuGiaNV235:
             ho_so = request.path_params["profile"]
             dv.token_lay.append(ho_so)
             token = _jwt_gia(EMAIL_GPT, het_han_giay=-3600) if dv.token_het_han \
+                else _jwt_gia_khong_exp(EMAIL_GPT) if dv.token_khong_exp \
                 else _jwt_gia(EMAIL_GPT)
             return JSONResponse({"profile": ho_so, "email": EMAIL_GPT,
                                  "access_token": token})
@@ -180,15 +189,25 @@ def mod(dich_vu_gia, monkeypatch):
     monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
     monkeypatch.setenv("C2A_DN_CHO_DANG_NHAP_GIAY", "25")
     monkeypatch.setenv("C2A_DN_NGHI_LUY_THUA_GIAY", "0")
-    # Reset state toàn cục NV235-b4 giữa các test (khoá Google dùng chung).
-    MOD._LAN_DANG_NHAP_GOOGLE_XONG = 0.0
-    MOD._CAPTCHA_HOLD_DEN = 0.0
-    MOD._CAPTCHA_HOLD_HO_SO = ""
-    MOD._LAN_DANG_NHAP_GOOGLE_THEO_TK.clear()
     m = MOD.Module({"tien_to": "may_dang_nhap", "ten": "may-dang-nhap (test)"})
     m._url = dich_vu_gia.url
     m._khoa = "khoa-gia"
     return m
+
+
+@pytest.fixture(autouse=True)
+def _don_trang_thai_dang_nhap_google():
+    """NV248: dọn trạng thái TOÀN CỤC của luồng Google (NV235-b4) trước và
+    sau mỗi test — thay cho reset thủ công trong fixture mod (chỉ dọn
+    trước, sót dọn sau). Test nạp module ĐỘNG nên phải dọn đúng bản đó."""
+    def _don():
+        MOD._LAN_DANG_NHAP_GOOGLE_THEO_TK.clear()
+        MOD._LAN_DANG_NHAP_GOOGLE_XONG = 0.0
+        MOD._CAPTCHA_HOLD_DEN = 0.0
+        MOD._CAPTCHA_HOLD_HO_SO = ""
+    _don()
+    yield
+    _don()
 
 
 def _dong(email=EMAIL_GPT, mk=MK_GPT, totp=TOTP_GPT, module_cua="chatgpt-web",
@@ -266,6 +285,42 @@ def test_b3_refresh_jwt_token_het_han_1h_van_phien_chet(mod, dich_vu_gia):
     assert kq.thanh_cong
     duong = [d for d, _ in dich_vu_gia.onboard]
     assert "openai" in duong
+
+
+def test_b3_refresh_jwt_token_khong_co_exp_van_dung_duoc(mod, dich_vu_gia):
+    """JWT không có exp = KHÔNG BIẾT hạn, không phải «đã chết»: dùng ngay,
+    không onboard lại. (Hết hạn thật vẫn bị bắt ở các ca 42h/1h phía trên.)"""
+    hs = "openai-chu-openai-goc"
+    dich_vu_gia.jwt_theo_ho_so[hs] = _jwt_gia_khong_exp(EMAIL_GPT)
+    kq = asyncio.get_event_loop().run_until_complete(
+        mod.dang_nhap(_dong(dang_nhap_bang="truc_tiep")))
+    assert kq.thanh_cong, kq
+    assert not [d for d, _ in dich_vu_gia.onboard if d == "openai"], \
+        "token không có exp thì không được onboard lại mật khẩu"
+    assert (kq.jwt_moi or {}).get("access_token") == dich_vu_gia.jwt_theo_ho_so[hs]
+
+
+def test_b3_onboard_xong_token_khong_co_exp_van_thanh_cong(mod, dich_vu_gia):
+    """Sau onboard, token không có exp không bị báo «phiên chết»."""
+    dich_vu_gia.refresh_jwt_ok = False
+    dich_vu_gia.token_khong_exp = True
+    kq = asyncio.get_event_loop().run_until_complete(
+        mod.dang_nhap(_dong(dang_nhap_bang="truc_tiep")))
+    assert kq.thanh_cong, kq
+    assert kq.ma_loi != "phien_chet"
+
+
+def test_b3_jwt_payload_hong_hoac_exp_sai_kieu_van_bi_tu_choi():
+    """Chỉ «không có exp» mới được chấp nhận; payload hỏng hay exp sai kiểu thì không."""
+    m = MOD
+    def jwt(p):
+        b = base64.urlsafe_b64encode(json.dumps(p).encode()).rstrip(b"=").decode()
+        return f"aaa.{b}.bbb"
+    assert m._jwt_con_han(jwt({"sub": "x"})) is True                       # không có exp
+    assert m._jwt_con_han("aaa.!!!khong-phai-base64!!!.bbb") is False       # payload hỏng
+    assert m._jwt_con_han(jwt({"exp": "abc"})) is False                     # exp sai kiểu
+    assert m._jwt_con_han(jwt({"exp": True})) is False
+    assert m._jwt_con_han(jwt({"exp": int(time.time()) - 10})) is False     # hết hạn
 
 
 def test_b3_chatgpt_qua_google_reuse_session(mod, dich_vu_gia):
