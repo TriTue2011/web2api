@@ -171,6 +171,18 @@ main.pg{padding:12px 16px 24px}
 </sc-if>
 </section>
 </sc-if>
+<section class="muc-ct" id="tai-nguyen" aria-labelledby="h-tai-nguyen" style="margin-top:8px">
+<h3 id="h-tai-nguyen">Tài nguyên — đo theo yêu cầu</h3>
+<p class="phu">Chỉ đo khi bạn bấm; mở trang không tự đo. Một lần đo chụp một ảnh dùng chung cho mọi module: RAM lõi quét theo tham chiếu (ước lượng), dịch vụ phụ đọc cgroup của chính container (đo), CPU lấy mẫu ngăn xếp mọi luồng.</p>
+<sc-if value="{{tnChuaDo}}"><p style="margin:8px 0 0"><span class="vien v-mute">Chưa đo</span> <button type="button" class="nut nut-nho" id="nut-do-tai-nguyen" onClick="{{doTaiNguyen}}">Đo ngay</button></p></sc-if>
+<sc-if value="{{dangDo}}"><p role="status" class="bao-cho">Đang đo… (khoảng 1–2 giây)</p></sc-if>
+<sc-if value="{{tnDaDo}}"><p style="margin:8px 0 0"><span>Đo lúc {{tnDoLuc}}</span> <button type="button" class="nut nut-nho" id="nut-do-lai-tai-nguyen" onClick="{{doTaiNguyen}}">Đo lại</button></p></sc-if>
+<sc-if value="{{tnDoLoi}}"><p role="alert" class="bao bao-loi">{{tnDoLoi}}</p></sc-if>
+<sc-if value="{{tnDoChuan}}"><p role="alert" class="bao bao-vang">Đang bật chế độ chẩn đoán chính xác (tracemalloc) — web2api chạy chậm hơn đáng kể. Tắt bằng cách bỏ biến WEB2API_DO_CHUAN rồi khởi động lại.</p></sc-if>
+<sc-if value="{{coTnTong}}"><dl class="bang" id="bang-tong-tai-nguyen"><sc-for list="{{tnTong}}" as="r"><div class="bang-dong"><dt>{{r.nhan}}</dt><dd>{{r.giaTri}}</dd></div></sc-for></dl></sc-if>
+<sc-if value="{{coTnDungNhieu}}"><div class="hang-cc" style="margin-top:8px"><span class="phu">Dùng nhiều nhất:</span><sc-for list="{{chipXepTn}}" as="c"><button type="button" class="chip" data-xep-tn="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
+<ol id="dung-nhieu-nhat" style="margin:6px 0 0;padding-left:20px"><sc-for list="{{tnDungNhieu}}" as="d"><li>{{d.ten}} — {{d.giaTri}} <span class="phu">({{d.nhanNguon}})</span></li></sc-for></ol></sc-if>
+</section>
 </div>
 
 <div class="bo-cuc">
@@ -185,7 +197,7 @@ main.pg{padding:12px 16px 24px}
 <sc-for list="{{k.o}}" as="o">
 <div class="{{o.lop}}" data-o-khung="{{o.id}}">
 <button type="button" class="o-chon" data-o="{{o.id}}" data-tt="{{o.tt}}" aria-pressed="{{o.chon}}" aria-label="{{o.aria}}" onClick="{{o.chonO}}">
-<span class="o-dau"><span class="bieu-tuong" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{o.hinh}}"></path></svg></span><span class="o-ten">{{o.ten}}</span></span>
+<span class="o-dau"><span class="bieu-tuong" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{o.hinh}}"></path></svg></span><span class="o-ten">{{o.ten}}</span><sc-if value="{{o.chamDungNhieu}}"><span class="cham-dung-nhieu" role="img" aria-label="Thuộc 3 module dùng nhiều RAM hoặc CPU nhất theo lần đo gần nhất" title="Dùng nhiều nhất (theo lần đo gần nhất)" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#e8710a;margin-left:6px;flex:0 0 auto"></span></sc-if></span>
 <span class="o-chan"><span class="vien v-mute">{{o.loaiTen}}</span><span class="{{o.lopTT}}">{{o.nhanTT}}</span></span>
 <span class="o-mo-ta">{{o.moTa}}</span>
 <span class="o-tn">{{o.taiNguyen}}</span>
@@ -525,7 +537,10 @@ class Component extends DCLogic {
       sk: {},
       hienSoDo: false, soDo: null, dangTaiSoDo: false, soDoLoi: '',
       keHoach: null, keHoachId: null, dangKeHoach: false, keHoachLoi: '',
-      keHoachTin: '', dangCaiKeHoach: false
+      keHoachTin: '', dangCaiKeHoach: false,
+      // NV261 — đo tài nguyên theo yêu cầu: tnDo là MỘT ảnh đo dùng chung cho mọi module/phạm vi;
+      // null = chưa đo (mở trang KHÔNG tự đo, không hẹn giờ — chỉ đo khi người dùng bấm).
+      tnDo: null, dangDo: false, tnDoLoi: '', xepTn: 'ram'
     };
     if (this.state.chon) this.state.chon = decodeURIComponent(this.state.chon);
   }
@@ -584,7 +599,23 @@ class Component extends DCLogic {
     const p = Promise.all([this.taiCoBan(), this.taiQuanTri()]);
     const id = this.state.chon;
     if (id && id !== '+them') K.cauHinh.tai(this, id);
+    // NV261: đã từng đo thì sau khi dữ liệu đổi (cài/gỡ/lưu cấu hình…) chụp lại một ảnh mới;
+    // chưa từng đo thì KHÔNG tự đo (đo chỉ bắt đầu bằng nút bấm của người dùng).
+    if (this.state.tnDo && !this.state.dangDo) this.doTaiNguyen();
     return p;
+  }
+
+  // ---------- NV261: đo tài nguyên theo yêu cầu ----------
+  async doTaiNguyen() {
+    if (this.state.dangDo) return;
+    this.setState({ dangDo: true, tnDoLoi: '' });
+    try {
+      const { j } = await K.goi('api/he-thong/do-tai-nguyen', { method: 'POST' });
+      this.setState({ dangDo: false, tnDo: j || null });
+    } catch (e) {
+      this.setState({ dangDo: false, tnDoLoi: (e && e.message) || 'Không đo được tài nguyên.' });
+      this.loiKhoa(e);
+    }
   }
 
   // ---------- chọn ô ----------
@@ -1122,6 +1153,12 @@ class Component extends DCLogic {
     p.push(typeof tn.dia_mb === 'number' ? 'đĩa ' + tn.dia_mb.toLocaleString('vi-VN') + ' MB' : 'đĩa chưa đo');
     p.push(tn.gpu === true ? 'cần GPU' : tn.gpu === false ? 'không cần GPU' : 'GPU chưa rõ');
     if (x.g && typeof x.g.dung_luong === 'number') p.push('tải ' + K.dl(x.g.dung_luong));
+    // NV261: có ảnh đo thì ô hiện SỐ ĐO thật thay cho khai báo/chưa đo (RAM đầu, CPU chèn sau RAM).
+    const anh = this.state.tnDo && this.state.tnDo.module ? this.state.tnDo.module[x.id] : null;
+    if (anh) {
+      if (typeof anh.ram_mb === 'number') p[0] = 'RAM ' + (anh.goc === 'cgroup' ? '' : '≈ ') + anh.ram_mb.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' MB';
+      if (typeof anh.cpu_pct === 'number') p.splice(1, 0, 'CPU ' + anh.cpu_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%');
+    }
     return p.join(' · ');
   }
 
@@ -1151,6 +1188,21 @@ class Component extends DCLogic {
       const diaKhaiBytes = tn && typeof tn.dia_mb === 'number' ? tn.dia_mb * MB : 0;
       const phanChuaDo = tn && typeof tn.dia_mb === 'number' ? '' : ' — chưa gồm dữ liệu sinh ra khi chạy (chưa đo)';
       taiNguyen.push(Object.assign({ nhan: 'Đĩa tăng sau khi cài' }, gt('≈ ' + K.dl(bMa + diaKhaiBytes) + phanChuaDo)));
+    }
+
+    // NV261: số ĐO của module này trong ảnh đo chung (chỉ có sau khi người dùng bấm đo). Mọi số đều
+    // kèm nhãn nguồn: «đo» (cgroup) / «ước lượng ±15%» (quét tham chiếu) / «lấy mẫu N giây» (CPU) /
+    // «dùng chung lõi» / «chưa đo».
+    const anhDo = s.tnDo && s.tnDo.module ? s.tnDo.module[x.id] : null;
+    if (anhDo) {
+      const mb = (v) => v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' MB';
+      if (typeof anhDo.ram_mb === 'number') taiNguyen.push(Object.assign({ nhan: 'RAM đo' }, gt((anhDo.goc === 'cgroup' ? '' : '≈ ') + mb(anhDo.ram_mb) + (anhDo.goc === 'cgroup' ? ' (đo)' : ' (ước lượng ±15%)'))));
+      else taiNguyen.push(Object.assign({ nhan: 'RAM đo' }, so(null)));
+      if (typeof anhDo.cpu_pct === 'number') taiNguyen.push(Object.assign({ nhan: 'CPU đo' }, gt(anhDo.cpu_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '% (lấy mẫu ' + String(s.tnDo.cua_so_cpu_giay).replace('.', ',') + ' giây)')));
+      else taiNguyen.push(Object.assign({ nhan: 'CPU đo' }, so(null)));
+      if (typeof anhDo.nap_mb === 'number') taiNguyen.push(Object.assign({ nhan: 'RAM lúc nạp' }, gt('+' + mb(anhDo.nap_mb) + ' (đo)')));
+      taiNguyen.push(Object.assign({ nhan: 'Tiến trình' }, gt(anhDo.rieng ? 'riêng (dịch vụ phụ)' : 'dùng chung lõi')));
+      if (anhDo.gpu) taiNguyen.push(Object.assign({ nhan: 'GPU trên máy này' }, gt(anhDo.gpu)));
     }
 
     // Một dòng kết luận «Máy này» — chỉ khi đọc được /api/he-thong VÀ module có khai số; không thì không đoán.
@@ -1338,6 +1390,14 @@ class Component extends DCLogic {
     const coKhoa = true;
     const tatCa = this.dungO();
 
+    // NV261: 3 module đứng đầu RAM hoặc CPU theo ẢNH ĐO gần nhất → chấm đánh dấu trên ô (chỉ sau khi đã đo).
+    const topTn = new Set();
+    if (s.tnDo && s.tnDo.module) {
+      const theo = (k) => Object.entries(s.tnDo.module).filter(([, m]) => typeof m[k] === 'number')
+        .sort((a, b) => b[1][k] - a[1][k]).slice(0, 3);
+      for (const [id] of theo('ram_mb').concat(theo('cpu_pct'))) topTn.add(id);
+    }
+
     // Khu theo loại có trong dữ liệu, xếp theo loai_thu_tu (khai trong manifest) rồi mã — không danh sách loại nào ở đây.
     const theoMa = new Map();
     for (const x of tatCa) {
@@ -1362,6 +1422,7 @@ class Component extends DCLogic {
         const dangChon = s.chon === x.id && !laHoiCaiTuO;
         return Object.assign({
           id: x.id, tt: x.tt, chon: dangChon, lop: 'o-mod' + (dangChon ? ' o-dang-chon' : ''),
+          chamDungNhieu: topTn.has(x.id),
           ten: x.info.ten || x.id, hinh: K.BIEU_TUONG[x.ma] || K.BIEU_TUONG.module,
           loaiTen: x.loaiTen, nhanTT: TT[x.tt][0], lopTT: TT[x.tt][1], moTa: x.info.mo_ta || '', taiNguyen: this.taiNguyenO(x),
           aria: (x.info.ten || x.id) + ' — ' + TT[x.tt][0], chonO: () => this.chonO(x.id)
@@ -1416,6 +1477,33 @@ class Component extends DCLogic {
     const gpuNhiet = gpuG0 ? (gpuG0.nhiet_c != null ? gpuG0.nhiet_c : gpuG0.nhiet_do_c) : null;
     const dsMoHinh = (tlG && (tlG.mo_hinh_da_nap || tlG.mo_hinh || [])) || [];
 
+    // NV261 — bảng Tổng của ảnh đo + «Dùng nhiều nhất» (xếp được theo RAM/CPU/Đĩa; Đĩa dùng số đã có).
+    const tnDo = s.tnDo;
+    const fmtMB = (v) => typeof v === 'number' ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' MB' : 'chưa đo';
+    const nhanCpu = tnDo ? 'lấy mẫu ' + String(tnDo.cua_so_cpu_giay).replace('.', ',') + ' giây' : '';
+    const tnTong = [];
+    if (tnDo && tnDo.tong) {
+      const t = tnDo.tong;
+      tnTong.push({ nhan: 'RAM máy', giaTri: fmtMB(t.ram_may) });
+      tnTong.push({ nhan: 'RAM lõi web2api', giaTri: fmtMB(t.ram_loi_mb) + ' (đo)' });
+      tnTong.push({ nhan: 'CPU lõi web2api', giaTri: typeof t.cpu_loi_pct === 'number' ? t.cpu_loi_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '% (' + nhanCpu + ')' : 'chưa đo' });
+      tnTong.push({ nhan: 'GPU', giaTri: Array.isArray(t.gpu) && t.gpu.length ? t.gpu.map((g) => (g.ten || 'GPU') + (g.vram_dung_mb != null && g.vram_tong_mb != null ? ' ' + g.vram_dung_mb + '/' + g.vram_tong_mb + ' MB' : '')).join('; ') : 'Không có GPU' });
+      tnTong.push({ nhan: 'Chưa quy cho module', giaTri: fmtMB(t.chua_quy_cho_module_mb) });
+    }
+    const giaTriXep = (x) => {
+      const a = tnDo && tnDo.module ? tnDo.module[x.id] : null;
+      if (s.xepTn === 'ram') return a && typeof a.ram_mb === 'number' ? { v: a.ram_mb, hien: fmtMB(a.ram_mb), nguon: a.goc === 'cgroup' ? 'đo' : 'ước lượng ±15%' } : null;
+      if (s.xepTn === 'cpu') return a && typeof a.cpu_pct === 'number' ? { v: a.cpu_pct, hien: a.cpu_pct.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%', nguon: nhanCpu } : null;
+      const b = x.c && typeof x.c.dung_luong_dia === 'number' ? x.c.dung_luong_dia : x.g && typeof x.g.dung_luong === 'number' ? x.g.dung_luong : null;
+      return b != null ? { v: b, hien: K.dl(b), nguon: 'đo trên đĩa' } : null;
+    };
+    const tnDungNhieu = tatCa.map((x) => ({ ten: x.info.ten || x.id, g: giaTriXep(x) }))
+      .filter((d) => d.g).sort((a, b) => b.g.v - a.g.v).slice(0, 5)
+      .map((d) => ({ ten: d.ten, giaTri: d.g.hien, nhanNguon: d.g.nguon }));
+    const chipXepTn = [['ram', 'RAM'], ['cpu', 'CPU'], ['dia', 'Đĩa']]
+      .map(([ma, ten]) => ({ ma, ten, on: s.xepTn === ma, chon: () => this.setState({ xepTn: ma }) }));
+    const tnDoLuc = tnDo && tnDo.luc ? new Date(tnDo.luc).toLocaleTimeString('vi-VN', { hour12: false }) : '';
+
     const ql = tn ? K.quayLai(tn) : null;
     const coLienKet = !!tn && (tn.modules || []).some((m) => m.da_lien_ket);
     const diaChiV1 = K.diaChiV1();
@@ -1435,6 +1523,12 @@ class Component extends DCLogic {
       canDangNhapChu: ((tn && tn.phien && tn.phien.can_dang_nhap) || 0) > 0 ? (((tn && tn.phien && tn.phien.can_dang_nhap) || 0) + ' tài khoản cần đăng nhập lại') : '',
       // lưới
       tim: s.tim, hienSoDo: s.hienSoDo, doiSoDo: () => this.doiSoDo(),
+      // NV261 — đo tài nguyên theo yêu cầu
+      tnChuaDo: !s.tnDo && !s.dangDo, dangDo: s.dangDo, tnDaDo: !!s.tnDo && !s.dangDo,
+      tnDoLoi: s.tnDoLoi, tnDoLuc, doTaiNguyen: () => this.doTaiNguyen(),
+      tnDoChuan: !!(s.tnDo && s.tnDo.do_chuan && s.tnDo.do_chuan.tracemalloc),
+      coTnTong: tnTong.length > 0, tnTong,
+      coTnDungNhieu: tnDungNhieu.length > 0, tnDungNhieu, chipXepTn,
       coSoDo: !!s.soDo, soDo: s.soDo, dangTaiSoDo: s.dangTaiSoDo, soDoLoi: s.soDoLoi,
       goTim: (e) => this.setState({ tim: e.target.value }), chipLoai, chipTT, coLoai: dsKhu.length > 0,
       dangTai: s.dangTai, khongKhop: !s.dangTai && tatCa.length > 0 && khu.length === 0,
