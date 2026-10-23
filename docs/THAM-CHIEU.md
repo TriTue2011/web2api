@@ -34,7 +34,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 
 | Tính năng hoặc module | Trạng thái | Từ phiên bản / ngày |
 |---|---|---|
-| Lõi: `/health`, thông tin máy `/api/he-thong`, khoá quản trị cho mọi API đổi trạng thái và `/v1` | Có | 0.1.0-khung · 10/10/2026 |
+| Lõi: `/health`, thông tin máy `/api/he-thong`, đo tài nguyên theo yêu cầu `POST /api/he-thong/do-tai-nguyen` (NV261 — chỉ khi người dùng bấm, chỉ quản trị, no-store, 1 lần/giây/người dùng), khoá quản trị cho mọi API đổi trạng thái và `/v1` | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/models`, `/v1/chat/completions` chuẩn OpenAI (có stream) | Có | 0.1.0-khung · 10/10/2026 |
 | `/v1/images/generations`, `/v1/videos` chuẩn OpenAI (định tuyến theo tiền tố; module không có khả năng đó → `501`) | Có (chỉ đo trên máy chủ Google giả) | 0.1.0-khung · 11/10/2026 |
 | Module `gemini-api` (Gemini API, khoá Google AI Studio) | Có — chat đã kiểm với Google thật 10/10/2026; ảnh và video Veo (module 0.2.0, chỉ khoá trả phí) **chưa kiểm với Google thật** | 0.1.0-khung · 10/10/2026 |
@@ -4052,6 +4052,8 @@ WEB2API_MAY_CPU=8
 - `WEB2API_DATA_DIR`: giữ dữ liệu ở thư mục cụ thể thay cho volume, ví dụ `./data` — phải tạo và trao quyền
   **trước**: `mkdir -p data && sudo chown 1000:1000 data`.
 - `WEB2API_MAY_RAM_MB`, `WEB2API_MAY_CPU`: số của **máy** (xem «LXC/Proxmox» dưới đây).
+- `WEB2API_DO_CHUAN=1`: chế độ chẩn đoán phép đo tài nguyên (NV261) — bật tracemalloc từ lúc khởi động để có
+  chuẩn tuyệt đối; web2api chậm đi đáng kể, mặc định tắt.
 - `TZ=Asia/Ho_Chi_Minh` (biến chuẩn, tên múi giờ IANA): múi giờ của nhà — Studio báo giờ hiện tại cho model theo
   múi giờ này thay vì múi giờ của trình duyệt đang mở (mục 8).
 - Đổi nguồn git: ghi biến cùng tên vào `.env`; tắt hẳn: `WEB2API_GIT_REPO=` (rỗng). Các biến khác: mục 8.
