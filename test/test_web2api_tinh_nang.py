@@ -153,7 +153,8 @@ def test_loai_la_kha_nang_la_va_muc_khong_sua_loi(du_lieu):
         j = tn(c)
         assert j["kha_nang_lien_ket"] == {"mang": 1, "dinh_tuyen": 1}
         # Đường TƯƠNG ĐỐI (chạy được sau proxy ở thư mục con), không bắt đầu bằng «/».
-        assert j["tab"] == [{"module": "mang-gia", "nhan": "Echo", "duong": "m/mang-gia/echo.dc.html"}]
+        # NV263: mỗi tab mang cờ an_khoi_thanh (mặc định False = hiện trên thanh điều hướng).
+        assert j["tab"] == [{"module": "mang-gia", "nhan": "Echo", "duong": "m/mang-gia/echo.dc.html", "an_khoi_thanh": False}]
         assert c.get("/" + j["tab"][0]["duong"]).status_code == 200
 
 

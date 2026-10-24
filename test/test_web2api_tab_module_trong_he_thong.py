@@ -2,8 +2,7 @@
 
 Chủ máy 17/10: bấm «Trình duyệt» mà ra trang rời («← Hệ thống») thì sai; phải giữ thanh Hệ thống, trang module
 nằm trong khung. Kiểm:
-1. Thanh Hệ thống có mục «Trình duyệt» trỏ tới He-thong-Module.dc.html?m=vnc-xa (không còn trỏ thẳng m/…), cùng
-   hàng với Module và «Bảo mật & người dùng», và đang được đánh dấu aria-current.
+1. (NV263: đổi) Thanh Hệ thống KHÔNG còn mục «Trình duyệt» (module khai an_khoi_thanh); trang vẫn mở bằng đường dẫn trực tiếp.
 2. Khung nhúng trang module CÙNG GỐC, trang module dựng xong bên trong khung, KHÔNG hiện «← Hệ thống».
 3. Mã module lạ / mã chứa mã độc trong ?m= → không dựng khung, hiện lời giải thích bằng chữ.
 4. Khung có sandbox, không có allow-top-navigation (trang module không đổi được trang cha).
@@ -44,16 +43,11 @@ def test_tab_trinh_duyet_nam_trong_he_thong(trang, moi_truong):
     trang.di(f"{w.url}/He-thong-Module.dc.html?m=vnc-xa")
     _cho_trang_module(trang)
 
-    # 1. Mục «Trình duyệt» trong thanh Hệ thống, trỏ tới trang chứa, đang được chọn
-    muc = trang.js(
-        "(() => { const a = document.querySelector('#thanh-tab [data-nav=\"m-vnc-xa\"]');"
-        " return a ? {href: a.getAttribute('href'), ac: a.getAttribute('aria-current'), chu: a.textContent.trim()} : null; })()"
-    )
-    assert muc, "thanh Hệ thống phải có mục Trình duyệt"
-    assert muc["href"] == "He-thong-Module.dc.html?m=vnc-xa", muc
-    assert muc["ac"] == "page" and "Trình duyệt" in muc["chu"], muc
+    # 1. NV263 (chủ máy bỏ tab «Trình duyệt» khỏi thanh điều hướng): module khai `an_khoi_thanh` nên KHÔNG có mục
+    #    trong thanh Hệ thống; trang vẫn mở được bằng đường dẫn trực tiếp (bước 2 dưới đây).
     ds = trang.js("[...document.querySelectorAll('#thanh-tab [data-nav]')].map(a => a.getAttribute('data-nav'))")
-    assert "module" in ds and "bao_mat" in ds and "m-vnc-xa" in ds, ds
+    assert "module" in ds and "bao_mat" in ds, ds
+    assert "m-vnc-xa" not in ds, ds
 
     # 2. Khung cùng gốc, trang module dựng xong trong khung, không có «← Hệ thống»
     src = trang.js("document.querySelector('iframe.khung-module').getAttribute('src')")
