@@ -4194,14 +4194,10 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         # NV197c: học module sở hữu từ lần đăng nhập THÀNH CÔNG — nhóm suy từ
         # manifest của module đó. Ghi sổ phụ: lỗi không làm hỏng kết quả đăng nhập.
         #
-        # CHỈ học khi bản ghi CHƯA có module sở hữu. Đo thật 23/10/2026:
-        # tài khoản ChatGPT (sở hữu «chatgpt-web») đăng nhập thành công QUA
-        # module thực thi «may-dang-nhap»; ghi đè vô điều kiện biến sở hữu
-        # thành module thực thi, lần đăng nhập sau lõi đọc sở hữu sai nên
-        # chọn sai luồng (ChatGPT rơi xuống đường Google) — hỏng hẳn từ lần
-        # thứ hai. Module thực thi chỉ được học làm sở hữu khi tài khoản
-        # chưa thuộc về module nào. Test:
-        # test_loi_so_huu_dang_nhap_uy_quyen.py.
+        # CHỈ học khi bản ghi CHƯA có module sở hữu. Một tài khoản thuộc module A có thể đăng nhập thành công QUA module
+        # thực thi B (module_id của request); ghi đè vô điều kiện biến sở hữu thành B thì lần đăng nhập sau lõi đọc sở hữu
+        # sai, chọn sai luồng và hỏng hẳn từ lần thứ hai. Module thực thi chỉ được học làm sở hữu khi tài khoản chưa thuộc
+        # về module nào. Test: test_loi_so_huu_dang_nhap_uy_quyen.py.
         if not dong.module_cua_tai_khoan:
             try:
                 kho_tai_khoan_mod.dat_module(
