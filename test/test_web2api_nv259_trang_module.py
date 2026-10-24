@@ -239,3 +239,50 @@ def test_popup_duoi_720_va_hai_cot_tu_720(trang, tmp_path, monkeypatch):
         assert geo2["pos"] == "sticky", geo2
         assert geo2["disp"] != "none" and geo2["left"] >= geo2["cotPhai"] - 2, geo2  # cạnh nhau, không chồng
         assert abs(geo2["w"] - 320) <= 24, geo2  # cột phải ~320px
+
+
+def test_bang_chi_tiet_gon_va_thang_cot_theo_mau(trang, tmp_path, monkeypatch):
+    """Bảng chi tiết theo tỉ lệ của mẫu: tiêu đề ≤ 18px, chữ thân ≤ 14px, mọi nhãn «dt» cùng một cột (cùng mép trái)
+    và mọi giá trị «dd» cùng một cột — ở máy tính lẫn điện thoại."""
+    with loi_that(tmp_path, monkeypatch, git=GIT2) as w:
+        cai(w, "nen-gia")
+        mo_trang(trang, w)
+        for rong, cao, dt in ((1280, 900, False), (390, 800, True)):
+            trang.khung(rong, cao, dien_thoai=dt)
+            trang.di(w.url + "/He-thong.dc.html")
+            trang.cho(o("nen-gia"), han=20, mo_ta=f"ô nen-gia ở {rong}px")
+            trang.bam(o("nen-gia"), mo_ta="ô nen-gia")
+            trang.cho("document.querySelectorAll('#chi-tiet .bang-dong').length >= 3", han=15, mo_ta="bảng có hàng")
+            kq = trang.js("(() => { const c = document.getElementById('chi-tiet');"
+                          " const px = (e) => parseFloat(getComputedStyle(e).fontSize);"
+                          " const dts = [...c.querySelectorAll('.bang-dong dt')].map(e => Math.round(e.getBoundingClientRect().left));"
+                          " const dds = [...c.querySelectorAll('.bang-dong dd')].map(e => Math.round(e.getBoundingClientRect().left));"
+                          " return {h2: px(c.querySelector('h2')), dt: [...new Set(dts)], dd: [...new Set(dds)],"
+                          " tran: c.scrollWidth > c.clientWidth + 1}; })()")
+            assert kq["h2"] <= 18, (rong, kq)
+            assert len(kq["dt"]) == 1 and len(kq["dd"]) == 1, (rong, kq)   # thẳng cột
+            assert kq["tran"] is False, (rong, kq)
+
+
+def test_them_module_la_nut_nho_mo_popup_o_moi_co(trang, tmp_path, monkeypatch):
+    """«Thêm module» là một nút nhỏ (không phải khung to); bấm thì ra POPUP giữa màn hình ở cả 1280px lẫn 390px,
+    có nền mờ; Esc đóng."""
+    with loi_that(tmp_path, monkeypatch, git=GIT2) as w:
+        cai(w, "nen-gia")
+        mo_trang(trang, w)
+        for rong, cao, dt in ((1280, 900, False), (390, 800, True)):
+            trang.khung(rong, cao, dien_thoai=dt)
+            trang.di(w.url + "/He-thong.dc.html")
+            trang.cho("document.getElementById('o-them')", han=20, mo_ta=f"nút Thêm module ở {rong}px")
+            nut = trang.js("(() => { const r = document.getElementById('o-them').getBoundingClientRect();"
+                           " return {w: r.width, h: r.height}; })()")
+            assert nut["h"] <= 48 and nut["w"] <= 220, (rong, nut)      # nút nhỏ, không phải khung kéo hết hàng
+            trang.bam("document.getElementById('o-them')", mo_ta="Thêm module")
+            trang.cho("document.getElementById('chi-tiet')?.classList.contains('mo')", han=15, mo_ta="popup mở")
+            geo = trang.js("(() => { const e = document.getElementById('chi-tiet'); const r = e.getBoundingClientRect();"
+                           " return {pos: getComputedStyle(e).position, role: e.getAttribute('role'),"
+                           " nen: !!document.querySelector('.nen-mo.mo'), cx: r.left + r.width / 2}; })()")
+            assert geo["pos"] == "fixed" and geo["role"] == "dialog" and geo["nen"] is True, (rong, geo)
+            assert abs(geo["cx"] - rong / 2) <= 30, (rong, geo)
+            trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
+            trang.cho("!document.getElementById('chi-tiet')?.classList.contains('mo')", han=15, mo_ta="Esc đóng popup")

@@ -46,7 +46,7 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .goc-lan{display:inline-flex;align-items:center;background:var(--lc-ink);color:var(--lc-bg);font-weight:700;border-radius:999px;padding:8px 18px;font-size:14px;font-family:inherit;border:0;cursor:pointer}
 .goc-lan[aria-pressed="true"]{box-shadow:0 0 0 2px var(--lc-card),0 0 0 4.5px var(--lc-ink)}
 .lanes{position:relative;margin:14px 0 0 20px;padding:14px 0 0 26px;display:flex;flex-direction:column;gap:16px;border-left:2px solid var(--lc-line)}
-.lane{position:relative;display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px;align-items:start;--cl:var(--c,#475569)}
+.lane{position:relative;display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:start;--cl:var(--c,#475569)}
 @media (prefers-color-scheme:dark){.lane{--cl:var(--c-toi,var(--c,#a3b1c6))}}
 @media (max-width:640px){.lane{grid-template-columns:minmax(0,1fr)}}
 .lane::before{content:"";position:absolute;left:-26px;top:18px;width:26px;border-top:2px solid var(--lc-line)}
@@ -83,8 +83,8 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .v-bad{background:#FBE4E1;color:#B42318}
 .v-mute{background:#EFEDE8;color:#66645F}
 .bieu-tuong{flex:0 0 auto;width:40px;height:40px;border-radius:12px;background:var(--accsoft);color:#0B5A53;display:flex;align-items:center;justify-content:center}
-.o-them{border:1px dashed var(--line);border-radius:14px;align-items:center;justify-content:center;text-align:center;color:var(--mute);min-height:64px;padding:14px 16px;gap:8px;background:transparent;width:100%;box-sizing:border-box;display:flex;font:inherit;font-size:13px;cursor:pointer;margin-top:12px}
-.o-them .bieu-tuong{background:#EEECE7;color:var(--ink);font-size:22px}
+.o-them{flex:0 0 auto;min-height:44px;padding:0 16px;border-radius:20px;border:1px solid #181816;background:#181816;color:#fff;font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;margin:12px 0 0 auto}
+.o-them[aria-pressed="true"]{outline:2px solid #0B5A53;outline-offset:2px}
 /* Nút biểu tượng của dòng Tiện ích (iconBtn): 44×44 bo 12; «Cài» = nền đen như ô chưa cài của demo; xoá lần đầu = nền đỏ nhạt. */
 .nut-bt{flex:0 0 auto;width:44px;height:44px;border-radius:12px;border:0;background:transparent;color:#181816;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
 .nut-bt.den{background:#181816;color:#fff}
@@ -92,8 +92,6 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .nut-bt:disabled{opacity:.35;cursor:not-allowed}
 /* Nút chữ của demo (btnSt): 40px, bo 20, 13px. */
 .nut-chu{flex:0 0 auto;min-height:40px;padding:0 16px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:13px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
-.o-them{border-style:dashed;align-items:center;justify-content:center;text-align:center;color:var(--mute);min-height:150px;padding:14px 16px;gap:8px;background:transparent}
-.o-them .bieu-tuong{background:#EEECE7;color:var(--ink);font-size:22px}
 /* Dải báo của demo (Tiện ích: «tin»). */
 .tin{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:12px;border:1px solid #BFE0D9;background:#E8F4F1;color:#0B5A53;font-size:13px}
 .tin > span{flex:1 1 0;min-width:0;text-wrap:pretty}
@@ -119,6 +117,24 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .dong-tong .phu{white-space:nowrap}
 .ds-dung-nhieu{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .ds-dung-nhieu li{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line);font-size:13px}
+/* Bảng chi tiết theo đúng tỉ lệ của mẫu nv255-mau-trang-module.html: đệm 16, cách 12, tiêu đề 16px đậm,
+   chữ 12,5–13px, mỗi thông tin MỘT dòng lưới «nhãn | giá trị» thẳng cột. Ghi đè gọn, chỉ trong .chi-tiet. */
+.chi-tiet{padding:16px;gap:12px;font-size:13px;line-height:1.45;border-radius:12px}
+.chi-tiet-dau{align-items:flex-start;gap:10px}
+.chi-tiet-dau .bieu-tuong{width:36px;height:36px;border-radius:10px;flex:0 0 auto}
+.chi-tiet-dau h2{font-family:inherit;font-weight:700;font-size:16px;line-height:1.3;margin:0;min-width:0;text-wrap:balance}
+.chi-tiet .nut-dong{width:32px;height:32px;border-radius:16px}
+.chi-tiet p{margin:0;font-size:13px}
+.chi-tiet .phu,.chi-tiet .ct-phu{font-size:12px}
+.chi-tiet .muc-ct{gap:6px}
+.chi-tiet .bang{display:flex;flex-direction:column;margin:0;padding:0;gap:0}
+.chi-tiet .bang-dong{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px;align-items:baseline;padding:6px 0;margin:0;border:0;border-bottom:1px solid var(--line);font-size:12.5px}
+.chi-tiet .bang-dong:last-child{border-bottom:0}
+.chi-tiet .bang-dong dt{margin:0;color:var(--mute)}
+.chi-tiet .bang-dong dd{margin:0;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.chi-tiet .bang-dong dd .nut-chu{margin-right:6px}
+.chi-tiet .nut-chu{min-height:32px;padding:0 12px;font-size:12.5px}
+.chi-tiet .dong-tong,.chi-tiet .ds-dung-nhieu li{padding:6px 2px;font-size:12.5px}
 .nen-mo{display:none}
 @media (max-width:1023px){
 main.pg{padding:12px 16px 24px}
@@ -135,6 +151,10 @@ main.pg{padding:12px 16px 24px}
 .chi-tiet.mo{display:flex}
 .nen-mo.mo{display:block;position:fixed;inset:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:69;border:0;padding:0;cursor:pointer}
 }
+/* «Thêm module» luôn là POPUP giữa màn hình ở mọi cỡ (kể cả ≥720px, nơi các bảng khác là cột phải). */
+.chi-tiet.pop{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,520px);max-width:92vw;flex:none;max-height:min(82vh,640px);overflow:auto;z-index:70;display:none}
+.chi-tiet.pop.mo{display:flex}
+.nen-mo.pop.mo{display:block;position:fixed;inset:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:69;border:0;padding:0;cursor:pointer}
 </style>
 </helmet>
 <div class="goc">
@@ -226,12 +246,12 @@ main.pg{padding:12px 16px 24px}
 <span><i class="mau khoa"></i>Khoá: cần cài module nền trước</span>
 </p>
 </div>
-<sc-if value="{{chiOThem}}"><button type="button" class="o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}"><span class="bieu-tuong" aria-hidden="true">＋</span><span style="font-weight:600;color:var(--ink)">Thêm module</span><span class="phu">Từ git hoặc từ xa</span></button></sc-if>
+<sc-if value="{{chiOThem}}"><div style="display:flex"><button type="button" class="o-them" id="o-them" aria-pressed="{{chonThem}}" onClick="{{moThem}}">＋ Thêm module</button></div></sc-if>
 </div>
 
 <sc-if value="{{coChiTiet}}">
-<button type="button" class="nen-mo{{lopMo}}" aria-label="Đóng bảng chi tiết" onClick="{{dongChiTiet}}"></button>
-<aside class="chi-tiet{{lopMo}}" id="chi-tiet" aria-labelledby="chi-tiet-ten" onKeyDown="{{phimChiTiet}}">
+<button type="button" class="nen-mo{{lopMo}}{{lopPop}}" aria-label="Đóng bảng chi tiết" onClick="{{dongChiTiet}}"></button>
+<aside class="chi-tiet{{lopMo}}{{lopPop}}" id="chi-tiet" aria-labelledby="chi-tiet-ten" onKeyDown="{{phimChiTiet}}">
 
 <sc-if value="{{ct.laTong}}">
 <div class="chi-tiet-dau"><h2 id="chi-tiet-ten" tabindex="-1">{{ct.tieuDe}}</h2><button type="button" class="nut-dong" aria-label="Đóng" onClick="{{dongChiTiet}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button></div>
@@ -727,7 +747,7 @@ class Component extends DCLogic {
   }
   capNhatPopup() {
     // <720px bảng là popup: khoá cuộn nền + role dialog/modal; ≥720px là cột thường, bỏ hai thứ đó.
-    const hep = window.innerWidth < 720;
+    const hep = window.innerWidth < 720 || this.state.chon === '+them';   // «Thêm module» luôn là popup
     document.body.style.overflow = (hep && this.state.bangMo) ? 'hidden' : '';
     const ct = document.getElementById('chi-tiet');
     if (ct) {
@@ -1844,7 +1864,7 @@ class Component extends DCLogic {
       gocOn: !s.chon && !s.tdCon && !s.tdNhom, chonGoc: () => this.chonGoc(),
       chiOThem: !s.dangTai, chonThem: s.chon === '+them', moThem: () => this.chonO('+them'),
       // chi tiết
-      coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(), lopMo: s.bangMo ? ' mo' : '',
+      coChiTiet: !!ct, ct: ct || {}, f, dongChiTiet: () => this.dongChiTiet(), lopMo: s.bangMo ? ' mo' : '', lopPop: s.chon === '+them' ? ' pop' : '',
       phimChiTiet: (e) => { if (e.key === 'Escape') { e.preventDefault(); this.dongChiTiet(); } },
       coTin: !!s.tin, tin: s.tin, dongTin: () => this.setState({ tin: '', xoaO: null }),
       // nguồn git
