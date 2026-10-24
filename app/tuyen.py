@@ -4138,6 +4138,87 @@ async def dat_tam_dung_tai_khoan_da_luu(id: str, request: Request):
     return {"tai_khoan": bk}
 
 
+#: Các hành động được phép ở đường lấy bí mật tài khoản đã lưu (NV268).
+_BI_MAT_HANH_DONG = ("bi_mat", "otp")
+
+#: Chu kỳ TOTP của kho (giây) — trùng app.xac_thuc_2fa.
+_BI_MAT_TOTP_CHU_KY = 30
+
+
+@tai_khoan.post("/bi-mat")
+async def lay_bi_mat_tai_khoan_da_luu(request: Request):
+    """Lấy bí mật tài khoản đã lưu về giao diện (NV268).
+
+    Chỉ quản trị viên (QT của router) và CHỈ POST — không có đường GET nào.
+    Bí mật CHỈ được trả khi người dùng bấm «Hiện»/«Chép»; đường này không bao
+    giờ xuất hiện trong danh sách, DOM hay state trước đó.
+
+    Body: ``{"id": "<id-ban-ghi>", "hanh_dong": "bi_mat" | "otp"}``.
+    - ``"bi_mat"``: trả bí mật thô (mật khẩu/khoá/token) + kiểu của nó.
+    - ``"otp"``: mã OTP 6 số tính Ở MÁY CHỦ theo RFC 6238 (SHA-1, 30 giây)
+      + số giây còn lại; khoá TOTP KHÔNG BAO GIỜ rời máy chủ.
+
+    Chạm bí mật bên thứ ba như các đường đăng nhập: phiên web phải đã xác
+    nhận lại (step-up); Bearer <redacted>ản trị được miễn. Phản hồi kèm
+    ``Cache-Control: no-store``. Nhật ký chỉ ghi ai/bản ghi nào/lúc nào/
+    hành động — KHÔNG BAO GIỜ ghi giá trị bí mật hay khoá TOTP.
+    """
+    kiem_tra_step_up(request)
+    than = await _than_json(request)
+    id_ = than.get("id")
+    if not isinstance(id_, str) or not id_.strip():
+        raise LoiOpenAI(400, "Thiếu trường «id» của bản ghi.", code="invalid_value")
+    hanh_dong = than.get("hanh_dong")
+    if hanh_dong not in _BI_MAT_HANH_DONG:
+        raise LoiOpenAI(
+            400, "Trường «hanh_dong» phải là «bi_mat» hoặc «otp».",
+            code="invalid_value")
+    try:
+        ban_ghi = kho_tai_khoan_mod.tim_theo_id(id_)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if ban_ghi is None:
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.",
+                        code="khong_tim_thay")
+    nguoi = dinh_danh_nguoi_thuc_hien(request)
+    dia_che = kho_tai_khoan_mod.che_dia_chi(ban_ghi.get("dia_chi", "") or "")
+    if hanh_dong == "otp":
+        totp_tho = ban_ghi.get("totp_secret") or ""
+        if not totp_tho:
+            raise LoiOpenAI(400, "Tài khoản này không có TOTP.",
+                            code="khong_co_totp")
+        from app import xac_thuc_2fa as t2fa
+        try:
+            ma = t2fa.sinh_totp(totp_tho)
+        except ValueError:
+            raise LoiOpenAI(500, "Khoá TOTP trong kho bị hỏng.",
+                            code="totp_hong") from None
+        con_lai = _BI_MAT_TOTP_CHU_KY - int(time.time()) % _BI_MAT_TOTP_CHU_KY
+        # Nhật ký: KHÔNG ghi mã OTP, KHÔNG ghi khoá TOTP.
+        nhat_ky_mod.ghi(
+            "quan_tri", "thong_tin",
+            f"Đọc mã OTP tài khoản đã lưu ({dia_che})",
+            nguoi_thuc_hien=nguoi, id_ban_ghi=id_, hanh_dong="otp")
+        return JSONResponse(
+            {"ma": ma, "con_lai_giay": con_lai},
+            headers={"Cache-Control": "no-store"})
+    # NV258: bí mật nằm ở bi_mat (bản ghi mới) hoặc mat_khau (bản ghi CŨ).
+    bi_mat_tho = ban_ghi.get("bi_mat") or ban_ghi.get("mat_khau") or ""
+    if not bi_mat_tho:
+        raise LoiOpenAI(404, "Tài khoản này không có bí mật để hiển thị.",
+                        code="khong_co_bi_mat")
+    kieu = ban_ghi.get("kieu_bi_mat", "") or "mat_khau"
+    # Nhật ký: KHÔNG ghi giá trị bí mật.
+    nhat_ky_mod.ghi(
+        "quan_tri", "thong_tin",
+        f"Xem bí mật tài khoản đã lưu ({dia_che})",
+        nguoi_thuc_hien=nguoi, id_ban_ghi=id_, hanh_dong="bi_mat",
+        kieu_bi_mat=kieu)
+    return JSONResponse(
+        {"kieu": kieu, "bi_mat": bi_mat_tho},
+        headers={"Cache-Control": "no-store"})
+
+
 def _gan_bi_mat_dang_nhap_ho(dong, ban_ghi) -> list:
     """NV223: gắn thông tin «đăng nhập bằng» của bản ghi vào ``DongDaTach``.
 
