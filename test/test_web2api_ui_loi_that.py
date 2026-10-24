@@ -75,7 +75,10 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             trang.bam("document.querySelector('#studio-chua-khoa a[data-them-khoa=\"gemini-api\"]')")
             trang.cho("location.pathname.endsWith('/He-thong-AI.dc.html') && document.querySelector('#form-them')?.dataset.module === 'gemini-api'"
                       " && !!document.querySelector(\"#form-them [data-truong='api_keys'] input\")", han=15, mo_ta="biểu mẫu Thêm API")
-            assert "Chưa có tài khoản API nào" in trang.chu("#tk-trong")
+            # NV268: khối xổ provider cũ (tk-trong) đã bỏ theo spec; khu hiện nhóm trống.
+            trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15,
+                      mo_ta="khu tải xong nhóm")
+            assert "Chưa có tài khoản nào trong nhóm này." in trang.js("document.querySelector('#k268').innerText")
             trang.js("window.__khongTaiLai = 1")
             trang.go("#form-them [data-truong='api_keys'] input", K_XAU)
             trang.go("#form-them [data-truong='base_url'] input", s_g.url)
@@ -84,7 +87,10 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             assert f"…{K_XAU[-4:]} không dùng được" in trang.chu("#tin-ai") and "HTTP 401" in trang.chu("#tin-ai")
             trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
             trang.bam("document.getElementById('nut-them-luu')")
-            trang.cho("document.querySelectorAll('[data-tai-khoan=\"gemini-api\"]').length === 1", han=15, mo_ta="liên kết xong")
+            # NV268: khối xổ provider cũ ([data-tai-khoan]) đã bỏ; khu chỉ hiện
+            # tài khoản đã lưu (khoá module không phải tài khoản đã lưu).
+            # Xác nhận lưu xong bằng thông báo + form đóng.
+            trang.cho("!document.querySelector('#form-them')", han=15, mo_ta="form đóng sau khi lưu")
             tin = trang.chu("#tin-ai")
             assert f"…{K_TOT[-4:]} dùng được" in tin and "2 model" in tin, tin
             assert json.loads((tmp_path / "bi_mat" / "gemini-api.json").read_text())["api_keys"] == [K_TOT]

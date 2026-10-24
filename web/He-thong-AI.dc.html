@@ -25,6 +25,49 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 .luoi-md{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px;padding:8px 12px;border-top:1px solid #F0EEE9}
 .luoi-tk{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px;padding:10px 12px 12px;border-top:1px solid var(--line)}
 @media (max-width:480px){.luoi-md{grid-template-columns:1fr;padding:6px 8px}.luoi-tk{grid-template-columns:1fr;padding:8px}}
+/* NV268: khu «Tài khoản» — nhóm → loại → ô; bấm ô ra bảng chi tiết */
+#k268{display:flex;flex-direction:column;gap:12px;min-width:0}
+.k268-khung{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;align-items:start}
+@media (max-width:719px){.k268-khung{grid-template-columns:minmax(0,1fr)}}
+.k268-ds{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.k268-nhom-dau{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.k268-nhom-dau button{font:inherit;font-size:15px;font-weight:700;color:var(--acc,#1d4ed8);background:none;border:0;padding:0;cursor:pointer}
+.k268-nhom-dau .n{color:var(--mute);font-size:12.5px}
+.k268-loai{margin:0 0 10px 12px;padding-left:14px;border-left:2px solid var(--line)}
+.k268-loai-ten{font-size:12px;font-weight:600;color:var(--mute);margin:0 0 6px;letter-spacing:.03em}
+.k268-rong{font-size:12.5px;color:var(--mute);margin:0}
+.k268-o{display:flex;flex-wrap:wrap;gap:8px}
+.k268-tk{font:inherit;text-align:left;color:var(--ink);cursor:pointer;min-width:190px;max-width:100%;background:var(--card);border:1.8px solid var(--acc,#1d4ed8);border-radius:10px;padding:7px 11px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 9px;align-items:center}
+.k268-tk:hover{background:var(--bg)}
+.k268-tk[aria-pressed="true"]{border-width:3px}
+.k268-tk.tam-dung{background:var(--bg);border:1.3px dashed var(--line);color:var(--mute)}
+.k268-tt{width:10px;height:10px;border-radius:50%;background:var(--mute);grid-row:span 2}
+.k268-tt.ok{background:#0f766e}.k268-tt.warn{background:#b45309}.k268-tt.bad{background:#b42318}
+.k268-ten{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.k268-dc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.k268-sao{grid-row:span 2;color:#b45309;font-size:12px;font-weight:700}
+/* Bảng chi tiết: khuôn .chi-tiet của trang Module (He-thong.dc.html), gọn theo spec */
+.chi-tiet{flex:1 1 320px;max-width:380px;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0;position:sticky;top:12px;max-height:calc(100vh - 32px);overflow:auto;font-size:13px;line-height:1.45}
+.chi-tiet h2{font-weight:700;font-size:16px;line-height:1.3;margin:0;min-width:0;text-wrap:balance;overflow-wrap:anywhere}
+.chi-tiet .bang{display:flex;flex-direction:column;margin:0;padding:0;gap:0}
+.chi-tiet .bang-dong{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px;align-items:start;padding:6px 0;margin:0;border:0;border-bottom:1px solid var(--line);font-size:12.5px}
+.chi-tiet .bang-dong:last-child{border-bottom:0}
+.chi-tiet .nhan-dong{font-size:12px;font-weight:600;color:var(--mute);margin:0}
+.chi-tiet .gt-dong{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;overflow-wrap:anywhere;min-width:0;margin:0}
+.k268-tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;background:var(--bg);white-space:nowrap}
+.k268-tag-1{border-color:#0f766e;color:#0f766e;font-weight:600}
+.k268-nut-nho{font:inherit;font-size:12px;color:var(--acc,#1d4ed8);background:none;border:1px solid var(--line);border-radius:8px;padding:3px 9px;cursor:pointer;min-height:30px;white-space:nowrap}
+.k268-ghi{color:var(--mute);font-size:12px;margin:0}
+.k268-loi{font-size:12.5px;margin:0;padding:8px 10px;border-radius:8px;border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12}
+.k268-hd{display:flex;gap:8px;flex-wrap:wrap}
+.k268-nut{font:inherit;font-weight:600;font-size:13px;border-radius:8px;padding:8px 14px;min-height:40px;cursor:pointer;border:1px solid #181816;background:#181816;color:#fff}
+.k268-nut.phu{background:transparent;color:var(--ink);border-color:var(--line);text-decoration:none;display:inline-flex;align-items:center}
+.k268-nut[disabled]{opacity:.5;cursor:not-allowed}
+#k268-nen{display:none}
+@media (max-width:719px){
+#k268-ct.mo{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);max-height:min(78vh,600px);overflow-y:auto;z-index:30;border-radius:16px}
+#k268-nen:not([hidden]){display:block;position:fixed;inset:0;z-index:29;background:rgb(0 0 0/.45)}
+}
 </style>
 </helmet>
 <div class="goc">
@@ -318,67 +361,64 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" id="nut-them-luu" hidden="{{them.anNutThem}}" disabled="{{them.dang}}" style="{{them.ok.st}}">{{them.ok.nhan}}</button><button type="button" onClick="{{them.huy.pick}}" style="{{them.huy.st}}">{{them.huy.nhan}}</button></div>
 </form></sc-if>
 
-<sc-if value="{{tkTrong}}"><div id="tk-trong" style="border:1px dashed #CFCCC3;border-radius:14px;padding:32px 16px;text-align:center;color:var(--mute)">{{tkTrongGhi}}</div></sc-if>
-<details role="note" style="max-width:70ch;font-size:12px;color:var(--mute);line-height:1.5;padding:2px 2px 0"><summary style="cursor:pointer;font-weight:500;color:var(--mute);user-select:none">Ghi chú về khoá</summary><div style="padding-top:4px;text-wrap:pretty">{{tkGhiChu}}</div></details>
-<sc-if value="{{coTkKhoi}}">
-<div style="display:flex;flex-direction:column;gap:12px">
-<sc-for list="{{tkKhoi}}" as="g">
-<section data-khoi-pv="{{g.id}}" aria-label="{{g.ten}}: {{g.dem}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden">
-<div style="width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;min-height:44px;background:#FBFAF8;border-bottom:{{g.vienDuoi}}">
-<button type="button" data-mo-khoi-pv="{{g.id}}" aria-expanded="{{g.moChu}}" aria-label="{{g.ten}}: {{g.dem}}" onClick="{{g.bat}}" style="flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer;padding:4px 0">
-<span style="font-size:13px;font-weight:600;color:var(--ink)">{{g.ten}}</span>
-<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)"><span data-khoi-dem="{{g.id}}">{{g.dem}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{g.chev}}"><path d="M9 6l6 6-6 6"></path></svg></span>
+<div id="k268" data-khu-tai-khoan>
+<div class="k268-khung">
+<section class="k268-ds" aria-label="Danh sách tài khoản">
+<sc-for list="{{khu.nhomDs}}" as="g">
+<div class="k268-nhom" data-k268-nhom="{{g.nhom}}">
+<div class="k268-nhom-dau"><button type="button" data-k268-loc="{{g.nhom}}" aria-pressed="{{g.dangLoc}}" onClick="{{g.loc}}">{{g.ten}}</button><span class="n">{{g.dem}} tài khoản</span></div>
+<sc-if value="{{g.rong}}"><p class="k268-rong">Chưa có tài khoản nào trong nhóm này.</p></sc-if>
+<sc-for list="{{g.loaiDs}}" as="l">
+<div class="k268-loai" data-k268-loai="{{l.loai}}">
+<p class="k268-loai-ten">{{l.nhan}} · {{l.dem}}</p>
+<div class="k268-o">
+<sc-for list="{{l.hang}}" as="r">
+<button type="button" class="k268-tk{{r.tamDungCls}}" data-k268-tk="{{r.id}}" aria-pressed="{{r.chon}}" aria-label="{{r.ariaNhan}}" onClick="{{r.chonTk}}">
+<span class="k268-tt {{r.ttCls}}" aria-hidden="true"></span>
+<span class="k268-ten">{{r.ten}}</span>
+<span class="k268-sao">{{r.dau1}}</span>
+<span class="k268-dc">{{r.phu}}</span>
 </button>
-</div>
-<sc-if value="{{g.mo}}">
-<div data-ds-tk="{{g.id}}" class="luoi-tk" style="border-top:{{g.vienDuoi}}">
-<sc-for list="{{g.rows}}" as="r">
-<div data-tai-khoan="{{r.id}}" data-khoa-so="{{r.so}}" style="{{r.theSt}}">
-<button type="button" aria-expanded="{{r.open}}" aria-label="Xem thông tin đăng nhập: {{r.ten}} {{r.sub}}" onClick="{{r.pick}}" style="width:100%;box-sizing:border-box;min-height:52px;border:0;background:transparent;color:var(--ink);text-align:left;padding:8px 12px;display:flex;flex-direction:column;gap:4px;cursor:pointer;font:inherit">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%">
-  <div style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden">
-    <sc-if value="{{r.coVt}}"><span data-chip-tk="vt" title="Thứ tự trong danh sách khoá (xoay vòng)" style="{{r.vtSt}}">{{r.vt}}</span></sc-if>
-    <span style="font-weight:600;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.ten}}</span>
-    <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{r.cheHien}}">{{r.sub}}</span>
-    <sc-if value="{{r.dangDung}}"><span data-chip-tk="dang-dung" title="Khoá vừa phục vụ yêu cầu gần nhất" style="{{r.ddSt}}">Đang dùng</span></sc-if>
-  </div>
-  <span style="display:inline-flex;align-items:center;gap:3px;color:var(--mute);font-size:11px;font-weight:500;flex:0 0 auto">
-    <span>{{r.openNhan}}</span>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{r.chev}}"><path d="M9 6l6 6-6 6"></path></svg>
-  </span>
-</div>
-<div style="display:flex;align-items:center;gap:6px;width:100%;overflow:hidden;white-space:nowrap">
-  <span data-chip-tk="suc-khoe" title="{{r.skTip}}" style="{{r.skChipSt}}">{{r.skChipTen}}</span>
-  <sc-if value="{{r.coLuot}}"><span data-chip-tk="luot" title="Kể từ lần khởi động hoặc lưu khoá gần nhất" style="{{r.luotSt}}">{{r.luotTen}}</span></sc-if>
-  <sc-if value="{{r.coCuoi}}"><span data-chip-tk="dung-cuoi" title="{{r.cuoiTip}}" style="{{r.cuoiSt}}">{{r.cuoiTen}}</span></sc-if>
-  <sc-for list="{{r.canh}}" as="c"><span data-chip-tk="{{c.ma}}" title="{{c.tip}}" style="{{c.st}}">{{c.t}}</span></sc-for>
-</div>
-</button>
-<sc-if value="{{r.open}}">
-<div style="border-top:1px solid var(--line);background:#FBFAF8;padding:12px 16px;display:flex;flex-direction:column;gap:12px">
-<sc-for list="{{r.kv}}" as="x">
-<div data-kv-tk="{{x.ma}}" style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--mute)">{{x.k}}</span>
-<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px"><span style="{{x.vSt}}">{{x.v}}</span>
-<sc-if value="{{x.coActs}}"><span style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{x.acts}}" as="a"><button type="button" aria-label="{{a.al}}" onClick="{{a.pick}}" style="{{a.st}}">{{a.nhan}}</button></sc-for></span></sc-if></div></div>
 </sc-for>
-<sc-if value="{{r.coBars}}"><div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{r.bars}}" as="p">
-<div data-thanh-hm="{{p.ma}}" style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--mute)"><span>{{p.ten}}</span><span>{{p.reset}}</span></div>
-<div style="display:flex;align-items:center;gap:8px"><div style="flex:1 1 0;height:6px;border-radius:4px;background:#EFEDE8;overflow:hidden"><span style="{{p.fill}}"></span></div><span style="font-size:12px;font-weight:600;min-width:64px;text-align:right">{{p.txt}}</span></div></div>
-</sc-for></div></sc-if>
-<sc-if value="{{r.sua.co}}"><form novalidate data-sua="{{r.so}}" onSubmit="{{r.sua.luu}}" style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
-<div style="display:flex;flex-wrap:wrap;gap:10px"><label style="flex:1 1 240px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{r.sua.nhan}}<input id="{{r.sua.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="Dán khoá mới" onInput="{{r.sua.onIn}}" style="min-height:40px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;padding:0 12px"></label></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" disabled="{{r.sua.dang}}" style="{{r.sua.luuSt}}">{{r.sua.luuNhan}}</button><button type="button" onClick="{{r.sua.huy}}" style="{{r.sua.huySt}}">Huỷ</button></div></form></sc-if>
-<sc-if value="{{r.coActs}}"><div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{r.acts}}" as="a"><button type="button" data-hd="{{a.hd}}" onClick="{{a.pick}}" disabled="{{a.dang}}" style="{{a.st}}">{{a.nhan}}</button></sc-for></div></sc-if>
 </div>
-</sc-if>
 </div>
 </sc-for>
 </div>
-</sc-if>
+</sc-for>
 </section>
-</sc-for>
+<aside id="k268-ct" data-k268-ct="{{khuCt.id}}" class="chi-tiet{{khuCt.moCls}}" aria-live="polite">
+<sc-if value="{{khuCt.co}}">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+<h2>{{khuCt.tieuDe}}</h2>
+<button type="button" id="k268-dong" onClick="{{khuCt.dong}}" aria-label="Đóng bảng chi tiết" class="k268-nut-nho">✕</button>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+<span class="k268-tag">{{khuCt.theNhom}}</span>
+<span class="k268-tag" style="{{khuCt.ttSt}}">{{khuCt.ttNhan}}</span>
+<sc-if value="{{khuCt.dangDung1}}"><span class="k268-tag k268-tag-1">Đang dùng #1</span></sc-if>
+</div>
+<dl class="bang">
+<div class="bang-dong"><dt class="nhan-dong">Địa chỉ</dt><dd class="gt-dong" data-k268-gt="dia-chi">{{khuCt.diaChi}}</dd><div><button type="button" class="k268-nut-nho" onClick="{{khuCt.chepDiaChi}}">Chép</button></div></div>
+<div class="bang-dong"><dt class="nhan-dong">{{khuCt.nhanBiMat}}</dt><dd class="gt-dong" data-k268-gt="bi-mat">{{khuCt.biMatHien}}</dd><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="k268-nut-nho" id="k268-hien" onClick="{{khuCt.doiHien}}">{{khuCt.nhanHien}}</button><button type="button" class="k268-nut-nho" id="k268-chep-bm" onClick="{{khuCt.chepBiMat}}">Chép</button></div></div>
+<sc-if value="{{khuCt.coOtp}}">
+<div class="bang-dong"><dt class="nhan-dong">Mã OTP</dt><dd class="gt-dong" data-k268-gt="otp"><sc-if value="{{khuCt.otpDangHien}}"><span style="font-size:20px;font-weight:700;letter-spacing:.08em">{{khuCt.otpMa}}</span> <span class="k268-ghi">còn {{khuCt.otpConLai}} giây</span></sc-if><sc-if value="{{khuCt.otpChuaHien}}"><span class="k268-ghi">••••••</span></sc-if></dd><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-if value="{{khuCt.otpChuaHien}}"><button type="button" class="k268-nut-nho" id="k268-hien-otp" onClick="{{khuCt.layOtp}}">Hiện</button></sc-if><button type="button" class="k268-nut-nho" id="k268-chep-otp" onClick="{{khuCt.chepOtp}}">Chép</button></div></div>
+</sc-if>
+</dl>
+<p class="k268-ghi">Hạn mức: {{khuCt.hanMuc}}</p>
+<sc-if value="{{khuCt.coLoi}}"><p role="alert" class="k268-loi">{{khuCt.loi}}</p></sc-if>
+<div class="k268-hd">
+<button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
+<sc-if value="{{khuCt.coTay}}"><a id="k268-dn-tay" href="{{khuCt.duongTay}}" target="_blank" class="k268-nut phu">Mở {{khuCt.nhanTay}}</a></sc-if>
 </div>
 </sc-if>
+<sc-if value="{{khuCt.khongCo}}">
+<h2>Tài khoản</h2>
+<p class="k268-ghi">Bấm một ô để xem địa chỉ, bí mật và mã OTP lúc đó.</p>
+</sc-if>
+</aside>
+<div id="k268-nen" hidden="{{khuCt.nenAn}}" onClick="{{khuCt.dong}}"></div>
+</div>
+</div>
 </sc-if>
 
 
@@ -604,7 +644,7 @@ class Component extends DCLogic {
       tc: {},
       // NV221: tab Combo — danh sách combo, gợi ý thứ tự mặc định, tạo/xoá.
       cbDs: [], cbDangTai: false, cbGoiY: null, cbTenMoi: '', cbDangTao: false, cbDangGoiY: false, cbDangXoa: null,
-      tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
+      tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null, khuNhom: '', khuChon: '', khuBiMatId: '', khuBiMat: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
       mdLoc: '',
@@ -620,6 +660,9 @@ class Component extends DCLogic {
       // dang_dung (từ /nhom-loai) và 3 ô chọn xếp tầng của form tài khoản.
       dlBang: null, dlGom: null, dlNhom: '', dlLoaiTk: '', dlDichDung: '' };
     this._den = den;
+    // NV268: Esc đóng bảng chi tiết khu Tài khoản (bản mobile là popup).
+    this._khuEsc = (e) => { if (e && e.key === 'Escape' && this.state.khuChon) this.khuDong(); };
+    if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('keydown', this._khuEsc);
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
   // #tk-<id>: biểu mẫu thêm khoá của module đó, focus vào ô khoá đầu tiên (đợi biểu mẫu dựng xong).
@@ -666,6 +709,7 @@ class Component extends DCLogic {
       if (!K.chanNeuThieu(tab, this.state.tn)) this.chonTab(tab);
     });
     await this.taiLai();
+    if (this.state.tab === 'tai_khoan') this.taiDlDs(); // NV268: vẽ khu ngay khi mở tab
     if (this._den) {
       this.denForm();
       this.denKhoi(this._den);
@@ -875,6 +919,84 @@ class Component extends DCLogic {
       dlLoaiTk: t ? (t.loai_tai_khoan || '') : '',
       dlDichDung: t ? (t.dich_dung || '') : ''
     });
+  }
+  // ===== NV268: khu Tài khoản — lấy bí mật/OTP từ máy chủ =====
+  khuXoaHen() {
+    if (this._khuHenBiMat) { clearTimeout(this._khuHenBiMat); this._khuHenBiMat = null; }
+    if (this._khuHenOtp) { clearInterval(this._khuHenOtp); this._khuHenOtp = null; }
+  }
+  khuChonTk(id) {
+    // Bấm ô: chọn / bỏ chọn; bí mật rời state ngay khi đổi ô (NV268).
+    this.khuXoaHen();
+    this.setState((st) => ({
+      khuChon: st.khuChon === id ? "" : id,
+      khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0
+    }));
+  }
+  khuDong() {
+    this.khuXoaHen();
+    this.setState({ khuChon: "", khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0 });
+  }
+  async khuChep(txt) {
+    try { await navigator.clipboard.writeText(txt); this.msg("Đã chép.", false); }
+    catch (e) { this.msg("Không chép được — trình duyệt chặn.", true); }
+  }
+  async khuLayBiMat(id, deChep) {
+    // Bí mật CHỈ qua POST /api/tai-khoan/bi-mat khi bấm «Hiện»/«Chép» (NV268).
+    // K.goi tự mở hộp thoại step-up khi máy chủ đòi xác nhận lại.
+    this.setState({ khuBiMatLoi: "" });
+    try {
+      const { j } = await K.goi("api/tai-khoan/bi-mat", { method: "POST", json: { id, hanh_dong: "bi_mat" } });
+      const bm = (j && j.bi_mat) || "";
+      if (!bm) { this.setState({ khuBiMatLoi: "Tài khoản này không có bí mật để hiển thị." }); return; }
+      if (deChep) { await this.khuChep(bm); return; }
+      this.khuXoaHen();
+      this.setState({ khuBiMatId: id, khuBiMat: bm });
+      // Sau 30 giây không dùng thì tự che lại (NV268); test giả đồng hồ qua window.__khu_che_ms.
+      const cho = (typeof window !== "undefined" && typeof window.__khu_che_ms === "number") ? window.__khu_che_ms : 30000;
+      this._khuHenBiMat = setTimeout(() => {
+        this.setState((st) => (st.khuBiMatId === id ? { khuBiMatId: "", khuBiMat: "" } : null));
+      }, cho);
+    } catch (e) {
+      this.setState({ khuBiMatLoi: (e && e.message) || "Không lấy được bí mật." });
+    }
+  }
+  khuDoiHien(id) {
+    const s = this.state;
+    if (s.khuBiMatId === id && s.khuBiMat) {
+      this.khuXoaHen();
+      this.setState({ khuBiMatId: "", khuBiMat: "" });
+    } else this.khuLayBiMat(id, false);
+  }
+  async khuLayOtp(id, deChep) {
+    // Mã OTP TÍNH Ở MÁY CHỦ (NV268) — khoá TOTP không bao giờ rời máy chủ.
+    this.setState({ khuBiMatLoi: "" });
+    try {
+      const { j } = await K.goi("api/tai-khoan/bi-mat", { method: "POST", json: { id, hanh_dong: "otp" } });
+      const ma = (j && j.ma) || "";
+      if (!ma) { this.setState({ khuBiMatLoi: "Không lấy được mã OTP." }); return; }
+      if (deChep) { await this.khuChep(ma); return; }
+      this.khuXoaHen();
+      let conLai = (j && j.con_lai_giay) || 30;
+      this.setState({ khuBiMatId: id, khuOtpMa: ma, khuOtpConLai: conLai });
+      this._khuHenOtp = setInterval(async () => {
+        conLai -= 1;
+        if (conLai > 0) { this.setState({ khuOtpConLai: conLai }); return; }
+        // Hết chu kỳ → lấy mã mới Ở MÁY CHỦ.
+        try {
+          const r2 = await K.goi("api/tai-khoan/bi-mat", { method: "POST", json: { id, hanh_dong: "otp" } });
+          const ma2 = (r2.j && r2.j.ma) || "";
+          conLai = (r2.j && r2.j.con_lai_giay) || 30;
+          if (!ma2) throw new Error("Không lấy được mã OTP.");
+          this.setState({ khuOtpMa: ma2, khuOtpConLai: conLai });
+        } catch (e2) {
+          this.khuXoaHen();
+          this.setState({ khuOtpMa: "", khuOtpConLai: 0, khuBiMatLoi: (e2 && e2.message) || "Không lấy được mã OTP." });
+        }
+      }, 1000);
+    } catch (e) {
+      this.setState({ khuBiMatLoi: (e && e.message) || "Không lấy được mã OTP." });
+    }
   }
   dlXoaBiMatKhoiDom() {
     // Bí mật rời state VÀ DOM ngay sau khi gửi (đã lưu ở server nên không mất)
@@ -1392,6 +1514,7 @@ class Component extends DCLogic {
     this.setState({ tab: id, ghi: '', xoa: null, pvDd: false, mdLoc: '' });
     history.replaceState(null, '', id === TAB[0] ? location.pathname : '#' + K.DIEU_KIEN[id].neo);
     if (id === 'combo') this.taiCombo();
+    if (id === 'tai_khoan') this.taiDlDs(); // NV268: khu cần dữ liệu tài khoản đã lưu
   }
   msg(chu, loi) { this.setState({ ghi: chu, ghiLoi: !!loi }); }
 
@@ -1487,8 +1610,23 @@ class Component extends DCLogic {
 
     // ===== Tài khoản =====
     const tatCaTk = ai.flatMap((m) => khoa.get(m.id));
-    const nhom = NHOM.map(([id, ten]) => ({ id, nhan: ten, dem: String(tatCaTk.length), on: s.tkNhom === id, st: chipSt(s.tkNhom === id),
-      pick: () => this.setState({ tkNhom: id, tkMo: null, xoa: null }) }));
+    // NV268: chip lọc khu «Tài khoản» — «Tất cả» + nhóm từ bảng phân loại
+    // (dữ liệu từ /bang-phan-loai, không viết cứng tên nhóm).
+    const khuDlDsChip = Array.isArray(s.dlDs) ? s.dlDs : [];
+    const khuBangChip = s.dlBang || null;
+    const khuNhomChip = (khuBangChip && Array.isArray(khuBangChip.nhom) && khuBangChip.nhom.length)
+      ? khuBangChip.nhom.slice()
+      : [...new Set(khuDlDsChip.map((t) => (t.nhom || "")).filter(Boolean))].sort();
+    const nhom = [{ id: "", nhan: "Tất cả", dem: String(khuDlDsChip.length) }]
+      .concat(khuNhomChip.map((n) => ({
+        id: n, nhan: tenTrongBangTk(khuBangChip, "ten_nhom", n) || n,
+        dem: String(khuDlDsChip.filter((t) => (t.nhom || "") === n).length)
+      })))
+      .map((c) => ({
+        id: c.id, nhan: c.nhan, dem: c.dem,
+        on: (s.khuNhom || "") === c.id, st: chipSt((s.khuNhom || "") === c.id),
+        pick: () => this.setState({ khuNhom: c.id, khuChon: "" })
+      }));
     // Nguồn nhận khoá qua trang: module có mã (module từ xa đặt khoá lúc đăng ký).
     const ungVien = ai.filter((m) => !m.tu_xa);
 
@@ -2062,93 +2200,6 @@ class Component extends DCLogic {
     // theo TÊN HIỂN THỊ (localeCompare 'vi'), hòa thì theo id.
     const soSanhPv = (a, b) => (a.ten || '').localeCompare(b.ten || '', 'vi') || (a.id || '').localeCompare(b.id || '');
     const aiCoKhoa = ai.filter((m) => (khoa.get(m.id) || []).length > 0).sort(soSanhPv);
-    const tkKhoi = s.tkNhom === 'api' ? aiCoKhoa.map((m) => {
-      const ds = khoa.get(m.id) || [];
-      const mo = !!(s.tkPvMo && s.tkPvMo[m.id]);
-      let soDungDuoc = 0;
-      let soLoi = 0;
-      const rows = ds.map((r) => {
-        const sk = this.skCua(r, ds.length);
-        if (sk.k) {
-          if (sk.k.ok) soDungDuoc++;
-          else soLoi++;
-        } else {
-          if (r.che) soDungDuoc++;
-        }
-        const open = s.tkMo === r.key; const xo = s.xoa === r.key; const sua = s.tkSua === r.key;
-        const sd = suDung(sk.k, ds.length);
-        const chip = !r.che && !r.t && !r.m.tu_xa ? ['Không cần khoá', 'mute']
-          : sk.k ? (!sk.k.ok ? ['Lỗi', 'bad'] : sk.k.dang_nghi_den ? nhanNghi(sk.k, sd) : ['Dùng được', 'ok'])
-            : sk.dang ? ['Đang kiểm', 'mute'] : r.che ? ['Có khoá', 'ok'] : ['Không khoá', 'mute'];
-        // Hàng chip như dòng Provider của demo: «#n», «Đang dùng», sức khoẻ, «Đã dùng N lượt», «Lần dùng cuối …», cảnh báo hạn mức.
-        const chips = [];
-        if (sd && sd.vt) chips.push({ ma: 'vt', t: '#' + sd.vt, tip: 'Thứ tự trong danh sách khoá (xoay vòng)', st: VT_ST });
-        if (sd && sd.dang) chips.push({ ma: 'dang-dung', t: 'Đang dùng', tip: 'Khoá vừa phục vụ yêu cầu gần nhất', st: DD_ST });
-        chips.push({ ma: 'suc-khoe', t: chip[0], tip: '', st: pillSt(chip[1]) });
-        // NV207: chip trạng thái JWT cho từng khoá (hết hạn / làm mới / cảnh báo) — chỉ module có hỗ trợ.
-        const mucJwt = this.jwtCua(r, ds.length);
-        if (mucJwt) {
-          if (mucJwt.canh_bao) chips.push({ ma: 'jwt-canh-bao', t: 'Sắp hết hạn, chưa làm mới được!', tip: 'JWT còn dưới ngưỡng mà vòng làm mới chưa thành công — kiểm tra hồ sơ trình duyệt trong máy đăng nhập', st: pillSt('bad') });
-          else if (mucJwt.het_han) chips.push({ ma: 'jwt-het-han', t: 'JWT hết hạn ' + K.ngayGio(mucJwt.het_han), tip: 'Ngày hết hạn từ claim exp của JWT', st: PHU_ST });
-          const lmJwt = mucJwt.lam_moi || {};
-          if (lmJwt.trang_thai === 'da_lam_moi') chips.push({ ma: 'jwt-da-lam-moi', t: 'Đã làm mới' + (lmJwt.lan_lam_moi ? ' ' + K.tuongDoi(lmJwt.lan_lam_moi) : ''), tip: '', st: pillSt('ok') });
-          else if (lmJwt.trang_thai === 'can_nguoi') chips.push({ ma: 'jwt-can-nguoi', t: 'JWT cần người xử lý', tip: lmJwt.ma_loi || '', st: pillSt('bad') });
-        }
-        if (sd && sd.coLuot) chips.push({ ma: 'luot', t: 'Đã dùng ' + sd.luot + ' lượt', tip: 'Kể từ lần khởi động hoặc lưu khoá gần nhất', st: PHU_ST });
-        if (sd && sd.cuoi) chips.push({ ma: 'dung-cuoi', t: 'Lần dùng cuối ' + K.tuongDoi(sd.cuoi), tip: K.ngayGio(sd.cuoi), st: PHU_ST });
-        if (sd) chips.push(...sd.canh);
-        const goc = (sk.k && this.state.sk[r.m.id].kq.base_url) || r.ck.base_url || '';
-        const kv = [{ k: 'Nhà cung cấp', v: r.m.ten }];
-        if (goc) kv.push({ k: 'Địa chỉ gốc', v: goc, mono: true, acts: [{ nhan: 'Chép', al: 'Chép địa chỉ gốc', st: btnSt(), pick: () => { try { navigator.clipboard.writeText(goc); } catch (e) { /* trình duyệt chặn */ } this.msg('Đã chép địa chỉ gốc.'); } }] });
-        kv.push(r.che ? { k: r.t ? (r.t.nhan || 'Khoá API') : 'Khoá API', v: r.che, mono: true } : { k: 'Khoá API', v: r.m.tu_xa ? 'Không khoá' : 'Không cần khoá', mute: true });
-        kv.push({ k: 'Số khoá', v: r.m.tu_xa ? 'Đặt lúc đăng ký module từ xa — muốn đổi thì gỡ ở Hệ thống → Module rồi đăng ký lại' : ds.length + ' khoá của nguồn này' });
-        // NV207: chi tiết JWT từng khoá (chỉ module có hỗ trợ).
-        if (mucJwt) {
-          kv.push({ k: 'JWT hết hạn', v: mucJwt.het_han ? K.ngayGio(mucJwt.het_han) + (mucJwt.con_lai_ngay != null ? ' (còn ' + mucJwt.con_lai_ngay + ' ngày)' : '') : 'không đọc được claim exp' });
-          const lmJ = mucJwt.lam_moi || {};
-          kv.push({ k: 'Làm mới JWT', v: lmJ.trang_thai === 'da_lam_moi' ? 'đã làm mới' + (lmJ.lan_lam_moi ? ' lúc ' + K.ngayGio(lmJ.lan_lam_moi) : '') : lmJ.trang_thai === 'can_nguoi' ? 'cần người xử lý (' + (lmJ.ma_loi || '') + ')' : 'chưa làm mới' });
-        }
-        if (sd) kv.push(...sd.kv);
-        const coSua = !!r.t && coKhoaQt;
-        // Bớt khoá cuối cùng của trường bắt buộc thì lõi từ chối (module cần ít nhất một khoá) → không vẽ «Xoá».
-        const coXoa = !!r.t && coKhoaQt && r.t.kieu === 'danh_sach_bi_mat' && !(r.t.bat_buoc && r.chiSo.length <= 1);
-        const acts = [];
-        if (coSua) acts.push({ hd: 'thay', nhan: sua ? 'Đóng sửa' : 'Thay khoá', st: btnSt(), dang: false, pick: () => this.setState({ tkSua: sua ? null : r.key, fSua: '', xoa: null }) });
-        if (coXoa) acts.push({ hd: 'xoa', nhan: s.dangXoa === r.key ? 'Đang xoá…' : xo ? 'Bấm lần nữa để xoá' : 'Xoá tài khoản', st: btnSt({ bad: xo }), dang: s.dangXoa === r.key,
-          pick: () => { if (!xo) return this.setState({ xoa: r.key }); this.xoaKhoa(r); } });
-        return { id: r.m.id, so: String(r.i), ten: r.m.ten, sub: r.che ? 'khoá ' + r.che : (r.m.tu_xa ? 'không khoá' : 'không cần khoá'),
-          theSt: 'background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-sizing:border-box;' + (open ? 'grid-column:1 / -1;' : ''),
-          cheHien: r.che || (r.m.tu_xa ? 'không khoá' : 'không cần khoá'),
-          vt: sd && sd.vt ? '#' + sd.vt : '', coVt: !!(sd && sd.vt), vtSt: VT_ST,
-          dangDung: !!(sd && sd.dang), ddSt: DD_ST,
-          skTip: sk.k && sk.k.loi ? sk.k.loi : chip[0], skChipTen: chip[0], skChipSt: pillSt(chip[1]),
-          coLuot: !!(sd && sd.coLuot), luotTen: sd && sd.coLuot ? 'Đã dùng ' + sd.luot + ' lượt' : '', luotSt: PHU_ST,
-          coCuoi: !!(sd && sd.cuoi), cuoiTen: sd && sd.cuoi ? 'Lần dùng cuối ' + K.tuongDoi(sd.cuoi) : '', cuoiTip: sd && sd.cuoi ? K.ngayGio(sd.cuoi) : '', cuoiSt: PHU_ST,
-          canh: sd ? sd.canh : [],
-          chev: 'flex:0 0 auto;transition:transform .15s;transform:rotate(' + (open ? 90 : 0) + 'deg)',
-          chips, open, openNhan: open ? 'Đóng' : 'Chi tiết', bars: sd ? sd.bars : [], coBars: !!sd && sd.bars.length > 0,
-          kv: kv.map((x) => Object.assign({ ma: '', mono: false, mute: false, acts: [] }, x)).map((x) => Object.assign(x, { vSt: vSt(x), coActs: x.acts.length > 0 })),
-          acts, coActs: acts.length > 0,
-          sua: { co: sua, nhan: (r.t && r.t.nhan ? r.t.nhan : 'Khoá API') + ' mới', idO: 'sua-' + r.key.replace(/[^\w-]/g, '_') + '-' + s.lan, dang: s.dangSua,
-            onIn: (e) => this.setState({ fSua: e.target.value }), luu: (e) => this.thayKhoa(e, r),
-            luuNhan: s.dangSua ? 'Đang kiểm…' : 'Lưu', luuSt: btnSt({ pri: true }), huy: () => this.setState({ tkSua: null, fSua: '' }), huySt: btnSt() },
-          pick: () => this.setState({ tkMo: open ? null : r.key, xoa: null, tkSua: null, fSua: '' }) };
-      });
-      return {
-        id: m.id,
-        ten: m.ten,
-        dem: ds.length + ' khoá · ' + soDungDuoc + ' dùng được · ' + soLoi + ' lỗi',
-        mo,
-        moChu: mo ? 'true' : 'false',
-        rows,
-        vienDuoi: mo ? '1px solid var(--line)' : '0',
-        chev: 'flex:0 0 auto;transition:transform .15s;transform:rotate(' + (mo ? 90 : 0) + 'deg)',
-        bat: () => this.setState((st) => ({
-          tkPvMo: Object.assign({}, st.tkPvMo, { [m.id]: !mo })
-        }))
-      };
-    }) : [];
-
     // ===== Provider =====
     const pvCur = aiCoKhoa.find((m) => m.id === s.pvSel) || aiCoKhoa[0] || ai[0] || null;
     const pvTab = s.pvTab === 'tk' ? 'tk' : 'model';
@@ -2269,7 +2320,7 @@ class Component extends DCLogic {
       kv.push({ ma: 'thu-chat', k: 'Thử chat', v: chuThuChat(tc) });
       const acts = [];
       if (k && !k.ok && r.t) acts.push({ hd: 'nhap-moi', nhan: 'Nhập khoá mới', st: btnSt({ pri: true }), dang: false,
-        pick: () => { this.chonTab('tai_khoan'); this.setState({ tkMo: r.key, tkSua: r.key, fSua: '' }); } });
+        pick: () => { this.chonTab('tai_khoan'); this.setState({ tkThem: true, chonMod: r.m.id, f: {} }); this.denForm(); } });
       if (coKhoaQt) acts.push({ hd: 'lam-moi', nhan: sk.dang ? 'Đang kiểm…' : 'Làm mới', st: btnSt(), dang: sk.dang, pick: () => this.kiem(r.m.id) });
       if (coKhoaQt) acts.push({ hd: 'thu-chat', nhan: tc.dang ? 'Đang thử…' : 'Thử chat', st: btnSt(), dang: tc.dang, pick: () => this.thuChat(r.m.id) });
       return { so: String(r.i), ten: r.m.ten,
@@ -2290,6 +2341,142 @@ class Component extends DCLogic {
           : pvTab === 'tk' && !tkCur.length ? { co: true, coNut: true, nut: moTk, ghi: 'Chưa có khoá nào cho «' + pvCur.ten + '». Thêm khoá ở tab Tài khoản, tình trạng từng khoá sẽ hiện ở đây.' }
             : { co: false };
 
+    // ===== NV268: khu Tài khoản — nhóm → loại → ô + bảng chi tiết =====
+    const khu = (() => {
+      const ds = Array.isArray(s.dlDs) ? s.dlDs : [];
+      const bang = s.dlBang || null;
+      const loc = s.khuNhom || "";
+      const dd = {};
+      if (s.dlGom) for (const n of Object.keys(s.dlGom)) {
+        const tl = s.dlGom[n] || {};
+        for (const l of Object.keys(tl)) for (const t of (((tl[l] || {}).tai_khoan) || []))
+          if (t && t.id) dd[t.id] = !!t.dang_dung;
+      }
+      const duongTheo = {};
+      for (const m of (Array.isArray(s.dlDuong) ? s.dlDuong : [])) if (m && m.id) duongTheo[m.id] = m;
+      // Chip trạng thái theo mẫu: Đã đăng nhập / Cần đăng nhập / Hết hạn / Tạm dừng.
+      const chipTt = (t) => {
+        if ((t.trang_thai || "") === "tam_dung") return { nhan: "Tạm dừng", cls: "" };
+        const m = duongTheo[t.id];
+        const tts = ((m && Array.isArray(m.duong)) ? m.duong : []).map((d) => d && d.trang_thai).filter(Boolean);
+        if (tts.some((x) => x === "can_dang_nhap_lai" || x === "chua_lien_ket" || x === "can_xac_minh_dien_thoai"))
+          return { nhan: "Cần đăng nhập", cls: "warn" };
+        if (tts.some((x) => x === "het_han_muc")) return { nhan: "Hết hạn", cls: "bad" };
+        if (tts.some((x) => x === "san_sang")) return { nhan: "Đã đăng nhập", cls: "ok" };
+        return { nhan: "Chưa rõ", cls: "" };
+      };
+      const oCua = (t) => {
+        const tt = chipTt(t);
+        const emailChe = t.email_che || "";
+        const diaChiChe = t.dia_chi_che || "";
+        const ten = ((t.nhan || "").trim() || emailChe || diaChiChe || t.id);
+        const phu = (t.nhan || "").trim()
+          ? (emailChe || diaChiChe)
+          : (tenTrongBangTk(bang, "ten_dich_dung", t.dich_dung || "")
+             || tenTrongBangTk(bang, "ten_kieu_bi_mat", t.kieu_bi_mat || ""));
+        return {
+          id: t.id, ten, phu,
+          ariaNhan: ten + " · " + tt.nhan,
+          ttCls: tt.cls, tamDungCls: (t.trang_thai || "") === "tam_dung" ? " tam-dung" : "",
+          dau1: dd[t.id] ? "#1" : "",
+          chon: s.khuChon === t.id,
+          chonTk: () => this.khuChonTk(t.id)
+        };
+      };
+      const thuTuNhom = (bang && Array.isArray(bang.nhom) && bang.nhom.length)
+        ? bang.nhom.slice()
+        : [...new Set(ds.map((t) => (t.nhom || "")).filter(Boolean))].sort();
+      const nhomDs = [];
+      const daXep = new Set();
+      for (const n of thuTuNhom) {
+        if (loc && n !== loc) continue;
+        const cac = ds.filter((t) => (t.nhom || "") === n);
+        cac.forEach((t) => daXep.add(t.id));
+        const loaiBang = (bang && bang.loai_theo_nhom && bang.loai_theo_nhom[n]) || [];
+        const loaiCo = [...new Set(cac.map((t) => (t.loai_tai_khoan || "")))];
+        const thuTuLoai = [...loaiBang.filter((l) => loaiCo.includes(l)),
+          ...loaiCo.filter((l) => !loaiBang.includes(l))];
+        nhomDs.push({
+          nhom: n, ten: tenTrongBangTk(bang, "ten_nhom", n) || n, dem: String(cac.length),
+          rong: cac.length === 0, dangLoc: (s.khuNhom || "") === n,
+          loc: () => this.setState({ khuNhom: (s.khuNhom || "") === n ? "" : n, khuChon: "" }),
+          loaiDs: thuTuLoai.map((l) => {
+            const hang = cac.filter((t) => (t.loai_tai_khoan || "") === l);
+            return {
+              loai: l, nhan: l ? (tenTrongBangTk(bang, "ten_loai", l) || l) : "Chưa phân loại",
+              dem: String(hang.length), hang: hang.map(oCua)
+            };
+          })
+        });
+      }
+      const thua = ds.filter((t) => !daXep.has(t.id) && (!loc || loc === "__chua_phan_nhom"));
+      if (thua.length) nhomDs.push({
+        nhom: "__chua_phan_nhom", ten: "Chưa phân nhóm", dem: String(thua.length),
+        rong: false, dangLoc: (s.khuNhom || "") === "__chua_phan_nhom",
+        loc: () => this.setState({ khuNhom: (s.khuNhom || "") === "__chua_phan_nhom" ? "" : "__chua_phan_nhom", khuChon: "" }),
+        loaiDs: [{ loai: "", nhan: "", dem: String(thua.length), hang: thua.map(oCua) }]
+      });
+      return { nhomDs };
+    })();
+    const khuCt = (() => {
+      const ds = Array.isArray(s.dlDs) ? s.dlDs : [];
+      const bang = s.dlBang || null;
+      const id = s.khuChon || "";
+      const t = ds.find((x) => x && x.id === id);
+      const dong = () => this.khuDong();
+      if (!t) return { co: false, khongCo: true, id: "", moCls: "", nenAn: true, dong };
+      const dangHienBm = s.khuBiMatId === id && !!s.khuBiMat;
+      const dangHienOtp = s.khuBiMatId === id && !!s.khuOtpMa;
+      const mod = ai.find((m) => m && m.id === (t.module_id || "")) || null;
+      const dl = (them && them.dl) || {};
+      const ttNhan = (t.trang_thai || "") === "tam_dung" ? "Tạm dừng"
+        : (() => {
+            const m = (Array.isArray(s.dlDuong) ? s.dlDuong : []).find((x) => x && x.id === id);
+            const tts = ((m && Array.isArray(m.duong)) ? m.duong : []).map((d) => d && d.trang_thai).filter(Boolean);
+            if (tts.some((x) => x === "can_dang_nhap_lai" || x === "chua_lien_ket" || x === "can_xac_minh_dien_thoai")) return "Cần đăng nhập";
+            if (tts.some((x) => x === "het_han_muc")) return "Hết hạn";
+            if (tts.some((x) => x === "san_sang")) return "Đã đăng nhập";
+            return "Chưa rõ";
+          })();
+      const ttMau = ttNhan === "Đã đăng nhập" ? "#0f766e" : ttNhan === "Cần đăng nhập" ? "#b45309" : ttNhan === "Hết hạn" ? "#b42318" : "";
+      return {
+        co: true, khongCo: false, id, moCls: " mo", nenAn: false, dong,
+        tieuDe: ((t.nhan || "").trim() || t.email_che || t.dia_chi_che || id),
+        theNhom: [tenTrongBangTk(bang, "ten_nhom", t.nhom || "") || (t.nhom || ""),
+          tenTrongBangTk(bang, "ten_loai", t.loai_tai_khoan || "") || (t.loai_tai_khoan || ""),
+          tenTrongBangTk(bang, "ten_dich_dung", t.dich_dung || "") || (t.dich_dung || "")].filter(Boolean).join(" · "),
+        ttNhan,
+        ttSt: "font-size:12px;white-space:nowrap;padding:2px 10px;border:1px solid var(--line);border-radius:999px;" + (ttMau ? "border-color:" + ttMau + ";color:" + ttMau + ";" : "color:var(--mute);"),
+        dangDung1: (() => {
+          if (!s.dlGom) return false;
+          for (const n of Object.keys(s.dlGom)) {
+            const tl = s.dlGom[n] || {};
+            for (const l of Object.keys(tl)) for (const x of (((tl[l] || {}).tai_khoan) || []))
+              if (x && x.id === id && x.dang_dung) return true;
+          }
+          return false;
+        })(),
+        diaChi: (t.email_che || t.dia_chi_che || ""),
+        chepDiaChi: () => this.khuChep(t.email_che || t.dia_chi_che || ""),
+        nhanBiMat: tenTrongBangTk(bang, "ten_kieu_bi_mat", t.kieu_bi_mat || "") || "Mật khẩu",
+        biMatHien: dangHienBm ? s.khuBiMat : "•".repeat(12),
+        nhanHien: dangHienBm ? "Ẩn" : "Hiện",
+        doiHien: () => this.khuDoiHien(id),
+        chepBiMat: () => this.khuLayBiMat(id, true),
+        coOtp: !!t.co_totp,
+        otpDangHien: dangHienOtp, otpChuaHien: !dangHienOtp,
+        otpMa: s.khuOtpMa || "", otpConLai: s.khuOtpConLai || 0,
+        layOtp: () => this.khuLayOtp(id, false),
+        chepOtp: () => this.khuLayOtp(id, true),
+        coLoi: !!s.khuBiMatLoi, loi: s.khuBiMatLoi || "",
+        hanMuc: nhanHanMucTk(t),
+        dangNhapTuDong: () => this.dlDangNhapDaLuu(mod, id),
+        tatDangNhap: !mod,
+        coTay: !!(dl.coTrinhDuyet && dl.duongTrinhDuyet),
+        duongTay: dl.duongTrinhDuyet || "",
+        nhanTay: dl.nhanTrinhDuyet || "trình duyệt"
+      };
+    })();
     const ql = tn ? K.quayLai(tn) : null;
     const tieuMuc = (K.DIEU_KIEN[s.tab] || {}).nhan || '';
     const laTk = !!tn && s.tab === 'tai_khoan';
@@ -2305,11 +2492,7 @@ class Component extends DCLogic {
       msgSt: 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;font-size:13px;' + (s.ghiLoi ? 'border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12' : 'border:1px solid #BFE0D9;background:#E8F4F1;color:#0B5A53'),
       msgNutSt: 'flex:0 0 auto;width:32px;height:32px;border:0;border-radius:50%;background:transparent;font-size:16px;line-height:1;padding:0;color:' + (s.ghiLoi ? '#8A1C12' : '#0B5A53'),
       coBang: !!tn && !s.dangTai, tab: s.tab, tieuMuc,
-      laTk, nhom, them, tkKhoi, coTkKhoi: tkKhoi.length > 0,
-      tkRows: tkKhoi.flatMap((g) => g.rows), coTkRows: tkKhoi.some((g) => g.rows.length > 0),
-      tkTrong: tkKhoi.length === 0,
-      tkTrongGhi: 'Chưa có tài khoản API nào — bấm « ＋ » ở trên để thêm.',
-      tkGhiChu: 'Nơi lưu khoá API của từng nguồn AI đã cài. Khoá nằm trên máy chủ (tệp chỉ chủ tiến trình đọc được) và chỉ hiện dạng che …abcd — không có nút xem lại; khoá mới được thử bằng một lời gọi thật trước khi lưu. «#n» là thứ tự khoá (xoay vòng); «Đang dùng» là khoá vừa phục vụ yêu cầu gần nhất; số lượt đếm từ lần khởi động hoặc lưu khoá gần nhất.',
+      laTk, nhom, them, khu, khuCt,
       laPv: !!tn && s.tab === 'provider' && !!pvCur, pv: { id: pvCur ? pvCur.id : '', ten: pvCur ? pvCur.ten : '' }, pvHang, c3,
       // ---- Combo (NV221) ----
       laCb: !!tn && s.tab === 'combo',

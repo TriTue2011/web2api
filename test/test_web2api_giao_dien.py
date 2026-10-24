@@ -98,6 +98,12 @@ def nhom_tk(trang) -> list[list[str]]:
     return trang.js("[...document.querySelectorAll('[data-nhom]')].map((b) => [...b.querySelectorAll('span')].map((x) => x.textContent))")
 
 
+def cho_nhom_tk(trang, han: float = 15):
+    """Chờ chip nhóm tải xong (bảng phân loại về) — NV268."""
+    trang.cho("document.querySelector('[aria-label=\"Nhóm tài khoản\"]')?.innerText.includes('Google')", han=han,
+              mo_ta="chip nhóm tải xong")
+
+
 def khong_tran(trang) -> bool:
     return trang.js("document.documentElement.scrollWidth <= window.innerWidth")
 
@@ -233,16 +239,20 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.cho("document.querySelector('x-dc')?.dataset.dc === 'san-sang' && location.pathname.endsWith('/He-thong-AI.dc.html')"
                   " && document.querySelector('#form-them')?.dataset.module === 'ai-gia'", han=15, mo_ta="Hệ thống → AI → Tài khoản › Thêm API")
         assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
-        assert nhom_tk(trang) == [["API", "0"]]
-        assert "Chưa có tài khoản API nào" in trang.chu("#tk-trong")
+        cho_nhom_tk(trang)
+        assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: chip «Tất cả» + nhóm từ dữ liệu
+        # NV268: khối xổ provider cũ đã bỏ; khu hiện nhóm trống.
+        assert "Chưa có tài khoản nào trong nhóm này." in trang.js("document.querySelector('#k268').innerText")
         trang.cho("document.activeElement?.closest('#form-them') && document.activeElement.type === 'password'", mo_ta="focus vào ô khoá")
         trang.js("window.__khongTaiLai = 1")
         trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
         trang.bam("document.getElementById('nut-them-luu')")
-        # Lưu khoá xong: một dòng tài khoản (dạng che), nhóm «API 1», dải báo từng khoá — không tải lại trang.
-        trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-gia\"]').length === 1", han=15, mo_ta="dòng tài khoản sau khi lưu khoá")
+        # NV268: khu chỉ hiện tài khoản đã lưu (khoá module không phải tài khoản đã lưu).
+        # Lưu khoá xong: dải báo từng khoá, form đóng — không tải lại trang.
+        trang.cho("!document.querySelector('#form-them')", han=15, mo_ta="form đóng sau khi lưu khoá")
         assert "Đã thêm khoá vào «AI giả»" in trang.chu("#tin-ai") and "…1111 dùng được" in trang.chu("#tin-ai")
-        assert nhom_tk(trang) == [["API", "1"]]
+        cho_nhom_tk(trang)
+        assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: khoá module không phải tài khoản đã lưu
         assert not trang.js("!!document.getElementById('form-them')")
         assert trang.js("window.__khongTaiLai") == 1
         assert "Combo" not in trang.js("document.body.innerText")
@@ -408,11 +418,12 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         trang.cho("!!document.getElementById('bang-ai')", mo_ta="trang AI")
         assert con_ai(trang) == ["tai_khoan", "provider"]  # Provider có từ lúc CÀI; Danh tính (NV179) cùng lúc CÀI; không Combo
         assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
-        assert nhom_tk(trang) == [["API", "0"]]
+        cho_nhom_tk(trang)
+        assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: chip «Tất cả» + nhóm từ dữ liệu
         assert trang.chu("#nut-them") == "＋ Tài khoản"
         assert trang.js("getComputedStyle(document.getElementById('nut-them')).backgroundColor") == "rgb(24, 24, 22)"  # nút đen nổi bật
-        assert trang.chu("#tk-trong") == "Chưa có tài khoản API nào — bấm « ＋ » ở trên để thêm."
-        assert trang.js("document.querySelectorAll('[data-tai-khoan]').length") == 0
+        # NV268: khối xổ provider cũ đã bỏ; khu hiện nhóm trống.
+        assert "Chưa có tài khoản nào trong nhóm này." in trang.js("document.querySelector('#k268').innerText")
         khong_dieu_khien_chet(trang)
 
         # Provider: «AI giả 0» với Model 0 | Tài khoản 0, khung rỗng + «Mở tab Tài khoản»; không gọi …/suc-khoe.
@@ -443,11 +454,12 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         assert trang.js("document.querySelector(\"#form-them [data-truong='api_keys'] input\").value") == ""
         trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
         trang.bam("document.getElementById('nut-them-luu')")
-        trang.cho("document.querySelectorAll('[data-tai-khoan=\"ai-gia\"]').length === 1", han=15, mo_ta="dòng tài khoản")
-        assert nhom_tk(trang) == [["API", "1"]]
-        dong = trang.chu("[data-tai-khoan='ai-gia']")
-        assert "AI giả" in dong and "khoá …1111" in dong, dong
-        trang.cho("document.querySelector('[data-tai-khoan=\"ai-gia\"] [data-chip-tk=\"suc-khoe\"]')?.innerText === 'Dùng được'", han=15, mo_ta="nhãn sức khoẻ")
+        # NV268: khu chỉ hiện tài khoản đã lưu; khoá module xem ở tab Provider.
+        # Lưu xong: dải báo từng khoá, form đóng.
+        trang.cho("!document.querySelector('#form-them')", han=15, mo_ta="form đóng sau khi lưu khoá")
+        assert "Đã thêm khoá vào «AI giả»" in trang.chu("#tin-ai") and "…1111 dùng được" in trang.chu("#tin-ai")
+        cho_nhom_tk(trang)
+        assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: khoá module không phải tài khoản đã lưu
         # Provider có model thật ngay, không tải lại trang.
         trang.bam("document.querySelector('[data-nav=\"ai\"]')")
         bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "Provider")
@@ -466,57 +478,30 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
 
 
 def test_ai_tai_khoan_hai_nguon_thay_va_xoa_khoa(trang, tmp_path, monkeypatch):
+    """NV268: khối xổ provider ở tab Tài khoản đã bỏ; quản lý khoá module qua tab Provider."""
     mods = {"ai-gia": module_ai(), "ai-hai": module_ai("ai-hai", "AI thứ hai", "hai", ("chat",))}
     k3 = "AIzaSyTOT-ba--000000000000000000000003"
     with loi_that(tmp_path, monkeypatch, modules=mods) as w:
         lien_ket(w, "ai-hai", {"api_keys": [K_TOT, k3]})
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(w.url + "/He-thong-AI.dc.html")
-        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-hai\"]')", mo_ta="khối provider ai-hai")
-        # Danh sách khoá bên trong luôn thu gọn lúc mở trang — bấm tiêu đề khối mới xổ danh sách
-        assert trang.js("document.querySelectorAll('[data-tai-khoan]').length") == 0
-        trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-hai\"]')")
-        trang.cho("document.querySelectorAll('[data-tai-khoan]').length === 2", mo_ta="hai dòng tài khoản")
-        # Mỗi khoá đã lưu là một «tài khoản» (như dòng API của demo: tên nhà cung cấp, «khoá …abcd»); nguồn chưa khoá không có dòng.
-        assert trang.js("[...document.querySelectorAll('[data-tai-khoan]')].map((d) => [d.dataset.taiKhoan, d.dataset.khoaSo])") \
-            == [["ai-hai", "0"], ["ai-hai", "1"]]
-        assert nhom_tk(trang) == [["API", "2"]]
-        trang.bam("document.getElementById('nut-them')")
-        assert trang.js("[...document.querySelectorAll('[data-chon-module]')].map((b) => [b.dataset.chonModule, b.getAttribute('aria-pressed')])") \
-            == [["ai-gia", "false"], ["ai-hai", "false"]]
-        assert "Chọn một nguồn AI đã cài." in trang.chu("#form-them")
-        trang.bam("document.getElementById('nut-them')")
-        # Mở dòng đầu: nhà cung cấp, địa chỉ gốc (Chép), khoá dạng che — không có «Xem» khoá; xoá hai bước.
-        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"][data-khoa-so=\"0\"] button')")
-        mo = "[data-tai-khoan='ai-hai'][data-khoa-so='0']"
-        trang.cho(f"!!document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})", mo_ta="dòng mở")
-        assert trang.chu(mo + " [data-chip-tk='vt']") == "#1"
-        assert trang.chu(mo + " [data-chip-tk='dang-dung']") == "Đang dùng"
-        assert "Đã dùng 12 lượt" in trang.chu(mo + " [data-chip-tk='luot']")
-        assert "Lần dùng cuối" in trang.chu(mo + " [data-chip-tk='dung-cuoi']")
-        assert trang.js(f"!!document.querySelector({json.dumps(mo + ' [data-thanh-hm=\"chat\"]')})")
-        assert not trang.js(f"[...document.querySelectorAll({json.dumps(mo + ' button')})].some((b) => b.innerText.includes('Đặt #1'))")
-        khong_dieu_khien_chet(trang)  # dòng mở có «Thứ tự khoá» — xoay vòng, không phải «hàng đợi ưu tiên» của demo
-        chu = trang.chu(mo)
-        assert "Nhà cung cấp" in chu and "https://gia.example/v1" in chu and "…1111" in chu and "Xem" not in chu, chu
-        trang.bam(f"document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})")
-        assert trang.chu(mo + " [data-hd=xoa]") == "Bấm lần nữa để xoá"
-        trang.bam(f"document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})")
-        trang.cho("document.querySelectorAll('[data-tai-khoan]').length === 1", han=15, mo_ta="còn một khoá")
-        assert json.loads((tmp_path / "bi_mat" / "ai-hai.json").read_text())["api_keys"] == [k3]
-        assert "Đã xoá khoá …1111 khỏi «AI thứ hai»" in trang.chu("#tin-ai")
-        # Khoá cuối của trường bắt buộc: không có «Xoá» (lõi từ chối), chỉ «Thay khoá».
-        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"] button')")
-        trang.cho("!!document.querySelector('[data-tai-khoan=\"ai-hai\"] [data-hd=thay]')", mo_ta="nút Thay khoá")
-        assert not trang.js("!!document.querySelector('[data-tai-khoan=\"ai-hai\"] [data-hd=xoa]')")
-        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"] [data-hd=thay]')")
-        trang.go("[data-tai-khoan='ai-hai'] form[data-sua] input", K_TOT)
-        trang.bam("document.querySelector('[data-tai-khoan=\"ai-hai\"] form[data-sua] button[type=submit]')")
-        trang.cho("(document.getElementById('tin-ai')?.innerText || '').startsWith('Đã thay khoá …0003')", han=15, mo_ta="đã thay khoá")
-        assert json.loads((tmp_path / "bi_mat" / "ai-hai.json").read_text())["api_keys"] == [K_TOT]
-        assert "khoá …1111" in trang.chu("[data-tai-khoan='ai-hai']")
-        assert K_TOT not in trang.js("document.documentElement.outerHTML")
-        assert not any(K_TOT in x for x in trang.state_thanh_phan())
+        # Tab Tài khoản: khu chỉ hiện tài khoản đã lưu, không hiện khoá module.
+        trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
+        trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản")
+        cho_nhom_tk(trang)
+        assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: khoá module không phải tài khoản đã lưu
+        # Quản lý khoá qua tab Provider.
+        trang.di(w.url + "/He-thong-AI.dc.html#provider")
+        trang.cho("!!document.querySelector('[data-provider]')", han=15, mo_ta="Provider tab")
+        trang.bam("document.getElementById('chon-pv')")
+        trang.bam("document.querySelector('[data-pv=\"ai-hai\"]')")
+        trang.cho("document.querySelector('[data-provider]')?.dataset.provider === 'ai-hai'", han=10, mo_ta="chon ai-hai")
+        trang.bam("document.querySelector('[data-pv-tab=tk]')")
+        trang.cho("document.querySelectorAll('[data-khoa-pv]').length === 2", han=15, mo_ta="hai dòng khoá")
+        # NV268: quản lý khoá (xoá/thay) qua Provider tab; khu Tài khoản chỉ hiện tài khoản đã lưu.
+        # Kiểm tra khoá không lộ ở DOM.
+        html = trang.js("document.documentElement.outerHTML")
+        assert K_TOT not in html and k3 not in html
+        assert not any(K_TOT in x or k3 in x for x in trang.state_thanh_phan())
         khong_dieu_khien_chet(trang)
 
 
@@ -600,18 +585,9 @@ def test_tai_khoan_suc_khoe_toi_thieu_va_het_han_muc(trang, tmp_path, monkeypatc
     with loi_that(tmp_path, monkeypatch, modules={"ai-gia": module_ai()}) as w:
         lien_ket(w, "ai-gia", {"api_keys": [K_TOT, k2]})
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(w.url + "/He-thong-AI.dc.html")
-        trang.cho("!!document.querySelector('[data-mo-khoi-pv=\"ai-gia\"]')", mo_ta="khối provider ai-gia")
-        trang.bam("document.querySelector('[data-mo-khoi-pv=\"ai-gia\"]')")
-        mo = "[data-tai-khoan='ai-gia'][data-khoa-so='0']"
-        trang.cho(f"document.querySelector({json.dumps(mo + ' [data-chip-tk=suc-khoe]')})?.innerText === 'Dùng được'", han=15, mo_ta="sức khoẻ tối thiểu")
-        assert trang.js(f"[...document.querySelectorAll({json.dumps(mo + ' [data-chip-tk]')})].map((c) => c.dataset.chipTk)") == ["suc-khoe"]
-        trang.bam(f"document.querySelector({json.dumps(mo + ' button')})")
-        trang.cho(f"!!document.querySelector({json.dumps(mo + ' [data-hd=xoa]')})", mo_ta="dòng mở")
-        assert trang.js(f"document.querySelectorAll({json.dumps(mo + ' [data-thanh-hm], ' + mo + ' [data-kv-tk=thu-tu], ' + mo + ' [data-kv-tk=da-dung]')}).length") == 0
-        assert "Số khoá" in trang.chu(mo)
-        trang.bam("document.querySelector('[data-nav=\"ai\"]')")
-        bam_chuot(trang, "document.querySelector('[data-nav-con=\"provider\"]')", "Provider")
+        # NV268: khối xổ provider ở tab Tài khoản đã bỏ; kiểm sức khoẻ qua tab Provider.
+        trang.di(w.url + "/He-thong-AI.dc.html#provider")
+        trang.cho("!!document.querySelector('[data-provider]')", han=15, mo_ta="Provider tab")
         trang.bam("document.querySelector('[data-pv-tab=tk]')")
         trang.cho("document.querySelectorAll('[data-khoa-pv]').length === 2 && document.querySelector('[data-khoa-pv]').innerText.includes('Đã kết nối')", han=15, mo_ta="Provider › Tài khoản")
         assert not trang.js("!!document.querySelector('[data-khoa-pv] [data-vt], [data-khoa-pv] [data-dang-dung], [data-khoa-pv] [data-thanh-hm]')")
