@@ -3681,6 +3681,9 @@ def doc_bang_phan_loai_tai_khoan():
             "qua_tai_khoan_luu": kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU,
             "nhom_tai_khoan_luu": kho_tai_khoan_mod.DANG_NHAP_BANG_NHOM_TAI_KHOAN_LUU,
         },
+        # NV258: kiểu bí mật + tên hiển thị (form thêm tài khoản/API).
+        "kieu_bi_mat": list(kho_tai_khoan_mod.KIEU_BI_MAT_CHO_PHEP),
+        "ten_kieu_bi_mat": dict(kho_tai_khoan_mod.TEN_KIEU_BI_MAT),
         # NV232: nhãn hiển thị trạng thái từng đường dùng.
         "ten_trang_thai_duong": {
             k: v["ten"] for k, v in dd_mod.BANG_TRANG_THAI_DUONG.items()
@@ -3961,10 +3964,35 @@ async def luu_tai_khoan_da_luu(request: Request):
     NV218: nhận thêm ``loai_tai_khoan`` + ``dich_dung`` (phân loại theo bảng
     khai báo của đúng nhóm; sai bảng → 400). Không truyền → giữ nguyên cũ.
     NV224: nhận thêm ``dung_cho`` (danh sách mọi đích dùng; cộng thêm không
-    đè; mục sai bảng → 400)."""
+    đè; mục sai bảng → 400).
+    NV258: nhận thêm ``dia_chi`` (địa chỉ: URL gốc với loại api — kiểm bằng
+    bộ kiểm URL của lõi, chỉ http/https; email với loại gmail/web; để trống
+    = mặc định theo đích dùng), ``bi_mat`` + ``kieu_bi_mat`` ∈ {mat_khau,
+    khoa_api, token, cookie}. Kiểu khoa_api/token/cookie KHÔNG bắt buộc
+    email+mật khẩu (lưu được một khoá API đơn lẻ — bắt buộc có «bi_mat»);
+    kiểu mat_khau (mặc định) giữ yêu cầu cũ (email + mat_khau). Trường mới
+    chỉ THÊM vào hợp đồng phản hồi (ban_cong_khai), không đổi các trường cũ."""
+
     kiem_tra_step_up(request)
     than = await _than_json(request)
     nguoi_thuc_hien = dinh_danh_nguoi_thuc_hien(request)
+
+    def _bi_mat_moi(muc: dict) -> tuple:
+        """``(bi_mat, kieu_bi_mat, la_khoa)`` từ một mục body (NV258).
+
+        ``la_khoa`` = True khi kieu_bi_mat ∈ {khoa_api, token, cookie}:
+        không bắt buộc email+mật khẩu, bắt buộc có giá trị bí mật.
+        Kiểu lạ → LoiKhoTaiKhoan (đổi thành 400 ở ngoài)."""
+        kieu = _chuoi_tuy_chon(muc, "kieu_bi_mat")
+        if kieu:
+            kieu = kho_tai_khoan_mod.kiem_kieu_bi_mat(kieu)
+        la_khoa = kieu in ("khoa_api", "token", "cookie")
+        bi_mat = _chuoi_tuy_chon(muc, "bi_mat")
+        if la_khoa and not bi_mat:
+            raise LoiOpenAI(
+                400, "Thiếu giá trị «bi_mat» (khoá/token/cookie).",
+                code="invalid_value")
+        return bi_mat, kieu or None, la_khoa
 
     def _module_va_nhom(muc: dict) -> tuple:
         """``(module_id, nhom)`` từ một mục body.
@@ -3993,8 +4021,10 @@ async def luu_tai_khoan_da_luu(request: Request):
                     if not isinstance(muc, dict):
                         raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
                     mid, nhom = _module_va_nhom(muc)
+                    bi_mat_moi, kieu_moi, la_khoa = _bi_mat_moi(muc)
+                    mat_khau_muc = None if la_khoa else muc.get("mat_khau")
                     bk = kho_tai_khoan_mod.luu_tai_khoan(
-                        muc.get("email"), muc.get("mat_khau"),
+                        muc.get("email"), mat_khau_muc,
                         muc.get("totp_secret"), muc.get("nhan", ""),
                         trang_thai=muc.get("trang_thai"),
                         id=muc.get("id") or None,
@@ -4004,7 +4034,9 @@ async def luu_tai_khoan_da_luu(request: Request):
                         dich_dung=_chuoi_tuy_chon(muc, "dich_dung"),
                         dang_nhap_bang=muc.get("dang_nhap_bang"),
                         tai_khoan_dnh_id=_tai_khoan_dnh_id_tuy_chon(muc),
-                        dung_cho=_dung_cho_tuy_chon(muc))
+                        dung_cho=_dung_cho_tuy_chon(muc),
+                        dia_chi=_chuoi_tuy_chon(muc, "dia_chi"),
+                        bi_mat=bi_mat_moi, kieu_bi_mat=kieu_moi)
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -4017,12 +4049,21 @@ async def luu_tai_khoan_da_luu(request: Request):
             return {"luu": luu, "loi": loi}
         tai_id = _chuoi_tuy_chon(than, "id")
         email_val = _chuoi_tuy_chon(than, "email")
-        if not tai_id and not email_val:
+        bi_mat_moi, kieu_moi, la_khoa = _bi_mat_moi(than)
+        # NV258: bản ghi khoá API/token/cookie không bắt buộc email; các
+        # trường hợp còn lại giữ yêu cầu cũ (email hoặc id + mật khẩu).
+        if not tai_id and not email_val and not la_khoa:
             raise LoiOpenAI(400, "Thiếu trường «email».", code="invalid_value")
         mid, nhom = _module_va_nhom(than)
+        # NV258: bí mật qua trường mới «bi_mat» cũng được chấp nhận cho mọi
+        # kiểu (kể cả mat_khau); chỉ khi không có bi_mat mới bắt buộc mat_khau.
+        if la_khoa or bi_mat_moi is not None:
+            mat_khau_yeu_cau = None
+        else:
+            mat_khau_yeu_cau = _chuoi_bat_buoc(than, "mat_khau")
         bk = kho_tai_khoan_mod.luu_tai_khoan(
             email_val,
-            _chuoi_bat_buoc(than, "mat_khau"),
+            mat_khau_yeu_cau,
             _chuoi_tuy_chon(than, "totp_secret"),
             _chuoi_tuy_chon(than, "nhan") or "",
             trang_thai=_chuoi_tuy_chon(than, "trang_thai"),
@@ -4033,10 +4074,14 @@ async def luu_tai_khoan_da_luu(request: Request):
             dich_dung=_chuoi_tuy_chon(than, "dich_dung"),
             dang_nhap_bang=_chuoi_tuy_chon(than, "dang_nhap_bang"),
             tai_khoan_dnh_id=_tai_khoan_dnh_id_tuy_chon(than),
-            dung_cho=_dung_cho_tuy_chon(than))
+            dung_cho=_dung_cho_tuy_chon(than),
+            dia_chi=_chuoi_tuy_chon(than, "dia_chi"),
+            bi_mat=bi_mat_moi, kieu_bi_mat=kieu_moi)
+        # Nhật ký: chỉ ghi định danh đã che — KHÔNG bao giờ ghi bí mật.
+        dinh_danh_che = bk.get("email_che") or bk.get("dia_chi_che") or "…"
         nhat_ky_mod.ghi(
             "quan_tri", "thong_tin",
-            f"Lưu tài khoản đã lưu ({bk['email_che']})",
+            f"Lưu tài khoản đã lưu ({dinh_danh_che})",
             nguoi_thuc_hien=nguoi_thuc_hien)
         return {"tai_khoan": bk}
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:

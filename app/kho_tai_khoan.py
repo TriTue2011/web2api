@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import time
+import urllib.parse
 
 from app import kho
 from app.tai_khoan_hang_loat import (
@@ -368,6 +369,129 @@ def kiem_dich_dung(dich_dung, nhom, loai) -> str:
     if d not in cho_phep:
         raise LoiKhoTaiKhoan("invalid_value")
     return d
+#: Kiểu bí mật của bản ghi (NV258): «mat_khau» = mật khẩu đăng nhập
+#: (mặc định; bản ghi CŨ không có trường này được đọc như kiểu mat_khau);
+#: «khoa_api»/«token»/«cookie» = khoá API, token, cookie của nhà cung cấp —
+#: bản ghi kiểu này KHÔNG bắt buộc email (lưu được một khoá API đơn lẻ).
+#: Danh sách ĐÓNG.
+KIEU_BI_MAT_CHO_PHEP = ("mat_khau", "khoa_api", "token", "cookie")
+
+#: Tên HIỂN THỊ của kiểu bí mật (NV258) — dữ liệu trình bày đi kèm bảng,
+#: giao diện lõi chỉ việc dùng.
+TEN_KIEU_BI_MAT = {
+    "mat_khau": "Mật khẩu",
+    "khoa_api": "Khoá API",
+    "token": "Token",
+    "cookie": "Cookie",
+}
+
+DOI_DAI_DIA_CHI = 2048
+DOI_DAI_BI_MAT = 4096
+
+
+def ma_bi_mat(kieu_bi_mat: str, bi_mat: str) -> str:
+    """ID ổn định cho bản ghi KHÔNG email (NV258): ``tk-`` + 16 hex SHA-256
+    của ``"nv258" + kieu + bi_mat`` (phân tách bằng NUL để không lẫn với
+    ``ma_tai_khoan`` theo email). Cùng một khoá lưu lại → cùng id → cập nhật,
+    không trùng lặp."""
+    goc = "nv258\x00" + str(kieu_bi_mat or "") + "\x00" + str(bi_mat or "")
+    return _TIEN_TO_ID + hashlib.sha256(goc.encode("utf-8")).hexdigest()[:16]
+
+
+def kiem_kieu_bi_mat(kieu_bi_mat) -> str:
+    """Kiểm kiểu bí mật (NV258): None/"" → "" (người gọi đổi thành mặc định
+    «mat_khau» cho bản ghi mới, giữ nguyên cũ cho cập nhật). Giá trị phải
+    thuộc ``KIEU_BI_MAT_CHO_PHEP`` — danh sách đóng."""
+    if kieu_bi_mat is None:
+        return ""
+    if isinstance(kieu_bi_mat, bool) or not isinstance(kieu_bi_mat, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(kieu_bi_mat, "kieu_bi_mat")
+    k = kieu_bi_mat.strip()
+    if not k:
+        return ""
+    if k not in KIEU_BI_MAT_CHO_PHEP:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return k
+
+
+def kiem_bi_mat(bi_mat) -> str:
+    """Kiểm bí mật chung (NV258): khoá API/token/cookie — chuỗi không rỗng,
+    trần 4096 ký tự (cookie/token có thể rất dài). Không strip (bí mật giữ
+    nguyên từng byte như mật khẩu)."""
+    if isinstance(bi_mat, bool) or not isinstance(bi_mat, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(bi_mat, "bi_mat")
+    if not bi_mat or len(bi_mat) > DOI_DAI_BI_MAT:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return bi_mat
+
+
+def kiem_dia_chi(dia_chi, loai) -> str:
+    """Kiểm địa chỉ của bản ghi (NV258): None/"" → "" (chưa khai — mặc định
+    theo đích dùng).
+
+    - loai == "api": địa chỉ là URL gốc — kiểm bằng bộ kiểm URL của lõi
+      (``app.dia_chi.kiem_tra_va_chuan_hoa_url``: chỉ http/https, không
+      user:pass/query/fragment) rồi trả dạng đã chuẩn hoá.
+    - loại khác (gmail/web): địa chỉ là email — kiểm như email đăng nhập.
+    - loai chưa khai (""/None): tự nhận dạng — chuỗi là URL http(s) hợp lệ
+      theo bộ kiểm của lõi → URL; ngược lại → kiểm như email.
+    Sai → ``LoiKhoTaiKhoan("invalid_value")`` (không lộ giá trị)."""
+    if dia_chi is None:
+        return ""
+    if isinstance(dia_chi, bool) or not isinstance(dia_chi, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(dia_chi, "dia_chi")
+    d = dia_chi.strip()
+    if not d:
+        return ""
+    if len(d) > DOI_DAI_DIA_CHI:
+        raise LoiKhoTaiKhoan("invalid_value")
+    try:
+        if loai == "api":
+            from app import dia_chi as dia_chi_mod
+            return dia_chi_mod.kiem_tra_va_chuan_hoa_url(d)
+        if not loai:
+            # NV258: chưa khai loại — tự nhận dạng để form không bắt buộc
+            # chọn loại trước khi nhập địa chỉ.
+            try:
+                from app import dia_chi as dia_chi_mod
+                return dia_chi_mod.kiem_tra_va_chuan_hoa_url(d)
+            except LoiKhoTaiKhoan:
+                pass
+        return chuan_hoa_email(d)
+    except LoiKhoTaiKhoan:
+        raise
+    except Exception:
+        raise LoiKhoTaiKhoan("invalid_value") from None
+
+
+def che_dia_chi(dia_chi: str) -> str:
+    """Che địa chỉ để hiển thị (NV258): email → như ``che_email`` (chỉ chừa
+    tên miền); URL → giữ scheme, che tên máy một phần (giữ ký tự đầu và
+    đuôi tên miền), bỏ đường dẫn. Không bao giờ lộ toàn bộ địa chỉ."""
+    d = str(dia_chi or "").strip()
+    if not d:
+        return ""
+    if "@" in d and "://" not in d:
+        return che_email(d)
+    try:
+        tach = urllib.parse.urlsplit(d if "://" in d else "https://" + d)
+    except ValueError:
+        return "…"
+    may = tach.hostname or ""
+    if not may:
+        return "…"
+    scheme = tach.scheme or "https"
+    if ":" in may or may.replace(".", "").isdigit():
+        # IP (v4/v6): che toàn bộ tên máy.
+        return f"{scheme}://***"
+    nhan = may.split(".")
+    duoi = ".".join(nhan[-2:]) if len(nhan) >= 2 else may
+    return f"{scheme}://{may[0]}***.{duoi}"
+
+
 #: NV223: cách đăng nhập của tài khoản dịch vụ — «truc_tiep» = đăng nhập
 #: thẳng bằng bí mật của chính tài khoản; giá trị «qua tài khoản lưu» (xem
 #: ``DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU``) = đăng nhập QUA một tài khoản đã
@@ -658,9 +782,32 @@ def _doc() -> dict:
         if (
             not isinstance(ban_ghi.get("email"), str)
             or not isinstance(ban_ghi.get("mat_khau"), str)
-            or id_ != ma_tai_khoan(ban_ghi["email"])
         ):
             raise LoiKhoTaiKhoan("kho_hong")
+        # NV258: bản ghi kiểu khoá API/token/cookie không bắt buộc email —
+        # id theo bí mật (ma_bi_mat); bản ghi kiểu mat_khau (kể cả bản ghi CŨ
+        # chưa có trường kieu_bi_mat) vẫn id theo email như trước.
+        kieu_bm = ban_ghi.get("kieu_bi_mat", "mat_khau")
+        if not isinstance(kieu_bm, str) or kieu_bm not in KIEU_BI_MAT_CHO_PHEP:
+            raise LoiKhoTaiKhoan("kho_hong")
+        email_bm = ban_ghi.get("email", "")
+        if kieu_bm == "mat_khau":
+            if id_ != ma_tai_khoan(email_bm):
+                raise LoiKhoTaiKhoan("kho_hong")
+        else:
+            bi_mat_bm = ban_ghi.get("bi_mat", "")
+            if not isinstance(bi_mat_bm, str):
+                raise LoiKhoTaiKhoan("kho_hong")
+            hop_le_bm = (
+                id_ == ma_tai_khoan(email_bm) and email_bm
+            ) or id_ == ma_bi_mat(kieu_bm, bi_mat_bm)
+            if not hop_le_bm:
+                raise LoiKhoTaiKhoan("kho_hong")
+        # Trường bi_mat/dia_chi (NV258, tuỳ chọn, bản ghi cũ không có):
+        # có thì phải là chuỗi.
+        for truong in ("bi_mat", "dia_chi"):
+            if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
+                raise LoiKhoTaiKhoan("kho_hong")
         # Trường NV197c (tuỳ chọn, bản ghi cũ không có): có thì phải là chuỗi.
         for truong in ("module_id", "nhom", "bac_goi"):
             if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
@@ -753,6 +900,13 @@ def ban_cong_khai(ban_ghi: dict) -> dict:
         "dang_nhap_bang": ban_ghi.get("dang_nhap_bang", ""),
         TRUONG_TAI_KHOAN_DNH_ID: lay_tai_khoan_dnh_id(ban_ghi),
         **{bd: lay_tai_khoan_dnh_id(ban_ghi) for bd in BI_DANH_CU_TAI_KHOAN_DNH},
+        # NV258: địa chỉ (CHE một phần — email/URL), kiểu bí mật + cờ «đã có»
+        # bí mật. KHÔNG BAO GIỜ trả bí mật thô (bi_mat/mat_khau/totp_secret).
+        # Bản ghi CŨ chưa có các trường này: dia_chi = "", kieu_bi_mat đọc
+        # như "mat_khau".
+        "dia_chi_che": che_dia_chi(ban_ghi.get("dia_chi", "") or ""),
+        "kieu_bi_mat": ban_ghi.get("kieu_bi_mat", "") or "mat_khau",
+        "co_bi_mat": bool(ban_ghi.get("bi_mat") or ban_ghi.get("mat_khau")),
         # NV224: MỌI đích dùng của bản ghi (tích lũy, không đè).
         "dung_cho": _dung_cho_hieu_luc(ban_ghi),
         # NV232: trạng thái TỪNG ĐƯỜNG (đã chuẩn hoá: het_han_muc quá mốc
@@ -780,7 +934,8 @@ def _tom_tat_dung(id_: str) -> dict:
 def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                   trang_thai=None, id=None, module_id=None, nhom=None,
                   bac_goi=None, loai_tai_khoan=None, dich_dung=None, dang_nhap_bang=None,
-                  tai_khoan_dnh_id=None, dung_cho=None) -> dict:
+                  tai_khoan_dnh_id=None, dung_cho=None,
+                  dia_chi=None, bi_mat=None, kieu_bi_mat=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
@@ -798,11 +953,20 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     `dung_cho` (NV224): danh sách MỌI đích dùng của bản ghi — None → giữ
     nguyên; truyền vào thì CỘNG THÊM (khử trùng, không đè mất đích cũ);
     `dich_dung` đặt mới cũng được cộng vào danh sách.
+    `dia_chi` (NV258): địa chỉ của bản ghi — email với loại gmail/web, URL gốc
+    với loại api (để trống = mặc định theo đích dùng; URL kiểm bằng bộ kiểm
+    URL của lõi, chỉ http/https). None → giữ nguyên cũ; "" → xoá.
+    `bi_mat`/`kieu_bi_mat` (NV258): bí mật + kiểu ∈ {mat_khau, khoa_api,
+    token, cookie}. Đường cũ (chỉ truyền `mat_khau`) đọc như kiểu mat_khau —
+    tương thích ngược. Kiểu khoa_api/token/cookie KHÔNG bắt buộc email
+    (lưu được một khoá API đơn lẻ, id theo bí mật). `bi_mat=None` → giữ bí
+    mật cũ (cập nhật không đổi khoá).
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
-    mk = kiem_mat_khau(mat_khau)
     totp = kiem_totp_secret(totp_secret)
     nhan_sach = kiem_nhan(nhan)
+    # NV258: kiểu bí mật — None/"" → giữ nguyên cũ (bản ghi mới: "mat_khau").
+    kieu_moi = kiem_kieu_bi_mat(kieu_bi_mat)
     with kho.giu_khoa_kho():
         du_lieu = _doc()
         cu = None
@@ -815,16 +979,60 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                     break
             if cu is None:
                 raise LoiKhoTaiKhoan("khong_tim_thay")
-            if email is None or (isinstance(email, str) and email == che_email(cu["email"])):
-                email_chuan = cu["email"]
+            if not kieu_moi:
+                kieu_moi = cu.get("kieu_bi_mat", "") or "mat_khau"
+            # NV258: bản ghi không email — email None/"" (hoặc dạng che của
+            # "") → giữ nguyên; có email mới khác email cũ → từ chối (định
+            # danh không đổi khi cập nhật theo id, như đường cũ).
+            email_cu = cu.get("email", "")
+            if email is None or (
+                    isinstance(email, str) and email == che_email(email_cu)):
+                email_chuan = email_cu
+            elif isinstance(email, str) and not email.strip() \
+                    and not email_cu:
+                email_chuan = ""
             else:
                 email_chuan = chuan_hoa_email(email)
-                if email_chuan != cu["email"]:
+                if email_chuan != email_cu:
                     raise LoiKhoTaiKhoan("invalid_value")
             id_ = cu["id"]
         else:
-            email_chuan = chuan_hoa_email(email)
-            id_ = ma_tai_khoan(email_chuan)
+            if not kieu_moi:
+                kieu_moi = "mat_khau"
+            # NV258: kiểu khoá API/token/cookie không bắt buộc email — id
+            # theo bí mật (cùng khoá lưu lại → cập nhật, không trùng).
+            email_tho = email.strip() if isinstance(email, str) else email
+            if email_tho:
+                email_chuan = chuan_hoa_email(email_tho)
+                id_ = ma_tai_khoan(email_chuan)
+            elif kieu_moi in ("khoa_api", "token", "cookie"):
+                email_chuan = ""
+                id_ = None  # chốt sau khi có bí mật
+            else:
+                # Đường cũ: email bắt buộc với kiểu mat_khau.
+                email_chuan = chuan_hoa_email(email)
+                id_ = ma_tai_khoan(email_chuan)
+            cu = du_lieu.get(id_) if id_ else None
+
+        # NV258: bí mật — bi_mat mới (đường mới) thắng; không truyền gì và
+        # đang cập nhật → giữ bí mật cũ; đường cũ (mat_khau) luôn là mật khẩu.
+        if bi_mat is not None:
+            bi_mat_moi = kiem_bi_mat(bi_mat)
+        elif mat_khau is not None:
+            bi_mat_moi = kiem_mat_khau(mat_khau)
+            kieu_moi = "mat_khau"
+        elif cu:
+            bi_mat_moi = cu.get("bi_mat") or cu.get("mat_khau", "")
+        else:
+            raise LoiKhoTaiKhoan("invalid_value")
+        if kieu_moi == "mat_khau":
+            mat_khau_moi = bi_mat_moi
+        else:
+            # Kiểu khoá/token/cookie: trường mat_khau cũ để "" (chuỗi, _doc
+            # vẫn duyệt); bí mật nằm ở bi_mat.
+            mat_khau_moi = ""
+        if id_ is None:
+            id_ = ma_bi_mat(kieu_moi, bi_mat_moi)
             cu = du_lieu.get(id_)
 
         # Bảo toàn TOTP secret nếu không truyền trường totp_secret
@@ -915,11 +1123,22 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                 }
         tt_duong_moi = {d: m for d, m in tt_duong_moi.items()
                         if d in _dich_ban_ghi_moi}
+        # NV258: địa chỉ — None → giữ nguyên cũ; "" → xoá; có giá trị →
+        # kiểm theo LOẠI MỚI (loai_moi đã chốt ở trên: api → URL qua bộ kiểm
+        # của lõi, gmail/web → email).
+        dia_chi_moi = cu.get("dia_chi", "") if cu else ""
+        if dia_chi is not None:
+            dia_chi_moi = kiem_dia_chi(dia_chi, loai_moi)
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
             "nhan": nhan_sach,
-            "mat_khau": mk,
+            "mat_khau": mat_khau_moi,
+            # NV258: bí mật + kiểu + địa chỉ. Bản ghi kiểu mat_khau giữ
+            # mat_khau như cũ (tương thích ngược); kiểu khác để mat_khau "".
+            "bi_mat": bi_mat_moi,
+            "kieu_bi_mat": kieu_moi,
+            "dia_chi": dia_chi_moi,
             "totp_secret": totp_cuoi,
             "trang_thai": tt_moi,
             "module_id": module_moi,
@@ -941,7 +1160,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         # Nguyên tắc vòng đời: đổi thông tin đăng nhập ⇒ trạng thái thử lại về gốc
         thong_tin_doi = (
             cu is None
-            or cu.get("mat_khau") != mk
+            or (cu.get("bi_mat") or cu.get("mat_khau", "")) != bi_mat_moi
             or cu.get("totp_secret", "") != totp_cuoi
         )
         if thong_tin_doi:
@@ -1220,9 +1439,14 @@ def lay_bi_mat_dang_nhap(id_: str) -> tuple[BiMatTam, BiMatTotp | None] | None:
     Người gọi phải ``xoa()`` sau khi dùng xong.
     """
     ban_ghi = tim_theo_id(id_)
-    if ban_ghi is None or not ban_ghi.get("mat_khau"):
+    if ban_ghi is None:
         return None
-    mat_khau = BiMatTam(ban_ghi["mat_khau"])
+    # NV258: bí mật nằm ở bi_mat (bản ghi mới) hoặc mat_khau (bản ghi CŨ
+    # chưa có trường bi_mat — đọc như kiểu mat_khau, tương thích ngược).
+    bi_mat_tho = ban_ghi.get("bi_mat") or ban_ghi.get("mat_khau") or ""
+    if not bi_mat_tho:
+        return None
+    mat_khau = BiMatTam(bi_mat_tho)
     totp = None
     if ban_ghi.get("totp_secret"):
         totp = BiMatTotp(ban_ghi["totp_secret"])

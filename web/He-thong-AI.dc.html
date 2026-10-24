@@ -134,19 +134,28 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <option value="">— Chọn để điền nhanh —</option>
 <sc-for list="{{them.dl.tuyChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
 </select></label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Kiểu bí mật
+<span style="font-size:11px;color:var(--mute);line-height:1.4">«Mật khẩu» cho tài khoản đăng nhập; «Khoá API»/«Token»/«Cookie» cho khoá dùng thẳng không cần email.</span>
+<select id="dl-kieu-bi-mat" value="{{them.dl.kieuBiMat}}" onChange="{{them.dl.doiKieuBiMat}}" aria-label="Kiểu bí mật" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+<sc-for list="{{them.dl.dsKieuBiMat}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
+</select></label>
 <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Email
 <input id="dl-email" type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{them.dl.email}}" onInput="{{them.dl.doiEmail}}" aria-label="Email tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
 </label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Mật khẩu
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Địa chỉ
+<span style="font-size:11px;color:var(--mute);line-height:1.4">Email của tài khoản, hoặc URL gốc của API (vd https://api.example.com). Để trống = mặc định theo đích dùng.</span>
+<input id="dl-dia-chi" type="text" autocomplete="off" spellcheck="false" placeholder="ten@example.com hoặc https://api.example.com" value="{{them.dl.diaChi}}" onInput="{{them.dl.doiDiaChi}}" aria-label="Địa chỉ tài khoản hoặc API" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{them.dl.nhanBiMat}}
 <div style="display:flex;gap:6px;align-items:center">
-<input id="dl-mat-khau" type="{{them.dl.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="{{them.dl.goiYMatKhau}}" value="{{them.dl.matKhau}}" onInput="{{them.dl.doiMatKhau}}" aria-label="Mật khẩu tài khoản lưu" style="flex:1 1 auto;min-width:0;min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px">
-<button type="button" id="dl-hien-mk" onClick="{{them.dl.doiHienMk}}" aria-label="{{them.dl.nhanHienMk}} mật khẩu đã lưu" style="min-height:44px;min-width:44px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;cursor:pointer;flex:0 0 auto">{{them.dl.nhanHienMk}}</button>
+<input id="dl-mat-khau" type="{{them.dl.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="{{them.dl.goiYBiMat}}" value="{{them.dl.matKhau}}" onInput="{{them.dl.doiMatKhau}}" aria-label="Mật khẩu, khoá API hoặc token" style="flex:1 1 auto;min-width:0;min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px">
+<button type="button" id="dl-hien-mk" onClick="{{them.dl.doiHienMk}}" aria-label="{{them.dl.nhanHienMk}} bí mật đã lưu" style="min-height:44px;min-width:44px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;cursor:pointer;flex:0 0 auto">{{them.dl.nhanHienMk}}</button>
 </div>
 </label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">TOTP secret
+<sc-if value="{{them.dl.coTotp}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">TOTP secret
 <span style="font-size:11px;color:var(--mute);line-height:1.4">Dán khoá Base32 của ứng dụng xác thực; để trống = xác minh trên thiết bị khi đăng nhập.</span>
 <input id="dl-totp" type="text" autocomplete="off" spellcheck="false" placeholder="Khoá Base32 (A–Z, 2–7)" value="{{them.dl.totp}}" onInput="{{them.dl.doiTotp}}" aria-label="TOTP secret" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
+</label></sc-if>
 <details style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
 <summary style="padding:8px 12px;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Cách lấy secret</summary>
 <ol style="margin:0;padding:8px 12px 12px 32px;font-size:12px;color:var(--mute);line-height:1.6">
@@ -221,6 +230,8 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-for list="{{l.hang}}" as="r">
 <div data-tk-da-luu="{{r.id}}" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;min-height:44px;border-top:1px solid var(--line);min-width:0">
 <span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.emailChe}}</span>
+<sc-if value="{{r.coDiaChiChe}}"><span style="font-size:12px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.diaChiChe}}</span></sc-if>
+<sc-if value="{{r.coTenKieuBiMat}}"><span style="font-size:12px;white-space:nowrap;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mute)">{{r.tenKieuBiMat}}</span></sc-if>
 <sc-if value="{{r.dangDung1}}"><span style="{{r.stDangDung1}}">ĐANG DÙNG #1</span></sc-if>
 <sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
 <sc-if value="{{r.coNhom}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">Nhóm: {{r.nhom}}</span></sc-if>
@@ -851,6 +862,10 @@ class Component extends DCLogic {
     this.setState({
       dlChonId: id || '',
       dlEmail: t ? (t.email_che || '') : '',
+      // NV258: địa chỉ không điền lại giá trị thô (chỉ có dạng che);
+      // kiểu bí mật điền từ bản ghi đã chọn.
+      dlDiaChi: '',
+      dlKieuBiMat: t ? (t.kieu_bi_mat || '') : '',
       dlNhan: t ? (t.nhan || '') : '',
       dlDangNhapBang: t ? (t.dang_nhap_bang || '') : '',
       dlTkDnhId: t ? (t.tai_khoan_dnh_id || '') : '',
@@ -874,17 +889,33 @@ class Component extends DCLogic {
     const email = (s.dlEmail || '').trim();
     const mk = s.dlMatKhau || '';
     const chonId = s.dlChonId || '';
+    // NV258: kiểu bí mật của form — '' đọc như mat_khau; kiểu khoá
+    // (khoa_api/token/cookie) chỉ cần bí mật, không bắt buộc email.
+    const kieuBm = (s.dlKieuBiMat || '').trim() || 'mat_khau';
+    const laKhoa = kieuBm !== 'mat_khau';
     if (s.dlDaLuu && chonId && !mk) {
       // Đã chọn tài khoản lưu sẵn mà không gõ gì mới
       if (vaDangNhap) { await this.dlDangNhapDaLuu(chon, chonId); return; }
       this.msg('Tài khoản này đã được lưu.', false);
       return;
     }
-    if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
-    const payload = { email, mat_khau: mk };
+    if (laKhoa) {
+      if (!mk) { this.setState({ dlLoi: 'Nhập khoá API / token / cookie.' }); return; }
+    } else if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
+    const payload = {};
+    if (laKhoa) {
+      payload.kieu_bi_mat = kieuBm;
+      payload.bi_mat = mk;
+      if (email) payload.email = email;
+    } else {
+      payload.email = email;
+      payload.mat_khau = mk;
+    }
     if (s.dlDaLuu && chonId) payload.id = chonId;
+    const diaChi = (s.dlDiaChi || '').trim();
+    if (diaChi) payload.dia_chi = diaChi;
     const totp = (s.dlTotp || '').trim();
-    if (totp) payload.totp_secret = totp;
+    if (totp && !laKhoa) payload.totp_secret = totp;
     const nhan = (s.dlNhan || '').trim();
     if (nhan) payload.nhan = nhan;
     const bacGoi = (s.dlBacGoi || '').trim();
@@ -1744,7 +1775,7 @@ class Component extends DCLogic {
           tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
           tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
           tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false,
-          dlDs: [], dlChonId: '', dlEmail: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
+          dlDs: [], dlChonId: '', dlEmail: '', dlDiaChi: '', dlKieuBiMat: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
           dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkDnhId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
           dlXoaChon: '', dlMoDS: true, dlTuDongLai: true, dlCanNguoi: {}
@@ -1765,7 +1796,13 @@ class Component extends DCLogic {
         const locNhomDl = s.dlLocNhom || '';
         const dsNhomDl = [...new Set(dlDs.map((t) => t.nhom || '').filter(Boolean))].sort();
         const dlEmailTrim = (s.dlEmail || '').trim();
-        const dlCoChungThuc = !!(dlEmailTrim && (s.dlMatKhau || ''));
+        // NV258: kiểu bí mật của form — '' (mặc định) đọc như mat_khau.
+        // Kiểu khoá (khoa_api/token/cookie) chỉ cần bí mật, không bắt buộc email.
+        const dlKieuBiMat = (s.dlKieuBiMat || '').trim() || 'mat_khau';
+        const dlLaKhoa = dlKieuBiMat !== 'mat_khau';
+        const dlCoChungThuc = dlLaKhoa ? !!(s.dlMatKhau || '') : !!(dlEmailTrim && (s.dlMatKhau || ''));
+        // NV258: tên hiển thị kiểu bí mật — đổ từ bảng API, dự phòng khi lõi cũ.
+        const TEN_KBM_MAC_DINH = { mat_khau: 'Mật khẩu', khoa_api: 'Khoá API', token: 'Token', cookie: 'Cookie' };
         // NV225: cờ «đang dùng #1» lấy từ /nhom-loai (dlGom) — bản ghi tự nó
         // không mang cờ này. Thiếu dlGom (lõi cũ) → không tài khoản nào #1.
         const dangDungTk = {};
@@ -1778,6 +1815,12 @@ class Component extends DCLogic {
           }
         }
         const bangTk = s.dlBang || null;
+        // NV258: tên hiển thị kiểu bí mật — đổ từ bảng API, dự phòng khi lõi cũ.
+        const tenKieuBiMatCua = (k) => (bangTk && bangTk.ten_kieu_bi_mat && bangTk.ten_kieu_bi_mat[k])
+          || TEN_KBM_MAC_DINH[k] || k || '';
+        const dsKieuBiMat = ((bangTk && Array.isArray(bangTk.kieu_bi_mat) && bangTk.kieu_bi_mat.length)
+          ? bangTk.kieu_bi_mat : Object.keys(TEN_KBM_MAC_DINH)).map((k) => ({
+            id: k, nhan: tenKieuBiMatCua(k), chon: k === dlKieuBiMat }));
         // NV256: tuỳ chọn «đăng nhập bằng» từ API — không chép cứng giá trị/nhãn.
         const dnbApi = (bangTk && bangTk.dang_nhap_bang) || {};
         const quaTaiKhoanLuu = dnbApi.qua_tai_khoan_luu || s.dlDangNhapBangQuaLuu || '';
@@ -1795,6 +1838,11 @@ class Component extends DCLogic {
         const hangTk = dlDs.filter((t) => !locNhomDl || (t.nhom || '') === locNhomDl).map((t) => ({
           id: t.id,
           emailChe: t.email_che || '',
+          // NV258: địa chỉ che + nhãn kiểu bí mật của từng dòng.
+          diaChiChe: t.dia_chi_che || '',
+          coDiaChiChe: !!(t.dia_chi_che || ''),
+          tenKieuBiMat: tenKieuBiMatCua(t.kieu_bi_mat || ''),
+          coTenKieuBiMat: !!(t.kieu_bi_mat || ''),
           coNhan: !!(t.nhan || ''),
           nhan: t.nhan || '',
           nhom: t.nhom || '',
@@ -1927,7 +1975,7 @@ class Component extends DCLogic {
           doiTkDnh: (e) => this.setState({ dlTkDnhId: e.target.value }),
           tuyChon: dlDs.map((t) => ({
             id: t.id,
-            nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
+            nhan: (t.email_che || '') + (t.dia_chi_che ? ' · ' + t.dia_chi_che : '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
             chon: t.id === s.dlChonId
           })),
           chonId: s.dlChonId || '',
@@ -1939,7 +1987,15 @@ class Component extends DCLogic {
           kieuMk: s.dlHienMk ? 'text' : 'password',
           nhanHienMk: s.dlHienMk ? 'Ẩn' : 'Hiện',
           doiHienMk: () => this.setState((st) => ({ dlHienMk: !st.dlHienMk })),
-          goiYMatKhau: s.dlDaLuu ? '•••• đã lưu' : 'Mật khẩu',
+          // NV258: kiểu bí mật + ô địa chỉ + nhãn/placeholder động.
+          kieuBiMat: (s.dlKieuBiMat || '').trim(),
+          doiKieuBiMat: (e) => this.setState({ dlKieuBiMat: e.target.value || '', dlChonId: '', dlDaLuu: false }),
+          dsKieuBiMat: dsKieuBiMat,
+          nhanBiMat: dlLaKhoa ? (tenKieuBiMatCua(dlKieuBiMat)) : 'Mật khẩu',
+          goiYBiMat: s.dlDaLuu ? '•••• đã lưu' : (dlLaKhoa ? 'Dán khoá / token / cookie' : 'Mật khẩu'),
+          coTotp: !dlLaKhoa,
+          diaChi: s.dlDiaChi || '',
+          doiDiaChi: (e) => this.setState({ dlDiaChi: e.target.value }),
           totp: s.dlTotp || '',
           doiTotp: (e) => this.setState({ dlTotp: e.target.value }),
           nhan: s.dlNhan || '',
