@@ -3774,7 +3774,7 @@ async def bat_dau_lien_ket_codex(id: str, request: Request):
     thiết bị của module nhóm tài khoản, trả ``auth_url`` để người dùng mở.
 
     Thao tác chạm bí mật bên thứ ba → phiên web phải xác nhận lại (step-up)
-    như tam-dung; Bearer <redacted>ản trị được miễn. Id lạ → 404."""
+    như tam-dung; Bearer quản trị được miễn. Id lạ → 404."""
     kiem_tra_step_up(request)
     ban_ghi = _ban_ghi_tai_khoan_lien_ket_duoc(id)
     mod, entity_id = await _oauth_codex_cho_tai_khoan(request, ban_ghi)
@@ -4115,7 +4115,7 @@ async def dat_tam_dung_tai_khoan_da_luu(id: str, request: Request):
     bật lại mới dùng được. Không tự bật lại theo giờ.
 
     Thao tác đổi trạng thái chạm bí mật bên thứ ba: phiên web phải đã xác nhận
-    lại (step-up); Bearer <redacted>ản trị được miễn. Id lạ → 404 (không lộ có/không).
+    lại (step-up); Bearer quản trị được miễn. Id lạ → 404 (không lộ có/không).
     """
     kiem_tra_step_up(request)
     than = await _than_json(request)
@@ -4159,7 +4159,7 @@ async def lay_bi_mat_tai_khoan_da_luu(request: Request):
       + số giây còn lại; khoá TOTP KHÔNG BAO GIỜ rời máy chủ.
 
     Chạm bí mật bên thứ ba như các đường đăng nhập: phiên web phải đã xác
-    nhận lại (step-up); Bearer <redacted>ản trị được miễn. Phản hồi kèm
+    nhận lại (step-up); Bearer quản trị được miễn. Phản hồi kèm
     ``Cache-Control: no-store``. Nhật ký chỉ ghi ai/bản ghi nào/lúc nào/
     hành động — KHÔNG BAO GIỜ ghi giá trị bí mật hay khoá TOTP.
     """
@@ -4355,7 +4355,7 @@ async def gui_ma_2fa_tai_khoan_da_luu(id: str, request: Request):
     NV145b). Mã đi qua BiMatTam và bị xoá ngay sau khi gửi.
 
     Thao tác chạm bí mật: phiên web phải đã xác nhận lại (step-up);
-    Bearer <redacted>ản trị được miễn."""
+    Bearer quản trị được miễn."""
     kiem_tra_step_up(request)
     than = await _than_json(request)
     module_id = _chuoi_bat_buoc(than, "module_id")
