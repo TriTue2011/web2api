@@ -3578,10 +3578,15 @@ async def _don_danh_tinh_do_dang(request_hoac_app: Any, mod_td, dt_id: str,
 # hay nhật ký: `dan-hang-loat` chỉ trả dong/email/loai; lượt chạy xoá bí mật
 # ngay sau khi từng tài khoản đăng nhập xong (xem app/tai_khoan_hang_loat.py).
 
+def _kiem_module_da_cai_so(so, module_id: str) -> None:
+    """module_id phải là module đã cài; chưa cài → 404 module_chua_cai."""
+    if so.tien_to_cua(module_id) is None:
+        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa được cài.", code="module_chua_cai")
+
+
 def _kiem_module_da_cai_tai_khoan(request: Request, module_id: str) -> None:
     """module_id phải là module đã cài; chưa cài → 404 module_chua_cai."""
-    if request.app.state.so.tien_to_cua(module_id) is None:
-        raise LoiOpenAI(404, f"Module «{_nhac_lai(module_id)}» chưa được cài.", code="module_chua_cai")
+    _kiem_module_da_cai_so(request.app.state.so, module_id)
 
 
 def _ham_dang_nhap_cua_module(request: Request, module_id: str):
@@ -3596,18 +3601,23 @@ def _ham_dang_nhap_cua_module(request: Request, module_id: str):
 # Kho tài khoản đã lưu: email + nhãn + mật khẩu + TOTP secret (tuỳ chọn).
 
 
-def _nhom_cua_module(request: Request, module_id: str) -> str:
+def _nhom_cua_so(so, module_id: str) -> str:
     """Nhóm của module theo manifest (NV197c): ``manifest.nhom.id``.
 
     Thiếu → chính ``module_id`` (vẫn suy từ module, không đoán từ email/token).
     """
     try:
-        km = request.app.state.so.catalog.get(module_id)
+        km = so.catalog.get(module_id)
         man = km.manifest if km is not None else {}
         nhom = str((man.get("nhom") or {}).get("id") or "").strip()
     except Exception:
         nhom = ""
     return nhom or module_id
+
+
+def _nhom_cua_module(request: Request, module_id: str) -> str:
+    """Nhóm của module theo manifest (NV197c): ``manifest.nhom.id``."""
+    return _nhom_cua_so(request.app.state.so, module_id)
 # Mọi đường đều cần khoá quản trị (QT). Bí mật KHÔNG BAO GIỜ rời server qua
 # các đường này — giao diện/trình duyệt không nhận lại mật khẩu.
 
@@ -4280,7 +4290,13 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     kiem_tra_step_up(request)
     than = await _than_json(request)
     module_id = _chuoi_bat_buoc(than, "module_id")
-    _kiem_module_da_cai_tai_khoan(request, module_id)
+    return await dang_nhap_tai_khoan_da_luu_noi_bo(
+        request.app.state.so, id, module_id, bool(than.get("kiem_tra_lai", False))
+    )
+
+
+async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tra_lai: bool = False) -> dict:
+    _kiem_module_da_cai_so(so, module_id)
     # NV197b: kiểm cờ tạm dừng TRƯỚC khi chạm bí mật — tài khoản tạm dừng
     # không được đăng nhập, lỗi rõ ràng, bí mật không rời kho.
     ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
@@ -4295,7 +4311,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
     mat_khau, totp = bi_mat
     email = ban_ghi["email"] if ban_ghi else ""
-    mod = request.app.state.so.dang_chay.get(module_id)
+    mod = so.dang_chay.get(module_id)
     ham = getattr(mod, "dang_nhap", None) if mod is not None else None
     if not callable(ham):
         mat_khau.xoa()
@@ -4306,7 +4322,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         dong=0, email=email, loai="mat_khau", mat_khau=mat_khau, totp=totp)
     # NV248 — cờ «Kiểm tra lại» tường minh từ giao diện: người dùng bấm lại
     # nút đăng nhập sau khi nhận «cần người» (không đoán từ lịch sử).
-    dong.kiem_tra_lai = bool(than.get("kiem_tra_lai", False))
+    dong.kiem_tra_lai = kiem_tra_lai
     # NV210: module sở hữu của tài khoản (dữ liệu) để module đăng nhập chọn
     # đúng luồng; lõi không đoán.
     dong.module_cua_tai_khoan = ban_ghi.get("module_id") or "" if ban_ghi else ""
@@ -4328,7 +4344,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
     if thanh_cong:
         # NV210: đưa JWT mới (nếu module đăng nhập trả) vào module SỞ HỮU tài khoản — theo khả năng
         # module khai, không theo tên; token bị xoá khỏi kết quả ngay sau đó.
-        gan_ket_qua_dang_nhap_mod.ap_dung(request.app.state.so, kq, dong.module_cua_tai_khoan)
+        gan_ket_qua_dang_nhap_mod.ap_dung(so, kq, dong.module_cua_tai_khoan)
         # NV197c: học module sở hữu từ lần đăng nhập THÀNH CÔNG — nhóm suy từ
         # manifest của module đó. Ghi sổ phụ: lỗi không làm hỏng kết quả đăng nhập.
         #
@@ -4339,7 +4355,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         if not dong.module_cua_tai_khoan:
             try:
                 kho_tai_khoan_mod.dat_module(
-                    id, module_id, _nhom_cua_module(request, module_id))
+                    id, module_id, _nhom_cua_so(so, module_id))
             except Exception:
                 log.warning("tai-khoan: không ghi được module sở hữu cho %s", id)
         # NV214: nối cookie phiên vào module sở hữu (nếu module đó khai
@@ -4347,7 +4363,7 @@ async def dang_nhap_bang_tai_khoan_da_luu(id: str, request: Request):
         # không làm hỏng kết quả đăng nhập, cookie không ra phản hồi/log.
         try:
             await _noi_cookie_dang_nhap_vao_module(
-                request.app.state.so, mod,
+                so, mod,
                 (ban_ghi.get("module_id") or "") if ban_ghi else "", kq)
         except Exception as e:
             log.warning("tai-khoan: nối cookie đăng nhập lỗi: %s",

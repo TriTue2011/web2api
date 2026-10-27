@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import che_log, dia_chi, do_tai_nguyen, gioi_han, ham_khoa, he_thong, kenh_vao, kho, khoa_khach, lam_moi_jwt, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
+from app import che_log, cong_mcp, dia_chi, do_tai_nguyen, gioi_han, ham_khoa, he_thong, kenh_vao, kho, khoa_khach, lam_moi_jwt, lam_moi_model, model_bo_sung, nguoi_dung, nhat_ky, phien, phien_web, so_thiet_bi, tai_khoan_hang_loat, tu_lam_moi, tuyen, xac_thuc
 from app.bien_loi import cai_bien_loi
 from app.loi_openai import LoiOpenAI, than_loi, xu_ly_loi_openai
 from app.nguon_git import NguonGit
@@ -456,6 +456,8 @@ app.include_router(tuyen.danh_tinh)
 app.include_router(tuyen.tai_khoan)
 app.include_router(tuyen.ma_xac_minh)
 app.include_router(tuyen.bao_mat)
+# Cổng MCP chỉ-kiểm-tra: mặc định TẮT (WEB2API_MCP_BAT), xác thực riêng bằng khoá khách phạm vi «mcp» (xem app/cong_mcp.py).
+app.include_router(cong_mcp.router)
 
 
 @app.get("/")

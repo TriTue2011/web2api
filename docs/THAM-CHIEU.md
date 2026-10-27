@@ -668,6 +668,25 @@ Gói dựng **phía máy có card NVIDIA** (máy khác, cùng mạng), dựng b�
 - **Chưa kiểm**: chưa dựng ảnh thật, chưa chạy với card NVIDIA, chưa đo
   VRAM/tốc độ thật (NV141).
 
+### Cổng MCP chỉ-kiểm-tra (lõi, `app/cong_mcp*.py`)
+
+Đường `POST /mcp` cho một dịch vụ bên ngoài (KHÔNG TIN CẬY) tự thao tác kiểm tra xem đăng nhập tự động có chạy được không,
+theo giao thức MCP (Model Context Protocol) qua HTTP «streamable», thân JSON-RPC 2.0, không phiên, không SSE. Hướng dẫn đầy
+đủ cho chủ máy (bật, tạo khoá, cho phép tài khoản, trỏ tunnel, rủi ro còn lại): [`docs/MCP.md`](MCP.md).
+
+- **Mặc định TẮT**: không đặt `WEB2API_MCP_BAT=1` thì mọi yêu cầu tới `/mcp` trả `404` thân trống.
+- **Xác thực**: BẮT BUỘC `Authorization: Bearer <khoá>` (không bao giờ nhận cookie phiên). Khoá là **khoá khách** (tạo ở
+  `POST /api/khoa-khach` với `pham_vi: ["mcp"]`), phạm vi ĐÃ LƯU phải đúng bằng `["mcp"]`. Khoá quản trị, khoá `*`, khoá `["mcp","chat"]`
+  đều `403` — kể cả khi khoá `*` thu hẹp phạm vi về `mcp` bằng header `X-Web2api-Scope`. Phạm vi `mcp` không khớp khả năng nào của `/v1`
+  hay `/api/*`.
+- **Sáu công cụ** (không có công cụ ghi/xoá/sửa ngoài `dang_nhap_bat_dau`; không đọc bí mật, không chạy lệnh, không đọc tệp):
+  `tong_quan`, `tai_khoan` (đã che, danh sách trắng trường), `tu_kiem_dang_nhap` (logic điều phối của lõi với module và dịch vụ GIẢ, chạy trong
+  tiến trình con có thư mục dữ liệu tạm), `dang_nhap_bat_dau` (chỉ tài khoản trong `WEB2API_MCP_DANG_NHAP_CHO_PHEP`, mặc định rỗng = từ chối),
+  `dang_nhap_trang_thai`, `nhat_ky_gan_day` (chỉ vài kênh, chỉ `luc`/`kenh`/`muc`/`tom_tat`). Đầu ra là DỮ LIỆU đã che theo hình chuỗi (khoá, JWT,
+  cookie, email, IP), không bao giờ là chỉ dẫn.
+- **Giới hạn**: tốc độ theo từng khoá, đồng thời toàn cổng, trần thân; sai khoá nhiều lần bị khoá IP bởi bộ đếm sẵn có; mỗi lượt gọi ghi một dòng kênh
+  `mcp` (id khoá, phương thức, tên công cụ, kết quả — không ghi khoá thô, tham số hay nội dung).
+
 ### Giao diện (`web/`)
 
 Trang `.dc.html` chạy trên **dc-lite** (`web/support.js`, runtime mã nguồn mở đọc nguyên văn các trang của bản
@@ -4698,6 +4717,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `POST /api/khoa-khach/{id}/xoay` | Có | Xoay khoá khách (thân tuỳ chọn `{"cu_giay": <0..2592000>}`, mặc định 604800 / 7 ngày; sinh khoá mới trả về một lần, giữ khoá cũ trong cửa sổ) |
 | `PATCH /api/khoa-khach/{id}` | Có | Cập nhật khoá khách (bật/tắt — `bat` phải là `true`/`false`, nhãn, phạm vi — rỗng → `400`) |
 | `DELETE /api/khoa-khach/{id}` | Có | Thu hồi khoá khách (xoá ngay, các lượt gọi sau bị `401`) |
+| `POST /mcp` | Có (khoá khách phạm vi `mcp`; mặc định tắt) | Cổng MCP chỉ-kiểm-tra: `initialize`, `ping`, `tools/list`, `tools/call` (JSON-RPC 2.0); thông báo → `202` trống; batch → `400`. `GET`/`DELETE`/`PUT`/`PATCH` → `405` (`Allow: POST`). Sai/thiếu khoá → `401`; khoá quản trị hoặc phạm vi khác đúng `["mcp"]` → `403`; vượt hạn tốc độ/đồng thời → `429` + `Retry-After`; thân quá lớn → `413`; không phải `application/json` → `415`; tắt → `404` trống. Xem [`docs/MCP.md`](MCP.md) |
 | `GET /api/thiet-lap` | Không | Kiểm tra trạng thái cần thiết lập tài khoản admin ban đầu (`{"can_thiet_lap": bool}`) |
 | `POST /api/thiet-lap` | Không | Thiết lập admin ban đầu (`{"ma_thiet_lap": "<mã hoặc khoá quản trị>", "ten_dang_nhap": "...", "mat_khau": "..."}`, cả ba bắt buộc); chỉ khi chưa có admin (`409`), qua cổng `WEB2API_QT_IP_CHO_PHEP`, kho người dùng hỏng → `503` |
 | `POST /api/dang-nhap` | Không | Đăng nhập web bằng tên đăng nhập và mật khẩu, trả cookie phiên `w2a_phien` (hoặc `__Host-w2a_phien`) và `csrf_token` |
@@ -4836,6 +4856,20 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_CHU_KY_SO_THIET_BI_GIAY` | `60` | Chu kỳ quét thiết bị mạng của vòng nền (giây, kẹp 15..3600; mặc định 60s, hoãn khởi động 20s) |
 | `WEB2API_KENH_VAO_NGUOI_PHUT` | `20` | Hạn dòng số lệnh/phút của mỗi người gửi trên một module kênh vào; vượt → bỏ tin |
 | `WEB2API_KENH_VAO_MODULE_PHUT` | `200` | Hạn dòng tổng số tin/phút của một module kênh vào, chỉ tính tin của người ĐÃ được cấp quyền (kẻ lạ không làm cạn hạn dòng của chủ máy); vượt → bỏ tin |
+| `WEB2API_MCP_BAT` | không | Đặt `1` để bật cổng `POST /mcp`; khác `1` thì `/mcp` trả `404` trống |
+| `WEB2API_MCP_ORIGIN_CHO_PHEP` | rỗng | Danh sách `Origin` được phép, cách nhau dấu phẩy; yêu cầu có `Origin` ngoài danh sách → `403` (rỗng = từ chối mọi `Origin`; khách phía máy chủ không gửi `Origin` thì không bị ảnh hưởng) |
+| `WEB2API_MCP_TOC_DO_PHUT` | `30` | Trần lượt gọi mỗi khoá trong cửa sổ trượt 60 giây; vượt → `429` + `Retry-After` |
+| `WEB2API_MCP_DONG_THOI` | `2` | Trần số yêu cầu công cụ đang chạy cùng lúc toàn cổng; vượt → `429` |
+| `WEB2API_MCP_THAN_TOI_DA_MB` | `0.0625` | Trần thân yêu cầu của `/mcp` (MB, 64 KB); vượt → `413` |
+| `WEB2API_MCP_NHAT_KY_KENH` | `trinh_duyet,mcp` | Các kênh nhật ký công cụ `nhat_ky_gan_day` được đọc, cách nhau dấu phẩy; `quan_tri` và `cuoc_goi` bị loại cứng dù cấu hình thêm |
+| `WEB2API_MCP_DANG_NHAP_CHO_PHEP` | rỗng | Danh sách `id_tai_khoan@id_module_thuc_thi` (cách nhau dấu phẩy) được `dang_nhap_bat_dau` chạy đăng nhập thật; rỗng = từ chối hết; mục sai khuôn bị bỏ |
+| `WEB2API_MCP_DANG_NHAP_THANH_CONG_NGAY` | `3` | Trần số lần đăng nhập THÀNH CÔNG của một tài khoản trong 24 giờ qua cổng; vượt → `het_luot_ngay` |
+| `WEB2API_MCP_DANG_NHAP_NGHI_GIAY` | `3600` | Nghỉ tối thiểu (giây) giữa hai lần BẮT ĐẦU đăng nhập thật qua cổng (toàn cổng) |
+| `WEB2API_MCP_DANG_NHAP_HONG_TOI_DA` | `2` | Số lần không thành công liên tiếp (thất bại hoặc cần người) của một tài khoản thì cổng từ chối tài khoản đó cho tới khi khởi động lại |
+| `WEB2API_MCP_DANG_NHAP_HOI_GIAY` | `5` | Chu kỳ hỏi tiến độ khi module báo lượt đăng nhập nền còn chạy |
+| `WEB2API_MCP_DANG_NHAP_TOI_DA_GIAY` | `300` | Trần tổng thời gian một phiên đăng nhập qua cổng; hết giờ → `that_bai`, `ma_loi: het_gio` |
+| `WEB2API_MCP_TU_KIEM_NGHI_GIAY` | `10` | Nghỉ tối thiểu giữa hai lượt `tu_kiem_dang_nhap` |
+| `WEB2API_MCP_TU_KIEM_TOI_DA_GIAY` | `60` | Hết giờ thì giết tiến trình con của bộ tự kiểm và trả `het_gio` |
 | `WEB2API_KENH_VAO_LA_PHUT` | `60` | Ngân sách riêng số tin/phút từ NGƯỜI LẠ của một module kênh vào (không trả lời, chỉ ghi nhận); hết ngân sách → bỏ ngay. Báo «người lạ nhắn bot» tới kênh chủ máy còn có trần cứng 5 tin/10 phút, phần dư chỉ ghi nhận ở `/api/kenh-vao/la` |
 | `WEB2API_KENH_VAO_BAO_NGUOI_LA` | `1` | Bật/tắt gửi tin cảnh báo khi có người lạ nhắn tin tới bot (mặc định bật = `1`, gửi 1 lần tới đích báo của sổ thiết bị) |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |

@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 from typing import Any
 
@@ -486,6 +487,15 @@ KHA_NANG_AN_TOAN_LOI = frozenset({
 })
 
 
+#: Mã khả năng/module hợp lệ trong nhật ký. Chuỗi khách điều khiển (header X-Web2api-Scope, tham số) KHÔNG được vào
+#: `tom_tat` nhật ký nguyên văn — nhật ký có thể được đọc lại bởi bên không tin cậy (cổng MCP): sai khuôn thì ghi chữ cố định.
+_MAU_MA_LOG = re.compile(r"[a-z0-9_:@-]{1,40}")
+
+
+def _ma_log(x: object) -> str:
+    return x if isinstance(x, str) and _MAU_MA_LOG.fullmatch(x) else "«không-hợp-lệ»"
+
+
 def la_kha_nang_nguy_hiem(kn: str, module: str | None = None, manifest: dict | None = None) -> bool:
     """Kiểm tra xem một khả năng có thuộc nhóm nguy hiểm hay không (nguyên tắc fail-closed)."""
     from app.kham_pha import KHA_NANG_NGUY_HIEM
@@ -511,10 +521,10 @@ def la_kha_nang_nguy_hiem(kn: str, module: str | None = None, manifest: dict | N
             nhat_ky.ghi(
                 "he_thong",
                 "canh_bao",
-                f"Lỗi khi tra catalog xác định mức độ nguy hiểm của khả năng «{kn}» (module={module}): {e}",
-                kha_nang=kn,
-                module=module,
-                loi=str(e),
+                f"Lỗi khi tra catalog xác định mức độ nguy hiểm của khả năng «{_ma_log(kn)}» (module={_ma_log(module)}): {type(e).__name__}",
+                kha_nang=_ma_log(kn),
+                module=_ma_log(module),
+                loi=type(e).__name__,
             )
             return True  # Fail-closed: tra catalog bị lỗi -> coi là nguy hiểm
 
@@ -537,9 +547,9 @@ def la_kha_nang_nguy_hiem(kn: str, module: str | None = None, manifest: dict | N
         nhat_ky.ghi(
             "he_thong",
             "canh_bao",
-            f"Khả năng «{kn}» không có trong catalog của module «{module}»",
-            kha_nang=kn,
-            module=module,
+            f"Khả năng «{_ma_log(kn)}» không có trong catalog của module «{_ma_log(module)}»",
+            kha_nang=_ma_log(kn),
+            module=_ma_log(module),
         )
         return True  # Fail-closed: khả năng lạ không có trong catalog của module
 
@@ -548,9 +558,9 @@ def la_kha_nang_nguy_hiem(kn: str, module: str | None = None, manifest: dict | N
         nhat_ky.ghi(
             "he_thong",
             "canh_bao",
-            f"Không tìm thấy module «{module}» trong catalog khi kiểm tra khả năng «{kn}»",
-            kha_nang=kn,
-            module=module,
+            f"Không tìm thấy module «{_ma_log(module)}» trong catalog khi kiểm tra khả năng «{_ma_log(kn)}»",
+            kha_nang=_ma_log(kn),
+            module=_ma_log(module),
         )
         return True  # Fail-closed: module không có trong catalog
 
@@ -561,8 +571,8 @@ def la_kha_nang_nguy_hiem(kn: str, module: str | None = None, manifest: dict | N
     nhat_ky.ghi(
         "he_thong",
         "canh_bao",
-        f"Khả năng «{kn}» chưa xác định và không có module trong catalog để đối chiếu",
-        kha_nang=kn,
+        f"Khả năng «{_ma_log(kn)}» chưa xác định và không có module trong catalog để đối chiếu",
+        kha_nang=_ma_log(kn),
     )
     return True  # Fail-closed: khả năng lạ chưa xác định
 
