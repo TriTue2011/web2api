@@ -163,23 +163,28 @@ def test_dang_nhap_mat_khau_thanh_cong_va_luu_mat_khau(mod):
 
 
 def test_dang_nhap_gap_captcha_thi_can_nguoi(mod):
+    # Bản module 2026-10-27: CAPTCHA trước khi điền trả mã RIÊNG
+    # thu_thach_truoc_khi_dien (không chìm thành can_nguoi), vẫn thất bại,
+    # vẫn không điền, vẫn xoá mật khẩu — hành vi cũ, chỉ mã rõ hơn.
     td = TrinhDuyetGia(trang={
         URL_DANG_NHAP_GOOGLE: {"tin_hieu": ["captcha"], "cookie": {}}})
     mod._tao_trinh_duyet = lambda: td
     tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
                     mat_khau=BiMatTam(MAT_KHAU_GIA))
     kq = chay(mod.dang_nhap(tk))
-    assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
+    assert not kq.thanh_cong and kq.ma_loi == "thu_thach_truoc_khi_dien"
     assert tk.mat_khau.da_xoa()
 
 
 def test_dang_nhap_khong_co_trinh_duyet_thi_can_nguoi(mod):
     """Không có bộ điều khiển trình duyệt → không đoán mò, báo cần người."""
+    # Bản module 2026-10-27: không có controller trả mã RIÊNG
+    # trinh_duyet_none (không chìm thành can_nguoi), vẫn thất bại.
     mod._tao_trinh_duyet = lambda: None
     tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
                     mat_khau=BiMatTam(MAT_KHAU_GIA))
     kq = chay(mod.dang_nhap(tk))
-    assert not kq.thanh_cong and kq.ma_loi == "can_nguoi"
+    assert not kq.thanh_cong and kq.ma_loi == "trinh_duyet_none"
 
 
 def test_dang_nhap_lai_dung_mat_khau_da_luu(mod):

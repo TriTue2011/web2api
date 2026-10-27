@@ -11,6 +11,10 @@ trường thêm sau này ở kho tài khoản hay nhật ký sẽ KHÔNG tự l�
 đặt trong `WEB2API_MCP_DANG_NHAP_CHO_PHEP` (mặc định RỖNG = từ chối hết), tối đa MỘT phiên một lúc,
 nghỉ tối thiểu giữa hai lần bắt đầu, và dừng sau vài lần không thành công liên tiếp ở cùng một tài khoản.
 Cổng không có đường nhận mã 2FA hay giải thử thách: gặp thử thách thì trạng thái là «cần người».
+Lớp chuyển tiếp MỎNG (sửa 2026-10-27, bản module): nếu module có khoi_phuc_tu_dong,
+cổng CHỈ GỌI nó rồi dịch kết quả — mọi quyết định tầng T0-T3, khóa serial,
+hoãn captcha, kênh TOTP đều nằm trong chính module đó, không ở file này.
+Đường cũ qua tuyen chỉ còn là fallback cho module chưa có khoi_phuc_tu_dong.
 """
 
 from __future__ import annotations
@@ -431,84 +435,31 @@ async def _hoi_tien_do(phien: dict, so: Any, tk_id: str, module_id: str) -> None
             return
 
 
-async def _thu_khoi_phuc_tang(phien: dict, so: Any, tk_id: str, module_id: str) -> bool:
-    """P1 — thử đăng nhập qua thang khôi phục T0–T3 thay vì một phát duy nhất.
+async def _thu_khoi_phuc_module(so: Any, tk_id: str, module_id: str) -> dict | None:
+    """CHUYỂN TIẾP MỎNG, không phải logic khôi phục.
 
-    Trả True nếu phiên đã kết thúc ở đây, False nếu người gọi phải dùng
-    đường cũ (``tuyen``) vì module không có tầng khôi phục, hoặc tài khoản
-    ở chế độ «đăng nhập qua tài khoản lưu khác» (đường cũ mới giữ đúng
-    bí mật của tài khoản hộ). Các cổng MCP (allowlist, một phiên, nghỉ,
-    trần ngày, khóa sau 2 hỏng) vẫn ở ``dang_nhap_bat_dau`` / ``_chay_dang_nhap``,
-    không thay đổi ở đây.
-
-    Giới hạn cố ý, ghi rõ để không bị hiểu sai thành «tự động hoàn toàn»:
-    - Khoa truyền cho c2a là id tài khoản ``tk-…`` của kho MCP, KHÔNG
-      phải khoa nội bộ suy từ token/cookie của module, nên T0/T1 chỉ là
-      kiểm lại rẻ (không xác nhận đúng tài khoản đó) và T3 được bỏ qua
-      (``xac_nhan_lai_sau_dang_nhap=False``); thành công của T2 đã do
-      chính module xác minh khi đăng nhập trình duyệt.
-    - Thang c2a không có kênh TOTP, nên mật khẩu đã lưu là thứ duy nhất
-      được đưa vào; TOTP (nếu có) bị xoá ngay, không đưa vào c2a, và
-      tài khoản nào gặp 2FA vẫn dừng ở can_nguoi như cũ.
-    - CAPTCHA / selfie / điện thoại / khoá / tap / code không có TOTP
-      vẫn dừng ở can_nguoi, không cố vượt, không thử lại dồn dập.
+    Chỉ gọi module.khoi_phuc_tu_dong() (nếu module có) rồi dịch kết quả
+    sang dict cho _ap_ket_qua. Không quyết tầng, không khóa, không hoãn
+    captcha, không tự tạo TOTP, không chạm bí mật: mật khẩu/TOTP đều do
+    chính module lấy từ kho riêng của nó. Module không có hàm này -> None,
+    người gọi dùng đường cũ làm fallback. Mọi cổng MCP (allowlist, một
+    phiên, nghỉ, giới hạn ngày, timeout) vẫn ở dang_nhap_bat_dau/_chay_dang_nhap.
     """
-    from app import khoi_phuc_phien as kp_mod  # nhập muộn: tránh vòng nhập
-
-    try:
-        ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
-    except Exception:
-        _ket_thuc_phien(phien, "that_bai", "kho_loi")
-        return True
-    if not isinstance(ban_ghi, dict):
-        _ket_thuc_phien(phien, "that_bai", "khong_tim_thay")
-        return True
-    if ban_ghi.get("trang_thai") == kho_tai_khoan.TRANG_THAI_TAM_DUNG:
-        _ket_thuc_phien(phien, "that_bai", "tam_dung")
-        return True
-    if ban_ghi.get("dang_nhap_bang") == kho_tai_khoan.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
-        return False
-    dang_chay = getattr(so, "dang_chay", None) if so is not None else None
-    mod = dang_chay.get(module_id) if isinstance(dang_chay, dict) else None
-    if mod is None:
-        _ket_thuc_phien(phien, "that_bai", "chua_ho_tro")
-        return True
-    if not callable(getattr(mod, "lam_moi_phien", None)) and not callable(
-            getattr(mod, "dang_nhap_tu_dong", None)):
-        # Module không có tầng khôi phục (vd: module giả trong test chỉ
-        # có dang_nhap): giữ đường cũ, không ép c2a rồi báo hoan_phien_ban.
-        return False
-    try:
-        bi_mat = kho_tai_khoan.lay_bi_mat_dang_nhap(tk_id)
-    except Exception:
-        _ket_thuc_phien(phien, "that_bai", "kho_loi")
-        return True
-    if bi_mat is None:
-        _ket_thuc_phien(phien, "that_bai", "khong_tim_thay")
-        return True
-    mat_khau, totp = bi_mat
-    if totp is not None:
-        totp.xoa()
-    try:
-        kq = await kp_mod.khoi_phuc_theo_tang_c2a(
-            mod,
-            kp_mod.TaiKhoanCanKhoiPhuc(khoa=tk_id, email=ban_ghi.get("email") or "",
-                                       mat_khau=mat_khau),
-            dang_chay=dang_chay,
-            xac_nhan_lai_sau_dang_nhap=False,
-            nghi_t1_giay=0.0,
-        )
-    finally:
-        if mat_khau is not None:
-            mat_khau.xoa()
-    _ap_ket_qua(phien, {
-        "thanh_cong": bool(kq.thanh_cong),
-        "can_nguoi": bool(kq.can_nguoi),
-        "cho_2fa": False,
-        "ma_loi": kq.ma_loi or "",
-        "huong_dan": kq.huong_dan or "",
-    })
-    return True
+    mod = so.dang_chay.get(module_id) if so is not None else None
+    ham = getattr(mod, "khoi_phuc_tu_dong", None) if mod is not None else None
+    if not callable(ham):
+        return None
+    ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
+    email = (ban_ghi.get("email") or "") if isinstance(ban_ghi, dict) else ""
+    kq = await ham(tk_id, email, nghi_t1_giay=0.0)
+    if isinstance(kq, dict):
+        return kq
+    return {
+        "thanh_cong": bool(getattr(kq, "thanh_cong", False)),
+        "ma_loi": getattr(kq, "ma_loi", "") or "",
+        "can_nguoi": bool(getattr(kq, "can_nguoi", False)),
+        "huong_dan": getattr(kq, "huong_dan", "") or "",
+    }
 
 
 async def _chay_dang_nhap(phien: dict, so: Any, tk_id: str, module_id: str) -> None:
@@ -516,7 +467,9 @@ async def _chay_dang_nhap(phien: dict, so: Any, tk_id: str, module_id: str) -> N
 
     try:
         async with asyncio.timeout(_so_thuc("WEB2API_MCP_DANG_NHAP_TOI_DA_GIAY", MAC_DINH_TOI_DA_DANG_NHAP_GIAY, 1.0)):
-            if await _thu_khoi_phuc_tang(phien, so, tk_id, module_id):
+            kq_module = await _thu_khoi_phuc_module(so, tk_id, module_id)
+            if kq_module is not None:
+                _ap_ket_qua(phien, kq_module)
                 return
             kq = await tuyen.dang_nhap_tai_khoan_da_luu_noi_bo(so, tk_id, module_id, False)
             if not _ap_ket_qua(phien, kq):

@@ -27,7 +27,7 @@ from app import tu_lam_moi
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
-from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
+from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
 
 from .client import (
@@ -166,10 +166,18 @@ class Module:
         # Khoá tài khoản đã đánh dấu hỏng (tầng c bỏ qua khi chọn kế).
         self._hong: set[str] = set()
         # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV89):
-        # test gán; triển khai thật nối qua tu_lam_moi.lay_trinh_duyet_da_dang_ky (NV92).
+        # test gán; triển khai thật nối workspace vnc-xa (chưa có trong lượt này).
         self._tao_trinh_duyet = None
         # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
         self._trinh_duyet_da_dung = None
+        # Trạng thái đăng nhập tự động RIÊNG của module này (không chia sẻ với module khác).
+        self._ham_tao_trinh_duyet_rieng = None
+        self._khoa_tu_dong = None
+        self._captcha_den_het = 0.0
+        self._captcha_den_khoa = None
+        self._captcha_hoan_giay = 1800.0
+        self._lan_t2 = {}
+        self._t2_gian_cach_giay = 0.0
 
     # -- tạo client: mối nối để test chích máy chủ giả ---------------------
 
@@ -265,6 +273,227 @@ class Module:
             return True
         return self.mat_khau_da_luu(khoa) is not None
 
+
+    # -- đăng nhập tự động ĐỘC LẬP trong module này (sửa 2026-10-27, bản module) --
+    # Kiến trúc, ghi rõ để không bị hiểu nhầm thành logic lõi:
+    # - web2api (app/) chỉ là phiên dịch/chuyển tiếp: nó gọi
+    #   module.khoi_phuc_tu_dong() nếu module có, rồi dịch kết quả sang
+    #   phiên MCP, không tự quyết tầng, khóa hay hoãn captcha.
+    # - Mọi quyết định đăng nhập của module này sống Ở ĐÂY, trong chính
+    #   file module này, không import logic của module kia, không dùng
+    #   logic khôi phục chung của lõi. Bản này có thể trông giống bản
+    #   của module kia, nhưng đó là hai bản riêng, độc lập: hỏng module
+    #   này không làm hỏng module kia, sửa module này không động module kia.
+    # - Dịch vụ máy đăng nhập (dich-vu/may-dang-nhap, BrowserPool/solver)
+    #   chỉ cung cấp bộ điều khiển trình duyệt qua factory đã đăng ký;
+    #   nó không quyết tầng T0-T3 của module này.
+    # - Tầng (a) của module này chỉ KIỂM phiên, không bịa endpoint làm mới:
+    #   chatgpt-web gọi /backend-api/me, gemini-web kiểm cookie PSID.
+    #   Nhà cung cấp nào có đường refresh-token thật thì mới dùng đường đó,
+    #   còn hai module web này thì đường cứu chính vẫn là T2 trình duyệt.
+
+    def dang_ky_trinh_duyet(self, ham_tao) -> None:
+        """Đăng ký factory bộ điều khiển trình duyệt RIÊNG cho module này.
+
+        Chủ máy gọi hàm này trên chính thể hiện module (không qua lõi):
+        ``module.dang_ky_trinh_duyet(lambda: controller)``. Factory có thể
+        trả controller trực tiếp hoặc coroutine. Chưa đăng ký -> None.
+        """
+        self._ham_tao_trinh_duyet_rieng = ham_tao
+
+    async def _lay_trinh_duyet_module(self):
+        """Lấy controller: _tao_trinh_duyet (test) trước, rồi factory đã đăng ký.
+
+        Lỗi ở factory -> None (fail-closed), module trả trinh_duyet_none.
+        """
+        tao = getattr(self, "_tao_trinh_duyet", None)
+        td = tao() if callable(tao) else None
+        if td is not None:
+            return td
+        ham = getattr(self, "_ham_tao_trinh_duyet_rieng", None)
+        if not callable(ham):
+            return None
+        try:
+            td = ham()
+            if asyncio.iscoroutine(td):
+                td = await td
+            return td
+        except Exception:
+            return None
+
+    def totp_da_luu(self, khoa: str):
+        """TOTP đã lưu cho một khoá/email, từ kho riêng mã hoá của module này.
+
+        Trả BiMatTotp (mã được tính lúc gọi, không lưu mã), hoặc None nếu
+        chưa lưu. Không bao giờ trả secret thô, không log secret.
+        """
+        if self.kho is None:
+            return None
+        try:
+            ds = self.kho.doc("totp") or {}
+        except Exception:
+            return None
+        mk = ds.get(str(khoa or "").strip().lower()) if isinstance(ds, dict) else None
+        return BiMatTotp(mk) if isinstance(mk, str) and mk else None
+
+    def luu_totp(self, khoa: str, email: str, secret: str) -> bool:
+        """Lưu secret TOTP (Base32) vào kho riêng của module này. Sai khuôn -> False.
+
+        Secret chỉ được lưu khi chủ máy gọi tường minh hàm này; module KHÔNG
+        tự trích secret từ đối tượng mã TOTP (mã chỉ là mã 6 số, không phải
+        secret), và không bao giờ log secret.
+        """
+        if self.kho is None:
+            return False
+        s = str(secret or "").strip().upper().replace(" ", "").replace("-", "")
+        if not (16 <= len(s) <= 128) or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" for c in s):
+            return False
+        try:
+            ds = self.kho.doc("totp") or {}
+            if not isinstance(ds, dict):
+                ds = {}
+            ds[str(khoa).strip().lower()] = s
+            if email:
+                ds[str(email).strip().lower()] = s
+            self.kho.luu("totp", ds)
+            return True
+        except Exception as e:
+            log.warning("%s: không lưu được TOTP: %s", self.tien_to, type(e).__name__)
+            return False
+
+    async def _xu_ly_2fa(self, trinh_duyet, totp) -> str:
+        """Kênh TOTP trong module: gặp 2FA mà có TOTP đã lưu thì tự điền mã.
+
+        Trả "" nếu đã điền mã, "can_nguoi" nếu không có TOTP/mã rỗng,
+        "loi_module" nếu điền/bấm lỗi. Mã được tính đúng lúc gọi, rồi
+        ghi đè biến mã và xoá totp ngay sau khi dùng. Không có TOTP ->
+        dừng ở can_nguoi, KHÔNG cố vượt bằng cách khác.
+        CAPTCHA/selfie/điện thoại/khóa/tap/code không có TOTP không đi
+        qua hàm này, chúng dừng ở can_nguoi ở tầng gọi.
+        """
+        if totp is None:
+            return "can_nguoi"
+        try:
+            ma = totp.lay() if callable(getattr(totp, "lay", None)) else str(totp)
+        except Exception:
+            ma = ""
+        if not ma:
+            try:
+                totp.xoa()
+            except Exception:
+                pass
+            return "can_nguoi"
+        try:
+            await trinh_duyet.dien("ma_xac_minh", ma)
+            await trinh_duyet.bam("xac_nhan_2fa")
+            return ""
+        except Exception:
+            return "loi_module"
+        finally:
+            ma = None  # noqa: F841
+            try:
+                totp.xoa()
+            except Exception:
+                pass
+
+    def _lay_khoa_tu_dong(self):
+        """Khóa serial RIÊNG của module này, tạo lười (không gắn vòng lặp lúc import)."""
+        if getattr(self, "_khoa_tu_dong", None) is None:
+            self._khoa_tu_dong = asyncio.Lock()
+        return self._khoa_tu_dong
+
+    def dat_lai_trang_thai_tu_dong(self) -> None:
+        """Dùng cho test: xoá khóa serial, cửa sổ hoãn captcha, mốc T2 của module này."""
+        self._khoa_tu_dong = None
+        self._captcha_den_het = 0.0
+        self._captcha_den_khoa = None
+        self._lan_t2 = {}
+
+    async def khoi_phuc_tu_dong(self, khoa: str, email: str = "",
+                                mat_khau=None, totp=None, trinh_duyet=None,
+                                nghi_t1_giay: float = 0.0) -> KetQuaKhoiPhuc:
+        """Thang T0-T3 ĐẦY ĐỦ, tự chứa trong module này. Gọi trực tiếp cũng chạy.
+
+        - T0: lam_moi_phien(khoa) — chỉ kiểm, không bịa refresh endpoint.
+        - T1: nghỉ nghi_t1_giay rồi kiểm lại (mặc định 0 để test không chờ).
+        - T2: khóa serial riêng + hoãn captcha riêng + đăng nhập lại bằng
+          mật khẩu và TOTP đã lưu qua trình duyệt (xem _dang_nhap_bang_trinh_duyet).
+        - T3: kiểm lại bằng lam_moi_phien; nếu khoa là id ngoài module
+          (vd: id kho MCP, không phải khoá nội bộ) mà lam_moi không nhận,
+          thì lấy luôn kết quả xác minh phiên của T2 (module đã kiểm token/
+          cookie trong lúc đăng nhập), không báo hỏng giả.
+        - Tầng (c) vẫn là tai_khoan_ke() riêng, người gọi tự chọn khoá kế;
+          khoi_phuc_tu_dong không tự đổi tài khoản âm thầm.
+        Trả KetQuaKhoiPhuc với tang T0/T1/T2/T3 và mã riêng, không bí mật.
+        """
+        khoa = str(khoa or "")
+        email = str(email or "")
+        mat_khau_dung = mat_khau
+        totp_dung = totp
+        try:
+            # T0
+            if khoa:
+                try:
+                    kq0 = await self.lam_moi_phien(khoa)
+                except Exception:
+                    kq0 = None
+                if kq0 is not None and getattr(kq0, "thanh_cong", False):
+                    return KetQuaKhoiPhuc(True, tang="T0")
+            # T1
+            if nghi_t1_giay and nghi_t1_giay > 0:
+                await asyncio.sleep(float(nghi_t1_giay))
+                if khoa:
+                    try:
+                        kq1 = await self.lam_moi_phien(khoa)
+                    except Exception:
+                        kq1 = None
+                    if kq1 is not None and getattr(kq1, "thanh_cong", False):
+                        return KetQuaKhoiPhuc(True, tang="T1")
+            # T2, trong khóa serial riêng của module này
+            async with self._lay_khoa_tu_dong():
+                bay_gio = time.time()
+                if bay_gio < getattr(self, "_captcha_den_het", 0.0) and khoa != getattr(self, "_captcha_den_khoa", None):
+                    return KetQuaKhoiPhuc(False, tang="T2", ma_loi="captcha_hoan")
+                if mat_khau_dung is None:
+                    mat_khau_dung = self.mat_khau_da_luu(khoa) or self.mat_khau_da_luu(email)
+                if mat_khau_dung is None:
+                    return KetQuaKhoiPhuc(False, tang="T2", ma_loi="thieu_mat_khau")
+                if totp_dung is None:
+                    totp_dung = self.totp_da_luu(khoa) or self.totp_da_luu(email)
+                td = trinh_duyet if trinh_duyet is not None else await self._lay_trinh_duyet_module()
+                self._trinh_duyet_da_dung = td
+                kq2 = await self._dang_nhap_bang_trinh_duyet(email, mat_khau_dung, td, totp=totp_dung)
+                self._lan_t2[khoa] = time.time()
+                if not kq2.thanh_cong:
+                    ma = kq2.ma_loi or "loi_module"
+                    if ma in ("captcha", "thu_thach_truoc_khi_dien"):
+                        self._captcha_den_het = time.time() + float(getattr(self, "_captcha_hoan_giay", 1800.0))
+                        self._captcha_den_khoa = khoa
+                    return KetQuaKhoiPhuc(False, tang="T2", ma_loi=ma,
+                                          ma_trang_thai=kq2.ma_trang_thai,
+                                          can_nguoi=(ma in ("can_nguoi", "thu_thach_truoc_khi_dien")))
+                # T3
+                if khoa:
+                    try:
+                        kq3 = await self.lam_moi_phien(khoa)
+                    except Exception:
+                        kq3 = None
+                    if kq3 is not None and getattr(kq3, "thanh_cong", False):
+                        return KetQuaKhoiPhuc(True, tang="T3")
+                # T2 đã tự xác minh phiên trong lúc đăng nhập, nên vẫn tính thành công.
+                return KetQuaKhoiPhuc(True, tang="T2")
+        finally:
+            if mat_khau_dung is not None:
+                try:
+                    mat_khau_dung.xoa()
+                except Exception:
+                    pass
+            if totp_dung is not None:
+                try:
+                    totp_dung.xoa()
+                except Exception:
+                    pass
+
     def quy_tac_tin_hieu(self) -> list:
         """Quy tắc tín hiệu bằng CẤU TRÚC (NV94-b): module KHAI, mã tín hiệu MỞ.
 
@@ -300,19 +529,19 @@ class Module:
         return True, None
 
     async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
-                                          trinh_duyet) -> KetQuaDangNhap:
+                                          trinh_duyet, totp=None) -> KetQuaDangNhap:
         """Bước đăng nhập DUY NHẤT của module: điền form Google, đọc
         __Secure-1PSID/__Secure-1PSIDTS từ cookie, kiểm phiên bằng init().
 
         CAPTCHA/2FA/xác minh thiết bị → dừng với can_nguoi, KHÔNG cố vượt,
         không né phát hiện bot. Kiểm phiên bằng mã trạng thái/cấu trúc, không
         dò chữ trong thân phản hồi. CHƯA KIỂM với trang đăng nhập Google thật.
-
-        Mã lỗi RIÊNG, không chìm chung vào can_nguoi (sửa lỗi đăng nhập
-        tự động 2026-10-27, P0): ``trinh_duyet_none`` (chưa nối controller
-        thật), ``thu_thach_truoc_khi_dien`` (trang đã có tín hiệu thử thách
-        trước khi điền), ``het_gio`` (hết thời gian mở trang/đọc tín hiệu).
         """
+        # Mã lỗi RIÊNG của module này (không chìm thành can_nguoi):
+        # trinh_duyet_none (chưa nối controller), het_gio (hết thời gian),
+        # thu_thach_truoc_khi_dien (trang đã có thử thách trước khi điền).
+        # 2FA chỉ là thu_thach khi KHÔNG có TOTP; có TOTP thì đi kênh TOTP
+        # của module này (xem _xu_ly_2fa), không dừng ở can_nguoi.
         if trinh_duyet is None:
             return KetQuaDangNhap(False, ma_loi="trinh_duyet_none")
         try:
@@ -322,9 +551,15 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="het_gio")
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
-        if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
-            # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
+        if "captcha" in tin_hieu or "xac_minh" in tin_hieu or "cloudflare" in tin_hieu:
+            # CAPTCHA/xác minh thiết bị: dừng, KHÔNG cố vượt.
             return KetQuaDangNhap(False, ma_loi="thu_thach_truoc_khi_dien")
+        totp_dung = totp
+        if "2fa" in tin_hieu:
+            if totp_dung is None:
+                totp_dung = self.totp_da_luu(email)
+            if totp_dung is None:
+                return KetQuaDangNhap(False, ma_loi="thu_thach_truoc_khi_dien")
         mat_khau_tho = mat_khau.lay()
         try:
             await trinh_duyet.dien("email", email)
@@ -332,6 +567,20 @@ class Module:
             await trinh_duyet.bam("dang_nhap")
         finally:
             mat_khau_tho = None  # noqa: F841
+        # Sau mật khẩu, nếu trang hiện 2FA: kênh TOTP của module này.
+        try:
+            tin_hieu_sau = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+        except Exception:
+            tin_hieu_sau = set()
+        if "2fa" in tin_hieu_sau:
+            if totp_dung is None:
+                totp_dung = self.totp_da_luu(email)
+            ma_2fa = await self._xu_ly_2fa(trinh_duyet, totp_dung)
+            totp_dung = None
+            if ma_2fa:
+                return KetQuaDangNhap(False, ma_loi=ma_2fa)
+        if "captcha" in tin_hieu_sau or "xac_minh" in tin_hieu_sau or "cloudflare" in tin_hieu_sau:
+            return KetQuaDangNhap(False, ma_loi="thu_thach_truoc_khi_dien")
         try:
             cookie = await trinh_duyet.doc_cookie("google.com")
         except Exception:
@@ -377,27 +626,15 @@ class Module:
             if loai == "mat_khau":
                 if tai_khoan.mat_khau is None:
                     return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
-                tao = self._tao_trinh_duyet
-                td = tao() if callable(tao) else None
-                if td is None:
-                    # NV92: chưa gán _tao_trinh_duyet thì lấy controller
-                    # thật đã đăng ký (vnc-xa qua dịch vụ trình duyệt);
-                    # chưa đăng ký -> None -> mã trinh_duyet_none rõ ràng.
-                    td = await tu_lam_moi.lay_trinh_duyet_da_dang_ky(self.tien_to)
+                td = await self._lay_trinh_duyet_module()
                 self._trinh_duyet_da_dung = td
                 return await self._dang_nhap_bang_trinh_duyet(
-                    tai_khoan.email, tai_khoan.mat_khau, td)
+                    tai_khoan.email, tai_khoan.mat_khau, td, totp=tai_khoan.totp)
             if loai == "dang_nhap_lai":
                 bm = self.mat_khau_da_luu(tai_khoan.email)
                 if bm is None:
                     return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
-                tao = self._tao_trinh_duyet
-                td = tao() if callable(tao) else None
-                if td is None:
-                    # NV92: chưa gán _tao_trinh_duyet thì lấy controller
-                    # thật đã đăng ký (vnc-xa qua dịch vụ trình duyệt);
-                    # chưa đăng ký -> None -> mã trinh_duyet_none rõ ràng.
-                    td = await tu_lam_moi.lay_trinh_duyet_da_dang_ky(self.tien_to)
+                td = await self._lay_trinh_duyet_module()
                 self._trinh_duyet_da_dung = td
                 return await self._dang_nhap_bang_trinh_duyet(
                     tai_khoan.email, bm, td)
@@ -652,16 +889,21 @@ class Module:
         return KetQuaKhoiPhuc(True, tang="a")
 
     async def dang_nhap_tu_dong(self, tai_khoan: TaiKhoanCanKhoiPhuc,
-                                trinh_duyet) -> KetQuaKhoiPhuc:
-        """Tầng (b): đăng nhập lại bằng mật khẩu đã lưu qua trình duyệt."""
+                                trinh_duyet, totp=None) -> KetQuaKhoiPhuc:
+        """Tầng (b): đăng nhập lại bằng mật khẩu đã lưu qua trình duyệt.
+
+        Tầng này nay cũng đi qua kênh TOTP của module (totp truyền vào, hoặc
+        totp đã lưu nếu không truyền), và dùng controller đã đăng ký riêng
+        cho module này nếu trinh_duyet không được truyền vào. Mã lỗi riêng
+        của module được giữ nguyên, không gộp thành can_nguoi.
+        """
         try:
             bm = tai_khoan.mat_khau
             if bm is None:
                 return KetQuaKhoiPhuc(False, tang="b", ma_loi="thieu_mat_khau")
-            if trinh_duyet is None:
-                trinh_duyet = await tu_lam_moi.lay_trinh_duyet_da_dang_ky(self.tien_to)
+            td = trinh_duyet if trinh_duyet is not None else await self._lay_trinh_duyet_module()
             kq = await self._dang_nhap_bang_trinh_duyet(
-                tai_khoan.email, bm, trinh_duyet)
+                tai_khoan.email, bm, td, totp=totp)
             if kq.thanh_cong:
                 return KetQuaKhoiPhuc(True, tang="b")
             return KetQuaKhoiPhuc(False, tang="b", ma_loi=kq.ma_loi or "loi_module",
@@ -670,6 +912,11 @@ class Module:
         finally:
             if tai_khoan.mat_khau is not None:
                 tai_khoan.mat_khau.xoa()
+            if totp is not None:
+                try:
+                    totp.xoa()
+                except Exception:
+                    pass
 
     def tai_khoan_ke(self, khoa: str) -> str | None:
         """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""

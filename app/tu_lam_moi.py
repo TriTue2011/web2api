@@ -113,11 +113,8 @@ def gian_cach_tai_khoan_giay() -> float:
 
 # ── Bộ điều khiển trình duyệt cho tầng (b) ────────────────────────────────────
 #
-# NV92 (sửa 2026-10-27): bộ điều khiển THẬT được điền qua
-# `dang_ky_trinh_duyet` / `dang_ky_trinh_duyet_that`, module lấy qua
-# `lay_trinh_duyet_da_dang_ky`. Chưa đăng ký thì tầng (b) nhận
-# trinh_duyet=None và module trả mã riêng `trinh_duyet_none`
-# (không còn chìm thành can_nguoi).
+# NV92 sẽ điền bộ điều khiển THẬT qua `dang_ky_trinh_duyet`. Chưa có thì tầng
+# (b) nhận trinh_duyet=None và module tự quyết (thường → can_nguoi).
 
 _ham_tao_trinh_duyet: dict[str, Callable[[], Any]] = {}
 
@@ -142,55 +139,10 @@ async def _lay_trinh_duyet(module_id: str):
         return ket_qua
     except Exception as e:
         # Không lấy được trình duyệt thì coi như không có (fail-closed):
-        # module sẽ trả trinh_duyet_none thay vì vỡ.
+        # module sẽ trả can_nguoi thay vì vỡ.
         log.warning("tu-lam-moi: không tạo được trình duyệt cho %s: %s",
                     module_id, type(e).__name__)
         return None
-
-
-async def lay_trinh_duyet_da_dang_ky(module_id: str):
-    """NV92 — lấy bộ điều khiển trình duyệt THẬT đã đăng ký cho một module.
-
-    Đây là điểm nối P0 cho chatgpt-web/gemini-web: module gọi hàm này khi
-    ``_tao_trinh_duyet`` của nó chưa được gán (mặc định None). Hàm tạo do
-    chủ máy đăng ký qua ``dang_ky_trinh_duyet`` — thường là một factory
-    trả về ``TrinhDuyetThat`` của module vnc-xa, tức bộ điều khiển qua
-    dịch vụ trình duyệt (dich-vu/may-dang-nhap, BrowserPool với hồ sơ bền
-    vững, ``force_recreate=False`` — tái dùng hồ sơ, không tạo mới).
-    Chưa đăng ký hoặc tạo lỗi → None (fail-closed, module trả
-    ``trinh_duyet_none`` rõ ràng, không chìm thành can_nguoi).
-    """
-    return await _lay_trinh_duyet(module_id)
-
-
-def dang_ky_trinh_duyet_that(module_id: str, ham_lay_dang_chay,
-                             ham_lay_ho_so) -> None:
-    """NV92 — đăng ký factory controller thật qua cầu nối lõi, không gọi tên module.
-
-    ``ham_lay_dang_chay``: () -> {module_id: module đang chạy} (lifespan đã
-    có sẵn qua ``QuanLyTuLamMoi.bat_dau``); ``ham_lay_ho_so``: () -> mã hồ
-    sơ trình duyệt hex 16-64 của tài khoản cần đăng nhập. Factory tìm module
-    đầu tiên có khả năng ``trinh_duyet`` trong manifest và gọi
-    ``trinh_duyet_that(ho_so)`` của nó — đúng hợp đồng
-    ``app/khoi_phuc_phien.lay_trinh_duyet_that``. Không tìm được module,
-    hồ sơ sai khuôn, hoặc dịch vụ chưa cấu hình → factory trả None
-    (fail-closed). LƯU Ý: hồ sơ ở đây là mã hex của danh tính, KHÔNG phải
-    id workspace dạng "<module>-<băm>" mà module tự sinh cho noVNC.
-    """
-    if not callable(ham_lay_dang_chay) or not callable(ham_lay_ho_so):
-        raise ValueError("ham_lay_dang_chay và ham_lay_ho_so phải gọi được")
-
-    def _tao():
-        from app import khoi_phuc_phien as kp
-
-        try:
-            dang_chay = ham_lay_dang_chay() or {}
-            ho_so = ham_lay_ho_so() or ""
-        except Exception:
-            return None
-        return kp.lay_trinh_duyet_that(ho_so, dang_chay)
-
-    dang_ky_trinh_duyet(module_id, _tao)
 
 
 # ── Single-flight: một lượt khôi phục cho mỗi (module, tài khoản) ─────────────
