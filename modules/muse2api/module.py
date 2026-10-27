@@ -310,6 +310,49 @@ class Module:
                  "nhan": "Muse", "goi": "khong_ro",
                  "available_cho": khoa_ds}]
 
+    async def lam_moi_model(self) -> None:
+        """NV273: làm mới danh sách model (hợp đồng lõi, xem app/lam_moi_model.py).
+
+        NGUỒN — TRUNG THỰC: giao thức muse.ai hiện tại chỉ có đúng một
+        model («muse», MODEL_ID); repo này không có endpoint HTTP liệt kê
+        model cho cookie hatch_sess, nên KHÔNG bịa endpoint. Nguồn là danh
+        sách tĩnh đã khai trong manifest («model_tinh»).
+        Bước «lấy lại» là kiểm cookie thật của từng tài khoản qua
+        _kiem_cookie đã có của module (auth/check + session, chạy trong
+        luồng riêng như suc_khoe): ít nhất một cookie còn dùng được thì giữ
+        danh sách tĩnh; mọi cookie đều hỏng thì ném RuntimeError mang mã lỗi
+        rõ (xac_thuc / mang / sai_khuon) và KHÔNG xoá hay thay danh sách
+        đang có. Chưa có tài khoản nào thì trả về im lặng: models() vẫn trả
+        đúng một model.
+        """
+        hien = [m["id"] for m in await self.models()]
+        khai = (self.manifest or {}).get("model_tinh")
+        if khai is not None:
+            if (not isinstance(khai, list) or not khai
+                    or not all(isinstance(x, str) and x for x in khai)):
+                raise RuntimeError(
+                    "muse2api: sai_khuon — «model_tinh» trong manifest "
+                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+            if not set(khai) <= set(hien):
+                raise RuntimeError(
+                    "muse2api: sai_khuon — danh sách hiện tại thiếu model "
+                    "đã khai trong manifest; giữ danh sách cũ")
+        accs = list(self._accs)
+        if not accs:
+            return
+        ket_qua = await asyncio.gather(
+            *[asyncio.to_thread(self._kiem_cookie, a.cookies) for a in accs])
+        for ok, _loi, bi_tu_choi in ket_qua:
+            if ok:
+                return  # ít nhất một cookie còn dùng được → giữ danh sách
+        if any(bi_tu_choi for _ok, _loi, bi_tu_choi in ket_qua):
+            raise RuntimeError(
+                "muse2api: xac_thuc — cookie bị muse.ai từ chối; "
+                "giữ danh sách cũ")
+        raise RuntimeError(
+            "muse2api: mang — kiểm cookie gặp lỗi tạm thời; "
+            "giữ danh sách cũ")
+
     async def suc_khoe(self) -> dict:
         async def _kiem(acc: _TaiKhoan):
             ok, loi, _ = await asyncio.to_thread(self._kiem_cookie, acc.cookies)

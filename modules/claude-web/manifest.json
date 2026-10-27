@@ -42,6 +42,22 @@
   },
   "ten": "Claude Web (claude.ai)",
   "tien_to": "clw",
+  "model_tinh": [
+    "clw/auto",
+    "clw/fable-5",
+    "clw/haiku",
+    "clw/haiku-4.5",
+    "clw/opus",
+    "clw/opus-3",
+    "clw/opus-4.1",
+    "clw/opus-4.6",
+    "clw/opus-4.7",
+    "clw/opus-4.8",
+    "clw/sonnet",
+    "clw/sonnet-4.5",
+    "clw/sonnet-4.6",
+    "clw/sonnet-5"
+  ],
   "truong_cau_hinh": [
     {
       "bat_buoc": true,

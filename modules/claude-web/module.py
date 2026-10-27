@@ -842,6 +842,65 @@ class Module:
                 }
         return list(ra_dict.values())
 
+    async def lam_moi_model(self) -> None:
+        """NV273: làm mới danh sách model (hợp đồng lõi, xem app/lam_moi_model.py).
+
+        NGUỒN — TRUNG THỰC: claude.ai KHÔNG có endpoint liệt kê model cho
+        cookie web trong repo này: GET /api/organizations chỉ trả tổ chức và
+        capability «chat», không trả model; endpoint /v1/models của Anthropic
+        cần API key, không phải cookie của module này, nên KHÔNG dùng làm
+        nguồn và KHÔNG bịa endpoint. Nguồn là danh sách tĩnh đã khai trong
+        manifest («model_tinh», khớp bảng của converter).
+        Bước «lấy lại» là kiểm phiên thật của từng tài khoản qua
+        GET /api/organizations đã có của module: ít nhất một phiên còn dùng
+        được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì ném RuntimeError
+        mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và KHÔNG xoá hay thay
+        danh sách đang có. Chưa có tài khoản nào thì trả về im lặng (như
+        chatgpt-web): models() vẫn trả bảng tĩnh.
+        """
+        hien = [m["id"] for m in await self.models()]
+        khai = (self.manifest or {}).get("model_tinh")
+        if khai is not None:
+            if (not isinstance(khai, list) or not khai
+                    or not all(isinstance(x, str) and x for x in khai)):
+                raise RuntimeError(
+                    "claude-web: sai_khuon — «model_tinh» trong manifest "
+                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+            if not set(khai) <= set(hien):
+                raise RuntimeError(
+                    "claude-web: sai_khuon — danh sách hiện tại thiếu model "
+                    "đã khai trong manifest; giữ danh sách cũ")
+        accs = list(self._accs)
+        if not accs:
+            return
+        loi_xac_thuc = None
+        loi_sai_khuon = None
+        loi_mang = None
+        for acc in accs:
+            try:
+                await acc.may_khach.lay_org_id()
+                return  # ít nhất một phiên còn dùng được → giữ danh sách tĩnh
+            except LoiClaudeWeb as e:
+                if e.ma in (401, 403):
+                    loi_xac_thuc = e
+                elif "JSON hỏng" in (e.thong_bao or ""):
+                    loi_sai_khuon = e
+                else:
+                    loi_mang = e
+            except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
+                loi_mang = e
+        if loi_sai_khuon is not None:
+            raise RuntimeError(
+                "claude-web: sai_khuon — claude.ai trả JSON hỏng ở bước lấy "
+                "tổ chức; giữ danh sách cũ") from loi_sai_khuon
+        if loi_xac_thuc is not None:
+            raise RuntimeError(
+                "claude-web: xac_thuc — cookie bị claude.ai từ chối; "
+                "giữ danh sách cũ") from loi_xac_thuc
+        raise RuntimeError(
+            "claude-web: mang — không nối được claude.ai lúc làm mới; "
+            "giữ danh sách cũ") from loi_mang
+
     async def suc_khoe(self) -> dict:
         return {
             "ok": any(a.khoe for a in self._accs),

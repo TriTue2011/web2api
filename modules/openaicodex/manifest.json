@@ -42,6 +42,10 @@
   },
   "ten": "OpenAI Codex (OAuth)",
   "tien_to": "openaicodex",
+  "model_tinh": [
+    "openaicodex/gpt-5.5",
+    "openaicodex/gpt-5"
+  ],
   "truong_cau_hinh": [
     {
       "bat_buoc": false,

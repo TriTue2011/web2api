@@ -1043,6 +1043,73 @@ class Module:
 
     # ── Sức khoẻ ──────────────────────────────────────────────────────
 
+    async def lam_moi_model(self) -> None:
+        """NV273: làm mới danh sách model (hợp đồng lõi, xem app/lam_moi_model.py).
+
+        NGUỒN — TRUNG THỰC: grok.com KHÔNG có endpoint HTTP liệt kê model
+        cho cookie web trong repo này: các «model» của module này thực chất
+        là chế độ của web app (fast/auto/expert/heavy), khai tĩnh trong
+        converter; endpoint /v1/models của xAI cần API key, không phải cookie
+        của module này, nên KHÔNG dùng làm nguồn và KHÔNG bịa endpoint.
+        Nguồn là danh sách tĩnh đã khai trong manifest («model_tinh»).
+        Bước «lấy lại» là kiểm phiên thật của từng tài khoản qua
+        /api/auth/session đã có của module (lay_uid_tu_phien): ít nhất một
+        phiên còn dùng được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì
+        ném RuntimeError mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và
+        KHÔNG xoá hay thay danh sách đang có. Thử thách truy cập (Cloudflare)
+        coi là cần người, không vượt: báo mang mã «mang» kèm lý do thử thách
+        và dừng. Chưa có tài khoản nào thì trả về im lặng: models() vẫn trả
+        4 chế độ.
+        """
+        hien = [m["id"] for m in await self.models()]
+        khai = (self._manifest or {}).get("model_tinh")
+        if khai is not None:
+            if (not isinstance(khai, list) or not khai
+                    or not all(isinstance(x, str) and x for x in khai)):
+                raise RuntimeError(
+                    "grok-web: sai_khuon — «model_tinh» trong manifest "
+                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+            if not set(khai) <= set(hien):
+                raise RuntimeError(
+                    "grok-web: sai_khuon — danh sách hiện tại thiếu model "
+                    "đã khai trong manifest; giữ danh sách cũ")
+        jars = list(self._tai_khoan)
+        if not jars:
+            return
+        loi_xac_thuc = None
+        loi_sai_khuon = None
+        loi_mang = None
+        for jar in jars:
+            try:
+                await lay_uid_tu_phien(jar, self._goc_https)
+                return  # ít nhất một phiên còn dùng được → giữ danh sách tĩnh
+            except LoiPhienGrokWeb as e:
+                # Phân loại theo thông điệp của chính client này (client.py):
+                # «không lấy được uid» = lỗi kết nối (mạng), «không chứa
+                # userId» = phản hồi sai khuôn, còn lại = cookie bị từ chối.
+                if "không chứa userId" in str(e):
+                    loi_sai_khuon = e
+                elif "không lấy được uid" in str(e):
+                    loi_mang = e
+                else:
+                    loi_xac_thuc = e
+            except LoiThuThachTruyCap as e:
+                # Thử thách truy cập: không vượt, báo rõ và dừng.
+                loi_mang = e
+            except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
+                loi_mang = e
+        if loi_sai_khuon is not None:
+            raise RuntimeError(
+                "grok-web: sai_khuon — grok.com trả phiên không chứa userId; "
+                "giữ danh sách cũ") from loi_sai_khuon
+        if loi_xac_thuc is not None:
+            raise RuntimeError(
+                "grok-web: xac_thuc — cookie bị grok.com từ chối; "
+                "giữ danh sách cũ") from loi_xac_thuc
+        raise RuntimeError(
+            "grok-web: mang — không nối được grok.com lúc làm mới (hoặc gặp "
+            "thử thách truy cập, không vượt); giữ danh sách cũ") from loi_mang
+
     async def suc_khoe(self) -> dict:
         """Tình trạng module — không để lộ cookie."""
         if not self._tai_khoan:

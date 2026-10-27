@@ -44,6 +44,12 @@
   },
   "ten": "Grok Web",
   "tien_to": "grok",
+  "model_tinh": [
+    "grok/fast",
+    "grok/auto",
+    "grok/expert",
+    "grok/heavy"
+  ],
   "truong_cau_hinh": [
     {
       "bat_buoc": true,

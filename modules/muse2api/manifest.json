@@ -36,6 +36,9 @@
   },
   "ten": "Muse Web (muse.ai, direct protocol)",
   "tien_to": "muse2api",
+  "model_tinh": [
+    "muse2api/muse"
+  ],
   "truong_cau_hinh": [
     {
       "bat_buoc": true,

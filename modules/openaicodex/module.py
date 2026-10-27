@@ -413,6 +413,64 @@ class Module:
         with self._khoa:
             return any(str(tk.email or "").casefold() == em for tk in self._tai_khoan)
 
+    async def lam_moi_model(self) -> None:
+        """NV273: làm mới danh sách model (hợp đồng lõi, xem app/lam_moi_model.py).
+
+        NGUỒN — TRUNG THỰC: token Codex OAuth KHÔNG có endpoint liệt kê
+        model trong repo này: các đường đã dùng là /backend-api/codex/responses
+        (chat) và /backend-api/wham/usage (hạn mức), không có đường liệt kê;
+        endpoint /v1/models của OpenAI cần API key, không phải token Codex,
+        nên KHÔNG dùng làm nguồn và KHÔNG bịa đường dẫn kiểu
+        /backend-api/codex/models. Nguồn là danh sách tĩnh đã khai trong
+        manifest («model_tinh», khớp DANH_SACH_MODEL).
+        Bước «lấy lại» là làm mới token thật của từng tài khoản đang hoạt
+        động qua _lam_moi_tai_khoan đã có của module: ít nhất một tài khoản
+        làm mới được thì giữ danh sách tĩnh; mọi tài khoản đều hỏng thì ném
+        RuntimeError mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và KHÔNG
+        xoá hay thay danh sách đang có. Làm mới token ở đây KHÔNG đánh dấu
+        tài khoản hỏng (việc đó thuộc lam_moi_phien/chat); chỉ báo lỗi để
+        lõi ghi lại. Chưa có tài khoản đang hoạt động nào thì trả về im lặng
+        (models() trả [] khi đó).
+        """
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        hoat_dong = [tk for tk in ds if tk.trang_thai == "hoat_dong"]
+        if not hoat_dong:
+            return
+        hien = [m["id"] for m in await self.models()]
+        khai = (self.manifest or {}).get("model_tinh")
+        if khai is not None:
+            if (not isinstance(khai, list) or not khai
+                    or not all(isinstance(x, str) and x for x in khai)):
+                raise RuntimeError(
+                    "openaicodex: sai_khuon — «model_tinh» trong manifest "
+                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+            if not set(khai) <= set(hien):
+                raise RuntimeError(
+                    "openaicodex: sai_khuon — danh sách hiện tại thiếu model "
+                    "đã khai trong manifest; giữ danh sách cũ")
+        loi_xac_thuc = None
+        loi_mang = None
+        for tk in hoat_dong:
+            try:
+                kq = await self._lam_moi_tai_khoan(tk, ep=True)
+            except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
+                loi_mang = e
+                continue
+            if kq and kq.get("ok"):
+                return  # ít nhất một tài khoản còn dùng được → giữ danh sách
+            if kq and kq.get("loai") == "chet":
+                loi_xac_thuc = kq
+            else:
+                loi_mang = kq
+        if loi_xac_thuc is not None:
+            raise RuntimeError(
+                "openaicodex: xac_thuc — refresh_token bị từ chối "
+                "(không thể khôi phục); giữ danh sách cũ")
+        raise RuntimeError(
+            "openaicodex: mang — làm mới token gặp lỗi tạm thời; "
+            "giữ danh sách cũ")
+
     async def suc_khoe(self) -> dict:
         with self._khoa:
             ds = list(self._tai_khoan)
