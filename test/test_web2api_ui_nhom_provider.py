@@ -812,6 +812,26 @@ def test_bo_cuc_d_dien_thoai_390px_khong_cuon_ngang(trang, tmp_path, monkeypatch
         assert scroll_popup <= inner_w, f"Popup chi tiết bị tràn ngang ở 390px: scrollWidth={scroll_popup} > innerWidth={inner_w}"
 
 
+def test_chip_nhom_tai_khoan_xuong_dong_o_390px(trang, tmp_path, monkeypatch):
+    """Hàng chip lọc nhóm của tab Tài khoản (Tất cả / Google / ChatGPT / …) phải XUỐNG DÒNG trên điện thoại:
+    không chip nào bị cắt ở mép phải màn hình và hàng chip không tự cuộn ngang (bug 27/10: hàng chip rộng hơn
+    khung, chip thứ tư «C…» bị cắt; kiểm scrollWidth của trang không bắt được vì hàng tự có thanh cuộn)."""
+    with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
+        lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
+        gieo_tai_khoan_nhieu_model(w)
+        dang_nhap_quan_tri(trang, w.url)
+        trang.khung(390, 844, True)
+        trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
+        dat = "[role=tablist][aria-label='Nhóm tài khoản']"
+        trang.cho(f"document.querySelectorAll(\"{dat} button\").length >= 3", han=15, mo_ta="có ≥ 3 chip nhóm")
+        so_chip = trang.js(f"document.querySelectorAll(\"{dat} button\").length")
+        bi_cat = trang.js(f"[...document.querySelectorAll(\"{dat} button\")]"
+                          ".filter((b) => b.getBoundingClientRect().right > window.innerWidth + 0.5).length")
+        cuon = trang.js(f"(() => {{ const t = document.querySelector(\"{dat}\"); return t.scrollWidth > t.clientWidth + 1; }})()")
+        assert bi_cat == 0, f"{bi_cat}/{so_chip} chip nhóm vượt mép phải màn hình 390px"
+        assert not cuon, "hàng chip nhóm tự cuộn ngang thay vì xuống dòng"
+
+
 def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatch):
     """(e) ô lọc: gõ chuỗi => chỉ còn model khớp, đếm «n/m» đúng, xoá => đủ,
     model ẩn KHÔNG đổi trạng thái bật/tắt (đọc lại trạng thái sau lọc),

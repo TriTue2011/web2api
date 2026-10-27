@@ -101,7 +101,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 
 <sc-if value="{{laTk}}">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-<div role="tablist" aria-label="Nhóm tài khoản" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;flex:0 0 auto"><sc-for list="{{nhom}}" as="c"><button type="button" role="tab" data-nhom="{{c.id}}" aria-selected="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}"><span>{{c.nhan}}</span><span style="font-size:12px;opacity:.7">{{c.dem}}</span></button></sc-for></div>
+<div role="tablist" aria-label="Nhóm tài khoản" style="display:flex;flex-wrap:wrap;gap:8px;flex:1 1 100%;min-width:0"><sc-for list="{{nhom}}" as="c"><button type="button" role="tab" data-nhom="{{c.id}}" aria-selected="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}"><span>{{c.nhan}}</span><span style="font-size:12px;opacity:.7">{{c.dem}}</span></button></sc-for></div>
 <button type="button" id="nut-them" aria-expanded="{{them.co}}" aria-controls="form-them" onClick="{{them.nut.pick}}" style="{{them.nut.st}}">{{them.nut.nhan}}</button>
 </div>
 <sc-if value="{{them.co}}"><form id="form-them" novalidate data-module="{{them.chonId}}" onSubmit="{{them.luu}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
