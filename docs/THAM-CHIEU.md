@@ -257,6 +257,27 @@ gọi thẳng đúng bước đó); `x-web2api-combo: <tên>`; `x-web2api-module
 `co_combo` (true khi có ít nhất một combo hợp lệ). `combo.json` sửa tay sai: mục hỏng bị bỏ và ghi cảnh báo, không
 làm hỏng `/v1/models` hay đường gọi.
 
+### Đường dùng theo tài khoản đã lưu trên `/v1/chat/completions` (NV271)
+
+Khi khách gọi model thường (không combo) của một module có `nhom.id`, và kho «Tài khoản đã lưu» có tài khoản cùng nhóm,
+lõi chạy lượt chat qua các **đường** của từng tài khoản (`app/duong_dung.py::chay_chat_theo_tai_khoan`): đường ưu tiên
+trước (hằng `THU_TU_DUONG_UU_TIEN`: Codex trước, rồi web), hết hạn mức thì sang đường kế **của CHÍNH tài khoản đó**,
+hết đường mới sang tài khoản kế. Không có tài khoản/đường phù hợp thì gọi module như trước, từng byte.
+
+Hợp đồng module (chỉ module nào khai đủ mới được mời):
+
+- manifest có `"duong": "<tên đường>"` (cùng bộ tên với `dung_cho` của kho) và `nhom.id` cùng nhóm tài khoản;
+- `co_tai_khoan_email(email) -> bool` và `chat(body, stream, *, tai_khoan_email=None)`: khi có `tai_khoan_email`, chỉ dùng
+  đúng tài khoản mang email đó (không xoay sang tài khoản khác); không dùng được thì trả mã 5xx;
+- đường chỉ được mời khi `models()` của chính module đó có model trần khách gọi (không đổi model âm thầm) và khoá khách
+  có phạm vi `chat` trên module đó.
+
+Phân loại lỗi theo **mã HTTP và tiêu đề cấu trúc**, không đọc thân lỗi: `429` (+ `retry-after: <giây>` nếu có) → đường
+`het_han_muc` tới mốc hồi; `401`/`403` trơn → `can_dang_nhap_lai`; `403` kèm `x-web2api-loi-loai: chan_bot` → lỗi môi
+trường của lượt, không ghi trạng thái; `5xx` → sang đường kế, không ghi; mã khác → trả nguyên văn. Mọi đường hỏng thì trả
+nguyên văn phản hồi lỗi cuối. Phản hồi thành công mang `x-web2api-duong-dung: <đường>`. Chỉ đổi đường trước byte đầu của
+stream; combo giữ cơ chế riêng.
+
 ### Chuẩn tri thức (`tri_thuc`) và quy trình nối tầng
 
 Chuẩn tri thức kết nối linh hoạt nhiều nguồn thông tin qua bốn sơ đồ tìm kiếm:

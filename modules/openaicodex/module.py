@@ -405,6 +405,14 @@ class Module:
             "nhan": ten,
         } for ten in DANH_SACH_MODEL]
 
+    def co_tai_khoan_email(self, email: str) -> bool:
+        """Module có token của tài khoản mang email đó không (so sánh casefold)."""
+        em = str(email or "").casefold()
+        if not em:
+            return False
+        with self._khoa:
+            return any(str(tk.email or "").casefold() == em for tk in self._tai_khoan)
+
     async def suc_khoe(self) -> dict:
         with self._khoa:
             ds = list(self._tai_khoan)
@@ -775,14 +783,19 @@ class Module:
 
     # -- chat qua Codex Responses API (port openai_oauth.py) ------------------
 
-    def _chon_tai_khoan(self, da_thu: set[str]) -> _TaiKhoan | None:
+    def _chon_tai_khoan(self, da_thu: set[str],
+                        tai_khoan_email: str | None = None) -> _TaiKhoan | None:
         """Chọn tài khoản cho một lượt gọi: bỏ qua tài khoản (theo MÃ ỔN ĐỊNH,
         không theo `khoa` vốn xoay khi làm mới) đã thử trong lượt này, đã vô hiệu/deactivated, đang giới hạn chưa tới
         mốc hồi phục, và token API-only (không có claim ChatGPT)."""
         bay_gio = time.time()
+        em_ghim = str(tai_khoan_email).casefold() if tai_khoan_email is not None else None
         with self._khoa:
             ds = list(self._tai_khoan)
         for tk in ds:
+            if em_ghim is not None:
+                if str(tk.email or "").casefold() != em_ghim:
+                    continue
             if tk.ma_on_dinh in da_thu:
                 continue
             if tk.trang_thai in ("vo_hieu", "deactivated"):
@@ -842,7 +855,8 @@ class Module:
         log.warning("openaicodex: tài khoản %s chạm hạn mức (hồi phục: %s)",
                     tk.khoa, restore_iso or "chưa rõ")
 
-    async def chat(self, body: dict, stream: bool):
+    async def chat(self, body: dict, stream: bool, *,
+                   tai_khoan_email: str | None = None):
         body = body or {}
         ten_model = str(body.get("model") or "")
         if "/" in ten_model:
@@ -866,10 +880,10 @@ class Module:
         da_thu: set[str] = set()       # tài khoản đã thử trong lượt gọi này
         da_lam_moi: set[str] = set()   # tài khoản đã làm mới trong lượt này
         so_lam_moi = 0                 # tổng lần làm mới trong lượt (trần cứng)
-        loi_cuoi: tuple[int, bytes] | None = None
+        loi_cuoi: tuple[int, bytes, dict] | None = None
 
         while True:
-            tk = self._chon_tai_khoan(da_thu)
+            tk = self._chon_tai_khoan(da_thu, tai_khoan_email=tai_khoan_email)
             if tk is None:
                 break
             ma, su_kien, headers = await self._goi_codex(tk, than_responses)
@@ -901,13 +915,13 @@ class Module:
                 # else: hết trần làm mới của lượt (tài khoản này chưa được
                 # làm mới): token có thể chỉ hết hạn → KHÔNG đếm 401, chuyển
                 # tài khoản kế; lượt sau tự làm mới.
-                loi_cuoi = (401, than_loi_bytes)
+                loi_cuoi = (401, than_loi_bytes, {"content-type": "application/json"})
             elif ma == 403:
                 tk.trang_thai = "vo_hieu"
                 self._luu_tai_khoan_kho()
                 log.warning("openaicodex: vô hiệu tài khoản %s (403)",
                             tk.khoa)
-                loi_cuoi = (403, than_loi_bytes)
+                loi_cuoi = (403, than_loi_bytes, {"content-type": "application/json"})
             elif ma == 429:
                 than_json = None
                 try:
@@ -915,18 +929,28 @@ class Module:
                 except Exception:
                     than_json = None
                 self._danh_dau_gioi_han(tk, headers, than_json)
-                loi_cuoi = (429, than_loi_bytes)
+                hd_loi = {"content-type": "application/json"}
+                if tk.restore_at:
+                    try:
+                        moc = datetime.fromisoformat(
+                            tk.restore_at.replace("Z", "+00:00")).timestamp()
+                        con_lai = int(moc - time.time())
+                        if con_lai >= 1:
+                            hd_loi["retry-after"] = str(con_lai)
+                    except ValueError:
+                        pass  # mốc không đọc được: không gửi retry-after, lõi dùng mốc mặc định
+                loi_cuoi = (429, than_loi_bytes, hd_loi)
             else:
                 # 5xx: thử tài khoản kế; 4xx khác (yêu cầu sai): trả ngay.
-                loi_cuoi = (ma, than_loi_bytes)
+                loi_cuoi = (ma, than_loi_bytes, {"content-type": "application/json"})
                 if ma < 500:
                     da_thu.add(tk.ma_on_dinh)
                     break
             da_thu.add(tk.ma_on_dinh)
 
         if loi_cuoi is not None:
-            ma, than = loi_cuoi
-            return (ma, {"content-type": "application/json"},
+            ma, than, hd_tra = loi_cuoi
+            return (ma, hd_tra,
                     than or json.dumps(than_loi(ma, "lỗi Codex")).encode())
         return (503, {"content-type": "application/json"},
                 json.dumps(than_loi(

@@ -3,6 +3,7 @@
     "chat",
     "thiet_bi"
   ],
+  "duong": "codex",
   "giao_thuc": "openai",
   "hang": "A",
   "id": "openaicodex",

@@ -591,7 +591,19 @@ async def v1_chat(request: Request):
     id_, m = _module_theo_model(request, than)
     kiem_tra_pham_vi(request, "chat", module=id_)
     _can_phuong_thuc(m, id_, "trò chuyện", "chat")
-    ma, headers, noi_dung = await goi(m, "chat", than, stream=stream)
+    so = _so(request)
+    kq_duong = None
+    if not isinstance(m, combo_mod.BoDieuPhoiCombo):
+        from app.duong_dung import chay_chat_theo_tai_khoan
+        kq_duong = await chay_chat_theo_tai_khoan(so, request, id_, than, stream)
+    if kq_duong is not None:
+        _ghi_nhan_module(request, so, kq_duong.id_module_phuc_vu)
+        headers = dict(kq_duong.headers or {})
+        headers["x-web2api-duong-dung"] = kq_duong.duong
+        ma = kq_duong.ma
+        noi_dung = kq_duong.noi_dung
+    else:
+        ma, headers, noi_dung = await goi(m, "chat", than, stream=stream)
     if ma == 200:
         if stream and hasattr(noi_dung, "__aiter__"):
             noi_dung = _luong_sse_chuan_hoa(noi_dung, sse_giu_giay(), sse_dem_toi_da_bytes())

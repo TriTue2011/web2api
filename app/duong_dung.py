@@ -26,7 +26,10 @@ tiếp tục sang tài khoản/đường kế, không bao giờ dừng lượt.
 from __future__ import annotations
 
 import inspect
+import logging
 import time
+
+log = logging.getLogger("web2api.duong_dung")
 
 # ── Bảng trạng thái đường (khớp TRANG_THAI_DUONG_HOP_LE của kho) ────────────
 # ten: nhãn hiển thị (giao diện đổ từ /bang-phan-loai, không chép tay).
@@ -340,3 +343,217 @@ async def tim_module_oauth(so, nhom):
             if {"bat_dau_dang_nhap", "dan_callback"} <= hanh_dong:
                 return mid, thuc_the_muc.get("id")
     return None
+
+
+# ── Nối đường chat theo tài khoản (NV271) ───────────────────────────────────
+
+def loi_tu_phan_hoi(ma: int, headers: dict | None = None) -> LoiDuong:
+    """Tạo LoiDuong từ mã HTTP và headers phản hồi theo tín hiệu cấu trúc (NV271).
+
+    - 429: đọc tiêu đề «retry-after» (chữ số nguyên giây >= 1) -> {"dat_lai_sau_giay": ...};
+    - 403: đọc tiêu đề «x-web2api-loi-loai» == "chan_bot" -> {"loai": "chan_bot"}.
+    Tiêu đề đọc không phân biệt hoa thường. Không đọc thân lỗi, không khớp chuỗi.
+    """
+    hd = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+    tin_hieu: dict = {}
+    if ma == 429:
+        ra = hd.get("retry-after", "").strip()
+        if ra.isdigit():
+            val = int(ra)
+            if val >= 0:
+                tin_hieu["dat_lai_sau_giay"] = val
+    elif ma == 403:
+        loai = hd.get("x-web2api-loi-loai", "").strip().lower()
+        if loai == "chan_bot":
+            tin_hieu["loai"] = "chan_bot"
+    return LoiDuong(ma, tin_hieu)
+
+
+class KetQuaChatDuong:
+    """Kết quả một lượt chạy chat theo tài khoản/đường."""
+
+    def __init__(self, ma: int, headers: dict, noi_dung: object, id_module_phuc_vu: str, duong: str):
+        self.ma = ma
+        self.headers = headers
+        self.noi_dung = noi_dung
+        self.id_module_phuc_vu = id_module_phuc_vu
+        self.duong = duong
+
+
+async def chay_chat_theo_tai_khoan(so: object, request: object, id_module: str,
+                                  than: dict, stream: bool) -> KetQuaChatDuong | None:
+    """Chạy chat theo tài khoản đã lưu: ưu tiên đường theo THU_TU_DUONG_UU_TIEN.
+
+    Áp dụng khi module khách gọi thuộc một nhóm có tài khoản trong kho,
+    tài khoản có đường dùng được qua hook ghim, cùng model trần và đủ quyền.
+    Không thoả mãn điều kiện áp dụng -> trả None để rơi về luồng cũ.
+    """
+    cat = getattr(so, "catalog", None) or {}
+    mod_cat = cat.get(id_module)
+    manifest_khach = getattr(mod_cat, "manifest", None) if mod_cat is not None else None
+    dang_chay = getattr(so, "dang_chay", None) or {}
+    the_hien_khach = dang_chay.get(id_module)
+    if not isinstance(manifest_khach, dict):
+        manifest_khach = getattr(the_hien_khach, "manifest", None) if the_hien_khach is not None else None
+    if not isinstance(manifest_khach, dict):
+        return None
+
+    nhom_khach = manifest_khach.get("nhom")
+    nhom_id = nhom_khach.get("id") if isinstance(nhom_khach, dict) else getattr(nhom_khach, "id", None)
+    if not nhom_id or not isinstance(nhom_id, str):
+        return None
+
+    model_khach = str((than or {}).get("model") or "")
+    model_tran = model_khach.split("/", 1)[1] if "/" in model_khach else model_khach
+
+    from app.loi_openai import LoiOpenAI
+    from app.xac_thuc import kiem_tra_pham_vi
+
+    ban_do_duong: dict[str, tuple[str, object, str]] = {}
+    for mid, mod in dang_chay.items():
+        muc_cat = cat.get(mid)
+        man = getattr(muc_cat, "manifest", None) if muc_cat is not None else None
+        if not isinstance(man, dict):
+            man = getattr(mod, "manifest", None)
+        if not isinstance(man, dict):
+            continue
+
+        m_nhom = man.get("nhom")
+        m_nhom_id = m_nhom.get("id") if isinstance(m_nhom, dict) else getattr(m_nhom, "id", None)
+        if m_nhom_id != nhom_id:
+            continue
+
+        duong_ten = man.get("duong")
+        if not isinstance(duong_ten, str) or not duong_ten.strip():
+            continue
+        duong_ten = duong_ten.strip()
+
+        co_fn = getattr(mod, "co_tai_khoan_email", None)
+        chat_fn = getattr(mod, "chat", None)
+        if not callable(co_fn) or not callable(chat_fn):
+            continue
+
+        models_fn = getattr(mod, "models", None)
+        if not callable(models_fn):
+            continue
+
+        tien_to = getattr(mod, "tien_to", None)
+        if not isinstance(tien_to, str) or not tien_to:
+            tt_cat = getattr(muc_cat, "tien_to", None) if muc_cat is not None else None
+            tien_to = tt_cat if isinstance(tt_cat, str) and tt_cat else man.get("tien_to", mid)
+
+        try:
+            ds_models = await models_fn()
+        except Exception as e:  # module hỏng khi liệt kê model: bỏ đường đó, các đường khác vẫn chạy
+            log.warning("Bỏ qua đường %s của module %s: models() lỗi (%s)", duong_ten, mid, type(e).__name__)
+            continue
+        ids = [m["id"] for m in (ds_models or []) if isinstance(m, dict) and "id" in m]
+        if f"{tien_to}/{model_tran}" not in ids:
+            continue
+
+        if mid != id_module:
+            try:
+                kiem_tra_pham_vi(request, "chat", module=mid)
+            except LoiOpenAI:
+                continue
+
+        if duong_ten not in ban_do_duong:
+            ban_do_duong[duong_ten] = (mid, mod, tien_to)
+
+    if not ban_do_duong:
+        return None
+
+    from app import kho_tai_khoan
+    from app.goi_kha_nang import goi
+
+    try:
+        ds_cong_khai = kho_tai_khoan.liet_ke()
+    except kho_tai_khoan.LoiKhoTaiKhoan as e:
+        log.warning("Không đọc được kho tài khoản, gọi module như cũ: %s", e)
+        return None
+
+    danh_sach_hop_le = []
+    for b in ds_cong_khai:
+        if b.get("loai") == "nhap":
+            continue
+        if b.get("trang_thai") == kho_tai_khoan.TRANG_THAI_TAM_DUNG:
+            continue
+        b_nhom = b.get("nhom") or ""
+        if kho_tai_khoan.nhom_hieu_luc(b_nhom) != nhom_id:
+            continue
+        tk_nb = kho_tai_khoan.tim_theo_id(b.get("id"))
+        if not isinstance(tk_nb, dict):
+            continue
+        email = tk_nb.get("email")
+        if not email or not isinstance(email, str):
+            continue
+        tt_duong = kho_tai_khoan.lay_trang_thai_duong(b.get("id"))
+        if not isinstance(tt_duong, dict):
+            continue
+
+        co_duong_dung = False
+        for d, muc in tt_duong.items():
+            if d in ban_do_duong:
+                _mid, mod, _tt = ban_do_duong[d]
+                if mod.co_tai_khoan_email(email):
+                    tt = muc.get("trang_thai") if isinstance(muc, dict) else None
+                    if BANG_TRANG_THAI_DUONG.get(tt, {}).get("dung_duoc"):
+                        co_duong_dung = True
+                        break
+        if co_duong_dung:
+            danh_sach_hop_le.append((tk_nb, tt_duong))
+
+    if not danh_sach_hop_le:
+        return None
+
+    phan_hoi_cuoi: tuple[int, dict, object, str, str] | None = None
+    danh_sach_chay = []
+
+    for tk_nb, tt_duong in danh_sach_hop_le:
+        tk_id = tk_nb["id"]
+        email = tk_nb["email"]
+        thuc_thi = {}
+
+        for d in tt_duong:
+            if d in ban_do_duong:
+                mid_d, mod_d, tt_d = ban_do_duong[d]
+                if mod_d.co_tai_khoan_email(email):
+                    def _tao_thuc_thi(m=mod_d, mid_=mid_d, tt_=tt_d, d_=d, em=email):
+                        async def _goi():
+                            nonlocal phan_hoi_cuoi
+                            than_moi = dict(than or {})
+                            than_moi["model"] = f"{tt_}/{model_tran}"
+                            ma, hd, nd = await goi(m, "chat", than_moi, stream=stream, tai_khoan_email=em)
+                            if ma != 200:
+                                phan_hoi_cuoi = (ma, hd, nd, mid_, d_)
+                                loi = loi_tu_phan_hoi(ma, hd)
+                                loi.phan_hoi_goc = (ma, hd, nd, mid_, d_)
+                                raise loi
+                            return (ma, hd, nd, mid_, d_)
+                        return _goi
+                    thuc_thi[d] = _tao_thuc_thi()
+
+        def _tao_cap_nhat(id_=tk_id):
+            def _cap_nhat(duong, trang_thai, moc):
+                try:
+                    kho_tai_khoan.dat_trang_thai_duong(id_, duong, trang_thai, moc)
+                except Exception as e:
+                    log.warning("Cập nhật trạng thái đường thất bại: %s", e)
+            return _cap_nhat
+
+        danh_sach_chay.append((tk_id, thuc_thi, tt_duong, _tao_cap_nhat()))
+
+    try:
+        _id_tk, kq_duong = await chay_qua_danh_sach(danh_sach_chay)
+        ma, hd, nd, mid_phuc_vu, duong_dung = kq_duong.gia_tri
+        return KetQuaChatDuong(ma, hd, nd, mid_phuc_vu, duong_dung)
+    except LoiDuong as e:
+        if hasattr(e, "phan_hoi_goc"):
+            ma, hd, nd, mid_phuc_vu, duong_dung = e.phan_hoi_goc
+            return KetQuaChatDuong(ma, hd, nd, mid_phuc_vu, duong_dung)
+        raise
+    except LoiHetDuong:
+        if phan_hoi_cuoi is not None:
+            ma, hd, nd, mid_phuc_vu, duong_dung = phan_hoi_cuoi
+            return KetQuaChatDuong(ma, hd, nd, mid_phuc_vu, duong_dung)
+        return None

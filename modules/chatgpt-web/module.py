@@ -1146,7 +1146,16 @@ class Module:
                 return ds_model[0]
         return None
 
-    async def chat(self, body: dict, stream: bool):
+    def co_tai_khoan_email(self, email: str) -> bool:
+        """Module có token của tài khoản mang email đó không (so sánh casefold)."""
+        em = str(email or "").casefold()
+        if not em:
+            return False
+        with self._khoa:
+            return any(str(tk.email or "").casefold() == em for tk in self._tai_khoan)
+
+    async def chat(self, body: dict, stream: bool, *,
+                   tai_khoan_email: str | None = None):
         body = dict(body or {})
         model_goc = str(body.get("model") or "")
         yeu_cau_trong = not model_goc.strip() or model_goc.strip().lower() == "auto"
@@ -1189,6 +1198,15 @@ class Module:
                 f"Các model đang có: {', '.join(dang_co) or 'không có'}.")
             return 400, {"Content-Type": "application/json"}, \
                 json.dumps(than_loi(400, thong_diep), ensure_ascii=False).encode("utf-8")
+
+        if tai_khoan_email is not None:
+            em_ghim = str(tai_khoan_email).casefold()
+            ds = [tk for tk in ds if str(tk.email or "").casefold() == em_ghim]
+            if not ds:
+                return 503, {"Content-Type": "application/json"}, \
+                    json.dumps(than_loi(503, "không còn tài khoản chatgpt-web cho email này dùng được"),
+                               ensure_ascii=False).encode("utf-8")
+
         model_id = id_day_du(ten_model)
         tin_nhan = chuyen_thanh_tin_nhan(body)
         if not tin_nhan:
@@ -1241,13 +1259,16 @@ class Module:
 
         # Hết tài khoản: mã theo lỗi cuối (không bao giờ lộ token hay đáp án thô).
         ma = loi_cuoi.ma if loi_cuoi else 502
+        hd_tra = {"Content-Type": "application/json"}
+        if isinstance(loi_cuoi, LoiChanBot):
+            hd_tra["X-Web2api-Loi-Loai"] = "chan_bot"
         thong_diep = {
             401: "Mọi tài khoản chatgpt-web đều bị từ chối — token hết hạn hoặc không hợp lệ, dán lại.",
             403: "chatgpt.com chặn lượt chat tự động — không phải lỗi token. Dùng module openaicodex hoặc khoá API để chat ChatGPT.",
             429: "Mọi tài khoản chatgpt-web đều bị giới hạn lượt — thử lại sau.",
             504: "chatgpt.com không phản hồi kịp.",
         }.get(ma, "chatgpt.com lỗi phía máy chủ.")
-        return ma, {"Content-Type": "application/json"}, \
+        return ma, hd_tra, \
             json.dumps(than_loi(ma, thong_diep), ensure_ascii=False).encode("utf-8")
 
     async def _luong_chat(self, ds: list[_TaiKhoan], tin_nhan: list[dict],

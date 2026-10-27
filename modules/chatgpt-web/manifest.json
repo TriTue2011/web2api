@@ -6,6 +6,7 @@
   "cung_cap": [
     "chat"
   ],
+  "duong": "web",
   "giao_thuc": "chatgpt-web-backend-api",
   "hang": "A",
   "id": "chatgpt-web",
