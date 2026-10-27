@@ -120,6 +120,7 @@ def test_ui_phien_mobile_khong_cuon_ngang(trang, tmp_path, monkeypatch):
         trang.khung(390, 844, dien_thoai=True)
         trang.di(f"{w.url}/He-thong-Phien.dc.html")
         _cho_san_sang(trang)
+        trang.cho("!!document.querySelector('[data-mo-nhom=\"mod-nv36\"]')", mo_ta="nút mở nhóm")
         trang.bam("document.querySelector('[data-mo-nhom=\"mod-nv36\"]')", mo_ta="mở nhóm")
         trang.cho("document.querySelectorAll('[data-phien]').length === 2")
         assert trang.js("document.documentElement.scrollWidth <= window.innerWidth")
