@@ -416,23 +416,26 @@ class Module:
     async def lam_moi_model(self) -> None:
         """NV273: làm mới danh sách model (hợp đồng lõi, xem app/lam_moi_model.py).
 
-        NGUỒN — TRUNG THỰC: token Codex OAuth KHÔNG có endpoint liệt kê
-        model trong repo này: các đường đã dùng là /backend-api/codex/responses
-        (chat) và /backend-api/wham/usage (hạn mức), không có đường liệt kê;
-        endpoint /v1/models của OpenAI cần API key, không phải token Codex,
-        nên KHÔNG dùng làm nguồn và KHÔNG bịa đường dẫn kiểu
-        /backend-api/codex/models. Nguồn là danh sách tĩnh đã khai trong
-        manifest («model_tinh», khớp DANH_SACH_MODEL).
-        Bước «lấy lại» chỉ KIỂM token từng tài khoản đang hoạt động qua
-        _lam_moi_tai_khoan(ep=False): dùng token còn hạn trong cache, chỉ
-        xoay khi sắp hết hạn như lúc chạy bình thường (KHÔNG ép xoay mỗi lần
-        bấm: token Codex xoay vòng, ép xoay có thể làm hỏng tài khoản dùng
-        chung). Ít nhất một tài khoản dùng được thì giữ danh sách tĩnh; mọi tài khoản đều hỏng thì ném
-        RuntimeError mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và KHÔNG
-        xoá hay thay danh sách đang có. Làm mới token ở đây KHÔNG đánh dấu
-        tài khoản hỏng (việc đó thuộc lam_moi_phien/chat); chỉ báo lỗi để
-        lõi ghi lại. Chưa có tài khoản đang hoạt động nào thì trả về im lặng
-        (models() trả [] khi đó).
+        NGUỒN — TRUNG THỰC, KHÔNG TỰ LẤY ĐƯỢC: token Codex OAuth KHÔNG có
+        endpoint liệt kê model trong repo này: các đường đã dùng là
+        /backend-api/codex/responses (chat) và /backend-api/wham/usage (hạn
+        mức), không có đường liệt kê; endpoint /v1/models của OpenAI cần
+        API key, không phải token Codex, nên KHÔNG dùng làm nguồn và KHÔNG
+        bịa đường dẫn kiểu /backend-api/codex/models. Kết luận của chủ máy
+        ngày 2026-10-28: không có endpoint liệt kê thật → giữ danh sách
+        tĩnh kèm kiểm phiên, và ghi rõ «không tự lấy được». Nguồn là danh
+        sách tĩnh đã khai trong manifest («model_tinh», khớp
+        DANH_SACH_MODEL). Hai chỗ khai song song (manifest và code) được
+        GIỮ NGUYÊN theo quyết định cùng ngày; dọn về một nguồn để đợt sau.
+        Bước «lấy lại» CHỈ LÀ KIỂM PHIÊN, KHÔNG LÀM MỚI TOKEN: với mỗi tài
+        khoản đang hoạt động, gọi GET /backend-api/wham/usage bằng chính
+        access_token hiện tại (đường đã có trong han_muc.py, không qua
+        _lam_moi_tai_khoan, không qua oauth.lam_moi_token, không xoay
+        token, không đổi trạng thái tài khoản). Ít nhất một phiên còn dùng
+        được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì ném RuntimeError
+        mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và KHÔNG xoá hay thay
+        danh sách đang có. Chưa có tài khoản đang hoạt động nào thì trả về
+        im lặng (models() trả [] khi đó).
         """
         with self._khoa:
             ds = list(self._tai_khoan)
@@ -451,27 +454,33 @@ class Module:
                 raise RuntimeError(
                     "openaicodex: sai_khuon — danh sách hiện tại thiếu model "
                     "đã khai trong manifest; giữ danh sách cũ")
+        goc = (self._co_so_url or "").rstrip("/") or "https://chatgpt.com"
         loi_xac_thuc = None
         loi_mang = None
         for tk in hoat_dong:
             try:
-                kq = await self._lam_moi_tai_khoan(tk, ep=False)   # NV274: KHÔNG ép xoay token mỗi lần bấm làm mới danh sách
+                phan_hoi = await self._goi_http(
+                    "GET", f"{goc}/backend-api/wham/usage",
+                    headers={"Authorization": f"Bearer {tk.access_token}",
+                             "User-Agent": "codex-cli"})
             except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
                 loi_mang = e
                 continue
-            if kq and kq.get("ok"):
-                return  # ít nhất một tài khoản còn dùng được → giữ danh sách
-            if kq and kq.get("loai") == "chet":
-                loi_xac_thuc = kq
+            ma = getattr(phan_hoi, "status_code", None)
+            if ma == 200:
+                return  # ít nhất một phiên còn dùng được → giữ danh sách
+            if ma in (401, 403):
+                loi_xac_thuc = ma
             else:
-                loi_mang = kq
+                loi_mang = ma
         if loi_xac_thuc is not None:
             raise RuntimeError(
-                "openaicodex: xac_thuc — refresh_token bị từ chối "
-                "(không thể khôi phục); giữ danh sách cũ")
+                "openaicodex: xac_thuc — access_token bị từ chối "
+                f"({loi_xac_thuc}) ở /wham/usage; lam_moi_model không làm "
+                "mới token; giữ danh sách cũ")
         raise RuntimeError(
-            "openaicodex: mang — làm mới token gặp lỗi tạm thời; "
-            "giữ danh sách cũ")
+            "openaicodex: mang — kiểm phiên ở /wham/usage gặp lỗi tạm "
+            "thời; lam_moi_model không làm mới token; giữ danh sách cũ")
 
     async def suc_khoe(self) -> dict:
         with self._khoa:

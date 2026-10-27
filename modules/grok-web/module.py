@@ -1051,7 +1051,7 @@ class Module:
         là chế độ của web app (fast/auto/expert/heavy), khai tĩnh trong
         converter; endpoint /v1/models của xAI cần API key, không phải cookie
         của module này, nên KHÔNG dùng làm nguồn và KHÔNG bịa endpoint.
-        Nguồn là danh sách tĩnh đã khai trong manifest («model_tinh»).
+        Nguồn là danh sách tĩnh đã khai trong manifest («model_tinh»). Kết luận của chủ máy ngày 2026-10-28: không có endpoint liệt kê thật → giữ danh sách tĩnh kèm kiểm phiên; lam_moi_model này KHÔNG TỰ LẤY ĐƯỢC model mới.
         Bước «lấy lại» là kiểm phiên thật của từng tài khoản qua
         /api/auth/session đã có của module (lay_uid_tu_phien): ít nhất một
         phiên còn dùng được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì

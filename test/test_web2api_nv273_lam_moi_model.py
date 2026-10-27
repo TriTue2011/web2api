@@ -274,21 +274,47 @@ def codex_module(tmp_path, monkeypatch):
     return m
 
 
-def _transport_token_ok():
+def _transport_wham_ok(urls):
     def xu_ly(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={
-            "access_token": tao_jwt_codex(), "refresh_token": "refresh-moi",
-            "expires_in": 28800, "token_type": "Bearer"})
+        urls.append(str(req.url))
+        assert "/backend-api/wham/usage" in str(req.url)
+        return httpx.Response(200, json={})
     return httpx.MockTransport(xu_ly)
 
 
 def test_codex_lam_moi_thanh_cong_giu_danh_sach(tmp_path, monkeypatch):
     m = codex_module(tmp_path, monkeypatch)
-    m._gan_transport_gia(_transport_token_ok())
+    urls = []
+    m._gan_transport_gia(_transport_wham_ok(urls))
     truoc = ids(chay(m.models()))
     assert truoc == manifest_ids("openaicodex")
     chay(m.lam_moi_model())
     assert ids(chay(m.models())) == truoc
+    assert urls, "lam_moi_model phai kiem phien qua /wham/usage"
+
+
+def test_codex_lam_moi_khong_xoay_token(tmp_path, monkeypatch):
+    """Quyêt định chủ máy 2026-10-28: lam_moi_model KHÔNG làm mới token.
+
+    Chứng minh bằng 3 cách cùng lúc: token trước/sau không đổi, không có
+    yêu cầu nào tới endpoint OAuth, và _lam_moi_tai_khoan có bị gọi thì
+    test sẽ nổ ngay.
+    """
+    m = codex_module(tmp_path, monkeypatch)
+    urls = []
+    m._gan_transport_gia(_transport_wham_ok(urls))
+    tk = m._tai_khoan[0]
+    access_truoc, refresh_truoc = tk.access_token, tk.refresh_token
+
+    async def _cam_goi(*a, **k):
+        raise AssertionError("lam_moi_model khong duoc goi _lam_moi_tai_khoan")
+    m._lam_moi_tai_khoan = _cam_goi
+
+    chay(m.lam_moi_model())
+    assert tk.access_token == access_truoc
+    assert tk.refresh_token == refresh_truoc
+    assert urls and all("auth.openai.com" not in u and "/oauth/token" not in u
+                        for u in urls)
 
 
 def test_codex_lam_moi_xac_thuc_giu_danh_sach(tmp_path, monkeypatch):
@@ -297,7 +323,7 @@ def test_codex_lam_moi_xac_thuc_giu_danh_sach(tmp_path, monkeypatch):
     m._tai_khoan[0].expires_at = time.time() + 600
 
     def xu_ly(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, json={"error": "invalid_grant"})
+        return httpx.Response(401, json={"detail": "unauthorized"})
     m._gan_transport_gia(httpx.MockTransport(xu_ly))
     truoc = ids(chay(m.models()))
     with pytest.raises(RuntimeError, match="xac_thuc"):
@@ -321,7 +347,8 @@ def test_codex_lam_moi_mang_hong_giu_danh_sach(tmp_path, monkeypatch):
 
 def test_codex_lam_moi_sai_khuon_giu_danh_sach(tmp_path, monkeypatch):
     m = codex_module(tmp_path, monkeypatch)
-    m._gan_transport_gia(_transport_token_ok())
+    urls = []
+    m._gan_transport_gia(_transport_wham_ok(urls))
     m.manifest = dict(m.manifest)
     m.manifest["model_tinh"] = "khong-phai-danh-sach"
     truoc = ids(chay(m.models()))

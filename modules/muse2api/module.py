@@ -316,7 +316,7 @@ class Module:
         NGUỒN — TRUNG THỰC: giao thức muse.ai hiện tại chỉ có đúng một
         model («muse», MODEL_ID); repo này không có endpoint HTTP liệt kê
         model cho cookie hatch_sess, nên KHÔNG bịa endpoint. Nguồn là danh
-        sách tĩnh đã khai trong manifest («model_tinh»).
+        sách tĩnh đã khai trong manifest («model_tinh»). Kết luận của chủ máy ngày 2026-10-28: không có endpoint liệt kê thật → giữ danh sách tĩnh kèm kiểm phiên; lam_moi_model này KHÔNG TỰ LẤY ĐƯỢC model mới.
         Bước «lấy lại» là kiểm cookie thật của từng tài khoản qua
         _kiem_cookie đã có của module (auth/check + session, chạy trong
         luồng riêng như suc_khoe): ít nhất một cookie còn dùng được thì giữ

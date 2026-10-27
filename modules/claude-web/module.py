@@ -850,7 +850,7 @@ class Module:
         capability «chat», không trả model; endpoint /v1/models của Anthropic
         cần API key, không phải cookie của module này, nên KHÔNG dùng làm
         nguồn và KHÔNG bịa endpoint. Nguồn là danh sách tĩnh đã khai trong
-        manifest («model_tinh», khớp bảng của converter).
+        manifest («model_tinh», khớp bảng của converter). Kết luận của chủ máy ngày 2026-10-28: không có endpoint liệt kê thật → giữ danh sách tĩnh kèm kiểm phiên; lam_moi_model này KHÔNG TỰ LẤY ĐƯỢC model mới.
         Bước «lấy lại» là kiểm phiên thật của từng tài khoản qua
         GET /api/organizations đã có của module: ít nhất một phiên còn dùng
         được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì ném RuntimeError
