@@ -59,19 +59,33 @@ def giai_ma_payload(token: str) -> dict[str, Any] | None:
     return du_lieu if isinstance(du_lieu, dict) else None
 
 
-def exp_cua(token: str) -> int | None:
-    """Claim `exp` (giây epoch); thiếu/không phải số nguyên dương → None."""
+def phan_loai_exp(token: str) -> tuple[str, int | None]:
+    """Phân loại claim exp theo cấu trúc (luật thống nhất 23/10/2026):
+      - 'hong': payload không giải mã được hoặc có exp nhưng sai kiểu (bool, str, <=0)
+      - 'thieu': payload JSON hợp lệ nhưng không có khoá 'exp' (dùng được)
+      - 'co': có exp là số nguyên dương -> ('co', exp)
+    """
     payload = giai_ma_payload(token)
     if payload is None:
-        return None
+        return ("hong", None)
+    if "exp" not in payload:
+        return ("thieu", None)
     exp = payload.get("exp")
     if isinstance(exp, bool):
-        return None
+        return ("hong", None)
     try:
-        exp = int(exp)
+        exp_int = int(exp)
     except (TypeError, ValueError):
-        return None
-    return exp if exp > 0 else None
+        return ("hong", None)
+    if exp_int <= 0:
+        return ("hong", None)
+    return ("co", exp_int)
+
+
+def exp_cua(token: str) -> int | None:
+    """Claim `exp` (giây epoch); thiếu/không phải số nguyên dương → None."""
+    loai, exp = phan_loai_exp(token)
+    return exp if loai == "co" else None
 
 
 def email_cua(token: str) -> str:
@@ -254,7 +268,7 @@ class BoLamMoiJWT:
     async def lam_moi(self, khoa: str) -> dict:
         """Làm mới JWT cho một khoá. Không bao giờ ném (lỗi → mã trong kết quả).
 
-        Mã (`ma`): khoa_khong_co | exp_khong_doc_duoc | chua_toi_nguong |
+        Mã (`ma`): khoa_khong_co | exp_khong_doc_duoc | khong_co_exp | chua_toi_nguong |
         chua_cau_hinh_dich_vu | dang_chay | khong_ghep_duoc_ho_so |
         het_tran_ngay | dang_nghi_luy_thua | da_lam_moi | token_moi_giong_cu |
         ho_so_dang_xuat | can_nguoi (khoá đã dừng vĩnh viễn vì 401) |
@@ -268,7 +282,7 @@ class BoLamMoiJWT:
             return {"ok": False, "khoa": khoa, "ma": "khoa_khong_co"}
 
         bay_gio = time.time()
-        exp = exp_cua(tk.token)
+        loai_exp, exp = phan_loai_exp(tk.token)
         con_lai = con_lai_ngay(exp, bay_gio)
         self._cap_nhat_trang_thai(
             khoa, het_han=het_han_iso(exp), con_lai_ngay=con_lai,
@@ -283,8 +297,13 @@ class BoLamMoiJWT:
                 and tt_truoc.get("ma_loi") == "ho_so_dang_xuat":
             return {"ok": False, "khoa": khoa, "ma": "can_nguoi",
                     "can_nguoi": True}
-        if exp is None:
-            # Không đọc được exp → không biết hạn, không dám làm mới bừa.
+        if loai_exp == "thieu":
+            # NV271: Token hợp lệ nhưng không có claim exp -> dùng được,
+            # không biết hạn, không cần làm mới, không gọi mạng, không cần người.
+            self._cap_nhat_trang_thai(khoa, trang_thai="khong_co_exp", ma_loi=None)
+            return {"ok": True, "khoa": khoa, "ma": "khong_co_exp"}
+        if loai_exp == "hong":
+            # Không đọc được exp hoặc sai kiểu → không dám làm mới bừa.
             self._danh_dau_can_nguoi(
                 khoa, "exp_khong_doc_duoc",
                 "không giải mã được claim exp của JWT — dán lại token")

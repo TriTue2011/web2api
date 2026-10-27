@@ -775,3 +775,150 @@ def test_health_phien_ban_loi_va_het_gio_van_200(tmp_path, monkeypatch):
         assert r.status_code == 200
         assert r.json()["agy_phien_ban"] is None
 
+
+# ───────────── NV271: kiểm tra phiên đăng nhập (POST /dang-nhap/kiem-tra) ─────────────
+
+
+def test_dang_nhap_kiem_tra_xac_thuc_401(tmp_path, monkeypatch):
+    """POST /dang-nhap/kiem-tra yêu cầu xác thực khoá Bearer: thiếu hoặc sai -> 401."""
+    h0 = tao_acc(tmp_path, 0, "user@example.com")
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        # Không có header Authorization
+        r1 = c.post("/dang-nhap/kiem-tra", json={"email": "user@example.com"})
+        assert r1.status_code == 401
+        assert r1.json()["error"]["code"] == "invalid_api_key"
+
+        # Sai khoá
+        r2 = c.post("/dang-nhap/kiem-tra", headers={"Authorization": "Bearer sai-khoa"}, json={"email": "user@example.com"})
+        assert r2.status_code == 401
+        assert r2.json()["error"]["code"] == "invalid_api_key"
+
+
+def test_dang_nhap_kiem_tra_email_la_khuon_va_agy_khong_chay(tmp_path, monkeypatch):
+    """Email ngoài khuôn (không có @, quá dài, ký tự điều khiển) -> 400 và agy giả KHÔNG chạy."""
+    h0 = tao_acc(tmp_path, 0, "user@example.com")
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    cac_email_hong = [
+        "khongcoemail",
+        "a" * 260 + "@example.com",
+        "user\x00@example.com",
+        "user\n@example.com",
+        "user\r\n@example.com",
+        "@example.com",
+        "user@",
+    ]
+    with TestClient(app) as c:
+        luot_truoc = len(nhat_ky(h0))  # lượt đọc hạn mức lúc khởi động không tính
+        for em in cac_email_hong:
+            r = c.post("/dang-nhap/kiem-tra", headers=AUTH, json={"email": em})
+            assert r.status_code == 400, f"email {em!r} không bị từ chối 400"
+            assert r.json()["error"]["type"] == "invalid_request_error"
+    # Chứng minh agy giả hoàn toàn KHÔNG chạy bất kỳ lần nào
+    assert len(nhat_ky(h0)) == luot_truoc, "agy giả đã bị chạy khi email ngoài khuôn"
+
+
+def test_dang_nhap_kiem_tra_thanh_cong_khong_phan_biet_hoa_thuong_va_bao_mat(tmp_path, monkeypatch, caplog):
+    """Email khớp HOME (không phân biệt hoa/thường) -> da_dang_nhap.
+    Bảo mật: phản hồi không chứa email/HOME/acc, log không chứa email/HOME,
+    móc open không mở tệp trong .gemini, HOME khác không bị chạy agy.
+    """
+    email_goc = "Nguoi.Dung@example.com"
+    h0 = tao_acc(tmp_path, 0, email_goc)
+    (h0 / ".gemini" / "antigravity-cli").mkdir(parents=True)
+    (h0 / ".gemini" / "antigravity-cli" / "token.json").write_text('{"token": "TOKEN-GIA-KHONG-DUOC-MO"}')
+
+    email_khac = "khac.nguoi@example.com"
+    h1 = tao_acc(tmp_path, 1, email_khac)
+
+    monkeypatch.setenv("AGY_HOMES", f"{h0}:{h1}")
+
+    _MO.clear()
+    _GHI_MO[0] = True
+    try:
+        with TestClient(app) as c:
+            luot_h1_truoc = len(nhat_ky(h1))  # lượt đọc lúc khởi động không tính
+            # Gửi dạng hoa/thường khác nhau và có khoảng trắng ở biên
+            r = c.post("/dang-nhap/kiem-tra", headers=AUTH, json={"email": "  nguoi.dung@EXAMPLE.COM  "})
+    finally:
+        _GHI_MO[0] = False
+
+    assert r.status_code == 200
+    kq = r.json()
+    assert kq == {"trang_thai": "da_dang_nhap"}
+
+    # Phản hồi KHÔNG chứa email, đường HOME, số thứ tự tài khoản
+    phan_hoi_text = r.text
+    assert email_goc not in phan_hoi_text
+    assert "nguoi.dung" not in phan_hoi_text
+    assert str(h0) not in phan_hoi_text
+    assert str(h1) not in phan_hoi_text
+    assert "acc0" not in phan_hoi_text
+    assert "acc1" not in phan_hoi_text
+    assert "TOKEN-GIA" not in phan_hoi_text
+
+    # Log (caplog) không chứa email hoặc HOME
+    log_text = caplog.text
+    assert email_goc not in log_text
+    assert "nguoi.dung" not in log_text
+    assert str(h0) not in log_text
+    assert str(h1) not in log_text
+
+    # Móc kiểm toán open chứng minh KHÔNG mở tệp nào dưới .gemini
+    assert not [p for p in _MO if ".gemini" in p], "cầu nối đã mở tệp trong .gemini"
+
+    # HOME khác (h1) không bị chạy agy
+    assert len(nhat_ky(h1)) == luot_h1_truoc, "HOME khác (h1) đã bị chạy agy khi kiểm tra"
+
+
+def test_dang_nhap_kiem_tra_khop_tien_to_mien_la_chua_co_tai_khoan(tmp_path, monkeypatch):
+    """Email chỉ khớp tiền tố hoặc tên miền -> chua_co_tai_khoan (khớp mờ bị cấm), 0 lần chạy agy."""
+    h0 = tao_acc(tmp_path, 0, "test@example.com")
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        luot_truoc = len(nhat_ky(h0))
+        # Tiền tố khớp nhưng tên miền khác
+        r1 = c.post("/dang-nhap/kiem-tra", headers=AUTH, json={"email": "test@other.com"})
+        assert r1.status_code == 200
+        d1 = r1.json()
+        assert d1["trang_thai"] == "can_nguoi"
+        assert d1["ma_loi"] == "chua_co_tai_khoan"
+        assert len(d1["huong_dan"]) > 10
+
+        # Tên miền khớp nhưng tiền tố chỉ là chuỗi con / mở rộng
+        r2 = c.post("/dang-nhap/kiem-tra", headers=AUTH, json={"email": "test-extra@example.com"})
+        assert r2.status_code == 200
+        d2 = r2.json()
+        assert d2["trang_thai"] == "can_nguoi"
+        assert d2["ma_loi"] == "chua_co_tai_khoan"
+
+    # 0 lần chạy agy
+    assert len(nhat_ky(h0)) == luot_truoc, "agy giả đã bị chạy dù không khớp email"
+
+
+def test_dang_nhap_kiem_tra_chua_dang_nhap_khi_usage_hong_hoac_rong(tmp_path, monkeypatch):
+    """HOME khớp nhưng /usage agy giả trả bảng rỗng hoặc mã thoát khác 0 -> chua_dang_nhap."""
+    # Ca 1: mã thoát khác 0
+    h0 = tao_acc(tmp_path, 0, "user1@example.com", usage_ma_thoat=1)
+    monkeypatch.setenv("AGY_HOMES", str(h0))
+    with TestClient(app) as c:
+        r1 = c.post("/dang-nhap/kiem-tra", headers=AUTH, json={"email": "user1@example.com"})
+        assert r1.status_code == 200
+        d1 = r1.json()
+        assert d1["trang_thai"] == "can_nguoi"
+        assert d1["ma_loi"] == "chua_dang_nhap"
+        assert len(d1.get("huong_dan", "")) > 10
+
+    # Ca 2: bảng hạn mức rỗng
+    h1 = tao_acc(tmp_path, 1, "user2@example.com", usage="")
+    monkeypatch.setenv("AGY_HOMES", str(h1))
+    monkeypatch.setattr(cau_noi, "be", None)  # bể tài khoản dựng lại theo AGY_HOMES mới
+    with TestClient(app) as c:
+        r2 = c.post("/dang-nhap/kiem-tra", headers=AUTH, json={"email": "user2@example.com"})
+        assert r2.status_code == 200
+        d2 = r2.json()
+        assert d2["trang_thai"] == "can_nguoi"
+        assert d2["ma_loi"] == "chua_dang_nhap"
+        assert len(d2.get("huong_dan", "")) > 10
+
+

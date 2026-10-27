@@ -18,6 +18,17 @@ from app.chuyen_tiep import (
     tra_loi_json,
 )
 from app.kho import che
+from app.tai_khoan_hang_loat import KetQuaDangNhap
+
+
+def _ket_qua(thanh_cong: bool, ma_loi: str = "", can_nguoi: bool = False,
+             huong_dan: str = "") -> KetQuaDangNhap:
+    """Kết quả đăng nhập theo khuôn lõi; route đọc ``can_nguoi``/``huong_dan`` bằng getattr."""
+    kq = KetQuaDangNhap(thanh_cong=thanh_cong, ma_loi=ma_loi)
+    object.__setattr__(kq, "can_nguoi", bool(can_nguoi))
+    object.__setattr__(kq, "cho_2fa", False)
+    object.__setattr__(kq, "huong_dan", huong_dan)
+    return kq
 
 
 class Module:
@@ -192,6 +203,41 @@ class Module:
             except (httpx.HTTPError, ValueError, PhanHoiQuaLon, TimeoutError):
                 pass
         return kq
+
+    async def dang_nhap(self, tai_khoan) -> KetQuaDangNhap:
+        """Kiểm phiên ``agy`` đã có của tài khoản Google (đích «antigravity»).
+
+        ``agy`` không có lệnh đăng nhập: người vận hành đăng nhập tương tác một lần cho mỗi
+        HOME. Module chỉ hỏi cầu nối «HOME mang email này còn phiên dùng được không»:
+        có → thành công; chưa → «cần người» kèm hướng dẫn. Mật khẩu/TOTP của tài khoản
+        KHÔNG được dùng và KHÔNG gửi đi đâu (route tự xoá chúng).
+        """
+        email = str(getattr(tai_khoan, "email", "") or "").strip()
+        if self._ct is None or not self._dia_chi_cau_noi or not self._khoa or not email:
+            return _ket_qua(False, ma_loi="cau_noi_loi")
+        try:
+            khach = self._ct._client()
+            r = await khach.post(
+                f"{self._dia_chi_cau_noi}/dang-nhap/kiem-tra",
+                headers={"Authorization": f"Bearer {self._khoa}"},
+                json={"email": email},
+                timeout=httpx.Timeout(60.0),
+            )
+            if r.status_code != 200:
+                return _ket_qua(False, ma_loi="cau_noi_loi")
+            j = r.json()
+        except (httpx.HTTPError, ValueError):
+            return _ket_qua(False, ma_loi="cau_noi_loi")
+        if not isinstance(j, dict):
+            return _ket_qua(False, ma_loi="cau_noi_loi")
+        trang_thai = j.get("trang_thai")
+        if trang_thai == "da_dang_nhap":
+            return _ket_qua(True)
+        if trang_thai == "can_nguoi":
+            ma_loi = str(j.get("ma_loi") or "can_nguoi")[:64]
+            return _ket_qua(False, ma_loi=ma_loi, can_nguoi=True,
+                            huong_dan=str(j.get("huong_dan") or "")[:600])
+        return _ket_qua(False, ma_loi="cau_noi_loi")
 
     async def dung(self) -> None:
         if self._ct is not None:

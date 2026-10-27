@@ -153,6 +153,26 @@ def _che_email(email: str) -> str:
     return f"{cuc_bo[0]}…{cuc_bo[-1]}@{mien}"
 
 
+def _kiem_email_hop_le(email: Any) -> str | None:
+    """Kiểm tra email: chuỗi có '@', không quá dài (<= 254), không ký tự điều khiển.
+    Trả về email đã strip hoặc None nếu không hợp lệ.
+    """
+    if not isinstance(email, str):
+        return None
+    s = email.strip()
+    if not s or len(s) > 254:
+        return None
+    if "@" not in s or s.startswith("@") or s.endswith("@"):
+        return None
+    for ch in s:
+        if ord(ch) < 32 or ord(ch) == 127 or unicodedata.category(ch).startswith("C"):
+            return None
+    cuc_bo, _, mien = s.rpartition("@")
+    if not cuc_bo or not mien or "." not in mien or mien.startswith(".") or mien.endswith("."):
+        return None
+    return s
+
+
 def _loi_openai(ma: int, thong_diep: str, code: str, headers: dict | None = None) -> JSONResponse:
     return JSONResponse({"error": _than_loi(ma, thong_diep, code)}, status_code=ma, headers=headers)
 
@@ -368,6 +388,25 @@ class TaiKhoan:
             self.han_muc = han_muc
             self.han_muc_luc = time.time()
             self.email = _doc_email(self.home)
+
+    async def kiem_tra_phien(self, agy_bin: str) -> bool:
+        """Đọc /usage bỏ qua đệm để kiểm tra phiên agy của HOME này còn dùng được không."""
+        async with self._dang_doc:
+            kq = await _chay([agy_bin, "-p", "/usage", "--output-format", "json", "--print-timeout", "30s",
+                              "--sandbox"], self.home, 45)
+            if kq.ma_thoat != 0:
+                log.warning("%s: không đọc được /usage khi kiểm tra phiên (mã thoát %s)", self.nhan, kq.ma_thoat)
+                return False
+            j = _json_cua(kq.stdout)
+            van_ban = j.get("response") if j is not None else kq.stdout.decode("utf-8", "replace")
+            han_muc = phan_tich_usage(van_ban if isinstance(van_ban, str) else "")
+            if not han_muc:
+                log.warning("%s: /usage không có dòng hạn mức nào đúng cấu trúc khi kiểm tra", self.nhan)
+                return False
+            self.han_muc = han_muc
+            self.han_muc_luc = time.time()
+            self.email = _doc_email(self.home)
+            return True
 
     def thong_tin_che(self) -> dict:
         """Thông tin tài khoản đã che cho /tai-khoan — không đường HOME, không token."""
@@ -909,6 +948,56 @@ async def tai_khoan(request: Request):
     b = lay_be()
     await b.cap_nhat_tat_ca()
     return {"tai_khoan": [tk.thong_tin_che() for tk in b.tai_khoan]}
+
+
+@app.post("/dang-nhap/kiem-tra")
+async def dang_nhap_kiem_tra(request: Request):
+    loi = _kiem_xac_thuc(request)
+    if loi:
+        return loi
+    try:
+        than = await _doc_than(request)
+    except LoiYeuCau as e:
+        return _loi_openai(e.ma, e.thong_diep, e.code)
+
+    email = than.get("email")
+    email_chuan = _kiem_email_hop_le(email)
+    if email_chuan is None:
+        return _loi_openai(400, "Email không hợp lệ.", "invalid_request")
+
+    b = lay_be()
+    email_tim = email_chuan.lower()
+    muc_tieu: TaiKhoan | None = None
+    for tk in b.tai_khoan:
+        email_tk = _doc_email(tk.home).strip().lower()
+        if email_tk == email_tim:
+            muc_tieu = tk
+            break
+
+    if muc_tieu is None:
+        return JSONResponse({
+            "trang_thai": "can_nguoi",
+            "ma_loi": "chua_co_tai_khoan",
+            "huong_dan": (
+                "Chưa có tài khoản trên máy chủ cầu nối cho email này. Người vận hành cần chạy agy "
+                "tương tác với đúng HOME của tài khoản này, đăng nhập Google, rồi ghi email vào "
+                "$HOME/.agy-cau-noi-email, sau đó bấm «Kiểm tra lại»."
+            ),
+        })
+
+    ok = await muc_tieu.kiem_tra_phien(b.agy_bin)
+    if not ok:
+        return JSONResponse({
+            "trang_thai": "can_nguoi",
+            "ma_loi": "chua_dang_nhap",
+            "huong_dan": (
+                "Phiên đăng nhập của tài khoản chưa sẵn sàng hoặc đã hết hạn. Người vận hành cần chạy agy "
+                "tương tác với đúng HOME của tài khoản này, đăng nhập Google, rồi ghi email vào "
+                "$HOME/.agy-cau-noi-email, sau đó bấm «Kiểm tra lại»."
+            ),
+        })
+
+    return JSONResponse({"trang_thai": "da_dang_nhap"})
 
 
 def main():

@@ -53,6 +53,7 @@ BANG_NHOM_MONG_MUON = {
     ("POST", "/v1/openai-native/{profile}/onboard-2fa-code"): "dang_nhap",
     ("GET", "/v1/openai-native/{profile}/token"): "dang_nhap",
     ("POST", "/v1/claude-web/onboard"): "dang_nhap",
+    ("POST", "/v1/claude-web/onboard-email"): "dang_nhap",  # NV271
     ("GET", "/v1/claude-web/{profile}/onboard-status"): "dang_nhap",
     ("POST", "/v1/claude-web/{profile}/onboard-2fa-code"): "dang_nhap",
     ("GET", "/v1/claude-web/{profile}/session"): "dang_nhap",

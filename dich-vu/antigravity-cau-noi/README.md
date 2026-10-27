@@ -156,3 +156,7 @@ nghe `0.0.0.0` khi máy chủ có cổng mở ra ngoài. Chưa kiểm cách này
   thư mục tạm trống. Giữ khoá như mật khẩu quản trị.
 - **Tài khoản:** dùng CLI chính thức, không can thiệp token; gọi dồn dập vẫn làm cạn hạn mức tài khoản Google.
 - **Chức năng:** chỉ chat văn bản; không function-calling chuẩn OpenAI; mỗi lượt một tiến trình (vài giây trở lên).
+
+## `POST /dang-nhap/kiem-tra` (NV271)
+
+Thân `{"email": "<email>"}`, cần khoá cầu nối như các đường khác. Cầu nối tìm tài khoản có `$HOME/.agy-cau-noi-email` khớp tuyệt đối với email (không phân biệt hoa/thường), đọc `/usage` MỚI của HOME đó và trả đúng một trong ba dạng: `{"trang_thai": "da_dang_nhap"}`; `{"trang_thai": "can_nguoi", "ma_loi": "chua_co_tai_khoan", "huong_dan": …}`; `{"trang_thai": "can_nguoi", "ma_loi": "chua_dang_nhap", "huong_dan": …}`. Không bao giờ trả email, đường HOME, token hay số thứ tự tài khoản; không mở tệp nào của `agy`. Email ngoài khuôn → `400` trước khi chạy gì.

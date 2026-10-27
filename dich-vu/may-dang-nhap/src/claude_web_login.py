@@ -487,3 +487,295 @@ async def _run_inner(session: ClaudeWebLoginSession, password: str) -> None:
         session.state = "failed"
         session.error = str(exc)
         session.completed_at = time.time()
+
+
+# ── Đăng nhập Claude Web bằng Email (NV271 - Ô 2 & Ô 4) ──────────────────────
+# W2A: khối này (đến hết tệp) là phần THÊM của web2api — đường email + mã một lần,
+# dừng ở thử thách (need_manual); không gọi bộ vượt, không import `.solvers`.
+
+_CHO_O_EMAIL_GIAY = 15.0
+_CHO_MA_EMAIL_GIAY = 300.0
+_THU_THACH_IFRAME_SRC = "challenges.cloudflare.com"
+_HEADER_CF_MITIGATED = "cf-mitigated"
+
+
+async def _phat_hien_thu_thach_cau_truc(page, resp=None) -> bool:
+    """Nhận biết thử thách Cloudflare bằng cấu trúc (header HTTP hoặc thẻ iframe),
+    không dùng danh sách từ khoá chữ trên trang, không vượt."""
+    if resp is not None:
+        try:
+            status = getattr(resp, "status", 200)
+            if status == 403:
+                hdrs = getattr(resp, "headers", {}) or {}
+                for k, v in hdrs.items():
+                    if k.lower() == _HEADER_CF_MITIGATED and "challenge" in str(v).lower():
+                        return True
+        except Exception:
+            pass
+    try:
+        if await page.locator(f'iframe[src*="{_THU_THACH_IFRAME_SRC}"]').count() > 0:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+async def start_claude_web_email_login(
+    profile: str,
+    email: str,
+) -> ClaudeWebLoginSession:
+    """Bắt đầu luồng đăng nhập Claude Web bằng Email + mã xác nhận một lần."""
+    old_task = _tasks.pop(profile, None)
+    if old_task and not old_task.done():
+        old_task.cancel()
+
+    session = ClaudeWebLoginSession(
+        profile=profile,
+        email=email,
+        state="starting",
+        message="Khởi tạo Chrome",
+    )
+    _sessions[profile] = session
+
+    task = asyncio.create_task(_run_email(session))
+    _tasks[profile] = task
+    return session
+
+
+async def _run_email(session: ClaudeWebLoginSession) -> None:
+    pool.dau_dang_nhap(session.profile)
+    try:
+        await _run_email_inner(session)
+    finally:
+        pool.xong_dang_nhap(session.profile)
+    # Ở trạng thái need_manual thì GIỮ cửa sổ (người vào noVNC xử lý).
+    # Chỉ đóng trình duyệt khi đã xong hẳn (success hoặc failed).
+    if session.state in ("success", "failed"):
+        try:
+            await pool.close_profile(session.profile, bo_qua_khi_dang_nhap=True)
+            logger.info("closed browser after %s email onboard profile=%s", session.state, session.profile)
+        except Exception:
+            logger.debug("close_profile after email onboard skipped", exc_info=True)
+
+
+async def _run_email_inner(session: ClaudeWebLoginSession) -> None:
+    try:
+        session.state = "starting"
+        session.message = "Đang mở Chrome (headful → noVNC)"
+        ctx = await pool.get(profile=session.profile, headless=False, force_recreate=True)
+
+        pages = ctx.pages
+        page = pages[0] if pages else await ctx.new_page()
+        try:
+            await page.bring_to_front()
+        except Exception:
+            pass
+
+        # ── 1. Đã có sessionKey trong hồ sơ? Xong luôn ──
+        session.state = "running"
+        session.message = "Mở claude.ai..."
+        resp = None
+        try:
+            resp = await page.goto(_CLAUDE_HOME, wait_until="domcontentloaded", timeout=30_000)
+        except Exception:
+            pass
+        await asyncio.sleep(2.0)
+
+        existing = await _scrape_session_key(ctx)
+        if existing:
+            session.session_key = existing
+            session.state = "success"
+            session.message = "Profile đã có Claude session — không cần đăng nhập"
+            session.completed_at = time.time()
+            return
+
+        # ── 2. Kiểm tra thử thách Cloudflare tại trang chủ ──
+        if await _phat_hien_thu_thach_cau_truc(page, resp):
+            session.state = "need_manual"
+            session.message = "Cloudflare đang chặn — vào noVNC xử lý thử thách/xác minh rồi bấm Kiểm tra lại."
+            session.completed_at = time.time()
+            return
+
+        # ── 3. Mở trang đăng nhập ──
+        session.message = "Mở trang đăng nhập claude.ai..."
+        resp_login = None
+        try:
+            if "/login" not in (getattr(page, "url", "") or ""):
+                resp_login = await page.goto(_CLAUDE_LOGIN, wait_until="domcontentloaded", timeout=30_000)
+                await asyncio.sleep(2.0)
+        except Exception:
+            pass
+
+        if await _phat_hien_thu_thach_cau_truc(page, resp_login):
+            session.state = "need_manual"
+            session.message = "Cloudflare đang chặn — vào noVNC xử lý thử thách/xác minh rồi bấm Kiểm tra lại."
+            session.completed_at = time.time()
+            return
+
+        # ── 4. Tìm ô nhập email ──
+        o_email = None
+        han_tim_email = time.time() + _CHO_O_EMAIL_GIAY
+        while time.time() < han_tim_email:
+            for sel in ('input[type="email"]', 'input[name="email"]', 'input[autocomplete="email"]'):
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        o_email = loc
+                        break
+                except Exception:
+                    pass
+            if o_email is not None:
+                break
+            # Nếu trong lúc chờ phát hiện iframe thử thách
+            if await _phat_hien_thu_thach_cau_truc(page):
+                session.state = "need_manual"
+                session.message = "Cloudflare đang chặn — vào noVNC xử lý thử thách/xác minh rồi bấm Kiểm tra lại."
+                session.completed_at = time.time()
+                return
+            await asyncio.sleep(0.5)
+
+        if o_email is None:
+            # Không thấy ô email và không rõ đang ở đâu
+            session.state = "need_manual"
+            session.message = "Không tìm thấy ô nhập email trên claude.ai — vào noVNC xử lý thử thách/xác minh rồi bấm Kiểm tra lại."
+            session.completed_at = time.time()
+            return
+
+        # ── 5. Điền email và bấm tiếp tục ──
+        session.message = "Điền email đăng nhập..."
+        await o_email.fill(session.email, timeout=8_000)
+
+        # Bấm nút tiếp tục bằng email
+        nut_gui = False
+        for sel in (
+            'button:has-text("Continue with email")',
+            'button:has-text("Tiếp tục với email")',
+            'button:has-text("Continue")',
+            'button:has-text("Tiếp tục")',
+            'button[type="submit"]',
+        ):
+            try:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    await loc.click(timeout=5_000)
+                    nut_gui = True
+                    break
+            except Exception:
+                pass
+        if not nut_gui:
+            try:
+                await page.keyboard.press("Enter")
+            except Exception:
+                pass
+
+        await asyncio.sleep(2.0)
+
+        # Kiểm tra thử thách sau khi điền email
+        if await _phat_hien_thu_thach_cau_truc(page):
+            session.state = "need_manual"
+            session.message = "Cloudflare đang chặn — vào noVNC xử lý thử thách/xác minh rồi bấm Kiểm tra lại."
+            session.completed_at = time.time()
+            return
+
+        # ── 6. Chờ mã xác nhận một lần gửi về email ──
+        session.state = "need_code"
+        session.message = "Mã xác nhận đã gửi về email — nhập mã vào ô Mã 2FA rồi bấm gửi."
+
+        han_cho_ma = time.time() + _CHO_MA_EMAIL_GIAY
+        while time.time() < han_cho_ma:
+            if session.pending_code:
+                break
+            await asyncio.sleep(0.5)
+
+        if not session.pending_code:
+            session.state = "failed"
+            session.error = "Hết hạn chờ nhập mã xác nhận từ email"
+            session.completed_at = time.time()
+            return
+
+        ma_nhap = session.pending_code
+        session.pending_code = ""
+
+        # ── 7. Điền mã xác nhận ──
+        session.message = "Đang điền mã xác nhận..."
+        o_ma = None
+        for sel in (
+            'input[autocomplete="one-time-code"]',
+            'input[name="code"]',
+            'input[type="tel"]',
+            'input[type="text"]',
+        ):
+            try:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    o_ma = loc
+                    break
+            except Exception:
+                pass
+
+        if o_ma is None:
+            if await _phat_hien_thu_thach_cau_truc(page):
+                session.state = "need_manual"
+                session.message = "Cloudflare đang chặn — vào noVNC xử lý thử thách/xác minh rồi bấm Kiểm tra lại."
+                session.completed_at = time.time()
+                return
+            session.state = "failed"
+            session.error = "Không tìm thấy ô nhập mã xác nhận trên trang"
+            session.completed_at = time.time()
+            return
+
+        await o_ma.fill(ma_nhap, timeout=8_000)
+
+        # Bấm nút xác nhận mã nếu có
+        for sel in (
+            'button:has-text("Verify")',
+            'button:has-text("Xác nhận")',
+            'button:has-text("Continue")',
+            'button:has-text("Tiếp tục")',
+            'button[type="submit"]',
+        ):
+            try:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    await loc.click(timeout=5_000)
+                    break
+            except Exception:
+                pass
+
+        await asyncio.sleep(2.0)
+
+        # Kiểm tra nếu trang đòi thêm bước lạ sau khi nhập mã
+        if await _phat_hien_thu_thach_cau_truc(page):
+            session.state = "need_manual"
+            session.message = "Trang yêu cầu thêm bước xác minh — vào noVNC xử lý rồi bấm Kiểm tra lại."
+            session.completed_at = time.time()
+            return
+
+        # ── 8. Chờ đọc sessionKey ──
+        session.message = "Chờ claude.ai xác nhận phiên..."
+        for _ in range(20):
+            key = await _scrape_session_key(ctx)
+            if key:
+                session.session_key = key
+                session.state = "success"
+                session.message = "Đăng nhập Claude Web thành công"
+                session.completed_at = time.time()
+                return
+            await asyncio.sleep(1.0)
+
+        # Nếu không có cookie sessionKey sau 20 vòng
+        session.state = "failed"
+        session.error = "Không lấy được sessionKey sau khi nhập mã (mã không đúng hoặc đã hết hạn)"
+        session.completed_at = time.time()
+
+    except asyncio.CancelledError:
+        session.state = "failed"
+        session.error = "Bị huỷ (có yêu cầu login mới)"
+        session.completed_at = time.time()
+        raise
+    except Exception as exc:
+        logger.exception("claude_web_email_login crashed profile=%s", session.profile)
+        session.state = "failed"
+        session.error = str(exc)
+        session.completed_at = time.time()
+

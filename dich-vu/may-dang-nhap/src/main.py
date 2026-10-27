@@ -59,6 +59,7 @@ from .gemini_web_login import (
 )
 from .claude_web_login import (
     get_session as get_claude_web_session,
+    start_claude_web_email_login,
     start_claude_web_login,
     submit_2fa_code as submit_claude_web_2fa_code,
 )
@@ -413,6 +414,12 @@ class ClaudeWebOnboardReq(BaseModel):
     email: str = ""
     password: str = ""
     totp_secret: str = ""
+
+
+class ClaudeWebEmailOnboardReq(BaseModel):
+    """NV271: đăng nhập Claude thẳng bằng email + mã một lần — KHÔNG mật khẩu."""
+    profile: str = "claude-web-default"
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+$")
 
 
 class GrokWebOnboardReq(BaseModel):
@@ -1622,6 +1629,18 @@ async def api_claude_web_onboard(req: ClaudeWebOnboardReq, request: Request) -> 
         "novnc": _novnc_url(request),
         "note": "Theo dõi /v1/claude-web/{profile}/onboard-status. Khi state=success, "
                 "lấy sessionKey ở /v1/claude-web/{profile}/session.",
+    }
+
+
+@app.post("/v1/claude-web/onboard-email", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_claude_web_onboard_email(req: ClaudeWebEmailOnboardReq, request: Request) -> dict[str, Any]:
+    """NV271: Claude thẳng bằng email — điền email, chờ mã gửi về email, dừng ở thử thách."""
+    session = await start_claude_web_email_login(profile=req.profile, email=req.email.strip())
+    return {
+        **session.to_dict(),
+        "novnc": _novnc_url(request),
+        "note": "Theo dõi /v1/claude-web/{profile}/onboard-status. Khi state=need_code, gửi mã "
+                "xác nhận (đã gửi về email) ở /v1/claude-web/{profile}/onboard-2fa-code.",
     }
 
 

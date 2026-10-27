@@ -12,7 +12,7 @@ Bảng BƯỚC 1 (web2api hiện làm gì → mong muốn):
 - JWT còn > ngưỡng        → không làm gì  → không gọi mạng (chua_toi_nguong)
 - JWT còn < ngưỡng        → không làm gì  → gọi làm mới, thay token (da_lam_moi)
 - JWT đã hết hạn          → không làm gì  → vẫn thử làm mới
-- claim exp hỏng/thiếu    → không làm gì  → can_nguoi, không làm bừa
+- claim exp hỏng          → không làm gì  → can_nguoi, không làm bừa (NV271: thiếu exp → dùng được, khong_co_exp)
 - token không có hồ sơ    → không làm gì  → can_nguoi (khong_ghep_duoc_ho_so)
 - dịch vụ trả 401         → không làm gì  → dừng vĩnh viễn + cần đăng nhập lại
 - dịch vụ sập/quá hạn     → không làm gì  → nghỉ luỹ thừa, trần N lần/ngày
@@ -152,13 +152,33 @@ def test_giai_ma_exp_cac_dang():
     lm = mod_lam_moi_jwt
     bay_gio = int(time.time())
     assert lm.exp_cua(_jwt_gia(exp=bay_gio + 3600)) == bay_gio + 3600
-    assert lm.exp_cua(_jwt_gia()) is None                    # thiếu exp
+    assert lm.exp_cua(_jwt_gia()) is None                    # thiếu exp -> exp_cua trả None
+    assert lm.phan_loai_exp(_jwt_gia()) == ("thieu", None)  # NV271: phân loại 'thieu' (dùng được)
     assert lm.exp_cua(_jwt_gia(exp="khong-phai-so")) is None  # exp hỏng
+    assert lm.phan_loai_exp(_jwt_gia(exp="khong-phai-so")) == ("hong", None)
     assert lm.exp_cua(_jwt_gia(exp=-5)) is None               # exp âm
+    assert lm.phan_loai_exp(_jwt_gia(exp=-5)) == ("hong", None)
     assert lm.exp_cua("khong-phai-jwt") is None
+    assert lm.phan_loai_exp("khong-phai-jwt") == ("hong", None)
     assert lm.exp_cua("") is None
+    assert lm.phan_loai_exp("") == ("hong", None)
     con_lai = lm.con_lai_ngay(bay_gio + 172800, bay_gio)
     assert 1.99 < con_lai < 2.01
+
+
+# ── NV271: thiếu exp: dùng được, KHÔNG gọi mạng, KHÔNG can_nguoi ─────────
+
+def test_thieu_exp_dung_duoc_khong_can_nguoi(mod):
+    token = _jwt_gia()  # không có exp
+    _gan_tai_khoan(mod, token)
+    dv = _gan_dich_vu_gia(mod)
+    khoa = _khoa_cua(mod)
+    kq = chay(mod.lam_moi_jwt(khoa))
+    assert kq["ok"] is True and kq["ma"] == "khong_co_exp", kq
+    assert kq.get("can_nguoi") is not True
+    assert dv.dem_ds == 0 and dv.dem_lam_moi == 0
+    tt = mod._doc_trang_thai_jwt().get(khoa, {})
+    assert tt.get("trang_thai") == "khong_co_exp"
 
 
 # ── trên ngưỡng: KHÔNG gọi mạng ───────────────────────────────────────────

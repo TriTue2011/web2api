@@ -50,3 +50,7 @@ curl -s -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
 - Báo phiên bản CLI `agy` hiện tại tại mục sức khoẻ/trạng thái.
 - Chỉ hỗ trợ chat văn bản (ảnh và tập tin bị bỏ qua).
 - Tốn hạn mức lớn (khoảng 12.500 token đầu vào tối thiểu mỗi lượt), thích hợp làm nguồn AI dự phòng.
+
+## Đăng nhập tài khoản (NV271)
+
+Tài khoản Google loại gmail có đích dùng «antigravity» đăng nhập bằng `POST /api/tai-khoan/da-luu/{id}/dang-nhap` với `module_id` = `antigravity`. Đăng nhập `agy` là bước **tương tác của người vận hành** (CLI không có lệnh đăng nhập; web2api không lái phiên tương tác, không đọc token, không gọi API Google trực tiếp). Module chỉ hỏi cầu nối «HOME mang email này còn phiên dùng được không»: có thì báo thành công; chưa có thì báo **cần người** kèm hướng dẫn (đăng nhập `agy` tương tác với đúng HOME, ghi email vào `$HOME/.agy-cau-noi-email`, bấm «Kiểm tra lại»). Việc tự động lấy mã/đường dẫn xác nhận **chưa làm được** vì lý do trên.

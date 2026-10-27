@@ -145,6 +145,9 @@ _DUONG_ONBOARD_THEO_LUONG = {
     ("chatgpt", "google"): "chatgpt",
     ("chatgpt", "truc_tiep"): "openai",
     ("claude", "google"): "claude-web",
+    # NV271: Claude thẳng = EMAIL + mã xác nhận một lần gửi về email (claude.ai
+    # không có mật khẩu). Không có bí mật nào của tài khoản rời module.
+    ("claude", "truc_tiep"): "claude-web-email",
     ("grok", "google"): "grok-web",
 }
 
@@ -198,6 +201,13 @@ def _ho_so_theo_luong(dinh_danh: Any, module_cua: Any = "") -> str:
         return _kiem_ho_so(s)
     if _la_luong_chatgpt(module_cua):
         return _kiem_ho_so(_ten_ho_so_chatgpt(s))
+    # NV271: luồng có đường onboard riêng (vd Claude, Grok) tạo hồ sơ tên
+    # «<luồng>-<slug>» (xem _ten_ho_so_theo_dich_vu); 2FA/tiến độ phải tra
+    # ĐÚNG hồ sơ đó, không phải «google-<slug>» (đo qua HTTP: mã 2FA đi sai
+    # đường khi lõi truyền email).
+    luong = _LUONG_THEO_MODULE_ID.get(str(module_cua or "").strip())
+    if luong:
+        return _kiem_ho_so(_ten_ho_so_theo_dich_vu(luong, s))
     return _kiem_ho_so_dich_vu(s)
 
 
@@ -411,6 +421,12 @@ DICH_VU_DANG_NHAP = {
     },
     "claude-web": {
         "bat_dau": ("POST", "/v1/claude-web/onboard", lambda hs: {"profile": hs, "email": "", "password": "", "totp_secret": ""}),
+        "trang_thai": ("GET", "/v1/claude-web/{ho_so}/onboard-status", None),
+        "2fa": ("POST", "/v1/claude-web/{ho_so}/onboard-2fa-code"),
+        "cookie": ("GET", "/v1/claude-web/{ho_so}/session"),
+    },
+    "claude-web-email": {
+        "bat_dau": ("POST", "/v1/claude-web/onboard-email", lambda hs: {"profile": hs, "email": ""}),
         "trang_thai": ("GET", "/v1/claude-web/{ho_so}/onboard-status", None),
         "2fa": ("POST", "/v1/claude-web/{ho_so}/onboard-2fa-code"),
         "cookie": ("GET", "/v1/claude-web/{ho_so}/session"),
@@ -1619,6 +1635,28 @@ class Module:
                 totp_dn = "\x00" * len(totp_dn)
                 del totp_dn
                 return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        elif dich_vu_key == "claude-web-email":
+            # NV271: mật khẩu/TOTP của tài khoản KHÔNG được dùng và KHÔNG gửi
+            # đi đâu (claude.ai đăng nhập bằng email + mã một lần): ghi đè ngay.
+            mk = "\x00" * len(mk)
+            totp_secret = "\x00" * len(totp_secret)
+            del mk, totp_secret
+            hs_email = _ten_ho_so_theo_dich_vu(dich_vu_key, email_tho)
+            if not hs_email:
+                return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+            bat_dau = await self._goi(
+                muc["bat_dau"][0], muc["bat_dau"][1],
+                json_body={"profile": hs_email, "email": email_tho})
+            if not isinstance(bat_dau, dict) or not bat_dau.get("ok"):
+                st["hong_lt"][khoa_tk] = hong_lt + 1
+                return self._loi_dich_vu_thanh_ket_qua(bat_dau, khoa_tk)
+            if str(bat_dau.get("state") or "") in (
+                    "failed", "need_code", "need_captcha", "need_tap",
+                    "need_human", "need_manual"):
+                return self._ket_qua_onboard_tu_phien(
+                    bat_dau, khoa_tk, st, hs_email, dich_vu_key)
+            return await self._cho_ket_qua_onboard(
+                email_tho, khoa_tk, st, hs_email, dich_vu_key)
         else:
             email_dn, mk_dn, totp_dn = email_tho, mk, totp_secret
             loai_ket = "openai"
@@ -1666,7 +1704,7 @@ class Module:
         if str(bat_dau.get("state") or "") in (
                 "failed", "need_code", "need_captcha", "need_tap",
                 "need_human", "need_manual"):
-            return self._ket_qua_onboard_tu_phien(bat_dau, khoa_tk, st, hs)
+            return self._ket_qua_onboard_tu_phien(bat_dau, khoa_tk, st, hs, dich_vu_key)
         return await self._cho_ket_qua_onboard(
             email_tho, khoa_tk, st, hs, dich_vu_key)
 
@@ -1691,7 +1729,7 @@ class Module:
                         email_tho, hs, khoa_tk, st, dich_vu_key)
                 if trang_thai in ("need_code", "need_captcha", "need_tap",
                                   "need_human", "need_manual", "failed"):
-                    return self._ket_qua_onboard_tu_phien(tt, khoa_tk, st, hs)
+                    return self._ket_qua_onboard_tu_phien(tt, khoa_tk, st, hs, dich_vu_key)
             if time.time() >= han:
                 break
             await asyncio.sleep(min(nghi, max(0.0, han - time.time())))
@@ -1746,7 +1784,8 @@ class Module:
         return _ket_qua_dang_nhap(True, ho_so=hs)
 
     def _ket_qua_onboard_tu_phien(self, phien: dict, khoa_tk: str,
-                                  st: dict, ho_so: str = "") -> KetQuaDangNhap:
+                                  st: dict, ho_so: str = "",
+                                  dich_vu_key: str = "") -> KetQuaDangNhap:
         """Ánh xạ trạng thái onboard (bảng NV223) → kết quả lõi.
 
         Thông điệp trung tính (không nêu tên nhà cung cấp — đường này dùng
@@ -1759,6 +1798,12 @@ class Module:
         if trang_thai == "success":
             st["hong_lt"].pop(khoa_tk, None)
             return _ket_qua_dang_nhap(True, ho_so=ho_so)
+        if trang_thai == "need_code" and dich_vu_key == "claude-web-email":
+            # NV271: mã này do dịch vụ gửi về EMAIL của tài khoản, không phải TOTP.
+            return _ket_qua_dang_nhap(
+                False, ma_loi="cho_2fa", cho_2fa=True,
+                huong_dan="Mã xác nhận đã được gửi về email của tài khoản — "
+                          "mở hộp thư, nhập mã vào ô «Mã 2FA» rồi bấm gửi.")
         if trang_thai == "need_code":
             return _ket_qua_dang_nhap(
                 False, ma_loi="cho_2fa", cho_2fa=True,
@@ -1954,6 +1999,14 @@ class Module:
                 False, ma_loi="can_nguoi", can_nguoi=True,
                 huong_dan="Google đang chờ bạn chạm «Có, đó là tôi» trên điện "
                            "thoại — bấm trên điện thoại rồi bấm «Kiểm tra lại».")
+        # NV271: hàng rào chống bot phía dịch vụ → cần người, không thử lại
+        # vòng, không tự vượt (cùng nghĩa với đường onboard).
+        if trang_thai == "need_manual":
+            return _ket_qua_dang_nhap(
+                False, ma_loi="can_nguoi", can_nguoi=True,
+                huong_dan="Trang đăng nhập cần người xử lý thủ công (hàng "
+                          "rào chống bot) — hệ thống không tự vượt. Vào "
+                          "trình duyệt xử lý thủ công rồi bấm «Kiểm tra lại».")
         # NV209: dịch vụ đã nhận ra trang xác minh danh tính và DỪNG
         # (need_human kèm mã lỗi) — module ánh xạ sang can_nguoi + hướng dẫn
         # tiếng Việt cụ thể. Lỗi vĩnh viễn (bị khoá, bị từ chối) → đánh dấu,
@@ -1985,7 +2038,7 @@ class Module:
                 trang_thai = str(tt.get("state") or "none")
                 # NV209: need_human là trạng thái cuối — trả ngay, không chờ hết trần
                 if trang_thai in ("success", "need_code", "need_captcha",
-                                  "need_human", "failed"):
+                                  "need_human", "need_manual", "failed"):
                     return self._ket_qua_tu_phien_dich_vu(tt, khoa_tk, st, hs)
                 if trang_thai == "need_tap" and time.time() >= han:
                     # Hết trần mà người dùng chưa chạm điện thoại
