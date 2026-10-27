@@ -886,9 +886,13 @@ class Module:
         ds = self._tai_khoan_cho_model(ten_model)
         if not ds:
             if not self._thu_tu_tai_khoan():
+                # NV272: module đã chạy ở trạng thái chưa có phiên (lõi không
+                # còn chặn vì thiếu cookie). Mã rõ can_dang_nhap để đăng nhập
+                # tự động có chỗ chạy và tự lấy cookie về.
                 return 401, {"Content-Type": "application/json"}, \
-                    json.dumps(than_loi(401, "gemini-web chưa có tài khoản nào: "
-                                             "thêm cookie Google ở trường cookies rồi cài lại."),
+                    json.dumps(than_loi(401, "gemini-web chưa có phiên: đăng nhập "
+                                        "tự động để lấy cookie Google về rồi gọi lại.",
+                                        code="can_dang_nhap"),
                                ensure_ascii=False).encode("utf-8")
             goi_can = "pro" if ten_model == "gemini-3-pro" else "free"
             thong_diep = (f"model {model_id} không có cho tài khoản nào "

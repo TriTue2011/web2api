@@ -355,7 +355,10 @@ class TestKhongCoTaiKhoan:
         mod = nap_module(monkeypatch, {}, [])
         ma, _, raw = chay(mod.chat(than_chat(), False))
         assert ma == 401
-        assert "chưa có tài khoản" in json.loads(raw.decode())["error"]["message"]
+        # NV272: chat chưa có phiên trả mã rõ can_dang_nhap (thay thông điệp cũ).
+        err = json.loads(raw.decode())["error"]
+        assert err["code"] == "can_dang_nhap"
+        assert "chưa có phiên" in err["message"]
 
     def test_models_va_suc_khoe_khong_tai_khoan(self, monkeypatch):
         mod = nap_module(monkeypatch, {}, [])

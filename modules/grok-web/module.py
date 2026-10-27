@@ -935,8 +935,12 @@ class Module:
         """Chuyển tiếp yêu cầu chat OpenAI tới Grok web."""
         if not self._tai_khoan:
             return 404, {"content-type": "application/json"}, _loi_openai(
-                "Module grok-web chưa được cấu hình tài khoản («tai_khoan»).",
-                "module_not_configured", "missing_credentials",
+                # NV272: module đã chạy ở trạng thái chưa có phiên (lõi không
+                # còn chặn vì thiếu cookie). Mã rõ can_dang_nhap để đăng nhập
+                # tự động có chỗ chạy và tự lấy cookie về.
+                "Module grok-web chưa có phiên: đăng nhập tự động để lấy cookie "
+                "Grok về rồi gọi lại.",
+                "invalid_request_error", "can_dang_nhap",
             )
         model = str(body.get("model") or "")
         biet_them = {b.get("id", "").split("/", 1)[-1].strip().lower() for b in model_bo_sung.doc("grok-web") if isinstance(b, dict) and b.get("id")}

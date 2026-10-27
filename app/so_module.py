@@ -678,7 +678,17 @@ class SoModule:
         if muc is None:
             return None
         cau_hinh = kho.doc_cau_hinh(km.id, km.truong_cau_hinh, muc)
-        thieu = [t["khoa"] for t in km.truong_cau_hinh if t.get("bat_buoc") and not cau_hinh.get(t["khoa"])]
+        # NV272 — nguyên tắc, theo cấu trúc manifest (không nhắc tên module/nhà
+        # cung cấp trong lõi): module khai `dang_nhap_bang` thì tự đăng nhập
+        # lấy bí mật về được, nên trường bí mật bị thiếu KHÔNG chặn khởi động
+        # — bí mật là thứ đăng nhập phải lấy về, không phải điều kiện chạy.
+        # Module vẫn chạy ở trạng thái chưa có phiên và chat trả can_dang_nhap
+        # cho tới khi đăng nhập thành công. Trường bắt buộc KHÔNG phải bí mật
+        # vẫn chặn như cũ; module chưa có mục trong modules.json vẫn chưa chạy.
+        tu_dang_nhap = bool(km.manifest.get("dang_nhap_bang"))
+        thieu = [t["khoa"] for t in km.truong_cau_hinh
+                 if t.get("bat_buoc") and not cau_hinh.get(t["khoa"])
+                 and not (tu_dang_nhap and "bi_mat" in str(t.get("kieu") or ""))]
         if thieu:
             log.warning("Module %s: cấu hình đã lưu thiếu trường bắt buộc %s — coi như chưa liên kết", km.id, thieu)
             return None

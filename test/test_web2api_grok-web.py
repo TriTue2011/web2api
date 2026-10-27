@@ -457,7 +457,8 @@ def test_khong_co_tai_khoan_nao(bo_module, may_chu):
     chay(md.nap({}))
     ma, _, noi_dung = chay(md.chat(than({}), stream=False))
     assert ma == 404
-    assert json.loads(noi_dung)["error"]["code"] == "missing_credentials"
+    # NV272: chat chưa có phiên trả mã rõ can_dang_nhap (thay mã chung cũ).
+    assert json.loads(noi_dung)["error"]["code"] == "can_dang_nhap"
     suc_khoe = chay(md.suc_khoe())
     assert suc_khoe["trang_thai"] == "chưa cấu hình"
     assert len(chay(md.models())) == 4
