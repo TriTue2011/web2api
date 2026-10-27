@@ -33,6 +33,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 .k268-nhom-dau{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
 .k268-nhom-dau button{font:inherit;font-size:15px;font-weight:700;color:var(--acc,#1d4ed8);background:none;border:0;padding:0;cursor:pointer}
 .k268-nhom-dau .n{color:var(--mute);font-size:12.5px}
+.k268-nhom-dau .k268-an{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:6px 12px;min-height:36px}
 .k268-loai{margin:0 0 10px 12px;padding-left:14px;border-left:2px solid var(--line)}
 .k268-loai-ten{font-size:12px;font-weight:600;color:var(--mute);margin:0 0 6px;letter-spacing:.03em}
 .k268-rong{font-size:12.5px;color:var(--mute);margin:0}
@@ -366,7 +367,8 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <section class="k268-ds" aria-label="Danh sách tài khoản">
 <sc-for list="{{khu.nhomDs}}" as="g">
 <div class="k268-nhom" data-k268-nhom="{{g.nhom}}">
-<div class="k268-nhom-dau"><button type="button" data-k268-loc="{{g.nhom}}" aria-pressed="{{g.dangLoc}}" onClick="{{g.loc}}">{{g.ten}}</button><span class="n">{{g.dem}} tài khoản</span></div>
+<div class="k268-nhom-dau"><button type="button" data-k268-loc="{{g.nhom}}" aria-pressed="{{g.dangLoc}}" onClick="{{g.loc}}">{{g.ten}}</button><span class="n">{{g.dem}} tài khoản</span><button type="button" class="k268-an" data-k268-an="{{g.nhom}}" aria-expanded="{{g.moRong}}" aria-label="{{g.anNhan}} nhóm {{g.ten}}" onClick="{{g.anNut}}">{{g.anNhan}}</button></div>
+<div class="k268-nhom-than" data-k268-than="{{g.nhom}}" hidden="{{g.an}}">
 <sc-if value="{{g.rong}}"><p class="k268-rong">Chưa có tài khoản nào trong nhóm này.</p></sc-if>
 <sc-for list="{{g.loaiDs}}" as="l">
 <div class="k268-loai" data-k268-loai="{{l.loai}}">
@@ -383,6 +385,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </div>
 </div>
 </sc-for>
+</div>
 </div>
 </sc-for>
 </section>
@@ -644,7 +647,7 @@ class Component extends DCLogic {
       tc: {},
       // NV221: tab Combo — danh sách combo, gợi ý thứ tự mặc định, tạo/xoá.
       cbDs: [], cbDangTai: false, cbGoiY: null, cbTenMoi: '', cbDangTao: false, cbDangGoiY: false, cbDangXoa: null,
-      tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null, khuNhom: '', khuChon: '', khuBiMatId: '', khuBiMat: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0,
+      khuAn: (() => { try { const v = JSON.parse(localStorage.getItem('w2a_khu_nhom_an') || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 50) : []; } catch (e) { return []; } })(), tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null, khuNhom: '', khuChon: '', khuBiMatId: '', khuBiMat: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
       mdLoc: '',
@@ -932,6 +935,15 @@ class Component extends DCLogic {
       khuChon: st.khuChon === id ? "" : id,
       khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0
     }));
+  }
+  khuAnNhom(n) {
+    // «Luôn ẩn» từng nhóm: nhớ theo trình duyệt này; chỉ là tiện ích hiển thị nên lỗi lưu thì bỏ qua.
+    this.setState((st) => {
+      const cu = Array.isArray(st.khuAn) ? st.khuAn : [];
+      const moi = cu.includes(n) ? cu.filter((x) => x !== n) : cu.concat([n]);
+      try { localStorage.setItem('w2a_khu_nhom_an', JSON.stringify(moi)); } catch (e) { /* không lưu được: vẫn ẩn trong phiên */ }
+      return { khuAn: moi };
+    });
   }
   khuDong() {
     this.khuXoaHen();
@@ -2383,6 +2395,13 @@ class Component extends DCLogic {
           chonTk: () => this.khuChonTk(t.id)
         };
       };
+      // «Luôn ẩn» theo từng nhóm: ẩn thân nhóm (đầu nhóm + số tài khoản vẫn hiện). Nhóm đang được lọc hoặc đang
+      // chứa ô được chọn thì KHÔNG ẩn, để bấm chip nhóm / mở liên kết tới tài khoản vẫn thấy.
+      const anNhom = (n, cac) => {
+        const daAn = (Array.isArray(s.khuAn) ? s.khuAn : []).includes(n)
+          && (s.khuNhom || "") !== n && !(s.khuChon && cac.some((t) => t.id === s.khuChon));
+        return { an: daAn, moRong: !daAn, anNhan: daAn ? "Hiện" : "Ẩn", anNut: () => this.khuAnNhom(n) };
+      };
       const thuTuNhom = (bang && Array.isArray(bang.nhom) && bang.nhom.length)
         ? bang.nhom.slice()
         : [...new Set(ds.map((t) => (t.nhom || "")).filter(Boolean))].sort();
@@ -2399,6 +2418,7 @@ class Component extends DCLogic {
         nhomDs.push({
           nhom: n, ten: tenTrongBangTk(bang, "ten_nhom", n) || n, dem: String(cac.length),
           rong: cac.length === 0, dangLoc: (s.khuNhom || "") === n,
+          ...anNhom(n, cac),
           loc: () => this.setState({ khuNhom: (s.khuNhom || "") === n ? "" : n, khuChon: "" }),
           loaiDs: thuTuLoai.map((l) => {
             const hang = cac.filter((t) => (t.loai_tai_khoan || "") === l);
@@ -2413,6 +2433,7 @@ class Component extends DCLogic {
       if (thua.length) nhomDs.push({
         nhom: "__chua_phan_nhom", ten: "Chưa phân nhóm", dem: String(thua.length),
         rong: false, dangLoc: (s.khuNhom || "") === "__chua_phan_nhom",
+        ...anNhom("__chua_phan_nhom", thua),
         loc: () => this.setState({ khuNhom: (s.khuNhom || "") === "__chua_phan_nhom" ? "" : "__chua_phan_nhom", khuChon: "" }),
         loaiDs: [{ loai: "", nhan: "", dem: String(thua.length), hang: thua.map(oCua) }]
       });

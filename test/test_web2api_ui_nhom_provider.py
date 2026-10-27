@@ -832,6 +832,40 @@ def test_chip_nhom_tai_khoan_xuong_dong_o_390px(trang, tmp_path, monkeypatch):
         assert not cuon, "hàng chip nhóm tự cuộn ngang thay vì xuống dòng"
 
 
+def test_an_tung_nhom_tai_khoan_nho_sau_khi_tai_lai(trang, tmp_path, monkeypatch):
+    """«Luôn ẩn» theo từng nhóm ở khu Tài khoản: bấm «Ẩn» thì thân nhóm (các ô tài khoản) biến mất nhưng đầu nhóm
+    vẫn hiện; tải lại trang vẫn ẩn (nhớ theo trình duyệt); nhóm KHÁC không bị ẩn; bấm «Hiện» thì hiện lại."""
+    with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
+        lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
+        gieo_tai_khoan_nhieu_model(w)
+        dang_nhap_quan_tri(trang, w.url)
+        trang.khung(390, 844, True)
+        url = w.url + "/He-thong-AI.dc.html#tai-khoan"
+        trang.di(url)
+        trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 3", han=15, mo_ta=">= 3 ô tài khoản")
+        # nhóm đầu tiên có ô tài khoản
+        nhom = trang.js("[...document.querySelectorAll('#k268 [data-k268-nhom]')]"
+                        ".find((g) => g.querySelector('.k268-tk')).getAttribute('data-k268-nhom')")
+        so_o_tong = trang.js("document.querySelectorAll('#k268 .k268-tk').length")
+        so_o_nhom = trang.js(f"document.querySelectorAll(\"#k268 [data-k268-nhom='{nhom}'] .k268-tk\").length")
+
+        trang.js(f"document.querySelector(\"[data-k268-an='{nhom}']\").click()")
+        trang.cho(f"document.querySelector(\"[data-k268-than='{nhom}']\").hidden === true", han=5, mo_ta="thân nhóm ẩn")
+        assert trang.js(f"document.querySelector(\"[data-k268-an='{nhom}']\").getAttribute('aria-expanded')") == "false"
+        # đầu nhóm vẫn hiện; ô của nhóm này không còn thấy, ô nhóm khác không đổi
+        assert trang.js(f"!!document.querySelector(\"[data-k268-loc='{nhom}']\").offsetParent")
+        assert trang.js("[...document.querySelectorAll('#k268 .k268-tk')].filter((b) => b.offsetParent).length") == so_o_tong - so_o_nhom
+
+        trang.di(url)
+        trang.js("location.reload()")
+        trang.cho("document.querySelectorAll('#k268 [data-k268-nhom]').length >= 1", han=15, mo_ta="khu Tài khoản dựng lại")
+        trang.cho(f"document.querySelector(\"[data-k268-than='{nhom}']\").hidden === true", han=8, mo_ta="vẫn ẩn sau khi tải lại")
+
+        trang.js(f"document.querySelector(\"[data-k268-an='{nhom}']\").click()")
+        trang.cho(f"document.querySelector(\"[data-k268-than='{nhom}']\").hidden === false", han=5, mo_ta="hiện lại")
+        trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="không tràn ngang")
+
+
 def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatch):
     """(e) ô lọc: gõ chuỗi => chỉ còn model khớp, đếm «n/m» đúng, xoá => đủ,
     model ẩn KHÔNG đổi trạng thái bật/tắt (đọc lại trạng thái sau lọc),
