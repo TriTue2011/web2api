@@ -166,7 +166,7 @@ class Module:
         # Khoá tài khoản đã đánh dấu hỏng (tầng c bỏ qua khi chọn kế).
         self._hong: set[str] = set()
         # Bộ điều khiển trình duyệt cho đăng nhập bằng mật khẩu (NV89):
-        # test gán; triển khai thật nối workspace vnc-xa (chưa có trong lượt này).
+        # test gán; triển khai thật nối qua tu_lam_moi.lay_trinh_duyet_da_dang_ky (NV92).
         self._tao_trinh_duyet = None
         # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
         self._trinh_duyet_da_dung = None
@@ -307,17 +307,24 @@ class Module:
         CAPTCHA/2FA/xác minh thiết bị → dừng với can_nguoi, KHÔNG cố vượt,
         không né phát hiện bot. Kiểm phiên bằng mã trạng thái/cấu trúc, không
         dò chữ trong thân phản hồi. CHƯA KIỂM với trang đăng nhập Google thật.
+
+        Mã lỗi RIÊNG, không chìm chung vào can_nguoi (sửa lỗi đăng nhập
+        tự động 2026-10-27, P0): ``trinh_duyet_none`` (chưa nối controller
+        thật), ``thu_thach_truoc_khi_dien`` (trang đã có tín hiệu thử thách
+        trước khi điền), ``het_gio`` (hết thời gian mở trang/đọc tín hiệu).
         """
         if trinh_duyet is None:
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+            return KetQuaDangNhap(False, ma_loi="trinh_duyet_none")
         try:
             await trinh_duyet.mo_trang(self._URL_DANG_NHAP)
             tin_hieu = await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu())
+        except (TimeoutError, asyncio.TimeoutError):
+            return KetQuaDangNhap(False, ma_loi="het_gio")
         except Exception:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if "captcha" in tin_hieu or "2fa" in tin_hieu or "xac_minh" in tin_hieu:
             # CAPTCHA/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
-            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+            return KetQuaDangNhap(False, ma_loi="thu_thach_truoc_khi_dien")
         mat_khau_tho = mat_khau.lay()
         try:
             await trinh_duyet.dien("email", email)
@@ -372,6 +379,11 @@ class Module:
                     return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
                 tao = self._tao_trinh_duyet
                 td = tao() if callable(tao) else None
+                if td is None:
+                    # NV92: chưa gán _tao_trinh_duyet thì lấy controller
+                    # thật đã đăng ký (vnc-xa qua dịch vụ trình duyệt);
+                    # chưa đăng ký -> None -> mã trinh_duyet_none rõ ràng.
+                    td = await tu_lam_moi.lay_trinh_duyet_da_dang_ky(self.tien_to)
                 self._trinh_duyet_da_dung = td
                 return await self._dang_nhap_bang_trinh_duyet(
                     tai_khoan.email, tai_khoan.mat_khau, td)
@@ -381,6 +393,11 @@ class Module:
                     return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
                 tao = self._tao_trinh_duyet
                 td = tao() if callable(tao) else None
+                if td is None:
+                    # NV92: chưa gán _tao_trinh_duyet thì lấy controller
+                    # thật đã đăng ký (vnc-xa qua dịch vụ trình duyệt);
+                    # chưa đăng ký -> None -> mã trinh_duyet_none rõ ràng.
+                    td = await tu_lam_moi.lay_trinh_duyet_da_dang_ky(self.tien_to)
                 self._trinh_duyet_da_dung = td
                 return await self._dang_nhap_bang_trinh_duyet(
                     tai_khoan.email, bm, td)
@@ -641,13 +658,15 @@ class Module:
             bm = tai_khoan.mat_khau
             if bm is None:
                 return KetQuaKhoiPhuc(False, tang="b", ma_loi="thieu_mat_khau")
+            if trinh_duyet is None:
+                trinh_duyet = await tu_lam_moi.lay_trinh_duyet_da_dang_ky(self.tien_to)
             kq = await self._dang_nhap_bang_trinh_duyet(
                 tai_khoan.email, bm, trinh_duyet)
             if kq.thanh_cong:
                 return KetQuaKhoiPhuc(True, tang="b")
             return KetQuaKhoiPhuc(False, tang="b", ma_loi=kq.ma_loi or "loi_module",
                                   ma_trang_thai=kq.ma_trang_thai,
-                                  can_nguoi=(kq.ma_loi == "can_nguoi"))
+                                  can_nguoi=(kq.ma_loi in ("can_nguoi", "thu_thach_truoc_khi_dien")))
         finally:
             if tai_khoan.mat_khau is not None:
                 tai_khoan.mat_khau.xoa()
