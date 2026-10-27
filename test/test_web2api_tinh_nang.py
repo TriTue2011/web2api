@@ -78,6 +78,17 @@ def test_ca_0_module(du_lieu):
                  "mui_gio": None, "phien": {"tong": 0, "can_dang_nhap": 0}, "co_combo": False}
 
 
+def test_mcp_chi_hien_o_pham_vi_khi_cong_mcp_bat(du_lieu, monkeypatch):
+    """Trang Khoá khách dựng ô phạm vi từ `kha_nang_da_cai`: cổng MCP bật thì có «mcp» để tạo khoá phạm vi
+    đúng ["mcp"]; tắt (mặc định) thì không hiện. Không module nào cung cấp «mcp», nên chỉ lõi thêm."""
+    monkeypatch.delenv("WEB2API_MCP_BAT", raising=False)
+    with TestClient(app) as c:
+        assert "mcp" not in tn(c)["kha_nang_da_cai"]
+    monkeypatch.setenv("WEB2API_MCP_BAT", "1")
+    with TestClient(app) as c:
+        assert tn(c)["kha_nang_da_cai"].get("mcp") == 1
+
+
 # ───────────── múi giờ của nhà: biến TZ → `mui_gio` ─────────────
 
 @pytest.mark.parametrize("tz, mong", [("Asia/Ho_Chi_Minh", "Asia/Ho_Chi_Minh"), (":Asia/Ho_Chi_Minh", "Asia/Ho_Chi_Minh"),

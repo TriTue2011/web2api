@@ -457,6 +457,10 @@ class SoModule:
             m = self.dang_chay.get(id_)
             if m is not None:  # module từ xa: lõi tự dựng manifest (ModuleTuXa) — dịch vụ nói chuẩn OpenAI = chat
                 ghi(id_, m.manifest, True)
+        # Cổng MCP là khả năng của LÕI (không do module nào cung cấp): khi bật thì trang Khoá khách có ô «mcp»
+        # để tạo khoá phạm vi đúng ["mcp"]. Tắt thì không hiện (khoá «*» không bao gồm khả năng này).
+        if os.environ.get("WEB2API_MCP_BAT", "").strip() == "1":
+            da_cai.setdefault("mcp", 1)
         thu_tu = sorted(loai.values(), key=lambda x: (x["thu_tu"] is None, x["thu_tu"] or 0, x["ma"]))
         return {"modules": modules, "loai": thu_tu, "kha_nang_da_cai": da_cai, "kha_nang_lien_ket": lien_ket,
                 "tab": tab, "muc": muc, "mui_gio": self.mui_gio, "phien": phien.thong_ke()}
