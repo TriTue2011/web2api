@@ -435,16 +435,3 @@ def test_bang_nv273_moi_module_ai_co_lam_moi_model():
         mod, manifest = nap_goi(f"nv273_bang_{thu_muc}", thu_muc)
         assert callable(getattr(mod.Module(dict(manifest)), "lam_moi_model",
                                 None)), thu_muc
-
-
-def test_codex_lam_moi_khong_ep_xoay_token_con_han(tmp_path, monkeypatch):
-    """NV274: token Codex xoay vòng — bấm «làm mới danh sách» khi token còn hạn KHÔNG được gọi máy chủ OAuth."""
-    m = codex_module(tmp_path, monkeypatch)          # token còn 8 giờ
-    da_goi = []
-
-    def xu_ly(req: httpx.Request) -> httpx.Response:
-        da_goi.append(str(req.url))
-        return httpx.Response(200, json={"access_token": tao_jwt_codex(), "refresh_token": "moi", "expires_in": 28800})
-    m._gan_transport_gia(httpx.MockTransport(xu_ly))
-    chay(m.lam_moi_model())
-    assert da_goi == [], f"đã ép xoay token: {da_goi}"

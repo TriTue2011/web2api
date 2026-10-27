@@ -592,7 +592,8 @@ class Module:
             if asyncio.iscoroutine(td):
                 td = await td
             return td
-        except Exception:
+        except Exception as _loi:
+            log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "_lay_trinh_duyet_module", type(_loi).__name__)
             return None
 
     def totp_da_luu(self, khoa: str):
@@ -605,7 +606,8 @@ class Module:
             return None
         try:
             ds = self.kho.doc("totp") or {}
-        except Exception:
+        except Exception as _loi:
+            log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "totp_da_luu", type(_loi).__name__)
             return None
         mk = ds.get(str(khoa or "").strip().lower()) if isinstance(ds, dict) else None
         return BiMatTotp(mk) if isinstance(mk, str) and mk else None
@@ -654,20 +656,23 @@ class Module:
         if not ma:
             try:
                 totp.xoa()
-            except Exception:
+            except Exception as _loi:
+                log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "_xu_ly_2fa", type(_loi).__name__)
                 pass
             return "can_nguoi"
         try:
             await trinh_duyet.dien("ma_xac_minh", ma)
             await trinh_duyet.bam("xac_nhan_2fa")
             return ""
-        except Exception:
+        except Exception as _loi:
+            log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "_xu_ly_2fa", type(_loi).__name__)
             return "loi_module"
         finally:
             ma = None  # noqa: F841
             try:
                 totp.xoa()
-            except Exception:
+            except Exception as _loi:
+                log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "_xu_ly_2fa", type(_loi).__name__)
                 pass
 
     def _lay_khoa_tu_dong(self):
@@ -760,12 +765,14 @@ class Module:
             if mat_khau_dung is not None:
                 try:
                     mat_khau_dung.xoa()
-                except Exception:
+                except Exception as _loi:
+                    log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "khoi_phuc_tu_dong", type(_loi).__name__)
                     pass
             if totp_dung is not None:
                 try:
                     totp_dung.xoa()
-                except Exception:
+                except Exception as _loi:
+                    log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "khoi_phuc_tu_dong", type(_loi).__name__)
                     pass
 
     def quy_tac_tin_hieu(self) -> list:
@@ -946,7 +953,8 @@ class Module:
             if totp is not None:
                 try:
                     totp.xoa()
-                except Exception:
+                except Exception as _loi:
+                    log.warning("%s: %s bỏ qua lỗi kiểu %s", self.tien_to, "dang_nhap_tu_dong", type(_loi).__name__)
                     pass
 
     def tai_khoan_ke(self, khoa: str) -> str | None:
