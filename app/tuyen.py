@@ -4311,7 +4311,10 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
         raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
     mat_khau, totp = bi_mat
     email = ban_ghi["email"] if ban_ghi else ""
-    mod = so.dang_chay.get(module_id)
+    # NV274: module CHƯA chạy mà có khả năng đăng nhập (vd chưa có cookie nên chưa nạp) vẫn đăng nhập được qua thể
+    # hiện tạm — cùng nguyên tắc với đường dán hàng loạt (`the_hien_cho_dang_nhap`). Trước đây chỉ nhìn `dang_chay`
+    # nên trả `chua_ho_tro` cho đúng module cần đăng nhập để LẤY cookie về (vòng tròn).
+    mod = so.the_hien_cho_dang_nhap(module_id)
     ham = getattr(mod, "dang_nhap", None) if mod is not None else None
     if not callable(ham):
         mat_khau.xoa()
@@ -4774,6 +4777,10 @@ async def _noi_cookie_dang_nhap_vao_module(so: Any, mod_thuc_thi: Any,
     if not isinstance(ho_so, str) or not ho_so:
         return False
     mod_sh = (getattr(so, "dang_chay", None) or {}).get(module_so_huu)
+    if mod_sh is None:
+        # NV274: module sở hữu đã cài nhưng CHƯA chạy (chưa có cookie): chỉ cần manifest để biết trường nhận cookie;
+        # `so.cai` bên dưới dựng thể hiện chạy cùng lúc lưu cookie.
+        mod_sh = (getattr(so, "catalog", None) or {}).get(module_so_huu)
     if mod_sh is None:
         return False
     truong = _truong_nhan_cookie_cua_module(mod_sh)

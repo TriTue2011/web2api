@@ -423,9 +423,11 @@ class Module:
         nên KHÔNG dùng làm nguồn và KHÔNG bịa đường dẫn kiểu
         /backend-api/codex/models. Nguồn là danh sách tĩnh đã khai trong
         manifest («model_tinh», khớp DANH_SACH_MODEL).
-        Bước «lấy lại» là làm mới token thật của từng tài khoản đang hoạt
-        động qua _lam_moi_tai_khoan đã có của module: ít nhất một tài khoản
-        làm mới được thì giữ danh sách tĩnh; mọi tài khoản đều hỏng thì ném
+        Bước «lấy lại» chỉ KIỂM token từng tài khoản đang hoạt động qua
+        _lam_moi_tai_khoan(ep=False): dùng token còn hạn trong cache, chỉ
+        xoay khi sắp hết hạn như lúc chạy bình thường (KHÔNG ép xoay mỗi lần
+        bấm: token Codex xoay vòng, ép xoay có thể làm hỏng tài khoản dùng
+        chung). Ít nhất một tài khoản dùng được thì giữ danh sách tĩnh; mọi tài khoản đều hỏng thì ném
         RuntimeError mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và KHÔNG
         xoá hay thay danh sách đang có. Làm mới token ở đây KHÔNG đánh dấu
         tài khoản hỏng (việc đó thuộc lam_moi_phien/chat); chỉ báo lỗi để
@@ -453,7 +455,7 @@ class Module:
         loi_mang = None
         for tk in hoat_dong:
             try:
-                kq = await self._lam_moi_tai_khoan(tk, ep=True)
+                kq = await self._lam_moi_tai_khoan(tk, ep=False)   # NV274: KHÔNG ép xoay token mỗi lần bấm làm mới danh sách
             except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
                 loi_mang = e
                 continue
