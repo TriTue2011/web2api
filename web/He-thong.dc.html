@@ -468,14 +468,14 @@ main.pg{padding:12px 16px 24px}
 </sc-if>
 <sc-if value="{{ct.dangHoiCai}}">
 <div role="alertdialog" aria-label="Xác nhận cài module" class="bao bao-vang" id="xac-nhan-cai" style="display:flex;flex-direction:column;gap:10px">
-<div>Cài module <strong>{{ct.hoiCai.ten}}</strong>?</div>
+<div>{{ct.hoiCai.tieuDe}} <strong>{{ct.hoiCai.ten}}</strong>?</div>
 <div class="phu" style="color:var(--ink)">
 <span>Nguồn: <code>{{ct.hoiCai.repo}}</code></span>
 <sc-if value="{{ct.hoiCai.coSha}}"> · commit <code>{{ct.hoiCai.sha}}</code></sc-if>
 <sc-if value="{{ct.hoiCai.coPhienBan}}"> · phiên bản <strong>{{ct.hoiCai.phien_ban}}</strong></sc-if>
 </div>
 <div style="display:flex;flex-direction:column;gap:4px">
-<span style="font-size:13px;font-weight:600">Quyền module xin:</span>
+<span style="font-size:13px;font-weight:600">{{ct.hoiCai.nhanQuyen}}</span>
 <sc-if value="{{ct.hoiCai.coQuyen}}">
 <ul style="margin:0;padding-left:18px;font-size:13px" class="ds-quyen">
 <sc-for list="{{ct.hoiCai.dsQuyen}}" as="q">
@@ -484,12 +484,20 @@ main.pg{padding:12px 16px 24px}
 </ul>
 </sc-if>
 <sc-if value="{{ct.hoiCai.khongQuyen}}">
-<span class="phu">Module không xin quyền truy cập đặc biệt nào.</span>
+<span class="phu">{{ct.hoiCai.khongQuyenChu}}</span>
+</sc-if>
+<sc-if value="{{ct.hoiCai.coBot}}">
+<span class="phu">Quyền bản mới bỏ bớt:</span>
+<ul style="margin:0;padding-left:18px;font-size:13px" class="ds-quyen-bot">
+<sc-for list="{{ct.hoiCai.dsBot}}" as="q">
+<li><strong>{{q.loai}}</strong>: {{q.ten}}</li>
+</sc-for>
+</ul>
 </sc-if>
 </div>
 <sc-if value="{{ct.hoiCai.loi}}"><p role="alert" class="bao bao-loi">{{ct.hoiCai.loi}}</p></sc-if>
 <div class="dong-nut">
-<button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-dong-y-cai" onClick="{{ct.dongYCai}}" disabled="{{ct.hoiCai.dang}}">Đồng ý cài</button>
+<button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-dong-y-cai" onClick="{{ct.dongYCai}}" disabled="{{ct.hoiCai.dang}}">{{ct.hoiCai.nutDongY}}</button>
 <button type="button" class="nut-chu" id="nut-huy-cai" onClick="{{ct.huyCai}}">Huỷ</button>
 </div>
 </div>
@@ -979,6 +987,24 @@ class Component extends DCLogic {
       return;
     }
 
+    if (ma === 409 && j && j.ma === 'can_duyet_quyen') {
+      // Bản mới của module ĐÃ cài xin thêm quyền (hoặc đổi mã): chưa kích hoạt, chờ quản trị xem diff rồi duyệt (hai bước).
+      const diff = j.diff || {};
+      this.setState((s) => ({
+        caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false } }),
+        hoiCai: {
+          id, duyet: true, buoc: 1, tuO,
+          sha_commit: j.sha_commit || '',
+          diff_them: Array.isArray(diff.them) ? diff.them : [],   // gửi lại NGUYÊN VẸN để khớp chính xác với phía máy chủ
+          quyen: Array.isArray(diff.them) ? diff.them : [],
+          bot: Array.isArray(diff.bot) ? diff.bot : [],
+          dang: false, loi: ''
+        }
+      }));
+      if (this.state.chon !== id) this.chonO(id);
+      return;
+    }
+
     if (ma >= 400) {
       const msg = (j && j.error && j.error.message) || (j && j.detail) || ('Máy chủ trả HTTP ' + ma);
       this.setState((s) => ({ caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, loi: msg } }) }));
@@ -1000,6 +1026,11 @@ class Component extends DCLogic {
     // NV255: chống gửi đúp — cờ toàn cục (không phụ thuộc instance), vì hai click đồng bộ
     // xảy ra trước khi setState kịp vẽ lại nút disabled; .click() lập trình vẫn kích hoạt dù nút đã disabled.
     if (!hc || hc.id !== id || hc.dang || window.__dangCaiNV255) return;
+    if (hc.duyet && hc.buoc === 1) {
+      // Duyệt quyền là hành động nguy hiểm: bước 1 chỉ để xem, bước 2 mới gửi (xac_nhan_lan_2).
+      this.setState((s) => ({ hoiCai: Object.assign({}, s.hoiCai, { buoc: 2, loi: '' }) }));
+      return;
+    }
     window.__dangCaiNV255 = true;
     this.setState((s) => ({
       hoiCai: Object.assign({}, s.hoiCai, { dang: true, loi: '' })
@@ -1008,7 +1039,9 @@ class Component extends DCLogic {
     try {
       res = await K.goi('api/nguon-git/cai/' + encodeURIComponent(id), {
         method: 'POST',
-        json: { xac_nhan: true, ma_xac_nhan: hc.ma_xac_nhan },
+        json: hc.duyet
+          ? { chap_nhan_quyen_them: hc.diff_them, sha_commit: hc.sha_commit, xac_nhan_lan_2: true }
+          : { xac_nhan: true, ma_xac_nhan: hc.ma_xac_nhan },
         chapNhan: [409]
       });
     } catch (e) {
@@ -1565,10 +1598,13 @@ class Component extends DCLogic {
     const kh222 = this.state.keHoach && this.state.keHoachId === x.id ? this.state.keHoach : null;
     const khKeHoach222 = kh222 && Array.isArray(kh222.ke_hoach) ? kh222.ke_hoach : [];
     if (hc) {
-      const dsQuyen = Array.isArray(hc.quyen) ? hc.quyen.map((q) => {
+      const mucQuyen = (q) => {
         if (typeof q === 'string') return { loai: 'Quyền', ten: q };
-        return { loai: (q && q.loai) || 'Quyền', ten: (q && (q.ten || q.mo_ta)) || '' };
-      }) : [];
+        const them = (q && q.tang_tu !== undefined && q.tang_len !== undefined) ? ' (tăng từ ' + q.tang_tu + ' lên ' + q.tang_len + ')' : '';
+        return { loai: (q && q.loai) || 'Quyền', ten: ((q && (q.ten || q.mo_ta)) || '') + them };
+      };
+      const dsQuyen = Array.isArray(hc.quyen) ? hc.quyen.map(mucQuyen) : [];
+      const dsBot = Array.isArray(hc.bot) ? hc.bot.map(mucQuyen) : [];
       // ---------- NV222: thông tin phụ thuộc ----------
     hoiCaiVM = {
         ten: x.info.ten || x.id,
@@ -1581,7 +1617,13 @@ class Component extends DCLogic {
         coQuyen: dsQuyen.length > 0,
         khongQuyen: dsQuyen.length === 0,
         loi: hc.loi || '',
-        dang: !!hc.dang
+        dang: !!hc.dang,
+        duyet: !!hc.duyet,
+        tieuDe: hc.duyet ? 'Duyệt quyền mới cho module' : 'Cài module',
+        nutDongY: hc.duyet ? (hc.buoc === 2 ? 'Xác nhận lần 2: duyệt và cập nhật' : 'Đã xem các quyền mới, tiếp tục') : 'Đồng ý cài',
+        nhanQuyen: hc.duyet ? 'Quyền MỚI bản này xin thêm (chưa được duyệt):' : 'Quyền module xin:',
+        khongQuyenChu: hc.duyet ? 'Bản mới đổi mã nhưng không xin thêm quyền nào.' : 'Module không xin quyền truy cập đặc biệt nào.',
+        dsBot, coBot: dsBot.length > 0
       };
     }
     const coNutCai = !chiHoiCai && coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi') && !hoiCaiVM;
@@ -1651,7 +1693,8 @@ class Component extends DCLogic {
       cai: () => this.caiTuGit(x.id, x.tt === 'chua-cai'), dangCai: !!cg.dang, caiLoi: cg.loi ? 'Chưa ' + (x.tt === 'ban-moi' ? 'cập nhật' : 'cài') + ' được: ' + cg.loi : '',
       caiTin: cg.tin ? cg.tin + (x.tt === 'cho-khoa' ? ' Bước tiếp theo: thêm tài khoản/khoá API bên dưới rồi bấm «Kiểm tra và lưu».' : '') : '',
       dangHoiCai: !!hoiCaiVM, hoiCai: hoiCaiVM || {},
-      dongYCai: (e) => { if (e && e.target) e.target.disabled = true; this.xacNhanCai(x.id); },
+      // Bước 1 của duyệt quyền chỉ chuyển sang bước 2 (nút phải còn bấm được); các trường hợp còn lại khoá nút chống bấm đúp.
+      dongYCai: (e) => { const h = this.state.hoiCai; if (e && e.target && !(h && h.duyet && h.buoc === 1)) e.target.disabled = true; this.xacNhanCai(x.id); },
       huyCai: () => this.huyCai(),
       coForm, buocTiep: !x.lienKet, tabMoi,
       laNutGpu: !!x.laNutGpu,
