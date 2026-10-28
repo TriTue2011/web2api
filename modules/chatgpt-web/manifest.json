@@ -28,7 +28,7 @@
       "nhan": "Trò chuyện"
     }
   ],
-  "phien_ban": "0.1.0",
+  "phien_ban": "0.1.1",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Dùng giao thức nội bộ của web app chatgpt.com (học luồng từ kho tham khảo chatgpt2api, không chính thức). OpenAI đổi web có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro. Giai đoạn này chưa gửi/nhận ảnh, video; chưa tự làm mới token (hết hạn thì dán lại).",

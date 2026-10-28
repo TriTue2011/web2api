@@ -2,7 +2,7 @@
   "id": "vnc-xa",
   "ten": "Trình duyệt từ xa (noVNC)",
   "mo_ta": "Cầu nối điều khiển dịch vụ trình duyệt từ xa qua noVNC để đăng nhập tay và lưu giữ hồ sơ phiên bền vững.",
-  "phien_ban": "0.2.0",
+  "phien_ban": "0.2.1",
   "hang": "A",
   "loai": "ai",
   "loai_ten": "AI",

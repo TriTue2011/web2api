@@ -29,7 +29,7 @@
     "id": "chatgpt",
     "ten": "ChatGPT"
   },
-  "phien_ban": "0.1.0",
+  "phien_ban": "0.1.1",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "RAM/đĩa chưa đo. Cần mạng ra tới auth.openai.com (đổi mã, làm mới token) và chatgpt.com (Codex Responses API, wham/usage). Bộ nghe callback OAuth chỉ nghe trên 127.0.0.1:1455 và tự đóng sau khi xong.",

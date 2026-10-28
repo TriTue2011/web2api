@@ -251,7 +251,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <button type="button" id="nut-dl-luu" disabled="{{them.dl.thieuLuu}}" onClick="{{them.dl.luu}}" style="{{them.dl.luuSt}}">Lưu tài khoản</button>
 <button type="button" id="nut-dl-luu-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.luuVaDangNhap}}" style="{{them.dl.luuVaDangNhapSt}}">Lưu và đăng nhập</button>
 <button type="button" id="nut-dl-chi-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.chiDangNhap}}" style="{{them.dl.chiDangNhapSt}}">Chỉ đăng nhập</button>
-<sc-if value="{{them.dl.coTrinhDuyet}}"><a id="nut-dl-trinh-duyet" href="{{them.dl.duongTrinhDuyet}}" target="_blank" style="{{them.dl.trinhDuyetSt}}">Mở {{them.dl.nhanTrinhDuyet}}</a></sc-if>
+
 </div>
 <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink);min-height:44px;cursor:pointer"><input type="checkbox" id="dl-tu-dong-lai" checked="{{them.dl.tuDongLai}}" onChange="{{them.dl.doiTuDongLai}}" style="width:20px;height:20px">Tự đăng nhập lại khi phiên hết hạn</label>
 <sc-if value="{{them.dl.coLoi}}"><p role="alert" id="loi-dl" style="margin:0;font-size:13px;color:#8A2A1E">{{them.dl.loi}}</p></sc-if>
@@ -348,7 +348,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </sc-if>
 <sc-if value="{{h.canNguoi}}">
 <div style="font-size:12px;color:var(--mute);padding:2px 0">
-<sc-if value="{{them.td.coDuongTrinhDuyet}}"><span><a href="{{them.td.duongTrinhDuyet}}" target="_blank" style="color:inherit;text-decoration:underline">Mở trình duyệt</a> để đăng nhập tay, rồi chạy lại.</span></sc-if>
+<span>Cần đăng nhập tay: bấm «Đăng nhập tay» trong chi tiết tài khoản, rồi chạy lại.</span>
 <sc-if value="{{them.td.khongDuongTrinhDuyet}}"><span>mở trang Trình duyệt từ xa để đăng nhập tay, rồi chạy lại.</span></sc-if>
 </div>
 </sc-if>
@@ -411,7 +411,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{khuCt.coLoi}}"><p role="alert" class="k268-loi">{{khuCt.loi}}</p></sc-if>
 <div class="k268-hd">
 <button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
-<sc-if value="{{khuCt.coTay}}"><a id="k268-dn-tay" href="{{khuCt.duongTay}}" target="_blank" class="k268-nut phu">Mở {{khuCt.nhanTay}}</a></sc-if>
+<sc-if value="{{khuCt.coTay}}"><button type="button" id="k268-dn-tay" onClick="{{khuCt.dangNhapTay}}" class="k268-nut phu" title="Mở trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if>
 </div>
 </sc-if>
 <sc-if value="{{khuCt.khongCo}}">
@@ -948,6 +948,34 @@ class Component extends DCLogic {
   khuDong() {
     this.khuXoaHen();
     this.setState({ khuChon: "", khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0 });
+  }
+  async khuDangNhapTay(id, modTd) {
+    // «Đăng nhập tay» (chủ máy: trình duyệt từ xa chỉ mở từ đây): hồ sơ trình duyệt RIÊNG của tài khoản, cố định theo id tài khoản
+    // (không dùng email), mở rồi xin vé noVNC và mở ở tab mới. Mở cửa sổ NGAY trong cú bấm để trình duyệt không chặn cửa sổ bật lên.
+    if (!modTd) return;
+    this.setState({ khuBiMatLoi: "" });
+    const w = (typeof window !== "undefined" && window.open) ? window.open("about:blank", "_blank") : null;
+    try {
+      let ho = "";
+      const mau = new TextEncoder().encode("tay:" + id);
+      if (typeof crypto !== "undefined" && crypto.subtle) {
+        const b = new Uint8Array(await crypto.subtle.digest("SHA-256", mau));
+        ho = Array.from(b).slice(0, 16).map((x) => x.toString(16).padStart(2, "0")).join("");
+      } else {                      // trang http (không có crypto.subtle): băm FNV-1a hai lượt, đủ để cố định hồ sơ theo id
+        let h1 = 0x811c9dc5, h2 = 0x01000193;
+        for (const x of mau) { h1 = Math.imul(h1 ^ x, 16777619) >>> 0; h2 = Math.imul(h2 + x, 2246822519) >>> 0; }
+        ho = (h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0")).repeat(2);
+      }
+      const goc = "api/trinh-duyet/" + encodeURIComponent(modTd);
+      await K.goi(goc + "/mo", { method: "POST", json: { loai: "chromium", ho_so: ho } });
+      const { j } = await K.goi(goc + "/" + ho + "/ve", { method: "POST", json: {} });
+      if (j && j.url && w) { w.location.href = j.url; }
+      else if (j && j.url) { window.open(j.url, "_blank"); }
+      else { if (w) w.close(); this.setState({ khuBiMatLoi: "Không mở được trình duyệt từ xa." }); }
+    } catch (e) {
+      if (w) w.close();
+      this.setState({ khuBiMatLoi: (e && e.message) || "Không mở được trình duyệt từ xa." });
+    }
   }
   async khuChep(txt) {
     try { await navigator.clipboard.writeText(txt); this.msg("Đã chép.", false); }
@@ -2493,9 +2521,8 @@ class Component extends DCLogic {
         hanMuc: nhanHanMucTk(t),
         dangNhapTuDong: () => this.dlDangNhapDaLuu(mod, id),
         tatDangNhap: !mod,
-        coTay: !!(dl.coTrinhDuyet && dl.duongTrinhDuyet),
-        duongTay: dl.duongTrinhDuyet || "",
-        nhanTay: dl.nhanTrinhDuyet || "trình duyệt"
+        coTay: !!modTd,
+        dangNhapTay: () => this.khuDangNhapTay(id, modTd && modTd.id)
       };
     })();
     const ql = tn ? K.quayLai(tn) : null;
