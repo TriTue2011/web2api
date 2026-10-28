@@ -132,9 +132,11 @@ def test_ai_page_khong_con_mo_tab_trinh_duyet():
     src = (GOC / "web" / "He-thong-AI.dc.html").read_text(encoding="utf-8")
     assert "Mở tab {{them.td.nhanTrinhDuyet}}" not in src
     assert "mở tab Trình duyệt để đăng nhập tay" not in src
-    assert "Mở trình duyệt" in src, "liên kết mở thẳng trang trình duyệt phải còn"
-    # đường dẫn trực tiếp vẫn lấy từ mục tab (giờ mang cờ ẩn)
-    assert "them.td.duongTrinhDuyet" in src
+    # Chủ máy chốt lại 28/10/2026 («tôi đã yêu cầu bỏ trình duyệt mà sao vẫn còn»): KHÔNG còn liên kết «Mở trình duyệt» rời; trình
+    # duyệt từ xa chỉ mở bằng nút «Đăng nhập tay» của từng tài khoản (test_nv274_dang_nhap_tay.py).
+    assert "Mở trình duyệt" not in src
+    assert "them.td.duongTrinhDuyet" not in src
+    assert 'id="k268-dn-tay"' in src
 
 
 def test_quyen_tab_web_khong_doi():

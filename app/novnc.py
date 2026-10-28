@@ -487,6 +487,9 @@ class MiddlewareBaoVeNoVNC:
 
 # ───────────── Tuyến API quản trị (/api/trinh-duyet) ─────────────
 
+#: Loại trình duyệt mở khi người gọi không nêu (nút «Đăng nhập tay» của giao diện không gửi trường này).
+LOAI_MAC_DINH = "chromium"
+
 api_router = APIRouter(prefix="/api/trinh-duyet", dependencies=QT)
 
 
@@ -509,8 +512,10 @@ async def api_mo_trinh_duyet(module: str, request: Request):
         raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
 
     loai = than.get("loai")
+    if loai is None:
+        loai = LOAI_MAC_DINH                      # giao diện không biết tên trình duyệt: lõi đặt mặc định
     if not isinstance(loai, str) or not loai.strip():
-        raise LoiOpenAI(400, "Thiếu trường «loai» (loại trình duyệt)")
+        raise LoiOpenAI(400, "Trường «loai» (loại trình duyệt) phải là chuỗi không rỗng")
     loai = loai.strip()
 
     ho_so = than.get("ho_so")

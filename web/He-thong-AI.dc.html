@@ -411,7 +411,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{khuCt.coLoi}}"><p role="alert" class="k268-loi">{{khuCt.loi}}</p></sc-if>
 <div class="k268-hd">
 <button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
-<sc-if value="{{khuCt.coTay}}"><button type="button" id="k268-dn-tay" onClick="{{khuCt.dangNhapTay}}" class="k268-nut phu" title="Mở trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if>
+<sc-if value="{{khuCt.coTay}}"><button type="button" id="k268-dn-tay" onClick="{{khuCt.dangNhapTay}}" class="k268-nut phu" title="Bật trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if>
 </div>
 </sc-if>
 <sc-if value="{{khuCt.khongCo}}">
@@ -951,7 +951,7 @@ class Component extends DCLogic {
   }
   async khuDangNhapTay(id, modTd) {
     // «Đăng nhập tay» (chủ máy: trình duyệt từ xa chỉ mở từ đây): hồ sơ trình duyệt RIÊNG của tài khoản, cố định theo id tài khoản
-    // (không dùng email), mở rồi xin vé noVNC và mở ở tab mới. Mở cửa sổ NGAY trong cú bấm để trình duyệt không chặn cửa sổ bật lên.
+    // (không dùng email), mở rồi xin vé xem và mở ở tab mới. Mở cửa sổ NGAY trong cú bấm để trình duyệt không chặn cửa sổ bật lên.
     if (!modTd) return;
     this.setState({ khuBiMatLoi: "" });
     const w = (typeof window !== "undefined" && window.open) ? window.open("about:blank", "_blank") : null;
@@ -967,7 +967,7 @@ class Component extends DCLogic {
         ho = (h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0")).repeat(2);
       }
       const goc = "api/trinh-duyet/" + encodeURIComponent(modTd);
-      await K.goi(goc + "/mo", { method: "POST", json: { loai: "chromium", ho_so: ho } });
+      await K.goi(goc + "/mo", { method: "POST", json: { ho_so: ho } });
       const { j } = await K.goi(goc + "/" + ho + "/ve", { method: "POST", json: {} });
       if (j && j.url && w) { w.location.href = j.url; }
       else if (j && j.url) { window.open(j.url, "_blank"); }

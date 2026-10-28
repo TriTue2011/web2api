@@ -40,3 +40,11 @@ def test_module_doi_ma_phai_tang_phien_ban():
         v = json.loads((GOC / "modules" / mod / "manifest.json").read_text(encoding="utf-8"))["phien_ban"]
         goc = cu.get(mod, "0.1.0")
         assert tuple(map(int, v.split("."))) > tuple(map(int, goc.split("."))), f"{mod}: {v} chưa mới hơn {goc}"
+
+
+def test_giao_dien_khong_gui_loai_trinh_duyet_loi_dat_mac_dinh():
+    """Giao diện (web/) không nhắc tên trình duyệt cụ thể; lõi (app/novnc.py) đặt mặc định khi thiếu «loai»."""
+    ham = HTML[HTML.index("async khuDangNhapTay"):][:2500]
+    assert "loai" not in ham
+    nguon = (GOC / "app" / "novnc.py").read_text(encoding="utf-8")
+    assert "LOAI_MAC_DINH" in nguon and 'loai = than.get("loai")' in nguon
