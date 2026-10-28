@@ -25,6 +25,10 @@ from urllib.parse import parse_qs, quote, urlsplit
 from urllib.request import Request, urlopen
 
 try:
+    from . import gioi_han
+except ImportError:  # chạy trực tiếp: python3 server.py
+    import gioi_han
+try:
     from .cau_hinh import CONG_MAC_DINH, giai_quyet_token_tich_hop, thu_muc_dich_vu
 except ImportError:  # chay truc tiep: python3 server.py
     from cau_hinh import CONG_MAC_DINH, giai_quyet_token_tich_hop, thu_muc_dich_vu
@@ -558,11 +562,11 @@ class PlayerCore:
         """Temporarily authorize Zing URLs that passed public search filters."""
         now = time.monotonic()
         with self.zing_result_lock:
-            self.zing_result_cache = {
+            self.zing_result_cache = gioi_han.cat_bo_nho_dem({
                 url: expiry
                 for url, expiry in self.zing_result_cache.items()
                 if expiry > now
-            }
+            })
             for item in results:
                 if (
                     not isinstance(item, dict)
@@ -692,6 +696,7 @@ class PlayerCore:
                 if value[0] >= now
             }
             self.stream_cache[key] = (now + stream_cache_seconds(resolved.get("url")), dict(resolved))
+            self.stream_cache = gioi_han.cat_bo_nho_dem(self.stream_cache, het_han=lambda gia_tri: gia_tri[0])
         return dict(resolved)
 
     def forget_stream(self, source, target):

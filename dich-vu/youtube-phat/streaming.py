@@ -34,6 +34,11 @@ from urllib.request import (
     build_opener,
 )
 
+try:
+    from . import gioi_han
+except ImportError:  # chạy phẳng (không như gói)
+    import gioi_han
+
 
 STREAM_SOURCES = ("zing", "youtube", "youtube_video", "facebook", "facebook_video")
 YOUTUBE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -586,6 +591,12 @@ def extract_with_yt_dlp(watch_url: str, timeout: int) -> dict:
     chỉ 1,1–1,8 giây. Khoảng chờ đó là lúc loa chưa kêu và mỗi lần bấm bài kế.
     """
     import yt_dlp  # nạp lần đầu dùng, sau đó Python giữ sẵn
+
+    with gioi_han.chiem_cho(timeout, StreamUnavailableError("extract_busy")):
+        return _extract_yt_dlp_da_chiem_cho(yt_dlp, watch_url, timeout)
+
+
+def _extract_yt_dlp_da_chiem_cho(yt_dlp, watch_url: str, timeout: int) -> dict:
 
     options = {
         "format": YOUTUBE_AUDIO_FORMAT,

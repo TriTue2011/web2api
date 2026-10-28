@@ -19,6 +19,10 @@ import json
 import re
 import subprocess
 import sys
+try:
+    from . import gioi_han
+except ImportError:  # chạy phẳng (không như gói)
+    import gioi_han
 from urllib.parse import parse_qs, quote_plus, urlsplit
 from urllib.request import (
     HTTPRedirectHandler,
@@ -352,13 +356,14 @@ def search_facebook(query, *, limit=1, timeout=30):
         f"https://www.facebook.com/watch/?v={video_id}",
     ]
     try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=timeout,
-        )
+        with gioi_han.chiem_cho(timeout, SearchUnavailableError("search_busy")):
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=timeout,
+            )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise SearchUnavailableError("search_process_failed") from error
     if completed.returncode != 0:
@@ -516,13 +521,14 @@ def search_youtube(query, *, limit=20, timeout=30):
         search_url,
     ]
     try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=timeout,
-        )
+        with gioi_han.chiem_cho(timeout, SearchUnavailableError("search_busy")):
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=timeout,
+            )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise SearchUnavailableError("search_process_failed") from error
     if completed.returncode != 0:
@@ -561,7 +567,8 @@ def fetch_youtube_playlist(text, *, limit=500, timeout=120):
         f"https://www.youtube.com/playlist?list={playlist_id}",
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, check=False, text=True, timeout=timeout)
+        with gioi_han.chiem_cho(timeout, SearchUnavailableError("search_busy")):
+            completed = subprocess.run(command, capture_output=True, check=False, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise SearchUnavailableError("search_process_failed") from error
     if completed.returncode != 0:
