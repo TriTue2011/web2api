@@ -2101,6 +2101,18 @@ class Module:
             return {"ok": False, "ma_loi": "dich_vu_loi"}
         return {"ok": True}
 
+    async def trinh_duyet_xem(self) -> dict:
+        """Đích để lõi mở noVNC XEM trình duyệt đang đăng nhập tự động (chủ máy 28/10/2026: «bấm tự động thì mở trình duyệt theo dõi
+        như c2a»). Dịch vụ chạy noVNC cổng 6080 (bật bằng CAPTCHA_SOLVER_BAT_NOVNC=1 ở tệp ghi đè cục bộ); lõi ghim đích, kiểm dải
+        mạng và cấp vé có hạn, module không cấp quyền xem cho ai. Không đụng tới dịch vụ: chỉ nói địa chỉ."""
+        from urllib.parse import urlsplit
+
+        goc = urlsplit(self._url)
+        if goc.scheme not in ("http", "https") or not goc.hostname:
+            raise RuntimeError("Địa chỉ dịch vụ không hợp lệ")
+        host = f"[{goc.hostname}]" if ":" in goc.hostname else goc.hostname
+        return {"dich": f"{goc.scheme}://{host}:6080", "loai": "novnc"}
+
     async def tien_do(self, ho_so: str, module_cua_tai_khoan: str = "") -> dict:
         """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b + NV210).
 

@@ -415,11 +415,15 @@ class SoModule:
             nguon_hs = self.dang_chay.get(id_) if lk else getattr(self.catalog.get(id_), "lop", None)
             dn = callable(getattr(nguon_hs, "dang_nhap", None))
             td = callable(getattr(nguon_hs, "tai_dung_ho_so", None))
+            # Module khai `trinh_duyet_xem` (cho phép XEM trình duyệt đang đăng nhập tự động): suy từ cấu trúc, giao diện không
+            # cần biết tên nhà cung cấp (NV276).
+            xem = callable(getattr(nguon_hs, "trinh_duyet_xem", None))
             nhom = man.get("nhom") if (not tu_xa and isinstance(man.get("nhom"), dict)) else None
             muc_mod = {"id": id_, "ten": man["ten"], "loai": man["loai"], "cung_cap": cc,
                             "tien_to": man["tien_to"], "tu_xa": tu_xa, "da_lien_ket": lk,
                             "dang_nhap_tu_dong": bool(dn),
                             "tai_dung_ho_so": bool(td),
+                            "xem_trinh_duyet": bool(xem),
                             "nhom": nhom}
             if tu_xa and lk:
                 m_tx = self.dang_chay.get(id_)

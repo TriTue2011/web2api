@@ -409,8 +409,10 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </dl>
 <p class="k268-ghi">Hạn mức: {{khuCt.hanMuc}}</p>
 <sc-if value="{{khuCt.coLoi}}"><p role="alert" class="k268-loi">{{khuCt.loi}}</p></sc-if>
+<sc-if value="{{khuCt.coBuoc}}"><p role="status" id="k268-dn-buoc" class="k268-ghi" style="font-weight:600">{{khuCt.buoc}}</p></sc-if>
 <div class="k268-hd">
 <button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
+<sc-if value="{{khuCt.coXem}}"><button type="button" id="k268-theo-doi" onClick="{{khuCt.moXem}}" class="k268-nut phu" title="Mở cửa sổ xem trình duyệt đang đăng nhập (lúc gặp xác minh bạn tự xử lý ngay trong đó)">Theo dõi</button></sc-if>
 <sc-if value="{{khuCt.coTay}}"><button type="button" id="k268-dn-tay" onClick="{{khuCt.dangNhapTay}}" class="k268-nut phu" title="Bật trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if>
 </div>
 </sc-if>
@@ -1117,8 +1119,54 @@ class Component extends DCLogic {
       this.setState({ dlDangLuu: false, dlLoi: (e && e.message) || 'Không lưu được tài khoản.' });
     }
   }
+  // Cửa sổ XEM trình duyệt đang đăng nhập (chủ máy 28/10/2026: «bấm tự động thì mở trình duyệt theo dõi như c2a»). Mở cửa sổ ngay trong
+  // cú bấm (không bị chặn cửa sổ bật lên), rồi nạp trang xem khi có vé. Trả cửa sổ để nơi gọi đóng lại khi xong.
+  async khuMoXem(modId, cua) {
+    if (!modId) return null;
+    const w = cua || ((typeof window !== "undefined" && window.open) ? window.open("about:blank", "_blank", "width=1024,height=720") : null);
+    try {
+      const { j } = await K.goi("api/trinh-duyet/" + encodeURIComponent(modId) + "/xem", { method: "POST" });
+      if (w && j && j.url) w.location.href = j.url;
+      else { if (w) w.close(); this.setState({ khuBiMatLoi: "Chưa mở được cửa sổ theo dõi trình duyệt." }); return null; }
+    } catch (e) {
+      if (w) w.close();
+      this.setState({ khuBiMatLoi: (e && e.message) ? "Chưa mở được cửa sổ theo dõi: " + e.message : "Chưa mở được cửa sổ theo dõi trình duyệt." });
+      return null;
+    }
+    return w;
+  }
+  // Hỏi bước đăng nhập đang chạy (2 giây/lần) để HIỆN trạng thái như c2a, thay vì im lặng tới khi xong. Dừng khi `luot.xong`.
+  async dlHienBuoc(id, moduleId, luot) {
+    for (let lan = 0; lan < 150 && !luot.xong; lan++) {
+      try {
+        const { j } = await K.goi("api/tai-khoan/da-luu/" + encodeURIComponent(id) + "/dang-nhap-trang-thai?module_id=" + encodeURIComponent(moduleId), {});
+        if (luot.xong) return;
+        const chu = (j && j.buoc) ? String(j.buoc) : "";
+        if (chu) this.setState((s) => ({ dlBuoc: Object.assign({}, s.dlBuoc, { [id]: chu }) }));
+      } catch (e) { /* hỏi lại lần sau */ }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
   async dlDangNhapDaLuu(chon, id) {
     if (!chon) { this.setState({ dlLoi: 'Chọn một nguồn AI trước.' }); return; }
+    const tnX = this.state.tn;
+    const modXem = (tnX && tnX.modules || []).find((m) => m.xem_trinh_duyet && m.da_lien_ket);
+    const cuaXem = modXem ? await this.khuMoXem(modXem.id) : null;     // mở cửa sổ xem NGAY (như c2a), rồi mới chạy đăng nhập
+    const luot = { xong: false };
+    this.setState((s) => ({ dlBuoc: Object.assign({}, s.dlBuoc, { [id]: 'Đang bắt đầu đăng nhập…' }) }));
+    this.dlHienBuoc(id, chon.id, luot);
+    let giaoNen = false;
+    try {
+      giaoNen = await this.dlDangNhapDaLuuLoi(chon, id, cuaXem);
+    } finally {
+      luot.xong = true;
+      if (!giaoNen) this.dlXoaBuoc(id);          // lượt chạy nền thì dlHoiTrangThai giữ và xoá dòng trạng thái khi xong
+    }
+  }
+  dlXoaBuoc(id) {
+    this.setState((s) => { const b = Object.assign({}, s.dlBuoc); delete b[id]; return { dlBuoc: b }; });
+  }
+  async dlDangNhapDaLuuLoi(chon, id, cuaXem) {
     this.setState({ dlLoi: '', dlCho2faId: '', dlCho2faModule: '', dlMa2fa: '' });
     try {
       // NV248: lần bấm lại sau khi nhận «cần người» gửi cờ tường minh
@@ -1129,7 +1177,7 @@ class Component extends DCLogic {
         method: 'POST', json: { module_id: chon.id, kiem_tra_lai: canNguoiTruoc }
       });
       const cn = Object.assign({}, (this.state || {}).dlCanNguoi);
-      if (j && j.thanh_cong) { delete cn[id]; this.setState({ dlCanNguoi: cn }); this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
+      if (j && j.thanh_cong) { try { if (cuaXem) cuaXem.close(); } catch (e2) { /* cửa sổ đã đóng */ } delete cn[id]; this.setState({ dlCanNguoi: cn }); this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
       else if (j && j.cho_2fa) {
         // NV145b: dịch vụ chờ mã 2FA → hiện ô nhập mã cho tài khoản này
         this.setState({ dlCho2faId: id, dlCho2faModule: chon.id });
@@ -1139,6 +1187,7 @@ class Component extends DCLogic {
         // NV145b: lượt đăng nhập nền vẫn chạy → hỏi trạng thái định kỳ
         this.msg('Đang đăng nhập trên dịch vụ — tự động cập nhật trạng thái…', false);
         this.dlHoiTrangThai(id, chon.id, 0);
+        return true;
       }
       else if (j && j.can_nguoi) { cn[id] = true; this.setState({ dlCanNguoi: cn }); this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); }
       else this.setState({ dlLoi: 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : '') });
@@ -1170,10 +1219,12 @@ class Component extends DCLogic {
   }
   async dlHoiTrangThai(id, moduleId, lan) {
     // NV145b: hỏi trạng thái lượt đăng nhập nền (mỗi 5 giây, tối đa ~5 phút)
-    if (lan > 60) { this.setState({ dlLoi: 'Lượt đăng nhập quá lâu — bấm «Đăng nhập» để kiểm tra lại.' }); return; }
+    if (lan > 60) { this.dlXoaBuoc(id); this.setState({ dlLoi: 'Lượt đăng nhập quá lâu — bấm «Đăng nhập» để kiểm tra lại.' }); return; }
     try {
       const { j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/dang-nhap-trang-thai?module_id=' + encodeURIComponent(moduleId), {});
       const gd = j && j.giai_doan;
+      if (gd === 'dang_chay' && j.buoc) this.setState((s) => ({ dlBuoc: Object.assign({}, s.dlBuoc, { [id]: String(j.buoc) }) }));
+      if (gd && gd !== 'dang_chay') this.dlXoaBuoc(id);
       if (gd === 'thanh_cong') { this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); return; }
       if (gd === 'cho_2fa') {
         this.setState({ dlCho2faId: id, dlCho2faModule: moduleId });
@@ -1853,6 +1904,8 @@ class Component extends DCLogic {
 
     const coCanNguoi = !!luot && (luot.ket_qua || []).some((b) => b.ma_loi === 'can_nguoi');
     const modTd = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('trinh_duyet'));
+    // Module cho XEM trình duyệt đang đăng nhập tự động (suy từ cấu trúc, đang chạy): có thì bấm «Đăng nhập tự động» sẽ mở cửa sổ xem.
+    const modXem = (tn && tn.modules || []).find((m) => m.xem_trinh_duyet && m.da_lien_ket);
     const tabTd = modTd ? (tn && tn.tab || []).find((t) => t.module === modTd.id) : null;
     const coDuongTrinhDuyet = !!tabTd;
     const duongTrinhDuyet = tabTd ? tabTd.duong : '';
@@ -1956,7 +2009,7 @@ class Component extends DCLogic {
           dlDs: [], dlChonId: '', dlEmail: '', dlDiaChi: '', dlKieuBiMat: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
           dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkDnhId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
           dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
-          dlXoaChon: '', dlMoDS: true, dlTuDongLai: true, dlCanNguoi: {}
+          dlXoaChon: '', dlMoDS: true, dlTuDongLai: true, dlCanNguoi: {}, dlBuoc: {}
         });
         if (mo) this.taiDlDs();
       }},
@@ -2521,6 +2574,8 @@ class Component extends DCLogic {
         hanMuc: nhanHanMucTk(t),
         dangNhapTuDong: () => this.dlDangNhapDaLuu(mod, id),
         tatDangNhap: !mod,
+        coBuoc: !!(s.dlBuoc || {})[id], buoc: (s.dlBuoc || {})[id] || "",
+        coXem: !!modXem, moXem: () => this.khuMoXem(modXem && modXem.id),
         coTay: !!modTd,
         dangNhapTay: () => this.khuDangNhapTay(id, modTd && modTd.id)
       };

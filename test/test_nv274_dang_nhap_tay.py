@@ -48,3 +48,19 @@ def test_giao_dien_khong_gui_loai_trinh_duyet_loi_dat_mac_dinh():
     assert "loai" not in ham
     nguon = (GOC / "app" / "novnc.py").read_text(encoding="utf-8")
     assert "LOAI_MAC_DINH" in nguon and 'loai = than.get("loai")' in nguon
+
+
+def test_dang_nhap_tu_dong_mo_cua_so_xem_va_hien_buoc_nhu_c2a():
+    """Chủ máy 28/10/2026: bấm «Đăng nhập tự động» phải MỞ trình duyệt theo dõi và HIỆN trạng thái như c2a. Kiểm tĩnh trên mã giao diện."""
+    assert 'id="k268-theo-doi"' in HTML and 'id="k268-dn-buoc"' in HTML
+    i = HTML.index("async dlDangNhapDaLuu(chon, id)")
+    ham = HTML[i:i + 2200]
+    # mở cửa sổ xem TRƯỚC khi gọi đăng nhập, rồi hỏi bước song song
+    assert ham.index("khuMoXem") < ham.index("dlDangNhapDaLuuLoi") and "dlHienBuoc" in ham
+    j = HTML.index("async khuMoXem(")
+    xem = HTML[j:j + 1400]
+    assert "window.open" in xem and "/xem" in xem and "w.location.href = j.url" in xem
+    # đăng nhập thành công thì đóng cửa sổ xem; cần người thì để mở
+    assert "cuaXem.close()" in HTML[HTML.index("async dlDangNhapDaLuuLoi"):][:3000]
+    # module cho xem do lõi công bố theo cấu trúc, giao diện không nêu tên nhà cung cấp
+    assert "m.xem_trinh_duyet && m.da_lien_ket" in HTML and "may-dang-nhap" not in HTML[j:j + 1400]

@@ -582,6 +582,45 @@ async def api_xin_ve(module: str, ho_so: str, request: Request):
     return {"ho_so": ho_so, "ve": ve, "url": f"/novnc/dang-nhap?ve={ve}"}
 
 
+def ho_so_xem(module: str) -> str:
+    """Mã hồ sơ CỐ ĐỊNH cho đường «xem» màn hình dịch vụ đang chạy (không phải hồ sơ người dùng mở): suy từ tên module, khớp mẫu hồ sơ."""
+    return hashlib.sha256(f"xem:{module}".encode("utf-8")).hexdigest()[:32]
+
+
+@api_router.post("/{module}/xem")
+async def api_xem_trinh_duyet(module: str, request: Request):
+    """Cấp vé noVNC để XEM trình duyệt dịch vụ đang chạy (đăng nhập tự động) — chủ máy 28/10/2026: «bấm tự động thì mở trình duyệt
+    theo dõi như c2a». Module khai đích bằng `trinh_duyet_xem()`; lõi ghim đích, chặn dải mạng, cấp vé một lần có hạn như các hồ sơ
+    khác. Không mở/đóng/đổi gì trên dịch vụ."""
+    mod = _module_co(request, module, "trinh_duyet_xem", "xem trình duyệt đang chạy")
+    try:
+        kq = await mod.trinh_duyet_xem()
+    except Exception as e:
+        log.warning("Module %s lỗi khi gọi trinh_duyet_xem: %s", module, _ten_loi(e))
+        raise LoiOpenAI(502, f"Module lỗi khi lấy địa chỉ xem trình duyệt ({_ten_loi(e)})")
+    if not isinstance(kq, dict) or not kq.get("dich"):
+        raise LoiOpenAI(502, "Kết quả từ module không đúng cấu trúc (cần có dich)")
+    try:
+        dich = await ghim_dich(str(kq["dich"]))
+    except ValueError as e:
+        raise LoiOpenAI(502, f"Đích xem trình duyệt không hợp lệ hoặc bị chặn: {e}")
+    ho_so = ho_so_xem(module)
+    with _KHOA:
+        cu = _HO_SO.get((module, ho_so))
+    if cu is not None and (cu["scheme"], cu["host"], cu["port"], cu["duong"], cu["ip"]) != (
+            dich["scheme"], dich["host"], dich["port"], dich["duong"], dich["ip"]):
+        # Dịch vụ khởi động lại thì địa chỉ nội bộ đổi: thu hồi mọi phiên cũ rồi ghim đích mới (khác hồ sơ người dùng mở, đích này
+        # do chính module đang chạy khai, không phải do người gọi).
+        thu_hoi_ho_so(module, ho_so)
+    with _KHOA:
+        _HO_SO[(module, ho_so)] = {**dich, "mod": mod, "loai": str(kq.get("loai") or "novnc"),
+                                  "luc_mo": datetime.now(timezone.utc).isoformat()}
+    ve = cap_ve(module, ho_so, nguoi_dung_id=lay_nguoi_dung_id(request))
+    nhat_ky.ghi("trinh_duyet", "thong_tin", f"Cấp vé xem trình duyệt của {module}",
+                module=module, ho_so=ho_so, hanh_dong="xem", ket_qua="thanh_cong")
+    return {"ho_so": ho_so, "ve": ve, "url": f"/novnc/dang-nhap?ve={ve}"}
+
+
 #: Trường của một mục hồ sơ theo hợp đồng `trinh_duyet_ds` — chỉ những trường này ra khỏi lõi (dịch vụ có thể trả
 #: kèm `dich` mang bí mật).
 _TRUONG_DS = ("ho_so", "ten", "loai", "trang_thai", "dang_mo", "thu_cong", "luc_mo")
