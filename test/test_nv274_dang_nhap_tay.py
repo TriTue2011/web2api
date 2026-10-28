@@ -67,3 +67,26 @@ def test_dang_nhap_tu_dong_hien_khung_xem_anh_va_buoc_nhu_c2a():
     assert "khuDong() {\n    this.khuDungXem();" in HTML
     # module cho xem do lõi công bố theo cấu trúc, giao diện không nêu tên nhà cung cấp
     assert "m.man_hinh && m.da_lien_ket" in HTML and "may-dang-nhap" not in xem
+
+
+def test_dang_nhap_tu_dong_goi_ben_thuc_thi_co_dich_vu_trinh_duyet_va_bao_loi_trong_bang():
+    """Chủ máy 28/10/2026 (ảnh chụp: khung xem trống, báo «chưa có trình duyệt nào mở», không thấy lỗi): giao diện gọi module SỞ HỮU tài khoản,
+    module đó cần trình duyệt từ xa nên trả lỗi ngay và không tới dịch vụ nào. Phải gọi module có dịch vụ trình duyệt thật, và hiện lỗi
+    ngay trong chi tiết tài khoản (bảng che thông báo chung của trang)."""
+    i = HTML.index("async dlDangNhapDaLuu(chon, id)")
+    ham = HTML[i:i + 2600]
+    assert "const bep = (modXem && modXem.dang_nhap_tu_dong) ? modXem : chon;" in ham
+    assert "dlDangNhapDaLuuLoi(bep, id)" in ham and "dlHienBuoc(id, bep.id, luot)" in ham
+    assert 'id="k268-dn-kq"' in HTML and "dlBao(id, chu, loi, chiPanel)" in HTML
+    i0 = HTML.index("async dlDangNhapDaLuuLoi")
+    loi = HTML[i0:HTML.index("async dlGuiMa2fa()", i0)]
+    assert "this.msg(" not in loi, "mọi thông báo của lượt đăng nhập phải qua dlBao (hiện cả trong bảng)"
+
+
+def test_khung_xem_khong_dung_the_anh_khi_chua_co_anh_va_co_the_phong_to():
+    """Ảnh chụp 28/10/2026: khung hiện biểu tượng ảnh hỏng khi chưa có ảnh; cần phóng to để theo dõi (điện thoại)."""
+    assert "coAnh: s.xemId === id && !!s.xemAnh" in HTML and "chuaAnh: s.xemId === id && !s.xemAnh" in HTML
+    assert '<sc-if value="{{khuCt.coAnh}}"><img id="k268-xem-anh"' in HTML
+    assert 'id="k268-xem-to"' in HTML and "khuPhongTo()" in HTML and "requestFullscreen" in HTML
+    assert ".k268-xem.to{position:fixed;inset:0" in HTML                         # dự phòng khi không có toàn màn hình: phủ kín cửa sổ
+    assert "xemTo: false" in HTML                                                # thoát khung xem thì thu nhỏ lại

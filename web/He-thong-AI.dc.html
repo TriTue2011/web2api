@@ -62,6 +62,13 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 .k268-loi{font-size:12.5px;margin:0;padding:8px 10px;border-radius:8px;border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12}
 .k268-hd{display:flex;gap:8px;flex-wrap:wrap}
 .k268-nut{font:inherit;font-weight:600;font-size:13px;border-radius:8px;padding:8px 14px;min-height:40px;cursor:pointer;border:1px solid #181816;background:#181816;color:#fff}
+.k268-xem{margin:6px 0;display:flex;flex-direction:column;gap:6px}
+.k268-xem img{width:100%;border:1px solid var(--line);border-radius:8px;background:#f3f3f3;cursor:zoom-in;display:block}
+.k268-xem-cho{border:1px dashed var(--line);border-radius:8px;background:#f7f7f5;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;font-size:13px}
+.k268-xem.to{position:fixed;inset:0;z-index:2147483000;background:#111;margin:0;padding:8px;border-radius:0;color:#fff;overflow:auto}
+.k268-xem.to img{max-width:100%;max-height:calc(100vh - 64px);width:auto;height:auto;margin:auto;object-fit:contain;cursor:zoom-out;border:0}
+.k268-xem.to .k268-xem-cho{flex:1;color:#ddd;background:#222;border-color:#555}
+.k268-xem.to .k268-ghi{color:#ddd}
 .k268-nut.phu{background:transparent;color:var(--ink);border-color:var(--line);text-decoration:none;display:inline-flex;align-items:center}
 .k268-nut[disabled]{opacity:.5;cursor:not-allowed}
 #k268-nen{display:none}
@@ -409,8 +416,13 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </dl>
 <p class="k268-ghi">Hạn mức: {{khuCt.hanMuc}}</p>
 <sc-if value="{{khuCt.coLoi}}"><p role="alert" class="k268-loi">{{khuCt.loi}}</p></sc-if>
+<sc-if value="{{khuCt.coKq}}"><p role="status" id="k268-dn-kq" class="{{khuCt.lopKq}}">{{khuCt.kq}}</p></sc-if>
 <sc-if value="{{khuCt.coBuoc}}"><p role="status" id="k268-dn-buoc" class="k268-ghi" style="font-weight:600">{{khuCt.buoc}}</p></sc-if>
-<sc-if value="{{khuCt.dangXem}}"><div id="k268-xem" style="margin:6px 0"><img id="k268-xem-anh" alt="Trang trình duyệt đang đăng nhập" src="{{khuCt.anhXem}}" style="width:100%;border:1px solid var(--line,#ccc);border-radius:8px;background:#f3f3f3;min-height:120px"><p class="k268-ghi">{{khuCt.chuXem}}</p></div></sc-if>
+<sc-if value="{{khuCt.dangXem}}"><div id="k268-xem" class="{{khuCt.lopXem}}">
+<sc-if value="{{khuCt.coAnh}}"><img id="k268-xem-anh" alt="Trang trình duyệt đang đăng nhập" src="{{khuCt.anhXem}}" onClick="{{khuCt.phongTo}}"></sc-if>
+<sc-if value="{{khuCt.chuaAnh}}"><div class="k268-xem-cho" id="k268-xem-cho">{{khuCt.chuXem}}</div></sc-if>
+<p class="k268-ghi"><sc-if value="{{khuCt.coAnh}}">{{khuCt.chuXem}} </sc-if><button type="button" id="k268-xem-to" class="k268-nut-nho" onClick="{{khuCt.phongTo}}">{{khuCt.nhanTo}}</button></p>
+</div></sc-if>
 <div class="k268-hd">
 <button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
 <sc-if value="{{khuCt.coXem}}"><button type="button" id="k268-theo-doi" onClick="{{khuCt.moXem}}" class="k268-nut phu" title="Xem trang trình duyệt đang đăng nhập (ảnh làm mới liên tục; cần can thiệp thì dùng «Đăng nhập tay»)">{{khuCt.nhanXem}}</button></sc-if>
@@ -950,6 +962,7 @@ class Component extends DCLogic {
   }
   khuDong() {
     this.khuDungXem();
+    this.setState({ khuKq: null });
     this.khuXoaHen();
     this.setState({ khuChon: "", khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0 });
   }
@@ -1156,11 +1169,22 @@ class Component extends DCLogic {
       }
     })();
   }
+  // Phóng to khung xem: dùng chế độ toàn màn hình của trình duyệt khi có, nếu không thì phủ kín cửa sổ (đủ để đọc trên điện thoại).
+  khuPhongTo() {
+    const to = !(this.state || {}).xemTo;
+    this.setState({ xemTo: to });
+    try {
+      const el = typeof document !== "undefined" ? document.getElementById("k268-xem") : null;
+      if (to && el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      else if (!to && typeof document !== "undefined" && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    } catch (e) { /* không có toàn màn hình: giữ kiểu phủ kín cửa sổ */ }
+  }
   khuDungXem() {
     const l = this._xem;
     if (l) { l.dung = true; if (l.url) { try { URL.revokeObjectURL(l.url); } catch (e) { /* đã thu hồi */ } } }
     this._xem = null;
-    this.setState({ xemId: "", xemAnh: "", xemLoi: "" });
+    this.setState({ xemId: "", xemAnh: "", xemLoi: "", xemTo: false });
+    try { if (typeof document !== "undefined" && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {}); } catch (e) { /* đã thoát */ }
   }
   // Hỏi bước đăng nhập đang chạy (2 giây/lần) để HIỆN trạng thái như c2a, thay vì im lặng tới khi xong. Dừng khi `luot.xong`.
   async dlHienBuoc(id, moduleId, luot) {
@@ -1179,18 +1203,26 @@ class Component extends DCLogic {
     const tnX = this.state.tn;
     const modXem = (tnX && tnX.modules || []).find((m) => m.man_hinh && m.da_lien_ket);
     if (modXem) this.khuBatXem(modXem.id, id, true);                    // hiện khung xem NGAY (như c2a mở trình duyệt), rồi mới chạy đăng nhập
+    // Bên THỰC THI đăng nhập: module có dịch vụ trình duyệt thật (cùng module cho xem ảnh) khi có. Trước đây luôn gọi module SỞ HỮU tài
+    // khoản; module đó cần trình duyệt từ xa nên trả lỗi ngay, không tới dịch vụ nào, và khung xem luôn trống.
+    const bep = (modXem && modXem.dang_nhap_tu_dong) ? modXem : chon;
     const luot = { xong: false };
-    this.setState((s) => ({ dlBuoc: Object.assign({}, s.dlBuoc, { [id]: 'Đang bắt đầu đăng nhập…' }) }));
-    this.dlHienBuoc(id, chon.id, luot);
+    this.setState((s) => ({ khuKq: null, dlBuoc: Object.assign({}, s.dlBuoc, { [id]: 'Đang bắt đầu đăng nhập…' }) }));
+    this.dlHienBuoc(id, bep.id, luot);
     let giaoNen = false;
     try {
-      giaoNen = await this.dlDangNhapDaLuuLoi(chon, id);
+      giaoNen = await this.dlDangNhapDaLuuLoi(bep, id);
     } finally {
       luot.xong = true;
       if (!giaoNen) this.dlXoaBuoc(id);          // lượt chạy nền thì dlHoiTrangThai giữ và xoá dòng trạng thái khi xong
       // Đăng nhập xong mà chưa thành công (lỗi/cần người): giữ khung xem 30 giây để đọc màn hình cuối, rồi thôi hỏi ảnh (không chụp mãi).
       if (modXem && !this._xemTay) setTimeout(() => { if (!this._xemTay && (this.state || {}).xemId === id) this.khuDungXem(); }, 30000);
     }
+  }
+  // Báo kết quả đăng nhập NGAY trong chi tiết tài khoản (bảng này che thông báo chung của trang nên trước đây lỗi không thấy).
+  dlBao(id, chu, loi, chiPanel) {
+    if (!chiPanel) this.msg(chu, !!loi);
+    this.setState({ khuKq: { id, chu: String(chu), loi: !!loi } });
   }
   dlXoaBuoc(id) {
     this.setState((s) => { const b = Object.assign({}, s.dlBuoc); delete b[id]; return { dlBuoc: b }; });
@@ -1206,22 +1238,22 @@ class Component extends DCLogic {
         method: 'POST', json: { module_id: chon.id, kiem_tra_lai: canNguoiTruoc }
       });
       const cn = Object.assign({}, (this.state || {}).dlCanNguoi);
-      if (j && j.thanh_cong) { this.khuDungXem(); delete cn[id]; this.setState({ dlCanNguoi: cn }); this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
+      if (j && j.thanh_cong) { this.khuDungXem(); delete cn[id]; this.setState({ dlCanNguoi: cn }); this.dlBao(id, 'Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
       else if (j && j.cho_2fa) {
         // NV145b: dịch vụ chờ mã 2FA → hiện ô nhập mã cho tài khoản này
         this.setState({ dlCho2faId: id, dlCho2faModule: chon.id });
-        this.msg('Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        this.dlBao(id, 'Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
       }
       else if (j && j.ma_loi === 'dang_chay') {
         // NV145b: lượt đăng nhập nền vẫn chạy → hỏi trạng thái định kỳ
-        this.msg('Đang đăng nhập trên dịch vụ — tự động cập nhật trạng thái…', false);
+        this.dlBao(id, 'Đang đăng nhập trên dịch vụ — tự động cập nhật trạng thái…', false);
         this.dlHoiTrangThai(id, chon.id, 0);
         return true;
       }
-      else if (j && j.can_nguoi) { cn[id] = true; this.setState({ dlCanNguoi: cn }); this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); }
-      else this.setState({ dlLoi: 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : '') });
+      else if (j && j.can_nguoi) { cn[id] = true; this.setState({ dlCanNguoi: cn }); this.dlBao(id, 'Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); }
+      else { const t = 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : ''); this.setState({ dlLoi: t }); this.dlBao(id, t, true, true); }
     } catch (e) {
-      this.setState({ dlLoi: (e && e.message) || 'Không đăng nhập được.' });
+      { const t = (e && e.message) || 'Không đăng nhập được.'; this.setState({ dlLoi: t }); this.dlBao(id, t, true, true); }
     }
   }
   async dlGuiMa2fa() {
@@ -1237,7 +1269,7 @@ class Component extends DCLogic {
       });
       if (j && j.thanh_cong) {
         this.setState({ dlCho2faId: '', dlCho2faModule: '' });
-        this.msg('Đã gửi mã — đang chờ dịch vụ xác nhận…', false);
+        this.dlBao(id, 'Đã gửi mã — đang chờ dịch vụ xác nhận…', false);
         this.dlHoiTrangThai(id, moduleId, 0);
       } else {
         this.setState({ dlLoi: 'Gửi mã chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') });
@@ -1254,14 +1286,14 @@ class Component extends DCLogic {
       const gd = j && j.giai_doan;
       if (gd === 'dang_chay' && j.buoc) this.setState((s) => ({ dlBuoc: Object.assign({}, s.dlBuoc, { [id]: String(j.buoc) }) }));
       if (gd && gd !== 'dang_chay') this.dlXoaBuoc(id);
-      if (gd === 'thanh_cong') { this.msg('Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); return; }
+      if (gd === 'thanh_cong') { this.dlBao(id, 'Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); return; }
       if (gd === 'cho_2fa') {
         this.setState({ dlCho2faId: id, dlCho2faModule: moduleId });
-        this.msg('Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        this.dlBao(id, 'Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
         return;
       }
-      if (gd === 'can_nguoi') { this.msg('Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); return; }
-      if (gd === 'loi') { this.setState({ dlLoi: 'Đăng nhập chưa được' + (j.ma_loi ? ' (' + j.ma_loi + ').' : '.') }); return; }
+      if (gd === 'can_nguoi') { this.dlBao(id, 'Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); return; }
+      if (gd === 'loi') { { const t = 'Đăng nhập chưa được' + (j.ma_loi ? ' (' + j.ma_loi + ').' : '.'); this.setState({ dlLoi: t }); this.dlBao(id, t, true, true); } return; }
     } catch (e) { /* hỏi lại lần sau */ }
     setTimeout(() => this.dlHoiTrangThai(id, moduleId, lan + 1), 5000);
   }
@@ -2607,7 +2639,12 @@ class Component extends DCLogic {
         coXem: !!modXem, moXem: () => this.khuBatXem(modXem && modXem.id),
         nhanXem: s.xemId === id ? "Ẩn trình duyệt" : "Theo dõi",
         dangXem: s.xemId === id, anhXem: s.xemId === id ? (s.xemAnh || "") : "",
+        coAnh: s.xemId === id && !!s.xemAnh, chuaAnh: s.xemId === id && !s.xemAnh,       // chưa có ảnh thì KHÔNG dựng thẻ ảnh (tránh biểu tượng ảnh hỏng)
         chuXem: s.xemLoi || "Ảnh làm mới mỗi giây.",
+        lopXem: s.xemTo ? "k268-xem to" : "k268-xem", phongTo: () => this.khuPhongTo(),
+        nhanTo: s.xemTo ? "Thu nhỏ" : "Phóng to",
+        coKq: !!(s.khuKq && s.khuKq.id === id), kq: (s.khuKq && s.khuKq.id === id) ? s.khuKq.chu : "",
+        lopKq: (s.khuKq && s.khuKq.loi) ? "k268-loi" : "k268-ghi",
         coTay: !!modTd,
         dangNhapTay: () => this.khuDangNhapTay(id, modTd && modTd.id)
       };
