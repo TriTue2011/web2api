@@ -2,7 +2,7 @@
   "id": "may-dang-nhap",
   "ten": "Máy đăng nhập tự động — client của dịch vụ máy đăng nhập",
   "mo_ta": "Client HTTP mỏng gọi dịch vụ dich-vu/may-dang-nhap (cổng 8010, Bearer) để tự động hoá các bước đăng nhập hợp lệ của chính chủ tài khoản. Module chỉ là cầu nối; mọi logic đăng nhập nằm ở dịch vụ. Đầu ra dịch vụ là dữ liệu không tin: cắt ở trần, gắn nguon_ngoai.",
-  "phien_ban": "0.1.2",
+  "phien_ban": "0.1.3",
   "hang": "B",
   "loai": "ai",
   "loai_ten": "AI",

@@ -1425,6 +1425,15 @@ async def api_auto_login_sessions() -> dict[str, Any]:
     return {"sessions": list_login_sessions()}
 
 
+@app.get("/v1/man-hinh", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_man_hinh() -> Response:
+    """Ảnh JPEG của trang trình duyệt đang đăng nhập (xem lỗi ở đâu). 404 khi chưa có trình duyệt nào mở. Không lộ tên hồ sơ."""
+    anh = await pool.chup_man_hinh()
+    if anh is None:
+        raise HTTPException(status_code=404, detail="Chưa có trình duyệt nào đang mở")
+    return Response(content=anh, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/v1/session/{profile}/warmup", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
 async def api_session_warmup(profile: str, provider: str = "gemini_web") -> dict[str, Any]:
     """Khởi động ngầm trình duyệt (warm up) để giảm độ trễ cho câu hỏi đầu tiên."""

@@ -421,6 +421,39 @@ class BrowserPool:
     def dang_dang_nhap(self, profile: str) -> bool:
         return profile in self._dang_dang_nhap
 
+    async def chup_man_hinh(self) -> bytes | None:
+        """Ảnh JPEG của trang trình duyệt đang ĐĂNG NHẬP (nếu có), không thì của hồ sơ vừa dùng gần nhất; ``None`` khi chưa có trình
+        duyệt nào đang mở.
+
+        Để chủ máy XEM lỗi nằm ở đâu khi đăng nhập tự động (28/10/2026, như c2a mở noVNC) mà KHÔNG phải mở thêm dịch vụ nào ra mạng:
+        đi qua API có khoá sẵn của dịch vụ. Chỉ chụp khi có người hỏi, có hạn thời gian, và MỘT lần chụp tại một thời điểm (hỏi dồn thì
+        dùng lại ảnh vừa chụp trong 0,8 giây) nên không làm nghẽn trình duyệt đang đăng nhập."""
+        now = time.monotonic()
+        anh_cu = getattr(self, "_anh_cuoi", None)
+        if anh_cu is not None and now - anh_cu[0] < 0.8:
+            return anh_cu[1]
+        khoa = getattr(self, "_khoa_chup", None)
+        if khoa is None:
+            khoa = self._khoa_chup = asyncio.Lock()
+        if khoa.locked():
+            return anh_cu[1] if anh_cu is not None else None
+        async with khoa:
+            dang = [p for p in self._dang_dang_nhap if p in self._contexts]
+            ten = dang[0] if dang else max(self._contexts, key=lambda p: self._contexts[p].last_used, default=None)
+            if ten is None:
+                return None
+            ctx = self._contexts[ten].ctx
+            try:
+                trang = [p for p in ctx.pages if not p.is_closed()]
+                if not trang:
+                    return None
+                anh = await asyncio.wait_for(trang[-1].screenshot(type="jpeg", quality=55, timeout=3000), timeout=4)
+            except Exception as exc:  # noqa: BLE001 - trình duyệt đóng giữa chừng / trang đang chuyển: coi như chưa có ảnh
+                logger.info("chụp màn hình trình duyệt không được: %s", type(exc).__name__)
+                return None
+            self._anh_cuoi = (time.monotonic(), anh)
+            return anh
+
     async def start(self) -> None:
         browser = settings.browser.lower()
         # W2A: NV206 — điều kiện chung: dịch vụ KHÔNG được khởi động bình thường

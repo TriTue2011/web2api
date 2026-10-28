@@ -2101,17 +2101,33 @@ class Module:
             return {"ok": False, "ma_loi": "dich_vu_loi"}
         return {"ok": True}
 
-    async def trinh_duyet_xem(self) -> dict:
-        """Đích để lõi mở noVNC XEM trình duyệt đang đăng nhập tự động (chủ máy 28/10/2026: «bấm tự động thì mở trình duyệt theo dõi
-        như c2a»). Dịch vụ chạy noVNC cổng 6080 (bật bằng CAPTCHA_SOLVER_BAT_NOVNC=1 ở tệp ghi đè cục bộ); lõi ghim đích, kiểm dải
-        mạng và cấp vé có hạn, module không cấp quyền xem cho ai. Không đụng tới dịch vụ: chỉ nói địa chỉ."""
-        from urllib.parse import urlsplit
-
-        goc = urlsplit(self._url)
-        if goc.scheme not in ("http", "https") or not goc.hostname:
-            raise RuntimeError("Địa chỉ dịch vụ không hợp lệ")
-        host = f"[{goc.hostname}]" if ":" in goc.hostname else goc.hostname
-        return {"dich": f"{goc.scheme}://{host}:6080", "loai": "novnc"}
+    async def man_hinh(self) -> bytes | None:
+        """Ảnh JPEG của trang trình duyệt đang đăng nhập tự động trên dịch vụ (chủ máy 28/10/2026: «bấm tự động thì xem được trình
+        duyệt đang làm gì, như c2a»). Gọi API có khoá sẵn của dịch vụ (không mở thêm cổng nào); cùng bộ kiểm SSRF/ghim IP như mọi lời gọi
+        khác của module. ``None`` khi chưa có trình duyệt nào mở (404). Ảnh chỉ đi tới quản trị qua lõi, không lưu."""
+        try:
+            url_goc = await _kiem_url_dich_vu(self._url)
+        except ValueError as e:
+            raise RuntimeError(str(e)) from None
+        headers = {"Authorization": f"Bearer {self._khoa}"} if self._khoa else {}
+        transport = TransportGhimIp(kiem_ip=_dia_chi_bi_chan_dich_vu)
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=HET_GIO_GOI, follow_redirects=False) as client:
+                res = await client.send(client.build_request("GET", f"{url_goc}/v1/man-hinh", headers=headers), stream=True)
+                try:
+                    than = await doc_phan_hoi_co_tran(res, tran_bytes=1536 * 1024)
+                except PhanHoiQuaLon:
+                    raise RuntimeError("Ảnh từ dịch vụ vượt trần kích thước") from None
+        except httpx.TimeoutException:
+            raise RuntimeError("Hết giờ kết nối tới dịch vụ") from None
+        except httpx.RequestError as e:
+            log.warning("khong_noi_duoc_dich_vu: %s", type(e).__name__)
+            raise RuntimeError("Không kết nối được tới dịch vụ") from None
+        if res.status_code == 404:
+            return None
+        if res.status_code != 200 or not than.startswith(b"\xff\xd8"):          # không phải JPEG thì bỏ, không chuyển tiếp lạ
+            raise RuntimeError(f"Dịch vụ trả mã {res.status_code} cho ảnh màn hình")
+        return than
 
     async def tien_do(self, ho_so: str, module_cua_tai_khoan: str = "") -> dict:
         """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b + NV210).

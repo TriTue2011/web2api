@@ -50,17 +50,20 @@ def test_giao_dien_khong_gui_loai_trinh_duyet_loi_dat_mac_dinh():
     assert "LOAI_MAC_DINH" in nguon and 'loai = than.get("loai")' in nguon
 
 
-def test_dang_nhap_tu_dong_mo_cua_so_xem_va_hien_buoc_nhu_c2a():
-    """Chủ máy 28/10/2026: bấm «Đăng nhập tự động» phải MỞ trình duyệt theo dõi và HIỆN trạng thái như c2a. Kiểm tĩnh trên mã giao diện."""
-    assert 'id="k268-theo-doi"' in HTML and 'id="k268-dn-buoc"' in HTML
+def test_dang_nhap_tu_dong_hien_khung_xem_anh_va_buoc_nhu_c2a():
+    """Chủ máy 28/10/2026: bấm «Đăng nhập tự động» phải cho XEM trình duyệt đang làm gì và HIỆN trạng thái như c2a. Kiểm tĩnh."""
+    assert 'id="k268-theo-doi"' in HTML and 'id="k268-dn-buoc"' in HTML and 'id="k268-xem-anh"' in HTML
     i = HTML.index("async dlDangNhapDaLuu(chon, id)")
-    ham = HTML[i:i + 2200]
-    # mở cửa sổ xem TRƯỚC khi gọi đăng nhập, rồi hỏi bước song song
-    assert ham.index("khuMoXem") < ham.index("dlDangNhapDaLuuLoi") and "dlHienBuoc" in ham
-    j = HTML.index("async khuMoXem(")
-    xem = HTML[j:j + 1400]
-    assert "window.open" in xem and "/xem" in xem and "w.location.href = j.url" in xem
-    # đăng nhập thành công thì đóng cửa sổ xem; cần người thì để mở
-    assert "cuaXem.close()" in HTML[HTML.index("async dlDangNhapDaLuuLoi"):][:3000]
+    ham = HTML[i:i + 2600]
+    # hiện khung xem TRƯỚC khi gọi đăng nhập, rồi hỏi bước song song
+    assert ham.index("khuBatXem") < ham.index("dlDangNhapDaLuuLoi") and "dlHienBuoc" in ham
+    j = HTML.index("khuBatXem(modId, id, chiBat)")
+    xem = HTML[j:j + 2600]
+    # ảnh lấy bằng yêu cầu có phiên (không đặt khoá vào địa chỉ ảnh), mỗi giây, dừng sau nhiều lần lỗi
+    assert "/man-hinh" in xem and 'credentials: "same-origin"' in xem and "setTimeout(r, 1000)" in xem and "soLoi >= 20" in xem
+    assert "revokeObjectURL" in HTML[HTML.index("khuDungXem() {"):][:600]
+    # thành công thì đóng khung xem; đóng bảng chi tiết thì dừng hỏi ảnh
+    assert "this.khuDungXem(); delete cn[id]" in HTML
+    assert "khuDong() {\n    this.khuDungXem();" in HTML
     # module cho xem do lõi công bố theo cấu trúc, giao diện không nêu tên nhà cung cấp
-    assert "m.xem_trinh_duyet && m.da_lien_ket" in HTML and "may-dang-nhap" not in HTML[j:j + 1400]
+    assert "m.man_hinh && m.da_lien_ket" in HTML and "may-dang-nhap" not in xem
