@@ -1032,6 +1032,7 @@ class Component extends DCLogic {
       return;
     }
     window.__dangCaiNV255 = true;
+    const laDuyet = !!hc.duyet;           // cập nhật đã cài (duyệt quyền) khác cài mới: không được đẩy sang trang chính của module
     this.setState((s) => ({
       hoiCai: Object.assign({}, s.hoiCai, { dang: true, loi: '' })
     }));
@@ -1063,10 +1064,10 @@ class Component extends DCLogic {
     }
     this.setState((s) => ({
       hoiCai: null,
-      caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, tin: 'Đã cài' + (j && j.phien_ban ? ' bản ' + j.phien_ban : '') + '.' } })
+      caiGit: Object.assign({}, s.caiGit, { [id]: { dang: false, tin: (laDuyet ? 'Đã cập nhật' : 'Đã cài') + (j && j.phien_ban ? ' bản ' + j.phien_ban : '') + '.' } })
     }));
     await this.taiLai();
-    const tc = K.trangChinhCua(id, this.state.tn);
+    const tc = laDuyet ? null : K.trangChinhCua(id, this.state.tn);
     if (tc) { location.href = tc.href + '?da_cai=' + encodeURIComponent(id); return; }
     K.cauHinh.tai(this, id);
   }

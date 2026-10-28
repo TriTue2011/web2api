@@ -91,6 +91,9 @@ def test_cap_nhat_xin_them_quyen_hien_hop_duyet_hai_buoc_roi_cap_nhat(moi_truong
     trang.js("document.getElementById('nut-dong-y-cai').click()")
     trang.cho("fetch('/api/modules').then(r => r.json()).then(d => (d.modules || []).find(m => m.id === '%s')?.phien_ban === '1.0.1')" % ID,
               han=20, mo_ta="module lên bản 1.0.1 sau khi duyệt")
+    # Cập nhật xong vẫn ở trang Module (không bị đẩy sang trang chính của module như lúc cài mới) và có dòng báo «Đã cập nhật»
+    assert trang.js("location.pathname").endswith("/He-thong.dc.html")
+    trang.cho("(document.getElementById('cai-tin')?.innerText || '').startsWith('Đã cập nhật')", mo_ta="dòng báo đã cập nhật")
 
 
 def test_huy_o_hop_duyet_khong_cap_nhat(moi_truong, trang):

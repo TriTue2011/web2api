@@ -36,6 +36,10 @@ _TRUONG_KHONG_QUYEN = frozenset({
     # NV261: `dich_vu_phu` là khai báo nơi module chạy nặng (container riêng) để lõi ĐO bằng
     # cgroup — khía cạnh của nó được xử lý theo cấu trúc riêng như can_module, không phải quyền.
     "dich_vu_phu",
+    # NV255: `nhom_con` {id, ten, thu_tu} CHỈ để giao diện xếp ô vào nhóm con (kham_pha._chuan_hoa_nhom_con kiểm định dạng và
+    # giới hạn độ dài); không cấp khả năng nào. Trước 28/10/2026 thiếu ở đây nên mọi module thêm nhóm con (37/46 manifest) bị
+    # coi là «xin thêm quyền truong_la: nhom_con» và KHÔNG cập nhật được nếu không duyệt tay (chủ máy: «toàn bộ tiện ích»).
+    "nhom_con",
 })
 
 #: Khoá đã biết trong mỗi phần tử `truong_cau_hinh` (ngoài `nhan_cookie` mang quyền).
