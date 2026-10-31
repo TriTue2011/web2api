@@ -1,5 +1,5 @@
 # Ghim đúng bản repo gốc đang chạy trên Python 3.13 (uv.lock): đã kiểm cùng nhau, tránh lệch hành vi.
-fastapi==0.142.4
+fastapi==0.162.0
 uvicorn==0.54.0
 # Gọi Google/GitHub/module từ xa (bất đồng bộ, stream từng dòng). Bản trong .venv của repo gốc, đo 10/10/2026.
 httpx==0.28.1
@@ -11,8 +11,8 @@ python-multipart==0.0.32
 cryptography==50.0.2
 # Cho module muse2api: giao thức trực tiếp muse.ai (WebSocket, bắt tay Noise XX, Protobuf envelope). Có sẵn bánh xe
 # manylinux cho python:3.13-slim (không biên dịch lúc dựng). Đã chạy test module muse2api, đo 13/10/2026.
-curl_cffi==0.16.3
+curl_cffi==0.17.0
 noiseprotocol==0.3.1
 protobuf==7.36.2
 # Nhận và chuyển tiếp WebSocket hai chiều cho proxy noVNC (/novnc/.../websockify), Chuẩn C6; ghim đúng bản đã kiểm, 13/10/2026.
-websockets==17.2
+websockets==17.3
