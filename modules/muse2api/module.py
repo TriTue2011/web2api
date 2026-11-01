@@ -25,6 +25,13 @@ muse.ai đăng nhập qua SSO của Meta — KHÔNG có form email/mật khẩu 
 đoán luồng không có). Cookie phiên giữ nguyên cơ chế hiện có (chuỗi cookie
 trong `_TaiKhoan`, kiểm bằng bootstrap).
 
+Bổ sung `khoi_phuc_tu_dong()` (khung T0-T3 riêng của module, theo mẫu
+chatgpt2api nhưng sửa cho muse.ai): T0 kiểm cookie, T1 nghỉ-kiểm lại,
+T2 tái dùng hồ sơ đã đăng nhập (không điền mật khẩu/2FA), T3 kiểm lại
+khoá mới; không có controller/hồ sơ thì can_nguoi. Protocol không có
+refresh_token: token mới chỉ suy ra lại từ cookie còn sống qua
+/api/auth/check, cookie chết thì không có đường nào lấy token mới.
+
 NV230: tầng (a) khi bootstrap TỪ CHỐI cookie còn thử tự lấy cookie MỚI từ
 workspace Firefox ĐÃ GẮN với khoá (bản ghi NV93) qua dịch vụ trình duyệt —
 xem `lam_moi_cookie.py`. Đây là đường đọc cookie từ hồ sơ trình duyệt bền
@@ -212,6 +219,12 @@ class Module:
         self._dich_vu_trinh_duyet_url = ""
         self._khoa_dich_vu_trinh_duyet = ""
         self._cookie_tran_thu_ngay = 5
+        # Khôi phục tự động RIÊNG của module này (không qua lõi, không dùng
+        # logic module khác): khóa serial + cửa sổ hoãn captcha, tạo lười.
+        self._khoa_tu_dong = None
+        self._captcha_den_het = 0.0
+        self._captcha_den_khoa = None
+        self._captcha_hoan_giay = 1800.0
 
     def phan_loai_loi(self, ma: int, loi: dict, boi_canh: dict) -> str | None:
         return phan_loai_loi(ma, loi, boi_canh)
@@ -456,9 +469,29 @@ class Module:
         if bi_tu_choi:
             kq_lm = await self._bo_lam_moi_cookie.lam_moi(khoa)
             if kq_lm.get("ok"):
-                acc.khoe = True
-                return KetQuaKhoiPhuc(True, tang="a",
-                                      khoa_moi=kq_lm.get("khoa_moi"))
+                # Kiểm phiên SAU KHI THAY (bổ sung NV230): cookie mới đã
+                # qua bootstrap TRƯỚC khi thay, nhưng phải xác nhận lại
+                # sau khi _thay_cookie cập nhật bộ nhớ — tránh trường hợp
+                # cookie xoay giữa chừng hoặc thay lỗi âm thầm mà vẫn
+                # báo thành công. Không qua → không nhận thành công.
+                khoa_moi = kq_lm.get("khoa_moi") or khoa
+                acc_moi = self._tim_acc(khoa_moi) or acc
+                try:
+                    ok2, _loi2, bi_tu_choi2 = await asyncio.to_thread(
+                        self._kiem_cookie, acc_moi.cookies)
+                except Exception:
+                    ok2, bi_tu_choi2 = False, False
+                if ok2:
+                    acc_moi.khoe = True
+                    return KetQuaKhoiPhuc(True, tang="a",
+                                          khoa_moi=khoa_moi)
+                acc_moi.khoe = False
+                if bi_tu_choi2:
+                    return KetQuaKhoiPhuc(False, tang="a",
+                                          ma_loi="het_han",
+                                          ma_trang_thai=401)
+                return KetQuaKhoiPhuc(False, tang="a",
+                                      ma_loi="loi_may_chu")
             if kq_lm.get("can_nguoi"):
                 return KetQuaKhoiPhuc(
                     False, tang="a", ma_loi="can_nguoi", can_nguoi=True,
@@ -480,6 +513,210 @@ class Module:
         finally:
             if tai_khoan.mat_khau is not None:
                 tai_khoan.mat_khau.xoa()
+
+    # ── Khôi phục tự động RIÊNG của module này (áp mẫu chatgpt2api, sửa cho
+    #    muse.ai — KHÔNG phải đăng nhập tươi bằng mật khẩu) ──────────────
+    #
+    # chatgpt2api làm: T0 kiểm phiên → T1 nghỉ-kiểm lại → T2 đăng nhập lại
+    # bằng mật khẩu+TOTP qua trình duyệt → T3 kiểm lại. Phần áp được cho
+    # muse2api chỉ là khung T0/T1/T3 + đường cứu bằng cookie, KHÔNG phải T2
+    # mật khẩu: muse.ai đăng nhập qua SSO Meta, không có form mật khẩu để
+    # tự điền (dang_nhap_tu_dong đã trả can_nguoi vì lý do này, giữ nguyên).
+    # T2 của module này, theo thứ tự, chỉ là:
+    #   (1) NV230 đã chạy trong lam_moi_phien ở T0 (lấy cookie mới từ
+    #       workspace Firefox đã gắn, có kiểm phiên sau khi thay);
+    #   (2) tái dùng hồ sơ đã đăng nhập qua trình duyệt (tai_dung_ho_so,
+    #       NV93) — chỉ khi người gọi đưa controller, và chỉ đọc hatch_sess
+    #       từ hồ sơ đã gắn, không bao giờ dien() mật khẩu/2FA;
+    #   (3) còn lại → can_nguoi rõ ràng, không vượt CAPTCHA/Cloudflare/2FA.
+    # Làm mới token: protocol muse2api KHÔNG có refresh_token (grep toàn
+    # module: 0 lần). fetch_access_token chỉ là POST /api/auth/check với
+    # cookie còn sống → access_token mới; cookie chết thì không có đường
+    # nào suy ra token mới. Vì vậy _lam_moi_token_tu_cookie chỉ kiểm
+    # bootstrap và KHÔNG đổi trạng thái tài khoản, không lưu token.
+    # Mật khẩu/TOTP (nếu lõi đưa vào): NHẬN nhưng KHÔNG ĐIỀN, xoá ngay
+    # sau khi dùng — điền chúng vào đâu cũng là bịa luồng Meta SSO.
+    # Lõi chỉ chuyển tiếp mỏng: app/cong_mcp_cong_cu.py gọi hàm này với
+    # (tk_id, email, nghi_t1_giay=0.0) rồi dịch kết quả; mọi quyết định
+    # ở đây, trong module này, không import logic module khác.
+
+    def _lay_khoa_tu_dong(self):
+        """Khóa serial RIÊNG của module này, tạo lười (không gắn vòng lặp
+        lúc import)."""
+        if getattr(self, "_khoa_tu_dong", None) is None:
+            self._khoa_tu_dong = asyncio.Lock()
+        return self._khoa_tu_dong
+
+    def dat_lai_trang_thai_tu_dong(self) -> None:
+        """Dùng cho test: xoá khóa serial + cửa sổ hoãn captcha."""
+        self._khoa_tu_dong = None
+        self._captcha_den_het = 0.0
+        self._captcha_den_khoa = None
+
+    def _tim_khoa_tu_email(self, email: str) -> str | None:
+        """Ánh xạ email → khoá nội bộ ms- của tài khoản NV93 cùng email.
+
+        Delegate MCP của lõi đưa (tk_id, email); tk_id ngoài module không
+        phải khoá ms- nên _tim_acc không nhận. Với tài khoản NV93, bản ghi
+        kho riêng đã có email + hatch_sess, và _accs có cookie chứa chính
+        hatch_sess đó → tìm được khoá ms- thật. Tài khoản dán cookie cũ
+        không lưu email trong module nên không ánh xạ được — trường hợp
+        đó vẫn trả khoa_khong_co, không đoán tài khoản.
+        """
+        email = str(email or "").strip().lower()
+        if not email:
+            return None
+        for tk in list(self._tai_khoan_nv93):
+            if str(getattr(tk, "email", "") or "").strip().lower() != email:
+                continue
+            for acc in list(self._accs):
+                if _hatch_sess_tu_cookie(acc.cookies) == tk.hatch_sess:
+                    return self._khoa_tu_cookies(acc.cookies)
+        return None
+
+    def _lam_moi_token_tu_cookie(self, cookies: str) -> dict:
+        """Làm mới token TỪ COOKIE còn sống, không phải từ refresh_token.
+
+        Trả {"ok": True} nếu bootstrap (auth/check + session) còn qua, tức
+        access_token mới vẫn lấy được từ cookie này; {"ok": False,
+        "ma_loi": "het_han"|"loi_may_chu"} nếu không. Không lưu token,
+        không đổi cookie, không đổi trạng thái tài khoản, không gọi mạng
+        ngoài bootstrap của module (qua _kiem_cookie, để test chích giả).
+        """
+        try:
+            ok, _loi, bi_tu_choi = self._kiem_cookie(cookies)
+        except Exception:
+            return {"ok": False, "ma_loi": "loi_mang"}
+        if ok:
+            return {"ok": True, "ma_loi": ""}
+        return {"ok": False,
+                "ma_loi": "het_han" if bi_tu_choi else "loi_may_chu"}
+
+    @staticmethod
+    def _xoa_bi_mat(bi_mat) -> None:
+        """Xoá bí mật tạm (BiMatTam/BiMatTotp) nếu có, không vỡ."""
+        if bi_mat is None:
+            return
+        try:
+            bi_mat.xoa()
+        except Exception as e:  # noqa: BLE001 - xoá là best effort
+            log.debug("muse2api: xoá bí mật tạm lỗi: %s", type(e).__name__)
+
+    async def khoi_phuc_tu_dong(self, khoa: str, email: str = "",
+                                mat_khau=None, totp=None, trinh_duyet=None,
+                                nghi_t1_giay: float = 0.0) -> KetQuaKhoiPhuc:
+        """Thang T0-T3 tự chứa trong module này, cho muse.ai.
+
+        Đầu vào: khoá có thể là tk_id ngoài module (delegate MCP đưa) —
+        khi đó thử ánh xạ qua email → tài khoản NV93; không ánh xạ được
+        và khoá không phải ms- nội bộ → khoa_khong_co, không đoán.
+        - T0: lam_moi_phien(khoa) — kiểm cookie bằng bootstrap; qua thì
+          token đã được suy ra lại từ cookie, không cần xoay gì thêm.
+          NV230 trong đó đã thử lấy cookie mới từ workspace Firefox đã
+          gắn, kèm kiểm phiên sau khi thay.
+        - T1: nghỉ nghi_t1_giay rồi kiểm lại (mặc định 0 để test không chờ).
+        - T2: trong khóa serial riêng. Khoá không có → khoa_khong_co.
+          Đang trong cửa sổ hoãn captcha của chính khoá này → captcha_hoan,
+          không gọi trình duyệt lại. Có controller + hồ sơ đã gắn → thử
+          tai_dung_ho_so (đọc hatch_sess từ hồ sơ đã đăng nhập, không
+          điền mật khẩu/2FA); gặp thử thách → can_nguoi và đặt cửa sổ
+          hoãn 1800 giây cho khoá này. Không có controller/hồ sơ →
+          can_nguoi kèm hướng dẫn noVNC Meta SSO (giống tầng b cũ).
+        - T3: kiểm lại bằng lam_moi_phien trên khoá mới (nếu T2 đổi khoá);
+          qua mới tính thành công, không qua → het_han/loi_may_chu.
+        - Tầng (c) vẫn là tai_khoan_ke() riêng, người gọi tự chọn khoá kế;
+          hàm này không tự đổi tài khoản âm thầm.
+        Mật khẩu/TOTP đưa vào bị bỏ qua có chủ đích (không có form để
+        điền) và bị xoá ngay, không log.
+        """
+        khoa = str(khoa or "")
+        email = str(email or "")
+        try:
+            # Delegate MCP đưa tk_id ngoài module: nếu khoá đó không phải
+            # khoá ms- nội bộ, thử ánh xạ qua email → tài khoản NV93
+            # (chỉ NV93 có email trong module; dán cookie cũ thì không).
+            if khoa and self._tim_acc(khoa) is None:
+                khoa_nv93 = self._tim_khoa_tu_email(email)
+                if khoa_nv93 is not None:
+                    khoa = khoa_nv93
+            # T0
+            if khoa:
+                try:
+                    kq0 = await self.lam_moi_phien(khoa)
+                except Exception:
+                    kq0 = None
+                if kq0 is not None and getattr(kq0, "thanh_cong", False):
+                    return KetQuaKhoiPhuc(True, tang="T0",
+                                          khoa_moi=getattr(kq0, "khoa_moi", None))
+            # T1
+            if nghi_t1_giay and float(nghi_t1_giay) > 0:
+                await asyncio.sleep(float(nghi_t1_giay))
+                if khoa:
+                    try:
+                        kq1 = await self.lam_moi_phien(khoa)
+                    except Exception:
+                        kq1 = None
+                    if kq1 is not None and getattr(kq1, "thanh_cong", False):
+                        return KetQuaKhoiPhuc(True, tang="T1",
+                                              khoa_moi=getattr(kq1, "khoa_moi", None))
+            # T2, trong khóa serial riêng của module này
+            async with self._lay_khoa_tu_dong():
+                bay_gio = time.time()
+                if (bay_gio < float(getattr(self, "_captcha_den_het", 0.0))
+                        and khoa == getattr(self, "_captcha_den_khoa", None)):
+                    return KetQuaKhoiPhuc(False, tang="T2",
+                                          ma_loi="captcha_hoan")
+                if not khoa or self._tim_acc(khoa) is None:
+                    return KetQuaKhoiPhuc(False, tang="T2",
+                                          ma_loi="khoa_khong_co")
+                ho_so = self._ho_so_gan_voi_khoa(khoa)
+                if ho_so is None or trinh_duyet is None:
+                    return KetQuaKhoiPhuc(
+                        False, tang="T2", ma_loi="can_nguoi", can_nguoi=True,
+                        huong_dan=("muse.ai đăng nhập qua tài khoản Meta "
+                                   "(SSO), không có form mật khẩu để tự điền. "
+                                   "Hãy mở noVNC của workspace rồi đăng nhập "
+                                   "tay; xong bấm «Đã xử lý xong»."))
+                try:
+                    kq2 = await self.tai_dung_ho_so({"id": ho_so}, trinh_duyet)
+                except Exception:
+                    kq2 = None
+                if kq2 is None or not getattr(kq2, "thanh_cong", False):
+                    ma = getattr(kq2, "ma_loi", "") or "loi_module" if kq2 is not None else "loi_module"
+                    if ma == "can_nguoi":
+                        # Thử thách (CAPTCHA/Cloudflare/2FA/xác minh) trong
+                        # tai_dung_ho_so đều về can_nguoi: hoãn T2 1800 giây
+                        # cho khoá này, T0/T1 vẫn chạy trước ở lần sau nên
+                        # người đăng nhập tay xong vẫn được nhận ngay.
+                        self._captcha_den_het = time.time() + float(
+                            getattr(self, "_captcha_hoan_giay", 1800.0))
+                        self._captcha_den_khoa = khoa
+                        return KetQuaKhoiPhuc(
+                            False, tang="T2", ma_loi="can_nguoi",
+                            can_nguoi=True,
+                            huong_dan=("muse.ai cần người xử lý thử thách "
+                                       "trong hồ sơ đã gắn. Hãy mở noVNC của "
+                                       "workspace, xử lý xong rồi bấm "
+                                       "«Đã xử lý xong»."))
+                    return KetQuaKhoiPhuc(False, tang="T2", ma_loi=ma)
+                # T3: kiểm lại khoá mới bằng bootstrap, không tin lời T2.
+                cookie_moi = getattr(kq2, "cookie", "") or ""
+                khoa_moi = self._khoa_tu_cookies(cookie_moi) if cookie_moi else None
+                if not khoa_moi:
+                    return KetQuaKhoiPhuc(False, tang="T2",
+                                          ma_loi="khong_lay_duoc_phien")
+                try:
+                    kq3 = await self.lam_moi_phien(khoa_moi)
+                except Exception:
+                    kq3 = None
+                if kq3 is not None and getattr(kq3, "thanh_cong", False):
+                    return KetQuaKhoiPhuc(True, tang="T3", khoa_moi=khoa_moi)
+                ma3 = getattr(kq3, "ma_loi", "") if kq3 is not None else ""
+                return KetQuaKhoiPhuc(False, tang="T3",
+                                      ma_loi=ma3 or "het_han")
+        finally:
+            self._xoa_bi_mat(mat_khau)
+            self._xoa_bi_mat(totp)
 
     def tai_khoan_ke(self, khoa: str) -> str | None:
         """Tầng (c): khoá kế còn khoẻ (chưa bị đánh dấu hỏng); hết → None."""

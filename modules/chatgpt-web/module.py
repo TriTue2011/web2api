@@ -731,7 +731,7 @@ class Module:
             # T2, trong khóa serial riêng của module này
             async with self._lay_khoa_tu_dong():
                 bay_gio = time.time()
-                if bay_gio < getattr(self, "_captcha_den_het", 0.0) and khoa != getattr(self, "_captcha_den_khoa", None):
+                if bay_gio < getattr(self, "_captcha_den_het", 0.0):  # chặn cả khoá vừa gặp captcha: thử lại ngay chỉ thêm một lần gặp captcha
                     return KetQuaKhoiPhuc(False, tang="T2", ma_loi="captcha_hoan")
                 if mat_khau_dung is None:
                     mat_khau_dung = self.mat_khau_da_luu(khoa) or self.mat_khau_da_luu(email)
@@ -863,7 +863,17 @@ class Module:
         if me is None:
             return KetQuaDangNhap(False, ma_loi="phien_khong_dung_duoc",
                                   ma_trang_thai=401)
-        self._them_token(token)
+        # Ghi bền token như chatgpt2api ghi JWT vào pool: đường NV210
+        # gan_jwt_tu_dang_nhap đã có sẵn trong module này (thay khoá cũ
+        # cùng email, hoặc thêm mới; nhiều khoá cùng email thì từ chối).
+        # Ghi bền hỏng thì rơi về bộ nhớ, không làm hỏng lần đăng nhập
+        # vừa thành công — token vẫn dùng được trong phiên đang chạy.
+        try:
+            gan = self.gan_jwt_tu_dang_nhap(email, token)
+        except Exception:
+            gan = {"ok": False}
+        if not (isinstance(gan, dict) and gan.get("ok")):
+            self._them_token(token)
         khoa = self._khoa_tu_token(token)
         self._luu_mat_khau(khoa, email, mat_khau)
         return KetQuaDangNhap(True, cookie=token)

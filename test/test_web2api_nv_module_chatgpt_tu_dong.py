@@ -159,3 +159,15 @@ def test_captcha_hoan_va_dat_lai(mod):
 def test_luu_totp_sai_khuon_bi_tu_choi(mod):
     assert mod.luu_totp("tk-gia-8", EMAIL_GIA, "khong-phai-base32!!!") is False
     assert mod.totp_da_luu("tk-gia-8") is None
+
+
+def test_captcha_chan_ca_chinh_khoa_vua_gap_captcha(mod):
+    """Captcha là thử thách theo IP/trình duyệt: khoá vừa gặp nó KHÔNG được thử lại ngay (mỗi lần thử lại là thêm một lần gặp captcha)."""
+    mod._luu_mat_khau("tk-gia-captcha", EMAIL_GIA, BiMatTam(MAT_KHAU_GIA))
+    td1 = _trinh_duyet(["captcha"], {})
+    kq1 = chay(mod.khoi_phuc_tu_dong("tk-gia-captcha", EMAIL_GIA, trinh_duyet=td1))
+    assert not kq1.thanh_cong and kq1.ma_loi in ("thu_thach_truoc_khi_dien", "captcha")
+    td2 = _trinh_duyet(["thanh_cong"], {"access_token": "token-tu-phien-gia-0099"})
+    kq2 = chay(mod.khoi_phuc_tu_dong("tk-gia-captcha", EMAIL_GIA, trinh_duyet=td2))
+    assert not kq2.thanh_cong and kq2.ma_loi == "captcha_hoan"
+    assert not td2.hanh_dong, "trình duyệt không được chạm vào trong cửa sổ hoãn"

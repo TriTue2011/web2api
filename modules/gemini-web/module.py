@@ -457,7 +457,7 @@ class Module:
             # T2, trong khóa serial riêng của module này
             async with self._lay_khoa_tu_dong():
                 bay_gio = time.time()
-                if bay_gio < getattr(self, "_captcha_den_het", 0.0) and khoa != getattr(self, "_captcha_den_khoa", None):
+                if bay_gio < getattr(self, "_captcha_den_het", 0.0):  # chặn cả khoá vừa gặp captcha: thử lại ngay chỉ thêm một lần gặp captcha
                     return KetQuaKhoiPhuc(False, tang="T2", ma_loi="captcha_hoan")
                 if mat_khau_dung is None:
                     mat_khau_dung = self.mat_khau_da_luu(khoa) or self.mat_khau_da_luu(email)
