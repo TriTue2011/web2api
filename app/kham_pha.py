@@ -49,6 +49,20 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
     async video_trang_thai(ma: str)        -> (mã, headers, bytes)   GET /v1/videos/{id} (lõi đã bỏ "<tien_to>:")
     async video_noi_dung(ma: str)          -> (mã, headers, bytes | async-iterator[bytes])
                                               GET /v1/videos/{id}/content — tệp lớn thì trả iterator (stream)
+    Phương thức cho đường riêng của module /m/<id>/api/... (NV277, xem
+    app/duong_module.py — lõi sở hữu đường, module không tự gắn route):
+      async tich_hop(duong, phuong_thuc, query, than, goc) -> (mã, headers, nội dung)
+        đường integration của module (vd "integration/search"); manifest khai
+        "duong_module". Lõi kiểm khoá khách phạm vi «tich_hop@<id module>» (khoá
+        do lõi tự sinh, người dùng chọn module được phép — NV289; module KHÔNG
+        có bí mật nhập tay) và giới hạn nguồn LAN trước khi gọi; `goc` là origin
+        bên gọi đã dùng để tới lõi (cho URL tuyệt đối tới thiết bị khác); thiếu
+        phương thức → 404.
+      async luong(ve, khoang, phuong_thuc) -> (mã, headers, nội dung)
+        đường luồng mở cho loa: lõi kiểm vé ký app/url_ky + nguồn LAN
+        trước khi gọi; vé do module tạo bằng duong_module.tao_duong_luong().
+        Module tự chịu trách nhiệm nối lại từ đúng byte khi nguồn đứt
+        (tối đa 5 lần) và dừng hẳn khi loa ngắt hoặc khi dung()/stop.
     Module có video phải có đủ cả ba phương thức video_*. Mã do khách gửi là ĐẦU VÀO KHÔNG TIN ĐƯỢC: module
     phải kiểm nó trước khi dùng để gọi dịch vụ kèm khoá.
     POST /v1/videos nhận cả multipart/form-data (SDK openai gửi videos.create như vậy): lõi đổi các trường chữ
@@ -287,6 +301,7 @@ KHA_NANG_NGUY_HIEM = frozenset({
     "gui_tin",
     "kenh_ra",
     "webhook",
+    "tich_hop",  # bên ngoài gọi VÀO đường riêng của module (app/duong_module.py), luôn kèm «@<module>»
 })
 
 

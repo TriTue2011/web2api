@@ -427,6 +427,10 @@ class SoModule:
                             "nhom": nhom,
                             # NV297: tab + mục trên thanh chính (khai trong manifest, hoặc suy từ cấu trúc) — module từ xa không có.
                             "giao_dien": None if tu_xa else giao_dien_cua(man)}
+            # NV289: module khai đường riêng cho dịch vụ ngoài gọi vào (manifest `duong_module`): khoá cho nó do lõi
+            # tự sinh ở Bảo mật & người dùng (phạm vi `tich_hop@<id>`), không có ô nhập khoá. Chỉ thêm khi có.
+            if isinstance(man.get("duong_module"), dict):
+                muc_mod["duong_ngoai"] = True
             if tu_xa and lk:
                 m_tx = self.dang_chay.get(id_)
                 if getattr(m_tx, "la_nut_gpu", False):

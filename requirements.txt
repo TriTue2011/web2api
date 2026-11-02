@@ -16,3 +16,12 @@ noiseprotocol==0.3.1
 protobuf==7.36.2
 # Nhận và chuyển tiếp WebSocket hai chiều cho proxy noVNC (/novnc/.../websockify), Chuẩn C6; ghim đúng bản đã kiểm, 13/10/2026.
 websockets==17.2
+# Module youtube (NV277) chạy thẳng trong lõi nên cần trích xuất YouTube. Chủ máy duyệt 03/11/2026; ghim ĐÚNG
+# phiên bản của dich-vu/youtube-phat (đã kiểm cùng nhau ở đó; tên, phiên bản khớp).
+# - yt-dlp: tìm (ytsearch) + giải link âm thanh YouTube (Unlicense).
+# - yt-dlp-ejs: bộ script JavaScript để yt-dlp giải thử thách của YouTube (MIT).
+# - deno: trình chạy JavaScript cho yt-dlp-ejs (nhị phân trong wheel, theo kiến trúc; pip tự chọn x86_64/arm64).
+# Cả ba không kéo gói phụ thuộc bắt buộc nào. Thiếu chúng module vẫn chạy (tìm/giải YouTube trả 502 rõ).
+yt-dlp==2026.8.19
+yt-dlp-ejs==0.8.0
+deno==2.9.7

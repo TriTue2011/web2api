@@ -307,6 +307,19 @@ def ip_hieu_luc_phan_loai(client_host: str | None, x_forwarded_for: str | None) 
 _BO: GioiHanSaiKhoa | None = None
 
 
+def la_proxy_tin_cay(client_host: str | None) -> bool:
+    """Peer trực tiếp có nằm trong CIDR proxy tin cậy (WEB2API_TRUST_PROXY) không.
+
+    Loopback KHÔNG tự động được tính ở đây (bên gọi tự xét loopback như `ip_hieu_luc`).
+    Dùng cho cổng LAN của đường riêng module: header chuyển tiếp chỉ đáng tin khi do
+    proxy này ghi.
+    """
+    try:
+        return _bo()._tin_cay(ipaddress.ip_address((client_host or "").strip()))
+    except ValueError:
+        return False
+
+
 def _bo() -> GioiHanSaiKhoa:
     global _BO
     if _BO is None:

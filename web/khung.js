@@ -130,8 +130,11 @@
   // sang trang khác; Bảo mật & người dùng chỉ giữ khoá do web2api tự cấp cho dịch vụ ngoài gọi vào.
   // Thanh trạng thái «Chờ khoá», bảng chi tiết và Studio đều dùng chung hàm này nên tự đổi theo.
   // Neo theo id để tới ĐÚNG module khi có nhiều. `tab`: mã dòng của nơi đến.
+  // NV289: module khai đường riêng cho dịch vụ ngoài gọi vào (`duong_ngoai`) không có ô nhập khoá — khoá do lõi
+  // tự tạo ở khối «Khoá cho dịch vụ ngoài gọi vào» (neo #khoa-dich-vu-ngoai) và chọn module được phép ở đó.
   function noiThemKhoa(m, tn) {
     const id = encodeURIComponent((m && m.id) || '');
+    if (m && m.duong_ngoai) return { tab: 'bao_mat', href: 'He-thong-Bao-mat.dc.html#khoa-dich-vu-ngoai', nhan: 'Hệ thống → Bảo mật & người dùng → Khoá cho dịch vụ ngoài gọi vào' };
     return moduleDapUng(m, 'tai_khoan') && du('tai_khoan', tn)
       ? { tab: 'tai_khoan', href: 'He-thong-AI.dc.html#tk-' + id, nhan: 'Hệ thống → AI → ' + DIEU_KIEN.tai_khoan.nhan }
       : { tab: 'ket_noi', href: 'He-thong.dc.html#module-' + id, nhan: 'Hệ thống → Module → Kết nối' };

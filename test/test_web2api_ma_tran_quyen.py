@@ -37,6 +37,10 @@ from app.xac_thuc import can_phien_web, can_quan_tri, xac_thuc_v1
 BANG_NGOAI_LE_MO: dict[tuple[str, str], str] = {
     ("GET", "/health"): "Kiểm tra sức khỏe hệ thống (mở cho orchestrator/docker healthcheck, không chứa dữ liệu nhạy cảm)",
     ("GET", "/m/{id_}/{duong:path}"): "Tệp tĩnh giao diện web của module đã cài (công khai, kiểm tra an toàn đường dẫn)",
+    ("GET", "/m/{id_}/api/stream/{ve}"): "Đường luồng mở cho loa (loa không gửi được header): xác thực bằng vé ký HMAC có hạn của lõi, chỉ nhận nguồn LAN, vé giả/hết hạn trả 404 trống không nêu lý do",
+    ("HEAD", "/m/{id_}/api/stream/{ve}"): "Đường luồng mở cho loa: dùng cùng vé GET, chỉ trả header, không đẩy byte",
+    ("GET", "/m/{id_}/api/{duong:path}"): "Đường riêng của module: xác thực Bearer ngay trong hàm xử lý (không gắn dependency của lõi vì phạm vi theo từng module) bằng khoá khách do lõi tự sinh, phạm vi đã lưu phải là tich_hop@<module>; chỉ nhận nguồn LAN (qua hầm/proxy không tin bị chặn); thiếu/sai khoá 401, khoá quản trị/«*»/module khác 403",
+    ("POST", "/m/{id_}/api/{duong:path}"): "Đường riêng của module: xác thực khoá khách phạm vi tich_hop@<module> ngay trong hàm xử lý, chỉ nhận nguồn LAN; thân tối đa 400_000 byte, JSON hỏng 400",
     ("GET", "/novnc/dang-nhap"): "Trang nút mở phiên trình duyệt từ xa (chỉ GET form, không script, không tiêu thụ vé)",
     ("POST", "/novnc/dang-nhap"): "Đổi vé sử dụng một lần (60 giây) trong thân form urlencoded lấy phiên noVNC ngắn hạn",
     ("*", "/novnc/s/{phien}/{duong:path}"): "Proxy HTTP noVNC bảo vệ bằng sha256 phiên 256-bit trong URL, CSP sandbox không same-origin",

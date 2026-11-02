@@ -213,10 +213,12 @@ def test_xoa_khoa_ngay_trong_tab_ket_noi_va_bao_mat_khong_con_form_module(trang,
         trang.cho("document.querySelector('#lien-ket input[type=password]')", han=15, mo_ta="form đầy đủ trở lại")
         assert (tmp_path / "modules" / "thiet-bi-gia").exists() and not (tmp_path / "bi_mat" / "thiet-bi-gia.json").exists()
 
-        # Bảo mật & người dùng: khối «Khoá của module» còn (cho khoá dịch vụ ngoài), KHÔNG còn form cấu hình module.
+        # Bảo mật & người dùng: chỉ còn khối «Khoá cho dịch vụ ngoài gọi vào» (NV289), KHÔNG còn khối/form cấu hình module
+        # và không có ô nhập khoá (khoá do web2api tự sinh).
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html")
-        trang.cho("document.getElementById('khoa-module')", han=20, mo_ta="khối Khoá của module")
-        assert trang.js("document.querySelectorAll('#khoa-module form, #khoa-module input, #khoa-module textarea').length") == 0
+        trang.cho("document.getElementById('khoa-dich-vu-ngoai')", han=20, mo_ta="khối Khoá cho dịch vụ ngoài gọi vào")
+        assert trang.js("document.getElementById('khoa-module')") is None
+        assert trang.js("document.querySelectorAll('#khoa-dich-vu-ngoai input[type=password], #khoa-dich-vu-ngoai textarea').length") == 0
         assert trang.js("document.getElementById('khoa-module-thiet-bi-gia')") is None
         # Neo cũ #khoa-module-<id> → tab Kết nối của đúng module.
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html#khoa-module-thiet-bi-gia")

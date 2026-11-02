@@ -564,3 +564,28 @@ Nguyên tắc bắt buộc:
 Vòng nền: `WEB2API_JWT_LAM_MOI_BAT` (mặc định bật), `WEB2API_JWT_LAM_MOI_KHOANG_GIAY`
 (mặc định 21600 = 6 giờ, tối thiểu 300). Vòng quét mọi module đang chạy có
 `lam_moi_jwt` callable, một lần mỗi khoảng, bắt đầu ngay khi máy chạy.
+
+## 15. Đường riêng cho dịch vụ ngoài gọi vào module: `tich_hop` và `luong` (NV277, NV289)
+
+Hợp đồng chung vẫn là «module không có route»: module KHÔNG tự gắn đường HTTP. Module cần để một dịch vụ bên ngoài
+(ví dụ hệ thống nhà) gọi vào thì **khai trong manifest** và cài hai phương thức; **lõi sở hữu đường** `/m/<id>/api/...`
+(`app/duong_module.py`), kiểm xác thực rồi mới gọi module.
+
+```json
+"duong_module": {"lan_chi": true}
+```
+
+- `async tich_hop(duong, phuong_thuc, query, than, goc) -> (mã, headers, nội dung)`: phục vụ `GET|POST /m/<id>/api/integration/*`.
+  `duong` là phần sau `/api/` (vd `integration/search`); `than` là dict JSON hoặc `None`; `goc` là origin
+  (`scheme://host[:cổng]`) mà bên gọi đã dùng để tới lõi — dùng để dựng URL **tuyệt đối** cho thiết bị khác (loa tải
+  thẳng URL). Nội dung trả về: dict (thành JSON), `bytes`, hoặc async-iterator `bytes` (lõi stream từng khúc).
+- `async luong(ve, khoang, phuong_thuc) -> (mã, headers, nội dung)`: phục vụ `GET|HEAD /m/<id>/api/stream/<vé>` mà loa
+  gọi (loa không gửi được header). Vé do module tạo bằng `duong_module.tao_duong_luong(id, ve, goc)` (vé ký `app/url_ky`,
+  hạn mặc định 3600 giây); vé giả/hết hạn → 404 trống. Thiếu phương thức nào thì đường tương ứng trả 404.
+- **Khoá KHÔNG do module giữ.** Module không có trường khoá nhập tay. Người dùng tạo khoá ở «Bảo mật & người dùng» →
+  «Khoá cho dịch vụ ngoài gọi vào»: w2a tự sinh khoá khách (hiện MỘT lần, lưu băm, thu hồi/tắt được) và người dùng chọn
+  module được dùng khoá, lưu thành phạm vi `tich_hop@<id module>` (cú pháp «khả năng giới hạn theo module» của
+  `app/khoa_khach.py`, cùng khuôn khoá `mcp`). `tich_hop` là khả năng nguy hiểm: khoá «*» và trần «*» không bao gồm nó.
+  Thiếu khoá → 401; khoá hợp lệ nhưng module không được phép (hoặc là khoá quản trị/«*») → 403.
+- **Chỉ nhận nguồn LAN**: qua đường hầm hoặc proxy mà lõi không tin (`WEB2API_TRUST_PROXY`) thì bị chặn.
+- Không tên nhà cung cấp trong lõi: lõi chỉ chuyển tiếp `(mã, headers, nội dung)` và kiểm xác thực.

@@ -13,9 +13,10 @@ GOC = Path(__file__).resolve().parents[1]
 #: Trường cấp trên cùng mà manifest trong kho đang dùng và VẪN là quyền (đổi → phải duyệt), đã xem xét từng trường:
 #: hang = hạng duyệt (tự hạ hạng là leo thang); dang_nhap_bang/webhook/quyen/thuc_the/cong_dung/duong/hoi_vong = khả năng hay tài nguyên;
 #: model_tinh = danh sách model tĩnh module khai; tac_gia/nguon/giao_dien/nha_cung_cap = thông tin nguồn gốc (đổi đáng chú ý).
+#: duong_module = module được cấp đường riêng /m/<id>/api/... của lõi (NV277: integration Bearer + luồng vé ký, LAN).
 DA_XEM_XET_LA_QUYEN = frozenset({
     "hang", "dang_nhap_bang", "model_tinh", "quyen", "webhook", "duong", "hoi_vong", "cong_dung", "nha_cung_cap",
-    "thuc_the", "tac_gia", "nguon", "giao_dien",
+    "thuc_the", "tac_gia", "nguon", "giao_dien", "duong_module",
 })
 
 

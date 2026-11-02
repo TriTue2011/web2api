@@ -315,13 +315,63 @@ main.pg{padding:12px 24px 24px 16px}
 </sc-if>
 </sc-if>
 <sc-if value="{{laAdmin}}">
-<!-- ═══ NV296: KHOÁ CỦA MODULE — chỉ dành cho khoá web2api TỰ TẠO cho dịch vụ ngoài gọi vào (NV289). Cấu hình kết nối của module
-     (địa chỉ, tài khoản, mật khẩu, khoá, vân tay…) nằm ở Hệ thống → Module → bảng chi tiết → tab «Kết nối». Neo #khoa-module-<id>
-     vẫn còn: trang chuyển thẳng tới tab «Kết nối» của đúng module. ═══ -->
-<section class="the" aria-labelledby="h-khoa-module" id="khoa-module">
-<h2 id="h-khoa-module" class="nhan-muc">Khoá của module</h2>
-<p class="phu">Ở đây là các khoá do web2api tự tạo để dịch vụ bên ngoài gọi vào module. Khoá, địa chỉ, tài khoản hay mật khẩu mà module cần để kết nối thiết bị hoặc dịch vụ thì đặt ở Hệ thống → Module → chọn module → tab «Kết nối».</p>
-<p><a href="He-thong.dc.html" id="lk-ket-noi-module" style="display:inline-flex;align-items:center;min-height:44px;color:#0B5A53;text-decoration:underline">Mở Hệ thống → Module</a></p>
+<!-- ═══ NV289: KHOÁ CHO DỊCH VỤ NGOÀI GỌI VÀO — khoá do w2a tự sinh (hiện một lần, lưu băm), chọn module được phép (giống khoá MCP) ═══ -->
+<section class="the" aria-labelledby="h-khoa-dich-vu-ngoai" id="khoa-dich-vu-ngoai">
+<h2 id="h-khoa-dich-vu-ngoai" class="nhan-muc">Khoá cho dịch vụ ngoài gọi vào</h2>
+<p class="phu">Dành cho thứ bên ngoài gọi VÀO web2api (ví dụ hệ thống nhà gọi một module phát nhạc). web2api tự tạo khoá, bạn không phải nghĩ ra hay dán khoá nào. Khoá chỉ hiện MỘT LẦN lúc tạo — chép thẳng vào ô khoá của dịch vụ đó. Chọn module nào được dùng khoá; khoá không dùng được cho module khác, cho trò chuyện hay cho trang quản trị. Mất khoá thì thu hồi và tạo lại. Khoá, địa chỉ, tài khoản hay mật khẩu mà module cần để kết nối thiết bị hoặc dịch vụ thì đặt ở Hệ thống → Module → chọn module → tab «Kết nối», không đặt ở đây (neo cũ #khoa-module-… tự chuyển tới đó).</p>
+<sc-if value="{{dvn.khongCoModule}}"><p class="phu" id="dvn-khong-co-module">Chưa có module nào mở đường cho dịch vụ ngoài gọi vào. Cài module đó trước, rồi quay lại đây.</p></sc-if>
+<sc-if value="{{dvn.coModule}}">
+<sc-if value="{{dvn.coKhoaMoi}}">
+<div class="the the-ket-noi-moi" id="dvn-khoa-moi" style="margin:8px 0">
+<div class="dong-nut" style="justify-content:space-between"><strong>Khoá vừa tạo</strong><button type="button" class="nut nut-nho" onClick="{{dvn.dongKhoaMoi}}">Đóng</button></div>
+<p class="phu" style="color:var(--ink)">Chỉ hiện <strong>MỘT LẦN</strong>. Sao chép ngay và dán vào ô khoá của dịch vụ ngoài; đóng khung này là không xem lại được.</p>
+<dl class="bang">
+<div class="bang-dong"><dt>Khoá</dt><dd><span class="ma" id="dvn-khoa-moi-gia-tri">{{dvn.khoaMoi.khoa}}</span></dd></div>
+<div class="bang-dong"><dt>Được dùng cho</dt><dd><sc-for list="{{dvn.khoaMoi.modules}}" as="mm"><span class="huy huy-lam" style="margin-right:4px">{{mm}}</span></sc-for></dd></div>
+</dl>
+<div class="dong-nut"><button type="button" class="nut nut-chinh nut-nho" id="dvn-nut-chep" onClick="{{dvn.chepKhoa}}">{{dvn.nhanChep}}</button></div>
+</div>
+</sc-if>
+<form class="form-tao-khoa-dvn" novalidate onSubmit="{{dvn.taoSubmit}}" style="display:flex;flex-direction:column;gap:12px;margin:8px 0">
+<div class="truong">
+<label for="dvn-nhan">Tên gọi (tuỳ chọn)</label>
+<input id="dvn-nhan" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="Ví dụ: Hệ thống nhà chính" value="{{dvn.nhan}}" onInput="{{dvn.goNhan}}">
+</div>
+<div class="truong">
+<label>Module được phép dùng khoá này (chọn ít nhất 1)</label>
+<div class="pham-vi-chon">
+<sc-for list="{{dvn.dsModule}}" as="dm">
+<button type="button" class="chip" data-dvn-module="{{dm.id}}" aria-pressed="{{dm.chon}}" onClick="{{dm.toggle}}">{{dm.ten}}</button>
+</sc-for>
+</div>
+</div>
+<sc-if value="{{dvn.loiTao}}"><p role="alert" class="bao bao-loi" id="dvn-loi-tao">{{dvn.loiTao}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" id="dvn-nut-tao" disabled="{{dvn.dangTao}}">Tạo khoá</button></div>
+</form>
+<h3 class="nhan-muc" style="font-size:13px">Khoá đã tạo ({{dvn.soKhoa}})</h3>
+<sc-if value="{{dvn.loiDs}}"><p role="alert" class="bao bao-loi" id="dvn-loi-ds">{{dvn.loiDs}}</p></sc-if>
+<sc-if value="{{dvn.khongCoKhoa}}"><p class="phu">Chưa có khoá nào.</p></sc-if>
+<ul class="bang-tb-ds" id="dvn-ds-khoa">
+<sc-for list="{{dvn.dsKhoa}}" as="dk">
+<li class="khoa-khach-hang" data-dvn-khoa-id="{{dk.id}}">
+<div class="khoa-thong-tin">
+<div class="khoa-nhan"><span>{{dk.nhan}}</span>
+<sc-if value="{{dk.bat}}"><span class="huy huy-xanh">Đang bật</span></sc-if>
+<sc-if value="{{dk.tat}}"><span class="huy huy-xam">Đã tắt</span></sc-if></div>
+<div class="khoa-phu"><span class="ma">{{dk.id}}</span><span>{{dk.soLuot}}</span><span>{{dk.dungCuoi}}</span></div>
+<div class="hang-chip" style="margin:2px 0 0" role="group" aria-label="Module được phép">
+<sc-for list="{{dk.modules}}" as="dkm"><button type="button" class="chip" data-dvn-khoa-module="{{dkm.id}}" aria-pressed="{{dkm.chon}}" onClick="{{dkm.toggle}}">{{dkm.ten}}</button></sc-for>
+</div>
+</div>
+<div class="khoa-tac-vu">
+<button type="button" class="nut nut-nho" data-hd="dvn-doi-trang-thai" onClick="{{dk.doiTrangThai}}" disabled="{{dk.dangDoi}}">{{dk.nhanDoi}}</button>
+<sc-if value="{{dk.chuaXacNhanXoa}}"><button type="button" class="nut nut-nho nut-nguy" data-hd="dvn-thu-hoi" onClick="{{dk.hoiXoa}}">Thu hồi</button></sc-if>
+<sc-if value="{{dk.dangXacNhanXoa}}"><button type="button" class="nut nut-nho nut-nguy" data-hd="dvn-xac-nhan-thu-hoi" onClick="{{dk.xacNhanXoa}}" disabled="{{dk.dangXoa}}">Xác nhận thu hồi?</button><button type="button" class="nut nut-nho" onClick="{{dk.huyXoa}}">Huỷ</button></sc-if>
+</div>
+</li>
+</sc-for>
+</ul>
+</sc-if>
 </section>
 </sc-if>
 <sc-if value="{{tabBaoMat}}">
@@ -660,6 +710,19 @@ class Component extends DCLogic {
       dsKhoaLoi: '',
       dangTaiDsKhoa: false,
 
+      // NV289: Khoá cho dịch vụ ngoài gọi vào (khoá khách phạm vi tich_hop@<module>)
+      dvnNhan: '',
+      dvnChon: [],
+      dvnLoiTao: '',
+      dvnLoiDs: '',
+      dvnDangTao: false,
+      dvnKhoaMoi: null,
+      dvnChepTin: '',
+      dvnChepLoi: '',
+      dvnDangHoiXoa: null,
+      dvnDangXoa: null,
+      dvnDangDoi: null,
+
       // Khoá API của tôi (mọi người dùng)
       dsKhoaToi: [],
       nhanKhoaToiNhap: '',
@@ -766,7 +829,166 @@ class Component extends DCLogic {
     await this.tai2fa();
     if (laAdmin) {
       await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa(), this.taiKhoaDn()]);
+      setTimeout(() => this.cuonToiNeoDvn(), 0);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // NV289: KHOÁ CHO DỊCH VỤ NGOÀI GỌI VÀO MODULE (ADMIN)
+  // Khoá khách do lõi tự sinh (cùng đường api/khoa-khach), phạm vi «tich_hop@<module>»:
+  // người dùng chọn module nào được dùng khoá. Không có ô nhập khoá.
+  // ═══════════════════════════════════════════════════════════════
+
+  dvnModules() {
+    const tn = this.state.tn;
+    return ((tn && tn.modules) || []).filter((m) => m && !m.tu_xa && m.duong_ngoai).map((m) => ({ id: m.id, ten: m.ten || m.id }));
+  }
+
+  dvnKhoaCuaToi() {
+    return (this.state.dsKhoa || []).filter((k) => Array.isArray(k.pham_vi) && k.pham_vi.length > 0
+      && k.pham_vi.every((p) => typeof p === 'string' && p.startsWith('tich_hop@')));
+  }
+
+  dvnBatTat(id) {
+    const cur = this.state.dvnChon.slice();
+    const i = cur.indexOf(id);
+    if (i >= 0) cur.splice(i, 1); else cur.push(id);
+    this.setState({ dvnChon: cur, dvnLoiTao: '' });
+  }
+
+  async dvnTao(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.dvnDangTao) return;
+    const hopLe = this.dvnModules().map((m) => m.id);
+    const chon = this.state.dvnChon.filter((id) => hopLe.includes(id));
+    if (!chon.length) {
+      this.setState({ dvnLoiTao: 'Hãy chọn ít nhất một module được phép dùng khoá.' });
+      return;
+    }
+    this.setState({ dvnDangTao: true, dvnLoiTao: '' });
+    try {
+      const nhan = (this.state.dvnNhan || '').trim() || 'Khoá cho dịch vụ ngoài';
+      const { j } = await K.goi('api/khoa-khach', { method: 'POST', json: { nhan, pham_vi: chon.map((id) => 'tich_hop@' + id) } });
+      if (j && j.ok && j.khoa) {
+        this.setState({ dvnKhoaMoi: j.khoa, dvnNhan: '', dvnChon: [], dvnDangTao: false, dvnChepTin: '' });
+        await this.taiDsKhoa();
+      } else {
+        this.setState({ dvnDangTao: false, dvnLoiTao: 'Không tạo được khoá.' });
+      }
+    } catch (err) {
+      this.setState({ dvnDangTao: false, dvnLoiTao: err.message || 'Lỗi khi tạo khoá.' });
+    }
+  }
+
+  dvnChep() {
+    const k = this.state.dvnKhoaMoi;
+    if (!k) return;
+    this.chepChuoi(k.khoa, 'dvnChepTin', 'dvnChepLoi');
+  }
+
+  async dvnDoiModule(khoa, idModule) {
+    const cur = (khoa.pham_vi || []).slice();
+    const mu = 'tich_hop@' + idModule;
+    const i = cur.indexOf(mu);
+    if (i >= 0) cur.splice(i, 1); else cur.push(mu);
+    if (!cur.length) {
+      this.setState({ dvnLoiDs: 'Khoá cần ít nhất một module được phép. Không dùng nữa thì bấm Thu hồi.' });
+      return;
+    }
+    this.setState({ dvnDangDoi: khoa.id, dvnLoiDs: '' });
+    let loi = '';
+    try {
+      await K.goi('api/khoa-khach/' + encodeURIComponent(khoa.id), { method: 'PATCH', json: { pham_vi: cur } });
+    } catch (e) {
+      loi = e.message || 'Lỗi đổi module được phép.';
+    } finally {
+      this.setState({ dvnDangDoi: null });
+      await this.taiDsKhoa();
+      if (loi) this.setState({ dvnLoiDs: loi });
+    }
+  }
+
+  async dvnDoiTrangThai(khoa) {
+    this.setState({ dvnDangDoi: khoa.id, dvnLoiDs: '' });
+    let loi = '';
+    try {
+      await K.goi('api/khoa-khach/' + encodeURIComponent(khoa.id), { method: 'PATCH', json: { bat: !khoa.bat } });
+    } catch (e) {
+      loi = e.message || 'Lỗi đổi trạng thái khoá.';
+    } finally {
+      this.setState({ dvnDangDoi: null });
+      await this.taiDsKhoa();
+      if (loi) this.setState({ dvnLoiDs: loi });
+    }
+  }
+
+  async dvnThuHoi(id) {
+    this.setState({ dvnDangXoa: id, dvnLoiDs: '', dvnDangHoiXoa: null });
+    let loi = '';
+    try {
+      await K.goi('api/khoa-khach/' + encodeURIComponent(id), { method: 'DELETE' });
+    } catch (e) {
+      loi = e.message || 'Lỗi thu hồi khoá.';
+    } finally {
+      this.setState({ dvnDangXoa: null });
+      await this.taiDsKhoa();
+      if (loi) this.setState({ dvnLoiDs: loi });
+    }
+  }
+
+  // Neo #khoa-dich-vu-ngoai (từ trang Module/Studio): trang vẽ bất đồng bộ nên neo trình duyệt nhảy tới trước khi khối có; nhảy lại bằng tay.
+  cuonToiNeoDvn() {
+    if ((location.hash || '') !== '#khoa-dich-vu-ngoai') return;
+    const el = document.getElementById('khoa-dich-vu-ngoai');
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
+
+  vmDichVuNgoai(s) {
+    const dsModule = this.dvnModules();
+    const tenCua = (id) => (dsModule.find((m) => m.id === id) || { ten: id }).ten;
+    const ds = this.dvnKhoaCuaToi().map((k) => {
+      const bat = !!k.bat;
+      const duocPhep = k.pham_vi.map((p) => p.slice('tich_hop@'.length));
+      const idTatCa = Array.from(new Set([...dsModule.map((m) => m.id), ...duocPhep]));
+      return {
+        id: k.id,
+        nhan: k.nhan || 'Khoá cho dịch vụ ngoài',
+        bat,
+        tat: !bat,
+        soLuot: `${k.so_luot || 0} lượt`,
+        dungCuoi: k.dung_cuoi ? `Dùng cuối: ${K.tuongDoi(k.dung_cuoi)}` : 'Chưa dùng',
+        modules: idTatCa.map((id) => ({ id, ten: tenCua(id), chon: duocPhep.includes(id), toggle: () => this.dvnDoiModule(k, id) })),
+        dangDoi: s.dvnDangDoi === k.id,
+        nhanDoi: bat ? 'Tắt' : 'Bật',
+        doiTrangThai: () => this.dvnDoiTrangThai(k),
+        chuaXacNhanXoa: s.dvnDangHoiXoa !== k.id,
+        dangXacNhanXoa: s.dvnDangHoiXoa === k.id,
+        dangXoa: s.dvnDangXoa === k.id,
+        hoiXoa: () => this.setState({ dvnDangHoiXoa: k.id }),
+        huyXoa: () => this.setState({ dvnDangHoiXoa: null }),
+        xacNhanXoa: () => this.dvnThuHoi(k.id),
+      };
+    });
+    const moi = s.dvnKhoaMoi ? { khoa: s.dvnKhoaMoi.khoa, modules: (s.dvnKhoaMoi.pham_vi || []).map((p) => tenCua(String(p).slice('tich_hop@'.length))) } : null;
+    return {
+      coModule: dsModule.length > 0 || ds.length > 0,
+      khongCoModule: dsModule.length === 0 && ds.length === 0,
+      dsModule: dsModule.map((m) => ({ id: m.id, ten: m.ten, chon: s.dvnChon.includes(m.id), toggle: () => this.dvnBatTat(m.id) })),
+      nhan: s.dvnNhan,
+      goNhan: (e) => this.setState({ dvnNhan: e.target.value }),
+      loiTao: s.dvnLoiTao,
+      dangTao: s.dvnDangTao,
+      taoSubmit: (e) => this.dvnTao(e),
+      coKhoaMoi: !!moi,
+      khoaMoi: moi,
+      dongKhoaMoi: () => this.setState({ dvnKhoaMoi: null }),
+      chepKhoa: () => this.dvnChep(),
+      nhanChep: s.dvnChepLoi || (s.dvnChepTin ? 'Đã sao chép ✓' : 'Sao chép khoá'),
+      loiDs: s.dvnLoiDs,
+      soKhoa: ds.length,
+      khongCoKhoa: ds.length === 0,
+      dsKhoa: ds,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1762,6 +1984,9 @@ class Component extends DCLogic {
       tongSoKhoa: dsKhoaHienThi.length,
       dsKhoaHienThi,
 
+
+      // NV289: Khoá cho dịch vụ ngoài gọi vào
+      dvn: this.vmDichVuNgoai(s),
 
       // Khoá API của tôi
       coKhoaToiMoi: !!khoaToiMoiView,
