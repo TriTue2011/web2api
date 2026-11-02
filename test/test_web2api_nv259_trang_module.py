@@ -120,7 +120,7 @@ def test_tong_nhom_khong_bat_tat_va_nhom_con(trang, tmp_path, monkeypatch):
         assert tieu_de_bang(trang) == "Nhóm con: Nền và tài khoản"
         # Bấm dòng module → chi tiết module đó.
         trang.bam("document.querySelector('[data-tong-loai=\"module\"][data-tong-ma=\"nen-gia\"]')", mo_ta="dòng module")
-        trang.cho("document.getElementById('dung-luong')", han=15, mo_ta="chi tiết module")
+        trang.cho("document.getElementById('ct-trang-thai')", han=15, mo_ta="chi tiết module")
         assert tieu_de_bang(trang) == "Nền giả"
 
 
@@ -150,7 +150,7 @@ def test_aria_pressed_chi_o_tieu_diem(trang, tmp_path, monkeypatch):
         LAN = "document.querySelector('[data-loc-lan=\"ai\"]')"
         CON = "document.querySelector('[data-loc-con=\"nen-tai-khoan\"]')"
         trang.bam(o("nen-gia"), mo_ta="ô nen-gia")
-        trang.cho("document.getElementById('dung-luong')", han=15, mo_ta="chi tiết module")
+        trang.cho("document.getElementById('ct-trang-thai')", han=15, mo_ta="chi tiết module")
         assert ap(o("nen-gia")) == "true"
         assert ap(GOC) == "false"
         assert ap(LAN) == "false"
@@ -175,7 +175,7 @@ def test_bam_ra_ngoai_va_esc_ve_tong_pham_vi(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch, git=GIT2) as w:
         mo_trang(trang, w)
         trang.bam(o("nen-gia"), mo_ta="ô nen-gia")
-        trang.cho("document.getElementById('dung-luong')", han=15, mo_ta="chi tiết module")
+        trang.cho("document.getElementById('ct-trang-thai')", han=15, mo_ta="chi tiết module")
         # Bấm trong bảng chi tiết: vẫn ở chi tiết module.
         trang.bam("document.getElementById('chi-tiet-ten')", mo_ta="tiêu đề bảng chi tiết")
         assert tieu_de_bang(trang) == "Nền giả"
@@ -232,7 +232,7 @@ def test_popup_duoi_720_va_hai_cot_tu_720(trang, tmp_path, monkeypatch):
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("nen-gia"), han=20, mo_ta="ô nen-gia ở 768px")
         trang.bam(o("nen-gia"), mo_ta="ô nen-gia")
-        trang.cho("document.getElementById('dung-luong')", han=15, mo_ta="chi tiết ở 768px")
+        trang.cho("document.getElementById('ct-trang-thai')", han=15, mo_ta="chi tiết ở 768px")
         geo2 = trang.js("(() => { const e = document.getElementById('chi-tiet'); const cs = getComputedStyle(e);"
                         " const r = e.getBoundingClientRect(); const l = document.querySelector('.cot-luoi').getBoundingClientRect();"
                         " return {pos: cs.position, disp: cs.display, left: r.left, cotPhai: l.right, w: r.width}; })()")
@@ -245,14 +245,14 @@ def test_bang_chi_tiet_gon_va_thang_cot_theo_mau(trang, tmp_path, monkeypatch):
     """Bảng chi tiết theo tỉ lệ của mẫu: tiêu đề ≤ 18px, chữ thân ≤ 14px, mọi nhãn «dt» cùng một cột (cùng mép trái)
     và mọi giá trị «dd» cùng một cột — ở máy tính lẫn điện thoại."""
     with loi_that(tmp_path, monkeypatch, git=GIT2) as w:
-        cai(w, "nen-gia")
+        # NV280: bảng «dt/dd» chỉ còn ở module CHƯA cài («Cài vào sẽ tốn»), nên không cài nen-gia ở đây.
         mo_trang(trang, w)
         for rong, cao, dt in ((1280, 900, False), (390, 800, True)):
             trang.khung(rong, cao, dien_thoai=dt)
             trang.di(w.url + "/He-thong.dc.html")
             trang.cho(o("nen-gia"), han=20, mo_ta=f"ô nen-gia ở {rong}px")
             trang.bam(o("nen-gia"), mo_ta="ô nen-gia")
-            trang.cho("document.querySelectorAll('#chi-tiet .bang-dong').length >= 3", han=15, mo_ta="bảng có hàng")
+            trang.cho("document.querySelectorAll('#chi-tiet .bang-dong').length >= 2", han=15, mo_ta="bảng có hàng")
             kq = trang.js("(() => { const c = document.getElementById('chi-tiet');"
                           " const px = (e) => parseFloat(getComputedStyle(e).fontSize);"
                           " const dts = [...c.querySelectorAll('.bang-dong dt')].map(e => Math.round(e.getBoundingClientRect().left));"

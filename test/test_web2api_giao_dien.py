@@ -137,7 +137,7 @@ def test_ca_0_module_chi_co_module_va_go_tay_bi_chuyen(trang, tmp_path, monkeypa
 # ───────────── luồng chính (chủ máy 11/10): Cài → vào Studio ngay → thêm khoá ở Hệ thống → AI ─────────────
 
 # NV255: đã xoá nut_o() — không còn nút hành động riêng trên ô (Cài/Cập nhật/Thêm khoá/Xoá);
-# mọi hành động nằm trong bảng chi tiết (nút #nut-cai, #nut-go, #nut-them-khoa).
+# mọi hành động nằm trong bảng chi tiết (nút #nut-cai, #nut-go; khoá: liên kết #lk-khoa-bao-mat — NV280).
 
 
 # Đếm lời gọi cài trong sessionStorage: trang tự chuyển sang Studio sau khi cài, biến trên window mất theo trang.
@@ -173,8 +173,10 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         trang.bam(o("ai-gia"))
         trang.cho("document.getElementById('can-gi')", mo_ta="bảng chi tiết")
         can = trang.chu("#can-gi")
-        assert "64 MB" in can and "chưa đo" in can and "Không cần" in can and "gia.example" in can
-        assert "Dung lượng tải" in can and "KB" in can
+        # NV280 (theo «Sơ đồ Module»): module chưa cài có khối «Cần có» — Đĩa (gói) / RAM / GPU, mỗi thứ một dòng; mạng ra ở «Xin quyền».
+        assert "64" in can and "MB" in can and "không cần" in can.lower() and "sau khi cài" not in can.lower()
+        assert "gia.example" in trang.chu("#xin-quyen")
+        assert "Đĩa" in can and "KB" in can
         assert "Không cần cài gì thêm" in trang.chu("#huong-dan")
         assert trang.chu("#nut-cai") == "Cài"
         trang.js("document.getElementById('chi-tiet').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
@@ -299,36 +301,30 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
         trang.bam(o("ai-gia"))
         # NV255 (sửa selector): liên kết «Thêm khoá» nằm trong bảng chi tiết (không còn nút riêng trên ô);
         # module mang mã của tab Tài khoản → dẫn tới Hệ thống → AI → Tài khoản đúng module.
-        trang.cho("document.getElementById('lk-them-khoa')", han=15, mo_ta="liên kết Thêm khoá")
-        assert trang.js("document.getElementById('lk-them-khoa').getAttribute('href')").endswith("He-thong-AI.dc.html#tk-ai-gia")
-        trang.cho("document.querySelector('#chi-tiet form.form-cau-hinh')", han=15, mo_ta="bước Thêm tài khoản/khoá API")
-        assert trang.chu("#ct-trang-thai") == "Đã cài — chờ khoá"
+        # NV280: khoá KHÔNG nhập ở bảng Module — không ô nhập, không nút «Thêm khoá»; chỉ MỘT liên kết sang Bảo mật & người dùng.
+        trang.cho("document.getElementById('lk-khoa-bao-mat')", han=15, mo_ta="liên kết sang Bảo mật")
+        assert trang.js("document.getElementById('lk-khoa-bao-mat').getAttribute('href')").endswith(
+            "He-thong-Bao-mat.dc.html#khoa-module-ai-gia")
+        assert trang.chu("#lk-khoa-bao-mat") == "Cần khoá — tạo ở Bảo mật & người dùng"
+        assert trang.js("document.querySelectorAll('#chi-tiet input[type=password], #chi-tiet textarea').length") == 0
+        assert trang.js("document.getElementById('nut-them-khoa') || document.getElementById('lien-ket')") is None
+        assert trang.chu("#ct-trang-thai") == "Đã cài"
         assert trang.chu("#moi-nhat") == "Đã là bản mới nhất trên git."   # A0: da_cai_dung
         assert not trang.js("!!document.getElementById('nut-cai')")         # đã cài: không còn «Cài»
-        assert trang.chu("#h-lien-ket") == "CẤU HÌNH" and "Bước tiếp theo" in trang.chu("#buoc-tiep")
         # CŨ: «AI hiện, Studio chưa (chưa liên kết)». MỚI: đã cài module khai chat → Studio có ngay («Quay lại Studio»).
         assert "ai" in nav(trang)
         assert trang.js("document.querySelector('[data-nav=\"quay-lai\"]')?.getAttribute('href')").endswith("Studio.dc.html")
         assert trang.js("!!document.getElementById('ket-noi')")             # Kết nối vẫn hiện tới liên kết đầu tiên
 
-        # Trường bắt buộc còn trống → không gửi, báo thiếu ngay trên form.
-        trang.bam("document.getElementById('nut-luu-cau-hinh')")
-        trang.cho("document.querySelector('#chi-tiet .loi-form')", mo_ta="báo thiếu trường bắt buộc")
-        assert "Khoá API" in trang.chu("#chi-tiet .loi-form")
-        trang.go("#chi-tiet [data-truong='api_keys'] textarea", f"{K_TOT}\n{K_HONG}")
-        trang.js("const i = document.querySelector('#chi-tiet [data-truong=\"base_url\"] input');"
-                 "i.focus(); i.value = ''; i.dispatchEvent(new Event('input', {bubbles: true}))")
-        trang.go("#chi-tiet [data-truong='base_url'] input", "https://proxy-cua-toi.example/v1")
-        trang.bam("document.getElementById('nut-luu-cau-hinh')")
-        trang.cho("document.getElementById('kq-ok')", han=15, mo_ta="liên kết thành công")
-        dong = trang.js("[...document.querySelectorAll('#chi-tiet .ket-qua-cai li')].map((l) => l.className)")
-        assert dong == ["kq-tot", "kq-hong"], dong
-        # Liên kết đầu tiên: khối Kết nối ẩn, ô «Đang chạy», trang không tải lại.
-        trang.cho("!document.getElementById('ket-noi')", mo_ta="Kết nối ẩn sau liên kết đầu tiên")
-        assert trang.js("window.__khongTaiLai") == 1
-        assert trang.chu("#ct-trang-thai") == "Đang chạy"
-        # NV255: không còn nút riêng trên ô để kiểm — trạng thái «Đang chạy» của ô là đủ.
-
+        # NV280: nhập khoá chuyển sang Bảo mật & người dùng (NV281); ở đây liên kết bằng API rồi kiểm trạng thái bảng.
+        lien_ket(w, "ai-gia", {"api_keys": {"giu": [], "them": [K_TOT]}, "base_url": "https://proxy-cua-toi.example/v1"})
+        trang.di(w.url + "/He-thong.dc.html#module-ai-gia")
+        trang.cho(o("ai-gia") + "?.dataset.tt === 'dang-chay'", han=15, mo_ta="ô «Đang chạy»")
+        trang.cho("document.getElementById('ct-trang-thai')?.textContent.trim() === 'Đang chạy'", han=15, mo_ta="huy hiệu Đang chạy")
+        assert trang.js("!document.getElementById('ket-noi')")   # Kết nối ẩn sau liên kết đầu tiên
+        trang.js("window.__khongTaiLai = 1")   # trang vừa tải lại sau khi liên kết bằng API; từ đây gỡ không được tải lại
+        assert trang.chu("#lk-khoa-bao-mat") == "Khoá — quản lý ở Bảo mật & người dùng"
+        assert trang.js("document.getElementById('can-gi')") is None
         luu = json.loads((tmp_path / "bi_mat" / "ai-gia.json").read_text())
         assert luu["api_keys"] == [K_TOT]
         assert json.loads((tmp_path / "modules.json").read_text())["modules"][0]["cau_hinh_cong_khai"]["base_url"] \
@@ -337,20 +333,7 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
         assert K_TOT not in html and K_HONG not in html
         assert not any(K_TOT in s or K_HONG in s for s in trang.state_thanh_phan())
 
-        # Thêm một khoá, ĐỂ NGUYÊN ô base_url: base_url đã đặt KHÔNG bị gửi đè bằng mặc định (lỗi cũ của form).
-        trang.cho("document.querySelectorAll('#chi-tiet [data-khoa-luu]').length === 1", mo_ta="khoá đã lưu dạng che")
-        k3 = "AIzaSyTOT-ba--000000000000000000000003"
-        trang.go("#chi-tiet [data-truong='api_keys'] textarea", k3)
-        trang.bam("document.getElementById('nut-luu-cau-hinh')")
-        trang.cho("document.querySelectorAll('#chi-tiet [data-khoa-luu]').length === 2", han=15, mo_ta="hai khoá")
-        assert json.loads((tmp_path / "bi_mat" / "ai-gia.json").read_text())["api_keys"] == [K_TOT, k3]
-        assert json.loads((tmp_path / "modules.json").read_text())["modules"][0]["cau_hinh_cong_khai"]["base_url"] \
-            == "https://proxy-cua-toi.example/v1"
-        # Bớt TỪNG khoá: bấm «Bớt» ở khoá đầu rồi lưu.
-        trang.bam("document.querySelector('#chi-tiet [data-khoa-luu=\"0\"] button')")
-        trang.bam("document.getElementById('nut-luu-cau-hinh')")
-        trang.cho("document.querySelectorAll('#chi-tiet [data-khoa-luu]').length === 1", han=15, mo_ta="còn một khoá")
-        assert json.loads((tmp_path / "bi_mat" / "ai-gia.json").read_text())["api_keys"] == [k3]
+        # NV280: thêm/bớt TỪNG khoá và giữ base_url khi lưu là việc của form khoá ở Bảo mật & người dùng (NV281).
 
         # Gỡ → tab do nó mang lại biến mất (tính lại điều kiện), vẫn không tải lại trang.
         trang.bam("document.getElementById('nut-go')")
@@ -362,9 +345,9 @@ def test_bang_chi_tiet_them_khoa_base_url_bot_khoa_va_go(trang, tmp_path, monkey
         # NV255: không còn nút hành động riêng trên ô (nut_o đã xoá) — trạng thái ô «chua-cai» là đủ.
 
 
-def test_them_khoa_tren_o_module_khong_co_tab_tai_khoan_mo_bang_chi_tiet(trang, tmp_path, monkeypatch):
-    """Module cần khoá nhưng KHÔNG mang mã của tab Tài khoản (loại «app»): nút «Thêm khoá» TRONG BẢNG CHI TIẾT
-    (NV255: không còn nút riêng trên ô) mở bảng chi tiết ngay ở bước thêm khoá, một lần bấm, không rời trang."""
+def test_module_can_khoa_khong_co_tab_tai_khoan_chi_co_lien_ket_sang_bao_mat(trang, tmp_path, monkeypatch):
+    """NV280: module cần khoá nhưng KHÔNG mang mã của tab Tài khoản (loại «app»): bảng chi tiết KHÔNG còn nút «Thêm khoá»
+    hay ô nhập khoá (khoá tạo ở Bảo mật & người dùng) — chỉ một liên kết, bấm không tải lại trang Module."""
     tep = module_ai("app-khoa", "App cần khoá", "appk", ())
     m = json.loads(tep["manifest.json"])
     m.update(loai="app", loai_ten="App", loai_thu_tu=20)
@@ -374,14 +357,12 @@ def test_them_khoa_tren_o_module_khong_co_tab_tai_khoan_mo_bang_chi_tiet(trang, 
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("app-khoa"), han=15, mo_ta="ô app-khoa")
         trang.bam(o("app-khoa"))
-        trang.cho("document.getElementById('nut-them-khoa')", han=15, mo_ta="nút Thêm khoá trong bảng chi tiết")
-        assert trang.js("document.getElementById('nut-them-khoa').tagName") == "BUTTON"
-        assert trang.chu("#nut-them-khoa") == "Thêm khoá"
-        trang.js("window.__oLai = 1")
-        trang.bam("document.getElementById('nut-them-khoa')")
-        trang.cho("document.activeElement?.closest('#lien-ket') && document.activeElement.tagName === 'TEXTAREA'",
-                  han=10, mo_ta="focus vào ô khoá trong bảng chi tiết")
-        assert trang.js("window.__oLai") == 1
+        trang.cho("document.getElementById('lk-khoa-bao-mat')", han=15, mo_ta="liên kết sang Bảo mật")
+        assert trang.js("document.getElementById('lk-khoa-bao-mat').tagName") == "A"
+        assert trang.js("document.getElementById('lk-khoa-bao-mat').getAttribute('href')").endswith(
+            "He-thong-Bao-mat.dc.html#khoa-module-app-khoa")
+        assert trang.js("document.getElementById('nut-them-khoa')") is None
+        assert trang.js("document.querySelectorAll('#chi-tiet input[type=password], #chi-tiet textarea').length") == 0
         assert trang.js(o("app-khoa") + ".getAttribute('aria-pressed')") == "true"
         assert trang.js("document.querySelectorAll('#chi-tiet').length") == 1
 

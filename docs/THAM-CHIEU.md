@@ -58,7 +58,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Cài module KHÔNG cần khoá API; khoá thêm/bớt từng cái trên web | Có | 0.1.0-khung · 11/10/2026 |
 | Nạp lại module nóng; module từ xa (dịch vụ OpenAI trong mạng nhà); tab riêng của module ở `/m/<id>/` | Có | 0.1.0-khung · 10/10/2026 |
 | «Tính năng đang có» `GET /api/tinh-nang`: tab/chế độ hiện theo `loai` + `cung_cap` + `muc` của module | Có | 0.1.0-khung · 11/10/2026 |
-| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, nút Cài / Cập nhật / Thêm khoá ngay trên ô, bảng chi tiết «Cần gì để chạy»), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
+| Giao diện mới (lát A): Hệ thống → Module (lưới ô theo loại, bảng chi tiết gọn theo trang Tiện ích của demo: nút Cài / Cập nhật / Gỡ, «Cài vào sẽ tốn» cho module chưa cài, liên kết sang Bảo mật & người dùng cho module cần khoá), Cài xong vào thẳng Studio (trạng thái rỗng khi chưa có khoá), Hệ thống → AI (Tài khoản — nơi thêm/bớt khoá, Provider), Studio (chat stream, ảnh, video, Tạo mới, Lịch sử trò chuyện lưu trong trình duyệt) | Có — đo bằng Chrome thật trên lõi thật với module/Google/GitHub giả | 0.1.0-khung · 11/10/2026 |
 | Combo (xếp thứ tự nhiều nguồn AI, lùi khi lỗi) | Đã có backend API (`/api/combo`) và điều phối ở lõi; tab giao diện ở Hệ thống → AI (NV221) | 0.1.0-khung · 13/10/2026 |
 | «Địa chỉ truy cập công khai» (`GET`/`PUT /api/dia-chi`, `GET /api/ket-noi`, proxy ngược) | Có | 0.1.0-khung · 12/10/2026 |
 | Khoá khách có phạm vi, sổ thao tác quản trị, Bảo mật & người dùng | Có | 0.1.0-khung · 12/10/2026 |
@@ -746,7 +746,7 @@ vẫn chạy. Phục vụ tĩnh: tệp tĩnh luôn no-cache + ETag để nâng c
 | Trang | Hiện khi | Nội dung |
 |---|---|---|
 | `index.html` (đường `/`) | luôn | Đọc `/api/tinh-nang` rồi chuyển: có module khai `chat` **đã cài** (kể cả chưa có khoá) → Studio; chưa → Hệ thống → Module |
-| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Lưới ô bàn cờ theo loại, trình bày theo trang Tiện ích của demo: khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm có kính lúp + chip lọc loại + lọc trạng thái, lưới ô, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
+| `He-thong.dc.html` — Hệ thống → Module | luôn (trang đầu khi chưa cài gì) | Lưới ô bàn cờ theo loại; bảng chi tiết theo artifact «Sơ đồ Module web2api», ô tìm và chip lọc theo trang Tiện ích của demo: khối «Kết nối với web2api» (chỉ khi chưa có liên kết nào), khoá quản trị (thu thành một hàng khi đã có khoá), ô tìm có kính lúp + chip lọc loại + lọc trạng thái, lưới ô, bảng chi tiết, «＋ Thêm module» (từ git / từ xa) |
 | `He-thong-AI.dc.html` — Hệ thống → AI | có ≥ 1 module mang mã `ai` **đã cài** | Chép trang AI (`Bo-nao.dc.html`) của demo, nối dữ liệu thật; chọn «Tài khoản» / «Provider» bằng bảng xổ «AI ▾» như demo. **Tài khoản**: chip nhóm «API n» (n = số khoá đã lưu), nút «＋ Thêm API» mở biểu mẫu (chọn nguồn AI đã cài, ô khoá và ô chuỗi dựng từ `truong_cau_hinh`), mỗi khoá đã lưu là một dòng: thứ tự «#n» trong danh sách đã lưu (xoay vòng), nhãn nổi bật «Đang dùng» ở khoá vừa phục vụ yêu cầu gần nhất, số lượt đã dùng, lần dùng cuối tương đối, nhãn sức khoẻ («Dùng được» / «Hết hạn mức, hồi lúc …» / «Bị từ chối, thử lại lúc …» / «Lỗi»); mở dòng xem chi tiết: địa chỉ gốc (Chép), khoá dạng che …abcd, bộ đếm số lượt thành công và số lần 429 kể từ lần khởi động hoặc lưu khoá gần nhất, trạng thái hạn mức từng việc, thanh hạn mức chỉ khi module báo trần thật (`toi_da`); nút «Thay khoá» và «Xoá tài khoản» (bấm hai lần; khoá cuối của trường bắt buộc không có nút xoá vì lõi cần ít nhất một khoá); neo `#tk-<id>` mở biểu mẫu của đúng module. **Provider**: mọi nguồn AI **đã cài** (cả khi chưa có khoá) trong bảng xổ «● tên  số khoá»; «Model n | Tài khoản n». Model: `/v1/models` theo tiền tố, chia BA nhóm tách bạch «Trò chuyện», «Tạo ảnh», «Video» (suy từ `kha_nang` mà module khai cho từng model; mã lạ hiện nguyên mã; nhóm chưa có model nào thì không hiện); danh sách model luôn thu gọn (ẩn) khi vào trang (bấm tiêu đề nhóm để mở, đổi provider thì thu gọn lại, không nhớ trạng thái mở giữa các lần vào trang); nút «Làm mới danh sách». Tài khoản: tình trạng từng khoá theo thứ tự «#n», nhãn «Đang dùng» cho khoá phục vụ gần nhất, số lượt dùng, lần dùng cuối, độ trễ ms, số model (dòng tài khoản mở ra không liệt kê danh sách model), trạng thái hạn mức từng việc và thanh hạn mức khi có trần thật. Chưa có khoá: khung rỗng của demo kèm «Mở tab Tài khoản». Không có nút «Đặt #1» vì web2api giữ chiến lược xoay vòng khoá (lỗi → khoá kế, không dùng hàng đợi ưu tiên cố định). Phần demo chưa có backend (TOTP, «Xem» khoá, bật/tắt và «Đặt mặc định» model, «Lưu thay đổi», Combo) không được vẽ |
 | `Studio.dc.html` — Studio | có ≥ 1 module khai `chat` **đã cài** (không đợi khoá) | Chép bố cục `Main.dc.html` của bản demo (một trang cho máy tính và điện thoại): viên trạng thái góc phải, tiêu đề «Bạn muốn làm gì hôm nay?», ô soạn lớn dính đáy với «Vẽ ảnh» / «Tạo video» (khi có module **đã cài** khai `anh` / `video`), chip model (bảng «Model trả lời» với model thật từ `/v1/models`) và nút gửi tròn; dưới ô soạn «Trò chuyện» · «＋ Tạo mới» · «Lịch sử». Gửi rồi thì các lượt hội thoại hiện bên trên (chat stream, markdown an toàn; ảnh; video kèm thanh tiến độ), có hai nút nhảy lên lượt đầu / xuống lượt mới nhất. «Tạo mới» lưu cuộc đang nói vào Lịch sử rồi về màn đầu; «Lịch sử» mở bảng tìm và chọn một cuộc để nói tiếp — lưu ở localStorage của **trình duyệt này** (khoá `web2api_lich_su_tro_chuyen`, tối đa 50 cuộc và 1 triệu ký tự, chỉ lượt chữ; không có khoá nào hay tin giờ), cuộc đang mở được mở lại khi quay lại trang; trình duyệt chặn lưu trữ thì không có nút này. Chế độ chưa có module **đã liên kết** khoá ô soạn và hiện một dòng «Chưa có khoá cho … — Thêm khoá» tới đúng thẻ ở Hệ thống → AI → Tài khoản — không gọi `/v1`. Phần demo chưa có chức năng thật (đính kèm, loa, micro, Dịch, Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, ô tài khoản) không được vẽ |
 | `He-thong-Tro-giup.dc.html` — Hệ thống → Trợ giúp | mọi vai đã đăng nhập | Hướng dẫn sử dụng trên trình duyệt cho người không rành lệnh: 9 mục (thiết lập lần đầu, kết nối ứng dụng khách, khoá khách, thêm module, đổi khoá quản trị, quên mật khẩu, sao lưu, địa chỉ công khai, xử lý sự cố); mọi mục là khối thu gọn ĐÓNG mặc định, ô lọc chữ ở đầu trang; mục quản trị chỉ hiện cho admin; nội dung trong mảng dữ liệu trang, hiện bằng liên kết dữ liệu/textContent, mã mẫu trong `<pre>` có nút «Sao chép» |
@@ -764,21 +764,31 @@ chưa có trang chính nào thì là logo), rồi «AI ▾» (bảng xổ các t
 
 **Ô module** (lưới đều nhau như bàn cờ, chia khu theo `loai` có trong dữ liệu, xếp theo `loai_thu_tu`; khu đầu được
 chọn sẵn; thẻ trắng viền mảnh bo góc như dòng Tiện ích của demo, ô đang chọn viền xanh 2px): ô biểu tượng, tên, viên
-loại, viên trạng thái — **Chưa cài** · **Đã cài — chờ khoá** (hoặc «chờ liên kết» nếu không có trường bắt buộc) ·
-**Đang chạy** · **Có bản mới** · **Lỗi** —, mô tả cắt gọn và dải tài nguyên (RAM thêm · đĩa · GPU · dung lượng tải;
-số chưa khai ghi «chưa đo»). Chân ô dùng nút biểu tượng của demo: **tải về** nền đen = «Cài» (chưa có mã), trong
-suốt = «Cập nhật» (có bản mới); nút chữ **«Thêm khoá»** (đã cài, cần khoá, chưa liên kết — tới Hệ thống → AI →
-Tài khoản nếu module thuộc tab đó, ngược lại mở bảng chi tiết ngay ở bước thêm khoá); biểu tượng **xoá** = gỡ, bấm
+loại, viên trạng thái — **Chưa cài** · **Đã cài** (module cần khoá, chưa liên kết; hoặc «Đã cài — chờ liên kết» nếu
+không có trường bắt buộc mà chưa chạy) · **Đang chạy** · **Có bản mới** · **Lỗi** —, mô tả cắt gọn và dải tài nguyên
+(RAM thêm · đĩa · GPU · dung lượng tải; số chưa khai ghi «chưa đo»). Chân ô dùng nút biểu tượng của demo: **tải về** nền
+đen = «Cài» (chưa có mã), trong suốt = «Cập nhật» (có bản mới); biểu tượng **xoá** = gỡ, bấm
 hai lần (lần đầu nền đỏ nhạt và dải báo «bấm lần nữa»). Các nút là anh em của nút chọn ô, không lồng trong nó: một
 cú bấm chỉ làm một việc, và bấm liền hai lần chỉ cài một lần. Công tắc bật/tắt của demo không vẽ (chưa có backend).
-**Bảng chi tiết** (cột phải; trên điện thoại nằm dưới lưới như demo ở 390px): ô biểu tượng, tên chữ có chân,
-«phiên bản · loại», trạng thái, mô tả, «Cho AI dùng được» (mã `cung_cap`), «Cần gì để chạy» (tài nguyên, gói Python,
-mạng ra, hướng dẫn bằng chữ từ `tai_nguyen.ghi_chu`, một dòng «Máy này đủ chạy / có thể thiếu» khi đọc được
-`/api/he-thong` và module có khai số), mục của module, nút **«Cài»** / **«Cập nhật»**, «Cấu hình» (form khoá) và «Gỡ».
+**Bảng chi tiết** (cột phải; trên điện thoại là tờ nhỏ giữa màn hình ở 390px) theo bảng của artifact «Sơ đồ Module web2api»
+(bố cục trang — khu theo loại, ô bàn cờ, số bước cài — giữ nguyên), gọn và không lặp: tên (chữ có chân) + «Đóng»,
+«phiên bản · loại» với MỘT viên trạng thái (**Đã cài** / **Chưa cài** / **Đang chạy** …), mã (id) nhỏ, «Bước cài n · mã X»
+khi module nằm trong chuỗi phụ thuộc, mô tả MỘT câu ≤ 110 ký tự (phần còn lại gập sau «Xem đầy đủ»), **«Cần cài trước»**
+(bấm được; «Không cần module nào khác.») và **«Được cần bởi»**; module chưa cài còn thấy «Xem kế hoạch cài» khi thiếu nền.
+Dung lượng: module **đã cài** có MỘT con số lớn «72 KB đang chiếm trên đĩa» (đo trên đĩa), khung «Đo lúc … / Đo lại»
+(chỉ đo khi bấm, gọi `POST /api/he-thong/do-tai-nguyen`) và khối **«Đang dùng»** — Đĩa / RAM / CPU / GPU, mỗi thứ một
+dòng kèm nhãn nguồn (đo · ước lượng · chưa đo); module **chưa cài** có «Dung lượng cài thêm» và khối **«Cần có»**
+(Đĩa gói trên git · RAM · GPU, thiếu số thì «chưa khai»), «Xin quyền» (đúng danh sách quyền hộp xác nhận cài hiện, trừ
+phụ thuộc và khả năng; kèm «Gọi ra ngoài: <máy chủ>» và «Gói Python») và hướng dẫn từ `tai_nguyen.ghi_chu`. Không có khối
+«sau khi cài…» ở module đã cài. Sau đó là «Cho AI dùng được» (mã `cung_cap`), mục của module, nút **«Cài»** /
+**«Cập nhật»** / **«Gỡ»**.
 
-**Form khoá** dựng từ `truong_cau_hinh`: khoá đã lưu chỉ hiện dạng che, nút «Bớt» cho từng khoá, ô thêm khoá mới
-(mỗi dòng một khoá); ô chuỗi để trống hay không sửa thì **không gửi** — giá trị đã lưu (ví dụ `base_url` qua proxy)
-được giữ. Gửi đi là xoá bí mật khỏi trang.
+**Khoá không nhập ở bảng này.** Module đã cài có trường bí mật bắt buộc (`kieu` là `bi_mat` / `danh_sach_bi_mat` và
+`bat_buoc`) không có ô nhập và không có nút «Thêm khoá»: chỉ MỘT dòng liên kết «Cần khoá — tạo ở Bảo mật & người dùng»
+(đã chạy thì «Khoá — quản lý ở Bảo mật & người dùng») tới `He-thong-Bao-mat.dc.html#khoa-module-<id>`. Module không cần
+khoá thì cài là chạy (lõi nạp và liên kết ngay khi cài). Khối «Cấu hình» chỉ còn cho module có trường thường
+(`chuoi`): ô chuỗi để trống hay không sửa thì **không gửi** — giá trị đã lưu (ví dụ `base_url` qua proxy) được giữ;
+trường bí mật tuỳ chọn không hiện ở đây.
 
 ### Module
 

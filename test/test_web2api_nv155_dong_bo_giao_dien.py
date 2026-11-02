@@ -209,7 +209,7 @@ def test_catalog_tra_dung_luong_tren_dia_dung_tung_byte(moi_truong):
 
 
 @chrome
-def test_ui_bang_sau_khi_cai_hien_dung_luong_do_that_va_goi_co_san(trang, tmp_path, monkeypatch):
+def test_ui_bang_module_da_cai_chi_hien_dang_chiem_va_goi_trong_xin_quyen(trang, tmp_path, monkeypatch):
     mod = mau_module_cong_cu()
     man = json.loads(mod["manifest.json"])
     man["yeu_cau_goi"] = ["httpx"]  # gói có sẵn trong ảnh
@@ -221,9 +221,10 @@ def test_ui_bang_sau_khi_cai_hien_dung_luong_do_that_va_goi_co_san(trang, tmp_pa
         sel = "document.querySelector('[data-o=\"cong-cu-ui\"]')"
         trang.cho(sel, han=15, mo_ta="ô module")
         trang.bam(sel)
-        trang.cho("document.getElementById('can-gi')", mo_ta="bảng chi tiết")
-        bang = trang.chu("#can-gi")
-        assert "sau khi cài" in trang.chu("#h-can-gi").lower()
-        assert "(đo trên đĩa)" in bang and "Dung lượng mã (đã cài)" in bang
-        assert "Đĩa tăng sau khi cài" in bang and "chưa đo" in bang  # đĩa khi chạy chưa khai → nói thật
-        assert "có sẵn trong lõi" in bang and "httpx" in bang
+        # NV280 (theo «Sơ đồ Module»): module ĐÃ cài — không có khối «Cần có», không chữ «sau khi cài»; MỘT số lớn
+        # «X đang chiếm trên đĩa» đo thật; khối «Đang dùng» có dòng Đĩa mang nhãn nguồn «đo».
+        trang.cho("document.getElementById('dung-luong')", mo_ta="số lớn đang chiếm")
+        assert trang.js("document.getElementById('can-gi')") is None
+        assert "sau khi cài" not in trang.chu("#chi-tiet").lower()
+        assert re.fullmatch(r"\d+([.,]\d+)? (KB|MB)\s+đang chiếm trên đĩa", trang.chu("#dung-luong")), trang.chu("#dung-luong")
+        assert "Đĩa" in trang.chu("#dang-dung") and "đo" in trang.chu("#dang-dung")

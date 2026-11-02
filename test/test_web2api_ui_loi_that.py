@@ -59,7 +59,9 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
 
             trang.bam(o)
             trang.cho("document.getElementById('nut-cai')", mo_ta="nút Cài")
-            assert "generativelanguage.googleapis.com" in trang.chu("#can-gi") and "httpx" in trang.chu("#can-gi")
+            # NV280: mạng ra + gói Python (thông tin an toàn cần thấy TRƯỚC khi cài) nằm ở «Xin quyền»; «Cài vào sẽ tốn» không còn «sau khi cài».
+            assert "generativelanguage.googleapis.com" in trang.chu("#xin-quyen") and "httpx" in trang.chu("#xin-quyen")
+            assert "sau khi cài" not in trang.chu("#chi-tiet").lower()
             trang.bam("document.getElementById('nut-cai')")
             # Hộp xác nhận cài mới hiện ra (NV61: cài module mới từ git phải qua xác nhận)
             trang.cho("!!document.getElementById('xac-nhan-cai')", han=15, mo_ta="hộp xác nhận cài mới")

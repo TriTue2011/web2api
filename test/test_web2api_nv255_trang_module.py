@@ -220,15 +220,24 @@ def test_chan_go_khi_dang_duoc_can(trang, tmp_path, monkeypatch):
 
 @can_chrome
 def test_dung_luong_trong_bang_chi_tiet(trang, tmp_path, monkeypatch):
-    """Bảng chi tiết hiện «Dung lượng cài thêm» (chưa cài) / «Đang chiếm» (đã cài); thiếu số thì «chưa đo»."""
+    """NV280: module CHƯA cài → khối «Cần có» có dòng «Đĩa» (gói trên git) + «Dung lượng cài thêm», không có số lớn;
+    module ĐÃ cài → khối «Đang dùng» + MỘT số lớn «X đang chiếm trên đĩa» đo trên đĩa, không còn khối «Cần có»."""
     git = {"nen-gia": module_nen()}
     with loi_that(tmp_path, monkeypatch, git=git) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong.dc.html")
         trang.cho(o("nen-gia"), han=20, mo_ta="ô nen-gia")
         trang.bam(o("nen-gia"))
-        trang.cho("document.getElementById('dung-luong')", han=15, mo_ta="dòng dung lượng")
-        assert "Dung lượng cài thêm" in trang.chu("#dung-luong")
+        trang.cho("document.getElementById('can-gi')", han=15, mo_ta="khối «Cần có»")
+        assert "Đĩa" in trang.chu("#can-gi") and "sau khi cài" not in trang.chu("#chi-tiet").lower()
+        assert "Dung lượng cài thêm" in trang.chu("#dung-luong-cai-them")
+        assert trang.js("document.getElementById('dung-luong')") is None
+        assert cai_git_hai_luot(httpx, "nen-gia", headers=QT,
+                                duong_dan=f"{w.url}/api/nguon-git/cai/nen-gia").status_code == 200
+        trang.di(w.url + "/He-thong.dc.html#module-nen-gia")
+        trang.cho("document.getElementById('dung-luong')", han=15, mo_ta="số lớn «đang chiếm trên đĩa»")
+        assert "đang chiếm trên đĩa" in trang.chu("#dung-luong")
+        assert trang.js("document.getElementById('can-gi')") is None and "đĩa" in trang.chu("#dang-dung").lower()
 
 
 @can_chrome

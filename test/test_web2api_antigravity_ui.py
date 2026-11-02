@@ -1,7 +1,7 @@
 """Test giao diện cho module antigravity bằng Chrome THẬT (CDP của ui_chung, không phải Playwright).
 
 Khuôn mẫu: test/test_web2api_giao_dien.py (ô bàn cờ `[data-o=…]`, bảng chi tiết `#chi-tiet`, form `#lien-ket`).
-Module chạy là mã THẬT trong modules/antigravity/; cầu nối là bản giả `CauNoiGia` của test_antigravity_module.py.
+Module chạy là mã THẬT trong modules/antigravity/.
 Không có Chrome thì cả tệp tự bỏ qua.
 """
 
@@ -15,7 +15,6 @@ import pytest
 from app import so_module
 from app.main import app
 from gia import MayChuThat, ghi_thu_muc
-from test_antigravity_module import KHOA_CAU_NOI, CauNoiGia
 from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401 — fixture
 
 pytestmark = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
@@ -58,30 +57,22 @@ def test_o_module_antigravity_hien_tren_trang_he_thong(loi, trang):
     trang.cho("document.getElementById('chi-tiet-ten')?.innerText === " + json.dumps(manifest["ten"]), han=10,
               mo_ta="bảng chi tiết của antigravity")
     assert trang.js("[...document.querySelectorAll('#cho-ai code')].map((c) => c.textContent)") == manifest["cung_cap"]
-    assert "agy" in trang.chu("#can-gi")
+    # NV280: module ĐÃ cài → khối «Đang dùng» (không có «Cần có»); mô tả MỘT câu ≤ 110 ký tự; có mã (id) + «Cần cài trước».
+    assert trang.js("document.getElementById('can-gi')") is None and trang.js("!!document.getElementById('dang-dung')")
+    assert "agy" in trang.chu("#mo-ta") and len(trang.chu("#mo-ta")) <= 110
+    assert trang.chu("#ct-trang-thai") == "Đã cài" and trang.chu("#ct-id") == "antigravity"
+    assert "cần cài trước" in trang.chu("#phu-thuoc").lower()
 
 
-def test_cau_hinh_antigravity_qua_giao_dien(loi, trang, tmp_path):
-    """Điền địa chỉ + khoá cầu nối trên form của bảng chi tiết → lõi gọi `cai()` thật của module tới cầu nối giả →
-    liên kết xong; khoá cầu nối không còn trong DOM hay state của trang, chỉ nằm ở kho bí mật."""
-    cn = CauNoiGia()
-    with MayChuThat(cn.app) as cau_noi:
-        dang_nhap_quan_tri(trang, loi.url)
-        trang.di(f"{loi.url}/He-thong.dc.html#module-antigravity")
-        o_dia_chi = "#chi-tiet [data-truong='dia_chi_cau_noi'] input[data-kieu='chuoi']"
-        o_khoa = "#chi-tiet [data-truong='khoa_cau_noi'] input[type='password']"
-        trang.cho(f"!!document.querySelector({json.dumps(o_dia_chi)}) && !!document.querySelector({json.dumps(o_khoa)})",
-                  han=15, mo_ta="form có hai trường của manifest")
-        trang.js(f"const i = document.querySelector({json.dumps(o_dia_chi)});"
-                 "i.focus(); i.value = ''; i.dispatchEvent(new Event('input', {bubbles: true}))")
-        trang.go(o_dia_chi, cau_noi.url)
-        trang.go(o_khoa, KHOA_CAU_NOI)
-        trang.bam("document.getElementById('nut-luu-cau-hinh')")
-        trang.cho("document.getElementById('kq-ok')", han=15, mo_ta="liên kết thành công")
-        trang.cho(o("antigravity") + "?.dataset.tt === 'dang-chay'", han=15, mo_ta="ô «Đang chạy»")
-        assert cn.da_goi_models  # cai() thật đã gọi /v1/models của cầu nối bằng khoá vừa điền
-
-        assert json.loads((tmp_path / "bi_mat" / "antigravity.json").read_text())["khoa_cau_noi"] == KHOA_CAU_NOI
-        html = trang.js("document.documentElement.outerHTML")
-        assert KHOA_CAU_NOI not in html
-        assert not any(KHOA_CAU_NOI in s for s in trang.state_thanh_phan())
+def test_khoa_antigravity_khong_nhap_o_bang_module(loi, trang):
+    """NV280: module có trường bí mật BẮT BUỘC → bảng Module không còn ô nhập khoá, không còn nút «Thêm khoá»;
+    chỉ một liên kết sang Bảo mật & người dùng. (Luồng điền khoá → liên kết thật chuyển sang trang Bảo mật — NV281.)"""
+    dang_nhap_quan_tri(trang, loi.url)
+    trang.di(f"{loi.url}/He-thong.dc.html#module-antigravity")
+    trang.cho("document.getElementById('lk-khoa-bao-mat')", han=15, mo_ta="liên kết sang Bảo mật")
+    assert trang.js("document.getElementById('lk-khoa-bao-mat').getAttribute('href')").endswith(
+        "He-thong-Bao-mat.dc.html#khoa-module-antigravity")
+    assert trang.chu("#lk-khoa-bao-mat") == "Cần khoá — tạo ở Bảo mật & người dùng"
+    assert trang.js("document.querySelectorAll('#chi-tiet input[type=password], #chi-tiet textarea').length") == 0
+    assert trang.js("document.getElementById('nut-them-khoa')") is None
+    assert trang.js("document.getElementById('lien-ket')") is None
