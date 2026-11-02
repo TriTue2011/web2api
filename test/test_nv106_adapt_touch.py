@@ -8,7 +8,7 @@ Cốt lõi tập lệnh đo lấy từ `do-adapt-mau.py` của người giao vi�
 
 Test điện thoại (360x740, mobile=True, cảm ứng BẬT qua Emulation.setTouchEmulationEnabled
 để matchMedia('(pointer:coarse)') thật sự đúng — thiếu bước này số đo sai):
-đi qua 9 trang (He-thong, He-thong-AI, He-thong-Bao-mat, He-thong-Phien, He-thong-Thiet-bi,
+đi qua 9 trang (He-thong, He-thong-AI, He-thong-Bao-mat, He-thong-Phien, Nha, Doi-song, Tac-pham,
 He-thong-Tich-hop, He-thong-Tro-giup, He-thong-Module, Studio), mỗi trang đo 2 lượt
 (mặc định + mở hết mục thu gọn), khẳng định:
   - mọi phần tử bấm được hiện ra (button, a[href], [role=button], [role=tab], summary,
@@ -48,7 +48,8 @@ KHOA_QT = "khoa-quan-tri-nv106-0123456789abcdef"
 
 TRANG_CAN_DO = [
     "He-thong.dc.html", "He-thong-AI.dc.html", "He-thong-Bao-mat.dc.html", "He-thong-Phien.dc.html",
-    "He-thong-Thiet-bi.dc.html", "He-thong-Tich-hop.dc.html", "He-thong-Tro-giup.dc.html",
+    "Nha.dc.html", "Doi-song.dc.html", "Tac-pham.dc.html",
+    "He-thong-Tich-hop.dc.html", "He-thong-Tro-giup.dc.html",
     "He-thong-Module.dc.html", "Studio.dc.html",
 ]
 

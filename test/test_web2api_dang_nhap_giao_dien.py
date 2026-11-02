@@ -603,7 +603,7 @@ def test_node_kiem_tra_toan_dien_cac_loi_giao_dien_c1_c2_c3_t4_t6_l4():
     - C2: K.goi khi 401 code='incorrect_password' không chuyển đăng nhập; chỉ 401 unauthorized/invalid_api_key mới chuyển.
     - C3: K.navHeThong khi vai user hoặc khi tn bị 403 chỉ dựng nav tối thiểu gồm tab 'bao_mat', không có 'module'.
     - L4: K.goi khi 403 csrf_token_invalid tự nạp lại CSRF và thử lại 1 lần.
-    - T4: He-thong-Thiet-bi dừng thử lại khi 401/403 và gọi chuyenDangNhap, lỗi khác lùi dần tối đa 60s.
+    - T4 (đã bỏ — NV298 xoá trang Thiết bị cùng luồng SSE của nó; các trang khu chỉ đọc API theo chu kỳ qua K.goi, 401 đã được C2 phủ).
     - T6: trang.js của vnc-xa không còn docKhoa hay o-khoa; 401 tự gọi chuyenDangNhap về Dang-nhap.dc.html?ve=...
     """
     ma_js = """
@@ -869,7 +869,7 @@ def test_chrome_c2_doi_mat_khau_sai_hien_loi_giu_nguyen_o(trang: Trang, tmp_path
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
 def test_chrome_t2_khong_tran_ngang_390px_5_trang(trang: Trang, tmp_path, monkeypatch):
     """Kịch bản Chrome T2: Kiểm tra cả 5 trang ở 390px (iPhone):
-    - He-thong-Bao-mat.dc.html, He-thong.dc.html, He-thong-AI.dc.html, He-thong-Thiet-bi.dc.html, Studio.dc.html
+    - He-thong-Bao-mat.dc.html, He-thong.dc.html, He-thong-AI.dc.html, Studio.dc.html (NV297: ba trang khu tự về Module khi chưa có module nên đo ở test_web2api_nv297_khu.py, 375px có module)
     - Không trang nào bị tràn ngang (scrollWidth <= 390).
     - Nút Đăng xuất (#nut-dang-xuat) hiển thị trong khung nhìn.
     """
@@ -893,7 +893,6 @@ def test_chrome_t2_khong_tran_ngang_390px_5_trang(trang: Trang, tmp_path, monkey
             "/He-thong-Bao-mat.dc.html",
             "/He-thong.dc.html",
             "/He-thong-AI.dc.html",
-            "/He-thong-Thiet-bi.dc.html",
             "/Studio.dc.html"
         ]
 

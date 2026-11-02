@@ -375,10 +375,18 @@ def tinh_rui_ro_hieu_luc(id_thuc_the: str, e: dict, ghi_de: dict, da_xn: dict) -
     SEC-004f: thực thể mới hoặc đổi tính năng coi là «nguy_hiem» cho tới khi quản trị xác nhận.
     «Chờ xác nhận» = hiệu lực bị ép lên «nguy_hiem» CHỈ vì chưa xác nhận, còn module khai thấp hơn;
     khác với thực thể module tự khai «nguy_hiem» (không có gì để xác nhận lên mức thấp hơn).
+
+    NV298: thực thể CHỈ ĐỌC (module khai «doc» và KHÔNG có hành động nào) do quản trị cài thì coi như đã xác nhận ngay
+    lúc cài — không có hành động thì không gì để làm hại, và cổng thực hiện (thuc_hien_hanh_dong_loi bước 4) vẫn từ chối
+    mọi lời gọi lên nó. Tính ngay tại đây (không ghi sổ lúc cài) để thực thể module phát hiện SAU này (cổng mới, máy mới)
+    cũng không quay lại «chờ xác nhận». Thực thể có hành động giữ nguyên cổng SEC-004f: hành động GHI vẫn xác nhận
+    MỘT lần lúc gọi, khách vẫn vào hàng chờ phê duyệt.
     """
     rr_mac_dinh = e.get("rui_ro_mac_dinh")
     if rr_mac_dinh not in RUI_RO_HOP_LE:
         rr_mac_dinh = "nguy_hiem"
+    if rr_mac_dinh == "doc" and not (e.get("tinh_nang") or []):
+        return rr_mac_dinh, ghi_de.get(id_thuc_the, rr_mac_dinh), False
     b_tn = bam_tinh_nang(e.get("tinh_nang"), rr_mac_dinh)
     if id_thuc_the not in da_xn or da_xn.get(id_thuc_the) != b_tn:
         return rr_mac_dinh, "nguy_hiem", rr_mac_dinh != "nguy_hiem"
@@ -888,6 +896,13 @@ def _module_thiet_bi_hop_le(so: SoModule) -> list[tuple[str, Any, Any]]:
     return kq
 
 
+def _nhom_hien_thi(thuc_the: dict) -> str | None:
+    """NV297: nhóm hiển thị tuỳ chọn mà module gắn cho thực thể (vd «vpn», «router») để trang của module chia chip.
+    Chỉ nhận chuỗi ngắn; sai kiểu thì bỏ — không có nhóm nghĩa là thực thể thuộc chip mặc định của module."""
+    n = thuc_the.get("nhom")
+    return n[:40] if isinstance(n, str) and n.strip() else None
+
+
 async def lay_danh_sach_thuc_the(
     so: SoModule,
     loc_q: str | None = None,
@@ -945,6 +960,7 @@ async def lay_danh_sach_thuc_the(
                 "ten": str(item.get("ten") or e_id),
                 "loai": str(item.get("loai") or "thiet_bi"),
                 "khu": item.get("khu"),
+                "nhom": _nhom_hien_thi(item),
                 "thuoc_tinh": dict(item.get("thuoc_tinh") or {}),
                 "tinh_nang": list(item.get("tinh_nang") or []),
                 "rui_ro_mac_dinh": rr_mac_dinh,
@@ -1039,6 +1055,7 @@ async def lay_mot_thuc_the(id_thuc_the: str, so: SoModule) -> dict[str, Any] | N
         "ten": str(tim_thay.get("ten") or id_thuc_the),
         "loai": str(tim_thay.get("loai") or "thiet_bi"),
         "khu": tim_thay.get("khu"),
+        "nhom": _nhom_hien_thi(tim_thay),
         "thuoc_tinh": dict(tim_thay.get("thuoc_tinh") or {}),
         "tinh_nang": list(tim_thay.get("tinh_nang") or []),
         "rui_ro_mac_dinh": rr_mac_dinh,
@@ -1147,6 +1164,7 @@ async def thuc_hien_hanh_dong_loi(
                                 "ten": str(e.get("ten") or id_thuc_the),
                                 "loai": str(e.get("loai") or "thiet_bi"),
                                 "khu": e.get("khu"),
+                                "nhom": _nhom_hien_thi(e),
                                 "thuoc_tinh": dict(e.get("thuoc_tinh") or {}),
                                 "tinh_nang": list(e.get("tinh_nang") or []),
                                 "rui_ro_mac_dinh": rr_mac_dinh,

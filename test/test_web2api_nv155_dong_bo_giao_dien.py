@@ -19,7 +19,6 @@ import httpx
 import pytest
 
 from gia import ghi_thu_muc
-from test_web2api_giao_dien_thiet_bi import QT as QT_UI, loi_that_ui
 from test_web2api_thiet_bi import QT, moi_truong  # noqa: F401  (fixture)
 from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
 
@@ -121,55 +120,33 @@ def test_xac_nhan_nguy_hiem_that_khong_nhan_cho_xac_nhan(moi_truong):
     assert _muc(client, f"{TIEN_TO}.xoa_het")["cho_xac_nhan"] is False
 
 
-# ───────────── Giao diện (Chrome thật) ─────────────
+# ───────────── Giao diện ─────────────
+from contextlib import contextmanager
+
+from app import so_module
+from app.main import app
+from gia import MayChuThat
+
+QT_UI = {"Authorization": "Bearer khoa-quan-tri-test-ui-thiet-bi-0123"}
+
+
+@contextmanager
+def loi_that_ui(tmp_path, monkeypatch, modules: dict | None = None):
+    """Lõi thật + dữ liệu tạm (chép từ test giao diện Thiết bị đã bỏ ở NV298)."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("WEB2API_DATA", str(data_dir))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", "khoa-quan-tri-test-ui-thiet-bi-0123")
+    monkeypatch.setattr(so_module, "THU_MUC_ANH", tmp_path / "anh-rong")
+    for id_, tep in (modules or {}).items():
+        ghi_thu_muc(data_dir / "modules" / id_, tep)
+    with MayChuThat(app, lifespan="on") as w:
+        yield w
+
 
 chrome = pytest.mark.skipif(not CO_CHROME, reason="cần Chrome")
 
-
-def _mo_trang(trang, w, tmp_cho):
-    httpx.post(f"{w.url}/api/modules/cong-cu-ui/cai", json={"cau_hinh": {}}, headers=QT_UI)
-    dang_nhap_quan_tri(trang, w.url)
-    trang.di(f"{w.url}/He-thong-Thiet-bi.dc.html")
-    trang.cho("document.querySelector('.tb-dau')", mo_ta=tmp_cho)
-
-
-JS_THE = """(ten) => { const d = [...document.querySelectorAll('.tb-dau')]
-  .find((e) => e.querySelector('.tb-ten').textContent.trim() === ten); return d ? d.parentElement : null; }"""
-
-
-@chrome
-def test_ui_nut_hanh_dong_co_nhan_dung_va_khoa_khi_can_tham_so(trang, tmp_path, monkeypatch):
-    mods = {"cong-cu-ui": mau_module_cong_cu()}
-    with loi_that_ui(tmp_path, monkeypatch, modules=mods) as w:
-        _mo_trang(trang, w, "thẻ thiết bị")
-        nut = trang.js(f"""(() => {{ const the = ({JS_THE})('Chuẩn hoá chữ');
-          return [...the.querySelectorAll('.tb-hanh-dong button')].map((b) => [b.textContent.trim(), b.disabled]); }})()""")
-        assert nut == [["chuan_hoa_doc", True], ["dem_ky_tu", False]], nut
-        cu = trang.js(f"""(() => {{ const the = ({JS_THE})('Xoá sạch');
-          return [...the.querySelectorAll('.tb-hanh-dong button')].map((b) => [b.textContent.trim(), b.disabled]); }})()""")
-        assert cu == [["xoa", False]], cu  # khai kiểu chuỗi cũ vẫn chạy
-
-
-@chrome
-def test_ui_cho_xac_nhan_khac_nguy_hiem_that_va_bam_doc_giu_lai(trang, tmp_path, monkeypatch):
-    mods = {"cong-cu-ui": mau_module_cong_cu()}
-    with loi_that_ui(tmp_path, monkeypatch, modules=mods) as w:
-        _mo_trang(trang, w, "thẻ thiết bị")
-        nhan = lambda ten: trang.js(f"""(() => {{ const the = ({JS_THE})('{ten}');
-          return the.querySelector('.tb-dau > span').textContent.trim(); }})()""")
-        assert "xác nhận" in nhan("Chuẩn hoá chữ").lower(), nhan("Chuẩn hoá chữ")
-        assert nhan("Xoá sạch") == "Nguy hiểm"
-        # Giải thích cho người dùng có mặt trên thẻ chờ xác nhận.
-        goi_y = trang.js(f"""(() => {{ const the = ({JS_THE})('Chuẩn hoá chữ');
-          return the.textContent; }})()""")
-        assert "Đọc" in goi_y and "module khai" in goi_y.lower()
-        trang.js(f"""(() => {{ const the = ({JS_THE})('Chuẩn hoá chữ');
-          [...the.querySelectorAll('.tb-rui-ro button')].find((b) => b.textContent.trim() === 'Đọc').click(); }})()""")
-        trang.cho(f"({JS_THE})('Chuẩn hoá chữ').querySelector('.tb-dau > span').textContent.trim() === 'Đọc'",
-                  mo_ta="nhãn Đọc sau khi xác nhận")
-        trang.di(f"{w.url}/He-thong-Thiet-bi.dc.html")  # tải lại: phải còn nguyên
-        trang.cho("document.querySelector('.tb-dau')", mo_ta="tải lại")
-        assert nhan("Chuẩn hoá chữ") == "Đọc"
+# NV298: trang «Thiết bị» và nhãn rủi ro Đọc/Ghi/Nguy hiểm đã bỏ; giao diện mới được kiểm ở test_web2api_nv297_khu.py (Chrome thật).
 
 
 # ───────────── Hướng dẫn khoá dịch vụ phụ khớp với dịch vụ thật ─────────────

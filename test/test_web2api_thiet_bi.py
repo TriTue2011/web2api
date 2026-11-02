@@ -229,7 +229,7 @@ def test_3_khong_ten_nha_cung_cap_trong_ma_moi():
     goc = Path(__file__).resolve().parents[1]
     tep_kiem_tra = [
         goc / "app" / "thiet_bi.py",
-        goc / "web" / "He-thong-Thiet-bi.dc.html",
+        goc / "web" / "Nha.dc.html",
         goc / "docs" / "CHUAN-MODULE.md",
     ]
     tu_cam = re.compile(r"\b(home.?assistant|mikrotik|ezviz|routeros)\b", re.IGNORECASE)

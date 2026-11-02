@@ -15,7 +15,7 @@
 <style>
 /* Studio chép từ Main.dc.html của bản demo (bản HIỆN HÀNH, một trang cho cả máy tính lẫn điện thoại, mốc 1023px):
    cùng markup, cùng chuỗi kiểu, cùng chữ. Phần demo chưa có chức năng thật thì KHÔNG vẽ (đính kèm, loa, micro, Dịch,
-   Vietsub, Lồng tiếng, tab Tác phẩm/Nhà/Đời sống, avatar). Khung (thanh trên/dưới, viên trạng thái) ở khung.css. */
+   Vietsub, Lồng tiếng, avatar; ba tab Tác phẩm/Nhà/Đời sống do NV297 thêm, có menu ▾ như demo). Khung (thanh trên/dưới, viên trạng thái) ở khung.css. */
 :where(.goc.studio) a{color:inherit;text-decoration:none}
 .goc.studio{height:100vh;height:100dvh;min-height:560px;overflow-x:hidden;flex-wrap:nowrap}
 .oNhap{container-type:inline-size}
@@ -70,15 +70,18 @@ main.st.co-luot .hang-viec > button{padding:0 12px !important}
 <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div>
 <div class="ten-web">web2api</div>
 </div>
-<div class="thanh-tab" id="thanh-tab">
-<sc-for list="{{nav}}" as="n"><div class="muc-nav" style="{{n.wst}}"><a href="{{n.href}}" data-nav="{{n.id}}" aria-current="{{n.ac}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"></path></svg><span>{{n.nhan}}</span></a></div></sc-for>
-</div>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{nav}}" as="t"><div class="muc-nav" style="{{t.wst}}">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
 <div class="acc-hop">
   <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
   <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
   <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
 </div>
 </nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
 
 <main class="st{{lopLuot}}" style="flex:1 1 0;min-width:0;min-height:0;overflow-x:hidden;display:flex;flex-direction:column">
 <div class="st-dau" style="display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:16px 28px">
@@ -227,7 +230,11 @@ Trò chuyện
 </div>
 </main>
 
-<nav aria-label="Điều hướng chính (điện thoại)" class="bn"><sc-for list="{{navDuoi}}" as="n"><a href="{{n.href}}" data-nav-duoi="{{n.id}}" aria-label="{{n.nhan}}" aria-current="{{n.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"></path></svg><span>{{n.nhan}}</span></a></sc-for></nav>
+<nav aria-label="Điều hướng chính (điện thoại)" class="bn"><sc-for list="{{navDuoi}}" as="t">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav-duoi="{{t.id}}" aria-label="{{t.nhan}}" aria-current="{{t.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" aria-label="{{t.nhan}}" onClick="{{t.bat}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></button>
+<sc-if value="{{t.mo}}"><div class="bn-mui" aria-hidden="true" style="{{t.viTriMui}}"></div><div class="bn-menu" role="menu" aria-label="Mục trong {{t.nhan}}" style="{{t.viTri}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con-duoi="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</sc-for></nav>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{}'>
@@ -688,9 +695,9 @@ class Component extends DCLogic {
     const cuonToi = (id) => (e) => { if (e) e.preventDefault(); const x = document.getElementById(id); if (x) x.scrollIntoView({ block: id === 'moi-nhat' ? 'end' : 'start' }); };
     return {
       hinh,
-      nav: K.navChinh(tn, 'studio').map((n) => Object.assign({ wst: '' }, n))
-        .concat([{ id: 'he-thong', nhan: 'Hệ thống', href: 'He-thong.dc.html', d: hinh.he_thong, ac: 'false', wst: 'margin-left:auto' }]),
-      navDuoi: K.navDuoi(tn, 'studio'),
+      nav: K.navTren(this, tn, 'studio', null),
+      navDuoi: K.navDuoiMenu(this, tn, 'studio', null),
+      menuMo: !!s.menuMo, dongMenu: () => this.setState({ menuMo: null }),
       tt: Object.assign({ tieu: '' }, tt, { coLink: !!tt.href, khongLink: !tt.href }),
       tnLoi: s.tnLoi,
       tenNguoiDung: K.tenNguoiDung(s.nguoiDung),

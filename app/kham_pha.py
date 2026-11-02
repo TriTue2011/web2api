@@ -228,6 +228,7 @@ MA_KHA_NANG = re.compile(r"^[a-z][a-z0-9_]{0,30}\Z")
 ID_MUC = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}\Z")
 #: Mã nhóm hiển thị trong `nhom`: chữ thường, số, dấu gạch ngang (1-32 ký tự).
 MAU_NHOM_ID = re.compile(r"^[a-z0-9-]{1,32}\Z")
+MAU_MA_CHIP = re.compile(r"^[a-z0-9_-]{1,32}\Z")  # NV297: mã chip / mã nhóm thực thể (cho phép «_» như mã khả năng)
 
 #: Chuẩn phân loại lỗi trung lập cho module (mã mở):
 LOAI_LOI_CHUAN = {
@@ -431,6 +432,79 @@ def _chuan_hoa_nhom(m: dict) -> None:
     m["nhom"] = {"id": id_nhom, "ten": ten_nhom.strip()}
 
 
+KHU_GIAO_DIEN = ("nha", "doi_song", "tac_pham")
+# NV297: module «tiện ích» là việc cá nhân/giải trí → tab Đời sống, TRỪ nhóm con «nhắn tin và kênh» (kênh liên lạc, thuộc
+# Hệ thống, không vào tab nào). Đọc từ CẤU TRÚC manifest (nhom_con.id), không phải tên module.
+NHOM_CON_KENH = frozenset({"nhan-tin-va-kenh"})
+KHA_NANG_TAC_PHAM = frozenset({"anh", "anh_sua", "video"})
+
+
+def _chuan_hoa_giao_dien(m: dict) -> None:
+    """NV297: trường tuỳ chọn `giao_dien` — module TỰ khai nó nằm ở tab nào của thanh chính và chia chip ra sao:
+    {"khu": "nha"|"doi_song"|"tac_pham", "muc": id, "nhan": tên mục,
+    "chip": [{"id", "nhan", "nhom": [mã nhóm thực thể], "thu_tu": số nhỏ đứng trước}]}. `nhom` rỗng = các thực thể module
+    KHÔNG gắn nhóm; thực thể tự gắn `nhom` qua trường `nhom` của nó (xem app/thiet_bi.py).
+    Nhiều module cùng `muc` thì chung một trang mục (vd hai module mạng cùng mục «Mạng»). Khác `nhom_con` (làn của tab
+    Module, KHÔNG đụng tới). Sai định dạng → cảnh báo và bỏ trường (không chặn nạp module); khi đó khung suy từ cấu trúc."""
+    if "giao_dien" not in m:
+        return
+    g = m["giao_dien"]
+    mod_id = m.get("id", "chua_ro")
+
+    def bo(ly_do: str) -> None:
+        log.warning("Module %s: giao_dien %s", mod_id, ly_do)
+        m.pop("giao_dien", None)
+
+    if not isinstance(g, dict):
+        return bo("không phải đối tượng")
+    if g.get("khu") not in KHU_GIAO_DIEN:
+        return bo(f"khu phải là một trong {list(KHU_GIAO_DIEN)}")
+    muc, nhan = g.get("muc"), g.get("nhan")
+    if not isinstance(muc, str) or not MAU_NHOM_ID.match(muc):
+        return bo("muc không hợp lệ")
+    if not isinstance(nhan, str) or not nhan.strip() or len(nhan.strip()) > 30:
+        return bo("nhan không hợp lệ")
+    chip_ra = []
+    chip = g.get("chip", [])
+    if not isinstance(chip, list) or len(chip) > 12:
+        return bo("chip phải là danh sách tối đa 12 mục")
+    for c in chip:
+        if not isinstance(c, dict) or not isinstance(c.get("id"), str) or not MAU_MA_CHIP.match(c["id"]) \
+                or not isinstance(c.get("nhan"), str) or not c["nhan"].strip() or len(c["nhan"].strip()) > 30:
+            return bo("chip[] cần id và nhan hợp lệ")
+        nhom = c.get("nhom", [])
+        if not isinstance(nhom, list) or not all(isinstance(x, str) and MAU_MA_CHIP.match(x) for x in nhom):
+            return bo("chip[].nhom phải là danh sách mã nhóm")
+        thu_tu = c.get("thu_tu")
+        if thu_tu is not None and type(thu_tu) is not int:
+            return bo("chip[].thu_tu phải là số nguyên (nhỏ đứng trước)")
+        chip_ra.append({"id": c["id"], "nhan": c["nhan"].strip(), "nhom": list(nhom), "thu_tu": thu_tu})
+    m["giao_dien"] = {"khu": g["khu"], "muc": muc, "nhan": nhan.strip(), "chip": chip_ra}
+
+
+def giao_dien_cua(m: dict) -> dict | None:
+    """Tab và mục của một module trên thanh chính: `giao_dien` module khai, không thì SUY từ cấu trúc manifest
+    (`loai`, `nhom_con`, `cung_cap`) — không bảng tên module. Không thuộc tab nào → None.
+      - loại «nha» / «thiet_bi» (thiết bị nhà, mạng, camera) → Nhà
+      - loại «tien_ich» (trừ nhóm con kênh nhắn tin) → Đời sống
+      - cấp ảnh/video (cung_cap) → Tác phẩm
+    Mục mặc định là chính module (không chip khai thì khung dựng một chip theo module)."""
+    g = m.get("giao_dien")
+    if isinstance(g, dict):
+        return g
+    khu = None
+    if m.get("loai") in ("nha", "thiet_bi"):
+        khu = "nha"
+    elif m.get("loai") == "tien_ich" and (m.get("nhom_con") or {}).get("id") not in NHOM_CON_KENH:
+        khu = "doi_song"
+    elif KHA_NANG_TAC_PHAM.intersection(m.get("cung_cap") or []):
+        khu = "tac_pham"
+    if khu is None:
+        return None
+    ten = str(m.get("ten") or m.get("id"))
+    return {"khu": khu, "muc": str(m["id"]), "nhan": ten.split(" (")[0][:30], "chip": []}
+
+
 def kiem_manifest(m) -> str | None:
     """Lý do manifest không dùng được, hoặc None. Kiểu trường lạ là LỖI chứ không bỏ qua:
     kho dựa vào `kieu` để quyết bí mật — gõ nhầm «bi_mat » mà coi là chuỗi thường là lộ khoá."""
@@ -438,6 +512,7 @@ def kiem_manifest(m) -> str | None:
         return "manifest phải là đối tượng JSON"
     _chuan_hoa_nhom(m)
     _chuan_hoa_nhom_con(m)
+    _chuan_hoa_giao_dien(m)
     for k in TRUONG_CHUOI_BAT_BUOC:
         if not isinstance(m.get(k), str) or not m[k].strip():
             return f"thiếu hoặc sai trường «{k}» (cần chuỗi khác rỗng)"

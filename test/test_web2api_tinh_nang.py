@@ -132,7 +132,8 @@ def test_ai_da_cai_chua_khoa_roi_lien_ket_roi_go(du_lieu):
         loai = {x["ma"]: x for x in j["loai"]}
         assert loai["ai"]["so_da_cai"] == 2 and loai["ai"]["so_da_lien_ket"] == 0
         assert loai["ai"]["ten"] == "AI"           # từ `loai_ten` trong manifest của gemini-api, lõi không đặt
-        assert j["kha_nang_da_cai"] == {"ai": 2, "chat": 2, "anh": 1, "video": 1}
+        # NV297: module cấp ảnh/video còn mang mã tab «khu_tac_pham» (suy từ cấu trúc manifest) — cùng chỗ đếm với loại/cung_cap.
+        assert j["kha_nang_da_cai"] == {"ai": 2, "chat": 2, "anh": 1, "video": 1, "khu_tac_pham": 1}
         assert j["kha_nang_lien_ket"] == {}
         assert {m["id"]: m["da_lien_ket"] for m in j["modules"]} == {"chat-gia": False, "gemini-api": False}
 
@@ -145,7 +146,7 @@ def test_ai_da_cai_chua_khoa_roi_lien_ket_roi_go(du_lieu):
         # Gỡ → trở lại đúng như trước khi có nó.
         assert c.delete("/api/modules/chat-gia", headers=QT).status_code == 200
         j = tn(c)
-        assert j["kha_nang_lien_ket"] == {} and j["kha_nang_da_cai"] == {"ai": 1, "chat": 1, "anh": 1, "video": 1}
+        assert j["kha_nang_lien_ket"] == {} and j["kha_nang_da_cai"] == {"ai": 1, "chat": 1, "anh": 1, "video": 1, "khu_tac_pham": 1}
         assert [m["id"] for m in j["modules"]] == ["gemini-api"]
 
 
@@ -189,7 +190,7 @@ def test_module_tu_xa_tinh_la_ai_co_chat(du_lieu, monkeypatch):
         j = tn(c)
         assert j["modules"] == [{"id": "may-gpu", "ten": "Máy GPU", "loai": "ai", "cung_cap": ["chat"],
                                  "tien_to": "gpu", "tu_xa": True, "da_lien_ket": True, "dang_nhap_tu_dong": False,
-                                 "tai_dung_ho_so": False, "man_hinh": False, "nhom": None}]
+                                 "tai_dung_ho_so": False, "man_hinh": False, "nhom": None, "giao_dien": None}]
         assert j["kha_nang_lien_ket"] == {"ai": 1, "chat": 1}
         assert c.delete("/api/modules/may-gpu", headers=QT).status_code == 200
         assert tn(c)["modules"] == []
@@ -248,7 +249,7 @@ def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
         assert k is True, "module khai chat đã CÀI (chưa khoá) phải có Studio"
         k = _khung(j, TOM_TAT_KHUNG)
         assert k == {"studio": True, "che_do": ["studio_chat", "studio_anh"], "dung_duoc": [], "ai": True,
-                     "tai_khoan": True, "provider": True, "combo": False, "nav": ["studio"],
+                     "tai_khoan": True, "provider": True, "combo": False, "nav": ["studio", "tac_pham"],
                      "trang_dau": "Studio.dc.html"}, k
         # Câu «cần gì» của Studio nói về CÀI, không về liên kết.
         assert "cài một module có «chat»" in _khung(j | {"modules": [], "kha_nang_da_cai": {}}, "K.loiThieu('studio', tn)")

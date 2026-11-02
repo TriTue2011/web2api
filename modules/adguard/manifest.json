@@ -2,6 +2,19 @@
   "cung_cap": [
     "thiet_bi"
   ],
+  "giao_dien": {
+    "chip": [
+      {
+        "id": "dns",
+        "nhan": "DNS & chặn",
+        "nhom": [],
+        "thu_tu": 40
+      }
+    ],
+    "khu": "nha",
+    "muc": "mang",
+    "nhan": "Mạng"
+  },
   "giao_thuc": "adguard-http",
   "hang": "A",
   "id": "adguard",

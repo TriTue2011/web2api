@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 from app import he_thong, kho, nhat_ky, phien
-from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, go_ma, nap_ma, quet, van_tay)
+from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, giao_dien_cua, go_ma, nap_ma, quet, van_tay)
 from app.quyen_module import bam_diff, cac_muc_chuan, diff_quyen
 
 log = logging.getLogger("web2api.so_module")
@@ -424,7 +424,9 @@ class SoModule:
                             "dang_nhap_tu_dong": bool(dn),
                             "tai_dung_ho_so": bool(td),
                             "man_hinh": bool(xem),
-                            "nhom": nhom}
+                            "nhom": nhom,
+                            # NV297: tab + mục trên thanh chính (khai trong manifest, hoặc suy từ cấu trúc) — module từ xa không có.
+                            "giao_dien": None if tu_xa else giao_dien_cua(man)}
             if tu_xa and lk:
                 m_tx = self.dang_chay.get(id_)
                 if getattr(m_tx, "la_nut_gpu", False):
@@ -440,7 +442,10 @@ class SoModule:
                 l["ten"] = man["loai_ten"]
             if l["thu_tu"] is None and man.get("loai_thu_tu") is not None:
                 l["thu_tu"] = man["loai_thu_tu"]
-            for ma in dict.fromkeys([man["loai"], *cc]):
+            # NV297: «khu_<tab>» — mã khả năng của TAB thanh chính mà module mang lại (nha / doi_song / tac_pham), đếm cùng
+            # chỗ với loại và cung_cap để giao diện đánh giá điều kiện hiện tab bằng đúng MỘT hàm `thieu`.
+            gd = muc_mod["giao_dien"]
+            for ma in dict.fromkeys([man["loai"], *cc, *(["khu_" + gd["khu"]] if gd else [])]):
                 da_cai[ma] = da_cai.get(ma, 0) + 1
                 if lk:
                     lien_ket[ma] = lien_ket.get(ma, 0) + 1

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>web2api — Tác phẩm</title>
+<link rel="stylesheet" href="./khung.css">
+<script src="./khung.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+/* Trang «khu» (Nhà · Đời sống · Tác phẩm) theo demo: thanh trên có menu ▾, hàng chip con (chip «Cài đặt» ở CUỐI, luôn ẩn tới
+   khi bấm), ô số liệu gọn. Ba trang cùng markup — chỉ khác mã khu ở cuối tệp. Kiểu chip/nút/ô nhập ở khung.css. */
+.goc.khu a{color:inherit;text-decoration:none}
+.hang-chip-khu{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.hang-chip-khu .chip{font:inherit;font-size:13.5px;cursor:pointer}
+.luoi-o{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.o-gon{min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.o-gon .ten-o{font-weight:500;overflow-wrap:anywhere}
+.o-gon .gia-tri{font-family:Newsreader,Georgia,serif;font-size:26px;line-height:1.15;overflow-wrap:anywhere}
+.o-gon .gia-tri.chua-co{font-family:inherit;font-size:14px;color:var(--mute);font-style:italic}
+.o-gon .dong-hd{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.nut-chu{flex:0 0 auto;min-height:40px;padding:0 16px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:13px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;text-decoration:none;cursor:pointer}
+.nut-chu[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.nut-chu:disabled{opacity:.55;cursor:not-allowed}
+.gon-hang{display:flex;align-items:center;gap:10px;justify-content:space-between;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.gon-hang .gia-tri-gon{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;font-size:13px}
+.khoi-cd{display:flex;flex-direction:column;gap:12px}
+.dau-cd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dau-cd h2{margin:0;font-size:16px;font-weight:600}
+.o-gon .tb-hoi{padding:10px 12px;border-radius:12px;border:1px solid #EBD38F;background:#FDF6E3;color:#6B4E00;display:flex;flex-direction:column;gap:8px}
+@media (max-width:1023px){.goc.khu{min-height:100vh}}
+</style>
+</helmet>
+<div class="goc khu">
+
+<nav aria-label="Điều hướng chính" class="tb">
+<div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+<div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.logo}}"></path></svg></div>
+<div class="ten-web">web2api</div>
+</div>
+<div class="thanh-tab" id="thanh-tab"><sc-for list="{{nav}}" as="t"><div class="muc-nav" style="{{t.wst}}">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav="{{t.id}}" aria-current="{{t.ac}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" class="muc" data-nav="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" onClick="{{t.bat}}"><svg class="hinh" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span><svg class="mui" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{hinh.xuong}}"></path></svg></button>
+<sc-if value="{{t.mo}}"><div class="menu-xo" role="menu" aria-label="Mục trong {{t.nhan}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</div></sc-for></div>
+<div class="acc-hop">
+  <span class="ten-nd" id="nhan-ten-nguoi-dung" style="font-size:13px;font-weight:600">{{tenNguoiDung}}</span>
+  <span class="huy huy-lam" id="nhan-vai-nguoi-dung" style="font-size:11px">{{nhanVai}}</span>
+  <button type="button" class="nut nut-nho" id="nut-dang-xuat" onClick="{{dangXuat}}" title="Đăng xuất">Đăng xuất</button>
+</div>
+</nav>
+<sc-if value="{{menuMo}}"><button type="button" class="nen-menu" aria-label="Đóng bảng xổ" onClick="{{dongMenu}}"></button></sc-if>
+
+<main class="pg">
+<h1 class="an-chu">Tác phẩm — {{tenMuc}}</h1>
+<sc-if value="{{tnLoi}}"><div role="alert" class="bao bao-loi">Không đọc được dữ liệu: {{tnLoi}}</div></sc-if>
+<sc-if value="{{dangTai}}"><p role="status" class="bao-cho">Đang đọc…</p></sc-if>
+
+<sc-if value="{{coChip}}">
+<div class="hang-chip-khu" role="tablist" aria-label="Mục con của {{tenMuc}}"><sc-for list="{{hangChip}}" as="c"><button type="button" class="chip" role="tab" data-chip="{{c.id}}" aria-selected="{{c.on}}" onClick="{{c.chon}}">{{c.nhan}}</button></sc-for></div>
+</sc-if>
+
+<sc-if value="{{hdTin}}"><p role="status" class="bao bao-tot" id="tin-hd">{{hdTin}}</p></sc-if>
+<sc-if value="{{hdLoi}}"><p role="alert" class="bao bao-loi" id="loi-hd">{{hdLoi}}</p></sc-if>
+<sc-if value="{{tinNoi}}"><p role="status" class="bao bao-tot" id="tin-noi">{{tinNoi}}</p></sc-if>
+
+<sc-if value="{{coHangCho}}">
+<section class="the" id="hang-cho" aria-label="Yêu cầu chờ duyệt">
+<h2 class="nhan-muc">Chờ bạn duyệt ({{soHangCho}})</h2>
+<sc-for list="{{hangCho}}" as="p"><div class="dong-nut" style="gap:10px"><span style="flex:1 1 240px;min-width:0;overflow-wrap:anywhere">{{p.chu}}</span><button type="button" class="nut nut-chinh nut-nho" onClick="{{p.duyet}}" disabled="{{p.khoa}}">Duyệt</button><button type="button" class="nut nut-nguy nut-nho" onClick="{{p.tuChoi}}" disabled="{{p.khoa}}">Từ chối</button></div></sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{laDuLieu}}">
+<sc-if value="{{coChuaNoi}}"><sc-for list="{{chuaNoi}}" as="n"><div class="bao bao-vang dong-nut" id="chua-noi" style="gap:10px"><span style="flex:1 1 240px;min-width:0">Chưa nối {{n.ten}} nên chưa có số liệu.</span><button type="button" class="nut nut-nho nut-chinh" onClick="{{n.noiNgay}}">Nối ngay</button></div></sc-for></sc-if>
+<sc-if value="{{dangDoc}}"><p role="status" class="bao-cho">Đang đọc số liệu…</p></sc-if>
+<sc-if value="{{thucTheLoi}}"><p role="alert" class="bao bao-loi">Chưa đọc được số liệu: {{thucTheLoi}}</p></sc-if>
+<div class="luoi-o" id="luoi-o"><sc-for list="{{o}}" as="x"><div class="o-gon" data-o>
+<span class="ten-o">{{x.ten}}</span>
+<sc-if value="{{x.coPhu}}"><span class="phu">{{x.phu}}</span></sc-if>
+<span class="{{x.lopGiaTri}}">{{x.giaTri}}</span>
+<sc-if value="{{x.luc}}"><span class="phu">{{x.luc}}</span></sc-if>
+<sc-if value="{{x.coHd}}"><div class="dong-hd"><sc-for list="{{x.hd}}" as="h"><button type="button" class="nut-chu" aria-pressed="{{h.dangChon}}" onClick="{{h.bam}}" disabled="{{h.khoa}}">{{h.nhan}}</button></sc-for></div></sc-if>
+<sc-if value="{{x.hoiXn}}"><div class="tb-hoi" role="alertdialog" aria-label="Xác nhận"><span>{{x.xnChu}}</span><div class="dong-hd"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" onClick="{{x.xacNhan}}">Xác nhận</button><button type="button" class="nut-chu" onClick="{{x.thoi}}">Thôi</button></div></div></sc-if>
+</div></sc-for></div>
+<sc-if value="{{chuaCo}}"><p class="rong" id="chua-co-du-lieu">Chưa có dữ liệu.</p></sc-if>
+</sc-if>
+
+<sc-if value="{{laCaiDat}}">
+<div class="khoi-cd" id="khoi-cai-dat"><sc-for list="{{cd}}" as="x">
+<section class="the" data-cai-dat="{{x.id}}">
+<div class="dau-cd"><h2>{{x.ten}}</h2><span class="{{x.lopTrang}}">{{x.trang}}</span></div>
+<sc-if value="{{x.f.dangTai}}"><p role="status" class="bao-cho">Đang đọc cấu hình đã lưu…</p></sc-if>
+<sc-if value="{{x.f.loiTai}}"><p role="alert" class="bao bao-loi">Không đọc được cấu hình: {{x.f.loiTai}}</p></sc-if>
+<sc-if value="{{x.f.coForm}}">
+<form class="form-cau-hinh" novalidate onSubmit="{{x.f.luu}}" style="display:flex;flex-direction:column;gap:12px">
+<sc-if value="{{x.f.khongTruong}}"><p class="phu">Không cần khoá hay cấu hình gì thêm.</p></sc-if>
+<sc-for list="{{x.f.truong}}" as="t">
+<div class="truong" data-truong="{{t.khoa}}" style="gap:4px">
+<sc-if value="{{t.gon}}">
+<span class="nhan-truong" style="font-size:13px">{{t.nhan}}</span>
+<div class="gon-hang" data-gon="{{t.khoa}}"><span class="gia-tri-gon">{{t.chuGon}}</span><button type="button" class="nut-chu" data-hd="mo-truong" onClick="{{t.mo}}" aria-label="{{t.ariaMo}}">{{t.nhanMo}}</button></div>
+</sc-if>
+<sc-if value="{{t.moO}}">
+<label for="{{t.idO}}">{{t.nhan}} <sc-if value="{{t.batBuoc}}"><span class="bb">(bắt buộc)</span></sc-if></label>
+<sc-if value="{{t.laDs}}">
+<ul class="ds-khoa"><sc-for list="{{t.daLuu}}" as="k"><li class="{{k.lop}}"><span class="ma" style="flex:1 1 auto">{{k.che}}</span><span class="phu">{{k.trangThai}}</span><button type="button" class="nut-chu" onClick="{{k.doi}}" aria-label="{{k.aria}}">{{k.nhanNut}}</button></li></sc-for></ul>
+<textarea id="{{t.idO}}" class="o ma" rows="3" autocomplete="off" spellcheck="false" placeholder="Dán khoá mới — mỗi dòng một khoá" onInput="{{t.onInput}}"></textarea>
+</sc-if>
+<sc-if value="{{t.laBiMat}}"><input id="{{t.idO}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống thì giữ giá trị đang lưu" onInput="{{t.onInput}}"></sc-if>
+<sc-if value="{{t.laChuoi}}"><input id="{{t.idO}}" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="{{t.goiY}}" value="{{t.giaTri}}" onInput="{{t.onInput}}"><sc-if value="{{t.ghiChuChuoi}}"><span class="phu">{{t.ghiChuChuoi}}</span></sc-if></sc-if>
+<sc-if value="{{t.coNutThoi}}"><div class="dong-nut"><button type="button" class="nut-chu" data-hd="dong-truong" onClick="{{t.dong}}">Thôi</button></div></sc-if>
+</sc-if>
+<sc-if value="{{t.moTa}}"><span class="phu">{{t.moTa}}</span></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{x.f.coNangCao}}"><div class="dong-nut"><button type="button" class="nut-chu" aria-expanded="{{x.f.nangCaoMo}}" onClick="{{x.f.bamNangCao}}">{{x.f.nhanNangCao}}</button></div></sc-if>
+<sc-if value="{{x.f.loi}}"><p role="alert" class="bao bao-loi loi-form">{{x.f.loi}}</p></sc-if>
+<sc-if value="{{x.f.coNutLuu}}"><div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" data-hd="luu" disabled="{{x.f.dang}}">{{x.f.nhanNut}}</button></div></sc-if>
+</form>
+</sc-if>
+<sc-if value="{{x.f.coKq}}">
+<div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
+<sc-if value="{{x.f.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa lưu được: {{x.f.kqLoi}}</p></sc-if>
+<sc-if value="{{x.f.kqGoLai}}"><p class="phu">Mật khẩu đã gửi được xoá khỏi trang vì an toàn — nhập lại nếu muốn thử lần nữa.</p></sc-if>
+</div>
+</sc-if>
+</section>
+</sc-for></div>
+</sc-if>
+</main>
+
+<nav aria-label="Điều hướng chính (điện thoại)" class="bn"><sc-for list="{{navDuoi}}" as="t">
+<sc-if value="{{t.khongCon}}"><a href="{{t.href}}" data-nav-duoi="{{t.id}}" aria-label="{{t.nhan}}" aria-current="{{t.ac}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></a></sc-if>
+<sc-if value="{{t.coCon}}"><button type="button" data-nav-duoi="{{t.id}}" aria-current="{{t.ac}}" aria-haspopup="menu" aria-expanded="{{t.moChu}}" aria-label="{{t.nhan}}" onClick="{{t.bat}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span>{{t.nhan}}</span></button>
+<sc-if value="{{t.mo}}"><div class="bn-mui" aria-hidden="true" style="{{t.viTriMui}}"></div><div class="bn-menu" role="menu" aria-label="Mục trong {{t.nhan}}" style="{{t.viTri}}"><sc-for list="{{t.con}}" as="c"><a role="menuitem" href="{{c.href}}" data-nav-con-duoi="{{c.id}}" aria-current="{{c.ac}}" onClick="{{c.dong}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg><span>{{c.nhan}}</span></a></sc-for></div></sc-if></sc-if>
+</sc-for></nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{}'>
+// Tác phẩm (NV297): ảnh, video, tệp do module tạo ra của module ĐÃ CÀI. Mọi logic ở Khung.khu (khung.js) — trang chỉ khai mã khu.
+const K = window.Khung;
+const KHU = 'tac_pham';
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = K.khu.trangThaiDau(); }
+  async didMount() { await K.khu.didMount(this, KHU); }
+  willUnmount() { K.khu.willUnmount(this); }
+  renderVals() { return K.khu.vm(this, KHU); }
+}
+</script>
+</body>
+</html>

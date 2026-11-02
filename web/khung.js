@@ -47,7 +47,6 @@
   const DIEU_KIEN = {
     module: { nhan: 'Module', can: [] },
     bao_mat: { nhan: 'Bảo mật & người dùng', can: [] },
-    thiet_bi: { nhan: 'Thiết bị', can: ['thiet_bi'], pham_vi: 'da_cai' },
     ai: { nhan: 'AI', can: [AI], pham_vi: 'da_cai' },
     tai_khoan: { nhan: 'Tài khoản', can: [AI], pham_vi: 'da_cai', thuoc: 'ai', neo: 'tai-khoan', bieu_tuong: 'tai_khoan' },
     // Provider hiện từ lúc CÀI (chủ máy 11/10: «cài AI rồi phải thấy có tài khoản, có provider như demo») — chưa có khoá
@@ -57,10 +56,19 @@
     studio: { nhan: 'Studio', can: ['chat'], pham_vi: 'da_cai', trang: 'Studio.dc.html', bieu_tuong: 'chat' },
     studio_chat: { nhan: 'Chat', can: ['chat'], pham_vi: 'da_cai', thuoc: 'studio' },
     studio_anh: { nhan: 'Ảnh', can: ['anh'], pham_vi: 'da_cai', thuoc: 'studio' },
-    studio_video: { nhan: 'Video', can: ['video'], pham_vi: 'da_cai', thuoc: 'studio' }
+    studio_video: { nhan: 'Video', can: ['video'], pham_vi: 'da_cai', thuoc: 'studio' },
+    // NV297: ba tab «khu» của thanh chính theo demo — hiện khi có module ĐÃ CÀI mang mã `khu_<tab>`. Mã này do lõi suy từ
+    // cấu trúc manifest (`giao_dien` module khai, hoặc `loai`/`nhom_con`/`cung_cap`; app/kham_pha.py giao_dien_cua) và đếm
+    // cùng chỗ với loại/cung_cap, nên vẫn là MỘT hàm `thieu` cho mọi điều kiện. Gỡ module cuối của khu thì tab biến mất.
+    // Thứ tự dòng = thứ tự trên thanh: Studio · Tác phẩm · Nhà · Đời sống.
+    tac_pham: { nhan: 'Tác phẩm', can: ['khu_tac_pham'], pham_vi: 'da_cai', trang: 'Tac-pham.dc.html', bieu_tuong: 'tac_pham' },
+    nha: { nhan: 'Nhà', can: ['khu_nha'], pham_vi: 'da_cai', trang: 'Nha.dc.html', bieu_tuong: 'nha' },
+    doi_song: { nhan: 'Đời sống', can: ['khu_doi_song'], pham_vi: 'da_cai', trang: 'Doi-song.dc.html', bieu_tuong: 'doi_song' }
   };
+  const KHU_TEN_MA = { khu_tac_pham: 'ảnh, video hay tệp tạo ra', khu_nha: 'thiết bị nhà, mạng hay camera', khu_doi_song: 'việc cá nhân, nhạc hay video' };
 
   const tenMa = (ma, tn) => {
+    if (KHU_TEN_MA[ma]) return KHU_TEN_MA[ma];
     const l = ((tn && tn.loai) || []).find((x) => x && x.ma === ma);
     return (l && l.ten) || ma;
   };
@@ -101,7 +109,7 @@
     const dk = DIEU_KIEN[ma];
     if (!m || !dk) return false;
     const dem = {};
-    for (const x of [m.loai].concat(Array.isArray(m.cung_cap) ? m.cung_cap : [])) if (x) dem[x] = 1;
+    for (const x of [m.loai].concat(Array.isArray(m.cung_cap) ? m.cung_cap : [], m.giao_dien ? ['khu_' + m.giao_dien.khu] : [])) if (x) dem[x] = 1;
     return thieu({ can: dk.can, pham_vi: 'da_cai' }, { kha_nang_da_cai: dem }).length === 0;
   }
   // Trang chính mà module mang lại (đang đủ điều kiện, và module đáp ứng dòng của trang hay một chế độ của nó) —
@@ -360,23 +368,36 @@
     provider: 'M7 18a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.7 1.2A3.4 3.4 0 0 1 17 18z',
     combo: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
     bao_mat: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
-    thiet_bi: 'M5 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z M12 3v4',
+    tac_pham: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+    nha: 'M3 11l9-8 9 8 M5 10v10h14V10 M10 20v-6h4v6',
+    doi_song: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
     quay_lai: 'M19 12H5 M11 6l-6 6 6 6',
     xuong: 'M6 9l6 6 6-6'
   };
-  // Thanh trên của trang chính: các dòng `trang` của DIEU_KIEN đủ điều kiện (Studio…).
-  // Mỗi mục: {id, nhan, href, d (hình), ac (aria-current)}.
+  // Thanh trên của trang chính: các dòng `trang` của DIEU_KIEN đủ điều kiện (Studio · Tác phẩm · Nhà · Đời sống).
+  // Mỗi mục: {id, nhan, href, d (hình), ac (aria-current), con (trang con ▾), coCon}. Tab «khu» (Tác phẩm/Nhà/Đời sống) có
+  // menu thả ▾ liệt kê các MỤC của khu (mỗi mục một trang con: Nhà → Mạng…), suy từ module đã cài (xem mucCua).
   function navChinh(tn, hienTai) {
     const ra = [];
     for (const [ma, dk] of Object.entries(DIEU_KIEN)) {
-      if (dk.trang && du(ma, tn)) ra.push({ id: ma, nhan: dk.nhan, href: dk.trang, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module });
+      if (!dk.trang || !du(ma, tn)) continue;
+      const con = mucCua(tn, ma).map((m) => ({ id: m.id, nhan: m.nhan, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module,
+        href: dk.trang + '#' + encodeURIComponent(m.id) }));
+      ra.push({ id: ma, nhan: dk.nhan, href: dk.trang, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module, con, wst: '' });
     }
-    return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false' }));
+    return ra.map((x) => Object.assign(x, { ac: x.id === hienTai ? 'page' : 'false', coCon: x.con.length > 0 }));
   }
-  // Thanh dưới của trang chính trên điện thoại (`nav.bn` của Main.dc.html): cùng các mục của thanh trên + «Hệ thống».
+  const MUC_HE_THONG = () => ({ id: 'he-thong', nhan: 'Hệ thống', href: 'He-thong.dc.html', d: BIEU_TUONG.he_thong, ac: 'false', con: [], coCon: false });
+  // Thanh dưới của trang chính trên điện thoại (`nav.bn` của Main.dc.html): cùng các mục của thanh trên + «Hệ thống»
+  // (tối đa 5 mục: Studio, Tác phẩm, Nhà, Đời sống, Hệ thống).
   function navDuoi(tn, hienTai) {
-    return navChinh(tn, hienTai).concat([{ id: 'he-thong', nhan: 'Hệ thống', href: 'He-thong.dc.html', d: BIEU_TUONG.he_thong, ac: 'false' }]);
+    return navChinh(tn, hienTai).concat([MUC_HE_THONG()]);
   }
+  // Thanh trên đầy đủ của trang chính (có menu thả, «Hệ thống» căn phải) — một chỗ cho Studio, Nhà, Đời sống, Tác phẩm.
+  function navTren(comp, tn, hienTai, conHienTai) {
+    return menuNav(comp, navChinh(tn, hienTai).concat([Object.assign(MUC_HE_THONG(), { wst: 'margin-left:auto' })]), conHienTai);
+  }
+  function navDuoiMenu(comp, tn, hienTai, conHienTai) { return menuNav(comp, navDuoi(tn, hienTai), conHienTai); }
   // Mục của trang Hệ thống, theo thứ tự thanh Hệ thống của demo (Tổng quan, AI ▾, Tiện ích, Nhật ký ▾, Cấu hình…):
   // chỉ vẽ mục có thật — «AI ▾» (khi có module mang mã «ai» đã cài) rồi «Module» ở đúng chỗ ô «Tiện ích» của demo
   // (chủ máy 11/10: tab quản lý module mang nhãn «Module»), tiếp theo là các tab riêng của module đã liên kết (tab_web),
@@ -400,9 +421,6 @@
       const con = Object.entries(DIEU_KIEN).filter(([ma, dk]) => dk.thuoc === 'ai' && du(ma, tn))
         .map(([ma, dk]) => ({ id: ma, nhan: dk.nhan, d: BIEU_TUONG[dk.bieu_tuong] || BIEU_TUONG.module, href: 'He-thong-AI.dc.html' + (dk.neo ? '#' + dk.neo : '') }));
       ra.push({ id: 'ai', nhan: 'AI', href: 'He-thong-AI.dc.html', d: BIEU_TUONG.ai, cham: false, nhanCham: '', con });
-    }
-    if (du('thiet_bi', tn)) {
-      ra.push({ id: 'thiet_bi', nhan: 'Thiết bị', href: 'He-thong-Thiet-bi.dc.html', d: BIEU_TUONG.thiet_bi, cham: false, nhanCham: '', con: [] });
     }
     ra.push({ id: 'module', nhan: 'Module', href: 'He-thong.dc.html', d: BIEU_TUONG.phich, cham: n > 0, nhanCham: n + ' module mới hoặc có bản mới trên git', con: [] });
     for (const t of (tn && tn.tab) || []) {
@@ -652,6 +670,189 @@
       kq.goLai = !kq.ok && coBiMat;
       cauHinh.dat(comp, id, { dang: false, kq });
       if (kq.ok) { cauHinh.dat(comp, id, { sua: {}, nangCao: false }); await cauHinh.tai(comp, id); if (daXong) daXong(id); }
+    }
+  };
+
+  // ---------- NV297: trang của một «khu» (Tác phẩm · Nhà · Đời sống) ----------
+  // Ba trang Tac-pham / Nha / Doi-song dùng CHUNG một bộ dựng (đây): trang chỉ khai mã khu. Khung không biết tên module:
+  // mục, chip, ô số liệu đều suy từ `giao_dien` của manifest (hay từ cấu trúc, xem app/kham_pha.py giao_dien_cua) và từ thực
+  // thể module trả về (GET /api/thiet-bi). Thực thể CHỈ ĐỌC của module quản trị đã cài là đã tin (lõi tính, app/thiet_bi.py);
+  // hành động có ghi/nguy hiểm vẫn xác nhận MỘT lần LÚC GỌI ngay trong ô của nó. Không có phân loại rủi ro cho người dùng.
+  const tenGon = (m) => String((m && (m.ten || m.id)) || '').split(' (')[0];
+
+  // Các MỤC của một khu (mỗi mục = một trang con ở menu ▾), suy từ module đã cài. Module cùng `giao_dien.muc` dồn chung một
+  // mục. Chip của mục = chip các module khai (gộp theo id, xếp theo thu_tu) hoặc, nếu module không khai chip, MỘT chip mang
+  // tên module. `loc` của chip: các (module, nhom) đóng góp thực thể cho chip — nhom null = mọi thực thể của module,
+  // [] = thực thể KHÔNG gắn nhóm, [..] = thực thể thuộc các nhóm đó. Chip «Cài đặt» luôn ở cuối (thêm ở khu.vm).
+  function mucCua(tn, ma) {
+    const ra = [];
+    for (const m of (tn && tn.modules) || []) {
+      const g = m && m.giao_dien;
+      if (!g || g.khu !== ma) continue;
+      let x = ra.find((y) => y.id === g.muc);
+      if (!x) { x = { id: g.muc, nhan: g.nhan, modules: [], chip: [] }; ra.push(x); }
+      x.modules.push(m);
+      const khai = Array.isArray(g.chip) ? g.chip : [];
+      for (const c of khai.length ? khai : [{ id: 'm-' + m.id, nhan: tenGon(m), nhom: null, thu_tu: null }]) {
+        let k = x.chip.find((y) => y.id === c.id);
+        if (!k) { k = { id: c.id, nhan: c.nhan, thuTu: c.thu_tu == null ? 50 : c.thu_tu, loc: [] }; x.chip.push(k); }
+        k.loc.push({ module: m.id, nhom: c.nhom == null ? null : c.nhom });
+      }
+    }
+    for (const x of ra) x.chip = x.chip.map((c, i) => [c, i]).sort((a, b) => a[0].thuTu - b[0].thuTu || a[1] - b[1]).map((p) => p[0]);
+    return ra;
+  }
+  const thucTheCuaChip = (chip, ds) => (ds || []).filter((e) => chip.loc.some((l) => l.module === e.module
+    && (l.nhom == null || (l.nhom.length ? l.nhom.includes(e.nhom) : !e.nhom))));
+
+  // Chữ hiển thị của MỘT giá trị đo: tiếng Việt thường, không mã kỹ thuật. Chưa đọc được → «Chưa có dữ liệu» (không số giả).
+  const TT_CHU = { bat: 'Bật', tat: 'Tắt', on: 'Bật', off: 'Tắt', len: 'Đang nối', xuong: 'Mất kết nối' };
+  function giaTriHienThi(e) {
+    const t = e && e.trang_thai;
+    if (!t || t.hop_le === false || t.gia_tri == null || t.gia_tri === '') return { chu: 'Chưa có dữ liệu', coDL: false };
+    const v = t.gia_tri;
+    const dv = t.don_vi ? ' ' + t.don_vi : '';
+    if (typeof v === 'number') return { chu: v.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + dv, coDL: true };
+    if (typeof v === 'boolean') return { chu: v ? 'Bật' : 'Tắt', coDL: true };
+    const s = String(v);
+    return { chu: (TT_CHU[s.toLowerCase()] || (/^[a-z0-9_]+$/.test(s) ? s.replace(/_/g, ' ') : s)) + dv, coDL: true };
+  }
+  // Hành động của thực thể mà ô điều khiển vẽ được: chỉ loại MỘT tham số bắt buộc kiểu đúng/sai (bật/tắt). Loại khác để
+  // API/Studio — không vẽ ô nửa vời.
+  function hanhDongDon(e) {
+    return ((e && e.tinh_nang) || []).filter((t) => t && typeof t === 'object' && t.hanh_dong).map((t) => {
+      const sc = t.tham_so || {}; const bat = sc.required || []; const tt = sc.properties || {};
+      return bat.length === 1 && tt[bat[0]] && tt[bat[0]].type === 'boolean' ? { hd: t.hanh_dong, khoa: bat[0], moTa: String(t.mo_ta || '') } : null;
+    }).filter(Boolean);
+  }
+  // Lõi điền `ten` = id khi module không đặt tên: coi như chưa có tên (không để id kỹ thuật lộ ra cho người dùng).
+  const tenThat = (e) => (e && e.ten && e.ten !== e.id ? e.ten : '');
+  const cauDau = (s) => String(s || '').split(/[.\n]/)[0].trim();
+
+  const khu = {
+    trangThaiDau: () => ({ nguoiDung: null, tn: null, tnLoi: '', dangTai: true, thucThe: null, thucTheLoi: '', hangCho: [], mucId: null, chipId: null,
+      cf: {}, hdDang: null, hdHoi: null, hdTin: '', hdLoi: '', menuMo: null, pdDang: null, tinNoi: '' }),
+    async napDuLieu(comp) {
+      try { const { j } = await goi('api/thiet-bi'); comp.setState({ thucThe: (j && j.thuc_the) || [], thucTheLoi: '' }); }
+      catch (e) { comp.setState((s) => ({ thucThe: s.thucThe || [], thucTheLoi: e.message })); }
+      try { const { j } = await goi('api/phe-duyet'); comp.setState({ hangCho: (j && j.hang_cho) || [] }); } catch (e) { /* người dùng thường không đọc được hàng chờ */ }
+    },
+    // Địa chỉ #<mục> chọn mục (menu ▾ của thanh trên); chưa chọn → mục đầu. Chip đầu là chip dữ liệu; mục mà MỌI module còn
+    // chờ kết nối thì mở thẳng «Cài đặt» (một form ngắn trong chính module). Đã nối rồi thì Cài đặt luôn ẩn.
+    chonTheoDiaChi(comp, ma) {
+      const ds = mucCua(comp.state.tn, ma);
+      const id = decodeURIComponent((location.hash || '').slice(1));
+      // ?da_cai=<module>: trang Module vừa cài module đó rồi chuyển tới đây → mở đúng mục của nó, rồi bỏ tham số khỏi địa chỉ.
+      const vuaCai = new URLSearchParams(location.search).get('da_cai');
+      if (vuaCai) history.replaceState(null, '', location.pathname + location.hash);
+      const m = ds.find((x) => x.id === id) || ds.find((x) => x.modules.some((y) => y.id === vuaCai)) || ds[0] || null;
+      comp.setState({ mucId: m ? m.id : null, chipId: m && m.modules.every((x) => !x.da_lien_ket) ? 'cai-dat' : null, menuMo: null });
+    },
+    async didMount(comp, ma) {
+      comp._daTai = new Set();
+      napToi().then((nd) => { if (nd) comp.setState({ nguoiDung: nd }); }).catch(() => {});
+      let tn;
+      try { tn = await taiTinhNang(); } catch (e) { comp.setState({ tnLoi: e.message, dangTai: false }); return; }
+      if (chanNeuThieu(ma, tn)) return;
+      comp.setState({ tn, dangTai: false });
+      khu.chonTheoDiaChi(comp, ma);
+      window.addEventListener('hashchange', () => khu.chonTheoDiaChi(comp, ma));
+      window.addEventListener('pageshow', (e) => { if (e.persisted) khu.lamMoi(comp, ma); });
+      await khu.napDuLieu(comp);
+      comp._dong = setInterval(() => khu.napDuLieu(comp), 20000);
+    },
+    willUnmount(comp) { if (comp._dong) clearInterval(comp._dong); },
+    async lamMoi(comp, ma) {
+      try { const tn = await taiTinhNang(); comp.setState({ tn, tnLoi: '' }); if (chanNeuThieu(ma, tn)) return; } catch (e) { comp.setState({ tnLoi: e.message }); }
+      await khu.napDuLieu(comp);
+    },
+    // Lưu kết nối xong: đọc lại «tính năng đang có» + số liệu rồi về chip dữ liệu đầu của mục, kèm MỘT dòng báo đã nối.
+    async sauKetNoi(comp, id, ma) {
+      await khu.lamMoi(comp, ma);
+      const m = ((comp.state.tn && comp.state.tn.modules) || []).find((x) => x.id === id);
+      comp.setState({ chipId: null, tinNoi: 'Đã nối «' + tenGon(m || { id }) + '». Phần cài đặt đã thu gọn — bấm «Cài đặt» khi cần sửa.' });
+    },
+    async chayHanhDong(comp, e, h, gt, xacNhan) {
+      const ten = tenThat(e) || 'thiết bị';
+      comp.setState({ hdDang: e.id, hdHoi: null, hdTin: '', hdLoi: '' });
+      try {
+        await goi('api/thiet-bi/' + encodeURIComponent(e.id) + '/hanh-dong', { method: 'POST', json: { hanh_dong: h.hd, tham_so: { [h.khoa]: gt }, xac_nhan: !!xacNhan } });
+        comp.setState({ hdDang: null, hdTin: 'Đã ' + (gt ? 'bật' : 'tắt') + ' «' + ten + '».' });
+      } catch (err) { comp.setState({ hdDang: null, hdLoi: 'Chưa làm được: ' + err.message }); }
+      await khu.napDuLieu(comp);
+    },
+    async xuLyHangCho(comp, id, duyet) {
+      comp.setState({ pdDang: id, hdLoi: '', hdTin: '' });
+      try { await goi('api/phe-duyet/' + encodeURIComponent(id) + (duyet ? '/duyet' : '/tu-choi'), { method: 'POST' }); comp.setState({ pdDang: null, hdTin: duyet ? 'Đã duyệt yêu cầu.' : 'Đã từ chối yêu cầu.' }); }
+      catch (err) { comp.setState({ pdDang: null, hdLoi: 'Chưa xử lý được: ' + err.message }); }
+      await khu.napDuLieu(comp);
+    },
+    vm(comp, ma) {
+      const s = comp.state; const tn = s.tn;
+      const dsMuc = tn ? mucCua(tn, ma) : [];
+      const muc = dsMuc.find((x) => x.id === s.mucId) || dsMuc[0] || null;
+      const chips = muc ? muc.chip.concat([{ id: 'cai-dat', nhan: 'Cài đặt', loc: [] }]) : [];
+      const chipId = chips.some((c) => c.id === s.chipId) ? s.chipId : (chips[0] ? chips[0].id : null);
+      const laCaiDat = chipId === 'cai-dat';
+      const chon = (id) => () => comp.setState({ chipId: id, hdHoi: null, tinNoi: '' });
+      const ds = s.thucThe || [];
+      const tenThucThe = (id) => tenThat(ds.find((x) => x.id === id)) || 'Một thiết bị';
+
+      // Chip dữ liệu: ô gọn của thực thể (tên thường, giá trị đọc được) + hành động bật/tắt (nguy hiểm: xác nhận MỘT lần tại ô).
+      const chip = chips.find((c) => c.id === chipId);
+      const mods = chip && !laCaiDat ? chip.loc.map((l) => muc.modules.find((m) => m.id === l.module)).filter(Boolean) : [];
+      const chuaNoi = mods.filter((m) => !m.da_lien_ket).map((m) => ({ ten: tenGon(m), noiNgay: chon('cai-dat') }));
+      const noi = new Set(mods.filter((m) => m.da_lien_ket).map((m) => m.id));
+      const o = chip && !laCaiDat ? thucTheCuaChip(chip, ds.filter((e) => noi.has(e.module))).map((e) => {
+        const g = giaTriHienThi(e);
+        const hd = hanhDongDon(e).map((h) => {
+          const ttV = e.trang_thai && e.trang_thai.gia_tri;
+          return [[true, 'Bật', ttV === 'bat'], [false, 'Tắt', ttV === 'tat']].map(([gt, nhan, dang]) => ({
+            nhan, dangChon: dang ? 'true' : 'false', khoa: s.hdDang === e.id,
+            bam: () => {
+              if (e.rui_ro === 'nguy_hiem') comp.setState({ hdHoi: { id: e.id, h, gt, nhan }, hdTin: '', hdLoi: '' });
+              else khu.chayHanhDong(comp, e, h, gt, false);
+            }
+          }));
+        }).reduce((a, b) => a.concat(b), []);
+        const hoi = s.hdHoi && s.hdHoi.id === e.id ? s.hdHoi : null;
+        return {
+          ten: tenThat(e) || (e.loai === 'may_mang' ? 'Máy chưa đặt tên' : 'Thiết bị'),
+          phu: (e.thuoc_tinh && e.thuoc_tinh.ip) || '', coPhu: !!(e.thuoc_tinh && e.thuoc_tinh.ip),
+          giaTri: g.chu, lopGiaTri: g.coDL ? 'gia-tri' : 'gia-tri chua-co', luc: g.coDL && e.trang_thai.luc ? 'cập nhật ' + tuongDoi(e.trang_thai.luc) : '',
+          hd, coHd: hd.length > 0,
+          hoiXn: !!hoi, xnChu: hoi ? 'Xác nhận «' + hoi.nhan + '» cho «' + (tenThat(e) || 'thiết bị') + '»? ' + (cauDau(hoi.h.moTa) ? cauDau(hoi.h.moTa) + '. ' : '') + 'Việc này chỉ hỏi một lần, ngay lúc làm.' : '',
+          xacNhan: () => khu.chayHanhDong(comp, e, hoi.h, hoi.gt, true),
+          thoi: () => comp.setState({ hdHoi: null })
+        };
+      }) : [];
+      const chuaCo = !!chip && !laCaiDat && s.thucThe !== null && o.length === 0 && chuaNoi.length === 0;
+
+      // Chip «Cài đặt» (luôn ẩn tới khi bấm): từng module một khối, giá trị đã lưu thu gọn, bí mật «••••• đã lưu» + Đổi.
+      const cd = laCaiDat && muc ? muc.modules.map((m) => {
+        if (!comp._daTai.has(m.id)) { comp._daTai.add(m.id); setTimeout(() => cauHinh.tai(comp, m.id), 0); }
+        return { id: m.id, ten: tenGon(m), noi: !!m.da_lien_ket, trang: m.da_lien_ket ? 'Đã nối' : 'Chưa nối', lopTrang: 'huy ' + (m.da_lien_ket ? 'huy-xanh' : 'huy-vang'),
+          f: cauHinh.vm(comp, m.id, 'khu', (id) => khu.sauKetNoi(comp, id, ma), { thuGon: true }) };
+      }) : [];
+
+      const hangCho = (s.hangCho || []).map((pd) => {
+        const e = ds.find((x) => x.id === pd.thuc_the);
+        const h = e && (e.tinh_nang || []).find((t) => t && t.hanh_dong === pd.hanh_dong);
+        return { chu: 'Một ứng dụng dùng khoá khách muốn «' + (cauDau(h && h.mo_ta) || 'thực hiện một thao tác') + '» trên «' + tenThucThe(pd.thuc_the) + '».' + (pd.ly_do ? ' Lý do: ' + pd.ly_do : ''),
+          khoa: s.pdDang === pd.id, duyet: () => khu.xuLyHangCho(comp, pd.id, true), tuChoi: () => khu.xuLyHangCho(comp, pd.id, false) };
+      });
+      return {
+        hinh: BIEU_TUONG,
+        nav: navTren(comp, tn, ma, muc && muc.id), navDuoi: navDuoiMenu(comp, tn, ma, muc && muc.id),
+        menuMo: !!s.menuMo, dongMenu: () => comp.setState({ menuMo: null }),
+        tenNguoiDung: tenNguoiDung(s.nguoiDung), nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '', dangXuat: () => dangXuat(),
+        tnLoi: s.tnLoi, thucTheLoi: s.thucTheLoi, dangTai: s.dangTai, tenMuc: muc ? muc.nhan : '',
+        hangChip: chips.map((c) => ({ id: c.id, nhan: c.nhan, on: c.id === chipId ? 'true' : 'false', chon: chon(c.id) })), coChip: chips.length > 0,
+        laDuLieu: !!chip && !laCaiDat, laCaiDat, dangDoc: !!chip && !laCaiDat && s.thucThe === null && mods.some((m) => m.da_lien_ket),
+        chuaNoi, coChuaNoi: chuaNoi.length > 0, o, coO: o.length > 0, chuaCo,
+        tinNoi: s.tinNoi, hdTin: s.hdTin, hdLoi: s.hdLoi, cd,
+        hangCho, coHangCho: hangCho.length > 0, soHangCho: hangCho.length
+      };
     }
   };
 
@@ -958,7 +1159,7 @@
     });
   }
 
-  window.Khung = { AI, DIEU_KIEN, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
+  window.Khung = { AI, DIEU_KIEN, khu, mucCua, navTren, navDuoiMenu, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
     BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, tuongDoi, boDau, diaChiV1,
     dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom,
     datCsrf, layCsrf, napToi, layNguoiDung, tenNguoiDung, dangXuat, duongVeHopLe, chuyenDangNhap };

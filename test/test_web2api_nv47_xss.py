@@ -129,8 +129,8 @@ def test_nhan_khoa_khach_xss_bi_trung_hoa_tren_trang_quan_tri(moi_truong, payloa
 
 def test_su_kien_thiet_bi_xss_khong_vao_dom_trang_quan_tri(moi_truong):
     """NV47(1b): khách (phạm vi thiet_bi:su_kien) POST sự kiện chứa <img onerror> trong
-    `gia_tri` → sự kiện tới được SSE của admin, nhưng trang He-thong-Thiet-bi KHÔNG
-    chèn nội dung sự kiện vào DOM (chỉ tải lại danh sách thực thể; không innerHTML).
+    `gia_tri` → sự kiện tới được SSE của admin, nhưng các trang khu (Nha/Doi-song/Tac-pham, NV297) KHÔNG
+    nghe SSE và không chèn nội dung sự kiện vào DOM (chỉ đọc danh sách thực thể theo chu kỳ; không innerHTML).
 
     Tái hiện: POST /api/thiet-bi/su-kien → 200; đọc mã trang, khẳng định không có
     điểm chèn HTML nào cho dữ liệu sự kiện.
@@ -148,12 +148,13 @@ def test_su_kien_thiet_bi_xss_khong_vao_dom_trang_quan_tri(moi_truong):
         # đường kiểm tồn tại + chuẩn hoá chặn trước khi phát.
         assert r.status_code in (200, 404), f"{r.status_code} {r.text[:200]}"
 
-    ma_trang = Path("web/He-thong-Thiet-bi.dc.html").read_text(encoding="utf-8")
-    assert "innerHTML" not in ma_trang, "trang thiết bị dùng innerHTML"
-    # Bộ xử lý SSE chỉ gọi tải lại, không dựng HTML từ data:
-    assert "xuLySuKien" in ma_trang
-    xu_ly = ma_trang[ma_trang.index("xuLySuKien(data)"):ma_trang.index("xuLySuKien(data)") + 600]
-    assert "taiThietBi()" in xu_ly and "innerHTML" not in xu_ly
+    for ten in ("Nha", "Doi-song", "Tac-pham"):
+        ma_trang = Path(f"web/{ten}.dc.html").read_text(encoding="utf-8")
+        assert "innerHTML" not in ma_trang, f"trang {ten} dùng innerHTML"
+        assert "EventSource" not in ma_trang and "su-kien" not in ma_trang, f"trang {ten} không được nghe luồng sự kiện"
+    khung = Path("web/khung.js").read_text(encoding="utf-8")
+    khu = khung[khung.index("const khu = {"):khung.index("Markdown của câu trả lời model")]
+    assert "innerHTML" not in khu and "su-kien" not in khu
 
 
 def test_loi_model_xss_chi_phan_chieu_json(moi_truong):
@@ -188,7 +189,7 @@ def test_href_tren_trang_quan_tri_khong_gan_du_lieu_khach(moi_truong):
     `thoatTT` thoát dấu `"` nên không phá được thuộc tính; kiểm thêm rằng không có
     giá trị `javascript:` nào được gắn từ dữ liệu."""
     from pathlib import Path
-    for ten in ["He-thong.dc.html", "He-thong-Bao-mat.dc.html", "He-thong-Thiet-bi.dc.html",
+    for ten in ["He-thong.dc.html", "He-thong-Bao-mat.dc.html", "Nha.dc.html", "Doi-song.dc.html", "Tac-pham.dc.html",
                 "He-thong-Phien.dc.html", "He-thong-AI.dc.html"]:
         src = Path("web") / ten
         noi_dung = src.read_text(encoding="utf-8")
