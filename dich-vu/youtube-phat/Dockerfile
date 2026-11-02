@@ -27,10 +27,10 @@ COPY requirements.txt /app/requirements.txt
 # đều có --hash=sha256. Không mạng lúc chạy — chỉ lúc dựng.
 RUN pip install --require-hashes -r /app/requirements.txt
 
-COPY server.py cau_hinh.py xac_thuc.py dich_vu.py ro_le.py \
+COPY server.py cau_hinh.py xac_thuc.py dich_vu.py ro_le.py gioi_han.py \
      search.py streaming.py session.py playlists.py hang_cho.py /app/
 RUN chmod 0644 /app/*.py && \
-    python3 -c "import server, dich_vu, ro_le; print('import OK')"
+    python3 -c "import server, dich_vu, ro_le, gioi_han, search, streaming, session, playlists, hang_cho; print('import OK')"
 
 USER 1000:1000
 
