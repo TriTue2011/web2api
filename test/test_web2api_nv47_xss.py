@@ -195,6 +195,10 @@ def test_href_tren_trang_quan_tri_khong_gan_du_lieu_khach(moi_truong):
         for m in re.finditer(r'(?:href|src)="([^"]*\{\{[^}]+\}\}[^"]*)"', noi_dung):
             gt = m.group(1)
             assert "javascript:" not in gt.lower(), f"{ten}: href javascript: {gt[:80]}"
-    # NV280: href duy nhất gắn từ dữ liệu (`lkKhoaBaoMatHref`) = đường nội bộ cố định + id đã `encodeURIComponent`:
+    # NV296: href gắn từ dữ liệu của «thêm khoá» (`K.noiThemKhoa`) = đường nội bộ cố định + id đã `encodeURIComponent`;
+    # bảng chi tiết Module không còn href riêng nào từ dữ liệu khách (liên kết sang Bảo mật đã bỏ):
     ht = (Path("web") / "He-thong.dc.html").read_text(encoding="utf-8")
-    assert "'He-thong-Bao-mat.dc.html#khoa-module-' + encodeURIComponent(" in ht
+    khung = (Path("web") / "khung.js").read_text(encoding="utf-8")
+    assert "lkKhoaBaoMatHref" not in ht
+    assert "const id = encodeURIComponent((m && m.id) || '');" in khung
+    assert "'He-thong.dc.html#module-' + id" in khung

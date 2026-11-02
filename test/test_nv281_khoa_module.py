@@ -1,4 +1,5 @@
-"""NV281 — khoá của module CHỈ tạo ở trang «Bảo mật & người dùng» (một nơi duy nhất).
+"""NV281 — API khoá của module (lưu, xoá, không lộ). NV296 đổi CHỖ NHẬP: tab «Kết nối» trong bảng chi tiết Module,
+không phải trang «Bảo mật & người dùng» — API dưới đây không đổi.
 
 Đi qua LÕI THẬT (TestClient) với module GIẢ có một trường bí mật bắt buộc:
 - dán khoá qua đường lưu hiện có (POST /api/modules/{id}/cai) → module vào `dang_chay`
@@ -7,9 +8,9 @@
   về trạng thái «cần khoá», mã vẫn nằm trên đĩa (catalog còn);
 - khoá không bao giờ lộ nguyên văn qua bất kỳ phản hồi/log nào;
 - quyền: không khoá quản trị → 401/403, khoá sai → 403, id lạ → 404.
-Phần giao diện (mục «Khoá của module» ở trang Bảo mật, neo #khoa-module-<id>,
-K.noiThemKhoa trỏ sang Bảo mật) được kiểm bằng test trình duyệt viết lại ở
-test_web2api_giao_dien.py (NV281), vì nó nằm ở lớp .dc.html, không ở API.
+Phần giao diện (tab «Kết nối» của bảng chi tiết Module, K.noiThemKhoa trỏ về đó, neo cũ
+#khoa-module-<id> ở trang Bảo mật chuyển về tab này) được kiểm bằng test trình duyệt ở
+test_web2api_nv296_tab_ket_noi.py và test_web2api_giao_dien.py, vì nó nằm ở lớp .dc.html, không ở API.
 """
 
 from __future__ import annotations

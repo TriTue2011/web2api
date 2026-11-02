@@ -56,6 +56,8 @@ def test_o_module_antigravity_hien_tren_trang_he_thong(loi, trang):
     assert trang.js(o("antigravity") + ".dataset.tt") == "cho-khoa"
     trang.cho("document.getElementById('chi-tiet-ten')?.innerText === " + json.dumps(manifest["ten"]), han=10,
               mo_ta="bảng chi tiết của antigravity")
+    trang.bam("document.getElementById('tab-tong-quan')")   # NV296: chờ khoá thì mở sẵn tab «Kết nối»; khả năng nằm ở «Tổng quan»
+    trang.cho("document.getElementById('cho-ai')", han=10, mo_ta="tab Tổng quan")
     assert trang.js("[...document.querySelectorAll('#cho-ai code')].map((c) => c.textContent)") == manifest["cung_cap"]
     # NV280: module ĐÃ cài → khối «Đang dùng» (không có «Cần có»); mô tả MỘT câu ≤ 110 ký tự; có mã (id) + «Cần cài trước».
     assert trang.js("document.getElementById('can-gi')") is None and trang.js("!!document.getElementById('dang-dung')")
@@ -64,15 +66,14 @@ def test_o_module_antigravity_hien_tren_trang_he_thong(loi, trang):
     assert "cần cài trước" in trang.chu("#phu-thuoc").lower()
 
 
-def test_khoa_antigravity_khong_nhap_o_bang_module(loi, trang):
-    """NV280: module có trường bí mật BẮT BUỘC → bảng Module không còn ô nhập khoá, không còn nút «Thêm khoá»;
-    chỉ một liên kết sang Bảo mật & người dùng. (Luồng điền khoá → liên kết thật chuyển sang trang Bảo mật — NV281.)"""
+def test_khoa_antigravity_nhap_ngay_trong_tab_ket_noi(loi, trang):
+    """NV296: module có trường bí mật BẮT BUỘC → bảng Module có tab «Kết nối» mở sẵn, ô nhập nằm ngay trong bảng; không
+    còn nút «Thêm khoá», không liên kết sang trang Bảo mật & người dùng."""
     dang_nhap_quan_tri(trang, loi.url)
     trang.di(f"{loi.url}/He-thong.dc.html#module-antigravity")
-    trang.cho("document.getElementById('lk-khoa-bao-mat')", han=15, mo_ta="liên kết sang Bảo mật")
-    assert trang.js("document.getElementById('lk-khoa-bao-mat').getAttribute('href')").endswith(
-        "He-thong-Bao-mat.dc.html#khoa-module-antigravity")
-    assert trang.chu("#lk-khoa-bao-mat") == "Cần khoá — tạo ở Bảo mật & người dùng"
-    assert trang.js("document.querySelectorAll('#chi-tiet input[type=password], #chi-tiet textarea').length") == 0
+    trang.cho("document.getElementById('lien-ket')", han=15, mo_ta="tab Kết nối")
+    assert trang.chu("#tab-ket-noi") == "Kết nối"
+    assert trang.js("document.getElementById('tab-ket-noi').getAttribute('aria-selected')") == "true"
+    assert trang.js("document.querySelectorAll('#lien-ket input, #lien-ket textarea').length") > 0
+    assert trang.js("document.getElementById('lk-khoa-bao-mat')") is None
     assert trang.js("document.getElementById('nut-them-khoa')") is None
-    assert trang.js("document.getElementById('lien-ket')") is None

@@ -116,18 +116,17 @@
     }
     return null;
   }
-  // NV281: nơi thêm khoá cho một module — khoá của module CHỈ tạo ở trang Bảo mật & người dùng
-  // (một nơi duy nhất). Ngoại lệ duy nhất giữ đường cũ: module thuộc AI → Tài khoản cần
-  // ĐĂNG NHẬP chứ không phải khoá (mở trang Tài khoản đúng module). Mọi module còn lại,
-  // kể cả module trước đây trỏ về bảng chi tiết Module, nay trỏ sang neo
-  // #khoa-module-<id> ở trang Bảo mật; thanh trạng thái «Chờ khoá», bảng chi tiết và
-  // Studio đều dùng chung hàm này nên tự đổi theo, không sửa riêng từng chỗ gọi.
+  // NV296: nơi thêm khoá/kết nối cho một module. Module thuộc AI → Tài khoản cần ĐĂNG NHẬP (không phải khoá)
+  // mở trang Tài khoản đúng module. Mọi module còn lại (thiết bị, dịch vụ ngoài, app có trường bí mật) trỏ về
+  // tab «Kết nối» NGAY TRONG bảng chi tiết của chính module đó (Hệ thống → Module, neo #module-<id>) — không
+  // sang trang khác; Bảo mật & người dùng chỉ giữ khoá do web2api tự cấp cho dịch vụ ngoài gọi vào.
+  // Thanh trạng thái «Chờ khoá», bảng chi tiết và Studio đều dùng chung hàm này nên tự đổi theo.
   // Neo theo id để tới ĐÚNG module khi có nhiều. `tab`: mã dòng của nơi đến.
   function noiThemKhoa(m, tn) {
     const id = encodeURIComponent((m && m.id) || '');
     return moduleDapUng(m, 'tai_khoan') && du('tai_khoan', tn)
       ? { tab: 'tai_khoan', href: 'He-thong-AI.dc.html#tk-' + id, nhan: 'Hệ thống → AI → ' + DIEU_KIEN.tai_khoan.nhan }
-      : { tab: 'bao_mat', href: 'He-thong-Bao-mat.dc.html#khoa-module-' + id, nhan: 'Hệ thống → Bảo mật & người dùng' };
+      : { tab: 'ket_noi', href: 'He-thong.dc.html#module-' + id, nhan: 'Hệ thống → Module → Kết nối' };
   }
   // Module đã cài, CHƯA liên kết, đáp ứng dòng `ma` (vd chế độ Chat) — ai cần khoá để chế độ đó gọi được /v1.
   const chuaKhoaCho = (ma, tn) => ((tn && tn.modules) || []).filter((m) => m && !m.da_lien_ket && moduleDapUng(m, ma));
@@ -538,7 +537,7 @@
    */
   const laBiMat = (t) => t && (t.kieu === 'bi_mat' || t.kieu === 'danh_sach_bi_mat');
   const cauHinh = {
-    cf(comp, id) { return (comp.state.cf || {})[id] || { ch: null, gt: {}, bot: {}, lan: 0, dang: false, kq: null, loi: '' }; },
+    cf(comp, id) { return (comp.state.cf || {})[id] || { ch: null, gt: {}, bot: {}, sua: {}, nangCao: false, lan: 0, dang: false, kq: null, loi: '' }; },
     dat(comp, id, phan) {
       comp.setState((s) => ({ cf: Object.assign({}, s.cf, { [id]: Object.assign({}, cauHinh.cf({ state: s }, id), phan) }) }));
     },
@@ -548,11 +547,20 @@
         cauHinh.dat(comp, id, { ch: j, loiTai: '' });
       } catch (e) { cauHinh.dat(comp, id, { loiTai: e.message }); }
     },
-    vm(comp, id, tienTo, daXong) {
+    /* tuyChon.thuGon (NV296, tab «Kết nối» của bảng chi tiết Module): đã kết nối thì MỖI trường chỉ hiện giá trị
+     * đã lưu — bí mật là «••••• đã lưu» (không bao giờ vẽ lại, kể cả dạng che), trường thường là giá trị — kèm nút
+     * Đổi/Sửa; bấm mới mở ô nhập. Chưa kết nối thì hiện ô nhập của trường BẮT BUỘC, phần còn lại thu vào «Nâng cao». */
+    vm(comp, id, tienTo, daXong, tuyChon) {
+      const thuGon = !!(tuyChon && tuyChon.thuGon);
       const f = cauHinh.cf(comp, id);
       const ch = f.ch;
       const gt = (ch && ch.gia_tri) || {};
-      const truong = ((ch && ch.truong_cau_hinh) || []).map((t, j) => {
+      const daKetNoi = !!(ch && ch.da_cau_hinh);
+      const sua = f.sua || {};
+      const datSua = (khoa, bat) => comp.setState((st) => { const c = cauHinh.cf({ state: st }, id);
+        const gtMoi = Object.assign({}, c.gt); if (!bat) delete gtMoi[khoa];
+        return { cf: Object.assign({}, st.cf, { [id]: Object.assign({}, c, { sua: Object.assign({}, c.sua, { [khoa]: bat }), gt: gtMoi }) }) }; });
+      const truongTatCa = ((ch && ch.truong_cau_hinh) || []).map((t, j) => {
         const daLuu = gt[t.khoa];
         const bot = f.bot[t.khoa] || {};
         const coLuu = daLuu != null && daLuu !== '' && !(Array.isArray(daLuu) && !daLuu.length);
@@ -565,6 +573,16 @@
           ghiChuChuoi: !laBiMat(t) ? (coLuu ? 'Để trống hoặc không sửa thì giữ giá trị đang lưu.'
             : (t.mac_dinh != null && t.mac_dinh !== '' ? 'Để trống thì module dùng mặc định: ' + t.mac_dinh : '')) : '',
           biMatLuu: t.kieu === 'bi_mat' && coLuu ? String(daLuu) : '',
+          // NV296: dạng thu gọn
+          moO: !thuGon || !daKetNoi || !!sua[t.khoa], gon: thuGon && daKetNoi && !sua[t.khoa],
+          chuGon: laBiMat(t)
+            ? (!coLuu ? 'Chưa có' : t.kieu === 'danh_sach_bi_mat' && Array.isArray(daLuu) ? '••••• ' + daLuu.length + ' khoá đã lưu' : '••••• đã lưu')
+            : (coLuu ? String(daLuu) : (t.mac_dinh != null && t.mac_dinh !== '' ? 'Mặc định: ' + t.mac_dinh : 'Chưa đặt')),
+          nhanMo: laBiMat(t) ? (coLuu ? 'Đổi' : 'Thêm') : 'Sửa',
+          ariaMo: (laBiMat(t) ? (coLuu ? 'Đổi ' : 'Thêm ') : 'Sửa ') + (t.nhan || t.khoa),
+          mo: () => { datSua(t.khoa, true); setTimeout(() => { const o = document.getElementById('f-' + tienTo + '-' + id + '-' + j + '-' + cauHinh.cf(comp, id).lan); if (o) o.focus(); }, 30); },
+          dong: () => datSua(t.khoa, false), coNutThoi: thuGon && daKetNoi,
+          anNangCao: thuGon && !daKetNoi && !t.bat_buoc && !f.nangCao,
           daLuu: t.kieu === 'danh_sach_bi_mat' && Array.isArray(daLuu) ? daLuu.map((che, i) => ({
             i: String(i), che: String(che), bot: !!bot[i], trangThai: bot[i] ? 'sẽ bớt khi lưu' : 'đang lưu',
             nhanNut: bot[i] ? 'Giữ lại' : 'Bớt', aria: (bot[i] ? 'Giữ lại khoá ' : 'Bớt khoá ') + che,
@@ -576,9 +594,17 @@
             return { cf: Object.assign({}, s.cf, { [id]: Object.assign({}, c, { gt: Object.assign({}, c.gt, { [t.khoa]: v }) }) }) }; }); }
         };
       });
+      // Chưa kết nối: trường bắt buộc lên trước; trường tuỳ chọn chỉ hiện khi mở «Nâng cao».
+      const truong = (thuGon && !daKetNoi
+        ? truongTatCa.filter((t) => t.batBuoc).concat(truongTatCa.filter((t) => !t.batBuoc))
+        : truongTatCa).filter((t) => !t.anNangCao);
+      const soNangCao = thuGon && !daKetNoi ? truongTatCa.filter((t) => !t.batBuoc).length : 0;
       const kq = f.kq;
       return {
-        coForm: !!ch, dangTai: !ch && !f.loiTai, loiTai: f.loiTai || '', truong, khongTruong: !!ch && truong.length === 0,
+        daKetNoi, coNangCao: soNangCao > 0, nangCaoMo: !!f.nangCao, nhanNangCao: f.nangCao ? 'Ẩn phần nâng cao' : 'Nâng cao (' + soNangCao + ')',
+        bamNangCao: () => cauHinh.dat(comp, id, { nangCao: !cauHinh.cf(comp, id).nangCao }),
+        coNutLuu: !thuGon || !daKetNoi || Object.keys(sua).some((k) => sua[k]),
+        coForm: !!ch, dangTai: !ch && !f.loiTai, loiTai: f.loiTai || '', truong, khongTruong: !!ch && truongTatCa.length === 0,
         luu: (e) => cauHinh.luu(comp, id, e, daXong), dang: !!f.dang, nhanNut: f.dang ? 'Đang kiểm từng khoá…' : 'Kiểm tra và lưu',
         loi: f.loi || '', coKq: !!kq, kqOk: !!(kq && kq.ok), kqLoi: kq && !kq.ok ? kq.loi || 'không rõ lý do' : '',
         kqDs: kq ? (kq.ds || []).map(dongKhoa) : [], kqGoLai: !!(kq && kq.goLai)
@@ -625,7 +651,7 @@
       } catch (err) { kq = { ok: false, ds: [], loi: err.message }; }
       kq.goLai = !kq.ok && coBiMat;
       cauHinh.dat(comp, id, { dang: false, kq });
-      if (kq.ok) { await cauHinh.tai(comp, id); if (daXong) daXong(id); }
+      if (kq.ok) { cauHinh.dat(comp, id, { sua: {}, nangCao: false }); await cauHinh.tai(comp, id); if (daXong) daXong(id); }
     }
   };
 

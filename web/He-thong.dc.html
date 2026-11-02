@@ -117,6 +117,11 @@ main.pg{padding:32px 32px 48px;gap:20px}
 .chi-tiet .o{min-height:40px;font-size:13px;padding:0 12px}
 .chi-tiet textarea.o{padding:10px 12px}
 .chi-tiet .truong label{font-size:13px;font-weight:400}
+.tab-ct{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:2px 0 4px}
+.tab-ct button{flex:0 0 auto;min-height:40px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--mute);font:inherit;font-size:14px;cursor:pointer}
+.tab-ct button[aria-selected=true]{color:var(--ink);font-weight:600;border-bottom-color:#0F766E}
+.gon-hang{display:flex;align-items:center;gap:10px;justify-content:space-between;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.gon-hang .gia-tri-gon{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;font-size:13px}
 .nut-dong{flex:0 0 auto;width:40px;height:40px;border-radius:20px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;padding:0;margin-left:auto}
 .ket-noi{border-color:#B7DDD5;background:#F1F7F5}
 /* NV259: dòng chia trong bảng TỔNG (nhóm/nhóm con/module) + danh sách «Dùng nhiều nhất» + nền mờ popup. */
@@ -217,7 +222,7 @@ main.pg{padding:12px 16px 24px}
 <span class="vach" aria-hidden="true"></span>
 <div class="loc" role="group" aria-label="Lọc theo trạng thái" id="loc-tt"><sc-for list="{{chipTT}}" as="c"><button type="button" class="chip" data-loc-tt="{{c.ma}}" aria-pressed="{{c.on}}" onClick="{{c.chon}}">{{c.ten}}</button></sc-for></div>
 </div>
-<p class="mo-ta-trang">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. web2api ở giữa, các làn bên dưới chia theo nhóm — bấm tên nhóm để lọc chỉ nhóm đó. Bấm một ô để xem module cần gì để chạy, rồi bấm «Cài» trong bảng chi tiết — module không cần khoá thì cài là chạy; module cần khoá thì tạo khoá ở Bảo mật & người dùng.</p>
+<p class="mo-ta-trang">Mỗi module mang một nguồn AI hay một tiện ích vào web2api. web2api ở giữa, các làn bên dưới chia theo nhóm — bấm tên nhóm để lọc chỉ nhóm đó. Bấm một ô để xem module cần gì để chạy, rồi bấm «Cài» trong bảng chi tiết — module không cần khoá thì cài là chạy; module cần khoá hay tài khoản thì nhập ở tab «Kết nối» ngay trong bảng chi tiết.</p>
 </div>
 
 <div class="bo-cuc">
@@ -402,6 +407,16 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.coMoTaDay}}"><details id="mo-ta-day" style="margin-top:-8px"><summary class="phu" style="cursor:pointer">Xem đầy đủ</summary><p class="phu" style="color:var(--ink);text-wrap:pretty;overflow-wrap:anywhere">{{ct.moTaDay}}</p></details></sc-if>
 <sc-if value="{{ct.loi}}"><p role="alert" class="bao bao-loi" id="ct-loi">{{ct.loi}}</p></sc-if>
 <sc-if value="{{ct.ghiChuGit}}"><p class="bao bao-vang">{{ct.ghiChuGit}}</p></sc-if>
+<sc-if value="{{ct.coTab}}">
+<div class="tab-ct" role="tablist" aria-label="Phần của module" onKeyDown="{{ct.phimTab}}">
+<button type="button" role="tab" id="tab-tong-quan" aria-selected="{{ct.tabTongChon}}" aria-controls="bang-tong-quan" tabindex="{{ct.tabTongTt}}" onClick="{{ct.chonTong}}">Tổng quan</button>
+<button type="button" role="tab" id="tab-ket-noi" aria-selected="{{ct.tabKetNoiChon}}" aria-controls="lien-ket" tabindex="{{ct.tabKetNoiTt}}" onClick="{{ct.chonKetNoi}}">Kết nối</button>
+</div>
+</sc-if>
+<sc-if value="{{ct.caiLoi}}"><p role="alert" class="bao bao-loi" id="cai-loi">{{ct.caiLoi}}</p></sc-if>
+<sc-if value="{{ct.caiTin}}"><p role="status" class="bao bao-tot" id="cai-tin">{{ct.caiTin}}</p></sc-if>
+<sc-if value="{{ct.tabTong}}">
+<div id="bang-tong-quan" role="tabpanel" style="display:contents">
 
 <sc-if value="{{ct.laNutGpu}}">
 <section class="muc-ct" id="thong-so-gpu" aria-labelledby="h-ts-gpu">
@@ -486,9 +501,6 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{ct.coNutCai}}">
 <div class="dong-nut"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-cai" onClick="{{ct.cai}}" disabled="{{ct.dangCai}}">{{ct.nhanCai}}</button><span class="phu">{{ct.goiYCai}}</span></div>
 </sc-if>
-<sc-if value="{{ct.coLkKhoaBaoMat}}">
-<p class="phu"><a id="lk-khoa-bao-mat" href="{{ct.lkKhoaBaoMatHref}}" style="color:#0B5A53;text-decoration:underline">{{ct.lkKhoaBaoMatChu}}</a></p>
-</sc-if>
 <sc-if value="{{ct.dangHoiCai}}">
 <div role="alertdialog" aria-label="Xác nhận cài module" class="bao bao-vang" id="xac-nhan-cai" style="display:flex;flex-direction:column;gap:10px">
 <div>{{ct.hoiCai.tieuDe}} <strong>{{ct.hoiCai.ten}}</strong>?</div>
@@ -526,12 +538,12 @@ main.pg{padding:12px 16px 24px}
 </div>
 </sc-if>
 <sc-if value="{{ct.moiNhat}}"><p class="phu" id="moi-nhat">Đã là bản mới nhất trên git.</p></sc-if>
-<sc-if value="{{ct.caiLoi}}"><p role="alert" class="bao bao-loi" id="cai-loi">{{ct.caiLoi}}</p></sc-if>
-<sc-if value="{{ct.caiTin}}"><p role="status" class="bao bao-tot" id="cai-tin">{{ct.caiTin}}</p></sc-if>
+</div>
+</sc-if>
 
-<sc-if value="{{ct.coForm}}">
-<section class="muc-ct" id="lien-ket" aria-labelledby="h-lien-ket">
-<h3 id="h-lien-ket">Cấu hình</h3>
+<sc-if value="{{ct.tabKetNoi}}">
+<section class="muc-ct" id="lien-ket" role="tabpanel" aria-labelledby="tab-ket-noi">
+<h3 id="h-lien-ket">Kết nối</h3>
 <sc-if value="{{ct.buocTiep}}"><p class="phu" id="buoc-tiep">Bấm «Kiểm tra và lưu» để liên kết.</p></sc-if>
 <sc-if value="{{f.dangTai}}"><p role="status" class="bao-cho">Đang đọc cấu hình đã lưu…</p></sc-if>
 <sc-if value="{{f.loiTai}}"><p role="alert" class="bao bao-loi">Không đọc được cấu hình: {{f.loiTai}}</p></sc-if>
@@ -540,19 +552,27 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{f.khongTruong}}"><p class="phu">Module này không cần khoá hay cấu hình gì — bấm «Kiểm tra và lưu» để liên kết.</p></sc-if>
 <sc-for list="{{f.truong}}" as="t">
 <div class="truong" data-truong="{{t.khoa}}" style="gap:4px">
+<sc-if value="{{t.gon}}">
+<span class="nhan-truong" style="font-size:13px">{{t.nhan}} <sc-if value="{{t.batBuoc}}"><span class="bb">(bắt buộc)</span></sc-if></span>
+<div class="gon-hang" data-gon="{{t.khoa}}"><span class="gia-tri-gon">{{t.chuGon}}</span><button type="button" class="nut-chu" data-hd="mo-truong" onClick="{{t.mo}}" aria-label="{{t.ariaMo}}">{{t.nhanMo}}</button></div>
+</sc-if>
+<sc-if value="{{t.moO}}">
 <label for="{{t.idO}}">{{t.nhan}} <sc-if value="{{t.batBuoc}}"><span class="bb">(bắt buộc)</span></sc-if></label>
 <sc-if value="{{t.laDs}}">
 <ul class="ds-khoa"><sc-for list="{{t.daLuu}}" as="k"><li class="{{k.lop}}" data-khoa-luu="{{k.i}}"><span class="ma" style="flex:1 1 auto">{{k.che}}</span><span class="phu">{{k.trangThai}}</span><button type="button" class="nut-chu" onClick="{{k.doi}}" aria-pressed="{{k.bot}}" aria-label="{{k.aria}}">{{k.nhanNut}}</button></li></sc-for></ul>
 <textarea id="{{t.idO}}" class="o ma" rows="3" autocomplete="off" spellcheck="false" placeholder="Dán khoá mới — mỗi dòng một khoá" onInput="{{t.onInput}}" data-kieu="danh_sach_bi_mat"></textarea>
 <span class="phu">Khoá đã lưu chỉ hiện dạng che. Bấm «Bớt» để bỏ từng khoá; khoá mới được thử trước khi lưu rồi xoá khỏi trang.</span>
 </sc-if>
-<sc-if value="{{t.laBiMat}}"><sc-if value="{{t.biMatLuu}}"><span class="phu">Đang lưu: <span class="ma">{{t.biMatLuu}}</span></span></sc-if><input id="{{t.idO}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống thì giữ giá trị đang lưu" onInput="{{t.onInput}}" data-kieu="bi_mat"></sc-if>
+<sc-if value="{{t.laBiMat}}"><input id="{{t.idO}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống thì giữ giá trị đang lưu" onInput="{{t.onInput}}" data-kieu="bi_mat"></sc-if>
 <sc-if value="{{t.laChuoi}}"><input id="{{t.idO}}" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="{{t.goiY}}" value="{{t.giaTri}}" onInput="{{t.onInput}}" data-kieu="chuoi"><sc-if value="{{t.ghiChuChuoi}}"><span class="phu">{{t.ghiChuChuoi}}</span></sc-if></sc-if>
+<sc-if value="{{t.coNutThoi}}"><div class="dong-nut"><button type="button" class="nut-chu" data-hd="dong-truong" onClick="{{t.dong}}">Thôi</button></div></sc-if>
+</sc-if>
 <sc-if value="{{t.moTa}}"><span class="phu">{{t.moTa}}</span></sc-if>
 </div>
 </sc-for>
+<sc-if value="{{f.coNangCao}}"><div class="dong-nut"><button type="button" class="nut-chu" id="nut-nang-cao" aria-expanded="{{f.nangCaoMo}}" onClick="{{f.bamNangCao}}">{{f.nhanNangCao}}</button></div></sc-if>
 <sc-if value="{{f.loi}}"><p role="alert" class="bao bao-loi loi-form">{{f.loi}}</p></sc-if>
-<div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-luu-cau-hinh" disabled="{{f.dang}}">{{f.nhanNut}}</button></div>
+<sc-if value="{{f.coNutLuu}}"><div class="dong-nut"><button type="submit" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" id="nut-luu-cau-hinh" disabled="{{f.dang}}">{{f.nhanNut}}</button></div></sc-if>
 </form>
 </sc-if>
 <sc-if value="{{f.coKq}}">
@@ -562,6 +582,13 @@ main.pg{padding:12px 16px 24px}
 <sc-if value="{{f.kqGoLai}}"><p class="phu">Khoá đã gửi được xoá khỏi trang vì an toàn — dán lại nếu muốn thử lần nữa.</p></sc-if>
 <ul class="ds-kq"><sc-for list="{{f.kqDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"><sc-if value="{{k.ok}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></sc-if><sc-if value="{{k.hong}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12 M18 6L6 18"></path></svg></sc-if></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span></span></li></sc-for></ul>
 </div>
+</sc-if>
+<sc-if value="{{ct.coXoaKhoa}}">
+<div class="dong-nut" style="gap:8px;flex-wrap:wrap">
+<sc-if value="{{ct.chuaHoiXoaKhoa}}"><button type="button" class="nut-chu" style="border-color:#E2A59D;color:#8A1C12" id="nut-xoa-khoa" onClick="{{ct.hoiXoaKhoa}}">Xoá khoá đã lưu</button></sc-if>
+<sc-if value="{{ct.dangHoiXoaKhoa}}"><span class="phu" style="color:var(--ink)">Module sẽ dừng và về «Chờ khoá»; mã vẫn còn trên đĩa.</span><button type="button" class="nut-chu" style="border-color:#E2A59D;color:#8A1C12" id="nut-xoa-khoa-han" onClick="{{ct.xoaKhoa}}" disabled="{{ct.dangXoaKhoa}}">Xác nhận xoá</button><button type="button" class="nut-chu" onClick="{{ct.thoiXoaKhoa}}">Thôi</button></sc-if>
+</div>
+<sc-if value="{{ct.xoaKhoaLoi}}"><p role="alert" class="bao bao-loi">{{ct.xoaKhoaLoi}}</p></sc-if>
 </sc-if>
 </section>
 </sc-if>
@@ -642,7 +669,7 @@ class Component extends DCLogic {
       tn: null, tnLoi: '', cat: [], loiKhamPha: [], mods: [], he: null, tb: null, ng: null,
       dangTai: true, thieu: q.get('thieu') || '',
       tim: '', locLoai: null, menuMo: null, locTT: 'tat-ca', chon: (location.hash.match(/^#module-(.+)$/) || [])[1] || null,
-      cf: {}, caiGit: {}, hoiGo: null, dangGo: null, goLoi: {}, tin: '', xoaO: null, tabMoi: {},
+      cf: {}, tabCt: {}, hoiXoaKhoa: null, dangXoaKhoa: null, xoaKhoaLoi: '', caiGit: {}, hoiGo: null, dangGo: null, goLoi: {}, tin: '', xoaO: null, tabMoi: {},
       hoiCai: null,
       dangTaiNg: false, ngLoiTai: '', ngSua: false,
       ngForm: { repo: '', nhanh: 'main', thu_muc: 'modules', chu_ky_giay: '300', tu_dong: false, yeu_cau_chu_ky: false },
@@ -1129,9 +1156,24 @@ class Component extends DCLogic {
   async daLienKet(id) {
     const ten = (tn) => K.navChinh(tn, '').map((t) => t.nhan + ' (thanh trên)').concat(K.navHeThong(tn, '').map((t) => t.nhan + ' (Hệ thống)'));
     const truoc = ten(this.state.tn);
+    // NV296: người dùng vừa lưu ở tab «Kết nối» thì ở lại đó đọc kết quả (trạng thái đổi thành «Đang chạy» không được kéo họ đi chỗ khác).
+    this.setState((st) => ({ tabCt: Object.assign({}, st.tabCt, { [id]: 'ket-noi' }) }));
     await this.taiLai();
     const moi = ten(this.state.tn).filter((n) => !truoc.includes(n));
     this.setState((s) => ({ tabMoi: Object.assign({}, s.tabMoi, { [id]: moi }) }));
+  }
+
+  // NV296: «Xoá khoá đã lưu» (DELETE /api/modules/<id>/khoa) — module rời trạng thái chạy, về «cần khoá»; mã vẫn trên đĩa.
+  async xoaKhoa(id) {
+    this.setState({ dangXoaKhoa: id, xoaKhoaLoi: '' });
+    try {
+      await K.goi('api/modules/' + encodeURIComponent(id) + '/khoa', { method: 'DELETE' });
+    } catch (e) {
+      this.setState({ dangXoaKhoa: null, xoaKhoaLoi: e.message || 'Lỗi xoá khoá.' });
+      return;
+    }
+    this.setState({ dangXoaKhoa: null, hoiXoaKhoa: null });
+    await this.taiLai();
   }
 
   async go(id, ten) {
@@ -1686,16 +1728,16 @@ class Component extends DCLogic {
         dsBot, coBot: dsBot.length > 0
       };
     }
-    // NV280: khoá KHÔNG nhập ở bảng này. Module đã cài có trường bí mật (suy từ `kieu` của manifest, không dò tên)
-    // → bỏ form «Cấu hình» và chỉ để MỘT liên kết sang Hệ thống → Bảo mật & người dùng.
+    // NV296: cấu hình kết nối (địa chỉ, tài khoản, mật khẩu, khoá, vân tay…) nằm ngay trong bảng chi tiết, tab «Kết nối».
+    // Trường bí mật được suy từ `kieu` của manifest (không dò tên) và luôn thu gọn «••••• đã lưu» + nút Đổi.
     const truongCh = Array.isArray(x.info.truong_cau_hinh) ? x.info.truong_cau_hinh : [];
-    const laKhoa = (t) => !!t && (t.kieu === 'bi_mat' || t.kieu === 'danh_sach_bi_mat');
-    const coTruongKhoa = truongCh.some(laKhoa);
-    const khoaBatBuoc = truongCh.some((t) => laKhoa(t) && t.bat_buoc);   // bắt buộc khoá → không còn gì để điền ở đây
-    const coLkKhoa = !chiHoiCai && x.daCai && !x.tuXa && coTruongKhoa;
+    const coTruongKhoa = truongCh.some((t) => !!t && (t.kieu === 'bi_mat' || t.kieu === 'danh_sach_bi_mat'));
     const coNutCai = !chiHoiCai && coKhoa && (x.tt === 'chua-cai' || x.tt === 'ban-moi') && !hoiCaiVM;
-    const coForm = !chiHoiCai && coKhoa && x.daCai && !x.tuXa && !khoaBatBuoc
-      && (truongCh.some((t) => !laKhoa(t)) || !x.lienKet);   // đang chạy mà không còn trường thường nào → không cần khối «Cấu hình»
+    const coForm = !chiHoiCai && coKhoa && x.daCai && !x.tuXa
+      && (truongCh.length > 0 || !x.lienKet);   // đang chạy mà manifest không có trường nào → không cần tab «Kết nối»
+    // Tab mở sẵn: module đang CHỜ KHOÁ mở thẳng «Kết nối» (đó là việc cần làm); còn lại «Tổng quan». Người dùng chọn thì theo người dùng.
+    const tabChon = (s.tabCt || {})[x.id] || (x.tt === 'cho-khoa' ? 'ket-noi' : 'tong-quan');
+    const tabKetNoi = coForm && tabChon === 'ket-noi';
     const moi = s.tabMoi[x.id] || [];
     const tabMoi = moi.length ? ' Tab vừa hiện: ' + moi.join(', ') + '.' : '';
 
@@ -1765,6 +1807,18 @@ class Component extends DCLogic {
       dongYCai: (e) => { const h = this.state.hoiCai; if (e && e.target && !(h && h.duyet && h.buoc === 1)) e.target.disabled = true; this.xacNhanCai(x.id); },
       huyCai: () => this.huyCai(),
       coForm, buocTiep: !x.lienKet, tabMoi,
+      coTab: coForm, tabKetNoi, tabTong: !tabKetNoi,
+      tabTongChon: !tabKetNoi ? 'true' : 'false', tabKetNoiChon: tabKetNoi ? 'true' : 'false',
+      tabTongTt: !tabKetNoi ? '0' : '-1', tabKetNoiTt: tabKetNoi ? '0' : '-1',
+      chonTong: () => this.setState((st) => ({ tabCt: Object.assign({}, st.tabCt, { [x.id]: 'tong-quan' }) })),
+      chonKetNoi: () => this.setState((st) => ({ tabCt: Object.assign({}, st.tabCt, { [x.id]: 'ket-noi' }) })),
+      phimTab: (e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault();
+        this.setState((st) => ({ tabCt: Object.assign({}, st.tabCt, { [x.id]: tabKetNoi ? 'tong-quan' : 'ket-noi' }) }));
+        setTimeout(() => { const t = document.getElementById(tabKetNoi ? 'tab-tong-quan' : 'tab-ket-noi'); if (t) t.focus(); }, 30); } },
+      coXoaKhoa: coForm && coTruongKhoa && x.lienKet, xoaKhoaLoi: s.xoaKhoaLoi && s.hoiXoaKhoa === x.id ? s.xoaKhoaLoi : '',
+      chuaHoiXoaKhoa: s.hoiXoaKhoa !== x.id, dangHoiXoaKhoa: s.hoiXoaKhoa === x.id, dangXoaKhoa: s.dangXoaKhoa === x.id,
+      hoiXoaKhoa: () => this.setState({ hoiXoaKhoa: x.id, xoaKhoaLoi: '' }), thoiXoaKhoa: () => this.setState({ hoiXoaKhoa: null }),
+      xoaKhoa: () => this.xoaKhoa(x.id),
       laNutGpu: !!x.laNutGpu,
       coCard: !!(g0 && g0.ten),
       cardTen: g0 ? g0.ten : '',
@@ -1779,9 +1833,6 @@ class Component extends DCLogic {
       batTat: () => this.batTatModule(x.id, !(x.t && x.t.bat !== false)),
       nhanBatTat: (x.t && x.t.bat === false) ? 'Bật lại' : 'Tắt tạm thời',
       kiemTraLai: () => this.kiemTraLai(x.id),
-      coLkKhoaBaoMat: coLkKhoa,
-      lkKhoaBaoMatHref: 'He-thong-Bao-mat.dc.html#khoa-module-' + encodeURIComponent(x.id),
-      lkKhoaBaoMatChu: khoaBatBuoc && x.tt === 'cho-khoa' ? 'Cần khoá — tạo ở Bảo mật & người dùng' : 'Khoá — quản lý ở Bảo mật & người dùng',
       coXinQuyen: !chiHoiCai && !x.daCai && dsXinQuyen.length > 0, dsXinQuyen,
       coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),
       coChanGo: dangCanBoi.length > 0,
@@ -1909,12 +1960,7 @@ class Component extends DCLogic {
     else if (s.tdCon) ct = this.tongConVM(s.tdCon.ma, s.tdCon.con, tatCa, pt);
     else if (s.tdNhom) ct = this.tongNhomVM(s.tdNhom, tatCa, pt);
     else if (s.tdGoc) ct = this.tongGocVM(tatCa, dsLan);
-    const f = xChon && ct && ct.coForm ? K.cauHinh.vm(this, xChon.id, 'ct', (id) => this.daLienKet(id)) : {};
-    // NV280: ô nhập khoá không còn ở bảng này (khoá tạo ở Bảo mật & người dùng) — chỉ giữ trường thường.
-    if (f.coForm && Array.isArray(f.truong)) {
-      f.truong = f.truong.filter((t) => !t.laBiMat && !t.laDs);
-      f.khongTruong = f.truong.length === 0;
-    }
+    const f = xChon && ct && ct.coForm ? K.cauHinh.vm(this, xChon.id, 'ct', (id) => this.daLienKet(id), { thuGon: true }) : {};
 
     // Nguồn git (khối Thêm module)
     const ng = s.ng; const cfg = ng && ng.cau_hinh; const ttNg = (ng && ng.trang_thai) || {};

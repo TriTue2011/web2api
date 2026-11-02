@@ -353,7 +353,9 @@ def test_ma_mo_loai_la_va_kha_nang_la(du_lieu):
             assert not any(x["id"].startswith("m-") for x in kq_khung["nav"])
             assert "module" in kq_khung["navHT"] and "bao_mat" in kq_khung["navHT"]
             assert kq_khung["thieu"] == []  # Không thiếu vì đã liên kết và có đủ khả năng
-            assert kq_khung["noiThemKhoa"]["tab"] == "bao_mat"  # NV281: khoá chỉ tạo ở Bảo mật & người dùng
+            # NV296: khoá/kết nối của module thiết bị/dịch vụ ngoài ở tab «Kết nối» trong bảng chi tiết Module, không sang Bảo mật
+            assert kq_khung["noiThemKhoa"]["tab"] == "ket_noi"
+            assert kq_khung["noiThemKhoa"]["href"].startswith("He-thong.dc.html#module-")
 
 
 def test_module_mang_tab_web_la_doc_lap(du_lieu):

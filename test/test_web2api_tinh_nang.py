@@ -279,7 +279,8 @@ def test_bang_dieu_kien_khung_tab_chinh_theo_da_cai(du_lieu):
 @pytest.mark.skipif(not shutil.which("node"), reason="cần node")
 def test_khung_module_loai_la_khong_co_trang_chinh_va_them_khoa_o_trang_module(du_lieu):
     """Module loại LẠ (`mang`, khả năng `dinh_tuyen`): không ứng tab chính nào → cài xong ở lại trang Module; module
-    không mang mã của tab Tài khoản thì tạo khoá ở Bảo mật & người dùng. Không bảng tên nào trong khung."""
+    không mang mã của tab Tài khoản thì thêm khoá/kết nối ở tab «Kết nối» trong bảng chi tiết Module (NV296).
+    Không bảng tên nào trong khung."""
     dat(du_lieu, "mang-gia", tep_gia("mang-gia", loai="mang", cung_cap=["dinh_tuyen"]))
     dat(du_lieu, "app-chat", tep_gia("app-chat", loai="app", cung_cap=["chat"]))
     with TestClient(app) as c:
@@ -287,10 +288,10 @@ def test_khung_module_loai_la_khong_co_trang_chinh_va_them_khoa_o_trang_module(d
         assert _khung(j, "K.trangChinhCua('mang-gia', tn)") is None
         # Module loại «app» nhưng khai chat: vẫn ứng Studio (theo khả năng, không theo loại) …
         assert _khung(j, "K.trangChinhCua('app-chat', tn)")["href"] == "Studio.dc.html"
-        # … còn khoá thì tạo ở Bảo mật & người dùng (NV281; nó không mang mã của tab Tài khoản).
+        # … còn khoá/kết nối thì ở tab «Kết nối» ngay trong bảng chi tiết Module (NV296; nó không mang mã của tab Tài khoản).
         assert _khung(j, "K.noiThemKhoa(tn.modules.find((m) => m.id === 'app-chat'), tn)") == {
-            "tab": "bao_mat", "href": "He-thong-Bao-mat.dc.html#khoa-module-app-chat",
-            "nhan": "Hệ thống → Bảo mật & người dùng"}
+            "tab": "ket_noi", "href": "He-thong.dc.html#module-app-chat",
+            "nhan": "Hệ thống → Module → Kết nối"}
 
 
 # ───────────── kiểm mẫu manifest ─────────────
