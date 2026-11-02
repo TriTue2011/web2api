@@ -72,7 +72,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Công cụ khôi phục quản trị dòng lệnh (`python3 -m app.khoi_phuc_quan_tri dat-lai-mat-khau|tat-2fa`): đặt lại mật khẩu/tắt 2FA trên máy chủ, không đường web tương đương, ghi nhật ký `quan_tri` mỗi lần dùng | Có — kiểm với thư mục dữ liệu tạm (NV67 nhóm 5, việc 13) | 17/10/2026 |
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
 | `zalo-bot` — kênh Zalo Bot hai chiều (chuẩn `kenh_ra` + nhận tin qua webhook của lõi, chuẩn `tin_vao` NV117): gửi ra mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định»), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô; nhận vào phiên dịch payload Zalo (`result.message`) → tin chuẩn, nhiều bot chung một URL webhook nên ánh xạ `chat.id` → đích đã khai, chat lạ bị bỏ (đếm `bo_qua_chat_la`) | Có — kiểm với Zalo giả cục bộ (NV114 chiều gửi, NV117 chiều nhận); **chưa kiểm với Zalo thật** | 19/10/2026 |
-| Module `mikrotik-routeros` (nguồn máy mạng từ router MikroTik, CHỈ ĐỌC) | Có — đọc DHCP lease + bảng host qua RouterOS API (TLS 8729), gộp theo MAC thành thực thể C1 (`thuoc_tinh.mac`), lệnh ghi bị chặn theo cấu trúc ở client, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 18/10/2026 |
+| Module `mikrotik-routeros` (kiểm soát mạng LAN từ router MikroTik, CHỈ ĐỌC) | Có (0.2.0) — đọc DHCP lease + bảng host, cổng mạng, tài nguyên router, WireGuard, Kid Control qua RouterOS API (TLS 8729); tự động dọn máy vắng; chỉ đọc theo cấu tạo, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 02/11/2026 |
 | Module `khoa-cua` (khoá cửa Tuya qua Open API — thiết bị nhà, chuẩn C1): trạng thái khoá + nhật ký mở/đóng + học tên người từ mã mở; mở khoá LUÔN `nguy_hiem` theo cấu trúc, quản trị phải qua cửa sổ xác nhận lại (mã dùng một lần, hết hạn 120 giây), mọi lần mở ghi nhật ký bất biến, điều khiển mặc định TẮT | Có — kiểm với khoá giả + MockTransport (NV169); **chưa kiểm với khoá cửa thật** | 20/10/2026 |
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
@@ -2513,14 +2513,19 @@ chối → tạm ngừng 30 phút rồi tự hồi phục; đọc hỏng là l�
 
 ### Module mikrotik-routeros — Nguồn máy mạng từ router MikroTik (chỉ đọc)
 
-**Mô tả.** Nguồn máy mạng cho sổ thiết bị: đọc bảng DHCP lease
+**Mô tả.** Nguồn kiểm soát mạng LAN cho sổ thiết bị (phiên bản 0.2.0): đọc bảng DHCP lease
 (`/ip/dhcp-server/lease/print`) và bảng host (`/interface/bridge/host/print`) của
 router MikroTik qua RouterOS API (giao thức câu-từ nhị phân, TLS cổng `8729` mặc
 định), gộp theo địa chỉ MAC thành thực thể chuẩn thiết bị C1 (`loai="may_mang"`,
-`thuoc_tinh.mac` — lõi dùng để nhận diện máy mạng). Mã nguồn:
-`modules/mikrotik-routeros/` (chỉ thư viện chuẩn: `socket` + `ssl`, giao thức tự
-viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực thể:
-`mikrotikrouteros`.
+`thuoc_tinh.mac` — lõi dùng để nhận diện máy mạng). Tự động dọn máy vắng mặt quá N ngày
+(cấu hình `ngay_giu_may_vang`, mặc định 14). Đọc cổng mạng (`/interface/print`: trạng
+thái lên/xuống/tắt, tốc độ nhận/gửi Mbit/s có xử lý tràn bộ đếm và router khởi động lại),
+tài nguyên router (`/system/resource/print`: CPU %, RAM %, thời gian chạy, nhiệt độ nếu có),
+WireGuard peers (`/interface/wireguard/peers/print`: kết nối, bắt tay gần nhất), và
+Kid Control (`/ip/kid-control/device/print`: tốc độ từng máy nếu bật). Danh sách lệnh đọc
+CỐ ĐỊNH 7 đường ở client. Nhịp nhanh (15s) / chậm (120s), cô lập lỗi từng nguồn,
+`suc_khoe().nguon`. Mã nguồn: `modules/mikrotik-routeros/` (chỉ thư viện chuẩn: `socket` + `ssl`,
+giao thức tự viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực thể: `mikrotikrouteros`.
 
 **Cần gì.**
 - Router MikroTik trong LAN bật dịch vụ `api-ssl` (cổng `8729` mặc định), hoặc
@@ -2569,6 +2574,10 @@ viết, không thêm gói). Hạng: `A` (mã của dự án). Tiền tố thực
 | `kiem_chung_chi_tls` | Không | Mặc định `true`. Router dùng chứng chỉ tự ký thì ghim vân tay ở `van_tay_tls` thay vì tắt. |
 | `van_tay_tls` | Không | Vân tay SHA-256 của chứng chỉ api-ssl — kiểm trước khi gửi mật khẩu. |
 | `cho_phep_khong_ma_hoa` | Không | Mặc định `false`. `true` cho phép nối trần (cổng `8728`) — mật khẩu đi dạng thô, chỉ dùng trong LAN tin cậy. |
+| `chu_ky_nhanh_giay` | Không | Mặc định `15`. Chu kỳ đọc nhanh cho cổng và Kid Control (giây, kẹp 10–3600). |
+| `chu_ky_cham_giay` | Không | Mặc định `120`. Chu kỳ đọc chậm cho tài nguyên, WireGuard và bảng máy (giây, kẹp 30–3600). |
+| `ngay_giu_may_vang` | Không | Mặc định `14`. Số ngày giữ máy vắng mặt khỏi mạng (kẹp 1–365) trước khi ngừng báo trong sổ thiết bị. |
+| `bat_kid_control` | Không | Mặc định `true`. «true» đọc tốc độ từng máy qua /ip/kid-control/device/print nếu router hỗ trợ. |
 | `bot_token` | Có | Token bot từ @BotFather. Lưu riêng dạng bí mật, không trả lại; trong lúc gọi, logger `httpx`/`httpcore` bị nâng lên WARNING vì token nằm trong URL. |
 | `dich` | Không | Danh sách đích dạng JSON: `[{"id", "ten", "chat_id", "chu_de"?}]`. `id` do chủ máy đặt, duy nhất; `chat_id` là id chat Telegram; `chu_de` là id chủ đề (topic) trong nhóm, tuỳ chọn. Đích nào gửi tới chat nào do đích đã khai quyết định — không có «bot mặc định». |
 | `dia_chi` | Có | URL gốc HA, http/https |
@@ -2595,15 +2604,17 @@ về WARNING trong lúc gọi); không log URL/token/chat_id; `kenh_ra()` chỉ 
 `[{id, ten}]`. Lỗi trả mã ngắn (`chat_sai`, `yeu_cau_sai`, `het_han_muc`…), không
 lộ `description` thô của Zalo.
 
-# Liệt kê máy mạng đã gộp theo MAC
+# Liệt kê thiết bị và cảm biến MikroTik (dữ liệu GIẢ: MAC aa:bb:cc:00:00:01, IP 192.0.2.x)
 curl -s -H "Authorization: Bearer $K" $W/api/thiet-bi | \
-  python3 -c "import json,sys; [print(e['id'], e['ten'], e['thuoc_tinh']['mac'], e['thuoc_tinh'].get('ip')) for e in json.load(sys.stdin) if e['id'].startswith('mikrotikrouteros.')]"
+  python3 -c "import json,sys; [print(e['id'], e['ten'], e['loai']) for e in json.load(sys.stdin) if e['id'].startswith('mikrotikrouteros.')]"
 ```
 
 **Sự cố thường gặp.**
 - `LoiChungChi` khi cài — chứng chỉ router khác vân tay đã ghim (router đổi chứng chỉ tự ký): lấy vân tay mới và cấu hình lại `van_tay_tls`.
 - Địa chỉ bị chặn (`dia_chi trỏ vào … — bị chặn`) — router ở loopback/link-local hoặc tên miền phân giải ra địa chỉ bị chặn: dùng IP LAN thật.
 - Hết giờ đọc — router không phản hồi api-ssl: kiểm dịch vụ đã bật và tường lửa.
+- Nguồn lỗi: khi một nguồn (ví dụ resource hoặc wireguard) lỗi, module giữ dữ liệu cũ và đánh dấu `hop_le: false`, không kéo theo lỗi của các nguồn khác. Kiểm tra chi tiết qua `suc_khoe().nguon`.
+- Dọn máy vắng mặt: mốc thời gian vắng mặt lưu tại `<WEB2API_DATA>/du_lieu/mikrotik-routeros/thay_lan_cuoi.json` quyền 0600.
 
 **Giới hạn.**
 - CHỈ ĐỌC: `thuc_hien` luôn từ chối; muốn điều khiển router thì dùng module khác.

@@ -28,16 +28,55 @@ __all__ = [
     "LoiKetNoi",
     "LoiChungChi",
     "LoiDangNhap",
+    "LoiRouterTuChoi",
     "ket_noi",
     "Phien",
     "van_tay_cua",
     "CONG_MAC_DINH",
+    "LENH_DOC_CHO_PHEP",
 ]
 
 CONG_MAC_DINH = 8729  # api-ssl (TLS)
 TRAN_DO_DAI_CAU = 1024 * 1024  # 1 MiB — câu dài hơn là rác/tấn công, bỏ ngay
-TRAN_SO_CAU = 50  # số câu !re tối đa mỗi lượt đọc — chống bộ nhớ phình
+TRAN_SO_CAU = 50  # số câu !re tối đa mỗi lượt đọc — chống bộ nhớ phình (hai lệnh cũ)
+TRAN_SO_CAU_TOI_DA = 500  # trần tuyệt đối cho mọi lệnh
 _TRAN_LOI_ROUTER = 120  # lời router trong ngoại lệ bị cắt tới đây
+
+# ── Danh sách lệnh đọc cho phép CỐ ĐỊNH ──
+# Đường lệnh → tập trường được phép hỏi (proplist).
+# Tuyệt đối KHÔNG chứa khoá riêng/khoá chia sẻ/mật khẩu (private-key, preshared-key,
+# password…): chính cơ chế «tập trường được phép» chặn chúng.
+LENH_DOC_CHO_PHEP: dict[str, frozenset[str]] = {
+    "/ip/dhcp-server/lease/print": frozenset({
+        "mac-address", "address", "host-name", "status", "last-seen",
+    }),
+    "/interface/bridge/host/print": frozenset({
+        "mac-address", "on-interface",
+    }),
+    "/interface/print": frozenset({
+        "name", "type", "running", "disabled", "rx-byte", "tx-byte",
+    }),
+    "/system/resource/print": frozenset({
+        "uptime", "cpu-load", "free-memory", "total-memory",
+        "temperature", "cpu-temperature",
+    }),
+    "/interface/wireguard/peers/print": frozenset({
+        "interface", "name", "comment", "public-key",
+        "last-handshake", "rx", "tx", "disabled",
+    }),
+    "/ip/kid-control/device/print": frozenset({
+        "mac-address", "name", "rate-down", "rate-up", "disabled",
+    }),
+    # Đường duy nhất không kết thúc «/print» — chỉ qua hàm riêng
+    # ``Phien.do_luu_luong_mot_lan``, không qua ``goi_doc``.
+    "/interface/monitor-traffic": frozenset(),
+}
+
+_BI_CAM_TRONG_PROPLIST = frozenset({"private-key", "preshared-key", "password"})
+
+# Khuôn dạng tên cổng cho monitor-traffic: chữ/số/«_ . - :» tối đa 32 ký tự.
+# Dùng \A...\Z (hoặc cấm ký tự điều khiển) để ngăn $ khớp trước \n ở cuối chuỗi.
+_TEN_CONG_HOP_LE = re.compile(r"\A[A-Za-z0-9_.\-:]{1,32}\Z")
 
 
 class RouterOSError(Exception):
@@ -54,6 +93,14 @@ class LoiChungChi(RouterOSError):
 
 class LoiDangNhap(RouterOSError):
     """Router từ chối đăng nhập (sai tài khoản/mật khẩu)."""
+
+
+class LoiRouterTuChoi(RouterOSError):
+    """Router trả ``!trap``/``!fatal`` cho lệnh đọc (router không hỗ trợ tính năng này).
+
+    Khác lỗi mạng/hết giờ: module dùng CHÍNH LỚP NGOẠI LỆ để phân biệt «router không
+    có tính năng» với «mất kết nối», KHÔNG dò chữ trong thông điệp.
+    """
 
 
 def _ma_do_dai(n: int) -> bytes:
@@ -154,7 +201,7 @@ class Phien:
                 return tu
             tu.append(self._doc(n).decode("utf-8", errors="replace"))
 
-    def _gui_va_nhan(self, tu: list[str]) -> list[dict[str, str]]:
+    def _gui_va_nhan(self, tu: list[str], *, tran: int = TRAN_SO_CAU) -> list[dict[str, str]]:
         for w in tu:
             b = w.encode("utf-8")
             if len(b) > TRAN_DO_DAI_CAU:
@@ -172,7 +219,7 @@ class Phien:
                 d[k] = v
             if cau[0] == "!re":
                 ra.append(d)
-                if len(ra) > TRAN_SO_CAU:
+                if len(ra) > tran:
                     raise RouterOSError("router trả quá nhiều câu trong một lượt đọc")
             elif cau[0] == "!done":
                 return ra
@@ -185,7 +232,7 @@ class Phien:
                             pass
                     except RouterOSError:
                         pass
-                raise RouterOSError(f"router từ chối lệnh: {loi_router}")
+                raise LoiRouterTuChoi(f"router từ chối lệnh: {loi_router}")
 
     def dang_nhap(self, ten: str, mat_khau: str) -> None:
         """Đăng nhập bằng /login. Sai → LoiDangNhap (không kèm mật khẩu, không nguyên văn lời router)."""
@@ -196,14 +243,53 @@ class Phien:
                 raise
             raise LoiDangNhap("router từ chối đăng nhập (kiểm lại tài khoản và mật khẩu)") from e
 
-    def goi_doc(self, lenh: str, proplist: str = "") -> list[dict[str, str]]:
-        """CHỈ lệnh đọc «…/print». Lệnh không đúng khuôn bị từ chối TRƯỚC khi gửi."""
+    def goi_doc(self, lenh: str, proplist: str = "", *,
+                tran_so_cau: int | None = None) -> list[dict[str, str]]:
+        """CHỈ lệnh đọc «…/print» trong LENH_DOC_CHO_PHEP.
+
+        Lệnh không đúng khuôn hoặc không nằm trong danh sách được phép bị từ chối
+        TRƯỚC khi gửi — không byte lệnh nào tới router.
+        """
         if not _lenh_doc_hop_le(lenh):
             raise RouterOSError("chỉ cho phép lệnh đọc có dạng «/…/print» (không tham số lạ)")
+        if lenh not in LENH_DOC_CHO_PHEP or lenh == "/interface/monitor-traffic":
+            raise RouterOSError(f"lệnh đọc không nằm trong danh sách được phép: {lenh!r}")
+        tap_cho_phep = LENH_DOC_CHO_PHEP[lenh]
         if not _proplist_hop_le(proplist):
             raise RouterOSError("danh sách trường (.proplist) chứa ký tự không hợp lệ")
-        tu = [lenh] + ([f"=.proplist={proplist}"] if proplist else [])
-        return self._gui_va_nhan(tu)
+
+        if proplist:
+            truong_list = [p.strip() for p in proplist.split(",") if p.strip()]
+            for p in truong_list:
+                if p in _BI_CAM_TRONG_PROPLIST or p not in tap_cho_phep:
+                    raise RouterOSError(f"trường {p!r} không được phép hỏi trong lệnh {lenh!r}")
+            tu_proplist = f"=.proplist={proplist}"
+        else:
+            # proplist rỗng: máy khách TỰ gửi =.proplist= = toàn bộ tập được phép của lệnh
+            tu_proplist = f"=.proplist={','.join(sorted(tap_cho_phep))}"
+
+        tran = TRAN_SO_CAU
+        if tran_so_cau is not None:
+            tran = min(max(1, int(tran_so_cau)), TRAN_SO_CAU_TOI_DA)
+
+        tu = [lenh, tu_proplist]
+        ket_qua = self._gui_va_nhan(tu, tran=tran)
+        # KẾT QUẢ trả về chỉ giữ các khoá nằm trong tập được phép (bỏ .id và mọi khoá lạ nếu router vẫn gửi)
+        return [{k: v for k, v in d.items() if k in tap_cho_phep} for d in ket_qua]
+
+    def do_luu_luong_mot_lan(self, ten_cong: str) -> dict[str, str]:
+        """Đo lưu lượng một cổng qua «/interface/monitor-traffic» (=once=).
+
+        Tên cổng được kiểm cấu trúc: chữ/số/«_ . - :» tối đa 32 ký tự.
+        """
+        if not isinstance(ten_cong, str) or not _TEN_CONG_HOP_LE.match(ten_cong):
+            raise RouterOSError("tên cổng không hợp lệ (chỉ chữ/số/«_ . - :» tối đa 32 ký tự)")
+        tu = ["/interface/monitor-traffic", f"=interface={ten_cong}", "=once="]
+        ra = self._gui_va_nhan(tu, tran=1)
+        if not ra:
+            return {}
+        # Lọc các trường an toàn, bỏ trường nhạy cảm nếu có
+        return {k: v for k, v in ra[0].items() if k not in _BI_CAM_TRONG_PROPLIST and not k.startswith(".")}
 
     def dong(self) -> None:
         try:
