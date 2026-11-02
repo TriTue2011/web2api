@@ -123,7 +123,7 @@ def suc_khoe_kn(c, khoa, kn):
 def test_manifest_gemini_khai_cung_cap_va_catalog_tra_ra(client):
     m = json.loads((GOC_GEMINI / "manifest.json").read_text(encoding="utf-8"))
     assert m["cung_cap"] == ["chat", "anh", "video"]
-    assert m["phien_ban"] == "0.2.0"
+    assert m["phien_ban"] == "0.2.1"  # NV285: them loai_tai_khoan_ten -> tang phien_ban
     # Không đổi phần quyền: đổi là bản cập nhật bị coi «xin thêm quyền» và không tự cập nhật được.
     assert m["yeu_cau_goi"] == ["httpx"] and m["tai_nguyen"]["mang_ra"] == ["generativelanguage.googleapis.com"]
     cat = next(x for x in client.get("/api/modules/catalog", headers=QT).json()["modules"] if x["id"] == "gemini-api")

@@ -173,6 +173,16 @@ def ghi_luot(tai_khoan_id: str, *, viec: str = "chat", ma: int = 200,
             du_lieu = _doc()
             ds = du_lieu.setdefault("tai_khoan", {})
             ban = ds.setdefault(id_, {"ngay": {}, "thay_lan_cuoi": 0})
+            if ma == 401:
+                # NV283 §2c: lượt dùng CÓ SẴN thấy 401 → phiên hết hạn THẬT:
+                # đánh dấu trong sổ tài khoản (không gọi mạng thêm, không
+                # kiểm hàng loạt; id không phải tài khoản đã lưu → không ghi).
+                # Lỗi đánh dấu không làm hỏng ghi lượt dùng.
+                try:
+                    from app import kho_tai_khoan as _ktk
+                    _ktk.danh_dau_phien_het_han(id_)
+                except Exception as e:
+                    LOG.warning("đánh dấu phiên hết hạn hỏng: %s", type(e).__name__)
             ngay_str = datetime.fromtimestamp(bay_gio, tz=timezone.utc).strftime("%Y-%m-%d")
             o_ngay = ban["ngay"].setdefault(
                 ngay_str, {"luot": 0, "token_vao": 0, "token_ra": 0,
@@ -266,6 +276,22 @@ def lay_han_muc(tai_khoan_id: str) -> dict | None:
         return None
     han_muc = ban.get("han_muc")
     return dict(han_muc) if isinstance(han_muc, dict) else None
+
+
+def lan_dung_cuoi(tai_khoan_id: str) -> int:
+    """Epoch lượt dùng gần nhất của tài khoản (NV285: chi-tiet.dung).
+    Không có số liệu → 0."""
+    id_ = _kiem_id(tai_khoan_id)
+    if id_ is None:
+        return 0
+    with _KHOA:
+        ban = (_doc().get("tai_khoan") or {}).get(id_)
+    if not isinstance(ban, dict):
+        return 0
+    try:
+        return int(ban.get("thay_lan_cuoi", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def danh_dau_het_han_muc(tai_khoan_id: str, den_luc: int) -> bool:

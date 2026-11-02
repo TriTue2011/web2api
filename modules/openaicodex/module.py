@@ -506,6 +506,78 @@ class Module:
             "cho_duyet_deactivated": len(cho_duyet),
         }
 
+    def _tim_theo_email(self, email: str):
+        em = str(email or "").strip().casefold()
+        if not em:
+            return None
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        for tk in ds:
+            if str(tk.email or "").strip().casefold() == em:
+                return tk
+        return None
+
+    @staticmethod
+    def _muc_tu_cua_so(ban: dict | None, ten: str, nhan: str) -> dict | None:
+        """Một cửa sổ hạn mức (chính/phụ) từ han_muc.py → mục chuẩn NV285.
+
+        Chỉ có % đã dùng + mốc hồi (không có số lượt tuyệt đối) nên
+        con_lai/tong là None — không bịa số lượt từ %.
+        """
+        if not isinstance(ban, dict):
+            return None
+        cua_so = ban.get("chinh" if ten == "codex_chinh" else "phu")
+        if not isinstance(cua_so, dict):
+            return None
+        pct = cua_so.get("da_dung_pct")
+        if not isinstance(pct, (int, float)) or isinstance(pct, bool):
+            return None
+        return {
+            "ten": ten,
+            "nhan": nhan,
+            "con_lai": None,
+            "tong": None,
+            "da_dung_pct": min(100.0, max(0.0, float(pct))),
+            "reset_luc": cua_so.get("reset_at") if isinstance(
+                cua_so.get("reset_at"), int) else None,
+            "reset_sau_giay": cua_so.get("con_bao_lau_giay") if isinstance(
+                cua_so.get("con_bao_lau_giay"), int) else None,
+        }
+
+    def chi_tiet_tai_khoan(self, email: str) -> dict | None:
+        """Khả năng tuỳ chọn NV285: hạn mức đã BIẾT, CHỈ ĐỌC từ kho hạn
+        mức trong bộ nhớ (han_muc.kho_han_muc) — không gọi mạng.
+        Chưa có bản ghi wham → None (lõi trả «khong_biet»)."""
+        tk = self._tim_theo_email(email)
+        if tk is None:
+            return None
+        ban = han_muc.kho_han_muc.lay(tk.access_token)
+        if not isinstance(ban, dict):
+            return None
+        muc = []
+        for ten, nhan in (("codex_chinh", "Codex chính"),
+                          ("codex_phu", "Codex phụ")):
+            m = self._muc_tu_cua_so(ban, ten, nhan)
+            if m is not None:
+                muc.append(m)
+        if not muc:
+            return None
+        luc = ban.get("luc_do")
+        return {"goi": tk.plan,
+                "cap_nhat_luc": int(luc) if isinstance(luc, (int, float)) else 0,
+                "muc": muc}
+
+    async def lam_moi_han_muc(self, email: str) -> dict | None:
+        """Khả năng tuỳ chọn NV285: làm mới hạn mức MỘT tài khoản bằng
+        đúng MỘT lần gọi usage (han_muc.lam_moi — chỉ ra mạng khi bản
+        đang có đã quá TTL 120 giây, còn không trả bộ đệm). Email lạ →
+        None; usage hỏng → None (lõi đổi thành 502)."""
+        tk = self._tim_theo_email(email)
+        if tk is None:
+            return None
+        await han_muc.lam_moi(tk.access_token)
+        return self.chi_tiet_tai_khoan(email)
+
     # -- chuẩn thiet_bi (C1): thực thể = tài khoản + luồng đăng nhập ----------
 
     async def thuc_the(self, loc: dict | None = None) -> list[dict]:

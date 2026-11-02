@@ -10,6 +10,7 @@
   "id": "gemini-web",
   "loai": "ai",
   "loai_ten": "AI",
+  "loai_tai_khoan_ten": "Web",
   "loai_thu_tu": 22,
   "nhom_con": {
     "id": "nha-cung-cap",
@@ -30,7 +31,7 @@
       "nhan": "Trò chuyện"
     }
   ],
-  "phien_ban": "0.1.1",
+  "phien_ban": "0.1.2",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Dùng giao thức nội bộ của web app gemini.google.com (học luồng từ gói gemini_webapi qua kho tham khảo, không chính thức). Google đổi web có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro. Giai đoạn này chưa gửi/nhận ảnh, video.",

@@ -301,6 +301,43 @@ Khai báo nhóm của các module mẫu trong kho:
 
 > **Lưu ý kiến trúc**: Không bao giờ coi `nhom` là định danh duy nhất của module hay của nhà cung cấp ngoài đời. Nhiều module có thể dùng chung một `nhom` (ví dụ một module cổng API/provider và một module hồ sơ/đăng nhập trình duyệt của cùng một hãng); một module không khai báo thì thuộc nhóm Khác.
 
+### Trường tuỳ chọn `loai_tai_khoan_ten` (nhãn loại tài khoản, NV283)
+
+Module sở hữu tài khoản khai nhãn loại hiển thị của nó trong
+`manifest.json`, ví dụ chatgpt-web/gemini-web/claude-web/grok-web/muse2api
+khai `"Web"`, openaicodex khai `"Codex"`, module API khai `"API"`:
+
+```json
+"loai_tai_khoan_ten": "Web"
+```
+
+Lõi suy `loai_hien_thi` của tài khoản từ nhãn này khi người dùng chưa đặt
+`loai_tai_khoan`; module không khai thì lõi rơi về `kieu_bi_mat`. Nhãn là
+chuỗi ≤ 40 ký tự, sai khuôn thì lõi bỏ qua (module vẫn nạp bình thường).
+Đổi nhãn là đổi manifest → nhớ nâng `phien_ban`.
+
+### Hai khả năng tuỳ chọn về hạn mức (NV285)
+
+Module nào thật sự có số liệu hạn mức thì khai hai phương thức (không có
+số liệu thì không khai — lõi trả `han_muc.nguon = "khong_biet"`, không bịa):
+
+- `chi_tiet_tai_khoan(email) -> dict | None`: CHỈ ĐỌC từ bộ đệm của lượt
+  init/dùng gần nhất, KHÔNG gọi mạng. Trả `{"goi": str|None,
+  "cap_nhat_luc": epoch|0, "muc": [{"ten", "nhan", "con_lai", "tong",
+  "da_dung_pct", "reset_luc", "reset_sau_giay"}]}`; chưa có số liệu → `None`.
+  Lõi chỉ giữ các trường đã biết trong khuôn trên (trường lạ như token/
+  cookie/email bị loại, không ra phản hồi).
+- `lam_moi_han_muc(email) -> dict | None`: làm mới MỘT tài khoản bằng đúng
+  MỘT lần gọi đường init/usage của chính module đó rồi trả cùng khuôn
+  `chi_tiet_tai_khoan`; email lạ → `None`. Lõi giãn cách tối thiểu 60 giây
+  mỗi tài khoản trước khi gọi lại.
+
+Hiện khai: chatgpt-web (giữ `limits_progress`/gói từ bước init vào đối
+tượng tài khoản trong bộ nhớ + `luc_do`; hình dạng thật của
+`limits_progress` từ nhà cung cấp chưa được kiểm), openaicodex (cửa sổ
+chính/phụ từ `han_muc.py` — chỉ % đã dùng + mốc hồi, không có số lượt
+tuyệt đối nên `con_lai`/`tong` là null).
+
 ### Trường tuỳ chọn `xac_minh_email` (mã xác minh qua email, NV122)
 
 Module đăng nhập muốn dùng nút tích «Lấy mã từ hộp thư» khai trong `manifest.json`:

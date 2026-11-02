@@ -10,6 +10,7 @@
   "id": "claude-web",
   "loai": "ai",
   "loai_ten": "AI",
+  "loai_tai_khoan_ten": "Web",
   "loai_thu_tu": 21,
   "nhom_con": {
     "id": "nha-cung-cap",
@@ -30,7 +31,7 @@
       "nhan": "Trò chuyện"
     }
   ],
-  "phien_ban": "0.1.1",
+  "phien_ban": "0.1.2",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Dùng giao thức web nội bộ của claude.ai (đã reverse-engineer từ web app, không chính thức). Anthropic đổi web app có thể làm module ngừng hoạt động; dùng cá nhân, tự chịu rủi ro.",

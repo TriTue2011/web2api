@@ -595,6 +595,50 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     bí mật từ kho, gọi hợp đồng `module.dang_nhap(dong)` với `BiMatTam`/
     `BiMatTotp` (CHỈ GỌI, không sửa module); trình duyệt/giao diện KHÔNG nhận
     lại mật khẩu; bí mật bị `xoa()` khỏi bộ nhớ ngay sau lượt gọi.
+  - NV283 — trạng thái đăng nhập thật: sau MỖI lần đăng nhập (một tài khoản,
+    `dang-nhap-theo-module`, hàng loạt qua `QuanLyLuotChay`, tự đăng nhập
+    lại, MCP `dang_nhap_bat_dau`) lõi ghi kết quả thật vào sổ phụ
+    `bi_mat/_tai_khoan_da_luu_ket_qua_dang_nhap.json` qua MỘT hàm duy nhất
+    `kho_tai_khoan.ghi_ket_qua_dang_nhap_tu_ket_qua` (chỉ `{ket_qua ∈
+    thanh_cong/can_nguoi/that_bai, ma_loi, luc, co_phien, phien_het_han}` —
+    không bí mật; lỗi ghi chỉ `log.warning` có kiểu lỗi, không hỏng kết quả
+    đăng nhập). Lượt dùng có sẵn thấy 401 → `danh_dau_phien_het_han` (không
+    gọi mạng thêm, không kiểm hàng loạt). `GET …/da-luu` mỗi bản ghi thêm
+    hợp đồng cứng `"dang_nhap": {"trang_thai": "ok"|"can_xu_ly"|"loi"|"chua",
+    "luc": epoch|0, "ma_loi": ""|mã, "co_phien": true|false|null}` (ok = lần
+    gần nhất thành công và chưa thấy phiên hết hạn; can_xu_ly = cần người
+    HOẶC phiên hết hạn thật; loi = thất bại; chua = chưa có số liệu, KHÔNG
+    đoán ok) và `"loai_hien_thi"` KHÔNG BAO GIỜ rỗng, suy theo nguyên tắc:
+    `loai_tai_khoan` người dùng đặt → nhãn `loai_tai_khoan_ten` trong manifest
+    của module sở hữu → `kieu_bi_mat` (mat_khau → «Mật khẩu», khoá/token/
+    cookie → «API»); không bảng từ khoá tên module trong lõi. Phản hồi
+    `da-luu` thêm tổng `"can_xu_ly"` (can_xu_ly + loi, trừ tạm dừng).
+    Tài khoản tạm dừng vẫn `trang_thai` = `"tam_dung"` như cũ.
+  - NV285 — chi tiết một tài khoản: `GET /api/tai-khoan/da-luu/{id}/chi-tiet`
+    (quản trị; id lạ → `404`) gộp một lượt: bản công khai + `dang_nhap` +
+    `loai_hien_thi` (NV283), `"dung": {"hom_nay", "7_ngay", "thanh_cong",
+    "that_bai", "theo_ngay": [{ngay, so_luot}] tối đa 14 ngày,
+    "lan_dung_cuoi"}`, `"duong": [{dich, trang_thai, moc_hoi_lai}]`,
+    `"han_muc": {"nguon": "module"|"tieu_de"|"khong_biet", "cap_nhat_luc",
+    "muc": [{ten, nhan, con_lai, tong, da_dung_pct, reset_luc,
+    reset_sau_giay, hang, giu_hang_1_cua_nhom}]}`, `"goi": "plus"|"free"|
+    "khong_biet"`; không bí mật (email đầy đủ chỉ khi `?hien_email=true`).
+    `POST /api/tai-khoan/da-luu/{id}/chi-tiet/lam-moi` (cần step-up): MỘT tài khoản, gọi khả năng
+    `lam_moi_han_muc` của module đó MỘT lần, giãn cách tối thiểu 60 giây
+    (`LAM_MOI_GIAN_CACH_GIAY`) — quá sớm trả `429` kèm `cho_lai_sau_giay`;
+    module không hỗ trợ → `502 chua_ho_tro`; tạm dừng → `403 tam_dung`.
+    `GET /api/tai-khoan/tong-quan?nha=&duong=` (chỉ đọc, quản trị) trả
+    `{tong, binh_thuong, can_xu_ly, loi, tam_dung, chua_biet,
+    het_limit_theo_muc: [{ten, nhan, so_tai_khoan_can,
+    so_tai_khoan_co_so_lieu}], giu_hang_1: [{nhom: "nha/duong", muc,
+    tai_khoan_id, email}], co_so_lieu_han_muc}`; `binh_thuong` = đăng nhập
+    ok VÀ không mục nào cạn; tài khoản ok nhưng cạn chỉ đếm ở
+    `het_limit_theo_muc` (không rơi vào ô trạng thái nào); hạng #n theo thứ
+    tự xoay vòng thật (thứ tự `liet_ke_tai_khoan` của module, không thì thứ
+    tự liệt kê của kho), chỉ tài khoản còn lượt VÀ đăng nhập ok được xếp
+    hạng; nhóm không có mục nào có số liệu → `het_limit` rỗng +
+    `co_so_lieu_han_muc: false`. Chưa kiểm với nhà cung cấp thật; hình dạng
+    `limits_progress` của chatgpt-web chưa được xác nhận (xem hoi-nv285).
   - Công tắc `GET`/`PUT /api/tai-khoan/tu-dang-nhap-lai` (`{"bat": bool}`,
     mặc định BẬT): khi `tu_lam_moi` khôi phục rơi tới `can_nguoi`, server tự
     đăng nhập lại bằng tài khoản đã lưu khớp email phiên (qua sổ danh tính);

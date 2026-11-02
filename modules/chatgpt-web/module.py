@@ -22,6 +22,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -100,6 +101,11 @@ class _TaiKhoan:
         self.trang_thai: str = "hoat_dong"
         self.lan_dung_cuoi: str | None = None
         self.model_that: list[dict] | None = None
+        # NV285: hạn mức từng tính năng giữ từ bước init gần nhất (CHỈ BỘ
+        # NHỚ + mốc đo — không ghi vào kho riêng của module, không gọi
+        # mạng khi chỉ đọc qua chi_tiet_tai_khoan).
+        self.han_muc: list[dict] | None = None
+        self.han_muc_luc: float = 0.0
 
     def ten_che(self) -> str:
         return che(self.token)
@@ -260,6 +266,77 @@ def _goi_toi_thieu(ten: str) -> str:
 
 _QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'chatgpt.com', 'ten': 'access_token', 'tin_hieu': 'da_dang_nhap'}, {'loai': 'url_chua', 'gia_tri': 'auth/login', 'tin_hieu': 'chua_dang_nhap'}]
 
+def _so_han_muc(gia_tri):
+    if isinstance(gia_tri, bool) or not isinstance(gia_tri, (int, float)):
+        return None
+    if gia_tri != gia_tri or abs(gia_tri) == float("inf"):
+        return None
+    return gia_tri
+
+
+def _muc_tu_limits_progress(lp) -> list[dict] | None:
+    """``limits_progress`` từ thân /backend-api/me → danh sách mục chuẩn NV285.
+
+    Chấp nhận hai hình: danh sách các mục, hoặc bản đồ tên tính năng →
+    giá trị mục. Mỗi mục đọc các khoá số đã biết (remaining/limit/
+    used_percent/reset_at/reset_after_seconds và biến thể tên); khoá lạ
+    bị bỏ, mục không có tên/không có số nào bị bỏ. Hình lạ → None (lõi
+    trả «khong_biet», không bịa). HÌNH DẠNG THẬT từ nhà cung cấp chưa
+    được kiểm bằng tài khoản thật — xem hoi-nv285.md.
+    """
+    if isinstance(lp, dict):
+        muc_tho = [{"ten": k, **(v if isinstance(v, dict) else {})}
+                   for k, v in lp.items()]
+    elif isinstance(lp, list):
+        muc_tho = lp
+    else:
+        return None
+    ra: list[dict] = []
+    for m in muc_tho:
+        if not isinstance(m, dict):
+            continue
+        ten = None
+        for k in ("feature_name", "name", "ten", "feature", "id"):
+            if isinstance(m.get(k), str) and m[k].strip():
+                ten = m[k].strip()
+                break
+        if ten is None or not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", ten):
+            continue
+        nhan = None
+        for k in ("label", "nhan", "title"):
+            if isinstance(m.get(k), str) and m[k].strip():
+                nhan = m[k].strip()
+                break
+        con_lai = _so_han_muc(m.get("remaining", m.get("con_lai")))
+        tong = _so_han_muc(m.get("limit", m.get("tong")))
+        pct = _so_han_muc(m.get("used_percent", m.get("da_dung_pct",
+                                       m.get("percent_used"))))
+        if pct is None and tong and tong > 0:
+            da_dung = _so_han_muc(m.get("used", m.get("da_dung")))
+            if da_dung is not None:
+                pct = da_dung / tong * 100.0
+            elif con_lai is not None:
+                pct = (tong - con_lai) / tong * 100.0
+        if pct is not None:
+            pct = min(100.0, max(0.0, float(pct)))
+        reset_luc = _so_han_muc(m.get("reset_at", m.get("reset_luc")))
+        reset_sau = _so_han_muc(m.get("reset_after_seconds",
+                                      m.get("reset_sau_giay",
+                                            m.get("reset_in_seconds"))))
+        if con_lai is None and tong is None and pct is None:
+            continue
+        ra.append({
+            "ten": ten,
+            "nhan": (nhan or ten)[:80],
+            "con_lai": int(con_lai) if con_lai is not None else None,
+            "tong": int(tong) if tong is not None else None,
+            "da_dung_pct": pct,
+            "reset_luc": int(reset_luc) if reset_luc is not None else None,
+            "reset_sau_giay": int(reset_sau) if reset_sau is not None and reset_sau >= 0 else None,
+        })
+    return ra or None
+
+
 class Module:
     """Lớp Module theo hợp đồng app/kham_pha.py."""
 
@@ -397,6 +474,53 @@ class Module:
             "trang_thai": tk.trang_thai,
             "lan_dung_cuoi": tk.lan_dung_cuoi,
         } for tk in ds]
+
+    def _ap_dung_han_muc_tu_me(self, tk, me) -> None:
+        """Giữ limits_progress/gói từ thân /backend-api/me vào đối tượng
+        tài khoản trong bộ nhớ + mốc đo (NV285). Thân không có
+        limits_progress → giữ nguyên giá trị cũ (không xoá)."""
+        if not isinstance(me, dict):
+            return
+        muc = _muc_tu_limits_progress(me.get("limits_progress"))
+        if muc is not None:
+            tk.han_muc = muc
+            tk.han_muc_luc = time.time()
+
+    def chi_tiet_tai_khoan(self, email: str) -> dict | None:
+        """Khả năng tuỳ chọn NV285: hạn mức đã BIẾT của một tài khoản,
+        CHỈ ĐỌC từ bộ đệm của lượt init gần nhất — không gọi mạng.
+        Chưa từng init có limits_progress → None (lõi trả «khong_biet»)."""
+        em = str(email or "").strip().casefold()
+        if not em:
+            return None
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        for tk in ds:
+            if str(tk.email or "").strip().casefold() == em:
+                if tk.han_muc is None:
+                    return None
+                return {"goi": tk.goi, "cap_nhat_luc": int(tk.han_muc_luc),
+                        "muc": [dict(m) for m in tk.han_muc]}
+        return None
+
+    async def lam_moi_han_muc(self, email: str) -> dict | None:
+        """Khả năng tuỳ chọn NV285: làm mới hạn mức MỘT tài khoản bằng
+        đúng MỘT lần gọi init (/backend-api/me) rồi giữ limits_progress.
+        Token hỏng → init ném LoiXacThuc (lõi đổi thành 502, không tiêu
+        giãn cách); email lạ → None."""
+        em = str(email or "").strip().casefold()
+        if not em:
+            return None
+        with self._khoa:
+            ds = list(self._tai_khoan)
+        tk = next((t for t in ds if str(t.email or "").strip().casefold() == em), None)
+        if tk is None:
+            return None
+        if tk.client is None:
+            tk.client = self._tao_client(tk.token)
+        me = await tk.client.init()
+        self._ap_dung_han_muc_tu_me(tk, me)
+        return self.chi_tiet_tai_khoan(email)
 
     def go_tai_khoan(self, khoa: str) -> bool:
         """Gỡ đúng MỘT tài khoản của module này; ghi sổ gỡ bỏ vào kho riêng để
@@ -803,6 +927,12 @@ class Module:
             return None
         except Exception:
             return None
+        if isinstance(me, dict):
+            # NV285: cùng bước init này cũng giữ limits_progress (nếu có).
+            with self._khoa:
+                for tk in self._tai_khoan:
+                    if tk.token == token:
+                        self._ap_dung_han_muc_tu_me(tk, me)
         return me if isinstance(me, dict) else {}
 
     async def _dang_nhap_bang_trinh_duyet(self, email: str, mat_khau: BiMatTam,
@@ -1296,6 +1426,8 @@ class Module:
             email = str(me.get("email") or "").strip()
             if email and not tk.email:
                 tk.email = email
+            # NV285: giữ limits_progress từ chính bước init này.
+            self._ap_dung_han_muc_tu_me(tk, me)
         if not tk.goi or tk.goi == "khong_ro":
             tk.goi = await self._lay_goi(tk.token)
         try:

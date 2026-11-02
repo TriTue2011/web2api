@@ -42,6 +42,10 @@ TEN_KHO = "_tai_khoan_da_luu"
 TEN_CONG_TAC = "_tu_dang_nhap_lai"
 #: Tệp trạng thái thử lại (số lần hỏng liên tiếp, lần thử cuối).
 TEN_TRANG_THAI = "_tai_khoan_da_luu_trang_thai"
+#: Tệp sổ phụ KẾT QUẢ ĐĂNG NHẬP (NV283): cùng cơ chế sổ phụ như
+#: ``TEN_TRANG_THAI`` (kho bí mật, quyền 0600, không chứa bí mật — chỉ
+#: ket_qua/ma_loi/luc/co_phien/phien_het_han, khoá theo id tài khoản).
+TEN_KET_QUA_DANG_NHAP = "_tai_khoan_da_luu_ket_qua_dang_nhap"
 
 #: Trạng thái «tạm dừng» (NV197b): tài khoản còn lưu trong kho nhưng bị lõi
 #: BỎ QUA khi chọn/đăng nhập (lấy ý từ c2a `account_service.update_account`
@@ -844,14 +848,355 @@ def _ghi(du_lieu: dict) -> None:
     kho.ghi_bi_mat(TEN_KHO, du_lieu)
 
 
-def ban_cong_khai(ban_ghi: dict, *, hien_email: bool = False) -> dict:
+# ── NV283: sổ kết quả đăng nhập thật + loại hiển thị ────────────────────────
+# Một chỗ ghi duy nhất cho MỌI đường đăng nhập (xem
+# ``ghi_ket_qua_dang_nhap_tu_ket_qua``): lõi ghi kết quả THẬT (thành công /
+# cần người / thất bại) vào sổ phụ ``TEN_KET_QUA_DANG_NHAP`` để giao diện
+# tô chấm đúng màu mà không đoán. Sổ phụ chỉ chứa dữ liệu KHÔNG bí mật:
+# {ket_qua, ma_loi, luc, co_phien, phien_het_han} — không email ngoài id,
+# không cookie/token/lý do tự do.
+
+#: Kết quả đăng nhập — danh sách ĐÓNG (như ``kiem_trang_thai``).
+KET_QUA_DANG_NHAP_CHO_PHEP = ("thanh_cong", "can_nguoi", "that_bai")
+
+#: Mã lỗi an toàn: đúng hình ``[A-Za-z0-9_-]{1,64}`` mới được lưu, còn lại
+#: suy từ mã trạng thái HTTP (như ``_ma_loi_an_toan`` của hợp đồng đăng nhập).
+_MAU_MA_LOI_KET_QUA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+#: Mã lỗi mà theo hợp đồng có nghĩa là «cần người» (CAPTCHA/2FA/xác minh/
+#: mã qua email) — danh sách ĐÓNG theo MÃ, không theo tên module.
+MA_LOI_CAN_NGUOI = ("can_nguoi", "cho_2fa", "can_ma_email",
+                    "thu_thach_truoc_khi_dien")
+
+
+def _doc_ket_qua() -> dict:
+    """Đọc sổ phụ kết quả đăng nhập; hỏng/sai hình → {} (không đóng cửa
+    đường đọc chính — kết quả đăng nhập là dữ liệu phụ, thiếu thì «chua»)."""
+    try:
+        du_lieu = kho.doc_bi_mat(TEN_KET_QUA_DANG_NHAP)
+    except Exception:
+        return {}
+    if not isinstance(du_lieu, dict):
+        return {}
+    ra = {}
+    for id_, muc in du_lieu.items():
+        if isinstance(id_, str) and isinstance(muc, dict):
+            ra[id_] = muc
+    return ra
+
+
+def _ghi_ket_qua(du_lieu: dict) -> None:
+    kho.ghi_bi_mat(TEN_KET_QUA_DANG_NHAP, du_lieu)
+
+
+def _ma_loi_ket_qua_an_toan(ma_loi, ma_trang_thai=None) -> str:
+    """Mã lỗi lưu được: đúng hình thì giữ, không thì suy từ mã HTTP
+    (``phan_loai_loi`` của hợp đồng), cuối cùng là «loi_module»."""
+    if isinstance(ma_loi, str) and _MAU_MA_LOI_KET_QUA.fullmatch(ma_loi.strip()):
+        return ma_loi.strip()
+    try:
+        from app.tai_khoan_hang_loat import phan_loai_loi
+        if isinstance(ma_trang_thai, int) and not isinstance(ma_trang_thai, bool):
+            return phan_loai_loi(ma_trang_thai)
+    except Exception as e:
+        # Rơi về mã chung nhưng ghi log kiểu lỗi, không nuốt im.
+        log.warning("ma_loi_an_toan: loi phan loai: %s", type(e).__name__)
+    return "loi_module"
+
+
+def kiem_ket_qua_dang_nhap(ket_qua) -> str:
+    """Kiểm kết quả đăng nhập: phải thuộc danh sách đóng, không thì
+    ``LoiKhoTaiKhoan("invalid_value")``."""
+    if isinstance(ket_qua, bool) or not isinstance(ket_qua, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    k = ket_qua.strip()
+    if k not in KET_QUA_DANG_NHAP_CHO_PHEP:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return k
+
+
+def ghi_ket_qua_dang_nhap(id_, ket_qua, ma_loi="", co_phien=None) -> dict | None:
+    """Ghi MỘT kết quả đăng nhập vào sổ phụ (NV283) — hàm duy nhất ghi sổ này.
+
+    ``id_`` lạ → None (không tạo bản ghi mới). ``co_phien`` phải là
+    bool/None. Ghi thành công → xoá cờ ``phien_het_han`` cũ (lần đăng nhập
+    mới nhất thay thế quan sát hết hạn trước đó; quan sát hết hạn mới do
+    ``danh_dau_phien_het_han`` ghi riêng). Lỗi kho → ném ``LoiKhoTaiKhoan``
+    (người gọi qua hàm bọc ``ghi_ket_qua_dang_nhap_tu_ket_qua`` sẽ chỉ
+    log.warning, không làm hỏng kết quả đăng nhập). Trả mục đã ghi.
+    """
+    ket_qua_sach = kiem_ket_qua_dang_nhap(ket_qua)
+    if co_phien is not None and not isinstance(co_phien, bool):
+        raise LoiKhoTaiKhoan("invalid_value")
+    ma_sach = _ma_loi_ket_qua_an_toan(ma_loi) if ket_qua_sach != "thanh_cong" else ""
+    if not isinstance(id_, str) or not id_:
+        return None
+    with kho.giu_khoa_kho():
+        du_lieu = _doc()
+        muc_tieu = None
+        for k in du_lieu:
+            if hmac.compare_digest(k, id_):
+                muc_tieu = k
+                break
+        if muc_tieu is None:
+            return None
+        ket_qua_luu = _doc_ket_qua()
+        muc = {
+            "ket_qua": ket_qua_sach,
+            "ma_loi": ma_sach,
+            "luc": int(time.time()),
+            "co_phien": co_phien,
+            "phien_het_han": False,
+        }
+        ket_qua_luu[muc_tieu] = muc
+        _ghi_ket_qua(ket_qua_luu)
+        return dict(muc)
+
+
+def lay_ket_qua_dang_nhap(id_) -> dict | None:
+    """Mục kết quả đăng nhập đã chuẩn hoá của một tài khoản; không có → None."""
+    if not isinstance(id_, str) or not id_:
+        return None
+    muc = _doc_ket_qua().get(id_)
+    if not isinstance(muc, dict):
+        return None
+    ket_qua = muc.get("ket_qua")
+    if ket_qua not in KET_QUA_DANG_NHAP_CHO_PHEP:
+        return None
+    luc = muc.get("luc")
+    luc = luc if isinstance(luc, int) and not isinstance(luc, bool) else 0
+    co_phien = muc.get("co_phien")
+    co_phien = co_phien if isinstance(co_phien, bool) else None
+    return {
+        "ket_qua": ket_qua,
+        "ma_loi": muc.get("ma_loi") if isinstance(muc.get("ma_loi"), str) else "",
+        "luc": luc,
+        "co_phien": co_phien,
+        "phien_het_han": bool(muc.get("phien_het_han")),
+    }
+
+
+def danh_dau_phien_het_han(id_) -> bool:
+    """Đánh dấu phiên của tài khoản ĐÃ HẾT HẠN THẬT (NV283 §2c).
+
+    Chỉ gọi khi một lượt dùng/kiểm CÓ SẴN thấy 401 (không gọi mạng thêm,
+    không kiểm hàng loạt). Tài khoản lạ → False. Không có mục kết quả nào
+    vẫn đánh dấu được (phiên hết hạn là dữ liệu thật, không phải đoán «ok»):
+    ``dang_nhap_cong_khai`` khi đó trả «can_xu_ly». Trả True khi đã ghi.
+    """
+    if not isinstance(id_, str) or not id_:
+        return False
+    with kho.giu_khoa_kho():
+        du_lieu = _doc()
+        muc_tieu = None
+        for k in du_lieu:
+            if hmac.compare_digest(k, id_):
+                muc_tieu = k
+                break
+        if muc_tieu is None:
+            return False
+        ket_qua_luu = _doc_ket_qua()
+        muc = dict(ket_qua_luu.get(muc_tieu) or {})
+        muc["phien_het_han"] = True
+        if muc.get("ket_qua") not in KET_QUA_DANG_NHAP_CHO_PHEP:
+            muc.setdefault("ket_qua", "")
+            muc.setdefault("ma_loi", "")
+            muc.setdefault("luc", 0)
+            muc.setdefault("co_phien", False)
+        ket_qua_luu[muc_tieu] = muc
+        _ghi_ket_qua(ket_qua_luu)
+        return True
+
+
+def xoa_ket_qua_dang_nhap(id_) -> None:
+    """Xoá mục kết quả đăng nhập (vòng đời: tài khoản xoá ⇒ kết quả xoá theo).
+    Không bao giờ ném."""
+    try:
+        if not isinstance(id_, str) or not id_:
+            return
+        with kho.giu_khoa_kho():
+            ket_qua_luu = _doc_ket_qua()
+            if id_ in ket_qua_luu:
+                del ket_qua_luu[id_]
+                _ghi_ket_qua(ket_qua_luu)
+    except Exception as e:
+        log.warning("xoá kết quả đăng nhập hỏng: %s", type(e).__name__)
+
+
+def dang_nhap_cong_khai(ban_ghi: dict, ket_qua: dict | None = None) -> dict:
+    """Hợp đồng cứng NV283 §3 cho một bản ghi (không bí mật).
+
+    - ok = lần gần nhất thành công VÀ chưa thấy phiên hết hạn.
+    - can_xu_ly = cần người HOẶC phiên hết hạn thật.
+    - loi = lần gần nhất thất bại.
+    - chua = chưa có số liệu (KHÔNG đoán «ok»).
+    ``ket_qua`` truyền vào để liệt kê hàng loạt chỉ đọc sổ phụ một lần;
+    không truyền thì tự đọc.
+    """
+    id_ = ban_ghi.get("id", "") if isinstance(ban_ghi, dict) else ""
+    muc = ket_qua if isinstance(ket_qua, dict) else lay_ket_qua_dang_nhap(id_)
+    if muc is None:
+        return {"trang_thai": "chua", "luc": 0, "ma_loi": "", "co_phien": None}
+    kq = muc.get("ket_qua")
+    het_han = bool(muc.get("phien_het_han"))
+    if kq == "that_bai":
+        tt = "loi"
+    elif kq == "can_nguoi" or het_han:
+        tt = "can_xu_ly"
+    elif kq == "thanh_cong":
+        tt = "ok"
+    else:
+        # Chỉ có cờ hết hạn mà chưa từng ghi kết quả → vẫn là can_xu_ly
+        # (phiên hết hạn là dữ liệu thật); còn lại là chua.
+        tt = "can_xu_ly" if het_han else "chua"
+    luc = muc.get("luc")
+    luc = luc if isinstance(luc, int) and not isinstance(luc, bool) else 0
+    co_phien = muc.get("co_phien")
+    co_phien = co_phien if isinstance(co_phien, bool) else None
+    return {
+        "trang_thai": tt,
+        "luc": luc,
+        "ma_loi": muc.get("ma_loi") if isinstance(muc.get("ma_loi"), str) else "",
+        "co_phien": co_phien,
+    }
+
+
+def _tai_loai_manifest() -> dict:
+    """Nhãn loại tài khoản theo module, đọc từ ``manifest.json`` lúc import
+    (cùng cơ chế hợp nhất manifest như ``_tai_bang_phan_loai_ai``).
+
+    Module khai ``loai_tai_khoan_ten`` (chuỗi ≤ 40 ký tự) thì nhãn đó được
+    dùng; không khai → không có trong bảng (lõi rơi về ``kieu_bi_mat``).
+    Lỗi đọc/bỏ qua từng manifest, không làm hỏng import.
+    """
+    import json
+    from pathlib import Path
+
+    bang: dict[str, str] = {}
+    try:
+        thu_muc = Path(__file__).resolve().parent.parent / "modules"
+        if thu_muc.is_dir():
+            for man in sorted(thu_muc.glob("*/manifest.json")):
+                try:
+                    du_lieu = json.loads(man.read_text(encoding="utf-8"))
+                    mid = du_lieu.get("id")
+                    ten = du_lieu.get("loai_tai_khoan_ten")
+                except (OSError, ValueError):
+                    continue
+                if isinstance(mid, str) and mid \
+                        and isinstance(ten, str) and ten.strip() \
+                        and len(ten.strip()) <= 40:
+                    bang[mid] = ten.strip()
+    except OSError:
+        pass
+    return bang
+
+
+#: Nhãn loại theo module sở hữu (NV283 §2d) — BẢNG DỮ LIỆU từ manifest,
+#: không phải bảng từ khoá tên module trong lõi.
+LOAI_TAI_KHOAN_TEN_THEO_MODULE = _tai_loai_manifest()
+
+
+def loai_hien_thi(ban_ghi: dict) -> str:
+    """«Loại hiển thị» KHÔNG BAO GIỜ rỗng (NV283 §2d), suy theo NGUYÊN TẮC:
+
+    1. ``loai_tai_khoan`` người dùng đã đặt → tên hiển thị trong bảng
+       phân loại (``TEN_LOAI_TAI_KHOAN``).
+    2. Không có → nhãn ``loai_tai_khoan_ten`` trong manifest của module
+       sở hữu (``LOAI_TAI_KHOAN_TEN_THEO_MODULE``).
+    3. Không module → theo ``kieu_bi_mat``: mat_khau → «Mật khẩu»,
+       khoá/token/cookie → «API».
+    Bản ghi nhập (loại «nhap») không có module: dùng tên nhóm theo nguồn nhập.
+    """
+    if not isinstance(ban_ghi, dict):
+        return "Mật khẩu"
+    loai = ban_ghi.get("loai_tai_khoan") or ""
+    if isinstance(loai, str) and loai:
+        return TEN_LOAI_TAI_KHOAN.get(loai, loai)
+    if ban_ghi.get("loai") == "nhap":
+        nguon = ban_ghi.get("nguon") or ""
+        return TEN_NHOM_AI.get(nguon, nguon) if nguon else "Nhập"
+    module_id = ban_ghi.get("module_id") or ""
+    if isinstance(module_id, str) and module_id:
+        ten = LOAI_TAI_KHOAN_TEN_THEO_MODULE.get(module_id)
+        if ten:
+            return ten
+    kieu = ban_ghi.get("kieu_bi_mat") or "mat_khau"
+    return "Mật khẩu" if kieu == "mat_khau" else "API"
+
+
+def phan_loai_ket_qua_dang_nhap(kq) -> tuple[str, str, bool | None]:
+    """Phân loại một kết quả đăng nhập (object hợp đồng hoặc dict) thành
+    (ket_qua, ma_loi, co_phien) cho ``ghi_ket_qua_dang_nhap``.
+
+    - thanh_cong → («thanh_cong», «», True).
+    - can_nguoi/cho_2fa (cờ hoặc mã trong ``MA_LOI_CAN_NGUOI``) →
+      («can_nguoi», mã, None) — phiên chưa rõ, không đoán có/không.
+    - còn lại → («that_bai», mã an toàn, False).
+    Không đọc cookie/token trong kết quả (chỉ cờ, không giá trị).
+    """
+    if isinstance(kq, dict):
+        lay = lambda k: kq.get(k)
+    else:
+        lay = lambda k: getattr(kq, k, None)
+    thanh_cong = bool(lay("thanh_cong"))
+    if thanh_cong:
+        return ("thanh_cong", "", True)
+    ma_loi = lay("ma_loi") or ""
+    ma_trang_thai = lay("ma_trang_thai")
+    if bool(lay("can_nguoi")) or bool(lay("cho_2fa")) \
+            or (isinstance(ma_loi, str) and ma_loi.strip() in MA_LOI_CAN_NGUOI):
+        return ("can_nguoi", _ma_loi_ket_qua_an_toan(ma_loi, ma_trang_thai), None)
+    return ("that_bai", _ma_loi_ket_qua_an_toan(ma_loi, ma_trang_thai), False)
+
+
+def ghi_ket_qua_dang_nhap_tu_ket_qua(id_, kq) -> dict | None:
+    """HÀM BỌC CHUNG (NV283 §2a): mọi đường đăng nhập ghi qua đây, đúng
+    một lần cho một lượt đăng nhập.
+
+    Phân loại kết quả rồi gọi ``ghi_ket_qua_dang_nhap``. Lỗi ghi sổ KHÔNG
+    làm hỏng kết quả đăng nhập: chỉ ``log.warning`` có KIỂU lỗi (không nuốt
+    âm thầm, không ghi nội dung ngoại lệ/bí mật), trả None. Id lạ → None.
+    """
+    try:
+        ket_qua, ma_loi, co_phien = phan_loai_ket_qua_dang_nhap(kq)
+        return ghi_ket_qua_dang_nhap(id_, ket_qua, ma_loi, co_phien)
+    except Exception as e:
+        log.warning("ghi kết quả đăng nhập hỏng: %s", type(e).__name__)
+        return None
+
+
+def ghi_ket_qua_theo_email(email, kq) -> str | None:
+    """Ghi kết quả đăng nhập cho tài khoản đã lưu khớp email (dùng ở các
+    đường hàng loạt — dòng chạy chỉ mang email, không mang id kho).
+
+    Email không khớp tài khoản đã lưu nào → không ghi gì (tài khoản dán
+    ngoài kho không có bản ghi để gắn), trả None. Không bao giờ ném.
+    """
+    try:
+        ban_ghi = tim_theo_email(email) if isinstance(email, str) and email else None
+    except Exception as e:
+        # Không ghi gì khi không tìm được tài khoản, nhưng ghi log kiểu lỗi.
+        log.warning("ghi_theo_email: loi tim tai khoan: %s", type(e).__name__)
+        return None
+    if ban_ghi is None:
+        return None
+    ghi_ket_qua_dang_nhap_tu_ket_qua(ban_ghi.get("id", ""), kq)
+    return ban_ghi.get("id")
+
+
+def ban_cong_khai(ban_ghi: dict, *, hien_email: bool = False,
+                  ket_qua_dang_nhap: dict | None = None) -> dict:
     """Dạng công khai (xem ``_ban_cong_khai_goc``): email CHE, cờ có/không bí mật, KHÔNG bí mật thô.
 
     ``hien_email=True`` (chỉ giao diện quản trị xin, qua ``GET /api/tai-khoan/da-luu?hien_email=true``) thêm trường ``email`` đầy đủ: ``email_che``
     chỉ chừa tên miền nên các tài khoản cùng miền (gmail…) không phân biệt được. Mặc định KHÔNG có trường ``email``; MCP, nhật ký và mọi đường khác
     gọi không kèm cờ này. Email được escape HTML ở biên ra như nhãn.
+    ``ket_qua_dang_nhap`` (NV283): mục sổ phụ đã đọc sẵn cho bản ghi này —
+    liệt kê hàng loạt truyền vào để chỉ đọc sổ phụ một lần; không truyền thì
+    tự đọc. Thêm hai trường hợp đồng cứng: ``dang_nhap`` + ``loai_hien_thi``.
     """
-    ra = _ban_cong_khai_goc(ban_ghi)
+    ra = _ban_cong_khai_goc(ban_ghi, ket_qua_dang_nhap=ket_qua_dang_nhap)
     if hien_email:
         email = ban_ghi.get("email", "")
         if isinstance(email, str) and email:
@@ -859,7 +1204,7 @@ def ban_cong_khai(ban_ghi: dict, *, hien_email: bool = False) -> dict:
     return ra
 
 
-def _ban_cong_khai_goc(ban_ghi: dict) -> dict:
+def _ban_cong_khai_goc(ban_ghi: dict, ket_qua_dang_nhap: dict | None = None) -> dict:
     """Dạng công khai: email CHE, cờ có/không bí mật — KHÔNG bí mật thô.
 
     Nhãn được escape HTML ở biên ra (chống XSS khi giao diện chèn vào DOM).
@@ -894,6 +1239,9 @@ def _ban_cong_khai_goc(ban_ghi: dict) -> dict:
             "cap_nhat": ban_ghi.get("cap_nhat", 0),
             # NV197d: lượng dùng hôm nay/7 ngày + hạn mức thụ động («khong_biet» khi chưa có số liệu).
             **_tom_tat_dung(id_),
+            # NV283: trạng thái đăng nhập thật + loại hiển thị (không bao giờ rỗng).
+            "dang_nhap": dang_nhap_cong_khai(ban_ghi, ket_qua_dang_nhap),
+            "loai_hien_thi": loai_hien_thi(ban_ghi),
         }
     email = ban_ghi.get("email", "")
     id_ = ban_ghi.get("id", "")
@@ -933,6 +1281,9 @@ def _ban_cong_khai_goc(ban_ghi: dict) -> dict:
         "cap_nhat": ban_ghi.get("cap_nhat", 0),
         # NV197d: lượng dùng hôm nay/7 ngày + hạn mức thụ động («khong_biet» khi chưa có số liệu).
         **_tom_tat_dung(id_),
+        # NV283: trạng thái đăng nhập thật + loại hiển thị (không bao giờ rỗng).
+        "dang_nhap": dang_nhap_cong_khai(ban_ghi, ket_qua_dang_nhap),
+        "loai_hien_thi": loai_hien_thi(ban_ghi),
     }
 
 
@@ -1189,9 +1540,29 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
 def liet_ke(*, hien_email: bool = False) -> list[dict]:
     """Liệt kê mọi tài khoản đã lưu (dạng công khai, không bí mật). ``hien_email``: xem ``ban_cong_khai``."""
     du_lieu = _doc()
-    ds = [ban_cong_khai(b, hien_email=hien_email) for b in du_lieu.values()]
+    # NV283: đọc sổ phụ kết quả đăng nhập MỘT lần cho cả danh sách.
+    ket_qua_map = _doc_ket_qua()
+    ds = [ban_cong_khai(b, hien_email=hien_email,
+                        ket_qua_dang_nhap=ket_qua_map.get(b.get("id", "")))
+          for b in du_lieu.values()]
     ds.sort(key=lambda d: d["cap_nhat"], reverse=True)
     return ds
+
+
+def dem_can_xu_ly(*, hien_email: bool = False) -> int:
+    """Tổng «cần xử lý» (NV283 §2e): số tài khoản có ``dang_nhap`` ở trạng
+    thái «can_xu_ly» (cần người / phiên hết hạn thật) hoặc «loi» — tức mọi
+    tài khoản không dùng được ngay vì đăng nhập, để bảng «Cần xử lý» không
+    phải tự đếm. Tạm dừng KHÔNG tính (giao diện tô riêng)."""
+    # NB: brief §2e ghi «can_nguoi/that_bai/phien_het_han»; hợp đồng §3 gộp
+    # chúng thành hai trạng thái công khai can_xu_ly + loi — đếm cả hai.
+    try:
+        ds = liet_ke(hien_email=hien_email)
+    except LoiKhoTaiKhoan:
+        return 0
+    return sum(1 for b in ds
+               if b.get("trang_thai") != TRANG_THAI_TAM_DUNG
+               and b.get("dang_nhap", {}).get("trang_thai") in ("can_xu_ly", "loi"))
 
 
 def gom_theo_nhom_loai(*, hien_email: bool = False) -> dict:
@@ -1240,6 +1611,13 @@ def gom_theo_nhom_loai(*, hien_email: bool = False) -> dict:
             for b in muc["tai_khoan"]:
                 b["dang_dung"] = (chon is not None and b["id"] == chon)
     return gom
+
+
+def tat_ca_ban_ghi() -> list[dict]:
+    """Mọi bản ghi NỘI BỘ (NV285: tính tổng quan/hạng cần email + module_id
+    của mọi tài khoản trong một lần đọc — CHỈ dùng trong lõi, KHÔNG BAO
+    GIỜ trả ra API; đường API dùng ``liet_ke``/``ban_cong_khai``)."""
+    return list(_doc().values())
 
 
 def tim_theo_id(id_) -> dict | None:
@@ -1379,6 +1757,9 @@ def xoa_tai_khoan(id_) -> bool:
         if muc_tieu in tt:
             del tt[muc_tieu]
             _ghi_trang_thai(tt)
+        # NV283: kết quả đăng nhập xoá theo (không để lại chấm màu của
+        # tài khoản đã mất).
+        xoa_ket_qua_dang_nhap(muc_tieu)
     return True
 
 
@@ -1581,9 +1962,14 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     try:
         kq = await dang_nhap(dong)
         thanh_cong = bool(getattr(kq, "thanh_cong", False))
+        # NV283: tự đăng nhập lại cũng ghi kết quả thật qua hàm bọc chung
+        # (đúng một lần cho lượt này; lỗi ghi chỉ log, không hỏng kết quả).
+        ghi_ket_qua_dang_nhap_tu_ket_qua(id_, kq)
     except Exception as e:
         log.warning("tu-dang-nhap-lai: %s lỗi: %s", che_email(email), type(e).__name__)
         thanh_cong = False
+        ghi_ket_qua_dang_nhap_tu_ket_qua(
+            id_, {"thanh_cong": False, "ma_loi": "loi_module"})
     finally:
         dong.xoa_bi_mat()
     # Ghi trạng thái cuối DƯỚI KHOÁ KHO, đọc lại bản ghi trước: trong lúc

@@ -3651,7 +3651,207 @@ def liet_ke_tai_khoan_da_luu(nhom: str | None = None, hien_email: bool = False):
         raise _loi_kho_tai_khoan(e) from None
     if nhom is not None:
         ds = [b for b in ds if b.get("nhom") == nhom]
-    return {"tai_khoan": ds}
+    # NV283 §2e: tổng «cần xử lý» để bảng Cần xử lý không phải tự đếm
+    # (đếm trên danh sách ĐÃ lọc nhóm nếu có ?nhom; không lọc → toàn kho).
+    can_xu_ly = sum(
+        1 for b in ds
+        if b.get("trang_thai") != kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG
+        and b.get("dang_nhap", {}).get("trang_thai") in ("can_xu_ly", "loi"))
+    return {"tai_khoan": ds, "can_xu_ly": can_xu_ly}
+
+
+async def _bang_chi_tiet(request, hien_email: bool):
+    """Bảng làm việc cho chi-tiet/tong-quan (NV285).
+
+    Trả (danh sách bản công khai kèm ``_email_noi_bo`` để xếp hạng theo
+    thứ tự module, hàm lấy (han_muc, goi) có cache theo id). ``_email_noi_bo``
+    chỉ dùng trong lõi để xếp hạng, KHÔNG trả ra API (route xoá trước khi trả).
+    """
+    from app import chi_tiet_tai_khoan as ct_mod
+
+    so = request.app.state.so
+    cong = []
+    ban_ghi_list = kho_tai_khoan_mod.tat_ca_ban_ghi()
+    for bg in ban_ghi_list:
+        ck = kho_tai_khoan_mod.ban_cong_khai(bg, hien_email=hien_email)
+        ck["_email_noi_bo"] = bg.get("email", "") if isinstance(bg, dict) else ""
+        cong.append(ck)
+    cong.sort(key=lambda d: d["cap_nhat"], reverse=True)
+    theo_id = {bg.get("id"): bg for bg in ban_ghi_list if isinstance(bg, dict)}
+    cache: dict = {}
+
+    async def lay(id_):
+        if id_ not in cache:
+            bg = theo_id.get(id_)
+            if bg is None:
+                cache[id_] = ({"nguon": "khong_biet", "cap_nhat_luc": 0, "muc": []},
+                              "khong_biet")
+            else:
+                cache[id_] = await ct_mod.lay_han_muc_tu_module(so, bg)
+        return cache[id_]
+
+    return cong, lay, theo_id
+
+
+def _bo_email_noi_bo(ban: dict) -> dict:
+    ra = dict(ban)
+    ra.pop("_email_noi_bo", None)
+    return ra
+
+
+async def _xay_chi_tiet(request, ban_ghi: dict, hien_email: bool) -> dict:
+    """Dựng khuôn chi-tiet NV285 §3b cho một bản ghi nội bộ."""
+    from app import chi_tiet_tai_khoan as ct_mod
+
+    cong, lay, _theo_id = await _bang_chi_tiet(request, hien_email)
+    id_ = ban_ghi.get("id", "")
+    ck = next((b for b in cong if b["id"] == id_), None)
+    if ck is None:
+        ck = kho_tai_khoan_mod.ban_cong_khai(ban_ghi, hien_email=hien_email)
+    han_muc, goi = await lay(id_)
+    nhom, duong = ct_mod.nhom_duong_cua_ban(ck)
+    nhom_ban = [b for b in cong if ct_mod.nhom_duong_cua_ban(b) == (nhom, duong)]
+    han_muc_theo_id = {}
+    for b in nhom_ban:
+        hm, _g = await lay(b["id"])
+        han_muc_theo_id[b["id"]] = hm
+    thu_tu = ct_mod.thu_tu_xoay_cua_nhom(request.app.state.so, nhom_ban)
+    hang_theo_id, giu_hang_1 = ct_mod.lap_bang_hang(
+        nhom, duong, nhom_ban, han_muc_theo_id, thu_tu)
+    giu_theo_muc = {g["muc"]: {"tai_khoan_id": g["tai_khoan_id"], "email": g["email"]}
+                    for g in giu_hang_1}
+    muc_out = []
+    for m in han_muc.get("muc") or []:
+        mm = dict(m)
+        mm["hang"] = hang_theo_id.get(id_, {}).get(m["ten"])
+        mm["giu_hang_1_cua_nhom"] = giu_theo_muc.get(m["ten"])
+        muc_out.append(mm)
+    han_muc_out = dict(han_muc)
+    han_muc_out["muc"] = muc_out
+    ra = {
+        "id": id_,
+        "email_che": ck.get("email_che", ""),
+        "nhan": ck.get("nhan", ""),
+        "module_id": ck.get("module_id", ""),
+        "nhom": ck.get("nhom", ""),
+        "bac_goi": ck.get("bac_goi", ""),
+        "loai_hien_thi": ck.get("loai_hien_thi", ""),
+        "trang_thai": ck.get("trang_thai", ""),
+        "dang_nhap": ck.get("dang_nhap", {}),
+        "goi": goi,
+        "dung": ct_mod.dung_thong_ke(id_),
+        "duong": ct_mod.duong_cong_khai(ban_ghi),
+        "han_muc": han_muc_out,
+    }
+    if hien_email and ck.get("email"):
+        ra["email"] = ck["email"]
+    return ra
+
+
+@tai_khoan.get("/da-luu/{id}/chi-tiet")
+async def chi_tiet_tai_khoan_da_luu(id: str, request: Request, hien_email: bool = False):
+    """Chi tiết một tài khoản đã lưu (NV285 §3b): gộp bản công khai +
+    dang_nhap + loai_hien_thi (NV283), lượng dùng 14 ngày, trạng thái từng
+    đường, hạn mức từng tính năng từ module (chỉ đọc bộ đệm, không gọi
+    mạng thêm). Id lạ → 404 (không phân biệt «không có» với «của module
+    khác»). Không bao giờ trả bí mật (không token/cookie; email theo quy
+    tắc công khai sẵn có — đầy đủ chỉ khi ?hien_email=true như da-luu)."""
+    try:
+        ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if ban_ghi is None or ban_ghi.get("loai") == "nhap":
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+    return await _xay_chi_tiet(request, ban_ghi, hien_email)
+
+
+@tai_khoan.post("/da-luu/{id}/chi-tiet/lam-moi")
+async def lam_moi_chi_tiet_tai_khoan_da_luu(id: str, request: Request):
+    """Nút «Kiểm tra lại hạn mức» (NV285 §2b): MỘT tài khoản, gọi đúng
+    đường init/usage MỘT lần của module đó (khả năng ``lam_moi_han_muc``),
+    giãn cách tối thiểu ``LAM_MOI_GIAN_CACH_GIAY`` mỗi tài khoản — quá sớm
+    trả 429 kèm giây chờ. Chạm nhà cung cấp → cần step-up như các thao tác
+    chạm nhà cung cấp khác. Không bao giờ lặp qua nhiều tài khoản."""
+    from app import chi_tiet_tai_khoan as ct_mod
+
+    kiem_tra_step_up(request)
+    try:
+        ban_ghi = kho_tai_khoan_mod.tim_theo_id(id)
+    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+        raise _loi_kho_tai_khoan(e) from None
+    if ban_ghi is None or ban_ghi.get("loai") == "nhap":
+        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+    if ban_ghi.get("trang_thai") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
+        raise LoiOpenAI(403, "Tài khoản đã tạm dừng; bật lại mới kiểm tra được.",
+                        code="tam_dung")
+    con = ct_mod.con_lai_lam_moi_giay(id)
+    if con > 0:
+        import math
+
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=429,
+            content={"error": {"message": "Làm mới hạn mức quá sớm.",
+                               "type": "rate_limit_error", "code": "lam_moi_qua_som"},
+                     "cho_lai_sau_giay": int(math.ceil(con))})
+    module_id = ban_ghi.get("module_id", "") or ""
+    email = ban_ghi.get("email", "") or ""
+    mod = request.app.state.so.dang_chay.get(module_id) if module_id else None
+    ham = getattr(mod, "lam_moi_han_muc", None) if mod is not None else None
+    if not callable(ham):
+        raise LoiOpenAI(502, "Module chưa triển khai kiểm tra lại hạn mức.",
+                        code="chua_ho_tro")
+    try:
+        kq = ham(email)
+        if inspect.isawaitable(kq):
+            kq = await kq
+    except Exception as e:
+        # Không tiêu giãn cách khi module ném (cho phép thử lại ngay) và
+        # không nuốt lỗi: báo rõ kiểu lỗi như các handler khác.
+        log.warning("lam-moi han muc: module %s lỗi: %s", module_id, type(e).__name__)
+        raise LoiOpenAI(502, "Module kiểm tra hạn mức thất bại.", code="loi_module") from None
+    ct_mod.danh_dau_lam_moi(id)
+    if kq is None:
+        raise LoiOpenAI(502, "Module không trả được hạn mức mới.", code="loi_module")
+    return {"ok": True, "chi_tiet": await _xay_chi_tiet(request, ban_ghi, False)}
+
+
+@tai_khoan.get("/tong-quan")
+async def tong_quan_tai_khoan(request: Request, nha: str = "", duong: str = "",
+                             hien_email: bool = False):
+    """Tổng quan nhóm tài khoản (NV285 §c2/2z, chỉ đọc, quản trị).
+
+    Tham số ``nha`` (id nhóm) và ``duong`` (đường dùng)
+    để đếm đúng nhóm; không truyền thì đếm toàn kho (hạng #1 tính riêng
+    theo từng nhóm). Nhóm không có mục nào có số liệu → het_limit rỗng +
+    co_so_lieu_han_muc false (không vẽ 0 giả)."""
+    from app import chi_tiet_tai_khoan as ct_mod
+
+    cong, lay, _theo_id = await _bang_chi_tiet(request, hien_email)
+    loc = []
+    for b in cong:
+        n, d = ct_mod.nhom_duong_cua_ban(b)
+        if nha and n != nha:
+            continue
+        if duong and d != duong:
+            continue
+        loc.append(b)
+    han_muc_theo_id = {}
+    for b in loc:
+        hm, _g = await lay(b["id"])
+        han_muc_theo_id[b["id"]] = hm
+    dem = ct_mod.dem_tong_quan(loc, han_muc_theo_id)
+    # Hạng #1 tính riêng theo từng (nhà, đường) trong danh sách đã lọc.
+    giu_hang_1: list = []
+    nhom_theo_khoa: dict = {}
+    for b in loc:
+        nhom_theo_khoa.setdefault(ct_mod.nhom_duong_cua_ban(b), []).append(b)
+    for (n, d) in sorted(nhom_theo_khoa):
+        nhom_ban = nhom_theo_khoa[(n, d)]
+        thu_tu = ct_mod.thu_tu_xoay_cua_nhom(request.app.state.so, nhom_ban)
+        _hang, giu = ct_mod.lap_bang_hang(n, d, nhom_ban, han_muc_theo_id, thu_tu)
+        giu_hang_1.extend(giu)
+    return {**dem, "giu_hang_1": giu_hang_1}
 
 
 @tai_khoan.get("/nhom-loai")
@@ -4347,6 +4547,10 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
         for _bm in bi_mat_dnh:
             if _bm is not None:
                 _bm.xoa()
+    # NV283: ghi kết quả thật qua hàm bọc chung (đúng một lần cho lượt này;
+    # đường MCP dang_nhap_bat_dau đi qua đây nên cũng được ghi — trừ khi nó
+    # dùng đường khoi_phuc_tu_dong riêng, xem app/cong_mcp_cong_cu.py).
+    kho_tai_khoan_mod.ghi_ket_qua_dang_nhap_tu_ket_qua(id, kq)
     thanh_cong = bool(getattr(kq, "thanh_cong", False))
     if thanh_cong:
         # NV210: đưa JWT mới (nếu module đăng nhập trả) vào module SỞ HỮU tài khoản — theo khả năng
@@ -4517,6 +4721,22 @@ async def bat_dau_dang_nhap_hang_loat(request: Request):
         raise LoiOpenAI(400, "Không có tài khoản hợp lệ nào để chạy.", code="khong_co_tai_khoan")
 
     ham_dang_nhap = _ham_dang_nhap_cua_module(request, module_id)
+    if ham_dang_nhap is not None:
+        # NV283: bọc hàm đăng nhập của module để mỗi dòng ghi kết quả thật
+        # qua hàm bọc chung (dòng không khớp tài khoản đã lưu → không ghi).
+        ham_goc = ham_dang_nhap
+
+        async def ham_dang_nhap_ghi(dong):
+            try:
+                kq = await ham_goc(dong)
+            except Exception:
+                kho_tai_khoan_mod.ghi_ket_qua_theo_email(
+                    dong.email, {"thanh_cong": False, "ma_loi": "loi_module"})
+                raise
+            kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq)
+            return kq
+
+        ham_dang_nhap = ham_dang_nhap_ghi
     quan_ly = request.app.state.quan_ly_luot_chay
     try:
         thong_tin = quan_ly.bat_dau(giu, ham_dang_nhap, module_id)
@@ -4641,11 +4861,18 @@ async def dang_nhap_da_luu_theo_module(request: Request):
     async def ham_chay(dong):
         try:
             kq = await ham(dong)
+        except Exception:
+            # NV283: dòng ném lỗi vẫn là một kết quả thất bại thật.
+            kho_tai_khoan_mod.ghi_ket_qua_theo_email(
+                dong.email, {"thanh_cong": False, "ma_loi": "loi_module"})
+            raise
         finally:
             # NV223: dọn bí mật đăng nhập hộ sau mỗi dòng
             for _bm in getattr(dong, "_bi_mat_dnh_nv223", None) or []:
                 if _bm is not None:
                     _bm.xoa()
+        # NV283: mỗi dòng ghi kết quả thật qua hàm bọc chung.
+        kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq)
         if getattr(kq, "thanh_cong", False):
             # NV210: mỗi tài khoản đăng nhập xong thì gắn JWT mới + hồ sơ vào module sở hữu.
             gan_ket_qua_dang_nhap_mod.ap_dung(so_loi, kq, module_so_huu)
@@ -5200,6 +5427,22 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
 
         ham_chay = ham_dong_danh_tinh
 
+    # NV283: bọc hàm chạy của cả hai kiểu (truc_tiep/danh_tinh) để mỗi dòng
+    # ghi kết quả thật qua hàm bọc chung (dòng không khớp tài khoản đã lưu
+    # → không ghi).
+    ham_chay_goc = ham_chay
+
+    async def ham_chay_ghi(dong):
+        try:
+            kq = await ham_chay_goc(dong)
+        except Exception:
+            kho_tai_khoan_mod.ghi_ket_qua_theo_email(
+                dong.email, {"thanh_cong": False, "ma_loi": "loi_module"})
+            raise
+        kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq)
+        return kq
+
+    ham_chay = ham_chay_ghi
     quan_ly = request.app.state.quan_ly_luot_chay
     try:
         thong_tin = quan_ly.bat_dau(giu, ham_chay, module_id)

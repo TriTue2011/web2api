@@ -470,6 +470,13 @@ async def _chay_dang_nhap(phien: dict, so: Any, tk_id: str, module_id: str) -> N
             kq_module = await _thu_khoi_phuc_module(so, tk_id, module_id)
             if kq_module is not None:
                 _ap_ket_qua(phien, kq_module)
+                # NV283: đường khoi_phuc_tu_dong KHÔNG đi qua
+                # dang_nhap_tai_khoan_da_luu_noi_bo nên ghi riêng tại đây
+                # (đúng một lần; đường noi_bo đã tự ghi nên không ghi lại).
+                kho_tai_khoan.ghi_ket_qua_dang_nhap_tu_ket_qua(
+                    tk_id, {"thanh_cong": phien["trang_thai"] == "thanh_cong",
+                            "can_nguoi": phien["trang_thai"] == "can_nguoi",
+                            "ma_loi": phien["ma_loi"]})
                 return
             kq = await tuyen.dang_nhap_tai_khoan_da_luu_noi_bo(so, tk_id, module_id, False)
             if not _ap_ket_qua(phien, kq):

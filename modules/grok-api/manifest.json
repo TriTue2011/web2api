@@ -7,6 +7,7 @@
   "id": "grok-api",
   "loai": "ai",
   "loai_ten": "AI",
+  "loai_tai_khoan_ten": "API",
   "loai_thu_tu": 24,
   "nhom_con": {
     "id": "nha-cung-cap",
@@ -14,7 +15,7 @@
     "thu_tu": 2
   },
   "mo_ta": "Gọi các model Grok bằng khoá API chính thức của xAI qua endpoint tương thích OpenAI (https://api.x.ai/v1): trò chuyện (kể cả stream); xoay vòng nhiều khoá, cho khoá nghỉ khi hết hạn mức hoặc bị từ chối. Không qua Cloudflare, không cần đăng nhập web.",
-  "phien_ban": "0.1.0",
+  "phien_ban": "0.1.1",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Chưa đo RAM/đĩa thật (null = chưa đo). Danh sách model lấy trực tiếp từ GET /models của xAI lúc chạy — xAI đổi tên model thì danh sách tự theo, module không viết cứng tên model nào.",
