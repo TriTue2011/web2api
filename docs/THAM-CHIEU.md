@@ -573,7 +573,12 @@ nhà cung cấp; việc đăng nhập THẬT do từng module thực hiện qua 
     trị). Kho hỏng → `500 kho_hong`, đóng cửa, không lưu một phần.
   - `GET /api/tai-khoan/da-luu` → danh sách công khai (email CHE dạng
     `…***@example.com`, nhãn, `co_mat_khau`/`co_totp`, trạng thái; KHÔNG BAO
-    GIỜ trả mật khẩu/secret).
+    GIỜ trả mật khẩu/secret). `?hien_email=true` (chỉ quản trị; giao diện quản
+    trị luôn xin) thêm trường `email` đầy đủ, vì bản che chỉ chừa tên miền nên
+    không phân biệt được các tài khoản cùng miền (gmail…). Mặc định KHÔNG có
+    trường `email`; MCP và mọi đường khác gọi kho không kèm cờ này. Mỗi lần
+    dùng ghi một dòng nhật ký (số lượng, không ghi email). Cùng cờ có ở
+    `GET /api/tai-khoan/nhom-loai`.
   - `POST /api/tai-khoan/da-luu` (`email` hoặc `id`, `mat_khau`, `totp_secret`?,
     `nhan`?) → `200 {tai_khoan: …}`; hoặc `{"tai_khoan": [{…}, …]}` để lưu
     hàng loạt → `{luu: […], loi: [{dong, ma}]}`. Cập nhật không truyền `totp_secret`

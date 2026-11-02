@@ -158,8 +158,9 @@ def test_ui_luu_roi_chon_lai_hien_dau_cham_va_mat_khau_roi_dom(trang, tmp_path, 
         )
         assert trang.js("document.getElementById('dl-mat-khau').value") == ""
         assert MK_TEST_UI not in trang.js("document.documentElement.outerHTML")
-        # Dòng đã lưu: email che · «Đăng nhập» · «Xoá»
-        assert "***" in trang.js("document.querySelector('[data-tk-da-luu] span').innerText")
+        # Dòng đã lưu: email ĐẦY ĐỦ (chủ máy 02/11/2026: bản che chỉ chừa tên miền nên không phân biệt được tài khoản) · «Đăng nhập» · «Xoá»
+        dong = trang.js("document.querySelector('[data-tk-da-luu] span').innerText")
+        assert EMAIL_TEST_UI in dong and "***" not in dong
         assert trang.js(f"document.querySelector('[data-dl-dang-nhap=\"{id_tk}\"]')") is not None
         assert trang.js(f"document.querySelector('[data-dl-xoa=\"{id_tk}\"]')") is not None
 

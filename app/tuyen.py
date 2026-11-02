@@ -3635,14 +3635,18 @@ def _loi_kho_tai_khoan(e: kho_tai_khoan_mod.LoiKhoTaiKhoan) -> LoiOpenAI:
 
 
 @tai_khoan.get("/da-luu")
-def liet_ke_tai_khoan_da_luu(nhom: str | None = None):
+def liet_ke_tai_khoan_da_luu(nhom: str | None = None, hien_email: bool = False):
     """Liệt kê tài khoản đã lưu: email CHE, nhãn, nhóm, bậc gói, cờ có/không
     bí mật, trạng thái. KHÔNG bao giờ trả mật khẩu/TOTP secret.
 
     NV197c: ``?nhom=<id-nhom>`` lọc theo nhóm (so khớp chính xác).
+    ``?hien_email=true`` (quản trị, giao diện xin): thêm trường ``email`` đầy đủ để phân biệt các tài khoản cùng tên miền; không đổi trạng thái
+    nào, mỗi lần dùng ghi một dòng nhật ký (chỉ số lượng, không ghi email).
     """
     try:
-        ds = kho_tai_khoan_mod.liet_ke()
+        ds = kho_tai_khoan_mod.liet_ke(hien_email=hien_email)
+        if hien_email:
+            log.info("tai-khoan: quản trị xem email đầy đủ của %d tài khoản", len(ds))
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
         raise _loi_kho_tai_khoan(e) from None
     if nhom is not None:
@@ -3651,7 +3655,7 @@ def liet_ke_tai_khoan_da_luu(nhom: str | None = None):
 
 
 @tai_khoan.get("/nhom-loai")
-def gom_tai_khoan_theo_nhom_loai():
+def gom_tai_khoan_theo_nhom_loai(hien_email: bool = False):
     """Gom tài khoản theo nhóm → loại (NV218, thiết kế chủ máy 21/10).
 
     Trả ``{"nhom_loai": {nhom: {loai: {"tai_khoan": [...], "dang_dung": <id>|None}}}}``.
@@ -3660,7 +3664,7 @@ def gom_tai_khoan_theo_nhom_loai():
     mật khẩu/TOTP secret.
     """
     try:
-        gom = kho_tai_khoan_mod.gom_theo_nhom_loai()
+        gom = kho_tai_khoan_mod.gom_theo_nhom_loai(hien_email=hien_email)
     except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
         raise _loi_kho_tai_khoan(e) from None
     return {"nhom_loai": gom}

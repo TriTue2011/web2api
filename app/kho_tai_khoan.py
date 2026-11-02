@@ -844,7 +844,22 @@ def _ghi(du_lieu: dict) -> None:
     kho.ghi_bi_mat(TEN_KHO, du_lieu)
 
 
-def ban_cong_khai(ban_ghi: dict) -> dict:
+def ban_cong_khai(ban_ghi: dict, *, hien_email: bool = False) -> dict:
+    """Dạng công khai (xem ``_ban_cong_khai_goc``): email CHE, cờ có/không bí mật, KHÔNG bí mật thô.
+
+    ``hien_email=True`` (chỉ giao diện quản trị xin, qua ``GET /api/tai-khoan/da-luu?hien_email=true``) thêm trường ``email`` đầy đủ: ``email_che``
+    chỉ chừa tên miền nên các tài khoản cùng miền (gmail…) không phân biệt được. Mặc định KHÔNG có trường ``email``; MCP, nhật ký và mọi đường khác
+    gọi không kèm cờ này. Email được escape HTML ở biên ra như nhãn.
+    """
+    ra = _ban_cong_khai_goc(ban_ghi)
+    if hien_email:
+        email = ban_ghi.get("email", "")
+        if isinstance(email, str) and email:
+            ra["email"] = html.escape(email, quote=False)
+    return ra
+
+
+def _ban_cong_khai_goc(ban_ghi: dict) -> dict:
     """Dạng công khai: email CHE, cờ có/không bí mật — KHÔNG bí mật thô.
 
     Nhãn được escape HTML ở biên ra (chống XSS khi giao diện chèn vào DOM).
@@ -1171,15 +1186,15 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     return ban_cong_khai(ban_ghi)
 
 
-def liet_ke() -> list[dict]:
-    """Liệt kê mọi tài khoản đã lưu (dạng công khai, không bí mật)."""
+def liet_ke(*, hien_email: bool = False) -> list[dict]:
+    """Liệt kê mọi tài khoản đã lưu (dạng công khai, không bí mật). ``hien_email``: xem ``ban_cong_khai``."""
     du_lieu = _doc()
-    ds = [ban_cong_khai(b) for b in du_lieu.values()]
+    ds = [ban_cong_khai(b, hien_email=hien_email) for b in du_lieu.values()]
     ds.sort(key=lambda d: d["cap_nhat"], reverse=True)
     return ds
 
 
-def gom_theo_nhom_loai() -> dict:
+def gom_theo_nhom_loai(*, hien_email: bool = False) -> dict:
     """Gom tài khoản theo nhóm → loại (NV218, thiết kế chủ máy 21/10).
 
     Trả ``{nhom: {loai: {"tai_khoan": [...], "dang_dung": <id>|None}}}``.
@@ -1196,7 +1211,7 @@ def gom_theo_nhom_loai() -> dict:
     except Exception:
         ldtk = None
     gom: dict[str, dict[str, dict]] = {}
-    for b in liet_ke():
+    for b in liet_ke(hien_email=hien_email):
         nhom = b.get("nhom") or ""
         loai = b.get("loai_tai_khoan") or ""
         muc = gom.setdefault(nhom, {}).setdefault(

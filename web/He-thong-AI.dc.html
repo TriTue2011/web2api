@@ -885,7 +885,7 @@ class Component extends DCLogic {
   // ===== Tài khoản đã lưu (NV144) =====
   async taiDlDs() {
     try {
-      const { j } = await K.goi('api/tai-khoan/da-luu');
+      const { j } = await K.goi('api/tai-khoan/da-luu?hien_email=true');
       this.setState({ dlDs: (j && Array.isArray(j.tai_khoan)) ? j.tai_khoan : [] });
     } catch (e) {
       this.setState({ dlDs: [] });
@@ -894,7 +894,7 @@ class Component extends DCLogic {
     // ô chọn xếp tầng. Lõi cũ chưa có hai đường này → trang vẫn chạy:
     // gom tự suy từ trường nhom/loai của từng bản ghi, ô chọn ẩn đi.
     try {
-      const { j } = await K.goi('api/tai-khoan/nhom-loai');
+      const { j } = await K.goi('api/tai-khoan/nhom-loai?hien_email=true');
       this.setState({ dlGom: (j && j.nhom_loai) || null });
     } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
     try {
@@ -923,7 +923,7 @@ class Component extends DCLogic {
     const t = (this.state.dlDs || []).find((x) => x && x.id === id);
     this.setState({
       dlChonId: id || '',
-      dlEmail: t ? (t.email_che || '') : '',
+      dlEmail: t ? (t.email || t.email_che || '') : '',
       // NV258: địa chỉ không điền lại giá trị thô (chỉ có dạng che);
       // kiểu bí mật điền từ bản ghi đã chọn.
       dlDiaChi: '',
@@ -1127,7 +1127,7 @@ class Component extends DCLogic {
       this.setState({
         dlDangLuu: false,
         dlChonId: tk ? tk.id : '', dlDaLuu: !!tk,
-        dlEmail: tk ? tk.email_che : email
+        dlEmail: tk ? (tk.email || tk.email_che) : email
       });
       if (vaDangNhap && tk) await this.dlDangNhapDaLuu(chon, tk.id);
     } catch (e) {
@@ -2129,7 +2129,7 @@ class Component extends DCLogic {
         const chipDuongSt = 'font-size:12px;white-space:nowrap;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mute);';
         const hangTk = dlDs.filter((t) => !locNhomDl || (t.nhom || '') === locNhomDl).map((t) => ({
           id: t.id,
-          emailChe: t.email_che || '',
+          emailChe: t.email || t.email_che || '',
           // NV258: địa chỉ che + nhãn kiểu bí mật của từng dòng.
           diaChiChe: t.dia_chi_che || '',
           coDiaChiChe: !!(t.dia_chi_che || ''),
@@ -2260,14 +2260,14 @@ class Component extends DCLogic {
           coDangNhapHo: !!quaTaiKhoanLuu && (s.dlDangNhapBang || '') === quaTaiKhoanLuu,
           dsTkDnh: dlDs.filter((t) => nhomTaiKhoanLuu && (t.nhom || '') === nhomTaiKhoanLuu).map((t) => ({
             id: t.id,
-            nhan: (t.email_che || '') + (t.nhan ? ' · ' + t.nhan : ''),
+            nhan: (t.email || t.email_che || '') + (t.nhan ? ' · ' + t.nhan : ''),
             chon: t.id === s.dlTkDnhId
           })),
           tkDnhId: s.dlTkDnhId || '',
           doiTkDnh: (e) => this.setState({ dlTkDnhId: e.target.value }),
           tuyChon: dlDs.map((t) => ({
             id: t.id,
-            nhan: (t.email_che || '') + (t.dia_chi_che ? ' · ' + t.dia_chi_che : '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
+            nhan: (t.email || t.email_che || '') + (t.dia_chi_che ? ' · ' + t.dia_chi_che : '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
             chon: t.id === s.dlChonId
           })),
           chonId: s.dlChonId || '',
@@ -2521,7 +2521,7 @@ class Component extends DCLogic {
       };
       const oCua = (t) => {
         const tt = chipTt(t);
-        const emailChe = t.email_che || "";
+        const emailChe = t.email || t.email_che || "";
         const diaChiChe = t.dia_chi_che || "";
         const ten = ((t.nhan || "").trim() || emailChe || diaChiChe || t.id);
         const phu = (t.nhan || "").trim()
@@ -2604,7 +2604,7 @@ class Component extends DCLogic {
       const ttMau = ttNhan === "Đã đăng nhập" ? "#0f766e" : ttNhan === "Cần đăng nhập" ? "#b45309" : ttNhan === "Hết hạn" ? "#b42318" : "";
       return {
         co: true, khongCo: false, id, moCls: " mo", nenAn: false, dong,
-        tieuDe: ((t.nhan || "").trim() || t.email_che || t.dia_chi_che || id),
+        tieuDe: ((t.nhan || "").trim() || t.email || t.email_che || t.dia_chi_che || id),
         theNhom: [tenTrongBangTk(bang, "ten_nhom", t.nhom || "") || (t.nhom || ""),
           tenTrongBangTk(bang, "ten_loai", t.loai_tai_khoan || "") || (t.loai_tai_khoan || ""),
           tenTrongBangTk(bang, "ten_dich_dung", t.dich_dung || "") || (t.dich_dung || "")].filter(Boolean).join(" · "),
@@ -2619,8 +2619,8 @@ class Component extends DCLogic {
           }
           return false;
         })(),
-        diaChi: (t.email_che || t.dia_chi_che || ""),
-        chepDiaChi: () => this.khuChep(t.email_che || t.dia_chi_che || ""),
+        diaChi: (t.email || t.email_che || t.dia_chi_che || ""),
+        chepDiaChi: () => this.khuChep(t.email || t.email_che || t.dia_chi_che || ""),
         nhanBiMat: tenTrongBangTk(bang, "ten_kieu_bi_mat", t.kieu_bi_mat || "") || "Mật khẩu",
         biMatHien: dangHienBm ? s.khuBiMat : "•".repeat(12),
         nhanHien: dangHienBm ? "Ẩn" : "Hiện",
