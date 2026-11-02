@@ -1,0 +1,75 @@
+{
+  "cung_cap": [
+    "thiet_bi"
+  ],
+  "giao_thuc": "adguard-http",
+  "hang": "A",
+  "id": "adguard",
+  "loai": "thiet_bi",
+  "loai_ten": "Thiết bị",
+  "loai_thu_tu": 41,
+  "mo_ta": "Thống kê DNS chặn quảng cáo của cả nhà từ AdGuard Home trong LAN (tổng truy vấn, số bị chặn, tỉ lệ chặn, thời gian xử lý trung bình, số bộ lọc đang bật, top miền bị chặn, top máy khách) và một hành động duy nhất bao_ve bật/tắt bảo vệ (tắt kèm thời gian tự bật lại, mặc định 5 phút). Hành động bao_ve là nguy_hiem theo cấu trúc, qua phê duyệt của lõi. Không trả nguyên nhật ký truy vấn, không sửa bộ lọc, không xoá nhật ký.",
+  "phien_ban": "0.1.0",
+  "tai_nguyen": {
+    "dia_mb": null,
+    "ghi_chu": "Chỉ thư viện chuẩn (urllib). Không gọi ra Internet: địa chỉ phải là IP riêng trong LAN, đã ghim IP chống DNS rebinding; proxy bị tắt ở client.",
+    "gpu": false,
+    "mang_ra": [
+      "địa chỉ AdGuard Home trong LAN (mặc định cổng 3000)"
+    ],
+    "ram_them_mb": null
+  },
+  "ten": "AdGuard Home (DNS chặn quảng cáo trong LAN)",
+  "tien_to": "adguard",
+  "truong_cau_hinh": [
+    {
+      "bat_buoc": true,
+      "khoa": "dia_chi",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Địa chỉ LAN của AdGuard Home, dạng host[:cổng] (cổng mặc định 3000). Chỉ chấp nhận IP riêng trong LAN (RFC1918/ULA); IP công cộng, loopback (trừ test), link-local/metadata đều bị từ chối; tên miền được phân giải và ghim IP đã kiểm (chống DNS rebinding).",
+      "nhan": "Địa chỉ AdGuard"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "tai_khoan",
+      "kieu": "chuoi",
+      "mac_dinh": null,
+      "mo_ta": "Tài khoản AdGuard Home.",
+      "nhan": "Tài khoản AdGuard"
+    },
+    {
+      "bat_buoc": true,
+      "khoa": "mat_khau",
+      "kieu": "bi_mat",
+      "mac_dinh": null,
+      "mo_ta": "Mật khẩu của tài khoản AdGuard Home. Lưu riêng trong kho bí mật, không trả lại qua API, không vào log/phản hồi/ngoại lệ.",
+      "nhan": "Mật khẩu"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "gioi_han_top",
+      "kieu": "chuoi",
+      "mac_dinh": "10",
+      "mo_ta": "Số mục tối đa cho top miền bị chặn và top máy khách (kẹp 1–50, mặc định 10).",
+      "nhan": "Giới hạn top"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "thoi_gian_tat_mac_dinh_giay",
+      "kieu": "chuoi",
+      "mac_dinh": "300",
+      "mo_ta": "Thời gian tự bật lại khi tắt bảo vệ mà không kèm thời gian (giây, kẹp 30–86400, mặc định 300 = 5 phút).",
+      "nhan": "Thời gian tắt mặc định (giây)"
+    },
+    {
+      "bat_buoc": false,
+      "khoa": "chu_ky_giay",
+      "kieu": "chuoi",
+      "mac_dinh": "30",
+      "mo_ta": "Chu kỳ làm mới thống kê (giây, kẹp 10–3600, mặc định 30).",
+      "nhan": "Chu kỳ đọc (giây)"
+    }
+  ],
+  "yeu_cau_goi": []
+}

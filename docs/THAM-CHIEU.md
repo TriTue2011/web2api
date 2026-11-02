@@ -73,6 +73,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | API dán hàng loạt + tiến độ đăng nhập lần lượt (`POST /api/tai-khoan/dan-hang-loat`, `POST /api/tai-khoan/dang-nhap-hang-loat/bat-dau`, `GET …/trang-thai`, `POST …/dung`): tách dòng không lộ mật khẩu, một lượt chạy một lúc (lượt thứ hai → `409`), module chưa hỗ trợ thì dòng `bo_qua` (không phải lỗi), chạy tiếp bằng `bo_qua_email` | Có — kiểm với module giả (NV67 nhóm 3, việc 7); **chưa có giao diện** | 17/10/2026 |
 | `zalo-bot` — kênh Zalo Bot hai chiều (chuẩn `kenh_ra` + nhận tin qua webhook của lõi, chuẩn `tin_vao` NV117): gửi ra mỗi đích khai rõ `id → bot → chat_id` (không «bot mặc định»), tin dài tách ở ranh giới dòng tối đa 5 tin, token trong URL → chặn log URL, mã lỗi ngắn không lộ `description` thô; nhận vào phiên dịch payload Zalo (`result.message`) → tin chuẩn, nhiều bot chung một URL webhook nên ánh xạ `chat.id` → đích đã khai, chat lạ bị bỏ (đếm `bo_qua_chat_la`) | Có — kiểm với Zalo giả cục bộ (NV114 chiều gửi, NV117 chiều nhận); **chưa kiểm với Zalo thật** | 19/10/2026 |
 | Module `mikrotik-routeros` (kiểm soát mạng LAN từ router MikroTik, CHỈ ĐỌC) | Có (0.2.0) — đọc DHCP lease + bảng host, cổng mạng, tài nguyên router, WireGuard, Kid Control qua RouterOS API (TLS 8729); tự động dọn máy vắng; chỉ đọc theo cấu tạo, kiểm với máy chủ RouterOS giả; **chưa kiểm với router thật** | 02/11/2026 |
+| Module `adguard` (AdGuard Home trong LAN: thống kê DNS chặn quảng cáo + bật/tắt bảo vệ, NV278) | Có (0.1.0) — tổng truy vấn, số bị chặn, tỉ lệ chặn, thời gian xử lý trung bình, số bộ lọc đang bật, top miền bị chặn, top máy khách qua `/control/stats`; hành động `bao_ve` duy nhất là `nguy_hiem` theo cấu trúc, qua phê duyệt của lõi; chỉ IP riêng LAN, ghim IP chống DNS rebinding; không trả nguyên nhật ký truy vấn; kiểm với máy chủ AdGuard giả + test leo thang quyền ở tầng lõi; **chưa kiểm với AdGuard thật** | 02/11/2026 |
 | Module `khoa-cua` (khoá cửa Tuya qua Open API — thiết bị nhà, chuẩn C1): trạng thái khoá + nhật ký mở/đóng + học tên người từ mã mở; mở khoá LUÔN `nguy_hiem` theo cấu trúc, quản trị phải qua cửa sổ xác nhận lại (mã dùng một lần, hết hạn 120 giây), mọi lần mở ghi nhật ký bất biến, điều khiển mặc định TẮT | Có — kiểm với khoá giả + MockTransport (NV169); **chưa kiểm với khoá cửa thật** | 20/10/2026 |
 | Module `home-assistant` (Home Assistant, thiết bị nhà — chuẩn C1): đọc `GET /api/states`, điều khiển `POST /api/services/<miền>/<dịch vụ>` theo bảng ánh xạ nội bộ, khu vực qua `POST /api/template` theo lô; địa chỉ kiểm bằng `app/tu_xa.py` + ghim IP chống DNS rebinding; rủi ro theo cấu trúc miền (lock/alarm/water_heater/valve/cover-garage → `nguy_hiem`); miền chạy mã tuỳ ý không bao giờ điều khiển được | Có — kiểm với máy chủ HA giả (NV118); **chưa kiểm với Home Assistant thật** | 18/10/2026 |
 | Module `doc-ma-hop-thu` (Đọc mã xác minh từ Gmail, chuẩn `ma_xac_minh`) | Có — đọc CHỈ ĐỌC qua IMAP `imap.gmail.com:993` SSL (EXAMINE + `BODY.PEEK[]` một phần 256KB, tối đa 20 thư mới nhất); khớp miền theo ranh giới nhãn (`evilopenai.com` không khớp `openai.com`), regex mã độc lập trong `do_dai`, hỏi vòng ~3s tới `cho_giay` (kẹp 5..180); máy chủ cố định không cấu hình được (chống SSRF, ghi đè chỉ cho test qua biến môi trường + loopback); mật khẩu ứng dụng không vào log/ngoại lệ/phản hồi; cấu hình theo khuôn danh-sách-bí-mật + cặp theo thứ tự như zalo-bot; kiểm với máy chủ IMAP giả; **chưa kiểm với Gmail thật** | 18/10/2026 |
@@ -2674,6 +2675,50 @@ curl -s -H "Authorization: Bearer $K" $W/api/thiet-bi | \
 **Giới hạn.**
 - CHỈ ĐỌC: `thuc_hien` luôn từ chối; muốn điều khiển router thì dùng module khác.
 - Chưa kiểm với router MikroTik thật (chỉ kiểm với máy chủ RouterOS giả dựng bằng thư viện chuẩn trong test).
+
+### Module adguard — AdGuard Home trong LAN (NV278)
+
+**Mô tả.** Thống kê DNS chặn quảng cáo của cả nhà từ AdGuard Home (phiên bản
+0.1.0): tổng truy vấn, số bị chặn, tỉ lệ chặn, thời gian xử lý trung bình
+(giây), số bộ lọc đang bật, trạng thái bảo vệ, top miền bị chặn và top máy
+khách (tên máy khách lấy từ `/control/clients` khi có, hỏng thì giữ IP) —
+tất cả qua các thực thể chuẩn thiết bị (`adguard.tong_truy_van`,
+`adguard.so_bi_chan`, `adguard.ti_le_chan`,
+`adguard.thoi_gian_xu_ly_trung_binh`, `adguard.so_bo_loc_dang_bat` chỉ đọc,
+và `adguard.bao_ve` dạng công tắc). Một hành động duy nhất `bao_ve`
+(`bat` bắt buộc, `thoi_gian_giay` tuỳ chọn khi tắt: bỏ trống = thời gian tắt
+mặc định đã cấu hình, mặc định 300 giây = 5 phút; `0` = vô thời hạn; trần
+86400 giây). Vì `rui_ro_mac_dinh` của `adguard.bao_ve` là `nguy_hiem`,
+hành động đi đúng cơ chế quyền/duyệt của lõi (khách thiếu quyền → 403, khách
+gọi nguy hiểm → 202 hàng chờ, quản trị thiếu xác nhận → 409 `can_xac_nhan`,
+nhật ký kiểm toán của lõi ghi ai làm, lúc nào). Cố tình KHÔNG dùng
+`GET /control/querylog`: top list đã có dạng tổng hợp trong
+`/control/stats`, nên module không trả nguyên nhật ký truy vấn; cũng không
+sửa bộ lọc, không xoá nhật ký. Mã nguồn: `modules/adguard/` (chỉ thư viện
+chuẩn: `urllib`, Basic auth, proxy tắt). Hạng: `A` (mã của dự án). Tiền tố
+thực thể: `adguard`.
+
+**Cần gì.**
+- AdGuard Home trong LAN (cổng `3000` mặc định), tài khoản AdGuard Home.
+- `dia_chi` chỉ chấp nhận IP riêng trong LAN (RFC1918/ULA); IP công cộng,
+  loopback (trừ test), link-local/metadata đều bị từ chối; tên miền được
+  phân giải và ghim IP đã kiểm (chống DNS rebinding, như mikrotik-routeros).
+- Mật khẩu lưu trong kho bí mật của lõi, không vào log/phản hồi/ngoại lệ.
+
+**Cách cài.**
+
+1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "adguard"`.
+2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/adguard`
+3. Cài cấu hình: `POST /api/modules/adguard/cai` với thân
+   `{"cau_hinh": {"dia_chi": "192.168.1.2:3000", "tai_khoan": "admin", "mat_khau": "<mat-khau>"}}`
+   (lúc cài module nối + đăng nhập thật để kiểm; mật khẩu sai → lỗi rõ
+   `sai_dang_nhap`, không lộ mật khẩu).
+
+**Giới hạn.**
+- Chưa kiểm với AdGuard Home thật (chỉ kiểm với máy chủ AdGuard giả dựng bằng
+  thư viện chuẩn trong test, kể cả test leo thang quyền ở tầng lõi).
+- Thống kê theo cửa sổ của máy chủ AdGuard; top list giới hạn theo
+  `gioi_han_top` (mặc định 10, kẹp 1–50), chuỗi cắt 64 ký tự.
 
 # Gửi tới đích "nha" (khoá cần phạm vi gui:telegram_bot)
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
