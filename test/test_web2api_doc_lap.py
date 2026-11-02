@@ -353,7 +353,7 @@ def test_ma_mo_loai_la_va_kha_nang_la(du_lieu):
             assert not any(x["id"].startswith("m-") for x in kq_khung["nav"])
             assert "module" in kq_khung["navHT"] and "bao_mat" in kq_khung["navHT"]
             assert kq_khung["thieu"] == []  # Không thiếu vì đã liên kết và có đủ khả năng
-            assert kq_khung["noiThemKhoa"]["tab"] == "module"
+            assert kq_khung["noiThemKhoa"]["tab"] == "bao_mat"  # NV281: khoá chỉ tạo ở Bảo mật & người dùng
 
 
 def test_module_mang_tab_web_la_doc_lap(du_lieu):

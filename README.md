@@ -1,8 +1,7 @@
 # web2api
 
 <p>
-  <a href="https://github.com/TriTue2011/web2api/actions/workflows/docker-build.yml"><img src="https://github.com/TriTue2011/web2api/actions/workflows/docker-build.yml/badge.svg" alt="Docker Build"></a>
-  <a href="https://github.com/TriTue2011/web2api/actions/workflows/security.yml"><img src="https://github.com/TriTue2011/web2api/actions/workflows/security.yml/badge.svg" alt="Security Scan"></a>
+  <a href="https://github.com/TriTue2011/web2api/actions/workflows/docker-build.yml"><img src="https://github.com/TriTue2011/web2api/actions/workflows/docker-build.yml/badge.svg" alt="Docker Build"></a> <a href="https://github.com/TriTue2011/web2api/actions/workflows/security.yml"><img src="https://github.com/TriTue2011/web2api/actions/workflows/security.yml/badge.svg" alt="Security Scan"></a>
 </p>
 
 Cổng AI chuẩn OpenAI (`/v1/models`, `/v1/chat/completions`, stream, tạo ảnh, video, âm thanh, nhúng...) chạy trong một container Docker nhỏ gọn. Dự án dành cho cá nhân và gia đình muốn hợp nhất các nguồn AI (Google Gemini, Meta Muse...) vào các ứng dụng chuẩn OpenAI (ví dụ OpenAI SDK, curl; chưa kiểm cụ thể với Home Assistant). Điểm khác biệt cốt lõi: lõi đóng vai trò **«phiên dịch viên»** trung lập, không chứa sẵn mã của nhà cung cấp nào; mọi nguồn AI là các **module** độc lập cài thêm lúc chạy từ git, không cần dựng lại ảnh Docker hay khởi động lại dịch vụ.
