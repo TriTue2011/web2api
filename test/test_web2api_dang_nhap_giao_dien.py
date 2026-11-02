@@ -900,11 +900,12 @@ def test_chrome_t2_khong_tran_ngang_390px_5_trang(trang: Trang, tmp_path, monkey
         for p in cac_trang:
             trang.di(f"{base_url}{p}")
             trang.cho("(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'", mo_ta=f"Trang {p} dựng xong")
-            # Kiểm tra không tràn ngang
-            sw = trang.js("document.documentElement.scrollWidth")
-            assert sw <= 390, f"Trang {p} bị tràn ngang: scrollWidth={sw} > 390"
-            # Nút đăng xuất hiển thị
-            assert trang.js("document.getElementById('nut-dang-xuat') !== null"), f"Trang {p} thiếu nút đăng xuất"
+            # Trang chưa đủ điều kiện (vd AI khi chưa cài module AI) tự chuyển về trang Module SAU khi báo «san-sang»; đo bằng
+            # các lệnh riêng thì có thể rơi vào đúng lúc đang chuyển trang (đỏ chớp tắt, cả trên main sạch). Chờ tới khi MỘT lệnh JS
+            # trên cùng một tài liệu thấy nút đăng xuất và trả luôn số đo; không còn lệnh thứ hai để chen vào giữa.
+            do = trang.cho("(() => document.getElementById('nut-dang-xuat') !== null ? {sw: document.documentElement.scrollWidth} : false)()",
+                           han=15, mo_ta=f"Trang {p} có nút đăng xuất")
+            assert do["sw"] <= 390, f"Trang {p} bị tràn ngang: scrollWidth={do['sw']} > 390"
 
 
 def test_node_c1_index_html_khi_tinh_nang_500_hien_nut_thu_lai():

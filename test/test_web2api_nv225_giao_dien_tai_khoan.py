@@ -195,9 +195,10 @@ def test_trang_gom_theo_nhom_loai():
     """Trang có khối gom nhóm → loại: đủ 5 nhóm đổ từ bảng + xô chưa phân nhóm,
     dấu «ĐANG DÙNG #1» và hạn mức «chưa rõ» khi khong_biet."""
     s = _noi_dung_trang()
-    assert "data-tk-nhom" in s, "thiếu khối gom theo nhóm trong template"
-    assert "data-tk-loai" in s, "thiếu khối gom theo loại trong template"
-    assert "ĐANG DÙNG #1" in s, "thiếu dấu «ĐANG DÙNG #1»"
+    # NV282: chip nhà (`data-nha`) + loại hiển thị do lõi trả (`loai_hien_thi`) thay cho khối gom nhóm → loại cũ.
+    assert "data-nha" in s, "thiếu chip nhà trong template"
+    assert "loai_hien_thi" in s, "loại phải lấy từ lõi (`loai_hien_thi`), không tự suy"
+    assert "Đang giữ #1" in s, "thiếu dải «Đang giữ #1»"
     assert "Chưa phân nhóm" in s, "thiếu xô cho tài khoản ngoài 5 nhóm"
     assert "chưa rõ" in s, "hạn mức khong_biet phải hiện «chưa rõ», không bịa số"
     # Dữ liệu đổ từ API, không tự dựng bảng trong trang:
@@ -231,14 +232,12 @@ def test_trang_gom_theo_nhom_loai():
 
 
 def test_trang_form_chon_xep_tang_tu_api():
-    """Form thêm có 3 ô chọn xếp tầng (nhóm/loại/đích dùng) và dlLuu gửi
-    loai_tai_khoan + dich_dung cho backend kiểm theo bảng."""
+    """NV282: form thêm là MỘT form hiện dần (nhà → cách thêm); phân loại (loại/đích dùng) do lõi suy từ module
+    (`loai_hien_thi`), không còn ba ô chọn xếp tầng nhóm/loại/đích dùng của form thứ hai."""
     s = _noi_dung_trang()
+    assert "data-nhom-them" in s and "data-cach-them" in s
     for id_o in ('id="dl-nhom"', 'id="dl-loai-tk"', 'id="dl-dich-dung"'):
-        assert id_o in s, f"thiếu ô chọn {id_o}"
-    assert "loai_tai_khoan" in s and "dich_dung" in s
-    # Ô đích dùng chỉ hiện khi (nhóm, loại) có đích trong bảng:
-    assert "dlDichDung" in s
+        assert id_o not in s, f"{id_o} thuộc form thứ hai đã bỏ"
 
 
 def test_trang_js_hop_le_node_check(tmp_path):

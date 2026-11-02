@@ -3,17 +3,12 @@
 LƯU Ý: Hộp cát không có Chrome nên các test này sẽ tự động bỏ qua khi không có Chrome (CO_CHROME=False).
 Người điều phối sẽ chạy test này trong môi trường có Chrome thật.
 
-Bao quát:
-1. Khối «Tài khoản đã lưu (n)»: dropdown chọn → điền email, mật khẩu hiện placeholder «•••• đã lưu»
-   (KHÔNG đổ mật khẩu thật ra ô).
-2. Các ô Email / Mật khẩu (nút Hiện/Ẩn) / TOTP secret («để trống = xác minh thiết bị») / Nhãn;
-   mục thu gọn «Cách lấy secret» đủ 5 bước.
-3. Nút «Lưu tài khoản» vô hiệu khi thiếu email+mật khẩu; bấm hai lần liên tiếp chỉ MỘT lần gửi
-   (guard dlDangLuu).
-4. Sau khi gửi: mật khẩu/TOTP không còn trong state/DOM (outerHTML, localStorage, sessionStorage).
-5. Mỗi tài khoản một dòng: email che · nhãn · trạng thái · «Đăng nhập» · «Xoá» (bấm hai lần mới xoá).
-6. Công tắc «Tự đăng nhập lại khi phiên hết hạn» mặc định BẬT.
-7. Nút «Lưu tất cả» lưu mọi hàng đang gõ ở khối hàng loạt.
+Bao quát (NV282: MỘT form «＋ Thêm tài khoản», không còn khối «Tài khoản đã lưu (n)» có form thứ hai):
+1. Form thêm có Email / Mật khẩu (nút Hiện/Ẩn) / khoá OTP (mở bằng nút) / Nhãn trong «Tuỳ chọn thêm»; bấm «Đăng nhập» khi thiếu
+   email+mật khẩu thì báo, KHÔNG gửi gì.
+2. Sau khi gửi: mật khẩu/OTP không còn trong state/DOM (outerHTML, localStorage, sessionStorage); tài khoản mới được chọn.
+3. Bảng chi tiết: email ĐẦY ĐỦ, bí mật luôn ẩn («••••• đã lưu», không đổ mật khẩu thật), nút «Đăng nhập» và «Xoá» (bấm hai lần mới xoá).
+4. Công tắc «Tự đăng nhập lại khi phiên hết hạn» mặc định BẬT.
 """
 
 from __future__ import annotations
@@ -30,6 +25,7 @@ try:
     from gia import MayChuThat
     from test_web2api_nv88_api import MA_PROVIDER, MANIFEST_PROVIDER, MAT_KHAU_GIA, MODULE_ID
     from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
+    from ui_them_tk import chon_cach, mo_form
     CO_UI = True
 except ImportError:
     CO_UI = False
@@ -78,26 +74,18 @@ def moi_truong_ui(tmp_path, monkeypatch):
 
 
 def _mo_tab_tai_khoan(trang, w):
-    """Mở tab «Tài khoản» của module giả; trả mật khẩu quản trị (cần cho hộp thoại xác nhận lại khi lưu/xoá)."""
+    """Mở form «＋ Thêm tài khoản» của module giả (cách đăng nhập); trả mật khẩu quản trị (hộp xác nhận lại khi lưu/xoá)."""
     _, mk_admin = dang_nhap_quan_tri(trang, w.url)
     trang.di(f"{w.url}/He-thong-AI.dc.html")
-    trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
-    trang.bam("document.getElementById('nut-them')")
-    trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chọn module")
-    trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-    trang.cho("document.getElementById('dl-khoi')", mo_ta="khối Tài khoản đã lưu")
+    mo_form(trang)
+    chon_cach(trang, "dn")
     return mk_admin
 
 
 def _go_email_va_mat_khau(trang):
-    """Nhập từng ô như người gõ (trang.go = Input.insertText, sự kiện tin cậy), ô này xong mới sang ô kia.
-
-    KHÔNG gán .value cả hai ô rồi mới bắn sự kiện input: ô điều khiển theo state (support.js dieuKhien) nên lần dựng
-    lại sau sự kiện của ô Email đặt ô Mật khẩu về giá trị state còn rỗng; sự kiện input của ô Mật khẩu sau đó đọc
-    chuỗi rỗng → state không có mật khẩu → nút «Lưu tài khoản» vẫn vô hiệu, không có yêu cầu nào được gửi."""
-    trang.go("#dl-email", EMAIL_TEST_UI)
-    trang.go("#dl-mat-khau", MK_TEST_UI)
-    trang.cho("document.getElementById('nut-dl-luu').disabled === false", mo_ta="nút «Lưu tài khoản» bật khi đủ email+mật khẩu")
+    """Nhập từng ô như người gõ (trang.go = Input.insertText, sự kiện tin cậy)."""
+    trang.go("[data-nhap-email]", EMAIL_TEST_UI)
+    trang.go("[data-nhap-mat-khau]", MK_TEST_UI)
 
 
 def _xac_nhan_lai(trang, mk_admin):
@@ -109,87 +97,68 @@ def _xac_nhan_lai(trang, mk_admin):
     trang.cho("!document.querySelector('dialog[open]')", mo_ta="hộp thoại xác nhận lại đóng")
 
 
+def _them_va_dang_nhap(trang, mk_admin):
+    _go_email_va_mat_khau(trang)
+    trang.bam("document.getElementById('nut-chay-hang-nhap')")
+    _xac_nhan_lai(trang, mk_admin)
+    trang.cho(f"(document.querySelector('#o-chon .ten') || {{}}).textContent === {EMAIL_TEST_UI!r}", han=20, mo_ta="tài khoản mới được chọn")
+
+
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy vì không có Chrome")
-def test_ui_khoi_da_luu_co_du_o_va_nut_luu_vo_hieu_khi_thieu(trang, tmp_path, monkeypatch):
+def test_ui_form_co_du_o_va_bao_khi_thieu_email_mat_khau(trang, tmp_path, monkeypatch):
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         _mo_tab_tai_khoan(trang, w)
+        trang.js("window.__post = []; const g = window.fetch.bind(window); window.fetch = (u, o) => { if (o && o.method && o.method !== 'GET') window.__post.push(u); return g(u, o); }")
         # Ô nhập theo đúng hợp đồng
-        assert trang.js("document.getElementById('dl-email').type") == "email"
-        assert trang.js("document.getElementById('dl-mat-khau').type") == "password"
-        assert trang.js("document.getElementById('dl-totp')") is not None
-        assert trang.js("document.getElementById('dl-nhan')") is not None
-        # Mục thu gọn «Cách lấy secret» đủ 5 bước
-        assert trang.js("document.querySelectorAll('#dl-khoi ol li').length") == 5
-        # Nút «Lưu tài khoản» vô hiệu khi thiếu email+mật khẩu
-        assert trang.js("document.getElementById('nut-dl-luu').disabled") is True
-        assert trang.js("document.getElementById('nut-dl-luu-dang-nhap').disabled") is True
+        assert trang.js("document.querySelector('[data-nhap-email]').type") == "email"
+        assert trang.js("document.querySelector('[data-nhap-mat-khau]').type") == "password"
+        assert trang.js("document.getElementById('nut-mo-otp')") is not None
+        trang.js("document.querySelector('#tuy-chon-them summary').click()")
+        trang.cho("!!document.getElementById('tk-nhan')", han=5, mo_ta="ô Nhãn trong Tuỳ chọn thêm")
+        # Thiếu email+mật khẩu: bấm «Đăng nhập» chỉ báo, không gửi yêu cầu ghi nào
+        trang.bam("document.getElementById('nut-chay-hang-nhap')")
+        trang.cho("!!document.getElementById('loi-dl')", han=5, mo_ta="báo thiếu email và mật khẩu")
+        assert "email" in trang.chu("#loi-dl").lower()
+        assert trang.js("window.__post.length") == 0
         # Nút con mắt Hiện/Ẩn
-        trang.bam("document.getElementById('dl-hien-mk')")
-        assert trang.js("document.getElementById('dl-mat-khau').type") == "text"
-        trang.bam("document.getElementById('dl-hien-mk')")
-        assert trang.js("document.getElementById('dl-mat-khau').type") == "password"
+        trang.bam("document.querySelector('[data-hien-mk]')")
+        assert trang.js("document.querySelector('[data-nhap-mat-khau]').type") == "text"
+        trang.bam("document.querySelector('[data-hien-mk]')")
+        assert trang.js("document.querySelector('[data-nhap-mat-khau]').type") == "password"
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy vì không có Chrome")
 def test_ui_luu_roi_chon_lai_hien_dau_cham_va_mat_khau_roi_dom(trang, tmp_path, monkeypatch):
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         mk_admin = _mo_tab_tai_khoan(trang, w)
-        # Gõ và lưu
-        _go_email_va_mat_khau(trang)
-        trang.bam("document.getElementById('nut-dl-luu')")
-        _xac_nhan_lai(trang, mk_admin)
-        trang.cho(
-            "document.querySelectorAll('[data-tk-da-luu]').length === 1",
-            mo_ta="dòng tài khoản đã lưu xuất hiện",
-        )
-        # Bấm hai lần liên tiếp vào «Lưu và đăng nhập» khi không đổi gì → không gửi trùng
-        # (guard dlDangLuu; ở đây chỉ kiểm nút «Lưu tài khoản» báo đã lưu, không tạo trùng)
-        assert trang.js("document.querySelectorAll('[data-tk-da-luu]').length") == 1
+        _them_va_dang_nhap(trang, mk_admin)
         # Mật khẩu đã rời DOM: không còn trong outerHTML
-        html = trang.js("document.documentElement.outerHTML")
-        assert MK_TEST_UI not in html, "Mật khẩu không được còn trong DOM sau khi gửi"
-        # Chọn lại từ dropdown → email điền, mật khẩu hiện «•••• đã lưu», không đổ mật khẩu thật
-        id_tk = trang.js("document.querySelector('[data-tk-da-luu]').getAttribute('data-tk-da-luu')")
-        trang.js(f"document.getElementById('dl-chon').value = {json.dumps(id_tk)}")
-        trang.js("document.getElementById('dl-chon').dispatchEvent(new Event('change', {bubbles: true}))")
-        trang.cho(
-            "document.getElementById('dl-mat-khau').placeholder === '•••• đã lưu'",
-            mo_ta="placeholder •••• đã lưu",
-        )
-        assert trang.js("document.getElementById('dl-mat-khau').value") == ""
-        assert MK_TEST_UI not in trang.js("document.documentElement.outerHTML")
-        # Dòng đã lưu: email ĐẦY ĐỦ (chủ máy 02/11/2026: bản che chỉ chừa tên miền nên không phân biệt được tài khoản) · «Đăng nhập» · «Xoá»
-        dong = trang.js("document.querySelector('[data-tk-da-luu] span').innerText")
-        assert EMAIL_TEST_UI in dong and "***" not in dong
-        assert trang.js(f"document.querySelector('[data-dl-dang-nhap=\"{id_tk}\"]')") is not None
-        assert trang.js(f"document.querySelector('[data-dl-xoa=\"{id_tk}\"]')") is not None
+        assert MK_TEST_UI not in trang.js("document.documentElement.outerHTML"), "Mật khẩu không được còn trong DOM sau khi gửi"
+        assert trang.js("document.querySelectorAll('#ds-tk').length") == 0
+        # Bảng chi tiết: bí mật luôn ẩn, không đổ mật khẩu thật ra trang
+        assert "••••• đã lưu" in trang.chu("[data-k268-gt=bi-mat]")
+        assert MK_TEST_UI not in trang.js("document.body.innerText")
+        # Email ĐẦY ĐỦ (chủ máy 02/11/2026: bản che chỉ chừa tên miền nên không phân biệt được tài khoản) · «Đăng nhập» · «Xoá»
+        assert trang.js("document.querySelector('#k268-ct h2').textContent") == EMAIL_TEST_UI
+        assert trang.js("!!document.getElementById('k268-dn-tu-dong')") is True
+        assert trang.js("!!document.querySelector('[data-dl-xoa]')") is True
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy vì không có Chrome")
 def test_ui_xoa_phai_bam_hai_lan_va_cong_tac_mac_dinh_bat(trang, tmp_path, monkeypatch):
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         mk_admin = _mo_tab_tai_khoan(trang, w)
-        # Lưu một tài khoản qua giao diện
-        _go_email_va_mat_khau(trang)
-        trang.bam("document.getElementById('nut-dl-luu')")
-        _xac_nhan_lai(trang, mk_admin)
-        trang.cho(
-            "document.querySelectorAll('[data-tk-da-luu]').length === 1",
-            mo_ta="dòng tài khoản đã lưu xuất hiện",
-        )
-        id_tk = trang.js("document.querySelector('[data-tk-da-luu]').getAttribute('data-tk-da-luu')")
+        _them_va_dang_nhap(trang, mk_admin)
         # Bấm «Xoá» lần 1 → chỉ hỏi lại, chưa xoá
-        trang.bam(f"document.querySelector('[data-dl-xoa=\"{id_tk}\"]')")
-        trang.cho(
-            f"document.querySelector('[data-dl-xoa=\"{id_tk}\"]').innerText.includes('lần nữa')",
-            mo_ta="nút xoá chuyển sang hỏi lại",
-        )
-        assert trang.js("document.querySelectorAll('[data-tk-da-luu]').length") == 1
-        # Bấm lần 2 → xoá thật
-        trang.bam(f"document.querySelector('[data-dl-xoa=\"{id_tk}\"]')")
-        trang.cho(
-            "document.querySelectorAll('[data-tk-da-luu]').length === 0",
-            mo_ta="dòng tài khoản biến mất sau lần bấm thứ hai",
-        )
+        trang.bam("document.querySelector('[data-dl-xoa]')")
+        trang.cho("document.querySelector('[data-dl-xoa]').innerText.includes('lần nữa')", mo_ta="nút xoá chuyển sang hỏi lại")
+        assert trang.js("(document.querySelector('#o-chon .ten') || {}).textContent") == EMAIL_TEST_UI
+        # Bấm lần 2 → xoá thật (có thể cần xác nhận lại)
+        trang.bam("document.querySelector('[data-dl-xoa]')")
+        try:
+            trang.cho("(document.querySelector('#o-chon .ten') || {}).textContent === 'Chưa có tài khoản'", han=4, mo_ta="tài khoản biến mất")
+        except AssertionError:
+            _xac_nhan_lai(trang, mk_admin)
+            trang.cho("(document.querySelector('#o-chon .ten') || {}).textContent === 'Chưa có tài khoản'", han=15, mo_ta="tài khoản biến mất sau lần bấm thứ hai")
         # Công tắc «Tự đăng nhập lại khi phiên hết hạn» mặc định BẬT
         assert trang.js("document.getElementById('dl-tu-dong-lai').checked") is True

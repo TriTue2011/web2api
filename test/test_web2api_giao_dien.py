@@ -94,14 +94,14 @@ def bam_chuot(trang, expr: str, mo_ta: str = ""):
 
 
 def nhom_tk(trang) -> list[list[str]]:
-    """Chip nhóm tài khoản ở Hệ thống → AI → Tài khoản: [[tên, số đếm], …] (như «Gmail 3 · API 4» của demo)."""
-    return trang.js("[...document.querySelectorAll('[data-nhom]')].map((b) => [...b.querySelectorAll('span')].map((x) => x.textContent))")
+    """Chip nhà ở Hệ thống → AI → Tài khoản (NV282): [[tên, số đếm], …] — «Tất cả», rồi từng nhà theo bảng phân loại của lõi."""
+    return trang.js("[...document.querySelectorAll('#k282-nha [data-nha]')].map((b) => [b.childNodes[0].textContent.trim(), b.querySelector('.n').textContent])")
 
 
 def cho_nhom_tk(trang, han: float = 15):
     """Chờ chip nhóm tải xong (bảng phân loại về) — NV268."""
-    trang.cho("document.querySelector('[aria-label=\"Nhóm tài khoản\"]')?.innerText.includes('Google')", han=han,
-              mo_ta="chip nhóm tải xong")
+    trang.cho("document.querySelector('#k282-nha')?.innerText.includes('Google')", han=han,
+              mo_ta="chip nhà tải xong")
 
 
 def khong_tran(trang) -> bool:
@@ -244,7 +244,7 @@ def test_cai_xong_vao_studio_rong_roi_them_khoa_o_he_thong_ai(trang, tmp_path, m
         cho_nhom_tk(trang)
         assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: chip «Tất cả» + nhóm từ dữ liệu
         # NV268: khối xổ provider cũ đã bỏ; khu hiện nhóm trống.
-        assert "Chưa có tài khoản nào trong nhóm này." in trang.js("document.querySelector('#k268').innerText")
+        assert "Chưa có tài khoản nào" in trang.js("document.querySelector('#k268').innerText")
         trang.cho("document.activeElement?.closest('#form-them') && document.activeElement.type === 'password'", mo_ta="focus vào ô khoá")
         trang.js("window.__khongTaiLai = 1")
         trang.go("#form-them [data-truong='api_keys'] input", K_TOT)
@@ -449,10 +449,10 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         assert trang.js("document.getElementById('bang-ai').dataset.muc") == "tai_khoan"
         cho_nhom_tk(trang)
         assert nhom_tk(trang) == [["Tất cả", "0"], ["Google", "0"], ["ChatGPT", "0"], ["Grok", "0"], ["Claude", "0"], ["Muse", "0"]]  # NV268: chip «Tất cả» + nhóm từ dữ liệu
-        assert trang.chu("#nut-them") == "＋ Tài khoản"
+        assert trang.chu("#nut-them") == "+ Thêm tài khoản"
         assert trang.js("getComputedStyle(document.getElementById('nut-them')).backgroundColor") == "rgb(24, 24, 22)"  # nút đen nổi bật
         # NV268: khối xổ provider cũ đã bỏ; khu hiện nhóm trống.
-        assert "Chưa có tài khoản nào trong nhóm này." in trang.js("document.querySelector('#k268').innerText")
+        assert "Chưa có tài khoản nào" in trang.js("document.querySelector('#k268').innerText")
         khong_dieu_khien_chet(trang)
 
         # Provider: «AI giả 0» với Model 0 | Tài khoản 0, khung rỗng + «Mở tab Tài khoản»; không gọi …/suc-khoe.
@@ -473,8 +473,8 @@ def test_ai_vua_cai_chua_khoa_co_tai_khoan_va_provider(trang, tmp_path, monkeypa
         trang.bam("document.getElementById('nut-mo-tk')")
         trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'tai_khoan' && document.querySelector('#form-them')?.dataset.module === 'ai-gia'",
                   mo_ta="Tài khoản › Thêm API")
-        assert trang.js("[...document.querySelectorAll('[data-chon-module]')].map((b) => [b.dataset.chonModule, b.getAttribute('aria-pressed')])") \
-            == [["ai-gia", "true"]]
+        assert trang.js("document.querySelectorAll('[data-cach-them]').length") == 0, "một nhà một cách: không hỏi (NV282)"
+        assert trang.js("document.querySelector('#form-them').dataset.module") == "ai-gia"
         # Khoá hỏng → không lưu, dải báo lỗi nói rõ từng khoá; khoá rời trang ngay khi gửi.
         trang.go("#form-them [data-truong='api_keys'] input", K_HONG)
         trang.bam("document.getElementById('nut-them-luu')")

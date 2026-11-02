@@ -9,8 +9,8 @@ HTML = (GOC / "web" / "He-thong-AI.dc.html").read_text(encoding="utf-8")
 
 
 def test_nut_dang_nhap_tay_la_nut_goi_ham_khong_phai_lien_ket_tab():
-    assert re.search(r'<button[^>]*id="k268-dn-tay"[^>]*onClick="\{\{khuCt\.dangNhapTay\}\}"', HTML)
-    assert 'href="{{khuCt.duongTay}}"' not in HTML
+    assert re.search(r'<button[^>]*id="k268-dn-tay"[^>]*onClick="\{\{ct\.dangNhapTay\}\}"', HTML)
+    assert 'href="{{ct.duongTay}}"' not in HTML
 
 
 def test_khong_con_lien_ket_mo_trinh_duyet_roi():
@@ -86,7 +86,7 @@ def test_dang_nhap_tu_dong_goi_ben_thuc_thi_co_dich_vu_trinh_duyet_va_bao_loi_tr
 def test_khung_xem_khong_dung_the_anh_khi_chua_co_anh_va_co_the_phong_to():
     """Ảnh chụp 28/10/2026: khung hiện biểu tượng ảnh hỏng khi chưa có ảnh; cần phóng to để theo dõi (điện thoại)."""
     assert "coAnh: s.xemId === id && !!s.xemAnh" in HTML and "chuaAnh: s.xemId === id && !s.xemAnh" in HTML
-    assert '<sc-if value="{{khuCt.coAnh}}"><img id="k268-xem-anh"' in HTML
+    assert '<sc-if value="{{ct.coAnh}}"><img id="k268-xem-anh"' in HTML
     assert 'id="k268-xem-to"' in HTML and "khuPhongTo()" in HTML and "requestFullscreen" in HTML
-    assert ".k268-xem.to{position:fixed;inset:0" in HTML                         # dự phòng khi không có toàn màn hình: phủ kín cửa sổ
+    assert ".k282-xem.to{position:fixed;inset:0" in HTML                         # dự phòng khi không có toàn màn hình: phủ kín cửa sổ
     assert "xemTo: false" in HTML                                                # thoát khung xem thì thu nhỏ lại

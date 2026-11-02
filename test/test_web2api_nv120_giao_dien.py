@@ -4,8 +4,8 @@ LƯU Ý: Hộp cát không có Chrome nên các test này sẽ tự động bỏ
 Người điều phối sẽ chạy test này trong môi trường có Chrome thật.
 
 Bao quát:
-1. Hàng ô nhập: Email (type=email), Mật khẩu (type=password, nút Hiện/Ẩn >= 44px), OTP tuỳ chọn.
-2. Thêm/xoá hàng: Nút «＋ Thêm tài khoản khác» thêm hàng (tối đa 20), nút «Xoá» xoá đúng hàng.
+1. Ô nhập: Email (type=email), Mật khẩu (type=password, nút Hiện/Ẩn >= 44px), OTP tuỳ chọn.
+2. NV282: form chỉ MỘT hàng ô nhập (không còn nút «＋ Thêm tài khoản khác»/«Xoá» hàng; nhiều tài khoản đi qua «Dán nhiều dòng»).
 3. Bảo mật bí mật: Sau khi bấm «Đăng nhập», mật khẩu và OTP bị xoá sạch khỏi state và DOM
    (không còn chuỗi bí mật trong document.documentElement.outerHTML, localStorage, sessionStorage).
 4. Dòng kết quả: Email che dạng t***@example.com, trạng thái rõ ràng.
@@ -30,6 +30,7 @@ try:
     from gia import MayChuThat
     from test_web2api_nv88_api import MA_PROVIDER, MANIFEST_PROVIDER, MAT_KHAU_GIA, MODULE_ID
     from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
+    from ui_them_tk import chon_cach, mo_form
     CO_UI = True
 except ImportError:
     CO_UI = False
@@ -83,17 +84,14 @@ def test_ui_hang_nhap_them_xoa_va_an_hien_mat_khau(trang, tmp_path, monkeypatch)
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-AI.dc.html")
-        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
-        trang.bam("document.getElementById('nut-them')")
+        mo_form(trang)
+        chon_cach(trang, "dn")
 
-        trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chọn module")
-        trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-
-        # 1. Ban đầu có đúng 1 hàng nhập, không có nút xoá
-        trang.cho("document.getElementById('danh-sach-hang-nhap')", mo_ta="danh sách hàng nhập")
-        so_hang = trang.js("document.querySelectorAll('[data-hang-nhap]').length")
-        assert so_hang == 1, f"Ban đầu phải có 1 hàng, thực tế: {so_hang}"
-        assert trang.js("document.querySelector('[data-xoa-hang=\"0\"]')") is None, "Hàng duy nhất không có nút xoá"
+        # 1. NV282: đúng MỘT hàng ô nhập; không còn danh sách hàng, nút thêm hàng, nút xoá hàng
+        so_hang = trang.js("document.querySelectorAll('[data-nhap-email]').length")
+        assert so_hang == 1, f"Phải có đúng 1 hàng nhập, thực tế: {so_hang}"
+        for sel in ("#danh-sach-hang-nhap", "[data-hang-nhap]", "#nut-them-hang-tk", "[data-xoa-hang]"):
+            assert trang.js(f"document.querySelector({sel!r})") is None, f"{sel} không còn trong form"
 
         # 2. Thử nghiệm nút Hiện/Ẩn mật khẩu
         o_mk = "document.querySelector('[data-nhap-mat-khau=\"0\"]')"
@@ -106,60 +104,46 @@ def test_ui_hang_nhap_them_xoa_va_an_hien_mat_khau(trang, tmp_path, monkeypatch)
         trang.bam(nut_hien)
         assert trang.js(f"{o_mk}.type") == "password"
 
-        # 3. Thêm hàng thứ 2
-        trang.bam("document.getElementById('nut-them-hang-tk')")
-        trang.cho("document.querySelector('[data-hang-nhap=\"1\"]')", mo_ta="hàng thứ 2 xuất hiện")
-        assert trang.js("document.querySelectorAll('[data-hang-nhap]').length") == 2
-        # Giờ cả 2 hàng đều có nút xoá
-        assert trang.js("document.querySelector('[data-xoa-hang=\"0\"]')") is not None
-        assert trang.js("document.querySelector('[data-xoa-hang=\"1\"]')") is not None
-
-        # 4. Xoá hàng thứ 2
-        trang.bam("document.querySelector('[data-xoa-hang=\"1\"]')")
-        trang.cho("!document.querySelector('[data-hang-nhap=\"1\"]')", mo_ta="hàng thứ 2 biến mất")
-        assert trang.js("document.querySelectorAll('[data-hang-nhap]').length") == 1
-
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy vì không có Chrome")
 def test_ui_dang_nhap_va_xoa_sach_bi_mat_khoi_dom(trang, tmp_path, monkeypatch):
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-AI.dc.html")
-        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
-        trang.bam("document.getElementById('nut-them')")
+        mo_form(trang)
+        chon_cach(trang, "dn")
 
-        trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chọn module")
-        trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-        trang.cho("document.getElementById('danh-sach-hang-nhap')", mo_ta="danh sách hàng nhập")
-
-        # Điền thông tin vào hàng 0
+        # Điền thông tin vào hàng 0 (khoá OTP chỉ hiện khi bấm «Có xác minh 2 bước?»)
         trang.go("[data-nhap-email=\"0\"]", "testuser@example.com")
         trang.go("[data-nhap-mat-khau=\"0\"]", MK_TEST_UI)
+        trang.bam("document.getElementById('nut-mo-otp')")
+        trang.cho("!!document.querySelector('[data-nhap-otp=\"0\"]')", han=5, mo_ta="ô khoá OTP")
         trang.go("[data-nhap-otp=\"0\"]", OTP_BASE32_UI)
+        # Giá trị đang gõ KHÔNG được nằm trong thuộc tính HTML (ô không gắn `value`)
+        assert MK_TEST_UI not in trang.js("document.documentElement.outerHTML")
+        assert OTP_BASE32_UI not in trang.js("document.documentElement.outerHTML")
 
-        # Bấm nút Đăng nhập
+        # Bấm nút Đăng nhập (phiên web → hộp xác nhận lại), rồi tài khoản mới được chọn
         trang.bam("document.getElementById('nut-chay-hang-nhap')")
+        trang.cho("!!document.querySelector('dialog input[type=\"password\"]')", han=10, mo_ta="hộp xác nhận lại")
+        trang.go("dialog input[type=\"password\"]", "MatKhauAdminBaoMat123456")
+        nut = "[...document.querySelectorAll('dialog button')].find((b) => b.textContent.includes('Xác nhận'))"
+        trang.cho(f"!!({nut})", han=5)
+        trang.bam(nut, "nút Xác nhận")
 
-        # Khung tiến độ xuất hiện
-        trang.cho("document.getElementById('tien-do-tu-dong')", mo_ta="khung tiến độ")
-
-        # Mật khẩu và OTP phải bị xoá sạch khỏi DOM và state ngay lập tức
+        # Mật khẩu và OTP phải bị xoá sạch khỏi DOM và state ngay sau khi gửi
+        trang.cho("(document.querySelector('#o-chon .ten') || {}).textContent === 'testuser@example.com'", han=20, mo_ta="tài khoản mới được chọn")
         html_toan_bo = trang.js("document.documentElement.outerHTML")
         local_store = trang.js("JSON.stringify(localStorage)")
         session_store = trang.js("JSON.stringify(sessionStorage)")
-
         assert MK_TEST_UI not in html_toan_bo, "Mật khẩu vẫn còn trong DOM sau khi đăng nhập!"
         assert MK_TEST_UI not in local_store, "Mật khẩu lọt vào localStorage!"
         assert MK_TEST_UI not in session_store, "Mật khẩu lọt vào sessionStorage!"
         assert OTP_BASE32_UI not in html_toan_bo, "Khoá OTP vẫn còn trong DOM sau khi đăng nhập!"
+        assert OTP_BASE32_UI not in local_store and OTP_BASE32_UI not in session_store
 
-        # Chờ lượt chạy xong
-        trang.cho("/Đã xong/.test(document.getElementById('tom-tat-tu-dong').innerText)", han=20, mo_ta="lượt xong")
-
-        # Dòng kết quả hiện email dạng che: t***@example.com
-        ket_qua_text = trang.chu("[data-ket-qua-tu-dong=\"testuser@example.com\"]")
-        assert "t***@example.com" in ket_qua_text
-        assert "Xong — đã thêm" in ket_qua_text or "Xong" in ket_qua_text
+        # Đăng nhập xong: lõi ghi sổ, chấm chuyển xanh (kết quả thật), email hiển thị đầy đủ theo quy tắc quản trị
+        trang.cho("document.querySelector('#o-chon .k282-cham').classList.contains('ok')", han=25, mo_ta="chấm xanh sau khi đăng nhập xong")
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy vì không có Chrome")
@@ -169,12 +153,8 @@ def test_ui_dap_ung_360px_khong_vo_giao_dien(trang, tmp_path, monkeypatch):
         # Đặt viewport hẹp 360px (chuẩn điện thoại nhỏ)
         trang.khung(360, 640, dien_thoai=True)
         trang.di(f"{w.url}/He-thong-AI.dc.html")
-        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
-        trang.bam("document.getElementById('nut-them')")
-
-        trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chọn module")
-        trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-        trang.cho("document.getElementById('danh-sach-hang-nhap')", mo_ta="danh sách hàng nhập")
+        mo_form(trang)
+        chon_cach(trang, "dn")
 
         # Kiểm tra không tràn ngang màn hình
         scroll_w = trang.js("document.documentElement.scrollWidth")
@@ -185,8 +165,8 @@ def test_ui_dap_ung_360px_khong_vo_giao_dien(trang, tmp_path, monkeypatch):
         nut_dn_h = trang.js("document.getElementById('nut-chay-hang-nhap').getBoundingClientRect().height")
         assert nut_dn_h >= 44, f"Nút đăng nhập vùng chạm < 44px: {nut_dn_h}px"
 
-        nut_them_h = trang.js("document.getElementById('nut-them-hang-tk').getBoundingClientRect().height")
-        assert nut_them_h >= 44, f"Nút thêm tài khoản vùng chạm < 44px: {nut_them_h}px"
+        nut_otp_h = trang.js("document.getElementById('nut-mo-otp').getBoundingClientRect().height")
+        assert nut_otp_h >= 44, f"Nút «Thêm khoá OTP» vùng chạm < 44px: {nut_otp_h}px"
 
         # Kiểm tra cỡ chữ các ô nhập >= 16px (tránh zoom iOS)
         co_chu_email = trang.js("parseInt(getComputedStyle(document.querySelector('[data-nhap-email=\"0\"]')).fontSize)")
@@ -207,12 +187,8 @@ def test_ui_2fa_phan_biet_che_do_danh_tinh_va_truc_tiep(trang, tmp_path, monkeyp
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-AI.dc.html")
-        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
-        trang.bam("document.getElementById('nut-them')")
-
-        trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chọn module")
-        trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-        trang.cho("document.getElementById('danh-sach-hang-nhap')", mo_ta="danh sách hàng nhập")
+        mo_form(trang)
+        chon_cach(trang, "dn")
 
         # 1. Giả lập state có kết quả cho_2fa ở chế độ 'danh_tinh'
         trang.js("""

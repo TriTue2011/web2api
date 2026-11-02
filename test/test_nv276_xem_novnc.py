@@ -198,11 +198,11 @@ def test_giao_dien_co_nut_theo_doi_novnc_rieng():
 
 
 def test_giao_dien_nut_xuong_dong_khong_tran_ngang():
-    """Hàng nút .k268-hd dùng flex-wrap:wrap nên nút mới xuống dòng ở 390 px thay vì tràn ngang
+    """Hàng nút .k282-hd (trước NV282: .k268-hd) dùng flex-wrap:wrap nên nút mới xuống dòng ở 390 px thay vì tràn ngang
     (kiểm tĩnh; chưa đo bằng Chrome thật — xem báo cáo)."""
     import re
 
-    m = re.search(r"\.k268-hd\{([^}]*)\}", HTML)
+    m = re.search(r"\.k282-hd\{([^}]*)\}", HTML)
     assert m and "flex-wrap:wrap" in m.group(1)
 
 

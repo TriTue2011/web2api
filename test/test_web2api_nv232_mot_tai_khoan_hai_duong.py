@@ -402,8 +402,8 @@ def _noi_dung_trang() -> str:
 
 def test_trang_co_duong_dung_va_nut_lien_ket():
     s = _noi_dung_trang()
-    assert "trang_thai_duong" in s, "trang phải đọc trạng thái từng đường"
-    assert "duongDs" in s, "mỗi tài khoản phải dựng danh sách đường dùng"
+    assert "api/tai-khoan/duong-dung" in s, "trang phải đọc trạng thái từng đường (NV282: qua /duong-dung)"
+    assert "dlDuong" in s and "codex.trang_thai" in s, "bảng chi tiết phải dựng nút theo trạng thái đường codex"
     assert "lien-ket-codex" in s, "thiếu gọi API liên kết Codex"
     assert "thu-lai-codex" in s, "thiếu gọi API thử liên kết lại"
     assert "hoan-tat" in s, "thiếu gọi API hoàn tất liên kết"

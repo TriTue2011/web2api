@@ -173,16 +173,27 @@ def gieo_tai_khoan_da_luu(w):
         assert r.status_code == 200, r.text
 
 
-def _bam_o_dau(trang, mo_ta="bấm ô tài khoản đầu tiên"):
-    trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 1", han=15, mo_ta="có ô tài khoản để bấm")
-    trang.bam("document.querySelector('#k268 .k268-tk')", mo_ta)
-    trang.cho("!!document.querySelector('#k268-ct.mo')", han=8, mo_ta="bảng chi tiết mở")
+def _cho_ds(trang, so: int):
+    """Chờ khu Tài khoản (NV282) nạp đủ `so` tài khoản và bảng phân loại (tên nhà hiển thị đúng)."""
+    trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản #k268 dựng")
+    trang.cho(f"document.querySelector('#k282-nha [data-nha=\"\"] .n') && document.querySelector('#k282-nha [data-nha=\"\"] .n').textContent === '{so}'", han=15, mo_ta=f"đủ {so} tài khoản")
+    trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15, mo_ta="bảng phân loại tải xong")
+
+
+def _bam_o_dau(trang, mo_ta="chọn tài khoản đầu trong ô chọn"):
+    """Mở ô chọn, bấm dòng đầu tiên rồi đợi bảng chi tiết của tài khoản đó."""
+    trang.cho("!!document.querySelector('#o-chon')", han=15, mo_ta="ô chọn tài khoản")
+    if not trang.js("!!document.querySelector('#ds-tk')"):
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("!!document.querySelector('#ds-tk [role=option]')", han=8, mo_ta="danh sách mở")
+    id_ = trang.js("document.querySelector('#ds-tk [role=option]').dataset.tk")
+    trang.bam("document.querySelector('#ds-tk [role=option]')", mo_ta)
+    trang.cho(f"document.querySelector('#k268-ct').getAttribute('data-k268-ct') === {id_!r}", han=8, mo_ta="bảng chi tiết mở")
 
 
 def test_a_tab_tai_khoan_dung_hai_khoi_kem_so_khoa_khong_nguon_khong_khoa(trang, tmp_path, monkeypatch):
-    """(a) tab Tài khoản (khu #k268): nhóm của ai-mot (Google) và ai-hai (ChatGPT) mỗi nhóm hiện đúng
-    số tài khoản (2) ở .k268-nhom-dau .n; nhóm của ai-ba (Grok) hiện 0 + câu rỗng + không có ô nào thuộc nó;
-    tổng số .k268-tk = 4. Tab Provider: #chon-pv có đúng 2 provider, tab con [data-pv-tab=tk] ghi số khoá (2),
+    """(a) tab Tài khoản (khu #k268, NV282): chip nhà Google (ai-mot) và ChatGPT (ai-hai) mỗi nhà đếm đúng
+    số tài khoản (2); nhà của ai-ba (Grok) đếm 0 + câu rỗng; tổng 4; bấm chip nhà thì ô chọn chỉ liệt kê nhà đó. Tab Provider: #chon-pv có đúng 2 provider, tab con [data-pv-tab=tk] ghi số khoá (2),
     không có ai-ba.
     (Lưu ý: NV268 đã bỏ các khối xổ provider [data-khoi-pv] ở tab Tài khoản để thay bằng khu #k268 nhóm theo tài khoản đã lưu)."""
     with moi_truong_ba_nguon(tmp_path, monkeypatch) as w:
@@ -193,28 +204,21 @@ def test_a_tab_tai_khoan_dung_hai_khoi_kem_so_khoa_khong_nguon_khong_khoa(trang,
 
         dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản #k268 dựng")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 4", han=15, mo_ta="đúng 4 ô tài khoản")
-        trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15, mo_ta="bảng phân loại tải xong")
+        _cho_ds(trang, 4)
 
-        # Nhóm của ai-mot (Google) hiện 2 tài khoản
-        dem_mot = trang.chu("[data-k268-nhom='google'] .k268-nhom-dau .n")
-        assert "2 tài khoản" in dem_mot
-        assert trang.js("document.querySelectorAll('[data-k268-nhom=\"google\"] .k268-tk').length") == 2
-
-        # Nhóm của ai-hai (ChatGPT) hiện 2 tài khoản
-        dem_hai = trang.chu("[data-k268-nhom='chatgpt'] .k268-nhom-dau .n")
-        assert "2 tài khoản" in dem_hai
-        assert trang.js("document.querySelectorAll('[data-k268-nhom=\"chatgpt\"] .k268-tk').length") == 2
-
-        # Nhóm của ai-ba (Grok) hiện 0 tài khoản + câu rỗng + không có ô nào thuộc nó
-        dem_ba = trang.chu("[data-k268-nhom='grok'] .k268-nhom-dau .n")
-        assert "0 tài khoản" in dem_ba
-        assert "Chưa có tài khoản nào trong nhóm này." in trang.chu("[data-k268-nhom='grok'] .k268-rong")
-        assert trang.js("document.querySelectorAll('[data-k268-nhom=\"grok\"] .k268-tk').length") == 0
-
-        # Tổng số .k268-tk = 4
-        assert trang.js("document.querySelectorAll('#k268 .k268-tk').length") == 4
+        # Chip nhà (NV282): Google 2, ChatGPT 2, Grok (ai-ba) 0; tổng 4
+        dem = trang.js("Object.fromEntries([...document.querySelectorAll('#k282-nha [data-nha]')].map(b => [b.dataset.nha, b.querySelector('.n').textContent]))")
+        assert dem["google"] == "2" and dem["chatgpt"] == "2" and dem["grok"] == "0" and dem[""] == "4", dem
+        # MỘT ô chọn; bấm nhà → danh sách trong ô chọn chỉ có tài khoản của nhà đó
+        trang.bam("document.querySelector('#k282-nha [data-nha=\"google\"]')", "chip Google")
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("document.querySelectorAll('#ds-tk [role=option]').length === 2", han=8, mo_ta="2 tài khoản Google")
+        assert sorted(trang.js("[...document.querySelectorAll('#ds-tk [role=option] .e')].map(e => e.textContent)")) == ["hai.gia@example.com", "mot.gia@example.com"]
+        trang.js("document.querySelector('#o-chon').click()")
+        # Nhà của ai-ba (Grok) hiện 0 + câu rỗng + không có bảng chi tiết của nhà khác
+        trang.bam("document.querySelector('#k282-nha [data-nha=\"grok\"]')", "chip Grok")
+        assert "Nhà này chưa có tài khoản nào" in trang.chu("#k268-ct")
+        assert trang.js("document.querySelectorAll('#k268-ct .k282-luoi').length") == 0
 
         # Tab Provider: #chon-pv có đúng 2 provider, tab con [data-pv-tab=tk] ghi số khoá (2), không có ai-ba
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
@@ -230,48 +234,46 @@ def test_a_tab_tai_khoan_dung_hai_khoi_kem_so_khoa_khong_nguon_khong_khoa(trang,
 
 
 def test_b_khoi_thu_gon_luc_mo_bam_tieu_de_xo_va_dong(trang, tmp_path, monkeypatch):
-    """(b) lúc mở trang #k268-ct KHÔNG có lớp mo, mọi .k268-tk aria-pressed=false;
-    bấm chip [data-k268-loc=…] của một nhóm ⇒ lọc thật (chỉ thấy ô của nhóm đó, không lẫn nhóm khác);
-    bấm ô ⇒ #k268-ct.mo và data-k268-ct = id ô đó, aria-pressed=true; bấm #k268-dong ⇒ đóng."""
+    """(b, NV282) lúc mở trang danh sách trong ô chọn ĐÓNG (aria-expanded=false); bấm chip nhà lọc thật (chỉ thấy tài khoản
+    của nhà đó, không lẫn nhà khác); bấm dòng ⇒ bảng chi tiết (data-k268-ct = id) và danh sách đóng; Esc đóng danh sách."""
     with moi_truong_ba_nguon(tmp_path, monkeypatch) as w:
         lien_ket_khoa(w, "ai-mot", [K1, K2])
         lien_ket_khoa(w, "ai-hai", [K3, K4])
         gieo_tai_khoan_da_luu(w)
 
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản #k268 dựng")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 4", han=15, mo_ta="đủ 4 ô")
-        trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15, mo_ta="bảng phân loại tải xong")
-
-        # Lúc mở trang: #k268-ct KHÔNG có lớp mo, mọi .k268-tk aria-pressed=false
         trang.khung(1280, 800)
-        assert trang.js("!document.querySelector('#k268-ct')?.classList.contains('mo')")
-        so_chua_chon = trang.js("document.querySelectorAll('#k268 .k268-tk[aria-pressed=\"false\"]').length")
-        assert so_chua_chon == 4
+        trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
+        _cho_ds(trang, 4)
 
-        # Bấm chip lọc nhóm google ⇒ chỉ thấy các ô của nhóm google (2 ô), không lẫn nhóm khác
-        trang.bam("document.querySelector('[data-k268-loc=\"google\"]')", mo_ta="lọc nhóm google")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 2", mo_ta="chỉ còn 2 ô nhóm google")
-        assert trang.js("document.querySelector('[data-k268-nhom=\"chatgpt\"]')") is None
-        assert trang.js("document.querySelector('[data-k268-nhom=\"grok\"]')") is None
+        # Lúc mở trang: danh sách đóng
+        assert trang.js("document.querySelector('#o-chon').getAttribute('aria-expanded')") == "false"
+        assert trang.js("document.querySelector('#ds-tk')") is None
 
-        # Bấm lại chip lọc google ⇒ huỷ lọc, trở lại đủ 4 ô
-        trang.bam("document.querySelector('[data-k268-loc=\"google\"]')", mo_ta="bỏ lọc nhóm google")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 4", mo_ta="trở lại 4 ô")
+        # Bấm chip nhà google ⇒ ô chọn chỉ liệt kê 2 tài khoản của nhà google
+        trang.bam("document.querySelector('[data-nha=\"google\"]')", mo_ta="lọc nhà google")
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("document.querySelectorAll('#ds-tk [role=option]').length === 2", mo_ta="chỉ còn 2 dòng nhà google")
+        assert trang.js("[...document.querySelectorAll('#ds-tk [role=option] .l')].every(l => l.textContent.startsWith('Google · '))")
+        trang.js("document.querySelector('#o-chon').click()")
 
-        # Bấm ô đầu tiên ⇒ #k268-ct.mo và data-k268-ct = id ô đó, aria-pressed=true
-        o_dau_id = trang.js("document.querySelector('#k268 .k268-tk').dataset.k268Tk")
+        # Bấm lại chip «Tất cả» ⇒ trở lại đủ 4 dòng
+        trang.bam("document.querySelector('[data-nha=\"\"]')", mo_ta="bỏ lọc")
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("document.querySelectorAll('#ds-tk [role=option]').length === 4", mo_ta="trở lại 4 dòng")
+
+        # Chọn dòng đầu ⇒ bảng chi tiết = id đó, danh sách đóng
+        o_dau_id = trang.js("document.querySelector('#ds-tk [role=option]').dataset.tk")
         assert o_dau_id
-        trang.bam("document.querySelector('#k268 .k268-tk')", mo_ta="bấm ô tài khoản đầu")
-        trang.cho("!!document.querySelector('#k268-ct.mo')", han=8, mo_ta="bảng chi tiết mở")
-        assert trang.js("document.querySelector('#k268-ct')?.dataset.k268Ct") == o_dau_id
-        assert trang.js(f"document.querySelector('[data-k268-tk=\"{o_dau_id}\"]')?.getAttribute('aria-pressed')") == "true"
+        trang.bam("document.querySelector('#ds-tk [role=option]')", mo_ta="bấm dòng đầu")
+        trang.cho(f"document.querySelector('#k268-ct').getAttribute('data-k268-ct') === {o_dau_id!r}", han=8, mo_ta="bảng chi tiết của đúng tài khoản")
+        assert trang.js("document.querySelector('#ds-tk')") is None
 
-        # Bấm #k268-dong ⇒ đóng
-        trang.bam("document.getElementById('k268-dong')", mo_ta="bấm nút đóng chi tiết")
-        trang.cho("!document.querySelector('#k268-ct.mo')", han=5, mo_ta="bảng chi tiết đóng")
-        assert trang.js(f"document.querySelector('[data-k268-tk=\"{o_dau_id}\"]')?.getAttribute('aria-pressed')") == "false"
+        # Esc đóng danh sách đang mở
+        trang.bam("document.querySelector('#o-chon')", "mở lại")
+        trang.cho("!!document.querySelector('#ds-tk')", han=5)
+        trang.cdp.goi("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27}, trang.s)
+        trang.cho("!document.querySelector('#ds-tk')", han=5, mo_ta="Esc đóng danh sách")
 
 
 def test_c_neo_tk_mo_dung_khoi(trang, tmp_path, monkeypatch):
@@ -368,19 +370,22 @@ def test_e_xoa_khoa_cuoi_provider_bien_khoi_danh_sach_va_tu_chuyen_provider(tran
 
         # Sang tab Tài khoản: khu #k268 vẫn vẽ đủ, không lỗi
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản vẽ bình thường")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 4", han=15, mo_ta="khu #k268 vẽ đủ 4 ô tài khoản")
+        _cho_ds(trang, 4)
 
-        # Xoá tài khoản của nhóm chatgpt (qua nút [data-dl-xoa] ở biểu mẫu nếu có, hoặc qua API)
-        trang.bam("document.getElementById('nut-them')", mo_ta="mở form thêm để thấy danh sách đã lưu")
-        trang.cho("!!document.getElementById('form-them')", han=15)
+        # Xoá tài khoản của nhà chatgpt qua giao diện (nút Xoá bấm hai lần, cần xác nhận lại), rồi dọn nốt qua API
+        trang.bam("document.querySelector('[data-nha=\"chatgpt\"]')", mo_ta="chip ChatGPT")
+        trang.cho("document.querySelector('#k268-ct').getAttribute('data-k268-ct')", han=8)
         btn_xoa = trang.js("document.querySelector('[data-dl-xoa]')?.getAttribute('data-dl-xoa')")
-        if btn_xoa:
-            trang.bam(f"document.querySelector('[data-dl-xoa=\"{btn_xoa}\"]')", mo_ta="bấm xoá lần 1")
-            trang.cho(f"document.querySelector('[data-dl-xoa=\"{btn_xoa}\"]').textContent.includes('lần nữa')", han=5, mo_ta="chờ nút xác nhận xoá")
-            trang.bam(f"document.querySelector('[data-dl-xoa=\"{btn_xoa}\"]')", mo_ta="bấm xoá lần 2")
+        assert btn_xoa
+        trang.bam(f"document.querySelector('[data-dl-xoa=\"{btn_xoa}\"]')", mo_ta="bấm xoá lần 1")
+        trang.cho(f"document.querySelector('[data-dl-xoa=\"{btn_xoa}\"]').textContent.includes('lần nữa')", han=5, mo_ta="chờ nút xác nhận xoá")
+        trang.bam(f"document.querySelector('[data-dl-xoa=\"{btn_xoa}\"]')", mo_ta="bấm xoá lần 2")
+        trang.cho("!!document.querySelector('dialog input[type=\"password\"]') || document.querySelector('[data-nha=\"chatgpt\"] .n').textContent === '1'", han=10)
+        if trang.js("!!document.querySelector('dialog input[type=\"password\"]')"):
+            trang.go("dialog input[type=\"password\"]", "MatKhauAdminBaoMat123456")
+            trang.bam("[...document.querySelectorAll('dialog button')].find((b) => b.textContent.includes('Xác nhận'))", "Xác nhận")
+        trang.cho("document.querySelector('[data-nha=\"chatgpt\"] .n').textContent === '1'", han=15, mo_ta="số đếm nhà ChatGPT giảm còn 1")
 
-        # Đảm bảo dọn sạch các tài khoản còn lại của nhóm chatgpt qua API
         qt = {"Authorization": "Bearer " + KHOA_QT}
         with httpx.Client(base_url=w.url, timeout=15) as c:
             r = c.get("/api/tai-khoan/da-luu", headers=qt)
@@ -388,17 +393,16 @@ def test_e_xoa_khoa_cuoi_provider_bien_khoi_danh_sach_va_tu_chuyen_provider(tran
             for tid in tk_chatgpt:
                 c.delete(f"/api/tai-khoan/da-luu/{tid}", headers=qt)
 
-        # Tải lại tab Tài khoản: ô của nhóm chatgpt biến mất, số đếm giảm về 0, nhóm hiện câu rỗng
+        # Tải lại tab Tài khoản: nhà chatgpt đếm 0, bấm chip thì hiện câu rỗng, không còn bảng chi tiết
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("document.querySelector('.k268-nhom[data-k268-nhom=\"chatgpt\"] .k268-rong')", han=15, mo_ta="nhóm chatgpt hiện rỗng")
-        assert trang.js("document.querySelectorAll('.k268-nhom[data-k268-nhom=\"chatgpt\"] .k268-tk').length === 0")
-        dem_chatgpt = trang.chu(".k268-nhom[data-k268-nhom='chatgpt'] .k268-nhom-dau .n")
-        assert "0 tài khoản" in dem_chatgpt
+        trang.cho("document.querySelector('[data-nha=\"chatgpt\"] .n') && document.querySelector('[data-nha=\"chatgpt\"] .n').textContent === '0'", han=15, mo_ta="nhà chatgpt đếm 0")
+        trang.bam("document.querySelector('[data-nha=\"chatgpt\"]')", "chip ChatGPT")
+        assert "Nhà này chưa có tài khoản nào" in trang.chu("#k268-ct")
 
 
 def test_f_khong_provider_nao_co_khoa_trang_thai_rong_va_form_them_api_du_nguon(trang, tmp_path, monkeypatch):
     """(f) không provider nào có khoá: tab Provider có #pv-trong + #nut-mo-tk; bấm ⇒ sang tab Tài khoản;
-    ở đó .k268-tk = 0, MỌI nhóm hiện câu rỗng (thay cho #tk-trong cũ); bấm #nut-them ⇒ form-them
+    ở đó ô chọn «Chưa có tài khoản», mọi chip nhà đếm 0, bảng chi tiết hiện câu rỗng; form-them
     liệt kê đủ ba nguồn (kể cả 0 khoá)."""
     with moi_truong_ba_nguon(tmp_path, monkeypatch, co_nhom=False) as w:
         # Cả 3 nguồn đều 0 khoá và 0 tài khoản đã lưu
@@ -414,17 +418,15 @@ def test_f_khong_provider_nao_co_khoa_trang_thai_rong_va_form_them_api_du_nguon(
         trang.bam("document.getElementById('nut-mo-tk')")
         trang.cho("document.getElementById('bang-ai')?.dataset.muc === 'tai_khoan'", han=15, mo_ta="chuyển sang tab Tài khoản")
 
-        # Tab Tài khoản: không có ô nào (.k268-tk = 0), mọi nhóm hiện câu rỗng
+        # Tab Tài khoản (NV282): không có tài khoản nào → ô chọn «Chưa có tài khoản», mọi chip nhà đếm 0, bảng chi tiết hiện câu rỗng
         trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu k268 dựng")
-        assert trang.js("document.querySelectorAll('#k268 .k268-tk').length") == 0
-        so_rong = trang.js("document.querySelectorAll('#k268 .k268-rong').length")
-        so_nhom = trang.js("document.querySelectorAll('#k268 .k268-nhom').length")
-        assert so_nhom >= 3
-        assert so_rong == so_nhom
+        trang.cho("(document.querySelector('#o-chon .ten') || {}).textContent === 'Chưa có tài khoản'", han=15, mo_ta="ô chọn rỗng")
+        dem = trang.js("[...document.querySelectorAll('#k282-nha [data-nha] .n')].map(n => n.textContent)")
+        assert len(dem) >= 4 and set(dem) == {"0"}, dem
+        assert "Chưa có tài khoản nào" in trang.chu("#k268-ct")
         trang.chup("trang-thai-rong-tab-tai-khoan-chua-co-khoa")
 
         # moTk() đặt tkThem=true (them.co=true) nên biểu mẫu #form-them mở sẵn khi chuyển sang tab Tài khoản
-        # Chờ #form-them mở sẵn (như test gốc); chỉ khi sau một khoảng chờ ngắn vẫn chưa có thì mới bấm #nut-them
         co_form = False
         try:
             trang.cho("!!document.getElementById('form-them')", han=10, mo_ta="form thêm mở sẵn")
@@ -436,9 +438,9 @@ def test_f_khong_provider_nao_co_khoa_trang_thai_rong_va_form_them_api_du_nguon(
             trang.bam("document.getElementById('nut-them')", mo_ta="bấm nút thêm khi chưa mở sẵn")
             trang.cho("!!document.getElementById('form-them')", han=10, mo_ta="form thêm mở ra")
 
-        # Biểu mẫu liệt kê đủ ba nguồn
-        trang.cho("document.querySelectorAll('#form-them [data-chon-module]').length === 3", han=10, mo_ta="đủ ba nguồn ở biểu mẫu thêm")
-        ds_mod = trang.js("[...document.querySelectorAll('#form-them [data-chon-module]')].map(b => b.dataset.chonModule)")
+        # Biểu mẫu liệt kê đủ ba nguồn (mỗi nguồn là một «cách thêm» vì chung nhà «Khác»)
+        trang.cho("new Set([...document.querySelectorAll('#form-them [data-cach-them]')].map(b => b.dataset.cachThem.split('|')[0])).size === 3", han=10, mo_ta="đủ ba nguồn ở biểu mẫu thêm")
+        ds_mod = trang.js("[...new Set([...document.querySelectorAll('#form-them [data-cach-them]')].map(b => b.dataset.cachThem.split('|')[0]))]")
         assert sorted(ds_mod) == ["ai-ba", "ai-hai", "ai-mot"]
 
 
@@ -463,12 +465,13 @@ def test_g_them_khoa_dau_tien_cho_nguon_0_khoa_khoi_provider_xuat_hien(trang, tm
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
         trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản #k268 dựng")
         trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15, mo_ta="bảng phân loại tải xong")
-        trang.bam("document.getElementById('nut-them')")
+        if not trang.js("!!document.getElementById('form-them')"):
+            trang.bam("document.getElementById('nut-them')")
         trang.cho("!!document.getElementById('form-them')", mo_ta="mở form thêm")
 
-        # Chọn module ai-ba trong biểu mẫu thêm (bỏ nhánh data-nhom-them không tồn tại)
-        trang.cho("!!document.querySelector('[data-chon-module=\"ai-ba\"]')", han=10, mo_ta="có nút chọn module ai-ba")
-        trang.bam("document.querySelector('[data-chon-module=\"ai-ba\"]')", mo_ta="chọn module ai-ba")
+        # Chọn cách «khoá API» của module ai-ba trong biểu mẫu thêm
+        trang.cho("!!document.querySelector('[data-cach-them=\"ai-ba|api\"]')", han=10, mo_ta="có cách thêm khoá API của ai-ba")
+        trang.bam("document.querySelector('[data-cach-them=\"ai-ba|api\"]')", mo_ta="chọn cách khoá API của ai-ba")
         trang.cho("document.querySelector('#form-them')?.dataset.module === 'ai-ba'", mo_ta="form-them nhận ai-ba")
 
         # Nhập khoá K1 vào form và bấm lưu (#nut-them-luu)
@@ -519,17 +522,15 @@ def test_h_vai_phien_dang_nhap_va_khoa_hien_thi_che_an_toan(trang, tmp_path, mon
         assert K2 not in pv_chu
         assert f"…{K1[-4:]}" in pv_chu
 
-        # 4. Kiểm tra ở tab Tài khoản khu #k268 → mở ô tài khoản
+        # 4. Kiểm tra ở tab Tài khoản khu #k268 → chọn tài khoản trong ô chọn
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản #k268 dựng")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 4", han=15, mo_ta="đủ 4 ô tài khoản đã gieo")
-        trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15, mo_ta="bảng phân loại tải xong")
+        _cho_ds(trang, 4)
         _bam_o_dau(trang)
-        tk_chu = trang.js("document.body.innerText")
+        tk_chu = trang.js("document.body.innerText + document.documentElement.outerHTML")
         assert MAT_KHAU_GIA not in tk_chu
         assert TOKEN_GIA not in tk_chu
         assert KHOA_API_GIA not in tk_chu
-        assert "••••" in tk_chu
+        assert "•••" in tk_chu
 
 
 def test_thu_tu_on_dinh_khong_phu_thuoc_thu_tu_them_khoa(trang, tmp_path, monkeypatch):
@@ -558,10 +559,10 @@ def test_thu_tu_on_dinh_khong_phu_thuoc_thu_tu_them_khoa(trang, tmp_path, monkey
         # 1. Kiểm tra ở tab Tài khoản: thứ tự nhóm/ô trong #k268 ổn định theo quy tắc trong mã
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
         trang.cho("!!document.querySelector('#k268')", han=15)
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length === 2", han=15)
-        nhom_hien_thi = trang.js("[...document.querySelectorAll('#k268 [data-k268-nhom]')].map(e => e.dataset.k268Nhom)")
-        # Sắp xếp nhóm theo quy tắc thuTuNhom trong mã: nếu có bảng phân loại thì theo bang.nhom (google trước chatgpt), nếu không thì sort() (chatgpt trước google)
-        assert nhom_hien_thi[:2] in (["google", "chatgpt"], ["chatgpt", "google"])
+        _cho_ds(trang, 2)
+        nhom_hien_thi = trang.js("[...document.querySelectorAll('#k282-nha [data-nha]')].map(e => e.dataset.nha)")
+        # Thứ tự chip nhà theo bảng phân loại của lõi (không theo thứ tự thêm tài khoản): «Tất cả» rồi google, chatgpt, grok, claude, muse
+        assert nhom_hien_thi[:3] == ["", "google", "chatgpt"], nhom_hien_thi
 
         # 2. Kiểm tra ở tab Provider: danh sách chọn provider luôn là ai-hai rồi ai-mot (tên 'AI Thứ Hai' < 'AI Thứ Nhất')
         trang.di(w.url + "/He-thong-AI.dc.html#provider")
@@ -781,7 +782,7 @@ def test_bo_cuc_c_khoang_cach_ten_va_cong_tac_trong_o(trang, tmp_path, monkeypat
 
 def test_bo_cuc_d_dien_thoai_390px_khong_cuon_ngang(trang, tmp_path, monkeypatch):
     """(d) 390 px: document.documentElement.scrollWidth <= innerWidth (không cuộn ngang)
-    ở cả tab Provider (52 model) và tab Tài khoản (khu #k268 nhiều tài khoản có tên dài, mở ô popup #k268-ct.mo)."""
+    ở cả tab Provider (52 model) và tab Tài khoản (khu #k268 nhiều tài khoản có tên dài, mở ô chọn + bảng chi tiết)."""
     with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
         lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
         gieo_tai_khoan_nhieu_model(w)
@@ -796,24 +797,25 @@ def test_bo_cuc_d_dien_thoai_390px_khong_cuon_ngang(trang, tmp_path, monkeypatch
         inner_w = trang.js("window.innerWidth")
         assert scroll_pv <= inner_w, f"Tab Provider bị tràn ngang ở 390px: scrollWidth={scroll_pv} > innerWidth={inner_w}"
 
-        # Tab Tài khoản có khu #k268
+        # Tab Tài khoản có khu #k268 (một cột, MỘT ô chọn)
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu k268 xuất hiện")
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 3", han=15, mo_ta=">= 3 ô tài khoản")
+        _cho_ds(trang, 3)
         trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="bố cục 390px không tràn ngang ở Tài khoản")
         scroll_tk = trang.js("document.documentElement.scrollWidth")
         assert scroll_tk <= inner_w, f"Tab Tài khoản bị tràn ngang ở 390px: scrollWidth={scroll_tk} > innerWidth={inner_w}"
 
-        # Mở ô tài khoản ⇒ popup chi tiết #k268-ct.mo cũng không làm tràn ngang
+        # Mở ô chọn (tên dài) rồi chọn một tài khoản ⇒ danh sách và bảng chi tiết cũng không làm tràn ngang
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("!!document.querySelector('#ds-tk [role=option]')", han=8, mo_ta="danh sách mở")
+        assert trang.js("document.documentElement.scrollWidth") <= inner_w, "Danh sách ô chọn tràn ngang ở 390px"
         _bam_o_dau(trang)
-        trang.cho("!!document.querySelector('#k268-ct.mo')", han=8, mo_ta="popup chi tiết mở")
-        trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="popup 390px không tràn ngang")
-        scroll_popup = trang.js("document.documentElement.scrollWidth")
-        assert scroll_popup <= inner_w, f"Popup chi tiết bị tràn ngang ở 390px: scrollWidth={scroll_popup} > innerWidth={inner_w}"
+        trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="bảng chi tiết 390px không tràn ngang")
+        scroll_ct = trang.js("document.documentElement.scrollWidth")
+        assert scroll_ct <= inner_w, f"Bảng chi tiết bị tràn ngang ở 390px: scrollWidth={scroll_ct} > innerWidth={inner_w}"
 
 
 def test_chip_nhom_tai_khoan_xuong_dong_o_390px(trang, tmp_path, monkeypatch):
-    """Hàng chip lọc nhóm của tab Tài khoản (Tất cả / Google / ChatGPT / …) phải XUỐNG DÒNG trên điện thoại:
+    """Hàng chip lọc nhà của tab Tài khoản (Tất cả / Google / ChatGPT / …) phải XUỐNG DÒNG trên điện thoại:
     không chip nào bị cắt ở mép phải màn hình và hàng chip không tự cuộn ngang (bug 27/10: hàng chip rộng hơn
     khung, chip thứ tư «C…» bị cắt; kiểm scrollWidth của trang không bắt được vì hàng tự có thanh cuộn)."""
     with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
@@ -822,48 +824,14 @@ def test_chip_nhom_tai_khoan_xuong_dong_o_390px(trang, tmp_path, monkeypatch):
         dang_nhap_quan_tri(trang, w.url)
         trang.khung(390, 844, True)
         trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        dat = "[role=tablist][aria-label='Nhóm tài khoản']"
-        trang.cho(f"document.querySelectorAll(\"{dat} button\").length >= 3", han=15, mo_ta="có ≥ 3 chip nhóm")
+        dat = "#k282-nha"
+        trang.cho(f"document.querySelectorAll(\"{dat} button\").length >= 3", han=15, mo_ta="có ≥ 3 chip nhà")
         so_chip = trang.js(f"document.querySelectorAll(\"{dat} button\").length")
         bi_cat = trang.js(f"[...document.querySelectorAll(\"{dat} button\")]"
                           ".filter((b) => b.getBoundingClientRect().right > window.innerWidth + 0.5).length")
         cuon = trang.js(f"(() => {{ const t = document.querySelector(\"{dat}\"); return t.scrollWidth > t.clientWidth + 1; }})()")
-        assert bi_cat == 0, f"{bi_cat}/{so_chip} chip nhóm vượt mép phải màn hình 390px"
-        assert not cuon, "hàng chip nhóm tự cuộn ngang thay vì xuống dòng"
-
-
-def test_an_tung_nhom_tai_khoan_nho_sau_khi_tai_lai(trang, tmp_path, monkeypatch):
-    """«Luôn ẩn» theo từng nhóm ở khu Tài khoản: bấm «Ẩn» thì thân nhóm (các ô tài khoản) biến mất nhưng đầu nhóm
-    vẫn hiện; tải lại trang vẫn ẩn (nhớ theo trình duyệt); nhóm KHÁC không bị ẩn; bấm «Hiện» thì hiện lại."""
-    with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
-        lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
-        gieo_tai_khoan_nhieu_model(w)
-        dang_nhap_quan_tri(trang, w.url)
-        trang.khung(390, 844, True)
-        url = w.url + "/He-thong-AI.dc.html#tai-khoan"
-        trang.di(url)
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 3", han=15, mo_ta=">= 3 ô tài khoản")
-        # nhóm đầu tiên có ô tài khoản
-        nhom = trang.js("[...document.querySelectorAll('#k268 [data-k268-nhom]')]"
-                        ".find((g) => g.querySelector('.k268-tk')).getAttribute('data-k268-nhom')")
-        so_o_tong = trang.js("document.querySelectorAll('#k268 .k268-tk').length")
-        so_o_nhom = trang.js(f"document.querySelectorAll(\"#k268 [data-k268-nhom='{nhom}'] .k268-tk\").length")
-
-        trang.js(f"document.querySelector(\"[data-k268-an='{nhom}']\").click()")
-        trang.cho(f"document.querySelector(\"[data-k268-than='{nhom}']\").hidden === true", han=5, mo_ta="thân nhóm ẩn")
-        assert trang.js(f"document.querySelector(\"[data-k268-an='{nhom}']\").getAttribute('aria-expanded')") == "false"
-        # đầu nhóm vẫn hiện; ô của nhóm này không còn thấy, ô nhóm khác không đổi
-        assert trang.js(f"!!document.querySelector(\"[data-k268-loc='{nhom}']\").offsetParent")
-        assert trang.js("[...document.querySelectorAll('#k268 .k268-tk')].filter((b) => b.offsetParent).length") == so_o_tong - so_o_nhom
-
-        trang.di(url)
-        trang.js("location.reload()")
-        trang.cho("document.querySelectorAll('#k268 [data-k268-nhom]').length >= 1", han=15, mo_ta="khu Tài khoản dựng lại")
-        trang.cho(f"document.querySelector(\"[data-k268-than='{nhom}']\").hidden === true", han=8, mo_ta="vẫn ẩn sau khi tải lại")
-
-        trang.js(f"document.querySelector(\"[data-k268-an='{nhom}']\").click()")
-        trang.cho(f"document.querySelector(\"[data-k268-than='{nhom}']\").hidden === false", han=5, mo_ta="hiện lại")
-        trang.cho("document.documentElement.scrollWidth <= window.innerWidth", han=5, mo_ta="không tràn ngang")
+        assert bi_cat == 0, f"{bi_cat}/{so_chip} chip nhà vượt mép phải màn hình 390px"
+        assert not cuon, "hàng chip nhà tự cuộn ngang thay vì xuống dòng"
 
 
 def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatch):
@@ -929,54 +897,40 @@ def test_bo_cuc_e_o_loc_model_va_chon_tat_ca_khi_loc(trang, tmp_path, monkeypatc
 
 
 def test_bo_cuc_f_tab_tai_khoan_so_cot_va_chi_tiet_full_hang_va_tom_tat(trang, tmp_path, monkeypatch):
-    """(f) tab Tài khoản: 1280px thì .k268-khung 2 cột (danh sách + bảng chi tiết ~320px bên phải, bảng chi tiết nằm
-    trong khung nhìn không cuộn), <720px 1 cột (chi tiết là popup giữa màn hình), phần tóm tắt = tiêu đề nhóm kèm số đếm."""
+    """(f, NV282) tab Tài khoản: 1280px thì bảng chi tiết hai cột (hạn mức bên trái, thống kê yêu cầu bên phải) và bắt đầu
+    trong khung nhìn; <720px MỘT cột; phần tóm tắt = chip nhà kèm số đếm."""
     with moi_truong_nhieu_model(tmp_path, monkeypatch, so_model=52) as w:
         lien_ket_khoa_nhieu(w, "ai-haieu", [K1, K2])
         gieo_tai_khoan_nhieu_model(w)
         dang_nhap_quan_tri(trang, w.url)
-        trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
-        trang.cho("!!document.querySelector('#k268')", han=15)
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 3", han=15)
-
-        # 1. Phần tóm tắt = tiêu đề nhóm kèm số đếm
-        dem_nhom = trang.chu("[data-k268-nhom='chatgpt'] .k268-nhom-dau .n")
-        assert "3 tài khoản" in dem_nhom
-
-        # 2. Khổ 1280x800: .k268-khung hai cột (danh sách + bảng chi tiết ~320px bên phải, nằm trong khung nhìn)
         trang.khung(1280, 800)
-        _bam_o_dau(trang)
-        trang.cho("!!document.querySelector('#k268-ct.mo')", han=8)
-        kq_1280 = trang.js("""(() => {
-            const ds = document.querySelector('.k268-ds').getBoundingClientRect();
-            const ct = document.querySelector('#k268-ct').getBoundingClientRect();
-            return {
-                hai_cot: ct.left >= ds.right - 1,
-                rong_ct: ct.width,
-                trong_khung: ct.top >= 0 && ct.bottom <= window.innerHeight
-            };
-        })()""")
-        assert kq_1280["hai_cot"] is True, f"1280px: .k268-khung phải là 2 cột (chi tiết bên phải danh sách)"
-        assert 280 <= kq_1280["rong_ct"] <= 400, f"Bảng chi tiết ~320px, thực tế {kq_1280['rong_ct']}px"
-        assert kq_1280["trong_khung"] is True, "Bảng chi tiết phải nằm gọn trong khung nhìn 1280px, không cần cuộn"
+        trang.di(w.url + "/He-thong-AI.dc.html#tai-khoan")
+        _cho_ds(trang, 3)
 
-        # 3. Khổ <720px (390x844): một cột, chi tiết là popup giữa màn hình
+        # 1. Phần tóm tắt = chip nhà kèm số đếm
+        assert trang.js("document.querySelector('#k282-nha [data-nha=\"chatgpt\"] .n').textContent") == "3"
+
+        # 2. Khổ 1280x800: hai cột (hạn mức | thống kê), bảng chi tiết bắt đầu trong khung nhìn
+        _bam_o_dau(trang)
+        trang.cho("!!document.querySelector('.k282-luoi')", han=8)
+        kq_1280 = trang.js("""(() => {
+            const hm = document.querySelector('#k282-han-muc').getBoundingClientRect();
+            const tk = document.querySelector('#k282-thong-ke').getBoundingClientRect();
+            const ct = document.querySelector('#k268-ct').getBoundingClientRect();
+            return {hai_cot: tk.left >= hm.right - 1, trong_khung: ct.top >= 0 && ct.top < window.innerHeight};
+        })()""")
+        assert kq_1280["hai_cot"] is True, "1280px: hạn mức và thống kê phải là 2 cột"
+        assert kq_1280["trong_khung"] is True, "Bảng chi tiết phải bắt đầu trong khung nhìn 1280px"
+
+        # 3. Khổ <720px (390x844): một cột
         trang.khung(390, 844, True)
         kq_390 = trang.js("""(() => {
-            const ct = document.querySelector('#k268-ct').getBoundingClientRect();
-            const nen = document.querySelector('#k268-nen');
-            const csCt = getComputedStyle(document.querySelector('#k268-ct'));
-            const csNen = getComputedStyle(nen);
-            const lech = Math.abs(ct.left + ct.width / 2 - window.innerWidth / 2);
-            return {
-                popup_fixed: csCt.position === 'fixed',
-                lech_giua: lech < 60,
-                nen_mo: csNen.display !== 'none'
-            };
+            const hm = document.querySelector('#k282-han-muc').getBoundingClientRect();
+            const tk = document.querySelector('#k282-thong-ke').getBoundingClientRect();
+            return {mot_cot: tk.top >= hm.bottom - 1 && Math.abs(tk.left - hm.left) < 2, rong: document.documentElement.scrollWidth <= window.innerWidth + 1};
         })()""")
-        assert kq_390["popup_fixed"] is True, "<720px: bảng chi tiết phải là fixed popup giữa màn hình"
-        assert kq_390["lech_giua"] is True, "<720px: popup chi tiết phải căn giữa màn hình"
-        assert kq_390["nen_mo"] is True, "<720px: nền mờ phải hiển thị"
+        assert kq_390["mot_cot"] is True, "<720px: bảng chi tiết phải MỘT cột"
+        assert kq_390["rong"] is True
 
 
 def test_bo_cuc_g_giam_chieu_cao_52_model_o_1900px(trang, tmp_path, monkeypatch):

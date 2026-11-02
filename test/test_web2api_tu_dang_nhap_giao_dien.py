@@ -20,6 +20,7 @@ from app.main import app
 from gia import MayChuThat
 from test_web2api_nv88_api import MA_PROVIDER, MANIFEST_PROVIDER, MAT_KHAU_GIA, MODULE_ID
 from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
+from ui_them_tk import mo_dan_nhieu_dong, mo_form
 
 KHOA_QT = "khoa-quan-tri-tu-dang-nhap-0123456789ab"
 QT = {"Authorization": f"Bearer {KHOA_QT}"}
@@ -68,26 +69,22 @@ def test_vong_tu_dang_nhap_tren_giao_dien(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-AI.dc.html")
-        trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
-        trang.bam("document.getElementById('nut-them')")
+        mo_form(trang)
 
         # 1. Module KHÔNG có dang_nhap (và không có trường dán khoá): chẳng có gì để thêm → nhóm của nó không hiện,
-        #    cũng không có chip module hay khung tự động cho nó.
-        trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chip provider")
+        #    cũng không có cách thêm hay khung tự động cho nó.
+        trang.cho("!!document.getElementById('khung-tu-dong')", mo_ta="khung đăng nhập của provider duy nhất")
         assert trang.js(f"document.querySelector('[data-nhom-them=\"nhom-{ID_KHONG}\"]')") is None, "nhóm không có gì để thêm phải ẩn"
-        assert trang.js(f"document.querySelector('[data-chon-module=\"{ID_KHONG}\"]')") is None
+        assert trang.js(f"document.querySelector('[data-cach-them^=\"{ID_KHONG}|\"]')") is None
 
-        # 2. Module CÓ dang_nhap: chỉ còn một nhóm và một loại («Tài khoản») → tự chọn cả hai, không có chip nhóm/loại.
+        # 2. Module CÓ dang_nhap: chỉ còn một nhóm và một cách («đăng nhập») → tự chọn cả hai, không có chip nhà/cách.
         assert trang.js("document.querySelector('[data-nhom-them]')") is None, "một nhóm duy nhất thì tự chọn"
-        assert trang.js("document.querySelector('[data-loai-them]')") is None, "một loại duy nhất thì tự chọn"
-        trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-        trang.cho("document.getElementById('o-tu-dong')", mo_ta="ô dán danh sách")
-        assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") == "none", "nút lưu API ẩn ở loại Tài khoản"
+        assert trang.js("document.querySelector('[data-cach-them]')") is None, "một cách duy nhất thì tự chọn"
+        assert trang.js("document.querySelector('#form-them').dataset.module") == MODULE_ID
+        assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") == "none", "nút lưu API ẩn ở cách đăng nhập"
 
         # dán 3 dòng + 1 dòng lỗi + 1 dòng trùng
-        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
-            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
-            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
+        mo_dan_nhieu_dong(trang)
         trang.go("#o-tu-dong", f"a@x.com|{MAT_KHAU_GIA}\nb@x.com|mat-khau-sai-123\nc@x.com|{COOKIE_GIA}\nkhong-phai-email|x\nA@x.com|{MAT_KHAU_GIA}")
         trang.bam("document.getElementById('nut-xem-truoc')")
         trang.cho("document.getElementById('xem-truoc-tu-dong')", mo_ta="xem trước")

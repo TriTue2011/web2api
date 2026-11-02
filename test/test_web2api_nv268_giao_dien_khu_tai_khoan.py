@@ -1,13 +1,9 @@
-"""NV268 — test giao diện khu Tài khoản theo mẫu (web/He-thong-AI.dc.html).
+"""NV268 — test giao diện khu Tài khoản (web/He-thong-AI.dc.html), cập nhật theo NV282 («Khu Tài khoản web2api» đã chốt).
 
-Chrome thật + lõi thật (MayChuThat). Mọi tài khoản/khoá/mật khẩu đều GIẢ,
-không chạm mạng ngoài. Test luồng:
-  1280px: nhóm → loại → ô; bấm ô thấy bảng chi tiết ngay (không cuộn);
-  «Hiện» mới có giá trị bí mật (qua POST /api/tai-khoan/bi-mat + step-up);
-  tự che lại sau 30s (đồng hồ giả window.__khu_che_ms);
-  OTP đúng RFC 6238, khoá TOTP không lộ ở bất kỳ phản hồi nào.
-  390px: bảng chi tiết là popup giữa màn hình, nền mờ, Esc/bấm nền đóng;
-  nút đăng nhập thấy được không cần cuộn; không tràn ngang.
+Chrome thật + lõi thật (MayChuThat). Mọi tài khoản/khoá/mật khẩu đều GIẢ, không chạm mạng ngoài. Test luồng:
+  1280px: chip nhà → MỘT ô chọn (nhà · loại · trạng thái) → bảng chi tiết; bí mật LUÔN ẩn («••••• đã lưu»), chỉ ghi đè
+  (POST da-luu theo id) — trang không bao giờ xin bí mật thô; OTP đúng RFC 6238 chỉ lấy khi bấm, khoá TOTP không lộ.
+  390px: MỘT cột, không tràn ngang (thay cho bảng popup của NV268: NV282 chốt «điện thoại một cột»).
   Chế độ tối: khu dựng đủ.
 """
 from __future__ import annotations
@@ -122,11 +118,10 @@ def _vao_tab(trang, w, rong=1280, cao=800):
     trang.khung(rong, cao)
     trang.di(f"{w.url}/He-thong-AI.dc.html#tai-khoan")
     trang.cho("!!document.querySelector('#k268')", han=15, mo_ta="khu Tài khoản dựng")
-    trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 3", han=15,
-              mo_ta="đủ ô tài khoản")
-    # Chờ bảng phân loại về (tên nhóm/loại hiển thị đúng) — taiDlDs tải tuần tự.
-    trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15,
-              mo_ta="tên nhóm từ bảng phân loại")
+    trang.cho("document.querySelector('#k282-nha [data-nha=\"\"] .n') && document.querySelector('#k282-nha [data-nha=\"\"] .n').textContent === '3'", han=15,
+              mo_ta="đủ 3 tài khoản")
+    # Chờ bảng phân loại về (tên nhà/loại hiển thị đúng) — taiDlDs tải tuần tự.
+    trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15, mo_ta="tên nhà từ bảng phân loại")
 
 
 def xac_nhan_lai_step_up(trang):
@@ -142,106 +137,90 @@ def xac_nhan_lai_step_up(trang):
               "nút Xác nhận step-up")
 
 
-def _bam_o_dau(trang, mo_ta="bấm ô tài khoản đầu tiên"):
-    trang.bam("document.querySelector('#k268 .k268-tk')", mo_ta)
-    trang.cho("!!document.querySelector('#k268-ct.mo')", han=8,
-              mo_ta="bảng chi tiết mở")
+def _chon(trang, ten, mo_ta=""):
+    """Mở ô chọn, bấm đúng dòng có địa chỉ/tên `ten` (dòng đậm), đợi bảng chi tiết đổi sang tài khoản đó."""
+    if not trang.js("!!document.querySelector('#ds-tk')"):
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("!!document.querySelector('#ds-tk')", han=5, mo_ta="danh sách mở")
+    trang.bam(f"[...document.querySelectorAll('#ds-tk [role=option]')].find(li => li.querySelector('.e').textContent === {ten!r})", mo_ta or f"tài khoản {ten}")
+    trang.cho(f"document.querySelector('#k268-ct h2') && document.querySelector('#k268-ct h2').textContent === {ten!r}", han=8, mo_ta=f"bảng chi tiết của {ten}")
 
 
-# ── 1280px ──────────────────────────────────────────────────────────────────
+# ── 1280px ────────────────────────────────────────────────────────────────
 
-def test_1280_khu_nhom_loai_o(trang, tmp_path, monkeypatch):
+def test_1280_khu_nha_o_chon(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         _vao_tab(trang, w)
-        chu = trang.js("document.querySelector('#k268').innerText")
-        assert "Google" in chu and "ChatGPT" in chu, "thiếu nhóm từ dữ liệu"
-        assert "Gmail" in chu, "thiếu loại Gmail của nhóm Google"
-        assert "Web" in chu and "API" in chu, "thiếu loại Web/API của nhóm ChatGPT"
-        assert "Chính" in chu and "Phụ" in chu and "Khoá API" in chu, "thiếu ô tài khoản"
-        # Chip lọc «Tất cả» + từng nhóm nằm ở tablist trên khu
-        chip = trang.js("document.querySelector('[aria-label=\"Nhóm tài khoản\"]').innerText")
-        assert "Tất cả" in chip, "thiếu chip lọc «Tất cả»"
-        assert "Google" in chip and "ChatGPT" in chip, "thiếu chip nhóm từ dữ liệu"
-        assert "Chưa có tài khoản nào trong nhóm này." in chu, "thiếu câu nhóm trống"
-        # Bí mật KHÔNG nằm trong DOM trước khi bấm «Hiện»
-        toan_trang = trang.js("document.body.innerText")
-        assert MAT_KHAU_GIA not in toan_trang
-        assert TOKEN_GIA not in toan_trang
-        assert KHOA_API_GIA not in toan_trang
-        assert TOTP_KHOA_GIA not in toan_trang
+        chip = trang.js("document.querySelector('#k282-nha').innerText")
+        assert "Tất cả" in chip and "Google" in chip and "ChatGPT" in chip, "thiếu chip nhà từ dữ liệu"
+        # MỘT ô chọn; mở ra có đủ 3 tài khoản, mỗi dòng «nhà · loại · trạng thái»
+        assert trang.js("document.querySelectorAll('#k268 [role=combobox]').length") == 1
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("!!document.querySelector('#ds-tk')", han=5)
+        dong = trang.js("[...document.querySelectorAll('#ds-tk [role=option]')].map(li => [li.querySelector('.e').textContent, li.querySelector('.l').textContent])")
+        ten = sorted(d[0] for d in dong)
+        assert EMAIL_GG in ten and "phu.nv268@example.com" in ten and len(dong) == 3, dong
+        loai = {d[0]: d[1] for d in dong}
+        assert loai[EMAIL_GG].startswith("Google · ") and loai["phu.nv268@example.com"].startswith("ChatGPT · Web")
+        # Bí mật KHÔNG nằm trong DOM
+        toan_trang = trang.js("document.body.innerText + document.documentElement.outerHTML")
+        for gia_tri in (MAT_KHAU_GIA, TOKEN_GIA, KHOA_API_GIA, TOTP_KHOA_GIA):
+            assert gia_tri not in toan_trang
         trang.chup("nv268-khu-1280")
 
 
-def test_1280_bam_o_mo_bang_chi_tiet(trang, tmp_path, monkeypatch):
-    """Bấm ô → bảng chi tiết hiện NGAY trong khung nhìn (không cần cuộn)."""
+def test_1280_chon_tai_khoan_mo_bang_chi_tiet(trang, tmp_path, monkeypatch):
+    """Chọn tài khoản → bảng chi tiết hiện ngay dưới ô chọn, bí mật vẫn ẩn."""
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         _vao_tab(trang, w)
-        _bam_o_dau(trang)
-        trong = trang.js("""(() => {
-          const r = document.querySelector('#k268-ct').getBoundingClientRect();
-          return r.top >= 0 && r.bottom <= window.innerHeight && r.width > 200;
-        })()""")
-        assert trong, "bảng chi tiết không nằm gọn trong khung nhìn 1280px"
+        _chon(trang, EMAIL_GG)
+        assert trang.js("document.querySelector('#k268-ct').getBoundingClientRect().top < window.innerHeight"), "bảng chi tiết phải bắt đầu trong khung nhìn"
         chu = trang.js("document.querySelector('#k268-ct').innerText")
-        assert "Địa chỉ" in chu and "Chép" in chu
-        assert "Mật khẩu" in chu and "Hiện" in chu
-        # Bí mật vẫn che trước khi bấm «Hiện»
-        assert "••••" in chu
+        assert "••••• đã lưu" in chu and "Đổi" in chu
+        assert trang.js("[...document.querySelectorAll('#k268-ct button')].filter(b => ['Hiện', 'Chép'].includes(b.textContent.trim())).length") == 0, "không còn nút Hiện/Chép bí mật"
         assert MAT_KHAU_GIA not in chu
-        # Hai nút đăng nhập dùng hàm sẵn có (tay chỉ hiện khi có đường trình duyệt)
         assert trang.js("!!document.querySelector('#k268-dn-tu-dong')")
-        nut_tay = trang.js("!!document.querySelector('#k268-dn-tay')")
         assert trang.js("document.querySelector('#k268-dn-tu-dong').textContent.includes('Đăng nhập tự động')")
         trang.chup("nv268-chi-tiet-1280")
 
 
-def test_1280_hien_bi_mat_qua_step_up(trang, tmp_path, monkeypatch):
-    """«Hiện» → step-up → giá trị bí mật hiện; chỉ lấy qua POST bi-mat."""
+def test_1280_khong_bao_gio_xin_bi_mat_tho_va_chi_ghi_de(trang, tmp_path, monkeypatch):
+    """Đi qua cả ba tài khoản: không có yêu cầu `bi-mat` kiểu `bi_mat` nào; «Đổi» token = POST da-luu {id, bi_mat, kieu_bi_mat} (ghi đè)."""
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         _vao_tab(trang, w)
-        _bam_o_dau(trang)
-        trang.bam("document.querySelector('#k268-hien')", "bấm «Hiện» mật khẩu")
+        trang.js("window.__yc = []; const g = window.fetch.bind(window); window.fetch = (u, o) => { if (o && o.method && o.method !== 'GET') { let b = null; try { b = JSON.parse(o.body); } catch (e) {} window.__yc.push({u, b}); } return g(u, o); }")
+        for ten in (EMAIL_GG, "phu.nv268@example.com"):
+            _chon(trang, ten)
+        # tài khoản token: «Đổi» → ô trống → lưu → step-up → ghi đè
+        trang.bam("document.querySelector('#k282-doi-bi-mat')", "Đổi token")
+        trang.cho("!!document.querySelector('#k282-sua-bi_mat')", han=5)
+        assert trang.js("document.querySelector('#k282-sua-bi_mat').value") == ""
+        trang.go("#k282-sua-bi_mat", "tok-moi-gia-nv268-9999")
+        trang.bam("document.querySelector('#k282-sua-luu')", "Lưu")
         xac_nhan_lai_step_up(trang)
-        trang.cho(
-            f"document.querySelector('[data-k268-gt=\"bi-mat\"]').textContent.includes({MAT_KHAU_GIA!r})",
-            han=10, mo_ta="bí mật hiện sau step-up")
-        # Che lại bằng nút «Che»
-        trang.bam("document.querySelector('#k268-hien')", "bấm «Che»")
-        trang.cho("document.querySelector('[data-k268-gt=\"bi-mat\"]').textContent.includes('••••')",
-                  han=5, mo_ta="bí mật che lại")
-
-
-def test_1280_tu_che_sau_30s(trang, tmp_path, monkeypatch):
-    """Sau khi hiện, không dùng → tự che lại (đồng hồ giả rút còn 300ms)."""
-    with loi_that(tmp_path, monkeypatch) as w:
-        dang_nhap_quan_tri(trang, w.url)
-        _vao_tab(trang, w)
-        trang.js("window.__khu_che_ms = 300;")
-        _bam_o_dau(trang)
-        trang.bam("document.querySelector('#k268-hien')", "bấm «Hiện» mật khẩu")
-        xac_nhan_lai_step_up(trang)
-        trang.cho(
-            f"document.querySelector('[data-k268-gt=\"bi-mat\"]').textContent.includes({MAT_KHAU_GIA!r})",
-            han=10, mo_ta="bí mật hiện sau step-up")
-        trang.cho("document.querySelector('[data-k268-gt=\"bi-mat\"]').textContent.includes('••••')",
-                  han=8, mo_ta="tự che lại sau hẹn giờ")
+        trang.cho("!document.querySelector('#k282-sua')", han=15, mo_ta="form sửa đóng")
+        yc = trang.js("window.__yc")
+        luu = [y for y in yc if y["u"].endswith("api/tai-khoan/da-luu")][-1]["b"]
+        assert luu["bi_mat"] == "tok-moi-gia-nv268-9999" and luu["kieu_bi_mat"] == "token" and set(luu) == {"id", "bi_mat", "kieu_bi_mat"}, luu
+        assert not [y for y in yc if y["u"].endswith("api/tai-khoan/bi-mat") and (y["b"] or {}).get("hanh_dong") == "bi_mat"]
+        assert "tok-moi-gia-nv268-9999" not in trang.js("document.documentElement.outerHTML + document.body.innerText")
 
 
 def test_1280_otp_rfc6238(trang, tmp_path, monkeypatch):
-    """OTP do máy chủ tính, khớp RFC 6238; khoá TOTP không lộ ở bất kỳ đâu."""
+    """OTP do máy chủ tính, khớp RFC 6238, chỉ lấy khi bấm; khoá TOTP không lộ ở bất kỳ đâu."""
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         _vao_tab(trang, w)
-        _bam_o_dau(trang)  # ô đầu = tài khoản Google có TOTP
-        assert trang.js("!!document.querySelector('#k268-hien-otp')"), "thiếu nút Hiện OTP"
-        trang.bam("document.querySelector('#k268-hien-otp')", "bấm «Hiện» OTP")
+        _chon(trang, EMAIL_GG)  # tài khoản Google có TOTP
+        assert trang.js("!!document.querySelector('#k268-hien-otp')"), "thiếu nút «Lấy mã OTP»"
+        assert trang.js("!!document.querySelector('.k282-otp-ma')") is False, "mã không hiện trước khi bấm"
+        trang.bam("document.querySelector('#k268-hien-otp')", "bấm «Lấy mã OTP»")
         xac_nhan_lai_step_up(trang)
-        trang.cho("!!document.querySelector('[data-k268-gt=\"otp\"] span').textContent.match(/^[0-9]{6}$/)",
-                  han=10, mo_ta="mã OTP 6 số hiện")
-        ma = trang.js("document.querySelector('[data-k268-gt=\"otp\"] span').textContent")
+        trang.cho("!!document.querySelector('.k282-otp-ma') && /^[0-9]{6}$/.test(document.querySelector('.k282-otp-ma').textContent)", han=10, mo_ta="mã OTP 6 số hiện")
+        ma = trang.js("document.querySelector('.k282-otp-ma').textContent")
         assert ma in _ma_totp_cho_phep(), f"OTP {ma} không khớp RFC 6238"
         # Khoá TOTP không lộ: DOM + phản hồi API trực tiếp
         assert TOTP_KHOA_GIA not in trang.js("document.body.innerText")
@@ -269,52 +248,36 @@ def test_1280_khong_con_danh_sach_xo_provider(trang, tmp_path, monkeypatch):
 
 # ── 390px + chế độ tối ───────────────────────────────────────────────────────
 
-def test_390_popup_giua_man_hinh(trang, tmp_path, monkeypatch):
-    """<720px: popup giữa màn hình, nền mờ; nút đăng nhập thấy không cần cuộn;
-    Esc đóng; bấm nền đóng; tab không tràn ngang."""
+def test_390_mot_cot_khong_tran_ngang(trang, tmp_path, monkeypatch):
+    """<720px: MỘT cột (NV282), ô chọn mở ra không tràn ngang, nút đăng nhập chạm được (≥ 40px)."""
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         _vao_tab(trang, w, rong=390, cao=844)
-        _bam_o_dau(trang)
-        giua = trang.js("""(() => {
-          const ct = document.querySelector('#k268-ct').getBoundingClientRect();
-          const nen = document.querySelector('#k268-nen');
-          const cs = getComputedStyle(nen);
-          const lech = Math.abs(ct.left + ct.width / 2 - window.innerWidth / 2);
-          const nut = document.querySelector('#k268-dn-tu-dong').getBoundingClientRect();
-          const tay = document.querySelector('#k268-dn-tay');
-          const nut2 = tay ? tay.getBoundingClientRect() : null;
-          return { lech, mo: cs.display !== 'none',
-                   nutTrong: nut.top >= 0 && nut.bottom <= window.innerHeight,
-                   nut2Trong: !nut2 || (nut2.top >= 0 && nut2.bottom <= window.innerHeight),
-                   rong: document.documentElement.scrollWidth <= window.innerWidth + 1 };
-        })()""")
-        assert giua["lech"] < 60, f"popup lệch giữa {giua['lech']}px"
-        assert giua["mo"], "nền mờ không hiện"
-        assert giua["nutTrong"] and giua["nut2Trong"], "nút đăng nhập phải thấy không cuộn"
-        assert giua["rong"], "tab tràn ngang ở 390px"
-        trang.chup("nv268-popup-390")
-        # Esc đóng
-        trang.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
-        trang.cho("!document.querySelector('#k268-ct.mo')", han=5, mo_ta="Esc đóng popup")
-        # Bấm nền đóng
-        _bam_o_dau(trang)
-        trang.bam("document.querySelector('#k268-nen')", "bấm nền mờ")
-        trang.cho("!document.querySelector('#k268-ct.mo')", han=5, mo_ta="bấm nền đóng popup")
+        rong = "document.documentElement.scrollWidth <= window.innerWidth + 1"
+        assert trang.js(rong)
+        _chon(trang, EMAIL_GG)
+        info = trang.js("""(() => { const l = document.querySelector('.k282-luoi'); const cs = getComputedStyle(l).gridTemplateColumns.trim().split(' ').length;
+          return { cot: cs, nut: document.querySelector('#k268-dn-tu-dong').getBoundingClientRect().height }; })()""")
+        assert info["cot"] == 1, f"390px phải một cột: {info}"
+        assert info["nut"] >= 40
+        assert trang.js(rong), "tab tràn ngang ở 390px"
+        trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+        trang.cho("!!document.querySelector('#ds-tk')", han=5)
+        assert trang.js(rong), "mở danh sách tràn ngang ở 390px"
+        trang.chup("nv268-390")
 
 
 def test_che_do_toi_khu_dung_du(trang, tmp_path, monkeypatch):
-    """Chế độ tối: khu vẫn dựng đủ nhóm/ô."""
+    """Chế độ tối: khu vẫn dựng đủ nhà/ô chọn."""
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         _vao_tab(trang, w)
         trang.cdp.goi("Emulation.setEmulatedMedia",
                       {"features": [{"name": "prefers-color-scheme", "value": "dark"}]},
                       trang.s)
-        trang.cho("document.querySelectorAll('#k268 .k268-tk').length >= 3", han=8,
-                  mo_ta="khu dựng ở chế độ tối")
+        trang.cho("!!document.querySelector('#o-chon')", han=8, mo_ta="khu dựng ở chế độ tối")
         chu = trang.js("document.querySelector('#k268').innerText")
-        assert "Google" in chu and "Chính" in chu
+        assert "Google" in chu and trang.js("document.querySelectorAll('#k282-nha button').length") >= 3
         trang.chup("nv268-khu-toi-1280")
         trang.cdp.goi("Emulation.setEmulatedMedia",
                       {"features": [{"name": "prefers-color-scheme", "value": "light"}]},

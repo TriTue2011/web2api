@@ -80,9 +80,11 @@ def test_cai_gemini_tu_git_qua_giao_dien_voi_loi_that(trang, tmp_path, monkeypat
             # NV268: khối xổ provider cũ (tk-trong) đã bỏ theo spec; khu hiện nhóm trống.
             trang.cho("document.querySelector('#k268').innerText.includes('Google')", han=15,
                       mo_ta="khu tải xong nhóm")
-            assert "Chưa có tài khoản nào trong nhóm này." in trang.js("document.querySelector('#k268').innerText")
+            assert "Chưa có tài khoản nào" in trang.js("document.querySelector('#k268').innerText")
             trang.js("window.__khongTaiLai = 1")
             trang.go("#form-them [data-truong='api_keys'] input", K_XAU)
+            trang.js("(() => { const d = document.querySelector('#tuy-chon-them'); if (d && !d.open) d.querySelector('summary').click(); })()")   # NV282: địa chỉ gốc nằm trong «Tuỳ chọn thêm» (đóng sẵn)
+            trang.cho("document.querySelector('#tuy-chon-them')?.open", han=5, mo_ta="Tuỳ chọn thêm mở")
             trang.go("#form-them [data-truong='base_url'] input", s_g.url)
             trang.bam("document.getElementById('nut-them-luu')")
             trang.cho("document.getElementById('tin-ai')?.getAttribute('role') === 'alert'", han=15, mo_ta="khoá xấu bị từ chối")

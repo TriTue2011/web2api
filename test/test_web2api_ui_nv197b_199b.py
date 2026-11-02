@@ -29,7 +29,6 @@ try:
     from test_web2api_nv144_giao_dien import (
         KHOA_QT as KHOA_QT_NV144,
         MODULE_ID,
-        _mo_tab_tai_khoan,
         _xac_nhan_lai,
         moi_truong_ui,
     )
@@ -80,14 +79,28 @@ def _trang_thai_api(w, id_tk: str) -> str:
     return next(t for t in ds if t["id"] == id_tk).get("trang_thai", "")
 
 
+def _vao(trang, w):
+    """Đăng nhập quản trị rồi mở khu Tài khoản (NV282: không còn khối «Tài khoản đã lưu» trong form); trả mật khẩu quản trị."""
+    _, mk_admin = dang_nhap_quan_tri(trang, w.url)
+    _mo_lai_tab_tai_khoan(trang, w)
+    return mk_admin
+
+
 def _mo_lai_tab_tai_khoan(trang, w):
-    """Tải lại trang (phiên cookie còn nguyên) rồi mở lại khối «Tài khoản đã lưu» — KHÔNG đăng nhập lại."""
-    trang.di(f"{w.url}/He-thong-AI.dc.html")
-    trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản (sau tải lại)")
-    trang.bam("document.getElementById('nut-them')")
-    trang.cho(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')", mo_ta="chọn module")
-    trang.bam(f"document.querySelector('[data-chon-module=\"{MODULE_ID}\"]')")
-    trang.cho("document.getElementById('dl-khoi')", mo_ta="khối Tài khoản đã lưu (sau tải lại)")
+    """Tải lại trang (phiên cookie còn nguyên) — KHÔNG đăng nhập lại."""
+    trang.di(f"{w.url}/He-thong-AI.dc.html#tai-khoan")
+    trang.cho("(document.querySelector('#o-chon .ten') || {}).textContent && document.querySelector('#o-chon .ten').textContent !== 'Chưa có tài khoản'",
+              han=15, mo_ta="khu Tài khoản đã nạp tài khoản")
+
+
+def _chon_tk(trang, id_tk: str):
+    """Chọn tài khoản `id_tk` trong ô chọn (nếu chưa là tài khoản đang chọn)."""
+    if trang.js(f"document.querySelector('#k268-ct').getAttribute('data-k268-ct') === {id_tk!r}"):
+        return
+    trang.bam("document.querySelector('#o-chon')", "mở ô chọn")
+    trang.cho(f"!!document.querySelector('#ds-tk [data-tk=\"{id_tk}\"]')", han=8, mo_ta="dòng tài khoản trong danh sách")
+    trang.bam(f"document.querySelector('#ds-tk [data-tk=\"{id_tk}\"]')", "chọn tài khoản")
+    trang.cho(f"document.querySelector('#k268-ct').getAttribute('data-k268-ct') === {id_tk!r}", han=8, mo_ta="bảng chi tiết đúng tài khoản")
 
 
 def _nut_tam_dung(id_tk: str) -> str:
@@ -95,7 +108,8 @@ def _nut_tam_dung(id_tk: str) -> str:
 
 
 def _hang(id_tk: str) -> str:
-    return f"document.querySelector('[data-tk-da-luu=\"{id_tk}\"]')"
+    """Bảng chi tiết của tài khoản (thay cho «dòng tài khoản đã lưu» cũ)."""
+    return f"document.querySelector('#k268-ct[data-k268-ct=\"{id_tk}\"]')"
 
 
 def _hien(expr_phan_tu: str) -> str:
@@ -119,23 +133,24 @@ def _doi_tam_dung(trang, id_tk: str, nhan_cu: str, nhan_moi: str, mk_admin: str 
 def test_a_tam_dung_roi_bat_lai_qua_step_up_va_ben_sau_tai_lai(trang, tmp_path, monkeypatch):
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         id_tk = _gieo(w, "nv197b-ui@example.com")
-        mk_admin = _mo_tab_tai_khoan(trang, w)
-        trang.cho(_hang(id_tk), mo_ta="dòng tài khoản đã gieo")
+        mk_admin = _vao(trang, w)
+        trang.cho(_hang(id_tk), mo_ta="bảng chi tiết tài khoản đã gieo")
         # Trạng thái đầu: đang dùng, nút «Tạm dừng» hiện thật.
-        assert "Đã tạm dừng" not in trang.chu(f"[data-tk-da-luu=\"{id_tk}\"]")
+        assert "Tạm dừng" not in trang.chu("#o-chon .phu")
         assert trang.js(_hien(_nut_tam_dung(id_tk))), "nút «Tạm dừng» phải hiện thật"
         # Phiên web chưa xác nhận lại → hộp thoại step-up PHẢI mở (kiểm đúng đường mới đòi step-up).
         assert trang.chu(f"[data-dl-tam-dung=\"{id_tk}\"]") == "Tạm dừng"
         trang.bam(_nut_tam_dung(id_tk))
         _xac_nhan_lai(trang, mk_admin)
-        trang.cho(f"{_hang(id_tk)}?.innerText.includes('Đã tạm dừng')", han=10, mo_ta="trạng thái «Đã tạm dừng»")
+        trang.cho("document.querySelector('#o-chon .phu').textContent.includes('Tạm dừng')", han=10, mo_ta="ô chọn ghi «Tạm dừng»")
+        assert trang.js("document.querySelector('#o-chon .k282-cham').classList.contains('dung')"), "chấm xám gạch đứt"
         trang.cho(f"{_nut_tam_dung(id_tk)}?.innerText === 'Bật lại'", mo_ta="nút đổi thành «Bật lại»")
         assert trang.js(_hien(_nut_tam_dung(id_tk)))
-        assert trang.js("!!document.getElementById('loi-dl')") is False, trang.chu("#loi-dl")
+        assert trang.js("!!document.getElementById('k282-ct-loi')") is False, trang.chu("#k282-ct-loi")
         assert _trang_thai_api(w, id_tk) == "tam_dung"
         # Bền sau tải lại trang.
         _mo_lai_tab_tai_khoan(trang, w)
-        trang.cho(f"{_hang(id_tk)}?.innerText.includes('Đã tạm dừng')", mo_ta="vẫn «Đã tạm dừng» sau tải lại")
+        trang.cho("document.querySelector('#o-chon .phu').textContent.includes('Tạm dừng')", mo_ta="vẫn «Tạm dừng» sau tải lại")
         assert trang.chu(f"[data-dl-tam-dung=\"{id_tk}\"]") == "Bật lại"
         # Bấm «Bật lại» → bình thường. Hộp thoại có hoặc không tuỳ hạn step-up: chờ «hộp thoại hoặc nhãn đổi».
         trang.bam(_nut_tam_dung(id_tk))
@@ -144,29 +159,28 @@ def test_a_tam_dung_roi_bat_lai_qua_step_up_va_ben_sau_tai_lai(trang, tmp_path, 
         if trang.js("!!document.querySelector('dialog[open]')"):
             _xac_nhan_lai(trang, mk_admin)
         trang.cho(f"{_nut_tam_dung(id_tk)}?.innerText === 'Tạm dừng'", han=10, mo_ta="nút trở lại «Tạm dừng»")
-        assert "Đã tạm dừng" not in trang.chu(f"[data-tk-da-luu=\"{id_tk}\"]")
-        assert "đã lưu" in trang.chu(f"[data-tk-da-luu=\"{id_tk}\"]")
-        assert trang.js("!!document.getElementById('loi-dl')") is False, trang.chu("#loi-dl")
+        assert "Tạm dừng" not in trang.chu("#o-chon .phu")
+        assert trang.js("!!document.getElementById('k282-ct-loi')") is False, trang.chu("#k282-ct-loi")
         assert _trang_thai_api(w, id_tk) == ""
         _mo_lai_tab_tai_khoan(trang, w)
-        trang.cho(_hang(id_tk), mo_ta="dòng sau tải lại lần hai")
+        trang.cho(_hang(id_tk), mo_ta="bảng chi tiết sau tải lại lần hai")
         assert trang.chu(f"[data-dl-tam-dung=\"{id_tk}\"]") == "Tạm dừng"
-        assert "Đã tạm dừng" not in trang.chu(f"[data-tk-da-luu=\"{id_tk}\"]")
+        assert "Tạm dừng" not in trang.chu("#o-chon .phu")
 
 
 def test_a_huy_hop_thoai_xac_nhan_thi_khong_doi_trang_thai(trang, tmp_path, monkeypatch):
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         id_tk = _gieo(w, "nv197b-huy@example.com")
-        _mo_tab_tai_khoan(trang, w)
-        trang.cho(_hang(id_tk), mo_ta="dòng tài khoản")
+        _vao(trang, w)
+        trang.cho(_hang(id_tk), mo_ta="bảng chi tiết tài khoản")
         trang.bam(_nut_tam_dung(id_tk))
         trang.cho("!!document.querySelector('dialog[open] input[type=password]')", mo_ta="hộp thoại xác nhận lại")
         trang.bam("[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Huỷ')")
         trang.cho("!document.querySelector('dialog[open]')", mo_ta="hộp thoại đóng")
-        # Báo lỗi rõ cho người dùng (không im lặng), nhãn không đổi, máy chủ không đổi.
-        trang.cho("!!document.getElementById('loi-dl')", mo_ta="thông báo lỗi sau khi huỷ xác nhận")
+        # Báo lỗi rõ cho người dùng (không im lặng) NGAY ở bảng chi tiết, nhãn không đổi, máy chủ không đổi.
+        trang.cho("!!document.getElementById('k282-ct-loi')", mo_ta="thông báo lỗi sau khi huỷ xác nhận")
         assert trang.chu(f"[data-dl-tam-dung=\"{id_tk}\"]") == "Tạm dừng"
-        assert "Đã tạm dừng" not in trang.chu(f"[data-tk-da-luu=\"{id_tk}\"]")
+        assert "Tạm dừng" not in trang.chu("#o-chon .phu")
         assert _trang_thai_api(w, id_tk) == ""
 
 
@@ -176,8 +190,8 @@ def test_a_loi_cu_khong_co_duong_tam_dung_thi_an_nut(trang, tmp_path, monkeypatc
     _bo_route(request, tuyen.tai_khoan, "/api/tai-khoan/da-luu/{id}/tam-dung")
     with moi_truong_ui(tmp_path, monkeypatch) as w:
         id_tk = _gieo(w, "nv197b-cu@example.com")
-        mk_admin = _mo_tab_tai_khoan(trang, w)
-        trang.cho(_hang(id_tk), mo_ta="dòng tài khoản")
+        mk_admin = _vao(trang, w)
+        trang.cho(_hang(id_tk), mo_ta="bảng chi tiết tài khoản")
         assert trang.js(_hien(_nut_tam_dung(id_tk))), "chưa biết lõi cũ → nút còn hiện"
         trang.bam(_nut_tam_dung(id_tk))
         trang.cho("!!document.querySelector('dialog[open]') || " + _nut_tam_dung(id_tk) + " === null || !" + _hien(_nut_tam_dung(id_tk)),
@@ -185,9 +199,9 @@ def test_a_loi_cu_khong_co_duong_tam_dung_thi_an_nut(trang, tmp_path, monkeypatc
         if trang.js("!!document.querySelector('dialog[open]')"):
             _xac_nhan_lai(trang, mk_admin)
         trang.cho(f"!{_hien(_nut_tam_dung(id_tk))}", mo_ta="nút «Tạm dừng» ẩn khi lõi cũ chưa có đường (404/405 không mã lỗi)")
-        assert trang.js("!!document.getElementById('loi-dl')") is False, "ẩn lặng lẽ, không báo lỗi ầm ĩ"
-        # Các nút khác của dòng vẫn dùng được.
-        assert trang.js(_hien(f"document.querySelector('[data-dl-dang-nhap=\"{id_tk}\"]')"))
+        assert trang.js("!!document.getElementById('k282-ct-loi')") is False, "ẩn lặng lẽ, không báo lỗi ầm ĩ"
+        # Các nút khác vẫn dùng được.
+        assert trang.js(_hien("document.querySelector('#k268-dn-tu-dong')"))
         assert trang.js(_hien(f"document.querySelector('[data-dl-xoa=\"{id_tk}\"]')"))
 
 
@@ -199,8 +213,8 @@ def test_a_dien_thoai_390_dong_tai_khoan_khong_tran(trang, tmp_path, monkeypatch
             r = httpx.post(f"{w.url}/api/tai-khoan/da-luu/{id_tk}/tam-dung", headers=QT, json={"tam_dung": True})
             assert r.status_code == 200, r.text
         trang.khung(390, 844, dien_thoai=True)
-        _mo_tab_tai_khoan(trang, w)
-        trang.cho(_hang(id_tk), mo_ta="dòng tài khoản")
+        _vao(trang, w)
+        trang.cho(_hang(id_tk), mo_ta="bảng chi tiết tài khoản")
         # Chờ bố cục ổn định, rồi đo ở CẢ hai trạng thái nhãn nút xoá (dài nhất khi «Bấm lần nữa để xoá»).
         for buoc in ("thuong", "xoa_hoi_lai"):
             if buoc == "xoa_hoi_lai":
@@ -209,22 +223,22 @@ def test_a_dien_thoai_390_dong_tai_khoan_khong_tran(trang, tmp_path, monkeypatch
             do = trang.js(f"""(() => {{
                 const hang = {_hang(id_tk)};
                 const rong = window.innerWidth;
-                const nut = [...hang.querySelectorAll('button')].map((b) => {{ const r = b.getBoundingClientRect();
+                const nut = [...hang.querySelectorAll('.k282-hd button')].map((b) => {{ const r = b.getBoundingClientRect();
                     return {{chu: b.innerText, trai: Math.round(r.left), phai: Math.round(r.right), cao: Math.round(r.height)}}; }});
                 const hr = hang.getBoundingClientRect();
                 return {{rong, cuon: document.documentElement.scrollWidth, hangPhai: Math.round(hr.right), nut}};
             }})()""")
             trang.chup(f"dl-390-{'tam-dung' if tam_dung else 'dang-dung'}-{buoc}")
             assert do["cuon"] <= do["rong"], f"[{buoc}] trang tràn ngang: {do}"
-            assert do["hangPhai"] <= do["rong"], f"[{buoc}] dòng tràn khỏi màn hình: {do}"
-            assert len(do["nut"]) == 3, do
+            assert do["hangPhai"] <= do["rong"], f"[{buoc}] bảng tràn khỏi màn hình: {do}"
+            assert len(do["nut"]) >= 3, do
             for n in do["nut"]:
                 assert 0 <= n["trai"] and n["phai"] <= do["rong"], f"[{buoc}] nút «{n['chu']}» bị tràn/cắt: {do}"
                 assert n["cao"] >= 44, f"[{buoc}] nút «{n['chu']}» thấp hơn 44px: {do}"
-            # Chữ trạng thái không bị cắt mất (nowrap + không co).
-            tt = trang.js(f"(() => {{ const s = [...{_hang(id_tk)}.querySelectorAll('span')].find((x) => /đã lưu|Đã tạm dừng/.test(x.innerText)); "
-                          "if (!s) return null; const r = s.getBoundingClientRect(); return {phai: Math.round(r.right), rong: Math.round(r.width), cuon: s.scrollWidth}; })()")
-            assert tt and tt["phai"] <= do["rong"] and tt["cuon"] <= tt["rong"] + 1, f"[{buoc}] chữ trạng thái bị cắt: {tt}"
+            # Chữ trạng thái (nhãn tag «Tạm dừng» hoặc chấm của ô chọn) không bị cắt mất.
+            tt = trang.js("(() => { const s = document.querySelector('#o-chon .phu'); const r = s.getBoundingClientRect(); return {phai: Math.round(r.right), rong: Math.round(r.width), cuon: s.scrollWidth, chu: s.textContent}; })()")
+            assert tt["phai"] <= do["rong"], f"[{buoc}] chữ trạng thái tràn: {tt}"
+            assert ("Tạm dừng" in tt["chu"]) == tam_dung, tt
 
 
 # ───────────────────────────── (b)(c) NV199b: Thêm nhà cung cấp theo preset ─────────────────────────────

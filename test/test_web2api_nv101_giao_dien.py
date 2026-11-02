@@ -2,7 +2,7 @@
 
 - Kiểm tra tĩnh (không cần Chrome): web/He-thong-AI.dc.html chỉ nhắc «google»
   trong khối «đăng nhập bằng» (NV223 — giá trị dữ liệu, không phải từ khoá cứng).
-- Luồng giao diện 3 bước mới (cần Chrome):
+- Luồng giao diện MỘT form hiện dần (NV282; cần Chrome): nhà → cách thêm (chỉ khi có hơn một) → ô cần nhập.
   a. Nhóm chỉ hiện khi có module ĐÃ CÀI; module không khai nhóm -> chip «Khác» đứng cuối;
      chỉ có đúng một nhóm -> tự chọn, không có hàng chip nhóm.
   b. Bước LOẠI: nhóm chỉ có module không tự đăng nhập -> tự chọn «API», không hàng chip loại;
@@ -32,6 +32,7 @@ from app import so_module
 from app.main import app
 from gia import MayChuThat
 from ui_chung import CO_CHROME, dang_nhap_quan_tri, trang, trinh_duyet  # noqa: F401
+from ui_them_tk import chon_cach, mo_dan_nhieu_dong
 
 GOC = Path(__file__).resolve().parents[1]
 KHOA_QT = "khoa-quan-tri-nv101-ui-0123456789ab"
@@ -302,10 +303,10 @@ def test_nhom_va_chip_khac_giao_dien(trang, tmp_path, monkeypatch):
         trang.cho("document.getElementById('nut-them')", mo_ta="nút Thêm tài khoản")
         trang.bam("document.getElementById('nut-them')")
         # Nhóm duy nhất tự chọn: không có hàng chip nhóm; bước kế (LOẠI: module vừa có khoá vừa tự đăng nhập) hiện ngay.
-        trang.cho("document.querySelector('[data-loai-them]')", mo_ta="bước LOẠI hiện thẳng, bỏ qua bước nhóm")
+        trang.cho("document.querySelector('[data-cach-them]')", mo_ta="bước CÁCH THÊM hiện thẳng, bỏ qua bước nhà")
         assert trang.js("document.querySelector('[data-nhom-them]')") is None, "chỉ có một nhóm thì tự chọn và ẩn hàng chip nhóm"
-        trang.bam("document.querySelector('[data-loai-them=\"api\"]')")
-        trang.cho("document.querySelector('[data-chon-module=\"mod-don\"]')", mo_ta="chip module sau khi chọn loại")
+        trang.bam("document.querySelector('[data-cach-them=\"mod-don|api\"]')")
+        trang.cho("document.querySelector('#form-them').dataset.module === 'mod-don'", mo_ta="form của đúng module sau khi chọn cách")
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
@@ -351,22 +352,22 @@ def test_buoc_loai_api_va_tai_khoan_giao_dien(trang, tmp_path, monkeypatch):
         # 1. Chọn nhóm chỉ có module không tự đăng nhập -> tự chọn «API», không có hàng chip loại
         trang.cho("document.querySelector('[data-nhom-them=\"nhom-api-only\"]')", mo_ta="chip nhóm chỉ API")
         trang.bam("document.querySelector('[data-nhom-them=\"nhom-api-only\"]')")
-        assert trang.js("document.querySelector('[data-loai-them]')") is None, "nhóm chỉ có API thì không có chip loại"
+        assert trang.js("document.querySelector('[data-cach-them]')") is None, "nhóm chỉ có API thì không có chip cách thêm"
         assert trang.js("document.getElementById('khung-tu-dong')") is None, "không hiện khung tự động"
         assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") != "none", "nút lưu API hiện"
 
         # 2. Chọn nhóm có cả hai -> hiện cả «API» và «Tài khoản»
         trang.bam("document.querySelector('[data-nhom-them=\"nhom-ca-hai\"]')")
-        trang.cho("document.querySelector('[data-loai-them=\"api\"]')", mo_ta="chip loại API")
-        trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="chip loại Tài khoản")
+        trang.cho("document.querySelector('[data-cach-them=\"mod-ca-hai|api\"]')", mo_ta="chip cách API")
+        trang.cho("document.querySelector('[data-cach-them=\"mod-ca-hai|dn\"]')", mo_ta="chip cách đăng nhập")
 
         # Chọn «API» -> ra biểu mẫu khoá (#nut-them-luu hiện, khung tự động ẩn)
-        trang.bam("document.querySelector('[data-loai-them=\"api\"]')")
+        trang.bam("document.querySelector('[data-cach-them=\"mod-ca-hai|api\"]')")
         assert trang.js("document.getElementById('khung-tu-dong')") is None
         assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") != "none"
 
         # Chọn «Tài khoản» -> ra #khung-tu-dong và nút lưu API ẩn
-        trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
+        trang.bam("document.querySelector('[data-cach-them=\"mod-ca-hai|dn\"]')")
         trang.cho("document.getElementById('khung-tu-dong')", mo_ta="khung tự động")
         assert trang.js("getComputedStyle(document.getElementById('nut-them-luu')).display") == "none"
 
@@ -412,8 +413,7 @@ def test_chip_kieu_danh_tinh_va_nhan_giao_dien(trang, tmp_path, monkeypatch):
         # Module không có tai_dung_ho_so -> chip data-kieu="danh_tinh" ẨN
         trang.cho("document.querySelector('[data-nhom-them=\"nhom-tt\"]')", mo_ta="chip nhóm trực tiếp")
         trang.bam("document.querySelector('[data-nhom-them=\"nhom-tt\"]')")
-        trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="loại tài khoản")
-        trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
+        chon_cach(trang, "dn")
         trang.cho("document.getElementById('khung-tu-dong')", mo_ta="khung tự động")
         # NV219: chip danh_tinh đã bỏ khỏi phần AI — không hiện kể cả khi
         # module có tai_dung_ho_so và có module đăng nhập danh tính.
@@ -422,8 +422,7 @@ def test_chip_kieu_danh_tinh_va_nhan_giao_dien(trang, tmp_path, monkeypatch):
         # «Kiểu: Trực tiếp», không còn phần tử [data-kieu] nào.
         assert trang.js("document.querySelector('[data-kieu=\"danh_tinh\"]')") is None, "NV219: phần AI không còn chip danh tính"
         assert trang.js("document.querySelectorAll('[data-kieu]').length") == 0, "NV219: phần AI không còn chip kiểu đăng nhập nào"
-        trang.cho("/Kiểu: Trực tiếp/.test(document.getElementById('khung-tu-dong').innerText)",
-                  mo_ta="nhãn Kiểu: Trực tiếp")
+        assert "Kiểu:" not in trang.chu("#khung-tu-dong"), "NV282: bỏ dòng chữ giải thích «Kiểu: Trực tiếp»"
 
     # 2. Thiếu module đăng nhập danh tính -> chip data-kieu="danh_tinh" vẫn ẨN
     # (NV219: đã bỏ khỏi phần AI nên không hiện trong mọi trường hợp).
@@ -435,14 +434,12 @@ def test_chip_kieu_danh_tinh_va_nhan_giao_dien(trang, tmp_path, monkeypatch):
         trang.bam("document.getElementById('nut-them')")
         trang.cho("document.querySelector('[data-nhom-them=\"nhom-full\"]')", mo_ta="nhóm full")
         trang.bam("document.querySelector('[data-nhom-them=\"nhom-full\"]')")
-        trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="loại tài khoản")
-        trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
+        chon_cach(trang, "dn")
         trang.cho("document.getElementById('khung-tu-dong')", mo_ta="khung tự động")
         assert trang.js("document.querySelector('[data-kieu=\"danh_tinh\"]')") is None, "thiếu module dn danh tính thì ẩn chip"
         # NV252: như trên — không còn chip nào, chỉ nhãn tĩnh «Kiểu: Trực tiếp».
         assert trang.js("document.querySelectorAll('[data-kieu]').length") == 0, "NV219: phần AI không còn chip kiểu đăng nhập nào"
-        trang.cho("/Kiểu: Trực tiếp/.test(document.getElementById('khung-tu-dong').innerText)",
-                  mo_ta="nhãn Kiểu: Trực tiếp")
+        assert "Kiểu:" not in trang.chu("#khung-tu-dong"), "NV282: bỏ dòng chữ giải thích «Kiểu: Trực tiếp»"
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
@@ -472,8 +469,7 @@ def test_danh_sach_tai_khoan_danh_tinh_va_chay_chi_email_giao_dien(trang, tmp_pa
         trang.bam("document.getElementById('nut-them')")
 
         # Chỉ có một nhóm nhà cung cấp → tự chọn, bước nhóm ẩn.
-        trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="loại tài khoản")
-        trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
+        chon_cach(trang, "dn")
 
         # NV219: không còn chip danh tính, không còn danh sách danh tính.
         trang.cho("document.getElementById('khung-tu-dong')", mo_ta="khung tự động")
@@ -482,8 +478,7 @@ def test_danh_sach_tai_khoan_danh_tinh_va_chay_chi_email_giao_dien(trang, tmp_pa
         # NV252: NV219 bỏ luôn chip «Trực tiếp» — không còn phần tử [data-kieu]
         # nào; kiểu đăng nhập duy nhất thể hiện bằng nhãn tĩnh «Kiểu: Trực tiếp».
         assert trang.js("document.querySelectorAll('[data-kieu]').length") == 0, "NV219: phần AI không còn chip kiểu đăng nhập nào"
-        trang.cho("/Kiểu: Trực tiếp/.test(document.getElementById('khung-tu-dong').innerText)",
-                  mo_ta="nhãn Kiểu: Trực tiếp")
+        assert "Kiểu:" not in trang.chu("#khung-tu-dong"), "NV282: bỏ dòng chữ giải thích «Kiểu: Trực tiếp»"
 
 
 @pytest.mark.skipif(not CO_CHROME, reason="chưa chạy được vì không có Chrome")
@@ -530,12 +525,8 @@ def test_xss_khong_pha_dom_va_khong_chay_ma_giao_dien(trang, tmp_path, monkeypat
 
         # Thử dán email chứa XSS vào ô danh sách và Xem trước
         trang.bam("document.querySelector('[data-nhom-them=\"nhom-xss\"]')")
-        trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="loại tài khoản")
-        trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
-        trang.cho("document.getElementById('o-tu-dong')", mo_ta="ô dán danh sách")
-        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
-            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
-            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
+        chon_cach(trang, "dn")
+        mo_dan_nhieu_dong(trang)
         trang.go("#o-tu-dong", f"xss_{xss_payload}@example.com|matkhau123")
         trang.bam("document.getElementById('nut-xem-truoc')")
 
@@ -583,17 +574,13 @@ def test_can_nguoi_va_ma_la_va_xoa_bi_mat_giao_dien(trang, tmp_path, monkeypatch
         trang.bam("document.getElementById('nut-them')")
 
         # Chỉ có một nhóm nhà cung cấp → tự chọn, bước nhóm ẩn.
-        trang.cho("document.querySelector('[data-loai-them=\"tai_khoan\"]')", mo_ta="loại tài khoản")
-        trang.bam("document.querySelector('[data-loai-them=\"tai_khoan\"]')")
+        chon_cach(trang, "dn")
 
         # NV252: NV219 bỏ chip kiểu đăng nhập khỏi phần AI — không còn bước
         # chọn kiểu; luồng chạy thẳng kiểu trực tiếp (nhãn «Kiểu: Trực tiếp»).
 
         # Dán 2 dòng: 1 dòng can_nguoi, 1 dòng mã lạ
-        trang.cho("document.getElementById('o-tu-dong')", mo_ta="ô dán")
-        if not trang.js("document.querySelector('#o-tu-dong')?.closest('details')?.open"):
-            trang.js("(() => { const d = document.querySelector('#o-tu-dong')?.closest('details'); if (d && !d.open) { const s = d.querySelector('summary'); if (s) s.click(); if (!d.open) d.open = true; } })()")
-            trang.cho("document.querySelector('#o-tu-dong')?.closest('details')?.open", mo_ta="mở khối dán nhiều dòng")
+        mo_dan_nhieu_dong(trang)
         trang.go("#o-tu-dong", f"acc_can_nguoi@x.com|{mat_khau_bi_mat}\nacc_ma_la@x.com|{mat_khau_bi_mat}")
         trang.bam("document.getElementById('nut-xem-truoc')")
         trang.cho("document.getElementById('xem-truoc-tu-dong')", mo_ta="xem trước")
@@ -609,7 +596,7 @@ def test_can_nguoi_va_ma_la_va_xoa_bi_mat_giao_dien(trang, tmp_path, monkeypatch
         # Dòng can_nguoi hiện «Cần bạn xử lý» và gợi ý tab trình duyệt
         dong_cn = trang.chu('[data-ket-qua-tu-dong="acc_can_nguoi@x.com"]')
         assert "Cần bạn xử lý" in dong_cn, f"phải hiện 'Cần bạn xử lý', thực tế: {dong_cn}"
-        assert "đăng nhập tay" in trang.chu("#khung-tu-dong"), "phải có gợi ý đăng nhập tay"
+        assert "Đăng nhập tay" in trang.chu("#tien-do-tu-dong"), "phải có gợi ý đăng nhập tay"
         assert trang.js("document.querySelector('[href*=\"trinh-duyet\"]') || document.querySelector('a')") is not None, "phải có gợi ý mở tab trình duyệt"
 
         # Dòng mã lạ hiện nguyên mã «ma_la_xyz_999»

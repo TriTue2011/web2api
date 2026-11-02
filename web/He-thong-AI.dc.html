@@ -25,57 +25,135 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 .luoi-md{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px;padding:8px 12px;border-top:1px solid #F0EEE9}
 .luoi-tk{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px;padding:10px 12px 12px;border-top:1px solid var(--line)}
 @media (max-width:480px){.luoi-md{grid-template-columns:1fr;padding:6px 8px}.luoi-tk{grid-template-columns:1fr;padding:8px}}
-/* NV268: khu «Tài khoản» — nhóm → loại → ô; bấm ô ra bảng chi tiết */
-#k268{display:flex;flex-direction:column;gap:12px;min-width:0}
-.k268-khung{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;align-items:start}
-@media (max-width:719px){.k268-khung{grid-template-columns:minmax(0,1fr)}}
-.k268-ds{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:18px;min-width:0}
-.k268-nhom-dau{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
-.k268-nhom-dau button{font:inherit;font-size:15px;font-weight:700;color:var(--acc,#1d4ed8);background:none;border:0;padding:0;cursor:pointer}
-.k268-nhom-dau .n{color:var(--mute);font-size:12.5px}
-.k268-nhom-dau .k268-an{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:6px 12px;min-height:36px}
-.k268-loai{margin:0 0 10px 12px;padding-left:14px;border-left:2px solid var(--line)}
-.k268-loai-ten{font-size:12px;font-weight:600;color:var(--mute);margin:0 0 6px;letter-spacing:.03em}
-.k268-rong{font-size:12.5px;color:var(--mute);margin:0}
-.k268-o{display:flex;flex-wrap:wrap;gap:8px}
-.k268-tk{font:inherit;text-align:left;color:var(--ink);cursor:pointer;min-width:190px;max-width:100%;background:var(--card);border:1.8px solid var(--acc,#1d4ed8);border-radius:10px;padding:7px 11px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 9px;align-items:center}
-.k268-tk:hover{background:var(--bg)}
-.k268-tk[aria-pressed="true"]{border-width:3px}
-.k268-tk.tam-dung{background:var(--bg);border:1.3px dashed var(--line);color:var(--mute)}
-.k268-tt{width:10px;height:10px;border-radius:50%;background:var(--mute);grid-row:span 2}
-.k268-tt.ok{background:#0f766e}.k268-tt.warn{background:#b45309}.k268-tt.bad{background:#b42318}
-.k268-ten{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.k268-dc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.k268-sao{grid-row:span 2;color:#b45309;font-size:12px;font-weight:700}
-/* Bảng chi tiết: khuôn .chi-tiet của trang Module (He-thong.dc.html), gọn theo spec */
-.chi-tiet{flex:1 1 320px;max-width:380px;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0;position:sticky;top:12px;max-height:calc(100vh - 32px);overflow:auto;font-size:13px;line-height:1.45}
-.chi-tiet h2{font-weight:700;font-size:16px;line-height:1.3;margin:0;min-width:0;text-wrap:balance;overflow-wrap:anywhere}
-.chi-tiet .bang{display:flex;flex-direction:column;margin:0;padding:0;gap:0}
-.chi-tiet .bang-dong{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px;align-items:start;padding:6px 0;margin:0;border:0;border-bottom:1px solid var(--line);font-size:12.5px}
-.chi-tiet .bang-dong:last-child{border-bottom:0}
-.chi-tiet .nhan-dong{font-size:12px;font-weight:600;color:var(--mute);margin:0}
-.chi-tiet .gt-dong{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;overflow-wrap:anywhere;min-width:0;margin:0}
-.k268-tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;background:var(--bg);white-space:nowrap}
-.k268-tag-1{border-color:#0f766e;color:#0f766e;font-weight:600}
-.k268-nut-nho{font:inherit;font-size:12px;color:var(--acc,#1d4ed8);background:none;border:1px solid var(--line);border-radius:8px;padding:3px 9px;cursor:pointer;min-height:30px;white-space:nowrap}
-.k268-ghi{color:var(--mute);font-size:12px;margin:0}
-.k268-loi{font-size:12.5px;margin:0;padding:8px 10px;border-radius:8px;border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12}
-.k268-hd{display:flex;gap:8px;flex-wrap:wrap}
-.k268-nut{font:inherit;font-weight:600;font-size:13px;border-radius:8px;padding:8px 14px;min-height:40px;cursor:pointer;border:1px solid #181816;background:#181816;color:#fff}
-.k268-xem{margin:6px 0;display:flex;flex-direction:column;gap:6px}
-.k268-xem img{width:100%;border:1px solid var(--line);border-radius:8px;background:#f3f3f3;cursor:zoom-in;display:block}
-.k268-xem-cho{border:1px dashed var(--line);border-radius:8px;background:#f7f7f5;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;font-size:13px}
-.k268-xem.to{position:fixed;inset:0;z-index:2147483000;background:#111;margin:0;padding:8px;border-radius:0;color:#fff;overflow:auto}
-.k268-xem.to img{max-width:100%;max-height:calc(100vh - 64px);width:auto;height:auto;margin:auto;object-fit:contain;cursor:zoom-out;border:0}
-.k268-xem.to .k268-xem-cho{flex:1;color:#ddd;background:#222;border-color:#555}
-.k268-xem.to .k268-ghi{color:#ddd}
-.k268-nut.phu{background:transparent;color:var(--ink);border-color:var(--line);text-decoration:none;display:inline-flex;align-items:center}
-.k268-nut[disabled]{opacity:.5;cursor:not-allowed}
-#k268-nen{display:none}
-@media (max-width:719px){
-#k268-ct.mo{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);max-height:min(78vh,600px);overflow-y:auto;z-index:30;border-radius:16px}
-#k268-nen:not([hidden]){display:block;position:fixed;inset:0;z-index:29;background:rgb(0 0 0/.45)}
-}
+/* NV282: khu «Tài khoản» theo demo «Khu Tài khoản web2api» (bản 9, chủ máy chốt 02/11/2026): dải tổng hợp → chip nhà → MỘT ô chọn
+   + «+ Thêm tài khoản» → bảng chi tiết hai thẻ + thẻ «Đăng nhập và bí mật». Màu: xanh = đăng nhập ok, vàng = cần xử lý, đỏ = lỗi,
+   xám = chưa biết, xám gạch đứt = tạm dừng; luôn kèm chữ thay thế (title/aria-label), màu KHÔNG phải kênh duy nhất. */
+.k282{--tot:#0f766e;--canh:#b45309;--loi:#b42318;--xam:#8d8c84;display:flex;flex-direction:column;gap:14px;min-width:0}
+.k282 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+:where(.k282) button{font:inherit}
+.k282-chips{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+.k282-chip{font-size:13px;font-weight:500;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 14px;min-height:40px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;color:var(--ink)}
+.k282-chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.k282-chip .n{color:var(--mute);font-variant-numeric:tabular-nums}
+.k282-chip[aria-pressed="true"] .n{color:inherit;opacity:.75}
+.k282-cham{width:10px;height:10px;border-radius:50%;background:var(--xam);flex:none;display:inline-block}
+.k282-cham.ok{background:var(--tot)}.k282-cham.xl{background:var(--canh)}.k282-cham.loi{background:var(--loi)}
+.k282-cham.dung{background:transparent;border:1.5px dashed var(--xam)}
+.k282-tong{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.k282-hang{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;min-width:0}
+.k282-nhan{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mute);min-width:118px}
+.k282-tt{font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:5px 12px;min-height:40px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;text-align:left;max-width:100%;color:var(--ink)}
+.k282-tt b{font-variant-numeric:tabular-nums;font-size:15px}
+.k282-tt[aria-pressed="true"]{border:2px solid var(--ink);padding:4px 11px}
+.k282-tt.cao b{color:var(--loi)}
+.k282-tt:disabled{opacity:.6;cursor:default}
+.k282-ghi{color:var(--mute);font-size:12px;margin:0;overflow-wrap:anywhere}
+.k282-dam{font-weight:600}
+.k282-cb{display:flex;align-items:center;gap:10px;font-size:13px;min-height:32px}
+.k282-hang-chon{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start}
+@media (max-width:560px){.k282-hang-chon{grid-template-columns:minmax(0,1fr)}}
+.k282-chon{position:relative;min-width:0}
+.k282-chon-nut{width:100%;text-align:left;background:var(--card);border:1.5px solid var(--ink);border-radius:12px;padding:10px 14px;min-height:56px;cursor:pointer;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 12px;align-items:center}
+.k282-chon-nut .ten{grid-column:2;grid-row:1;font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k282-chon-nut .phu{grid-column:2;grid-row:2;font-size:12px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k282-chon-nut .k282-cham{grid-column:1;grid-row:1/span 2;width:12px;height:12px}
+.k282-chon-nut .mui{grid-column:3;grid-row:1/span 2;color:var(--mute)}
+.k282-hop{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:20;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px rgb(0 0 0/.22);padding:8px;display:flex;flex-direction:column;gap:8px}
+.k282-hop input{font:inherit;font-size:16px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 12px;min-height:44px;width:100%;box-sizing:border-box}
+.k282-ds{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none}
+.k282-dong{flex:none;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:1px 10px;align-items:center;padding:7px 10px;border-radius:8px;cursor:pointer;min-height:44px}
+.k282-dong[aria-selected="true"]{background:color-mix(in srgb,var(--acc) 14%,var(--card))}
+.k282-dong:hover{background:var(--bg)}
+.k282-dong .k282-cham{grid-column:1;grid-row:1/span 2}
+.k282-dong .e{grid-column:2;grid-row:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k282-dong .l{font-size:12px;color:var(--mute);grid-column:2;grid-row:2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k282-dong .k282-hy{grid-row:1/span 2;grid-column:3;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.k282-rong{color:var(--mute);padding:14px 10px;margin:0;list-style:none}
+.k282-huy{font-size:11px;font-weight:700;border-radius:6px;padding:1px 7px;background:var(--ink);color:#fff;white-space:nowrap}
+.k282-huy.hl{background:transparent;color:var(--canh);border:1px solid var(--canh)}
+@media (max-width:560px){.k282-dong{grid-template-columns:auto minmax(0,1fr)}.k282-dong .k282-hy{grid-row:3;grid-column:2;justify-content:flex-start;margin-top:3px}.k282-dong .k282-cham{grid-row:1/span 3}}
+.k282-nut-them{font-weight:600;font-size:14px;border-radius:12px;padding:0 18px;min-height:56px;cursor:pointer;border:1px solid var(--ink);background:var(--ink);color:#fff;white-space:nowrap}
+.k282-nut-them[aria-expanded="true"]{background:transparent;color:var(--ink)}
+/* Bảng chi tiết */
+.k282-ct{display:flex;flex-direction:column;gap:14px;min-width:0}
+.k282-luoi{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px;align-items:start}
+@media (max-width:719px){.k282-luoi{grid-template-columns:minmax(0,1fr)}}
+.k282-the{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.k282-the h2,.k282-them h2{font-size:16px;margin:0;overflow-wrap:anywhere}
+.k282-muc-nho{font-size:12px;color:var(--mute);margin:0;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.k282-hang-tag{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.k282-tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;background:var(--bg);overflow-wrap:anywhere}
+.k282-tag.ok{border-color:var(--tot);color:var(--tot)}.k282-tag.xl{border-color:var(--canh);color:var(--canh)}.k282-tag.loi{border-color:var(--loi);color:var(--loi)}
+.k282-cu{font-size:12.5px;color:var(--canh);margin:0}
+.k282-thanh{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:baseline}
+.k282-thanh .tn{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+.k282-thanh .hoi{font-size:12px;color:var(--mute);text-align:right;font-variant-numeric:tabular-nums}
+.k282-dai{grid-column:1/-1;height:8px;border-radius:4px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.k282-dai i{display:block;height:100%;background:var(--tot)}
+.k282-dai.het{border-color:var(--loi)}.k282-dai.het i{background:var(--loi)}
+.k282-thanh .con{grid-column:1/-1;font-size:12px;color:var(--mute);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.k282-thanh .con .so-con{margin-left:auto}
+.k282-thanh .con.het .so-con{color:var(--loi);font-weight:600}
+.k282-chu1{font-size:12px;color:var(--mute);display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.k282-chan{border-top:1px solid var(--line);padding-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--mute)}
+.k282-so{display:flex;flex-direction:column;gap:8px}
+.k282-so-hang{display:flex;align-items:center;gap:8px;font-size:13px}
+.k282-so-hang b{margin-left:auto;font-variant-numeric:tabular-nums;font-size:16px}
+.k282-cot{display:flex;align-items:flex-end;gap:3px;height:64px;border-bottom:1px solid var(--line)}
+.k282-cot i{flex:1;min-width:0;background:color-mix(in srgb,var(--tot) 70%,var(--card));border-radius:3px 3px 0 0;min-height:2px}
+.k282-cot-nhan{display:flex;justify-content:space-between;font-size:11px;color:var(--mute)}
+/* Thẻ quản trị */
+.k282-truong{margin:0;display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:4px 10px;align-items:center;border-top:1px solid var(--line);padding-top:10px}
+.k282-truong dt{font-size:11px;font-weight:600;color:var(--mute);letter-spacing:.03em;text-transform:uppercase}
+.k282-truong dd{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;overflow-wrap:anywhere;min-width:0}
+@media (max-width:560px){.k282-truong{grid-template-columns:minmax(0,1fr) auto}.k282-truong dt{grid-column:1/-1}}
+.k282-nho{font-size:12px;color:var(--acc);background:none;border:1px solid var(--line);border-radius:8px;padding:3px 10px;cursor:pointer;min-height:32px}
+.k282-nho-trai{align-self:flex-start}
+@media (max-width:560px),(pointer:coarse){.k282-nho{min-height:44px}}
+.k282-otp-ma{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:22px;font-weight:700;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.k282-vong{width:26px;height:26px;vertical-align:middle;flex:none}.k282-vong circle{fill:none;stroke-width:4}
+.k282-vong .nen{stroke:var(--line)}.k282-vong .tien{stroke:var(--acc);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
+.k282-hd{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.k282-nut{font-weight:600;font-size:13px;border-radius:8px;padding:8px 14px;min-height:44px;cursor:pointer;border:1px solid var(--ink);background:var(--ink);color:#fff}
+.k282-nut.phu{background:transparent;color:var(--ink);border-color:var(--line)}
+.k282-nut.nguy{background:transparent;color:var(--loi);border-color:var(--loi)}
+.k282-nut:disabled{opacity:.5;cursor:not-allowed}
+.k282-ghi a{color:var(--acc)}
+.k282-loi{font-size:12.5px;margin:0;padding:8px 10px;border-radius:8px;border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12}
+.k282-o-nho{font:inherit;font-size:16px;min-height:44px;box-sizing:border-box;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);max-width:100%}
+.k282-xem{margin:6px 0;display:flex;flex-direction:column;gap:6px}
+.k282-xem img{width:100%;border:1px solid var(--line);border-radius:8px;background:#f3f3f3;cursor:zoom-in;display:block}
+.k282-xem-cho{border:1px dashed var(--line);border-radius:8px;background:#f7f7f5;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;font-size:13px}
+.k282-xem.to{position:fixed;inset:0;z-index:2147483000;background:#111;margin:0;padding:8px;border-radius:0;color:#fff;overflow:auto}
+.k282-xem.to img{max-width:100%;max-height:calc(100vh - 64px);width:auto;height:auto;margin:auto;object-fit:contain;cursor:zoom-out;border:0}
+.k282-xem.to .k282-xem-cho{flex:1;color:#ddd;background:#222;border-color:#555}
+.k282-xem.to .k282-ghi{color:#ddd}
+.k282-sua{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:10px;min-width:0}
+.k282-ok{font-size:12.5px;margin:0;padding:8px 10px;border-radius:8px;border:1px solid var(--tot);color:var(--tot)}
+/* Thêm tài khoản (MỘT form) */
+.k282-them{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.k282-buoc{display:flex;flex-direction:column;gap:8px;min-width:0}
+.k282-o{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute);min-width:0}
+.k282-o input,.k282-o textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 12px;min-height:44px;width:100%;box-sizing:border-box}
+.k282-o textarea{min-height:96px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.k282-mk{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.k282-tuy{border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.k282-tuy-con{background:var(--card)}
+.k282-them summary{cursor:pointer;padding:9px 12px;font-size:12.5px;font-weight:600;color:var(--mute);min-height:44px;display:flex;align-items:center;box-sizing:border-box}
+.k282-tuy-than{padding:4px 12px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.k282-xem-truoc{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.k282-xt-dau{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)}
+.k282-xt-dong{display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:44px;border-top:1px solid var(--line);cursor:pointer;min-width:0}
+.k282-xt-dong .e{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k282-xt-dong .l{margin-left:auto;flex:none;font-size:12px;color:var(--mute)}
+.k282-xt-canh{padding:8px 14px;border-top:1px solid var(--line);font-size:12px;color:#8A2A1E}
+.k282-xt-chan{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
+.k282-kq-tk{padding:8px 14px;border-top:1px solid var(--line);min-width:0}
+.k282-kq-dong{display:flex;gap:10px;align-items:center;font-size:12.5px;padding:3px 0;min-width:0}
+.k282-kq-dong b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k282-kq-dong span{margin-left:auto;flex:none}
+.k282-dn-tat-ca{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+@media (prefers-reduced-motion:no-preference){.k282-dai i{transition:width .25s ease-out}}
 </style>
 </helmet>
 <div class="goc">
@@ -108,336 +186,184 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <h2 id="h-bang-ai" class="an-chu">{{tieuMuc}}</h2>
 
 <sc-if value="{{laTk}}">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-<div role="tablist" aria-label="Nhóm tài khoản" style="display:flex;flex-wrap:wrap;gap:8px;flex:1 1 100%;min-width:0"><sc-for list="{{nhom}}" as="c"><button type="button" role="tab" data-nhom="{{c.id}}" aria-selected="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}"><span>{{c.nhan}}</span><span style="font-size:12px;opacity:.7">{{c.dem}}</span></button></sc-for></div>
-<button type="button" id="nut-them" aria-expanded="{{them.co}}" aria-controls="form-them" onClick="{{them.nut.pick}}" style="{{them.nut.st}}">{{them.nut.nhan}}</button>
-</div>
-<sc-if value="{{them.co}}"><form id="form-them" novalidate data-module="{{them.chonId}}" onSubmit="{{them.luu}}" style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-<span style="font-weight:600">{{them.tieu}}</span>
-<sc-if value="{{them.hienNhom}}">
-<div role="group" aria-label="Nhóm" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.dsNhom}}" as="n"><button type="button" data-nhom-them="{{n.id}}" aria-pressed="{{n.on}}" onClick="{{n.pick}}" style="{{n.st}}">{{n.nhan}}</button></sc-for></div>
-</sc-if>
-<sc-if value="{{them.chuaChonNhom}}"><span style="font-size:12px;color:var(--mute)">Chọn một nhóm.</span></sc-if>
-<sc-if value="{{them.coNhomChon}}">
-<sc-if value="{{them.hienLoai}}">
-<div role="group" aria-label="Loại" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.dsLoai}}" as="l"><button type="button" data-loai-them="{{l.id}}" aria-pressed="{{l.on}}" onClick="{{l.pick}}" style="{{l.st}}">{{l.nhan}}</button></sc-for></div>
-</sc-if>
-<sc-if value="{{them.chuaChonLoai}}"><span style="font-size:12px;color:var(--mute)">Chọn loại thêm tài khoản.</span></sc-if>
-<sc-if value="{{them.coLoaiChon}}">
-<div role="group" aria-label="Nhà cung cấp" style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{them.apis}}" as="c"><button type="button" data-chon-module="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}" style="{{c.st}}">{{c.nhan}}</button></sc-for></div><span style="font-size:12px;color:var(--mute)">{{them.mota}}</span>
-<sc-if value="{{them.canKhoaQt}}"><span style="font-size:12px;color:var(--mute)">Dán khoá quản trị ở khối «Khoá quản trị» phía trên để thêm khoá.</span></sc-if>
-<sc-if value="{{them.laTaiKhoan}}"><div id="khung-tu-dong" style="display:flex;flex-direction:column;gap:10px;min-width:0">
-<sc-if value="{{them.td.coCaHaiKieu}}">
-<div role="group" aria-label="Kiểu đăng nhập" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" data-kieu="truc_tiep" aria-pressed="{{them.td.kieuTrucTiep.on}}" onClick="{{them.td.kieuTrucTiep.pick}}" style="{{them.td.kieuTrucTiep.st}}">Trực tiếp</button></div>
-</sc-if>
-<sc-if value="{{them.td.chiMotKieu}}"><span style="font-size:12px;color:var(--mute)">Kiểu: {{them.td.nhanKieuHienTai}}</span></sc-if>
-<span style="font-size:12px;color:var(--mute)">{{them.td.goiYKieu}}</span>
-<div id="danh-sach-hang-nhap" style="display:flex;flex-direction:column;gap:12px;min-width:0">
-<sc-for list="{{them.td.hangNhap}}" as="hn">
-<div data-hang-nhap="{{hn.idx}}" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-<span style="font-size:12px;font-weight:600;color:var(--mute)">Tài khoản {{hn.thuTu}}</span>
-<sc-if value="{{hn.coNutXoa}}">
-<button type="button" data-xoa-hang="{{hn.idx}}" onClick="{{hn.xoa}}" aria-label="Xoá tài khoản {{hn.thuTu}}" style="border:0;background:transparent;color:#8A2A1E;font-size:12px;cursor:pointer;min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center">Xoá</button>
-</sc-if>
-</div>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Email
-<input type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{hn.email}}" onInput="{{hn.doiEmail}}" data-nhap-email="{{hn.idx}}" aria-label="Email tài khoản {{hn.thuTu}}" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Mật khẩu
-<div style="display:flex;gap:6px;align-items:center">
-<input type="{{hn.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="Mật khẩu" value="{{hn.matKhau}}" onInput="{{hn.doiMatKhau}}" data-nhap-mat-khau="{{hn.idx}}" aria-label="Mật khẩu tài khoản {{hn.thuTu}}" style="flex:1 1 auto;min-width:0;min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px">
-<button type="button" data-hien-mk="{{hn.idx}}" onClick="{{hn.doiHienMk}}" aria-label="{{hn.nhanHienMk}} mật khẩu tài khoản {{hn.thuTu}}" style="min-height:44px;min-width:44px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;cursor:pointer;flex:0 0 auto">{{hn.nhanHienMk}}</button>
-</div>
-</label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Mã OTP / khoá 2FA (nếu có)
-<span style="font-size:11px;color:var(--mute);line-height:1.4">Dán khoá bí mật 2FA để hệ thống tự tính mã; hoặc mã 6 số đang có.</span>
-<input type="text" autocomplete="off" spellcheck="false" placeholder="Khoá Base32 hoặc mã 6 số" value="{{hn.otp}}" onInput="{{hn.doiOtp}}" data-nhap-otp="{{hn.idx}}" aria-label="Mã OTP hoặc khoá 2FA tài khoản {{hn.thuTu}}" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
-</div>
-</sc-for>
-<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-<button type="button" id="nut-chay-hang-nhap" disabled="{{them.td.dangChayHangNhap}}" onClick="{{them.td.chayHangNhap}}" style="{{them.td.chayHangNhapSt}}">{{them.td.chayHangNhapNhan}}</button>
-<sc-if value="{{them.td.coThemHang}}">
-<button type="button" id="nut-them-hang-tk" onClick="{{them.td.themHang}}" style="{{them.td.themHangSt}}">＋ Thêm tài khoản khác</button>
-</sc-if>
-</div>
-</div>
-<details open="{{them.td.moDan}}" onToggle="{{them.td.doiMoDan}}" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-top:4px">
-<summary onClick="{{them.td.bamSummary}}" style="padding:10px 14px;background:#FBFAF8;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Dán nhiều dòng (lối phụ)</summary>
-<div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
-<span style="font-size:12px;color:var(--mute);line-height:1.5">Mỗi dòng một tài khoản: <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu</span>, có mã 2FA thì thêm <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|mật khẩu|mã2fa</span>, hoặc dùng cookie <span style="font-family:ui-monospace,Menlo,Consolas,monospace">email|cookie=…</span>. Hệ thống đăng nhập LẦN LƯỢT, cách nhau khoảng 30 giây. Gặp CAPTCHA hoặc bước xác minh thì dừng tài khoản đó và báo bạn mở trình duyệt xử lý — không cố vượt. Mật khẩu chỉ nằm trong ô này tới khi bấm đăng nhập rồi bị xoá khỏi trang.</span>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Danh sách tài khoản<textarea id="o-tu-dong" rows="5" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="ten@gmail.com|mat-khau&#10;ten2@gmail.com|mat-khau|123456" value="{{them.td.vanBan}}" onFocus="{{them.td.focusVanBan}}" onInput="{{them.td.goVanBan}}" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:13px ui-monospace,Menlo,Consolas,monospace;resize:vertical"></textarea></label>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="nut-xem-truoc" disabled="{{them.td.dangXem}}" onClick="{{them.td.xem}}" style="{{them.td.xemSt}}">Xem trước</button></div>
-<sc-if value="{{them.td.coXem}}"><div id="xem-truoc-tu-dong" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
-<div style="padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)">{{them.td.tomTat}}</div>
-<sc-for list="{{them.td.hang}}" as="h"><label data-tk-tu-dong="{{h.email}}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;border-top:1px solid var(--line);cursor:pointer;min-width:0"><input type="checkbox" checked="{{h.on}}" onChange="{{h.doi}}" aria-label="Đăng nhập {{h.email}}"><span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{h.email}}</span><span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:var(--mute)">{{h.loai}}</span></label></sc-for>
-<sc-for list="{{them.td.canhBao}}" as="c"><div style="padding:8px 14px;border-top:1px solid var(--line);font-size:12px;color:#8A2A1E">{{c.t}}</div></sc-for>
-<div style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)"><button type="button" id="nut-chay-tu-dong" disabled="{{them.td.dangChay}}" onClick="{{them.td.chay}}" style="{{them.td.chaySt}}">{{them.td.chayNhan}}</button></div>
+<div id="k268" class="k282" data-khu-tai-khoan>
+
+<section class="k282-tong" aria-label="Tổng hợp tài khoản">
+<div class="k282-hang"><span class="k282-nhan">Trạng thái</span>
+<div class="k282-chips" id="k282-tt" role="group" aria-label="Lọc theo trạng thái"><sc-for list="{{tong.tt}}" as="c"><button type="button" class="k282-tt{{c.cao}}" data-tt="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}"><span class="k282-cham {{c.cls}}" aria-hidden="true"></span>{{c.nhan}} <b>{{c.n}}</b></button></sc-for></div></div>
+<div class="k282-hang"><span class="k282-nhan">Hết limit theo mục</span>
+<div class="k282-chips" id="k282-lim" role="group" aria-label="Lọc theo mục đã hết limit"><sc-for list="{{tong.lim}}" as="c"><button type="button" class="k282-tt{{c.cao}}" data-lim="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}">{{c.nhan}} <b>{{c.n}}</b></button></sc-for><sc-if value="{{tong.coLimGhi}}"><span class="k282-ghi" id="k282-lim-ghi">{{tong.limGhi}}</span></sc-if></div></div>
+<div class="k282-hang"><span class="k282-nhan" id="k282-h1-nhan">{{tong.h1Nhan}}</span>
+<div class="k282-chips" id="k282-h1" role="group" aria-label="Tài khoản đang giữ hạng 1 theo mục"><sc-for list="{{tong.h1}}" as="c"><button type="button" class="k282-tt" data-h1="{{c.muc}}" disabled="{{c.tat}}" title="{{c.tieuDe}}" onClick="{{c.pick}}">{{c.nhan}}: <span>{{c.ai}}</span></button></sc-for><sc-if value="{{tong.coH1Ghi}}"><span class="k282-ghi" id="k282-h1-ghi">{{tong.h1Ghi}}</span></sc-if></div></div>
+<p class="k282-ghi" id="k282-tong-ghi">{{tong.ghi}}</p>
+<label class="k282-cb"><input type="checkbox" id="dl-tu-dong-lai" checked="{{tong.tuDongLai}}" onChange="{{tong.doiTuDongLai}}">Tự đăng nhập lại khi phiên hết hạn</label>
+<sc-if value="{{tong.coDnTatCa}}"><div class="k282-dn-tat-ca"><button type="button" id="nut-dl-dang-nhap-tat-ca" class="k282-nut phu" onClick="{{tong.dnTatCa}}" disabled="{{tong.dnTatCaDangChay}}">{{tong.nhanDnTatCa}}</button>
+<sc-if value="{{tong.dnTatCaDangChay}}"><span class="k282-ghi">Đang chạy…</span></sc-if>
+<div id="dl-dang-nhap-tat-ca-kq"><sc-for list="{{tong.dnTatCaKq}}" as="k"><div class="k282-kq-dong"><b>{{k.email}}</b><span>{{k.trang_thai}}</span><sc-if value="{{k.ma_loi}}"><span>({{k.ma_loi}})</span></sc-if></div></sc-for></div></div></sc-if>
+</section>
+
+<div class="k282-chips" id="k282-nha" role="group" aria-label="Lọc theo nhà"><sc-for list="{{nha}}" as="c"><button type="button" class="k282-chip" data-nha="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}">{{c.nhan}} <span class="n">{{c.dem}}</span></button></sc-for></div>
+
+<div class="k282-hang-chon">
+<div class="k282-chon" id="k282-chon">
+<button type="button" class="k282-chon-nut" id="o-chon" role="combobox" aria-haspopup="listbox" aria-expanded="{{chon.mo}}" aria-controls="ds-tk" aria-label="{{chon.aria}}" onClick="{{chon.bat}}"><span class="k282-cham {{chon.cls}}" role="img" aria-label="{{chon.ttChu}}" title="{{chon.ttChu}}"></span><span class="ten">{{chon.ten}}</span><span class="phu">{{chon.phu}}</span><svg class="mui" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="{{chon.mui}}"></path></svg></button>
+<sc-if value="{{chon.mo}}"><div class="k282-hop">
+<input id="q-tk" type="search" autocomplete="off" role="searchbox" aria-label="Tìm tài khoản" aria-controls="ds-tk" aria-activedescendant="{{chon.tro}}" placeholder="{{chon.goiY}}" value="{{chon.q}}" onInput="{{chon.doiQ}}" onKeyDown="{{chon.phim}}">
+<ul class="k282-ds" id="ds-tk" role="listbox" aria-label="Tài khoản"><sc-for list="{{chon.ds}}" as="x"><li class="k282-dong" role="option" id="{{x.domId}}" data-tk="{{x.id}}" aria-selected="{{x.tro}}" title="{{x.tieuDe}}" onClick="{{x.pick}}"><span class="k282-cham {{x.cls}}" role="img" aria-label="{{x.ttChu}}" title="{{x.ttChu}}"></span><span class="e">{{x.ten}}</span><span class="l">{{x.phu}}</span><span class="k282-hy"><sc-for list="{{x.huy}}" as="h"><span class="k282-huy{{h.hl}}">{{h.chu}}</span></sc-for></span></li></sc-for><sc-if value="{{chon.rong}}"><li class="k282-rong" role="presentation">{{chon.rongChu}}</li></sc-if></ul>
 </div></sc-if>
 </div>
-</details>
-<details id="dl-khoi" open="{{them.dl.moDS}}" onToggle="{{them.dl.doiMoDS}}" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-top:4px">
-<summary style="padding:10px 14px;background:#FBFAF8;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Tài khoản đã lưu ({{them.dl.dem}})</summary>
-<div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản đã lưu
-<select id="dl-chon" value="{{them.dl.chonId}}" onChange="{{them.dl.doiChon}}" aria-label="Chọn tài khoản đã lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chọn để điền nhanh —</option>
-<sc-for list="{{them.dl.tuyChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Kiểu bí mật
-<span style="font-size:11px;color:var(--mute);line-height:1.4">«Mật khẩu» cho tài khoản đăng nhập; «Khoá API»/«Token»/«Cookie» cho khoá dùng thẳng không cần email.</span>
-<select id="dl-kieu-bi-mat" value="{{them.dl.kieuBiMat}}" onChange="{{them.dl.doiKieuBiMat}}" aria-label="Kiểu bí mật" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<sc-for list="{{them.dl.dsKieuBiMat}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Email
-<input id="dl-email" type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{them.dl.email}}" onInput="{{them.dl.doiEmail}}" aria-label="Email tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Địa chỉ
-<span style="font-size:11px;color:var(--mute);line-height:1.4">Email của tài khoản, hoặc URL gốc của API (vd https://api.example.com). Để trống = mặc định theo đích dùng.</span>
-<input id="dl-dia-chi" type="text" autocomplete="off" spellcheck="false" placeholder="ten@example.com hoặc https://api.example.com" value="{{them.dl.diaChi}}" onInput="{{them.dl.doiDiaChi}}" aria-label="Địa chỉ tài khoản hoặc API" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{them.dl.nhanBiMat}}
-<div style="display:flex;gap:6px;align-items:center">
-<input id="dl-mat-khau" type="{{them.dl.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="{{them.dl.goiYBiMat}}" value="{{them.dl.matKhau}}" onInput="{{them.dl.doiMatKhau}}" aria-label="Mật khẩu, khoá API hoặc token" style="flex:1 1 auto;min-width:0;min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px">
-<button type="button" id="dl-hien-mk" onClick="{{them.dl.doiHienMk}}" aria-label="{{them.dl.nhanHienMk}} bí mật đã lưu" style="min-height:44px;min-width:44px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;cursor:pointer;flex:0 0 auto">{{them.dl.nhanHienMk}}</button>
+<button type="button" id="nut-them" class="k282-nut-them" aria-expanded="{{them.co}}" aria-controls="form-them" onClick="{{them.nut.pick}}">{{them.nut.nhan}}</button>
 </div>
-</label>
-<sc-if value="{{them.dl.coTotp}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">TOTP secret
-<span style="font-size:11px;color:var(--mute);line-height:1.4">Dán khoá Base32 của ứng dụng xác thực; để trống = xác minh trên thiết bị khi đăng nhập.</span>
-<input id="dl-totp" type="text" autocomplete="off" spellcheck="false" placeholder="Khoá Base32 (A–Z, 2–7)" value="{{them.dl.totp}}" onInput="{{them.dl.doiTotp}}" aria-label="TOTP secret" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label></sc-if>
-<details style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
-<summary style="padding:8px 12px;font-size:12px;font-weight:600;color:var(--mute);cursor:pointer">Cách lấy secret</summary>
-<ol style="margin:0;padding:8px 12px 12px 32px;font-size:12px;color:var(--mute);line-height:1.6">
+
+<sc-if value="{{them.co}}"><form id="form-them" class="k282-them" novalidate data-module="{{them.chonId}}" onSubmit="{{them.luu}}">
+<h2>Thêm tài khoản</h2>
+<sc-if value="{{them.khongCoNguon}}"><p class="k282-ghi" id="them-khong-nguon">Chưa cài nguồn AI nào có thể thêm tài khoản. Cài một nguồn ở trang Module rồi quay lại.</p></sc-if>
+<sc-if value="{{them.hienNhom}}"><div class="k282-buoc"><p class="k282-muc-nho">1. Chọn nhà</p>
+<div class="k282-chips" role="group" aria-label="Nhà"><sc-for list="{{them.dsNhom}}" as="n"><button type="button" class="k282-chip" data-nhom-them="{{n.id}}" aria-pressed="{{n.on}}" onClick="{{n.pick}}">{{n.nhan}}</button></sc-for></div></div></sc-if>
+<sc-if value="{{them.chuaChonNhom}}"><p class="k282-ghi">Chọn một nhà để hiện các ô cần nhập.</p></sc-if>
+<sc-if value="{{them.hienCach}}"><div class="k282-buoc"><p class="k282-muc-nho">{{them.soCach}}. Chọn cách thêm</p>
+<div class="k282-chips" role="group" aria-label="Cách thêm"><sc-for list="{{them.dsCach}}" as="c"><button type="button" class="k282-chip" data-cach-them="{{c.id}}" aria-pressed="{{c.on}}" onClick="{{c.pick}}">{{c.nhan}}</button></sc-for></div></div></sc-if>
+<sc-if value="{{them.chuaChonCach}}"><p class="k282-ghi">Chọn một cách thêm để hiện các ô cần nhập.</p></sc-if>
+<sc-if value="{{them.laDn}}"><div id="khung-tu-dong" class="k282-buoc">
+<p class="k282-muc-nho">{{them.soNhap}}. Nhập thông tin</p>
+<label class="k282-o">Email<input type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{them.hang.email}}" onInput="{{them.hang.doiEmail}}" data-nhap-email="0" aria-label="Email"></label>
+<label class="k282-o">Mật khẩu<span class="k282-mk"><input type="{{them.hang.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="Mật khẩu" onInput="{{them.hang.doiMatKhau}}" data-nhap-mat-khau="0" aria-label="Mật khẩu"><button type="button" class="k282-nho" data-hien-mk="0" onClick="{{them.hang.doiHienMk}}" aria-label="{{them.hang.nhanHienMk}} mật khẩu">{{them.hang.nhanHienMk}}</button></span></label>
+<sc-if value="{{them.hang.otpMo}}"><label class="k282-o">Khoá OTP (Base32)<input type="text" autocomplete="off" spellcheck="false" placeholder="Khoá Base32 của ứng dụng xác thực" onInput="{{them.hang.doiOtp}}" data-nhap-otp="0" aria-label="Khoá OTP"></label></sc-if>
+<sc-if value="{{them.hang.otpDong}}"><button type="button" class="k282-nho k282-nho-trai" id="nut-mo-otp" onClick="{{them.hang.moOtp}}">Có xác minh 2 bước? Thêm khoá OTP</button></sc-if>
+<p class="k282-ghi">{{them.goiY}}</p>
+</div></sc-if>
+<sc-if value="{{them.laApi}}"><div class="k282-buoc">
+<p class="k282-muc-nho">{{them.soNhap}}. Nhập thông tin</p>
+<sc-for list="{{them.chinh}}" as="f"><label data-truong="{{f.khoa}}" class="k282-o">{{f.nhan}}<sc-if value="{{f.biMat}}"><input id="{{f.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.onIn}}"></sc-if><sc-if value="{{f.chu}}"><input id="{{f.idO}}" type="text" autocomplete="off" spellcheck="false" placeholder="{{f.ph}}" value="{{f.val}}" onInput="{{f.onIn}}"></sc-if></label></sc-for>
+<p class="k282-ghi">{{them.mota}}</p>
+</div></sc-if>
+<sc-if value="{{them.coCach}}">
+<details id="tuy-chon-them" class="k282-tuy" open="{{them.tuyChon.mo}}" onToggle="{{them.tuyChon.doi}}">
+<summary onClick="{{them.tuyChon.bam}}">Tuỳ chọn thêm</summary>
+<div class="k282-tuy-than">
+<sc-if value="{{them.laDn}}">
+<label class="k282-o">Nhãn (tuỳ chọn)<input id="tk-nhan" type="text" autocomplete="off" spellcheck="false" placeholder="VD: tài khoản chính" value="{{them.nhan}}" onInput="{{them.doiNhan}}" aria-label="Nhãn tài khoản"></label>
+<label class="k282-o">Bậc gói (tuỳ chọn; để trống nếu không biết)<input id="tk-bac-goi" type="text" autocomplete="off" spellcheck="false" placeholder="VD: plus" value="{{them.bacGoi}}" onInput="{{them.doiBacGoi}}" aria-label="Bậc gói tài khoản"></label>
+</sc-if>
+<sc-for list="{{them.phu}}" as="f"><label data-truong="{{f.khoa}}" class="k282-o">{{f.nhan}}<sc-if value="{{f.biMat}}"><input id="{{f.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.onIn}}"></sc-if><sc-if value="{{f.chu}}"><input id="{{f.idO}}" type="text" autocomplete="off" spellcheck="false" placeholder="{{f.ph}}" value="{{f.val}}" onInput="{{f.onIn}}"></sc-if></label></sc-for>
+<sc-if value="{{them.laDn}}">
+<details class="k282-tuy-con" id="cach-lay-otp">
+<summary>Cách lấy khoá OTP</summary>
+<ol class="k282-ghi" style="margin:0;padding:8px 12px 12px 32px;line-height:1.6">
 <li>Mở trang «Bảo mật» của tài khoản trên trình duyệt rồi đăng nhập.</li>
 <li>Tìm mục «Xác minh 2 bước» và bật nếu chưa bật.</li>
 <li>Trong mục đó, chọn «Ứng dụng xác thực» để thêm phương thức mới.</li>
 <li>Khi hiện mã QR, chọn «Không quét được mã?» để hiện khoá chữ thay thế.</li>
-<li>Sao chép dãy ký tự (chữ hoa A–Z và số 2–7), dán vào ô «TOTP secret» ở trên.</li>
+<li>Sao chép dãy ký tự (chữ hoa A–Z và số 2–7), dán vào ô «Khoá OTP» của form.</li>
 </ol>
 </details>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Nhãn (tuỳ chọn)
-<input id="dl-nhan" type="text" autocomplete="off" spellcheck="false" placeholder="VD: tài khoản chính" value="{{them.dl.nhan}}" onInput="{{them.dl.doiNhan}}" aria-label="Nhãn tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Bậc gói (tuỳ chọn)
-<span style="font-size:11px;color:var(--mute);line-height:1.4">VD: free, go, plus, pro — để trống nếu không biết (không đoán).</span>
-<input id="dl-bac-goi" type="text" autocomplete="off" spellcheck="false" placeholder="VD: plus" value="{{them.dl.bacGoi}}" onInput="{{them.dl.doiBacGoi}}" aria-label="Bậc gói tài khoản lưu" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-</label>
-<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Đăng nhập bằng
-<span style="font-size:11px;color:var(--mute);line-height:1.4">«Trực tiếp» = đăng nhập bằng chính tài khoản này; mục «Qua tài khoản…» = đăng nhập hộ bằng một tài khoản đã lưu. Để trống = theo mặc định của module.</span>
-<select id="dl-dang-nhap-bang" value="{{them.dl.dangNhapBang}}" onChange="{{them.dl.doiDangNhapBang}}" aria-label="Đăng nhập bằng" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<sc-for list="{{them.dl.dsDangNhapBang}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label>
-<sc-if value="{{them.dl.coDangNhapHo}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Tài khoản dùng để đăng nhập hộ
-<select id="dl-tk-luu" value="{{them.dl.tkDnhId}}" onChange="{{them.dl.doiTkDnh}}" aria-label="Chọn tài khoản dùng để đăng nhập hộ" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chọn tài khoản —</option>
-<sc-for list="{{them.dl.dsTkDnh}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label></sc-if>
-<sc-if value="{{them.dl.bangCo}}">
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<label style="flex:1 1 140px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Nhóm
-<select id="dl-nhom" value="{{them.dl.nhomChon}}" onChange="{{them.dl.doiNhomChon}}" aria-label="Nhóm của tài khoản" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chưa chọn —</option>
-<sc-for list="{{them.dl.dsNhomChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label>
-<label style="flex:1 1 140px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Loại tài khoản
-<select id="dl-loai-tk" value="{{them.dl.loaiChon}}" onChange="{{them.dl.doiLoaiChon}}" aria-label="Loại tài khoản" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chưa phân loại —</option>
-<sc-for list="{{them.dl.dsLoaiChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label>
-<sc-if value="{{them.dl.coDichChon}}"><label style="flex:1 1 140px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Đích dùng
-<select id="dl-dich-dung" value="{{them.dl.dichChon}}" onChange="{{them.dl.doiDichChon}}" aria-label="Đích dùng của tài khoản" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Chưa khai —</option>
-<sc-for list="{{them.dl.dsDichChon}}" as="o"><option value="{{o.id}}" selected="{{o.chon}}">{{o.nhan}}</option></sc-for>
-</select></label></sc-if>
-</div>
-<p style="margin:0;font-size:11px;color:var(--mute);line-height:1.4">Phân loại theo bảng của máy chủ: chọn nhóm → loại → đích dùng. Nhóm thật của tài khoản được suy từ module sở hữu khi lưu.</p>
 </sc-if>
-<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-<button type="button" id="nut-dl-luu" disabled="{{them.dl.thieuLuu}}" onClick="{{them.dl.luu}}" style="{{them.dl.luuSt}}">Lưu tài khoản</button>
-<button type="button" id="nut-dl-luu-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.luuVaDangNhap}}" style="{{them.dl.luuVaDangNhapSt}}">Lưu và đăng nhập</button>
-<button type="button" id="nut-dl-chi-dang-nhap" disabled="{{them.dl.tatLuuVaDangNhap}}" onClick="{{them.dl.chiDangNhap}}" style="{{them.dl.chiDangNhapSt}}">Chỉ đăng nhập</button>
-
-</div>
-<label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink);min-height:44px;cursor:pointer"><input type="checkbox" id="dl-tu-dong-lai" checked="{{them.dl.tuDongLai}}" onChange="{{them.dl.doiTuDongLai}}" style="width:20px;height:20px">Tự đăng nhập lại khi phiên hết hạn</label>
-<sc-if value="{{them.dl.coLoi}}"><p role="alert" id="loi-dl" style="margin:0;font-size:13px;color:#8A2A1E">{{them.dl.loi}}</p></sc-if>
-<sc-if value="{{them.dl.coLocNhom}}"><label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">Lọc theo nhóm
-<select id="dl-loc-nhom" value="{{them.dl.locNhom}}" onChange="{{them.dl.doiLocNhom}}" aria-label="Lọc tài khoản theo nhóm" style="min-height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;width:100%">
-<option value="">— Tất cả nhóm —</option>
-<sc-for list="{{them.dl.dsNhom}}" as="n"><option value="{{n}}">{{n}}</option></sc-for>
-</select></label></sc-if>
-<div id="dl-danh-sach" style="display:flex;flex-direction:column">
-<sc-for list="{{them.dl.nhomDs}}" as="g">
-<div data-tk-nhom="{{g.nhom}}" style="padding:6px 0 2px">
-<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0 2px">
-<strong style="font-size:14px">{{g.ten}}</strong>
-<span style="font-size:12px;color:var(--mute)">{{g.dem}} tài khoản</span>
-</div>
-<sc-if value="{{g.rong}}"><p style="font-size:12px;color:var(--mute);margin:2px 0 6px">Chưa có tài khoản nào trong nhóm này.</p></sc-if>
-<sc-for list="{{g.loaiDs}}" as="l">
-<div data-tk-loai="{{l.loai}}">
-<sc-if value="{{l.coNhan}}"><div style="font-size:12px;font-weight:600;color:var(--mute);padding:4px 0 0">{{l.nhan}}</div></sc-if>
-<sc-for list="{{l.hang}}" as="r">
-<div data-tk-da-luu="{{r.id}}" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;min-height:44px;border-top:1px solid var(--line);min-width:0">
-<span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.emailChe}}</span>
-<sc-if value="{{r.coDiaChiChe}}"><span style="font-size:12px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%">{{r.diaChiChe}}</span></sc-if>
-<sc-if value="{{r.coTenKieuBiMat}}"><span style="font-size:12px;white-space:nowrap;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mute)">{{r.tenKieuBiMat}}</span></sc-if>
-<sc-if value="{{r.dangDung1}}"><span style="{{r.stDangDung1}}">ĐANG DÙNG #1</span></sc-if>
-<sc-if value="{{r.coNhan}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.nhan}}</span></sc-if>
-<sc-if value="{{r.coNhom}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">Nhóm: {{r.nhom}}</span></sc-if>
-<sc-if value="{{r.coDichDung}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">Đích: {{r.nhanDichDung}}</span></sc-if>
-<span style="font-size:12px;color:var(--mute);white-space:nowrap">Gói: {{r.bacGoi}}</span>
-<span style="font-size:12px;color:var(--mute);white-space:nowrap">Hạn mức: {{r.hanMuc}}</span>
-<span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.trangThai}}</span>
-<sc-if value="{{r.coDuongDs}}"><span data-duong-ds="{{r.id}}" style="display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center"><sc-for list="{{r.duongDs}}" as="d"><span title="{{d.ghiChu}}" style="{{d.st}}">{{d.nhan}}</span></sc-for></span></sc-if>
-<sc-if value="{{r.coDongDung}}"><span style="font-size:12px;color:var(--mute);white-space:nowrap">{{r.dongDung}}</span></sc-if>
-<span style="margin-left:auto;display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:100%">
-<sc-if value="{{r.coTamDung}}"><button type="button" data-dl-tam-dung="{{r.id}}" onClick="{{r.doiTamDung}}" style="{{r.tamDungSt}}">{{r.nhanTamDung}}</button></sc-if>
-<button type="button" data-dl-dang-nhap="{{r.id}}" onClick="{{r.dangNhap}}" style="{{r.dangNhapSt}}">Đăng nhập</button>
-<sc-if value="{{r.coLienKetCodex}}"><button type="button" data-lien-ket-codex="{{r.id}}" onClick="{{r.lienKetCodex}}" style="{{r.dangNhapSt}}">Liên kết Codex</button></sc-if>
-<sc-if value="{{r.coThuLaiCodex}}"><button type="button" data-thu-lai-codex="{{r.id}}" onClick="{{r.thuLaiCodex}}" style="{{r.dangNhapSt}}">Thử liên kết Codex lại</button></sc-if>
-<button type="button" data-dl-xoa="{{r.id}}" onClick="{{r.xoa}}" style="{{r.xoaSt}}">{{r.nhanXoa}}</button>
-</span>
-<sc-if value="{{r.choHoanTatCodex}}">
-<div data-hoan-tat-codex="{{r.id}}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px;width:100%">
-<sc-if value="{{r.authUrlCodex}}"><a href="{{r.authUrlCodex}}" target="_blank" rel="noreferrer" style="font-size:12px">Mở trang cho phép Codex</a></sc-if>
-<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)">
-<span>URL điều hướng về:</span>
-<input type="text" autocomplete="off" placeholder="https://…/callback?code=…" value="{{r.callbackUrlVal}}" onInput="{{r.doiCallbackUrl}}" style="width:280px;min-height:44px;box-sizing:border-box;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:13px">
-</label>
-<button type="button" data-hoan-tat-codex-nut="{{r.id}}" onClick="{{r.hoanTatLienKet}}" style="{{r.dangNhapSt}}">Hoàn tất liên kết</button>
-<button type="button" onClick="{{r.huyHoanTat}}" style="{{r.dangNhapSt}}">Huỷ</button>
-</div>
-</sc-if>
-<sc-if value="{{r.cho2faDl}}">
-<div data-dl-nhap-2fa="{{r.id}}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px;width:100%">
-<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)">
-<span>Mã 2FA:</span>
-<input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" value="{{r.ma2faDlVal}}" onInput="{{r.doiMa2faDl}}" style="width:110px;min-height:44px;box-sizing:border-box;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:16px">
-</label>
-<button type="button" data-dl-gui-2fa="{{r.id}}" onClick="{{r.guiMa2faDl}}" style="{{r.dangNhapSt}}">Gửi mã</button>
-</div>
-</sc-if>
-</div>
-</sc-for>
-</div>
-</sc-for>
-</div>
-</sc-for>
-</div>
-<div><button type="button" id="nut-dl-luu-tat-ca" onClick="{{them.dl.luuTatCa}}" style="{{them.dl.luuTatCaSt}}">Lưu tất cả ({{them.dl.soHangCoDuLieu}})</button></div>
-<sc-if value="{{them.dl.coDnTatCaNhom}}"><div style="margin-top:8px"><button type="button" id="nut-dl-dang-nhap-tat-ca" onClick="{{them.dl.dnTatCa}}" disabled="{{them.dl.dnTatCaDangChay}}" style="{{them.dl.dnTatCaSt}}">{{them.dl.nhanDnTatCa}}</button>
-<sc-if value="{{them.dl.dnTatCaDangChay}}"><span style="font-size:12px;color:var(--mute);margin-left:8px">Đang chạy…</span></sc-if>
-</div>
-<div id="dl-dang-nhap-tat-ca-kq" style="display:flex;flex-direction:column;margin-top:6px">
-<sc-for list="{{them.dl.dnTatCaKq}}" as="k"><div style="display:flex;gap:10px;font-size:12px;color:var(--mute);padding:3px 0;border-top:1px solid var(--line)"><span style="font-weight:600;color:var(--ink)">{{k.email}}</span><span>{{k.trang_thai}}</span><sc-if value="{{k.ma_loi}}"><span>({{k.ma_loi}})</span></sc-if></div></sc-for>
+<sc-if value="{{them.laDn}}">
+<details open="{{them.td.moDan}}" onToggle="{{them.td.doiMoDan}}" class="k282-tuy-con">
+<summary onClick="{{them.td.bamSummary}}">Dán nhiều dòng</summary>
+<div class="k282-tuy-than">
+<p class="k282-ghi">Mỗi dòng một tài khoản: <code>email|mật khẩu</code>, có khoá OTP thì thêm <code>email|mật khẩu|khoá</code>, hoặc cookie <code>email|cookie=…</code>. Đăng nhập LẦN LƯỢT, cách nhau khoảng 30 giây; gặp CAPTCHA hoặc xác minh thì dừng tài khoản đó và báo bạn xử lý. Mật khẩu chỉ nằm trong ô này tới khi bấm đăng nhập rồi bị xoá khỏi trang.</p>
+<label class="k282-o">Danh sách tài khoản<textarea id="o-tu-dong" rows="5" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="ten@gmail.com|mat-khau&#10;ten2@gmail.com|mat-khau|khoa-otp" onFocus="{{them.td.focusVanBan}}" onInput="{{them.td.goVanBan}}"></textarea></label>
+<div class="k282-hd"><button type="button" id="nut-xem-truoc" class="k282-nut phu" disabled="{{them.td.dangXem}}" onClick="{{them.td.xem}}">Xem trước</button></div>
+<sc-if value="{{them.td.coXem}}"><div id="xem-truoc-tu-dong" class="k282-xem-truoc">
+<div class="k282-xt-dau">{{them.td.tomTat}}</div>
+<sc-for list="{{them.td.hang}}" as="h"><label data-tk-tu-dong="{{h.email}}" class="k282-xt-dong"><input type="checkbox" checked="{{h.on}}" onChange="{{h.doi}}" aria-label="Đăng nhập {{h.email}}"><span class="e">{{h.email}}</span><span class="l">{{h.loai}}</span></label></sc-for>
+<sc-for list="{{them.td.canhBao}}" as="c"><div class="k282-xt-canh">{{c.t}}</div></sc-for>
+<div class="k282-xt-chan"><button type="button" id="nut-chay-tu-dong" class="k282-nut" disabled="{{them.td.dangChay}}" onClick="{{them.td.chay}}">{{them.td.chayNhan}}</button></div>
 </div></sc-if>
 </div>
 </details>
-<sc-if value="{{them.td.coLoi}}"><p role="alert" id="loi-tu-dong" style="margin:0;font-size:13px;color:#8A2A1E">{{them.td.loi}}</p></sc-if>
-<sc-if value="{{them.td.coLuot}}"><div id="tien-do-tu-dong" role="status" style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:#FBFAF8;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--mute)"><span id="tom-tat-tu-dong">{{them.td.luotTomTat}}</span><sc-if value="{{them.td.dangChayLuot}}"><button type="button" id="nut-dung-tu-dong" onClick="{{them.td.dung}}" style="{{them.td.dungSt}}">Dừng</button></sc-if></div>
-<sc-for list="{{them.td.luotHang}}" as="h"><div data-ket-qua-tu-dong="{{h.emailGoc}}" style="display:flex;flex-direction:column;gap:6px;padding:10px 14px;min-height:44px;border-top:1px solid var(--line);min-width:0">
-<div style="display:flex;align-items:center;gap:10px;width:100%;min-width:0">
-<span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{h.emailChe}}</span>
-<span style="margin-left:auto;flex:0 0 auto;font-size:12px;color:{{h.mau}}">{{h.nhan}}</span>
-</div>
-<sc-if value="{{h.cho2fa}}">
-<div data-nhap-2fa="{{h.emailGoc}}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;width:100%">
-<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)">
-<span>Mã 6 số:</span>
-<input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" value="{{h.ma2faVal}}" onInput="{{h.doiMa2fa}}" data-o-ma-2fa="{{h.emailGoc}}" style="width:110px;min-height:44px;box-sizing:border-box;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:16px">
-</label>
-<button type="button" data-nut-gui-2fa="{{h.emailGoc}}" disabled="{{h.dangGui2fa}}" onClick="{{h.guiMa2fa}}" style="{{h.gui2faSt}}">{{h.gui2faNhan}}</button>
-<sc-if value="{{h.coLoi2fa}}"><span role="alert" style="font-size:12px;color:#8A2A1E">{{h.loi2fa}}</span></sc-if>
-</div>
 </sc-if>
-<sc-if value="{{h.canNguoi}}">
-<div style="font-size:12px;color:var(--mute);padding:2px 0">
-<span>Cần đăng nhập tay: bấm «Đăng nhập tay» trong chi tiết tài khoản, rồi chạy lại.</span>
-<sc-if value="{{them.td.khongDuongTrinhDuyet}}"><span>mở trang Trình duyệt từ xa để đăng nhập tay, rồi chạy lại.</span></sc-if>
 </div>
+</details>
 </sc-if>
+<sc-if value="{{them.td.coLoi}}"><p role="alert" id="loi-tu-dong" class="k282-loi">{{them.td.loi}}</p></sc-if>
+<sc-if value="{{them.td.coLuot}}"><div id="tien-do-tu-dong" role="status" class="k282-xem-truoc">
+<div class="k282-xt-dau"><span id="tom-tat-tu-dong">{{them.td.luotTomTat}}</span><sc-if value="{{them.td.dangChayLuot}}"><button type="button" id="nut-dung-tu-dong" class="k282-nho" onClick="{{them.td.dung}}">Dừng</button></sc-if></div>
+<sc-for list="{{them.td.luotHang}}" as="h"><div data-ket-qua-tu-dong="{{h.emailGoc}}" class="k282-kq-tk">
+<div class="k282-kq-dong"><b>{{h.emailChe}}</b><span style="color:{{h.mau}}">{{h.nhan}}</span></div>
+<sc-if value="{{h.canNguoi}}"><p class="k282-ghi">Cần xử lý tay: chọn tài khoản này ở ô chọn, bấm «Đăng nhập tay» rồi chạy lại.</p></sc-if>
 </div></sc-for>
-</div>
-</sc-if>
 </div></sc-if>
-<sc-if value="{{them.coFields}}"><div style="display:flex;flex-wrap:wrap;gap:10px"><sc-for list="{{them.fields}}" as="f"><label data-truong="{{f.khoa}}" style="flex:1 1 240px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)">{{f.nhan}}<sc-if value="{{f.biMat}}"><input id="{{f.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.onIn}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"></sc-if><sc-if value="{{f.chu}}"><input id="{{f.idO}}" type="text" autocomplete="off" spellcheck="false" placeholder="{{f.ph}}" value="{{f.val}}" onInput="{{f.onIn}}" style="min-height:40px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px"></sc-if></label></sc-for></div></sc-if>
-</sc-if>
-</sc-if>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" id="nut-them-luu" hidden="{{them.anNutThem}}" disabled="{{them.dang}}" style="{{them.ok.st}}">{{them.ok.nhan}}</button><button type="button" onClick="{{them.huy.pick}}" style="{{them.huy.st}}">{{them.huy.nhan}}</button></div>
+<div class="k282-hd">
+<button type="submit" id="nut-them-luu" class="k282-nut" hidden="{{them.anNutApi}}" disabled="{{them.dang}}">{{them.ok.nhan}}</button>
+<button type="button" id="nut-chay-hang-nhap" class="k282-nut" hidden="{{them.anNutDn}}" disabled="{{them.dang}}" onClick="{{them.dnChay}}">{{them.dnNhan}}</button>
+<button type="button" id="nut-huy-them" class="k282-nut phu" onClick="{{them.huy.pick}}">Huỷ</button>
+</div>
+<sc-if value="{{them.coLoi}}"><p role="alert" id="loi-dl" class="k282-loi">{{them.loi}}</p></sc-if>
 </form></sc-if>
 
-<div id="k268" data-khu-tai-khoan>
-<div class="k268-khung">
-<section class="k268-ds" aria-label="Danh sách tài khoản">
-<sc-for list="{{khu.nhomDs}}" as="g">
-<div class="k268-nhom" data-k268-nhom="{{g.nhom}}">
-<div class="k268-nhom-dau"><button type="button" data-k268-loc="{{g.nhom}}" aria-pressed="{{g.dangLoc}}" onClick="{{g.loc}}">{{g.ten}}</button><span class="n">{{g.dem}} tài khoản</span><button type="button" class="k268-an" data-k268-an="{{g.nhom}}" aria-expanded="{{g.moRong}}" aria-label="{{g.anNhan}} nhóm {{g.ten}}" onClick="{{g.anNut}}">{{g.anNhan}}</button></div>
-<div class="k268-nhom-than" data-k268-than="{{g.nhom}}" hidden="{{g.an}}">
-<sc-if value="{{g.rong}}"><p class="k268-rong">Chưa có tài khoản nào trong nhóm này.</p></sc-if>
-<sc-for list="{{g.loaiDs}}" as="l">
-<div class="k268-loai" data-k268-loai="{{l.loai}}">
-<p class="k268-loai-ten">{{l.nhan}} · {{l.dem}}</p>
-<div class="k268-o">
-<sc-for list="{{l.hang}}" as="r">
-<button type="button" class="k268-tk{{r.tamDungCls}}" data-k268-tk="{{r.id}}" aria-pressed="{{r.chon}}" aria-label="{{r.ariaNhan}}" onClick="{{r.chonTk}}">
-<span class="k268-tt {{r.ttCls}}" aria-hidden="true"></span>
-<span class="k268-ten">{{r.ten}}</span>
-<span class="k268-sao">{{r.dau1}}</span>
-<span class="k268-dc">{{r.phu}}</span>
-</button>
-</sc-for>
-</div>
-</div>
-</sc-for>
-</div>
-</div>
-</sc-for>
+<div id="k268-ct" data-k268-ct="{{ct.id}}" class="k282-ct" aria-live="polite">
+<sc-if value="{{ct.rong}}"><div class="k282-the" id="k282-rong"><h2>Tài khoản</h2><p class="k282-ghi">{{ct.rongChu}}</p></div></sc-if>
+<sc-if value="{{ct.co}}">
+<div class="k282-luoi">
+<section class="k282-the" id="k282-han-muc" aria-label="Hạn mức">
+<h2>{{ct.tieuDe}}</h2>
+<div class="k282-hang-tag"><span class="k282-tag {{ct.ttCls}}">{{ct.ttNhan}}</span><span class="k282-tag">{{ct.goi}}</span><span class="k282-tag">{{ct.theNhom}}</span><sc-if value="{{ct.coGiu1}}"><span class="k282-tag ok">{{ct.giu1Chu}}</span></sc-if></div>
+<sc-if value="{{ct.coCu}}"><p class="k282-cu">{{ct.cu}}</p></sc-if>
+<sc-for list="{{ct.thanh}}" as="m"><div class="k282-thanh" data-muc="{{m.id}}">
+<span class="tn">{{m.ten}}<sc-if value="{{m.coHang}}"><span class="k282-huy">{{m.hangChu}}</span></sc-if></span><span class="hoi">{{m.hoi}}</span>
+<div class="k282-dai{{m.het}}" role="progressbar" aria-valuemin="0" aria-valuemax="{{m.max}}" aria-valuenow="{{m.now}}" aria-label="{{m.ten}}"><i style="{{m.st}}"></i></div>
+<div class="con{{m.hetCls}}"><span class="k282-chu1"><sc-if value="{{m.coChinMinh}}"><span class="k282-huy">#1</span>Tài khoản này đang giữ hạng 1</sc-if><sc-if value="{{m.coNguoiKhac}}"><span class="k282-huy">#1</span>trong {{m.nhomChu}} đang giữ:<button type="button" class="k282-nho" data-giu1="{{m.giu1Id}}" title="Xem tài khoản đang giữ #1 của «{{m.ten}}»" onClick="{{m.nhay}}">{{m.giu1Ten}}</button></sc-if><sc-if value="{{m.coKhongAi}}">Chưa tài khoản nào trong {{m.nhomChu}} còn lượt để giữ #1</sc-if></span><span class="so-con">{{m.soCon}}</span></div>
+</div></sc-for>
+<sc-if value="{{ct.khongSo}}"><p class="k282-ghi" id="k282-khong-so">Chưa có số liệu hạn mức cho loại tài khoản này (nhà cung cấp không gửi). Trang không đoán số.</p></sc-if>
+<div class="k282-chan"><span>Dùng lần cuối</span><span id="k282-cuoi">{{ct.cuoi}}</span></div>
 </section>
-<aside id="k268-ct" data-k268-ct="{{khuCt.id}}" class="chi-tiet{{khuCt.moCls}}" aria-live="polite">
-<sc-if value="{{khuCt.co}}">
-<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-<h2>{{khuCt.tieuDe}}</h2>
-<button type="button" id="k268-dong" onClick="{{khuCt.dong}}" aria-label="Đóng bảng chi tiết" class="k268-nut-nho">✕</button>
+<section class="k282-the" id="k282-thong-ke" aria-label="Thống kê yêu cầu">
+<p class="k282-muc-nho">Thống kê yêu cầu</p>
+<div class="k282-so"><div class="k282-so-hang"><span class="k282-cham ok" aria-hidden="true"></span><span>Thành công</span><b id="k282-so-tc">{{ct.thanhCong}}</b></div>
+<div class="k282-so-hang"><span class="k282-cham loi" aria-hidden="true"></span><span>Thất bại</span><b id="k282-so-tb">{{ct.thatBai}}</b></div></div>
+<sc-if value="{{ct.coCot}}"><div class="k282-cot" role="img" aria-label="Số yêu cầu 14 ngày gần nhất"><sc-for list="{{ct.cot}}" as="c"><i style="{{c.st}}" title="{{c.tieuDe}}"></i></sc-for></div>
+<div class="k282-cot-nhan"><span>14 ngày trước</span><span>hôm nay</span></div></sc-if>
+<sc-if value="{{ct.khongCot}}"><p class="k282-ghi">{{ct.khongCotChu}}</p></sc-if>
+</section>
 </div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-<span class="k268-tag">{{khuCt.theNhom}}</span>
-<span class="k268-tag" style="{{khuCt.ttSt}}">{{khuCt.ttNhan}}</span>
-<sc-if value="{{khuCt.dangDung1}}"><span class="k268-tag k268-tag-1">Đang dùng #1</span></sc-if>
-</div>
-<dl class="bang">
-<div class="bang-dong"><dt class="nhan-dong">Địa chỉ</dt><dd class="gt-dong" data-k268-gt="dia-chi">{{khuCt.diaChi}}</dd><div><button type="button" class="k268-nut-nho" onClick="{{khuCt.chepDiaChi}}">Chép</button></div></div>
-<div class="bang-dong"><dt class="nhan-dong">{{khuCt.nhanBiMat}}</dt><dd class="gt-dong" data-k268-gt="bi-mat">{{khuCt.biMatHien}}</dd><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="k268-nut-nho" id="k268-hien" onClick="{{khuCt.doiHien}}">{{khuCt.nhanHien}}</button><button type="button" class="k268-nut-nho" id="k268-chep-bm" onClick="{{khuCt.chepBiMat}}">Chép</button></div></div>
-<sc-if value="{{khuCt.coOtp}}">
-<div class="bang-dong"><dt class="nhan-dong">Mã OTP</dt><dd class="gt-dong" data-k268-gt="otp"><sc-if value="{{khuCt.otpDangHien}}"><span style="font-size:20px;font-weight:700;letter-spacing:.08em">{{khuCt.otpMa}}</span> <span class="k268-ghi">còn {{khuCt.otpConLai}} giây</span></sc-if><sc-if value="{{khuCt.otpChuaHien}}"><span class="k268-ghi">••••••</span></sc-if></dd><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-if value="{{khuCt.otpChuaHien}}"><button type="button" class="k268-nut-nho" id="k268-hien-otp" onClick="{{khuCt.layOtp}}">Hiện</button></sc-if><button type="button" class="k268-nut-nho" id="k268-chep-otp" onClick="{{khuCt.chepOtp}}">Chép</button></div></div>
-</sc-if>
-</dl>
-<p class="k268-ghi">Hạn mức: {{khuCt.hanMuc}}</p>
-<sc-if value="{{khuCt.coLoi}}"><p role="alert" class="k268-loi">{{khuCt.loi}}</p></sc-if>
-<sc-if value="{{khuCt.coKq}}"><p role="status" id="k268-dn-kq" class="{{khuCt.lopKq}}">{{khuCt.kq}}</p></sc-if>
-<sc-if value="{{khuCt.coBuoc}}"><p role="status" id="k268-dn-buoc" class="k268-ghi" style="font-weight:600">{{khuCt.buoc}}</p></sc-if>
-<sc-if value="{{khuCt.dangXem}}"><div id="k268-xem" class="{{khuCt.lopXem}}">
-<sc-if value="{{khuCt.coAnh}}"><img id="k268-xem-anh" alt="Trang trình duyệt đang đăng nhập" src="{{khuCt.anhXem}}" onClick="{{khuCt.phongTo}}"></sc-if>
-<sc-if value="{{khuCt.chuaAnh}}"><div class="k268-xem-cho" id="k268-xem-cho">{{khuCt.chuXem}}</div></sc-if>
-<p class="k268-ghi"><sc-if value="{{khuCt.coAnh}}">{{khuCt.chuXem}} </sc-if><button type="button" id="k268-xem-to" class="k268-nut-nho" onClick="{{khuCt.phongTo}}">{{khuCt.nhanTo}}</button></p>
+
+<section class="k282-the k282-qt" aria-label="Đăng nhập và bí mật">
+<p class="k282-muc-nho">Đăng nhập và bí mật</p>
+<p class="k282-ghi" id="k282-ghi-bi-mat">Thông tin kết nối luôn ẩn. Máy chủ chỉ ghi đè, không bao giờ gửi lại giá trị đã lưu.</p>
+<sc-if value="{{ct.coDiaChi}}"><dl class="k282-truong"><dt>Địa chỉ API</dt><dd data-k268-gt="dia-chi">{{ct.diaChi}}</dd><div><button type="button" class="k282-nho" id="k282-sua-dia-chi" onClick="{{ct.suaDiaChi}}">Sửa</button></div></dl></sc-if>
+<dl class="k282-truong"><dt>{{ct.nhanBiMat}}</dt><dd data-k268-gt="bi-mat">{{ct.biMatChu}}</dd><div><button type="button" class="k282-nho" id="k282-doi-bi-mat" onClick="{{ct.doiBiMat}}">Đổi</button></div></dl>
+<sc-if value="{{ct.coKhoaOtp}}"><dl class="k282-truong"><dt>Khoá OTP</dt><dd data-k268-gt="khoa-otp">{{ct.otpKhoaChu}}</dd><div><button type="button" class="k282-nho" id="k282-doi-otp" onClick="{{ct.doiOtp}}">{{ct.nhanDoiOtp}}</button></div></dl></sc-if>
+<sc-if value="{{ct.coOtp}}"><dl class="k282-truong"><dt>Mã OTP</dt><dd data-k268-gt="otp"><sc-if value="{{ct.otpDangHien}}"><span class="k282-otp-ma">{{ct.otpMa}}</span> <svg class="k282-vong" viewBox="0 0 36 36" role="img" aria-label="còn {{ct.otpConLai}} giây" aria-hidden="false"><circle class="nen" cx="18" cy="18" r="15"></circle><circle class="tien" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="{{ct.otpVong}}"></circle></svg> <span class="k282-ghi">còn {{ct.otpConLai}} giây</span></sc-if><sc-if value="{{ct.otpChuaHien}}"><span class="k282-ghi">Mã 6 số tính ở máy chủ, chỉ hiện khi bạn bấm.</span></sc-if></dd><div class="k282-hang-tag"><sc-if value="{{ct.otpChuaHien}}"><button type="button" class="k282-nho" id="k268-hien-otp" onClick="{{ct.layOtp}}">Lấy mã OTP</button></sc-if><sc-if value="{{ct.otpDangHien}}"><button type="button" class="k282-nho" id="k268-an-otp" onClick="{{ct.anOtp}}">Ẩn mã</button></sc-if></div></dl></sc-if>
+<sc-if value="{{ct.sua.mo}}"><form id="k282-sua" class="k282-sua" novalidate onSubmit="{{ct.sua.luu}}" data-sua-muc="{{ct.sua.muc}}">
+<p class="k282-muc-nho">{{ct.sua.tieuDe}}</p>
+<sc-for list="{{ct.sua.o}}" as="f"><label class="k282-o" data-sua="{{f.khoa}}">{{f.nhan}}<input id="{{f.idO}}" type="{{f.kieu}}" autocomplete="{{f.ac}}" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.doi}}"></label></sc-for>
+<p class="k282-ghi">{{ct.sua.ghi}}</p>
+<sc-if value="{{ct.sua.coLoi}}"><p role="alert" id="k282-sua-loi" class="k282-loi">{{ct.sua.loi}}</p></sc-if>
+<div class="k282-hd"><button type="submit" id="k282-sua-luu" class="k282-nut" disabled="{{ct.sua.dang}}">Lưu (ghi đè)</button><button type="button" id="k282-sua-huy" class="k282-nut phu" onClick="{{ct.sua.huy}}">Huỷ</button></div>
+</form></sc-if>
+<sc-if value="{{ct.coLoi}}"><p role="alert" id="k282-ct-loi" class="k282-loi">{{ct.loi}}</p></sc-if>
+<sc-if value="{{ct.coKq}}"><p role="status" id="k268-dn-kq" class="{{ct.lopKq}}">{{ct.kq}}</p></sc-if>
+<sc-if value="{{ct.coBuoc}}"><p role="status" id="k268-dn-buoc" class="k282-ghi k282-dam">{{ct.buoc}}</p></sc-if>
+<sc-if value="{{ct.dangXem}}"><div id="k268-xem" class="{{ct.lopXem}}">
+<sc-if value="{{ct.coAnh}}"><img id="k268-xem-anh" alt="Trang trình duyệt đang đăng nhập" src="{{ct.anhXem}}" onClick="{{ct.phongTo}}"></sc-if>
+<sc-if value="{{ct.chuaAnh}}"><div class="k282-xem-cho" id="k268-xem-cho">{{ct.chuXem}}</div></sc-if>
+<p class="k282-ghi"><sc-if value="{{ct.coAnh}}">{{ct.chuXem}} </sc-if><button type="button" id="k268-xem-to" class="k282-nho" onClick="{{ct.phongTo}}">{{ct.nhanTo}}</button></p>
 </div></sc-if>
-<div class="k268-hd">
-<button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
-<sc-if value="{{khuCt.coXem}}"><button type="button" id="k268-theo-doi" onClick="{{khuCt.moXem}}" class="k268-nut phu" title="Xem trang trình duyệt đang đăng nhập (ảnh làm mới liên tục; cần can thiệp thì dùng «Đăng nhập tay»)">{{khuCt.nhanXem}}</button></sc-if>
-<sc-if value="{{khuCt.coTay}}"><button type="button" id="k268-dn-tay" onClick="{{khuCt.dangNhapTay}}" class="k268-nut phu" title="Bật trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if>
-<sc-if value="{{khuCt.coTheoDoiTrucTiep}}"><button type="button" id="k268-theo-doi-truc-tiep" onClick="{{khuCt.theoDoiTrucTiep}}" class="k268-nut phu" title="Mở màn hình đang đăng nhập tự động ở tab mới (trình duyệt có thể hỏi mã truy cập một lần)">Theo dõi trực tiếp</button></sc-if>
+<sc-if value="{{ct.cho2fa}}"><div data-dl-nhap-2fa="{{ct.id}}" class="k282-hang-tag">
+<label class="k282-ghi">Mã 2FA <input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" value="{{ct.ma2fa}}" onInput="{{ct.doiMa2fa}}" class="k282-o-nho"></label>
+<button type="button" data-dl-gui-2fa="{{ct.id}}" class="k282-nut" onClick="{{ct.guiMa2fa}}">Gửi mã</button></div></sc-if>
+<sc-if value="{{ct.choHoanTatCodex}}"><div data-hoan-tat-codex="{{ct.id}}" class="k282-hang-tag">
+<sc-if value="{{ct.authUrlCodex}}"><a href="{{ct.authUrlCodex}}" target="_blank" rel="noreferrer">Mở trang cho phép Codex</a></sc-if>
+<label class="k282-ghi">URL điều hướng về: <input type="text" autocomplete="off" placeholder="https://…/callback?code=…" value="{{ct.callbackUrl}}" onInput="{{ct.doiCallbackUrl}}" class="k282-o-nho"></label>
+<button type="button" data-hoan-tat-codex-nut="{{ct.id}}" class="k282-nut" onClick="{{ct.hoanTatLienKet}}">Hoàn tất liên kết</button>
+<button type="button" class="k282-nut phu" onClick="{{ct.huyHoanTat}}">Huỷ</button></div></sc-if>
+<div class="k282-hd">
+<sc-if value="{{ct.coDangNhap}}"><button type="button" id="k268-dn-tu-dong" class="k282-nut" onClick="{{ct.dangNhapTuDong}}" disabled="{{ct.tatDangNhap}}">Đăng nhập tự động</button></sc-if>
+<button type="button" id="k282-lam-moi" class="k282-nut phu" onClick="{{ct.lamMoiHanMuc}}" disabled="{{ct.dangLamMoi}}" title="Hỏi lại nhà cung cấp hạn mức của MỘT tài khoản này; mỗi lần cách nhau tối thiểu 60 giây">{{ct.nhanLamMoi}}</button>
+<sc-if value="{{ct.coDangNhap}}"><sc-if value="{{ct.coXem}}"><button type="button" id="k268-theo-doi" class="k282-nut phu" onClick="{{ct.moXem}}" title="Xem trang trình duyệt đang đăng nhập (ảnh làm mới liên tục; cần can thiệp thì dùng «Đăng nhập tay»)">{{ct.nhanXem}}</button></sc-if>
+<sc-if value="{{ct.coTay}}"><button type="button" id="k268-dn-tay" class="k282-nut phu" onClick="{{ct.dangNhapTay}}" title="Bật trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if><sc-if value="{{ct.coTheoDoiTrucTiep}}"><button type="button" id="k268-theo-doi-truc-tiep" class="k282-nut phu" onClick="{{ct.theoDoiTrucTiep}}" title="Mở màn hình đang đăng nhập tự động ở tab mới (trình duyệt có thể hỏi mã truy cập một lần)">Theo dõi trực tiếp</button></sc-if></sc-if>
+<sc-if value="{{ct.coLienKetCodex}}"><button type="button" data-lien-ket-codex="{{ct.id}}" class="k282-nut phu" onClick="{{ct.lienKetCodex}}">Liên kết Codex</button></sc-if>
+<sc-if value="{{ct.coThuLaiCodex}}"><button type="button" data-thu-lai-codex="{{ct.id}}" class="k282-nut phu" onClick="{{ct.thuLaiCodex}}">Thử liên kết Codex lại</button></sc-if>
+<sc-if value="{{ct.coTamDung}}"><button type="button" data-dl-tam-dung="{{ct.id}}" class="k282-nut phu" onClick="{{ct.doiTamDung}}">{{ct.nhanTamDung}}</button></sc-if>
+<button type="button" data-dl-xoa="{{ct.id}}" class="k282-nut nguy" onClick="{{ct.xoa}}">{{ct.nhanXoa}}</button>
 </div>
-<sc-if value="{{khuCt.coTheoDoiTrucTiep}}"><p class="k268-ghi">Xem trình duyệt đang đăng nhập; gặp CAPTCHA/xác minh thì tự xử lý rồi bấm Đăng nhập tự động lần nữa</p></sc-if>
+<sc-if value="{{ct.coTheoDoiTrucTiep}}"><p class="k282-ghi">Xem trình duyệt đang đăng nhập; gặp CAPTCHA/xác minh thì tự xử lý rồi bấm Đăng nhập tự động lần nữa</p></sc-if>
+</section>
 </sc-if>
-<sc-if value="{{khuCt.khongCo}}">
-<h2>Tài khoản</h2>
-<p class="k268-ghi">Bấm một ô để xem địa chỉ, bí mật và mã OTP lúc đó.</p>
-</sc-if>
-</aside>
-<div id="k268-nen" hidden="{{khuCt.nenAn}}" onClick="{{khuCt.dong}}"></div>
 </div>
+
 </div>
 </sc-if>
 
@@ -654,6 +580,68 @@ function chuThuChat(tc) {
   return 'không đạt — ' + (kq.thong_diep_ngan || 'không rõ lý do') + khi;
 }
 
+// ===== NV282: khu «Tài khoản» theo demo «Khu Tài khoản web2api» (bản 9, chủ máy chốt 02/11/2026) =====
+// Dữ liệu THẬT từ da-luu (kèm `dang_nhap`, `loai_hien_thi` của NV283) / bang-phan-loai / duong-dung / nhom-loai / luong-dung và
+// da-luu/{id}/chi-tiet (NV285: hạn mức từng mục, hạng #1, người giữ #1 của nhóm). Không bịa số, không đoán chấm xanh.
+const NHA_KHAC = '__chua_phan_nhom';
+const TT_DN = { ok: ['Bình thường', 'ok'], xl: ['Cần xử lý', 'xl'], loi: ['Lỗi đăng nhập', 'loi'], dung: ['Tạm dừng', 'dung'], chua: ['Chưa biết', ''] };
+const TT_THU_TU = ['ok', 'xl', 'loi', 'dung', 'chua'];
+const DN_HOP_DONG = { ok: 'ok', can_xu_ly: 'xl', loi: 'loi', chua: 'chua' }; // hợp đồng NV283: dang_nhap.trang_thai
+const TEN_KBM_MAC_DINH = { mat_khau: 'Mật khẩu', khoa_api: 'Khoá API', token: 'Token', cookie: 'Cookie' };
+const so = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const epGio = (e) => (so(e) && e > 0 ? K.ngayGio(e * 1000) : '');
+function conLaiChu(giay) {
+  if (!so(giay) || giay <= 0) return '';
+  const d = Math.floor(giay / 86400), h = Math.floor((giay % 86400) / 3600), p = Math.floor((giay % 3600) / 60);
+  return 'Còn ' + (d > 0 ? d + 'd ' + h + 'h' : h > 0 ? h + 'h ' + p + 'p' : Math.max(1, p) + 'p');
+}
+function tenCuaSo(phut, vai) {
+  if (!so(phut) || phut <= 0) return vai === 'secondary' ? 'Cửa sổ phụ' : 'Cửa sổ chính';
+  if (phut === 10080) return 'Cửa sổ tuần';
+  if (phut % 1440 === 0) return 'Cửa sổ ' + (phut / 1440) + ' ngày';
+  if (phut % 60 === 0) return 'Cửa sổ ' + (phut / 60) + ' giờ';
+  return 'Cửa sổ ' + phut + ' phút';
+}
+// Loại hiển thị và trạng thái đăng nhập do LÕI trả (NV283): `loai_hien_thi` (không bao giờ rỗng) và `dang_nhap.trang_thai`
+// ∈ ok | can_xu_ly | loi | chua. Trang KHÔNG suy gì thêm: thiếu trường (lõi cũ) thì «chưa biết», không đoán xanh.
+function loaiCua(t) { return (typeof t.loai_hien_thi === 'string' && t.loai_hien_thi.trim()) ? t.loai_hien_thi.trim() : 'Chưa rõ'; }
+function dangNhapCua(t) {
+  if ((t.trang_thai || '') === 'tam_dung') return { tt: 'dung', luc: 0, ma: '' };
+  const dn = t.dang_nhap;
+  if (dn && typeof dn === 'object' && DN_HOP_DONG[dn.trang_thai]) return { tt: DN_HOP_DONG[dn.trang_thai], luc: so(dn.luc) || 0, ma: String(dn.ma_loi || '') };
+  return { tt: 'chua', luc: 0, ma: '' };
+}
+// Chữ thay thế cho chấm màu (màu KHÔNG phải kênh duy nhất): title + aria-label.
+function chuTrangThai(tt, luc, ma) {
+  if (tt === 'ok') return luc ? 'Đăng nhập lúc ' + epGio(luc) : 'Đăng nhập thành công';
+  if (tt === 'xl') return 'Cần xử lý: ' + (ma || 'cần người hoặc phiên hết hạn');
+  if (tt === 'loi') return 'Lỗi: ' + (ma || 'đăng nhập thất bại');
+  if (tt === 'dung') return 'Tạm dừng';
+  return 'Chưa đăng nhập';
+}
+// Mục hạn mức của chi-tiet (hợp đồng NV285): {ten, nhan, con_lai, tong, da_dung_pct, reset_luc, reset_sau_giay, hang}.
+function chuanHoaMuc(m) {
+  return { k: String(m.ten || ''), ten: String(m.nhan || m.ten || ''), con: so(m.con_lai), tong: so(m.tong), pct: so(m.da_dung_pct),
+    hoiLuc: so(m.reset_luc), hoiSau: so(m.reset_sau_giay), hang: Number.isInteger(m.hang) && m.hang > 0 ? m.hang : null,
+    giu1: (m.giu_hang_1_cua_nhom && typeof m.giu_hang_1_cua_nhom === 'object') ? m.giu_hang_1_cua_nhom : null };
+}
+const mucHet = (m) => m.con === 0 || (m.con == null && m.pct != null && m.pct >= 100);
+// Hạn mức THỤ ĐỘNG đã đọc từ tiêu đề nhà cung cấp (da-luu.han_muc): cửa sổ Codex theo % đã dùng + hạn mức chung của tài khoản.
+// Chỉ vẽ cái có thật; «hạn mức chung» không phải một mục nên không tham gia hạng #1 / «hết limit».
+function thanhThuDong(hm) {
+  if (!hm || typeof hm !== 'object') return [];
+  const ra = [];
+  for (const vai of ['primary', 'secondary']) {
+    const w = hm['codex_' + vai];
+    if (!w || so(w.da_dung_pct) == null) continue;
+    const hoi = so(w.dat_lai_luc) ? w.dat_lai_luc - Date.now() / 1000 : (so(w.dat_lai_sau_giay) && so(hm.luc_doc) ? hm.luc_doc + w.dat_lai_sau_giay - Date.now() / 1000 : null);
+    ra.push({ id: 'codex_' + vai, ten: tenCuaSo(w.cua_so_phut, vai), max: 100, now: Math.round(w.da_dung_pct), pctDa: true, hoi: conLaiChu(hoi), soCon: 'Đã dùng ' + Math.round(w.da_dung_pct) + '%' });
+  }
+  if (so(hm.con_lai) != null && so(hm.gioi_han) != null && hm.gioi_han > 0) ra.push({ id: 'chung', ten: 'Yêu cầu (hạn mức chung)', max: hm.gioi_han, now: hm.con_lai, soCon: 'Còn ' + hm.con_lai + ' / ' + hm.gioi_han });
+  if (so(hm.con_lai_token) != null && so(hm.gioi_han_token) != null && hm.gioi_han_token > 0) ra.push({ id: 'chung_token', ten: 'Token (hạn mức chung)', max: hm.gioi_han_token, now: hm.con_lai_token, soCon: 'Còn ' + hm.con_lai_token + ' / ' + hm.gioi_han_token });
+  return ra;
+}
+
 class Component extends DCLogic {
   constructor(props) {
     super(props);
@@ -664,25 +652,32 @@ class Component extends DCLogic {
       tc: {},
       // NV221: tab Combo — danh sách combo, gợi ý thứ tự mặc định, tạo/xoá.
       cbDs: [], cbDangTai: false, cbGoiY: null, cbTenMoi: '', cbDangTao: false, cbDangGoiY: false, cbDangXoa: null,
-      khuAn: (() => { try { const v = JSON.parse(localStorage.getItem('w2a_khu_nhom_an') || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 50) : []; } catch (e) { return []; } })(), tkNhom: 'api', tkThem: !!den, chonMod: den, f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null, khuNhom: '', khuChon: '', khuBiMatId: '', khuBiMat: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0,
+      // NV282: lọc + chọn của khu «Tài khoản» (nhà · trạng thái · mục hết limit · ô tìm), tài khoản đang chọn, bộ nhớ
+      // chi tiết (NV285) và thống kê yêu cầu theo id.
+      khuNhom: '', khuTt: '', khuLim: '', khuChon: '', khuMo: false, khuQ: '', khuTro: 0,
+      khuCt: {}, khuCtCo: null, khuTk: {},
+      khuBiMatId: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0, khuSua: null, khuSuaLoi: '', khuSuaDang: false, khuLamMoiId: '',
+      // Form «Thêm tài khoản» (MỘT form): nhà → cách thêm (chỉ khi có hơn một) → ô bắt buộc; mọi thứ khác nằm trong «Tuỳ chọn thêm».
+      tkThem: !!den, chonMod: den, tkNhomThem: null, tkCachThem: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
+      f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
       mdLoc: '',
       tkPvMo: den ? { [den]: true } : {},
-      // Tự đăng nhập (td*): nhóm/loại chọn, kiểu đăng nhập, danh tính tick sẵn, văn bản dán, xem trước, bỏ chọn, lượt chạy
-      tkNhomThem: null, tkLoaiThem: null, tdKieu: 'truc_tiep', tdDaChon: {},
-      // Mục «Danh tính» (NV179): TOÀN BỘ danh tính (kể cả chưa gắn hồ sơ) + trạng thái nút của mục.
+      // Tự đăng nhập (td*): văn bản dán, xem trước, bỏ chọn, lượt chạy; hàng nhập đăng nhập (đúng MỘT hàng).
       tkCheDo: 'khoa', tdVanBan: '', tdXem: null, tdBo: {}, tdDangXem: false, tdDangChay: false, tdLoi: '', tdLuot: null,
       tdMoDan: false,
-      tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
-      tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
-      // NV225: bảng phân loại (từ /bang-phan-loai), gom nhóm→loại kèm cờ
-      // dang_dung (từ /nhom-loai) và 3 ô chọn xếp tầng của form tài khoản.
-      dlBang: null, dlGom: null, dlNhom: '', dlLoaiTk: '', dlDichDung: '' };
+      tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false, otpMo: false }],
+      // NV225: bảng phân loại (từ /bang-phan-loai), gom nhóm→loại kèm cờ dang_dung (từ /nhom-loai).
+      dlBang: null, dlGom: null, dlDs: [], dlDuong: [] };
     this._den = den;
-    // NV268: Esc đóng bảng chi tiết khu Tài khoản (bản mobile là popup).
-    this._khuEsc = (e) => { if (e && e.key === 'Escape' && this.state.khuChon) this.khuDong(); };
-    if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('keydown', this._khuEsc);
+    // NV282: Esc đóng ô chọn; bấm ra ngoài ô chọn thì đóng danh sách.
+    this._khuEsc = (e) => { if (e && e.key === 'Escape' && this.state.khuMo) this.setState({ khuMo: false }); };
+    this._khuNgoai = (e) => { if (this.state.khuMo && e && e.target && e.target.closest && !e.target.closest('#k282-chon, #k282-tt, #k282-lim')) this.setState({ khuMo: false }); };
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('keydown', this._khuEsc);
+      document.addEventListener('click', this._khuNgoai);
+    }
   }
   neoTk() { const m = location.hash.match(/^#tk-(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
   // #tk-<id>: biểu mẫu thêm khoá của module đó, focus vào ô khoá đầu tiên (đợi biểu mẫu dựng xong).
@@ -717,7 +712,7 @@ class Component extends DCLogic {
       const den = this.neoTk();
       if (den) {
         this.setState((st) => ({
-          menuMo: null, tab: 'tai_khoan', tkThem: true, chonMod: den, f: {},
+          menuMo: null, tab: 'tai_khoan', tkThem: true, chonMod: den, tkNhomThem: null, tkCachThem: null, f: {},
           tkPvMo: Object.assign({}, st.tkPvMo, { [den]: true })
         }));
         this.denForm();
@@ -884,7 +879,7 @@ class Component extends DCLogic {
       await this.taiCombo();
     } catch (e) { this.setState({ cbDangXoa: null }); this.msg('Không xoá được combo: ' + (e && e.message), true); }
   }
-  // ===== Tài khoản đã lưu (NV144) =====
+  // ===== Tài khoản đã lưu (NV144) + khu «Tài khoản» (NV268, làm lại theo demo ở NV282) =====
   async taiDlDs() {
     try {
       const { j } = await K.goi('api/tai-khoan/da-luu?hien_email=true');
@@ -892,26 +887,17 @@ class Component extends DCLogic {
     } catch (e) {
       this.setState({ dlDs: [] });
     }
-    // NV225: gom nhóm → loại kèm cờ «đang dùng #1» + bảng phân loại cho
-    // ô chọn xếp tầng. Lõi cũ chưa có hai đường này → trang vẫn chạy:
-    // gom tự suy từ trường nhom/loai của từng bản ghi, ô chọn ẩn đi.
+    // NV225: gom nhóm → loại kèm cờ «được chọn đầu» (dang_dung) + bảng phân loại (tên nhà/loại/đích dùng).
+    // Lõi cũ chưa có hai đường này → trang vẫn chạy: tên nhóm hiện id thô, không có cờ.
     try {
       const { j } = await K.goi('api/tai-khoan/nhom-loai?hien_email=true');
       this.setState({ dlGom: (j && j.nhom_loai) || null });
     } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
     try {
       const { j } = await K.goi('api/tai-khoan/bang-phan-loai');
-      // NV256: cấu hình «đăng nhập bằng» từ API — giao diện không chép cứng giá trị.
-      const dnb = (j && j.dang_nhap_bang) || {};
-      this.setState({
-        dlBang: j || null,
-        dlDangNhapBangQuaLuu: dnb.qua_tai_khoan_luu || '',
-        dlDangNhapBangNhomLuu: dnb.nhom_tai_khoan_luu || '',
-      });
+      this.setState({ dlBang: j || null });
     } catch (e) { /* lõi cũ chưa có — bỏ qua */ }
-    // NV232: trạng thái từng đường dùng (codex/web…) + đường đang dùng của
-    // mỗi tài khoản. Lõi cũ chưa có đường này → trang vẫn chạy, nút liên
-    // kết ẩn đi.
+    // NV232: trạng thái từng đường dùng (codex/web…). Lõi cũ chưa có đường này → nút liên kết ẩn đi.
     try {
       const { j } = await K.goi('api/tai-khoan/duong-dung');
       this.setState({ dlDuong: (j && Array.isArray(j.tai_khoan)) ? j.tai_khoan : [] });
@@ -920,53 +906,153 @@ class Component extends DCLogic {
       const { j } = await K.goi('api/tai-khoan/tu-dang-nhap-lai');
       if (j && typeof j.bat === 'boolean') this.setState({ dlTuDongLai: j.bat });
     } catch (e) { /* giữ mặc định BẬT */ }
+    this.khuDongBo();
   }
-  dlDoiChon(id) {
-    const t = (this.state.dlDs || []).find((x) => x && x.id === id);
-    this.setState({
-      dlChonId: id || '',
-      dlEmail: t ? (t.email || t.email_che || '') : '',
-      // NV258: địa chỉ không điền lại giá trị thô (chỉ có dạng che);
-      // kiểu bí mật điền từ bản ghi đã chọn.
-      dlDiaChi: '',
-      dlKieuBiMat: t ? (t.kieu_bi_mat || '') : '',
-      dlNhan: t ? (t.nhan || '') : '',
-      dlDangNhapBang: t ? (t.dang_nhap_bang || '') : '',
-      dlTkDnhId: t ? (t.tai_khoan_dnh_id || '') : '',
-      dlMatKhau: '', dlTotp: '', dlDaLuu: !!t, dlLoi: '',
-      // NV225: điền sẵn 3 ô phân loại từ chính tài khoản đã chọn.
-      dlNhom: t ? (t.nhom || '') : '',
-      dlLoaiTk: t ? (t.loai_tai_khoan || '') : '',
-      dlDichDung: t ? (t.dich_dung || '') : ''
+  // Mô hình chuẩn hoá của khu «Tài khoản»: MỌI chỗ vẽ (chip, ô chọn, bảng) đọc từ đây — loại và chấm do lõi trả (loaiCua / dangNhapCua).
+  khuMoHinh(s) {
+    const bang = s.dlBang || null;
+    const ds = Array.isArray(s.dlDs) ? s.dlDs : [];
+    const mods = this.dsAi();
+    const thuTuNha = (bang && Array.isArray(bang.nhom)) ? bang.nhom : [];
+    const tenNha = (n) => (n === NHA_KHAC ? 'Chưa phân nhóm' : (tenTrongBangTk(bang, 'ten_nhom', n) || n));
+    const moi = ds.filter((t) => t && t.id).map((t) => {
+      const mod = mods.find((m) => m.id === (t.module_id || '')) || null;
+      const nha = t.nhom || (mod && mod.nhom && mod.nhom.id) || NHA_KHAC;
+      const dn = dangNhapCua(t);
+      const ct = (s.khuCt || {})[t.id] || null;
+      const muc = (ct && ct.han_muc && Array.isArray(ct.han_muc.muc))
+        ? ct.han_muc.muc.filter((m) => m && typeof m.ten === 'string').map(chuanHoaMuc) : null;
+      const loai = loaiCua(t);
+      return { id: t.id, raw: t, ten: t.email || t.email_che || t.dia_chi_che || t.nhan || t.id, nha, nhaTen: tenNha(nha), loai,
+        nhomXH: nha + '|' + loai, tt: dn.tt, luc: dn.luc, ma: dn.ma, ttNhan: TT_DN[dn.tt][0], ttCls: TT_DN[dn.tt][1],
+        ttChu: chuTrangThai(dn.tt, dn.luc, dn.ma), ct, muc, mod };
     });
+    const vt = (n) => { const i = thuTuNha.indexOf(n); return i < 0 ? 999 : i; };
+    moi.sort((a, b) => vt(a.nha) - vt(b.nha));
+    const nhaIds = [...new Set([...thuTuNha, ...moi.map((x) => x.nha)])];
+    return { ds: moi, nhaIds, tenNha };
   }
-  // ===== NV268: khu Tài khoản — lấy bí mật/OTP từ máy chủ =====
+  // Danh sách trong ô chọn: nhà → trạng thái → mục hết limit → ô tìm (không dấu).
+  khuLoc(s, mo) {
+    const q = K.boDau(s.khuQ || '');
+    return mo.ds.filter((x) => (!s.khuNhom || x.nha === s.khuNhom) && (!s.khuTt || x.tt === s.khuTt)
+      && (!s.khuLim || (x.muc || []).some((m) => m.k === s.khuLim && mucHet(m)))
+      && (!q || K.boDau(x.ten + ' ' + x.loai + ' ' + x.nhaTen).includes(q)));
+  }
+  // Giữ tài khoản đang chọn hợp lệ với bộ lọc nhà (không hợp lệ → tài khoản ĐẦU của nhà; nhà rỗng → không chọn gì),
+  // rồi nạp chi tiết + thống kê của tài khoản đó.
+  khuDongBo() {
+    const s = this.state, mo = this.khuMoHinh(s);
+    const nhaLoc = mo.ds.filter((x) => !s.khuNhom || x.nha === s.khuNhom);
+    let chon = s.khuChon;
+    if (!nhaLoc.some((x) => x.id === chon)) chon = (nhaLoc[0] || {}).id || '';
+    if (chon !== s.khuChon) {
+      this.khuXoaHen();
+      this.setState({ khuChon: chon, khuBiMatId: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0, khuSua: null, khuSuaLoi: '' });
+    }
+    if (chon) this.khuTaiChon(chon);
+    this.khuNapTatCa(mo.ds.map((x) => x.id), chon);
+  }
+  khuTaiChon(id) {
+    if (!id) return;
+    this.khuNapTatCa([id], id);
+    this.khuLayThongKe(id);
+  }
+  // Chi tiết một tài khoản (NV285): hạn mức từng mục + hạng #1. Đường chưa có (lõi cũ) → ghi nhận MỘT lần rồi thôi,
+  // trang chạy tiếp bằng dữ liệu da-luu; đường có thì nạp dần (bốn yêu cầu song song, tài khoản đang chọn trước).
+  async khuLayCt(id) {
+    const dang = this._ctDang || (this._ctDang = {});
+    if (this.state.khuCtCo === false || id in (this.state.khuCt || {}) || dang[id]) return;
+    dang[id] = true;
+    try {
+      const { ma, j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/chi-tiet?hien_email=true', { chapNhan: [404, 405] });
+      if (ma === 200 && j && typeof j === 'object' && j.id) this.setState((st) => ({ khuCtCo: true, khuCt: Object.assign({}, st.khuCt, { [id]: j }) }));
+      else if (ma === 404 && j && j.error && j.error.code) this.setState((st) => ({ khuCt: Object.assign({}, st.khuCt, { [id]: null }) })); // id lạ
+      else this.setState({ khuCtCo: false });                                // lõi chưa có NV285
+    } catch (e) {
+      this.setState((st) => ({ khuCt: Object.assign({}, st.khuCt, { [id]: null }) })); // lỗi lúc đọc: không có số liệu, không đoán
+    } finally { delete dang[id]; }
+  }
+  async khuNapTatCa(ids, uuTien) {
+    if (this.state.khuCtCo === false) return;
+    const q = this._ctHang || (this._ctHang = []);
+    const dang = this._ctDang || {};
+    for (const id of ids) if (!(id in this.state.khuCt) && !q.includes(id) && !dang[id]) q.push(id);
+    if (uuTien && q.includes(uuTien)) { q.splice(q.indexOf(uuTien), 1); q.unshift(uuTien); }
+    if (this.state.khuCtCo == null) {
+      if (this._ctTham) return;
+      this._ctTham = true;
+      try { if (q.length) await this.khuLayCt(q.shift()); } finally { this._ctTham = false; }
+      if (this.state.khuCtCo !== true) return;
+    }
+    const lam = async () => {
+      this._ctLam = (this._ctLam || 0) + 1;
+      try { while (q.length && this.state.khuCtCo !== false) await this.khuLayCt(q.shift()); }
+      finally { this._ctLam -= 1; }
+    };
+    for (let i = this._ctLam || 0; i < 4; i++) lam();
+  }
+  // Làm mới chi tiết một tài khoản (sau khi đăng nhập xong số liệu có thể đã đổi).
+  khuLamMoiCt(id) {
+    this.setState((st) => { const c = Object.assign({}, st.khuCt); delete c[id]; const t = Object.assign({}, st.khuTk); delete t[id]; return { khuCt: c, khuTk: t }; });
+    this.khuTaiChon(id);
+  }
+  // Thống kê yêu cầu thật của sổ lượng dùng (đã có): thành công = lượt 2xx, thất bại = tổng lỗi; cột = 14 ngày gần nhất (UTC như sổ).
+  async khuLayThongKe(id) {
+    const dang = this._tkDang || (this._tkDang = {});
+    if (id in (this.state.khuTk || {}) || dang[id]) return;
+    dang[id] = true;
+    const ngay = (lui) => new Date(Date.now() - lui * 86400000).toISOString().slice(0, 10);
+    try {
+      const { j } = await K.goi('api/tai-khoan/luong-dung?tai_khoan_id=' + encodeURIComponent(id) + '&tu_ngay=' + ngay(13) + '&den_ngay=' + ngay(0), { chapNhan: [404, 405] });
+      if (j && Array.isArray(j.ngay)) {
+        const theoNgay = new Map(j.ngay.map((d) => [d.ngay, (d.luot | 0) + (d.loi_han_muc | 0) + (d.loi_het_phien | 0) + (d.loi_khac | 0)]));
+        const t = j.tong;
+        this.setState((st) => ({ khuTk: Object.assign({}, st.khuTk, { [id]: { tc: t ? (t.luot | 0) : 0, tb: t ? ((t.loi_han_muc | 0) + (t.loi_het_phien | 0) + (t.loi_khac | 0)) : 0, ngay: theoNgay, coBan: j.ngay.length > 0 } }) }));
+      } else this.setState((st) => ({ khuTk: Object.assign({}, st.khuTk, { [id]: null }) }));
+    } catch (e) {
+      this.setState((st) => ({ khuTk: Object.assign({}, st.khuTk, { [id]: null }) }));
+    } finally { delete dang[id]; }
+  }
   khuXoaHen() {
     if (this._khuHenBiMat) { clearTimeout(this._khuHenBiMat); this._khuHenBiMat = null; }
     if (this._khuHenOtp) { clearInterval(this._khuHenOtp); this._khuHenOtp = null; }
   }
+  // Bấm một dòng trong ô chọn / nhảy sang tài khoản đang giữ #1: bí mật rời state ngay khi đổi tài khoản (NV268).
   khuChonTk(id) {
-    // Bấm ô: chọn / bỏ chọn; bí mật rời state ngay khi đổi ô (NV268).
     this.khuXoaHen();
-    this.setState((st) => ({
-      khuChon: st.khuChon === id ? "" : id,
-      khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0
-    }));
+    if (this.state.xemId && this.state.xemId !== id) this.khuDungXem();
+    this.setState({ khuChon: id, khuMo: false, khuQ: '', khuTro: 0, khuBiMatId: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0, khuSua: null, khuSuaLoi: '' });
+    this.khuTaiChon(id);
   }
-  khuAnNhom(n) {
-    // «Luôn ẩn» từng nhóm: nhớ theo trình duyệt này; chỉ là tiện ích hiển thị nên lỗi lưu thì bỏ qua.
-    this.setState((st) => {
-      const cu = Array.isArray(st.khuAn) ? st.khuAn : [];
-      const moi = cu.includes(n) ? cu.filter((x) => x !== n) : cu.concat([n]);
-      try { localStorage.setItem('w2a_khu_nhom_an', JSON.stringify(moi)); } catch (e) { /* không lưu được: vẫn ẩn trong phiên */ }
-      return { khuAn: moi };
-    });
+  // Chip nhà LỌC thật: đổi số đếm, danh sách trong ô chọn VÀ tài khoản đang chọn (không thuộc nhà đó → tài khoản đầu của nhà).
+  khuChonNha(n) {
+    this.setState({ khuNhom: n, khuMo: false, khuQ: '', khuTro: 0 });
+    this.khuDongBo();
+  }
+  khuBatChon() {
+    const s = this.state;
+    if (s.khuMo) { this.setState({ khuMo: false }); return; }
+    const ds = this.khuLoc(Object.assign({}, s, { khuQ: '' }), this.khuMoHinh(s));
+    this.setState({ khuMo: true, khuQ: '', khuTro: Math.max(0, ds.findIndex((x) => x.id === s.khuChon)) });
+    setTimeout(() => { const o = document.getElementById('q-tk'); if (o) o.focus(); }, 0);
+  }
+  khuPhim(e) {
+    const s = this.state, ds = this.khuLoc(s, this.khuMoHinh(s));
+    const lenTro = (tro) => {
+      this.setState({ khuTro: tro });
+      setTimeout(() => { const el = ds[tro] && document.getElementById('opt-' + ds[tro].id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }, 0);
+    };
+    if (e.key === 'ArrowDown') { lenTro(Math.min(ds.length - 1, (s.khuTro | 0) + 1)); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { lenTro(Math.max(0, (s.khuTro | 0) - 1)); e.preventDefault(); }
+    else if (e.key === 'Enter') { const x = ds[Math.min(s.khuTro | 0, ds.length - 1)]; if (x) this.khuChonTk(x.id); e.preventDefault(); setTimeout(() => { const b = document.getElementById('o-chon'); if (b) b.focus(); }, 0); }
+    else if (e.key === 'Escape') { this.setState({ khuMo: false }); e.preventDefault(); setTimeout(() => { const b = document.getElementById('o-chon'); if (b) b.focus(); }, 0); }
   }
   khuDong() {
     this.khuDungXem();
     this.setState({ khuKq: null });
     this.khuXoaHen();
-    this.setState({ khuChon: "", khuBiMatId: "", khuBiMat: "", khuBiMatLoi: "", khuOtpMa: "", khuOtpConLai: 0 });
+    this.setState({ khuBiMatId: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0, khuSua: null, khuSuaLoi: '' });
   }
   async khuDangNhapTay(id, modTd) {
     // «Đăng nhập tay» (chủ máy: trình duyệt từ xa chỉ mở từ đây): hồ sơ trình duyệt RIÊNG của tài khoản, cố định theo id tài khoản
@@ -998,9 +1084,8 @@ class Component extends DCLogic {
   }
   async khuTheoDoiTrucTiep(modId) {
     // «Theo dõi trực tiếp» (NV276): mở màn hình dùng chung đang đăng nhập tự động ở tab mới, qua vé một lần của lõi.
-    // Mở cửa sổ NGAY trong cú bấm để trình duyệt không chặn cửa sổ bật lên (như khuDangNhapTay). Đường /xem có
-    // step-up: K.goi tự mở hộp thoại xác nhận lại khi máy chủ đòi. Mã truy cập màn hình (nếu trình duyệt hỏi) do người xem tự
-    // nhập một lần — giao diện không nhận và không hiển thị mật khẩu đó.
+    // Mở cửa sổ NGAY trong cú bấm để trình duyệt không chặn cửa sổ bật lên. Đường /xem có step-up: K.goi tự mở hộp thoại
+    // xác nhận lại. Mã truy cập màn hình (nếu trình duyệt hỏi) do người xem tự nhập một lần — trang không nhận mật khẩu đó.
     if (!modId) return;
     this.setState({ khuBiMatLoi: "" });
     const w = (typeof window !== "undefined" && window.open) ? window.open("about:blank", "_blank") : null;
@@ -1014,52 +1099,21 @@ class Component extends DCLogic {
       this.setState({ khuBiMatLoi: (e && e.message) || "Không mở được cửa sổ theo dõi." });
     }
   }
-  async khuChep(txt) {
-    try { await navigator.clipboard.writeText(txt); this.msg("Đã chép.", false); }
-    catch (e) { this.msg("Không chép được — trình duyệt chặn.", true); }
-  }
-  async khuLayBiMat(id, deChep) {
-    // Bí mật CHỈ qua POST /api/tai-khoan/bi-mat khi bấm «Hiện»/«Chép» (NV268).
-    // K.goi tự mở hộp thoại step-up khi máy chủ đòi xác nhận lại.
-    this.setState({ khuBiMatLoi: "" });
-    try {
-      const { j } = await K.goi("api/tai-khoan/bi-mat", { method: "POST", json: { id, hanh_dong: "bi_mat" } });
-      const bm = (j && j.bi_mat) || "";
-      if (!bm) { this.setState({ khuBiMatLoi: "Tài khoản này không có bí mật để hiển thị." }); return; }
-      if (deChep) { await this.khuChep(bm); return; }
-      this.khuXoaHen();
-      this.setState({ khuBiMatId: id, khuBiMat: bm });
-      // Sau 30 giây không dùng thì tự che lại (NV268); test giả đồng hồ qua window.__khu_che_ms.
-      const cho = (typeof window !== "undefined" && typeof window.__khu_che_ms === "number") ? window.__khu_che_ms : 30000;
-      this._khuHenBiMat = setTimeout(() => {
-        this.setState((st) => (st.khuBiMatId === id ? { khuBiMatId: "", khuBiMat: "" } : null));
-      }, cho);
-    } catch (e) {
-      this.setState({ khuBiMatLoi: (e && e.message) || "Không lấy được bí mật." });
-    }
-  }
-  khuDoiHien(id) {
-    const s = this.state;
-    if (s.khuBiMatId === id && s.khuBiMat) {
-      this.khuXoaHen();
-      this.setState({ khuBiMatId: "", khuBiMat: "" });
-    } else this.khuLayBiMat(id, false);
-  }
-  async khuLayOtp(id, deChep) {
-    // Mã OTP TÍNH Ở MÁY CHỦ (NV268) — khoá TOTP không bao giờ rời máy chủ.
+  // Mã OTP lúc này: TÍNH Ở MÁY CHỦ (khoá OTP không bao giờ rời máy chủ), chỉ lấy khi người dùng bấm «Lấy mã OTP»,
+  // tự lấy mã mới mỗi chu kỳ 30 giây, tự che sau 2 phút để mã không nằm mãi trên màn hình.
+  async khuLayOtp(id) {
     this.setState({ khuBiMatLoi: "" });
     try {
       const { j } = await K.goi("api/tai-khoan/bi-mat", { method: "POST", json: { id, hanh_dong: "otp" } });
       const ma = (j && j.ma) || "";
       if (!ma) { this.setState({ khuBiMatLoi: "Không lấy được mã OTP." }); return; }
-      if (deChep) { await this.khuChep(ma); return; }
       this.khuXoaHen();
-      let conLai = (j && j.con_lai_giay) || 30;
+      let conLai = (j && j.con_lai_giay) || 30, chay = 0;
       this.setState({ khuBiMatId: id, khuOtpMa: ma, khuOtpConLai: conLai });
       this._khuHenOtp = setInterval(async () => {
-        conLai -= 1;
+        conLai -= 1; chay += 1;
+        if (chay >= 120) { this.khuXoaOtp(); return; }
         if (conLai > 0) { this.setState({ khuOtpConLai: conLai }); return; }
-        // Hết chu kỳ → lấy mã mới Ở MÁY CHỦ.
         try {
           const r2 = await K.goi("api/tai-khoan/bi-mat", { method: "POST", json: { id, hanh_dong: "otp" } });
           const ma2 = (r2.j && r2.j.ma) || "";
@@ -1067,91 +1121,129 @@ class Component extends DCLogic {
           if (!ma2) throw new Error("Không lấy được mã OTP.");
           this.setState({ khuOtpMa: ma2, khuOtpConLai: conLai });
         } catch (e2) {
-          this.khuXoaHen();
-          this.setState({ khuOtpMa: "", khuOtpConLai: 0, khuBiMatLoi: (e2 && e2.message) || "Không lấy được mã OTP." });
+          this.khuXoaOtp();
+          this.setState({ khuBiMatLoi: (e2 && e2.message) || "Không lấy được mã OTP." });
         }
       }, 1000);
     } catch (e) {
       this.setState({ khuBiMatLoi: (e && e.message) || "Không lấy được mã OTP." });
     }
   }
-  dlXoaBiMatKhoiDom() {
-    // Bí mật rời state VÀ DOM ngay sau khi gửi (đã lưu ở server nên không mất)
-    this.setState((st) => ({ dlMatKhau: '', dlTotp: '', dlLan: (st.dlLan || 0) + 1 }));
-    ['dl-mat-khau', 'dl-totp'].forEach((oid) => {
-      try { const o = document.getElementById(oid); if (o) o.value = ''; } catch (e) {}
-    });
+  khuXoaOtp() {
+    this.khuXoaHen();
+    this.setState({ khuBiMatId: "", khuOtpMa: "", khuOtpConLai: 0 });
   }
-  async dlLuu(chon, vaDangNhap) {
+  // ----- SỬA kết nối / bí mật: chỉ GHI ĐÈ. Giá trị đã lưu không bao giờ được máy chủ trả lại nên không có gì để «Hiện»/«Chép». -----
+  // Máy chủ lưu cả bộ cùng lúc: sửa địa chỉ hoặc khoá OTP vẫn phải gửi kèm bí mật chính (nhập lại), nên ô đó luôn có trong form.
+  khuMoSua(id, muc) {
+    this._suaGt = {};
+    this.setState({ khuSua: { id, muc }, khuSuaLoi: '', khuSuaDang: false });
+    setTimeout(() => { const o = document.querySelector('#k282-sua input'); if (o) { o.scrollIntoView({ block: 'nearest' }); o.focus({ preventScroll: true }); } }, 30);
+  }
+  khuHuySua() {
+    this._suaGt = {};
+    this.setState({ khuSua: null, khuSuaLoi: '', khuSuaDang: false });
+  }
+  khuFormSua(s, id, t, nhanBm, laKhoa) {
+    const sua = s.khuSua;
+    if (!sua || sua.id !== id) return { mo: false };
+    const o = (khoa, nhan, kieu, ph) => ({ khoa, nhan, kieu, ac: kieu === 'text' ? 'off' : 'new-password', ph, idO: 'k282-sua-' + khoa,
+      doi: (e) => { (this._suaGt || (this._suaGt = {}))[khoa] = e.target.value; } });
+    const bm = o('bi_mat', nhanBm + (sua.muc === 'bi_mat' ? ' mới' : ' (nhập lại để lưu)'), 'password', sua.muc === 'bi_mat' ? 'Nhập giá trị mới để ghi đè' : 'Nhập lại ' + nhanBm.toLowerCase());
+    const dau = sua.muc === 'dia_chi' ? [o('dia_chi', 'Địa chỉ API mới', 'text', t.dia_chi_che ? 'Hiện: ' + t.dia_chi_che : 'https://…')]
+      : sua.muc === 'totp' ? [o('totp', 'Khoá OTP mới (Base32)', 'password', 'Khoá Base32 của ứng dụng xác thực')] : [];
+    return { mo: true, muc: sua.muc, o: dau.concat([bm]), dang: !!s.khuSuaDang, coLoi: !!s.khuSuaLoi, loi: s.khuSuaLoi || '',
+      tieuDe: sua.muc === 'dia_chi' ? 'Sửa địa chỉ API' : sua.muc === 'totp' ? (t.co_totp ? 'Đổi khoá OTP' : 'Thêm khoá OTP') : 'Đổi ' + nhanBm.toLowerCase(),
+      ghi: 'Giá trị đã lưu không hiển thị lại; giá trị mới thay hoàn toàn giá trị cũ.' + (sua.muc === 'bi_mat' ? '' : ' Máy chủ lưu cả bộ cùng lúc nên cần nhập lại ' + nhanBm.toLowerCase() + '.'),
+      luu: (e) => { if (e && e.preventDefault) e.preventDefault(); this.khuLuuSua(); }, huy: () => this.khuHuySua() };
+  }
+  async khuLuuSua() {
+    const s = this.state, sua = s.khuSua;
+    if (!sua || s.khuSuaDang) return;
+    const t = (s.dlDs || []).find((x) => x && x.id === sua.id);
+    if (!t) return;
+    const g = this._suaGt || {};
+    const kieu = t.kieu_bi_mat || 'mat_khau';
+    const bm = g.bi_mat || '';
+    const moi = sua.muc === 'dia_chi' ? (g.dia_chi || '').trim() : sua.muc === 'totp' ? (g.totp || '').trim() : bm;
+    if (!bm || !moi) { this.setState({ khuSuaLoi: 'Nhập đủ các ô trong form này.' }); return; }
+    const body = { id: sua.id };
+    if (kieu === 'mat_khau') body.mat_khau = bm; else { body.bi_mat = bm; body.kieu_bi_mat = kieu; }
+    if (sua.muc === 'dia_chi') body.dia_chi = moi;
+    if (sua.muc === 'totp') body.totp_secret = moi;
+    this._suaGt = {};                                                  // bí mật rời bộ nhớ trang và các ô nhập ngay khi gửi
+    document.querySelectorAll('#k282-sua input').forEach((i) => { i.value = ''; });
+    this.setState({ khuSuaDang: true, khuSuaLoi: '' });
+    try {
+      await K.goi('api/tai-khoan/da-luu', { method: 'POST', json: body });
+    } catch (e) {
+      this.setState({ khuSuaDang: false, khuSuaLoi: (e && e.message) || 'Không lưu được.' });
+      return;
+    }
+    this.setState({ khuSua: null, khuSuaDang: false });
+    this.dlBao(sua.id, 'Đã lưu: giá trị mới đã ghi đè giá trị cũ.', false, true);
+    await this.taiDlDs();
+    this.khuLamMoiCt(sua.id);
+  }
+  // «Kiểm tra lại hạn mức»: MỘT tài khoản, MỘT lần hỏi nhà cung cấp (máy chủ giãn cách tối thiểu mỗi tài khoản; quá sớm → 429).
+  async khuKiemLaiHanMuc(id) {
+    if (this.state.khuLamMoiId) return;
+    this.setState({ khuLamMoiId: id, khuKq: null });
+    try {
+      const { ma, j } = await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id) + '/chi-tiet/lam-moi', { method: 'POST', chapNhan: [403, 404, 429, 502] });
+      if (ma === 200 && j && j.chi_tiet) {
+        this.setState((st) => ({ khuCt: Object.assign({}, st.khuCt, { [id]: j.chi_tiet }) }));
+        this.dlBao(id, 'Đã kiểm tra lại hạn mức lúc ' + new Date().toLocaleTimeString('vi-VN') + '. Lần sau cách tối thiểu 60 giây.', false, true);
+      } else if (ma === 429) {
+        this.dlBao(id, 'Kiểm tra quá sớm' + (j && j.cho_lai_sau_giay ? ': thử lại sau ' + j.cho_lai_sau_giay + ' giây.' : '.'), true, true);
+      } else {
+        this.dlBao(id, (j && j.error && j.error.message) || 'Không kiểm tra lại được hạn mức.', true, true);
+      }
+    } catch (e) {
+      this.dlBao(id, (e && e.message) || 'Không kiểm tra lại được hạn mức.', true, true);
+    } finally {
+      this.setState({ khuLamMoiId: '' });
+    }
+  }
+  // Mật khẩu / khoá OTP / danh sách dán KHÔNG bao giờ được ghi vào thuộc tính HTML (ô nhập không gắn `value`): giá trị chỉ nằm ở
+  // thuộc tính DOM của ô và trong state; hàm này xoá phần DOM khi state bị xoá (gửi đi, đổi nhà/cách thêm, bấm Chạy).
+  xoaONhap() {
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('[data-nhap-mat-khau], [data-nhap-otp], #o-tu-dong').forEach((i) => { i.value = ''; });
+  }
+  // Thêm tài khoản kiểu ĐĂNG NHẬP (form duy nhất): lưu vào kho (POST da-luu) rồi đăng nhập tài khoản vừa lưu
+  // (POST da-luu/{id}/dang-nhap) — đúng hai lời gọi của nút «Lưu và đăng nhập» ở form cũ. Tài khoản mới được chọn ngay,
+  // chấm xám «chưa biết» rồi chuyển theo kết quả thật. Bí mật rời state và DOM ngay khi gửi.
+  async themDangNhap(chon) {
     const s = this.state;
     if (s.dlDangLuu) return; // chống bấm hai lần → chỉ MỘT lần gửi
-    const email = (s.dlEmail || '').trim();
-    const mk = s.dlMatKhau || '';
-    const chonId = s.dlChonId || '';
-    // NV258: kiểu bí mật của form — '' đọc như mat_khau; kiểu khoá
-    // (khoa_api/token/cookie) chỉ cần bí mật, không bắt buộc email.
-    const kieuBm = (s.dlKieuBiMat || '').trim() || 'mat_khau';
-    const laKhoa = kieuBm !== 'mat_khau';
-    if (s.dlDaLuu && chonId && !mk) {
-      // Đã chọn tài khoản lưu sẵn mà không gõ gì mới
-      if (vaDangNhap) { await this.dlDangNhapDaLuu(chon, chonId); return; }
-      this.msg('Tài khoản này đã được lưu.', false);
-      return;
-    }
-    if (laKhoa) {
-      if (!mk) { this.setState({ dlLoi: 'Nhập khoá API / token / cookie.' }); return; }
-    } else if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
-    const payload = {};
-    if (laKhoa) {
-      payload.kieu_bi_mat = kieuBm;
-      payload.bi_mat = mk;
-      if (email) payload.email = email;
-    } else {
-      payload.email = email;
-      payload.mat_khau = mk;
-    }
-    if (s.dlDaLuu && chonId) payload.id = chonId;
-    const diaChi = (s.dlDiaChi || '').trim();
-    if (diaChi) payload.dia_chi = diaChi;
-    const totp = (s.dlTotp || '').trim();
-    if (totp && !laKhoa) payload.totp_secret = totp;
-    const nhan = (s.dlNhan || '').trim();
+    const h = (s.tdHangNhap || [])[0] || {};
+    const email = (h.email || '').trim(), mk = h.matKhau || '', otp = (h.otp || '').trim();
+    if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
+    const payload = { email, mat_khau: mk, module_id: chon.id };
+    if (otp) payload.totp_secret = otp;
+    const nhan = (s.tkNhan || '').trim();
     if (nhan) payload.nhan = nhan;
-    const bacGoi = (s.dlBacGoi || '').trim();
+    const bacGoi = (s.tkBacGoi || '').trim();
     if (bacGoi) payload.bac_goi = bacGoi;
-    const dangNhapBang = (s.dlDangNhapBang || '').trim();
-    // NV256: giá trị «qua tài khoản lưu» lấy từ API /bang-phan-loai, không chép cứng.
-    const quaTaiKhoanLuu = s.dlDangNhapBangQuaLuu || '';
-    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu && !(s.dlTkDnhId || '')) {
-      this.setState({ dlLoi: 'Chọn tài khoản dùng để đăng nhập hộ.' });
-      return;
-    }
-    if (dangNhapBang) payload.dang_nhap_bang = dangNhapBang;
-    if (quaTaiKhoanLuu && dangNhapBang === quaTaiKhoanLuu) payload.tai_khoan_dnh_id = s.dlTkDnhId;
-    // NV225: phân loại nhóm → loại → đích dùng chọn ở form (bảng backend
-    // kiểm lại phía máy chủ; nhóm thật suy từ module sở hữu/bản ghi cũ).
-    const loaiTk = (s.dlLoaiTk || '').trim();
-    if (loaiTk) payload.loai_tai_khoan = loaiTk;
-    const dichDung = (s.dlDichDung || '').trim();
-    if (dichDung) payload.dich_dung = dichDung;
-    if (vaDangNhap && chon && chon.id) payload.module_id = chon.id;
-    // Đã chọn phân loại mà không đăng nhập kèm: gắn module đang mở để
-    // backend có nhóm mà kiểm loại/đích (module_id đã hỗ trợ ở POST).
-    if (!vaDangNhap && chon && chon.id && loaiTk) payload.module_id = chon.id;
-    this.dlXoaBiMatKhoiDom();
-    this.setState({ dlDangLuu: true, dlLoi: '' });
+    this.setState({ tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false, otpMo: false }], dlDangLuu: true, dlLoi: '' });
+    this.xoaONhap();
+    let tk = null;
     try {
       const { j } = await K.goi('api/tai-khoan/da-luu', { method: 'POST', json: payload });
-      const tk = j && j.tai_khoan;
-      await this.taiDlDs();
-      this.setState({
-        dlDangLuu: false,
-        dlChonId: tk ? tk.id : '', dlDaLuu: !!tk,
-        dlEmail: tk ? (tk.email || tk.email_che) : email
-      });
-      if (vaDangNhap && tk) await this.dlDangNhapDaLuu(chon, tk.id);
+      tk = j && j.tai_khoan;
     } catch (e) {
       this.setState({ dlDangLuu: false, dlLoi: (e && e.message) || 'Không lưu được tài khoản.' });
+      return;
+    }
+    await this.taiDlDs();
+    this.setState({ dlDangLuu: false, tkThem: false, tkNhan: '', tkBacGoi: '', tkNhomThem: null, tkCachThem: null, chonMod: null, tkTuyChon: false });
+    if (tk && tk.id) {
+      // Tài khoản mới phải thấy được ngay: bỏ các bộ lọc không còn khớp rồi chọn nó.
+      const nha = tk.nhom || (chon.nhom && chon.nhom.id) || NHA_KHAC;
+      this.setState((st) => ({ khuNhom: st.khuNhom && st.khuNhom !== nha ? '' : st.khuNhom, khuTt: '', khuLim: '' }));
+      this.khuChonTk(tk.id);
+      await this.dlDangNhapDaLuu(chon, tk.id);
     }
   }
   // XEM trình duyệt đang đăng nhập (chủ máy 28/10/2026: «bấm tự động thì xem trình duyệt đang làm gì, như c2a»). Dịch vụ chụp ảnh trang
@@ -1244,6 +1336,10 @@ class Component extends DCLogic {
     if (!chiPanel) this.msg(chu, !!loi);
     this.setState({ khuKq: { id, chu: String(chu), loi: !!loi } });
   }
+  // Sau MỌI kết quả đăng nhập (thành công, cần người, lỗi): đọc lại sổ của lõi (NV283 ghi bền) để chấm đổi màu đúng kết quả thật.
+  dlGhiDn(id) {
+    this.taiDlDs().then(() => this.khuLamMoiCt(id));
+  }
   dlXoaBuoc(id) {
     this.setState((s) => { const b = Object.assign({}, s.dlBuoc); delete b[id]; return { dlBuoc: b }; });
   }
@@ -1258,11 +1354,11 @@ class Component extends DCLogic {
         method: 'POST', json: { module_id: chon.id, kiem_tra_lai: canNguoiTruoc }
       });
       const cn = Object.assign({}, (this.state || {}).dlCanNguoi);
-      if (j && j.thanh_cong) { this.khuDungXem(); delete cn[id]; this.setState({ dlCanNguoi: cn }); this.dlBao(id, 'Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); }
+      if (j && j.thanh_cong) { this.khuDungXem(); delete cn[id]; this.setState({ dlCanNguoi: cn }); this.dlBao(id, 'Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); this.khuLamMoiCt(id); }
       else if (j && j.cho_2fa) {
         // NV145b: dịch vụ chờ mã 2FA → hiện ô nhập mã cho tài khoản này
         this.setState({ dlCho2faId: id, dlCho2faModule: chon.id });
-        this.dlBao(id, 'Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        this.dlGhiDn(id); this.dlBao(id, 'Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
       }
       else if (j && j.ma_loi === 'dang_chay') {
         // NV145b: lượt đăng nhập nền vẫn chạy → hỏi trạng thái định kỳ
@@ -1270,8 +1366,8 @@ class Component extends DCLogic {
         this.dlHoiTrangThai(id, chon.id, 0);
         return true;
       }
-      else if (j && j.can_nguoi) { cn[id] = true; this.setState({ dlCanNguoi: cn }); this.dlBao(id, 'Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); }
-      else { const t = 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : ''); this.setState({ dlLoi: t }); this.dlBao(id, t, true, true); }
+      else if (j && j.can_nguoi) { cn[id] = true; this.setState({ dlCanNguoi: cn }); this.dlGhiDn(id); this.dlBao(id, 'Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); }
+      else { const t = 'Đăng nhập chưa được' + (j && j.ma_loi ? ' (' + j.ma_loi + ').' : '.') + (j && j.huong_dan ? ' ' + j.huong_dan : ''); this.setState({ dlLoi: t }); this.dlGhiDn(id); this.dlBao(id, t, true, true); }
     } catch (e) {
       { const t = (e && e.message) || 'Không đăng nhập được.'; this.setState({ dlLoi: t }); this.dlBao(id, t, true, true); }
     }
@@ -1306,14 +1402,14 @@ class Component extends DCLogic {
       const gd = j && j.giai_doan;
       if (gd === 'dang_chay' && j.buoc) this.setState((s) => ({ dlBuoc: Object.assign({}, s.dlBuoc, { [id]: String(j.buoc) }) }));
       if (gd && gd !== 'dang_chay') this.dlXoaBuoc(id);
-      if (gd === 'thanh_cong') { this.dlBao(id, 'Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); return; }
+      if (gd === 'thanh_cong') { this.dlBao(id, 'Đã đăng nhập bằng tài khoản đã lưu.', false); await this.taiDlDs(); this.khuLamMoiCt(id); return; }
       if (gd === 'cho_2fa') {
         this.setState({ dlCho2faId: id, dlCho2faModule: moduleId });
-        this.dlBao(id, 'Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
+        this.dlGhiDn(id); this.dlBao(id, 'Nơi đăng nhập đang chờ mã 2FA — nhập mã rồi bấm «Gửi mã».', false);
         return;
       }
-      if (gd === 'can_nguoi') { this.dlBao(id, 'Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); return; }
-      if (gd === 'loi') { { const t = 'Đăng nhập chưa được' + (j.ma_loi ? ' (' + j.ma_loi + ').' : '.'); this.setState({ dlLoi: t }); this.dlBao(id, t, true, true); } return; }
+      if (gd === 'can_nguoi') { this.dlGhiDn(id); this.dlBao(id, 'Cần bạn xử lý thêm' + (j.huong_dan ? ': ' + j.huong_dan : '.'), true); return; }
+      if (gd === 'loi') { { const t = 'Đăng nhập chưa được' + (j.ma_loi ? ' (' + j.ma_loi + ').' : '.'); this.setState({ dlLoi: t }); this.dlGhiDn(id); this.dlBao(id, t, true, true); } return; }
     } catch (e) { /* hỏi lại lần sau */ }
     setTimeout(() => this.dlHoiTrangThai(id, moduleId, lan + 1), 5000);
   }
@@ -1323,7 +1419,7 @@ class Component extends DCLogic {
     // phía máy chủ; hiển thị trạng thái từng tài khoản bên dưới.
     const s = this.state;
     if (s.dlDnTatCaDangChay) return;
-    const nhom = s.dlLocNhom || '';
+    const nhom = s.khuNhom || '';
     const ds = (s.dlDs || []).filter((t) => t && (t.nhom || '') === nhom
       && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung');
     if (!ds.length) { this.setState({ dlLoi: 'Không có tài khoản nào trong nhóm này để đăng nhập.' }); return; }
@@ -1366,30 +1462,6 @@ class Component extends DCLogic {
       }
     } catch (e) { /* hỏi lại lần sau */ }
     setTimeout(() => this.dlHoiTrangThaiHangLoat(lan + 1), 5000);
-  }
-  async dlChiDangNhap(chon) {
-    const s = this.state;
-    const chonId = s.dlChonId || '';
-    if (s.dlDaLuu && chonId && !(s.dlMatKhau || '')) {
-      await this.dlDangNhapDaLuu(chon, chonId);
-      return;
-    }
-    const email = (s.dlEmail || '').trim();
-    const mk = s.dlMatKhau || '';
-    if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu để đăng nhập.' }); return; }
-    const tk = { email, mat_khau: mk };
-    const otp = (s.dlTotp || '').trim();
-    if (otp) tk.otp = otp;
-    this.dlXoaBiMatKhoiDom();
-    try {
-      await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', {
-        method: 'POST',
-        json: { module_id: chon.id, tai_khoan: [tk], kieu: this.tdLayKieu(chon) }
-      });
-      this.tdTheoDoi();
-    } catch (e) {
-      this.setState({ dlLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' });
-    }
   }
   async dlDoiTamDung(id, tam_dung) {
     // NV197b: Tạm dừng / Bật lại tài khoản đã lưu. Máy chủ cũ chưa có đường
@@ -1457,31 +1529,8 @@ class Component extends DCLogic {
     try {
       await K.goi('api/tai-khoan/da-luu/' + encodeURIComponent(id), { method: 'DELETE' });
       await this.taiDlDs();
-      if ((this.state.dlChonId || '') === id) {
-        this.setState({ dlChonId: '', dlEmail: '', dlDaLuu: false });
-      }
     } catch (e) {
       this.setState({ dlLoi: (e && e.message) || 'Không xoá được.' });
-    }
-  }
-  async dlLuuTatCa() {
-    const hang = (this.state.tdHangNhap || []).map((h) => ({
-      email: (h.email || '').trim(), mat_khau: h.matKhau || '', totp_secret: (h.otp || '').trim()
-    })).filter((t) => t.email && t.mat_khau);
-    if (!hang.length) { this.setState({ dlLoi: 'Chưa có tài khoản nào để lưu.' }); return; }
-    const tai_khoan = hang.map((t) => {
-      const o = { email: t.email, mat_khau: t.mat_khau };
-      if (t.totp_secret) o.totp_secret = t.totp_secret;
-      return o;
-    });
-    try {
-      const { j } = await K.goi('api/tai-khoan/da-luu', { method: 'POST', json: { tai_khoan } });
-      await this.taiDlDs();
-      const ok = (j && Array.isArray(j.luu)) ? j.luu.length : 0;
-      const loi = (j && Array.isArray(j.loi)) ? j.loi.length : 0;
-      this.msg('Đã lưu ' + ok + ' tài khoản' + (loi ? ', ' + loi + ' lỗi.' : '.'), loi > 0);
-    } catch (e) {
-      this.setState({ dlLoi: (e && e.message) || 'Không lưu được.' });
     }
   }
   async dlDoiTuDongLai(bat) {
@@ -1503,24 +1552,6 @@ class Component extends DCLogic {
     return lines.join('\n');
   }
   tdDatLoi(chu) { this.setState({ tdLoi: chu || '' }); }
-  themHangTk() {
-    this.setState((st) => {
-      const hn = (st.tdHangNhap || []).slice();
-      if (hn.length < 20) {
-        hn.push({ email: '', matKhau: '', otp: '', hienMk: false });
-      }
-      return { tdHangNhap: hn, tdLoi: '' };
-    });
-  }
-  xoaHangTk(idx) {
-    this.setState((st) => {
-      const hn = (st.tdHangNhap || []).slice();
-      if (hn.length > 1 && idx >= 0 && idx < hn.length) {
-        hn.splice(idx, 1);
-      }
-      return { tdHangNhap: hn, tdLoi: '' };
-    });
-  }
   doiHangTk(idx, truong, val) {
     this.setState((st) => {
       const hn = (st.tdHangNhap || []).slice();
@@ -1539,75 +1570,9 @@ class Component extends DCLogic {
       return { tdHangNhap: hn };
     });
   }
-  doiMa2Fa(email, val) {
-    this.setState((st) => ({
-      tdMa2Fa: Object.assign({}, st.tdMa2Fa, { [email]: val }),
-      tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: '' })
-    }));
-  }
   tdLayKieu(m) {
     // NV219: bỏ kiểu đăng nhập qua danh tính khỏi phần AI — luôn trực tiếp.
     return 'truc_tiep';
-  }
-  async tdChayHangNhap(m) {
-    const hang = this.state.tdHangNhap || [];
-    const tai_khoan = [];
-    for (let i = 0; i < hang.length; i++) {
-      const h = hang[i];
-      const em = (h.email || '').trim();
-      const mk = h.matKhau || '';
-      const otp = (h.otp || '').trim();
-      if (!em && !mk && !otp) continue;
-      if (!em) { this.tdDatLoi('Hàng ' + (i + 1) + ': thiếu email.'); return; }
-      if (!mk) { this.tdDatLoi('Hàng ' + (i + 1) + ': thiếu mật khẩu.'); return; }
-      const item = { email: em, mat_khau: mk };
-      if (otp) item.otp = otp;
-      tai_khoan.push(item);
-    }
-    if (!tai_khoan.length) {
-      this.tdDatLoi('Vui lòng nhập ít nhất một tài khoản (email và mật khẩu).');
-      return;
-    }
-    const kieu = this.tdLayKieu(m);
-    // Mật khẩu và OTP rời state và DOM NGAY LẬP TỨC
-    this.setState({
-      tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
-      tdDangChay: true,
-      tdLoi: '',
-      tdKieuDangChay: kieu,
-      lan: this.state.lan + 1
-    });
-    try {
-      await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', {
-        method: 'POST',
-        json: { module_id: m.id, tai_khoan, kieu }
-      });
-      this.setState({
-        tdDangChay: false,
-        tdLuot: {
-          trang_thai_luot: 'dang_chay',
-          ket_qua: [],
-          tom_tat: { tong: tai_khoan.length, xong: 0, loi: 0, bo_qua: 0 }
-        }
-      });
-      this.tdTheoDoi();
-    } catch (e) {
-      this.setState({ tdDangChay: false, tdLoi: (e && e.message) || 'Không bắt đầu được lượt đăng nhập.' });
-    }
-  }
-  async guiMa2Fa(email, m) {
-    const ma = ((this.state.tdMa2Fa && this.state.tdMa2Fa[email]) || '').trim();
-    if (!ma) {
-      this.setState((st) => ({
-        tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: 'Vui lòng nhập mã OTP.' })
-      }));
-      return;
-    }
-    // NV219: chỉ còn chế độ trực tiếp — mã 2FA xử lý ở tab trình duyệt.
-    this.setState((st) => ({
-      tdLoi2Fa: Object.assign({}, st.tdLoi2Fa, { [email]: 'Chế độ trực tiếp: vui lòng mở tab trình duyệt để hoàn tất xác minh.' })
-    }));
-    return;
   }
   async tdXemTruoc(m) {
     const van_ban = this.layVanBanGop();
@@ -1626,6 +1591,7 @@ class Component extends DCLogic {
     const bo_qua_email = Object.keys(bo).filter((e) => bo[e]);
     const kieu = this.tdLayKieu(m);
     // Mật khẩu rời state NGAY (không giữ trong trang) — chỉ còn bản đang gửi đi.
+    this.xoaONhap();
     this.setState({ tdVanBan: '', tdXem: null, tdDangChay: true, tdLoi: '', tdKieuDangChay: kieu, lan: this.state.lan + 1 });
     try {
       await K.goi('api/tai-khoan/dang-nhap-tu-dong/bat-dau', {
@@ -1780,263 +1746,182 @@ class Component extends DCLogic {
     const khoa = new Map(ai.map((m) => [m.id, this.khoaCua(m)]));
     const coKhoaQt = true;
 
-    // ===== Tài khoản =====
-    const tatCaTk = ai.flatMap((m) => khoa.get(m.id));
-    // NV268: chip lọc khu «Tài khoản» — «Tất cả» + nhóm từ bảng phân loại
-    // (dữ liệu từ /bang-phan-loai, không viết cứng tên nhóm).
-    const khuDlDsChip = Array.isArray(s.dlDs) ? s.dlDs : [];
-    const khuBangChip = s.dlBang || null;
-    const khuNhomChip = (khuBangChip && Array.isArray(khuBangChip.nhom) && khuBangChip.nhom.length)
-      ? khuBangChip.nhom.slice()
-      : [...new Set(khuDlDsChip.map((t) => (t.nhom || "")).filter(Boolean))].sort();
-    const nhom = [{ id: "", nhan: "Tất cả", dem: String(khuDlDsChip.length) }]
-      .concat(khuNhomChip.map((n) => ({
-        id: n, nhan: tenTrongBangTk(khuBangChip, "ten_nhom", n) || n,
-        dem: String(khuDlDsChip.filter((t) => (t.nhom || "") === n).length)
-      })))
-      .map((c) => ({
-        id: c.id, nhan: c.nhan, dem: c.dem,
-        on: (s.khuNhom || "") === c.id, st: chipSt((s.khuNhom || "") === c.id),
-        pick: () => this.setState({ khuNhom: c.id, khuChon: "" })
-      }));
-    // Nguồn nhận khoá qua trang: module có mã (module từ xa đặt khoá lúc đăng ký).
-    const ungVien = ai.filter((m) => !m.tu_xa);
+    // ===== Tài khoản (NV282) =====
+    const bangTk = s.dlBang || null;
+    const mo = this.khuMoHinh(s);
+    const nhaLoc = mo.ds.filter((x) => !s.khuNhom || x.nha === s.khuNhom);
+    const hieuLuc = nhaLoc.some((x) => x.id === s.khuChon) ? s.khuChon : ((nhaLoc[0] || {}).id || '');
+    const tkChon = mo.ds.find((x) => x.id === hieuLuc) || null;
+    const locDs = this.khuLoc(s, mo);
+    const mucGiu1 = (x) => (x.muc || []).filter((m) => m.hang === 1);   // máy chủ chỉ xếp hạng tài khoản đăng nhập ok còn lượt
+    const mucHetCua = (x) => (x.muc || []).filter(mucHet);
+    // Hạng #1 tính theo từng (nhà · đường dùng, mục), KHÔNG theo tổng: LẤY NGUYÊN hạng (`hang`) và người giữ #1 của nhóm
+    // (`giu_hang_1_cua_nhom`) do máy chủ báo trong chi-tiet; trang không tự xếp hạng.
+    const nguoiGiu1 = (x, m) => {
+      if (m.hang === 1) return { id: x.id, ten: x.ten, chinMinh: true };
+      const g = m.giu1;
+      if (!g || !g.tai_khoan_id) return null;
+      const o = mo.ds.find((y) => y.id === g.tai_khoan_id);
+      return { id: String(g.tai_khoan_id), ten: o ? o.ten : String(g.email || g.tai_khoan_id), chinMinh: false };
+    };
+    const dangNapNha = s.khuCtCo !== false && nhaLoc.some((x) => !(x.id in (s.khuCt || {})));
 
-    // Kiểu đăng nhập module làm được (suy từ cấu trúc: hàm `dang_nhap`, `tai_dung_ho_so` + module danh tính/trình duyệt đã liên kết).
+    // Dải tổng hợp
+    const tt = TT_THU_TU.map((k) => {
+      const n = nhaLoc.filter((x) => x.tt === k).length;
+      return { id: k, nhan: TT_DN[k][0], n: String(n), cls: TT_DN[k][1], cao: (k === 'loi' && n) ? ' cao' : '', on: s.khuTt === k,
+        pick: () => this.setState((st) => ({ khuTt: st.khuTt === k ? '' : k, khuMo: true, khuQ: '', khuTro: 0 })) };
+    });
+    const mucCo = new Map();
+    nhaLoc.forEach((x) => (x.muc || []).forEach((m) => { if (!mucCo.has(m.k)) mucCo.set(m.k, m.ten); }));
+    const lim = [...mucCo].map(([k, ten]) => {
+      const n = nhaLoc.filter((x) => (x.muc || []).some((m) => m.k === k && mucHet(m))).length;
+      return { id: k, nhan: ten, n: String(n), cao: n ? ' cao' : '', on: s.khuLim === k,
+        pick: () => this.setState((st) => ({ khuLim: st.khuLim === k ? '' : k, khuMo: true, khuQ: '', khuTro: 0 })) };
+    });
+    const limGhi = !lim.length
+      ? (dangNapNha ? 'Đang nạp số liệu hạn mức theo mục…' : 'Nhóm này chưa có số liệu hạn mức theo mục (nhà cung cấp không gửi), nên không có số «hết limit».')
+      : (dangNapNha ? 'Đang nạp thêm số liệu…' : '');
+    const h1Nhan = tkChon ? 'Đang giữ #1 · ' + tkChon.nhaTen + ' · ' + tkChon.loai : 'Đang giữ #1';
+    const h1 = [];
+    let h1Ghi = '';
+    if (!tkChon) h1Ghi = 'Chưa chọn tài khoản nào.';
+    else if (!tkChon.muc || !tkChon.muc.length) h1Ghi = 'Nhóm ' + tkChon.nhaTen + ' · ' + tkChon.loai + ' chưa có số liệu hạn mức theo mục nên chưa xếp hạng #1.';
+    else tkChon.muc.forEach((m) => {
+      const c = nguoiGiu1(tkChon, m);
+      h1.push({ muc: m.k, nhan: m.ten, ai: c ? c.ten.replace(/@.*/, '') : 'chưa có', tat: !c, tieuDe: c ? 'Xem ' + c.ten : '',
+        pick: () => { if (c) this.khuChonTk(c.id); } });
+    });
+    const coSoMuc = nhaLoc.filter((x) => x.muc && x.muc.length).length;
+    const dlTrangThai = Array.isArray(s.dlDs) ? s.dlDs : [];
+    const dnTatCaDs = dlTrangThai.filter((t) => t && (t.nhom || '') === (s.khuNhom || '\u0000') && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung');
+    const tong = {
+      tt, lim, coLimGhi: !!limGhi, limGhi, h1Nhan, h1, coH1Ghi: !!h1Ghi, h1Ghi,
+      ghi: nhaLoc.length + ' tài khoản' + (coSoMuc ? ' · số liệu hạn mức theo mục có ở ' + coSoMuc + ' tài khoản (nhà cung cấp nào không gửi thì không tính vào «hết limit»)' : '') + '. Bấm một số để lọc danh sách trong ô chọn.',
+      tuDongLai: s.dlTuDongLai !== false, doiTuDongLai: (e) => this.dlDoiTuDongLai(e.target.checked),
+      coDnTatCa: !!s.khuNhom && dnTatCaDs.length > 0, dnTatCa: () => this.dlDangNhapTatCaNhom(), dnTatCaDangChay: !!s.dlDnTatCaDangChay,
+      nhanDnTatCa: 'Đăng nhập tất cả (' + dnTatCaDs.length + ') — ' + mo.tenNha(s.khuNhom || ''),
+      dnTatCaKq: Array.isArray(s.dlDnTatCaKq) ? s.dlDnTatCaKq : []
+    };
+    // Chip nhà: LỌC thật.
+    const nha = [{ id: '', nhan: 'Tất cả', dem: String(mo.ds.length) }].concat(mo.nhaIds.map((n) => ({ id: n, nhan: mo.tenNha(n), dem: String(mo.ds.filter((x) => x.nha === n).length) })))
+      .map((c) => ({ id: c.id, nhan: c.nhan, dem: c.dem, on: (s.khuNhom || '') === c.id, pick: () => this.khuChonNha(c.id) }));
+    // MỘT ô chọn: đóng = chấm + địa chỉ + «nhà · loại · trạng thái» + mũi tên (KHÔNG huy hiệu); mở = ô tìm + danh sách có huy hiệu.
+    const troIdx = Math.max(0, Math.min(s.khuTro | 0, locDs.length - 1));
+    const huyCua = (x) => {
+      const ra = [], g = mucGiu1(x);
+      g.slice(0, 2).forEach((m) => ra.push({ chu: '#1 ' + m.ten, hl: '' }));
+      if (g.length > 2) ra.push({ chu: '+' + (g.length - 2), hl: '' });
+      const h = mucHetCua(x);
+      if (h.length) ra.push({ chu: 'Hết limit ' + h.length, hl: ' hl' });
+      return ra;
+    };
+    const chon = {
+      mo: !!s.khuMo, aria: tkChon ? 'Chọn tài khoản. Đang chọn: ' + tkChon.ten : 'Chọn tài khoản. Chưa có tài khoản nào',
+      bat: () => this.khuBatChon(), cls: tkChon ? tkChon.ttCls : '', ttChu: tkChon ? tkChon.ttChu : 'Chưa có tài khoản',
+      ten: tkChon ? tkChon.ten : 'Chưa có tài khoản',
+      phu: tkChon ? tkChon.nhaTen + ' · ' + tkChon.loai + ' · ' + tkChon.ttNhan : (s.khuNhom ? 'Nhà này chưa có tài khoản nào' : 'Bấm «+ Thêm tài khoản» để thêm'),
+      mui: s.khuMo ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6',
+      goiY: 'Tìm trong ' + locDs.length + ' tài khoản…', q: s.khuQ || '',
+      doiQ: (e) => this.setState({ khuQ: e.target.value, khuTro: 0 }), phim: (e) => this.khuPhim(e),
+      tro: locDs[troIdx] ? 'opt-' + locDs[troIdx].id : '',
+      ds: locDs.map((x, i) => ({
+        id: x.id, domId: 'opt-' + x.id, ten: x.ten, phu: x.nhaTen + ' · ' + x.loai + ' · ' + x.ttNhan, cls: x.ttCls, ttChu: x.ttChu, tro: i === troIdx,
+        tieuDe: x.ttNhan + (mucGiu1(x).length ? ' · giữ #1: ' + mucGiu1(x).map((m) => m.ten).join(', ') : '') + (mucHetCua(x).length ? ' · hết limit: ' + mucHetCua(x).map((m) => m.ten).join(', ') : ''),
+        huy: huyCua(x), pick: () => this.khuChonTk(x.id)
+      })),
+      rong: locDs.length === 0, rongChu: 'Không có tài khoản nào khớp bộ lọc.'
+    };
+
+    // ----- Form «Thêm tài khoản» (MỘT form) -----
     const coTrucTiep = (m) => !!m.dang_nhap_tu_dong;
-    const modCoDanhTinh = (m) => false;  // NV219: bỏ kiểu đăng nhập qua danh tính khỏi phần AI
-    const coKieuDangNhap = (m) => coTrucTiep(m) || modCoDanhTinh(m);
-    // Module chẳng có gì để thêm (không trường dán khoá, không kiểu đăng nhập) thì ẨN — không để nút chết.
-    const themDuoc = (m) => ((catId.get(m.id) || {}).truong_cau_hinh || []).length > 0 || coKieuDangNhap(m);
-
-    // Bước a — NHÓM: gom theo modules[].nhom, chỉ hiện nhóm có ≥1 module đã cài và thêm được
+    const ungVien = ai.filter((m) => !m.tu_xa);
+    const truongCua = (m) => ((catId.get(m.id) || {}).truong_cau_hinh || []);
+    const themDuoc = (m) => truongCua(m).length > 0 || coTrucTiep(m);
     const nhomMap = new Map();
     for (const m of ungVien.filter(themDuoc)) {
       const nid = (m.nhom && m.nhom.id) || 'khac';
-      const nten = (m.nhom && m.nhom.ten) || 'Khác';
-      if (!nhomMap.has(nid)) {
-        nhomMap.set(nid, { id: nid, ten: nten, modules: [] });
-      }
+      if (!nhomMap.has(nid)) nhomMap.set(nid, { id: nid, ten: (m.nhom && m.nhom.ten) || 'Khác', modules: [] });
       nhomMap.get(nid).modules.push(m);
     }
-    const dsNhomList = Array.from(nhomMap.values()).sort((a, b) => {
-      if (a.id === 'khac') return 1;
-      if (b.id === 'khac') return -1;
-      return (a.ten || '').localeCompare(b.ten || '', 'vi');
-    });
-
-    // Quy tắc tự chọn nhóm: chỉ có đúng 1 nhóm -> tự chọn và ẩn hàng chip
+    const dsNhomList = Array.from(nhomMap.values()).sort((a, b) => (a.id === 'khac') - (b.id === 'khac') || (a.ten || '').localeCompare(b.ten || '', 'vi'));
+    // #tk-<id> (Studio, trang Module): mở form với module đó, ưu tiên cách «khoá API».
+    const nhomTheoModule = s.chonMod ? dsNhomList.find((n) => n.modules.some((m) => m.id === s.chonMod)) : null;
     let nhomDuocChon = null;
-    let hienNhom = false;
-    if (dsNhomList.length === 1) {
-      nhomDuocChon = dsNhomList[0];
-      hienNhom = false;
-    } else if (dsNhomList.length > 1) {
-      hienNhom = true;
-      if (s.tkNhomThem && nhomMap.has(s.tkNhomThem)) {
-        nhomDuocChon = nhomMap.get(s.tkNhomThem);
-      }
+    if (dsNhomList.length === 1) nhomDuocChon = dsNhomList[0];
+    else if (s.tkNhomThem && nhomMap.has(s.tkNhomThem)) nhomDuocChon = nhomMap.get(s.tkNhomThem);
+    else if (nhomTheoModule) nhomDuocChon = nhomTheoModule;
+    const hienNhom = dsNhomList.length > 1;
+    const dsNhom = dsNhomList.map((n) => ({ id: n.id, nhan: n.ten, on: !!nhomDuocChon && nhomDuocChon.id === n.id,
+      pick: () => { this.xoaONhap(); this.setState({ tkNhomThem: n.id, tkCachThem: null, chonMod: null, f: {}, tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', dlLoi: '' }); } }));
+    // Cách thêm suy từ module đã cài (đăng nhập tự động / khoá dán vào cấu hình); chỉ hỏi khi nhà có hơn một cách.
+    const cachList = [];
+    if (nhomDuocChon) for (const m of nhomDuocChon.modules.slice().sort((a, b) => (a.ten || '').localeCompare(b.ten || '', 'vi'))) {
+      const dn = coTrucTiep(m), api = truongCua(m).length > 0;
+      if (dn) cachList.push({ id: m.id + '|dn', mod: m, kind: 'dn', nhan: m.ten + (api ? ' · đăng nhập' : '') });
+      if (api) cachList.push({ id: m.id + '|api', mod: m, kind: 'api', nhan: m.ten + (dn ? ' · khoá API' : '') });
     }
-
-    const chuaChonNhom = !nhomDuocChon;
-    const coNhomChon = !!nhomDuocChon;
-
-    const dsNhom = dsNhomList.map((n) => ({
-      id: n.id,
-      nhan: n.ten,
-      on: !!nhomDuocChon && nhomDuocChon.id === n.id,
-      st: chipSt(!!nhomDuocChon && nhomDuocChon.id === n.id),
-      pick: () => {
-        this.setState({
-          tkNhomThem: n.id,
-          tkLoaiThem: null,
-          chonMod: null,
-          tdVanBan: '',
-          tdXem: null,
-          tdBo: {},
-          tdLoi: '',
-          tdDaChon: {}
-        });
-      }
-    }));
-
-    // Bước b — LOẠI
-
-    let loaiDuocChon = null;
-    let hienLoai = false;
-    let dsLoai = [];
-
-    if (nhomDuocChon) {
-      const modTrongNhom = nhomDuocChon.modules;
-      const nhomCoApi = modTrongNhom.some((m) => {
-        const tr = (catId.get(m.id) || {}).truong_cau_hinh || [];
-        return tr.length > 0;
-      });
-      const nhomCoTaiKhoan = modTrongNhom.some(coKieuDangNhap);
-
-      const dsLoaiList = [];
-      if (nhomCoApi) dsLoaiList.push({ id: 'api', nhan: 'API' });
-      if (nhomCoTaiKhoan) dsLoaiList.push({ id: 'tai_khoan', nhan: 'Tài khoản' });
-
-      if (dsLoaiList.length === 1) {
-        loaiDuocChon = dsLoaiList[0].id;
-        hienLoai = false;
-      } else if (dsLoaiList.length > 1) {
-        hienLoai = true;
-        if (s.tkLoaiThem && dsLoaiList.some((l) => l.id === s.tkLoaiThem)) {
-          loaiDuocChon = s.tkLoaiThem;
-        }
-      }
-
-      dsLoai = dsLoaiList.map((l) => ({
-        id: l.id,
-        nhan: l.nhan,
-        on: loaiDuocChon === l.id,
-        st: chipSt(loaiDuocChon === l.id),
-        pick: () => {
-          this.setState({
-            tkLoaiThem: l.id,
-            chonMod: null,
-            tdVanBan: '',
-            tdXem: null,
-            tdBo: {},
-            tdLoi: '',
-            tdDaChon: {}
-          });
-        }
-      }));
+    let cachChon = null;
+    if (cachList.length === 1) cachChon = cachList[0];
+    else if (cachList.length > 1) {
+      cachChon = cachList.find((c) => c.id === s.tkCachThem) || null;
+      if (!cachChon && s.chonMod) cachChon = cachList.find((c) => c.mod.id === s.chonMod && c.kind === 'api') || cachList.find((c) => c.mod.id === s.chonMod) || null;
     }
-
-    const chuaChonLoai = coNhomChon && !loaiDuocChon;
-    const coLoaiChon = coNhomChon && !!loaiDuocChon;
-
-    // Bước c — MODULE và KIỂU
-    let modUngVien = [];
-    if (nhomDuocChon && loaiDuocChon) {
-      if (loaiDuocChon === 'tai_khoan') {
-        modUngVien = nhomDuocChon.modules.filter(coKieuDangNhap);
-      } else {
-        modUngVien = nhomDuocChon.modules;
-      }
-    }
-
-    let chon = null;
-    if (modUngVien.length === 1) {
-      chon = modUngVien[0];
-    } else if (modUngVien.length > 1) {
-      chon = modUngVien.find((m) => m.id === s.chonMod) || null;
-    }
-
-    const apis = modUngVien.map((m) => ({
-      id: m.id,
-      nhan: m.ten,
-      on: !!chon && chon.id === m.id,
-      st: chipSt(!!chon && chon.id === m.id),
-      pick: () => {
-        this.setState({
-          chonMod: m.id,
-          f: {},
-          tdVanBan: '',
-          tdXem: null,
-          tdBo: {},
-          tdLoi: '',
-          tdDaChon: {}
-        });
-      }
-    }));
-
-    const trChon = chon ? ((catId.get(chon.id) || {}).truong_cau_hinh || []) : [];
-    const ckChon = chon ? ((s.mods.find((x) => x && x.id === chon.id) || {}).cau_hinh_cong_khai || {}) : {};
+    const hienCach = !!nhomDuocChon && cachList.length > 1;
+    const dsCach = cachList.map((c) => ({ id: c.id, nhan: c.nhan, on: !!cachChon && cachChon.id === c.id,
+      pick: () => { this.xoaONhap(); this.setState({ tkCachThem: c.id, chonMod: null, f: {}, tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', dlLoi: '' }); } }));
+    const modChon = cachChon ? cachChon.mod : null;
+    const laDn = !!cachChon && cachChon.kind === 'dn';
+    const laApi = !!cachChon && cachChon.kind === 'api';
+    const trChon = modChon ? truongCua(modChon) : [];
+    const ckChon = modChon ? ((s.mods.find((x) => x && x.id === modChon.id) || {}).cau_hinh_cong_khai || {}) : {};
     const trBm = trChon.find(laBiMat);
-
-    const laTaiKhoan = loaiDuocChon === 'tai_khoan' && !!chon;
-    const laApi = loaiDuocChon === 'api' && !!chon;
-
-    // Kiểu đăng nhập
-    const chonCoTrucTiep = chon ? coTrucTiep(chon) : false;
-    const chonCoDanhTinh = chon ? modCoDanhTinh(chon) : false;
-    const coCaHaiKieu = chonCoTrucTiep && chonCoDanhTinh;
-    const chiMotKieu = (chonCoTrucTiep && !chonCoDanhTinh) || (!chonCoTrucTiep && chonCoDanhTinh);
-
-    const kieuHienTai = 'truc_tiep';  // NV219: bỏ kiểu đăng nhập qua danh tính
-    const nhanKieuHienTai = 'Trực tiếp';
-
-    const goiYKieu = '2FA ở kiểu trực tiếp: sẽ cần bạn xử lý';
-
+    // Ô bắt buộc của «khoá API» (tối đa 2, ô bí mật trước); mọi ô khác → «Tuỳ chọn thêm».
+    let chinhT = trChon.filter((t) => t.bat_buoc).sort((a, b) => Number(laBiMat(b)) - Number(laBiMat(a))).slice(0, 2);
+    if (!chinhT.length && trBm) chinhT = [trBm];
+    const veTruong = (t) => {
+      const j = trChon.indexOf(t);
+      return { khoa: t.khoa, nhan: t.nhan || t.khoa, biMat: laBiMat(t), chu: !laBiMat(t), idO: 'them-' + j + '-' + s.lan,
+        ph: laBiMat(t) ? 'Dán ' + chuThuong(t.nhan || 'khoá') : (t.mac_dinh != null ? String(t.mac_dinh) : ''),
+        val: laBiMat(t) ? '' : (s.f[t.khoa] != null ? String(s.f[t.khoa]) : (ckChon[t.khoa] == null ? '' : String(ckChon[t.khoa]))),
+        onIn: (e) => { const v = e.target.value; this.setState((st) => ({ f: Object.assign({}, st.f, { [t.khoa]: v }) })); } };
+    };
+    const hienGiaoThuc = hienNhom ? 1 : 0;
+    const hang0 = (s.tdHangNhap || [])[0] || { email: '', matKhau: '', otp: '', hienMk: false, otpMo: false };
+    const doiHang = (truong, val) => this.doiHangTk(0, truong, val);
+    const moTuyChon = !!s.tkTuyChon;
+    // Dán nhiều dòng (lối phụ, nằm trong «Tuỳ chọn thêm»): xem trước → chạy lần lượt.
+    const NHAN_LOAI = { mat_khau: 'mật khẩu', cookie: 'cookie', dang_nhap_lai: 'đăng nhập lại' };
+    const NHAN_TT = { cho: ['Đang chờ', 'var(--mute)'], dang_chay: ['Đang đăng nhập…', 'var(--mute)'], xong: ['Xong', '#0B5A53'], loi: ['Lỗi', '#8A2A1E'], bo_qua: ['Bỏ qua', 'var(--mute)'] };
+    const NHAN_LOI = { can_nguoi: 'Cần bạn xử lý', cho_2fa: 'Cần mã 2FA', sai_mat_khau: 'Sai mật khẩu' };
     const cheEmail = (email) => {
       if (!email || typeof email !== 'string') return '';
       const at = email.indexOf('@');
-      if (at <= 0) return email;
-      return email.charAt(0) + '***' + email.slice(at);
-    };
-
-    const NHAN_LOAI = { mat_khau: 'mật khẩu', cookie: 'cookie', dang_nhap_lai: 'đăng nhập lại' };
-    const NHAN_TT = { cho: ['Đang chờ', 'var(--mute)'], dang_chay: ['Đang đăng nhập…', 'var(--mute)'], xong: ['Xong', '#0B5A53'], loi: ['Lỗi', '#8A2A1E'], bo_qua: ['Bỏ qua', 'var(--mute)'] };
-    const NHAN_LOI = {
-      can_nguoi: 'Cần bạn xử lý',
-      cho_2fa: 'Cần mã 2FA',
-      sai_mat_khau: 'Sai mật khẩu'
+      return at <= 0 ? email : email.charAt(0) + '***' + email.slice(at);
     };
     const xem = s.tdXem;
     const tdHang = ((xem && xem.tai_khoan) || []).map((t) => ({ email: t.email, loai: NHAN_LOAI[t.loai] || t.loai, on: !s.tdBo[t.email.toLowerCase()],
       doi: (e) => { const on = !!e.target.checked; this.setState((st) => ({ tdBo: Object.assign({}, st.tdBo, { [t.email.toLowerCase()]: !on }) })); } }));
     const tdChon = tdHang.filter((h) => h.on).length;
     const luot = s.tdLuot;
-
-    const coCanNguoi = !!luot && (luot.ket_qua || []).some((b) => b.ma_loi === 'can_nguoi');
     const modTd = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('trinh_duyet'));
-    // Module cho XEM trình duyệt đang đăng nhập tự động (suy từ cấu trúc, đang chạy): có thì bấm «Đăng nhập tự động» sẽ mở cửa sổ xem.
+    // Module cho XEM trình duyệt đang đăng nhập tự động (suy từ cấu trúc, đang chạy): có thì bấm «Đăng nhập tự động» sẽ mở khung xem.
     const modXem = (tn && tn.modules || []).find((m) => m.man_hinh && m.da_lien_ket);
-    // Module cho THEO DÕI trực tiếp (NV276, khác nút ảnh chụp k268-theo-doi ở trên): khai khả năng trinh_duyet_xem
-    // và đã liên kết. Tìm theo khả năng, không nêu tên module.
+    // Module cho THEO DÕI trực tiếp (NV276, khác nút ảnh chụp «Theo dõi»): khai khả năng trinh_duyet_xem và đã liên kết.
     const modXemTrucTiep = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('trinh_duyet_xem') && m.da_lien_ket);
-    const tabTd = modTd ? (tn && tn.tab || []).find((t) => t.module === modTd.id) : null;
-    const coDuongTrinhDuyet = !!tabTd;
-    const duongTrinhDuyet = tabTd ? tabTd.duong : '';
-    const nhanTrinhDuyet = tabTd ? tabTd.nhan : '';
-    const khongDuongTrinhDuyet = !coDuongTrinhDuyet;
-
-    const kieuHienTaiLuot = s.tdKieuDangChay || kieuHienTai;
-    const hangNhap = (s.tdHangNhap || []).map((h, i) => ({
-      idx: i,
-      thuTu: i + 1,
-      email: h.email || '',
-      matKhau: h.matKhau || '',
-      otp: h.otp || '',
-      kieuMk: h.hienMk ? 'text' : 'password',
-      nhanHienMk: h.hienMk ? 'Ẩn' : 'Hiện',
-      coNutXoa: (s.tdHangNhap || []).length > 1,
-      doiEmail: (e) => this.doiHangTk(i, 'email', e.target.value),
-      doiMatKhau: (e) => this.doiHangTk(i, 'matKhau', e.target.value),
-      doiOtp: (e) => this.doiHangTk(i, 'otp', e.target.value),
-      doiHienMk: () => this.doiHienMk(i),
-      xoa: () => this.xoaHangTk(i)
-    }));
-    const coThemHang = (s.tdHangNhap || []).length < 20;
-    const soHangNhapCoDuLieu = (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length;
-    const chayHangNhapNhan = s.tdDangChay ? 'Đang bắt đầu…' : (soHangNhapCoDuLieu > 1 ? ('Đăng nhập ' + soHangNhapCoDuLieu + ' tài khoản') : 'Đăng nhập');
-
     const moDan = !!(s.tdMoDan || (s.tdVanBan && s.tdVanBan.trim()) || s.tdXem || s.tdDangXem);
     const td = {
       moDan,
-      bamSummary: () => this.setState((st) => ({ tdMoDan: !moDan })),
-      doiMoDan: (e) => { const mo = !!e.target.open; if (s.tdMoDan !== mo) this.setState({ tdMoDan: mo }); },
+      bamSummary: () => this.setState({ tdMoDan: !moDan }),
+      doiMoDan: (e) => { const m = !!e.target.open; if (!!s.tdMoDan !== m) this.setState({ tdMoDan: m }); },
       focusVanBan: () => { if (!s.tdMoDan) this.setState({ tdMoDan: true }); },
-      hangNhap,
-      coThemHang,
-      themHang: () => this.themHangTk(),
-      themHangSt: btnSt({}) + 'min-height:44px;',
-      chayHangNhap: () => { if (chon) this.tdChayHangNhap(chon); },
-      chayHangNhapSt: btnSt({ pri: true }) + 'min-height:44px;',
-      chayHangNhapNhan,
-      dangChayHangNhap: s.tdDangChay,
       vanBan: s.tdVanBan, goVanBan: (e) => { const v = e.target.value; this.setState({ tdVanBan: v, tdMoDan: true, tdXem: null, tdBo: {}, tdLoi: '' }); },
-      dangXem: s.tdDangXem, xem: () => { if (chon) this.tdXemTruoc(chon); }, xemSt: btnSt({}),
+      dangXem: s.tdDangXem, xem: () => { if (modChon) this.tdXemTruoc(modChon); },
       coLoi: !!s.tdLoi, loi: s.tdLoi,
       coXem: !!xem, hang: tdHang,
       tomTat: xem ? (xem.tai_khoan.length + ' tài khoản hợp lệ · ' + xem.loi.length + ' dòng lỗi · ' + xem.bo_trung.length + ' dòng trùng email') : '',
       canhBao: xem ? xem.loi.map((l) => ({ t: 'Dòng ' + l.dong + ': ' + l.loi })).concat(xem.bo_trung.map((b) => ({ t: 'Dòng ' + b.dong + ': email trùng, bỏ (' + b.email + ')' }))) : [],
-      dangChay: s.tdDangChay || tdChon === 0, chay: () => { if (chon) this.tdChay(chon); }, chaySt: btnSt({ pri: true }),
+      dangChay: s.tdDangChay || tdChon === 0, chay: () => { if (modChon) this.tdChay(modChon); },
       chayNhan: s.tdDangChay ? 'Đang bắt đầu…' : 'Đăng nhập tự động ' + tdChon + ' tài khoản',
       coLuot: !!luot, dangChayLuot: !!luot && luot.trang_thai_luot === 'dang_chay',
       luotTomTat: luot ? ((luot.trang_thai_luot === 'dang_chay' ? 'Đang chạy' : 'Đã xong') + ': xong ' + ((luot.tom_tat || {}).xong || 0) + ' · lỗi ' + ((luot.tom_tat || {}).loi || 0)
@@ -2044,335 +1929,159 @@ class Component extends DCLogic {
       luotHang: luot ? (luot.ket_qua || []).map((b) => {
         const t = NHAN_TT[b.trang_thai] || [b.trang_thai, 'var(--mute)'];
         const nhan = b.trang_thai === 'loi' ? (NHAN_LOI[b.ma_loi] || ('Lỗi' + (b.ma_loi ? ' (' + b.ma_loi + ')' : ''))) : t[0];
-        const cho2fa = false;  // NV219: bỏ kiểu danh_tinh — không còn luồng 2FA qua danh tính
-        const canNguoi = b.trang_thai === 'loi' && (b.ma_loi === 'can_nguoi' || b.ma_loi === 'cho_2fa');
         const em = b.email || '';
-        return {
-          emailGoc: em,
-          emailChe: cheEmail(em),
-          mau: t[1],
-          nhan,
-          cho2fa,
-          canNguoi,
-          ma2faVal: (s.tdMa2Fa && s.tdMa2Fa[em]) || '',
-          doiMa2fa: (e) => this.doiMa2Fa(em, e.target.value),
-          guiMa2fa: () => { if (chon) this.guiMa2Fa(em, chon); },
-          gui2faSt: btnSt({ pri: true }) + 'min-height:44px;',
-          gui2faNhan: (s.tdDangGui2Fa && s.tdDangGui2Fa[em]) ? 'Đang gửi…' : 'Gửi mã',
-          dangGui2fa: !!(s.tdDangGui2Fa && s.tdDangGui2Fa[em]),
-          coLoi2fa: !!(s.tdLoi2Fa && s.tdLoi2Fa[em]),
-          loi2fa: (s.tdLoi2Fa && s.tdLoi2Fa[em]) || ''
-        };
+        return { emailGoc: em, emailChe: cheEmail(em), mau: t[1], nhan, canNguoi: b.trang_thai === 'loi' && (b.ma_loi === 'can_nguoi' || b.ma_loi === 'cho_2fa') };
       }) : [],
-      dung: () => this.tdDung(), dungSt: btnSt({}),
-      coCaHaiKieu,
-      chiMotKieu,
-      nhanKieuHienTai,
-      goiYKieu,
-      kieuTrucTiep: {
-        on: kieuHienTai === 'truc_tiep',
-        st: chipSt(kieuHienTai === 'truc_tiep'),
-        pick: () => this.setState({ tdKieu: 'truc_tiep', tdXem: null, tdBo: {}, tdLoi: '' })
-      },
-
-      coCanNguoi,
-      coDuongTrinhDuyet,
-      duongTrinhDuyet,
-      nhanTrinhDuyet,
-      khongDuongTrinhDuyet
+      dung: () => this.tdDung()
     };
     const them = {
-      co: s.tkThem, chonId: chon ? chon.id : '', tieu: 'Thêm tài khoản', dang: s.dangThem,
-      nut: { nhan: s.tkThem ? 'Đóng' : '＋ Tài khoản', st: btnSt({ pri: !s.tkThem }), pick: () => {
-        const mo = !s.tkThem;
-        this.setState({
-          tkThem: mo, f: {}, chonMod: null, tkNhomThem: null, tkLoaiThem: null,
-          tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
-          tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null,
-          tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdDaChon: {}, tdMoDan: false,
-          dlDs: [], dlChonId: '', dlEmail: '', dlDiaChi: '', dlKieuBiMat: '', dlMatKhau: '', dlTotp: '', dlNhan: '',
-          dlBacGoi: '', dlLocNhom: '', dlDangNhapBang: '', dlTkDnhId: '', dlNhom: '', dlLoaiTk: '', dlDichDung: '',
-          dlDaLuu: false, dlHienMk: false, dlDangLuu: false, dlLoi: '', dlLan: 0,
-          dlXoaChon: '', dlMoDS: true, dlTuDongLai: true, dlCanNguoi: {}, dlBuoc: {}
-        });
-        if (mo) this.taiDlDs();
-      }},
-      hienNhom, dsNhom, chuaChonNhom, coNhomChon,
-      hienLoai, dsLoai, chuaChonLoai, coLoaiChon,
-      apis,
-      mota: chon ? ((trBm && trBm.mo_ta) || (catId.get(chon.id) || {}).mo_ta || '') : 'Chọn một nguồn AI đã cài.',
-      canKhoaQt: !!chon && !coKhoaQt,
-      coFields: laApi && !!chon && coKhoaQt && trChon.length > 0,
-      laTaiKhoan,
-      anNutThem: !laApi,
+      co: s.tkThem, chonId: modChon ? modChon.id : '', dang: !!(s.dangThem || s.dlDangLuu),
+      nut: { nhan: s.tkThem ? 'Đóng' : '+ Thêm tài khoản', pick: () => {
+        const mo2 = !s.tkThem;
+        this.setState({ tkThem: mo2, f: {}, chonMod: null, tkNhomThem: null, tkCachThem: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
+          tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false, otpMo: false }], tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdMoDan: false, dlLoi: '' });
+      } },
+      khongCoNguon: dsNhomList.length === 0,
+      hienNhom, dsNhom, chuaChonNhom: dsNhomList.length > 1 && !nhomDuocChon,
+      hienCach, dsCach, soCach: hienGiaoThuc + 1, chuaChonCach: !!nhomDuocChon && cachList.length > 1 && !cachChon,
+      coCach: !!cachChon, laDn, laApi,
+      soNhap: hienGiaoThuc + (hienCach ? 1 : 0) + 1,
+      hang: { email: hang0.email || '', matKhau: hang0.matKhau || '', otp: hang0.otp || '', kieuMk: hang0.hienMk ? 'text' : 'password',
+        nhanHienMk: hang0.hienMk ? 'Ẩn' : 'Hiện', otpMo: !!hang0.otpMo, otpDong: !hang0.otpMo,
+        doiEmail: (e) => doiHang('email', e.target.value), doiMatKhau: (e) => doiHang('matKhau', e.target.value), doiOtp: (e) => doiHang('otp', e.target.value),
+        doiHienMk: () => this.doiHienMk(0), moOtp: () => doiHang('otpMo', true) },
+      goiY: 'Hệ thống đăng nhập tự động; gặp CAPTCHA hoặc xác minh 2 bước sẽ báo bạn xử lý.',
+      chinh: chinhT.map(veTruong), phu: trChon.filter((t) => !chinhT.includes(t)).map(veTruong),
+      mota: modChon ? ((trBm && trBm.mo_ta) || (catId.get(modChon.id) || {}).mo_ta || '') : '',
+      nhan: s.tkNhan || '', doiNhan: (e) => this.setState({ tkNhan: e.target.value }),
+      bacGoi: s.tkBacGoi || '', doiBacGoi: (e) => this.setState({ tkBacGoi: e.target.value }),
+      tuyChon: { mo: moTuyChon, bam: () => this.setState({ tkTuyChon: !moTuyChon }), doi: (e) => { const m = !!e.target.open; if (moTuyChon !== m) this.setState({ tkTuyChon: m }); } },
       td,
-      dl: (() => {
-        const dlDs = Array.isArray(s.dlDs) ? s.dlDs : [];
-        const locNhomDl = s.dlLocNhom || '';
-        const dsNhomDl = [...new Set(dlDs.map((t) => t.nhom || '').filter(Boolean))].sort();
-        const dlEmailTrim = (s.dlEmail || '').trim();
-        // NV258: kiểu bí mật của form — '' (mặc định) đọc như mat_khau.
-        // Kiểu khoá (khoa_api/token/cookie) chỉ cần bí mật, không bắt buộc email.
-        const dlKieuBiMat = (s.dlKieuBiMat || '').trim() || 'mat_khau';
-        const dlLaKhoa = dlKieuBiMat !== 'mat_khau';
-        const dlCoChungThuc = dlLaKhoa ? !!(s.dlMatKhau || '') : !!(dlEmailTrim && (s.dlMatKhau || ''));
-        // NV258: tên hiển thị kiểu bí mật — đổ từ bảng API, dự phòng khi lõi cũ.
-        const TEN_KBM_MAC_DINH = { mat_khau: 'Mật khẩu', khoa_api: 'Khoá API', token: 'Token', cookie: 'Cookie' };
-        // NV225: cờ «đang dùng #1» lấy từ /nhom-loai (dlGom) — bản ghi tự nó
-        // không mang cờ này. Thiếu dlGom (lõi cũ) → không tài khoản nào #1.
-        const dangDungTk = {};
-        if (s.dlGom) for (const nTk of Object.keys(s.dlGom)) {
-          const theoLoai = s.dlGom[nTk] || {};
-          for (const lTk of Object.keys(theoLoai)) {
-            for (const t of ((theoLoai[lTk] || {}).tai_khoan || [])) {
-              if (t && t.id) dangDungTk[t.id] = !!t.dang_dung;
-            }
-          }
-        }
-        const bangTk = s.dlBang || null;
-        // NV258: tên hiển thị kiểu bí mật — đổ từ bảng API, dự phòng khi lõi cũ.
-        const tenKieuBiMatCua = (k) => (bangTk && bangTk.ten_kieu_bi_mat && bangTk.ten_kieu_bi_mat[k])
-          || TEN_KBM_MAC_DINH[k] || k || '';
-        const dsKieuBiMat = ((bangTk && Array.isArray(bangTk.kieu_bi_mat) && bangTk.kieu_bi_mat.length)
-          ? bangTk.kieu_bi_mat : Object.keys(TEN_KBM_MAC_DINH)).map((k) => ({
-            id: k, nhan: tenKieuBiMatCua(k), chon: k === dlKieuBiMat }));
-        // NV256: tuỳ chọn «đăng nhập bằng» từ API — không chép cứng giá trị/nhãn.
-        const dnbApi = (bangTk && bangTk.dang_nhap_bang) || {};
-        const quaTaiKhoanLuu = dnbApi.qua_tai_khoan_luu || s.dlDangNhapBangQuaLuu || '';
-        const nhomTaiKhoanLuu = dnbApi.nhom_tai_khoan_luu || s.dlDangNhapBangNhomLuu || '';
-        const dsDangNhapBang = (Array.isArray(dnbApi.tuy_chon) ? dnbApi.tuy_chon : []).map((o) => ({
-          id: o.id || '', nhan: o.nhan || '', chon: (o.id || '') === (s.dlDangNhapBang || ''),
-        }));
-        // NV232: trạng thái từng đường dùng theo tài khoản (từ /duong-dung).
-        // Không có dữ liệu (lõi cũ) → hàng không có chip đường, nút ẩn.
-        const duongTheoTk = {};
-        for (const m of (Array.isArray(s.dlDuong) ? s.dlDuong : [])) {
-          if (m && m.id) duongTheoTk[m.id] = m;
-        }
-        const chipDuongSt = 'font-size:12px;white-space:nowrap;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--mute);';
-        const hangTk = dlDs.filter((t) => !locNhomDl || (t.nhom || '') === locNhomDl).map((t) => ({
-          id: t.id,
-          emailChe: t.email || t.email_che || '',
-          // NV258: địa chỉ che + nhãn kiểu bí mật của từng dòng.
-          diaChiChe: t.dia_chi_che || '',
-          coDiaChiChe: !!(t.dia_chi_che || ''),
-          tenKieuBiMat: tenKieuBiMatCua(t.kieu_bi_mat || ''),
-          coTenKieuBiMat: !!(t.kieu_bi_mat || ''),
-          coNhan: !!(t.nhan || ''),
-          nhan: t.nhan || '',
-          nhom: t.nhom || '',
-          coNhom: !!(t.nhom || ''),
-          loaiTk: t.loai_tai_khoan || '',
-          nhanLoaiTk: (t.loai_tai_khoan || '') ? tenTrongBangTk(bangTk, 'ten_loai', t.loai_tai_khoan) : '',
-          dichDung: t.dich_dung || '',
-          coDichDung: !!(t.dich_dung || ''),
-          nhanDichDung: (t.dich_dung || '') ? tenTrongBangTk(bangTk, 'ten_dich_dung', t.dich_dung) : '',
-          bacGoi: t.bac_goi || 'khong_biet',
-          trangThai: t.trang_thai === 'tam_dung' ? 'Đã tạm dừng' : (t.co_totp ? 'đã lưu · 2FA' : 'đã lưu'),
-          tamDung: t.trang_thai === 'tam_dung',
-          doiTamDung: () => this.dlDoiTamDung(t.id, t.trang_thai !== 'tam_dung'),
-          nhanTamDung: t.trang_thai === 'tam_dung' ? 'Bật lại' : 'Tạm dừng',
-          tamDungSt: btnSt({}) + 'min-height:44px;',
-          coTamDung: s.dlCoTamDung !== false,
-          dangNhap: () => this.dlDangNhapDaLuu(chon, t.id),
-          dangNhapSt: btnSt({}) + 'min-height:44px;',
-          cho2faDl: s.dlCho2faId === t.id,
-          ma2faDlVal: s.dlMa2fa || '',
-          doiMa2faDl: (e) => this.setState({ dlMa2fa: e.target.value }),
-          guiMa2faDl: () => this.dlGuiMa2fa(),
-          xoa: () => this.dlXoa(t.id),
-          xoaSt: btnSt({ bad: (s.dlXoaChon || '') === t.id }) + 'min-height:44px;',
-          nhanXoa: (s.dlXoaChon || '') === t.id ? 'Bấm lần nữa để xoá' : 'Xoá',
-          dangDung1: !!dangDungTk[t.id],
-          stDangDung1: DD_ST,
-          // NV232: chip từng đường dùng (nhãn đổ từ bảng API
-          // ten_dich_dung + ten_trang_thai_duong) + nút liên kết Codex.
-          duongDs: (() => {
-            const m = duongTheoTk[t.id];
-            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
-            return ds.map((d) => ({
-              nhan: tenTrongBangTk(bangTk, 'ten_dich_dung', d.dich) + ': '
-                + tenTrongBangTk(bangTk, 'ten_trang_thai_duong', d.trang_thai),
-              ghiChu: 'Đường dùng ' + (d.dich || ''),
-              st: chipDuongSt,
-            }));
-          })(),
-          coDuongDs: (() => { const m = duongTheoTk[t.id]; return !!(m && Array.isArray(m.duong) && m.duong.length); })(),
-          ttCodex: (() => {
-            const m = duongTheoTk[t.id];
-            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
-            const c = ds.find((d) => d && d.dich === 'codex');
-            return (c && c.trang_thai) || '';
-          })(),
-          coLienKetCodex: (() => {
-            const m = duongTheoTk[t.id];
-            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
-            const c = ds.find((d) => d && d.dich === 'codex');
-            return !!(c && c.trang_thai === 'chua_lien_ket');
-          })(),
-          coThuLaiCodex: (() => {
-            const m = duongTheoTk[t.id];
-            const ds = (m && Array.isArray(m.duong)) ? m.duong : [];
-            const c = ds.find((d) => d && d.dich === 'codex');
-            return !!(c && (c.trang_thai === 'can_xac_minh_dien_thoai' || c.trang_thai === 'can_dang_nhap_lai'));
-          })(),
-          lienKetCodex: () => this.dlLienKetCodex(t.id, false),
-          thuLaiCodex: () => this.dlLienKetCodex(t.id, true),
-          choHoanTatCodex: s.dlHoanTatCodexId === t.id,
-          authUrlCodex: s.dlAuthUrl || '',
-          callbackUrlVal: s.dlCallbackUrl || '',
-          doiCallbackUrl: (e) => this.setState({ dlCallbackUrl: e.target.value }),
-          hoanTatLienKet: () => this.dlHoanTatLienKet(t.id),
-          huyHoanTat: () => this.setState({ dlHoanTatCodexId: '', dlCallbackUrl: '', dlAuthUrl: '' }),
-          hanMuc: nhanHanMucTk(t),
-          coDongDung: !!((t.dung && ((t.dung.hom_nay | 0) > 0 || (t.dung['7_ngay'] | 0) > 0)) || (t.han_muc && typeof t.han_muc === 'object')),
-          dongDung: (() => { const d = t.dung || {}, hm = t.han_muc;
-            let x = 'Hôm nay ' + (d.hom_nay | 0) + ' lượt · 7 ngày ' + (d['7_ngay'] | 0) + ' lượt';
-            if (hm && typeof hm === 'object' && hm.con_lai != null) x += ' · còn ' + hm.con_lai;
-            return x; })()
-        }));
-        // NV225: gom hàng theo nhóm → loại. Thứ tự nhóm/loại theo BẢNG đổ
-        // từ API (dlBang); nhóm ngoài bảng hoặc chưa có nhóm → xô cuối
-        // «Chưa phân nhóm» để không tài khoản nào biến mất khỏi giao diện.
-        const thuTuNhomTk = (bangTk && Array.isArray(bangTk.nhom) && bangTk.nhom.length)
-          ? bangTk.nhom : [...new Set(hangTk.map((r) => r.nhom).filter(Boolean))];
-        const nhomDsTk = [];
-        const daXepTk = new Set();
-        for (const nTk of thuTuNhomTk) {
-          const cacHang = hangTk.filter((r) => r.nhom === nTk);
-          cacHang.forEach((r) => daXepTk.add(r.id));
-          const loaiBang = (bangTk && bangTk.loai_theo_nhom && bangTk.loai_theo_nhom[nTk]) || [];
-          const loaiCo = [...new Set(cacHang.map((r) => r.loaiTk))];
-          const thuTuLoai = [...loaiBang.filter((l) => loaiCo.includes(l)),
-            ...loaiCo.filter((l) => !loaiBang.includes(l))];
-          nhomDsTk.push({
-            nhom: nTk, ten: tenTrongBangTk(bangTk, 'ten_nhom', nTk), dem: String(cacHang.length),
-            rong: cacHang.length === 0,
-            loaiDs: thuTuLoai.map((l) => ({
-              loai: l, coNhan: true,
-              nhan: l ? tenTrongBangTk(bangTk, 'ten_loai', l) : 'Chưa phân loại',
-              hang: cacHang.filter((r) => r.loaiTk === l)
-            }))
-          });
-        }
-        const thuaTk = hangTk.filter((r) => !daXepTk.has(r.id));
-        if (thuaTk.length) nhomDsTk.push({
-          nhom: '__chua_phan_nhom', ten: 'Chưa phân nhóm', dem: String(thuaTk.length),
-          rong: false,
-          loaiDs: [{ loai: '', coNhan: false, nhan: '', hang: thuaTk }]
-        });
-        // NV225: options của 3 ô chọn xếp tầng — ĐỔ TỪ BẢNG API (dlBang).
-        const dlNhomChon = s.dlNhom || '';
-        const dlLoaiChon = s.dlLoaiTk || '';
-        const loaiTuyChonTk = (bangTk && bangTk.loai_theo_nhom && bangTk.loai_theo_nhom[dlNhomChon]) || [];
-        const dichTuyChonTk = (bangTk && bangTk.dich_dung_theo_nhom_loai
-          && bangTk.dich_dung_theo_nhom_loai[dlNhomChon + '|' + dlLoaiChon]) || [];
-        return {
-          moDS: s.dlMoDS !== false,
-          doiMoDS: (e) => { const mo = !!e.target.open; if ((s.dlMoDS !== false) !== mo) this.setState({ dlMoDS: mo }); },
-          dem: String(dlDs.length),
-          locNhom: locNhomDl,
-          doiLocNhom: (e) => this.setState({ dlLocNhom: e.target.value || '' }),
-          dsNhom: dsNhomDl,
-          coLocNhom: dsNhomDl.length > 0,
-          bacGoi: s.dlBacGoi || '',
-          doiBacGoi: (e) => this.setState({ dlBacGoi: e.target.value }),
-          dangNhapBang: s.dlDangNhapBang || '',
-          doiDangNhapBang: (e) => this.setState({ dlDangNhapBang: e.target.value }),
-          dsDangNhapBang: dsDangNhapBang,
-          coDangNhapHo: !!quaTaiKhoanLuu && (s.dlDangNhapBang || '') === quaTaiKhoanLuu,
-          dsTkDnh: dlDs.filter((t) => nhomTaiKhoanLuu && (t.nhom || '') === nhomTaiKhoanLuu).map((t) => ({
-            id: t.id,
-            nhan: (t.email || t.email_che || '') + (t.nhan ? ' · ' + t.nhan : ''),
-            chon: t.id === s.dlTkDnhId
-          })),
-          tkDnhId: s.dlTkDnhId || '',
-          doiTkDnh: (e) => this.setState({ dlTkDnhId: e.target.value }),
-          tuyChon: dlDs.map((t) => ({
-            id: t.id,
-            nhan: (t.email || t.email_che || '') + (t.dia_chi_che ? ' · ' + t.dia_chi_che : '') + (t.nhan ? ' · ' + t.nhan : '') + (t.co_totp ? ' · 2FA' : ''),
-            chon: t.id === s.dlChonId
-          })),
-          chonId: s.dlChonId || '',
-          doiChon: (e) => this.dlDoiChon(e.target.value),
-          email: s.dlEmail || '',
-          doiEmail: (e) => this.setState({ dlEmail: e.target.value, dlChonId: '', dlDaLuu: false }),
-          matKhau: s.dlMatKhau || '',
-          doiMatKhau: (e) => this.setState({ dlMatKhau: e.target.value }),
-          kieuMk: s.dlHienMk ? 'text' : 'password',
-          nhanHienMk: s.dlHienMk ? 'Ẩn' : 'Hiện',
-          doiHienMk: () => this.setState((st) => ({ dlHienMk: !st.dlHienMk })),
-          // NV258: kiểu bí mật + ô địa chỉ + nhãn/placeholder động.
-          kieuBiMat: (s.dlKieuBiMat || '').trim(),
-          doiKieuBiMat: (e) => this.setState({ dlKieuBiMat: e.target.value || '', dlChonId: '', dlDaLuu: false }),
-          dsKieuBiMat: dsKieuBiMat,
-          nhanBiMat: dlLaKhoa ? (tenKieuBiMatCua(dlKieuBiMat)) : 'Mật khẩu',
-          goiYBiMat: s.dlDaLuu ? '•••• đã lưu' : (dlLaKhoa ? 'Dán khoá / token / cookie' : 'Mật khẩu'),
-          coTotp: !dlLaKhoa,
-          diaChi: s.dlDiaChi || '',
-          doiDiaChi: (e) => this.setState({ dlDiaChi: e.target.value }),
-          totp: s.dlTotp || '',
-          doiTotp: (e) => this.setState({ dlTotp: e.target.value }),
-          nhan: s.dlNhan || '',
-          doiNhan: (e) => this.setState({ dlNhan: e.target.value }),
-          thieuLuu: !dlCoChungThuc,
-          tatLuuVaDangNhap: !(dlCoChungThuc || s.dlChonId),
-          luuSt: btnSt({}) + 'min-height:44px;',
-          luuVaDangNhapSt: btnSt({ pri: true }) + 'min-height:44px;',
-          chiDangNhapSt: btnSt({}) + 'min-height:44px;',
-          luu: () => this.dlLuu(chon, false),
-          luuVaDangNhap: () => this.dlLuu(chon, true),
-          chiDangNhap: () => this.dlChiDangNhap(chon),
-          dangLuu: !!s.dlDangLuu,
-          coLoi: !!s.dlLoi, loi: s.dlLoi || '',
-          tuDongLai: s.dlTuDongLai !== false,
-          doiTuDongLai: (e) => this.dlDoiTuDongLai(e.target.checked),
-          coTrinhDuyet: td.coDuongTrinhDuyet,
-          duongTrinhDuyet: td.duongTrinhDuyet,
-          nhanTrinhDuyet: td.nhanTrinhDuyet,
-          trinhDuyetSt: btnSt({}) + 'min-height:44px;text-decoration:none;display:inline-flex;align-items:center;',
-          hang: hangTk,
-          nhomDs: nhomDsTk,
-          bangCo: !!bangTk,
-          nhomChon: dlNhomChon,
-          doiNhomChon: (e) => this.setState({ dlNhom: e.target.value || '', dlLoaiTk: '', dlDichDung: '' }),
-          dsNhomChon: (bangTk && Array.isArray(bangTk.nhom) ? bangTk.nhom : []).map((n) => ({ id: n, nhan: tenTrongBangTk(bangTk, 'ten_nhom', n), chon: n === dlNhomChon })),
-          loaiChon: dlLoaiChon,
-          doiLoaiChon: (e) => this.setState({ dlLoaiTk: e.target.value || '', dlDichDung: '' }),
-          dsLoaiChon: loaiTuyChonTk.map((l) => ({ id: l, nhan: tenTrongBangTk(bangTk, 'ten_loai', l), chon: l === dlLoaiChon })),
-          dichChon: s.dlDichDung || '',
-          doiDichChon: (e) => this.setState({ dlDichDung: e.target.value || '' }),
-          dsDichChon: dichTuyChonTk.map((d) => ({ id: d, nhan: tenTrongBangTk(bangTk, 'ten_dich_dung', d), chon: d === (s.dlDichDung || '') })),
-          coDichChon: dichTuyChonTk.length > 0,
-          soHangCoDuLieu: (s.tdHangNhap || []).filter((h) => (h.email || '').trim() && (h.matKhau || '').trim()).length,
-          luuTatCa: () => this.dlLuuTatCa(),
-          luuTatCaSt: btnSt({}) + 'min-height:44px;',
-          // NV210: đăng nhập tất cả tài khoản của nhóm đang lọc mà module sở
-          // hữu chưa có hồ sơ (xác nhận trước, nêu số lượng)
-          dnTatCaNhom: dlDs.filter((t) => t && (t.nhom || '') === locNhomDl
-            && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung'),
-          coDnTatCaNhom: !!locNhomDl,
-          nhanDnTatCa: 'Đăng nhập tất cả (' + dlDs.filter((t) => t && (t.nhom || '') === locNhomDl
-            && (t.module_id || '') && (t.trang_thai || '') !== 'tam_dung').length
-            + ') — nhóm «' + locNhomDl + '»',
-          dnTatCa: () => this.dlDangNhapTatCaNhom(),
-          dnTatCaSt: btnSt({ pri: true }) + 'min-height:44px;',
-          dnTatCaDangChay: !!s.dlDnTatCaDangChay,
-          dnTatCaKq: Array.isArray(s.dlDnTatCaKq) ? s.dlDnTatCaKq : []
-        };
-      })(),
-      fields: trChon.map((t, j) => ({ khoa: t.khoa, nhan: t.nhan || t.khoa, biMat: laBiMat(t), chu: !laBiMat(t), idO: 'them-' + j + '-' + s.lan,
-        ph: laBiMat(t) ? 'Dán ' + chuThuong(t.nhan || 'khoá') : (t.mac_dinh != null ? String(t.mac_dinh) : ''),
-        val: laBiMat(t) ? '' : (s.f[t.khoa] != null ? String(s.f[t.khoa]) : (ckChon[t.khoa] == null ? '' : String(ckChon[t.khoa]))),
-        onIn: (e) => { const v = e.target.value; this.setState((st) => ({ f: Object.assign({}, st.f, { [t.khoa]: v }) })); } })),
-      luu: (e) => { if (e) e.preventDefault(); if (!chon) { this.msg('Chọn một nguồn AI trước.', true); return; } if (!coKhoaQt) { this.msg('Cần khoá quản trị để thêm khoá.', true); return; } this.themKhoa(e, chon, trChon, ckChon); },
-      ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Thêm API', st: btnSt({ pri: true }) + (!laApi ? 'display:none;' : '') },
-      huy: { nhan: 'Huỷ', st: btnSt(), pick: () => this.setState({
-        tkThem: false, f: {}, chonMod: null, tkNhomThem: null, tkLoaiThem: null,
-        tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false }],
-        tdMa2Fa: {}, tdLoi2Fa: {}, tdDangGui2Fa: {}, tdKieuDangChay: null
-      }) }
+      anNutDn: !laDn, anNutApi: !laApi,
+      dnChay: () => { if (modChon && laDn) this.themDangNhap(modChon); },
+      dnNhan: s.dlDangLuu ? 'Đang lưu…' : 'Đăng nhập',
+      ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Lưu' },
+      huy: { pick: () => this.setState({ tkThem: false, f: {}, chonMod: null, tkNhomThem: null, tkCachThem: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
+        tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false, otpMo: false }], dlLoi: '' }) },
+      coLoi: !!s.dlLoi, loi: s.dlLoi || '',
+      luu: (e) => {
+        if (e) e.preventDefault();
+        if (!modChon) { this.msg('Chọn một nguồn AI trước.', true); return; }
+        if (laDn) { this.themDangNhap(modChon); return; }
+        this.themKhoa(e, modChon, trChon, ckChon);
+      }
     };
+
+    // ----- Bảng chi tiết của tài khoản đang chọn (hai thẻ + thẻ «Đăng nhập và bí mật») -----
+    const ct = (() => {
+      if (!tkChon) return { co: false, rong: true, id: '', rongChu: s.khuNhom ? 'Nhà này chưa có tài khoản nào. Bấm «+ Thêm tài khoản» để thêm.' : 'Chưa có tài khoản nào. Bấm «+ Thêm tài khoản» để thêm.' };
+      const t = tkChon.raw, id = tkChon.id;
+      const laKhoa = (t.kieu_bi_mat || 'mat_khau') !== 'mat_khau';       // khoá API / token / cookie: không có đăng nhập bằng mật khẩu
+      const nhanBm = tenTrongBangTk(bangTk, 'ten_kieu_bi_mat', t.kieu_bi_mat || '') || 'Mật khẩu';
+      const dangHienOtp = s.khuBiMatId === id && !!s.khuOtpMa;
+      const duongTk = (Array.isArray(s.dlDuong) ? s.dlDuong : []).find((x) => x && x.id === id);
+      const dsDuong = (duongTk && Array.isArray(duongTk.duong)) ? duongTk.duong : [];
+      const codex = dsDuong.find((d) => d && d.dich === 'codex');
+      const nhomChu = tkChon.nhaTen + ' · ' + tkChon.loai;
+      const giu = mucGiu1(tkChon);
+      // Thanh hạn mức: mục từ chi-tiet (NV285) nếu có; không thì hạn mức thụ động đã đọc từ nhà cung cấp; không có gì → nói thật.
+      let thanh = [];
+      if (tkChon.muc && tkChon.muc.length) {
+        thanh = tkChon.muc.map((m) => {
+          const het = mucHet(m);
+          const coTong = m.tong != null && m.con != null && m.tong > 0;
+          const rong = coTong ? m.tong : 100;
+          const dang = coTong ? m.con : (m.pct != null ? m.pct : 0);
+          const holder = nguoiGiu1(tkChon, m);
+          const chinMinh = !!(holder && holder.chinMinh);
+          const giu1Id = (holder && !chinMinh) ? holder.id : '', giu1Ten = (holder && !chinMinh) ? holder.ten : '';
+          return { id: m.k, ten: m.ten, max: rong, now: dang, het: het ? ' het' : '', hetCls: het ? ' het' : '',
+            st: 'width:' + Math.max(0, Math.min(100, coTong ? (m.con / m.tong * 100) : (m.pct || 0))) + '%',
+            hoi: m.hoiLuc ? conLaiChu(m.hoiLuc - Date.now() / 1000) : conLaiChu(m.hoiSau),
+            soCon: coTong ? (het ? 'Hết lượt' : 'Còn ' + m.con + ' / ' + m.tong) : (m.pct != null ? 'Đã dùng ' + Math.round(m.pct) + '%' : 'Chưa có số liệu'),
+            coHang: !!m.hang, hangChu: '#' + m.hang,
+            nhomChu, coChinMinh: chinMinh, coNguoiKhac: !!giu1Id, coKhongAi: !chinMinh && !giu1Id,
+            giu1Id, giu1Ten, nhay: () => { this.khuChonTk(giu1Id); if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo({ top: 0, behavior: 'smooth' }); } };
+        });
+      } else {
+        thanh = thanhThuDong(t.han_muc).map((m) => ({ id: m.id, ten: m.ten, max: m.max, now: m.now, het: '', hetCls: '',
+          st: 'width:' + Math.max(0, Math.min(100, m.max ? (m.pctDa ? m.now : m.now / m.max * 100) : 0)) + '%', hoi: m.hoi || '', soCon: m.soCon,
+          coHang: false, hangChu: '', nhomChu, coChinMinh: false, coNguoiKhac: false, coKhongAi: false, giu1Id: '', giu1Ten: '', nhay: () => {} }));
+        // Thanh thụ động không phải «mục» nên không có dòng #1: bỏ ba cờ.
+      }
+      // Thống kê yêu cầu: ưu tiên chi-tiet.dung (NV285), nếu chưa có thì sổ lượng dùng thật (luong-dung).
+      const dung = tkChon.ct && tkChon.ct.dung && typeof tkChon.ct.dung === 'object' ? tkChon.ct.dung : null;
+      const tk = (s.khuTk || {})[id] || null;
+      let tc = null, tb = null, theoNgay = null, cuoi = '';
+      if (dung) {
+        tc = so(dung.thanh_cong); tb = so(dung.that_bai);
+        if (Array.isArray(dung.theo_ngay)) theoNgay = new Map(dung.theo_ngay.map((d) => [d.ngay, so(d.so_luot) || 0]));
+        if (so(dung.lan_dung_cuoi) && dung.lan_dung_cuoi > 0) cuoi = K.tuongDoi(dung.lan_dung_cuoi * 1000) + ' (' + epGio(dung.lan_dung_cuoi) + ')';
+      }
+      if (tk) {
+        if (tc == null) tc = tk.tc;
+        if (tb == null && !dung) tb = tk.tb;
+        if (!theoNgay) theoNgay = tk.ngay;
+      }
+      const cot = [];
+      if (theoNgay) {
+        const ng = [];
+        for (let lui = 13; lui >= 0; lui--) ng.push(new Date(Date.now() - lui * 86400000).toISOString().slice(0, 10));
+        const v = ng.map((d) => theoNgay.get(d) || 0), mx = Math.max(1, ...v);
+        ng.forEach((d, i) => cot.push({ st: 'height:' + Math.max(3, v[i] / mx * 100) + '%', tieuDe: d + ': ' + v[i] + ' yêu cầu' }));
+        if (!cuoi) { const co = ng.filter((d, i) => v[i] > 0).pop(); if (co) cuoi = 'ngày ' + co.split('-').reverse().join('/'); }
+      }
+      const coSoLieuNgay = !!(theoNgay && [...theoNgay.values()].some((n) => n > 0));
+      if (!cuoi) cuoi = tk || dung ? 'chưa có lượt nào được ghi' : '';
+      const ttNhan = tkChon.ttNhan;
+      return {
+        co: true, rong: false, id,
+        tieuDe: tkChon.ten, ttNhan, ttCls: tkChon.ttCls,
+        goi: ((tkChon.ct && tkChon.ct.goi) || t.bac_goi) && ((tkChon.ct && tkChon.ct.goi) || t.bac_goi) !== 'khong_biet' ? 'Gói ' + ((tkChon.ct && tkChon.ct.goi) || t.bac_goi) : 'Gói chưa rõ',
+        theNhom: nhomChu,
+        coGiu1: giu.length > 0, giu1Chu: 'Giữ #1: ' + giu.map((m) => m.ten).join(', '),
+        coCu: (tkChon.tt === 'xl' || tkChon.tt === 'loi') && thanh.length > 0,
+        cu: tkChon.tt === 'xl' ? 'Phiên đã hết hạn hoặc cần xử lý, số liệu bên dưới là lần đo gần nhất.' : 'Lần đăng nhập gần nhất thất bại, số liệu bên dưới là lần đo gần nhất.',
+        thanh, khongSo: thanh.length === 0, cuoi: cuoi || 'chưa rõ',
+        thanhCong: tc == null ? '—' : String(tc), thatBai: tb == null ? '—' : String(tb),
+        coCot: coSoLieuNgay, cot, khongCot: !coSoLieuNgay,
+        khongCotChu: (tk || dung) ? 'Chưa có lượt nào được ghi trong 14 ngày gần nhất.' : 'Chưa có thống kê yêu cầu của tài khoản này.',
+        // Thông tin kết nối và bí mật LUÔN ẩn: chỉ «đã lưu», bấm Đổi/Sửa mới mở ô nhập GHI ĐÈ (máy chủ không bao giờ trả lại giá trị).
+        coDiaChi: laKhoa, diaChi: t.dia_chi_che || t.email || t.email_che || 'chưa lưu', suaDiaChi: () => this.khuMoSua(id, 'dia_chi'),
+        nhanBiMat: nhanBm, biMatChu: (t.co_bi_mat || t.co_mat_khau) ? '••••• đã lưu' : 'chưa lưu', doiBiMat: () => this.khuMoSua(id, 'bi_mat'),
+        coKhoaOtp: !laKhoa, otpKhoaChu: t.co_totp ? '••••• đã lưu' : 'chưa có', nhanDoiOtp: t.co_totp ? 'Đổi' : 'Thêm', doiOtp: () => this.khuMoSua(id, 'totp'),
+        coOtp: !!t.co_totp, otpDangHien: dangHienOtp, otpChuaHien: !dangHienOtp,
+        otpMa: s.khuOtpMa || '', otpConLai: s.khuOtpConLai || 0, otpVong: String(Math.round(94.25 * (1 - Math.min(30, s.khuOtpConLai || 0) / 30) * 100) / 100),
+        layOtp: () => this.khuLayOtp(id), anOtp: () => this.khuXoaOtp(),
+        sua: this.khuFormSua(s, id, t, nhanBm, laKhoa),
+        coDangNhap: !laKhoa, dangLamMoi: s.khuLamMoiId === id, nhanLamMoi: s.khuLamMoiId === id ? 'Đang kiểm tra…' : 'Kiểm tra lại hạn mức',
+        lamMoiHanMuc: () => this.khuKiemLaiHanMuc(id),
+        // Lỗi của thao tác trên tài khoản (tạm dừng, xoá, liên kết…) cũng hiện NGAY ở bảng chi tiết khi form thêm đang đóng (trước đây chỉ form mới thấy).
+        coLoi: !!(s.khuBiMatLoi || (!s.tkThem && s.dlLoi)), loi: s.khuBiMatLoi || (!s.tkThem ? s.dlLoi : '') || '',
+        dangNhapTuDong: () => this.dlDangNhapDaLuu(tkChon.mod, id), tatDangNhap: !tkChon.mod,
+        coBuoc: !!(s.dlBuoc || {})[id], buoc: (s.dlBuoc || {})[id] || '',
+        coTheoDoiTrucTiep: !!modXemTrucTiep, theoDoiTrucTiep: () => this.khuTheoDoiTrucTiep(modXemTrucTiep && modXemTrucTiep.id),
+        coXem: !!modXem, moXem: () => this.khuBatXem(modXem && modXem.id), nhanXem: s.xemId === id ? 'Ẩn trình duyệt' : 'Theo dõi',
+        dangXem: s.xemId === id, anhXem: s.xemId === id ? (s.xemAnh || '') : '',
+        coAnh: s.xemId === id && !!s.xemAnh, chuaAnh: s.xemId === id && !s.xemAnh,       // chưa có ảnh thì KHÔNG dựng thẻ ảnh (tránh biểu tượng ảnh hỏng)
+        chuXem: s.xemLoi || 'Ảnh làm mới mỗi giây.', lopXem: s.xemTo ? 'k282-xem to' : 'k282-xem', phongTo: () => this.khuPhongTo(),
+        nhanTo: s.xemTo ? 'Thu nhỏ' : 'Phóng to',
+        coKq: !!(s.khuKq && s.khuKq.id === id), kq: (s.khuKq && s.khuKq.id === id) ? s.khuKq.chu : '',
+        lopKq: (s.khuKq && s.khuKq.loi) ? 'k282-loi' : 'k282-ok',
+        coTay: !!modTd, dangNhapTay: () => this.khuDangNhapTay(id, modTd && modTd.id),
+        cho2fa: s.dlCho2faId === id, ma2fa: s.dlMa2fa || '', doiMa2fa: (e) => this.setState({ dlMa2fa: e.target.value }), guiMa2fa: () => this.dlGuiMa2fa(),
+        choHoanTatCodex: s.dlHoanTatCodexId === id, authUrlCodex: s.dlAuthUrl || '', callbackUrl: s.dlCallbackUrl || '',
+        doiCallbackUrl: (e) => this.setState({ dlCallbackUrl: e.target.value }), hoanTatLienKet: () => this.dlHoanTatLienKet(id),
+        huyHoanTat: () => this.setState({ dlHoanTatCodexId: '', dlCallbackUrl: '', dlAuthUrl: '' }),
+        coLienKetCodex: !!(codex && codex.trang_thai === 'chua_lien_ket'),
+        coThuLaiCodex: !!(codex && (codex.trang_thai === 'can_xac_minh_dien_thoai' || codex.trang_thai === 'can_dang_nhap_lai')),
+        lienKetCodex: () => this.dlLienKetCodex(id, false), thuLaiCodex: () => this.dlLienKetCodex(id, true),
+        coTamDung: s.dlCoTamDung !== false, doiTamDung: () => this.dlDoiTamDung(id, t.trang_thai !== 'tam_dung'),
+        nhanTamDung: t.trang_thai === 'tam_dung' ? 'Bật lại' : 'Tạm dừng',
+        xoa: () => this.dlXoa(id), nhanXoa: (s.dlXoaChon || '') === id ? 'Bấm lần nữa để xoá' : 'Xoá'
+      };
+    })();
+
     // Quy tắc sắp xếp ổn định cho khối provider (tab Tài khoản) và ô chọn (tab Provider):
     // theo TÊN HIỂN THỊ (localeCompare 'vi'), hòa thì theo id.
     const soSanhPv = (a, b) => (a.ten || '').localeCompare(b.ten || '', 'vi') || (a.id || '').localeCompare(b.id || '');
@@ -2518,161 +2227,6 @@ class Component extends DCLogic {
           : pvTab === 'tk' && !tkCur.length ? { co: true, coNut: true, nut: moTk, ghi: 'Chưa có khoá nào cho «' + pvCur.ten + '». Thêm khoá ở tab Tài khoản, tình trạng từng khoá sẽ hiện ở đây.' }
             : { co: false };
 
-    // ===== NV268: khu Tài khoản — nhóm → loại → ô + bảng chi tiết =====
-    const khu = (() => {
-      const ds = Array.isArray(s.dlDs) ? s.dlDs : [];
-      const bang = s.dlBang || null;
-      const loc = s.khuNhom || "";
-      const dd = {};
-      if (s.dlGom) for (const n of Object.keys(s.dlGom)) {
-        const tl = s.dlGom[n] || {};
-        for (const l of Object.keys(tl)) for (const t of (((tl[l] || {}).tai_khoan) || []))
-          if (t && t.id) dd[t.id] = !!t.dang_dung;
-      }
-      const duongTheo = {};
-      for (const m of (Array.isArray(s.dlDuong) ? s.dlDuong : [])) if (m && m.id) duongTheo[m.id] = m;
-      // Chip trạng thái theo mẫu: Đã đăng nhập / Cần đăng nhập / Hết hạn / Tạm dừng.
-      const chipTt = (t) => {
-        if ((t.trang_thai || "") === "tam_dung") return { nhan: "Tạm dừng", cls: "" };
-        const m = duongTheo[t.id];
-        const tts = ((m && Array.isArray(m.duong)) ? m.duong : []).map((d) => d && d.trang_thai).filter(Boolean);
-        if (tts.some((x) => x === "can_dang_nhap_lai" || x === "chua_lien_ket" || x === "can_xac_minh_dien_thoai"))
-          return { nhan: "Cần đăng nhập", cls: "warn" };
-        if (tts.some((x) => x === "het_han_muc")) return { nhan: "Hết hạn", cls: "bad" };
-        if (tts.some((x) => x === "san_sang")) return { nhan: "Đã đăng nhập", cls: "ok" };
-        return { nhan: "Chưa rõ", cls: "" };
-      };
-      const oCua = (t) => {
-        const tt = chipTt(t);
-        const emailChe = t.email || t.email_che || "";
-        const diaChiChe = t.dia_chi_che || "";
-        const ten = ((t.nhan || "").trim() || emailChe || diaChiChe || t.id);
-        const phu = (t.nhan || "").trim()
-          ? (emailChe || diaChiChe)
-          : (tenTrongBangTk(bang, "ten_dich_dung", t.dich_dung || "")
-             || tenTrongBangTk(bang, "ten_kieu_bi_mat", t.kieu_bi_mat || ""));
-        return {
-          id: t.id, ten, phu,
-          ariaNhan: ten + " · " + tt.nhan,
-          ttCls: tt.cls, tamDungCls: (t.trang_thai || "") === "tam_dung" ? " tam-dung" : "",
-          dau1: dd[t.id] ? "#1" : "",
-          chon: s.khuChon === t.id,
-          chonTk: () => this.khuChonTk(t.id)
-        };
-      };
-      // «Luôn ẩn» theo từng nhóm: ẩn thân nhóm (đầu nhóm + số tài khoản vẫn hiện). Nhóm đang được lọc hoặc đang
-      // chứa ô được chọn thì KHÔNG ẩn, để bấm chip nhóm / mở liên kết tới tài khoản vẫn thấy.
-      const anNhom = (n, cac) => {
-        const daAn = (Array.isArray(s.khuAn) ? s.khuAn : []).includes(n)
-          && (s.khuNhom || "") !== n && !(s.khuChon && cac.some((t) => t.id === s.khuChon));
-        return { an: daAn, moRong: !daAn, anNhan: daAn ? "Hiện" : "Ẩn", anNut: () => this.khuAnNhom(n) };
-      };
-      const thuTuNhom = (bang && Array.isArray(bang.nhom) && bang.nhom.length)
-        ? bang.nhom.slice()
-        : [...new Set(ds.map((t) => (t.nhom || "")).filter(Boolean))].sort();
-      const nhomDs = [];
-      const daXep = new Set();
-      for (const n of thuTuNhom) {
-        if (loc && n !== loc) continue;
-        const cac = ds.filter((t) => (t.nhom || "") === n);
-        cac.forEach((t) => daXep.add(t.id));
-        const loaiBang = (bang && bang.loai_theo_nhom && bang.loai_theo_nhom[n]) || [];
-        const loaiCo = [...new Set(cac.map((t) => (t.loai_tai_khoan || "")))];
-        const thuTuLoai = [...loaiBang.filter((l) => loaiCo.includes(l)),
-          ...loaiCo.filter((l) => !loaiBang.includes(l))];
-        nhomDs.push({
-          nhom: n, ten: tenTrongBangTk(bang, "ten_nhom", n) || n, dem: String(cac.length),
-          rong: cac.length === 0, dangLoc: (s.khuNhom || "") === n,
-          ...anNhom(n, cac),
-          loc: () => this.setState({ khuNhom: (s.khuNhom || "") === n ? "" : n, khuChon: "" }),
-          loaiDs: thuTuLoai.map((l) => {
-            const hang = cac.filter((t) => (t.loai_tai_khoan || "") === l);
-            return {
-              loai: l, nhan: l ? (tenTrongBangTk(bang, "ten_loai", l) || l) : "Chưa phân loại",
-              dem: String(hang.length), hang: hang.map(oCua)
-            };
-          })
-        });
-      }
-      const thua = ds.filter((t) => !daXep.has(t.id) && (!loc || loc === "__chua_phan_nhom"));
-      if (thua.length) nhomDs.push({
-        nhom: "__chua_phan_nhom", ten: "Chưa phân nhóm", dem: String(thua.length),
-        rong: false, dangLoc: (s.khuNhom || "") === "__chua_phan_nhom",
-        ...anNhom("__chua_phan_nhom", thua),
-        loc: () => this.setState({ khuNhom: (s.khuNhom || "") === "__chua_phan_nhom" ? "" : "__chua_phan_nhom", khuChon: "" }),
-        loaiDs: [{ loai: "", nhan: "", dem: String(thua.length), hang: thua.map(oCua) }]
-      });
-      return { nhomDs };
-    })();
-    const khuCt = (() => {
-      const ds = Array.isArray(s.dlDs) ? s.dlDs : [];
-      const bang = s.dlBang || null;
-      const id = s.khuChon || "";
-      const t = ds.find((x) => x && x.id === id);
-      const dong = () => this.khuDong();
-      if (!t) return { co: false, khongCo: true, id: "", moCls: "", nenAn: true, dong };
-      const dangHienBm = s.khuBiMatId === id && !!s.khuBiMat;
-      const dangHienOtp = s.khuBiMatId === id && !!s.khuOtpMa;
-      const mod = ai.find((m) => m && m.id === (t.module_id || "")) || null;
-      const dl = (them && them.dl) || {};
-      const ttNhan = (t.trang_thai || "") === "tam_dung" ? "Tạm dừng"
-        : (() => {
-            const m = (Array.isArray(s.dlDuong) ? s.dlDuong : []).find((x) => x && x.id === id);
-            const tts = ((m && Array.isArray(m.duong)) ? m.duong : []).map((d) => d && d.trang_thai).filter(Boolean);
-            if (tts.some((x) => x === "can_dang_nhap_lai" || x === "chua_lien_ket" || x === "can_xac_minh_dien_thoai")) return "Cần đăng nhập";
-            if (tts.some((x) => x === "het_han_muc")) return "Hết hạn";
-            if (tts.some((x) => x === "san_sang")) return "Đã đăng nhập";
-            return "Chưa rõ";
-          })();
-      const ttMau = ttNhan === "Đã đăng nhập" ? "#0f766e" : ttNhan === "Cần đăng nhập" ? "#b45309" : ttNhan === "Hết hạn" ? "#b42318" : "";
-      return {
-        co: true, khongCo: false, id, moCls: " mo", nenAn: false, dong,
-        tieuDe: ((t.nhan || "").trim() || t.email || t.email_che || t.dia_chi_che || id),
-        theNhom: [tenTrongBangTk(bang, "ten_nhom", t.nhom || "") || (t.nhom || ""),
-          tenTrongBangTk(bang, "ten_loai", t.loai_tai_khoan || "") || (t.loai_tai_khoan || ""),
-          tenTrongBangTk(bang, "ten_dich_dung", t.dich_dung || "") || (t.dich_dung || "")].filter(Boolean).join(" · "),
-        ttNhan,
-        ttSt: "font-size:12px;white-space:nowrap;padding:2px 10px;border:1px solid var(--line);border-radius:999px;" + (ttMau ? "border-color:" + ttMau + ";color:" + ttMau + ";" : "color:var(--mute);"),
-        dangDung1: (() => {
-          if (!s.dlGom) return false;
-          for (const n of Object.keys(s.dlGom)) {
-            const tl = s.dlGom[n] || {};
-            for (const l of Object.keys(tl)) for (const x of (((tl[l] || {}).tai_khoan) || []))
-              if (x && x.id === id && x.dang_dung) return true;
-          }
-          return false;
-        })(),
-        diaChi: (t.email || t.email_che || t.dia_chi_che || ""),
-        chepDiaChi: () => this.khuChep(t.email || t.email_che || t.dia_chi_che || ""),
-        nhanBiMat: tenTrongBangTk(bang, "ten_kieu_bi_mat", t.kieu_bi_mat || "") || "Mật khẩu",
-        biMatHien: dangHienBm ? s.khuBiMat : "•".repeat(12),
-        nhanHien: dangHienBm ? "Ẩn" : "Hiện",
-        doiHien: () => this.khuDoiHien(id),
-        chepBiMat: () => this.khuLayBiMat(id, true),
-        coOtp: !!t.co_totp,
-        otpDangHien: dangHienOtp, otpChuaHien: !dangHienOtp,
-        otpMa: s.khuOtpMa || "", otpConLai: s.khuOtpConLai || 0,
-        layOtp: () => this.khuLayOtp(id, false),
-        chepOtp: () => this.khuLayOtp(id, true),
-        coLoi: !!s.khuBiMatLoi, loi: s.khuBiMatLoi || "",
-        hanMuc: nhanHanMucTk(t),
-        dangNhapTuDong: () => this.dlDangNhapDaLuu(mod, id),
-        tatDangNhap: !mod,
-        coBuoc: !!(s.dlBuoc || {})[id], buoc: (s.dlBuoc || {})[id] || "",
-        coXem: !!modXem, moXem: () => this.khuBatXem(modXem && modXem.id),
-        coTheoDoiTrucTiep: !!modXemTrucTiep, theoDoiTrucTiep: () => this.khuTheoDoiTrucTiep(modXemTrucTiep && modXemTrucTiep.id),
-        nhanXem: s.xemId === id ? "Ẩn trình duyệt" : "Theo dõi",
-        dangXem: s.xemId === id, anhXem: s.xemId === id ? (s.xemAnh || "") : "",
-        coAnh: s.xemId === id && !!s.xemAnh, chuaAnh: s.xemId === id && !s.xemAnh,       // chưa có ảnh thì KHÔNG dựng thẻ ảnh (tránh biểu tượng ảnh hỏng)
-        chuXem: s.xemLoi || "Ảnh làm mới mỗi giây.",
-        lopXem: s.xemTo ? "k268-xem to" : "k268-xem", phongTo: () => this.khuPhongTo(),
-        nhanTo: s.xemTo ? "Thu nhỏ" : "Phóng to",
-        coKq: !!(s.khuKq && s.khuKq.id === id), kq: (s.khuKq && s.khuKq.id === id) ? s.khuKq.chu : "",
-        lopKq: (s.khuKq && s.khuKq.loi) ? "k268-loi" : "k268-ghi",
-        coTay: !!modTd,
-        dangNhapTay: () => this.khuDangNhapTay(id, modTd && modTd.id)
-      };
-    })();
     const ql = tn ? K.quayLai(tn) : null;
     const tieuMuc = (K.DIEU_KIEN[s.tab] || {}).nhan || '';
     const laTk = !!tn && s.tab === 'tai_khoan';
@@ -2688,7 +2242,7 @@ class Component extends DCLogic {
       msgSt: 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;font-size:13px;' + (s.ghiLoi ? 'border:1px solid #F1C4BE;background:#FBE4E1;color:#8A1C12' : 'border:1px solid #BFE0D9;background:#E8F4F1;color:#0B5A53'),
       msgNutSt: 'flex:0 0 auto;width:32px;height:32px;border:0;border-radius:50%;background:transparent;font-size:16px;line-height:1;padding:0;color:' + (s.ghiLoi ? '#8A1C12' : '#0B5A53'),
       coBang: !!tn && !s.dangTai, tab: s.tab, tieuMuc,
-      laTk, nhom, them, khu, khuCt,
+      laTk, tong, nha, chon, them, ct,
       laPv: !!tn && s.tab === 'provider' && !!pvCur, pv: { id: pvCur ? pvCur.id : '', ten: pvCur ? pvCur.ten : '' }, pvHang, c3,
       // ---- Combo (NV221) ----
       laCb: !!tn && s.tab === 'combo',
