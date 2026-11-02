@@ -12,7 +12,7 @@ Lõi `web2api` giao tiếp với dịch vụ này qua giao thức HTTP nội b�
 - **Ranh giới an toàn**: Dịch vụ chạy trong container riêng, không phân quyền root (chạy dưới user `appuser` uid 1000:1000), tệp mã nguồn thuộc sở hữu `root` chỉ-đọc (`/app` 0755), container chạy ở chế độ chỉ đọc (`read_only: true`), không mở cổng công khai ra ngoài Internet.
 - **Cổng mạng**:
   - `8010`: Cổng FastAPI HTTP API nội bộ (chỉ phục vụ các container cùng mạng Docker riêng hoặc bind `127.0.0.1`).
-  - `6080`: Cổng noVNC giao diện web — noVNC mặc định tắt và CHƯA dùng được từ web2api; chỉ truy cập qua SSH tunnel; nhánh cần người chưa hoạt động.
+  - `6080`: Cổng noVNC giao diện web — noVNC mặc định tắt; khi bật, web2api tới được qua mạng Docker nội bộ bằng proxy `/novnc` của lõi (đường `POST /api/trinh-duyet/{module}/xem`, có step-up, vé một lần 60 giây) rồi người xem nhập mật khẩu VNC một lần ở hộp nhập của noVNC. Không còn phải dùng SSH tunnel để xem từ web2api.
 
 ---
 
@@ -49,7 +49,7 @@ Tệp `docker-compose.yml` đã được cấu hình chuẩn:
   - `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` (thuộc root, 0755, người dùng không root đọc trực tiếp nhị phân đã cài sẵn lúc dựng).
   - `CLOAKBROWSER_CACHE_DIR=/opt/cloakbrowser` (thuộc `appuser:appuser` 1000:1000).
 - Giới hạn an ninh nghiêm ngặt: `cap_drop: [ALL]`, `no-new-privileges: true`, `pids_limit: 2048`, `mem_limit: 2g`, `shm_size: 1gb`.
-- Không công bố cổng trực tiếp ra ngoài (`expose: ["8010"]`). noVNC (6080) mặc định không expose.
+- Không công bố cổng trực tiếp ra ngoài (`expose: ["8010"]`). noVNC (6080) không publish ra máy chủ/Internet; websockify nghe 0.0.0.0:6080 chỉ để các container cùng mạng Docker nội bộ tới được (xem supervisord-novnc.conf).
 
 ### 2.3. Khởi chạy bằng lệnh Docker trực tiếp
 
@@ -139,7 +139,7 @@ Mọi yêu cầu gọi tới API (ngoại trừ `GET /health`) đều bắt bu�
 - Giao thức RFB (VNC) chỉ sử dụng 8 ký tự đầu tiên của mật khẩu. Do đó, script `entrypoint.sh` sinh ngẫu nhiên đúng 8 ký tự từ bảng chữ-số (`A-Za-z0-9`, độ mạnh ~47 bit entropy) bằng lệnh:
   `tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 8 > /khoa/mat-khau-vnc`
 - Tệp mật khẩu lưu tại `/khoa/mat-khau-vnc` với quyền `0600` và không bao giờ được in ra stdout/log.
-- Ghi chú vận hành: noVNC mặc định TẮT. Khi bật qua `CAPTCHA_SOLVER_BAT_NOVNC=1`, noVNC chỉ nghe trên loopback `127.0.0.1` bên trong container.
+- Ghi chú vận hành: noVNC mặc định TẮT. Khi bật qua `CAPTCHA_SOLVER_BAT_NOVNC=1` (đặt ở tệp ghi đè cục bộ ngoài repo, không sửa trong repo), websockify nghe `0.0.0.0:6080` trên mạng Docker nội bộ để web2api tới được qua proxy `/novnc`; x11vnc vẫn chỉ nghe loopback `127.0.0.1:5900` trong container và vẫn bắt mật khẩu — mật khẩu không đi qua API web2api nào, người xem nhập một lần ở hộp nhập của noVNC (chủ máy đọc mật khẩu bằng `docker exec web2api-may-dang-nhap cat /khoa/mat-khau-vnc`).
 
 ### 3.3. Két mật khẩu tài khoản (`vault.key`)
 

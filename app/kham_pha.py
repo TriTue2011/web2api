@@ -107,6 +107,11 @@ PHƯƠNG THỨC TUỲ CHỌN — có thì lõi mở đường /v1 tương ứng;
         liệt kê workspace; lõi chỉ trả đúng các trường này (trường khác như `dich` bị bỏ).
       trinh_duyet_mo nhận thêm `url` (tuỳ chọn, từ khoá) — trang đầu khi trình duyệt khởi động; lõi đã kiểm http(s),
         có tên máy, không userinfo, ≤ 2048 ký tự, và CHỈ truyền khi quản trị gửi (module cũ (ho_so, loai) vẫn chạy).
+    Phương thức cho khả năng "trinh_duyet_xem" (NV276 — xem màn hình dùng chung, không mở hồ sơ mới):
+      async trinh_duyet_xem_mo() -> dict
+        {dich: "http://host:6080"} — địa chỉ noVNC nội bộ của màn hình dùng chung (websockify của dịch vụ);
+        lõi ghim đích qua kiểm SSRF rồi cấp vé một lần qua POST /api/trinh-duyet/{module}/xem (có step-up).
+        Mật khẩu VNC không đi qua module hay lõi: người xem tự nhập một lần ở hộp nhập của noVNC.
       Phương thức TUỲ CHỌN của khả năng "trinh_duyet" (thiếu → lõi trả 501, không tính là sai chuẩn):
       async trinh_duyet_tao(ten: str) -> dict
         {ho_so: str, ten: str} — tạo workspace: tên hiển thị (lõi đã kiểm 1..100 ký tự in được), thư mục hồ sơ ID
@@ -248,6 +253,7 @@ HOP_DONG_KHA_NANG: dict[str, tuple[str, ...]] = {
     "xep_hang": ("xep_hang",),
     "tim_kiem": ("tim_kiem",),
     "trinh_duyet": ("trinh_duyet_mo", "trinh_duyet_dong", "trinh_duyet_ds"),
+    "trinh_duyet_xem": ("trinh_duyet_xem_mo",),
     #: Gửi ra đích danh (NV32): module liệt kê đích qua kenh_ra() và gửi qua gui_tin().
     "kenh_ra": ("gui_tin", "kenh_ra"),
     #: Mã xác minh (NV121): module đọc mã từ hộp thư qua hop_thu_ra() và lay_ma().
@@ -274,6 +280,8 @@ KHA_NANG_NGUY_HIEM = frozenset({
     "trinh_duyet_ds",
     "trinh_duyet_tao",
     "trinh_duyet_cookie",
+    "trinh_duyet_xem",
+    "trinh_duyet_xem_mo",
     "gui_ra",
     "gui_tin",
     "kenh_ra",

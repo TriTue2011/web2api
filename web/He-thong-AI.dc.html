@@ -427,7 +427,9 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <button type="button" id="k268-dn-tu-dong" onClick="{{khuCt.dangNhapTuDong}}" disabled="{{khuCt.tatDangNhap}}" class="k268-nut">Đăng nhập tự động</button>
 <sc-if value="{{khuCt.coXem}}"><button type="button" id="k268-theo-doi" onClick="{{khuCt.moXem}}" class="k268-nut phu" title="Xem trang trình duyệt đang đăng nhập (ảnh làm mới liên tục; cần can thiệp thì dùng «Đăng nhập tay»)">{{khuCt.nhanXem}}</button></sc-if>
 <sc-if value="{{khuCt.coTay}}"><button type="button" id="k268-dn-tay" onClick="{{khuCt.dangNhapTay}}" class="k268-nut phu" title="Bật trình duyệt từ xa với hồ sơ riêng của tài khoản này để bạn tự đăng nhập">Đăng nhập tay</button></sc-if>
+<sc-if value="{{khuCt.coTheoDoiTrucTiep}}"><button type="button" id="k268-theo-doi-truc-tiep" onClick="{{khuCt.theoDoiTrucTiep}}" class="k268-nut phu" title="Mở màn hình đang đăng nhập tự động ở tab mới (trình duyệt có thể hỏi mã truy cập một lần)">Theo dõi trực tiếp</button></sc-if>
 </div>
+<sc-if value="{{khuCt.coTheoDoiTrucTiep}}"><p class="k268-ghi">Xem trình duyệt đang đăng nhập; gặp CAPTCHA/xác minh thì tự xử lý rồi bấm Đăng nhập tự động lần nữa</p></sc-if>
 </sc-if>
 <sc-if value="{{khuCt.khongCo}}">
 <h2>Tài khoản</h2>
@@ -992,6 +994,24 @@ class Component extends DCLogic {
     } catch (e) {
       if (w) w.close();
       this.setState({ khuBiMatLoi: (e && e.message) || "Không mở được trình duyệt từ xa." });
+    }
+  }
+  async khuTheoDoiTrucTiep(modId) {
+    // «Theo dõi trực tiếp» (NV276): mở màn hình dùng chung đang đăng nhập tự động ở tab mới, qua vé một lần của lõi.
+    // Mở cửa sổ NGAY trong cú bấm để trình duyệt không chặn cửa sổ bật lên (như khuDangNhapTay). Đường /xem có
+    // step-up: K.goi tự mở hộp thoại xác nhận lại khi máy chủ đòi. Mã truy cập màn hình (nếu trình duyệt hỏi) do người xem tự
+    // nhập một lần — giao diện không nhận và không hiển thị mật khẩu đó.
+    if (!modId) return;
+    this.setState({ khuBiMatLoi: "" });
+    const w = (typeof window !== "undefined" && window.open) ? window.open("about:blank", "_blank") : null;
+    try {
+      const { j } = await K.goi("api/trinh-duyet/" + encodeURIComponent(modId) + "/xem", { method: "POST", json: {} });
+      if (j && j.url && w) { w.location.href = j.url; }
+      else if (j && j.url) { window.open(j.url, "_blank"); }
+      else { if (w) w.close(); this.setState({ khuBiMatLoi: "Không mở được cửa sổ theo dõi." }); }
+    } catch (e) {
+      if (w) w.close();
+      this.setState({ khuBiMatLoi: (e && e.message) || "Không mở được cửa sổ theo dõi." });
     }
   }
   async khuChep(txt) {
@@ -1967,6 +1987,9 @@ class Component extends DCLogic {
     const modTd = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('trinh_duyet'));
     // Module cho XEM trình duyệt đang đăng nhập tự động (suy từ cấu trúc, đang chạy): có thì bấm «Đăng nhập tự động» sẽ mở cửa sổ xem.
     const modXem = (tn && tn.modules || []).find((m) => m.man_hinh && m.da_lien_ket);
+    // Module cho THEO DÕI trực tiếp (NV276, khác nút ảnh chụp k268-theo-doi ở trên): khai khả năng trinh_duyet_xem
+    // và đã liên kết. Tìm theo khả năng, không nêu tên module.
+    const modXemTrucTiep = (tn && tn.modules || []).find((m) => (m.cung_cap || []).includes('trinh_duyet_xem') && m.da_lien_ket);
     const tabTd = modTd ? (tn && tn.tab || []).find((t) => t.module === modTd.id) : null;
     const coDuongTrinhDuyet = !!tabTd;
     const duongTrinhDuyet = tabTd ? tabTd.duong : '';
@@ -2637,6 +2660,7 @@ class Component extends DCLogic {
         tatDangNhap: !mod,
         coBuoc: !!(s.dlBuoc || {})[id], buoc: (s.dlBuoc || {})[id] || "",
         coXem: !!modXem, moXem: () => this.khuBatXem(modXem && modXem.id),
+        coTheoDoiTrucTiep: !!modXemTrucTiep, theoDoiTrucTiep: () => this.khuTheoDoiTrucTiep(modXemTrucTiep && modXemTrucTiep.id),
         nhanXem: s.xemId === id ? "Ẩn trình duyệt" : "Theo dõi",
         dangXem: s.xemId === id, anhXem: s.xemId === id ? (s.xemAnh || "") : "",
         coAnh: s.xemId === id && !!s.xemAnh, chuaAnh: s.xemId === id && !s.xemAnh,       // chưa có ảnh thì KHÔNG dựng thẻ ảnh (tránh biểu tượng ảnh hỏng)

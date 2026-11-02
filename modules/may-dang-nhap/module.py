@@ -2129,6 +2129,18 @@ class Module:
             raise RuntimeError(f"Dịch vụ trả mã {res.status_code} cho ảnh màn hình")
         return than
 
+    async def trinh_duyet_xem_mo(self) -> dict:
+        """NV276: đích noVNC của màn hình dùng chung trong container dịch vụ (Xvfb:99), để lõi cấp vé xem
+        qua POST /api/trinh-duyet/{module}/xem. KHÔNG tạo hồ sơ, KHÔNG mở trình duyệt mới, KHÔNG gọi mạng,
+        KHÔNG dùng khoá dịch vụ: chỉ suy host từ dich_vu_url đã cấu hình (mặc định là tên container trong
+        mạng Docker nội bộ) và đổi cổng API 8010 thành cổng websockify 6080. Lõi ghim đích qua kiểm SSRF
+        trước khi cấp vé; mật khẩu VNC vẫn do x11vnc giữ trong container, người xem tự nhập ở hộp nhập
+        của noVNC — module này không biết và không trả mật khẩu đó."""
+        host = urllib.parse.urlsplit(str(self._url or "")).hostname
+        if not host:
+            raise RuntimeError("Chưa cấu hình địa chỉ dịch vụ đăng nhập tự động")
+        return {"dich": f"http://{host}:6080"}
+
     async def tien_do(self, ho_so: str, module_cua_tai_khoan: str = "") -> dict:
         """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b + NV210).
 

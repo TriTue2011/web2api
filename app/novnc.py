@@ -68,7 +68,7 @@ from app.loi_openai import LoiOpenAI, than_loi
 from app.so_module import LoiSo, SoModule
 from app.than_co_tran import THAN_JSON, doc_het
 from app.tu_xa import _dia_chi_bi_chan
-from app.xac_thuc import can_quan_tri
+from app.xac_thuc import can_quan_tri, kiem_tra_step_up
 
 log = logging.getLogger("web2api.novnc")
 #: Logger riêng cho kết nối WebSocket tới đích: websockets ghi NGUYÊN header bắt tay (gồm Authorization Basic mang
@@ -567,14 +567,59 @@ async def api_mo_trinh_duyet(module: str, request: Request):
     return {"ho_so": ho_so_kq, "ve": ve, "url": f"/novnc/dang-nhap?ve={ve}"}
 
 
+@api_router.post("/{module}/xem")
+async def api_xem_trinh_duyet(module: str, request: Request):
+    """NV276: cấp vé xem màn hình noVNC DÙNG CHUNG của dịch vụ đăng nhập tự động (không tạo hồ sơ trình duyệt
+    mới, không mở trình duyệt mới — màn hình:99 đã chạy sẵn trong container dịch vụ).
+
+    Khác đường /mo ở hai điểm: (1) có step-up như các đường chạm bí mật — phiên web phải đã xác nhận lại,
+    Bearer quản trị được miễn; (2) module chỉ cần phương thức ``trinh_duyet_xem_mo()`` trả ``{"dich": ...}``
+    là địa chỉ noVNC nội bộ (websockify của dịch vụ), lõi ghim đích qua kiểm SSRF rồi cấp vé một lần 60 giây
+    như mọi vé /novnc khác. Mật khẩu VNC KHÔNG đi qua đường này: x11vnc vẫn bắt mật khẩu, người xem tự nhập
+    một lần ở hộp nhập của noVNC (mật khẩu chỉ chủ máy biết, đọc từ trong container dịch vụ).
+
+    Hồ sơ ghim ở đây chỉ là khoá phiên xem (ID ngẫu nhiên), không phải hồ sơ trình duyệt riêng: đóng hồ sơ
+    (DELETE /phien hoặc thu hồi) chỉ thu hồi vé/phiên xem, KHÔNG đóng trình duyệt đang đăng nhập của dịch vụ."""
+    kiem_tra_step_up(request)
+    mod = _module_co(request, module, "trinh_duyet_xem_mo", "xem trình duyệt đang đăng nhập")
+    try:
+        kq = await mod.trinh_duyet_xem_mo()
+    except Exception as e:
+        log.warning("Module %s lỗi khi gọi trinh_duyet_xem_mo: %s", module, _ten_loi(e))
+        raise LoiOpenAI(502, f"Module lỗi khi mở xem trình duyệt ({_ten_loi(e)})")
+    if not isinstance(kq, dict) or not kq.get("dich"):
+        raise LoiOpenAI(502, "Kết quả từ module không đúng cấu trúc (cần có dich)")
+    try:
+        dich = await ghim_dich(str(kq.get("dich") or ""))
+    except ValueError as e:
+        raise LoiOpenAI(502, f"Đích xem trình duyệt không hợp lệ hoặc bị chặn: {e}")
+    ho_so = sinh_ho_so_id()
+    with _KHOA:
+        # Mỗi module chỉ giữ MỘT hồ sơ xem: mở lại thì thu hồi hồ sơ xem cũ (vé, phiên, socket). Không có bước này,
+        # mỗi cú bấm sinh một hồ sơ mới trong sổ (không bao giờ được dọn) và lách trần 4 phiên mỗi hồ sơ.
+        for (m_cu, hs_cu), v in list(_HO_SO.items()):
+            if m_cu == module and v.get("chi_xem"):
+                thu_hoi_ho_so(m_cu, hs_cu)
+        _HO_SO[(module, ho_so)] = {**dich, "mod": mod, "loai": "xem", "chi_xem": True,
+                                    "luc_mo": datetime.now(timezone.utc).isoformat()}
+    nguoi_dung_id = lay_nguoi_dung_id(request)
+    ve = cap_ve(module, ho_so, nguoi_dung_id=nguoi_dung_id)
+    nhat_ky.ghi("trinh_duyet", "thong_tin", f"Mở xem trình duyệt đang đăng nhập ({module})",
+                module=module, ho_so=ho_so, hanh_dong="xem", ket_qua="thanh_cong")
+    return {"ho_so": ho_so, "ve": ve, "url": f"/novnc/dang-nhap?ve={ve}"}
+
+
 @api_router.post("/{module}/{ho_so}/ve")
 async def api_xin_ve(module: str, ho_so: str, request: Request):
     kiem_tra_ho_so_id(ho_so)
     if _so(request).dang_chay.get(module) is None:
         raise LoiOpenAI(404, f"Không tìm thấy module «{module}»")
     with _KHOA:
-        if (module, ho_so) not in _HO_SO:
+        hs = _HO_SO.get((module, ho_so))
+        if hs is None:
             raise LoiOpenAI(404, f"Hồ sơ {ho_so} chưa được mở")
+    if hs.get("chi_xem"):  # hồ sơ xem (NV276) đòi step-up mỗi lần cấp vé, như đường /xem: không xin vé lại để né
+        kiem_tra_step_up(request)
     nguoi_dung_id = lay_nguoi_dung_id(request)
     ve = cap_ve(module, ho_so, nguoi_dung_id=nguoi_dung_id)
     nhat_ky.ghi("trinh_duyet", "thong_tin", f"Cấp vé mới cho hồ sơ {ho_so} ({module})",
