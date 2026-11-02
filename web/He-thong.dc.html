@@ -1780,7 +1780,7 @@ class Component extends DCLogic {
       nhanBatTat: (x.t && x.t.bat === false) ? 'Bật lại' : 'Tắt tạm thời',
       kiemTraLai: () => this.kiemTraLai(x.id),
       coLkKhoaBaoMat: coLkKhoa,
-      lkKhoaBaoMatHref: 'He-thong-Bao-mat.dc.html#khoa-module-' + encodeURIComponent(x.id),
+      lkKhoaBaoMatHref: K.noiThemKhoa(x.t || { id: x.id, loai: x.info.loai, cung_cap: x.info.cung_cap }, s.tn).href,   // NV281: nơi tạo khoá duy nhất
       lkKhoaBaoMatChu: khoaBatBuoc && x.tt === 'cho-khoa' ? 'Cần khoá — tạo ở Bảo mật & người dùng' : 'Khoá — quản lý ở Bảo mật & người dùng',
       coXinQuyen: !chiHoiCai && !x.daCai && dsXinQuyen.length > 0, dsXinQuyen,
       coGo: coKhoa && x.daCai && (x.tuXa || (x.c && x.c.nguon !== 'anh') || x.lienKet),

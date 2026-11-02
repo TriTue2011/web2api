@@ -1340,6 +1340,33 @@ async def go(id_: str, request: Request):
     return kq
 
 
+@modules.delete("/{id_}/khoa", dependencies=QT)
+async def xoa_khoa_module(id_: str, request: Request):
+    """NV281: xoá KHOÁ của một module đã cài (không gỡ mã module).
+
+    Dùng đúng hàm kho hiện có: `kho.xoa_cai_dat` xoá mục modules.json + tệp bí mật;
+    thể hiện đang chạy (nếu có) được dừng an toàn rồi bỏ khỏi `dang_chay` — module
+    quay về trạng thái «cần khoá», mã vẫn nằm trên đĩa nên liên kết lại chỉ cần dán
+    khoá mới ở trang Bảo mật, không cần cài lại từ git. Không bao giờ trả lại bí mật
+    nguyên văn: phản hồi chỉ có id và cờ đã xoá. Module chưa cài (không có trong
+    catalog) → 404; module từ xa (khoá không nằm trong kho bí mật cục bộ) → 400
+    `module_tu_xa`. Lỗi khi dừng thể hiện được `_dung_an_toan` ghi log, không nuốt
+    âm thầm (kiểm nv45).
+    """
+    so = _so(request)
+    if id_ in so.tu_xa and id_ not in so.catalog:
+        return JSONResponse({"ok": False, "ma": "module_tu_xa"}, status_code=400)
+    if id_ not in so.catalog:
+        raise LoiOpenAI(404, f"Không có module {id_!r}")
+    async with so.khoa:
+        m = so.dang_chay.pop(id_, None)
+        if m is not None:
+            await so._dung_an_toan(id_, m)
+        da_xoa = kho.xoa_cai_dat(id_)
+    nhat_ky_mod.ghi("quan_tri", "thong_tin", f"Xoá khoá của module {id_}")
+    return {"ok": True, "id": id_, "da_xoa": da_xoa}
+
+
 @modules.get("/{id_}/suc-khoe", dependencies=QT)
 async def suc_khoe(id_: str, request: Request):
     so = _so(request)

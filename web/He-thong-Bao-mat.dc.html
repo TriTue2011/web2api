@@ -314,6 +314,110 @@ main.pg{padding:12px 24px 24px 16px}
 </section>
 </sc-if>
 </sc-if>
+<sc-if value="{{laAdmin}}">
+<!-- ═══ NV281: KHOÁ CỦA MODULE — nơi duy nhất tạo khoá module (không thu gọn để neo #khoa-module-<id> tới đúng khối) ═══ -->
+<section class="the" aria-labelledby="h-khoa-module" id="khoa-module">
+<h2 id="h-khoa-module" class="nhan-muc">Khoá của module</h2>
+<p class="phu">Khoá/bí mật mà module cần để chạy CHỈ tạo, dán và xoá ở đây — không tạo ở bảng chi tiết Module nữa. Module thuộc AI → Tài khoản cần ĐĂNG NHẬP (không phải khoá) vẫn thêm ở trang Tài khoản, không hiện ở đây. Khoá đã lưu chỉ hiện dạng che, không bao giờ trả lại nguyên văn; khoá vừa dán được xoá khỏi trang ngay sau khi lưu. Lưu xong module tự chạy, không cần cài lại.</p>
+<sc-if value="{{khoaModuleLoi}}"><p role="alert" class="bao bao-loi" id="loi-khoa-module">{{khoaModuleLoi}}</p></sc-if>
+<sc-if value="{{dangTaiKhoaModule}}"><p role="status" class="bao-cho">Đang đọc danh sách module…</p></sc-if>
+<sc-if value="{{coKhoaModuleCho}}">
+<h3 class="nhan-muc" style="font-size:13px">Cần khoá ({{soKhoaModuleCho}})</h3>
+<sc-for list="{{dsKhoaModuleCho}}" as="km">
+<div class="the" id="khoa-module-{{km.id}}" style="margin:8px 0">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+<div><strong>{{km.ten}}</strong> <span class="ma">{{km.id}}</span>
+<sc-if value="{{km.daCo}}"><span class="huy huy-lam">Đã có khoá lưu · chưa liên kết</span></sc-if>
+</div>
+<sc-if value="{{km.coXoa}}">
+<div class="dong-nut">
+<sc-if value="{{km.chuaXacNhanXoa}}"><button type="button" class="nut nut-nho nut-nguy" data-hd="xoa-khoa-module" onClick="{{km.hoiXoa}}">Xoá khoá</button></sc-if>
+<sc-if value="{{km.dangXacNhanXoa}}"><button type="button" class="nut nut-nho nut-nguy" data-hd="xac-nhan-xoa-khoa-module" onClick="{{km.xacNhanXoa}}" disabled="{{km.dangXoa}}">Xác nhận xoá?</button><button type="button" class="nut nut-nho" onClick="{{km.huyXoa}}">Huỷ</button></sc-if>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{km.dangTai}}"><p role="status" class="bao-cho">Đang đọc cấu hình đã lưu…</p></sc-if>
+<sc-if value="{{km.loiTai}}"><p role="alert" class="bao bao-loi">Không đọc được cấu hình: {{km.loiTai}}</p></sc-if>
+<sc-if value="{{km.coForm}}">
+<form class="form-cau-hinh" novalidate onSubmit="{{km.luu}}" style="display:flex;flex-direction:column;gap:12px">
+<sc-if value="{{km.khongTruong}}"><p class="phu">Module này không cần khoá hay cấu hình gì — bấm «Kiểm tra và lưu» để liên kết.</p></sc-if>
+<sc-for list="{{km.truong}}" as="t">
+<div class="truong" data-truong="{{t.khoa}}" style="gap:4px">
+<label for="{{t.idO}}">{{t.nhan}} <sc-if value="{{t.batBuoc}}"><span class="bb">(bắt buộc)</span></sc-if></label>
+<sc-if value="{{t.laDs}}">
+<ul class="ds-khoa"><sc-for list="{{t.daLuu}}" as="k"><li class="{{k.lop}}" data-khoa-luu="{{k.i}}"><span class="ma" style="flex:1 1 auto">{{k.che}}</span><span class="phu">{{k.trangThai}}</span><button type="button" class="nut-chu" onClick="{{k.doi}}" aria-pressed="{{k.bot}}" aria-label="{{k.aria}}">{{k.nhanNut}}</button></li></sc-for></ul>
+<textarea id="{{t.idO}}" class="o ma" rows="3" autocomplete="off" spellcheck="false" placeholder="Dán khoá mới — mỗi dòng một khoá" onInput="{{t.onInput}}" data-kieu="danh_sach_bi_mat"></textarea>
+<span class="phu">Khoá đã lưu chỉ hiện dạng che. Bấm «Bớt» để bỏ từng khoá; khoá mới được thử trước khi lưu rồi xoá khỏi trang.</span>
+</sc-if>
+<sc-if value="{{t.laBiMat}}"><sc-if value="{{t.biMatLuu}}"><span class="phu">Đang lưu: <span class="ma">{{t.biMatLuu}}</span></span></sc-if><input id="{{t.idO}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống thì giữ giá trị đang lưu" onInput="{{t.onInput}}" data-kieu="bi_mat"></sc-if>
+<sc-if value="{{t.laChuoi}}"><input id="{{t.idO}}" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="{{t.goiY}}" value="{{t.giaTri}}" onInput="{{t.onInput}}" data-kieu="chuoi"><sc-if value="{{t.ghiChuChuoi}}"><span class="phu">{{t.ghiChuChuoi}}</span></sc-if></sc-if>
+<sc-if value="{{t.moTa}}"><span class="phu">{{t.moTa}}</span></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{km.loi}}"><p role="alert" class="bao bao-loi loi-form">{{km.loi}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" id="nut-luu-khoa-module-{{km.id}}" disabled="{{km.dang}}">{{km.nhanNut}}</button></div>
+</form>
+</sc-if>
+<sc-if value="{{km.coKq}}">
+<div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
+<sc-if value="{{km.kqOk}}"><p role="status" class="bao bao-tot">Đã liên kết {{km.ten}}. Chỉ khoá dùng được mới được lưu.</p></sc-if>
+<sc-if value="{{km.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa lưu được: {{km.kqLoi}}</p></sc-if>
+<sc-if value="{{km.kqGoLai}}"><p class="phu">Khoá đã gửi được xoá khỏi trang vì an toàn — dán lại nếu muốn thử lần nữa.</p></sc-if>
+<ul class="ds-kq"><sc-for list="{{km.kqDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span></span></li></sc-for></ul>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{coKhoaModuleLk}}">
+<h3 class="nhan-muc" style="font-size:13px">Đã liên kết ({{soKhoaModuleLk}})</h3>
+<p class="phu">Các module này đã chạy; xoá khoá ở đây sẽ dừng module và đưa nó về «Cần khoá» (mã vẫn nằm trên đĩa, dán khoá mới là chạy lại).</p>
+<sc-for list="{{dsKhoaModuleLk}}" as="km">
+<div class="the" id="khoa-module-{{km.id}}" style="margin:8px 0">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+<div><strong>{{km.ten}}</strong> <span class="ma">{{km.id}}</span> <span class="huy huy-xanh">Đang chạy</span></div>
+<sc-if value="{{km.coXoa}}">
+<div class="dong-nut">
+<sc-if value="{{km.chuaXacNhanXoa}}"><button type="button" class="nut nut-nho nut-nguy" data-hd="xoa-khoa-module" onClick="{{km.hoiXoa}}">Xoá khoá</button></sc-if>
+<sc-if value="{{km.dangXacNhanXoa}}"><button type="button" class="nut nut-nho nut-nguy" data-hd="xac-nhan-xoa-khoa-module" onClick="{{km.xacNhanXoa}}" disabled="{{km.dangXoa}}">Xác nhận xoá?</button><button type="button" class="nut nut-nho" onClick="{{km.huyXoa}}">Huỷ</button></sc-if>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{km.dangTai}}"><p role="status" class="bao-cho">Đang đọc cấu hình đã lưu…</p></sc-if>
+<sc-if value="{{km.loiTai}}"><p role="alert" class="bao bao-loi">Không đọc được cấu hình: {{km.loiTai}}</p></sc-if>
+<sc-if value="{{km.coForm}}">
+<form class="form-cau-hinh" novalidate onSubmit="{{km.luu}}" style="display:flex;flex-direction:column;gap:12px">
+<sc-for list="{{km.truong}}" as="t">
+<div class="truong" data-truong="{{t.khoa}}" style="gap:4px">
+<label for="{{t.idO}}">{{t.nhan}} <sc-if value="{{t.batBuoc}}"><span class="bb">(bắt buộc)</span></sc-if></label>
+<sc-if value="{{t.laDs}}">
+<ul class="ds-khoa"><sc-for list="{{t.daLuu}}" as="k"><li class="{{k.lop}}" data-khoa-luu="{{k.i}}"><span class="ma" style="flex:1 1 auto">{{k.che}}</span><span class="phu">{{k.trangThai}}</span><button type="button" class="nut-chu" onClick="{{k.doi}}" aria-pressed="{{k.bot}}" aria-label="{{k.aria}}">{{k.nhanNut}}</button></li></sc-for></ul>
+<textarea id="{{t.idO}}" class="o ma" rows="3" autocomplete="off" spellcheck="false" placeholder="Dán khoá mới — mỗi dòng một khoá" onInput="{{t.onInput}}" data-kieu="danh_sach_bi_mat"></textarea>
+<span class="phu">Khoá đã lưu chỉ hiện dạng che. Bấm «Bớt» để bỏ từng khoá; khoá mới được thử trước khi lưu rồi xoá khỏi trang.</span>
+</sc-if>
+<sc-if value="{{t.laBiMat}}"><sc-if value="{{t.biMatLuu}}"><span class="phu">Đang lưu: <span class="ma">{{t.biMatLuu}}</span></span></sc-if><input id="{{t.idO}}" class="o" type="password" autocomplete="new-password" spellcheck="false" placeholder="Để trống thì giữ giá trị đang lưu" onInput="{{t.onInput}}" data-kieu="bi_mat"></sc-if>
+<sc-if value="{{t.laChuoi}}"><input id="{{t.idO}}" class="o" type="text" autocomplete="off" spellcheck="false" placeholder="{{t.goiY}}" value="{{t.giaTri}}" onInput="{{t.onInput}}" data-kieu="chuoi"><sc-if value="{{t.ghiChuChuoi}}"><span class="phu">{{t.ghiChuChuoi}}</span></sc-if></sc-if>
+<sc-if value="{{t.moTa}}"><span class="phu">{{t.moTa}}</span></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{km.loi}}"><p role="alert" class="bao bao-loi loi-form">{{km.loi}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" id="nut-luu-khoa-module-{{km.id}}" disabled="{{km.dang}}">{{km.nhanNut}}</button></div>
+</form>
+</sc-if>
+<sc-if value="{{km.coKq}}">
+<div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
+<sc-if value="{{km.kqOk}}"><p role="status" class="bao bao-tot">Đã liên kết {{km.ten}}. Chỉ khoá dùng được mới được lưu.</p></sc-if>
+<sc-if value="{{km.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa lưu được: {{km.kqLoi}}</p></sc-if>
+<sc-if value="{{km.kqGoLai}}"><p class="phu">Khoá đã gửi được xoá khỏi trang vì an toàn — dán lại nếu muốn thử lần nữa.</p></sc-if>
+<ul class="ds-kq"><sc-for list="{{km.kqDs}}" as="k"><li class="{{k.lop}}"><span class="{{k.lopDau}}" aria-hidden="true"></span><span class="kq-than"><span><span class="ma">{{k.khoa}}</span> · {{k.trangThai}}</span><span class="phu">{{k.chiTiet}}</span></span></li></sc-for></ul>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{khongCoKhoaModule}}"><p class="phu">Không có module nào đang cần khoá.</p></sc-if>
+</section>
+</sc-if>
 <sc-if value="{{tabBaoMat}}">
 <!-- ═══ XÁC THỰC HAI BƯỚC (2FA) — tuỳ chọn, mặc định TẮT ═══ -->
 <section class="the muc-gap" aria-labelledby="h-hai-buoc" id="hai-buoc">
@@ -650,6 +754,13 @@ class Component extends DCLogic {
       dsKhoaLoi: '',
       dangTaiDsKhoa: false,
 
+      // NV281: Khoá của module (admin) — nơi duy nhất tạo khoá module.
+      dsKhoaModule: [],          // [{id, ten, daLienKet}] — form chi tiết nằm ở state.cf qua K.cauHinh
+      dangTaiKhoaModule: false,
+      khoaModuleLoi: '',
+      dangHoiXoaKhoaModule: null,
+      dangXoaKhoaModule: null,
+
       // Khoá API của tôi (mọi người dùng)
       dsKhoaToi: [],
       nhanKhoaToiNhap: '',
@@ -752,8 +863,50 @@ class Component extends DCLogic {
     await this.taiKhoaToi();
     await this.tai2fa();
     if (laAdmin) {
-      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa(), this.taiKhoaDn()]);
+      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa(), this.taiKhoaDn(), this.taiKhoaModule()]);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // NV281: KHOÁ CỦA MODULE (ADMIN) — nơi duy nhất tạo khoá module
+  // ═══════════════════════════════════════════════════════════════
+
+  async taiKhoaModule() {
+    if (this.state.dangTaiKhoaModule) return;
+    this.setState({ dangTaiKhoaModule: true, khoaModuleLoi: '' });
+    try {
+      const tn = await K.taiTinhNang();
+      // Ứng viên: đã cài, không phải từ xa, và noiThemKhoa trỏ sang Bảo mật
+      // (module thuộc AI → Tài khoản giữ ở trang Tài khoản, không hiện ở đây).
+      const ungVien = (tn.modules || []).filter((m) => m && !m.tu_xa && K.noiThemKhoa(m, tn).tab === 'bao_mat');
+      this.setState({ tn, dsKhoaModule: ungVien.map((m) => ({ id: m.id, ten: m.ten || m.id, daLienKet: !!m.da_lien_ket })) });
+      await Promise.allSettled(ungVien.map((m) => K.cauHinh.tai(this, m.id)));
+      this.setState({ dangTaiKhoaModule: false });
+      this.cuộnTớiNeoKhoaModule();
+    } catch (e) {
+      this.setState({ dangTaiKhoaModule: false, khoaModuleLoi: (e && e.message) || 'Không tải được danh sách khoá module.' });
+    }
+  }
+
+  // Neo #khoa-module-<id> từ trang Module/Studio tới đúng khối module: trang vẽ bất đồng bộ
+  // sau khi tải nên neo trình duyệt tự nhảy tới trước khi khối tồn tại; nhảy lại bằng tay ở đây.
+  cuộnTớiNeoKhoaModule() {
+    const hash = (location.hash || '');
+    if (!hash.startsWith('#khoa-module-')) return;
+    const el = document.getElementById(hash.slice(1));
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
+
+  async xoaKhoaModule(id) {
+    this.setState({ dangXoaKhoaModule: id, khoaModuleLoi: '' });
+    try {
+      await K.goi('api/modules/' + encodeURIComponent(id) + '/khoa', { method: 'DELETE' });
+    } catch (e) {
+      this.setState({ dangXoaKhoaModule: null, khoaModuleLoi: e.message || 'Lỗi xoá khoá.' });
+      return;
+    }
+    this.setState({ dangXoaKhoaModule: null, dangHoiXoaKhoaModule: null });
+    await this.taiKhoaModule();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1608,6 +1761,31 @@ class Component extends DCLogic {
       };
     });
 
+    // NV281: Khoá của module — mỗi module một VM cấu hình chung (K.cauHinh.vm, cùng đường
+    // lưu POST /api/modules/{id}/cai như bảng chi tiết); chỉ hiện module có ít nhất một
+    // trường bí mật; tách «cần khoá» / «đã liên kết». Khoá đã lưu chỉ hiện dạng che.
+    const dsKhoaModuleHienThi = (s.dsKhoaModule || []).map((km) => {
+      const f = K.cauHinh.vm(this, km.id, 'bm', () => this.taiKhoaModule());
+      const coBiMat = f.truong.some((t) => t.laDs || t.laBiMat);
+      const daCo = f.truong.some((t) => (t.laDs && t.daLuu.length > 0) || (t.laBiMat && !!t.biMatLuu));
+      return {
+        id: km.id, ten: km.ten, daLienKet: !!km.daLienKet, coBiMat, daCo,
+        coForm: f.coForm, dangTai: f.dangTai, loiTai: f.loiTai,
+        truong: f.truong, khongTruong: f.khongTruong,
+        luu: f.luu, dang: f.dang, nhanNut: f.nhanNut, loi: f.loi,
+        coKq: f.coKq, kqOk: f.kqOk, kqLoi: f.kqLoi, kqDs: f.kqDs, kqGoLai: f.kqGoLai,
+        coXoa: daCo,
+        chuaXacNhanXoa: s.dangHoiXoaKhoaModule !== km.id,
+        dangXacNhanXoa: s.dangHoiXoaKhoaModule === km.id,
+        dangXoa: s.dangXoaKhoaModule === km.id,
+        hoiXoa: () => this.setState({ dangHoiXoaKhoaModule: km.id, khoaModuleLoi: '' }),
+        huyXoa: () => this.setState({ dangHoiXoaKhoaModule: null }),
+        xacNhanXoa: () => this.xoaKhoaModule(km.id),
+      };
+    }).filter((km) => km.coBiMat);
+    const dsKhoaModuleCho = dsKhoaModuleHienThi.filter((km) => !km.daLienKet);
+    const dsKhoaModuleLk = dsKhoaModuleHienThi.filter((km) => km.daLienKet);
+
     // Danh sách khoá khách
     const dsKhoaHienThi = s.dsKhoa.map((k) => {
       const bat = !!k.bat;
@@ -1748,6 +1926,18 @@ class Component extends DCLogic {
       khongCoKhoaDs: !s.dsKhoaLoi && dsKhoaHienThi.length === 0,
       tongSoKhoa: dsKhoaHienThi.length,
       dsKhoaHienThi,
+
+      // NV281: Khoá của module
+      khoaModuleLoi: s.khoaModuleLoi,
+      dangTaiKhoaModule: s.dangTaiKhoaModule,
+      taiLaiKhoaModule: () => this.taiKhoaModule(),
+      coKhoaModuleCho: dsKhoaModuleCho.length > 0,
+      soKhoaModuleCho: dsKhoaModuleCho.length,
+      dsKhoaModuleCho,
+      coKhoaModuleLk: dsKhoaModuleLk.length > 0,
+      soKhoaModuleLk: dsKhoaModuleLk.length,
+      dsKhoaModuleLk,
+      khongCoKhoaModule: !s.dangTaiKhoaModule && !s.khoaModuleLoi && dsKhoaModuleHienThi.length === 0,
 
       // Khoá API của tôi
       coKhoaToiMoi: !!khoaToiMoiView,

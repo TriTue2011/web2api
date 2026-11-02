@@ -365,6 +365,11 @@ def test_module_can_khoa_khong_co_tab_tai_khoan_chi_co_lien_ket_sang_bao_mat(tra
         assert trang.js("document.querySelectorAll('#chi-tiet input[type=password], #chi-tiet textarea').length") == 0
         assert trang.js(o("app-khoa") + ".getAttribute('aria-pressed')") == "true"
         assert trang.js("document.querySelectorAll('#chi-tiet').length") == 1
+        trang.bam("document.getElementById('lk-khoa-bao-mat')")   # NV281: bấm liên kết phải mở đúng khối khoá của module
+        trang.cho("document.getElementById('khoa-module-app-khoa')", han=20,
+                  mo_ta="khối khoá của app-khoa ở trang Bảo mật")
+        assert trang.js("!!document.querySelector('#khoa-module-app-khoa textarea, #khoa-module-app-khoa input[type=password]')"), \
+            "khối khoá phải có ô dán khoá"
 
 
 # ───────────── Hệ thống → AI (chép Bo-nao.dc.html của demo: Tài khoản · Provider) ─────────────

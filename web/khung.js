@@ -116,13 +116,18 @@
     }
     return null;
   }
-  // Nơi thêm khoá cho một module: tab Tài khoản (Hệ thống → AI) nếu module thuộc tab đó, ngược lại bảng chi tiết của
-  // chính nó ở Hệ thống → Module. Neo theo id để tới ĐÚNG module khi có nhiều. `tab`: mã dòng của nơi đến.
+  // NV281: nơi thêm khoá cho một module — khoá của module CHỈ tạo ở trang Bảo mật & người dùng
+  // (một nơi duy nhất). Ngoại lệ duy nhất giữ đường cũ: module thuộc AI → Tài khoản cần
+  // ĐĂNG NHẬP chứ không phải khoá (mở trang Tài khoản đúng module). Mọi module còn lại,
+  // kể cả module trước đây trỏ về bảng chi tiết Module, nay trỏ sang neo
+  // #khoa-module-<id> ở trang Bảo mật; thanh trạng thái «Chờ khoá», bảng chi tiết và
+  // Studio đều dùng chung hàm này nên tự đổi theo, không sửa riêng từng chỗ gọi.
+  // Neo theo id để tới ĐÚNG module khi có nhiều. `tab`: mã dòng của nơi đến.
   function noiThemKhoa(m, tn) {
     const id = encodeURIComponent((m && m.id) || '');
     return moduleDapUng(m, 'tai_khoan') && du('tai_khoan', tn)
       ? { tab: 'tai_khoan', href: 'He-thong-AI.dc.html#tk-' + id, nhan: 'Hệ thống → AI → ' + DIEU_KIEN.tai_khoan.nhan }
-      : { tab: 'module', href: 'He-thong.dc.html#module-' + id, nhan: 'Hệ thống → ' + DIEU_KIEN.module.nhan };
+      : { tab: 'bao_mat', href: 'He-thong-Bao-mat.dc.html#khoa-module-' + id, nhan: 'Hệ thống → Bảo mật & người dùng' };
   }
   // Module đã cài, CHƯA liên kết, đáp ứng dòng `ma` (vd chế độ Chat) — ai cần khoá để chế độ đó gọi được /v1.
   const chuaKhoaCho = (ma, tn) => ((tn && tn.modules) || []).filter((m) => m && !m.da_lien_ket && moduleDapUng(m, ma));
