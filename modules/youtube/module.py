@@ -49,6 +49,13 @@ BẢO MẬT:
   body rỗng vẫn dừng hết (nới hơn cũ, giữ hành vi NV277); session_id
   bên gọi đưa không ép khuôn [a-z0-9_-]{1,40} của cũ (module tự sinh
   token_urlsafe có chữ hoa).
+- NV301 mảnh playlist: import từ mã chia sẻ TTPL1.
+  (base64url(zlib(JSON)) — đúng định dạng dịch vụ cũ, mở chéo được)
+  và từ link playlist YouTube (/playlist hoặc link xem có list=, qua
+  yt-dlp flat); export ra mã TTPL1.; create/add chuẩn hoá + khử trùng
+  + trần 500 bài / 100 playlist; remove/move theo chỉ số kiểu cũ.
+  Link album/playlist Zing → 502 playlist_unavailable (dịch vụ cũ lấy
+  qua API web có khoá ký riêng, module không có khoá đó).
 - CHƯA CÓ / CHƯA KIỂM (ghi thẳng, không bịa): giải luồng Zing/Facebook
   chưa chuyển (trả 502 rõ); chưa thử với YouTube thật, loa thật, HA
   thật (môi trường làm việc không có Internet ra ngoài). yt-dlp/deno
@@ -59,12 +66,14 @@ BẢO MẬT:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import re
 import secrets
 import time
+import zlib
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -72,8 +81,10 @@ from app import duong_module as duong_loi
 from app.tu_xa import kiem_url_lan
 
 from .trich_xuat import (
+    PLAYLIST_ID,
     TrichXuat,
     TrichXuatUnavailable,
+    YOUTUBE_URL_HOSTS,
     _validated_query_and_limit,
     youtube_url_query,
     ZING_ID,
@@ -95,6 +106,12 @@ LICH_SU_TOI_DA = 200
 PHIEN_TOI_DA = 32
 #: Trần hàng đợi ghi nhớ từ lần tìm gần nhất (mỗi nguồn).
 HANG_DOI_TIM_TOI_DA = 30
+#: Trần playlist (dịch vụ cũ: playlists.py).
+PLAYLIST_TOI_DA = 100
+BAI_TOI_DA = 500
+TEN_PLAYLIST_TOI_DA = 80
+MA_CHIA_SE_TOI_DA = 300_000
+JSON_CHIA_SE_TOI_DA = 2_000_000
 
 _MA_CHIA_SE = re.compile(r"TTPL1\.[A-Za-z0-9_-]+")
 #: Mã video Facebook là chuỗi số (dịch vụ cũ: 5–25 chữ số).
@@ -103,6 +120,88 @@ _FACEBOOK_ID = re.compile(r"[0-9]{5,25}")
 _KIEU_HTTP = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "ogg": "audio/ogg",
               "oga": "audio/ogg", "opus": "audio/opus", "flac": "audio/flac",
               "wav": "audio/wav"}
+
+
+def _ten_playlist(ten) -> str:
+    """Tên playlist chuẩn hoá (dịch vụ cũ: gộp khoảng trắng, tối đa 80)."""
+    return " ".join(str(ten or "").split())[:TEN_PLAYLIST_TOI_DA]
+
+
+def _ma_chia_se(playlist: dict) -> str:
+    """Mã chia sẻ TTPL1. — port share_code của playlists.py (dịch vụ cũ).
+
+    Định dạng: «TTPL1.» + base64url(zlib(JSON {n: tên, i: [[source, id,
+    url, title, channel, duration, thumbnail], ...]})) — mã tạo ở đây
+    mở được ở dịch vụ cũ và ngược lại."""
+    compact = {
+        "n": playlist["name"],
+        "i": [[it["source"], it["id"], it["url"], it["title"],
+               it["channel"], it["duration"], it["thumbnail"]]
+              for it in playlist["items"]],
+    }
+    raw = zlib.compress(json.dumps(compact, ensure_ascii=False,
+                                   separators=(",", ":")).encode(), 9)
+    return "TTPL1." + base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _doc_ma_chia_se(code: str):
+    """(tên, các bài) từ mã chia sẻ — port read_share_code (dịch vụ cũ).
+
+    Sai định dạng / quá trần / JSON không đúng hình → ValueError
+    «invalid_share_code». Bài không chuẩn hoá được thì bỏ, không vỡ."""
+    code = "".join(str(code or "").split())
+    if not code.startswith("TTPL1.") or len(code) > MA_CHIA_SE_TOI_DA:
+        raise ValueError("invalid_share_code")
+    body = code[len("TTPL1."):]
+    try:
+        raw = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+        decompressor = zlib.decompressobj()
+        text = decompressor.decompress(raw, JSON_CHIA_SE_TOI_DA)
+        if decompressor.unconsumed_tail:
+            raise ValueError("invalid_share_code")
+        data = json.loads(text)
+    except (ValueError, zlib.error) as e:
+        raise ValueError("invalid_share_code") from e
+    if not isinstance(data, dict) or not isinstance(data.get("i"), list):
+        raise ValueError("invalid_share_code")
+    keys = ("source", "id", "url", "title", "channel", "duration", "thumbnail")
+    items = []
+    for row in data["i"][:BAI_TOI_DA]:
+        if not isinstance(row, list):
+            continue
+        muc = Module._chuan_hoa_muc(dict(zip(keys, row)))
+        if muc:
+            items.append(muc)
+    return _ten_playlist(data.get("n")), items
+
+
+def _id_playlist_youtube(text: str):
+    """ID playlist trong link YouTube (/playlist hoặc link xem có list=).
+
+    Port youtube_playlist_id của dịch vụ cũ (mọi link YouTube có tham số
+    list= đều được, không riêng trang /playlist)."""
+    raw = str(text or "").strip()
+    if not raw or len(raw) > 2048 or any(c.isspace() for c in raw):
+        return None
+    parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
+    if parsed.scheme not in ("http", "https"):
+        return None
+    if (parsed.hostname or "").lower() not in YOUTUBE_URL_HOSTS:
+        return None
+    pid = parse_qs(parsed.query).get("list", [""])[0]
+    return pid if pid and PLAYLIST_ID.fullmatch(pid) else None
+
+
+def _la_link_playlist_zing(text: str) -> bool:
+    """Link album/playlist Zing MP3 (/album/…/ID.html, /playlist/…/ID.html).
+
+    Port zing_playlist_id của dịch vụ cũ (chỉ nhận dạng, không lấy dữ
+    liệu — lấy dữ liệu cần khoá API web của Zing mà module không có)."""
+    parsed = urlsplit(str(text or "").strip())
+    host = (parsed.hostname or "").lower()
+    return (parsed.scheme in ("http", "https")
+            and (host == "zingmp3.vn" or host.endswith(".zingmp3.vn"))
+            and parsed.path.startswith(("/album/", "/playlist/")))
 
 
 class LoiNguonKhongCuuDuoc(Exception):
@@ -436,6 +535,16 @@ class Module:
             # Bên gọi đưa id trần qua `target` (vd mã video/mã bài): đó là
             # id, không phải URL — đừng để nhánh zing/facebook hiểu nhầm.
             muc_id, url = url, ""
+        if not source:
+            # Kho NV277 lưu mục không có `source`: suy từ hình id/link —
+            # id 11 ký tự hoặc link YouTube thì chắc chắn là YouTube.
+            # Không suy được thì các nhánh dưới trả None như cũ.
+            if re.fullmatch(r"[A-Za-z0-9_-]{11}", muc_id):
+                source = "youtube"
+            elif url:
+                kq = youtube_url_query(url)
+                if kq and kq[0] == "video":
+                    source = "youtube"
         if source == "youtube":
             if not muc_id and url:
                 kq = youtube_url_query(url)
@@ -934,7 +1043,7 @@ class Module:
         if duong == "integration/playlists" and phuong_thuc == "GET":
             return _ok({"playlists": self._playlists})
         if duong == "integration/playlists" and phuong_thuc == "POST":
-            ket_qua = self._playlists_hanh_dong(than)
+            ket_qua = await self._playlists_hanh_dong(than)
             if (than.get("action") or "list") not in ("list", "export"):
                 self._ghi_tep("playlists.json", "playlists", self._playlists)
             return ket_qua
@@ -1035,56 +1144,182 @@ class Module:
                         "position": vi_tri, "seek_url": None})
         return _loi(404, "not_found")
 
-    def _playlists_hanh_dong(self, than):
+    def _tao_playlist_moi(self, ten, items):
+        """Tạo playlist đã chuẩn hoá (chuẩn hoá + khử trùng + trần 500),
+        như PlaylistStore.create của dịch vụ cũ."""
+        if len(self._playlists) >= PLAYLIST_TOI_DA:
+            raise ValueError("too_many_playlists")
+        sach, thay = [], set()
+        for tho in items or []:
+            muc = self._chuan_hoa_muc(tho)
+            if muc is None:
+                continue
+            khoa = (muc["source"], muc["id"])
+            if khoa in thay or len(sach) >= BAI_TOI_DA:
+                continue
+            thay.add(khoa)
+            sach.append(muc)
+        muc = {"id": secrets.token_urlsafe(8), "name": _ten_playlist(ten),
+               "items": sach}
+        self._playlists.append(muc)
+        return muc
+
+    async def _nhap_nguon_playlist(self, text):
+        """(tên, các bài, url_nguồn) từ mã chia sẻ hoặc link — port
+        _read_playlist_source của dịch vụ cũ.
+
+        Mã TTPL1. giải ngay trong RAM; link playlist YouTube lấy qua
+        yt-dlp (không cần khoá). Link album/playlist Zing → 502 rõ
+        (dịch vụ cũ lấy qua API web có khoá ký riêng, module này không
+        có khoá đó nên không bịa dữ liệu). Link khác → 400."""
+        text = str(text or "").strip()
+        if text.startswith("TTPL1."):
+            try:
+                ten, muc = _doc_ma_chia_se(text)
+            except ValueError as e:
+                raise ValueError(str(e) or "invalid_share_code") from e
+            return ten or "Playlist chia sẻ", muc, ""
+        pid = _id_playlist_youtube(text)
+        if pid:
+            sem = await self._chiem_cho_trich_xuat()
+            try:
+                ten, muc = await self.trich_xuat.lay_danh_sach_phat(
+                    "youtube", pid, BAI_TOI_DA)
+            except TrichXuatUnavailable as e:
+                raise ValueError("playlist_unavailable") from e
+            finally:
+                sem.release()
+            muc = [m for m in (self._chuan_hoa_muc(i) for i in muc) if m]
+            return ten or "Playlist YouTube", muc, text
+        if _la_link_playlist_zing(text):
+            raise ValueError("playlist_unavailable")
+        raise ValueError("invalid_playlist_link")
+
+    async def _playlists_hanh_dong(self, than):
+        """Một lệnh playlist — hợp đồng playlist_action của dịch vụ cũ
+        (list/create/rename/delete/add/remove/move/export/import), trả
+        {playlists, ...} và mã 200 cho mọi lệnh thành công.
+
+        Khác cũ (ghi rõ): import còn nhận dạng cũ `playlists` (thay toàn
+        bộ kho, hành vi NV277) khi không có `text`; remove/move nhận cả
+        khoá NV277 (`item_id`/`from`) lẫn khoá cũ (`index`)."""
         hanh_dong = than.get("action") or "list"
         if hanh_dong == "list":
             return _ok({"playlists": self._playlists})
         if hanh_dong == "export":
-            return _ok({"playlists": self._playlists})
+            pid = than.get("playlist_id") or than.get("id")
+            muc = next((p for p in self._playlists if p.get("id") == pid), None)
+            if muc is None:
+                return _loi(404, "playlist_not_found")
+            items = [m for m in (self._chuan_hoa_muc(i) for i in muc.get("items") or [])
+                     if m]
+            return _ok({"playlists": self._playlists,
+                        "code": _ma_chia_se({**muc, "items": items})})
         if hanh_dong == "create":
-            ten = str(than.get("name") or "").strip()
+            ten = _ten_playlist(than.get("name"))
             if not ten:
                 return _loi(400, "invalid_playlist_name")
-            muc = {"id": secrets.token_urlsafe(8), "name": ten, "items": []}
-            self._playlists.append(muc)
+            try:
+                muc = self._tao_playlist_moi(
+                    ten, than.get("items") if isinstance(than.get("items"), list) else [])
+            except ValueError as e:
+                return _loi(400, str(e) or "invalid_playlist_name")
             # Dịch vụ cũ trả 200 cho mọi lệnh playlist (kể cả create).
-            return _ok({"playlist": muc})
+            return _ok({"playlists": self._playlists, "playlist": muc})
         if hanh_dong == "import":
+            if than.get("text") is not None:
+                try:
+                    ten, muc, _url = await self._nhap_nguon_playlist(than.get("text"))
+                except ValueError as e:
+                    ma_loi = str(e) or "invalid_playlist_link"
+                    if ma_loi == "playlist_unavailable":
+                        return _loi(502, ma_loi)
+                    return _loi(400, ma_loi)
+                if not muc:
+                    return _loi(400, "playlist_empty")
+                ten_ghi = _ten_playlist(than.get("name")) or ten
+                try:
+                    muc_moi = self._tao_playlist_moi(ten_ghi, muc)
+                except ValueError as e:
+                    return _loi(400, str(e) or "invalid_playlist_name")
+                return _ok({"playlists": self._playlists, "playlist": muc_moi})
             ds = than.get("playlists")
             if not isinstance(ds, list):
                 return _loi(400, "invalid_playlists")
             self._playlists = [p for p in ds if isinstance(p, dict)]
             return _ok({"playlists": self._playlists})
+        pid = than.get("playlist_id") or than.get("id")
         for muc in self._playlists:
-            if muc.get("id") != than.get("playlist_id"):
+            if muc.get("id") != pid:
                 continue
             if hanh_dong == "rename":
-                ten = str(than.get("name") or "").strip()
+                ten = _ten_playlist(than.get("name"))
                 if not ten:
                     return _loi(400, "invalid_playlist_name")
                 muc["name"] = ten
-                return _ok({"playlist": muc})
+                return _ok({"playlists": self._playlists, "playlist": muc})
             if hanh_dong == "delete":
                 self._playlists.remove(muc)
-                return _ok({"deleted": True})
+                return _ok({"playlists": self._playlists, "deleted": True})
             if hanh_dong == "add":
+                if isinstance(than.get("items"), list):
+                    them, da_them = than["items"], 0
+                    for tho in them:
+                        item = self._chuan_hoa_muc(tho)
+                        if item is None:
+                            continue
+                        if any(i.get("source") == item["source"]
+                               and i.get("id") == item["id"]
+                               for i in muc.get("items", [])):
+                            continue
+                        if len(muc.get("items", [])) >= BAI_TOI_DA:
+                            return _loi(400, "playlist_full")
+                        muc.setdefault("items", []).append(item)
+                        da_them += 1
+                    return _ok({"playlists": self._playlists,
+                                "playlist": muc, "added": da_them})
                 item = than.get("item")
                 if not isinstance(item, dict):
                     return _loi(400, "invalid_item")
-                muc.setdefault("items", []).append(item)
-                return _ok({"playlist": muc})
+                chuan = self._chuan_hoa_muc(item)
+                if chuan is None:
+                    return _loi(400, "invalid_item")
+                if any(i.get("source") == chuan["source"]
+                       and i.get("id") == chuan["id"]
+                       for i in muc.get("items", [])):
+                    return _ok({"playlists": self._playlists,
+                                "playlist": muc, "added": 0})
+                if len(muc.get("items", [])) >= BAI_TOI_DA:
+                    return _loi(400, "playlist_full")
+                muc.setdefault("items", []).append(chuan)
+                return _ok({"playlists": self._playlists,
+                            "playlist": muc, "added": 1})
             if hanh_dong == "remove":
+                if than.get("index") is not None:
+                    try:
+                        chi_so = int(than["index"])
+                    except (TypeError, ValueError):
+                        return _loi(400, "invalid_playlist_index")
+                    items = muc.get("items", [])
+                    if not 0 <= chi_so < len(items):
+                        return _loi(400, "invalid_playlist_index")
+                    del items[chi_so]
+                    return _ok({"playlists": self._playlists, "playlist": muc})
                 muc["items"] = [i for i in muc.get("items", [])
                                 if i.get("id") != than.get("item_id")]
-                return _ok({"playlist": muc})
+                return _ok({"playlists": self._playlists, "playlist": muc})
             if hanh_dong == "move":
                 items = muc.get("items", [])
+                tu = than.get("from", than.get("index"))
+                den = than.get("to")
                 try:
-                    tu, den = int(than.get("from")), int(than.get("to"))
-                    items.insert(den, items.pop(tu))
-                except (TypeError, ValueError, IndexError):
-                    return _loi(400, "invalid_move")
-                return _ok({"playlist": muc})
+                    tu, den = int(tu), int(den)
+                except (TypeError, ValueError):
+                    return _loi(400, "invalid_playlist_index")
+                if not (0 <= tu < len(items) and 0 <= den < len(items)):
+                    return _loi(400, "invalid_playlist_index")
+                items.insert(den, items.pop(tu))
+                return _ok({"playlists": self._playlists, "playlist": muc})
         return _loi(404, "playlist_not_found")
 
     async def _tao_luong(self, than, goc=""):
