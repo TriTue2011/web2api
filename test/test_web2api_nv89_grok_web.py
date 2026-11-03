@@ -3,7 +3,7 @@
 Hợp đồng sao y mẫu NV88 (chatgpt-web) nhưng dữ liệu theo grok-web:
 
 - `dang_nhap(DongDaTach)`: cookie → kiểm qua `lay_uid_tu_phien` (bắt buộc có
-  cookie «sso»); mat_khau → trình duyệt mở https://x.com/login (SSO qua X),
+  cookie «sso»); mat_khau → trình duyệt mở https://grok.com/sign-in (SSO qua X),
   đọc cookie grok.com; dang_nhap_lai → mật khẩu đã lưu.
 - `lam_moi_phien` (tầng a), `dang_nhap_tu_dong` (tầng b), `tai_khoan_ke`/
   `danh_dau_hong` (tầng c), `mat_khau_da_luu`, `co_tai_khoan`,
@@ -128,7 +128,7 @@ def mod(tmp_path, monkeypatch):
 
 def _trinh_duyet_thanh_cong():
     return TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thanh_cong"],
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
         }})
@@ -225,14 +225,14 @@ def test_dang_nhap_mat_khau_thanh_cong_va_luu_mat_khau(mod):
     assert ten_buoc[0] == "mo_trang"
     assert "dien" in ten_buoc and "bam" in ten_buoc
     url_mo = mod._trinh_duyet_da_dung.hanh_dong[0][1]
-    assert url_mo == "https://x.com/login"
+    assert url_mo == "https://grok.com/sign-in"
 
 
 def test_dang_nhap_khong_doc_duoc_sso_thi_that_bai(mod):
     """Đăng nhập xong nhưng cookie thiếu «sso» → không được phép thành công."""
     def td_thieu_sso():
         return TrinhDuyetGia(trang={
-            "https://x.com/login": {
+            "https://grok.com/sign-in": {
                 "tin_hieu": ["thanh_cong"],
                 "cookie": {"x-userid": UID_GIA},
             }})
@@ -247,7 +247,7 @@ def test_dang_nhap_khong_doc_duoc_sso_thi_that_bai(mod):
 
 def test_dang_nhap_gap_captcha_thi_can_nguoi(mod):
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {"tin_hieu": ["captcha"], "cookie": {}}})
+        "https://grok.com/sign-in": {"tin_hieu": ["captcha"], "cookie": {}}})
     mod._tao_trinh_duyet = lambda: td
     tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
                     mat_khau=BiMatTam(MAT_KHAU_GIA))

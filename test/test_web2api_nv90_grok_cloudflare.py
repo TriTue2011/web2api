@@ -180,7 +180,7 @@ def test_trinh_duyet_gap_tin_hieu_thu_thach_thi_thu_vuot_roi_can_nguoi(mod):
 
     (Patch bổ sung theo lệnh chủ máy: thử vượt trước khi bó tay.)"""
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {"tin_hieu": ["thu_thach_truy_cap"], "cookie": {}}})
+        "https://grok.com/sign-in": {"tin_hieu": ["thu_thach_truy_cap"], "cookie": {}}})
     mod._tao_trinh_duyet = lambda: td
     tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",
                     mat_khau=BiMatTam(MAT_KHAU_GIA))
@@ -214,7 +214,7 @@ def test_sau_xoa_can_nguoi_thi_chay_tiep_duoc(mod):
     assert tt["can_nguoi"] is False and tt["hong_b_lien_tiep"] == 0
 
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thanh_cong"],
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
         }})
@@ -269,7 +269,7 @@ def test_thu_thach_khong_tang_bo_dem_hong_lien_tiep(tmp_path, monkeypatch):
 
 def test_mat_khau_va_cookie_khong_vao_log(mod, caplog):
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thanh_cong"],
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
         }})
@@ -293,7 +293,7 @@ def test_mat_khau_va_cookie_khong_vao_log(mod, caplog):
 def test_vuot_thu_thach_thanh_cong_thi_dang_nhap_tiep(mod):
     """Tín hiệu thử thách nhưng vượt thành công (giả lập) → đăng nhập tiếp được."""
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thu_thach_truy_cap"],
             "vuot_thu_thach_thanh_cong": True,
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
@@ -313,7 +313,7 @@ def test_vuot_thu_thach_thanh_cong_thi_dang_nhap_tiep(mod):
 def test_vuot_thu_thach_that_bai_3_luot_thi_can_nguoi(mod):
     """Vượt không được sau đúng 3 lượt → can_nguoi (giữ luồng NV90)."""
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thu_thach_truy_cap"],
             "vuot_thu_thach_thanh_cong": False,
             "cookie": {},
@@ -333,7 +333,7 @@ def test_vuot_thu_thach_that_bai_3_luot_thi_can_nguoi(mod):
 def test_che_do_truc_tiep_dung_email_mat_khau_tren_x(mod):
     mod._nap_tu({"tai_khoan": ["sso=abc"], "che_do_dang_nhap": "truc_tiep"})
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thanh_cong"],
             "cookie": {"sso": SSO_GIA_OK, "x-userid": UID_GIA},
         }})

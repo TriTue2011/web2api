@@ -165,14 +165,29 @@ def test_grok_hai_tai_khoan_moi_duong(tmp_path, monkeypatch):
     m._luu_mat_khau("tk-email-nv300", EMAIL_GIA, BiMatTam(MAT_KHAU_GIA))
     m.dat_cach_dang_nhap("tk-email-nv300", "email")
     td_email = TrinhDuyetGia(trang={
-        "https://x.com/login": {"tin_hieu": ["thanh_cong"],
+        "https://grok.com/sign-in": {"tin_hieu": ["thanh_cong"],
                                 "cookie": {"sso": SSO_GIA_OK,
                                            "x-userid": UID_GIA}}})
+    goi_ho_so = []
+    goc_tai_dung = m.tai_dung_ho_so
+
+    async def theo_doi_tai_dung(*a, **k):
+        goi_ho_so.append(a)
+        return await goc_tai_dung(*a, **k)
+    m.tai_dung_ho_so = theo_doi_tai_dung
     kq_email = chay(m.khoi_phuc_tu_dong("tk-email-nv300", EMAIL_GIA,
                                         trinh_duyet=td_email))
     assert kq_email.thanh_cong, kq_email.ma_loi
     assert ("dien", "email") in td_email.hanh_dong
     assert ("dien", "mat_khau") in td_email.hanh_dong
+    # Lỗi thật chủ máy báo: email KHÔNG được đi Google. Form của grok.com (không
+    # phải x.com), hai bước email → «Tiếp tục» → mật khẩu, không tái dùng hồ sơ,
+    # không bấm nút nhà cung cấp nào.
+    assert goi_ho_so == []
+    assert ("mo_trang", "https://grok.com/sign-in") in td_email.hanh_dong
+    thu_tu = [h for h in td_email.hanh_dong if h[0] in ("dien", "bam")]
+    assert thu_tu == [("dien", "email"), ("bam", "tiep_tuc"),
+                      ("dien", "mat_khau"), ("bam", "dang_nhap")]
 
 
 def test_grok_che_do_cu_chi_lam_mac_dinh_doc_nguoc(tmp_path, monkeypatch):

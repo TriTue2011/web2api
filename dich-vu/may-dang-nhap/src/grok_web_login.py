@@ -71,6 +71,9 @@ class GrokWebLoginSession(LoginSession):
 
     cookies: dict = field(default_factory=dict)
     novnc_url: str = ""
+    #: NV300 — cách đăng nhập của TÀI KHOẢN: "email" | "google" | "" (không nói:
+    #: giữ cách cũ, Google nếu thấy nút). Cách đã nói thì KHÔNG đổi sang cách khác.
+    method: str = ""
 
     def to_dict(self) -> dict:
         base = super().to_dict()
@@ -140,11 +143,15 @@ async def _nhin_trang(page) -> dict[str, Any]:
                 const nutGoogle = [...document.querySelectorAll('button, a, div[role="button"]')]
                     .some((el) => el.offsetParent
                         && /google/i.test(el.innerText || el.getAttribute('aria-label') || ''));
-                return { chan, oSoan, nutGoogle, tieuDe: document.title.slice(0, 80) };
+                // NV300: ô email của form đăng nhập (nhận theo CẤU TRÚC: input email đang hiện).
+                const oEmail = [...document.querySelectorAll(
+                    'input[type="email"], input[name="email"], input[autocomplete="username"]')]
+                    .some((el) => el.offsetParent);
+                return { chan, oSoan, nutGoogle, oEmail, tieuDe: document.title.slice(0, 80) };
             }"""
         )
     except Exception:
-        return {"chan": False, "oSoan": False, "nutGoogle": False, "tieuDe": ""}
+        return {"chan": False, "oSoan": False, "nutGoogle": False, "oEmail": False, "tieuDe": ""}
 
 
 async def _bam_nut_google(page) -> bool:
@@ -188,9 +195,17 @@ async def _dien_email_mat_khau(page, email: str, password: str) -> bool:
             await page.keyboard.press("Enter")
             await asyncio.sleep(3.0)
         o_mk = page.locator('input[type="password"]').first
-        for _ in range(6):
+        for lan in range(6):
             if await o_mk.count() > 0 and await o_mk.is_visible():
                 break
+            if lan == 2 and await o_email.count() > 0:
+                # Enter chưa qua bước email: bấm nút gửi CỦA CHÍNH FORM chứa ô email
+                # (theo cấu trúc form, không theo chữ) — không bao giờ nút nhà cung cấp.
+                try:
+                    await o_email.locator(
+                        'xpath=ancestor::form[1]//button[@type="submit"]').first.click(timeout=3_000)
+                except Exception:
+                    logger.debug("grok_login: không có nút gửi trong form email", exc_info=True)
             await asyncio.sleep(1.5)
         if await o_mk.count() == 0:
             return False
@@ -210,6 +225,7 @@ async def start_grok_web_login(
     totp_secret: str = "",
     prefer_method: str = "auth",
     novnc_url: str = "",
+    method: str = "",
 ) -> GrokWebLoginSession:
     """Chạy nền một lượt đăng nhập Grok Web."""
     cu = _tasks.pop(profile, None)
@@ -224,6 +240,7 @@ async def start_grok_web_login(
         totp_secret=totp_secret,
         prefer_method=prefer_method,
         novnc_url=novnc_url,
+        method=str(method or "").strip().lower(),
     )
     _sessions[profile] = session
     _tasks[profile] = asyncio.create_task(_chay(session, password))
@@ -282,7 +299,12 @@ async def _chay_trong(session: GrokWebLoginSession, password: str) -> None:
 
         # ── Cửa đã thông: tới phần tự làm được. ──
         session.message = "Mở màn đăng nhập Grok..."
-        if not trang.get("nutGoogle"):
+        # NV300: cách của tài khoản. «email» → CHỈ form email (không bấm Google/X/
+        # Apple/Github); «google» → CHỈ đường Google; rỗng → cách cũ (Google trước).
+        chi_email = session.method == "email"
+        chi_google = session.method == "google"
+        da_co_man_dang_nhap = trang.get("oEmail") if chi_email else trang.get("nutGoogle")
+        if not da_co_man_dang_nhap:
             try:
                 await page.goto(_GROK_LOGIN, wait_until="domcontentloaded", timeout=30_000)
                 await asyncio.sleep(3.0)
@@ -297,7 +319,7 @@ async def _chay_trong(session: GrokWebLoginSession, password: str) -> None:
         da_vao = False
 
         # Đường 1: dùng lại tài khoản Google sẵn có trên hồ sơ (không phải nhập lại 2FA).
-        if trang.get("nutGoogle"):
+        if trang.get("nutGoogle") and not chi_email:
             session.message = "Bấm “Sign in with Google”..."
             hung: dict = {}
             ctx.on("page", lambda p: hung.setdefault("page", p))
@@ -334,7 +356,7 @@ async def _chay_trong(session: GrokWebLoginSession, password: str) -> None:
                 da_vao = True
 
         # Đường 2: đăng nhập thẳng bằng email + mật khẩu.
-        if not da_vao and session.email:
+        if not da_vao and session.email and not chi_google:
             session.message = "Đăng nhập thẳng bằng email..."
             da_vao = await _dien_email_mat_khau(page, session.email, password)
 

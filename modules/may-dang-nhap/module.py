@@ -149,6 +149,9 @@ _DUONG_ONBOARD_THEO_LUONG = {
     # không có mật khẩu). Không có bí mật nào của tài khoản rời module.
     ("claude", "truc_tiep"): "claude-web-email",
     ("grok", "google"): "grok-web",
+    # NV300: Grok thẳng = email + mật khẩu ở form của grok.com (không qua
+    # Google/X). Cùng đường onboard của dịch vụ, khác tham số `method`.
+    ("grok", "truc_tiep"): "grok-web-email",
 }
 
 _DANG_NHAP_BANG_HOP_LE = ("", "truc_tiep", "google")
@@ -436,6 +439,15 @@ DICH_VU_DANG_NHAP = {
         "trang_thai": ("GET", "/v1/grok-web/{ho_so}/onboard-status", None),
         "2fa": ("POST", "/v1/grok-web/{ho_so}/onboard-2fa-code"),
         "cookie": ("GET", "/v1/grok-web/{ho_so}/session"),
+        # NV300: nói rõ cách cho dịch vụ — không để nó tự chọn «Google nếu thấy nút».
+        "them_vao_than": {"method": "google"},
+    },
+    "grok-web-email": {
+        "bat_dau": ("POST", "/v1/grok-web/onboard", lambda hs: {"profile": hs, "email": "", "password": "", "totp_secret": ""}),
+        "trang_thai": ("GET", "/v1/grok-web/{ho_so}/onboard-status", None),
+        "2fa": ("POST", "/v1/grok-web/{ho_so}/onboard-2fa-code"),
+        "cookie": ("GET", "/v1/grok-web/{ho_so}/session"),
+        "them_vao_than": {"method": "email"},
     },
     "openai": {
         "bat_dau": ("POST", "/v1/openai-native/onboard", lambda hs: {"profile": hs, "email": "", "password": "", "totp_secret": ""}),
@@ -1327,8 +1339,7 @@ class Module:
         except ValueError:
             return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
         mat_khau = getattr(dong, "mat_khau", None)
-        if not isinstance(mat_khau, BiMatTam) or mat_khau.da_xoa():
-            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        mat_khau_hop_le = isinstance(mat_khau, BiMatTam) and not mat_khau.da_xoa()
         # NV223: kiểm «đăng nhập bằng» + cặp (luồng, cách đăng nhập) hỗ trợ
         # TRƯỚC khi chạm bí mật — sai giá trị / cặp không hỗ trợ / thiếu bí
         # mật Google → dừng ngay, dịch vụ không bị gọi, bí mật không bị lấy.
@@ -1340,6 +1351,18 @@ class Module:
         if not dang_nhap_bang:
             dang_nhap_bang = _dang_nhap_bang_mac_dinh(
                 getattr(dong, "module_cua_tai_khoan", ""))
+            # NV300: cách đăng nhập TƯỜNG MINH của tài khoản thắng mặc định:
+            # «email» → đường thẳng của luồng đó nếu bảng có (không bao giờ
+            # rơi về đường Google chung chỉ vì chưa khai «đăng nhập bằng»).
+            cach_tk = str(getattr(dong, "cach_dang_nhap", "") or "").strip().lower()
+            luong_tk = _LUONG_THEO_MODULE_ID.get(
+                str(getattr(dong, "module_cua_tai_khoan", "") or "").strip())
+            if cach_tk == "email" and (luong_tk, "truc_tiep") in _DUONG_ONBOARD_THEO_LUONG:
+                dang_nhap_bang = "truc_tiep"
+        # NV300: cách google (hồ sơ = tài khoản Google đã lưu) không cần mật
+        # khẩu riêng của tài khoản đích; mọi cách khác vẫn bắt buộc.
+        if not mat_khau_hop_le and dang_nhap_bang != "google":
+            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
         dich_vu_key = None
         if dang_nhap_bang:
             luong = _LUONG_THEO_MODULE_ID.get(
@@ -1397,11 +1420,13 @@ class Module:
         st["thu"][khoa_tk] = lich_su
 
         # 3. Lấy bí mật rồi GHI ĐÈ NGAY (lay_va_xoa ghi đè bộ đệm bằng 0)
-        try:
-            mk = mat_khau.lay_va_xoa()
-        except Exception:
-            return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
-        if not mk:
+        mk = ""
+        if mat_khau_hop_le:
+            try:
+                mk = mat_khau.lay_va_xoa()
+            except Exception:
+                return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
+        if not mk and dang_nhap_bang != "google":
             return _ket_qua_dang_nhap(False, ma_loi="tham_so_khong_hop_le")
         totp = getattr(dong, "totp", None)
         # Cần KHOÁ TOTP GỐC cho két dịch vụ (BiMatTotp.lay() chỉ trả mã 6 số
@@ -1691,6 +1716,8 @@ class Module:
         # Bắt đầu lượt onboard (dịch vụ tự bù bí mật từ két theo email)
         than_bat_dau = {"profile": hs, "email": email_dn,
                         "password": "", "totp_secret": ""}
+        # NV300: tham số riêng của đường (vd cách đăng nhập cho dịch vụ).
+        than_bat_dau.update(muc.get("them_vao_than") or {})
         if dich_vu_key == "chatgpt":
             # NV235-b3: ChatGPT-qua-Google reuse phiên Google trong hồ sơ
             # trước (đúng c2a _cgf_reuse: ĐÚNG MỘT lượt, reuse_session=True);

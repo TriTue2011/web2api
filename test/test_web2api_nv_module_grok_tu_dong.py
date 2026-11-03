@@ -71,7 +71,7 @@ def mod(tmp_path, monkeypatch):
 
 def _trinh_duyet(tin_hieu, cookie):
     return TrinhDuyetGia(trang={
-        "https://x.com/login": {"tin_hieu": tin_hieu, "cookie": cookie}})
+        "https://grok.com/sign-in": {"tin_hieu": tin_hieu, "cookie": cookie}})
 
 
 def test_doc_lap_khong_import_module_kia():

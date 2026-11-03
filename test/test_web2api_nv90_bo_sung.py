@@ -195,7 +195,7 @@ def test_grok_web_captcha_chu_thi_can_nguoi_ngay_khong_vuot(tmp_path, monkeypatc
     manifest = json.loads((THU_MUC / "manifest.json").read_text(encoding="utf-8"))
     mod = mod_module.Module(dict(manifest))
     mod.kho = kho_mod.kho_rieng("grok-web")
-    td = TrinhDuyetGia(trang={"https://x.com/login": {
+    td = TrinhDuyetGia(trang={"https://grok.com/sign-in": {
         "tin_hieu": ["captcha", "thu_thach_truy_cap"], "cookie": {}}})
     mod._tao_trinh_duyet = lambda: td
     tk = DongDaTach(dong=1, email=EMAIL_GIA, loai="mat_khau",

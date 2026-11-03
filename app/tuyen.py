@@ -4516,10 +4516,18 @@ def _gan_bi_mat_dang_nhap_ho(dong, ban_ghi) -> list:
     lấy từ kho qua ``lay_bi_mat_dang_nhap`` (không qua trình duyệt).
     """
     dang_nhap_bang = str((ban_ghi or {}).get("dang_nhap_bang") or "")
+    gid = kho_tai_khoan_mod.lay_tai_khoan_dnh_id(ban_ghi or {})
+    # NV300: cách «hồ sơ» (chọn một tài khoản Google đã lưu) khi bản ghi chưa
+    # khai «đăng nhập bằng» kiểu NV223 thì chính là đăng nhập hộ bằng tài
+    # khoản đó — bên thực thi cần bí mật của nó, không cần mật khẩu riêng.
+    if not dang_nhap_bang and ban_ghi \
+            and kho_tai_khoan_mod.cach_dang_nhap_cua(ban_ghi) == kho_tai_khoan_mod.CACH_HO_SO \
+            and kho_tai_khoan_mod.ho_so_cua(ban_ghi):
+        dang_nhap_bang = kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU
+        gid = kho_tai_khoan_mod.ho_so_cua(ban_ghi)
     dong.dang_nhap_bang = dang_nhap_bang
     if dang_nhap_bang != kho_tai_khoan_mod.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
         return []
-    gid = kho_tai_khoan_mod.lay_tai_khoan_dnh_id(ban_ghi or {})
     ban_ghi_dnh = kho_tai_khoan_mod.tim_theo_id(gid) if gid else None
     if ban_ghi_dnh is None:
         raise LoiOpenAI(

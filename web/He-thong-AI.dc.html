@@ -1910,14 +1910,14 @@ class Component extends DCLogic {
     // Mọi cách từng xuất hiện ở module nào đó (dữ liệu API) đều có chip;
     // cách module hiện tại không hỗ trợ thì chip vô hiệu kèm chú thích.
     const tatCaCach = [];
-    for (const m of (tn.modules || [])) for (const c of (m.cach_dang_nhap_ho_tro || [])) if (!tatCaCach.includes(c)) tatCaCach.push(c);
+    for (const m of ((s.tn && s.tn.modules) || [])) for (const c of (m.cach_dang_nhap_ho_tro || [])) if (!tatCaCach.includes(c)) tatCaCach.push(c);
     const chipCach = cachDnHoTro.concat(tatCaCach.filter((c) => !cachDnHoTro.includes(c)));
     const dsCachDn = chipCach.map((c) => ({ nhan: vietHoa(c), on: cachDn === c, tat: !cachDnHoTro.includes(c), pick: () => { if (cachDnHoTro.includes(c)) this.setState({ tkCachDn: c }); } }));
     const thieuCach = tatCaCach.filter((c) => !cachDnHoTro.includes(c));
     const chuThichCachDn = thieuCach.length ? ('Module này chưa hỗ trợ đăng nhập bằng ' + thieuCach.map(vietHoa).join(' / ') + '.') : '';
     // Tài khoản hồ sơ đã lưu = tài khoản của module cung cấp khả năng hồ sơ
     // (dữ liệu API: cung_cap của module, không gõ tên module ở khung).
-    const idModHoSo = new Set((tn.modules || []).filter((m) => (m.cung_cap || []).includes('dang_nhap_danh_tinh')).map((m) => m.id));
+    const idModHoSo = new Set(((s.tn && s.tn.modules) || []).filter((m) => (m.cung_cap || []).includes('dang_nhap_danh_tinh')).map((m) => m.id));
     const dsHoSo = (s.dlDs || []).filter((t) => t && idModHoSo.has(t.module_id)).map((t) => ({ id: t.id, nhan: t.email || t.nhan || t.id, on: s.tkHoSo === t.id, pick: () => { this.setState({ tkHoSo: t.id }); } }));
     const trChon = modChon ? truongCua(modChon) : [];
     const ckChon = modChon ? ((s.mods.find((x) => x && x.id === modChon.id) || {}).cau_hinh_cong_khai || {}) : {};

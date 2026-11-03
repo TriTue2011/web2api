@@ -675,7 +675,8 @@ def test_form_them_dang_nhap_goi_dung_api_cu_va_chon_tai_khoan_moi(trang, tmp_pa
         yc = trang.js("window.__yc")
         post = [y for y in yc if y["m"] == "POST"]
         assert post[0]["u"].endswith("api/tai-khoan/da-luu")
-        assert post[0]["b"] == {"email": "moi.nv282@example.com", "mat_khau": MAT_KHAU_GIA, "module_id": "claude-web", "nhan": "Nhãn thử", "bac_goi": "plus"}
+        assert post[0]["b"] == {"email": "moi.nv282@example.com", "mat_khau": MAT_KHAU_GIA, "module_id": "claude-web", "nhan": "Nhãn thử", "bac_goi": "plus",
+                                "cach_dang_nhap": "email"}  # NV300: cách đăng nhập theo từng tài khoản
         dn = [y for y in post if "/dang-nhap" in y["u"] and "/da-luu/" in y["u"]]
         assert dn and dn[0]["b"] == {"module_id": "claude-web", "kiem_tra_lai": False}, dn
         # mật khẩu đã rời trang

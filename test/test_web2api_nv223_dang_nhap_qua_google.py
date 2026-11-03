@@ -370,11 +370,11 @@ def test_gia_tri_dang_nhap_bang_sai_bi_tu_choi(mod, dich_vu_gia):
     assert dich_vu_gia.da_luu == [] and dich_vu_gia.onboard == []
 
 
-def test_cap_khong_ho_tro_grok_truc_tiep(mod, dich_vu_gia):
-    # NV271: Claude thẳng nay ĐƯỢC hỗ trợ (email + mã một lần, test ở
-    # test_nv271_dnt_claude_http.py). Giữ ý nghĩa an toàn cũ bằng một cặp
-    # VẪN chưa hỗ trợ: Grok thẳng không có đường onboard ở bảng này.
-    d = _dong(email=EMAIL_GROK, module_cua="grok-web",
+def test_cap_khong_ho_tro_module_khong_co_luong_truc_tiep(mod, dich_vu_gia):
+    # NV271: Claude thẳng nay ĐƯỢC hỗ trợ (email + mã một lần); NV300: Grok
+    # thẳng cũng ĐƯỢC hỗ trợ (form email của grok.com). Giữ ý nghĩa an toàn
+    # cũ bằng một module KHÔNG có luồng onboard nào ở bảng này.
+    d = _dong(email=EMAIL_GROK, module_cua="gemini-web",
               dang_nhap_bang="truc_tiep")
     kq = _chay(mod.dang_nhap(d))
     assert not kq.thanh_cong

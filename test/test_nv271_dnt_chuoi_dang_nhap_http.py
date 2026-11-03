@@ -527,7 +527,7 @@ def test_a3_grok_thang_che_do_truc_tiep_trinh_duyet_gia_thanh_cong(moi_truong_ht
 
     # Trình duyệt giả trả cookie đã có sso và x-userid (lay_uid_tu_phien không gọi mạng)
     td = TrinhDuyetGia(trang={
-        "https://x.com/login": {
+        "https://grok.com/sign-in": {
             "tin_hieu": ["thanh_cong"],
             "cookie": {"sso": SSO_GROK, "x-userid": UID_GROK},
         }

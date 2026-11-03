@@ -169,7 +169,7 @@ class Module:
         self._lan_t2 = {}
         # Trình duyệt vừa dùng (test kiểm tra thứ tự bước).
         self._trinh_duyet_da_dung = None
-        # Chế độ đăng nhập: "truc_tiep" (email+mật khẩu trên x.com) hoặc
+        # Chế độ đăng nhập: "truc_tiep" (email+mật khẩu trên form đăng nhập của grok.com) hoặc
         # "google" (SSO Google, lưu phiên). Mặc định "truc_tiep".
         # NV300: chỉ còn làm MẶC ĐỊNH ĐỌC NGƯỢC cho tài khoản chưa có cách
         # riêng; quyết định thật theo từng tài khoản (xem cach_dang_nhap_cua).
@@ -208,7 +208,7 @@ class Module:
         che_do = str(cau_hinh.get("che_do_dang_nhap") or "truc_tiep").strip().lower()
         if che_do not in ("truc_tiep", "google"):
             return ("che_do_dang_nhap phải là «truc_tiep» (email+mật khẩu trên "
-                    f"x.com) hoặc «google» (SSO Google), nhận {che_do!r}.")
+                    f"grok.com) hoặc «google» (SSO Google), nhận {che_do!r}.")
         self._che_do_dang_nhap = che_do
         # NV93: bỏ tài khoản đã bị go_tai_khoan gỡ tường minh; khôi phục bản
         # ghi làm giàu từ kho riêng (khởi động lại không mất).
@@ -602,9 +602,14 @@ class Module:
 
     # ── Đăng nhập + khôi phục theo hợp đồng NV67/NV88 (NV89) ──────────
 
-    # Đăng nhập grok.com qua SSO của X (không có form đăng nhập riêng trên
-    # grok.com). CHƯA KIỂM với trình duyệt thật / X thật.
-    _URL_DANG_NHAP = "https://x.com/login"
+    # NV300: đường TRỰC TIẾP = form email + mật khẩu của CHÍNH grok.com (màn
+    # «Đăng nhập»: bốn nút nhà cung cấp, dòng «hoặc», ô email, nút «Tiếp tục», rồi
+    # bước mật khẩu). Trước đây mở x.com/login (tài khoản X) — sai với tài khoản
+    # hotmail/outlook. CHƯA KIỂM trên grok.com thật (cần NV293, dừng ở CAPTCHA/
+    # Cloudflare, không vượt). Bộ điều khiển chọn phần tử theo tên logic
+    # («email», «tiep_tuc», «mat_khau», «dang_nhap») theo CẤU TRÚC — module
+    # không bao giờ gọi tên nút nhà cung cấp (Google/X/Apple/Github).
+    _URL_DANG_NHAP = "https://grok.com/sign-in"
 
     # -- khoá tài khoản mờ -------------------------------------------------
 
@@ -718,7 +723,7 @@ class Module:
         """BƯỚC ĐĂNG NHẬP DUY NHẤT NẰM TRONG MODULE: lõi chỉ đưa bộ điều khiển.
 
         Hai đường theo CÁCH CỦA TỪNG TÀI KHOẢN (NV300): ``email`` — email +
-        mật khẩu trên x.com/login; ``google`` — SSO Google, lưu phiên Google
+        mật khẩu trên form grok.com/sign-in; ``google`` — SSO Google, lưu phiên Google
         để lần sau chỉ bấm «tiếp tục với Google». Không truyền cách thì đọc
         ngược cài đặt chung cũ ``che_do_dang_nhap``. Cả hai đều cố vượt thử thách
         truy cập (tối đa 3 lượt, bằng helper lõi dùng chung
@@ -800,7 +805,7 @@ class Module:
                                           trinh_duyet, totp=None,
                                           ma_loi_rieng: bool = False
                                           ) -> KetQuaDangNhap:
-        """Đăng nhập trực tiếp bằng email/mật khẩu trên x.com (như OpenAI).
+        """Đăng nhập trực tiếp bằng email/mật khẩu trên form của grok.com (như OpenAI).
 
         Có TOTP đã lưu thì 2FA sau bước mật khẩu được điền mã qua kênh TOTP
         của module (xem _xu_ly_2fa); không có TOTP thì 2FA vẫn can_nguoi.
@@ -848,7 +853,9 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         mat_khau_tho = mat_khau.lay()
         try:
+            # Hai bước như màn thật: email → «Tiếp tục» → mật khẩu → đăng nhập.
             await trinh_duyet.dien("email", email)
+            await trinh_duyet.bam("tiep_tuc")
             await trinh_duyet.dien("mat_khau", mat_khau_tho)
             await trinh_duyet.bam("dang_nhap")
         finally:
@@ -1079,7 +1086,7 @@ class Module:
     #   tối đa 3 lượt theo NV90 có sẵn rồi dừng ở can_nguoi, và chế độ
     #   google của grok-web chỉ tái dùng hồ sơ Google đã đăng nhập, không
     #   tự điền mật khẩu/TOTP Google (tai_dung_ho_so không bao giờ dien()).
-    #   TOTP ở đây chỉ áp cho chế độ truc_tiep (form x.com/login).
+    #   TOTP ở đây chỉ áp cho chế độ truc_tiep (form grok.com/sign-in).
 
     def dang_ky_trinh_duyet(self, ham_tao) -> None:
         """Đăng ký factory bộ điều khiển trình duyệt RIÊNG cho module này.

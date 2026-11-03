@@ -427,6 +427,8 @@ class GrokWebOnboardReq(BaseModel):
     email: str = ""
     password: str = ""
     totp_secret: str = ""
+    # NV300: cách đăng nhập của tài khoản — "email" | "google" | "" (cách cũ).
+    method: str = Field(default="", pattern=r"^(email|google)?$")
 
 
 
@@ -1709,7 +1711,7 @@ async def api_grok_web_onboard(req: GrokWebOnboardReq, request: Request) -> dict
     email_tk, mat_khau, hat_giong = bu_credential(req)
     session = await start_grok_web_login(
         profile=req.profile, email=email_tk, password=mat_khau,
-        totp_secret=hat_giong, novnc_url=novnc,
+        totp_secret=hat_giong, novnc_url=novnc, method=req.method,
     )
     if req.email.strip() and req.password.strip():
         try: save_account(req.email, req.password, req.totp_secret, "")
