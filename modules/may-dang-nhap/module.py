@@ -157,16 +157,24 @@ _DUONG_ONBOARD_THEO_LUONG = {
 _DANG_NHAP_BANG_HOP_LE = ("", "truc_tiep", "google")
 
 
+#: NV300: luồng mà tài khoản KHÔNG khai «đăng nhập bằng» thì đi đường THẲNG
+#: (email + mật khẩu của chính tài khoản), không rơi về đường Google chung.
+#: Lỗi thật: tài khoản Grok thêm bằng email (giao diện cũ chưa gửi cách đăng
+#: nhập, bản ghi chỉ có mật khẩu) bị đưa qua đăng nhập Google bằng email
+#: outlook. Claude KHÔNG vào đây (tạm thời chỉ Google theo chủ máy).
+_LUONG_MAC_DINH_TRUC_TIEP = frozenset({"chatgpt", "grok"})
+
+
 def _dang_nhap_bang_mac_dinh(module_cua: Any) -> str:
     """Cách đăng nhập mặc định khi tài khoản chưa khai ``dang_nhap_bang``.
 
-    Theo DỮ LIỆU module sở hữu (không đoán từ đuôi email): nhóm chatgpt →
-    «truc_tiep» (OpenAI gốc — đúng như c2a đo thật 21/10: 30/30 tài khoản
-    ChatGPT đều OpenAI gốc, đi đường Google cũ chỉ cho log «không phiên
-    Google, không mật khẩu → bỏ lượt»); các nhóm khác → "" (giữ đường cũ).
+    Theo DỮ LIỆU module sở hữu (không đoán từ đuôi email): luồng trong
+    ``_LUONG_MAC_DINH_TRUC_TIEP`` → «truc_tiep» (ChatGPT: OpenAI gốc — đúng
+    như c2a đo thật 21/10: 30/30 tài khoản ChatGPT đều OpenAI gốc); các nhóm
+    khác → "" (giữ đường cũ).
     """
     luong = _LUONG_THEO_MODULE_ID.get(str(module_cua or "").strip())
-    return "truc_tiep" if luong == "chatgpt" else ""
+    return "truc_tiep" if luong in _LUONG_MAC_DINH_TRUC_TIEP else ""
 
 
 def _ten_ho_so_theo_dich_vu(dich_vu: str, email: str) -> str:
@@ -1390,7 +1398,11 @@ class Module:
                         huong_dan="Tài khoản khai đăng nhập qua Google nhưng "
                                   "chưa gắn được tài khoản Google đã lưu — "
                                   "kiểm tra lại trường «Đăng nhập bằng».")
-        khoa_tk = email_tho.lower()
+        # NV300: sổ «lỗi vĩnh viễn / thử / hỏng liên tiếp» theo (đường, email):
+        # dấu «gap_captcha» của lượt Google KHÔNG được chặn đường email thẳng
+        # của cùng một địa chỉ (và ngược lại). Đường Google/ChatGPT cũ giữ khoá cũ.
+        khoa_tk = email_tho.lower() if dich_vu_key is None \
+            else f"{dich_vu_key}|{email_tho.lower()}"
         st = self._nv145b_trang_thai()
 
         # 1. Lỗi vĩnh viễn đã đánh dấu: dừng hẳn, không thử lại

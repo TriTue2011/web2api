@@ -114,3 +114,23 @@ def test_request_chi_nhan_cach_hop_le():
     assert GrokWebOnboardReq().method == ""
     with pytest.raises(Exception):
         GrokWebOnboardReq(method="x")
+
+
+@pytest.mark.parametrize("trang_thai,dong", [("success", True), ("failed", True), ("need_manual", False)])
+def test_chay_dong_trinh_duyet_khi_xong_hoac_loi_giu_khi_cho_nguoi(monkeypatch, trang_thai, dong):
+    """NV300 vòng đời: xong/hỏng → đóng ngay; chờ người → giữ (vòng quét nhàn rỗi đóng sau hạn)."""
+    da_dong = []
+
+    async def chay_trong(session, mk):
+        session.state = trang_thai
+
+    async def close_profile(profile, **k):
+        da_dong.append(profile)
+        return True
+
+    monkeypatch.setattr(gwl, "_chay_trong", chay_trong)
+    monkeypatch.setattr(pool, "close_profile", close_profile)
+    session = gwl.GrokWebLoginSession(profile="grok-vd", email="a@example.com", state="starting", message="")
+    asyncio.run(gwl._chay(session, "mk-gia"))
+    assert (da_dong == ["grok-vd"]) is dong
+    assert not pool.dang_dang_nhap("grok-vd")        # cờ «đang đăng nhập» luôn được nhả

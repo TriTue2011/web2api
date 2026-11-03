@@ -360,12 +360,34 @@ class HoSoDangBan(RuntimeError):
         self.cho_toi_da = cho_toi_da
 
 
+# W2A: NV300 — VÒNG ĐỜI trình duyệt (chủ máy 03/11/2026: «sao không đóng trình duyệt, không tràn RAM hay leak»).
+# Đo thật 16:10: một Chromium mở 5 phút vẫn chạy chờ người, container 625 MiB / 2 GiB, 158 tiến trình. Vòng quét nhàn rỗi
+# cũ BỎ QUA hồ sơ «đang đăng nhập»/«mở tay» vô thời hạn nên trình duyệt chờ người không bao giờ đóng.
+#: Trần số ngữ cảnh (trình duyệt) mở ĐỒNG THỜI; yêu cầu thứ ba xếp hàng tối đa `CHO_CHO_TRONG_GIAY` rồi báo bận.
+TRAN_NGU_CANH_DONG_THOI = 2
+CHO_CHO_TRONG_GIAY = 20.0
+#: Hồ sơ đang đăng nhập/chờ người mà KHÔNG có hoạt động (dùng pool hoặc có người xem màn hình) quá hạn này thì đóng.
+#: Lượt lái trang dài nhất là 420 giây (auto_login) nên 600 giây không cắt ngang lượt đang chạy.
+HAN_KHONG_HOAT_DONG_GIAY = 600.0
+#: Hồ sơ mở TAY qua noVNC (người đăng nhập, c2a canh tối đa 60 phút) được giữ lâu hơn.
+HAN_KHONG_HOAT_DONG_TAY_GIAY = 3600.0
+
+
+class TranNguCanh(RuntimeError):
+    """Đã đủ `TRAN_NGU_CANH_DONG_THOI` trình duyệt đang mở và không ai nhả được — báo bận, không mở thêm."""
+
+    def __init__(self, dang_mo: int):
+        super().__init__(f"Đã mở {dang_mo} trình duyệt (trần {TRAN_NGU_CANH_DONG_THOI}) — thử lại sau.")
+        self.dang_mo = dang_mo
+
+
 @dataclass
 class _PoolEntry:
     ctx: BrowserContext
     page: Any
     headless: bool
     last_used: float = 0.0
+    last_view: float = 0.0  # W2A: NV300 — lần cuối có người XEM màn hình (kéo dài hạn chờ người)
 
 
 class BrowserPool:
@@ -428,6 +450,7 @@ class BrowserPool:
         Để chủ máy XEM lỗi nằm ở đâu khi đăng nhập tự động (28/10/2026, như c2a mở noVNC) mà KHÔNG phải mở thêm dịch vụ nào ra mạng:
         đi qua API có khoá sẵn của dịch vụ. Chỉ chụp khi có người hỏi, có hạn thời gian, và MỘT lần chụp tại một thời điểm (hỏi dồn thì
         dùng lại ảnh vừa chụp trong 0,8 giây) nên không làm nghẽn trình duyệt đang đăng nhập."""
+        self.ghi_nhan_xem()  # W2A: NV300 — có người xem → không đóng giữa chừng
         now = time.monotonic()
         anh_cu = getattr(self, "_anh_cuoi", None)
         if anh_cu is not None and now - anh_cu[0] < 0.8:
@@ -503,47 +526,95 @@ class BrowserPool:
         while True:
             try:
                 await asyncio.sleep(60)
-                now = time.time()
-                to_evict = []
-                async with self._global_lock:
-                    for profile, entry in list(self._contexts.items()):
-                        # ĐANG ĐĂNG NHẬP thì không đụng vào, dù `last_used` đã cũ.
-                        # `auto_login` gọi `pool.get()` ĐÚNG MỘT LẦN rồi lái trang
-                        # suốt 420 giây mà không chạm lại pool, nên `last_used`
-                        # đứng im từ giây đầu và tới phút thứ 5 vòng này đóng ngay
-                        # trình duyệt của lượt đăng nhập ĐANG chạy.
-                        #
-                        # Đo thật 24/08/2026 (google-nguoi-b): mở context
-                        # 15:26:39 → "auto-evicting idle" 15:31:51 → hai phút cuối
-                        # lái một trang đã đóng, mọi thao tác ném lỗi rồi bị nuốt,
-                        # kết luận "Không lọt được ô mật khẩu". Và người được mời
-                        # ra noVNC gõ captcha thì không còn trình duyệt nào để gõ.
-                        #
-                        # Đây đúng cái bẫy `close_profile` đã có cờ
-                        # `bo_qua_khi_dang_nhap` để tránh — vòng quét này thì chưa.
-                        if self.dang_dang_nhap(profile) or self.is_manual(profile):
-                            continue
-                        # Fallback cleanup for automation that did not close
-                        # its context explicitly. HTTP warmup holds no tabs.
-                        if now - entry.last_used > 300:
-                            lock = self._locks.get(profile)
-                            if lock and not lock.locked():
-                                to_evict.append(profile)
-                for profile in to_evict:
-                    lock = await self._lock_for(profile)
-                    if not lock.locked():
-                        async with lock:
-                            entry = self._contexts.get(profile)
-                            # Kiểm lại cờ: lượt đăng nhập có thể vừa bắt đầu trong
-                            # lúc đang xếp hàng chờ khoá.
-                            if (entry and now - entry.last_used > 300
-                                    and not self.dang_dang_nhap(profile) and not self.is_manual(profile)):
-                                logger.info("auto-evicting idle profile=%s", profile)
-                                await self._evict(profile)
+                await self._quet_nhan_roi(time.time())
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("eviction loop error: %s", e)
+
+    def ghi_nhan_xem(self) -> None:
+        """W2A: NV300 — có người đang XEM màn hình (chủ máy mở khung xem trực tiếp): kéo dài hạn chờ người."""
+        bay_gio = time.time()
+        for entry in self._contexts.values():
+            entry.last_view = bay_gio
+
+    def so_ngu_canh_dang_mo(self) -> int:
+        return len(self._contexts)
+
+    def _han_khong_hoat_dong(self, profile: str) -> float:
+        return HAN_KHONG_HOAT_DONG_TAY_GIAY if self.is_manual(profile) else HAN_KHONG_HOAT_DONG_GIAY
+
+    async def _quet_nhan_roi(self, now: float) -> list:
+        """Một lượt quét đóng trình duyệt nhàn rỗi/quá hạn. Trả danh sách hồ sơ đã đóng.
+
+        - Hồ sơ KHÔNG đăng nhập/KHÔNG mở tay: đóng sau 300 giây nhàn rỗi (như c2a).
+        - Hồ sơ đang đăng nhập hoặc mở tay: giữ NGUYÊN khi còn hoạt động (dùng pool hoặc có người xem
+          màn hình) trong hạn `_han_khong_hoat_dong`; quá hạn thì ĐÓNG và bỏ cờ — W2A: NV300, trước đây
+          bỏ qua vô thời hạn nên trình duyệt chờ người nằm mãi (tràn RAM).
+        """
+        to_evict: dict = {}
+        async with self._global_lock:
+            for profile, entry in list(self._contexts.items()):
+                # ĐANG ĐĂNG NHẬP thì không đụng vào trong hạn: `auto_login` gọi `pool.get()` ĐÚNG MỘT LẦN rồi lái
+                # trang tới 420 giây, `last_used` đứng im (đo thật 24/08/2026: bị đóng giữa chừng ở phút thứ 5).
+                hoat_dong = max(entry.last_used, entry.last_view)
+                co_co = self.dang_dang_nhap(profile) or self.is_manual(profile)
+                if co_co:
+                    qua_han = now - hoat_dong > self._han_khong_hoat_dong(profile)
+                    if not qua_han:
+                        continue
+                    to_evict[profile] = True
+                elif now - entry.last_used > 300:
+                    to_evict[profile] = False
+        da_dong = []
+        for profile, cuong_buc in to_evict.items():
+            lock = self._locks.get(profile) or await self._lock_for(profile)
+            if lock.locked():
+                continue
+            async with lock:
+                entry = self._contexts.get(profile)
+                if entry is None:
+                    continue
+                co_co = self.dang_dang_nhap(profile) or self.is_manual(profile)
+                if co_co and not (cuong_buc and now - max(entry.last_used, entry.last_view)
+                                  > self._han_khong_hoat_dong(profile)):
+                    continue
+                if not co_co and not (now - entry.last_used > 300):
+                    continue
+                logger.info("auto-evicting %s profile=%s",
+                            "het-han-cho-nguoi" if co_co else "idle", profile)
+                self._manual_profiles.discard(profile)
+                self._dang_dang_nhap.discard(profile)
+                await self._evict(profile)
+                da_dong.append(profile)
+        return da_dong
+
+    async def _giu_cho_ngu_canh(self) -> None:
+        """W2A: NV300 — trần số trình duyệt mở đồng thời. Nhả trình duyệt nhàn rỗi (không đăng nhập, không
+        mở tay) lâu nhất trước; vẫn đủ trần thì chờ tối đa `CHO_CHO_TRONG_GIAY` rồi ném `TranNguCanh`."""
+        han = time.monotonic() + CHO_CHO_TRONG_GIAY
+        while True:
+            if len(self._contexts) < TRAN_NGU_CANH_DONG_THOI:
+                return
+            ung_vien = sorted(
+                (p for p in self._contexts
+                 if not self.dang_dang_nhap(p) and not self.is_manual(p)),
+                key=lambda p: self._contexts[p].last_used)
+            for p in ung_vien:
+                lock = self._locks.get(p)
+                if lock is not None and lock.locked():
+                    continue
+                lk = await self._lock_for(p)
+                async with lk:
+                    if p in self._contexts and not self.dang_dang_nhap(p) and not self.is_manual(p):
+                        logger.info("nhả trình duyệt nhàn rỗi để nhường chỗ (trần) profile=%s", p)
+                        await self._evict(p)
+                break
+            if len(self._contexts) < TRAN_NGU_CANH_DONG_THOI:
+                return
+            if time.monotonic() >= han:
+                raise TranNguCanh(len(self._contexts))
+            await asyncio.sleep(min(1.0, max(0.0, han - time.monotonic())))
 
     def _profile_dir(self, profile: str) -> Path:
         # Tên profile đến từ request. Ghép thẳng vào đường dẫn thì "../../etc"
@@ -891,8 +962,13 @@ class BrowserPool:
                 logger.info("force-recreate profile=%s", profile)
                 await self._evict(profile)
 
-            ctx, page = await self._open_context(profile, headless=headless)
-            self._contexts[profile] = _PoolEntry(ctx=ctx, page=page, headless=headless, last_used=time.time())
+            # W2A: NV300 — trần số trình duyệt đồng thời; kiểm trần + mở + ghi sổ trong MỘT khoá để hai hồ sơ cùng
+            # lúc không cùng lọt qua trần.
+            khoa_mo = self.__dict__.setdefault("_khoa_mo", asyncio.Lock())
+            async with khoa_mo:
+                await self._giu_cho_ngu_canh()
+                ctx, page = await self._open_context(profile, headless=headless)
+                self._contexts[profile] = _PoolEntry(ctx=ctx, page=page, headless=headless, last_used=time.time())
             if manual:
                 self._manual_profiles.add(profile)
             return ctx

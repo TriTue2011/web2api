@@ -184,7 +184,7 @@ def can_tinh_nang(nhom: str):
 
 
 # W2A: Tắt docs_url, redoc_url, openapi_url theo luật kho để không lộ thông tin API khi chưa có khoá.
-app = FastAPI(title="captcha-solver", version="0.1.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="captcha-solver", version="0.1.1", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)  # W2A: NV300 0.1.1 — method cho Grok, vòng đời trình duyệt
 app.include_router(workspace_router(pool, require_api_key, can_tinh_nang))
 
 

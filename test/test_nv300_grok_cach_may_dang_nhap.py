@@ -101,3 +101,23 @@ def test_loi_gan_bi_mat_cach_ho_so_thanh_dang_nhap_ho(tmp_path, monkeypatch):
     for b in bm:
         if b is not None:
             b.xoa()
+
+
+def test_dau_gap_captcha_cua_duong_google_khong_chan_duong_email_thang(mod, dich_vu_gia):
+    """Sổ lỗi vĩnh viễn theo (đường, email): lượt Google từng gặp CAPTCHA cho địa chỉ này
+    KHÔNG làm đường email thẳng bị chặn «cần người» mà không gọi dịch vụ."""
+    mod._nv145b_trang_thai()["vinh_vien"][EMAIL_GROK.lower()] = "gap_captcha"
+    d = _dong_grok("email")
+    kq = _chay(mod.dang_nhap(d))
+    assert kq.thanh_cong, getattr(kq, "ma_loi", "")
+    assert len(_onboard_cua(dich_vu_gia, "grok-web")) == 1
+
+
+def test_grok_khong_khai_gi_mac_dinh_duong_thang_con_claude_giu_google(mod, dich_vu_gia):
+    d = _dong(email=EMAIL_GROK, mk=MK_GPT, totp=None, module_cua="grok-web")   # không cach, không dang_nhap_bang
+    assert _chay(mod.dang_nhap(d)).thanh_cong
+    assert dich_vu_gia.google_bat_dau == []
+    assert _onboard_cua(dich_vu_gia, "grok-web")[0]["method"] == "email"
+    d2 = _dong(email="chu.claude2@example.com", mk=MK_GPT, totp=None, module_cua="claude-web")
+    _chay(mod.dang_nhap(d2))
+    assert len(dich_vu_gia.google_bat_dau) == 1       # Claude chưa khai gì vẫn đường cũ (tạm chỉ Google)
