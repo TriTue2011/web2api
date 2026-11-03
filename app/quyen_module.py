@@ -40,6 +40,8 @@ _TRUONG_KHONG_QUYEN = frozenset({
     # giới hạn độ dài); không cấp khả năng nào. Trước 28/10/2026 thiếu ở đây nên mọi module thêm nhóm con (37/46 manifest) bị
     # coi là «xin thêm quyền truong_la: nhom_con» và KHÔNG cập nhật được nếu không duyệt tay (chủ máy: «toàn bộ tiện ích»).
     "nhom_con",
+    # NV301: `thay_the` [id module] CHỈ để khung ẩn tab/mục của module bị thay (chỉ MỘT tab cho một việc); không cấp khả năng.
+    "thay_the",
     # NV283: `loai_tai_khoan_ten` CHỈ là nhãn hiển thị loại tài khoản (như
     # `loai_ten`); lõi không dùng nó để cấp khả năng hay chọn đường nào.
     "loai_tai_khoan_ten",

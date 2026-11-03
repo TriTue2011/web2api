@@ -83,7 +83,6 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `tien-ich-doi-song` (Tiện ích đời sống, chuẩn C2 `thiet_bi`, NV165) | Có — bản tin tóm tắt theo nguồn/mốc giờ (chống trùng, mỗi mốc 1 lần/ngày), chỉ đường và tra địa điểm qua Nominatim/OpenStreetMap + OSRM (không khoá; đường cào Google không chính thức của c2a KHÔNG port), vùng khoảng cách tự học từ dữ liệu thu thập (chưa học đủ thì luôn báo có mặt), kiểm tra/chia lô dấu câu lời thoại; địa chỉ không vào log, tắt được gọi mạng (`bat_tim_duong`); kiểm với dịch vụ GIẢ; **chưa kiểm Nominatim/OSRM thật**; KHÔNG port lớp gửi Zalo/Telegram và `trong_xe` (phụ thuộc camera) | 20/10/2026 |
 | Module `tro-ly-giao-vien` (Trợ lý giáo viên, đợt 1 — chuẩn C2 `thiet_bi`) | Có — port thuần từ c2a: ra đề + chấm heuristic (không gọi mô hình), rubric theo môn/lớp, gợi ý bậc thang không đập đáp án, giáo án 6 pha, tiếng Anh theo cấp CEFR, xác định lớp từ năm sinh (chỉ dùng một lần, không lưu hồ sơ), mục lục từ markdown SGK (dữ liệu không tin); kho đề 0600 ghi nguyên tử cách ly theo danh tính (không IDOR), bài làm học sinh không log, trần 100 đề/danh tính; kiểm với dịch vụ giả. **Đợt 2 (20/10/2026):** chấm tự luận bằng model của lõi qua loopback (barem giáo viên tự khai, điểm model là ĐỀ XUẤT cho giáo viên xác nhận; bài làm rào như dữ liệu không tin trong prompt, điểm tổng tự cộng từ barem; kết quả chấm 0600 theo danh tính, không chứa bài làm) — kiểm với model GIẢ trên test | 20/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
-| Module `youtube-phat` (Máy phát YouTube/Zing qua dịch vụ phụ, NV153 đợt B) | Có — giữ địa chỉ dịch vụ `dich-vu/youtube-phat` + khoá Integration API (`bi_mat`, lưu riêng 0600, chỉ hiện dạng che `…abcd`); hỏi sức khoẻ `GET /api/integration/health` (lỗi → «chưa kết nối được», không ném); địa chỉ kiểm SSRF bằng `app/tu_xa.py` (loopback + LAN nội bộ); khoá chặn khỏi log httpx/httpcore; `thuc_the` chỉ mô tả, không công cụ giả; kiểm với máy chủ giả; **CHƯA kiểm với dịch vụ thật** (đợt A viết song song) | 19/10/2026 |
 | Module `youtube` (Máy phát YouTube/Zing chạy thẳng trong web2api, NV277) + khả năng lõi `/m/<id>/api/...` | Có — đường integration `/m/youtube/api/integration/*` (Bearer bằng khoá tích hợp riêng của module: thiếu → 401, khoá module khác → 403) + đường luồng mở bằng vé ký `app/url_ky` hạn 3600 giây (giả/hết hạn → 404 trống); cả hai nhóm đường chỉ nhận nguồn LAN (giới hạn đã biết: không chặn được qua hầm cloudflared — cần luật ingress); rơ-le nối lại tối đa 5 lần từ đúng byte, dừng là dừng hẳn (phiên chỉ RAM); tìm/giải YouTube bằng yt-dlp, tìm Zing qua endpoint gợi ý công khai; giải luồng Zing/Facebook chưa chuyển (502 rõ); kiểm với nguồn giả cục bộ; **CHƯA kiểm với YouTube/loa/HA thật, chưa đo RSS/kích thước ảnh** (không có docker ở môi trường làm việc) | 02/11/2026 |
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
 | Module `chitieu` (Sổ chi tiêu theo hũ JARS, NV160) | Có — ghi/xem chi tiêu theo kỳ, tự bù hũ vượt theo thứ tự, cổng xác nhận khi vượt tổng ngân sách, cảnh báo ngưỡng, tạm ứng công ty; mỗi danh tính đăng nhập một sổ riêng; port từ c2a; **chưa kiểm với dữ liệu thật** | 20/10/2026 |
@@ -3431,45 +3430,13 @@ Hạng: `A` (mã của dự án). Tiền tố thực thể: `maytram`.
 
 ---
 
-### Module youtube-phat — Máy phát YouTube/Zing qua dịch vụ phụ (NV153 đợt B)
-
-**Mô tả.** Điều khiển máy phát YouTube/Zing qua dịch vụ `dich-vu/youtube-phat`
-(HTTP nội bộ/LAN): module giữ địa chỉ dịch vụ + khoá Integration API, hỏi sức
-khoẻ `GET /api/integration/health`; bản thân module KHÔNG phát nhạc và không
-gọi ra youtube.com — dịch vụ mới là nơi gọi ra ngoài
-(youtube.com/googlevideo.com/ytimg.com/zingmp3.vn). Khác c2a ở chỗ dịch vụ
-phục vụ ở gốc `/api/integration/*` (không tiền tố `/yt`), Home Assistant chỉ
-cần đổi URL gốc + token mới. Mã nguồn: `modules/youtube-phat/` (module) +
-`dich-vu/youtube-phat/` (dịch vụ: đợt A, worker khác viết song song). Tiền tố
-thực thể: `youtube_phat`. Hạng: `B` (mã tự viết, gọi dịch vụ ngoài lõi).
-
-**Cần gì.**
-- Dịch vụ `dich-vu/youtube-phat` đang chạy và tới được từ máy web2api (xem
-  `dich-vu/youtube-phat/README.md`: dựng ảnh, chạy container, mở cổng LAN).
-- Khoá Integration API: đọc tệp `integration_token` trong `/data/youtube_phat`
-  của dịch vụ.
-- Mạng tới dịch vụ: trường `dich_vu_url` BẮT BUỘC, không mặc định (NV181 bỏ
-  mặc định `http://127.0.0.1:8713` — loopback bị chính lõi chặn khi cài vì
-  lõi chạy trong container); nhập địa chỉ LAN của máy chạy dịch vụ hoặc tên
-  container trong mạng Docker nội bộ; địa chỉ lúc cài kiểm bằng
-  `app/tu_xa.py` (chống SSRF; cho phép LAN nội bộ, chặn loopback).
-- RAM/đĩa: chưa đo (điền `null` theo khuôn).
-
-**Cách cài.**
-
-1. Xem thông báo: `curl -s -H "Authorization: Bearer $K" $W/api/modules/thong-bao` — có `"id": "youtube-phat"`.
-2. Tải về: `curl -s -X POST -H "Authorization: Bearer $K" $W/api/nguon-git/cai/youtube-phat`
-3. Cài cấu hình: `POST /api/modules/youtube-phat/cai` với thân
-   `{"cau_hinh": {"dich_vu_url": "http://192.168.1.10:8713",
-   "khoa_dich_vu": "<noi-dung-tep-integration_token>"}}` — lõi kiểm địa chỉ
-   chống SSRF trước khi lưu; khoá lưu riêng 0600, không API nào trả lại.
 ### Module youtube — Máy phát YouTube/Zing chạy thẳng trong web2api (NV277)
 
 **Mô tả.** Máy phát YouTube/Zing chạy THẲNG trong tiến trình web2api cho
 Home Assistant (tích hợp `tritue_youtube_player`), KHÔNG cần container
 dịch vụ phụ riêng và không cần c2a. HOÀN TOÀN RIÊNG với module
-`youtube-phat` (module đó chỉ là máy khách của dịch vụ phụ
-`dich-vu/youtube-phat` và giữ nguyên tới khi chủ kho cho gỡ). Mã nguồn:
+`youtube-phat` (module cũ, ĐÃ GỠ khỏi kho: nó chỉ là máy khách của dịch vụ phụ
+`dich-vu/youtube-phat`, dịch vụ đó vẫn còn cho Home Assistant). Mã nguồn:
 `modules/youtube/` (module) + khả năng lõi mới `app/duong_module.py`.
 
 **Khả năng lõi mới (module không tự gắn route).** Lõi sở hữu đường
