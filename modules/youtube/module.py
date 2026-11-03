@@ -204,6 +204,72 @@ class Module:
         self._phien_hien_tai = None
         self._luong.clear()
 
+    # ── thực thể cho trang Đời sống + tab riêng (NV301 mảnh tab) ──────────
+    # Mảnh tab chỉ có thực thể ĐỌC trạng thái: tab tĩnh + ô Đời sống đọc
+    # trạng thái qua đây; nút điều khiển (phát/dừng/chuyển bài/…) đi theo
+    # mảnh lõi và mảnh giao diện. Trang tĩnh KHÔNG gọi thẳng đường
+    # integration (đường đó cần khoá khách tich_hop@youtube, trình duyệt
+    # không có) — mọi lệnh đi qua hành động thực thể của lõi, phiên quản trị.
+
+    def _tien_to_thuc_the(self) -> str:
+        return str((self.manifest or {}).get("tien_to") or "youtube")
+
+    def _phien_trang_thai(self):
+        """(gia_tri, phien) cho ô trạng thái: phiên hiện tại, nếu không còn
+        thì phiên dừng gần nhất, nếu chưa từng phát thì chua_phat."""
+        phien = None
+        if self._phien_hien_tai:
+            phien = self._phien.get(self._phien_hien_tai)
+        if phien is None and self._phien:
+            phien = next(reversed(list(self._phien.values())))
+        if phien is None:
+            return "chua_phat", None
+        if phien.get("status") == "playing":
+            return "dang_phat", phien
+        return "dung", phien
+
+    async def thuc_the(self, loc=None) -> list[dict]:
+        """Một thực thể chỉ-đọc trạng thái phát (rủi ro «doc»).
+
+        Không mang khoá, URL luồng hay thông tin kết nối nào: trạng thái
+        phát là dữ liệu hiển thị, không phải bí mật."""
+        tien_to = self._tien_to_thuc_the()
+        return [{
+            "id": f"{tien_to}.xem",
+            "ten": "YouTube — trạng thái phát",
+            "loai": "cong_cu",
+            "thuoc_tinh": {"nguon_phat": "YouTube, Zing MP3, HTTP trực tiếp"},
+            "mo_ta": ("Trạng thái phát của máy phát YouTube/Zing chạy thẳng "
+                       "trong web2api: bài đang phát, đã dừng hay chưa phát. "
+                       "Điều khiển đầy đủ ở tab YouTube."),
+            "tinh_nang": [{
+                "hanh_dong": "trang_thai",
+                "mo_ta": "Đọc bài đang phát và trạng thái lúc hỏi",
+                "tham_so": {"type": "object", "additionalProperties": False,
+                            "properties": {}},
+            }],
+            "rui_ro_mac_dinh": "doc",
+        }]
+
+    async def trang_thai(self, ids) -> dict:
+        """Trạng thái THẬT lúc hỏi (hợp đồng C1 — lõi `await m.trang_thai(ids)`):
+        chỉ đọc RAM, không gọi mạng, không bao giờ ném."""
+        luc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        gia_tri, _ = self._phien_trang_thai()
+        return {str(i): {"gia_tri": gia_tri, "luc": luc} for i in (ids or [])}
+
+    async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
+        """Điều phối hành động thực thể — mảnh tab chỉ có `trang_thai` (đọc).
+        Lỗi → dict {"ok": False, "loi": ...}, KHÔNG ném."""
+        tham_so = dict(tham_so or {})
+        if id != f"{self._tien_to_thuc_the()}.xem":
+            return {"ok": False, "loi": "khong_thay_thuc_the"}
+        if hanh_dong != "trang_thai":
+            return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
+        gia_tri, phien = self._phien_trang_thai()
+        return {"ok": True, "trang_thai": gia_tri,
+                "phien": self._anh_xa_phien(phien) if phien else None}
+
     # ── tiện ích nội bộ ─────────────────────────────────────────────────
 
     def _sem_trich_xuat(self) -> asyncio.Semaphore:
