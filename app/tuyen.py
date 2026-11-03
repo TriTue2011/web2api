@@ -4517,7 +4517,7 @@ def _gan_bi_mat_dang_nhap_ho(dong, ban_ghi) -> list:
     """
     dang_nhap_bang = str((ban_ghi or {}).get("dang_nhap_bang") or "")
     gid = kho_tai_khoan_mod.lay_tai_khoan_dnh_id(ban_ghi or {})
-    # NV300: cách «hồ sơ» (chọn một tài khoản Google đã lưu) khi bản ghi chưa
+    # NV300: cách «hồ sơ» (chọn một tài khoản hồ sơ đã lưu) khi bản ghi chưa
     # khai «đăng nhập bằng» kiểu NV223 thì chính là đăng nhập hộ bằng tài
     # khoản đó — bên thực thi cần bí mật của nó, không cần mật khẩu riêng.
     if not dang_nhap_bang and ban_ghi \

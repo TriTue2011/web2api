@@ -23,6 +23,8 @@ from app import tu_lam_moi as tlm
 EMAIL = "gmail-chung-gia-nv300@example.com"
 MK_GEMINI = "mat-khau-gia-gemini-nv300"
 GEMINI, GROK, CLAUDE, CHATGPT = "gemini-web", "grok-web", "claude-web", "chatgpt-web"
+NHOM = {GEMINI: "google", GROK: "grok", CLAUDE: "claude", CHATGPT: "chatgpt",
+        "antigravity": "google"}   # provider = NHÓM của module (như manifest)
 
 
 @pytest.fixture(autouse=True)
@@ -32,13 +34,13 @@ def _kho_rieng(tmp_path, monkeypatch):
 
 def _them_gemini():
     return ktk.luu_tai_khoan(EMAIL, MK_GEMINI, None, "Bản Gemini",
-                             module_id=GEMINI, nhom="ai",
+                             module_id=GEMINI, nhom="google",
                              cach_dang_nhap="email")
 
 
 def _them_grok_google(id_ho_so):
     return ktk.luu_tai_khoan(EMAIL, None, None, "Bản Grok",
-                             module_id=GROK, nhom="ai",
+                             module_id=GROK, nhom="grok",
                              cach_dang_nhap="google", ho_so=id_ho_so)
 
 
@@ -67,7 +69,7 @@ def test_them_lai_cung_provider_la_cap_nhat_khong_nhan_doi():
     gem = _them_gemini()
     _them_grok_google(gem["id"])
     gem2 = ktk.luu_tai_khoan(EMAIL, None, None, "Gemini đổi nhãn",
-                             module_id=GEMINI, nhom="ai")
+                             module_id=GEMINI, nhom="google")
     assert gem2["id"] == gem["id"]
     assert len(ktk.tat_ca_ban_ghi()) == 2
     assert ktk.tim_theo_id(gem["id"])["nhan"] == "Gemini đổi nhãn"
@@ -119,9 +121,9 @@ def test_doi_module_vao_phan_vung_da_co_bi_tu_choi():
     grok = _them_grok_google(gem["id"])
     with pytest.raises(ktk.LoiKhoTaiKhoan):
         ktk.luu_tai_khoan(None, None, None, "", id=grok["id"],
-                          module_id=GEMINI, nhom="ai")
+                          module_id=GEMINI, nhom="google")
     with pytest.raises(ktk.LoiKhoTaiKhoan):
-        ktk.dat_module(grok["id"], GEMINI, "ai")
+        ktk.dat_module(grok["id"], GEMINI, "google")
     assert ktk.tim_theo_id(grok["id"])["module_id"] == GROK
 
 
@@ -129,7 +131,7 @@ def test_bon_provider_cung_mot_gmail():
     ids = set()
     for mid in (GEMINI, GROK, CLAUDE, CHATGPT):
         bk = ktk.luu_tai_khoan(EMAIL, "mk-gia-" + mid, None, mid,
-                               module_id=mid, nhom="ai")
+                               module_id=mid, nhom=NHOM[mid])
         ids.add(bk["id"])
     assert len(ids) == 4
     for mid in (GEMINI, GROK, CLAUDE, CHATGPT):
@@ -146,7 +148,7 @@ def test_di_tru_du_lieu_cu_30_chatgpt_7_google_khong_mat_ban_ghi():
         du_lieu[id_] = {
             "id": id_, "email": email, "nhan": "", "mat_khau": "mk-gia",
             "totp_secret": "", "trang_thai": "", "module_id": mid,
-            "nhom": "ai", "cap_nhat": int(time.time()),
+            "nhom": NHOM[mid], "cap_nhat": int(time.time()),
         }
         return id_
 
@@ -159,14 +161,14 @@ def test_di_tru_du_lieu_cu_30_chatgpt_7_google_khong_mat_ban_ghi():
     # Thêm Grok cho một Gmail cũ: bản cũ nguyên vẹn, kho thành 38.
     email_gg = "google3-gia-nv300@example.com"
     grok = ktk.luu_tai_khoan(email_gg, None, None, "", module_id=GROK,
-                             nhom="ai", cach_dang_nhap="google",
+                             nhom="grok", cach_dang_nhap="google",
                              ho_so=id_google[3])
     assert grok["id"] != id_google[3]
     assert len(ktk.liet_ke()) == 38
     assert ktk.tim_theo_id(id_google[3])["module_id"] == GEMINI
     # Cập nhật trong CÙNG provider với bản cũ → vẫn là bản cũ, không nhân đôi.
     ktk.luu_tai_khoan(email_gg, None, None, "nhãn mới", module_id=GEMINI,
-                      nhom="ai")
+                      nhom="google")
     assert len(ktk.liet_ke()) == 38
     assert ktk.tim_theo_id(id_google[3])["nhan"] == "nhãn mới"
     # Gọi cũ không nêu provider, email chỉ có MỘT bản → vẫn cập nhật bản đó.
@@ -219,3 +221,12 @@ def test_hai_vong_nen_doc_lap_loi_va_dung_mot_ben_khong_anh_huong(_sach):
 
     asyncio.run(_chay())
     assert gem.so_lan >= 1 and grok.so_lan >= 1
+
+
+def test_cung_nha_cung_cap_van_chung_mot_ban_ghi_mo_hinh_nv224():
+    """Provider = NHÓM: hai module cùng nhóm Google (gemini-web, antigravity) vẫn
+    là MỘT bản ghi với «dung_cho» tích luỹ (quyết định NV224 của chủ máy)."""
+    a = ktk.luu_tai_khoan(EMAIL, MK_GEMINI, None, "", module_id=GEMINI, nhom="google")
+    b = ktk.luu_tai_khoan(EMAIL, None, None, "", module_id="antigravity", nhom="google")
+    assert a["id"] == b["id"]
+    assert len([x for x in ktk.tat_ca_ban_ghi() if x["email"] == EMAIL]) == 1
