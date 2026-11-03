@@ -4515,6 +4515,8 @@ def _gan_bi_mat_dang_nhap_ho(dong, ban_ghi) -> list:
     THIẾU → 404, TẠM DỪNG → 403 — lỗi rõ TRƯỚC khi module được gọi; bí mật
     lấy từ kho qua ``lay_bi_mat_dang_nhap`` (không qua trình duyệt).
     """
+    # NV300: cách đăng nhập của TÀI KHOẢN gắn một lần cho mọi đường dựng dòng.
+    kho_tai_khoan_mod.gan_cach_dang_nhap(dong, ban_ghi)
     dang_nhap_bang = str((ban_ghi or {}).get("dang_nhap_bang") or "")
     gid = kho_tai_khoan_mod.lay_tai_khoan_dnh_id(ban_ghi or {})
     # NV300: cách «hồ sơ» (chọn một tài khoản hồ sơ đã lưu) khi bản ghi chưa
@@ -4580,8 +4582,6 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
     # dùng hồ sơ đã đăng nhập); email thì vẫn cần mật khẩu như cũ.
     cach_hieu_luc = kho_tai_khoan_mod.cach_dang_nhap_cua(ban_ghi) \
         if ban_ghi else ""
-    ho_so_hieu_luc = kho_tai_khoan_mod.ho_so_cua(ban_ghi) \
-        if ban_ghi else ""
     if cach_hieu_luc == kho_tai_khoan_mod.CACH_HO_SO:
         mat_khau, totp = None, None
     else:
@@ -4609,9 +4609,9 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
         loai=cach_hieu_luc
         if cach_hieu_luc == kho_tai_khoan_mod.CACH_HO_SO else "mat_khau",
         mat_khau=mat_khau, totp=totp)
-    # NV300: module chọn đường theo cách của tài khoản (không đoán).
-    dong.cach_dang_nhap = cach_hieu_luc
-    setattr(dong, kho_tai_khoan_mod.TRUONG_HO_SO, ho_so_hieu_luc)
+    # NV300: module chọn đường theo cách của tài khoản (không đoán) — gắn bằng
+    # kho_tai_khoan_mod.gan_cach_dang_nhap trong _gan_bi_mat_dang_nhap_ho bên dưới
+    # (cùng một chỗ với đường hàng loạt và tự đăng nhập lại).
     # NV248 — cờ «Kiểm tra lại» tường minh từ giao diện: người dùng bấm lại
     # nút đăng nhập sau khi nhận «cần người» (không đoán từ lịch sử).
     dong.kiem_tra_lai = kiem_tra_lai
@@ -4817,11 +4817,13 @@ async def bat_dau_dang_nhap_hang_loat(request: Request):
             except Exception:
                 kho_tai_khoan_mod.ghi_ket_qua_theo_email(
                     dong.email, {"thanh_cong": False, "ma_loi": "loi_module"},
-                    getattr(dong, "module_cua_tai_khoan", "") or module_id)
+                    getattr(dong, "module_cua_tai_khoan", "") or module_id,
+                    _nhom_cua_so(request.app.state.so, getattr(dong, "module_cua_tai_khoan", "") or module_id))
                 raise
             kho_tai_khoan_mod.ghi_ket_qua_theo_email(
                 dong.email, kq,
-                getattr(dong, "module_cua_tai_khoan", "") or module_id)
+                getattr(dong, "module_cua_tai_khoan", "") or module_id,
+                _nhom_cua_so(request.app.state.so, getattr(dong, "module_cua_tai_khoan", "") or module_id))
             return kq
 
         ham_dang_nhap = ham_dang_nhap_ghi
@@ -4953,7 +4955,7 @@ async def dang_nhap_da_luu_theo_module(request: Request):
             # NV283: dòng ném lỗi vẫn là một kết quả thất bại thật.
             kho_tai_khoan_mod.ghi_ket_qua_theo_email(
                 dong.email, {"thanh_cong": False, "ma_loi": "loi_module"},
-                module_so_huu)
+                module_so_huu, _nhom_cua_so(request.app.state.so, module_so_huu))
             raise
         finally:
             # NV223: dọn bí mật đăng nhập hộ sau mỗi dòng
@@ -4961,7 +4963,8 @@ async def dang_nhap_da_luu_theo_module(request: Request):
                 if _bm is not None:
                     _bm.xoa()
         # NV283: mỗi dòng ghi kết quả thật qua hàm bọc chung.
-        kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq, module_so_huu)
+        kho_tai_khoan_mod.ghi_ket_qua_theo_email(
+            dong.email, kq, module_so_huu, _nhom_cua_so(request.app.state.so, module_so_huu))
         if getattr(kq, "thanh_cong", False):
             # NV210: mỗi tài khoản đăng nhập xong thì gắn JWT mới + hồ sơ vào module sở hữu.
             gan_ket_qua_dang_nhap_mod.ap_dung(so_loi, kq, module_so_huu)
@@ -5527,11 +5530,13 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
         except Exception:
             kho_tai_khoan_mod.ghi_ket_qua_theo_email(
                 dong.email, {"thanh_cong": False, "ma_loi": "loi_module"},
-                getattr(dong, "module_cua_tai_khoan", "") or module_id)
+                getattr(dong, "module_cua_tai_khoan", "") or module_id,
+                _nhom_cua_so(request.app.state.so, getattr(dong, "module_cua_tai_khoan", "") or module_id))
             raise
         kho_tai_khoan_mod.ghi_ket_qua_theo_email(
             dong.email, kq,
-            getattr(dong, "module_cua_tai_khoan", "") or module_id)
+            getattr(dong, "module_cua_tai_khoan", "") or module_id,
+            _nhom_cua_so(request.app.state.so, getattr(dong, "module_cua_tai_khoan", "") or module_id))
         return kq
 
     ham_chay = ham_chay_ghi

@@ -624,6 +624,25 @@ def cach_dang_nhap_cua(ban_ghi: dict, mac_dinh: str = "") -> str:
     return mac_dinh
 
 
+def gan_cach_dang_nhap(dong, ban_ghi: dict | None) -> None:
+    """NV300 — MỘT chỗ gắn «cách đăng nhập» của bản ghi vào dòng chạy (``DongDaTach``).
+
+    Mọi đường dựng dòng từ tài khoản ĐÃ LƯU (đăng nhập đơn, hàng loạt theo
+    module, tự đăng nhập lại nền) đi qua đây, để bên thực thi chọn đường theo
+    cách CỦA TÀI KHOẢN chứ không rơi về mặc định (lỗi thật: email bị đưa qua
+    Google). Không có bản ghi → không gắn gì."""
+    if not isinstance(ban_ghi, dict):
+        return
+    # Chỉ cách ĐÃ LƯU tường minh (không suy từ «có mật khẩu»): bản ghi cũ chưa
+    # khai giữ đúng đường cũ của nó, không bị đổi đường ngầm.
+    cach = str(ban_ghi.get("cach_dang_nhap") or "").strip().lower()
+    if cach in CACH_DANG_NHAP_CHO_PHEP:
+        dong.cach_dang_nhap = cach
+    setattr(dong, TRUONG_HO_SO, ho_so_cua(ban_ghi))
+    if ban_ghi.get("module_id") and not getattr(dong, "module_cua_tai_khoan", ""):
+        dong.module_cua_tai_khoan = ban_ghi["module_id"]
+
+
 def ho_so_cua(ban_ghi: dict) -> str:
     """Id hồ sơ đã lưu của một bản ghi (NV300); chưa chọn → ""."""
     if not isinstance(ban_ghi, dict):
@@ -824,13 +843,27 @@ def _phan_vung_cua(ban_ghi: dict) -> str:
     return pv if isinstance(pv, str) else ""
 
 
-def _pv_cua(ban_ghi: dict) -> str:
-    """Nhãn provider của bản ghi: NHÓM (nhà cung cấp) nếu có, không thì module.
+def _nhom_cua_ban_ghi(ban_ghi: dict) -> str:
+    """Nhóm (nhà cung cấp) HIỆU LỰC của bản ghi — bí danh cũ đã quy về hiện hành (NV224)."""
+    n = ban_ghi.get("nhom") or ""
+    return nhom_hieu_luc(n) if isinstance(n, str) and n else ""
 
-    Các module cùng một nhà cung cấp (cùng ``nhom``, vd nhiều module của cùng một hãng) dùng
+
+def _co_provider(ban_ghi: dict) -> bool:
+    return bool(ban_ghi.get("nhom") or ban_ghi.get("module_id"))
+
+
+def _khop_provider(ban_ghi: dict, nhom: str, module_id: str) -> bool:
+    """Bản ghi có thuộc provider (nhóm / module) này không.
+
+    Provider = NHÓM của module: các module cùng một hãng (cùng ``nhom``) dùng
     CHUNG một bản ghi cho cùng email — mô hình NV224 («dung_cho» tích luỹ các
-    đích); nhà cung cấp khác nhau thì là bản ghi ĐỘC LẬP (NV300)."""
-    return str(ban_ghi.get("nhom") or ban_ghi.get("module_id") or "")
+    đích); hãng khác nhau là bản ghi ĐỘC LẬP (NV300). Bản ghi cũ chỉ có
+    ``module_id`` (chưa có nhóm) khớp theo đúng module đó."""
+    nh = nhom_hieu_luc(nhom) if nhom else ""
+    if nh and _nhom_cua_ban_ghi(ban_ghi) == nh:
+        return True
+    return bool(module_id) and ban_ghi.get("module_id") == module_id
 
 
 def _cung_email(du_lieu: dict, email_chuan: str) -> list:
@@ -841,7 +874,7 @@ def _cung_email(du_lieu: dict, email_chuan: str) -> list:
 
 
 def _chon_ban_ghi_theo_phan_vung(du_lieu: dict, email_chuan: str,
-                                 pv: str) -> tuple:
+                                 nhom: str, module_id: str) -> tuple:
     """NV300 — chọn bản ghi cho (email, provider ``pv``). Trả ``(id, phan_vung)``;
     ``id`` là bản ghi ĐÃ CÓ (phải cập nhật) hoặc id mới cho bản ghi sắp tạo.
 
@@ -852,12 +885,13 @@ def _chon_ban_ghi_theo_phan_vung(du_lieu: dict, email_chuan: str,
       bản ghi → mơ hồ, từ chối (``invalid_value``), không đoán.
     """
     cung = _cung_email(du_lieu, email_chuan)
+    pv = (nhom_hieu_luc(nhom) if nhom else "") or module_id
     if pv:
         for k in cung:
-            if _pv_cua(du_lieu[k]) == pv:
+            if _khop_provider(du_lieu[k], nhom, module_id):
                 return k, _phan_vung_cua(du_lieu[k])
         for k in cung:
-            if not _pv_cua(du_lieu[k]):
+            if not _co_provider(du_lieu[k]):
                 return k, _phan_vung_cua(du_lieu[k])
         id_cu = ma_tai_khoan(email_chuan)
         if id_cu not in du_lieu:
@@ -870,13 +904,13 @@ def _chon_ban_ghi_theo_phan_vung(du_lieu: dict, email_chuan: str,
     return ma_tai_khoan(email_chuan), ""
 
 
-def _xung_dot_phan_vung(du_lieu: dict, email_chuan: str, pv: str,
-                        tru_id: str) -> bool:
+def _xung_dot_phan_vung(du_lieu: dict, email_chuan: str, nhom: str,
+                        module_id: str, tru_id: str) -> bool:
     """Có bản ghi KHÁC cùng (email, provider) không — đổi provider mà trùng
     thì hai bản ghi sẽ đè nhau ở mọi tra cứu theo (email, provider)."""
-    if not (email_chuan and pv):
+    if not (email_chuan and (nhom or module_id)):
         return False
-    return any(k != tru_id and _pv_cua(du_lieu[k]) == pv
+    return any(k != tru_id and _khop_provider(du_lieu[k], nhom, module_id)
                for k in _cung_email(du_lieu, email_chuan))
 
 
@@ -1310,7 +1344,7 @@ def ghi_ket_qua_dang_nhap_tu_ket_qua(id_, kq) -> dict | None:
         return None
 
 
-def ghi_ket_qua_theo_email(email, kq, module_id=None) -> str | None:
+def ghi_ket_qua_theo_email(email, kq, module_id=None, nhom=None) -> str | None:
     """Ghi kết quả đăng nhập cho tài khoản đã lưu khớp email (dùng ở các
     đường hàng loạt — dòng chạy chỉ mang email, không mang id kho).
 
@@ -1320,7 +1354,7 @@ def ghi_ket_qua_theo_email(email, kq, module_id=None) -> str | None:
     ở nhiều provider (không nêu mà mơ hồ → không ghi).
     """
     try:
-        ban_ghi = (tim_theo_email(email, module_id)
+        ban_ghi = (tim_theo_email(email, module_id, nhom)
                    if isinstance(email, str) and email else None)
     except Exception as e:
         # Không ghi gì khi không tìm được tài khoản, nhưng ghi log kiểu lỗi.
@@ -1531,12 +1565,11 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             email_tho = email.strip() if isinstance(email, str) else email
             mid_tim = kiem_module_id(module_id)
             nhom_tim = kiem_nhom(nhom) if nhom is not None else ""
-            pv_tim = nhom_tim or mid_tim
             phan_vung_moi = ""
             if email_tho:
                 email_chuan = chuan_hoa_email(email_tho)
                 id_, phan_vung_moi = _chon_ban_ghi_theo_phan_vung(
-                    du_lieu, email_chuan, pv_tim)
+                    du_lieu, email_chuan, nhom_tim, mid_tim)
             elif kieu_moi in ("khoa_api", "token", "cookie"):
                 email_chuan = ""
                 id_ = None  # chốt sau khi có bí mật
@@ -1544,7 +1577,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                 # Đường cũ: email bắt buộc với kiểu mat_khau.
                 email_chuan = chuan_hoa_email(email)
                 id_, phan_vung_moi = _chon_ban_ghi_theo_phan_vung(
-                    du_lieu, email_chuan, pv_tim)
+                    du_lieu, email_chuan, nhom_tim, mid_tim)
             cu = du_lieu.get(id_) if id_ else None
 
         # NV300: cách đăng nhập theo từng tài khoản — None → giữ nguyên cũ;
@@ -1602,7 +1635,7 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             nhom_moi = kiem_nhom(nhom)
         # NV300: đổi/gắn provider mà cặp (email, provider) đã có bản ghi khác
         # → từ chối (không đè bản ghi của provider kia).
-        if _xung_dot_phan_vung(du_lieu, email_chuan, nhom_moi or module_moi, id_):
+        if _xung_dot_phan_vung(du_lieu, email_chuan, nhom_moi, module_moi, id_):
             raise LoiKhoTaiKhoan("invalid_value")
         bac_goi_moi = cu.get("bac_goi", "") if cu else ""
         if bac_goi is not None:
@@ -1822,26 +1855,28 @@ def tim_theo_id(id_) -> dict | None:
     return None
 
 
-def tim_theo_email(email, module_id=None) -> dict | None:
+def tim_theo_email(email, module_id=None, nhom=None) -> dict | None:
     """Tìm bản ghi nội bộ theo email (đã chuẩn hoá) và provider (NV300).
 
-    Có ``module_id``: bản ghi cùng provider; không có thì bản ghi CHƯA gắn
-    provider; không có nữa thì bản ghi duy nhất mang email (cách cũ: tài khoản
-    của module A đăng nhập qua module B). Email có ở nhiều provider mà không
-    xác định được provider → ``None`` (không đoán, không đụng bản của provider
-    khác)."""
+    Có ``module_id``/``nhom``: bản ghi cùng provider (nhóm hoặc module); không
+    có thì bản ghi CHƯA gắn provider; không có nữa thì bản ghi duy nhất mang
+    email (cách cũ: tài khoản của module A đăng nhập qua module B). Email có ở
+    nhiều provider mà không xác định được provider → ``None`` (không đoán,
+    không đụng bản của provider khác)."""
     try:
         email_chuan = chuan_hoa_email(email)
     except LoiKhoTaiKhoan:
         return None
     du_lieu = _doc()
     cung = _cung_email(du_lieu, email_chuan)
-    if isinstance(module_id, str) and module_id:
+    mid = module_id if isinstance(module_id, str) else ""
+    nh = nhom if isinstance(nhom, str) else ""
+    if mid or nh:
         for k in cung:
-            if du_lieu[k].get("module_id") == module_id:
+            if _khop_provider(du_lieu[k], nh, mid):
                 return du_lieu[k]
         for k in cung:
-            if not _pv_cua(du_lieu[k]):
+            if not _co_provider(du_lieu[k]):
                 return du_lieu[k]
     return du_lieu[cung[0]] if len(cung) == 1 else None
 
@@ -2028,7 +2063,7 @@ def dat_module(id_, module_id, nhom) -> dict | None:
         if ban_ghi.get("loai") == "nhap":
             return ban_cong_khai(ban_ghi)
         # NV300: provider đó đã có bản ghi khác cùng email → không đè.
-        if _xung_dot_phan_vung(du_lieu, ban_ghi.get("email", ""), nh or mid, muc_tieu):
+        if _xung_dot_phan_vung(du_lieu, ban_ghi.get("email", ""), nh, mid, muc_tieu):
             raise LoiKhoTaiKhoan("invalid_value")
         ban_ghi["module_id"] = mid
         ban_ghi["nhom"] = nh
@@ -2137,7 +2172,9 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     if not tu_dang_nhap_lai_bat():
         return {"thu": False, "ly_do": "da_tat"}
     email = dinh_danh if isinstance(dinh_danh, str) else ""
-    ban_ghi = tim_theo_email(email, module_id) if email else None
+    nhom_phien = ((getattr(module, "manifest", None) or {}).get("nhom") or {}).get("id") \
+        if isinstance((getattr(module, "manifest", None) or {}).get("nhom"), dict) else None
+    ban_ghi = tim_theo_email(email, module_id, nhom_phien) if email else None
     if ban_ghi is None or not ban_ghi.get("mat_khau"):
         return {"thu": False, "ly_do": "khong_co_tai_khoan"}
     if ban_ghi.get("trang_thai") == TRANG_THAI_TAM_DUNG:
@@ -2168,6 +2205,7 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     mat_khau, totp = bi_mat
     dong = DongDaTach(dong=0, email=ban_ghi["email"], loai="mat_khau",
                       mat_khau=mat_khau, totp=totp)
+    gan_cach_dang_nhap(dong, ban_ghi)
     try:
         kq = await dang_nhap(dong)
         thanh_cong = bool(getattr(kq, "thanh_cong", False))

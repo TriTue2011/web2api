@@ -71,7 +71,7 @@ class GrokWebLoginSession(LoginSession):
 
     cookies: dict = field(default_factory=dict)
     novnc_url: str = ""
-    #: NV300 — cách đăng nhập của TÀI KHOẢN: "email" | "google" | "" (không nói:
+    #: W2A: NV300 — cách đăng nhập của TÀI KHOẢN: "email" | "google" | "" (không nói:
     #: giữ cách cũ, Google nếu thấy nút). Cách đã nói thì KHÔNG đổi sang cách khác.
     method: str = ""
 
@@ -301,7 +301,7 @@ async def _chay_trong(session: GrokWebLoginSession, password: str) -> None:
         session.message = "Mở màn đăng nhập Grok..."
         # NV300: cách của tài khoản. «email» → CHỈ form email (không bấm Google/X/
         # Apple/Github); «google» → CHỈ đường Google; rỗng → cách cũ (Google trước).
-        chi_email = session.method == "email"
+        chi_email = session.method == "email"  # W2A: NV300 theo cách của tài khoản
         chi_google = session.method == "google"
         da_co_man_dang_nhap = trang.get("oEmail") if chi_email else trang.get("nutGoogle")
         if not da_co_man_dang_nhap:

@@ -230,3 +230,65 @@ def test_cung_nha_cung_cap_van_chung_mot_ban_ghi_mo_hinh_nv224():
     b = ktk.luu_tai_khoan(EMAIL, None, None, "", module_id="antigravity", nhom="google")
     assert a["id"] == b["id"]
     assert len([x for x in ktk.tat_ca_ban_ghi() if x["email"] == EMAIL]) == 1
+
+
+def test_du_lieu_cu_nhom_bi_danh_va_chi_co_module_id_van_khop_khong_nhan_doi():
+    """Bản ghi cũ: nhóm mang bí danh cũ («openai» → «chatgpt») hoặc chỉ có module_id
+    (chưa có nhóm). Lưu lại cùng provider phải CẬP NHẬT bản đó, không tạo bản thứ hai."""
+    du_lieu = {}
+
+    def cu(email, mid, nhom):
+        id_ = ktk.ma_tai_khoan(email)
+        du_lieu[id_] = {"id": id_, "email": email, "nhan": "", "mat_khau": "mk-gia",
+                        "totp_secret": "", "trang_thai": "", "module_id": mid,
+                        "nhom": nhom, "cap_nhat": int(time.time())}
+        return id_
+
+    id_bi_danh = cu("bidanh-gia-nv300@example.com", CHATGPT, "openai")
+    id_chi_mod = cu("chimod-gia-nv300@example.com", GEMINI, "")
+    kho.ghi_bi_mat(ktk.TEN_KHO, du_lieu)
+    ktk.luu_tai_khoan("bidanh-gia-nv300@example.com", None, None, "n1",
+                      module_id=CHATGPT, nhom="chatgpt")
+    ktk.luu_tai_khoan("chimod-gia-nv300@example.com", None, None, "n2",
+                      module_id=GEMINI, nhom="google")
+    assert len(ktk.liet_ke()) == 2
+    assert ktk.tim_theo_id(id_bi_danh)["nhan"] == "n1"
+    assert ktk.tim_theo_id(id_chi_mod)["nhan"] == "n2"
+
+
+def test_tim_theo_email_ban_ghi_chung_nhom_khi_module_id_doi_va_co_ban_ghi_hang_khac():
+    """Bản ghi dùng chung của hãng Google (module_id là module lưu SAU CÙNG) + bản Grok
+    cùng email: tra theo module khác cùng hãng (antigravity) vẫn ra đúng bản Google."""
+    gem = ktk.luu_tai_khoan(EMAIL, MK_GEMINI, None, "", module_id=GEMINI, nhom="google")
+    ktk.luu_tai_khoan(EMAIL, None, None, "", module_id="antigravity", nhom="google")
+    grok = _them_grok_google(gem["id"])
+    assert ktk.tim_theo_email(EMAIL, "antigravity", "google")["id"] == gem["id"]
+    assert ktk.tim_theo_email(EMAIL, GROK, "grok")["id"] == grok["id"]
+    kq = ktk.ghi_ket_qua_theo_email(EMAIL, {"thanh_cong": True}, GEMINI, "google")
+    assert kq == gem["id"]
+
+
+def test_moi_duong_dung_dong_tu_ban_ghi_gan_cach_dang_nhap(tmp_path):
+    """Đường hàng loạt theo module và tự đăng nhập lại nền cũng mang cách của tài khoản
+    (nếu thiếu, bên thực thi rơi về mặc định — chính là lỗi «email đi Google»)."""
+    from app import tuyen
+    from app.tai_khoan_hang_loat import BiMatTam, DongDaTach
+    tk = ktk.luu_tai_khoan(EMAIL, "mat-khau-gia-grok", None, "", module_id=GROK,
+                           nhom="grok", cach_dang_nhap="email")
+    d = DongDaTach(0, EMAIL, "mat_khau", mat_khau=BiMatTam("x"))   # như đường hàng loạt
+    d.module_cua_tai_khoan = GROK
+    tuyen._gan_bi_mat_dang_nhap_ho(d, ktk.tim_theo_id(tk["id"]))
+    assert d.cach_dang_nhap == "email"
+    # tự đăng nhập lại nền: module nhận dong có cách
+    thay = {}
+
+    class ModGia:
+        manifest = {"nhom": {"id": "grok"}}
+
+        async def dang_nhap(self, dong):
+            thay["cach"] = getattr(dong, "cach_dang_nhap", None)
+            thay["mod"] = getattr(dong, "module_cua_tai_khoan", None)
+            from app.tai_khoan_hang_loat import KetQuaDangNhap
+            return KetQuaDangNhap(False, ma_loi="loi_module")
+    asyncio.run(ktk.thu_dang_nhap_lai(module=ModGia(), module_id=GROK, dinh_danh=EMAIL))
+    assert thay == {"cach": "email", "mod": GROK}
