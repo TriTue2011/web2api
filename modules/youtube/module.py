@@ -332,10 +332,10 @@ class Module:
         self._phien_hien_tai = None
         self._luong.clear()
 
-    # ── thực thể cho trang Đời sống + tab riêng (NV301 mảnh tab) ──────────
-    # Mảnh tab chỉ có thực thể ĐỌC trạng thái: tab tĩnh + ô Đời sống đọc
-    # trạng thái qua đây; nút điều khiển (phát/dừng/chuyển bài/…) đi theo
-    # mảnh lõi và mảnh giao diện. Trang tĩnh KHÔNG gọi thẳng đường
+    # ── thực thể cho trang Đời sống + tab riêng (NV301 mảnh giao diện) ───
+    # Hai thực thể theo rủi ro (khuôn NV181 của youtube-phat): `xem`
+    # (doc: đọc trạng thái/tìm/playlist) và `dieu_khien` (ghi: phát/dừng/
+    # chuyển bài/tua/nhập playlist). Trang tab KHÔNG gọi thẳng đường
     # integration (đường đó cần khoá khách tich_hop@youtube, trình duyệt
     # không có) — mọi lệnh đi qua hành động thực thể của lõi, phiên quản trị.
 
@@ -356,28 +356,215 @@ class Module:
             return "dang_phat", phien
         return "dung", phien
 
+    def _tinh_nang_xem(self) -> list[dict]:
+        return [
+            {"hanh_dong": "trang_thai",
+             "mo_ta": "Đọc bài đang phát và trạng thái lúc hỏi",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {}}},
+            {"hanh_dong": "tim",
+             "mo_ta": "Tìm bài hát trên YouTube, Zing MP3 (Facebook chỉ nhận link)",
+             "tham_so": {
+                 "type": "object", "required": ["tu_khoa"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "tu_khoa": {"type": "string", "minLength": 1,
+                                 "maxLength": 2048,
+                                 "description": "Từ khoá, hoặc link YouTube/playlist"},
+                     "nguon": {"type": "string",
+                               "enum": ["youtube", "zing", "facebook"],
+                               "description": "Nguồn tìm (mặc định youtube)"},
+                     "gioi_han": {"type": "integer", "minimum": 1, "maximum": 30,
+                                  "description": "Số kết quả (mặc định 10)"}}}},
+            {"hanh_dong": "danh_sach_playlist",
+             "mo_ta": "Liệt kê playlist trong kho chung",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {}}},
+            {"hanh_dong": "cac_phien",
+             "mo_ta": "Liệt kê các nhóm loa đang phát (mỗi nhóm một phiên)",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {}}},
+        ]
+
+    def _tinh_nang_dieu_khien(self) -> list[dict]:
+        phien = {"type": "string", "minLength": 1, "maxLength": 64,
+                 "description": "Mã phiên (bỏ trống: dùng phiên đang chạy)"}
+        return [
+            {"hanh_dong": "phat",
+             "mo_ta": "Phát một bài (hoặc tiếp tục phiên đang dừng)",
+             "tham_so": {
+                 "type": "object", "additionalProperties": False,
+                 "properties": {
+                     "muc_tieu": {"type": "string", "minLength": 1,
+                                  "maxLength": 2048,
+                                  "description": "Mã video, link bài hoặc URL trực tiếp"},
+                     "nguon": {"type": "string",
+                               "enum": ["youtube", "zing", "facebook", "http"],
+                               "description": "Nguồn của mục tiêu (mặc định youtube)"},
+                     "phien": phien,
+                     "playlist_id": {"type": "string", "minLength": 1,
+                                     "maxLength": 64,
+                                     "description": "Phát theo playlist trong kho"},
+                     "thiet_bi": {"type": "array", "minItems": 1, "maxItems": 32,
+                                  "items": {"type": "string", "minLength": 1,
+                                            "maxLength": 64},
+                                  "description": "Loa/tivi nhận phát (entity_id)"},
+                     "tieu_de": {"type": "string", "maxLength": 512,
+                                 "description": "Tên bài gợi ý (tuỳ chọn)"},
+                     "thoi_luong": {"type": "number", "minimum": 0,
+                                    "description": "Thời lượng gợi ý, giây (tuỳ chọn)"}}}},
+            {"hanh_dong": "dung",
+             "mo_ta": "Dừng hẳn phiên phát (dừng là dừng hẳn, không phát lại)",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {"phien": phien}}},
+            {"hanh_dong": "tam_dung",
+             "mo_ta": "Tạm dừng phiên phát, giữ nguyên bài (bấm Phát để tiếp tục)",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {"phien": phien}}},
+            {"hanh_dong": "bai_ke",
+             "mo_ta": "Chuyển bài kế trong hàng đợi của phiên",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {"phien": phien}}},
+            {"hanh_dong": "bai_truoc",
+             "mo_ta": "Chuyển bài trước trong hàng đợi của phiên",
+             "tham_so": {"type": "object", "additionalProperties": False,
+                         "properties": {"phien": phien}}},
+            {"hanh_dong": "tua",
+             "mo_ta": "Tua phiên phát tới vị trí giây",
+             "tham_so": {
+                 "type": "object", "required": ["giay"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "phien": phien,
+                     "giay": {"type": "number", "minimum": 0,
+                              "description": "Vị trí muốn tua tới (giây, >= 0)"}}}},
+            {"hanh_dong": "doi_loa",
+             "mo_ta": "Đổi loa/tivi của phiên đang phát (không phát lại từ đầu)",
+             "tham_so": {
+                 "type": "object", "required": ["thiet_bi"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "phien": phien,
+                     "thiet_bi": {"type": "array", "minItems": 1, "maxItems": 32,
+                                  "items": {"type": "string", "minLength": 1,
+                                            "maxLength": 64},
+                                  "description": "Loa/tivi mới nhận phát (entity_id)"}}}},
+            {"hanh_dong": "nhap_playlist",
+             "mo_ta": "Nhập playlist từ link playlist YouTube hoặc mã chia sẻ TTPL1.",
+             "tham_so": {
+                 "type": "object", "required": ["text"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "text": {"type": "string", "minLength": 1,
+                              "maxLength": 400000,
+                              "description": "Link playlist YouTube hoặc mã TTPL1."},
+                     "ten": {"type": "string", "minLength": 1, "maxLength": 120,
+                             "description": "Tên đặt cho playlist (tuỳ chọn)"}}}},
+            {"hanh_dong": "phat_tu_hang_doi",
+             "mo_ta": "Phát hàng đợi của phiên từ bài ở vị trí chọn (giữ nguyên hàng đợi)",
+             "tham_so": {
+                 "type": "object", "required": ["chi_so"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "phien": phien,
+                     "chi_so": {"type": "integer", "minimum": 0,
+                                "description": "Vị trí bài trong hàng đợi"}}}},
+            {"hanh_dong": "tao_playlist",
+             "mo_ta": "Tạo playlist mới trong kho",
+             "tham_so": {
+                 "type": "object", "required": ["ten"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "ten": {"type": "string", "minLength": 1, "maxLength": 120,
+                             "description": "Tên playlist mới"}}}},
+            {"hanh_dong": "xoa_playlist",
+             "mo_ta": "Xoá một playlist khỏi kho",
+             "tham_so": {
+                 "type": "object", "required": ["playlist_id"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "playlist_id": {"type": "string", "minLength": 1,
+                                     "maxLength": 64,
+                                     "description": "Mã playlist trong kho"}}}},
+            {"hanh_dong": "xoa_khoi_hang_doi",
+             "mo_ta": "Xoá một bài khỏi hàng đợi của phiên đang phát",
+             "tham_so": {
+                 "type": "object", "required": ["chi_so"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "phien": phien,
+                     "chi_so": {"type": "integer", "minimum": 0,
+                                "description": "Vị trí bài trong hàng đợi"}}}},
+            {"hanh_dong": "phat_playlist",
+             "mo_ta": "Phát một playlist trong kho, từ bài ở vị trí chọn",
+             "tham_so": {
+                 "type": "object", "required": ["playlist_id"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "playlist_id": {"type": "string", "minLength": 1,
+                                     "maxLength": 64,
+                                     "description": "Mã playlist trong kho"},
+                     "chi_so": {"type": "integer", "minimum": 0,
+                                "description": "Vị trí bài bắt đầu (mặc định 0)"}}}},
+            {"hanh_dong": "them_vao_playlist",
+             "mo_ta": "Thêm một bài vào playlist trong kho",
+             "tham_so": {
+                 "type": "object", "required": ["playlist_id", "muc_tieu"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "playlist_id": {"type": "string", "minLength": 1,
+                                     "maxLength": 64,
+                                     "description": "Mã playlist trong kho"},
+                     "muc_tieu": {"type": "string", "minLength": 1,
+                                  "maxLength": 2048,
+                                  "description": "Mã video, link bài hoặc URL trực tiếp"},
+                     "nguon": {"type": "string",
+                               "enum": ["youtube", "zing", "facebook", "http"],
+                               "description": "Nguồn của bài (mặc định youtube)"},
+                     "tieu_de": {"type": "string", "maxLength": 512,
+                                 "description": "Tên bài gợi ý (tuỳ chọn)"}}}},
+            {"hanh_dong": "them_vao_hang_doi",
+             "mo_ta": "Thêm một bài vào cuối hàng đợi của phiên đang phát",
+             "tham_so": {
+                 "type": "object", "required": ["muc_tieu"],
+                 "additionalProperties": False,
+                 "properties": {
+                     "phien": phien,
+                     "muc_tieu": {"type": "string", "minLength": 1,
+                                  "maxLength": 2048,
+                                  "description": "Mã video, link bài hoặc URL trực tiếp"},
+                     "nguon": {"type": "string",
+                               "enum": ["youtube", "zing", "facebook", "http"],
+                               "description": "Nguồn của bài (mặc định youtube)"},
+                     "tieu_de": {"type": "string", "maxLength": 512,
+                                 "description": "Tên bài gợi ý (tuỳ chọn)"}}}},
+        ]
+
     async def thuc_the(self, loc=None) -> list[dict]:
-        """Một thực thể chỉ-đọc trạng thái phát (rủi ro «doc»).
+        """Hai thực thể: xem (doc) + điều khiển (ghi).
 
         Không mang khoá, URL luồng hay thông tin kết nối nào: trạng thái
         phát là dữ liệu hiển thị, không phải bí mật."""
         tien_to = self._tien_to_thuc_the()
-        return [{
-            "id": f"{tien_to}.xem",
-            "ten": "YouTube — trạng thái phát",
-            "loai": "cong_cu",
-            "thuoc_tinh": {"nguon_phat": "YouTube, Zing MP3, HTTP trực tiếp"},
-            "mo_ta": ("Trạng thái phát của máy phát YouTube/Zing chạy thẳng "
-                       "trong web2api: bài đang phát, đã dừng hay chưa phát. "
-                       "Điều khiển đầy đủ ở tab YouTube."),
-            "tinh_nang": [{
-                "hanh_dong": "trang_thai",
-                "mo_ta": "Đọc bài đang phát và trạng thái lúc hỏi",
-                "tham_so": {"type": "object", "additionalProperties": False,
-                            "properties": {}},
-            }],
-            "rui_ro_mac_dinh": "doc",
-        }]
+        return [
+            {"id": f"{tien_to}.xem",
+             "ten": "YouTube — trạng thái phát",
+             "loai": "cong_cu",
+             "thuoc_tinh": {"nguon_phat": "YouTube, Zing MP3, HTTP trực tiếp"},
+             "mo_ta": ("Trạng thái phát của máy phát YouTube/Zing chạy thẳng "
+                        "trong web2api: bài đang phát, đã dừng hay chưa phát. "
+                        "Điều khiển đầy đủ ở tab YouTube."),
+             "tinh_nang": self._tinh_nang_xem(),
+             "rui_ro_mac_dinh": "doc"},
+            {"id": f"{tien_to}.dieu_khien",
+             "ten": "YouTube — điều khiển phát",
+             "loai": "cong_cu",
+             "thuoc_tinh": {"nguon_phat": "YouTube, Zing MP3, HTTP trực tiếp"},
+             "mo_ta": ("Phát, dừng, tạm dừng, chuyển bài, tua và quản lý "
+                        "playlist/hàng đợi của máy phát YouTube/Zing."),
+             "tinh_nang": self._tinh_nang_dieu_khien(),
+             "rui_ro_mac_dinh": "ghi"},
+        ]
 
     async def trang_thai(self, ids) -> dict:
         """Trạng thái THẬT lúc hỏi (hợp đồng C1 — lõi `await m.trang_thai(ids)`):
@@ -386,17 +573,249 @@ class Module:
         gia_tri, _ = self._phien_trang_thai()
         return {str(i): {"gia_tri": gia_tri, "luc": luc} for i in (ids or [])}
 
+    def _loi_hanh_dong(self, ma: int, nd: dict) -> dict:
+        """(mã, nội dung) của tich_hop → dict lỗi cho tab (tiếng thường)."""
+        code = (nd or {}).get("error") or "module_error"
+        chu = {
+            "session_not_found": "Không có phiên nào đang chạy.",
+            "queue_end": "Đã hết hàng đợi — không còn bài kế.",
+            "queue_start": "Đang ở đầu hàng đợi — không còn bài trước.",
+            "playlist_not_found": "Không tìm thấy playlist trong kho.",
+            "playlist_empty": "Playlist nhập về không có bài nào.",
+            "playlist_unavailable": "Không lấy được playlist lúc này (nguồn lỗi hoặc chưa hỗ trợ).",
+            "invalid_playlist_link": "Link chưa đúng: cần link playlist YouTube hoặc mã chia sẻ TTPL1.",
+            "invalid_share_code": "Mã chia sẻ không đúng định dạng.",
+            "invalid_target": "Mục tiêu chưa đúng (mã video, link bài hoặc URL trực tiếp).",
+            "invalid_queue_item": "Bài thêm vào hàng đợi chưa đúng định dạng.",
+            "invalid_item": "Bài thêm vào playlist chưa đúng định dạng.",
+            "invalid_volume_level": "Âm lượng phải từ 0 tới 1.",
+        }.get(code, f"Không thực hiện được ({code}).")
+        return {"ok": False, "loi": chu, "ma_loi": code}
+
     async def thuc_hien(self, id: str, hanh_dong: str, tham_so: dict | None) -> dict:
-        """Điều phối hành động thực thể — mảnh tab chỉ có `trang_thai` (đọc).
+        """Điều phối hành động thực thể qua tich_hop nội bộ (không qua HTTP).
         Lỗi → dict {"ok": False, "loi": ...}, KHÔNG ném."""
         tham_so = dict(tham_so or {})
-        if id != f"{self._tien_to_thuc_the()}.xem":
-            return {"ok": False, "loi": "khong_thay_thuc_the"}
-        if hanh_dong != "trang_thai":
+        tien_to = self._tien_to_thuc_the()
+        xem_id, dk_id = f"{tien_to}.xem", f"{tien_to}.dieu_khien"
+        xem_hd = {t["hanh_dong"] for t in self._tinh_nang_xem()}
+        dk_hd = {t["hanh_dong"] for t in self._tinh_nang_dieu_khien()}
+        try:
+            if id == xem_id and hanh_dong in xem_hd:
+                if hanh_dong == "trang_thai":
+                    gia_tri, phien = self._phien_trang_thai()
+                    return {"ok": True, "trang_thai": gia_tri,
+                            "phien": self._anh_xa_phien(phien) if phien else None}
+                if hanh_dong == "tim":
+                    ma, _, nd = await self.tich_hop(
+                        "integration/search", "GET",
+                        {"q": tham_so.get("tu_khoa", ""),
+                         "source": tham_so.get("nguon") or "youtube",
+                         "limit": tham_so.get("gioi_han") or 10}, None)
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    return {"ok": True, "ket_qua": nd.get("results") or [],
+                            "tong": nd.get("total", 0)}
+                if hanh_dong == "danh_sach_playlist":
+                    return {"ok": True, "danh_sach": self._playlists}
+                if hanh_dong == "cac_phien":
+                    song = [p for p in self._phien.values()
+                            if p.get("status") != "stopped"]
+                    song.sort(key=lambda p: p.get("revision", 0), reverse=True)
+                    return {"ok": True,
+                            "cac_phien": [self._anh_xa_phien(p) for p in song]}
+            if id == dk_id and hanh_dong in dk_hd:
+                if hanh_dong == "phat":
+                    than = {}
+                    if tham_so.get("phien"):
+                        than["session_id"] = tham_so["phien"]
+                    if tham_so.get("muc_tieu"):
+                        than["target"] = tham_so["muc_tieu"]
+                    if tham_so.get("nguon"):
+                        than["source"] = tham_so["nguon"]
+                    if tham_so.get("playlist_id"):
+                        than["playlist_id"] = tham_so["playlist_id"]
+                    if tham_so.get("thiet_bi"):
+                        than["outputs"] = tham_so["thiet_bi"]
+                    if tham_so.get("tieu_de"):
+                        than["title"] = tham_so["tieu_de"]
+                    if tham_so.get("thoi_luong") is not None:
+                        than["duration"] = tham_so["thoi_luong"]
+                    ma, _, nd = await self.tich_hop(
+                        "integration/play", "POST", {}, than)
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    return {"ok": True, "phien": nd.get("session"),
+                            "bai": nd.get("item")}
+                if hanh_dong in ("dung", "tam_dung", "bai_ke", "bai_truoc"):
+                    duong = {"dung": "integration/stop",
+                             "tam_dung": "integration/pause",
+                             "bai_ke": "integration/next",
+                             "bai_truoc": "integration/prev"}[hanh_dong]
+                    than = {}
+                    if tham_so.get("phien"):
+                        than["session_id"] = tham_so["phien"]
+                    ma, _, nd = await self.tich_hop(duong, "POST", {}, than)
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    if hanh_dong == "dung":
+                        return {"ok": True, "da_dung": bool(nd.get("stopped", True)),
+                                "phien": nd.get("session")}
+                    return {"ok": True, "phien": nd.get("session"),
+                            "bai": nd.get("item")}
+                if hanh_dong == "tua":
+                    than = {"giay": tham_so.get("giay")}
+                    if tham_so.get("phien"):
+                        than["session_id"] = tham_so["phien"]
+                    ma, _, nd = await self.tich_hop(
+                        "integration/seek", "POST", {}, than)
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    return {"ok": True, "phien": nd.get("session"),
+                            "vi_tri": nd.get("position")}
+                if hanh_dong == "doi_loa":
+                    than = {"output_entity_ids": tham_so.get("thiet_bi") or []}
+                    if tham_so.get("phien"):
+                        than["session_id"] = tham_so["phien"]
+                    ma, _, nd = await self.tich_hop(
+                        "integration/session/outputs", "POST", {}, than)
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    return {"ok": True, "phien": nd.get("session"),
+                            "da_dung": bool(nd.get("stopped", False))}
+                if hanh_dong == "nhap_playlist":
+                    ma, _, nd = await self._playlists_hanh_dong(
+                        {"action": "import", "text": tham_so.get("text", ""),
+                         "name": tham_so.get("ten") or ""})
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    self._ghi_tep("playlists.json", "playlists", self._playlists)
+                    return {"ok": True, "playlist": nd.get("playlist")}
+                if hanh_dong == "phat_tu_hang_doi":
+                    sid = tham_so.get("phien") or self._phien_hien_tai
+                    phien = self._phien_song(sid)
+                    if phien is None:
+                        return {"ok": False, "loi": "Không có phiên nào đang chạy.",
+                                "ma_loi": "session_not_found"}
+                    hang = phien.get("queue") or {"index": 0, "items": []}
+                    items = hang.get("items") or []
+                    try:
+                        chi_so = int(tham_so.get("chi_so"))
+                    except (TypeError, ValueError):
+                        return {"ok": False,
+                                "loi": "Vị trí bài trong hàng đợi chưa đúng.",
+                                "ma_loi": "invalid_queue_index"}
+                    if not 0 <= chi_so < len(items):
+                        return {"ok": False,
+                                "loi": "Hàng đợi không có bài ở vị trí đó.",
+                                "ma_loi": "invalid_queue_index"}
+                    bai = items[chi_so]
+                    try:
+                        phien_moi = await self._tao_phien(
+                            {"source": bai.get("source") or "youtube",
+                             "target": bai.get("id"),
+                             "queue": [dict(m) for m in items],
+                             "queue_index": chi_so,
+                             "outputs": list(phien.get("outputs") or [])})
+                    except ValueError as e:
+                        return self._loi_hanh_dong(400, {"error": str(e)})
+                    self._ghi_lich_su({"source": phien_moi["source"],
+                                       "target": phien_moi["target"],
+                                       "title": phien_moi.get("title")})
+                    anh_xa = self._anh_xa_phien(phien_moi)
+                    return {"ok": True, "phien": anh_xa, "bai": anh_xa["item"]}
+                if hanh_dong == "tao_playlist":
+                    ma, _, nd = await self._playlists_hanh_dong(
+                        {"action": "create", "name": tham_so.get("ten") or ""})
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    self._ghi_tep("playlists.json", "playlists", self._playlists)
+                    return {"ok": True, "playlist": nd.get("playlist")}
+                if hanh_dong == "xoa_playlist":
+                    ma, _, nd = await self._playlists_hanh_dong(
+                        {"action": "delete",
+                         "playlist_id": tham_so.get("playlist_id")})
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    self._ghi_tep("playlists.json", "playlists", self._playlists)
+                    return {"ok": True, "da_xoa": True}
+                if hanh_dong == "xoa_khoi_hang_doi":
+                    than = {"action": "remove", "index": tham_so.get("chi_so")}
+                    if tham_so.get("phien"):
+                        than["session_id"] = tham_so["phien"]
+                    ma, _, nd = await self.tich_hop(
+                        "integration/queue", "POST", {}, than)
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    return {"ok": True, "phien": nd.get("session"),
+                            "hang_doi": nd.get("queue")}
+                if hanh_dong == "phat_playlist":
+                    muc = next((p for p in self._playlists
+                                if p.get("id") == tham_so.get("playlist_id")), None)
+                    if muc is None:
+                        return {"ok": False, "loi": "Không tìm thấy playlist trong kho.",
+                                "ma_loi": "playlist_not_found"}
+                    items = muc.get("items") or []
+                    try:
+                        chi_so = int(tham_so.get("chi_so") or 0)
+                    except (TypeError, ValueError):
+                        chi_so = 0
+                    if not items or not 0 <= chi_so < len(items):
+                        return {"ok": False, "loi": "Playlist không có bài ở vị trí đó.",
+                                "ma_loi": "invalid_playlist_index"}
+                    bai = items[chi_so]
+                    ma, _, nd = await self.tich_hop(
+                        "integration/play", "POST", {},
+                        {"source": bai.get("source") or "youtube",
+                         "target": bai.get("id"),
+                         "playlist_id": muc["id"]})
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    return {"ok": True, "phien": nd.get("session"),
+                            "bai": nd.get("item")}
+                if hanh_dong == "them_vao_playlist":
+                    muc = self._chuan_hoa_muc(
+                        {"source": tham_so.get("nguon") or "youtube",
+                         "target": tham_so.get("muc_tieu"),
+                         "title": tham_so.get("tieu_de")})
+                    if muc is None:
+                        return {"ok": False,
+                                "loi": "Bài thêm vào playlist chưa đúng định dạng.",
+                                "ma_loi": "invalid_item"}
+                    ma, _, nd = await self._playlists_hanh_dong(
+                        {"action": "add", "playlist_id": tham_so.get("playlist_id"),
+                         "item": muc})
+                    if ma != 200:
+                        return self._loi_hanh_dong(ma, nd)
+                    self._ghi_tep("playlists.json", "playlists", self._playlists)
+                    return {"ok": True, "playlist": nd.get("playlist"),
+                            "added": nd.get("added", 0)}
+                if hanh_dong == "them_vao_hang_doi":
+                    sid = tham_so.get("phien") or self._phien_hien_tai
+                    phien = self._phien_song(sid)
+                    if phien is None:
+                        return {"ok": False, "loi": "Không có phiên nào đang chạy.",
+                                "ma_loi": "session_not_found"}
+                    muc = self._chuan_hoa_muc(
+                        {"source": tham_so.get("nguon") or "youtube",
+                         "target": tham_so.get("muc_tieu"),
+                         "title": tham_so.get("tieu_de")})
+                    if muc is None:
+                        return {"ok": False,
+                                "loi": "Bài thêm vào hàng đợi chưa đúng định dạng.",
+                                "ma_loi": "invalid_queue_item"}
+                    hang = phien.setdefault("queue", {"index": 0, "items": []})
+                    if len(hang.get("items", [])) >= BAI_TOI_DA:
+                        return {"ok": False, "loi": "Hàng đợi đã đầy.",
+                                "ma_loi": "queue_full"}
+                    hang.setdefault("items", []).append(muc)
+                    phien["revision"] = self._tang_ban_sua()
+                    return {"ok": True, "hang_doi": hang,
+                            "so_bai": len(hang["items"])}
             return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
-        gia_tri, phien = self._phien_trang_thai()
-        return {"ok": True, "trang_thai": gia_tri,
-                "phien": self._anh_xa_phien(phien) if phien else None}
+        except Exception as e:
+            log.warning("thuc_hien youtube lỗi: %s", type(e).__name__)
+            return {"ok": False, "loi": "Không thực hiện được."}
 
     # ── tiện ích nội bộ ─────────────────────────────────────────────────
 
@@ -808,8 +1227,19 @@ class Module:
             muc_hien_tai = await self._sieu_du_lieu(source, target, goi_y)
         # Giải hàng đợi.
         hang, chi_so, playlist_cua_hang = None, 0, None
+        # Bên gọi chỉ rõ vị trí trong hàng đợi đưa (phát từ bài thứ i):
+        # dùng thẳng vị trí đó, khỏi tìm theo mục tiêu (tránh nhầm khi
+        # hàng đợi có bài trùng nhau).
+        if hang_goi is not None and than.get("queue_index") is not None:
+            try:
+                chi_so_goi = int(than["queue_index"])
+            except (TypeError, ValueError):
+                chi_so_goi = -1
+            if 0 <= chi_so_goi < len(hang_goi):
+                hang, chi_so = hang_goi, chi_so_goi
+                muc_hien_tai = dict(hang_goi[chi_so_goi])
         ung_vien = []
-        if hang_goi is not None:
+        if hang is None and hang_goi is not None:
             ung_vien.append((hang_goi, None))
         if muc_playlist is not None:
             ung_vien.append((muc_playlist, playlist_id))
@@ -818,25 +1248,26 @@ class Module:
             ung_vien.append(((phien_cu.get("queue") or {}).get("items") or [], None))
         if target:
             ung_vien.append((self._hang_doi_tim_kiem.get(source) or [], None))
-        for ds, pid in ung_vien:
-            if not ds:
-                continue
-            if target:
-                tim = next((i for i, m in enumerate(ds)
-                            if m.get("source") == source
-                            and target in {m.get("id"), m.get("url")}), -1)
-                if tim < 0:
+        if hang is None:
+            for ds, pid in ung_vien:
+                if not ds:
                     continue
-                hang, chi_so, playlist_cua_hang = ds, tim, pid
-                muc_hien_tai = dict(ds[tim])
+                if target:
+                    tim = next((i for i, m in enumerate(ds)
+                                if m.get("source") == source
+                                and target in {m.get("id"), m.get("url")}), -1)
+                    if tim < 0:
+                        continue
+                    hang, chi_so, playlist_cua_hang = ds, tim, pid
+                    muc_hien_tai = dict(ds[tim])
+                    if pid:
+                        muc_hien_tai["playlist_id"] = pid
+                    break
+                hang, chi_so, playlist_cua_hang = ds, 0, pid
+                muc_hien_tai = dict(ds[0])
                 if pid:
                     muc_hien_tai["playlist_id"] = pid
                 break
-            hang, chi_so, playlist_cua_hang = ds, 0, pid
-            muc_hien_tai = dict(ds[0])
-            if pid:
-                muc_hien_tai["playlist_id"] = pid
-            break
         if hang is None:
             if muc_hien_tai is None:
                 raise ValueError("invalid_target")
@@ -1142,6 +1573,62 @@ class Module:
             # trên URL luồng đã có. Trả None rõ ràng thay vì URL sai.
             return _ok({"session": anh_xa, "item": anh_xa["item"],
                         "position": vi_tri, "seek_url": None})
+        if duong == "integration/queue" and phuong_thuc == "GET":
+            # NV301 mảnh giao diện: hàng đợi của phiên (tab hiện «Queue
+            # (a/b)», nút «Thêm vào Queue» dùng POST bên dưới).
+            sid = query.get("session_id") or self._phien_hien_tai
+            phien = self._phien_song(sid)
+            if phien is None:
+                return _loi(404, "session_not_found")
+            hang = phien.get("queue") or {"index": 0, "items": []}
+            return _ok({"session_id": phien["id"], "queue": hang,
+                        "queue_index": hang.get("index", 0)})
+        if duong == "integration/queue" and phuong_thuc == "POST":
+            sid = than.get("session_id") or self._phien_hien_tai
+            phien = self._phien_song(sid)
+            if phien is None:
+                return _loi(404, "session_not_found")
+            hanh_dong = than.get("action") or "add"
+            if hanh_dong == "add":
+                muc = self._chuan_hoa_muc(than.get("item") or {})
+                if muc is None:
+                    return _loi(400, "invalid_queue_item")
+                hang = phien.setdefault("queue", {"index": 0, "items": []})
+                if len(hang.get("items", [])) >= BAI_TOI_DA:
+                    return _loi(400, "queue_full")
+                hang.setdefault("items", []).append(muc)
+                phien["revision"] = self._tang_ban_sua()
+            elif hanh_dong == "remove":
+                hang = phien.get("queue") or {"index": 0, "items": []}
+                try:
+                    chi_so = int(than.get("index"))
+                except (TypeError, ValueError):
+                    return _loi(400, "invalid_queue_index")
+                items = hang.get("items", [])
+                if not 0 <= chi_so < len(items):
+                    return _loi(400, "invalid_queue_index")
+                del items[chi_so]
+                if chi_so < hang.get("index", 0):
+                    hang["index"] -= 1
+                elif chi_so == hang.get("index", 0):
+                    # Xoá đúng bài đang phát: bài kế (nếu còn) thành bài
+                    # hiện tại, vị trí về 0; hết hàng thì giữ chỉ số cuối.
+                    phien["position"] = 0
+                    if hang["index"] >= len(items):
+                        hang["index"] = max(0, len(items) - 1)
+                    if items:
+                        bai_moi = items[hang["index"]]
+                        phien["item"] = dict(bai_moi)
+                        phien["title"] = bai_moi.get("title")
+                        phien["duration"] = bai_moi.get("duration", 0)
+                elif hang.get("index", 0) >= len(items):
+                    hang["index"] = max(0, len(items) - 1)
+                phien["revision"] = self._tang_ban_sua()
+            else:
+                return _loi(400, "invalid_queue_action")
+            anh_xa = self._anh_xa_phien(phien)
+            return _ok({"session": anh_xa, "queue": anh_xa["queue"],
+                        "queue_index": anh_xa["queue_index"]})
         return _loi(404, "not_found")
 
     def _tao_playlist_moi(self, ten, items):

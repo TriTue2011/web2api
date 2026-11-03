@@ -80,7 +80,10 @@ def test_trang_tab_khong_chua_bi_mat_va_goi_qua_thuc_the():
     assert "Bearer" not in html + js
     assert "tich_hop@" not in html + js
     assert "integration" not in html + js
-    assert 'id="trang-thai"' in html or "id='trang-thai'" in html
+    # Mảnh giao diện NV301 viết lại trang chỉ-đọc thành trình phát đầy
+    # đủ: trạng thái hiện ở thẻ Đang phát (tên bài + thanh tiến độ),
+    # không còn phần tử trang-thai của trang chỉ-đọc cũ.
+    assert 'id="ten-bai"' in html and 'id="thanh-tien-do"' in html
 
 
 def test_thuc_the_co_thuc_the_trang_thai_khong_lo_bi_mat(tmp_path):

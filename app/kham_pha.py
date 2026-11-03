@@ -465,6 +465,11 @@ def _chuan_hoa_giao_dien(m: dict) -> None:
         return
     g = m["giao_dien"]
     mod_id = m.get("id", "chua_ro")
+    if g is False:
+        # NV301: module CHỈ-công-cụ tự khai không có giao diện (không tạo
+        # tab/mục) — giữ nguyên False, đừng coi là sai định dạng rồi bỏ
+        # trường (bỏ thì khung lại suy từ cấu trúc và vẽ tab thừa).
+        return
 
     def bo(ly_do: str) -> None:
         log.warning("Module %s: giao_dien %s", mod_id, ly_do)
@@ -497,14 +502,43 @@ def _chuan_hoa_giao_dien(m: dict) -> None:
     m["giao_dien"] = {"khu": g["khu"], "muc": muc, "nhan": nhan.strip(), "chip": chip_ra}
 
 
+def _chuan_hoa_thay_the(m: dict) -> None:
+    """NV301: trường tuỳ chọn `thay_the` — module mới tự khai nó thay thế
+    (những) module cũ nào: khi module này đã cài thì module bị thay KHÔNG
+    tạo mục/tab riêng nữa (chỉ một mục, không hai). Tối đa 8 id,
+    id hợp lệ, bỏ chính mình, giữ thứ tự; sai định dạng → cảnh báo và bỏ
+    trường (không chặn nạp module)."""
+    if "thay_the" not in m:
+        return
+    t = m["thay_the"]
+    mod_id = m.get("id", "chua_ro")
+
+    def bo(ly_do: str) -> None:
+        log.warning("Module %s: thay_the %s", mod_id, ly_do)
+        m.pop("thay_the", None)
+
+    if not isinstance(t, list) or len(t) > 8:
+        return bo("phải là danh sách tối đa 8 id")
+    sach = []
+    for x in t:
+        if not isinstance(x, str) or not ID_HOP_LE.match(x) or x == m.get("id"):
+            return bo(f"id thay thế {x!r} không hợp lệ")
+        if x not in sach:
+            sach.append(x)
+    m["thay_the"] = sach
+
+
 def giao_dien_cua(m: dict) -> dict | None:
     """Tab và mục của một module trên thanh chính: `giao_dien` module khai, không thì SUY từ cấu trúc manifest
     (`loai`, `nhom_con`, `cung_cap`) — không bảng tên module. Không thuộc tab nào → None.
       - loại «nha» / «thiet_bi» (thiết bị nhà, mạng, camera) → Nhà
       - loại «tien_ich» (trừ nhóm con kênh nhắn tin) → Đời sống
       - cấp ảnh/video (cung_cap) → Tác phẩm
-    Mục mặc định là chính module (không chip khai thì khung dựng một chip theo module)."""
+    Mục mặc định là chính module (không chip khai thì khung dựng một chip theo module).
+    `giao_dien` là False (module chỉ-công-cụ tự khai) → None, không suy."""
     g = m.get("giao_dien")
+    if g is False:
+        return None
     if isinstance(g, dict):
         return g
     khu = None
@@ -528,6 +562,7 @@ def kiem_manifest(m) -> str | None:
     _chuan_hoa_nhom(m)
     _chuan_hoa_nhom_con(m)
     _chuan_hoa_giao_dien(m)
+    _chuan_hoa_thay_the(m)
     for k in TRUONG_CHUOI_BAT_BUOC:
         if not isinstance(m.get(k), str) or not m[k].strip():
             return f"thiếu hoặc sai trường «{k}» (cần chuỗi khác rỗng)"

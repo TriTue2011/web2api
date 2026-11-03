@@ -404,6 +404,15 @@ class SoModule:
         theo múi giờ của nhà. Không bí mật, không cấu hình module. Đánh giá điều kiện (`can`) là
         việc của giao diện — một hàm duy nhất cho cả điều kiện của khung lẫn `muc` của module."""
         modules, loai, da_cai, lien_ket, tab, muc = [], {}, {}, {}, [], []
+        # NV301: tập module bị thay — module thay thế ĐÃ CÀI (trong catalog)
+        # thì module bị thay không tạo mục/tab riêng nữa. Quy tắc «đã cài
+        # thì thắng»: kể cả khi module thay thế chưa chạy, tab cũ vẫn ẩn
+        # (muốn tab cũ hiện lại thì gỡ module thay thế).
+        bi_thay = set()
+        for km in self.catalog.values():
+            tt = (km.manifest or {}).get("thay_the")
+            if isinstance(tt, list):
+                bi_thay.update(x for x in tt if isinstance(x, str))
 
         def ghi(id_: str, man: dict, tu_xa: bool) -> None:
             lk = id_ in self.dang_chay
@@ -426,7 +435,8 @@ class SoModule:
                             "man_hinh": bool(xem),
                             "nhom": nhom,
                             # NV297: tab + mục trên thanh chính (khai trong manifest, hoặc suy từ cấu trúc) — module từ xa không có.
-                            "giao_dien": None if tu_xa else giao_dien_cua(man)}
+                            # NV301: module bị thay (đã có thay thế trong catalog) thì không có mục.
+                            "giao_dien": None if (tu_xa or id_ in bi_thay) else giao_dien_cua(man)}
             # NV300: cách đăng nhập module hỗ trợ theo từng tài khoản — lấy
             # từ khai báo lớp nếu có, không thì suy từ cấu trúc. Giá trị suy
             # lấy từ hằng bảng dữ liệu (không gõ cứng vào mã lõi).
@@ -469,7 +479,8 @@ class SoModule:
             man = km.manifest
             ghi(id_, man, False)
             t = man.get("tab_web")
-            if t and id_ in self.dang_chay:
+            # NV301: tab của module bị thay cũng ẩn theo cùng quy tắc.
+            if t and id_ in self.dang_chay and id_ not in bi_thay:
                 # Đường TƯƠNG ĐỐI: web2api sau proxy ở thư mục con vẫn mở đúng.
                 # NV263: `an_khoi_thanh` đi theo để khung.js ẩn khỏi thanh điều hướng;
                 # trang vẫn mở được bằng đường dẫn trực tiếp (duong).

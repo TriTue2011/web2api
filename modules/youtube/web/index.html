@@ -6,6 +6,37 @@
 <meta name="referrer" content="no-referrer">
 <title>YouTube</title>
 <link rel="stylesheet" href="../../khung.css">
+<style>
+  .bia { width: 100%; max-width: 480px; aspect-ratio: 16 / 9; object-fit: cover;
+         background: #ddd; border-radius: 8px; display: block; }
+  .chip-nguon { display: inline-block; padding: 2px 10px; border-radius: 999px;
+         background: #eee; font-size: 13px; margin-right: 6px; }
+  .thanh-tien-do { width: 100%; height: 10px; background: #ddd; border-radius: 5px;
+         cursor: pointer; margin: 10px 0 4px; }
+  .thanh-tien-do > div { height: 100%; background: #c00; border-radius: 5px; width: 0%; }
+  .hang-nut { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .hang-nut .nut { flex: 1 1 auto; }
+  .thanh-chip-duoi { position: sticky; bottom: 0; display: flex; gap: 6px;
+         flex-wrap: wrap; background: #fff; padding: 10px 0; border-top: 1px solid #ddd; }
+  .thanh-chip-duoi .nut { flex: 1 1 auto; }
+  .hang-kq { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0;
+         border-bottom: 1px solid #eee; }
+  .hang-kq img { width: 96px; height: 54px; object-fit: cover; border-radius: 4px;
+         background: #ddd; flex: none; }
+  .hang-kq .nd { flex: 1 1 auto; min-width: 0; }
+  .hang-kq .tieu-de { font-weight: 600; }
+  .hang-kq .kenh { color: #555; font-size: 13px; }
+  .hang-kq .hang-nut { margin: 6px 0 0; }
+  .hang-kq .hang-nut .nut { flex: none; }
+  .phien-dang-chon { background: #fff8e1; }
+  @media (prefers-color-scheme: dark) {
+    .bia, .hang-kq img { background: #333; }
+    .chip-nguon { background: #333; }
+    .thanh-tien-do { background: #444; }
+    .thanh-chip-duoi { background: #111; border-top-color: #333; }
+    .phien-dang-chon { background: #332f00; }
+  }
+</style>
 <script src="trang.js" defer></script>
 </head>
 <body>
@@ -13,15 +44,122 @@
 <main class="trang-tb">
   <a class="quay-lai" href="../../He-thong.dc.html">← Hệ thống</a>
   <h1>YouTube</h1>
-  <p class="phu">Máy phát YouTube/Zing chạy thẳng trong web2api. Mọi lệnh đi qua
+  <p class="phu">Trình phát YouTube/Zing chạy thẳng trong web2api. Mọi lệnh đi qua
     máy chủ (trình duyệt không giữ khoá nào). Mục nào chưa có thì ẩn — không có nút chết.</p>
   <p class="bao bao-loi" id="loi-chung" role="alert" hidden></p>
 
-  <section class="the" aria-labelledby="tieu-de-trang-thai">
-    <h2 id="tieu-de-trang-thai">Đang phát</h2>
-    <p id="trang-thai" aria-live="polite">Đang tải…</p>
-    <p class="phu" id="bai-hien-tai" hidden></p>
+  <section class="the" aria-labelledby="tieu-de-dang-phat">
+    <h2 id="tieu-de-dang-phat">Đang phát</h2>
+    <img class="bia" id="anh-bia" alt="" hidden>
+    <p>
+      <span class="chip-nguon" id="chip-nguon" hidden></span>
+      <strong id="ten-bai">Chưa có dữ liệu.</strong>
+    </p>
+    <p class="phu" id="kenh-bai" hidden></p>
+    <p class="phu" id="tren-loa" hidden></p>
+    <p class="bao bao-vang" id="bao-nguon-chua-ho-tro" hidden></p>
+    <div class="thanh-tien-do" id="thanh-tien-do" role="slider"
+         aria-label="Vị trí phát" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="tien-do"></div>
+    </div>
+    <p class="phu" id="thoi-gian" aria-live="off"></p>
+    <div class="hang-nut">
+      <button class="nut" id="nut-truoc" type="button" disabled>⏮ Bài trước</button>
+      <button class="nut nut-chinh" id="nut-phat-tam-dung" type="button" disabled>▶ Phát</button>
+      <button class="nut" id="nut-sau" type="button" disabled>Bài kế ⏭</button>
+      <button class="nut" id="nut-dung" type="button" disabled>⏹ Dừng hẳn</button>
+    </div>
+    <p><button class="nut nut-nho" id="nut-man-hinh" type="button">🌙 Nghe khi tắt màn hình</button></p>
+    <p class="bao bao-vang" id="bao-man-hinh" hidden></p>
   </section>
+
+  <section class="the" aria-labelledby="tieu-de-nhom">
+    <h2 id="tieu-de-nhom">Nhóm đang phát — bấm để điều khiển</h2>
+    <p class="phu">Mỗi nhóm loa/tivi đang phát là một phiên riêng. Bấm một nhóm
+      để các nút ở trên điều khiển nhóm đó.</p>
+    <ul class="ds-kq" id="ds-nhom" aria-live="polite"></ul>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-tim">
+    <h2 id="tieu-de-tim">Tìm kiếm</h2>
+    <div class="hang-nut" role="group" aria-label="Nguồn tìm">
+      <button class="nut nut-chinh" id="chip-yt" type="button" aria-pressed="true">YouTube</button>
+      <button class="nut" id="chip-zing" type="button" aria-pressed="false">Zing MP3</button>
+      <button class="nut" id="chip-fb" type="button" aria-pressed="false">Facebook</button>
+    </div>
+    <label for="o-tu-khoa">Từ khoá hoặc link bài, link playlist</label>
+    <div class="o-va-nut">
+      <input class="o" id="o-tu-khoa" maxlength="2048" autocomplete="off"
+             placeholder="Tên bài, ca sĩ… hoặc dán link YouTube">
+      <button class="nut nut-chinh" id="nut-tim" type="button">Tìm</button>
+    </div>
+    <p class="phu" id="ghi-chu-nguon">Tìm trên YouTube: gõ từ khoá hoặc dán link bài/playlist.</p>
+    <p class="bao bao-loi" id="loi-tim" role="alert" hidden></p>
+    <label for="o-playlist-nhan">Playlist nhận bài khi bấm «Thêm vào Playlist»</label>
+    <select class="o" id="o-playlist-nhan" aria-label="Playlist nhận bài"></select>
+    <ul class="ds-kq" id="ds-ket-qua" aria-live="polite"></ul>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-playlist">
+    <h2 id="tieu-de-playlist">Playlist</h2>
+    <label for="o-nhap-text">Nhập playlist: link playlist YouTube hoặc mã chia sẻ TTPL1.</label>
+    <div class="o-va-nut">
+      <input class="o" id="o-nhap-text" maxlength="400000" autocomplete="off"
+             placeholder="Link playlist YouTube hoặc mã TTPL1.…">
+      <button class="nut nut-chinh" id="nut-nhap" type="button">Nhập</button>
+    </div>
+    <label for="o-nhap-ten">Tên đặt cho playlist nhập về (để trống: giữ tên gốc)</label>
+    <input class="o" id="o-nhap-ten" maxlength="120" autocomplete="off">
+    <p class="bao bao-loi" id="loi-playlist" role="alert" hidden></p>
+    <p class="bao" id="bao-playlist" hidden></p>
+    <label for="o-tao-ten">Tạo playlist mới</label>
+    <div class="o-va-nut">
+      <input class="o" id="o-tao-ten" maxlength="120" autocomplete="off"
+             placeholder="Tên playlist mới">
+      <button class="nut" id="nut-tao" type="button">Tạo</button>
+    </div>
+    <ul class="ds-kq" id="ds-playlist" aria-live="polite"></ul>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-queue">
+    <h2 id="tieu-de-queue">Hàng đợi</h2>
+    <p class="phu" id="queue-tom-tat">Chưa có phiên nào đang chạy.</p>
+    <ul class="ds-kq" id="ds-queue" aria-live="polite"></ul>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-loa">
+    <h2 id="tieu-de-loa">Loa &amp; tivi</h2>
+    <p class="phu">Chọn loa/tivi rồi bấm «Phát» ở kết quả tìm kiếm hoặc playlist.
+      Danh sách lấy từ module Home Assistant.</p>
+    <p class="bao bao-vang" id="bao-chua-co-ha" hidden>Chưa cài module Home Assistant
+      nên không có danh sách loa/tivi. Cài module rồi quay lại đây.</p>
+    <div class="ds-chon" id="ds-thiet-bi" role="group" aria-label="Chọn loa/tivi"></div>
+    <div class="hang-nut">
+      <button class="nut" id="nut-doi-loa" type="button">Áp dụng cho phiên đang chạy</button>
+    </div>
+    <p class="bao bao-loi" id="loi-loa" role="alert" hidden></p>
+  </section>
+
+  <section class="the" aria-labelledby="tieu-de-cai-dat">
+    <h2 id="tieu-de-cai-dat"><button type="button" class="muc-gap-nut" data-mo-muc="cai-dat"
+        aria-expanded="false" aria-controls="nd-cai-dat">
+      <span>Cài đặt</span><span class="mui" aria-hidden="true">▾</span></button></h2>
+    <div id="nd-cai-dat" hidden>
+      <p class="phu">Module này không có cài đặt nào cần nhập (không ô khoá, không
+        tài khoản). Home Assistant gọi module qua khoá do web2api cấp: tạo
+        và xem khoá ở Hệ thống → Bảo mật &amp; người dùng → «Khoá cho dịch vụ
+        ngoài gọi vào» (chọn phạm vi của module YouTube). Khoá không hiện
+        ở trang này.</p>
+    </div>
+  </section>
+
+  <nav class="thanh-chip-duoi" aria-label="Chuyển mục">
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-tim">Tìm kiếm</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-playlist">Playlist (<span id="dem-playlist">0</span>)</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-queue">Queue (<span id="dem-queue">0/0</span>)</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-loa">Loa &amp; tivi</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-cai-dat">Cài đặt</button>
+  </nav>
 </main>
 </div>
 </body>
