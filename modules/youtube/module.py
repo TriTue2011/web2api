@@ -74,6 +74,7 @@ import re
 import secrets
 import time
 import zlib
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -206,6 +207,11 @@ def _la_link_playlist_zing(text: str) -> bool:
 
 class LoiNguonKhongCuuDuoc(Exception):
     """Thượng nguồn đứt sau 5 lần nối lại — luồng ngắt, không lấp rác."""
+
+
+def _iso_utc() -> str:
+    """Mốc giờ ISO UTC theo giây — HA đọc `session.updated_at` để nội suy vị trí."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _loi(ma: int, code: str) -> tuple:
@@ -810,6 +816,7 @@ class Module:
                                 "ma_loi": "queue_full"}
                     hang.setdefault("items", []).append(muc)
                     phien["revision"] = self._tang_ban_sua()
+                    phien["updated_at"] = _iso_utc()
                     return {"ok": True, "hang_doi": hang,
                             "so_bai": len(hang["items"])}
             return {"ok": False, "loi": "hanh_dong_khong_ho_tro"}
@@ -861,9 +868,10 @@ class Module:
             "session_id": session_id, "revision": self._ban_sua,
             "state": "idle", "status": "stopped", "position": 0,
             "duration": 0, "item": None, "current_item": None,
-            "queue": {"index": 0, "items": []}, "queue_index": 0,
+            "queue": {"index": -1, "items": []}, "queue_index": -1,
             "playlist_id": None, "outputs": [], "output_entity_ids": [],
-            "volume_level": None, "auto_advance": True,
+            "volume_level": None, "auto_advance": False,
+            "updated_at": _iso_utc(), "supported_actions": [], "controller": "",
         }
 
     def _anh_xa_phien(self, phien: dict) -> dict:
@@ -888,6 +896,10 @@ class Module:
             "output_entity_ids": list(phien.get("outputs") or []),
             "volume_level": phien.get("volume_level"),
             "auto_advance": phien.get("auto_advance", True),
+            # Hình dạng dịch vụ cũ mà tích hợp HA đọc (nội suy vị trí, hành động hỗ trợ).
+            "updated_at": phien.get("updated_at") or _iso_utc(),
+            "supported_actions": ["stop"] if phien.get("status") != "stopped" else [],
+            "controller": phien.get("controller", ""),
         }
 
     def _phien_song(self, sid) -> dict | None:
@@ -923,6 +935,7 @@ class Module:
             elif len(con) != len(khac["outputs"]):
                 khac["outputs"] = con
                 khac["revision"] = self._tang_ban_sua()
+                khac["updated_at"] = _iso_utc()
         phien["outputs"] = list(outputs)
 
     def _gioi_han_phien(self):
@@ -1288,6 +1301,7 @@ class Module:
             "auto_advance": than.get("auto_advance") is not False,
             "controller": str(than.get("controller") or "")[:64],
             "revision": self._tang_ban_sua(),
+            "updated_at": _iso_utc(),
         }
         self._chuyen_loa(phien, outputs)
         self._phien[sid] = phien
@@ -1499,6 +1513,7 @@ class Module:
                             "session": self._phien_rong(phien["id"])})
             self._chuyen_loa(phien, outputs)
             phien["revision"] = self._tang_ban_sua()
+            phien["updated_at"] = _iso_utc()
             return _ok({"stopped": False,
                         "session": self._anh_xa_phien(phien)})
         if duong == "integration/stream" and phuong_thuc == "POST":
@@ -1515,6 +1530,7 @@ class Module:
             async with self._khoa:
                 phien["status"] = "paused"
                 phien["revision"] = self._tang_ban_sua()
+                phien["updated_at"] = _iso_utc()
             anh_xa = self._anh_xa_phien(phien)
             return _ok({"session": anh_xa, "item": anh_xa["item"]})
         if duong in ("integration/next", "integration/prev") and phuong_thuc == "POST":
@@ -1540,6 +1556,7 @@ class Module:
                 phien["position"] = 0
                 phien["status"] = "playing"
                 phien["revision"] = self._tang_ban_sua()
+                phien["updated_at"] = _iso_utc()
             self._ghi_lich_su({"source": phien["source"],
                                "target": phien["target"],
                                "title": phien.get("title")})
@@ -1566,6 +1583,7 @@ class Module:
             async with self._khoa:
                 phien["position"] = vi_tri
                 phien["revision"] = self._tang_ban_sua()
+                phien["updated_at"] = _iso_utc()
             anh_xa = self._anh_xa_phien(phien)
             # seek_url: dịch vụ cũ tự tính từ mục lục sidx (?t=) để loa
             # nhảy tới; rơ-le vé của module này không có sidx và vé không
@@ -1598,6 +1616,7 @@ class Module:
                     return _loi(400, "queue_full")
                 hang.setdefault("items", []).append(muc)
                 phien["revision"] = self._tang_ban_sua()
+                phien["updated_at"] = _iso_utc()
             elif hanh_dong == "remove":
                 hang = phien.get("queue") or {"index": 0, "items": []}
                 try:
@@ -1624,6 +1643,7 @@ class Module:
                 elif hang.get("index", 0) >= len(items):
                     hang["index"] = max(0, len(items) - 1)
                 phien["revision"] = self._tang_ban_sua()
+                phien["updated_at"] = _iso_utc()
             else:
                 return _loi(400, "invalid_queue_action")
             anh_xa = self._anh_xa_phien(phien)
@@ -1840,6 +1860,7 @@ class Module:
             async with self._khoa:
                 phien["status"] = "playing"
                 phien["revision"] = self._tang_ban_sua()
+                phien["updated_at"] = _iso_utc()
                 outputs = than.get("outputs")
                 if outputs is None:
                     outputs = than.get("output_entity_ids")
@@ -1872,6 +1893,7 @@ class Module:
         async with self._khoa:
             phien["status"] = "playing"
             phien["revision"] = self._tang_ban_sua()
+            phien["updated_at"] = _iso_utc()
         anh_xa = self._anh_xa_phien(phien)
         return _ok({"session": anh_xa, "item": anh_xa["item"],
                     "session_revision": anh_xa["revision"]})
