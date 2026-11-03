@@ -24,7 +24,12 @@
   .hang-kq img { width: 96px; height: 54px; object-fit: cover; border-radius: 4px;
          background: #ddd; flex: none; }
   .hang-kq .nd { flex: 1 1 auto; min-width: 0; }
-  .hang-kq .tieu-de { font-weight: 600; }
+  /* Tên bài/playlist: KHÔNG dùng lớp `.tieu-de` (tiêu đề trang 38px chữ serif của khung). */
+  .tieu-de-bai { font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
+  @media (max-width: 520px) {
+    .thanh-chip-duoi { flex-wrap: nowrap; overflow-x: auto; }
+    .thanh-chip-duoi .nut { flex: 0 0 auto; white-space: nowrap; }
+  }
   .hang-kq .kenh { color: #555; font-size: 13px; }
   .hang-kq .hang-nut { margin: 6px 0 0; }
   .hang-kq .hang-nut .nut { flex: none; }

@@ -226,7 +226,7 @@ function veNhom() {
     if (phienChon === p.session_id) li.classList.add('phien-dang-chon');
     const nd = el('div', 'nd');
     const muc = p.item || {};
-    nd.append(el('div', 'tieu-de', muc.title || p.session_id));
+    nd.append(el('div', 'tieu-de-bai', muc.title || p.session_id));
     const outputs = p.outputs || p.output_entity_ids || [];
     nd.append(el('div', 'kenh',
       (p.state === 'playing' ? 'Đang phát' : p.state === 'paused' ? 'Tạm dừng' : 'Đã dừng') +
@@ -262,7 +262,7 @@ function veQueue() {
   items.forEach((muc, i) => {
     const li = el('li', 'hang-kq');
     const nd = el('div', 'nd');
-    nd.append(el('div', 'tieu-de', (i === chiSo ? '▶ ' : '') + (muc.title || muc.id)));
+    nd.append(el('div', 'tieu-de-bai', (i === chiSo ? '▶ ' : '') + (muc.title || muc.id)));
     nd.append(el('div', 'kenh', (muc.channel || muc.artist || '') +
       (muc.duration ? ' · ' + dinhDangGiay(muc.duration) : '')));
     li.append(nd);
@@ -331,7 +331,7 @@ function nutKetQua(muc) {
     li.append(img);
   }
   const nd = el('div', 'nd');
-  nd.append(el('div', 'tieu-de', muc.title || muc.id));
+  nd.append(el('div', 'tieu-de-bai', muc.title || muc.id));
   nd.append(el('div', 'kenh', (muc.channel || (muc.artists || []).join(', ') || '') +
     (muc.duration ? ' · ' + dinhDangGiay(muc.duration) : '')));
   li.append(nd);
@@ -433,7 +433,7 @@ async function taiPlaylist() {
     playlists.forEach((p) => {
       const li = el('li', 'hang-kq');
       const nd = el('div', 'nd');
-      nd.append(el('div', 'tieu-de', p.name));
+      nd.append(el('div', 'tieu-de-bai', p.name));
       nd.append(el('div', 'kenh', (p.items || []).length + ' bài'));
       li.append(nd);
       const nutPhatPl = el('button', 'nut nut-nho nut-chinh', 'Phát');
@@ -466,7 +466,7 @@ async function taiPlaylist() {
         (p.items || []).forEach((muc, i) => {
           const liBai = el('li', 'hang-kq');
           const ndBai = el('div', 'nd');
-          ndBai.append(el('div', 'tieu-de', muc.title || muc.id));
+          ndBai.append(el('div', 'tieu-de-bai', muc.title || muc.id));
           ndBai.append(el('div', 'kenh', (muc.channel || '') +
             (muc.duration ? ' · ' + dinhDangGiay(muc.duration) : '')));
           liBai.append(ndBai);
