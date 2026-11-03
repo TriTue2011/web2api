@@ -282,8 +282,9 @@ def test_c3_claude_qua_google_hoi_quy(moi_truong_loi, dich_vu_gia):
     assert len(dich_vu_gia.yeu_cau_onboard_email) == 0
 
 
-def test_c4_cap_khong_ho_tro_grok_truc_tiep_tu_choi(moi_truong_loi, dich_vu_gia):
-    """C4: Cặp chưa hỗ trợ (grok + truc_tiep) bị từ chối trước khi chạm bí mật: can_nguoi: True, ma_loi: khong_ho_tro."""
+def test_c4_grok_truc_tiep_nay_duoc_ho_tro_khong_con_khong_ho_tro(moi_truong_loi, dich_vu_gia):
+    """C4 (NV300 đổi nghĩa): Grok thẳng nay ĐƯỢC hỗ trợ (form email của grok.com) nên
+    KHÔNG còn bị từ chối bằng khong_ho_tro; đường Claude-email của dịch vụ giả không bị gọi."""
     client, so = moi_truong_loi
 
     r = client.post("/api/tai-khoan/da-luu", headers=QT, json={
@@ -298,14 +299,8 @@ def test_c4_cap_khong_ho_tro_grok_truc_tiep_tu_choi(moi_truong_loi, dich_vu_gia)
     r_dn = client.post(f"/api/tai-khoan/da-luu/{tk_id}/dang-nhap", headers=QT,
                        json={"module_id": "may-dang-nhap"})
     assert r_dn.status_code == 200, r_dn.text
-    kq = r_dn.json()
-    assert kq["thanh_cong"] is False
-    assert kq["can_nguoi"] is True
-    assert kq["ma_loi"] == "khong_ho_tro"
-    # Dịch vụ giả 0 yêu cầu
+    assert r_dn.json().get("ma_loi") != "khong_ho_tro"
     assert len(dich_vu_gia.yeu_cau_onboard_email) == 0
-    assert len(dich_vu_gia.yeu_cau_onboard) == 0
-    assert len(dich_vu_gia.yeu_cau_saved) == 0
 
 
 def test_c5_claude_khong_totp_van_dang_nhap_duoc(moi_truong_loi, dich_vu_gia):

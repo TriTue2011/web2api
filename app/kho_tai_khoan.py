@@ -629,8 +629,8 @@ def gan_cach_dang_nhap(dong, ban_ghi: dict | None) -> None:
 
     Mọi đường dựng dòng từ tài khoản ĐÃ LƯU (đăng nhập đơn, hàng loạt theo
     module, tự đăng nhập lại nền) đi qua đây, để bên thực thi chọn đường theo
-    cách CỦA TÀI KHOẢN chứ không rơi về mặc định (lỗi thật: email bị đưa qua
-    Google). Không có bản ghi → không gắn gì."""
+    cách CỦA TÀI KHOẢN chứ không rơi về mặc định (lỗi thật: email bị đưa sang đường của cách
+    khác). Không có bản ghi → không gắn gì."""
     if not isinstance(ban_ghi, dict):
         return
     # Chỉ cách ĐÃ LƯU tường minh (không suy từ «có mật khẩu»): bản ghi cũ chưa
