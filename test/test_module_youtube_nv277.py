@@ -161,7 +161,10 @@ def test_tich_hop_health_search_status():
                                        {"q": "test", "source": "la"}, None))
     assert ma == 400
     ma, _, nd = asyncio.run(m.tich_hop("integration/status", "GET", {}, None))
-    assert ma == 200 and nd["session"] is None
+    # NV301: không phiên thì status trả phiên «idle» như dịch vụ cũ, không
+    # còn None (HA đọc session["item"]/["duration"]/["position"] không vỡ).
+    assert ma == 200 and nd["session"]["state"] == "idle"
+    assert nd["state"] == "idle" and nd["item"] is None
 
 
 def test_tich_hop_session_play_stop_history():
@@ -169,7 +172,8 @@ def test_tich_hop_session_play_stop_history():
     ma, _, nd = asyncio.run(m.tich_hop(
         "integration/session", "POST", {},
         {"source": "youtube", "target": VIDEO_ID}))
-    assert ma == 201
+    # NV301: record_session của dịch vụ cũ trả 200, không phải 201.
+    assert ma == 200
     sid = nd["session"]["session_id"]
     ma, _, nd = asyncio.run(m.tich_hop("integration/play", "POST", {},
                                        {"session_id": sid}))
@@ -179,7 +183,8 @@ def test_tich_hop_session_play_stop_history():
     ma, _, nd = asyncio.run(m.tich_hop("integration/stop", "POST", {}, {}))
     assert ma == 200 and nd["stopped"] is True
     ma, _, nd = asyncio.run(m.tich_hop("integration/status", "GET", {}, None))
-    assert ma == 200 and nd["session"] is None
+    # NV301: sau stop thì status trả phiên «idle» như dịch vụ cũ.
+    assert ma == 200 and nd["session"]["state"] == "idle"
     ma, _, _ = asyncio.run(m.tich_hop("integration/play", "POST", {},
                                       {"session_id": "khong-co"}))
     assert ma == 404
@@ -193,7 +198,8 @@ def test_tich_hop_playlists_va_stream(monkeypatch, tmp_path):
     mod, m = _mod(tmp_path)
     ma, _, nd = asyncio.run(m.tich_hop("integration/playlists", "POST", {},
                                        {"action": "create", "name": "Nghe sau"}))
-    assert ma == 201
+    # NV301: mọi lệnh playlist của dịch vụ cũ trả 200, kể cả create.
+    assert ma == 200
     pid = nd["playlist"]["id"]
     ma, _, nd = asyncio.run(m.tich_hop("integration/playlists", "POST", {},
                                        {"action": "add", "playlist_id": pid,

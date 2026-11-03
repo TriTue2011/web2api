@@ -37,11 +37,23 @@ BẢO MẬT:
   NGẮT (không lấp rác, không chuyển bài — chuyển bài là việc của HA).
 - Trần: tối đa 2 lần trích xuất/tìm kiếm chạy cùng lúc (semaphore, chờ
   tối đa 30 giây rồi 502 busy); bộ nhớ đệm vé luồng tối đa 256 mục.
+- NV301 mảnh lõi: phiên mang siêu dữ liệu đầy đủ (title/channel/
+  thumbnail/duration/id/source/media_content_type) và hàng đợi thật
+  (queue/index theo phiên và theo playlist_id, next/prev thật, 409 ở
+  biên hàng đợi); status trả đủ hình dạng dịch vụ cũ (state/item/
+  session/sessions/history_count); search trả cả `results` lẫn `items`
+  và ghi nhớ hàng đợi tìm; seek nhận cả `giay` lẫn `position`, kẹp
+  theo thời lượng. Lệch còn lại so với dịch vụ cũ (ghi rõ, không bịa):
+  giải luồng Zing/Facebook chưa chuyển (trả 502 rõ); seek_url trả None
+  (rơ-le vé không có sidx như dịch vụ cũ — loa tua bằng Range); stop
+  body rỗng vẫn dừng hết (nới hơn cũ, giữ hành vi NV277); session_id
+  bên gọi đưa không ép khuôn [a-z0-9_-]{1,40} của cũ (module tự sinh
+  token_urlsafe có chữ hoa).
 - CHƯA CÓ / CHƯA KIỂM (ghi thẳng, không bịa): giải luồng Zing/Facebook
   chưa chuyển (trả 502 rõ); chưa thử với YouTube thật, loa thật, HA
-  thật (môi trường làm việc không có Internet ra ngoài); yt-dlp/deno
-  chưa có trong ảnh lõi — xem đề xuất Dockerfile/requirements trong
-  báo cáo NV277 (chỉ ở nhánh, chủ kho duyệt mới dựng).
+  thật (môi trường làm việc không có Internet ra ngoài). yt-dlp/deno
+  đã nằm trong requirements.txt ở main 8ef3ca9 (đã duyệt) nên ghi chú
+  cũ «chưa có trong ảnh lõi» ở đây đã bỏ.
 """
 
 from __future__ import annotations
@@ -54,7 +66,7 @@ import re
 import secrets
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from app import duong_module as duong_loi
 from app.tu_xa import kiem_url_lan
@@ -79,8 +91,18 @@ BO_NHO_DEM_TOI_DA = 256
 CHO_TRICH_XUAT_GIAY = 30.0
 #: Trần lịch sử giữ lại (mục).
 LICH_SU_TOI_DA = 200
+#: Trần phiên cùng lúc (dịch vụ cũ: 32; vượt thì đuổi phiên cũ nhất).
+PHIEN_TOI_DA = 32
+#: Trần hàng đợi ghi nhớ từ lần tìm gần nhất (mỗi nguồn).
+HANG_DOI_TIM_TOI_DA = 30
 
 _MA_CHIA_SE = re.compile(r"TTPL1\.[A-Za-z0-9_-]+")
+#: Mã video Facebook là chuỗi số (dịch vụ cũ: 5–25 chữ số).
+_FACEBOOK_ID = re.compile(r"[0-9]{5,25}")
+#: Suy loại nội dung HTTP trực tiếp từ hậu tố (dịch vụ cũ: DIRECT_AUDIO_TYPES).
+_KIEU_HTTP = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "ogg": "audio/ogg",
+              "oga": "audio/ogg", "opus": "audio/opus", "flac": "audio/flac",
+              "wav": "audio/wav"}
 
 
 class LoiNguonKhongCuuDuoc(Exception):
@@ -142,6 +164,13 @@ class Module:
         self.mo_nguon = None  # test chích: async (url, headers) -> ban (xem luong)
         self._phien: dict[str, dict] = {}
         self._phien_hien_tai: str | None = None
+        # NV301: hàng đợi ghi nhớ từ lần tìm gần nhất (mỗi nguồn) — phát
+        # một bài trong kết quả tìm thì bài kế/bài trước đi theo hàng đợi đó,
+        # như remember_search của dịch vụ cũ.
+        self._hang_doi_tim_kiem: dict[str, list[dict]] = {}
+        # Bản sửa phiên (revision): tăng mỗi lần phiên đổi, để stop theo
+        # expected_revision của dịch vụ cũ có cái mà đối chiếu.
+        self._ban_sua = 0
         self._playlists: list[dict] = self._doc_tep("playlists.json", "playlists")
         self._lich_su: list[dict] = self._doc_tep("history.json", "history")[-LICH_SU_TOI_DA:]
         self._luong: dict[str, dict] = {}  # ve -> {url|bytes, het_han, ...}
@@ -290,17 +319,239 @@ class Module:
         del self._lich_su[:max(0, len(self._lich_su) - LICH_SU_TOI_DA)]
         self._ghi_tep("history.json", "history", self._lich_su)
 
+    # ── hình dạng phiên ngang dịch vụ cũ (NV301 mảnh lõi) ──────────────
+    # Dịch vụ cũ trả phiên dạng {session_id, state, position, duration,
+    # item, queue: {index, items}, output_entity_ids, revision, ...} và
+    # status dạng {success, api_version, app_version, state, item, session,
+    # sessions, history_count}. Module này giữ thêm khoá `status` (giá trị
+    # thô playing/paused/stopped, test NV277 dùng) và `outputs` (bí danh
+    # của output_entity_ids) để không vỡ bên gọi cũ của chính module.
+
+    @staticmethod
+    def _trang_thai_phien(trang_thai_tho: str) -> str:
+        """Trạng thái thô → state kiểu dịch vụ cũ (stopped → idle)."""
+        return {"playing": "playing", "paused": "paused"}.get(
+            trang_thai_tho, "idle")
+
+    def _tang_ban_sua(self) -> int:
+        self._ban_sua += 1
+        return self._ban_sua
+
+    def _phien_rong(self, session_id: str = "") -> dict:
+        """Phiên «idle» kiểu dịch vụ cũ khi không có phiên nào đang chạy."""
+        return {
+            "session_id": session_id, "revision": self._ban_sua,
+            "state": "idle", "status": "stopped", "position": 0,
+            "duration": 0, "item": None, "current_item": None,
+            "queue": {"index": 0, "items": []}, "queue_index": 0,
+            "playlist_id": None, "outputs": [], "output_entity_ids": [],
+            "volume_level": None, "auto_advance": True,
+        }
+
     def _anh_xa_phien(self, phien: dict) -> dict:
+        hang = phien.get("queue") or {"index": 0, "items": []}
+        muc = phien.get("item") or {}
         return {
             "session_id": phien["id"],
-            "source": phien.get("source"),
-            "title": phien.get("title"),
-            "duration": phien.get("duration"),
+            "revision": phien.get("revision", 0),
+            "state": self._trang_thai_phien(phien.get("status", "stopped")),
             "status": phien.get("status", "stopped"),
-            "outputs": list(phien.get("outputs") or []),
+            "source": phien.get("source"),
+            "title": muc.get("title") or phien.get("title"),
+            "duration": muc.get("duration", phien.get("duration")),
             "position": phien.get("position", 0),
-            "current_item": phien.get("muc"),
+            "item": dict(muc) if muc else None,
+            "current_item": dict(muc) if muc else None,
+            "queue": {"index": hang.get("index", 0),
+                      "items": [dict(i) for i in hang.get("items") or []]},
+            "queue_index": hang.get("index", 0),
+            "playlist_id": phien.get("playlist_id"),
+            "outputs": list(phien.get("outputs") or []),
+            "output_entity_ids": list(phien.get("outputs") or []),
+            "volume_level": phien.get("volume_level"),
+            "auto_advance": phien.get("auto_advance", True),
         }
+
+    def _phien_song(self, sid) -> dict | None:
+        """Phiên còn sống theo id: có trong RAM và chưa dừng hẳn.
+
+        «Dừng là dừng hẳn»: phiên đã stop vẫn nằm trong _phien để tab
+        hiện «dung», nhưng next/prev/seek/pause/play-theo-id đều coi như
+        không còn (404 session_not_found), không hồi sinh."""
+        phien = self._phien.get(sid) if sid else None
+        if phien is None or phien.get("status") == "stopped":
+            return None
+        return phien
+
+    def _phien_hien_tai_song(self) -> dict | None:
+        return self._phien_song(self._phien_hien_tai)
+
+    def _chuyen_loa(self, phien: dict, outputs: list):
+        """Một loa chỉ thuộc một phiên (dịch vụ cũ: start/set_outputs).
+
+        Loa trong `outputs` bị gỡ khỏi các phiên sống khác; phiên nào hết
+        loa thì kết thúc (xoá khỏi _phien, trừ phiên hiện tại đang xét)."""
+        for khac_id in list(self._phien):
+            if khac_id == phien["id"]:
+                continue
+            khac = self._phien[khac_id]
+            if khac.get("status") == "stopped" or not khac.get("outputs"):
+                continue
+            con = [o for o in khac["outputs"] if o not in outputs]
+            if not con:
+                del self._phien[khac_id]
+                if self._phien_hien_tai == khac_id:
+                    self._phien_hien_tai = None
+            elif len(con) != len(khac["outputs"]):
+                khac["outputs"] = con
+                khac["revision"] = self._tang_ban_sua()
+        phien["outputs"] = list(outputs)
+
+    def _gioi_han_phien(self):
+        """Vượt 32 phiên thì đuổi phiên cũ nhất (không đuổi phiên hiện tại)."""
+        while len(self._phien) > PHIEN_TOI_DA:
+            cu = min((p for p in self._phien.values()
+                      if p["id"] != self._phien_hien_tai),
+                     key=lambda p: p.get("revision", 0), default=None)
+            if cu is None:
+                return
+            del self._phien[cu["id"]]
+
+    @staticmethod
+    def _chuan_hoa_muc(tho: dict, nguon_mac_dinh: str | None = None) -> dict | None:
+        """Mục thô (kết quả tìm / mục playlist / mục hàng đợi / gợi ý bên
+        gọi) → mục chuẩn phát được, hoặc None khi không phát được.
+
+        Quy tắc theo normalize_item của dịch vụ cũ (id YouTube 11 ký tự,
+        id Zing 8–16 ký tự trong link /bai-hat/, id Facebook chuỗi số,
+        http phải là URL http(s)); nới hơn ở chỗ: chấp nhận cả dạng
+        kết quả tìm (artists) lẫn dạng playlist (channel), và chấp nhận
+        mục chỉ có `target` thay cho `id`/`url`."""
+        if not isinstance(tho, dict):
+            return None
+        source = str(tho.get("source") or nguon_mac_dinh or "").strip().lower()
+        muc_id = str(tho.get("id") or "").strip()
+        url = str(tho.get("url") or tho.get("target") or "").strip()
+        if not muc_id and url and "://" not in url:
+            # Bên gọi đưa id trần qua `target` (vd mã video/mã bài): đó là
+            # id, không phải URL — đừng để nhánh zing/facebook hiểu nhầm.
+            muc_id, url = url, ""
+        if source == "youtube":
+            if not muc_id and url:
+                kq = youtube_url_query(url)
+                if kq and kq[0] == "video":
+                    muc_id = kq[1]
+            if not re.fullmatch(r"[A-Za-z0-9_-]{11}", muc_id):
+                return None
+            url = f"https://www.youtube.com/watch?v={muc_id}"
+            kind = "video"
+        elif source == "zing":
+            if url:
+                parsed = urlsplit(url)
+                song_id = parsed.path.rsplit("/", 1)[-1].removesuffix(".html")
+                if (parsed.scheme != "https"
+                        or not (parsed.hostname == "zingmp3.vn"
+                                or (parsed.hostname or "").endswith(".zingmp3.vn"))
+                        or not parsed.path.startswith("/bai-hat/")
+                        or not re.fullmatch(r"[A-Za-z0-9]{8,16}", song_id)):
+                    return None
+                muc_id = song_id
+                url = f"https://zingmp3.vn{parsed.path}"
+            elif not re.fullmatch(r"[A-Za-z0-9]{8,16}", muc_id):
+                return None
+            kind = "song"
+        elif source == "facebook":
+            if not muc_id and url:
+                m = re.search(r"[?&]v=([0-9]{5,25})", url) or \
+                    re.search(r"/videos/([0-9]{5,25})", url)
+                if m:
+                    muc_id = m.group(1)
+            if not _FACEBOOK_ID.fullmatch(muc_id):
+                return None
+            url = f"https://www.facebook.com/watch/?v={muc_id}"
+            kind = "video"
+        elif source == "http":
+            url = url or muc_id
+            parsed = urlsplit(url)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                return None
+            muc_id = url
+            kind = "audio"
+        else:
+            return None
+        try:
+            duration = max(0, int(float(tho.get("duration") or 0)))
+        except (TypeError, ValueError, OverflowError):
+            duration = 0
+        nghe_si = tho.get("artists") if isinstance(tho.get("artists"), list) else []
+        kenh = str(tho.get("channel") or tho.get("artist") or
+                   (nghe_si[0] if nghe_si else "") or "").strip()
+        anh = str(tho.get("thumbnail") or "").strip()
+        if source == "youtube" and not anh:
+            anh = f"https://i.ytimg.com/vi/{muc_id}/hqdefault.jpg"
+        muc = {
+            "source": source, "kind": kind, "id": muc_id, "url": url,
+            "title": " ".join(str(tho.get("title") or muc_id).split())[:512] or muc_id,
+            "artist": kenh, "channel": kenh, "album": "",
+            "thumbnail": anh, "duration": duration,
+        }
+        if tho.get("media_content_type"):
+            muc["media_content_type"] = str(tho["media_content_type"])[:128]
+        if tho.get("playlist_id"):
+            muc["playlist_id"] = str(tho["playlist_id"])[:256]
+        return muc
+
+    async def _sieu_du_lieu(self, source: str, target: str, goi_y: dict) -> dict:
+        """Mục chuẩn cho một mục tiêu: gợi ý bên gọi trước, thiếu thì hỏi
+        nguồn (YouTube: một lượt giải âm thanh qua semaphore, như _tao_luong).
+
+        Hỏi hỏng thì giữ gợi ý, KHÔNG bịa tên/ảnh: title rơi về id, ảnh
+        YouTube rơi về i.ytimg.com (quy ước của dịch vụ cũ)."""
+        muc = self._chuan_hoa_muc(
+            {"source": source, "id": goi_y.get("id"), "url": goi_y.get("url"),
+             "target": target, "title": goi_y.get("title"),
+             "channel": goi_y.get("channel") or goi_y.get("artist"),
+             "artist": goi_y.get("artist"),
+             "artists": goi_y.get("artists"),
+             "thumbnail": goi_y.get("thumbnail"),
+             "duration": goi_y.get("duration"),
+             "media_content_type": goi_y.get("media_content_type")},
+            source)
+        if muc is None:
+            # Không chuẩn hoá được (vd target http chưa qua kiểm LAN ở đây
+            # thì bên gọi đã kiểm trước): trả mục tối thiểu từ gợi ý.
+            muc = {"source": source, "kind": "audio", "id": target, "url": target,
+                   "title": str(goi_y.get("title") or target),
+                   "artist": "", "channel": "", "album": "", "thumbnail": "",
+                   "duration": 0}
+            try:
+                muc["duration"] = max(0, int(float(goi_y.get("duration") or 0)))
+            except (TypeError, ValueError, OverflowError):
+                pass
+            return muc
+        if source == "youtube" and (not goi_y.get("title") or goi_y.get("duration") is None):
+            try:
+                sem = await self._chiem_cho_trich_xuat()
+                try:
+                    giai = await self.trich_xuat.giai_am_thanh("youtube", muc["id"])
+                finally:
+                    sem.release()
+            except Exception as e:
+                log.warning("Lấy siêu dữ liệu YouTube hỏng: %s", type(e).__name__)
+                giai = None
+            if giai:
+                if giai.get("title"):
+                    muc["title"] = str(giai["title"])
+                if giai.get("duration") is not None:
+                    try:
+                        muc["duration"] = max(0, int(float(giai["duration"])))
+                    except (TypeError, ValueError, OverflowError):
+                        pass
+                if giai.get("channel"):
+                    muc["channel"] = muc["artist"] = str(giai["channel"])
+                if giai.get("thumbnail"):
+                    muc["thumbnail"] = str(giai["thumbnail"])
+        return muc
 
     def _cat_bo_luong(self):
         if len(self._luong) <= BO_NHO_DEM_TOI_DA:
@@ -348,7 +599,161 @@ class Module:
             except ValueError as e:
                 raise ValueError("invalid_target") from e
             return "http", chuan, None, None
+        if source == "facebook":
+            # Dịch vụ cũ nhận mục tiêu Facebook (mã số) khi mở phiên; giải
+            # luồng Facebook thì module này vẫn 502 (xem trich_xuat).
+            if _FACEBOOK_ID.fullmatch(target):
+                return "facebook", target, None, None
+            parsed = urlsplit(target)
+            if (parsed.hostname or "").endswith("facebook.com"):
+                m = re.search(r"[?&]v=([0-9]{5,25})", target) or \
+                    re.search(r"/videos/([0-9]{5,25})", target)
+                if m:
+                    return "facebook", m.group(1), None, None
+            raise ValueError("invalid_target")
         raise ValueError("invalid_source")
+
+    async def _tao_phien(self, than: dict) -> dict:
+        """Tạo (hoặc tạo lại) một phiên từ body session/play — trạng thái
+        playing. Trả phiên nội bộ; bên gọi tự ghi lịch sử. Lỗi → ValueError
+        mang mã lỗi (đường integration dịch thành mã HTTP).
+
+        Thứ tự hàng đợi (theo dịch vụ cũ): hàng đợi bên gọi đưa →
+        playlist theo playlist_id → hàng đợi của phiên cũ cùng id → hàng
+        đợi tìm gần nhất chứa mục tiêu → một bài duy nhất. Mục tiêu không
+        nằm trong hàng đợi đã chọn thì hàng đợi đó bị bỏ, rơi xuống tầng
+        sau; không có mục tiêu thì phát bài đầu của hàng đợi đã chọn
+        (phát playlist). Link playlist YouTube làm `target` được hiểu là
+        playlist_id; link xem có `list=` thì giữ bài đó làm bài hiện tại
+        và ghi playlist_id vào phiên."""
+        outputs = than.get("outputs")
+        if outputs is None:
+            outputs = than.get("output_entity_ids")
+        if outputs is None:
+            outputs = []
+        if not isinstance(outputs, list) or not all(isinstance(x, str) for x in outputs):
+            raise ValueError("invalid_outputs")
+        volume = than.get("volume_level")
+        if volume is not None:
+            try:
+                volume = float(volume)
+            except (TypeError, ValueError, OverflowError) as e:
+                raise ValueError("invalid_volume_level") from e
+            if not 0 <= volume <= 1:
+                raise ValueError("invalid_volume_level")
+        sid = str(than.get("session_id") or "").strip() or secrets.token_urlsafe(12)
+        source = str(than.get("source") or "youtube").strip().lower()
+        raw_target = than.get("target")
+        playlist_id = str(than.get("playlist_id") or "").strip() or None
+        list_tu_link = None
+        if source == "youtube" and raw_target:
+            kq = youtube_url_query(str(raw_target))
+            if kq and kq[0] == "playlist":
+                playlist_id = kq[1]
+                raw_target = None
+            elif kq and kq[0] == "video":
+                vals = parse_qs(urlsplit(str(raw_target) if "://" in str(raw_target)
+                                        else f"https://{raw_target}").query)
+                list_tu_link = (vals.get("list", [""])[0] or None)
+        target = None
+        if raw_target:
+            try:
+                source, target, _, _ = await self._xac_thuc_muc_tieu(source, raw_target)
+            except ValueError as e:
+                raise ValueError(str(e) or "invalid_target") from e
+        hang_goi = None
+        if isinstance(than.get("queue"), list):
+            hang_goi = []
+            for tho in than["queue"]:
+                muc = self._chuan_hoa_muc(tho)
+                if muc is None:
+                    raise ValueError("invalid_queue_item")
+                hang_goi.append(muc)
+        muc_playlist = None
+        if playlist_id:
+            muc_playlist = next((p for p in self._playlists
+                                 if p.get("id") == playlist_id), None)
+            if muc_playlist is None:
+                raise ValueError("playlist_not_found")
+            muc_playlist = [self._chuan_hoa_muc(i) for i in muc_playlist.get("items") or []]
+            muc_playlist = [i for i in muc_playlist if i]
+        if not target and hang_goi is None and muc_playlist is None:
+            raise ValueError("invalid_target")
+        # Gợi ý siêu dữ liệu từ bên gọi (title/duration/...) cho bài hiện tại.
+        goi_y = {"title": than.get("title"), "duration": than.get("duration"),
+                 "thumbnail": than.get("thumbnail"),
+                 "channel": than.get("channel"), "artist": than.get("artist"),
+                 "artists": than.get("artists"),
+                 "media_content_type": than.get("media_content_type")}
+        if target and source == "http" and not goi_y.get("title"):
+            ten_tep = unquote(urlsplit(target).path.rsplit("/", 1)[-1]) or \
+                (urlsplit(target).hostname or target)
+            goi_y["title"] = ten_tep
+            goi_y["artist"] = "HTTP Audio"
+            if not goi_y.get("media_content_type"):
+                hau_to = urlsplit(target).path.rsplit(".", 1)[-1].lower() \
+                    if "." in urlsplit(target).path.rsplit("/", 1)[-1] else ""
+                goi_y["media_content_type"] = _KIEU_HTTP.get(hau_to, "audio/mpeg")
+        muc_hien_tai = None
+        if target:
+            muc_hien_tai = await self._sieu_du_lieu(source, target, goi_y)
+        # Giải hàng đợi.
+        hang, chi_so, playlist_cua_hang = None, 0, None
+        ung_vien = []
+        if hang_goi is not None:
+            ung_vien.append((hang_goi, None))
+        if muc_playlist is not None:
+            ung_vien.append((muc_playlist, playlist_id))
+        phien_cu = self._phien.get(sid)
+        if phien_cu is not None:
+            ung_vien.append(((phien_cu.get("queue") or {}).get("items") or [], None))
+        if target:
+            ung_vien.append((self._hang_doi_tim_kiem.get(source) or [], None))
+        for ds, pid in ung_vien:
+            if not ds:
+                continue
+            if target:
+                tim = next((i for i, m in enumerate(ds)
+                            if m.get("source") == source
+                            and target in {m.get("id"), m.get("url")}), -1)
+                if tim < 0:
+                    continue
+                hang, chi_so, playlist_cua_hang = ds, tim, pid
+                muc_hien_tai = dict(ds[tim])
+                if pid:
+                    muc_hien_tai["playlist_id"] = pid
+                break
+            hang, chi_so, playlist_cua_hang = ds, 0, pid
+            muc_hien_tai = dict(ds[0])
+            if pid:
+                muc_hien_tai["playlist_id"] = pid
+            break
+        if hang is None:
+            if muc_hien_tai is None:
+                raise ValueError("invalid_target")
+            hang, chi_so = [muc_hien_tai], 0
+        if list_tu_link and playlist_cua_hang is None:
+            playlist_cua_hang = list_tu_link
+            muc_hien_tai.setdefault("playlist_id", list_tu_link)
+        phien = {
+            "id": sid, "source": muc_hien_tai["source"],
+            "target": muc_hien_tai["id"],
+            "title": muc_hien_tai.get("title"),
+            "duration": muc_hien_tai.get("duration"),
+            "status": "playing", "outputs": [],
+            "position": 0, "item": muc_hien_tai,
+            "queue": {"index": chi_so, "items": [dict(m) for m in hang]},
+            "playlist_id": playlist_cua_hang,
+            "volume_level": volume,
+            "auto_advance": than.get("auto_advance") is not False,
+            "controller": str(than.get("controller") or "")[:64],
+            "revision": self._tang_ban_sua(),
+        }
+        self._chuyen_loa(phien, outputs)
+        self._phien[sid] = phien
+        self._phien_hien_tai = sid
+        self._gioi_han_phien()
+        return phien
 
     # ── đường integration ───────────────────────────────────────────────
 
@@ -368,11 +773,13 @@ class Module:
         than = than or {}
         if duong == "integration/health" and phuong_thuc == "GET":
             return _ok({"status": "ok", "api_version": "1",
+                        "app_version": str((self.manifest or {}).get("phien_ban")
+                                           or "0.1.0"),
                         "capabilities": ["search", "stream", "playlists", "history"],
                         "sources": ["youtube", "zing"],
                         "playback_sources": ["youtube", "zing", "http"]})
         if duong == "integration/search" and phuong_thuc == "GET":
-            source = str(query.get("source") or "youtube")
+            source = str(query.get("source") or "youtube").strip().lower()
             if source not in ("youtube", "zing", "facebook"):
                 return _loi(400, "invalid_search_source")
             try:
@@ -382,50 +789,148 @@ class Module:
                 return _loi(400, str(e) or "invalid_search_query")
             sem = await self._chiem_cho_trich_xuat()
             try:
-                ket_qua = await self.trich_xuat.tim_kiem(source, q, limit)
+                if source == "facebook":
+                    # Dịch vụ cũ chỉ tra cứu Facebook bằng LINK dán vào,
+                    # không tìm theo từ khoá (không có đường tìm công khai).
+                    muc = self._chuan_hoa_muc({"source": "facebook",
+                                               "target": q})
+                    if muc is None:
+                        return _loi(400, "invalid_search_query")
+                    ket_qua = [muc]
+                elif source == "youtube":
+                    link = youtube_url_query(q)
+                    if link and link[0] == "video":
+                        giai = await self.trich_xuat.giai_am_thanh(
+                            "youtube", link[1])
+                        ket_qua = [self._chuan_hoa_muc(
+                            {"source": "youtube", "id": link[1],
+                             "title": giai.get("title"),
+                             "channel": giai.get("channel"),
+                             "thumbnail": giai.get("thumbnail"),
+                             "duration": giai.get("duration")})]
+                        ket_qua = [k for k in ket_qua if k]
+                    elif link and link[0] == "playlist":
+                        _, muc_pl = await self.trich_xuat.lay_danh_sach_phat(
+                            "youtube", link[1], limit)
+                        ket_qua = [self._chuan_hoa_muc(m) for m in muc_pl]
+                        ket_qua = [k for k in ket_qua if k]
+                    else:
+                        ket_qua = await self.trich_xuat.tim_kiem(source, q, limit)
+                        ket_qua = [self._chuan_hoa_muc(m, source)
+                                   for m in ket_qua]
+                        ket_qua = [k for k in ket_qua if k]
+                else:
+                    ket_qua = await self.trich_xuat.tim_kiem(source, q, limit)
+                    ket_qua = [self._chuan_hoa_muc(m, source)
+                               for m in ket_qua]
+                    ket_qua = [k for k in ket_qua if k]
             finally:
                 sem.release()
-            return _ok({"results": ket_qua, "source": source})
+            # Ghi nhớ hàng đợi tìm (mỗi nguồn, tối đa 30) để phát một bài
+            # trong kết quả thì bài kế/bài trước đi theo hàng đợi đó.
+            if ket_qua:
+                self._hang_doi_tim_kiem[source] = \
+                    [dict(m) for m in ket_qua[:HANG_DOI_TIM_TOI_DA]]
+            # `results` (hình dạng module NV277) và `items` (hình dạng dịch
+            # vụ cũ) cùng trỏ tới một danh sách đã chuẩn hoá.
+            return _ok({"results": ket_qua, "items": ket_qua,
+                        "source": source, "total": len(ket_qua)})
         if duong == "integration/status" and phuong_thuc == "GET":
-            phien = self._phien.get(self._phien_hien_tai) if self._phien_hien_tai else None
+            phien = self._phien_hien_tai_song()
+            # sessions: chỉ phiên còn sống, mới đổi nhất trước (như
+            # snapshots của dịch vụ cũ); phiên đã dừng không nằm đây.
+            song = [p for p in self._phien.values()
+                    if p.get("status") != "stopped"]
+            song.sort(key=lambda p: p.get("revision", 0), reverse=True)
+            if phien is not None:
+                anh_xa = self._anh_xa_phien(phien)
+                trang_thai, muc = anh_xa["state"], anh_xa["item"]
+            else:
+                anh_xa, trang_thai, muc = self._phien_rong(), "idle", None
             return _ok({
-                "session": self._anh_xa_phien(phien) if phien else None,
-                "sessions": [self._anh_xa_phien(p) for p in self._phien.values()],
+                "api_version": "1",
+                "app_version": str((self.manifest or {}).get("phien_ban")
+                                   or "0.1.0"),
+                "state": trang_thai, "item": muc,
+                "session": anh_xa,
+                "sessions": [self._anh_xa_phien(p) for p in song],
                 "history_count": len(self._lich_su),
                 "playlists_count": len(self._playlists),
             })
         if duong == "integration/history" and phuong_thuc == "GET":
-            return _ok({"history": list(reversed(self._lich_su))})
+            lich_su = list(reversed(self._lich_su))
+            return _ok({"history": lich_su, "items": lich_su,
+                        "total": len(lich_su)})
         if duong == "integration/stop" and phuong_thuc == "POST":
+            # Ngang dịch vụ cũ: stop theo session_id hoặc expected_revision;
+            # không khớp → 200 {stopped: False} (không 404), phiên idle.
+            # Nới hơn cũ: body rỗng thì dừng hết (hành vi NV277 giữ lại).
             sid = than.get("session_id")
-            if sid is not None and sid not in self._phien:
-                return _loi(404, "session_not_found")
+            ban_sua = than.get("expected_revision")
             if sid is not None:
-                self._phien[sid]["status"] = "stopped"
+                muc_tieu = self._phien.get(sid)
+                if muc_tieu is None:
+                    return _ok({"stopped": False, "state": "idle",
+                                "session": self._phien_rong(str(sid))})
+                if ban_sua is not None:
+                    try:
+                        ban_sua = int(ban_sua)
+                    except (TypeError, ValueError):
+                        return _loi(400, "invalid_session_revision")
+                    if ban_sua != muc_tieu.get("revision"):
+                        hien = self._phien_hien_tai_song()
+                        return _ok({"stopped": False,
+                                    "state": self._trang_thai_phien(
+                                        hien["status"]) if hien else "idle",
+                                    "session": self._anh_xa_phien(hien)
+                                    if hien else self._phien_rong()})
+                muc_tieu["status"] = "stopped"
                 if self._phien_hien_tai == sid:
+                    self._phien_hien_tai = None
+            elif ban_sua is not None:
+                try:
+                    ban_sua = int(ban_sua)
+                except (TypeError, ValueError):
+                    return _loi(400, "invalid_session_revision")
+                khop = next((p for p in self._phien.values()
+                             if p.get("revision") == ban_sua
+                             and p.get("status") != "stopped"), None)
+                if khop is None:
+                    hien = self._phien_hien_tai_song()
+                    return _ok({"stopped": False,
+                                "state": self._trang_thai_phien(
+                                    hien["status"]) if hien else "idle",
+                                "session": self._anh_xa_phien(hien)
+                                if hien else self._phien_rong()})
+                khop["status"] = "stopped"
+                if self._phien_hien_tai == khop["id"]:
                     self._phien_hien_tai = None
             else:
                 for p in self._phien.values():
                     p["status"] = "stopped"
                 self._phien_hien_tai = None
             self._luong.clear()  # dừng là dừng hẳn: vé luồng cũ vô hiệu
-            return _ok({"stopped": True})
+            hien = self._phien_hien_tai_song()
+            return _ok({"stopped": True,
+                        "state": self._trang_thai_phien(hien["status"])
+                        if hien else "idle",
+                        "session": self._anh_xa_phien(hien)
+                        if hien else self._phien_rong(
+                            str(sid) if sid is not None else "")})
         if duong == "integration/session" and phuong_thuc == "POST":
+            # Dịch vụ cũ trả 200 (không phải 201) cho record_session.
             try:
-                source, target, _, _ = await self._xac_thuc_muc_tieu(
-                    than.get("source") or "youtube", than.get("target"))
+                phien = await self._tao_phien(than)
             except ValueError as e:
-                return _loi(400, str(e) or "invalid_target")
-            sid = str(than.get("session_id") or secrets.token_urlsafe(12))
-            phien = {
-                "id": sid, "source": source, "target": target,
-                "title": than.get("title"), "duration": than.get("duration"),
-                "status": "stopped", "outputs": list(than.get("outputs") or []),
-                "position": 0, "muc": {"source": source, "target": target},
-            }
-            self._phien[sid] = phien
-            self._phien_hien_tai = sid
-            return _ok({"session": self._anh_xa_phien(phien)}, 201)
+                ma_loi = str(e) or "invalid_target"
+                if ma_loi == "playlist_not_found":
+                    return _loi(404, ma_loi)
+                return _loi(400, ma_loi)
+            self._ghi_lich_su({"source": phien["source"],
+                               "target": phien["target"],
+                               "title": phien.get("title")})
+            anh_xa = self._anh_xa_phien(phien)
+            return _ok({"session": anh_xa, "item": anh_xa["item"]})
         if duong == "integration/playlists" and phuong_thuc == "GET":
             return _ok({"playlists": self._playlists})
         if duong == "integration/playlists" and phuong_thuc == "POST":
@@ -435,35 +940,99 @@ class Module:
             return ket_qua
         if duong == "integration/session/outputs" and phuong_thuc == "POST":
             sid = than.get("session_id") or self._phien_hien_tai
-            if sid not in self._phien:
-                return _loi(404, "session_not_found")
+            phien = self._phien_song(sid)
+            if phien is None:
+                return _ok({"stopped": False,
+                            "session": self._phien_rong(str(sid or ""))})
             outputs = than.get("outputs")
+            if outputs is None:
+                outputs = than.get("output_entity_ids")
             if not isinstance(outputs, list) or not all(isinstance(x, str) for x in outputs):
                 return _loi(400, "invalid_outputs")
-            self._phien[sid]["outputs"] = outputs
-            return _ok({"session": self._anh_xa_phien(self._phien[sid])})
+            if not outputs:
+                # Hết loa thì phiên kết thúc (dịch vụ cũ: set_outputs rỗng
+                # → stop); vẫn giữ bản ghi dừng cho tab hiện «dung».
+                phien["status"] = "stopped"
+                if self._phien_hien_tai == phien["id"]:
+                    self._phien_hien_tai = None
+                return _ok({"stopped": True,
+                            "session": self._phien_rong(phien["id"])})
+            self._chuyen_loa(phien, outputs)
+            phien["revision"] = self._tang_ban_sua()
+            return _ok({"stopped": False,
+                        "session": self._anh_xa_phien(phien)})
         if duong == "integration/stream" and phuong_thuc == "POST":
             return await self._tao_luong(than, goc)
         if duong == "integration/play" and phuong_thuc == "POST":
             return await self._phat(than)
+        if duong == "integration/pause" and phuong_thuc == "POST":
+            # MỚI so với dịch vụ cũ (dịch vụ cũ không có endpoint pause —
+            # HA tạm dừng qua media_player): giữ phiên, chỉ đổi trạng thái.
+            sid = than.get("session_id") or self._phien_hien_tai
+            phien = self._phien_song(sid)
+            if phien is None:
+                return _loi(404, "session_not_found")
+            async with self._khoa:
+                phien["status"] = "paused"
+                phien["revision"] = self._tang_ban_sua()
+            anh_xa = self._anh_xa_phien(phien)
+            return _ok({"session": anh_xa, "item": anh_xa["item"]})
         if duong in ("integration/next", "integration/prev") and phuong_thuc == "POST":
-            phien = self._phien.get(self._phien_hien_tai) if self._phien_hien_tai else None
+            sid = than.get("session_id") or self._phien_hien_tai
+            phien = self._phien_song(sid)
             if phien is None:
                 return _loi(404, "session_not_found")
-            phien["status"] = "playing"
-            return _ok({"session": self._anh_xa_phien(phien)})
+            async with self._khoa:
+                hang = phien.get("queue") or {"index": 0, "items": []}
+                cac_bai = hang.get("items") or []
+                moi = hang.get("index", 0) + (1 if duong.endswith("/next") else -1)
+                if moi < 0:
+                    return _loi(409, "queue_start")
+                if moi >= len(cac_bai):
+                    return _loi(409, "queue_end")
+                bai = dict(cac_bai[moi])
+                phien["item"] = bai
+                phien["source"] = bai.get("source", phien.get("source"))
+                phien["target"] = bai.get("id", phien.get("target"))
+                phien["title"] = bai.get("title")
+                phien["duration"] = bai.get("duration", 0)
+                hang["index"] = moi
+                phien["position"] = 0
+                phien["status"] = "playing"
+                phien["revision"] = self._tang_ban_sua()
+            self._ghi_lich_su({"source": phien["source"],
+                               "target": phien["target"],
+                               "title": phien.get("title")})
+            anh_xa = self._anh_xa_phien(phien)
+            return _ok({"session": anh_xa, "item": anh_xa["item"]})
         if duong == "integration/seek" and phuong_thuc == "POST":
-            phien = self._phien.get(self._phien_hien_tai) if self._phien_hien_tai else None
+            sid = than.get("session_id") or self._phien_hien_tai
+            phien = self._phien_song(sid)
             if phien is None:
                 return _loi(404, "session_not_found")
+            # Dịch vụ cũ nhận `giay`; module NV277 nhận `position` — nhận cả hai.
+            gia_tri = than.get("giay")
+            if gia_tri is None:
+                gia_tri = than.get("position")
             try:
-                vi_tri = float(than.get("position"))
+                vi_tri = float(gia_tri)
             except (TypeError, ValueError):
-                return _loi(400, "invalid_position")
-            if vi_tri < 0:
-                return _loi(400, "invalid_position")
-            phien["position"] = vi_tri
-            return _ok({"session": self._anh_xa_phien(phien)})
+                return _loi(400, "invalid_seek_position")
+            if vi_tri != vi_tri or vi_tri < 0:
+                return _loi(400, "invalid_seek_position")
+            thoi_luong = phien.get("duration") or 0
+            if thoi_luong > 0:
+                vi_tri = min(vi_tri, float(thoi_luong))
+            async with self._khoa:
+                phien["position"] = vi_tri
+                phien["revision"] = self._tang_ban_sua()
+            anh_xa = self._anh_xa_phien(phien)
+            # seek_url: dịch vụ cũ tự tính từ mục lục sidx (?t=) để loa
+            # nhảy tới; rơ-le vé của module này không có sidx và vé không
+            # mang vị trí bắt đầu, nên KHÔNG bịa URL — loa tua bằng Range
+            # trên URL luồng đã có. Trả None rõ ràng thay vì URL sai.
+            return _ok({"session": anh_xa, "item": anh_xa["item"],
+                        "position": vi_tri, "seek_url": None})
         return _loi(404, "not_found")
 
     def _playlists_hanh_dong(self, than):
@@ -478,7 +1047,8 @@ class Module:
                 return _loi(400, "invalid_playlist_name")
             muc = {"id": secrets.token_urlsafe(8), "name": ten, "items": []}
             self._playlists.append(muc)
-            return _ok({"playlist": muc}, 201)
+            # Dịch vụ cũ trả 200 cho mọi lệnh playlist (kể cả create).
+            return _ok({"playlist": muc})
         if hanh_dong == "import":
             ds = than.get("playlists")
             if not isinstance(ds, list):
@@ -538,32 +1108,51 @@ class Module:
         return _ok(self._dang_ky_luong(muc, goc))
 
     async def _phat(self, than):
+        """Phát: tiếp tục phiên sống (resume, không ghi lại lịch sử) hoặc
+        tạo phiên mới (ghi lịch sử). Phiên đã dừng thì 404, không hồi sinh."""
         sid_yeu_cau = than.get("session_id")
-        if sid_yeu_cau is not None and sid_yeu_cau not in self._phien:
-            return _loi(404, "session_not_found")
-        phien = self._phien.get(sid_yeu_cau or self._phien_hien_tai) \
-            if (sid_yeu_cau or self._phien_hien_tai) else None
-        if phien is None:
-            # play trực tiếp không qua session: tạo phiên rồi phát.
+        if sid_yeu_cau is not None:
+            phien = self._phien_song(sid_yeu_cau)
+            if phien is None:
+                return _loi(404, "session_not_found")
+            async with self._khoa:
+                phien["status"] = "playing"
+                phien["revision"] = self._tang_ban_sua()
+                outputs = than.get("outputs")
+                if outputs is None:
+                    outputs = than.get("output_entity_ids")
+                if outputs is not None:
+                    if not isinstance(outputs, list) or \
+                            not all(isinstance(x, str) for x in outputs):
+                        return _loi(400, "invalid_outputs")
+                    self._chuyen_loa(phien, outputs)
+            anh_xa = self._anh_xa_phien(phien)
+            return _ok({"session": anh_xa, "item": anh_xa["item"],
+                        "session_revision": anh_xa["revision"]})
+        if than.get("target") or than.get("queue") or than.get("playlist_id"):
             try:
-                source, target, _, _ = await self._xac_thuc_muc_tieu(
-                    than.get("source") or "youtube", than.get("target"))
+                phien = await self._tao_phien(than)
             except ValueError as e:
-                return _loi(400, str(e) or "invalid_target")
-            sid = secrets.token_urlsafe(12)
-            phien = {"id": sid, "source": source, "target": target,
-                     "title": than.get("title"), "duration": None,
-                     "status": "playing", "outputs": list(than.get("outputs") or []),
-                     "position": 0, "muc": {"source": source, "target": target}}
-            self._phien[sid] = phien
-            self._phien_hien_tai = sid
-        else:
+                ma_loi = str(e) or "invalid_target"
+                if ma_loi == "playlist_not_found":
+                    return _loi(404, ma_loi)
+                return _loi(400, ma_loi)
+            self._ghi_lich_su({"source": phien["source"],
+                               "target": phien["target"],
+                               "title": phien.get("title")})
+            anh_xa = self._anh_xa_phien(phien)
+            return _ok({"session": anh_xa, "item": anh_xa["item"],
+                        "session_revision": anh_xa["revision"]})
+        # Không mục tiêu mới: tiếp tục phiên hiện tại nếu còn sống.
+        phien = self._phien_hien_tai_song()
+        if phien is None:
+            return _loi(400, "invalid_target")
+        async with self._khoa:
             phien["status"] = "playing"
-            if than.get("outputs") is not None:
-                phien["outputs"] = list(than.get("outputs") or [])
-        self._ghi_lich_su({"source": phien["source"], "target": phien["target"],
-                           "title": phien.get("title")})
-        return _ok({"session": self._anh_xa_phien(phien)})
+            phien["revision"] = self._tang_ban_sua()
+        anh_xa = self._anh_xa_phien(phien)
+        return _ok({"session": anh_xa, "item": anh_xa["item"],
+                    "session_revision": anh_xa["revision"]})
 
     # ── đường luồng ─────────────────────────────────────────────────────
 

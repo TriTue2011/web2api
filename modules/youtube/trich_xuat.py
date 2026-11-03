@@ -4,6 +4,9 @@ Chức năng ở đây cố tình NHỎ hơn dịch vụ cũ: chỉ giữ phần
 Home Assistant (tìm YouTube/Zing, giải link âm thanh YouTube). Lý do ghi
 thẳng trong báo cáo NV277:
 - Tìm YouTube: yt-dlp `ytsearch` (nạp lười, thiếu gói → lỗi rõ 502).
+  NV301 bổ sung: kết quả tìm có `channel`/`thumbnail`/`kind` (hình dạng
+  dịch vụ cũ), giải âm thanh trả thêm `channel`/`thumbnail`, và lấy
+  playlist YouTube công khai qua yt-dlp (extract_flat).
 - Tìm Zing: endpoint gợi ý công khai của Zing (urllib, giống search.py của
   dịch vụ cũ: chỉ nhận entry type=1, status=1, privacy=1, playStatus=2,
   link https://...zingmp3.vn/bai-hat/...), giới hạn phản hồi 1 MiB.
@@ -134,6 +137,10 @@ def parse_zing_payload(payload, *, limit):
             "id": song_id,
             "title": str(entry.get("title") or ""),
             "artists": artist_names,
+            # NV301: hình dạng dịch vụ cũ cần `channel` + `thumbnail`.
+            "channel": ", ".join(artist_names),
+            "thumbnail": str(entry.get("thumbnail") or entry.get("thumb") or ""),
+            "kind": "song",
             "duration": duration,
             "url": song_url,
             "source": "zing",
@@ -202,6 +209,42 @@ def _tuy_chon_chung() -> dict:
     return opts
 
 
+def _muc_youtube(entry):
+    """Một entry yt-dlp (flat) → mục tìm kiếm ổn định (hình dạng dịch vụ cũ).
+
+    Kênh từ `channel`/`uploader`; ảnh bìa từ `thumbnails` (lấy ảnh cuối
+    có URL, như parse_search_payload của dịch vụ cũ), rồi `thumbnail`,
+    rồi ảnh mặc định i.ytimg.com — không bao giờ để trống với YouTube."""
+    if not isinstance(entry, dict):
+        return None
+    vid = str(entry.get("id") or "")
+    if not VIDEO_ID.fullmatch(vid):
+        return None
+    thumbnails = entry.get("thumbnails") or []
+    thumbnail = next(
+        (str(c.get("url")) for c in reversed(thumbnails)
+         if isinstance(c, dict) and c.get("url")),
+        str(entry.get("thumbnail") or ""),
+    )
+    if not thumbnail:
+        thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+    try:
+        duration = int(entry.get("duration")) if entry.get("duration") is not None else None
+    except (TypeError, ValueError):
+        duration = None
+    return {
+        "source": "youtube",
+        "kind": "video",
+        "id": vid,
+        "url": f"https://www.youtube.com/watch?v={vid}",
+        "title": str(entry.get("title") or vid),
+        "channel": str(entry.get("channel") or entry.get("uploader") or ""),
+        "artists": [],
+        "duration": duration,
+        "thumbnail": thumbnail,
+    }
+
+
 def search_youtube(query, *, limit=20):
     """Tìm YouTube qua yt-dlp ytsearch (chặn — gọi qua to_thread)."""
     query, limit = _validated_query_and_limit(query, limit)
@@ -211,20 +254,39 @@ def search_youtube(query, *, limit=20):
         data = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
     results = []
     for entry in (data or {}).get("entries") or []:
-        if not isinstance(entry, dict):
-            continue
-        vid = str(entry.get("id") or "")
-        if not VIDEO_ID.fullmatch(vid):
-            continue
-        results.append({
-            "id": vid,
-            "title": str(entry.get("title") or ""),
-            "artists": [],
-            "duration": entry.get("duration"),
-            "url": f"https://www.youtube.com/watch?v={vid}",
-            "source": "youtube",
-        })
+        muc = _muc_youtube(entry)
+        if muc:
+            results.append(muc)
     return results[:limit]
+
+
+def lay_danh_sach_phat_youtube(playlist_id, *, limit=500):
+    """(tên, các bài) của một playlist YouTube công khai — để nhập playlist.
+
+    Giống fetch_youtube_playlist của dịch vụ cũ nhưng qua thư viện yt-dlp
+    (module không chạy tiến trình con): extract_flat, không tải, giới hạn
+    500 bài như cũ. Playlist riêng tư/không tồn tại → yt-dlp ném →
+    TrichXuatUnavailable (đường integration dịch thành 502 rõ)."""
+    yt_dlp = _yt_dlp()
+    opts = {**_tuy_chon_chung(), "extract_flat": True, "skip_download": True}
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            data = ydl.extract_info(
+                f"https://www.youtube.com/playlist?list={playlist_id}",
+                download=False)
+    except Exception as e:
+        raise TrichXuatUnavailable("playlist_unavailable") from e
+    if not isinstance(data, dict):
+        raise TrichXuatUnavailable("playlist_unavailable")
+    ten = str(data.get("title") or "").strip() or "Playlist YouTube"
+    muc = []
+    for entry in data.get("entries") or []:
+        item = _muc_youtube(entry)
+        if item:
+            muc.append(item)
+        if len(muc) >= int(limit):
+            break
+    return ten, muc
 
 
 def resolve_youtube_audio(video_id):
@@ -244,12 +306,24 @@ def resolve_youtube_audio(video_id):
                 break
     if not url:
         raise TrichXuatUnavailable("resolve_failed")
+    thumbnails = info.get("thumbnails") or []
+    thumbnail = next(
+        (str(c.get("url")) for c in reversed(thumbnails)
+         if isinstance(c, dict) and c.get("url")),
+        str(info.get("thumbnail") or ""),
+    )
+    if not thumbnail:
+        thumbnail = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
     return {
         "url": url,
         "title": str(info.get("title") or ""),
         "duration": info.get("duration"),
         "source": "youtube",
         "video_id": video_id,
+        # NV301: siêu dữ liệu cho phiên (title/channel/thumbnail) — thêm
+        # trường, không đổi hợp đồng cũ của hàm này.
+        "channel": str(info.get("channel") or info.get("uploader") or ""),
+        "thumbnail": thumbnail,
     }
 
 
@@ -267,3 +341,13 @@ class TrichXuat:
         if source == "youtube":
             return await asyncio.to_thread(resolve_youtube_audio, target_id)
         raise TrichXuatUnavailable("resolve_source_unavailable")
+
+    async def lay_danh_sach_phat(self, source, playlist_id, limit=500):
+        """(tên, các bài) của một playlist theo nguồn — NV301 mảnh playlist.
+
+        Chỉ YouTube (yt-dlp, không cần khoá). Zing cần khoá API web riêng
+        của dịch vụ cũ mà module này không có → 502 rõ, không bịa."""
+        if source == "youtube":
+            return await asyncio.to_thread(
+                lay_danh_sach_phat_youtube, playlist_id, limit=limit)
+        raise TrichXuatUnavailable("playlist_source_unavailable")
