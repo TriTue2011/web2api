@@ -31,7 +31,7 @@
       "nhan": "Trò chuyện"
     }
   ],
-  "phien_ban": "0.1.2",
+  "phien_ban": "0.1.3",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Giao thức nội bộ đã reverse-engineer, không chính thức — grok.com đổi web app có thể làm module ngừng hoạt động. Chưa kiểm với grok.com thật (cần cookie tài khoản thật).",

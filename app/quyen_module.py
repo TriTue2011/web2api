@@ -42,6 +42,10 @@ _TRUONG_KHONG_QUYEN = frozenset({
     "nhom_con",
     # NV301: `thay_the` [id module] CHỈ để khung ẩn tab/mục của module bị thay (chỉ MỘT tab cho một việc); không cấp khả năng.
     "thay_the",
+    # NV297: `giao_dien` {khu, muc, nhan, chip[]} CHỈ để khung xếp module vào tab thanh chính (kham_pha._chuan_hoa_giao_dien
+    # kiểm định dạng và giới hạn độ dài); không cấp khả năng nào. Thiếu ở đây nên mọi bản cập nhật module có `giao_dien`
+    # bị coi là «xin thêm quyền truong_la: giao_dien» và chặn tới khi duyệt tay.
+    "giao_dien",
     # NV283: `loai_tai_khoan_ten` CHỈ là nhãn hiển thị loại tài khoản (như
     # `loai_ten`); lõi không dùng nó để cấp khả năng hay chọn đường nào.
     "loai_tai_khoan_ten",

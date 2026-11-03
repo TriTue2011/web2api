@@ -31,6 +31,14 @@ def test_them_nhom_con_khong_la_quyen_moi():
     assert tap_quyen(cu) == tap_quyen(moi)
 
 
+def test_them_giao_dien_khong_la_quyen_moi():
+    """NV297: `giao_dien` chỉ xếp module vào tab — thêm nó vào bản cập nhật KHÔNG được bắt chủ máy duyệt quyền mới."""
+    cu = _mf()
+    moi = _mf(giao_dien={"khu": "nha", "muc": "mang", "nhan": "Mạng", "chip": []})
+    assert diff_quyen(cu, moi) == {"them": [], "bot": []}
+    assert tap_quyen(cu) == tap_quyen(moi)
+
+
 def test_doi_hang_van_la_quyen():
     """Hạng duyệt là khai báo bảo mật: không được lọt vào danh sách «không phải quyền»."""
     assert "hang" not in _TRUONG_KHONG_QUYEN

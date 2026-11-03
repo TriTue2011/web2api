@@ -24,7 +24,7 @@
       "nhan": "Trò chuyện"
     }
   ],
-  "phien_ban": "0.2.3",
+  "phien_ban": "0.2.4",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Dùng giao thức nội bộ của web app muse.ai (đã reverse-engineer, không chính thức). Meta đổi web có thể làm module ngừng hoạt động; điều khoản của Muse cấm reverse engineering — dùng cá nhân, tự chịu rủi ro.",

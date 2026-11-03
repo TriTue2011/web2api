@@ -22,7 +22,7 @@
   "loai_ten": "Thiết bị",
   "loai_thu_tu": 41,
   "mo_ta": "Thống kê DNS chặn quảng cáo của cả nhà từ AdGuard Home trong LAN (tổng truy vấn, số bị chặn, tỉ lệ chặn, thời gian xử lý trung bình, số bộ lọc đang bật, top miền bị chặn, top máy khách) và một hành động duy nhất bao_ve bật/tắt bảo vệ (tắt kèm thời gian tự bật lại, mặc định 5 phút). Hành động bao_ve là nguy_hiem theo cấu trúc, qua phê duyệt của lõi. Không trả nguyên nhật ký truy vấn, không sửa bộ lọc, không xoá nhật ký.",
-  "phien_ban": "0.1.0",
+  "phien_ban": "0.1.1",
   "tai_nguyen": {
     "dia_mb": null,
     "ghi_chu": "Chỉ thư viện chuẩn (urllib). Không gọi ra Internet: địa chỉ phải là IP riêng trong LAN, đã ghim IP chống DNS rebinding; proxy bị tắt ở client.",

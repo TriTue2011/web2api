@@ -2,7 +2,7 @@
   "id": "doc-viettat",
   "ten": "Chuẩn hoá chữ đọc tiếng Việt",
   "mo_ta": "Chuẩn hoá chữ viết tắt, số, đơn vị đo, công thức hoá học, ký hiệu để đọc tiếng Việt chuẩn OpenAI / TTS. Thuần Python, không mạng.",
-  "phien_ban": "0.1.0",
+  "phien_ban": "0.1.1",
   "hang": "A",
   "loai": "tien_ich",
   "loai_ten": "Tiện ích",
