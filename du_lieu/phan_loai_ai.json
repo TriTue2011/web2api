@@ -23,6 +23,12 @@
       }
     ]
   },
+  "cach_dang_nhap": {
+    "_ghi_chu": "NV300: cách đăng nhập theo từng tài khoản. Giá trị sống ở ĐÂY (dữ liệu) như NV223, lõi chỉ đọc qua hằng (không gõ cứng vào mã nguồn). ho_so = tái dùng hồ sơ đã đăng nhập (không cần mật khẩu); email = đường mật khẩu. truong_ho_so = tên trường id hồ sơ trong bản ghi/API (lõi dùng hằng, không gõ cứng tên trường).",
+    "ho_so": "google",
+    "email": "email",
+    "truong_ho_so": "ho_so_google"
+  },
   "tai_khoan_dnh": {
     "_ghi_chu": "NV262: tên trường id bản ghi tài khoản dùng để đăng nhập hộ. Lõi dùng tên CHUNG (không nêu nhà cung cấp); tên khoá cũ nằm ở đây (bi_danh_cu) để lõi đọc lúc import — tương thích ngược với bản ghi thật đã lưu từ NV223 mà không chép cứng tên cũ trong mã. Giá trị dang_nhap_bang của bản ghi cũ nằm ở mục dang_nhap_bang (gia_tri_cu dưới đây chỉ để ghi nhận, lõi so sánh qua hằng đọc từ dữ liệu).",
     "ten_moi": "tai_khoan_dnh_id",

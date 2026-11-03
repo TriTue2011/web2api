@@ -2493,6 +2493,24 @@ def _chuoi_tuy_chon(than: dict, ten: str) -> str | None:
     return kiem_bien.kiem_chuoi(than.get(ten), cho_phep_none=True, ten_truong=ten)
 
 
+def _cach_va_ho_so(muc: dict) -> tuple:
+    """``(cach_dang_nhap, ho_so)`` từ một mục body (NV300).
+
+    Vắng/null → None (giữ nguyên cũ ở tầng kho); sai kiểu → 400.
+    Chế độ hồ sơ mà hồ sơ không phải bản ghi đã lưu → invalid_value
+    (không lưu dở); kiểm tồn tại ở đây, tầng kho chỉ kiểm khác rỗng.
+    """
+    cach = _chuoi_tuy_chon(muc, "cach_dang_nhap")
+    ho_so = _chuoi_tuy_chon(muc, kho_tai_khoan_mod.TRUONG_HO_SO) \
+        or _chuoi_tuy_chon(muc, "ho_so")
+    if cach is not None \
+            and cach.strip().lower() == kho_tai_khoan_mod.CACH_HO_SO \
+            and ho_so:
+        if kho_tai_khoan_mod.tim_theo_id(ho_so) is None:
+            raise kho_tai_khoan_mod.LoiKhoTaiKhoan("invalid_value")
+    return cach, ho_so
+
+
 def _tai_khoan_dnh_id_tuy_chon(than: dict) -> str | None:
     """Id tài khoản đăng nhập hộ (NV262): chấp nhận CẢ HAI tên trường, tên
     mới ưu tiên (đọc từ kho — không chép cứng tên trong mã lõi); vắng/null
@@ -4276,6 +4294,7 @@ async def luu_tai_khoan_da_luu(request: Request):
                     mid, nhom = _module_va_nhom(muc)
                     bi_mat_moi, kieu_moi, la_khoa = _bi_mat_moi(muc)
                     mat_khau_muc = None if la_khoa else muc.get("mat_khau")
+                    cach_muc, ho_so_muc = _cach_va_ho_so(muc)
                     bk = kho_tai_khoan_mod.luu_tai_khoan(
                         muc.get("email"), mat_khau_muc,
                         muc.get("totp_secret"), muc.get("nhan", ""),
@@ -4289,7 +4308,8 @@ async def luu_tai_khoan_da_luu(request: Request):
                         tai_khoan_dnh_id=_tai_khoan_dnh_id_tuy_chon(muc),
                         dung_cho=_dung_cho_tuy_chon(muc),
                         dia_chi=_chuoi_tuy_chon(muc, "dia_chi"),
-                        bi_mat=bi_mat_moi, kieu_bi_mat=kieu_moi)
+                        bi_mat=bi_mat_moi, kieu_bi_mat=kieu_moi,
+                        cach_dang_nhap=cach_muc, ho_so=ho_so_muc)
                     luu.append(bk)
                 except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
                     if e.ma == "kho_hong":
@@ -4303,6 +4323,15 @@ async def luu_tai_khoan_da_luu(request: Request):
         tai_id = _chuoi_tuy_chon(than, "id")
         email_val = _chuoi_tuy_chon(than, "email")
         bi_mat_moi, kieu_moi, la_khoa = _bi_mat_moi(than)
+        cach_them, ho_so_them = _cach_va_ho_so(than)
+        # NV300: chế độ hồ sơ lấy email từ hồ sơ đã chọn khi không
+        # nhập email riêng (bản ghi dịch vụ mang email của tài khoản hồ sơ).
+        if cach_them is not None \
+                and cach_them.strip().lower() == kho_tai_khoan_mod.CACH_HO_SO \
+                and not email_val and ho_so_them:
+            ban_ghi_hs = kho_tai_khoan_mod.tim_theo_id(ho_so_them)
+            if ban_ghi_hs is not None:
+                email_val = ban_ghi_hs.get("email", "") or ""
         # NV258: bản ghi khoá API/token/cookie không bắt buộc email; các
         # trường hợp còn lại giữ yêu cầu cũ (email hoặc id + mật khẩu).
         if not tai_id and not email_val and not la_khoa:
@@ -4310,7 +4339,11 @@ async def luu_tai_khoan_da_luu(request: Request):
         mid, nhom = _module_va_nhom(than)
         # NV258: bí mật qua trường mới «bi_mat» cũng được chấp nhận cho mọi
         # kiểu (kể cả mat_khau); chỉ khi không có bi_mat mới bắt buộc mat_khau.
-        if la_khoa or bi_mat_moi is not None:
+        # NV300: chế độ hồ sơ không bắt buộc mật khẩu (tái dùng hồ sơ).
+        if la_khoa or bi_mat_moi is not None \
+                or (cach_them is not None
+                    and cach_them.strip().lower()
+                    == kho_tai_khoan_mod.CACH_HO_SO):
             mat_khau_yeu_cau = None
         else:
             mat_khau_yeu_cau = _chuoi_bat_buoc(than, "mat_khau")
@@ -4329,7 +4362,8 @@ async def luu_tai_khoan_da_luu(request: Request):
             tai_khoan_dnh_id=_tai_khoan_dnh_id_tuy_chon(than),
             dung_cho=_dung_cho_tuy_chon(than),
             dia_chi=_chuoi_tuy_chon(than, "dia_chi"),
-            bi_mat=bi_mat_moi, kieu_bi_mat=kieu_moi)
+            bi_mat=bi_mat_moi, kieu_bi_mat=kieu_moi,
+            cach_dang_nhap=cach_them, ho_so=ho_so_them)
         # Nhật ký: chỉ ghi định danh đã che — KHÔNG bao giờ ghi bí mật.
         dinh_danh_che = bk.get("email_che") or bk.get("dia_chi_che") or "…"
         nhat_ky_mod.ghi(
@@ -4534,13 +4568,22 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
     if ban_ghi is not None and ban_ghi.get("trang_thai") == kho_tai_khoan_mod.TRANG_THAI_TAM_DUNG:
         raise LoiOpenAI(403, "Tài khoản đã tạm dừng; bật lại mới đăng nhập được.",
                         code="tam_dung")
-    try:
-        bi_mat = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(id)
-    except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
-        raise _loi_kho_tai_khoan(e) from None
-    if bi_mat is None:
-        raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
-    mat_khau, totp = bi_mat
+    # NV300: cách theo từng tài khoản — hồ sơ thì KHÔNG cần bí mật (tái
+    # dùng hồ sơ đã đăng nhập); email thì vẫn cần mật khẩu như cũ.
+    cach_hieu_luc = kho_tai_khoan_mod.cach_dang_nhap_cua(ban_ghi) \
+        if ban_ghi else ""
+    ho_so_hieu_luc = kho_tai_khoan_mod.ho_so_cua(ban_ghi) \
+        if ban_ghi else ""
+    if cach_hieu_luc == kho_tai_khoan_mod.CACH_HO_SO:
+        mat_khau, totp = None, None
+    else:
+        try:
+            bi_mat = kho_tai_khoan_mod.lay_bi_mat_dang_nhap(id)
+        except kho_tai_khoan_mod.LoiKhoTaiKhoan as e:
+            raise _loi_kho_tai_khoan(e) from None
+        if bi_mat is None:
+            raise LoiOpenAI(404, "Không tìm thấy tài khoản đã lưu.", code="khong_tim_thay")
+        mat_khau, totp = bi_mat
     email = ban_ghi["email"] if ban_ghi else ""
     # NV274: module CHƯA chạy mà có khả năng đăng nhập (vd chưa có cookie nên chưa nạp) vẫn đăng nhập được qua thể
     # hiện tạm — cùng nguyên tắc với đường dán hàng loạt (`the_hien_cho_dang_nhap`). Trước đây chỉ nhìn `dang_chay`
@@ -4548,12 +4591,19 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
     mod = so.the_hien_cho_dang_nhap(module_id)
     ham = getattr(mod, "dang_nhap", None) if mod is not None else None
     if not callable(ham):
-        mat_khau.xoa()
+        if mat_khau is not None:
+            mat_khau.xoa()
         if totp is not None:
             totp.xoa()
         raise LoiOpenAI(502, "Module chưa triển khai đăng nhập.", code="chua_ho_tro")
     dong = tai_khoan_hang_loat_mod.DongDaTach(
-        dong=0, email=email, loai="mat_khau", mat_khau=mat_khau, totp=totp)
+        dong=0, email=email,
+        loai=cach_hieu_luc
+        if cach_hieu_luc == kho_tai_khoan_mod.CACH_HO_SO else "mat_khau",
+        mat_khau=mat_khau, totp=totp)
+    # NV300: module chọn đường theo cách của tài khoản (không đoán).
+    dong.cach_dang_nhap = cach_hieu_luc
+    setattr(dong, kho_tai_khoan_mod.TRUONG_HO_SO, ho_so_hieu_luc)
     # NV248 — cờ «Kiểm tra lại» tường minh từ giao diện: người dùng bấm lại
     # nút đăng nhập sau khi nhận «cần người» (không đoán từ lịch sử).
     dong.kiem_tra_lai = kiem_tra_lai
@@ -4758,9 +4808,12 @@ async def bat_dau_dang_nhap_hang_loat(request: Request):
                 kq = await ham_goc(dong)
             except Exception:
                 kho_tai_khoan_mod.ghi_ket_qua_theo_email(
-                    dong.email, {"thanh_cong": False, "ma_loi": "loi_module"})
+                    dong.email, {"thanh_cong": False, "ma_loi": "loi_module"},
+                    getattr(dong, "module_cua_tai_khoan", "") or module_id)
                 raise
-            kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq)
+            kho_tai_khoan_mod.ghi_ket_qua_theo_email(
+                dong.email, kq,
+                getattr(dong, "module_cua_tai_khoan", "") or module_id)
             return kq
 
         ham_dang_nhap = ham_dang_nhap_ghi
@@ -4891,7 +4944,8 @@ async def dang_nhap_da_luu_theo_module(request: Request):
         except Exception:
             # NV283: dòng ném lỗi vẫn là một kết quả thất bại thật.
             kho_tai_khoan_mod.ghi_ket_qua_theo_email(
-                dong.email, {"thanh_cong": False, "ma_loi": "loi_module"})
+                dong.email, {"thanh_cong": False, "ma_loi": "loi_module"},
+                module_so_huu)
             raise
         finally:
             # NV223: dọn bí mật đăng nhập hộ sau mỗi dòng
@@ -4899,7 +4953,7 @@ async def dang_nhap_da_luu_theo_module(request: Request):
                 if _bm is not None:
                     _bm.xoa()
         # NV283: mỗi dòng ghi kết quả thật qua hàm bọc chung.
-        kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq)
+        kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq, module_so_huu)
         if getattr(kq, "thanh_cong", False):
             # NV210: mỗi tài khoản đăng nhập xong thì gắn JWT mới + hồ sơ vào module sở hữu.
             gan_ket_qua_dang_nhap_mod.ap_dung(so_loi, kq, module_so_huu)
@@ -5464,9 +5518,12 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
             kq = await ham_chay_goc(dong)
         except Exception:
             kho_tai_khoan_mod.ghi_ket_qua_theo_email(
-                dong.email, {"thanh_cong": False, "ma_loi": "loi_module"})
+                dong.email, {"thanh_cong": False, "ma_loi": "loi_module"},
+                getattr(dong, "module_cua_tai_khoan", "") or module_id)
             raise
-        kho_tai_khoan_mod.ghi_ket_qua_theo_email(dong.email, kq)
+        kho_tai_khoan_mod.ghi_ket_qua_theo_email(
+            dong.email, kq,
+            getattr(dong, "module_cua_tai_khoan", "") or module_id)
         return kq
 
     ham_chay = ham_chay_ghi

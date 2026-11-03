@@ -176,7 +176,7 @@ class DongDaTach:
 
     dong: int
     email: str
-    loai: str  # "mat_khau" | "cookie" | "dang_nhap_lai"
+    loai: str  # "mat_khau" | "cookie" | "dang_nhap_lai" | cach ho so (NV300)
     mat_khau: BiMatTam | None = None
     totp: BiMatTam | None = None
     cookie: BiMatTam | None = None

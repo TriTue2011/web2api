@@ -179,6 +179,10 @@ _QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'claude.ai', 'ten': 'sessionKey'
 class Module:
     """Module claude-web: nap / cai / models / chat / suc_khoe / dung."""
 
+    #: NV300 (bổ sung 03/11): Claude TẠM THỜI chỉ đăng nhập qua Google —
+    #: đường email chưa hỗ trợ, giao diện ẩn/vô hiệu chip Email.
+    CACH_DANG_NHAP_HO_TRO = ("google",)
+
     def __init__(self, manifest: dict):
         self.manifest = manifest or {}
         self._tien_to = str(self.manifest.get("tien_to") or "clw")
@@ -411,9 +415,21 @@ class Module:
 
     async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
         """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
-        mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi).
+        NV300 (bổ sung 03/11): lần gọi từ đường lõi mang cach_dang_nhap
+        (tài khoản đã lưu) thì luôn đi đường Google — Claude tạm thời chỉ
+        Google; gọi trực tiếp không kèm cách giữ hành vi cũ."""
         loai = tai_khoan.loai
+        if loai in ("mat_khau", "dang_nhap_lai") \
+                and getattr(tai_khoan, "cach_dang_nhap", "") != "":
+            loai = "google"
         try:
+            if loai == "google":
+                tao = self._tao_trinh_duyet
+                td = tao() if callable(tao) else None
+                self._trinh_duyet_da_dung = td
+                return await self.tai_dung_ho_so(
+                    getattr(tai_khoan, "ho_so_google", "") or "", td)
             if loai == "cookie":
                 cookie_tho = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
                 if not cookie_tho:
@@ -883,7 +899,9 @@ class Module:
 
     async def khoi_phuc_tu_dong(self, khoa: str, email: str = "",
                                 mat_khau=None, totp=None, trinh_duyet=None,
-                                nghi_t1_giay: float = 0.0) -> KetQuaKhoiPhuc:
+                                nghi_t1_giay: float = 0.0,
+                                cach_dang_nhap=None,
+                                ho_so_google=None) -> KetQuaKhoiPhuc:
         """Thang T0-T3 ĐẦY ĐỦ, tự chứa trong module này. Gọi trực tiếp cũng chạy.
 
         - T0: lam_moi_phien(khoa) — chỉ kiểm bằng GET /api/organizations,
@@ -931,16 +949,29 @@ class Module:
                 bay_gio = time.time()
                 if bay_gio < getattr(self, "_captcha_den_het", 0.0):  # chặn cả khoá vừa gặp captcha: thử lại ngay chỉ thêm một lần gặp captcha
                     return KetQuaKhoiPhuc(False, tang="T2", ma_loi="captcha_hoan")
-                if mat_khau_dung is None:
-                    mat_khau_dung = self.mat_khau_da_luu(khoa) or self.mat_khau_da_luu(email)
-                if mat_khau_dung is None:
-                    return KetQuaKhoiPhuc(False, tang="T2", ma_loi="thieu_mat_khau")
-                if totp_dung is None:
-                    totp_dung = self.totp_da_luu(khoa) or self.totp_da_luu(email)
-                td = trinh_duyet if trinh_duyet is not None else await self._lay_trinh_duyet_module()
-                self._trinh_duyet_da_dung = td
-                kq2 = await self._dang_nhap_bang_trinh_duyet(
-                    email, mat_khau_dung, td, totp=totp_dung, khoi_phuc=True)
+                # NV300 (bổ sung 03/11, tinh chỉnh sau test NV_module_claude):
+                # Claude TẠM THỜI chỉ Google — nhưng chỉ ÉP khi lần gọi mang
+                # cách tường minh (khác rỗng), bất kể giá trị (kể cả
+                # "email": tài khoản Claude luôn google). Không mang cách
+                # (tài khoản cũ, gọi trực tiếp) thì giữ đường mật khẩu cũ
+                # để không phá hành vi cũ và test đường mật khẩu.
+                if cach_dang_nhap:
+                    td = trinh_duyet if trinh_duyet is not None else await self._lay_trinh_duyet_module()
+                    self._trinh_duyet_da_dung = td
+                    if td is None:
+                        return KetQuaKhoiPhuc(False, tang="T2", ma_loi="trinh_duyet_none")
+                    kq2 = await self.tai_dung_ho_so(ho_so_google or "", td)
+                else:
+                    if mat_khau_dung is None:
+                        mat_khau_dung = self.mat_khau_da_luu(khoa) or self.mat_khau_da_luu(email)
+                    if mat_khau_dung is None:
+                        return KetQuaKhoiPhuc(False, tang="T2", ma_loi="thieu_mat_khau")
+                    if totp_dung is None:
+                        totp_dung = self.totp_da_luu(khoa) or self.totp_da_luu(email)
+                    td = trinh_duyet if trinh_duyet is not None else await self._lay_trinh_duyet_module()
+                    self._trinh_duyet_da_dung = td
+                    kq2 = await self._dang_nhap_bang_trinh_duyet(
+                        email, mat_khau_dung, td, totp=totp_dung, khoi_phuc=True)
                 self._lan_t2[khoa] = time.time()
                 if not kq2.thanh_cong:
                     ma = kq2.ma_loi or "loi_module"

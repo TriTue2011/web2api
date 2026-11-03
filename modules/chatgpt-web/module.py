@@ -340,6 +340,9 @@ def _muc_tu_limits_progress(lp) -> list[dict] | None:
 class Module:
     """Lớp Module theo hợp đồng app/kham_pha.py."""
 
+    #: NV300: cách đăng nhập module này hỗ trợ theo từng tài khoản.
+    CACH_DANG_NHAP_HO_TRO = ("google", "email")
+
     def __init__(self, manifest: dict):
         self.manifest = manifest
         self.tien_to = manifest.get("tien_to", TIEN_TO)
@@ -814,7 +817,9 @@ class Module:
 
     async def khoi_phuc_tu_dong(self, khoa: str, email: str = "",
                                 mat_khau=None, totp=None, trinh_duyet=None,
-                                nghi_t1_giay: float = 0.0) -> KetQuaKhoiPhuc:
+                                nghi_t1_giay: float = 0.0,
+                                cach_dang_nhap=None,
+                                ho_so_google=None) -> KetQuaKhoiPhuc:
         """Thang T0-T3 ĐẦY ĐỦ, tự chứa trong module này. Gọi trực tiếp cũng chạy.
 
         - T0: lam_moi_phien(khoa) — chỉ kiểm, không bịa refresh endpoint.
@@ -857,15 +862,25 @@ class Module:
                 bay_gio = time.time()
                 if bay_gio < getattr(self, "_captcha_den_het", 0.0):  # chặn cả khoá vừa gặp captcha: thử lại ngay chỉ thêm một lần gặp captcha
                     return KetQuaKhoiPhuc(False, tang="T2", ma_loi="captcha_hoan")
+                # NV300: cách theo từng tài khoản — google thì tái dùng hồ
+                # sơ, không cần mật khẩu; không truyền cách thì giữ đường
+                # mật khẩu như cũ.
+                cach = cach_dang_nhap \
+                    if cach_dang_nhap in ("google", "email") else "email"
                 if mat_khau_dung is None:
                     mat_khau_dung = self.mat_khau_da_luu(khoa) or self.mat_khau_da_luu(email)
-                if mat_khau_dung is None:
+                if mat_khau_dung is None and cach != "google":
                     return KetQuaKhoiPhuc(False, tang="T2", ma_loi="thieu_mat_khau")
                 if totp_dung is None:
                     totp_dung = self.totp_da_luu(khoa) or self.totp_da_luu(email)
                 td = trinh_duyet if trinh_duyet is not None else await self._lay_trinh_duyet_module()
                 self._trinh_duyet_da_dung = td
-                kq2 = await self._dang_nhap_bang_trinh_duyet(email, mat_khau_dung, td, totp=totp_dung)
+                if cach == "google":
+                    if td is None:
+                        return KetQuaKhoiPhuc(False, tang="T2", ma_loi="trinh_duyet_none")
+                    kq2 = await self.tai_dung_ho_so(ho_so_google or "", td)
+                else:
+                    kq2 = await self._dang_nhap_bang_trinh_duyet(email, mat_khau_dung, td, totp=totp_dung)
                 self._lan_t2[khoa] = time.time()
                 if not kq2.thanh_cong:
                     ma = kq2.ma_loi or "loi_module"
@@ -1012,7 +1027,17 @@ class Module:
         """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
         mật khẩu đã lưu. BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
         loai = tai_khoan.loai
+        # NV300: lần gọi mang cách tường minh (đường lõi gắn từ bản ghi) thì
+        # đổi đường tương ứng: google → tái dùng hồ sơ, không đòi mật khẩu.
+        if loai in ("mat_khau", "dang_nhap_lai") \
+                and getattr(tai_khoan, "cach_dang_nhap", "") == "google":
+            loai = "google"
         try:
+            if loai == "google":
+                td = await self._lay_trinh_duyet_module()
+                self._trinh_duyet_da_dung = td
+                return await self.tai_dung_ho_so(
+                    getattr(tai_khoan, "ho_so_google", "") or "", td)
             if loai == "cookie":
                 token = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
                 if not token:

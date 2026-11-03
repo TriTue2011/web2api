@@ -219,8 +219,10 @@ def test_manifest_hop_le(bo_module):
     truong = {t["khoa"]: t for t in manifest["truong_cau_hinh"]}
     assert truong["tai_khoan"]["kieu"] == "danh_sach_bi_mat"
     assert truong["tai_khoan"]["bat_buoc"] is True
-    assert truong["che_do_dang_nhap"]["kieu"] == "chuoi"  # bổ sung NV90: truc_tiep | google
-    assert truong["che_do_dang_nhap"]["mac_dinh"] == "truc_tiep"
+    # NV300: cách đăng nhập thành thuộc tính từng tài khoản, không còn là
+    # cài đặt chung của module — trường che_do_dang_nhap đã bỏ khỏi manifest
+    # (giá trị cũ vẫn đọc ngược làm mặc định cho tài khoản chưa có cách riêng).
+    assert "che_do_dang_nhap" not in truong
 
 
 # ── Chat không stream ─────────────────────────────────────────────────

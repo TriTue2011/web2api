@@ -589,3 +589,19 @@ Hợp đồng chung vẫn là «module không có route»: module KHÔNG tự g�
   Thiếu khoá → 401; khoá hợp lệ nhưng module không được phép (hoặc là khoá quản trị/«*») → 403.
 - **Chỉ nhận nguồn LAN**: qua đường hầm hoặc proxy mà lõi không tin (`WEB2API_TRUST_PROXY`) thì bị chặn.
 - Không tên nhà cung cấp trong lõi: lõi chỉ chuyển tiếp `(mã, headers, nội dung)` và kiểm xác thực.
+
+## 16. Cách đăng nhập theo từng tài khoản (NV300)
+
+Cách đăng nhập (`cach_dang_nhap` ∈ `google` | `email`) là thuộc tính của **từng tài khoản đã lưu** (`app/kho_tai_khoan.py`),
+không còn là cài đặt chung của module (giá trị cũ của grok-web vẫn đọc ngược làm mặc định cho tài khoản chưa có cách riêng).
+
+- Module web khai các cách mình hỗ trợ bằng thuộc tính lớp `CACH_DANG_NHAP_HO_TRO` (vd grok-web, chatgpt-web,
+  gemini-web: `("google", "email")`; claude-web tạm thời chỉ `("google",)`; muse2api chỉ `("google",)` vì không có
+  form mật khẩu). Không khai thì lõi suy từ cấu trúc (`dang_nhap` → email, `tai_dung_ho_so` → google) để hiện
+  ở `GET /api/tinh-nang` (`cach_dang_nhap_ho_tro` từng module).
+- `khoi_phuc_tu_dong(..., cach_dang_nhap=None, ho_so_google=None)` và `dang_nhap()` chọn đường theo cách của
+  tài khoản: google → tái dùng hồ sơ đã đăng nhập (không cần mật khẩu), email → đường mật khẩu cũ. Lõi chỉ truyền
+  hai tham số này khi chữ ký module nhận (tương thích module khác).
+- **Không trộn với NV223**: `dang_nhap_bang` qua tài khoản lưu là «đăng nhập HỘ bằng bí mật của tài khoản Google»
+  (vẫn đi đường mật khẩu), khác với cach `google` là «tái dùng hồ sơ, không cần mật khẩu».
+- Thang T0–T3 áp cho cả hai cách; CAPTCHA/Cloudflare/xác minh vẫn dừng ở `can_nguoi`, không vượt.

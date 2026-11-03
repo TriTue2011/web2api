@@ -203,6 +203,11 @@ class _TaiKhoanNV93:
 _QUY_TAC_TIN_HIEU = [{'loai': 'cookie', 'mien': 'muse.ai', 'ten': 'hatch_sess', 'tin_hieu': 'da_dang_nhap'}, {'loai': 'url_chua', 'gia_tri': 'muse.ai/login', 'tin_hieu': 'chua_dang_nhap'}]
 
 class Module:
+    #: NV300: muse2api chỉ có đường hồ sơ (không có form mật khẩu) nên
+    #: chỉ hỗ trợ cách google; tham số cach_dang_nhap ở khoi_phuc_tu_dong
+    #: được nhận nhưng bỏ qua.
+    CACH_DANG_NHAP_HO_TRO = ("google",)
+
     def __init__(self, manifest: dict):
         self.manifest = manifest
         self.tien_to = manifest["tien_to"]
@@ -419,9 +424,13 @@ class Module:
     async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
         """Hợp đồng NV67: cookie → kiểm bằng bootstrap; mat_khau/dang_nhap_lai
         → can_nguoi (muse.ai không có form mật khẩu để tự điền — cần người đăng
-        nhập tay qua noVNC). BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        nhập tay qua noVNC). BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi).
+        NV300: loai «google» cũng → can_nguoi như đường mật khẩu (đăng nhập
+        qua hồ sơ chỉ diễn ra ở khoi_phuc_tu_dong, không ở dang_nhap)."""
         loai = tai_khoan.loai
         try:
+            if loai == "google":
+                return KetQuaDangNhap(False, ma_loi="can_nguoi")
             if loai == "cookie":
                 cookies = tai_khoan.cookie.lay() if tai_khoan.cookie else ""
                 if not cookies:
@@ -604,8 +613,14 @@ class Module:
 
     async def khoi_phuc_tu_dong(self, khoa: str, email: str = "",
                                 mat_khau=None, totp=None, trinh_duyet=None,
-                                nghi_t1_giay: float = 0.0) -> KetQuaKhoiPhuc:
+                                nghi_t1_giay: float = 0.0,
+                                cach_dang_nhap=None,
+                                ho_so_google=None) -> KetQuaKhoiPhuc:
         """Thang T0-T3 tự chứa trong module này, cho muse.ai.
+
+        NV300: tham số cach_dang_nhap/ho_so_google được nhận nhưng bỏ qua
+        — muse2api chỉ có đường hồ sơ (không có form mật khẩu), nên mọi
+        cách đều đi đường hồ sơ như cũ.
 
         Đầu vào: khoá có thể là tk_id ngoài module (delegate MCP đưa) —
         khi đó thử ánh xạ qua email → tài khoản NV93; không ánh xạ được

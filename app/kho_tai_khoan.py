@@ -561,6 +561,77 @@ def kiem_dang_nhap_bang(dang_nhap_bang) -> str:
     return s
 
 
+#: NV300: cách đăng nhập của TỪNG tài khoản đã lưu — ho_so = qua hồ sơ
+#: đã đăng nhập (tái dùng hồ sơ, không nhập mật khẩu); email = email +
+#: mật khẩu (+ TOTP nếu có) qua trình duyệt. "" = chưa khai.
+#: Giá trị đọc từ bảng dữ liệu (du_lieu/phan_loai_ai.json, mục
+#: cach_dang_nhap) như NV223 — KHÔNG gõ cứng tên phương thức vào mã lõi
+#: (quy tắc ghi trong _ghi_chu của bảng, cổng test_loi_khong_mang_dac_thu).
+_CACH_DANG_NHAP_BANG = _BANG_PHAN_LOAI_AI.get("cach_dang_nhap") or {}
+CACH_HO_SO = _CACH_DANG_NHAP_BANG.get("ho_so", "")
+CACH_EMAIL = _CACH_DANG_NHAP_BANG.get("email", "")
+#: Tên trường id hồ sơ trong bản ghi/API (đọc từ bảng dữ liệu — mã lõi
+#: không gõ cứng tên trường, cùng quy tắc như giá trị cách ở trên).
+TRUONG_HO_SO = _CACH_DANG_NHAP_BANG.get("truong_ho_so", "")
+CACH_DANG_NHAP_CHO_PHEP = tuple(
+    v for v in (CACH_HO_SO, CACH_EMAIL) if v)
+
+
+def kiem_cach_dang_nhap(cach_dang_nhap) -> str:
+    """Kiểm trường «cách đăng nhập» (NV300): None → "" (chưa khai)."""
+    if cach_dang_nhap is None:
+        return ""
+    if isinstance(cach_dang_nhap, bool) or not isinstance(cach_dang_nhap, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    s = cach_dang_nhap.strip().lower()
+    if s not in ("", *CACH_DANG_NHAP_CHO_PHEP):
+        raise LoiKhoTaiKhoan("invalid_value")
+    return s
+
+
+def kiem_ho_so(ho_so) -> str:
+    """Kiểm id hồ sơ đã lưu (NV300): None → "" (chưa chọn)."""
+    if ho_so is None:
+        return ""
+    if isinstance(ho_so, bool) or not isinstance(ho_so, str):
+        raise LoiKhoTaiKhoan("invalid_value")
+    _kiem_ky_tu(ho_so, TRUONG_HO_SO)
+    s = ho_so.strip()
+    if len(s) > DOI_DAI_MODULE_ID:
+        raise LoiKhoTaiKhoan("invalid_value")
+    return s
+
+
+def cach_dang_nhap_cua(ban_ghi: dict, mac_dinh: str = "") -> str:
+    """Cách đăng nhập HIỆU LỰC của một bản ghi (NV300).
+
+    Giá trị đã ghi thắng; chưa ghi thì suy từ dữ liệu cũ: có mật khẩu →
+    «email»; không có gì → mac_dinh (module giữ hành vi cũ của nó).
+
+    CỐ TÌNH không suy từ NV223: ``dang_nhap_bang`` qua tài khoản lưu là
+    «đăng nhập HỘ bằng bí mật của tài khoản hồ sơ» (vẫn đi đường mật
+    khẩu — NV271 A2/C3), KHÁC với cach hồ sơ của NV300 là «tái dùng
+    hồ sơ đã đăng nhập, không cần mật khẩu». Trộn hai thứ sẽ phá
+    đường đăng nhập hộ.
+    """
+    if not isinstance(ban_ghi, dict):
+        return mac_dinh
+    v = ban_ghi.get("cach_dang_nhap")
+    if isinstance(v, str) and v.strip().lower() in CACH_DANG_NHAP_CHO_PHEP:
+        return v.strip().lower()
+    if ban_ghi.get("bi_mat") or ban_ghi.get("mat_khau"):
+        return "email"
+    return mac_dinh
+
+
+def ho_so_cua(ban_ghi: dict) -> str:
+    """Id hồ sơ đã lưu của một bản ghi (NV300); chưa chọn → ""."""
+    if not isinstance(ban_ghi, dict):
+        return ""
+    v = ban_ghi.get(TRUONG_HO_SO)
+    return v if isinstance(v, str) else ""
+
+
 def kiem_tai_khoan_dnh_id(tai_khoan_dnh_id) -> str:
     """Kiểm id bản ghi tài khoản dùng để đăng nhập hộ (NV223, đổi tên NV262).
 
@@ -736,9 +807,68 @@ def them_dung_cho(id_, dich):
     return ban_cong_khai(ban_ghi)
 
 
-def ma_tai_khoan(email_chuan: str) -> str:
-    """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256)."""
-    return _TIEN_TO_ID + hashlib.sha256(email_chuan.encode("utf-8")).hexdigest()[:16]
+def ma_tai_khoan(email_chuan: str, phan_vung: str = "") -> str:
+    """ID ổn định từ email đã chuẩn hoá (``tk-`` + 16 hex SHA-256).
+
+    NV300: kho phân vùng THEO PROVIDER (module). ``phan_vung`` rỗng → id cũ
+    (chỉ theo email, bản ghi cũ vẫn đọc được); có giá trị → id riêng của cặp
+    (email, phân vùng), để cùng một Gmail ở nhiều provider là các bản ghi độc
+    lập (NUL phân tách, không lẫn với id theo email)."""
+    goc = email_chuan if not phan_vung else email_chuan + "\x00" + phan_vung
+    return _TIEN_TO_ID + hashlib.sha256(goc.encode("utf-8")).hexdigest()[:16]
+
+
+def _phan_vung_cua(ban_ghi: dict) -> str:
+    """Phân vùng đặt lúc tạo bản ghi (bất biến); bản ghi cũ → "" (id theo email)."""
+    pv = ban_ghi.get("phan_vung", "")
+    return pv if isinstance(pv, str) else ""
+
+
+def _cung_email(du_lieu: dict, email_chuan: str) -> list:
+    """Id mọi bản ghi (không phải loại nhập) mang email này — mọi provider."""
+    return [k for k, b in du_lieu.items()
+            if b.get("loai") != "nhap" and email_chuan
+            and b.get("email") == email_chuan]
+
+
+def _chon_ban_ghi_theo_phan_vung(du_lieu: dict, email_chuan: str,
+                                 module_id: str) -> tuple:
+    """NV300 — chọn bản ghi cho (email, provider). Trả ``(id, phan_vung)``;
+    ``id`` là bản ghi ĐÃ CÓ (phải cập nhật) hoặc id mới cho bản ghi sắp tạo.
+
+    - Có module_id: khớp bản ghi cùng module; không có thì nhận bản ghi cũ
+      CHƯA gắn module (cách làm cũ); còn lại tạo mới (id cũ theo email nếu
+      chỗ đó trống, ngược lại id riêng theo cặp).
+    - Không module_id: đúng một bản ghi mang email → cập nhật nó (cách cũ);
+      nhiều bản ghi → mơ hồ, từ chối (``invalid_value``), không đoán.
+    """
+    cung = _cung_email(du_lieu, email_chuan)
+    if module_id:
+        for k in cung:
+            if du_lieu[k].get("module_id") == module_id:
+                return k, _phan_vung_cua(du_lieu[k])
+        for k in cung:
+            if not du_lieu[k].get("module_id"):
+                return k, _phan_vung_cua(du_lieu[k])
+        id_cu = ma_tai_khoan(email_chuan)
+        if id_cu not in du_lieu:
+            return id_cu, ""
+        return ma_tai_khoan(email_chuan, module_id), module_id
+    if len(cung) > 1:
+        raise LoiKhoTaiKhoan("invalid_value")
+    if cung:
+        return cung[0], _phan_vung_cua(du_lieu[cung[0]])
+    return ma_tai_khoan(email_chuan), ""
+
+
+def _xung_dot_phan_vung(du_lieu: dict, email_chuan: str, module_id: str,
+                        tru_id: str) -> bool:
+    """Có bản ghi KHÁC cùng (email, provider) không — đổi module mà trùng
+    thì hai bản ghi sẽ đè nhau ở mọi tra cứu theo (email, module)."""
+    if not (email_chuan and module_id):
+        return False
+    return any(k != tru_id and du_lieu[k].get("module_id") == module_id
+               for k in _cung_email(du_lieu, email_chuan))
 
 
 def che_email(email: str) -> str:
@@ -796,14 +926,15 @@ def _doc() -> dict:
             raise LoiKhoTaiKhoan("kho_hong")
         email_bm = ban_ghi.get("email", "")
         if kieu_bm == "mat_khau":
-            if id_ != ma_tai_khoan(email_bm):
+            if id_ != ma_tai_khoan(email_bm, _phan_vung_cua(ban_ghi)):
                 raise LoiKhoTaiKhoan("kho_hong")
         else:
             bi_mat_bm = ban_ghi.get("bi_mat", "")
             if not isinstance(bi_mat_bm, str):
                 raise LoiKhoTaiKhoan("kho_hong")
             hop_le_bm = (
-                id_ == ma_tai_khoan(email_bm) and email_bm
+                id_ == ma_tai_khoan(email_bm, _phan_vung_cua(ban_ghi))
+                and email_bm
             ) or id_ == ma_bi_mat(kieu_bm, bi_mat_bm)
             if not hop_le_bm:
                 raise LoiKhoTaiKhoan("kho_hong")
@@ -813,11 +944,15 @@ def _doc() -> dict:
             if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
                 raise LoiKhoTaiKhoan("kho_hong")
         # Trường NV197c (tuỳ chọn, bản ghi cũ không có): có thì phải là chuỗi.
-        for truong in ("module_id", "nhom", "bac_goi"):
+        for truong in ("module_id", "nhom", "bac_goi", "phan_vung"):
             if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
                 raise LoiKhoTaiKhoan("kho_hong")
         # Trường NV218 (tuỳ chọn, bản ghi cũ không có): có thì phải là chuỗi.
         for truong in ("loai_tai_khoan", "dich_dung"):
+            if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
+                raise LoiKhoTaiKhoan("kho_hong")
+        # Trường NV300 (tuỳ chọn, bản ghi cũ không có): có thì phải là chuỗi.
+        for truong in ("cach_dang_nhap", TRUONG_HO_SO):
             if truong in ban_ghi and not isinstance(ban_ghi[truong], str):
                 raise LoiKhoTaiKhoan("kho_hong")
         # Trường NV224 (tuỳ chọn, bản ghi cũ không có): danh sách chuỗi.
@@ -1166,15 +1301,18 @@ def ghi_ket_qua_dang_nhap_tu_ket_qua(id_, kq) -> dict | None:
         return None
 
 
-def ghi_ket_qua_theo_email(email, kq) -> str | None:
+def ghi_ket_qua_theo_email(email, kq, module_id=None) -> str | None:
     """Ghi kết quả đăng nhập cho tài khoản đã lưu khớp email (dùng ở các
     đường hàng loạt — dòng chạy chỉ mang email, không mang id kho).
 
     Email không khớp tài khoản đã lưu nào → không ghi gì (tài khoản dán
     ngoài kho không có bản ghi để gắn), trả None. Không bao giờ ném.
+    NV300: ``module_id`` chọn đúng bản ghi của provider đó khi cùng email có
+    ở nhiều provider (không nêu mà mơ hồ → không ghi).
     """
     try:
-        ban_ghi = tim_theo_email(email) if isinstance(email, str) and email else None
+        ban_ghi = (tim_theo_email(email, module_id)
+                   if isinstance(email, str) and email else None)
     except Exception as e:
         # Không ghi gì khi không tìm được tài khoản, nhưng ghi log kiểu lỗi.
         log.warning("ghi_theo_email: loi tim tai khoan: %s", type(e).__name__)
@@ -1229,6 +1367,9 @@ def _ban_cong_khai_goc(ban_ghi: dict, ket_qua_dang_nhap: dict | None = None) -> 
             "loai_tai_khoan": "",
             "dich_dung": "",
             "dung_cho": [],
+            # NV300: bản ghi nhập không có cách đăng nhập theo tài khoản.
+            "cach_dang_nhap": "",
+            TRUONG_HO_SO: "",
             # NV232: bản ghi nhập không có mô hình đường dùng.
             "trang_thai_duong": {},
             "module_id": "",
@@ -1262,6 +1403,10 @@ def _ban_cong_khai_goc(ban_ghi: dict, ket_qua_dang_nhap: dict | None = None) -> 
         # đoạn chuyển để giao diện cũ/ứng dụng khác không vỡ.
         "dang_nhap_bang": ban_ghi.get("dang_nhap_bang", ""),
         TRUONG_TAI_KHOAN_DNH_ID: lay_tai_khoan_dnh_id(ban_ghi),
+        # NV300: cách đăng nhập HIỆU LỰC theo từng tài khoản (đã suy từ dữ
+        # liệu cũ khi chưa ghi) + hồ sơ đã chọn (không bí mật).
+        "cach_dang_nhap": cach_dang_nhap_cua(ban_ghi),
+        TRUONG_HO_SO: ho_so_cua(ban_ghi),
         **{bd: lay_tai_khoan_dnh_id(ban_ghi) for bd in BI_DANH_CU_TAI_KHOAN_DNH},
         # NV258: địa chỉ (CHE một phần — email/URL), kiểu bí mật + cờ «đã có»
         # bí mật. KHÔNG BAO GIỜ trả bí mật thô (bi_mat/mat_khau/totp_secret).
@@ -1301,7 +1446,8 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                   trang_thai=None, id=None, module_id=None, nhom=None,
                   bac_goi=None, loai_tai_khoan=None, dich_dung=None, dang_nhap_bang=None,
                   tai_khoan_dnh_id=None, dung_cho=None,
-                  dia_chi=None, bi_mat=None, kieu_bi_mat=None) -> dict:
+                  dia_chi=None, bi_mat=None, kieu_bi_mat=None,
+                  cach_dang_nhap=None, ho_so=None) -> dict:
     """Lưu mới hoặc cập nhật theo email hoặc id (trùng email → cập nhật, không trùng lặp).
 
     `trang_thai`: None → giữ nguyên cũ (mặc định bật); "" hoặc "tam_dung"
@@ -1327,6 +1473,11 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
     tương thích ngược. Kiểu khoa_api/token/cookie KHÔNG bắt buộc email
     (lưu được một khoá API đơn lẻ, id theo bí mật). `bi_mat=None` → giữ bí
     mật cũ (cập nhật không đổi khoá).
+    `cach_dang_nhap`/`ho_so` (NV300): None → giữ nguyên cũ; "" hoặc
+    giá trị hợp lệ → đặt mới. Chế độ hồ sơ KHÔNG bắt buộc mật khẩu (tái
+    dùng hồ sơ đã đăng nhập) nhưng bắt buộc `ho_so`; thiếu → không
+    lưu dở. Bản ghi cũ chưa có trường vẫn đọc được qua suy luận ở
+    ``cach_dang_nhap_cua`` (không cần di chuyển dữ liệu).
     Trả bản công khai. Kho hỏng → ném ``LoiKhoTaiKhoan`` (không lưu dở).
     """
     totp = kiem_totp_secret(totp_secret)
@@ -1362,26 +1513,44 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
                 if email_chuan != email_cu:
                     raise LoiKhoTaiKhoan("invalid_value")
             id_ = cu["id"]
+            phan_vung_moi = _phan_vung_cua(cu)
         else:
             if not kieu_moi:
                 kieu_moi = "mat_khau"
             # NV258: kiểu khoá API/token/cookie không bắt buộc email — id
             # theo bí mật (cùng khoá lưu lại → cập nhật, không trùng).
             email_tho = email.strip() if isinstance(email, str) else email
+            mid_tim = kiem_module_id(module_id)
+            phan_vung_moi = ""
             if email_tho:
                 email_chuan = chuan_hoa_email(email_tho)
-                id_ = ma_tai_khoan(email_chuan)
+                id_, phan_vung_moi = _chon_ban_ghi_theo_phan_vung(
+                    du_lieu, email_chuan, mid_tim)
             elif kieu_moi in ("khoa_api", "token", "cookie"):
                 email_chuan = ""
                 id_ = None  # chốt sau khi có bí mật
             else:
                 # Đường cũ: email bắt buộc với kiểu mat_khau.
                 email_chuan = chuan_hoa_email(email)
-                id_ = ma_tai_khoan(email_chuan)
+                id_, phan_vung_moi = _chon_ban_ghi_theo_phan_vung(
+                    du_lieu, email_chuan, mid_tim)
             cu = du_lieu.get(id_) if id_ else None
 
+        # NV300: cách đăng nhập theo từng tài khoản — None → giữ nguyên cũ;
+        # "" / giá trị hợp lệ → đặt mới. Kiểm chéo sau hợp nhất: hồ sơ mà
+        # thiếu hồ sơ → không lưu dở (mẫu NV223).
+        cach_moi = cu.get("cach_dang_nhap", "") if cu else ""
+        if cach_dang_nhap is not None:
+            cach_moi = kiem_cach_dang_nhap(cach_dang_nhap)
+        ho_so_moi = cu.get(TRUONG_HO_SO, "") if cu else ""
+        if ho_so is not None:
+            ho_so_moi = kiem_ho_so(ho_so)
+        if cach_moi == CACH_HO_SO and not ho_so_moi:
+            raise LoiKhoTaiKhoan("invalid_value")
         # NV258: bí mật — bi_mat mới (đường mới) thắng; không truyền gì và
         # đang cập nhật → giữ bí mật cũ; đường cũ (mat_khau) luôn là mật khẩu.
+        # NV300: bản ghi hồ sơ mới được phép không có mật khẩu (tái dùng hồ
+        # sơ đã đăng nhập, không nhập mật khẩu).
         if bi_mat is not None:
             bi_mat_moi = kiem_bi_mat(bi_mat)
         elif mat_khau is not None:
@@ -1389,6 +1558,8 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             kieu_moi = "mat_khau"
         elif cu:
             bi_mat_moi = cu.get("bi_mat") or cu.get("mat_khau", "")
+        elif cach_moi == CACH_HO_SO:
+            bi_mat_moi = ""
         else:
             raise LoiKhoTaiKhoan("invalid_value")
         if kieu_moi == "mat_khau":
@@ -1415,6 +1586,10 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         module_moi = cu.get("module_id", "") if cu else ""
         if module_id is not None:
             module_moi = kiem_module_id(module_id)
+        # NV300: đổi/gắn provider mà cặp (email, provider) đã có bản ghi khác
+        # → từ chối (không đè bản ghi của provider kia).
+        if _xung_dot_phan_vung(du_lieu, email_chuan, module_moi, id_):
+            raise LoiKhoTaiKhoan("invalid_value")
         nhom_moi = cu.get("nhom", "") if cu else ""
         if nhom is not None:
             nhom_moi = kiem_nhom(nhom)
@@ -1498,6 +1673,8 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
         ban_ghi = {
             "id": id_,
             "email": email_chuan,
+            # NV300: phân vùng provider đặt lúc tạo (bất biến) — id = f(email, phân vùng).
+            "phan_vung": phan_vung_moi,
             "nhan": nhan_sach,
             "mat_khau": mat_khau_moi,
             # NV258: bí mật + kiểu + địa chỉ. Bản ghi kiểu mat_khau giữ
@@ -1516,6 +1693,9 @@ def luu_tai_khoan(email, mat_khau, totp_secret=None, nhan="",
             # NV262: luôn ghi tên mới; bản ghi cũ mang khoá cũ được chuyển
             # êm sang tên mới ở lần cập nhật (khoá cũ bị loại khỏi bản lưu).
             TRUONG_TAI_KHOAN_DNH_ID: tk_dnh_moi,
+            # NV300: cách đăng nhập theo từng tài khoản + hồ sơ đã chọn.
+            "cach_dang_nhap": cach_moi,
+            TRUONG_HO_SO: ho_so_moi,
             "dung_cho": dung_cho_moi,
             "trang_thai_duong": tt_duong_moi,
             "cap_nhat": int(time.time()),
@@ -1631,13 +1811,28 @@ def tim_theo_id(id_) -> dict | None:
     return None
 
 
-def tim_theo_email(email) -> dict | None:
-    """Tìm bản ghi nội bộ theo email (đã chuẩn hoá)."""
+def tim_theo_email(email, module_id=None) -> dict | None:
+    """Tìm bản ghi nội bộ theo email (đã chuẩn hoá) và provider (NV300).
+
+    Có ``module_id``: bản ghi cùng provider; không có thì bản ghi CHƯA gắn
+    provider; không có nữa thì bản ghi duy nhất mang email (cách cũ: tài khoản
+    của module A đăng nhập qua module B). Email có ở nhiều provider mà không
+    xác định được provider → ``None`` (không đoán, không đụng bản của provider
+    khác)."""
     try:
         email_chuan = chuan_hoa_email(email)
     except LoiKhoTaiKhoan:
         return None
-    return tim_theo_id(ma_tai_khoan(email_chuan))
+    du_lieu = _doc()
+    cung = _cung_email(du_lieu, email_chuan)
+    if isinstance(module_id, str) and module_id:
+        for k in cung:
+            if du_lieu[k].get("module_id") == module_id:
+                return du_lieu[k]
+        for k in cung:
+            if not du_lieu[k].get("module_id"):
+                return du_lieu[k]
+    return du_lieu[cung[0]] if len(cung) == 1 else None
 
 
 # ── Nhập tài khoản token từ dịch vụ khác (NV197e) ────────────────────────────
@@ -1821,6 +2016,9 @@ def dat_module(id_, module_id, nhom) -> dict | None:
         ban_ghi = du_lieu[muc_tieu]
         if ban_ghi.get("loai") == "nhap":
             return ban_cong_khai(ban_ghi)
+        # NV300: provider đó đã có bản ghi khác cùng email → không đè.
+        if _xung_dot_phan_vung(du_lieu, ban_ghi.get("email", ""), mid, muc_tieu):
+            raise LoiKhoTaiKhoan("invalid_value")
         ban_ghi["module_id"] = mid
         ban_ghi["nhom"] = nh
         ban_ghi["cap_nhat"] = int(time.time())
@@ -1928,7 +2126,7 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     if not tu_dang_nhap_lai_bat():
         return {"thu": False, "ly_do": "da_tat"}
     email = dinh_danh if isinstance(dinh_danh, str) else ""
-    ban_ghi = tim_theo_email(email) if email else None
+    ban_ghi = tim_theo_email(email, module_id) if email else None
     if ban_ghi is None or not ban_ghi.get("mat_khau"):
         return {"thu": False, "ly_do": "khong_co_tai_khoan"}
     if ban_ghi.get("trang_thai") == TRANG_THAI_TAM_DUNG:

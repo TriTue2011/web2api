@@ -226,10 +226,16 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <sc-if value="{{them.chuaChonCach}}"><p class="k282-ghi">Chọn một cách thêm để hiện các ô cần nhập.</p></sc-if>
 <sc-if value="{{them.laDn}}"><div id="khung-tu-dong" class="k282-buoc">
 <p class="k282-muc-nho">{{them.soNhap}}. Nhập thông tin</p>
-<label class="k282-o">Email<input type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{them.hang.email}}" onInput="{{them.hang.doiEmail}}" data-nhap-email="0" aria-label="Email"></label>
+<p class="k282-muc-nho">Đăng nhập bằng</p>
+<div class="k282-chips" role="group" aria-label="Đăng nhập bằng"><sc-for list="{{them.dsCachDn}}" as="c"><button type="button" class="k282-chip" aria-pressed="{{c.on}}" disabled="{{c.tat}}" onClick="{{c.pick}}">{{c.nhan}}</button></sc-for></div>
+<sc-if value="{{them.coChuThichCachDn}}"><p class="k282-ghi">{{them.chuThichCachDn}}</p></sc-if>
+<sc-if value="{{them.laDnHoSo}}"><p class="k282-muc-nho">Tài khoản hồ sơ đã lưu</p>
+<div class="k282-chips" role="group" aria-label="Tài khoản hồ sơ đã lưu"><sc-for list="{{them.dsHoSo}}" as="g"><button type="button" class="k282-chip" aria-pressed="{{g.on}}" onClick="{{g.pick}}">{{g.nhan}}</button></sc-for></div>
+<sc-if value="{{them.khongCoHoSo}}"><p class="k282-ghi">Chưa có tài khoản hồ sơ nào đã lưu. Thêm tài khoản hồ sơ ở module Hồ sơ trước rồi quay lại.</p></sc-if></sc-if>
+<sc-if value="{{them.laDnEmail}}"><label class="k282-o">Email<input type="email" autocomplete="off" spellcheck="false" placeholder="ten@example.com" value="{{them.hang.email}}" onInput="{{them.hang.doiEmail}}" data-nhap-email="0" aria-label="Email"></label>
 <label class="k282-o">Mật khẩu<span class="k282-mk"><input type="{{them.hang.kieuMk}}" autocomplete="new-password" spellcheck="false" placeholder="Mật khẩu" onInput="{{them.hang.doiMatKhau}}" data-nhap-mat-khau="0" aria-label="Mật khẩu"><button type="button" class="k282-nho" data-hien-mk="0" onClick="{{them.hang.doiHienMk}}" aria-label="{{them.hang.nhanHienMk}} mật khẩu">{{them.hang.nhanHienMk}}</button></span></label>
 <sc-if value="{{them.hang.otpMo}}"><label class="k282-o">Khoá OTP (Base32)<input type="text" autocomplete="off" spellcheck="false" placeholder="Khoá Base32 của ứng dụng xác thực" onInput="{{them.hang.doiOtp}}" data-nhap-otp="0" aria-label="Khoá OTP"></label></sc-if>
-<sc-if value="{{them.hang.otpDong}}"><button type="button" class="k282-nho k282-nho-trai" id="nut-mo-otp" onClick="{{them.hang.moOtp}}">Có xác minh 2 bước? Thêm khoá OTP</button></sc-if>
+<sc-if value="{{them.hang.otpDong}}"><button type="button" class="k282-nho k282-nho-trai" id="nut-mo-otp" onClick="{{them.hang.moOtp}}">Có xác minh 2 bước? Thêm khoá OTP</button></sc-if></sc-if>
 <p class="k282-ghi">{{them.goiY}}</p>
 </div></sc-if>
 <sc-if value="{{them.laApi}}"><div class="k282-buoc">
@@ -246,7 +252,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 <label class="k282-o">Bậc gói (tuỳ chọn; để trống nếu không biết)<input id="tk-bac-goi" type="text" autocomplete="off" spellcheck="false" placeholder="VD: plus" value="{{them.bacGoi}}" onInput="{{them.doiBacGoi}}" aria-label="Bậc gói tài khoản"></label>
 </sc-if>
 <sc-for list="{{them.phu}}" as="f"><label data-truong="{{f.khoa}}" class="k282-o">{{f.nhan}}<sc-if value="{{f.biMat}}"><input id="{{f.idO}}" type="password" autocomplete="new-password" spellcheck="false" placeholder="{{f.ph}}" onInput="{{f.onIn}}"></sc-if><sc-if value="{{f.chu}}"><input id="{{f.idO}}" type="text" autocomplete="off" spellcheck="false" placeholder="{{f.ph}}" value="{{f.val}}" onInput="{{f.onIn}}"></sc-if></label></sc-for>
-<sc-if value="{{them.laDn}}">
+<sc-if value="{{them.laDnEmail}}">
 <details class="k282-tuy-con" id="cach-lay-otp">
 <summary>Cách lấy khoá OTP</summary>
 <ol class="k282-ghi" style="margin:0;padding:8px 12px 12px 32px;line-height:1.6">
@@ -258,7 +264,7 @@ main.pg{padding:20px 40px 24px 32px;gap:12px}
 </ol>
 </details>
 </sc-if>
-<sc-if value="{{them.laDn}}">
+<sc-if value="{{them.laDnEmail}}">
 <details open="{{them.td.moDan}}" onToggle="{{them.td.doiMoDan}}" class="k282-tuy-con">
 <summary onClick="{{them.td.bamSummary}}">Dán nhiều dòng</summary>
 <div class="k282-tuy-than">
@@ -659,6 +665,7 @@ class Component extends DCLogic {
       khuBiMatId: '', khuBiMatLoi: '', khuOtpMa: '', khuOtpConLai: 0, khuSua: null, khuSuaLoi: '', khuSuaDang: false, khuLamMoiId: '',
       // Form «Thêm tài khoản» (MỘT form): nhà → cách thêm (chỉ khi có hơn một) → ô bắt buộc; mọi thứ khác nằm trong «Tuỳ chọn thêm».
       tkThem: !!den, chonMod: den, tkNhomThem: null, tkCachThem: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
+      tkCachDn: null, tkHoSo: null,
       f: {}, lan: 0, dangThem: false, tkMo: null, tkSua: null, fSua: '', dangSua: false, xoa: null, dangXoa: null,
       pvSel: null, pvDd: false, pvTab: 'model', pvMo: null, dangMd: false, mdMo: {},
       mdData: {}, mdTat: null, mdMacDinh: null, mdGocTat: null, mdGocMacDinh: null, dangLuuMd: false,
@@ -712,7 +719,7 @@ class Component extends DCLogic {
       const den = this.neoTk();
       if (den) {
         this.setState((st) => ({
-          menuMo: null, tab: 'tai_khoan', tkThem: true, chonMod: den, tkNhomThem: null, tkCachThem: null, f: {},
+          menuMo: null, tab: 'tai_khoan', tkThem: true, chonMod: den, tkNhomThem: null, tkCachThem: null, tkCachDn: null, tkHoSo: null, f: {},
           tkPvMo: Object.assign({}, st.tkPvMo, { [den]: true })
         }));
         this.denForm();
@@ -1219,9 +1226,25 @@ class Component extends DCLogic {
     if (s.dlDangLuu) return; // chống bấm hai lần → chỉ MỘT lần gửi
     const h = (s.tdHangNhap || [])[0] || {};
     const email = (h.email || '').trim(), mk = h.matKhau || '', otp = (h.otp || '').trim();
-    if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
-    const payload = { email, mat_khau: mk, module_id: chon.id };
-    if (otp) payload.totp_secret = otp;
+    // NV300: cách đăng nhập theo từng tài khoản — hồ sơ thì chỉ cần hồ sơ
+    // đã chọn (không cần mật khẩu; email lấy từ hồ sơ ở lõi nếu không nhập);
+    // Email thì như cũ. Lựa chọn không hỗ trợ → rơi về mặc định.
+    // «email» là tên phương thức chung nên dùng trực tiếp; cách hồ sơ suy
+    // ra bằng «khác email», không gõ tên phương thức còn lại ở khung.
+    const hoTro = (chon && Array.isArray(chon.cach_dang_nhap_ho_tro) && chon.cach_dang_nhap_ho_tro.length) ? chon.cach_dang_nhap_ho_tro : ['email'];
+    const cachDn = (s.tkCachDn && hoTro.includes(s.tkCachDn)) ? s.tkCachDn : (hoTro.includes('email') ? 'email' : (hoTro[0] || 'email'));
+    let payload = null;
+    if (cachDn !== 'email') {
+      const hoSo = s.tkHoSo || '';
+      if (!hoSo) { this.setState({ dlLoi: 'Chọn một tài khoản hồ sơ đã lưu.' }); return; }
+      // Id hồ sơ gửi bằng bí danh `ho_so`; lõi chấp nhận cả bí danh lẫn
+      // khóa chuẩn (xem _cach_va_ho_so) — khung không gõ tên trường chuẩn.
+      payload = { module_id: chon.id, cach_dang_nhap: cachDn, ho_so: hoSo };
+    } else {
+      if (!email || !mk) { this.setState({ dlLoi: 'Nhập email và mật khẩu.' }); return; }
+      payload = { email, mat_khau: mk, module_id: chon.id, cach_dang_nhap: 'email' };
+      if (otp) payload.totp_secret = otp;
+    }
     const nhan = (s.tkNhan || '').trim();
     if (nhan) payload.nhan = nhan;
     const bacGoi = (s.tkBacGoi || '').trim();
@@ -1237,7 +1260,7 @@ class Component extends DCLogic {
       return;
     }
     await this.taiDlDs();
-    this.setState({ dlDangLuu: false, tkThem: false, tkNhan: '', tkBacGoi: '', tkNhomThem: null, tkCachThem: null, chonMod: null, tkTuyChon: false });
+    this.setState({ dlDangLuu: false, tkThem: false, tkNhan: '', tkBacGoi: '', tkNhomThem: null, tkCachThem: null, tkCachDn: null, tkHoSo: null, chonMod: null, tkTuyChon: false });
     if (tk && tk.id) {
       // Tài khoản mới phải thấy được ngay: bỏ các bộ lọc không còn khớp rồi chọn nó.
       const nha = tk.nhom || (chon.nhom && chon.nhom.id) || NHA_KHAC;
@@ -1853,7 +1876,7 @@ class Component extends DCLogic {
     else if (nhomTheoModule) nhomDuocChon = nhomTheoModule;
     const hienNhom = dsNhomList.length > 1;
     const dsNhom = dsNhomList.map((n) => ({ id: n.id, nhan: n.ten, on: !!nhomDuocChon && nhomDuocChon.id === n.id,
-      pick: () => { this.xoaONhap(); this.setState({ tkNhomThem: n.id, tkCachThem: null, chonMod: null, f: {}, tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', dlLoi: '' }); } }));
+      pick: () => { this.xoaONhap(); this.setState({ tkNhomThem: n.id, tkCachThem: null, tkCachDn: null, tkHoSo: null, chonMod: null, f: {}, tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', dlLoi: '' }); } }));
     // Cách thêm suy từ module đã cài (đăng nhập tự động / khoá dán vào cấu hình); chỉ hỏi khi nhà có hơn một cách.
     const cachList = [];
     if (nhomDuocChon) for (const m of nhomDuocChon.modules.slice().sort((a, b) => (a.ten || '').localeCompare(b.ten || '', 'vi'))) {
@@ -1869,10 +1892,33 @@ class Component extends DCLogic {
     }
     const hienCach = !!nhomDuocChon && cachList.length > 1;
     const dsCach = cachList.map((c) => ({ id: c.id, nhan: c.nhan, on: !!cachChon && cachChon.id === c.id,
-      pick: () => { this.xoaONhap(); this.setState({ tkCachThem: c.id, chonMod: null, f: {}, tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', dlLoi: '' }); } }));
+      pick: () => { this.xoaONhap(); this.setState({ tkCachThem: c.id, tkCachDn: null, tkHoSo: null, chonMod: null, f: {}, tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', dlLoi: '' }); } }));
     const modChon = cachChon ? cachChon.mod : null;
     const laDn = !!cachChon && cachChon.kind === 'dn';
     const laApi = !!cachChon && cachChon.kind === 'api';
+    // NV300: cách đăng nhập theo từng tài khoản — chip theo các cách module
+    // hỗ trợ (nhãn lấy từ giá trị API, viết hoa chữ đầu); lựa chọn đã lưu
+    // mà module hiện tại không hỗ trợ thì rơi về mặc định (không gửi cách
+    // không hỗ trợ lên lõi). Cách hồ sơ suy ra bằng «khác email».
+    const cachDnHoTro = (modChon && Array.isArray(modChon.cach_dang_nhap_ho_tro) && modChon.cach_dang_nhap_ho_tro.length) ? modChon.cach_dang_nhap_ho_tro : ['email'];
+    const hoTroEmail = cachDnHoTro.includes('email');
+    const cachDnMacDinh = hoTroEmail ? 'email' : (cachDnHoTro[0] || 'email');
+    const cachDn = (s.tkCachDn && cachDnHoTro.includes(s.tkCachDn)) ? s.tkCachDn : cachDnMacDinh;
+    const laDnHoSo = laDn && cachDn !== 'email';
+    const laDnEmail = laDn && cachDn === 'email';
+    const vietHoa = (c) => c.charAt(0).toUpperCase() + c.slice(1);
+    // Mọi cách từng xuất hiện ở module nào đó (dữ liệu API) đều có chip;
+    // cách module hiện tại không hỗ trợ thì chip vô hiệu kèm chú thích.
+    const tatCaCach = [];
+    for (const m of (tn.modules || [])) for (const c of (m.cach_dang_nhap_ho_tro || [])) if (!tatCaCach.includes(c)) tatCaCach.push(c);
+    const chipCach = cachDnHoTro.concat(tatCaCach.filter((c) => !cachDnHoTro.includes(c)));
+    const dsCachDn = chipCach.map((c) => ({ nhan: vietHoa(c), on: cachDn === c, tat: !cachDnHoTro.includes(c), pick: () => { if (cachDnHoTro.includes(c)) this.setState({ tkCachDn: c }); } }));
+    const thieuCach = tatCaCach.filter((c) => !cachDnHoTro.includes(c));
+    const chuThichCachDn = thieuCach.length ? ('Module này chưa hỗ trợ đăng nhập bằng ' + thieuCach.map(vietHoa).join(' / ') + '.') : '';
+    // Tài khoản hồ sơ đã lưu = tài khoản của module cung cấp khả năng hồ sơ
+    // (dữ liệu API: cung_cap của module, không gõ tên module ở khung).
+    const idModHoSo = new Set((tn.modules || []).filter((m) => (m.cung_cap || []).includes('dang_nhap_danh_tinh')).map((m) => m.id));
+    const dsHoSo = (s.dlDs || []).filter((t) => t && idModHoSo.has(t.module_id)).map((t) => ({ id: t.id, nhan: t.email || t.nhan || t.id, on: s.tkHoSo === t.id, pick: () => { this.setState({ tkHoSo: t.id }); } }));
     const trChon = modChon ? truongCua(modChon) : [];
     const ckChon = modChon ? ((s.mods.find((x) => x && x.id === modChon.id) || {}).cau_hinh_cong_khai || {}) : {};
     const trBm = trChon.find(laBiMat);
@@ -1938,13 +1984,14 @@ class Component extends DCLogic {
       co: s.tkThem, chonId: modChon ? modChon.id : '', dang: !!(s.dangThem || s.dlDangLuu),
       nut: { nhan: s.tkThem ? 'Đóng' : '+ Thêm tài khoản', pick: () => {
         const mo2 = !s.tkThem;
-        this.setState({ tkThem: mo2, f: {}, chonMod: null, tkNhomThem: null, tkCachThem: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
+        this.setState({ tkThem: mo2, f: {}, chonMod: null, tkNhomThem: null, tkCachThem: null, tkCachDn: null, tkHoSo: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
           tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false, otpMo: false }], tdVanBan: '', tdXem: null, tdBo: {}, tdLoi: '', tdMoDan: false, dlLoi: '' });
       } },
       khongCoNguon: dsNhomList.length === 0,
       hienNhom, dsNhom, chuaChonNhom: dsNhomList.length > 1 && !nhomDuocChon,
       hienCach, dsCach, soCach: hienGiaoThuc + 1, chuaChonCach: !!nhomDuocChon && cachList.length > 1 && !cachChon,
       coCach: !!cachChon, laDn, laApi,
+      dsCachDn, chuThichCachDn, coChuThichCachDn: !!chuThichCachDn, laDnHoSo, laDnEmail, dsHoSo, khongCoHoSo: laDnHoSo && dsHoSo.length === 0,
       soNhap: hienGiaoThuc + (hienCach ? 1 : 0) + 1,
       hang: { email: hang0.email || '', matKhau: hang0.matKhau || '', otp: hang0.otp || '', kieuMk: hang0.hienMk ? 'text' : 'password',
         nhanHienMk: hang0.hienMk ? 'Ẩn' : 'Hiện', otpMo: !!hang0.otpMo, otpDong: !hang0.otpMo,
@@ -1961,7 +2008,7 @@ class Component extends DCLogic {
       dnChay: () => { if (modChon && laDn) this.themDangNhap(modChon); },
       dnNhan: s.dlDangLuu ? 'Đang lưu…' : 'Đăng nhập',
       ok: { nhan: s.dangThem ? 'Đang kiểm…' : 'Lưu' },
-      huy: { pick: () => this.setState({ tkThem: false, f: {}, chonMod: null, tkNhomThem: null, tkCachThem: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
+      huy: { pick: () => this.setState({ tkThem: false, f: {}, chonMod: null, tkNhomThem: null, tkCachThem: null, tkCachDn: null, tkHoSo: null, tkTuyChon: false, tkNhan: '', tkBacGoi: '',
         tdHangNhap: [{ email: '', matKhau: '', otp: '', hienMk: false, otpMo: false }], dlLoi: '' }) },
       coLoi: !!s.dlLoi, loi: s.dlLoi || '',
       luu: (e) => {

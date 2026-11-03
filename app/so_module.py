@@ -24,7 +24,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from app import he_thong, kho, nhat_ky, phien
+from app import he_thong, kho, kho_tai_khoan, nhat_ky, phien
 from app.kham_pha import (ID_HOP_LE, LoiNap, ModuleKhamPha, doc_manifest, giao_dien_cua, go_ma, nap_ma, quet, van_tay)
 from app.quyen_module import bam_diff, cac_muc_chuan, diff_quyen
 
@@ -427,6 +427,17 @@ class SoModule:
                             "nhom": nhom,
                             # NV297: tab + mục trên thanh chính (khai trong manifest, hoặc suy từ cấu trúc) — module từ xa không có.
                             "giao_dien": None if tu_xa else giao_dien_cua(man)}
+            # NV300: cách đăng nhập module hỗ trợ theo từng tài khoản — lấy
+            # từ khai báo lớp nếu có, không thì suy từ cấu trúc. Giá trị suy
+            # lấy từ hằng bảng dữ liệu (không gõ cứng vào mã lõi).
+            cach_ho_tro = getattr(nguon_hs, "CACH_DANG_NHAP_HO_TRO", None)
+            if not isinstance(cach_ho_tro, (list, tuple)):
+                cach_ho_tro = []
+                if dn:
+                    cach_ho_tro.append(kho_tai_khoan.CACH_EMAIL)
+                if td:
+                    cach_ho_tro.append(kho_tai_khoan.CACH_HO_SO)
+            muc_mod["cach_dang_nhap_ho_tro"] = list(cach_ho_tro)
             # NV289: module khai đường riêng cho dịch vụ ngoài gọi vào (manifest `duong_module`): khoá cho nó do lõi
             # tự sinh ở Bảo mật & người dùng (phạm vi `tich_hop@<id>`), không có ô nhập khoá. Chỉ thêm khi có.
             if isinstance(man.get("duong_module"), dict):

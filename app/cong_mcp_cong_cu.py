@@ -20,6 +20,7 @@ hoãn captcha, kênh TOTP đều nằm trong chính module đó, không ở file
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import math
 import os
@@ -451,7 +452,20 @@ async def _thu_khoi_phuc_module(so: Any, tk_id: str, module_id: str) -> dict | N
         return None
     ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
     email = (ban_ghi.get("email") or "") if isinstance(ban_ghi, dict) else ""
-    kq = await ham(tk_id, email, nghi_t1_giay=0.0)
+    # NV300: truyền cách của tài khoản (nếu module nhận) để nó chọn đường
+    # cach khac; module khong nhan thi giu loi goi cu.
+    tham_so = {}
+    try:
+        chu_ky = inspect.signature(ham)
+    except (TypeError, ValueError):
+        chu_ky = None
+    if chu_ky is not None and "cach_dang_nhap" in chu_ky.parameters:
+        tham_so["cach_dang_nhap"] = kho_tai_khoan.cach_dang_nhap_cua(ban_ghi) \
+            if isinstance(ban_ghi, dict) else ""
+    if chu_ky is not None and kho_tai_khoan.TRUONG_HO_SO in chu_ky.parameters:
+        tham_so[kho_tai_khoan.TRUONG_HO_SO] = kho_tai_khoan.ho_so_cua(ban_ghi) \
+            if isinstance(ban_ghi, dict) else ""
+    kq = await ham(tk_id, email, nghi_t1_giay=0.0, **tham_so)
     if isinstance(kq, dict):
         return kq
     return {
