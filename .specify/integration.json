@@ -1,0 +1,15 @@
+{
+  "version": "1.2.6",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "muse"
+  ],
+  "integration_settings": {
+    "muse": {
+      "script": "sh",
+      "invoke_separator": "-"
+    }
+  },
+  "integration": "muse",
+  "default_integration": "muse"
+}
