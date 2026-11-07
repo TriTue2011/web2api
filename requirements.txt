@@ -1,27 +1,27 @@
 # Ghim đúng bản repo gốc đang chạy trên Python 3.13 (uv.lock): đã kiểm cùng nhau, tránh lệch hành vi.
-fastapi==0.142.4
+fastapi==0.162.0
 uvicorn==0.54.0
 # Gọi Google/GitHub/module từ xa (bất đồng bộ, stream từng dòng). Bản trong .venv của repo gốc, đo 10/10/2026.
 httpx==0.28.1
 # Đọc multipart/form-data cho /v1/audio/transcriptions, /v1/images/edits, /v1/videos (Starlette cần nó để phân tích
 # form; thuần Python, không gói kéo theo). Đúng bản trong uv.lock của repo gốc, đo 11/10/2026.
-python-multipart==0.0.32
+python-multipart==0.0.33
 # Mật mã (X25519, AES-GCM) cho module cần bắt tay/mã hoá riêng — hiện module `muse` (Noise XX). Có sẵn bánh xe manylinux cho
 # python:3.13-slim (không biên dịch lúc dựng). Bản đã chạy test module muse, đo 12/10/2026.
 cryptography==50.0.2
 # Cho module muse2api: giao thức trực tiếp muse.ai (WebSocket, bắt tay Noise XX, Protobuf envelope). Có sẵn bánh xe
 # manylinux cho python:3.13-slim (không biên dịch lúc dựng). Đã chạy test module muse2api, đo 13/10/2026.
-curl_cffi==0.16.3
+curl_cffi==0.17.0
 noiseprotocol==0.3.1
 protobuf==7.36.2
 # Nhận và chuyển tiếp WebSocket hai chiều cho proxy noVNC (/novnc/.../websockify), Chuẩn C6; ghim đúng bản đã kiểm, 13/10/2026.
-websockets==17.2
+websockets==17.4
 # Module youtube (NV277) chạy thẳng trong lõi nên cần trích xuất YouTube. Chủ máy duyệt 03/11/2026; ghim ĐÚNG
 # phiên bản của dich-vu/youtube-phat (đã kiểm cùng nhau ở đó; tên, phiên bản khớp).
 # - yt-dlp: tìm (ytsearch) + giải link âm thanh YouTube (Unlicense).
 # - yt-dlp-ejs: bộ script JavaScript để yt-dlp giải thử thách của YouTube (MIT).
 # - deno: trình chạy JavaScript cho yt-dlp-ejs (nhị phân trong wheel, theo kiến trúc; pip tự chọn x86_64/arm64).
 # Cả ba không kéo gói phụ thuộc bắt buộc nào. Thiếu chúng module vẫn chạy (tìm/giải YouTube trả 502 rõ).
-yt-dlp==2026.8.19
+yt-dlp==2026.10.26
 yt-dlp-ejs==0.8.0
-deno==2.9.7
+deno==2.9.8
