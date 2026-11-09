@@ -110,6 +110,9 @@ Mặc định không tài khoản nào được phép; `dang_nhap_bat_dau` luôn
 
 Nếu tài khoản đó ở chế độ «đăng nhập qua một tài khoản lưu khác» (đăng nhập hộ), lõi sẽ dùng bí mật của tài khoản HỘ: khi đó cổng đòi cả tài khoản hộ cũng nằm trong danh sách, không thì từ chối (`khong_cho_phep`).
 
+Duyệt trước theo module (Q-C): mục dạng `*@id_module` (ví dụ `*@claude-web`) cho phép MỌI tài khoản lưu ở module đó, kể cả tài khoản lưu sau này, khỏi thêm từng id. Mục đích danh `tk-…@module` vẫn thắng.
+Tài khoản đăng nhập hộ chỉ qua được khi tài khoản hộ cũng thuộc id được liệt kê hoặc module được duyệt trước. Mọi hãm của đăng nhập thật giữ nguyên (một phiên, nghỉ, dừng sau hai lần hỏng, trần ngày).
+
 Khách MCP chỉ nêu `tai_khoan_id`; module thực thi do danh sách này quyết, khách không chọn được. Cùng một mã lỗi cho «không có» lẫn «không được phép» để khách không dò được id nào tồn tại.
 Lưu ý: đây là đăng nhập THẬT vào dịch vụ của nhà cung cấp — có rủi ro bị nhà cung cấp hạn chế tài khoản nếu thử dồn dập. Chỉ bật cho tài khoản bạn chấp nhận rủi ro đó; các hãm (một phiên, nghỉ 1 giờ,
 dừng sau hai lần không thành công, tối đa 3 lần thành công mỗi ngày) chỉ giảm rủi ro, không xoá. Bộ đếm nằm trong bộ nhớ: khởi động lại tiến trình (kể cả Watchtower) xoá mốc nghỉ và các trần.

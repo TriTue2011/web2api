@@ -5054,7 +5054,7 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_MCP_DONG_THOI` | `2` | Trần số yêu cầu công cụ đang chạy cùng lúc toàn cổng; vượt → `429` |
 | `WEB2API_MCP_THAN_TOI_DA_MB` | `0.0625` | Trần thân yêu cầu của `/mcp` (MB, 64 KB); vượt → `413` |
 | `WEB2API_MCP_NHAT_KY_KENH` | `trinh_duyet,mcp` | Các kênh nhật ký công cụ `nhat_ky_gan_day` được đọc, cách nhau dấu phẩy; `quan_tri` và `cuoc_goi` bị loại cứng dù cấu hình thêm |
-| `WEB2API_MCP_DANG_NHAP_CHO_PHEP` | rỗng | Danh sách `id_tai_khoan@id_module_thuc_thi` (cách nhau dấu phẩy) được `dang_nhap_bat_dau` chạy đăng nhập thật; rỗng = từ chối hết; mục sai khuôn bị bỏ |
+| `WEB2API_MCP_DANG_NHAP_CHO_PHEP` | rỗng | Danh sách `id_tai_khoan@id_module_thuc_thi` (cách nhau dấu phẩy) được `dang_nhap_bat_dau` chạy đăng nhập thật; rỗng = từ chối hết; mục sai khuôn bị bỏ; mục `*@id_module` duyệt trước mọi tài khoản của module đó |
 | `WEB2API_MCP_QUAN_SAT_MODULE` | rỗng | Id module đăng nhập (chủ máy chọn, khách MCP không nêu được); đặt thì bật công cụ `chan_doan_dang_nhap` (nhật ký các bước đăng nhập đã che). Rỗng = công cụ không hiện, gọi thẳng bị từ chối |
 | `WEB2API_MCP_MAN_HINH_HET_HAN` | rỗng | Mốc ISO-8601 hết hạn; còn hạn và không quá 24 giờ kể từ lúc đọc (cùng `WEB2API_MCP_QUAN_SAT_MODULE`) thì bật công cụ `man_hinh_dang_nhap` (ảnh JPEG chỉ-đọc, chỉ trong lúc cổng MCP chạy một lượt đăng nhập, giãn cách 3 giây, mỗi lần xem ghi nhật ký kênh `mcp`). Rỗng / quá hạn / xa hơn 24 giờ = tắt |
 | `WEB2API_MCP_DANG_NHAP_THANH_CONG_NGAY` | `3` | Trần số lần đăng nhập THÀNH CÔNG của một tài khoản trong 24 giờ qua cổng; vượt → `het_luot_ngay` |

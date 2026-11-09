@@ -160,3 +160,58 @@ def test_man_hinh_tu_choi_khi_phien_chay_qua_module_khac(moi_truong_mcp, monkeyp
     _co_phien(module="module-khac")
     r = rpc(client, khoa, "tools/call", {"name": "man_hinh_dang_nhap", "arguments": {}})
     assert r.json()["result"]["structuredContent"]["loi"] == "khong_co_phien" and mod.so_lan_chup == 0
+
+
+# ───────────── Q-C: duyệt trước theo module («*@id_module») ─────────────
+from types import SimpleNamespace  # noqa: E402
+
+from test_mcp_cong import cho_phien_xong, tao_tk  # noqa: E402
+
+
+def _dang_ky_mod(so, mod_id):
+    class ModGia:
+        manifest = {"id": mod_id, "nhom": {"id": "nhom-gia"}}
+        tien_to = mod_id
+
+        async def dang_nhap(self, dong):
+            return SimpleNamespace(thanh_cong=True, can_nguoi=False, cho_2fa=False, ma_loi="", huong_dan="")
+    m = ModGia()
+    so.catalog[mod_id] = SimpleNamespace(tien_to=mod_id, manifest=m.manifest)
+    so.dang_chay[mod_id] = m
+
+
+def test_cho_phep_theo_module_tai_khoan_luu_sau_van_dang_nhap_duoc(moi_truong_mcp, monkeypatch):
+    client, so = moi_truong_mcp
+    khoa = tao_khoa_khach_mcp(client)
+    _dang_ky_mod(so, "mod-duyet-truoc")
+    _dang_ky_mod(so, "mod-khac")
+    monkeypatch.setenv("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "*@mod-duyet-truoc")
+    tk_moi = tao_tk("luu-sau@example.com", "mod-duyet-truoc")   # lưu SAU khi đã đặt biến: không cần thêm id
+    tk_la = tao_tk("module-khac@example.com", "mod-khac")
+
+    ds = rpc(client, khoa, "tools/call", {"name": "tai_khoan", "arguments": {}}).json()["result"]["structuredContent"]["tai_khoan"]
+    co = {t["id"]: t["cho_phep_dang_nhap_mcp"] for t in ds}
+    assert co[tk_moi] is True and co[tk_la] is False
+
+    r = rpc(client, khoa, "tools/call", {"name": "dang_nhap_bat_dau", "arguments": {"tai_khoan_id": tk_la}})
+    assert r.json()["result"]["structuredContent"]["loi"] == "khong_cho_phep"   # module không được duyệt vẫn bị từ chối
+
+    r = rpc(client, khoa, "tools/call", {"name": "dang_nhap_bat_dau", "arguments": {"tai_khoan_id": tk_moi}})
+    sc = r.json()["result"]["structuredContent"]
+    assert sc.get("phien_id")
+    assert cho_phien_xong(client, khoa, sc["phien_id"]).json()["result"]["structuredContent"]["trang_thai"] == "thanh_cong"
+
+
+def test_cho_phep_theo_module_khong_mo_duong_toi_tai_khoan_ho_ngoai_module(moi_truong_mcp, monkeypatch):
+    """Tài khoản đăng nhập HỘ bằng tài khoản ở module không được duyệt thì vẫn bị từ chối."""
+    from app import kho_tai_khoan as ktk
+    client, so = moi_truong_mcp
+    khoa = tao_khoa_khach_mcp(client)
+    _dang_ky_mod(so, "mod-duyet-truoc")
+    _dang_ky_mod(so, "mod-khac")
+    monkeypatch.setenv("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "*@mod-duyet-truoc")
+    ho = tao_tk("ho-ngoai@example.com", "mod-khac")
+    tk = ktk.luu_tai_khoan(email="nho-ho@example.com", mat_khau="mat-khau-gia-12345", module_id="mod-duyet-truoc",
+                           dang_nhap_bang=ktk.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU, tai_khoan_dnh_id=ho)["id"]
+    r = rpc(client, khoa, "tools/call", {"name": "dang_nhap_bat_dau", "arguments": {"tai_khoan_id": tk}})
+    assert r.json()["result"]["structuredContent"]["loi"] == "khong_cho_phep"

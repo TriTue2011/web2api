@@ -284,7 +284,7 @@ def _chieu_tai_khoan(b: dict, cho_phep: dict[str, str]) -> dict:
         }
     ra["co_mat_khau"] = bool(b.get("co_mat_khau"))
     ra["co_totp"] = bool(b.get("co_totp"))
-    ra["cho_phep_dang_nhap_mcp"] = str(b.get("id")) in cho_phep
+    ra["cho_phep_dang_nhap_mcp"] = str(b.get("id")) in cho_phep or str(b.get("module_id") or "") in _doc_cho_phep_theo_module()
     return ra
 
 
@@ -353,7 +353,40 @@ def _doc_cho_phep() -> dict[str, str]:
     return ra
 
 
-def _ho_tro_deu_duoc_phep(tk_id: str, cho_phep: dict[str, str]) -> bool:
+_RE_MUC_THEO_MODULE = re.compile(r"^\*@([A-Za-z0-9][A-Za-z0-9_-]{0,63})$")
+
+
+def _doc_cho_phep_theo_module() -> frozenset[str]:
+    """Mục dạng `*@id_module` trong cùng biến: chủ máy DUYỆT TRƯỚC mọi tài khoản lưu ở module đó (kể cả tài khoản lưu sau này), khỏi liệt kê
+    từng id. Phạm vi vẫn do chủ máy chọn từng module; mọi hãm của đăng nhập thật (một phiên, nghỉ, dừng sau hai lần hỏng, trần ngày) giữ nguyên."""
+    ra = set()
+    for muc in os.environ.get("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "").split(","):
+        m = _RE_MUC_THEO_MODULE.match(muc.strip())
+        if m:
+            ra.add(m.group(1))
+    return frozenset(ra)
+
+
+def _module_cua_tai_khoan(tk_id: str) -> str:
+    try:
+        ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
+    except Exception:
+        return ""
+    return str(ban_ghi.get("module_id") or "") if isinstance(ban_ghi, dict) else ""
+
+
+def _module_thuc_thi(tk_id: str, cho_phep: dict[str, str], theo_module: frozenset[str]) -> str | None:
+    """Module thực thi được phép cho tài khoản: mục đích danh thắng; không có thì module của chính tài khoản nếu module đó được duyệt trước."""
+    if tk_id in cho_phep:
+        return cho_phep[tk_id]
+    if theo_module:
+        m = _module_cua_tai_khoan(tk_id)
+        if m in theo_module:
+            return m
+    return None
+
+
+def _ho_tro_deu_duoc_phep(tk_id: str, cho_phep: dict[str, str], theo_module: frozenset[str] = frozenset()) -> bool:
     """Tài khoản ở chế độ «đăng nhập qua tài khoản lưu khác» thì lõi sẽ giải mã bí mật của tài khoản HỘ và đăng nhập bằng nó.
     Danh sách cho phép phải phủ cả tài khoản hộ, nếu không một mục trong danh sách mở thêm đường tới tài khoản ngoài danh sách."""
     try:
@@ -366,7 +399,7 @@ def _ho_tro_deu_duoc_phep(tk_id: str, cho_phep: dict[str, str]) -> bool:
     if str(ban_ghi.get("dang_nhap_bang") or "") != kho_tai_khoan.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
         return True
     ho = kho_tai_khoan.lay_tai_khoan_dnh_id(ban_ghi)
-    return bool(ho) and ho in cho_phep
+    return bool(ho) and _module_thuc_thi(ho, cho_phep, theo_module) is not None
 
 
 def _phien_dang_chay() -> bool:
@@ -536,9 +569,10 @@ async def dang_nhap_bat_dau(args: dict, so: Any) -> dict:
     global _PHIEN_DANG_NHAP, _MOC_BAT_DAU_CUOI
 
     tk_id = args["tai_khoan_id"]
-    module_id = _doc_cho_phep().get(tk_id)
     cho_phep = _doc_cho_phep()
-    if module_id is None or not _ho_tro_deu_duoc_phep(tk_id, cho_phep):
+    theo_module = _doc_cho_phep_theo_module()
+    module_id = _module_thuc_thi(tk_id, cho_phep, theo_module)
+    if module_id is None or not _ho_tro_deu_duoc_phep(tk_id, cho_phep, theo_module):
         # Cùng một mã và một câu cho «không có» lẫn «không được phép»: khách không dò được id nào tồn tại.
         raise LoiCongCu("khong_cho_phep", "Chủ máy chưa cho phép đăng nhập tài khoản này qua cổng MCP.")
     if _phien_dang_chay():
