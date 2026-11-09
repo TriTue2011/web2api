@@ -185,12 +185,13 @@ def test_cho_phep_theo_module_tai_khoan_luu_sau_van_dang_nhap_duoc(moi_truong_mc
     khoa = tao_khoa_khach_mcp(client)
     _dang_ky_mod(so, "mod-duyet-truoc")
     _dang_ky_mod(so, "mod-khac")
-    monkeypatch.setenv("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "*@mod-duyet-truoc")
-    tk_moi = tao_tk("luu-sau@example.com", "mod-duyet-truoc")   # lưu SAU khi đã đặt biến: không cần thêm id
+    monkeypatch.setenv("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "*:mod-tai-khoan@mod-duyet-truoc")
+    tk_moi = tao_tk("luu-sau@example.com", "mod-tai-khoan")   # lưu SAU khi đã đặt biến: không cần thêm id
     tk_la = tao_tk("module-khac@example.com", "mod-khac")
 
     ds = rpc(client, khoa, "tools/call", {"name": "tai_khoan", "arguments": {}}).json()["result"]["structuredContent"]["tai_khoan"]
     co = {t["id"]: t["cho_phep_dang_nhap_mcp"] for t in ds}
+    assert so.dang_chay.get("mod-duyet-truoc") is not None
     assert co[tk_moi] is True and co[tk_la] is False
 
     r = rpc(client, khoa, "tools/call", {"name": "dang_nhap_bat_dau", "arguments": {"tai_khoan_id": tk_la}})
@@ -209,9 +210,9 @@ def test_cho_phep_theo_module_khong_mo_duong_toi_tai_khoan_ho_ngoai_module(moi_t
     khoa = tao_khoa_khach_mcp(client)
     _dang_ky_mod(so, "mod-duyet-truoc")
     _dang_ky_mod(so, "mod-khac")
-    monkeypatch.setenv("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "*@mod-duyet-truoc")
+    monkeypatch.setenv("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "*:mod-tai-khoan@mod-duyet-truoc")
     ho = tao_tk("ho-ngoai@example.com", "mod-khac")
-    tk = ktk.luu_tai_khoan(email="nho-ho@example.com", mat_khau="mat-khau-gia-12345", module_id="mod-duyet-truoc",
+    tk = ktk.luu_tai_khoan(email="nho-ho@example.com", mat_khau="mat-khau-gia-12345", module_id="mod-tai-khoan",
                            dang_nhap_bang=ktk.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU, tai_khoan_dnh_id=ho)["id"]
     r = rpc(client, khoa, "tools/call", {"name": "dang_nhap_bat_dau", "arguments": {"tai_khoan_id": tk}})
     assert r.json()["result"]["structuredContent"]["loi"] == "khong_cho_phep"

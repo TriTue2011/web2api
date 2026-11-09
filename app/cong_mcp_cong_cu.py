@@ -353,18 +353,19 @@ def _doc_cho_phep() -> dict[str, str]:
     return ra
 
 
-_RE_MUC_THEO_MODULE = re.compile(r"^\*@([A-Za-z0-9][A-Za-z0-9_-]{0,63})$")
+_RE_MUC_THEO_MODULE = re.compile(r"^\*(?::([A-Za-z0-9][A-Za-z0-9_-]{0,63}))?@([A-Za-z0-9][A-Za-z0-9_-]{0,63})$")
 
 
-def _doc_cho_phep_theo_module() -> frozenset[str]:
-    """Mục dạng `*@id_module` trong cùng biến: chủ máy DUYỆT TRƯỚC mọi tài khoản lưu ở module đó (kể cả tài khoản lưu sau này), khỏi liệt kê
-    từng id. Phạm vi vẫn do chủ máy chọn từng module; mọi hãm của đăng nhập thật (một phiên, nghỉ, dừng sau hai lần hỏng, trần ngày) giữ nguyên."""
-    ra = set()
+def _doc_cho_phep_theo_module() -> dict[str, str]:
+    """Mục `*:module_tai_khoan@module_thuc_thi` (hoặc `*@module` khi hai module là một) trong cùng biến: chủ máy DUYỆT TRƯỚC mọi tài khoản lưu ở
+    `module_tai_khoan` (kể cả tài khoản lưu sau này), đăng nhập qua `module_thuc_thi`, khỏi liệt kê từng id. Chủ máy chọn từng module; mọi hãm của
+    đăng nhập thật (một phiên, nghỉ, dừng sau hai lần hỏng, trần ngày) giữ nguyên."""
+    ra: dict[str, str] = {}
     for muc in os.environ.get("WEB2API_MCP_DANG_NHAP_CHO_PHEP", "").split(","):
         m = _RE_MUC_THEO_MODULE.match(muc.strip())
         if m:
-            ra.add(m.group(1))
-    return frozenset(ra)
+            ra.setdefault(m.group(1) or m.group(2), m.group(2))
+    return ra
 
 
 def _module_cua_tai_khoan(tk_id: str) -> str:
@@ -375,18 +376,16 @@ def _module_cua_tai_khoan(tk_id: str) -> str:
     return str(ban_ghi.get("module_id") or "") if isinstance(ban_ghi, dict) else ""
 
 
-def _module_thuc_thi(tk_id: str, cho_phep: dict[str, str], theo_module: frozenset[str]) -> str | None:
-    """Module thực thi được phép cho tài khoản: mục đích danh thắng; không có thì module của chính tài khoản nếu module đó được duyệt trước."""
+def _module_thuc_thi(tk_id: str, cho_phep: dict[str, str], theo_module: dict[str, str]) -> str | None:
+    """Module thực thi được phép cho tài khoản: mục đích danh thắng; không có thì tra theo module của chính tài khoản."""
     if tk_id in cho_phep:
         return cho_phep[tk_id]
     if theo_module:
-        m = _module_cua_tai_khoan(tk_id)
-        if m in theo_module:
-            return m
+        return theo_module.get(_module_cua_tai_khoan(tk_id))
     return None
 
 
-def _ho_tro_deu_duoc_phep(tk_id: str, cho_phep: dict[str, str], theo_module: frozenset[str] = frozenset()) -> bool:
+def _ho_tro_deu_duoc_phep(tk_id: str, cho_phep: dict[str, str], theo_module: dict[str, str] | None = None) -> bool:
     """Tài khoản ở chế độ «đăng nhập qua tài khoản lưu khác» thì lõi sẽ giải mã bí mật của tài khoản HỘ và đăng nhập bằng nó.
     Danh sách cho phép phải phủ cả tài khoản hộ, nếu không một mục trong danh sách mở thêm đường tới tài khoản ngoài danh sách."""
     try:
@@ -399,7 +398,7 @@ def _ho_tro_deu_duoc_phep(tk_id: str, cho_phep: dict[str, str], theo_module: fro
     if str(ban_ghi.get("dang_nhap_bang") or "") != kho_tai_khoan.DANG_NHAP_BANG_QUA_TAI_KHOAN_LUU:
         return True
     ho = kho_tai_khoan.lay_tai_khoan_dnh_id(ban_ghi)
-    return bool(ho) and _module_thuc_thi(ho, cho_phep, theo_module) is not None
+    return bool(ho) and _module_thuc_thi(ho, cho_phep, theo_module or {}) is not None
 
 
 def _phien_dang_chay() -> bool:
