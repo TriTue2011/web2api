@@ -40,7 +40,7 @@ from .accounts_db import (
     save_account,
     set_totp,
 )
-from . import vault
+from . import chan_doan, vault
 from .auto_login import (
     get_session as get_login_session,
     list_sessions as list_login_sessions,
@@ -1434,6 +1434,12 @@ async def api_man_hinh() -> Response:
     if anh is None:
         raise HTTPException(status_code=404, detail="Chưa có trình duyệt nào đang mở")
     return Response(content=anh, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/v1/chan-doan", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_chan_doan(so: int = 50) -> dict[str, Any]:
+    """Các bước đăng nhập gần nhất (điều hướng, bấm/điền kèm selector và kết quả). Không bí mật, không tên hồ sơ — xem ``src/chan_doan.py``."""
+    return {"ok": True, "buoc": chan_doan.doc(max(1, min(so, 100)))}
 
 
 @app.get("/v1/session/{profile}/warmup", dependencies=[Depends(can_tinh_nang("dang_nhap"))])

@@ -46,6 +46,7 @@ except ImportError:
         async_playwright,
     )
 
+from . import chan_doan
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -882,6 +883,7 @@ class BrowserPool:
             await context.add_init_script(_select_stealth_script())
 
         self._attach_close_handler(profile, context)
+        chan_doan.gan_ngu_canh(context)  # Q-D: ghi điều hướng cho mọi nhà cung cấp tại MỘT chỗ
         pages = context.pages
         page = pages[0] if pages else await context.new_page()
         if browser == "firefox":

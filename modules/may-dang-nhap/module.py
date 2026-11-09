@@ -2140,6 +2140,16 @@ class Module:
             return {"ok": False, "ma_loi": "dich_vu_loi"}
         return {"ok": True}
 
+    async def chan_doan(self, so_buoc: int = 50) -> dict:
+        """Nhật ký chẩn đoán các bước đăng nhập gần nhất của dịch vụ (Q-D, đề nghị xin quyền 04/11). Không bí mật: dịch vụ đã bỏ query/fragment
+        của URL, che email, không ghi giá trị ô nhập. Lõi vẫn lọc thêm trước khi đưa cho khách MCP."""
+        try:
+            n = max(1, min(int(so_buoc), 100))
+        except (TypeError, ValueError):
+            n = 50
+        r = await self._goi("GET", f"/v1/chan-doan?so={n}")
+        return r if isinstance(r, dict) else {"ok": False, "ma_loi": "dich_vu_loi"}
+
     async def man_hinh(self) -> bytes | None:
         """Ảnh JPEG của trang trình duyệt đang đăng nhập tự động trên dịch vụ (chủ máy 28/10/2026: «bấm tự động thì xem được trình
         duyệt đang làm gì, như c2a»). Gọi API có khoá sẵn của dịch vụ (không mở thêm cổng nào); cùng bộ kiểm SSRF/ghim IP như mọi lời gọi

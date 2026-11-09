@@ -21,6 +21,7 @@ phạm vi ĐÃ LƯU của khoá phải đúng bằng `["mcp"]` (không dựa và
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import logging
 import math
@@ -325,7 +326,7 @@ async def mcp_post(request: Request):
         return _loi_rpc(200, msg_id, -32601, "Phương thức không có")
 
     ten = params.get("name")
-    if not isinstance(ten, str) or ten not in cong_cu.CONG_CU:
+    if not isinstance(ten, str) or ten not in cong_cu.CONG_CU or not cong_cu.dang_bat(ten):
         _kiem_toan("loi_giao_thuc", khoa_id, request, "tools/call", t0=t0)
         return _loi_rpc(200, msg_id, -32602, "Công cụ không có")
     try:
@@ -350,10 +351,15 @@ async def mcp_post(request: Request):
             la_loi = True
     finally:
         _ra_dong_thoi()
+    # Ảnh JPEG của đúng một công cụ được tách ra TRƯỚC khi làm sạch chữ (bộ che chuỗi sẽ phá base64), rồi gắn lại như khối `image`.
+    anh = obj.pop("_anh_jpeg", None) if ten == "man_hinh_dang_nhap" else None
     obj = cong_cu.lam_sach_dau_ra({**obj, "du_lieu_khong_tin_cay": True, "luu_y": cong_cu.LUU_Y})
+    noi_dung = [{"type": "text", "text": json.dumps(obj, ensure_ascii=False)}]
+    if isinstance(anh, bytes) and not la_loi:
+        noi_dung.append({"type": "image", "mimeType": "image/jpeg", "data": base64.b64encode(anh).decode("ascii")})
     _kiem_toan("loi_tool" if la_loi else "ok", khoa_id, request, "tools/call", ten, t0=t0)
     return _json(200, {"jsonrpc": "2.0", "id": msg_id, "result": {
-        "content": [{"type": "text", "text": json.dumps(obj, ensure_ascii=False)}],
+        "content": noi_dung,
         "structuredContent": obj,
         "isError": la_loi,
     }})

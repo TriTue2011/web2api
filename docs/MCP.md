@@ -7,7 +7,7 @@ Mã nằm ở `app/cong_mcp.py` (giao thức, xác thực, giới hạn, kiểm 
 
 ## 1. Cổng này là gì và KHÔNG làm gì
 
-Sáu công cụ, không hơn:
+Sáu công cụ luôn có; thêm hai công cụ quan sát đăng nhập MẶC ĐỊNH TẮT (xem mục 3b):
 
 | Công cụ | Việc làm | Chạm tài khoản thật? |
 |---|---|---|
@@ -17,6 +17,8 @@ Sáu công cụ, không hơn:
 | `dang_nhap_bat_dau` | Chạy MỘT lần đăng nhập thật cho một tài khoản chủ máy đã cho phép đích danh | **Có** |
 | `dang_nhap_trang_thai` | Trạng thái phiên vừa xin: `dang_chay`, `thanh_cong`, `can_nguoi`, `that_bai` + mã lý do | Không |
 | `nhat_ky_gan_day` | Vài dòng nhật ký gần đây của các kênh được phép, đã lọc (chỉ thời điểm, kênh, mức, tóm tắt) | Không |
+| `chan_doan_dang_nhap` | (chỉ khi chủ máy bật) các bước đăng nhập gần nhất của dịch vụ đăng nhập: điều hướng (tên miền + đường dẫn, không query), bấm/điền kèm selector đã thử và kết quả | Không |
+| `man_hinh_dang_nhap` | (chỉ khi chủ máy bật có hạn) ảnh JPEG chỉ-đọc của trình duyệt đang đăng nhập, chỉ trong lúc cổng này chạy một lượt đăng nhập | Không (chỉ xem) |
 
 Cổng KHÔNG có: công cụ ghi/xoá/sửa nào khác, đọc bí mật (mật khẩu, khoá, OTP/TOTP, cookie, JWT), chạy lệnh, đọc tệp, nhận mã 2FA, giải thử thách.
 Gặp thử thách (CAPTCHA, xác minh thiết bị, 2FA…) thì trạng thái là **«cần người»** — cổng không cố vượt.
@@ -70,6 +72,17 @@ Các biến khác (đều có mặc định an toàn; đọc mỗi lượt gọi
 | `WEB2API_MCP_DANG_NHAP_TOI_DA_GIAY` | `300` | Trần thời gian một phiên |
 | `WEB2API_MCP_TU_KIEM_NGHI_GIAY` | `10` | Nghỉ giữa hai lượt tự kiểm |
 | `WEB2API_MCP_TU_KIEM_TOI_DA_GIAY` | `60` | Hết giờ thì giết tiến trình con tự kiểm |
+
+### 3b. Bật quan sát đăng nhập (tuỳ chọn, mặc định tắt)
+
+```
+WEB2API_MCP_QUAN_SAT_MODULE=may-dang-nhap                 # bật chan_doan_dang_nhap
+WEB2API_MCP_MAN_HINH_HET_HAN=2026-11-09T12:00:00Z         # bật thêm man_hinh_dang_nhap tới mốc này (tối đa 24 giờ kể từ lúc đọc)
+```
+
+- `man_hinh_dang_nhap` chỉ chụp khi có lượt đăng nhập do chính cổng MCP bắt đầu (đang chạy hoặc vừa xong ≤ 2 phút), giãn cách 3 giây, mỗi lần ghi một dòng kênh `mcp`; ảnh đi riêng như khối `image`, không qua bộ che chuỗi.
+  Ảnh có thể hiện chữ trên trang (email đang gõ, tên tài khoản): bộ che không đọc được chữ trong ảnh — chỉ bật khi chấp nhận điều đó, và hết hạn là tự tắt.
+- Dừng khẩn cấp: xoá hai biến rồi khởi động lại, hoặc thu hồi khoá khách.
 
 ## 4. Tạo khoá cho khách MCP
 

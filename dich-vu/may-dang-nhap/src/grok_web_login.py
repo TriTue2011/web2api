@@ -43,6 +43,7 @@ from .auto_login import (
     click_google_oauth_consent,
     do_google_login_steps,
 )
+from . import chan_doan
 from .browser_pool import pool
 
 logger = logging.getLogger(__name__)
@@ -161,8 +162,11 @@ async def _bam_nut_google(page) -> bool:
             if await loc.count() > 0 and await loc.is_visible():
                 await loc.click(timeout=5_000)
                 logger.info("grok_login: bấm nút Google qua %s", sel)
+                chan_doan.ghi("bam", selector=sel, ket_qua="bam_duoc")
                 return True
+            chan_doan.ghi("bam", selector=sel, ket_qua="khong_thay")
         except Exception:
+            chan_doan.ghi("bam", selector=sel, ket_qua="loi")
             continue
     try:
         return bool(await page.evaluate(

@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from . import chan_doan
 from .browser_pool import HoSoDangBan, pool
 from .auto_login import click_google_oauth_consent
 
@@ -89,8 +90,11 @@ async def _safe_click(page, *selectors: str, timeout: int = 5000) -> bool:
             loc = page.locator(sel).first
             if await loc.count() > 0:
                 await loc.click(timeout=timeout)
+                chan_doan.ghi("bam", selector=sel, ket_qua="bam_duoc")
                 return True
+            chan_doan.ghi("bam", selector=sel, ket_qua="khong_thay")
         except Exception:
+            chan_doan.ghi("bam", selector=sel, ket_qua="loi")
             continue
     return False
 
