@@ -12,7 +12,7 @@ Sáu công cụ, không hơn:
 | Công cụ | Việc làm | Chạm tài khoản thật? |
 |---|---|---|
 | `tong_quan` | Phiên bản, module đang có/đang chạy, tình trạng kho tài khoản | Không |
-| `tai_khoan` | Danh sách tài khoản ĐÃ CHE: id, nhóm, loại, đích dùng, bậc gói, module, trạng thái, lượng dùng, hạn mức, cờ `co_mat_khau`/`co_totp`, cờ «được cho phép đăng nhập qua cổng» | Không |
+| `tai_khoan` | Danh sách tài khoản ĐÃ CHE: id, nhóm, loại, đích dùng, bậc gói, module, trạng thái, lượng dùng, hạn mức, cờ `co_mat_khau`/`co_totp`, cờ «được cho phép đăng nhập qua cổng», chế độ đăng nhập (`dang_nhap_bang`, `cach_dang_nhap`) và kết quả lần đăng nhập gần nhất (`dang_nhap_lan_cuoi`: trạng thái, thời điểm, mã lỗi, có phiên hay không — không có giá trị phiên) | Không |
 | `tu_kiem_dang_nhap` | Chạy bộ kiểm LOGIC điều phối đăng nhập của lõi với module và dịch vụ GIẢ trong một tiến trình con riêng (thư mục dữ liệu tạm, không mạng); trả đạt/hỏng từng ca kèm lý do | Không |
 | `dang_nhap_bat_dau` | Chạy MỘT lần đăng nhập thật cho một tài khoản chủ máy đã cho phép đích danh | **Có** |
 | `dang_nhap_trang_thai` | Trạng thái phiên vừa xin: `dang_chay`, `thanh_cong`, `can_nguoi`, `that_bai` + mã lý do | Không |

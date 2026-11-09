@@ -600,6 +600,7 @@ def test_tai_khoan_khong_lo_bi_mat(moi_truong_mcp):
         "id", "nhom", "loai_tai_khoan", "dich_dung", "bac_goi",
         "module_id", "trang_thai", "trang_thai_duong", "dung",
         "han_muc", "co_mat_khau", "co_totp", "cho_phep_dang_nhap_mcp",
+        "dang_nhap_bang", "cach_dang_nhap", "dang_nhap_lan_cuoi",
     }
     sc = r.json()["result"]["structuredContent"]
     ds = sc.get("tai_khoan", [])
@@ -607,6 +608,24 @@ def test_tai_khoan_khong_lo_bi_mat(moi_truong_mcp):
     for tk in ds:
         tap_khoa = set(tk.keys())
         assert tap_khoa <= whitelist
+
+
+def test_tai_khoan_cho_thay_che_do_va_lan_dang_nhap_cuoi(moi_truong_mcp):
+    """Q-A (outbox Muse 04/11): tai_khoan trả chế độ đăng nhập + kết quả lần gần nhất, không email/giá trị phiên."""
+    client, _ = moi_truong_mcp
+    khoa = tao_khoa_khach_mcp(client)
+    tk_id = ktk.luu_tai_khoan(email="chu.nha@example.com", mat_khau="mat-khau-gia-0002", module_id="mod-a")["id"]
+    ktk.ghi_ket_qua_dang_nhap(tk_id, "can_nguoi", "captcha", None)
+
+    r = rpc(client, khoa, "tools/call", {"name": "tai_khoan", "arguments": {}})
+    assert r.status_code == 200
+    assert "chu.nha@example.com" not in r.text and "mat-khau-gia-0002" not in r.text
+    tk = next(t for t in r.json()["result"]["structuredContent"]["tai_khoan"] if t["id"] == tk_id)
+    assert tk["cach_dang_nhap"] == "email"  # có mật khẩu -> suy ra «email»
+    assert "dang_nhap_bang" in tk
+    lc = tk["dang_nhap_lan_cuoi"]
+    assert set(lc) == {"trang_thai", "luc", "ma_loi", "co_phien"}
+    assert lc["trang_thai"] == "can_xu_ly" and lc["ma_loi"] == "captcha" and lc["co_phien"] is None
 
 
 def test_nhat_ky_khong_lo_bi_mat(moi_truong_mcp):

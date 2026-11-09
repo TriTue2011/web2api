@@ -270,6 +270,18 @@ def _chieu_tai_khoan(b: dict, cho_phep: dict[str, str]) -> dict:
         ra["han_muc"] = han_muc
     elif isinstance(han_muc, dict):
         ra["han_muc"] = {str(k): v for k, v in list(han_muc.items())[:20] if isinstance(v, (int, float, bool))}
+    # Q-A (đề nghị xin quyền 04/11): chế độ đăng nhập + kết quả lần gần nhất. Cả hai chỉ là mã/cờ/số; ép khuôn mã để chuỗi dài không lọt.
+    ra["dang_nhap_bang"] = _ma_an_toan(b.get("dang_nhap_bang")) if b.get("dang_nhap_bang") else ""
+    ra["cach_dang_nhap"] = _ma_an_toan(b.get("cach_dang_nhap")) if b.get("cach_dang_nhap") else ""
+    lan_cuoi = b.get("dang_nhap")
+    if isinstance(lan_cuoi, dict):
+        luc, co_phien = lan_cuoi.get("luc"), lan_cuoi.get("co_phien")
+        ra["dang_nhap_lan_cuoi"] = {
+            "trang_thai": _ma_an_toan(lan_cuoi.get("trang_thai")),
+            "luc": luc if isinstance(luc, int) and not isinstance(luc, bool) else 0,
+            "ma_loi": _ma_an_toan(lan_cuoi.get("ma_loi")) if lan_cuoi.get("ma_loi") else "",
+            "co_phien": co_phien if isinstance(co_phien, bool) else None,
+        }
     ra["co_mat_khau"] = bool(b.get("co_mat_khau"))
     ra["co_totp"] = bool(b.get("co_totp"))
     ra["cho_phep_dang_nhap_mcp"] = str(b.get("id")) in cho_phep
@@ -607,7 +619,7 @@ CONG_CU: dict[str, dict] = {
     },
     "tai_khoan": {
         "ham": "tai_khoan",
-        "description": "Danh sách tài khoản đã lưu ở dạng ĐÃ CHE: nhóm, loại, đích dùng, trạng thái, lượng dùng, hạn mức; "
+        "description": "Danh sách tài khoản đã lưu ở dạng ĐÃ CHE: nhóm, loại, đích dùng, trạng thái, lượng dùng, hạn mức, chế độ đăng nhập và kết quả lần đăng nhập gần nhất; "
                        "không bao giờ có mật khẩu, khoá, OTP, cookie, JWT hay email. " + _CAU_DAU_RA,
         "inputSchema": _schema({"nhom": {"type": "string", "pattern": _MA_CHUOI}, "trang_thai": {"type": "string", "pattern": _MA_CHUOI}}),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
