@@ -82,6 +82,9 @@ WEB2API_MCP_MAN_HINH_HET_HAN=2026-11-09T12:00:00Z         # bật thêm man_hinh
 
 - `man_hinh_dang_nhap` chỉ chụp khi có lượt đăng nhập do chính cổng MCP bắt đầu (đang chạy hoặc vừa xong ≤ 2 phút), giãn cách 3 giây, mỗi lần ghi một dòng kênh `mcp`; ảnh đi riêng như khối `image`, không qua bộ che chuỗi.
   Ảnh có thể hiện chữ trên trang (email đang gõ, tên tài khoản): bộ che không đọc được chữ trong ảnh — chỉ bật khi chấp nhận điều đó, và hết hạn là tự tắt.
+- Mốc `WEB2API_MCP_MAN_HINH_HET_HAN` không có múi giờ được hiểu là UTC: viết có `Z` hoặc `+07:00` cho khỏi lệch.
+- Ảnh chụp theo hồ sơ đang đăng nhập (không có thì hồ sơ dùng gần nhất) của dịch vụ: nếu chủ máy hoặc Home Assistant đăng nhập hồ sơ khác song song với lượt MCP, ảnh có thể là trang của hồ sơ đó. Lượt MCP phải chạy đúng qua module quan sát thì mới được xem.
+- `chan_doan_dang_nhap` đọc vòng đệm chung của dịch vụ (300 bước gần nhất, mọi lượt đăng nhập, kể cả của chủ máy): chỉ tên miền, đường dẫn, selector; không gắn riêng với lượt MCP.
 - Dừng khẩn cấp: xoá hai biến rồi khởi động lại, hoặc thu hồi khoá khách.
 
 ## 4. Tạo khoá cho khách MCP

@@ -44,8 +44,8 @@ def _bat(monkeypatch, so, mod, het_han=None):
     so.dang_chay["may-dang-nhap"] = mod
 
 
-def _co_phien(trang_thai="dang_chay"):
-    cmcu._PHIEN_DANG_NHAP = {"phien_id": "p1", "tai_khoan_id": "tk-x", "trang_thai": "dang_chay", "ma_loi": "",
+def _co_phien(trang_thai="dang_chay", module="may-dang-nhap"):
+    cmcu._PHIEN_DANG_NHAP = {"phien_id": "p1", "tai_khoan_id": "tk-x", "module_id": module, "trang_thai": "dang_chay", "ma_loi": "",
                               "huong_dan": "", "bat_dau_luc": "x", "ket_thuc_luc": None}
     if trang_thai != "dang_chay":
         cmcu._ket_thuc_phien(cmcu._PHIEN_DANG_NHAP, trang_thai)
@@ -150,3 +150,13 @@ def test_man_hinh_giai_cach_giua_hai_lan(moi_truong_mcp, monkeypatch):
     for _ in range(3):
         rpc(client, khoa, "tools/call", {"name": "man_hinh_dang_nhap", "arguments": {}})
     assert mod.so_lan_chup == 1  # hai lần dồn sau bị từ chối, không đụng tới trình duyệt
+
+
+def test_man_hinh_tu_choi_khi_phien_chay_qua_module_khac(moi_truong_mcp, monkeypatch):
+    client, so = moi_truong_mcp
+    khoa = tao_khoa_khach_mcp(client)
+    mod = ModuleGia()
+    _bat(monkeypatch, so, mod, _han(1))
+    _co_phien(module="module-khac")
+    r = rpc(client, khoa, "tools/call", {"name": "man_hinh_dang_nhap", "arguments": {}})
+    assert r.json()["result"]["structuredContent"]["loi"] == "khong_co_phien" and mod.so_lan_chup == 0

@@ -552,7 +552,7 @@ async def dang_nhap_bat_dau(args: dict, so: Any) -> dict:
     if _so_thanh_cong_trong_ngay(tk_id) >= _thanh_cong_toi_da_ngay():
         raise LoiCongCu("het_luot_ngay", "Tài khoản này đã đăng nhập thành công đủ số lần cho phép trong 24 giờ qua.")
     phien = {
-        "phien_id": secrets.token_hex(8), "tai_khoan_id": tk_id, "trang_thai": "dang_chay",
+        "phien_id": secrets.token_hex(8), "tai_khoan_id": tk_id, "module_id": module_id, "trang_thai": "dang_chay",
         "ma_loi": "", "huong_dan": "", "bat_dau_luc": _iso_utc(), "ket_thuc_luc": None,
     }
     _PHIEN_DANG_NHAP = phien
@@ -672,8 +672,8 @@ async def chan_doan_dang_nhap(args: dict, so: Any = None) -> dict:
 
 def _phien_con_xem_duoc() -> bool:
     phien = _PHIEN_DANG_NHAP
-    if phien is None:
-        return False
+    if phien is None or phien.get("module_id") != _module_quan_sat():
+        return False  # lượt đăng nhập phải chạy qua ĐÚNG module mà ảnh sẽ được chụp từ đó
     if phien.get("trang_thai") == "dang_chay":
         return True
     xong = phien.get("ket_thuc_mono")

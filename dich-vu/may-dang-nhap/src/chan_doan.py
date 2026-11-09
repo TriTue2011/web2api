@@ -23,7 +23,8 @@ KET_QUA = frozenset({"ok", "bam_duoc", "khong_thay", "loi"})
 TRUONG = ("luc", "loai", "selector", "url", "ket_qua", "ma_loi")
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+(?:@|%40)[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+")
-_DOAN_DAI = re.compile(r"[A-Za-z0-9_\-]{20,}")
+_DOAN_AN_TOAN = re.compile(r"[A-Za-z0-9_\-.]{0,19}")
+_SCHEME_NOI_DUNG = frozenset({"data", "blob", "javascript", "vbscript"})
 _DIEU_KHIEN = re.compile(r"[\x00-\x1f\x7f-\x9f]+")
 _MA_LOI = re.compile(r"^[a-z0-9_]{1,64}$")
 
@@ -36,11 +37,15 @@ def lam_sach_url(url: Any) -> str:
     if not isinstance(url, str):
         return ""
     try:
-        p = urlsplit(url if "//" in url else "//" + url)
+        goc = urlsplit(url)
+        if goc.scheme in _SCHEME_NOI_DUNG:
+            return goc.scheme + ":«noi-dung»"  # data:/blob:/javascript: mang nội dung, không phải địa chỉ
+        p = goc if "//" in url else urlsplit("//" + url)
     except ValueError:
         return ""
     host = p.hostname or ""
-    doan = ["«dai»" if _DOAN_DAI.fullmatch(d) else d for d in (p.path or "").split("/")]
+    # Giữ đoạn đường dẫn ngắn và chỉ chữ/số/_-. ; đoạn dài hoặc có ký tự lạ (=, %, ~, ;, JWT có dấu chấm dài) → «dai».
+    doan = [d if _DOAN_AN_TOAN.fullmatch(d) else "«dai»" for d in (p.path or "").split("/")]
     r = _EMAIL.sub("«email»", host + "/".join(doan))
     return _DIEU_KHIEN.sub("", r)[:TRAN_URL]
 

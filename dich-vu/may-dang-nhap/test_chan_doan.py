@@ -64,3 +64,10 @@ def test_gan_trang_ghi_dieu_huong_chi_khung_chinh():
     t.nghe["framenavigated"](Khung("https://iframe.example/ads", cha=object()))  # khung con: bỏ
     r = chan_doan.doc(10)
     assert [b["url"] for b in r] == ["accounts.google.com/signin"] and r[0]["loai"] == "dieu_huong"
+
+
+def test_url_che_jwt_dau_cham_dau_bang_va_noi_dung_data():
+    assert chan_doan.lam_sach_url("https://x.example/cb/eyJhbGciOi.eyJzdWIiOiIx.c2ln") == "x.example/cb/«dai»"
+    assert chan_doan.lam_sach_url("https://x.example/a%3Db=c;d/ok") == "x.example/«dai»/ok"
+    assert chan_doan.lam_sach_url("data:text/html;base64,PGh0bWw+bWF0LWtoYXU=") == "data:«noi-dung»"
+    assert chan_doan.lam_sach_url("blob:https://x.example/uuid") == "blob:«noi-dung»"
