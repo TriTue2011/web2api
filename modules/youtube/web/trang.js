@@ -321,6 +321,61 @@ async function taiTrangThai() {
 }
 
 /* ── tìm kiếm ─────────────────────────────────────────────────────── */
+/* NV304b: nút tròn SVG cho kết quả tìm kiếm (đúng demo). SVG dựng bằng
+   createElementNS — KHÔNG innerHTML, giữ quy ước NV301 (dữ liệu ngoài
+   chỉ qua textContent); ba biểu tượng đều là hằng trong mã, không chứa
+   dữ liệu ngoài. Nhãn đầy đủ nằm ở aria-label + title. */
+const NS_SVG = 'http://www.w3.org/2000/svg';
+function svgKhoi() {
+  const s = document.createElementNS(NS_SVG, 'svg');
+  s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('aria-hidden', 'true');
+  return s;
+}
+function svgDuong(s, d) {
+  const p = document.createElementNS(NS_SVG, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', 'currentColor');
+  p.setAttribute('stroke-width', '1.8');
+  p.setAttribute('stroke-linecap', 'round');
+  p.setAttribute('stroke-linejoin', 'round');
+  s.append(p);
+  return s;
+}
+function svgPhat() {
+  const s = svgKhoi();
+  const p = document.createElementNS(NS_SVG, 'path');
+  p.setAttribute('d', 'M8 5.5v13l11-6.5z');
+  p.setAttribute('fill', 'currentColor');
+  s.append(p);
+  return s;
+}
+function svgHangDoi() {
+  return svgDuong(svgDuong(svgKhoi(), 'M4 6h12M4 12h12M4 18h8'), 'M18 15v6M15 18h6');
+}
+function svgPlaylist() {
+  const s = svgKhoi();
+  svgDuong(s, 'M9 18V6l10-2v11');
+  ['M6.5 18a2.5 2.5 0 1 0 0 .01', 'M16.5 15a2.5 2.5 0 1 0 0 .01'].forEach((d) => {
+    const c = document.createElementNS(NS_SVG, 'path');
+    c.setAttribute('d', d);
+    c.setAttribute('fill', 'none');
+    c.setAttribute('stroke', 'currentColor');
+    c.setAttribute('stroke-width', '1.8');
+    s.append(c);
+  });
+  return s;
+}
+function nutTron(nhan, veSvg, lopThem) {
+  const b = el('button', 'nut-tron' + (lopThem ? ' ' + lopThem : ''));
+  b.type = 'button';
+  b.setAttribute('aria-label', nhan);
+  b.title = nhan;
+  b.append(veSvg());
+  return b;
+}
+
 function nutKetQua(muc) {
   const li = el('li', 'hang-kq');
   if (muc.thumbnail) {
@@ -336,8 +391,7 @@ function nutKetQua(muc) {
     (muc.duration ? ' · ' + dinhDangGiay(muc.duration) : '')));
   li.append(nd);
   const mucTieu = muc.source === 'zing' ? (muc.url || muc.id) : muc.id;
-  const nutPhat = el('button', 'nut nut-nho nut-chinh', 'Phát');
-  nutPhat.type = 'button';
+  const nutPhat = nutTron('Phát', svgPhat, 'nut-chinh');
   nutPhat.addEventListener('click', async () => {
     try {
       const loa = loaDaChon();
@@ -351,8 +405,7 @@ function nutKetQua(muc) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-tim', e.message);
     }
   });
-  const nutQueue = el('button', 'nut nut-nho', 'Thêm vào Queue');
-  nutQueue.type = 'button';
+  const nutQueue = nutTron('Thêm vào Queue', svgHangDoi);
   nutQueue.addEventListener('click', async () => {
     try {
       const thamSo = { muc_tieu: mucTieu, nguon: muc.source };
@@ -364,8 +417,7 @@ function nutKetQua(muc) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-tim', e.message);
     }
   });
-  const nutPl = el('button', 'nut nut-nho', 'Thêm vào Playlist');
-  nutPl.type = 'button';
+  const nutPl = nutTron('Thêm vào Playlist', svgPlaylist);
   nutPl.addEventListener('click', async () => {
     try {
       const pid = $('o-playlist-nhan').value;
