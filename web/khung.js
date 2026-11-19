@@ -628,17 +628,18 @@
         coForm: !!ch, dangTai: !ch && !f.loiTai, loiTai: f.loiTai || '', truong, khongTruong: !!ch && truongTatCa.length === 0,
         luu: (e) => cauHinh.luu(comp, id, e, daXong), dang: !!f.dang, nhanNut: f.dang ? 'Đang kiểm từng khoá…' : 'Kiểm tra và lưu',
         loi: f.loi || '', coKq: !!kq, kqOk: !!(kq && kq.ok), kqLoi: kq && !kq.ok ? kq.loi || 'không rõ lý do' : '',
-        kqDs: kq ? (kq.ds || []).map(dongKhoa) : [], kqGoLai: !!(kq && kq.goLai)
+        kqDs: kq ? (kq.ds || []).map(dongKhoa) : [], kqGoLai: !!(kq && kq.goLai),
+        coTinChungChi: !!(kq && kq.tin), tinThongBao: kq && kq.tin ? kq.tin.thong_bao || '' : '',
+        bamTinChungChi: (e) => cauHinh.tinChungChi(comp, id, e, daXong)
       };
     },
-    async luu(comp, id, e, daXong) {
-      if (e) e.preventDefault();
+    gom(comp, id) {
+      // Gom giá trị form hiện tại thành cau_hinh gửi lõi (dùng chung cho luu và tinChungChi).
       const f = cauHinh.cf(comp, id);
       const ch = f.ch;
-      if (!ch) return;
-      const gt = ch.gia_tri || {};
+      const gt = (ch && ch.gia_tri) || {};
       const cau_hinh = {}; const thieuTr = []; let coBiMat = false;
-      for (const t of ch.truong_cau_hinh || []) {
+      for (const t of (ch && ch.truong_cau_hinh) || []) {
         const go = f.gt[t.khoa];
         const daLuu = gt[t.khoa];
         if (t.kieu === 'danh_sach_bi_mat') {
@@ -659,6 +660,15 @@
           if (t.bat_buoc && !s && (daLuu == null || daLuu === '')) thieuTr.push(t.nhan || t.khoa);
         }
       }
+      return { cau_hinh, coBiMat, thieuTr };
+    },
+    async luu(comp, id, e, daXong) {
+      if (e) e.preventDefault();
+      const f = cauHinh.cf(comp, id);
+      const ch = f.ch;
+      if (!ch) return;
+      const g = cauHinh.gom(comp, id);
+      const cau_hinh = g.cau_hinh; const thieuTr = g.thieuTr; const coBiMat = g.coBiMat;
       if (thieuTr.length) { cauHinh.dat(comp, id, { loi: 'Còn thiếu: ' + thieuTr.join(', ') + '.', kq: null }); return; }
       if (!Object.keys(cau_hinh).length && ch.da_cau_hinh) { cauHinh.dat(comp, id, { loi: 'Chưa có thay đổi nào để lưu.', kq: null }); return; }
       // Xoá bí mật khỏi state TRƯỚC khi gửi; đổi `lan` để dc-lite dựng ô mới rỗng.
@@ -667,10 +677,34 @@
       try {
         const { j } = await goi('api/modules/' + encodeURIComponent(id) + '/cai', { method: 'POST', json: { cau_hinh }, chapNhan: [400] });
         kq = j && typeof j === 'object' && 'ok' in j
-          ? { ok: !!j.ok, ds: j.ket_qua_tung_khoa || [], loi: j.loi || (j.ok ? '' : 'module từ chối cấu hình') }
-          : { ok: false, ds: [], loi: thongDiep(j, 400) };
-      } catch (err) { kq = { ok: false, ds: [], loi: err.message }; }
+          ? { ok: !!j.ok, ds: j.ket_qua_tung_khoa || [], loi: j.loi || (j.ok ? '' : 'module từ chối cấu hình'), tin: j.tin_chung_chi || null }
+          : { ok: false, ds: [], loi: thongDiep(j, 400), tin: null };
+      } catch (err) { kq = { ok: false, ds: [], loi: err.message, tin: null }; }
       kq.goLai = !kq.ok && coBiMat;
+      cauHinh.dat(comp, id, { dang: false, kq });
+      if (kq.ok) { cauHinh.dat(comp, id, { sua: {}, nangCao: false }); await cauHinh.tai(comp, id); if (daXong) daXong(id); }
+    },
+    async tinChungChi(comp, id, e, daXong) {
+      // Nút «Tin chứng chỉ này» (NV295): gửi lại giá trị form hiện tại + vé tin.
+      // Vé chỉ có trong state (không hiện ra trang); lõi đo lại chứng chỉ và
+      // so mặt nạ trước khi lưu — chứng chỉ đổi sau khi hiển thị thì bị từ chối.
+      if (e) e.preventDefault();
+      const f = cauHinh.cf(comp, id);
+      const ch = f.ch;
+      const tin = f.kq && f.kq.tin;
+      if (!ch || !tin) return;
+      const g = cauHinh.gom(comp, id);
+      if (g.thieuTr.length) { cauHinh.dat(comp, id, { loi: 'Còn thiếu: ' + g.thieuTr.join(', ') + '.' }); return; }
+      // Xoá bí mật khỏi state TRƯỚC khi gửi (như luu); giá trị đã gom giữ trong biến cục bộ.
+      cauHinh.dat(comp, id, { gt: {}, bot: {}, lan: f.lan + 1, dang: true, loi: '' });
+      let kq;
+      try {
+        const { j } = await goi('api/modules/' + encodeURIComponent(id) + '/tin-chung-chi', { method: 'POST', json: { cau_hinh: g.cau_hinh, ve: tin.ve, ma_hien_thi: tin.ma_hien_thi }, chapNhan: [400] });
+        kq = j && typeof j === 'object' && 'ok' in j
+          ? { ok: !!j.ok, ds: j.ket_qua_tung_khoa || [], loi: j.loi || (j.ok ? '' : 'không tin được chứng chỉ'), tin: j.tin_chung_chi || null }
+          : { ok: false, ds: [], loi: thongDiep(j, 400), tin: null };
+      } catch (err) { kq = { ok: false, ds: [], loi: err.message, tin: null }; }
+      kq.goLai = !kq.ok && g.coBiMat;
       cauHinh.dat(comp, id, { dang: false, kq });
       if (kq.ok) { cauHinh.dat(comp, id, { sua: {}, nangCao: false }); await cauHinh.tai(comp, id); if (daXong) daXong(id); }
     }

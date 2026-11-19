@@ -17,19 +17,19 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import hashlib
-import ipaddress
 import json
 import logging
 import os
 from pathlib import Path
 import re
-import socket
+import ssl
 import threading
 import time
 from typing import Any
 import unicodedata
 
-from app.tu_xa import _dia_chi_bi_chan
+from app.tu_xa import kiem_ip_lan
+from app import chung_chi_tls
 from . import routeros
 from .toc_do import tinh_toc_do_mbit, doc_thoi_luong_giay
 
@@ -95,6 +95,21 @@ def _mo_phien_da_dang_nhap(host: str, cong: int, tai_khoan: str, mat_khau: str, 
         p.dong()
         raise
     return p
+
+
+def _la_loi_xac_minh_chung_chi(e: BaseException) -> bool:
+    """Lỗi bắt tay có phải do chứng chỉ không kiểm được? Chỉ lỗi này mới
+    được tự ghim lần đầu — lỗi mạng/giao thức khác thì không (dù bắt tay
+    CERT_NONE có tình cờ thành công). Đi dọc chuỗi nguyên nhân tìm
+    ``SSLCertVerificationError`` (tự ký, hết hạn, nhà cấp không tin cậy)."""
+    thay: BaseException | None = e
+    da_gap: set[int] = set()
+    while thay is not None and id(thay) not in da_gap:
+        da_gap.add(id(thay))
+        if isinstance(thay, ssl.SSLCertVerificationError):
+            return True
+        thay = thay.__cause__ or thay.__context__
+    return False
 
 
 class Module:
@@ -210,6 +225,24 @@ class Module:
 
     # ── Kiểm tra địa chỉ ──
 
+    async def _de_nghi_tin(self, host: str, cong: int) -> dict | None:
+        """Đo lại chứng chỉ hiện tại rồi dựng đề nghị «Tin chứng chỉ này»
+        cho trường hợp CHỨNG CHỈ ĐỔI (duy nhất còn dùng nút, 19:30).
+
+        Chỉ gọi với host/cổng ĐÃ QUA kiểm LAN (kiem_dia_chi) — đo không gửi
+        mật khẩu, không đăng nhập. Đo thất bại → None (không đề nghị mù).
+        """
+        try:
+            van_tay = await asyncio.to_thread(chung_chi_tls.do_van_tay, host, cong)
+            ma = chung_chi_tls.ma_hien_thi(van_tay)
+        except Exception:
+            return None
+        thong_bao = ("Chứng chỉ router đã đổi — có thể do bạn vừa cấp lại, "
+                     "cũng có thể có thiết bị giả mạo router. Mã nhận dạng mới: "
+                     f"{ma}. Kiểm tra kỹ rồi bấm «Tin chứng chỉ này» để xác nhận lại.")
+        return {"ly_do": "doi", "ma_hien_thi": ma, "thong_bao": thong_bao,
+                "host": host, "cong": cong}
+
     def kiem_dia_chi(self, xau: Any) -> tuple[str, int]:
         s = str(xau or "").strip()
         if not s or len(s) > TRAN_DO_DAI_CAU_HINH:
@@ -238,24 +271,16 @@ class Module:
             raise ValueError(f"cổng {cong_s!r} không phải số") from None
         if not 1 <= cong <= 65535:
             raise ValueError(f"cổng {cong} ngoài khoảng 1–65535")
+        # NV295 (hướng 19:30): BẮT BUỘC IP LAN — tên miền bị từ chối NGAY mà
+        # không phân giải DNS; IP WAN/CGNAT/loopback/link-local cũng bị từ
+        # chối. Đây là lớp chống hack của luồng tự ghim lần đầu: chỉ thiết bị
+        # trong mạng nhà mới được tự tin, nên kẻ ngoài mạng không thể chèn
+        # chứng chỉ giả vào lần nối đầu.
         try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            ip = None
-        if ip is not None:
-            ly_do = _dia_chi_bi_chan(ip)
-            if ly_do:
-                raise ValueError(f"dia_chi trỏ vào {ip} — bị chặn: {ly_do}")
-            return str(ip), cong
-        try:
-            thong_tin = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-        except OSError as e:
-            raise ValueError(f"không phân giải được tên máy {host!r}") from e
-        for thong in thong_tin:
-            ip = ipaddress.ip_address(thong[4][0])
-            if _dia_chi_bi_chan(ip) is None:
-                return str(ip), cong
-        raise ValueError(f"tên máy {host!r} chỉ phân giải ra địa chỉ bị chặn")
+            ip = kiem_ip_lan(host)
+        except ValueError as e:
+            raise ValueError(f"dia_chi {host!r}: {e}") from None
+        return str(ip), cong
 
     @staticmethod
     def _kep_so(val: Any, mac_dinh: int, duoi: int, tren: int) -> int:
@@ -328,13 +353,55 @@ class Module:
             return {"ok": False, "ket_qua_tung_khoa": [], "loi": str(e)}
 
         khong_ma_hoa = _la_dung(cau_hinh.get("cho_phep_khong_ma_hoa", False))
+        kiem_chung_chi = _la_dung(cau_hinh.get("kiem_chung_chi_tls", True))
+        van_tay = str(cau_hinh.get("van_tay_tls") or "").strip()
+        van_tay_luu = van_tay
         try:
             p = await asyncio.to_thread(
                 _mo_phien_da_dang_nhap, host, cong, tai_khoan, mat_khau,
                 tls=not khong_ma_hoa,
-                kiem_chung_chi=_la_dung(cau_hinh.get("kiem_chung_chi_tls", True)),
-                van_tay=str(cau_hinh.get("van_tay_tls") or "").strip(),
+                kiem_chung_chi=kiem_chung_chi,
+                van_tay=van_tay,
             )
+        except routeros.LoiChungChi:
+            # Vân tay đã ghim không khớp: chứng chỉ ĐÃ ĐỔI. Đo lại chứng chỉ
+            # hiện tại (chưa gửi mật khẩu) để đề nghị tin lại — nút tin chỉ
+            # còn cho trường hợp đổi chứng chỉ này (19:30), không còn ở lần
+            # đầu (lần đầu đã tự ghim, xem nhánh LoiBatTayTls dưới).
+            de_nghi = await self._de_nghi_tin(host, cong)
+            if de_nghi is None:
+                return {"ok": False, "ket_qua_tung_khoa": [],
+                        "loi": "Chứng chỉ router đã đổi nhưng không đo lại được — kiểm tra địa chỉ rồi thử lại."}
+            return {"ok": False, "ket_qua_tung_khoa": [],
+                    "loi": "Chứng chỉ router đã đổi so với bản đã tin.",
+                    "tin_chung_chi": de_nghi}
+        except routeros.LoiBatTayTls as e:
+            # Lần đầu, chưa ghim, còn bật kiểm, và lỗi ĐÚNG là chứng chỉ
+            # không kiểm được: TỰ GHIM (19:30) — không hỏi người dùng, không
+            # nút ở lần đầu. Đích đã qua kiem_dia_chi nên chắc chắn là IP
+            # LAN (tên miền/WAN đã bị từ chối ở trên); đo chứng chỉ thiết bị
+            # trình ra rồi nối LẠI bằng đường ghim sẵn có (kiểm vân tay
+            # TRƯỚC khi gửi mật khẩu — chứng chỉ đổi giữa hai lần bắt tay
+            # thì lần nối lại hỏng, không lưu ghim sai).
+            if khong_ma_hoa or not kiem_chung_chi or van_tay \
+                    or not _la_loi_xac_minh_chung_chi(e):
+                return {"ok": False, "ket_qua_tung_khoa": [],
+                        "loi": "Không bắt tay TLS được với router — kiểm tra địa chỉ và cổng."}
+            try:
+                van_tay_moi = await asyncio.to_thread(chung_chi_tls.do_van_tay, host, cong)
+            except Exception:
+                return {"ok": False, "ket_qua_tung_khoa": [],
+                        "loi": "Không bắt tay TLS được với router — kiểm tra địa chỉ và cổng."}
+            try:
+                p = await asyncio.to_thread(
+                    _mo_phien_da_dang_nhap, host, cong, tai_khoan, mat_khau,
+                    tls=not khong_ma_hoa,
+                    kiem_chung_chi=kiem_chung_chi,
+                    van_tay=van_tay_moi,
+                )
+            except routeros.RouterOSError as e2:
+                return {"ok": False, "ket_qua_tung_khoa": [], "loi": str(e2)}
+            van_tay_luu = van_tay_moi
         except routeros.RouterOSError as e:
             return {"ok": False, "ket_qua_tung_khoa": [], "loi": str(e)}
         await asyncio.to_thread(p.dong)
@@ -355,7 +422,7 @@ class Module:
                 "tai_khoan": tai_khoan,
                 "mat_khau": mat_khau,
                 "kiem_chung_chi_tls": str(cau_hinh.get("kiem_chung_chi_tls", "true")),
-                "van_tay_tls": str(cau_hinh.get("van_tay_tls") or ""),
+                "van_tay_tls": van_tay_luu,
                 "cho_phep_khong_ma_hoa": str(cau_hinh.get("cho_phep_khong_ma_hoa", "false")),
                 "chu_ky_nhanh_giay": str(ck_nhanh),
                 "chu_ky_cham_giay": str(ck_cham),
@@ -443,6 +510,19 @@ class Module:
                 kiem_chung_chi=cfg["kiem_chung_chi_tls"],
                 van_tay=cfg["van_tay_tls"],
             )
+        except routeros.LoiChungChi:
+            # Chứng chỉ đổi: kiểm vân tay đã chặn trước khi gửi mật khẩu.
+            # Mã riêng (không phải ket_noi) để trạng thái phân biệt được — NV295.
+            if can_nhanh:
+                self._ghi_loi_nguon("interface", "chung_chi_doi")
+                if cfg.get("bat_kid_control"):
+                    self._ghi_loi_nguon("kid_control", "chung_chi_doi")
+            if can_cham:
+                self._ghi_loi_nguon("resource", "chung_chi_doi")
+                self._ghi_loi_nguon("wireguard", "chung_chi_doi")
+                self._ghi_loi_nguon("lease", "chung_chi_doi")
+                self._ghi_loi_nguon("host", "chung_chi_doi")
+            return
         except Exception:
             # Lỗi kết nối / login: đánh dấu lỗi ket_noi cho mọi nguồn cần đọc lượt này
             if can_nhanh:

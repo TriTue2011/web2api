@@ -41,6 +41,85 @@ def cho_phep_loopback_cho_test() -> bool:
     return os.environ.get("WEB2API_TEST_CHO_PHEP_LOOPBACK") == "1"
 
 
+# ── NV295 (hướng 19:30): chỉ IP LAN, tuyệt đối không tên miền / IP WAN ─────────
+# Dải LAN được phép: RFC 1918 (IPv4) + ULA fc00::/7 (IPv6). Mọi thứ khác đều
+# bị từ chối, kể cả khi Python coi nó là «private» (vd CGNAT 100.64/10 nằm
+# trong is_private của ipaddress nhưng là dải dùng chung của nhà mạng, KHÔNG
+# phải LAN — nên ở đây kiểm bằng danh sách tường minh, không dùng is_private).
+
+_MANG_LAN_V4 = [ipaddress.IPv4Network("10.0.0.0/8"),
+                ipaddress.IPv4Network("172.16.0.0/12"),
+                ipaddress.IPv4Network("192.168.0.0/16")]
+_MANG_LAN_V6 = [ipaddress.IPv6Network("fc00::/7")]
+_MANG_CGNAT_V4 = ipaddress.IPv4Network("100.64.0.0/10")
+
+
+def _kiem_ipv4_lan(ip: ipaddress.IPv4Address) -> None:
+    """Ném ValueError nêu lý do nếu IPv4 không phải IP LAN."""
+    if ip.is_loopback:
+        if cho_phep_loopback_cho_test():
+            return
+        raise ValueError("bị chặn: loopback (không phải IP LAN; chỉ test mới được phép)")
+    if ip.is_link_local:
+        raise ValueError("bị chặn: link-local (không phải IP LAN)")
+    if ip in _MANG_CGNAT_V4:
+        raise ValueError("bị chặn: CGNAT 100.64/10 (dải dùng chung của nhà mạng, không phải LAN)")
+    if any(ip in mang for mang in _MANG_LAN_V4):
+        return
+    raise ValueError("bị chặn: không phải địa chỉ IP trong mạng nhà "
+                     "(địa chỉ công cộng/WAN hoặc dải đặc biệt)")
+
+
+def kiem_ip_lan(host: object) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """Cưỡng chế «chỉ IP LAN» cho luồng tin chứng chỉ lần đầu (NV295, 19:30).
+
+    - Tên miền/tên máy → ValueError NGAY, KHÔNG phân giải DNS (không có
+      chuyện «phân giải rồi nối theo IP phân giải được» — chống DNS rebinding
+      ngay từ đầu).
+    - IP WAN/công cộng, CGNAT, loopback, link-local, unspecified, multicast,
+      dải đặc biệt/tài liệu → ValueError.
+    - Trả về đối tượng ipaddress đã chuẩn hoá (IPv4-mapped trong IPv6 được
+      bóc ra; IPv6 nhúng 6to4/Teredo cũng phải mang IPv4 LAN mới qua).
+    - Loopback chỉ được phép khi biến test WEB2API_TEST_CHO_PHEP_LOOPBACK=1
+      (máy chủ giả trong test chạy trên 127.0.0.1) — production không đặt.
+    """
+    s = str(host or "").strip()
+    if s.startswith("[") and s.endswith("]"):
+        s = s[1:-1]
+    try:
+        ip = ipaddress.ip_address(s)
+    except ValueError:
+        raise ValueError(
+            f"{s!r} không phải địa chỉ IP — bị chặn: chỉ nhận địa chỉ IP trong mạng nhà, "
+            "không nhận tên miền (không phân giải tên miền)") from None
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        else:
+            # IPv4 nhúng trong 6to4/Teredo phải là LAN thì mới qua.
+            nhung = [ip.sixtofour] if ip.sixtofour else []
+            if ip.teredo:
+                nhung += list(ip.teredo)
+            for v4 in nhung:
+                try:
+                    _kiem_ipv4_lan(v4)
+                except ValueError as e:
+                    raise ValueError(f"IPv4 nhúng {v4}: {e}") from None
+            if ip.is_loopback:
+                if cho_phep_loopback_cho_test():
+                    return ip
+                raise ValueError("bị chặn: loopback (không phải IP LAN; chỉ test mới được phép)")
+            if ip.is_link_local:
+                raise ValueError("bị chặn: link-local (không phải IP LAN)")
+            if any(ip in mang for mang in _MANG_LAN_V6):
+                return ip
+            raise ValueError(
+                "bị chặn: không phải địa chỉ IP trong mạng nhà "
+                "(địa chỉ công cộng/WAN hoặc dải đặc biệt)")
+    _kiem_ipv4_lan(ip)
+    return ip
+
+
 def _dia_chi_bi_chan(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped

@@ -46,7 +46,7 @@ Nguồn thiết bị và cảm biến mạng cho web2api qua RouterOS API (giao 
 | `tai_khoan` | Có | — | Tài khoản RouterOS (nhóm `read`). |
 | `mat_khau` | Có | — | Mật khẩu tài khoản (kiểu `bi_mat`, lưu riêng 0600). |
 | `kiem_chung_chi_tls` | Không | `"true"` | Kiểm tra chứng chỉ TLS theo hệ thống khi không ghim vân tay. |
-| `van_tay_tls` | Không | `""` | Vân tay SHA-256 của chứng chỉ router (ghim chứng chỉ tự ký). |
+| `van_tay_tls` | Không | `""` | Mã nhận dạng chứng chỉ của router (lưu dạng bí mật, chỉ hiện dạng che). Thường không cần điền: lần đầu nối tới IP LAN, hệ thống tự ghi lại mã này; chứng chỉ đổi thì giao diện hiện nút «Tin chứng chỉ này» để xác nhận mã mới. Ô giữ làm nâng cao thu gọn. |
 | `cho_phep_khong_ma_hoa` | Không | `"false"` | Cho phép nối trần cổng 8728 (không khuyến nghị). |
 | `chu_ky_nhanh_giay` | Không | `"15"` | Chu kỳ đọc nhanh (giây, kẹp 10–3600). |
 | `chu_ky_cham_giay` | Không | `"120"` | Chu kỳ đọc chậm (giây, kẹp 30–3600, >= chu kỳ nhanh). |

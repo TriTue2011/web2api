@@ -481,7 +481,9 @@ def test_cai_sai_mat_khau_bao_loi_khong_ro_mat_khau(mod, manifest, may_chu_gia, 
 
 def test_cai_van_tay_sai_dinh_dang_bao_loi(mod, manifest):
     m = mod.Module(manifest)
-    ch = {"dia_chi": "https://192.0.2.1/", "tai_khoan": TAI_KHOAN_GIA,
+    # Địa chỉ LAN để qua cổng IP LAN rồi mới tới bước kiểm định dạng vân tay
+    # (TEST-NET 192.0.2.1 cũ đã bị cổng mới từ chối vì không phải IP LAN).
+    ch = {"dia_chi": "https://192.168.1.1/", "tai_khoan": TAI_KHOAN_GIA,
           "mat_khau": MAT_KHAU_GIA, "van_tay_tls": "khong-phai-hex"}
     kq = chay(m.cai(ch))
     assert kq["ok"] is False and "van_tay_tls" in (kq["loi"] or "")

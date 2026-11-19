@@ -172,6 +172,12 @@ DA_KIEM_TOAN = {
     # rơi về email CỦA CHÍNH tài khoản vừa đăng nhập (dữ liệu chắc chắn), không đoán email lạ; không có quyết định
     # bảo mật nào dựa trên kết quả rỗng.
     ("modules/may-dang-nhap/module.py", "_email_tu_jwt"),
+    # Đã duyệt NV295 (đọc hàm): đo chứng chỉ để dựng đề nghị tin khi đổi —
+    # đo thất bại → None (không đề nghị mù). Phía gọi fail-closed: mikrotik
+    # trả lỗi nối thường, ZTE giữ cảnh báo và không kèm đề nghị; không mở
+    # quyền, không giả thành công, không nuốt lỗi đăng nhập (chỉ lỗi đo).
+    ("modules/mikrotik-routeros/module.py", "_de_nghi_tin"),
+    ("modules/zte-e2633/module.py", "_de_nghi_tin_zte"),
     # Đã duyệt NV256 (đọc hàm, 23/10/2026): giải mã payload JWT KHÔNG xác thực chữ ký, chỉ để đọc claim exp;
     # token hỏng → None → phía gọi coi như hết hạn/không đọc được (đóng khi lỗi). Không có quyết định bảo mật
     # nào coi token hỏng là còn hạn.

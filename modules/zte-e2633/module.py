@@ -52,7 +52,8 @@ import httpx
 
 from app.chuyen_tiep import PhanHoiQuaLon, doc_phan_hoi_co_tran
 from app.so_thiet_bi import chuan_hoa_mac
-from app.tu_xa import kiem_url_lan
+from app.tu_xa import kiem_ip_lan, kiem_url_lan
+from app import chung_chi_tls
 
 log = logging.getLogger("web2api.zte_e2633")
 
@@ -182,6 +183,8 @@ class MayKhachZte:
         self._kiem_chung_chi = kiem_chung_chi_tls
         self._van_tay = van_tay_tls
         self._client: httpx.AsyncClient | None = None
+        self._van_tay_client = ""
+        self._cookie_cho: str | None = None
         self._co_phien = False
         self.so_lan_dang_nhap = 0
 
@@ -195,22 +198,42 @@ class MayKhachZte:
         return (self._dia_chi, self._tai_khoan)
 
     def nhan_phien_da_co(self, gia_tri_cookie: str) -> None:
-        """Nhận cookie phiên có sẵn (do cai() để lại) — không đăng nhập mới."""
-        self._client_hien_tai().cookies.set(TEN_GOI_COOKIE_PHIEN, gia_tri_cookie)
+        """Giữ cookie cai() để lại; nap() đồng bộ không được gọi mạng."""
+        self._cookie_cho = gia_tri_cookie
         self._co_phien = True
 
     # ── hạ tầng ──────────────────────────────────────────────────────────────
-    def _ngu_canh_tls(self) -> ssl.SSLContext:
+    def _ngu_canh_tls(self, pem_ghim: str | None = None) -> ssl.SSLContext:
+        if self._van_tay:
+            if not pem_ghim:
+                raise ZteLoiVanTay("chưa có chứng chỉ TLS khớp vân tay đã ghim")
+            # Không nạp CA hệ thống: HTTP chỉ tin chứng chỉ đã khớp SHA-256.
+            ngu = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ngu.check_hostname = False
+            ngu.verify_mode = ssl.CERT_REQUIRED
+            ngu.load_verify_locations(cadata=pem_ghim)
+            ngu.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+            van_tay = self._van_tay
+
+            class TlsGhim(ssl.SSLObject):
+                def do_handshake(self):
+                    super().do_handshake()
+                    # Cert ghim có thể là CA: chuỗi tin được chưa đủ, cert lá
+                    # trên chính TLS stream vẫn phải khớp SHA-256 đã cấu hình.
+                    der = self.getpeercert(binary_form=True) or b""
+                    if not hmac.compare_digest(hashlib.sha256(der).hexdigest(), van_tay):
+                        raise ssl.SSLCertVerificationError("chứng chỉ khác vân tay đã ghim")
+
+            ngu.sslobject_class = TlsGhim
+            return ngu
         ngu = ssl.create_default_context()
-        if self._van_tay or not self._kiem_chung_chi:
-            # Chứng chỉ tự ký: hoặc bỏ kiểm (do quản trị chọn), hoặc ghim vân tay
-            # (đối chiếu riêng ở _doi_chieu_van_tay trước mỗi lần đăng nhập).
+        if not self._kiem_chung_chi:
             ngu.check_hostname = False
             ngu.verify_mode = ssl.CERT_NONE
         return ngu
 
-    def _doi_chieu_van_tay(self) -> None:
-        """Ghim vân tay SHA-256 của chứng chỉ máy chủ (chạy trong thread)."""
+    def _doi_chieu_van_tay(self) -> str:
+        """Probe không gửi HTTP; trả PEM chỉ sau khi khớp SHA-256 (trong thread)."""
         if not VAN_TAY_HEX.match(self._van_tay):
             raise ZteLoi("van_tay_tls phải là 64 ký tự hex (SHA-256)")
         phan = urlsplit(self._dia_chi)
@@ -227,20 +250,29 @@ class MayKhachZte:
         that = hashlib.sha256(der).hexdigest()
         if not hmac.compare_digest(that, self._van_tay):
             raise ZteLoiVanTay("vân tay TLS của thiết bị không khớp cấu hình") from None
+        return ssl.DER_cert_to_PEM_cert(der)
 
-    def _client_hien_tai(self) -> httpx.AsyncClient:
+    async def _client_hien_tai(self) -> httpx.AsyncClient:
+        if self._client is not None and self._van_tay_client != self._van_tay:
+            await self.dong()
         if self._client is None:
+            pem_ghim = (await asyncio.to_thread(self._doi_chieu_van_tay)
+                        if self._van_tay else None)
             self._client = httpx.AsyncClient(
-                verify=self._ngu_canh_tls(),
+                verify=self._ngu_canh_tls(pem_ghim),
                 timeout=HET_GIO_GIAY,
                 trust_env=False,  # thiết bị trong LAN: không đi qua proxy môi trường
             )
+            self._van_tay_client = self._van_tay
+            if self._cookie_cho is not None:
+                self._client.cookies.set(TEN_GOI_COOKIE_PHIEN, self._cookie_cho)
+                self._cookie_cho = None
         return self._client
 
     async def _goi(self, phuong_thuc: str, duong: str, *,
                    du_lieu: bytes | None = None,
                    tieu_de: dict | None = None) -> bytes:
-        client = self._client_hien_tai()
+        client = await self._client_hien_tai()
         try:
             yc = client.build_request(phuong_thuc, self._dia_chi + duong,
                                       content=du_lieu, headers=tieu_de)
@@ -249,6 +281,8 @@ class MayKhachZte:
                                               tran_giay=HET_GIO_GIAY)
         except (httpx.HTTPError, httpx.InvalidURL, PhanHoiQuaLon,
                 TimeoutError) as e:
+            if self._van_tay and _la_loi_chung_chi_tu_ky(e):
+                raise ZteLoiVanTay("vân tay TLS của thiết bị không khớp cấu hình") from e
             # httpx.InvalidURL KHÔNG phải httpx.HTTPError (là Exception trần):
             # địa chỉ dị dạng (cổng «abc», ký tự điều khiển) lọt qua kiểm biên
             # phải thành ZteLoiKetNoi, không được ném ra ngoài cai().
@@ -260,11 +294,9 @@ class MayKhachZte:
     # ── đăng nhập ────────────────────────────────────────────────────────────
     async def dang_nhap(self) -> None:
         """Một lần đăng nhập. Không tự thử lại. Phân loại TỪ CHỐI theo cấu trúc."""
-        if self._van_tay:
-            await asyncio.to_thread(self._doi_chieu_van_tay)
+        client = await self._client_hien_tai()
         self.so_lan_dang_nhap += 1
         self._co_phien = False
-        client = self._client_hien_tai()
         client.cookies.clear()  # bắt đầu từ phiên sạch
         trang = await self._goi("GET", "/", tieu_de={"Referer": self._dia_chi + "/"})
         m = MAU_SESSION_TOKEN.search(trang.decode("utf-8", "replace"))
@@ -349,6 +381,8 @@ class MayKhachZte:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        self._van_tay_client = ""
+        self._cookie_cho = None
         self._co_phien = False
 
 
@@ -408,13 +442,14 @@ def _canh_bao_tu_loi(loi: ZteLoi, kiem_chung_chi: bool) -> tuple[str | None, str
     if isinstance(loi, ZteLoiKetNoi):
         if loi.tls_tu_ky and kiem_chung_chi:
             return ("TLS_TU_KY",
-                    "Chứng chỉ TLS của bộ phát là tự ký nên không kiểm chứng được. "
-                    "Đã lưu cấu hình. Để nối được: đặt kiem_chung_chi_tls=false "
-                    "hoặc ghim van_tay_tls (vân tay SHA-256 của chứng chỉ bộ phát).")
+                    "Chứng chỉ của bộ phát là tự ký nên không kiểm chứng được "
+                    "và chưa tự ghi lại được (không đo lại được chứng chỉ hoặc "
+                    "đăng nhập lại vẫn hỏng). Đã lưu cấu hình; kiểm tra địa chỉ "
+                    "rồi lưu lại để thử tự tin lại.")
         if isinstance(loi, ZteLoiVanTay):
             return ("VAN_TAY_KHONG_KHOP",
-                    "Vân tay TLS của thiết bị không khớp van_tay_tls đã ghim. Đã lưu "
-                    "cấu hình; lấy lại vân tay SHA-256 đúng của chứng chỉ bộ phát.")
+                    "Vân tay của thiết bị không khớp bản đã tin. Đã lưu cấu hình. "
+                    "Bấm «Tin chứng chỉ này» để xem mã mới và xác nhận lại.")
         return ("KHONG_TOI_DUOC",
                 f"Không tới được bộ phát ({loi}). Đã lưu cấu hình; "
                 "kiểm tra địa chỉ/mạng rồi thử lại.")
@@ -532,6 +567,16 @@ class Module:
         dia_chi = str(cau_hinh.get("dia_chi") or "").strip().rstrip("/")
         if not dia_chi:
             return that_bai("Chưa nhập địa chỉ bộ phát (dia_chi).")
+        # NV295 (hướng 19:30): BẮT BUỘC IP LAN — tên miền bị từ chối NGAY mà
+        # không phân giải (chỉ kiểm khi URL đã có scheme + hostname để giữ
+        # nguyên thông báo lỗi khuôn dạng cho URL thiếu scheme; kiem_url_lan
+        # phía dưới vẫn kiểm scheme/tài khoản như cũ).
+        phan0 = urlsplit(dia_chi)
+        if phan0.scheme in ("http", "https") and phan0.hostname:
+            try:
+                kiem_ip_lan(phan0.hostname)
+            except ValueError as e:
+                return that_bai(f"dia_chi: {e}")
         try:
             dia_chi = await kiem_url_lan(dia_chi)
         except ValueError as e:
@@ -576,6 +621,7 @@ class Module:
         async with self._khoa:
             khach = MayKhachZte(dia_chi, tai_khoan, mat_khau,
                                 kiem_chung_chi_tls=kiem_chung_chi, van_tay_tls=van_tay)
+            khach2 = None
             try:
                 try:
                     ds = await khach.doc_may()
@@ -583,6 +629,36 @@ class Module:
                     ma_loi, canh_bao = _canh_bao_tu_loi(e, kiem_chung_chi)
                     log.warning("zte-e2633: đăng nhập thử cảnh báo [%s]", ma_loi)
                     _PHIEN_CAI_DUNG_LAI.pop(khach.khoa_phien, None)
+                    # Tự ghim lần đầu (19:30): chứng chỉ tự ký, chưa ghim,
+                    # còn bật kiểm → đo rồi đăng nhập LẠI với vân tay vừa đo
+                    # (đường ghim sẵn có kiểm trước khi gửi mật khẩu lần hai).
+                    # Đích đã qua kiểm IP LAN ở trên. Thử lại thành công thì
+                    # hết cảnh báo và cấu hình lưu kèm vân tay vừa đo.
+                    if ma_loi == "TLS_TU_KY" and not van_tay and kiem_chung_chi:
+                        van_tay_moi = ""
+                        try:
+                            phan = urlsplit(dia_chi)
+                            van_tay_moi = await asyncio.to_thread(
+                                chung_chi_tls.do_van_tay, phan.hostname or "",
+                                phan.port or 443)
+                        except Exception as e:
+                            log.warning("zte-e2633: đo tự ghim lỗi [%s]", type(e).__name__)
+                            van_tay_moi = ""
+                        if van_tay_moi:
+                            khach2 = MayKhachZte(
+                                dia_chi, tai_khoan, mat_khau,
+                                kiem_chung_chi_tls=True, van_tay_tls=van_tay_moi)
+                            try:
+                                ds = await khach2.doc_may()
+                            except Exception as e:
+                                log.warning("zte-e2633: thử lại sau tự ghim lỗi [%s]",
+                                            type(e).__name__)
+                                _PHIEN_CAI_DUNG_LAI.pop(khach2.khoa_phien, None)
+                            else:
+                                ma_loi, canh_bao = None, None
+                                cau_hinh_luu["van_tay_tls"] = van_tay_moi
+                                so_may = sum(1 for m in ds if _thuc_the_tu_may(self.tien_to, m))
+                                _luu_phien_cai(dia_chi, tai_khoan, khach2)
                 except Exception as e:
                     # L5: ranh giới cai() — lỗi không lường trước cũng chỉ là
                     # cảnh báo (lưu rồi cảnh báo), ghi log KIỂU ngoại lệ.
@@ -601,7 +677,20 @@ class Module:
                     _luu_phien_cai(dia_chi, tai_khoan, khach)
             finally:
                 await khach.dong()
-        return {
+                if khach2 is not None:
+                    await khach2.dong()
+        # NV295 (19:30): nút tin chỉ còn cho trường hợp CHỨNG CHỈ ĐỔI.
+        # Lần đầu tự ký đã tự ghim ở trên, không còn đề nghị tu_ky.
+        de_nghi = None
+        if ma_loi == "VAN_TAY_KHONG_KHOP":
+            try:
+                phan = urlsplit(dia_chi)
+                de_nghi = await self._de_nghi_tin_zte(
+                    phan.hostname or "", phan.port or 443)
+            except Exception as e:
+                log.warning("zte-e2633: ghép đề nghị tin lỗi [%s]", type(e).__name__)
+                de_nghi = None
+        tra = {
             "ok": True,
             "ket_qua_tung_khoa": [{"khoa": tai_khoan, "ok": True, "loi": None,
                                    "so_may": so_may, "canh_bao": canh_bao,
@@ -609,6 +698,26 @@ class Module:
             "loi": None,
             "cau_hinh_luu": cau_hinh_luu,
         }
+        if de_nghi is not None:
+            tra["tin_chung_chi"] = de_nghi
+        return tra
+
+    async def _de_nghi_tin_zte(self, host: str, cong: int) -> dict | None:
+        """Đo lại chứng chỉ bộ phát rồi dựng đề nghị tin cho trường hợp
+        CHỨNG CHỈ ĐỔI (duy nhất còn dùng nút, 19:30).
+
+        Chỉ gọi với host/cổng ĐÃ QUA kiểm LAN (kiem_ip_lan trong cai).
+        """
+        try:
+            van_tay = await asyncio.to_thread(chung_chi_tls.do_van_tay, host, cong)
+            ma = chung_chi_tls.ma_hien_thi(van_tay)
+        except Exception:
+            return None
+        thong_bao = (f"Chứng chỉ bộ phát đã đổi — có thể do bạn vừa cấp lại, "
+                     f"cũng có thể có thiết bị giả mạo. Mã nhận dạng mới: {ma}. "
+                     f"Kiểm tra kỹ rồi bấm «Tin chứng chỉ này» để xác nhận lại.")
+        return {"ly_do": "doi", "ma_hien_thi": ma, "thong_bao": thong_bao,
+                "host": host, "cong": cong}
 
     # ── đọc một vòng (một phiên) ─────────────────────────────────────────────
     def _con_tam_ngung(self) -> bool:

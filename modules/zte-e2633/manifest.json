@@ -27,7 +27,7 @@
       "khoa": "dia_chi",
       "kieu": "chuoi",
       "mac_dinh": null,
-      "mo_ta": "Địa chỉ trang quản trị của bộ phát, dạng https://host[:port] (ví dụ https://192.168.1.1). Qua đúng bộ kiểm SSRF của lõi (app/tu_xa.py): chặn loopback, link-local/metadata đám mây, địa chỉ không định tuyến; cho phép LAN riêng tư 10/8, 172.16/12, 192.168/16. Không được chứa tài khoản/mật khẩu.",
+      "mo_ta": "Địa chỉ trang quản trị của bộ phát trong mạng nhà, dạng https://địa-chỉ-IP (ví dụ https://192.168.1.1). Chỉ nhận địa chỉ IP trong mạng nhà — không nhận tên miền, không nhận địa chỉ internet, không được chứa tài khoản hay mật khẩu.",
       "nhan": "Địa chỉ bộ phát"
     },
     {
@@ -43,7 +43,7 @@
       "khoa": "mat_khau",
       "kieu": "bi_mat",
       "mac_dinh": null,
-      "mo_ta": "Mật khẩu đăng nhập. Lưu riêng quyền 0600; không vào log, URL ghi log hay phản hồi lỗi.",
+      "mo_ta": "Mật khẩu đăng nhập trang quản trị. Chỉ lưu trong kho bí mật của web2api, không hiện lại, không ghi vào nhật ký.",
       "nhan": "Mật khẩu"
     },
     {
@@ -51,16 +51,16 @@
       "khoa": "kiem_chung_chi_tls",
       "kieu": "chuoi",
       "mac_dinh": "true",
-      "mo_ta": "«true» (mặc định, an toàn) hoặc «false». Bộ phát dùng chứng chỉ tự ký nên muốn nối được phải đặt «false» HOẶC ghim van_tay_tls. Mọi giá trị khác «false» đều được coi là «true» (mặc định an toàn).",
-      "nhan": "Kiểm chứng chỉ TLS"
+      "mo_ta": "Để «true» (mặc định, an toàn): web2api kiểm chứng chỉ của bộ phát trước khi nối. Lần đầu nối tới địa chỉ IP trong mạng nhà, chứng chỉ tự cấp của bộ phát được tự tin mà không cần bạn làm gì; về sau nếu chứng chỉ đổi thì dừng nối và hiện nút «Tin chứng chỉ này» để bạn xác nhận lại; đặt «false» thì bỏ kiểm (không an toàn).",
+      "nhan": "Kiểm tra chứng chỉ"
     },
     {
       "bat_buoc": false,
       "khoa": "van_tay_tls",
-      "kieu": "chuoi",
+      "kieu": "bi_mat",
       "mac_dinh": null,
-      "mo_ta": "Tuỳ chọn: 64 ký tự hex là vân tay SHA-256 của chứng chỉ bộ phát. Khi ghim, module bỏ qua kiểm chuỗi chứng chỉ nhưng vẫn đối chiếu vân tay trước mỗi lần đăng nhập.",
-      "nhan": "Vân tay TLS (SHA-256)"
+      "mo_ta": "Mã nhận dạng chứng chỉ của bộ phát. Thường không cần điền: lần đầu nối, hệ thống tự ghi lại mã này; khi chứng chỉ đổi, bấm «Tin chứng chỉ này» để xác nhận mã mới.",
+      "nhan": "Mã nhận dạng chứng chỉ"
     },
     {
       "khoa": "khoang_cach_dang_nhap_phut",
@@ -68,7 +68,7 @@
       "bat_buoc": false,
       "mac_dinh": "10",
       "nhan": "Khoảng cách đăng nhập lại",
-      "mo_ta": "Số phút 1–1440. suc_khoe() đăng nhập lại tối đa 1 lần mỗi khoảng này (mặc định 10) để không làm phiên mồ côi hay đá phiên của tích hợp khác; trong khoảng thì dùng kết quả lần đọc gần nhất hoặc báo «chưa kết nối được»."
+      "mo_ta": "Số phút chờ giữa hai lần đăng nhập lại (từ 1 đến 1440 phút, mặc định 10). Đặt dài ra để không làm kẹt phiên cũ hay đá phiên của tích hợp khác; trong khoảng thì dùng kết quả lần đọc gần nhất hoặc báo «chưa kết nối được»."
     }
   ],
   "yeu_cau_goi": [

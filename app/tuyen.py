@@ -1323,6 +1323,30 @@ async def cai(id_: str, request: Request):
     return JSONResponse(kq, status_code=200 if kq["ok"] else 400)
 
 
+@modules.post("/{id_}/tin-chung-chi", dependencies=QT)
+async def tin_chung_chi(id_: str, request: Request):
+    """Nút «Tin chứng chỉ này» (NV295): kiểm vé → đo lại → so mặt nạ → lưu + kiểm.
+
+    Thân: {"cau_hinh": {...}, "ve": "...", "ma_hien_thi": "abcd1234…ef567890"}.
+    cau_hinh là giá trị người dùng vừa nhập lại trên form (bí mật đã xoá khỏi
+    trang sau lần lưu hỏng trước — cùng quy tắc an toàn như đường cai).
+    """
+    from app import chung_chi_tls
+    than = await _than_json(request)
+    cau_hinh = than.get("cau_hinh")
+    ve = than.get("ve")
+    ma = than.get("ma_hien_thi")
+    if not isinstance(cau_hinh, dict) or not isinstance(ve, str) or not isinstance(ma, str):
+        raise LoiOpenAI(400, 'Thân cần dạng {"cau_hinh": {...}, "ve": "...", "ma_hien_thi": "..."}')
+    try:
+        kq = await chung_chi_tls.tin_chung_chi(_so(request), id_, cau_hinh, ve, ma)
+    except LoiSo as e:
+        raise _loi_so(e) from None
+    if kq.get("ok"):
+        kq = lam_moi_model_mod.sau_khi_cai(request.app, id_, kq)
+    return JSONResponse(kq, status_code=200 if kq["ok"] else 400)
+
+
 @modules.delete("/{id_}", dependencies=QT)
 async def go(id_: str, request: Request):
     """Gỡ module. NV73: module đang được module khác cần (`can_module`) → 409 `module_dang_duoc_can`

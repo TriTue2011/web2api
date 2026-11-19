@@ -284,16 +284,18 @@ def test_cai_tu_choi_van_luu_va_canh_bao_co_ma_loi(mod, manifest, may_chu_gia,
     assert "SaiMatKhau-Gia-150" not in caplog.text
 
 
-def test_cai_tls_tu_ky_van_luu_va_huong_dan_ngay_trong_thong_bao(
+def test_cai_tls_tu_ky_tu_ghim_khong_can_xac_nhan(
         mod, manifest, may_chu_gia, cho_phep_loopback):
+    # Hướng 19:30: lần đầu gặp chứng chỉ tự ký qua IP LAN thì TỰ GHIM
+    # (không còn cảnh báo TLS_TU_KY + đề nghị tu_ky như trước).
     m = mod.Module(manifest)
     ch = _cau_hinh(may_chu_gia["dia_chi"], kiem_chung_chi="true")  # chứng chỉ tự ký
     kq = chay(m.cai(ch))
     assert kq["ok"] is True
-    assert kq["cau_hinh_luu"]["dia_chi"] == may_chu_gia["dia_chi"]
+    assert kq["cau_hinh_luu"]["van_tay_tls"] == may_chu_gia["van_tay"]
     muc = kq["ket_qua_tung_khoa"][0]
-    assert muc["ma_loi"] == "TLS_TU_KY"
-    assert "kiem_chung_chi_tls=false" in muc["canh_bao"]
+    assert muc["ma_loi"] is None and muc["canh_bao"] is None
+    assert "tin_chung_chi" not in kq  # lần đầu: tự ghim, không nút
 
 
 def test_cai_mat_mang_van_luu_va_ma_loi_ket_noi(mod, manifest, cho_phep_loopback):

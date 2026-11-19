@@ -823,6 +823,15 @@ class SoModule:
             await self._dung_an_toan(km.id, moi)  # thể hiện dùng để kiểm; bản phục vụ dựng lại bằng nap
         cong_khai = {"ok": bool(kq.get("ok")), "ket_qua_tung_khoa": kq.get("ket_qua_tung_khoa") or [],
                      "loi": kq.get("loi")}
+        # NV295: module đề nghị «Tin chứng chỉ này» → lõi ký vé và chuyển tiếp
+        # khối công khai (chỉ ly_do/ma_hien_thi/thong_bao/vé — không lộ host/cổng).
+        try:
+            from app import chung_chi_tls
+            de_nghi = chung_chi_tls.ghep_de_nghi_tin(kq, km.id)
+        except Exception:
+            de_nghi = None
+        if de_nghi is not None:
+            cong_khai["tin_chung_chi"] = de_nghi
         if not cong_khai["ok"]:
             return cong_khai
         sach = kq.get("cau_hinh_luu") or {}

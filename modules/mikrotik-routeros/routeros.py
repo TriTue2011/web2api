@@ -26,6 +26,7 @@ import ssl
 __all__ = [
     "RouterOSError",
     "LoiKetNoi",
+    "LoiBatTayTls",
     "LoiChungChi",
     "LoiDangNhap",
     "LoiRouterTuChoi",
@@ -85,6 +86,12 @@ class RouterOSError(Exception):
 
 class LoiKetNoi(RouterOSError):
     """Không tới được cổng API (mạng, cổng đóng, hết giờ kết nối)."""
+
+
+class LoiBatTayTls(LoiKetNoi):
+    """Bắt tay TLS thất bại (riêng khỏi LoiKetNoi để module phân biệt
+    «chứng chỉ không kiểm được» với «không tới được» — NV295: chỉ trường hợp
+    này mới được đề nghị «Tin chứng chỉ này», sau khi đo lại)."""
 
 
 class LoiChungChi(RouterOSError):
@@ -330,7 +337,7 @@ def ket_noi(host: str, port: int, ten: str, mat_khau: str, *,
                 s.close()
             except OSError:
                 pass
-            raise LoiKetNoi(f"không bắt tay TLS được với {host}:{port} ({type(e).__name__})") from e
+            raise LoiBatTayTls(f"không bắt tay TLS được với {host}:{port} ({type(e).__name__})") from e
         if van_tay:
             hien_tai = van_tay_cua(t.getpeercert(binary_form=True) or b"")
             if not _van_tay_khop(van_tay, hien_tai):

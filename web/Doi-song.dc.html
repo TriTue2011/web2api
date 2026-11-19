@@ -127,7 +127,7 @@
 <sc-if value="{{x.f.coKq}}">
 <div class="ket-qua-cai" style="display:flex;flex-direction:column;gap:8px">
 <sc-if value="{{x.f.kqLoi}}"><p role="alert" class="bao bao-loi">Chưa lưu được: {{x.f.kqLoi}}</p></sc-if>
-<sc-if value="{{x.f.kqGoLai}}"><p class="phu">Mật khẩu đã gửi được xoá khỏi trang vì an toàn — nhập lại nếu muốn thử lần nữa.</p></sc-if>
+<sc-if value="{{x.f.kqGoLai}}"><p class="phu">Mật khẩu đã gửi được xoá khỏi trang vì an toàn — nhập lại nếu muốn thử lần nữa.</p></sc-if><sc-if value="{{x.f.coTinChungChi}}"><div role="note" class="bao bao-vang" style="display:flex;flex-direction:column;gap:8px"><p style="margin:0">{{x.f.tinThongBao}}</p><div class="dong-nut"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" onClick="{{x.f.bamTinChungChi}}" disabled="{{x.f.dang}}">Tin chứng chỉ này</button></div><p class="phu" style="margin:0">Bấm là lưu mã nhận dạng trên và kiểm lại kết nối ngay.</p></div></sc-if>
 </div>
 </sc-if>
 </section>

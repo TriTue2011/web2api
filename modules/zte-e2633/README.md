@@ -63,7 +63,7 @@ Bộ phát dùng HTTPS với chứng chỉ tự ký.
   trúc: loại ngoại lệ, mã HTTP, có/không JSON đúng khoá — không dò chữ).
 - Đọc hỏng (JSON sai khuôn) là **lỗi**: giữ dữ liệu cũ, không trả «0 máy».
 - `dia_chi` qua đúng `app.tu_xa.kiem_url_lan` (chống SSRF của lõi).
-- TLS mặc định kiểm chứng chỉ; đặt `kiem_chung_chi_tls=false` hoặc ghim `van_tay_tls`.
+- TLS mặc định kiểm chứng chỉ; lần đầu nối tới IP LAN thì chứng chỉ tự cấp được tự tin (không cần dán mã, không cần đặt `kiem_chung_chi_tls=false`); chứng chỉ đổi thì dừng nối và hiện nút «Tin chứng chỉ này» để xác nhận lại. Chỉ nhận địa chỉ IP trong mạng nhà, không nhận tên miền hay địa chỉ internet.
 - Không dùng proxy môi trường (`trust_env=False`); trần phản hồi 1 MB; hết giờ 10 s.
 
 ## Giới hạn
