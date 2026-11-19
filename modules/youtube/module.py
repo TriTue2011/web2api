@@ -44,8 +44,9 @@ BẢO MẬT:
   session/sessions/history_count); search trả cả `results` lẫn `items`
   và ghi nhớ hàng đợi tìm; seek nhận cả `giay` lẫn `position`, kẹp
   theo thời lượng. Lệch còn lại so với dịch vụ cũ (ghi rõ, không bịa):
-  giải luồng Zing/Facebook chưa chuyển (trả 502 rõ); seek_url trả None
-  (rơ-le vé không có sidx như dịch vụ cũ — loa tua bằng Range); stop
+  giải luồng Zing/Facebook đã chuyển (NV304c: Zing qua API web có ký,
+  Facebook qua yt-dlp); seek_url trả stream_url ký kèm ?t=<giây> (vé
+  lười, rơ-le tính offset tỉ lệ — chưa có sidx như dịch vụ cũ); stop
   body rỗng vẫn dừng hết (nới hơn cũ, giữ hành vi NV277); session_id
   bên gọi đưa không ép khuôn [a-z0-9_-]{1,40} của cũ (module tự sinh
   token_urlsafe có chữ hoa).
@@ -54,11 +55,12 @@ BẢO MẬT:
   và từ link playlist YouTube (/playlist hoặc link xem có list=, qua
   yt-dlp flat); export ra mã TTPL1.; create/add chuẩn hoá + khử trùng
   + trần 500 bài / 100 playlist; remove/move theo chỉ số kiểu cũ.
-  Link album/playlist Zing → 502 playlist_unavailable (dịch vụ cũ lấy
-  qua API web có khoá ký riêng, module không có khoá đó).
-- CHƯA CÓ / CHƯA KIỂM (ghi thẳng, không bịa): giải luồng Zing/Facebook
-  chưa chuyển (trả 502 rõ); chưa thử với YouTube thật, loa thật, HA
-  thật (môi trường làm việc không có Internet ra ngoài). yt-dlp/deno
+  Link album/playlist Zing → API web có ký (NV304c, port từ dịch vụ cũ;
+  khoá lấy từ trang chủ, không nằm trong mã).
+- CHƯA CÓ / CHƯA KIỂM (ghi thẳng, không bịa): mục lục sidx của MP4 để
+  tua đúng ranh giới mảnh (NV304c dùng offset tỉ lệ, xem báo cáo);
+  chưa thử với YouTube thật, loa thật, HA thật (môi trường làm việc
+  không có Internet ra ngoài). yt-dlp/deno
   đã nằm trong requirements.txt ở main 8ef3ca9 (đã duyệt) nên ghi chú
   cũ «chưa có trong ảnh lõi» ở đây đã bỏ.
 """
@@ -69,6 +71,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -76,18 +79,21 @@ import time
 import zlib
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 from app import duong_module as duong_loi
-from app.tu_xa import kiem_url_lan
+from app.tu_xa import TransportGhimIp, _dia_chi_bi_chan, kiem_url_lan
 
 from .trich_xuat import (
+    FACEBOOK_STREAM_HOSTS,
     PLAYLIST_ID,
     TrichXuat,
     TrichXuatUnavailable,
     YOUTUBE_URL_HOSTS,
+    _host_la_cho_phep,
     _validated_query_and_limit,
     youtube_url_query,
+    ZING_CDN_HOSTS,
     ZING_ID,
 )
 
@@ -196,8 +202,8 @@ def _id_playlist_youtube(text: str):
 def _la_link_playlist_zing(text: str) -> bool:
     """Link album/playlist Zing MP3 (/album/…/ID.html, /playlist/…/ID.html).
 
-    Port zing_playlist_id của dịch vụ cũ (chỉ nhận dạng, không lấy dữ
-    liệu — lấy dữ liệu cần khoá API web của Zing mà module không có)."""
+    Port zing_playlist_id của dịch vụ cũ (chỉ nhận dạng — lấy dữ liệu
+    qua API web có ký ở trich_xuat, NV304c)."""
     parsed = urlsplit(str(text or "").strip())
     host = (parsed.hostname or "").lower()
     return (parsed.scheme in ("http", "https")
@@ -1044,7 +1050,8 @@ class Module:
 
     async def _sieu_du_lieu(self, source: str, target: str, goi_y: dict) -> dict:
         """Mục chuẩn cho một mục tiêu: gợi ý bên gọi trước, thiếu thì hỏi
-        nguồn (YouTube: một lượt giải âm thanh qua semaphore, như _tao_luong).
+        nguồn (một lượt giải âm thanh qua semaphore, như _tao_luong —
+        YouTube, và từ NV304c cả Zing/Facebook).
 
         Hỏi hỏng thì giữ gợi ý, KHÔNG bịa tên/ảnh: title rơi về id, ảnh
         YouTube rơi về i.ytimg.com (quy ước của dịch vụ cũ)."""
@@ -1070,15 +1077,17 @@ class Module:
             except (TypeError, ValueError, OverflowError):
                 pass
             return muc
-        if source == "youtube" and (not goi_y.get("title") or goi_y.get("duration") is None):
+        if source in ("youtube", "zing", "facebook") and (
+                not goi_y.get("title") or goi_y.get("duration") is None):
             try:
                 sem = await self._chiem_cho_trich_xuat()
                 try:
-                    giai = await self.trich_xuat.giai_am_thanh("youtube", muc["id"])
+                    giai = await self.trich_xuat.giai_am_thanh(source, muc["id"])
                 finally:
                     sem.release()
             except Exception as e:
-                log.warning("Lấy siêu dữ liệu YouTube hỏng: %s", type(e).__name__)
+                log.warning("Lấy siêu dữ liệu %s hỏng: %s",
+                            source, type(e).__name__)
                 giai = None
             if giai:
                 if giai.get("title"):
@@ -1101,11 +1110,11 @@ class Module:
                      reverse=True)[:BO_NHO_DEM_TOI_DA]
         self._luong = dict(giu)
 
-    def _dang_ky_luong(self, nguon: dict, goc: str = "") -> dict:
+    def _dang_ky_luong(self, nguon: dict, goc: str = "", *, tua_giay: str | None = None) -> dict:
         ve = secrets.token_urlsafe(24)
         self._luong[ve] = dict(nguon, het_han=time.time() + 3600)
         self._cat_bo_luong()
-        return {"stream_url": duong_loi.tao_duong_luong("youtube", ve, goc),
+        return {"stream_url": duong_loi.tao_duong_luong("youtube", ve, goc, tua_giay=tua_giay),
                 "token": ve, "expires_in": 3600}
 
     def _xoa_luong_het_han(self):
@@ -1141,8 +1150,6 @@ class Module:
                 raise ValueError("invalid_target") from e
             return "http", chuan, None, None
         if source == "facebook":
-            # Dịch vụ cũ nhận mục tiêu Facebook (mã số) khi mở phiên; giải
-            # luồng Facebook thì module này vẫn 502 (xem trich_xuat).
             if _FACEBOOK_ID.fullmatch(target):
                 return "facebook", target, None, None
             parsed = urlsplit(target)
@@ -1575,22 +1582,36 @@ class Module:
                 vi_tri = float(gia_tri)
             except (TypeError, ValueError):
                 return _loi(400, "invalid_seek_position")
-            if vi_tri != vi_tri or vi_tri < 0:
+            if not math.isfinite(vi_tri) or vi_tri < 0:
                 return _loi(400, "invalid_seek_position")
             thoi_luong = phien.get("duration") or 0
             if thoi_luong > 0:
                 vi_tri = min(vi_tri, float(thoi_luong))
+            # Vé lười chỉ mang đích/thời lượng; URL nguồn được giải khi loa mở vé.
+            nguon_ve = None
+            muc_hien = phien.get("item") or {}
+            nguon_hien = muc_hien.get("source")
+            if nguon_hien in ("youtube", "zing", "facebook") and muc_hien.get("id"):
+                nguon_ve = {"source": nguon_hien, "target": muc_hien["id"]}
+            elif nguon_hien == "http" and muc_hien.get("url"):
+                # Queue/playlist mới chỉ kiểm cú pháp URL; kiểm đích trước khi cấp vé.
+                try:
+                    _, url, _, _ = await self._xac_thuc_muc_tieu("http", muc_hien["url"])
+                except ValueError:
+                    return _loi(400, "invalid_target")
+                nguon_ve = {"source": "http", "url": url}
             async with self._khoa:
                 phien["position"] = vi_tri
                 phien["revision"] = self._tang_ban_sua()
                 phien["updated_at"] = _iso_utc()
             anh_xa = self._anh_xa_phien(phien)
-            # seek_url: dịch vụ cũ tự tính từ mục lục sidx (?t=) để loa
-            # nhảy tới; rơ-le vé của module này không có sidx và vé không
-            # mang vị trí bắt đầu, nên KHÔNG bịa URL — loa tua bằng Range
-            # trên URL luồng đã có. Trả None rõ ràng thay vì URL sai.
+            seek_url = None
+            if nguon_ve is not None:
+                nguon_ve["duration"] = thoi_luong or muc_hien.get("duration")
+                t_chu = str(int(vi_tri)) if vi_tri.is_integer() else str(vi_tri)
+                seek_url = self._dang_ky_luong(nguon_ve, goc, tua_giay=t_chu)["stream_url"]
             return _ok({"session": anh_xa, "item": anh_xa["item"],
-                        "position": vi_tri, "seek_url": None})
+                        "position": vi_tri, "seek_url": seek_url})
         if duong == "integration/queue" and phuong_thuc == "GET":
             # NV301 mảnh giao diện: hàng đợi của phiên (tab hiện «Queue
             # (a/b)», nút «Thêm vào Queue» dùng POST bên dưới).
@@ -1676,9 +1697,9 @@ class Module:
         _read_playlist_source của dịch vụ cũ.
 
         Mã TTPL1. giải ngay trong RAM; link playlist YouTube lấy qua
-        yt-dlp (không cần khoá). Link album/playlist Zing → 502 rõ
-        (dịch vụ cũ lấy qua API web có khoá ký riêng, module này không
-        có khoá đó nên không bịa dữ liệu). Link khác → 400."""
+        yt-dlp (không cần khoá). NV304c: link album/playlist Zing lấy
+        qua API web có ký (port từ dịch vụ cũ — khoá lấy từ trang chủ,
+        không nằm trong mã). Link khác → 400."""
         text = str(text or "").strip()
         if text.startswith("TTPL1."):
             try:
@@ -1699,7 +1720,16 @@ class Module:
             muc = [m for m in (self._chuan_hoa_muc(i) for i in muc) if m]
             return ten or "Playlist YouTube", muc, text
         if _la_link_playlist_zing(text):
-            raise ValueError("playlist_unavailable")
+            sem = await self._chiem_cho_trich_xuat()
+            try:
+                ten, muc = await self.trich_xuat.lay_danh_sach_phat(
+                    "zing", text, BAI_TOI_DA)
+            except TrichXuatUnavailable as e:
+                raise ValueError("playlist_unavailable") from e
+            finally:
+                sem.release()
+            muc = [m for m in (self._chuan_hoa_muc(i) for i in muc) if m]
+            return ten or "Playlist Zing", muc, text
         raise ValueError("invalid_playlist_link")
 
     async def _playlists_hanh_dong(self, than):
@@ -1846,7 +1876,12 @@ class Module:
             sem.release()
         muc = {"url": giai["url"], "source": source, "title": giai.get("title"),
                "total": None, "target": target,
-               "video_id": target if source == "youtube" else None}
+               "video_id": target if source == "youtube" else None,
+               # NV304c: header thượng nguồn (Zing cần Referer) + thời lượng
+               # để rơ-le ?t= tính offset tỉ lệ mà không cần giải lại.
+               "headers": dict(giai.get("headers") or {}),
+               "duration": giai.get("duration"),
+               "content_type": giai.get("content_type")}
         return _ok(self._dang_ky_luong(muc, goc))
 
     async def _phat(self, than):
@@ -1900,8 +1935,17 @@ class Module:
 
     # ── đường luồng ─────────────────────────────────────────────────────
 
-    async def luong(self, ve, khoang, phuong_thuc):
-        """Trả (mã, headers, bytes | iterator) cho vé luồng đã đăng ký."""
+    async def luong(self, ve, khoang, phuong_thuc, tua_giay=None):
+        """Trả (mã, headers, bytes | iterator) cho vé luồng đã đăng ký.
+
+        tua_giay: giây tua từ seek_url (?t=, NV304c — ký cùng URL nên
+        route phải truyền qua, không tự bóc từ query ở đây). Không có
+        Range mà có tua_giay hợp lệ thì phục vụ từ byte tỉ lệ
+        tua_giay/duration × tổng (ước tính — chính xác với mp3 CBR,
+        xấp xỉ với VBR/opus; dịch vụ cũ dùng mục lục sidx của MP4 để
+        đáp đúng ranh giới mảnh, phần đó hoãn lại, xem báo cáo NV304c).
+        Range tường minh thắng tua_giay. Không tính được offset → 400
+        (giống dịch vụ cũ trả 400 invalid_seek)."""
         self._xoa_luong_het_han()
         muc = self._luong.get(ve)
         if muc is None or self._dung:
@@ -1926,7 +1970,6 @@ class Module:
                 headers["Content-Range"] = f"bytes {dau}-{cuoi}/{tong}"
                 return 206, headers, cat
             return 200, headers, cat
-        url = muc["url"]
         tong = muc.get("total")
         pham_vi = _parse_range(khoang, tong)
         if pham_vi is None:
@@ -1936,17 +1979,45 @@ class Module:
             cuoi = min(cuoi, tong - 1)
 
         async def _mo_khuc(tu, den):
-            headers = {"Range": f"bytes={tu}-{den}"}
+            # Header thượng nguồn của vé (Zing cần Referer) + Range.
+            headers = dict(muc.get("headers") or {})
+            headers["Range"] = f"bytes={tu}-{den}"
             if self.mo_nguon is not None:
-                return await self.mo_nguon(url, headers)
+                return await self.mo_nguon(muc["url"], headers)
             import httpx
 
-            client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
-            req = client.build_request("GET", url, headers=headers)
-            resp = await client.send(req, stream=True)
-            # Gắn client để đóng sau khi đọc xong (ban.httpx_client).
-            resp.httpx_client = client  # type: ignore[attr-defined]
-            return resp
+            source = muc["source"]
+            hosts = {"zing": ZING_CDN_HOSTS, "facebook": FACEBOOK_STREAM_HOSTS}.get(source)
+            def kiem_dich_public(ip):
+                if ip.is_private:
+                    return "private address"
+                return _dia_chi_bi_chan(ip)
+
+            transport = (TransportGhimIp(_dia_chi_bi_chan) if source == "http"
+                         else TransportGhimIp(kiem_dich_public) if hosts is not None else None)
+            client = httpx.AsyncClient(follow_redirects=source == "youtube", timeout=30.0,
+                                       transport=transport)
+            url = muc["url"]
+            try:
+                for _ in range(11):
+                    if source == "http":
+                        url = await kiem_url_lan(url)
+                    elif hosts is not None and not _host_la_cho_phep(url, hosts):
+                        raise TrichXuatUnavailable("stream_target_rejected")
+                    req = client.build_request("GET", url, headers=headers)
+                    resp = await client.send(req, stream=True)
+                    location = resp.headers.get("location")
+                    if (source == "youtube" or resp.status_code not in (301, 302, 303, 307, 308)
+                            or not location):
+                        # Gắn client để đóng sau khi đọc xong (ban.httpx_client).
+                        resp.httpx_client = client  # type: ignore[attr-defined]
+                        return resp
+                    await resp.aclose()
+                    url = urljoin(url, location)
+                raise TrichXuatUnavailable("stream_too_many_redirects")
+            except BaseException:
+                await client.aclose()
+                raise
 
         async def _dong(ban):
             try:
@@ -1961,23 +2032,93 @@ class Module:
                     log.warning("Đóng client thượng nguồn lỗi: %s", type(e).__name__)
 
         async def _giai_lai_link():
-            # Quên link cũ, giải lại từ mục tiêu (chỉ youtube/http; zing
-            # chưa hỗ trợ giải lại → giữ link cũ và để lần thử tính lỗi).
-            if muc["source"] == "youtube":
+            # Quên link cũ, giải lại từ mục tiêu (youtube/zing/facebook;
+            # http giữ link cũ vì không có nguồn để giải lại).
+            if muc["source"] in ("youtube", "zing", "facebook"):
                 sem = await self._chiem_cho_trich_xuat()
                 try:
                     giai = await self.trich_xuat.giai_am_thanh(
-                        "youtube", muc.get("video_id") or muc.get("target") or "")
+                        muc["source"],
+                        muc.get("video_id") or muc.get("target") or "")
                     muc["url"] = giai["url"]
+                    muc["headers"] = dict(giai.get("headers") or {})
+                    if giai.get("content_type"):
+                        muc["content_type"] = giai["content_type"]
                 finally:
                     sem.release()
 
         async def _kiem_dung():
             return self._dung
 
+        # Vé lười (từ seek_url): chưa có URL thật — giải ngay lúc mở.
+        if "url" not in muc:
+            try:
+                sem = await self._chiem_cho_trich_xuat()
+                try:
+                    giai = await self.trich_xuat.giai_am_thanh(
+                        muc["source"], muc.get("target") or "")
+                finally:
+                    sem.release()
+            except Exception:
+                return 502, {}, b""
+            muc["url"] = giai["url"]
+            if giai.get("headers"):
+                muc["headers"] = dict(giai["headers"])
+            if giai.get("duration") is not None:
+                muc["duration"] = giai["duration"]
+            if giai.get("content_type"):
+                muc["content_type"] = giai["content_type"]
+
+        if khoang is None and tua_giay is not None:
+            # Tua theo giây, không có Range: tính byte bắt đầu tỉ lệ.
+            try:
+                giay = float(tua_giay)
+            except (TypeError, ValueError):
+                return 400, {}, b""
+            if not (giay >= 0 and giay < 1e18):
+                return 400, {}, b""
+            try:
+                thoi_luong = float(muc.get("duration") or 0)
+            except (TypeError, ValueError):
+                thoi_luong = 0
+            if not math.isfinite(thoi_luong) or thoi_luong <= 0:
+                return 400, {}, b""
+            if tong is None:
+                # Mở thăm dò 0-0 để học tổng cỡ từ Content-Range.
+                try:
+                    ban = await _mo_khuc(0, 0)
+                except Exception:
+                    ban = None
+                if ban is not None:
+                    try:
+                        hd = getattr(ban, "headers", {}) or {}
+                        cr = _parse_content_range(hd)
+                        if cr is not None and cr[2] is not None:
+                            tong = cr[2]
+                            muc["total"] = tong
+                        elif ban.status_code == 200:
+                            try:
+                                tong = int(hd.get("content-length")
+                                           or hd.get("Content-Length"))
+                                muc["total"] = tong
+                            except (TypeError, ValueError):
+                                pass
+                    finally:
+                        await _dong(ban)
+            if tong is None or tong <= 0:
+                return 400, {}, b""
+            dau_tua = min(round(min(giay / thoi_luong, 1) * tong), tong - 1)
+            iterator = self._luong_chiu_loi(_mo_khuc, _dong, _giai_lai_link,
+                                            _kiem_dung, dau_tua, tong - 1, tong)
+            return 206, {"Accept-Ranges": "bytes",
+                         "Content-Type": muc.get("content_type") or "audio/mpeg",
+                         "Content-Range":
+                             f"bytes {dau_tua}-{tong - 1}/{tong}"}, iterator
+
         iterator = self._luong_chiu_loi(_mo_khuc, _dong, _giai_lai_link,
                                         _kiem_dung, dau, cuoi, tong)
-        headers = {"Accept-Ranges": "bytes", "Content-Type": "audio/mpeg"}
+        headers = {"Accept-Ranges": "bytes",
+                   "Content-Type": muc.get("content_type") or "audio/mpeg"}
         if khoang:
             headers["Content-Range"] = f"bytes {dau}-{cuoi}/{tong}" if tong \
                 else f"bytes {dau}-"
@@ -2124,4 +2265,3 @@ class Module:
         finally:
             if ban is not None:
                 await dong(ban)
-

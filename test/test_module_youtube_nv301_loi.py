@@ -206,13 +206,16 @@ def test_pause_resume_stop_khong_hoi_sinh(tmp_path):
     assert m._phien[sid]["status"] == "stopped"
 
 
-def test_seek_giay_position_kep_va_loi(tmp_path):
+def test_seek_giay_position_kep_va_loi(tmp_path, monkeypatch):
+    # NV304c: seek_url không còn None — vé lười ký kèm ?t=<giây đã kẹp>.
+    monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     _, m = _mod(tmp_path)
     _phien_moi(m)
     ma, _, nd = asyncio.run(m.tich_hop("integration/seek", "POST", {},
                                        {"giay": 300}))
     assert ma == 200 and nd["position"] == 213  # kẹp theo thời lượng
-    assert nd["seek_url"] is None
+    assert nd["seek_url"] and "/api/stream/" in nd["seek_url"]
+    assert "?t=213" in nd["seek_url"]
     ma, _, nd = asyncio.run(m.tich_hop("integration/seek", "POST", {},
                                        {"position": 10}))
     assert ma == 200 and nd["position"] == 10

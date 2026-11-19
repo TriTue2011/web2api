@@ -10,17 +10,19 @@ import logging
 import re
 from typing import Any
 
+import httpx
+
 from app import kho
 
 _TEN_BIEN_MOI_TRUONG = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")
 _DOAN_LIEN_MACH = re.compile(r"[A-Za-z0-9_\-]{20,}")
 _HEX_32 = re.compile(r"^[0-9a-fA-F]{32,}\Z")
 
-# Mẫu (d): bot URL / bot token, Bearer, Authorization, api_key=, token=, key=
+# Mẫu (d): bot URL / bot token, Bearer, Authorization, api_key=/apiKey=, token=, key=
 _MAU_BOT = re.compile(r"((?:/|\b)bot\d+:)([A-Za-z0-9_\-]+)")
 _MAU_AUTH = re.compile(r"(?i)\b(authorization\s*:\s*(?:bearer\s+)?)([A-Za-z0-9_\-./+=]+)")
 _MAU_BEARER = re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9_\-./+=]+)")
-_MAU_KEY = re.compile(r"(?i)\b((?:api_key|token|key)\s*[:=]\s*['\"]?)([A-Za-z0-9_\-./+=]+)(['\"]?)")
+_MAU_KEY = re.compile(r"(?i)\b((?:api_?key|token|key)\s*[:=]\s*['\"]?)([A-Za-z0-9_\-./+=]+)(['\"]?)")
 
 
 def _la_khoa_ngau_nhien(s: str) -> bool:
@@ -60,7 +62,7 @@ def che_log(van_ban: str) -> str:
     if khoa:
         van_ban = van_ban.replace(khoa, kho.che(khoa))
 
-    # (d) cấu trúc bot URL, Bearer, Authorization, api_key=, token=, key=
+    # (d) cấu trúc bot URL, Bearer, Authorization, api_key=/apiKey=, token=, key=
     van_ban = _MAU_BOT.sub(lambda m: m.group(1) + kho.che(m.group(2)), van_ban)
     van_ban = _MAU_AUTH.sub(lambda m: m.group(1) + kho.che(m.group(2)), van_ban)
     van_ban = _MAU_BEARER.sub(lambda m: m.group(1) + kho.che(m.group(2)), van_ban)
@@ -72,13 +74,13 @@ def che_log(van_ban: str) -> str:
 
 
 def _che_doi_so(a: Any) -> Any:
-    """Chỉ che đối số str và đối tượng ngoại lệ; giữ nguyên mọi kiểu khác (Decimal, Path, số...)."""
+    """Che chuỗi, URL HTTP và ngoại lệ; giữ nguyên mọi kiểu khác (Decimal, Path, số...)."""
     if isinstance(a, str):
         try:
             return che_log(a)
         except Exception:
             return "<không che được>"
-    if isinstance(a, BaseException):
+    if isinstance(a, (BaseException, httpx.URL)):
         try:
             return che_log(str(a))
         except Exception:

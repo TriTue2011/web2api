@@ -30,7 +30,8 @@ from urllib.parse import urlsplit
 
 
 
-from app.chuyen_tiep import ChuyenTiepOpenAI
+# Bộ kiểm URL và transport ghim IP là cùng giao diện an toàn cho module.
+from app.chuyen_tiep import ChuyenTiepOpenAI, TransportGhimIp
 from app.yeu_cau_da_phan import YeuCauDaPhan
 
 log = logging.getLogger("web2api.tu_xa")
@@ -492,4 +493,3 @@ class ModuleTuXa:
             self._vong_nen_task.cancel()
             self._vong_nen_task = None
         await self._ct.dung()
-

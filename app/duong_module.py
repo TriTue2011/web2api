@@ -15,9 +15,10 @@ LÝ DO CÓ ĐƯỜNG NÀY — và đường nào MỞ:
         đã dùng để tới lõi — để module dựng URL tuyệt đối cho thiết bị khác
         (app/dia_chi.origin_cua_may_chu, đã chuẩn hoá); nội dung trả về: dict
         (thành JSON), bytes, hoặc async-iterator[bytes] (lõi stream từng khúc).
-    async luong(ve, khoang, phuong_thuc) -> (mã, headers, nội dung)
+    async luong(ve, khoang, phuong_thuc, tua_giay=None) -> (mã, headers, nội dung)
         ve: vé luồng đã đăng ký (xem dưới); khoang: header Range của loa
-        (hoặc None); nội dung: bytes hoặc async-iterator[bytes].
+        (hoặc None); tua_giay: chuỗi `t` đã ký, chỉ truyền nếu module khai
+        tham số này; nội dung: bytes hoặc async-iterator[bytes].
 - XÁC THỰC đường integration (NV289) — KHÔNG có bí mật riêng do người dùng nhập
   tay. Dùng đúng khuôn khoá khách phạm vi `mcp` (app/cong_mcp.py): khoá khách do
   CHÍNH lõi sinh (app/khoa_khach.py: hiện một lần, lưu băm SHA-256, thu hồi/tắt
@@ -58,10 +59,12 @@ LÝ DO CÓ ĐƯỜNG NÀY — và đường nào MỞ:
 
 from __future__ import annotations
 
+import inspect
 import ipaddress
 import json
 import logging
 import os
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -86,14 +89,17 @@ MA_TICH_HOP = "tich_hop"
 
 
 def tao_duong_luong(module_id: str, ve: str, goc: str = "",
-                    het_han_giay: int = HAN_VE_MAC_DINH_GIAY) -> str:
+                     het_han_giay: int = HAN_VE_MAC_DINH_GIAY, *,
+                     tua_giay: str | None = None) -> str:
     """Đường luồng đã ký cho loa: <goc>/m/<id>/api/stream/<ve>?_het_han&_ky.
 
     Module gọi hàm này khi trả POST integration/stream. `goc` là origin do lõi
     truyền vào `tich_hop` (loa cần URL TUYỆT ĐỐI, tới được qua LAN); rỗng thì
-    chỉ trả đường dẫn. Chỉ ký đường dẫn, không nhúng khoá hay bí mật vào URL.
+    chỉ trả đường dẫn. Ký cả query `t` nếu có, không nhúng khoá vào URL.
     """
     duong = f"/m/{module_id}/api/stream/{ve}"
+    if tua_giay is not None:
+        duong += "?" + urlencode({"t": tua_giay})
     return goc.rstrip("/") + url_ky_mod.ky_url(duong, het_han_giay=het_han_giay,
                                                phuong_thuc="GET")
 
@@ -232,8 +238,14 @@ async def luong_cua_module(id_: str, ve: str, request: Request):
     if not hasattr(the, "luong"):
         return Response(status_code=404)
     try:
-        ma, headers, noi_dung = await the.luong(ve, request.headers.get("range"),
-                                                request.method)
+        luong = the.luong
+        tua_giay = request.query_params.get("t")
+        # Kiểm chữ ký hàm trước khi gọi; không chạy lại khi thân hàm lỗi.
+        tuy_chon = {}
+        if tua_giay is not None and "tua_giay" in inspect.signature(luong).parameters:
+            tuy_chon["tua_giay"] = tua_giay
+        ma, headers, noi_dung = await luong(
+            ve, request.headers.get("range"), request.method, **tuy_chon)
     except Exception as e:
         log.warning("Module %s lỗi khi phục vụ luồng: %s", id_, type(e).__name__)
         return Response(status_code=404)

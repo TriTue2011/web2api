@@ -180,9 +180,21 @@ def test_import_loi_ro_rang(tmp_path):
     assert ma == 400 and nd["error"] == "invalid_share_code"
     ma, _, nd = _nhap(m, "")
     assert ma == 400 and nd["error"] == "invalid_playlist_link"
+    # NV304c: link Zing giờ đi qua trich_xuat thay vì 502 cứng — fake
+    # mặc định trả playlist rỗng nên import báo playlist_empty.
     ma, _, nd = _nhap(
         m, "https://zingmp3.vn/album/Ten-Album-Nghe-Si/abc12345.html")
-    assert ma == 502 and nd["error"] == "playlist_unavailable"
+    assert ma == 400 and nd["error"] == "playlist_empty"
+    _, m_zing = _mod(tmp_path, playlist=("Album Zing", [
+        {"source": "zing", "id": "abc12345",
+         "url": "https://zingmp3.vn/bai-hat/Bai-Zing/abc12345.html",
+         "title": "Bài Zing", "channel": "Ca sĩ", "duration": 200,
+         "thumbnail": ""}]))
+    ma, _, nd = _nhap(
+        m_zing, "https://zingmp3.vn/album/Ten-Album-Nghe-Si/abc12345.html")
+    assert ma == 200, nd
+    assert nd["playlist"]["name"] == "Album Zing"
+    assert nd["playlist"]["items"][0]["id"] == "abc12345"
     _, m_rong = _mod(tmp_path, playlist=("Rỗng", []))
     ma, _, nd = _nhap(
         m_rong, "https://www.youtube.com/playlist?list=PL1234567890abcdef")

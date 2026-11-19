@@ -134,7 +134,6 @@ function veDangPhat() {
   const kenh = $('kenh-bai');
   const trenLoa = $('tren-loa');
   const chip = $('chip-nguon');
-  const baoNguon = $('bao-nguon-chua-ho-tro');
   const nutPhat = $('nut-phat-tam-dung');
   const nutTruoc = $('nut-truoc');
   const nutSau = $('nut-sau');
@@ -142,7 +141,7 @@ function veDangPhat() {
   if (!phien || !phien.item) {
     ten.textContent = 'Chưa có dữ liệu.';
     kenh.hidden = true; trenLoa.hidden = true; chip.hidden = true;
-    anh.hidden = true; baoNguon.hidden = true;
+    anh.hidden = true;
     nutPhat.textContent = '▶ Phát'; nutPhat.disabled = true;
     nutTruoc.disabled = true; nutSau.disabled = true; nutDung.disabled = true;
     $('thoi-gian').textContent = '';
@@ -168,16 +167,8 @@ function veDangPhat() {
   } else {
     anh.hidden = true;
   }
-  // Zing/Facebook: module chưa giải được luồng — nói rõ, không để người
-  // dùng tưởng loa đang phát mà không nghe thấy gì.
-  if (muc.source === 'zing' || muc.source === 'facebook') {
-    baoNguon.hidden = false;
-    baoNguon.textContent = 'Nguồn ' + nhanNguon(muc.source) + ': module chưa giải được ' +
-      'luồng phát nên loa chưa phát được bài này (lỗi 502 khi lấy luồng). ' +
-      'Phiên ở đây chỉ ghi nhận bài đã chọn.';
-  } else {
-    baoNguon.hidden = true;
-  }
+  // NV304c: Zing/Facebook đã giải được luồng nên không còn cảnh báo
+  // «chưa giải được» — bài chọn sẽ phát thật như YouTube.
   const dangPhat = phien.state === 'playing' || phien.status === 'playing';
   const tamDung = phien.state === 'paused' || phien.status === 'paused';
   nutPhat.disabled = false;
@@ -599,8 +590,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const chips = { youtube: $('chip-yt'), zing: $('chip-zing'), facebook: $('chip-fb') };
   const ghiChu = {
     youtube: 'Tìm trên YouTube: gõ từ khoá hoặc dán link bài/playlist.',
-    zing: 'Tìm trên Zing MP3: gõ từ khoá. Lưu ý: module chưa giải được luồng Zing nên loa chưa phát được bài Zing.',
-    facebook: 'Facebook chỉ nhận link dán vào (không tìm theo từ khoá). Lưu ý: module chưa giải được luồng Facebook.',
+    zing: 'Tìm trên Zing MP3: gõ từ khoá.',
+    facebook: 'Facebook chỉ nhận link dán vào (không tìm theo từ khoá).',
   };
   Object.entries(chips).forEach(([nguon, nut]) => {
     nut.addEventListener('click', () => {
