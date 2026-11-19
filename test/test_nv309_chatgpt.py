@@ -436,7 +436,7 @@ def test_google_gap_duoc_ton_trong_va_mac_dinh_production_khong_doi(
     """Gap Google: lượt thứ hai phải chờ nốt giãn cách (đo bằng env 0.5s
     thay cho 25s production). Hằng production vẫn 25 giây, không đổi."""
     assert khoa_google.GIAN_CACH_GIAY == 25.0
-    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", "0.5")
+    monkeypatch.setenv("WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY", "0.5")
     td1 = TrinhDuyetGiaDong(_trang_login(
         ["da_dang_nhap"], {"access_token": TOKEN_GIA}))
     kq1 = chay(mod.tai_dung_ho_so(_ho_so_gia(), td1, chu_giu=EMAIL_GIA))

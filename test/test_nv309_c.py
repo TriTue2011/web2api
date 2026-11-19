@@ -70,7 +70,7 @@ def dat_lai_khoa(monkeypatch):
     """Mỗi test chạy trên khóa sạch, gap/hold nhỏ để test nhanh."""
     kg.dat_lai()
     # NV309-c: gap đọc từ env lúc gọi nên fixture đặt env, không đặt hằng.
-    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", "0")
+    monkeypatch.setenv("WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY", "0")
     monkeypatch.setattr(kg, "GIU_CAPTCHA_GIAY", 3600.0)
     yield
     kg.dat_lai()
@@ -102,7 +102,7 @@ def test_hai_luot_google_khong_chay_chong():
 def test_gap_giua_hai_luot(monkeypatch):
     """Lượt 2 bắt đầu sau lượt 1 kết thúc ít nhất bằng gap (monkeypatch env)."""
     kg.dat_lai()
-    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", "0.2")
+    monkeypatch.setenv("WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY", "0.2")
     moc = []
 
     async def kich_ban():
@@ -119,14 +119,14 @@ def test_gap_giua_hai_luot(monkeypatch):
 @pytest.mark.parametrize("gia_tri", ["inf", "nan", "-1"])
 def test_gap_khong_huu_han_hoac_am_bi_tu_choi(monkeypatch, gia_tri):
     """Cấu hình gap không thể làm khóa chờ vô hạn hoặc nhận giá trị âm."""
-    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", gia_tri)
+    monkeypatch.setenv("WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY", gia_tri)
     assert math.isfinite(kg._gap_hieu_luc())
     assert kg._gap_hieu_luc() >= 0
 
 
 def test_luot_google_co_deadline_va_nha_khoa_sau_khi_het_han(monkeypatch):
     """Lượt treo hết deadline phải nhả serial để lượt sau tiếp tục."""
-    monkeypatch.setenv("WEB2API_DANG_NHAP_TOI_DA_GIAY", "0.05")
+    monkeypatch.setenv("WEB2API_KHOA_DANG_NHAP_TOI_DA_GIAY", "0.05")
 
     async def kich_ban():
         with pytest.raises(asyncio.TimeoutError):

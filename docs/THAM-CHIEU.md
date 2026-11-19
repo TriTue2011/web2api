@@ -5062,8 +5062,8 @@ Cột «Khoá» cho biết có cần `Authorization: Bearer <khoá quản trị>
 | `WEB2API_MCP_DANG_NHAP_HONG_TOI_DA` | `2` | Số lần không thành công liên tiếp (thất bại hoặc cần người) của một tài khoản thì cổng từ chối tài khoản đó cho tới khi khởi động lại |
 | `WEB2API_MCP_DANG_NHAP_HOI_GIAY` | `5` | Chu kỳ hỏi tiến độ khi module báo lượt đăng nhập nền còn chạy |
 | `WEB2API_MCP_DANG_NHAP_TOI_DA_GIAY` | `300` | Trần tổng thời gian một phiên đăng nhập qua cổng; hết giờ → `that_bai`, `ma_loi: het_gio` |
-| `WEB2API_DANG_NHAP_GIAN_CACH_GIAY` | `25` | Giãn cách tối thiểu giữa hai lượt đăng nhập; giá trị âm hoặc không hữu hạn bị bỏ qua |
-| `WEB2API_DANG_NHAP_TOI_DA_GIAY` | `1800` | Trần một lượt đăng nhập giữ khóa serial; giá trị âm hoặc không hữu hạn bị bỏ qua |
+| `WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY` | `25` | Giãn cách tối thiểu giữa hai lượt đăng nhập; giá trị âm hoặc không hữu hạn bị bỏ qua |
+| `WEB2API_KHOA_DANG_NHAP_TOI_DA_GIAY` | `1800` | Trần một lượt đăng nhập giữ khóa serial; giá trị âm hoặc không hữu hạn bị bỏ qua |
 | `WEB2API_MCP_TU_KIEM_NGHI_GIAY` | `10` | Nghỉ tối thiểu giữa hai lượt `tu_kiem_dang_nhap` |
 | `WEB2API_MCP_TU_KIEM_TOI_DA_GIAY` | `60` | Hết giờ thì giết tiến trình con của bộ tự kiểm và trả `het_gio` |
 | `WEB2API_KENH_VAO_LA_PHUT` | `60` | Ngân sách riêng số tin/phút từ NGƯỜI LẠ của một module kênh vào (không trả lời, chỉ ghi nhận); hết ngân sách → bỏ ngay. Báo «người lạ nhắn bot» tới kênh chủ máy còn có trần cứng 5 tin/10 phút, phần dư chỉ ghi nhận ở `/api/kenh-vao/la` |

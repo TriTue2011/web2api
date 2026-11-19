@@ -52,12 +52,12 @@ def _so_huu_han(gia_tri, mac_dinh: float) -> float:
 
 def _gap_hieu_luc() -> float:
     return _so_huu_han(
-        os.environ.get("WEB2API_DANG_NHAP_GIAN_CACH_GIAY"), GIAN_CACH_GIAY)
+        os.environ.get("WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY"), GIAN_CACH_GIAY)
 
 
 def _thoi_gian_toi_da() -> float:
     return _so_huu_han(
-        os.environ.get("WEB2API_DANG_NHAP_TOI_DA_GIAY"), TOI_DA_GIAY)
+        os.environ.get("WEB2API_KHOA_DANG_NHAP_TOI_DA_GIAY"), TOI_DA_GIAY)
 
 
 def dinh_danh_chu(email: str = "", ho_so: str = "") -> str:
