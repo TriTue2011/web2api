@@ -227,8 +227,6 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
 
     async def nha(self) -> None:
         """Nhả quyền điều khiển (luỹ đẳng, không ném khi dịch vụ lỗi)."""
-        if not self._da_gianh:
-            return
         try:
             await asyncio.to_thread(self._post, "/dieu-khien/nha", {})
         except LoiDichVu as e:

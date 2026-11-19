@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from app import khoa_dang_nhap_google as khoa_google
+from app import khoa_dang_nhap_serial as khoa_serial
 from app import model_bo_sung
 from app import tu_lam_moi
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
@@ -441,7 +441,7 @@ class Module:
                 self._trinh_duyet_da_dung = td
                 return await self.tai_dung_ho_so(
                     getattr(tai_khoan, "ho_so_google", "") or "", td,
-                    chu_giu=khoa_google.dinh_danh_chu_hold(
+                    chu_giu=khoa_serial.dinh_danh_chu(
                         tai_khoan.email,
                         getattr(tai_khoan, "ho_so_google", "") or ""))
             if loai == "cookie":
@@ -483,6 +483,7 @@ class Module:
     _BO_CHON_GOOGLE = 'button[data-testid="login-with-google"], a[href*="accounts.google.com"]'
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare", "thu_thach_truy_cap"}
+    _TIN_HIEU_CAPTCHA = khoa_serial.TIN_HIEU_CAPTCHA | {"cloudflare"}
 
     def _tao_client(self, session_key: str) -> ClaudeWebClient:
         """Mối nối để test chích máy chủ giả (NV93).
@@ -521,11 +522,11 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         chu = (chu_giu or "").strip()
         try:
-            async with khoa_google.phien_dang_nhap_google(chu):
+            async with khoa_serial.phien_dang_nhap(chu):
                 return await self._tai_dung_ho_so_chay(ho_so, trinh_duyet,
                                                       chu)
-        except khoa_google.BiGiuCaptchaToanCuc:
-            return KetQuaDangNhap(False, ma_loi=khoa_google.MA_LOI_GIU)
+        except khoa_serial.BiGiuTrangThai:
+            return KetQuaDangNhap(False, ma_loi=khoa_serial.MA_LOI_GIU)
 
     async def _tai_dung_ho_so_chay(self, ho_so, trinh_duyet,
                                    chu_giu="") -> KetQuaDangNhap:
@@ -561,8 +562,8 @@ class Module:
             if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                 # CAPTCHA/Cloudflare/2FA/xác minh: DỪNG ngay, không cố vượt.
                 # NV309-c: chỉ tín hiệu captcha mới đặt hold toàn cục.
-                if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                    khoa_google.dat_giu_captcha(chu_giu)
+                if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                    khoa_serial.dat_giu_captcha(chu_giu)
                 return KetQuaDangNhap(False, ma_loi="can_nguoi")
             if "da_dang_nhap" not in tin_hieu:
                 # Bước 2 — bấm «Continue with Google» trong hồ sơ (SSO).
@@ -570,8 +571,8 @@ class Module:
                 tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                 if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                     # NV309-c: như điểm kiểm đầu (chỉ captcha mới giữ chung).
-                    if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                        khoa_google.dat_giu_captcha(chu_giu)
+                    if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                        khoa_serial.dat_giu_captcha(chu_giu)
                     return KetQuaDangNhap(False, ma_loi="can_nguoi")
                 if "da_dang_nhap" not in tin_hieu:
                     await trinh_duyet.bam(self._BO_CHON_GOOGLE)
@@ -581,8 +582,8 @@ class Module:
                         tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                             # NV309-c: như điểm kiểm đầu (chỉ captcha mới giữ chung).
-                            if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                                khoa_google.dat_giu_captcha(chu_giu)
+                            if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                                khoa_serial.dat_giu_captcha(chu_giu)
                             return KetQuaDangNhap(False, ma_loi="can_nguoi")
                         if "da_dang_nhap" in tin_hieu:
                             da_vao = True
@@ -626,7 +627,7 @@ class Module:
         # Log chỉ khoá mờ — KHÔNG BAO GIỜ log session_key/org thô.
         LOG.info("claude-web: tái dùng hồ sơ %s → tài khoản %s", hs_id, khoa)
         # NV309-c: chủ hold đăng nhập xong → gỡ hold toàn cục.
-        khoa_google.bo_giu_neu_chu(chu_giu)
+        khoa_serial.bo_giu_neu_chu(chu_giu)
         return KetQuaDangNhap(True, cookie="sessionKey=" + session_key)
 
     def _them_tai_khoan_nv93(self, session_key: str, org: str,
@@ -1007,7 +1008,7 @@ class Module:
                         return KetQuaKhoiPhuc(False, tang="T2", ma_loi="trinh_duyet_none")
                     kq2 = await self.tai_dung_ho_so(
                         ho_so_google or "", td,
-                        chu_giu=khoa_google.dinh_danh_chu_hold(
+                        chu_giu=khoa_serial.dinh_danh_chu(
                             email, ho_so_google or ""))
                 else:
                     if mat_khau_dung is None:

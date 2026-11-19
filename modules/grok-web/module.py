@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import ipaddress
 import json
 import logging
@@ -37,7 +38,7 @@ import time
 from typing import AsyncIterator
 from urllib.parse import urlsplit
 
-from app import khoa_dang_nhap_google as khoa_google
+from app import khoa_dang_nhap_serial as khoa_serial
 from app import model_bo_sung
 from app import tu_lam_moi
 from app.chuyen_tiep import ds_khoa
@@ -375,6 +376,7 @@ class Module:
                        'button[aria-label*="Google" i]')
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare", "thu_thach_truy_cap"}
+    _TIN_HIEU_CAPTCHA = khoa_serial.TIN_HIEU_CAPTCHA | {"cloudflare"}
 
     def _tao_client(self, jar) -> GrokWebClient:
         """Mối nối để test chích máy chủ giả (probe thử thách Cloudflare)."""
@@ -430,11 +432,11 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         chu = (chu_giu or "").strip()
         try:
-            async with khoa_google.phien_dang_nhap_google(chu):
+            async with khoa_serial.phien_dang_nhap(chu):
                 return await self._tai_dung_ho_so_chay(ho_so, trinh_duyet,
                                                       chu)
-        except khoa_google.BiGiuCaptchaToanCuc:
-            return KetQuaDangNhap(False, ma_loi=khoa_google.MA_LOI_GIU)
+        except khoa_serial.BiGiuTrangThai:
+            return KetQuaDangNhap(False, ma_loi=khoa_serial.MA_LOI_GIU)
 
     async def _tai_dung_ho_so_chay(self, ho_so, trinh_duyet,
                                    chu_giu="") -> KetQuaDangNhap:
@@ -468,14 +470,14 @@ class Module:
             # CAPTCHA/Cloudflare/2FA/xác minh: dừng, KHÔNG cố vượt.
             # NV309-c: chỉ tín hiệu captcha/thử thách theo IP mới đặt hold
             # toàn cục (2FA/xác minh là theo tài khoản, không giữ chung).
-            if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                khoa_google.dat_giu_captcha(chu_giu)
+            if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                khoa_serial.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         # Probe HTTP sớm: phát hiện thử thách bằng cấu trúc NGAY, không chờ
         # hết vòng (c2a đo 20/09: grok.com không tự qua được).
         if await self._co_thu_thach():
             # NV309-c: thử thách truy cập → giữ captcha toàn cục.
-            khoa_google.dat_giu_captcha(chu_giu)
+            khoa_serial.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             if "da_dang_nhap" not in tin_hieu:
@@ -486,8 +488,8 @@ class Module:
                     tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         # NV309-c: như điểm kiểm đầu (chỉ captcha mới giữ chung).
-                        if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                            khoa_google.dat_giu_captcha(chu_giu)
+                        if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                            khoa_serial.dat_giu_captcha(chu_giu)
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
                         da_vao = True
@@ -506,7 +508,7 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
         if await self._co_thu_thach(jar):
             # NV309-c: thử thách ở cookie cuối → giữ captcha toàn cục.
-            khoa_google.dat_giu_captcha(chu_giu)
+            khoa_serial.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         chuoi = self._chuoi_tu_jar(jar)
         email = str(ho_so.get("email") or "") if isinstance(ho_so, dict) else ""
@@ -514,7 +516,7 @@ class Module:
         # Log chỉ khoá mờ — KHÔNG BAO GIỜ log cookie.
         log.info("grok-web: tái dùng hồ sơ %s → tài khoản %s", hs_id, khoa)
         # NV309-c: chủ hold đăng nhập xong → gỡ hold toàn cục.
-        khoa_google.bo_giu_neu_chu(chu_giu)
+        khoa_serial.bo_giu_neu_chu(chu_giu)
         return KetQuaDangNhap(True, cookie=chuoi)
 
     def _them_tai_khoan_tu_ho_so(self, jar: dict[str, str],
@@ -925,9 +927,14 @@ class Module:
         nạp lại). Mật khẩu (nếu có) bị xoá sau khi dùng.
         """
         try:
-            return await self.tai_dung_ho_so(
-                "", trinh_duyet,
-                chu_giu=khoa_google.dinh_danh_chu_hold(email))
+            tham_so = {}
+            try:
+                if "chu_giu" in inspect.signature(
+                        self.tai_dung_ho_so).parameters:
+                    tham_so["chu_giu"] = khoa_serial.dinh_danh_chu(email)
+            except (TypeError, ValueError):
+                pass
+            return await self.tai_dung_ho_so("", trinh_duyet, **tham_so)
         finally:
             if mat_khau is not None:
                 mat_khau.xoa()
@@ -1010,7 +1017,7 @@ class Module:
                 ho_so = getattr(tai_khoan, "ho_so_google", "") or ""
                 return await self.tai_dung_ho_so(
                     ho_so, td,
-                    chu_giu=khoa_google.dinh_danh_chu_hold(
+                    chu_giu=khoa_serial.dinh_danh_chu(
                         tai_khoan.email, ho_so))
             if loai == "mat_khau":
                 if tai_khoan.mat_khau is None:
@@ -1036,7 +1043,7 @@ class Module:
                     ho_so = getattr(tai_khoan, "ho_so_google", "") or ""
                     return await self.tai_dung_ho_so(
                         ho_so, td,
-                        chu_giu=khoa_google.dinh_danh_chu_hold(email, ho_so))
+                        chu_giu=khoa_serial.dinh_danh_chu(email, ho_so))
                 if bm is None:
                     return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
                 td = (trinh_duyet if trinh_duyet is not None

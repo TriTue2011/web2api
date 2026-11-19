@@ -33,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from app import khoa_dang_nhap_google as khoa_google
+from app import khoa_dang_nhap_serial as khoa_google
 from app.khoi_phuc_phien import TrinhDuyetGia, lay_trinh_duyet_cho_tai_khoan, dong_workspace_moi
 from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach
 

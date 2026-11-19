@@ -5774,9 +5774,9 @@ async def tai_dung_ho_so_provider(request: Request):
                 tham_so = {}
                 try:
                     if "chu_giu" in inspect.signature(tai_dung).parameters:
-                        from app import khoa_dang_nhap_google as khoa_google
+                        from app import khoa_dang_nhap_serial as khoa_serial
                         email = ban_ghi.get("email") if isinstance(ban_ghi, dict) else ""
-                        tham_so["chu_giu"] = khoa_google.dinh_danh_chu_hold(
+                        tham_so["chu_giu"] = khoa_serial.dinh_danh_chu(
                             email or "", ho_so)
                 except (TypeError, ValueError):
                     pass

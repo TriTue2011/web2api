@@ -5,7 +5,7 @@ SAI S3: w2a chỉ có khóa riêng từng module + hoãn captcha riêng từng m
 captcha chùm (c2a: `_glogin_serial` 1 phiên tại một thời điểm, giãn cách
 25 giây + giữ CAPTCHA toàn cục 6 giờ).
 
-Mảnh này: MỘT chỗ duy nhất trong lõi (`app/khoa_dang_nhap_google.py`) —
+Mảnh này: MỘT chỗ duy nhất trong lõi (`app/khoa_dang_nhap_serial.py`) —
 serial + gap + hold — áp tại điểm chặn `tai_dung_ho_so` của 4 module.
 KHÔNG đổi ngữ nghĩa challenge → can_nguoi (Q4): gặp thử thách vẫn trả
 can_nguoi như cũ, chỉ thêm tác dụng phụ đặt hold cho các lượt sau.
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from app import khoa_dang_nhap_google as kg
+from app import khoa_dang_nhap_serial as kg
 from app.khoi_phuc_phien import TrinhDuyetGia
 from app.tai_khoan_hang_loat import DongDaTach
 
@@ -70,7 +70,7 @@ def dat_lai_khoa(monkeypatch):
     """Mỗi test chạy trên khóa sạch, gap/hold nhỏ để test nhanh."""
     kg.dat_lai()
     # NV309-c: gap đọc từ env lúc gọi nên fixture đặt env, không đặt hằng.
-    monkeypatch.setenv("WEB2API_GOOGLE_GIAN_CACH_GIAY", "0")
+    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", "0")
     monkeypatch.setattr(kg, "GIU_CAPTCHA_GIAY", 3600.0)
     yield
     kg.dat_lai()
@@ -86,7 +86,7 @@ def test_hai_luot_google_khong_chay_chong():
     async def kich_ban():
         async def luot(ten, giu):
             nonlocal dang_chay, dong_thoi_toi_da
-            async with kg.phien_dang_nhap_google(ten):
+            async with kg.phien_dang_nhap(ten):
                 dang_chay += 1
                 dong_thoi_toi_da = max(dong_thoi_toi_da, dang_chay)
                 await asyncio.sleep(giu)
@@ -102,14 +102,14 @@ def test_hai_luot_google_khong_chay_chong():
 def test_gap_giua_hai_luot(monkeypatch):
     """Lượt 2 bắt đầu sau lượt 1 kết thúc ít nhất bằng gap (monkeypatch env)."""
     kg.dat_lai()
-    monkeypatch.setenv("WEB2API_GOOGLE_GIAN_CACH_GIAY", "0.2")
+    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", "0.2")
     moc = []
 
     async def kich_ban():
-        async with kg.phien_dang_nhap_google("a"):
+        async with kg.phien_dang_nhap("a"):
             pass
         moc.append(time.monotonic())
-        async with kg.phien_dang_nhap_google("b"):
+        async with kg.phien_dang_nhap("b"):
             moc.append(time.monotonic())
 
     chay(kich_ban())
@@ -119,20 +119,20 @@ def test_gap_giua_hai_luot(monkeypatch):
 @pytest.mark.parametrize("gia_tri", ["inf", "nan", "-1"])
 def test_gap_khong_huu_han_hoac_am_bi_tu_choi(monkeypatch, gia_tri):
     """Cấu hình gap không thể làm khóa chờ vô hạn hoặc nhận giá trị âm."""
-    monkeypatch.setenv("WEB2API_GOOGLE_GIAN_CACH_GIAY", gia_tri)
+    monkeypatch.setenv("WEB2API_DANG_NHAP_GIAN_CACH_GIAY", gia_tri)
     assert math.isfinite(kg._gap_hieu_luc())
     assert kg._gap_hieu_luc() >= 0
 
 
 def test_luot_google_co_deadline_va_nha_khoa_sau_khi_het_han(monkeypatch):
     """Lượt treo hết deadline phải nhả serial để lượt sau tiếp tục."""
-    monkeypatch.setenv("WEB2API_GOOGLE_TOI_DA_GIAY", "0.05")
+    monkeypatch.setenv("WEB2API_DANG_NHAP_TOI_DA_GIAY", "0.05")
 
     async def kich_ban():
         with pytest.raises(asyncio.TimeoutError):
-            async with kg.phien_dang_nhap_google("a"):
+            async with kg.phien_dang_nhap("a"):
                 await asyncio.sleep(0.2)
-        async with kg.phien_dang_nhap_google("b"):
+        async with kg.phien_dang_nhap("b"):
             return True
 
     assert chay(kich_ban()) is True

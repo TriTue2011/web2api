@@ -1,24 +1,4 @@
-"""Khóa serial toàn cục cho đường Google + giữ captcha toàn cục (NV309-c).
-
-SAI S3: trước đây mỗi module *-web chỉ có khóa riêng + hoãn captcha riêng
-1800 giây → hai module có thể đăng nhập Google song song, dồn RAM và mời
-captcha chùm. c2a tránh điều này bằng `_glogin_serial` (1 phiên tại một thời
-điểm, giãn cách 25 giây) + giữ CAPTCHA toàn cục 6 giờ — đọc lấy hiểu từ
-`inbox/tai-lieu/c2a-dang-nhap/services/account_recovery.py`, tự viết lại cho
-kiến trúc w2a (asyncio, không threading).
-
-MỘT chỗ duy nhất: mọi lượt Google của module (điểm chặn `tai_dung_ho_so`)
-đi qua `phien_dang_nhap_google`. Per-module 1800 giây giữ nguyên (lớp dưới).
-
-Phạm vi: khóa này sống trong TIẾN TRÌNH LÕI → serialize các lượt Google của
-module. Tiến trình DỊCH VỤ (do_google_login_steps) là tiến trình khác, không
-bị khóa này serialize (vẫn bị trần 2 ngữ cảnh của pool) — serialize xuyên
-tiến trình cần cơ chế khóa chia sẻ, là follow-up, không tự đoán ở đây.
-
-Chủ hold (`chu`) là EMAIL của tài khoản — khớp cả đường đã lưu lẫn T2 cùng
-tài khoản. Lượt không danh tính (chu rỗng) chỉ serial, không đặt hold (không
-có chủ để gỡ — tránh hold kẹt 6 giờ không ai gỡ được).
-"""
+"""Điều phối tuần tự cho các lượt đăng nhập dùng chung (NV309-c)."""
 
 from __future__ import annotations
 
@@ -29,19 +9,15 @@ import math
 import os
 import time
 
-#: Giãn cách tối thiểu giữa 2 lượt Google (như bấm tay lần lượt — c2a 25s).
+#: Khoảng nghỉ tối thiểu giữa các lượt.
 GIAN_CACH_GIAY = 25.0
-#: Một lượt Google không được giữ serial vô hạn (có thể ghi đè bằng env).
+#: Thời lượng tối đa một lượt giữ khóa.
 TOI_DA_GIAY = 30 * 60.0
-#: Giữ captcha toàn cục (c2a 6 giờ: thử thách theo IP, không phải theo tài khoản).
+#: Thời lượng giữ trạng thái chờ người.
 GIU_CAPTCHA_GIAY = 6 * 3600.0
-#: Mã lỗi khi lượt Google bị chặn vì đang giữ captcha (mã ngắn, khớp khuôn
-#: chung [a-z0-9_]{1,64}; KHÔNG phải can_nguoi — người đã xử lý captcha đầu
-#: rồi, các lượt khác chỉ chờ, không cần người bấm thêm).
 MA_LOI_GIU = "cho_captcha_toan_cuc"
-
-#: Tín hiệu captcha/thử thách theo IP (khác 2FA/xác minh theo tài khoản).
-TIN_HIEU_CAPTCHA = {"captcha", "cloudflare", "thu_thach_truy_cap"}
+# Tín hiệu chung của thử thách theo IP; xác minh theo tài khoản không giữ lượt khác.
+TIN_HIEU_CAPTCHA = {"captcha", "thu_thach_truy_cap"}
 
 _khoa_serial: asyncio.Lock | None = None
 _lan_xong_cuoi: float = 0.0
@@ -64,15 +40,9 @@ def dat_lai() -> None:
     _giu_chu = ""
 
 
-def _gap_hieu_luc() -> float:
-    """Giãn cách hiệu lực: env `WEB2API_GOOGLE_GIAN_CACH_GIAY` (nếu đặt) thắng
-    hằng mặc định — test đặt 0 để khỏi ngủ 25 giây mỗi lượt; env sai → mặc định."""
-    return _so_huu_han("WEB2API_GOOGLE_GIAN_CACH_GIAY", GIAN_CACH_GIAY)
-
-
-def _so_huu_han(ten_env: str, mac_dinh: float) -> float:
+def _so_huu_han(gia_tri, mac_dinh: float) -> float:
     try:
-        gia_tri = float(os.environ.get(ten_env, "") or mac_dinh)
+        gia_tri = float(gia_tri or mac_dinh)
     except (TypeError, ValueError):
         return mac_dinh
     if not math.isfinite(gia_tri) or gia_tri < 0:
@@ -80,11 +50,17 @@ def _so_huu_han(ten_env: str, mac_dinh: float) -> float:
     return gia_tri
 
 
+def _gap_hieu_luc() -> float:
+    return _so_huu_han(
+        os.environ.get("WEB2API_DANG_NHAP_GIAN_CACH_GIAY"), GIAN_CACH_GIAY)
+
+
 def _thoi_gian_toi_da() -> float:
-    return _so_huu_han("WEB2API_GOOGLE_TOI_DA_GIAY", TOI_DA_GIAY)
+    return _so_huu_han(
+        os.environ.get("WEB2API_DANG_NHAP_TOI_DA_GIAY"), TOI_DA_GIAY)
 
 
-def dinh_danh_chu_hold(email: str = "", ho_so: str = "") -> str:
+def dinh_danh_chu(email: str = "", ho_so: str = "") -> str:
     """Định danh ổn định của một lượt: email + hồ sơ, không dùng lẫn ID.
 
     Một email có thể có nhiều hồ sơ trình duyệt; ghép cả hai ngăn hồ sơ này
@@ -136,17 +112,18 @@ def bo_giu_neu_chu(chu: str = "") -> None:
         _giu_chu = ""
 
 
-class BiGiuCaptchaToanCuc(Exception):
-    """Lượt Google bị chặn vì đang giữ captcha toàn cục (chủ khác)."""
+class BiGiuTrangThai(Exception):
+    """Lượt bị chặn vì trạng thái giữ đang thuộc về một chủ khác."""
 
 
 @contextlib.asynccontextmanager
-async def phien_dang_nhap_google(chu: str = ""):
-    """Một lượt đăng nhập Google: serial toàn cục + giãn cách + kiểm hold.
+async def phien_dang_nhap(chu: str = "", *, gap_giay=None,
+                           toi_da_giay=None):
+    """Một lượt đăng nhập: serial chung + giãn cách + kiểm trạng thái giữ.
 
     - Giữ serial suốt lượt (kể cả vòng chờ tín hiệu) — lượt khác xếp hàng.
     - Trong lock: nếu đang giữ và `chu` không phải chủ → raise
-      `BiGiuCaptchaToanCuc` (module dịch thành `MA_LOI_GIU`, không lái trình
+      `BiGiuTrangThai` (module dịch thành `MA_LOI_GIU`, không lái trình
       duyệt). Chủ hold được chạy lại (đường hồi phục: người đã tích tay xong
       → lượt này thấy da_dang_nhap → thành công → gỡ hold).
     - Nếu được chạy: ngủ nốt gap từ mốc kết thúc lượt trước rồi yield.
@@ -154,16 +131,20 @@ async def phien_dang_nhap_google(chu: str = ""):
       mốc); luôn nhả lock.
     """
     global _lan_xong_cuoi
+    toi_da = (_so_huu_han(toi_da_giay, TOI_DA_GIAY)
+              if toi_da_giay is not None else _thoi_gian_toi_da())
+    gap = (_so_huu_han(gap_giay, GIAN_CACH_GIAY)
+           if gap_giay is not None else _gap_hieu_luc())
     khoa = _lay_khoa()
     da_gianh = False
     da_chay = False
     try:
-        async with asyncio.timeout(_thoi_gian_toi_da()):
+        async with asyncio.timeout(toi_da):
             await khoa.acquire()
             da_gianh = True
             if dang_giu() and (chu or "").strip() != _giu_chu:
-                raise BiGiuCaptchaToanCuc
-            cho = _gap_hieu_luc() - (time.monotonic() - _lan_xong_cuoi) \
+                raise BiGiuTrangThai
+            cho = gap - (time.monotonic() - _lan_xong_cuoi) \
                 if _lan_xong_cuoi else 0.0
             if cho > 0:
                 await asyncio.sleep(cho)

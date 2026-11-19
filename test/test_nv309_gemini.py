@@ -42,7 +42,7 @@ from pathlib import Path
 
 import pytest
 
-from app import khoa_dang_nhap_google as khoa_google
+from app import khoa_dang_nhap_serial as khoa_google
 from app.khoi_phuc_phien import TrinhDuyetGia, lay_trinh_duyet_cho_tai_khoan, dong_workspace_moi
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach
 
@@ -323,7 +323,7 @@ def test_duong_email_gemini_cung_email_khac_ho_so_khong_go_hold():
     """Đăng nhập cùng email trong hồ sơ khác không được nhận quyền chủ hold."""
     m = mod_moi()
     _tao_client_thanh_cong(m)
-    chu_cu = khoa_google.dinh_danh_chu_hold(EMAIL_GIA)
+    chu_cu = khoa_google.dinh_danh_chu(EMAIL_GIA)
     khoa_google.dat_giu_captcha(chu_cu)
     td = _td_dang_nhap_phien()
     td.ho_so_id = "ho-so-b-gia"
@@ -338,8 +338,8 @@ def test_hold_khong_dung_fallback_id_ho_so_lam_chu():
     """Hai hồ sơ cùng email là hai chủ hold khác nhau; hồ sơ kia không gỡ."""
     m = mod_moi()
     _tao_client_thanh_cong(m)
-    chu_a = khoa_google.dinh_danh_chu_hold(EMAIL_GIA, "ho-so-a-gia")
-    chu_b = khoa_google.dinh_danh_chu_hold(EMAIL_GIA, "ho-so-b-gia")
+    chu_a = khoa_google.dinh_danh_chu(EMAIL_GIA, "ho-so-a-gia")
+    chu_b = khoa_google.dinh_danh_chu(EMAIL_GIA, "ho-so-b-gia")
     assert chu_a != chu_b
     khoa_google.dat_giu_captcha(chu_a)
     td = _td_tai_dung_phien()

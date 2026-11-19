@@ -28,7 +28,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app import khoa_dang_nhap_google as khoa_google
+from app import khoa_dang_nhap_serial as khoa_serial
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
@@ -398,6 +398,7 @@ class Module:
                        '[data-testid="login-form"] form > div > button:first-of-type')
     _TIN_HIEU_CAN_NGUOI = {"captcha", "2fa", "xac_minh", "xac_minh_thiet_bi",
                            "cloudflare", "thu_thach_truy_cap"}
+    _TIN_HIEU_CAPTCHA = khoa_serial.TIN_HIEU_CAPTCHA | {"cloudflare"}
 
     async def tai_dung_ho_so(self, ho_so, trinh_duyet,
                              chu_giu="") -> KetQuaDangNhap:
@@ -412,11 +413,11 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         chu = (chu_giu or "").strip()
         try:
-            async with khoa_google.phien_dang_nhap_google(chu):
+            async with khoa_serial.phien_dang_nhap(chu):
                 return await self._tai_dung_ho_so_chay(ho_so, trinh_duyet,
                                                       chu)
-        except khoa_google.BiGiuCaptchaToanCuc:
-            return KetQuaDangNhap(False, ma_loi=khoa_google.MA_LOI_GIU)
+        except khoa_serial.BiGiuTrangThai:
+            return KetQuaDangNhap(False, ma_loi=khoa_serial.MA_LOI_GIU)
 
     async def _tai_dung_ho_so_chay(self, ho_so, trinh_duyet,
                                    chu_giu="") -> KetQuaDangNhap:
@@ -447,8 +448,8 @@ class Module:
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
             # CAPTCHA/Cloudflare/2FA/xác minh thiết bị: dừng, KHÔNG cố vượt.
             # NV309-c: chỉ tín hiệu captcha mới đặt hold toàn cục.
-            if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                khoa_google.dat_giu_captcha(chu_giu)
+            if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                khoa_serial.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             if "da_dang_nhap" not in tin_hieu:
@@ -461,8 +462,8 @@ class Module:
                     tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
                         # NV309-c: như điểm kiểm đầu (chỉ captcha mới giữ chung).
-                        if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
-                            khoa_google.dat_giu_captcha(chu_giu)
+                        if tin_hieu & self._TIN_HIEU_CAPTCHA:
+                            khoa_serial.dat_giu_captcha(chu_giu)
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
                         da_vao = True
@@ -489,7 +490,7 @@ class Module:
         log.info("chatgpt-web: tái dùng hồ sơ %s → tài khoản %s (gói %s)",
                  hs_id, self._khoa_tu_token(token), goi)
         # NV309-c: chủ hold đăng nhập xong → gỡ hold toàn cục.
-        khoa_google.bo_giu_neu_chu(chu_giu)
+        khoa_serial.bo_giu_neu_chu(chu_giu)
         return KetQuaDangNhap(True, cookie=token)
 
     # -- liệt kê / gỡ tài khoản (NV93) ------------------------------------------
@@ -909,7 +910,7 @@ class Module:
                         return KetQuaKhoiPhuc(False, tang="T2", ma_loi="trinh_duyet_none")
                     kq2 = await self.tai_dung_ho_so(
                         ho_so_google or "", td,
-                        chu_giu=khoa_google.dinh_danh_chu_hold(
+                        chu_giu=khoa_serial.dinh_danh_chu(
                             email, ho_so_google or ""))
                 else:
                     kq2 = await self._dang_nhap_bang_trinh_duyet(email, mat_khau_dung, td, totp=totp_dung)
@@ -1085,7 +1086,7 @@ class Module:
                 self._trinh_duyet_da_dung = td
                 return await self.tai_dung_ho_so(
                     getattr(tai_khoan, "ho_so_google", "") or "", td,
-                    chu_giu=khoa_google.dinh_danh_chu_hold(
+                    chu_giu=khoa_serial.dinh_danh_chu(
                         tai_khoan.email,
                         getattr(tai_khoan, "ho_so_google", "") or ""))
             if loai == "cookie":
