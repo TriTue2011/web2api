@@ -482,7 +482,36 @@ async def _hoi_tien_do(phien: dict, so: Any, tk_id: str, module_id: str) -> None
             return
 
 
-async def _thu_khoi_phuc_module(so: Any, tk_id: str, module_id: str) -> dict | None:
+def _kiem_quyen_mcp_dang_nhap(so: Any, tk_id: str, module_id: str,
+                               ban_ghi_goc: dict | None = None):
+    """Đọc lại quyền, trạng thái và liên kết tài khoản tại điểm sử dụng."""
+    cho_phep = _doc_cho_phep()
+    theo_module = _doc_cho_phep_theo_module()
+    if _module_thuc_thi(tk_id, cho_phep, theo_module) != module_id:
+        raise LoiCongCu("khong_cho_phep", "Chủ máy chưa cho phép đăng nhập tài khoản này qua cổng MCP.")
+    try:
+        ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
+        if not isinstance(ban_ghi, dict):
+            raise LoiCongCu("khong_cho_phep", "Tài khoản không còn được phép đăng nhập.")
+        if kho_tai_khoan.da_tam_dung(tk_id):
+            raise LoiOpenAI(403, "Tài khoản đang tạm dừng.", code="tam_dung")
+    except (LoiCongCu, LoiOpenAI):
+        raise
+    except Exception:
+        raise LoiCongCu("kho_loi", "Không đọc được trạng thái tài khoản.") from None
+    if ban_ghi_goc is not None and (
+            ban_ghi.get("module_id") != ban_ghi_goc.get("module_id")
+            or kho_tai_khoan.ho_so_cua(ban_ghi)
+            != kho_tai_khoan.ho_so_cua(ban_ghi_goc)):
+        raise LoiCongCu("khong_cho_phep", "Liên kết tài khoản đã thay đổi.")
+    mod = so.dang_chay.get(module_id) if so is not None else None
+    if mod is None:
+        raise LoiCongCu("khong_cho_phep", "Module thực thi không còn chạy.")
+    return ban_ghi, mod
+
+
+async def _thu_khoi_phuc_module(so: Any, tk_id: str, module_id: str,
+                                kiem_quyen: bool = False) -> dict | None:
     """CHUYỂN TIẾP MỎNG, không phải logic khôi phục.
 
     Chỉ gọi module.khoi_phuc_tu_dong() (nếu module có) rồi dịch kết quả
@@ -492,11 +521,19 @@ async def _thu_khoi_phuc_module(so: Any, tk_id: str, module_id: str) -> dict | N
     người gọi dùng đường cũ làm fallback. Mọi cổng MCP (allowlist, một
     phiên, nghỉ, giới hạn ngày, timeout) vẫn ở dang_nhap_bat_dau/_chay_dang_nhap.
     """
-    mod = so.dang_chay.get(module_id) if so is not None else None
+    # NV309-a: vẫn chuyển tiếp mỏng — lõi chỉ CẤP controller (theo hồ sơ của
+    # tài khoản) rồi đóng workspace mới tạo khi lượt kết thúc; mọi tầng và
+    # quyết định vẫn ở trong module.
+    if kiem_quyen:
+        ban_ghi, mod = _kiem_quyen_mcp_dang_nhap(so, tk_id, module_id)
+    else:
+        ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
+        mod = so.dang_chay.get(module_id) if so is not None else None
+    if mod is None:
+        raise LoiCongCu("khong_cho_phep", "Module thực thi không còn chạy.")
     ham = getattr(mod, "khoi_phuc_tu_dong", None) if mod is not None else None
     if not callable(ham):
         return None
-    ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
     email = (ban_ghi.get("email") or "") if isinstance(ban_ghi, dict) else ""
     # NV300: truyền cách của tài khoản (nếu module nhận) để nó chọn đường
     # cach khac; module khong nhan thi giu loi goi cu.
@@ -511,15 +548,59 @@ async def _thu_khoi_phuc_module(so: Any, tk_id: str, module_id: str) -> dict | N
     if chu_ky is not None and kho_tai_khoan.TRUONG_HO_SO in chu_ky.parameters:
         tham_so[kho_tai_khoan.TRUONG_HO_SO] = kho_tai_khoan.ho_so_cua(ban_ghi) \
             if isinstance(ban_ghi, dict) else ""
-    kq = await ham(tk_id, email, nghi_t1_giay=0.0, **tham_so)
-    if isinstance(kq, dict):
-        return kq
-    return {
-        "thanh_cong": bool(getattr(kq, "thanh_cong", False)),
-        "ma_loi": getattr(kq, "ma_loi", "") or "",
-        "can_nguoi": bool(getattr(kq, "can_nguoi", False)),
-        "huong_dan": getattr(kq, "huong_dan", "") or "",
-    }
+    # NV309-a: lõi cấp controller trước khi gọi (SAI S1 — trước đây module chỉ
+    # chạy được T0/T1 vì khoi_phuc_tu_dong không nhận trinh_duyet). Thứ tự hồ
+    # sơ: bản ghi → tạo workspace mới theo email. Đường danh tính (tier-b)
+    # giữ logic riêng của nó trong app/khoi_phuc_phien, không nhân đôi ở đây
+    # (production hiện không module nào triển khai danh_tinh_id_cua nên
+    # đường đó trả None). Chỉ truyền khi module nhận tham số (mẫu signature cũ).
+    from app import khoi_phuc_phien as kp  # nhập muộn: tránh vòng nhập
+    td = None
+    hs_moi = ""
+    da_tao = False
+    if chu_ky is not None and "trinh_duyet" in chu_ky.parameters:
+        hs = kho_tai_khoan.ho_so_cua(ban_ghi) if isinstance(ban_ghi, dict) else ""
+        td, hs_moi, da_tao = await kp.lay_trinh_duyet_cho_tai_khoan(
+            so.dang_chay, ho_so=hs, email=email,
+            module=(mod if kiem_quyen else None))
+        if td is not None:
+            tham_so["trinh_duyet"] = td
+    kq_chuan = None
+    try:
+        # Quyền có thể đổi trong lúc tạo workspace: đọc lại ngay trước khi
+        # giao controller cho module. Fail closed nếu tài khoản/module/hồ sơ đổi.
+        if kiem_quyen:
+            _kiem_quyen_mcp_dang_nhap(so, tk_id, module_id, ban_ghi)
+        if td is not None:
+            async with kp.phien_dieu_khien_that(td):
+                if kiem_quyen:
+                    _kiem_quyen_mcp_dang_nhap(so, tk_id, module_id, ban_ghi)
+                kq = await ham(tk_id, email, nghi_t1_giay=0.0, **tham_so)
+        else:
+            kq = await ham(tk_id, email, nghi_t1_giay=0.0, **tham_so)
+        if isinstance(kq, dict):
+            kq_chuan = kq
+        else:
+            kq_chuan = {
+                "thanh_cong": bool(getattr(kq, "thanh_cong", False)),
+                "ma_loi": getattr(kq, "ma_loi", "") or "",
+                "can_nguoi": bool(getattr(kq, "can_nguoi", False)),
+                "huong_dan": getattr(kq, "huong_dan", "") or "",
+            }
+        return kq_chuan
+    finally:
+        if td is not None:
+            try:
+                await td.dong()
+            except Exception as e:
+                log.warning("MCP đăng nhập: đóng controller lỗi: %s",
+                            type(e).__name__)
+        # Chỉ giữ workspace mới khi kết quả yêu cầu người; lỗi/hủy/timeout
+        # không để lại workspace với cookie trên đĩa.
+        can_nguoi = bool(kq_chuan and (
+            kq_chuan.get("can_nguoi") or kq_chuan.get("ma_loi") == "can_nguoi"))
+        if da_tao and hs_moi and not can_nguoi:
+            await kp.dong_workspace_moi(so.dang_chay, hs_moi)
 
 
 async def _chay_dang_nhap(phien: dict, so: Any, tk_id: str, module_id: str) -> None:
@@ -527,7 +608,9 @@ async def _chay_dang_nhap(phien: dict, so: Any, tk_id: str, module_id: str) -> N
 
     try:
         async with asyncio.timeout(_so_thuc("WEB2API_MCP_DANG_NHAP_TOI_DA_GIAY", MAC_DINH_TOI_DA_DANG_NHAP_GIAY, 1.0)):
-            kq_module = await _thu_khoi_phuc_module(so, tk_id, module_id)
+            kq_module = await _thu_khoi_phuc_module(
+                so, tk_id, module_id,
+                kiem_quyen=bool(phien.get("kiem_quyen", False)))
             if kq_module is not None:
                 _ap_ket_qua(phien, kq_module)
                 # NV283: đường khoi_phuc_tu_dong KHÔNG đi qua
@@ -538,11 +621,15 @@ async def _chay_dang_nhap(phien: dict, so: Any, tk_id: str, module_id: str) -> N
                             "can_nguoi": phien["trang_thai"] == "can_nguoi",
                             "ma_loi": phien["ma_loi"]})
                 return
+            if phien.get("kiem_quyen"):
+                _kiem_quyen_mcp_dang_nhap(so, tk_id, module_id)
             kq = await tuyen.dang_nhap_tai_khoan_da_luu_noi_bo(so, tk_id, module_id, False)
             if not _ap_ket_qua(phien, kq):
                 await _hoi_tien_do(phien, so, tk_id, module_id)
     except TimeoutError:
         _ket_thuc_phien(phien, "that_bai", "het_gio")
+    except LoiCongCu as e:
+        _ket_thuc_phien(phien, "that_bai", _ma_an_toan(e.ma))
     except LoiOpenAI as e:
         code = e.code if isinstance(e.code, str) else f"loi_{e.ma}"
         _ket_thuc_phien(phien, "that_bai", _ma_an_toan(code))
@@ -587,6 +674,7 @@ async def dang_nhap_bat_dau(args: dict, so: Any) -> dict:
     phien = {
         "phien_id": secrets.token_hex(8), "tai_khoan_id": tk_id, "module_id": module_id, "trang_thai": "dang_chay",
         "ma_loi": "", "huong_dan": "", "bat_dau_luc": _iso_utc(), "ket_thuc_luc": None,
+        "kiem_quyen": True,
     }
     _PHIEN_DANG_NHAP = phien
     _MOC_BAT_DAU_CUOI = _bay_gio()

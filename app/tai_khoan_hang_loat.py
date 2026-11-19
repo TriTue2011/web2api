@@ -503,6 +503,11 @@ class KetQuaDangNhap:
 
         async def dang_nhap(tai_khoan: DongDaTach) -> KetQuaDangNhap: ...
 
+    NV309-a: `dang_nhap` có thêm tham số tuỳ chọn `trinh_duyet=None` —
+    controller lõi cấp trước khi gọi cho các đường cần trình duyệt (mật khẩu,
+    SSO, đăng nhập lại); None → module hỏi factory/hook đã đăng ký như cũ.
+    Đường `cookie` không cần trình duyệt nên không nhận controller.
+
     nhận `DongDaTach` (đọc bí mật qua `BiMatTam.lay()`), trả về:
       - `thanh_cong=True` + `cookie` (cookie/phiên mới; module tự lưu vào kho
         mã hoá của nó — lõi không giữ cookie trong kết quả);

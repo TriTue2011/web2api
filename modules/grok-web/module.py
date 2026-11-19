@@ -37,6 +37,7 @@ import time
 from typing import AsyncIterator
 from urllib.parse import urlsplit
 
+from app import khoa_dang_nhap_google as khoa_google
 from app import model_bo_sung
 from app import tu_lam_moi
 from app.chuyen_tiep import ds_khoa
@@ -414,7 +415,29 @@ class Module:
             return False
         return False
 
-    async def tai_dung_ho_so(self, ho_so, trinh_duyet) -> KetQuaDangNhap:
+    async def tai_dung_ho_so(self, ho_so, trinh_duyet,
+                             chu_giu="") -> KetQuaDangNhap:
+        """«Sign in with Google» TRONG hồ sơ đã đăng nhập Google (NV93).
+
+        NV309-c: điểm chặn duy nhất của đường Google trong module — lượt chạy
+        trong khóa serial toàn cục của lõi (1 lượt tại một thời điểm, giãn
+        cách 25 giây) + kiểm giữ captcha toàn cục. Chủ hold: `chu_giu` (email,
+        nếu điểm gọi truyền) nếu không thì id hồ sơ; cả hai rỗng → chỉ serial,
+        không đặt hold. Bị giữ → trả `cho_captcha_toan_cuc` mà không lái
+        trình duyệt.
+        """
+        if trinh_duyet is None:
+            return KetQuaDangNhap(False, ma_loi="can_nguoi")
+        chu = (chu_giu or "").strip()
+        try:
+            async with khoa_google.phien_dang_nhap_google(chu):
+                return await self._tai_dung_ho_so_chay(ho_so, trinh_duyet,
+                                                      chu)
+        except khoa_google.BiGiuCaptchaToanCuc:
+            return KetQuaDangNhap(False, ma_loi=khoa_google.MA_LOI_GIU)
+
+    async def _tai_dung_ho_so_chay(self, ho_so, trinh_duyet,
+                                   chu_giu="") -> KetQuaDangNhap:
         """«Sign in with Google» TRONG hồ sơ đã đăng nhập Google (NV93).
 
         Hợp đồng NV92-P3: module tự làm bước Google SSO của nó trong hồ sơ,
@@ -443,10 +466,16 @@ class Module:
             return KetQuaDangNhap(False, ma_loi="loi_module")
         if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
             # CAPTCHA/Cloudflare/2FA/xác minh: dừng, KHÔNG cố vượt.
+            # NV309-c: chỉ tín hiệu captcha/thử thách theo IP mới đặt hold
+            # toàn cục (2FA/xác minh là theo tài khoản, không giữ chung).
+            if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
+                khoa_google.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         # Probe HTTP sớm: phát hiện thử thách bằng cấu trúc NGAY, không chờ
         # hết vòng (c2a đo 20/09: grok.com không tự qua được).
         if await self._co_thu_thach():
+            # NV309-c: thử thách truy cập → giữ captcha toàn cục.
+            khoa_google.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         try:
             if "da_dang_nhap" not in tin_hieu:
@@ -456,6 +485,9 @@ class Module:
                 for _ in range(20):
                     tin_hieu = set(await trinh_duyet.tin_hieu(self.quy_tac_tin_hieu()) or set())
                     if tin_hieu & self._TIN_HIEU_CAN_NGUOI:
+                        # NV309-c: như điểm kiểm đầu (chỉ captcha mới giữ chung).
+                        if tin_hieu & khoa_google.TIN_HIEU_CAPTCHA:
+                            khoa_google.dat_giu_captcha(chu_giu)
                         return KetQuaDangNhap(False, ma_loi="can_nguoi")
                     if "da_dang_nhap" in tin_hieu:
                         da_vao = True
@@ -473,12 +505,16 @@ class Module:
         if not jar:
             return KetQuaDangNhap(False, ma_loi="khong_lay_duoc_phien")
         if await self._co_thu_thach(jar):
+            # NV309-c: thử thách ở cookie cuối → giữ captcha toàn cục.
+            khoa_google.dat_giu_captcha(chu_giu)
             return KetQuaDangNhap(False, ma_loi="can_nguoi")
         chuoi = self._chuoi_tu_jar(jar)
         email = str(ho_so.get("email") or "") if isinstance(ho_so, dict) else ""
         khoa = self._them_tai_khoan_tu_ho_so(jar, hs_id, email)
         # Log chỉ khoá mờ — KHÔNG BAO GIỜ log cookie.
         log.info("grok-web: tái dùng hồ sơ %s → tài khoản %s", hs_id, khoa)
+        # NV309-c: chủ hold đăng nhập xong → gỡ hold toàn cục.
+        khoa_google.bo_giu_neu_chu(chu_giu)
         return KetQuaDangNhap(True, cookie=chuoi)
 
     def _them_tai_khoan_tu_ho_so(self, jar: dict[str, str],
@@ -889,7 +925,9 @@ class Module:
         nạp lại). Mật khẩu (nếu có) bị xoá sau khi dùng.
         """
         try:
-            return await self.tai_dung_ho_so("", trinh_duyet)
+            return await self.tai_dung_ho_so(
+                "", trinh_duyet,
+                chu_giu=khoa_google.dinh_danh_chu_hold(email))
         finally:
             if mat_khau is not None:
                 mat_khau.xoa()
@@ -923,10 +961,15 @@ class Module:
         self._luu_mat_khau(khoa, email, mat_khau)
         return KetQuaDangNhap(True, cookie=chuoi_cookie)
 
-    async def dang_nhap(self, tai_khoan: DongDaTach) -> KetQuaDangNhap:
+    async def dang_nhap(self, tai_khoan: DongDaTach,
+                        trinh_duyet=None) -> KetQuaDangNhap:
         """Hợp đồng NV67: cookie → kiểm; mat_khau → trình duyệt; dang_nhap_lai →
         mật khẩu đã lưu; google → hồ sơ Google đã đăng nhập (NV300).
-        BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi)."""
+        BiMatTam luôn bị xoá sau khi dùng (kể cả lỗi).
+        NV309-a: `trinh_duyet` — controller lõi cấp trước khi gọi (thắng
+        factory/hook đã đăng ký); None → hỏi `_lay_trinh_duyet_module()` như
+        cũ (không còn đọc hook `_tao_trinh_duyet` trực tiếp — đó là SAI S1:
+        hook mặc định None nên production chưa từng mở trình duyệt)."""
         loai = tai_khoan.loai
         # NV300: lần gọi mang cách tường minh (đường lõi gắn từ bản ghi) thì
         # ghi nhớ theo tài khoản cho lần gọi sau không kèm cách.
@@ -961,16 +1004,19 @@ class Module:
             if loai == "google":
                 # NV300: đăng nhập qua hồ sơ Google đã đăng nhập — không cần
                 # mật khẩu, không điền gì (tai_dung_ho_so không bao giờ dien()).
-                tao = self._tao_trinh_duyet
-                td = tao() if callable(tao) else None
+                td = (trinh_duyet if trinh_duyet is not None
+                      else await self._lay_trinh_duyet_module())
                 self._trinh_duyet_da_dung = td
                 ho_so = getattr(tai_khoan, "ho_so_google", "") or ""
-                return await self.tai_dung_ho_so(ho_so, td)
+                return await self.tai_dung_ho_so(
+                    ho_so, td,
+                    chu_giu=khoa_google.dinh_danh_chu_hold(
+                        tai_khoan.email, ho_so))
             if loai == "mat_khau":
                 if tai_khoan.mat_khau is None:
                     return KetQuaDangNhap(False, ma_loi="thieu_mat_khau")
-                tao = self._tao_trinh_duyet
-                td = tao() if callable(tao) else None
+                td = (trinh_duyet if trinh_duyet is not None
+                      else await self._lay_trinh_duyet_module())
                 self._trinh_duyet_da_dung = td
                 cach = self.cach_dang_nhap_cua(
                     "", tai_khoan.email,
@@ -984,15 +1030,17 @@ class Module:
                     "", tai_khoan.email,
                     goi_y=getattr(tai_khoan, "cach_dang_nhap", None))
                 if cach == "google":
-                    tao = self._tao_trinh_duyet
-                    td = tao() if callable(tao) else None
+                    td = (trinh_duyet if trinh_duyet is not None
+                          else await self._lay_trinh_duyet_module())
                     self._trinh_duyet_da_dung = td
                     ho_so = getattr(tai_khoan, "ho_so_google", "") or ""
-                    return await self.tai_dung_ho_so(ho_so, td)
+                    return await self.tai_dung_ho_so(
+                        ho_so, td,
+                        chu_giu=khoa_google.dinh_danh_chu_hold(email, ho_so))
                 if bm is None:
                     return KetQuaDangNhap(False, ma_loi="khong_co_mat_khau_luu")
-                tao = self._tao_trinh_duyet
-                td = tao() if callable(tao) else None
+                td = (trinh_duyet if trinh_duyet is not None
+                      else await self._lay_trinh_duyet_module())
                 self._trinh_duyet_da_dung = td
                 return await self._dang_nhap_bang_trinh_duyet(
                     tai_khoan.email, bm, td, cach_dang_nhap=cach)
@@ -1033,7 +1081,8 @@ class Module:
         try:
             cach = self.cach_dang_nhap_cua("", tai_khoan.email)
             if cach == "google":
-                kq = await self.tai_dung_ho_so("", trinh_duyet)
+                kq = await self.tai_dung_ho_so("", trinh_duyet,
+                                              chu_giu=tai_khoan.email)
                 if kq.thanh_cong:
                     return KetQuaKhoiPhuc(True, tang="b")
                 return KetQuaKhoiPhuc(False, tang="b",

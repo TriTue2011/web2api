@@ -479,6 +479,150 @@ def lay_trinh_duyet_that(ho_so: str, dang_chay: dict | None = None,
     return None
 
 
+def tim_module_trinh_duyet(dang_chay: dict | None = None):
+    """Module trình duyệt đầu tiên trong `dang_chay` (NV309-a).
+
+    Cùng cách chọn như `lay_trinh_duyet_that` (khả năng ``trinh_duyet`` trong
+    ``manifest["cung_cap"]`` + có ``trinh_duyet_that``), nhưng trả thể hiện
+    module để người gọi còn dùng ``trinh_duyet_tao``/``trinh_duyet_dong``.
+    Không gọi tên module cụ thể nào.
+    """
+    for mod in (dang_chay or {}).values():
+        cung_cap = (getattr(mod, "manifest", None) or {}).get("cung_cap") or []
+        if "trinh_duyet" in cung_cap and callable(
+                getattr(mod, "trinh_duyet_that", None)):
+            return mod
+    return None
+
+
+class _TrinhDuyetTheoMien:
+    """Giới hạn miền cookie và giao diện controller cấp cho một module."""
+
+    def __init__(self, td, mien_cookie: set[str]):
+        self.__td = td
+        self.__mien_cookie = mien_cookie
+
+    def __getattr__(self, ten):
+        if ten == "ho_so_id":
+            return getattr(self.__td, "ho_so_id", "")
+        if ten == "da_gianh":
+            return bool(getattr(self.__td, "_da_gianh", False))
+        if ten in {"mo_trang", "dien", "bam", "cho", "tin_hieu",
+                   "gianh", "nha", "dong"}:
+            return getattr(self.__td, ten)
+        raise AttributeError(ten)
+
+    def _kiem_mien(self, mien):
+        if not isinstance(mien, str) or mien.strip().lower().strip(".") not in self.__mien_cookie:
+            raise PermissionError("Module chưa khai miền cookie này.")
+
+    async def doc_cookie(self, mien):
+        self._kiem_mien(mien)
+        return await self.__td.doc_cookie(mien)
+
+    async def doc_cookie_ho_so_da_dong(self, mien):
+        self._kiem_mien(mien)
+        return await self.__td.doc_cookie_ho_so_da_dong(mien)
+
+
+def _mien_cookie_module(module) -> set[str]:
+    quy_tac = getattr(module, "quy_tac_tin_hieu", None)
+    if not callable(quy_tac):
+        return set()
+    try:
+        ds = quy_tac()
+    except Exception as e:
+        log.warning("lay-trinh-duyet: đọc miền cookie module lỗi: %s",
+                    type(e).__name__)
+        return set()
+    return {
+        q["mien"].strip().lower().strip(".")
+        for q in ds if isinstance(q, dict) and q.get("loai") == "cookie"
+        and isinstance(q.get("mien"), str) and q["mien"].strip()
+    }
+
+
+async def lay_trinh_duyet_cho_tai_khoan(dang_chay: dict | None = None, *,
+                                        ho_so: str = "", email: str = "",
+                                        module=None):
+    """Cầu nối lõi cho MỘT tài khoản (NV309-a) — lõi cấp controller trước khi
+    gọi module, thay vì module tự lấy từ hook test (SAI S1: hook mặc định
+    None → ``trinh_duyet_none``/``can_nguoi`` mà chưa từng mở trình duyệt).
+
+    Thứ tự: (1) `ho_so` hợp lệ → `lay_trinh_duyet_that` (tái dùng workspace
+    sẵn, KHÔNG tạo mới, KHÔNG đóng sau lượt); (2) không có `ho_so` mà có
+    `email` → tạo workspace mới qua module trình duyệt (``trinh_duyet_tao``)
+    rồi lấy controller cho workspace đó; (3) không có đường nào → (None, "",
+    False).
+
+    Trả (controller, ho_so, da_tao_moi). Người gọi: bọc lượt gọi trong
+    `phien_dieu_khien_that` + `dong()` sau lượt; workspace MỚI tạo chỉ đóng
+    bằng `dong_workspace_moi` khi lượt kết thúc ở trạng thái cuối — KHÔNG
+    đóng khi ``can_nguoi`` (người vẫn có thể hoàn tất bằng tay), KHÔNG BAO
+    GIỜ đóng workspace sẵn có (ví dụ hồ sơ SSO thật — xoá nó là phá hoại).
+    """
+    mod_td = tim_module_trinh_duyet(dang_chay)
+    if mod_td is None:
+        return None, "", False
+    if module is not None and (not any(m is module for m in (dang_chay or {}).values())
+                               or not _mien_cookie_module(module)):
+        return None, "", False
+
+    def gioi_han(td):
+        return (_TrinhDuyetTheoMien(td, _mien_cookie_module(module))
+                if module is not None else td)
+    hs = (ho_so or "").strip()
+    if hs:
+        td = lay_trinh_duyet_that(hs, dang_chay)
+        if td is not None:
+            return gioi_han(td), hs, False
+    email = (email or "").strip()
+    if not email:
+        return None, "", False
+    tao = getattr(mod_td, "trinh_duyet_tao", None)
+    if not callable(tao):
+        return None, "", False
+    try:
+        kq = tao(email)
+        if asyncio.iscoroutine(kq):
+            kq = await kq
+    except Exception as e:
+        log.warning("lay-trinh-duyet-cho-tai-khoan: tạo workspace lỗi: %s",
+                    type(e).__name__)
+        return None, "", False
+    hs_moi = kq.get("ho_so", "") if isinstance(kq, dict) else ""
+    if not hs_moi:
+        return None, "", False
+    td = lay_trinh_duyet_that(hs_moi, dang_chay)
+    if td is None:
+        await dong_workspace_moi(dang_chay, hs_moi)
+        return None, "", False
+    return gioi_han(td), hs_moi, True
+
+
+async def dong_workspace_moi(dang_chay: dict | None = None,
+                             ho_so: str = "") -> None:
+    """Đóng workspace do lượt này TẠO (NV309-a; best-effort, không ném).
+
+    Chỉ gọi cho workspace `da_tao_moi=True` từ `lay_trinh_duyet_cho_tai_khoan`
+    — workspace sẵn có KHÔNG BAO GIỜ được đóng ở đây. `giu_phien=False`:
+    workspace một lượt không cần giữ phiên (module đã tự lưu cookie/phiên
+    vào kho của nó trong lượt).
+    """
+    if not ho_so:
+        return
+    mod_td = tim_module_trinh_duyet(dang_chay)
+    dong = getattr(mod_td, "trinh_duyet_dong", None) if mod_td else None
+    if not callable(dong):
+        return
+    try:
+        kq = dong(ho_so, False)
+        if asyncio.iscoroutine(kq):
+            await kq
+    except Exception as e:
+        log.warning("dong-workspace-moi: %s", type(e).__name__)
+
+
 @contextlib.asynccontextmanager
 async def phien_dieu_khien_that(td: BoDieuKhienTrinhDuyet):
     """Phiên dùng bộ điều khiển trình duyệt thật: giành quyền trước, NHẢ LUÔN sau.
@@ -491,13 +635,24 @@ async def phien_dieu_khien_that(td: BoDieuKhienTrinhDuyet):
     """
     gianh = getattr(td, "gianh", None)
     nha = getattr(td, "nha", None)
-    if callable(gianh):
-        await gianh()
+    da_gianh = False
     try:
+        if callable(gianh):
+            await gianh()
+            da_gianh = True
         yield td
+    except asyncio.CancelledError:
+        da_gianh = da_gianh or bool(
+            getattr(td, "da_gianh", getattr(td, "_da_gianh", False)))
+        raise
     finally:
-        if callable(nha):
-            await nha()
+        if callable(nha) and (da_gianh or bool(
+                getattr(td, "da_gianh", getattr(td, "_da_gianh", False)))):
+            try:
+                await nha()
+            except Exception as e:
+                log.warning("phien-dieu-khien-that: nha() lỗi: %s",
+                            type(e).__name__)
 
 
 async def tin_hieu_tu_cookie_ho_so_da_dong(trinh_duyet: BoDieuKhienTrinhDuyet,

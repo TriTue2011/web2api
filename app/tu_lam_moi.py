@@ -245,8 +245,11 @@ async def _chay_khoi_phuc(module: Any, module_id: str, khoa: str, ma_loi: str,
             try:
                 email_phien = kho_tai_khoan.email_cua_phien(module, khoa)
                 if email_phien:
+                    # NV309-a: truyền dang_chay để lõi cấp controller trước khi
+                    # gọi (không có → module nhận None → can_nguoi, SAI S1).
                     kq_dl = await kho_tai_khoan.thu_dang_nhap_lai(
-                        module=module, module_id=module_id, dinh_danh=email_phien)
+                        module=module, module_id=module_id, dinh_danh=email_phien,
+                        dang_chay=dang_chay)
                     if kq_dl.get("thu") and kq_dl.get("thanh_cong"):
                         _danh_dau_khoe(module, khoa)
                         log.info("tu-lam-moi: %s/%s tự đăng nhập lại bằng tài "

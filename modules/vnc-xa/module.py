@@ -158,6 +158,10 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
     def _duong(self, duoi: str) -> str:
         return f"{self._goc}/ho-so/{self._ho_so}{duoi}"
 
+    @property
+    def ho_so_id(self) -> str:
+        return self._ho_so
+
     def _post(self, duoi: str, than: dict) -> dict:
         try:
             r = self._client.post(
@@ -207,11 +211,24 @@ class TrinhDuyetThat(BoDieuKhienTrinhDuyet):
 
     async def gianh(self) -> None:
         """Giành quyền điều khiển máy cho hồ sơ (409 nếu đang bận/có người)."""
-        await asyncio.to_thread(self._post, "/dieu-khien/gianh", {})
+        task = asyncio.create_task(asyncio.to_thread(
+            self._post, "/dieu-khien/gianh", {}))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(task)
+                self._da_gianh = True
+            except Exception as e:
+                log.warning("trinh-duyet-that: gianh() lỗi khi bị huỷ: %s",
+                            type(e).__name__)
+            raise
         self._da_gianh = True
 
     async def nha(self) -> None:
         """Nhả quyền điều khiển (luỹ đẳng, không ném khi dịch vụ lỗi)."""
+        if not self._da_gianh:
+            return
         try:
             await asyncio.to_thread(self._post, "/dieu-khien/nha", {})
         except LoiDichVu as e:
