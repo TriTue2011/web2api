@@ -4625,13 +4625,56 @@ async def dang_nhap_tai_khoan_da_luu_noi_bo(so, id: str, module_id: str, kiem_tr
     except Exception:
         dong.xoa_bi_mat()
         raise
+    # NV309-a: lõi cấp controller trước khi gọi (SAI S1 — trước đây module
+    # nhận None → can_nguoi mà chưa từng mở trình duyệt). Thứ tự hồ sơ:
+    # hồ sơ đã lưu của tài khoản (trường theo kho tài khoản) → tạo workspace
+    # mới theo email (chỉ đường mật khẩu; đường SSO không tạo mới vì hồ sơ
+    # mới không có phiên SSO nên không thể tái dùng). Controller sống suốt
+    # lượt; chỉ dong()/đóng workspace mới tạo ở finally cuối lượt
+    # (can_nguoi → giữ lại cho người hoàn tất bằng tay).
+    td = None
+    hs_moi = ""
+    da_tao = False
+    hs_luu = getattr(dong, kho_tai_khoan_mod.TRUONG_HO_SO, "") or ""
+    if hs_luu:
+        td, _hs, _tao = await khoi_phuc_phien_mod.lay_trinh_duyet_cho_tai_khoan(
+            getattr(so, "dang_chay", None), ho_so=hs_luu,
+            module=(mod if callable(getattr(mod, "quy_tac_tin_hieu", None))
+                    else None))
+    elif dong.loai in ("mat_khau", "dang_nhap_lai"):
+        td, hs_moi, da_tao = await khoi_phuc_phien_mod.lay_trinh_duyet_cho_tai_khoan(
+            getattr(so, "dang_chay", None), email=email,
+            module=(mod if callable(getattr(mod, "quy_tac_tin_hieu", None))
+                    else None))
+    nhan_td = False
+    if td is not None:
+        try:
+            nhan_td = "trinh_duyet" in inspect.signature(ham).parameters
+        except (TypeError, ValueError):
+            nhan_td = False
+    kq = None
     try:
-        kq = await ham(dong)
+        if nhan_td:
+            async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
+                kq = await ham(dong, trinh_duyet=td)
+        else:
+            kq = await ham(dong)
     finally:
         dong.xoa_bi_mat()
         for _bm in bi_mat_dnh:
             if _bm is not None:
                 _bm.xoa()
+        if td is not None:
+            try:
+                await td.dong()
+            except Exception as e:
+                log.warning("dang-nhap-da-luu: đóng controller lỗi: %s",
+                            type(e).__name__)
+        if da_tao and (kq is None or (
+                getattr(kq, "thanh_cong", False)
+                or getattr(kq, "ma_loi", "") != "can_nguoi")):
+            await khoi_phuc_phien_mod.dong_workspace_moi(
+                getattr(so, "dang_chay", None), hs_moi)
     # NV283: ghi kết quả thật qua hàm bọc chung (đúng một lần cho lượt này;
     # đường MCP dang_nhap_bat_dau đi qua đây nên cũng được ghi — trừ khi nó
     # dùng đường khoi_phuc_tu_dong riêng, xem app/cong_mcp_cong_cu.py).
@@ -5345,25 +5388,85 @@ async def bat_dau_dang_nhap_tu_dong(request: Request):
             # NV122: đọc sau_luc (lúc bắt đầu bước đăng nhập) để chỉ nhận thư tới sau mốc này.
             sau_luc = (ma_xac_minh_mod.luc_hien_tai_iso()
                        if (dong.ma_tu_hop_thu and cfg_xac_minh is not None) else None)
-            kq = await module.dang_nhap(dong)
-            # NV122: module báo trang đang đòi mã gửi qua email + cờ tích BẬT +
-            # module khai xac_minh_email → đọc mã từ hộp thư rồi điền; cờ TẮT thì
-            # giữ hành vi hiện có (không bao giờ tự chuyển sang đọc hộp thư).
-            if (isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap) and not kq.thanh_cong
-                    and kq.ma_loi == "can_ma_email"
-                    and dong.ma_tu_hop_thu and cfg_xac_minh is not None):
-                kq = await _xu_ly_can_ma_email(app, so, module, module_id, dong,
-                                               cfg_xac_minh, sau_luc, da_goi_ma)
-            # Chỉ khi module KHAI trường bí mật để nhận tài khoản; không khai thì module tự quản tài khoản của nó (hành vi cũ).
-            if (isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap) and kq.thanh_cong and kq.cookie
-                    and _truong_bi_mat_cua_module(module) is not None):
-                try:
-                    kq_cai = await _luu_chung_chi_vao_module(so, module, module_id, kq.cookie)
-                except LoiOpenAI:
-                    return tai_khoan_hang_loat_mod.KetQuaDangNhap(False, ma_loi="luu_that_bai")
-                if not kq_cai.get("ok"):
-                    return tai_khoan_hang_loat_mod.KetQuaDangNhap(False, ma_loi="luu_that_bai")
-            return kq
+            # NV309-a: lõi cấp controller trước khi gọi cho các đường cần trình
+            # duyệt (SAI S1 — trước đây module nhận None → can_nguoi mà chưa
+            # từng mở trình duyệt). Lõi không nêu tên nhà cung cấp: chỉ phân
+            # biệt bằng loại chung — cookie không cần trình duyệt; mật khẩu/
+            # đăng nhập lại tạo workspace mới theo email; bản ghi CÓ hồ sơ đã
+            # lưu thì tái dùng hồ sơ đó (đường SSO; hồ sơ mới không có phiên
+            # SSO nên không tạo mới — không có hồ sơ thì giữ hành vi cũ).
+            # Lõi CHỈ CẤP khi có (không bao giờ chặn lời gọi khi không có):
+            # module tự quyết có cần trình duyệt không — module *-web thật
+            # fail-closed bằng can_nguoi của chính nó khi thiếu controller,
+            # còn module không cần trình duyệt vẫn chạy như cũ. Chặn sớm ở
+            # lõi đã phá hợp đồng này (hồi quy NV88/NV119/NV122/NV283).
+            # Controller sống suốt ham_chay (bước can_ma_email sau đó có thể
+            # dùng lại controller của lượt này); chỉ dong()/đóng workspace ở
+            # finally cuối lượt.
+            td = None
+            hs_moi = ""
+            da_tao = False
+            hs_luu = getattr(dong, kho_tai_khoan_mod.TRUONG_HO_SO, "") or ""
+            if dong.loai == "cookie":
+                pass  # đường cookie không cần trình duyệt
+            elif dong.loai in ("mat_khau", "dang_nhap_lai"):
+                td, hs_moi, da_tao = await khoi_phuc_phien_mod.lay_trinh_duyet_cho_tai_khoan(
+                    dang_chay, email=dong.email,
+                    module=(module if callable(getattr(module, "quy_tac_tin_hieu", None))
+                            else None))
+            elif hs_luu:
+                td, _hs, _tao = await khoi_phuc_phien_mod.lay_trinh_duyet_cho_tai_khoan(
+                    dang_chay, ho_so=hs_luu,
+                    module=(module if callable(getattr(module, "quy_tac_tin_hieu", None))
+                            else None))
+            kq = None
+            try:
+                # Chỉ truyền khi module nhận tham số (mẫu signature cũ ở MCP);
+                # module lạ không nhận → giữ lời gọi cũ, không vỡ lượt.
+                nhan_td = False
+                if td is not None:
+                    try:
+                        nhan_td = "trinh_duyet" in inspect.signature(
+                            module.dang_nhap).parameters
+                    except (TypeError, ValueError):
+                        nhan_td = False
+                if nhan_td:
+                    async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
+                        kq = await module.dang_nhap(dong, trinh_duyet=td)
+                else:
+                    kq = await module.dang_nhap(dong)
+                # NV122: module báo trang đang đòi mã gửi qua email + cờ tích BẬT +
+                # module khai xac_minh_email → đọc mã từ hộp thư rồi điền; cờ TẮT thì
+                # giữ hành vi hiện có (không bao giờ tự chuyển sang đọc hộp thư).
+                if (isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap) and not kq.thanh_cong
+                        and kq.ma_loi == "can_ma_email"
+                        and dong.ma_tu_hop_thu and cfg_xac_minh is not None):
+                    kq = await _xu_ly_can_ma_email(app, so, module, module_id, dong,
+                                                   cfg_xac_minh, sau_luc, da_goi_ma)
+                # Chỉ khi module KHAI trường bí mật để nhận tài khoản; không khai thì module tự quản tài khoản của nó (hành vi cũ).
+                if (isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap) and kq.thanh_cong and kq.cookie
+                        and _truong_bi_mat_cua_module(module) is not None):
+                    try:
+                        kq_cai = await _luu_chung_chi_vao_module(so, module, module_id, kq.cookie)
+                    except LoiOpenAI:
+                        return tai_khoan_hang_loat_mod.KetQuaDangNhap(False, ma_loi="luu_that_bai")
+                    if not kq_cai.get("ok"):
+                        return tai_khoan_hang_loat_mod.KetQuaDangNhap(False, ma_loi="luu_that_bai")
+                return kq
+            finally:
+                if td is not None:
+                    try:
+                        await td.dong()
+                    except Exception as e:
+                        log.warning("dang-nhap: đóng controller lỗi: %s",
+                                    type(e).__name__)
+                # Workspace MỚI tạo chỉ đóng khi lượt kết thúc ở trạng thái cuối;
+                # can_nguoi → giữ lại để người hoàn tất qua noVNC. Ngoại lệ
+                # (kq None, không có lượt chờ người nào) → đóng luôn.
+                if da_tao and (kq is None or (
+                        isinstance(kq, tai_khoan_hang_loat_mod.KetQuaDangNhap)
+                        and (kq.thanh_cong or kq.ma_loi != "can_nguoi"))):
+                    await khoi_phuc_phien_mod.dong_workspace_moi(dang_chay, hs_moi)
     else:
         mod_dn = _module_dang_nhap_danh_tinh(app, bat_buoc=False)
         mod_td = _tim_module_trinh_duyet(app)
@@ -5644,7 +5747,16 @@ async def tai_dung_ho_so_provider(request: Request):
         # (kể cả khi lỗi) — hồ sơ không kẹt «đang bận».
         try:
             async with khoi_phuc_phien_mod.phien_dieu_khien_that(td):
-                kq = await tai_dung(ho_so, td)
+                tham_so = {}
+                try:
+                    if "chu_giu" in inspect.signature(tai_dung).parameters:
+                        from app import khoa_dang_nhap_google as khoa_google
+                        email = ban_ghi.get("email") if isinstance(ban_ghi, dict) else ""
+                        tham_so["chu_giu"] = khoa_google.dinh_danh_chu_hold(
+                            email or "", ho_so)
+                except (TypeError, ValueError):
+                    pass
+                kq = await tai_dung(ho_so, td, **tham_so)
         finally:
             await _dong_trinh_duyet_that(td)
     except Exception as e:
@@ -5778,4 +5890,3 @@ def lay_trang_thai_bao_mat():
         "bang_ron": bang_ron,
         "so_mang": so_mang,
     }
-

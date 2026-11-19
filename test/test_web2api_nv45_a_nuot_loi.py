@@ -192,6 +192,13 @@ DA_KIEM_TOAN = {
     # hạn mức → coi như chưa hết (cùng mẫu đã duyệt app/kho_tai_khoan._con_het_han_muc: hạn mức là QoS,
     # không phải ranh bảo mật — tài khoản vẫn phải qua đăng nhập thật ở lượt dùng).
     ("app/kho_tai_khoan.py", "gom_theo_nhom_loai"),
+    # Đã xử lý NV309-a: controller và workspace được dọn trong finally kể cả
+    # khi module lỗi hoặc tác vụ bị hủy; lỗi đóng được ghi log loại lỗi, không
+    # làm mất bước đóng workspace hay đổi kết quả chính của lượt đăng nhập.
+    ("app/cong_mcp_cong_cu.py", "_thu_khoi_phuc_module"),
+    ("app/kho_tai_khoan.py", "thu_dang_nhap_lai"),
+    ("app/tuyen.py", "dang_nhap_tai_khoan_da_luu_noi_bo"),
+    ("app/tuyen.py", "ham_chay"),
 }
 
 
@@ -216,6 +223,12 @@ def _loai_except(h):
 
 def tim_diem_nuot_loi():
     ket = set()
+    cleanup_da_ghi_log = {
+        ("app/cong_mcp_cong_cu.py", "_thu_khoi_phuc_module"),
+        ("app/kho_tai_khoan.py", "thu_dang_nhap_lai"),
+        ("app/tuyen.py", "dang_nhap_tai_khoan_da_luu_noi_bo"),
+        ("app/tuyen.py", "ham_chay"),
+    }
     for p in sorted((GOC / "app").rglob("*.py")) + sorted((GOC / "modules").glob("*/module.py")):
         try:
             cay = ast.parse(p.read_text(encoding="utf-8"))
@@ -224,6 +237,25 @@ def tim_diem_nuot_loi():
 
         def visit(n, fstack):
             nf = fstack + [n.name] if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else fstack
+            ten_f = (str(p.relative_to(GOC)), nf[-1] if nf else "<module>")
+            if ten_f in cleanup_da_ghi_log and isinstance(
+                    n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for x in ast.walk(n):
+                    if not isinstance(x, ast.Try) or not x.finalbody:
+                        continue
+                    for y in ast.walk(x):
+                        if not isinstance(y, ast.ExceptHandler) or not y.name:
+                            continue
+                        if _loai_except(y) not in ("Exception", "BaseException"):
+                            continue
+                        if any(isinstance(z, ast.Call)
+                               and isinstance(z.func, ast.Attribute)
+                               and z.func.attr in {"warning", "error", "exception"}
+                               for stmt in y.body for z in ast.walk(stmt)):
+                            ket.add(ten_f)
+                            break
+                    if ten_f in ket:
+                        break
             if isinstance(n, ast.Try):
                 for h in n.handlers:
                     loai = _loai_except(h)

@@ -19,6 +19,11 @@ from pathlib import Path
 
 import pytest
 
+#: NV309-c: giãn cách Google = 0 trong test (pacing 25 giây là hành vi
+#: production; test đơn vị gọi tai_dung_ho_so nhiều lần không được ngủ 25
+#: giây mỗi lượt — test nào muốn kiểm gap thì tự đặt env riêng).
+os.environ.setdefault("WEB2API_GOOGLE_GIAN_CACH_GIAY", "0")
+
 GOC_WEB2API = Path(__file__).resolve().parents[1]
 if str(GOC_WEB2API) not in sys.path:
     sys.path.insert(0, str(GOC_WEB2API))

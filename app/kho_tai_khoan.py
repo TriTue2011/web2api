@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import inspect
 import logging
 import os
 import re
@@ -2143,8 +2144,13 @@ def _ghi_trang_thai(du_lieu: dict) -> None:
     kho.ghi_bi_mat(TEN_TRANG_THAI, du_lieu)
 
 
-async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
+async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str,
+                              dang_chay: dict | None = None) -> dict:
     """Tự đăng nhập lại bằng tài khoản đã lưu (NV144 §4).
+
+    NV309-a: `dang_chay` — lõi cấp controller trước khi gọi (ho_so của bản
+    ghi → workspace mới theo email); None → giữ hành vi cũ (module nhận
+    None → can_nguoi mà chưa từng mở trình duyệt, SAI S1).
 
     `dinh_danh` là email của phiên cần khôi phục. Trả dict:
     - `{"thu": False, "ly_do": "da_tat"}` — công tắc đang TẮT.
@@ -2206,19 +2212,54 @@ async def thu_dang_nhap_lai(*, module, module_id: str, dinh_danh: str) -> dict:
     dong = DongDaTach(dong=0, email=ban_ghi["email"], loai="mat_khau",
                       mat_khau=mat_khau, totp=totp)
     gan_cach_dang_nhap(dong, ban_ghi)
+    # NV309-a: lõi cấp controller trước khi gọi (SAI S1). Không có dang_chay
+    # → giữ hành vi cũ. Thứ tự hồ sơ: ho_so của bản ghi → workspace mới
+    # theo email (đường này luôn là mat_khau nên tạo mới được).
+    from app import khoi_phuc_phien as kp  # nhập muộn: tránh vòng nhập
+    td = None
+    hs_moi = ""
+    da_tao = False
+    if dang_chay is not None:
+        td, hs_moi, da_tao = await kp.lay_trinh_duyet_cho_tai_khoan(
+            dang_chay, ho_so=ho_so_cua(ban_ghi), email=ban_ghi["email"],
+            module=(module if callable(getattr(module, "quy_tac_tin_hieu", None))
+                    else None))
+    nhan_td = False
+    if td is not None:
+        try:
+            nhan_td = "trinh_duyet" in inspect.signature(dang_nhap).parameters
+        except (TypeError, ValueError):
+            nhan_td = False
+    ma_loi = ""
     try:
-        kq = await dang_nhap(dong)
+        if nhan_td:
+            async with kp.phien_dieu_khien_that(td):
+                kq = await dang_nhap(dong, trinh_duyet=td)
+        else:
+            kq = await dang_nhap(dong)
         thanh_cong = bool(getattr(kq, "thanh_cong", False))
+        ma_loi = getattr(kq, "ma_loi", "") or ""
         # NV283: tự đăng nhập lại cũng ghi kết quả thật qua hàm bọc chung
         # (đúng một lần cho lượt này; lỗi ghi chỉ log, không hỏng kết quả).
         ghi_ket_qua_dang_nhap_tu_ket_qua(id_, kq)
     except Exception as e:
         log.warning("tu-dang-nhap-lai: %s lỗi: %s", che_email(email), type(e).__name__)
         thanh_cong = False
+        ma_loi = "loi_module"
         ghi_ket_qua_dang_nhap_tu_ket_qua(
             id_, {"thanh_cong": False, "ma_loi": "loi_module"})
     finally:
         dong.xoa_bi_mat()
+        if td is not None:
+            try:
+                await td.dong()
+            except Exception as e:
+                log.warning("tu-dang-nhap-lai: đóng controller lỗi: %s",
+                            type(e).__name__)
+        # Workspace MỚI tạo chỉ đóng khi lượt kết thúc ở trạng thái cuối;
+        # can_nguoi → giữ lại để người hoàn tất bằng tay.
+        if da_tao and (thanh_cong or ma_loi != "can_nguoi"):
+            await kp.dong_workspace_moi(dang_chay, hs_moi)
     # Ghi trạng thái cuối DƯỚI KHOÁ KHO, đọc lại bản ghi trước: trong lúc
     # lượt thử đang chạy (await ở trên), quản trị có thể đã đổi thông tin
     # (reset xoá trạng thái) hoặc xoá hẳn tài khoản. Nếu bản ghi đã mất hoặc
