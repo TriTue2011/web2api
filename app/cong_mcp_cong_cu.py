@@ -372,7 +372,7 @@ def _module_cua_tai_khoan(tk_id: str) -> str:
     try:
         ban_ghi = kho_tai_khoan.tim_theo_id(tk_id)
     except Exception:
-        return ""
+        raise LoiCongCu("kho_loi", "Không đọc được kho tài khoản.") from None
     return str(ban_ghi.get("module_id") or "") if isinstance(ban_ghi, dict) else ""
 
 
