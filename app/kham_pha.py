@@ -460,7 +460,9 @@ def _chuan_hoa_giao_dien(m: dict) -> None:
     "chip": [{"id", "nhan", "nhom": [mã nhóm thực thể], "thu_tu": số nhỏ đứng trước}]}. `nhom` rỗng = các thực thể module
     KHÔNG gắn nhóm; thực thể tự gắn `nhom` qua trường `nhom` của nó (xem app/thiet_bi.py).
     Nhiều module cùng `muc` thì chung một trang mục (vd hai module mạng cùng mục «Mạng»). Khác `nhom_con` (làn của tab
-    Module, KHÔNG đụng tới). Sai định dạng → cảnh báo và bỏ trường (không chặn nạp module); khi đó khung suy từ cấu trúc."""
+    Module, KHÔNG đụng tới). Sai định dạng → cảnh báo và bỏ trường (không chặn nạp module); khi đó khung suy từ cấu trúc.
+    NV304a: `nhung_tab: true` (tuỳ chọn, phải là bool) — trang khu nhúng trang tab riêng của module (iframe) thay vì
+    vẽ ô thực thể thô cho chip đó; chỉ có hiệu lực khi module đã liên kết và có mục tab trong /api/tinh-nang."""
     if "giao_dien" not in m:
         return
     g = m["giao_dien"]
@@ -499,7 +501,12 @@ def _chuan_hoa_giao_dien(m: dict) -> None:
         if thu_tu is not None and type(thu_tu) is not int:
             return bo("chip[].thu_tu phải là số nguyên (nhỏ đứng trước)")
         chip_ra.append({"id": c["id"], "nhan": c["nhan"].strip(), "nhom": list(nhom), "thu_tu": thu_tu})
+    nhung_tab = g.get("nhung_tab", False)
+    if not isinstance(nhung_tab, bool):
+        return bo("nhung_tab phải là true/false")
     m["giao_dien"] = {"khu": g["khu"], "muc": muc, "nhan": nhan.strip(), "chip": chip_ra}
+    if nhung_tab:
+        m["giao_dien"]["nhung_tab"] = True
 
 
 def _chuan_hoa_thay_the(m: dict) -> None:

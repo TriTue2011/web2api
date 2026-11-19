@@ -31,6 +31,9 @@
     .thanh-chip-duoi .nut { flex: 0 0 auto; white-space: nowrap; }
   }
   .hang-kq .kenh { color: #555; font-size: 13px; }
+  /* NV304a: nhúng trong tab Đời sống (?nhung=1) thì ẩn chrome của trang tab
+     (nút quay lại + tiêu đề) — Đời sống đã có tiêu đề và chip của nó. */
+  html.nhung .quay-lai, html.nhung .tieu-de-trang { display: none; }
   .hang-kq .hang-nut { margin: 6px 0 0; }
   .hang-kq .hang-nut .nut { flex: none; }
   .phien-dang-chon { background: #fff8e1; }
@@ -42,13 +45,14 @@
     .phien-dang-chon { background: #332f00; }
   }
 </style>
+<script>if (new URLSearchParams(location.search).has('nhung')) document.documentElement.classList.add('nhung');</script>
 <script src="trang.js" defer></script>
 </head>
 <body>
 <div class="goc">
 <main class="trang-tb">
   <a class="quay-lai" href="../../He-thong.dc.html">← Hệ thống</a>
-  <h1>YouTube</h1>
+  <h1 class="tieu-de-trang">YouTube</h1>
   <p class="phu">Trình phát YouTube/Zing chạy thẳng trong web2api. Mọi lệnh đi qua
     máy chủ (trình duyệt không giữ khoá nào). Mục nào chưa có thì ẩn — không có nút chết.</p>
   <p class="bao bao-loi" id="loi-chung" role="alert" hidden></p>

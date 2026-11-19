@@ -18,6 +18,7 @@
 .goc.khu a{color:inherit;text-decoration:none}
 .hang-chip-khu{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:16px;border-bottom:1px solid var(--line)}
 .hang-chip-khu .chip{font:inherit;font-size:13.5px;cursor:pointer}
+.khung-module{display:block;width:100%;border:1px solid var(--line);border-radius:10px;background:var(--nen,#fff);box-sizing:border-box;height:calc(100vh - 220px);min-height:640px}
 .luoi-o{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .o-gon{min-width:0;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
 .o-gon .ten-o{font-weight:500;overflow-wrap:anywhere}
@@ -80,14 +81,15 @@
 <sc-if value="{{coChuaNoi}}"><sc-for list="{{chuaNoi}}" as="n"><div class="bao bao-vang dong-nut" id="chua-noi" style="gap:10px"><span style="flex:1 1 240px;min-width:0">Chưa nối {{n.ten}} nên chưa có số liệu.</span><button type="button" class="nut nut-nho nut-chinh" onClick="{{n.noiNgay}}">Nối ngay</button></div></sc-for></sc-if>
 <sc-if value="{{dangDoc}}"><p role="status" class="bao-cho">Đang đọc số liệu…</p></sc-if>
 <sc-if value="{{thucTheLoi}}"><p role="alert" class="bao bao-loi">Chưa đọc được số liệu: {{thucTheLoi}}</p></sc-if>
-<div class="luoi-o" id="luoi-o"><sc-for list="{{o}}" as="x"><div class="o-gon" data-o>
+<sc-if value="{{coNhung}}"><section class="the" aria-label="{{nhungNhan}}"><iframe class="khung-module" title="{{nhungNhan}}" src="{{nhungDuong}}" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe></section></sc-if>
+<sc-if value="{{khongNhung}}"><div class="luoi-o" id="luoi-o"><sc-for list="{{o}}" as="x"><div class="o-gon" data-o>
 <span class="ten-o">{{x.ten}}</span>
 <sc-if value="{{x.coPhu}}"><span class="phu">{{x.phu}}</span></sc-if>
 <span class="{{x.lopGiaTri}}">{{x.giaTri}}</span>
 <sc-if value="{{x.luc}}"><span class="phu">{{x.luc}}</span></sc-if>
 <sc-if value="{{x.coHd}}"><div class="dong-hd"><sc-for list="{{x.hd}}" as="h"><button type="button" class="nut-chu" aria-pressed="{{h.dangChon}}" onClick="{{h.bam}}" disabled="{{h.khoa}}">{{h.nhan}}</button></sc-for></div></sc-if>
 <sc-if value="{{x.hoiXn}}"><div class="tb-hoi" role="alertdialog" aria-label="Xác nhận"><span>{{x.xnChu}}</span><div class="dong-hd"><button type="button" class="nut-chu" style="background:#181816;border-color:#181816;color:#fff" onClick="{{x.xacNhan}}">Xác nhận</button><button type="button" class="nut-chu" onClick="{{x.thoi}}">Thôi</button></div></div></sc-if>
-</div></sc-for></div>
+</div></sc-for></div></sc-if>
 <sc-if value="{{chuaCo}}"><p class="rong" id="chua-co-du-lieu">Chưa có dữ liệu.</p></sc-if>
 </sc-if>
 

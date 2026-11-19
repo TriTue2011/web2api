@@ -741,6 +741,19 @@
   }
   const thucTheCuaChip = (chip, ds) => (ds || []).filter((e) => chip.loc.some((l) => l.module === e.module
     && (l.nhom == null || (l.nhom.length ? l.nhom.includes(e.nhom) : !e.nhom))));
+  // NV304a: tab nhúng của một chip khu — module ĐÃ LIÊN KẾT khai giao_dien.nhung_tab và có mục tab trong
+  // /api/tinh-nang thì khu nhúng trang tab đó (iframe) thay vì vẽ ô thực thể thô. Chưa nối / không khai /
+  // không có tab → null (giữ đường ô thực thể cũ). Hàm thuần — test bằng node, không DOM.
+  function tabNhungCua(mods, tab) {
+    for (const m of mods || []) {
+      if (!m || !m.da_lien_ket) continue;
+      const g = m.giao_dien;
+      if (!g || g.nhung_tab !== true) continue;
+      const t = (tab || []).find((x) => x && x.module === m.id && x.duong);
+      if (t) return { duong: t.duong, nhan: t.nhan };
+    }
+    return null;
+  }
 
   // Chữ hiển thị của MỘT giá trị đo: tiếng Việt thường, không mã kỹ thuật. Chưa đọc được → «Chưa có dữ liệu» (không số giả).
   const TT_CHU = { bat: 'Bật', tat: 'Tắt', on: 'Bật', off: 'Tắt', len: 'Đang nối', xuong: 'Mất kết nối' };
@@ -840,7 +853,12 @@
       const mods = chip && !laCaiDat ? chip.loc.map((l) => muc.modules.find((m) => m.id === l.module)).filter(Boolean) : [];
       const chuaNoi = mods.filter((m) => !m.da_lien_ket).map((m) => ({ ten: tenGon(m), noiNgay: chon('cai-dat') }));
       const noi = new Set(mods.filter((m) => m.da_lien_ket).map((m) => m.id));
-      const o = chip && !laCaiDat ? thucTheCuaChip(chip, ds.filter((e) => noi.has(e.module))).map((e) => {
+      // NV304a: có tab nhúng thì khu nhúng trang tab (iframe) thay vì vẽ ô thực thể — địa chỉ tuyệt đối
+      // suy từ đường tương đối của lõi, kèm ?nhung=1 để trang tab tự ẩn chrome của nó.
+      const nhung = chip && !laCaiDat ? tabNhungCua(mods.filter((m) => m.da_lien_ket), (tn && tn.tab) || []) : null;
+      const duongNhungGoc = nhung ? lienKetAnToan(nhung.duong) : null;
+      const duongNhung = duongNhungGoc ? duongNhungGoc + (duongNhungGoc.includes('?') ? '&' : '?') + 'nhung=1' : null;
+      const o = chip && !laCaiDat && !nhung ? thucTheCuaChip(chip, ds.filter((e) => noi.has(e.module))).map((e) => {
         const g = giaTriHienThi(e);
         const hd = hanhDongDon(e).map((h) => {
           const ttV = e.trang_thai && e.trang_thai.gia_tri;
@@ -863,7 +881,7 @@
           thoi: () => comp.setState({ hdHoi: null })
         };
       }) : [];
-      const chuaCo = !!chip && !laCaiDat && s.thucThe !== null && o.length === 0 && chuaNoi.length === 0;
+      const chuaCo = !!chip && !laCaiDat && !nhung && s.thucThe !== null && o.length === 0 && chuaNoi.length === 0;
 
       // Chip «Cài đặt» (luôn ẩn tới khi bấm): từng module một khối, giá trị đã lưu thu gọn, bí mật «••••• đã lưu» + Đổi.
       const cd = laCaiDat && muc ? muc.modules.map((m) => {
@@ -885,7 +903,8 @@
         tenNguoiDung: tenNguoiDung(s.nguoiDung), nhanVai: s.nguoiDung ? (s.nguoiDung.vai === 'admin' ? 'Quản trị viên' : 'Người dùng') : '', dangXuat: () => dangXuat(),
         tnLoi: s.tnLoi, thucTheLoi: s.thucTheLoi, dangTai: s.dangTai, tenMuc: muc ? muc.nhan : '',
         hangChip: chips.map((c) => ({ id: c.id, nhan: c.nhan, on: c.id === chipId ? 'true' : 'false', chon: chon(c.id) })), coChip: chips.length > 0,
-        laDuLieu: !!chip && !laCaiDat, laCaiDat, dangDoc: !!chip && !laCaiDat && s.thucThe === null && mods.some((m) => m.da_lien_ket),
+        laDuLieu: !!chip && !laCaiDat, laCaiDat, dangDoc: !!chip && !laCaiDat && !nhung && s.thucThe === null && mods.some((m) => m.da_lien_ket),
+        coNhung: !!duongNhung, khongNhung: !duongNhung, nhungDuong: duongNhung || '', nhungNhan: nhung ? nhung.nhan : '',
         chuaNoi, coChuaNoi: chuaNoi.length > 0, o, coO: o.length > 0, chuaCo,
         tinNoi: s.tinNoi, hdTin: s.hdTin, hdLoi: s.hdLoi, cd,
         hangCho, coHangCho: hangCho.length > 0, soHangCho: hangCho.length
@@ -1196,7 +1215,7 @@
     });
   }
 
-  window.Khung = { AI, DIEU_KIEN, khu, mucCua, navTren, navDuoiMenu, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
+  window.Khung = { AI, DIEU_KIEN, khu, mucCua, tabNhungCua, navTren, navDuoiMenu, thieu, du, dungDuoc, dkMuc, tenMa, coMa, moduleDapUng, trangChinhCua, noiThemKhoa, chuaKhoaCho, docKhoa, luuKhoa, thongDiep, taoLoi, goi, taiTinhNang,
     BIEU_TUONG, navChinh, navDuoi, navHeThong, trangThaiChung, menuNav, quayLai, trangDau, chanNeuThieu, loiThieu, lienKetAnToan, dl, ngayGio, tuongDoi, boDau, diaChiV1,
     dongKhoa, cauHinh, mdLienKet, phanTichMarkdown, markdownRaDom,
     datCsrf, layCsrf, napToi, layNguoiDung, tenNguoiDung, dangXuat, duongVeHopLe, chuyenDangNhap };
