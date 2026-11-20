@@ -4,7 +4,7 @@
 Bearer quản trị được miễn như mọi đường chạm bí mật khác), module khai khả năng «trinh_duyet_xem» trả đích
 noVNC nội bộ (màn hình dùng chung của dịch vụ, KHÔNG tạo hồ sơ trình duyệt mới), lõi ghim đích qua kiểm SSRF
 rồi cấp vé một lần 60 giây như proxy /novnc hiện có. Mật khẩu VNC không bao giờ xuất hiện trong phản hồi:
-x11vnc vẫn bắt mật khẩu, người xem tự nhập một lần ở hộp nhập của noVNC (mật khẩu chỉ chủ máy biết qua
+x11vnc vẫn bắt mật khẩu, người xem tự nhập một lần ở hộp nhập mật khẩu của màn hình xem (mật khẩu chỉ chủ máy biết qua
 docker exec vào container dịch vụ — ngoài phạm vi API này).
 
 Test qua dịch vụ GIẢ, không đăng nhập thật, không trình duyệt thật.

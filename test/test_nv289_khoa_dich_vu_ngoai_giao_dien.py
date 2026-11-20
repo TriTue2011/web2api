@@ -33,7 +33,7 @@ def test_tao_khoa_chon_module_dung_thu_hoi(trang, tmp_path, monkeypatch):
         lien_ket(w, "youtube")            # không có trường cấu hình: cài là chạy
         tn = httpx.get(f"{w.url}/api/tinh-nang", headers={"Authorization": f"Bearer {KHOA_QT}"}).json()
         assert next(m for m in tn["modules"] if m["id"] == "youtube").get("duong_ngoai") is True
-        dang_nhap_quan_tri(trang, w.url)
+        _, mk_ad = dang_nhap_quan_tri(trang, w.url)
         trang.di(w.url + "/He-thong-Bao-mat.dc.html#khoa-dich-vu-ngoai")
         trang.cho("document.querySelector('#khoa-dich-vu-ngoai [data-dvn-module=\"youtube\"]')", han=20,
                   mo_ta="chip module trong khối khoá cho dịch vụ ngoài")
@@ -49,6 +49,9 @@ def test_tao_khoa_chon_module_dung_thu_hoi(trang, tmp_path, monkeypatch):
         trang.bam("document.querySelector('[data-dvn-module=\"youtube\"]')")
         trang.go("#dvn-nhan", "Loa phòng khách")
         trang.bam("document.getElementById('dvn-nut-tao')")
+        trang.cho("!!document.querySelector('dialog input[type=\"password\"]')", han=10, mo_ta="dialog xác nhận lại (step-up)")
+        trang.go("dialog input[type=\"password\"]", mk_ad)
+        trang.bam("[...document.querySelectorAll('dialog button')].find((b) => b.textContent.includes('Xác nhận'))", "nút Xác nhận step-up")
         khoa = trang.cho("(document.getElementById('dvn-khoa-moi-gia-tri')||{}).innerText", han=15,
                          mo_ta="khoá vừa tạo hiện ra")
         assert khoa.startswith("w2a_")

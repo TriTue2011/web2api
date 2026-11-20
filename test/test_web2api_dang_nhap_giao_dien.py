@@ -520,6 +520,9 @@ def test_chrome_tao_nguoi_dung_ngau_nhien_hien_mot_lan(trang: Trang, tmp_path, m
 
         # Để trống tên đăng nhập và mật khẩu, bấm tạo người dùng để lõi tự sinh
         trang.bam("document.getElementById('nut-tao-nd')", mo_ta="Tạo người dùng tự sinh")
+        trang.cho("!!document.querySelector('dialog input[type=\"password\"]')", han=10, mo_ta="dialog xác nhận lại (step-up)")
+        trang.go("dialog input[type=\"password\"]", mk_ad)
+        trang.bam("[...document.querySelectorAll('dialog button')].find((b) => b.textContent.includes('Xác nhận'))", "nút Xác nhận step-up")
         trang.cho("document.getElementById('the-thong-tin-nd-moi')", mo_ta="Hiện thẻ thông tin người dùng mới")
 
         ten_sinh = trang.chu("#nd-moi-ten")
