@@ -56,6 +56,19 @@ def che(gia_tri: str) -> str:
     return "…" + gia_tri[-4:] if len(gia_tri) >= 12 else "…"
 
 
+def _la_dang_che(gia_tri: Any) -> bool:
+    if isinstance(gia_tri, str):
+        return gia_tri.startswith("…") and len(gia_tri) in (1, 5)
+    return (isinstance(gia_tri, list) and bool(gia_tri)
+            and all(isinstance(x, str) and x.startswith("…") and len(x) in (1, 5) for x in gia_tri))
+
+
+def _co_dang_che(gia_tri: Any) -> bool:
+    if isinstance(gia_tri, str):
+        return _la_dang_che(gia_tri)
+    return isinstance(gia_tri, list) and any(_la_dang_che(x) for x in gia_tri)
+
+
 def ghi_nguyen_tu(p: Path, noi_dung: str | bytes, quyen: int = 0o644) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tam = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".tam")
@@ -249,9 +262,19 @@ def tach_cau_hinh(truong: list[dict], cau_hinh: dict) -> tuple[dict, dict]:
 def luu_cai_dat(id_: str, truong: list[dict], cau_hinh: dict) -> dict:
     """Lưu cấu hình đã kiểm của một module. Bí mật ghi TRƯỚC: mục trong modules.json
     không bao giờ trỏ tới bí mật chưa có."""
-    cong_khai, bi_mat = tach_cau_hinh(truong, cau_hinh)
     with _KHOA:
         ds = _doc_modules_de_sua()
+        cong_khai, bi_mat = tach_cau_hinh(truong, cau_hinh)
+        muc_cu = next((m for m in ds if isinstance(m, dict) and m.get("id") == id_), {})
+        cong_khai_cu = muc_cu.get("cau_hinh_cong_khai") or {}
+        bi_mat_cu = doc_bi_mat(id_)
+        # Giữ riêng giá trị đã từng là bí mật khi manifest đổi trường đó sang chuỗi.
+        for t in truong:
+            k = t["khoa"]
+            if (t["kieu"] not in KIEU_BI_MAT and k in bi_mat_cu
+                    and _la_dang_che(cong_khai_cu.get(k)) and cau_hinh.get(k) == bi_mat_cu[k]):
+                cong_khai[k] = cong_khai_cu[k]
+                bi_mat[k] = bi_mat_cu[k]
         if bi_mat:
             ghi_bi_mat(id_, bi_mat)
         else:
@@ -278,6 +301,15 @@ def ghep_cau_hinh(truong: list[dict], da_luu: dict, moi: dict) -> dict:
     ra = dict(da_luu)
     kieu = {t["khoa"]: t["kieu"] for t in truong}
     for k, v in moi.items():
+        if kieu.get(k) in KIEU_BI_MAT:
+            if _co_dang_che(v):
+                if k in da_luu:
+                    v = da_luu[k]
+                else:
+                    continue
+            elif (kieu[k] == "danh_sach_bi_mat" and isinstance(v, list)
+                  and any(_co_dang_che(x) for x in v)):
+                raise ValueError(f"«{k}» chứa dạng che thay vì giá trị bí mật")
         if kieu.get(k) == "danh_sach_bi_mat" and isinstance(v, dict):
             thua = set(v) - {"giu", "them"}
             if thua:
@@ -289,18 +321,58 @@ def ghep_cau_hinh(truong: list[dict], da_luu: dict, moi: dict) -> dict:
                 raise ValueError(f"«{k}.giu» phải là danh sách chỉ số của khoá đã lưu (0..{len(cu) - 1})")
             if not isinstance(them, list) or not all(isinstance(x, str) for x in them):
                 raise ValueError(f"«{k}.them» phải là danh sách chuỗi")
+            if any(_co_dang_che(x) for x in them):
+                raise ValueError(f"«{k}.them» chứa dạng che thay vì giá trị bí mật")
             v = list(dict.fromkeys([cu[i] for i in giu] + them))
         ra[k] = v
     return ra
 
 
 def doc_cau_hinh(id_: str, truong: list[dict], muc: dict) -> dict:
-    """Ghép lại cấu hình đầy đủ để `nap`: giá trị thường từ modules.json + bí mật từ bi_mat/."""
-    bi_mat_k = {t["khoa"] for t in truong if t["kieu"] in KIEU_BI_MAT}
-    cong_khai = muc.get("cau_hinh_cong_khai") or {}
-    cau_hinh = {k: v for k, v in cong_khai.items() if k not in bi_mat_k}
-    cau_hinh.update(doc_bi_mat(id_) if bi_mat_k else {})
-    return cau_hinh
+    """Ghép cấu hình để `nap`, đồng thời di trú giá trị cũ khi manifest đổi kiểu trường."""
+    with _KHOA:
+        ds = _doc_modules_de_sua()
+        muc_moi = next((m for m in ds if isinstance(m, dict) and m.get("id") == id_), muc)
+        cong_khai = dict(muc_moi.get("cau_hinh_cong_khai") or {})
+        bi_mat = doc_bi_mat(id_)
+        cau_hinh: dict = {}
+        can_ghi_cong_khai = False
+        bi_mat_moi = dict(bi_mat)
+
+        for t in truong:
+            k, kieu = t["khoa"], t["kieu"]
+            co_cong_khai = k in cong_khai
+            gia_tri = cong_khai.get(k)
+            if kieu in KIEU_BI_MAT:
+                if k in bi_mat:
+                    cau_hinh[k] = bi_mat[k]
+                    dang_che_dung = ([che(x) for x in bi_mat[k]]
+                                     if isinstance(bi_mat[k], list) else che(bi_mat[k]))
+                    if gia_tri != dang_che_dung:
+                        cong_khai[k] = dang_che_dung
+                        can_ghi_cong_khai = True
+                elif co_cong_khai and not _co_dang_che(gia_tri):
+                    # Thường -> bí mật: ghi bí mật trước khi thay công khai bằng dạng che.
+                    bi_mat_moi[k] = gia_tri
+                    cau_hinh[k] = gia_tri
+                    cong_khai[k] = [che(x) for x in gia_tri] if isinstance(gia_tri, list) else che(gia_tri)
+                    can_ghi_cong_khai = True
+            elif k in bi_mat:
+                # Bí mật -> thường: vẫn giữ ở kho bí mật và ở dạng che trong tệp công khai.
+                cau_hinh[k] = bi_mat[k]
+                if not co_cong_khai or not _la_dang_che(gia_tri):
+                    cong_khai[k] = che(bi_mat[k])
+                    can_ghi_cong_khai = True
+            elif co_cong_khai:
+                cau_hinh[k] = gia_tri
+
+        if bi_mat_moi != bi_mat:
+            ghi_bi_mat(id_, bi_mat_moi)
+        if can_ghi_cong_khai:
+            muc_moi["cau_hinh_cong_khai"] = cong_khai
+            ds = [muc_moi if isinstance(m, dict) and m.get("id") == id_ else m for m in ds]
+            _ghi_json(_p_modules(), {"modules": ds})
+        return cau_hinh
 
 
 def xoa_cai_dat(id_: str) -> bool:

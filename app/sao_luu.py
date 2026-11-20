@@ -652,6 +652,7 @@ async def _lap_ke_hoach(du_lieu: bytes, mat_khau: str | None, so: Any, ng: Any,
 def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str) -> dict[str, Any]:
     goc = kho.thu_muc_du_lieu()
     ghi: dict[str, Any] = dict(sach)
+    tep_bi_mat_ban_sao = {rel for rel in sach if rel.startswith("bi_mat/")}
     bo: list[str] = []
     giu_lai: list[dict] = []
     tu_choi: list[dict] = []
@@ -659,7 +660,7 @@ def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str)
 
     def bi_mat_cu_o_lai(id_: str) -> bool:
         """Khoá của id này đang trên máy và bản sao lưu KHÔNG mang khoá thay thế → khoá cũ sẽ đi tiếp."""
-        return (goc / "bi_mat" / f"{id_}.json").is_file() and f"bi_mat/{id_}.json" not in sach
+        return (goc / "bi_mat" / f"{id_}.json").is_file() and f"bi_mat/{id_}.json" not in tep_bi_mat_ban_sao
 
     # nguon_git.json — nguồn MÃ chạy trong lõi.
     if "nguon_git.json" in sach:
@@ -726,13 +727,51 @@ def _doi_chieu(manifest: dict, sach: dict[str, Any], so: Any, ng: Any, sha: str)
         for m in sach["modules.json"]["modules"]:
             km = catalog.get(m["id"])
             if km is not None:
+                cong_khai = m["cau_hinh_cong_khai"]
+                khoa_bi_mat = {t["khoa"] for t in km.truong_cau_hinh if t["kieu"] in kho.KIEU_BI_MAT}
+                duong_bi_mat = f"bi_mat/{m['id']}.json"
+                co_bi_mat_ban_sao = duong_bi_mat in sach
+                bi_mat_luu = sach.get(duong_bi_mat, {}) if co_bi_mat_ban_sao else kho.doc_bi_mat(m["id"])
+                if not isinstance(bi_mat_luu, dict):
+                    raise _sai(f"Bản sao lưu không hợp lệ ({duong_bi_mat}: phải là đối tượng).")
+                bi_mat_luu = dict(bi_mat_luu)
+                for k in khoa_bi_mat:
+                    if k in cong_khai and not kho._co_dang_che(cong_khai[k]):
+                        bi_mat_luu[k] = cong_khai[k]
+                        cong_khai[k] = ([kho.che(x) for x in cong_khai[k]]
+                                        if isinstance(cong_khai[k], list) else kho.che(cong_khai[k]))
+                    elif k in cong_khai and isinstance(cong_khai[k], list):
+                        cong_khai[k] = [kho.che(x) for x in cong_khai[k]]
+                if bi_mat_luu:
+                    sach[duong_bi_mat] = bi_mat_luu
+                    ghi[duong_bi_mat] = bi_mat_luu
                 try:
-                    kho.kiem_cau_hinh_cong_khai(km.truong_cau_hinh, m["cau_hinh_cong_khai"])
+                    kho.kiem_cau_hinh_cong_khai(km.truong_cau_hinh, cong_khai)
                 except ValueError as e:
                     raise _sai(f"Bản sao lưu không hợp lệ (modules.json: {m['id']}: {e}).") from None
-                bi_mat_k = {t["khoa"] for t in km.truong_cau_hinh if t["kieu"] in kho.KIEU_BI_MAT}
+                bi_mat_k = khoa_bi_mat
             else:
-                bi_mat_k = set()  # không biết manifest → so MỌI trường (dạng che cũng là dấu khoá đi cùng)
+                # Chưa có manifest thì không thể biết trường nào là thường. Cất cấu hình chuỗi
+                # vào kho riêng và che công khai; khi module xuất hiện, doc_cau_hinh sẽ lấy
+                # lại theo các trường mà manifest khai báo.
+                cong_khai = m["cau_hinh_cong_khai"]
+                duong_bi_mat = f"bi_mat/{m['id']}.json"
+                co_bi_mat_ban_sao = duong_bi_mat in sach
+                bi_mat_luu = dict(sach.get(duong_bi_mat, {}) if co_bi_mat_ban_sao else kho.doc_bi_mat(m["id"]))
+                for k, v in cong_khai.items():
+                    if isinstance(v, str) and not kho._co_dang_che(v):
+                        bi_mat_luu[k] = v
+                        cong_khai[k] = kho.che(v)
+                    elif isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+                        if any(kho._co_dang_che(x) for x in v):
+                            cong_khai[k] = [kho.che(x) for x in v]
+                        else:
+                            bi_mat_luu[k] = list(v)
+                            cong_khai[k] = [kho.che(x) for x in v]
+                if bi_mat_luu:
+                    sach[duong_bi_mat] = bi_mat_luu
+                    ghi[duong_bi_mat] = bi_mat_luu
+                bi_mat_k = set()
             c = cu.get(m["id"])
             ck_cu = (c or {}).get("cau_hinh_cong_khai") or {}
             ck_moi = m["cau_hinh_cong_khai"]
