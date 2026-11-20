@@ -19,3 +19,6 @@ h11==0.16.0
 cryptography==50.0.2
 # Đối chiếu bắt tay Noise của module muse với một cài đặt độc lập (test bỏ qua nếu thiếu)
 noiseprotocol==0.3.1
+# test/test_web2api_dang_nhap_tu_dong.py nạp mã dịch vụ dich-vu/may-dang-nhap (src/settings.py dùng pydantic-settings);
+# cùng bản dịch vụ đang ghim ở requirements-nen.in (thuần Python, đã đọc mã 19/10/2026). Thiếu gói này CI dừng ở bước thu thập test.
+pydantic-settings==2.15.0
