@@ -152,6 +152,11 @@ class BoQuet(ast.NodeVisitor):
             self._mien_trong_chuoi(node.value)
         self.generic_visit(node)
 
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        # Khoá của mẫu ánh xạ dùng để so khớp dữ liệu, kể cả khi tên khoá là URL.
+        for mau in node.patterns:
+            self.visit(mau)
+
     def visit_Call(self, node: ast.Call) -> None:
         ten = self._day_du(node.func)
         goc = self._goc(ten)

@@ -697,6 +697,7 @@ class Module:
         if self._khoa_lam_moi.locked() or self._luong_dang_chay.is_set():
             return
 
+        qua_han = False
         async with self._khoa_lam_moi:
             now_mono = self._dong_ho_mono()
             can_nhanh = (self._lan_doc_nhanh == 0.0) or (now_mono - self._lan_doc_nhanh >= self._chu_ky_nhanh_giay)
@@ -734,7 +735,9 @@ class Module:
             try:
                 await asyncio.wait_for(asyncio.shield(fut), timeout=2.5)
             except asyncio.TimeoutError:
-                log.warning("mikrotik-routeros: làm mới quá 2.5s, dùng dữ liệu đệm")
+                qua_han = True
+        if qua_han:
+            log.warning("mikrotik-routeros: làm mới quá 2.5s, dùng dữ liệu đệm")
 
     # ── Tạo thực thể và trạng thái ──
 

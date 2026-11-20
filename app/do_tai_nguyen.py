@@ -238,6 +238,7 @@ def doc_chi_phi_nap() -> dict[str, float]:
 
 def ghi_chi_phi_nap(id_: str, mb: float) -> None:
     """Lưu chi phí nạp của một module (trạng thái công khai, KHÔNG bí mật). Lỗi ghi chỉ log."""
+    loi = None
     with _KHOA_TRANG_THAI:
         try:
             d = _doc_trang_thai()
@@ -248,7 +249,9 @@ def ghi_chi_phi_nap(id_: str, mb: float) -> None:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(d, ensure_ascii=False))
         except OSError as e:
-            log.warning("Không ghi được chi phí nạp của %s: %s", id_, e)
+            loi = e
+    if loi is not None:
+        log.warning("Không ghi được chi phí nạp của %s: %s", id_, loi)
 
 
 # ───────────────────────── một lần đo đầy đủ ─────────────────────────

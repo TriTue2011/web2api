@@ -91,6 +91,20 @@ def test_goi_mang_mien_chua_khai(tmp_path):
     assert "la.example" in kq.stdout
 
 
+def test_khoa_url_trong_mau_du_lieu_khong_phai_dich_mang(tmp_path):
+    noi = dung_module_mau(tmp_path / "claim-url", MANIFEST_TOT, {
+        "module.py": (
+            'def doc_claim(payload):\n'
+            '    match payload:\n'
+            '        case {"https://claim.example/profile": email}:\n'
+            '            return email\n'
+        ),
+    })
+    kq = chay(noi, "--json")
+    assert kq.returncode == 0, kq.stdout + kq.stderr
+    assert json.loads(kq.stdout)["mien"] == []
+
+
 def test_goi_la_khong_khai(tmp_path):
     noi = dung_module_mau(tmp_path / "goi-la", MANIFEST_TOT, {
         "client.py": "import goi_la_xyz\n\ngoi_la_xyz.goi()\n",

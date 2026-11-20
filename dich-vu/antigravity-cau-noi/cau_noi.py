@@ -395,18 +395,20 @@ class TaiKhoan:
             kq = await _chay([agy_bin, "-p", "/usage", "--output-format", "json", "--print-timeout", "30s",
                               "--sandbox"], self.home, 45)
             if kq.ma_thoat != 0:
-                log.warning("%s: không đọc được /usage khi kiểm tra phiên (mã thoát %s)", self.nhan, kq.ma_thoat)
-                return False
-            j = _json_cua(kq.stdout)
-            van_ban = j.get("response") if j is not None else kq.stdout.decode("utf-8", "replace")
-            han_muc = phan_tich_usage(van_ban if isinstance(van_ban, str) else "")
-            if not han_muc:
-                log.warning("%s: /usage không có dòng hạn mức nào đúng cấu trúc khi kiểm tra", self.nhan)
-                return False
-            self.han_muc = han_muc
-            self.han_muc_luc = time.time()
-            self.email = _doc_email(self.home)
-            return True
+                canh_bao = ("%s: không đọc được /usage khi kiểm tra phiên (mã thoát %s)", self.nhan, kq.ma_thoat)
+            else:
+                j = _json_cua(kq.stdout)
+                van_ban = j.get("response") if j is not None else kq.stdout.decode("utf-8", "replace")
+                han_muc = phan_tich_usage(van_ban if isinstance(van_ban, str) else "")
+                if not han_muc:
+                    canh_bao = ("%s: /usage không có dòng hạn mức nào đúng cấu trúc khi kiểm tra", self.nhan)
+                else:
+                    self.han_muc = han_muc
+                    self.han_muc_luc = time.time()
+                    self.email = _doc_email(self.home)
+                    return True
+        log.warning(*canh_bao)
+        return False
 
     def thong_tin_che(self) -> dict:
         """Thông tin tài khoản đã che cho /tai-khoan — không đường HOME, không token."""

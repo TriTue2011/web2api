@@ -25,6 +25,7 @@ QT = {"Authorization": f"Bearer {KHOA_QT}"}
 @pytest.fixture
 def nhat_ky_sach(tmp_path, monkeypatch):
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
+    monkeypatch.setenv("WEB2API_ADMIN_KEY", KHOA_QT)
     monkeypatch.setenv("WEB2API_NHAT_KY_CHUOI_BAM", "1")
     nhat_ky._CHUOI.clear()
     nhat_ky._DEM.clear()

@@ -38,6 +38,7 @@ def _nap():
         manifest, loi = doc_manifest(THU_MUC_MODULE)
         assert loi is None, loi
         assert kiem_manifest(manifest) is None
+        pytest.importorskip("paho", reason="module MQTT khai báo phụ thuộc tuỳ chọn paho")
         lop, ten_goi = nap_ma(THU_MUC_MODULE, manifest, "test")
         _lop_module = lop
         import importlib

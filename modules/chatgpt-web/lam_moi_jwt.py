@@ -36,9 +36,6 @@ TRAN_THU_NGAY_MAC_DINH = 5
 NGHI_LUY_THUA_CO_SO_GIAY = 300.0
 NGHI_LUY_THUA_TRAN_GIAY = 6 * 3600.0
 
-_CLAIM_HO_SO = "https://api.openai.com/profile"
-
-
 # ---------------------------------------------------------------------------
 # Giải mã JWT (không xác thực chữ ký — chỉ đọc claim exp/email của token mà
 # chính chủ máy đã dán vào; không gọi mạng).
@@ -89,14 +86,12 @@ def exp_cua(token: str) -> int | None:
 
 
 def email_cua(token: str) -> str:
-    """Email trong claim `https://api.openai.com/profile`; không có → ""."""
+    """Email trong claim hồ sơ hoặc claim cấp ngoài; không có → ""."""
     payload = giai_ma_payload(token)
     if payload is None:
         return ""
-    ho_so = payload.get(_CLAIM_HO_SO)
-    if isinstance(ho_so, dict):
-        email = ho_so.get("email")
-        if isinstance(email, str):
+    match payload:
+        case {"https://api.openai.com/profile": {"email": str(email)}}:
             return email.strip()
     email = payload.get("email")
     return email.strip() if isinstance(email, str) else ""

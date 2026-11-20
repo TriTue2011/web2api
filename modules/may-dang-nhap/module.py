@@ -236,10 +236,8 @@ def _email_tu_jwt(token: str) -> str:
         tai_lieu = json.loads(base64.urlsafe_b64decode(phan[1] + dem))
         if not isinstance(tai_lieu, dict):
             return ""
-        ho_so = tai_lieu.get("https://api.openai.com/profile")
-        if isinstance(ho_so, dict):
-            email = ho_so.get("email")
-            if isinstance(email, str) and email.strip():
+        match tai_lieu:
+            case {"https://api.openai.com/profile": {"email": str(email)}} if email.strip():
                 return email.strip()
         email = tai_lieu.get("email")
         return email.strip() if isinstance(email, str) else ""

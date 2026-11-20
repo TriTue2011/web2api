@@ -1255,6 +1255,7 @@ class Module:
         token_moi = str(token_moi or "")
         if not token_moi:
             return {"ok": False, "ma_loi": "token_moi_rong"}
+        loi = None
         with self._khoa:
             ds_khoa = [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
             if khoa_cu not in ds_khoa:
@@ -1290,18 +1291,20 @@ class Module:
                     {"tai_khoan": {"giu": giu, "them": [token_moi]}})
                 kho_loi.luu_cai_dat(MODULE_ID, truong, ghep)
             except Exception as e:
-                log.warning("lam-moi-jwt: lưu cấu hình sau thay token lỗi: %s",
-                            type(e).__name__)
-                return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
-            # Cập nhật bộ nhớ (giữ email/gói/hồ sơ đã làm giàu).
-            ds_khoa = [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
-            if khoa_cu not in ds_khoa:  # ai đó đã thay trong lúc mình lưu
-                return {"ok": False, "ma_loi": "token_da_doi"}
-            tk = self._tai_khoan[ds_khoa.index(khoa_cu)]
-            tk.token = token_moi
-            tk.client = None
-            tk.khoe = True
-            tk.loai_loi = None
+                loi = type(e).__name__
+            else:
+                # Cập nhật bộ nhớ (giữ email/gói/hồ sơ đã làm giàu).
+                ds_khoa = [self._khoa_tu_token(tk.token) for tk in self._tai_khoan]
+                if khoa_cu not in ds_khoa:  # ai đó đã thay trong lúc mình lưu
+                    return {"ok": False, "ma_loi": "token_da_doi"}
+                tk = self._tai_khoan[ds_khoa.index(khoa_cu)]
+                tk.token = token_moi
+                tk.client = None
+                tk.khoe = True
+                tk.loai_loi = None
+        if loi is not None:
+            log.warning("lam-moi-jwt: lưu cấu hình sau thay token lỗi: %s", loi)
+            return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
         self._luu_ban_ghi_tai_khoan()
         return {"ok": True, "khoa_moi": self._khoa_tu_token(token_moi)}
 
@@ -1350,6 +1353,7 @@ class Module:
         """Thêm MỘT token mới vào cấu hình bền (giữ nguyên các token đang có) rồi vào bộ nhớ.
         Cùng đường đọc-ghép-lưu với ``_thay_token_jwt``; không log token."""
         from app import kho as kho_loi
+        loi = None
         with self._khoa:
             try:
                 truong = self._truong_cau_hinh_jwt()
@@ -1367,10 +1371,13 @@ class Module:
                     {"tai_khoan": {"giu": list(range(len(cu))), "them": [token]}})
                 kho_loi.luu_cai_dat(MODULE_ID, truong, ghep)
             except Exception as e:
-                log.warning("chatgpt-web: lưu cấu hình khi thêm khoá lỗi: %s", type(e).__name__)
-                return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
-            if not any(t.token == token for t in self._tai_khoan):
-                self._tai_khoan.append(_TaiKhoan(token))
+                loi = type(e).__name__
+            else:
+                if not any(t.token == token for t in self._tai_khoan):
+                    self._tai_khoan.append(_TaiKhoan(token))
+        if loi is not None:
+            log.warning("chatgpt-web: lưu cấu hình khi thêm khoá lỗi: %s", loi)
+            return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
         self._xoa_khoi_go_bo(self._khoa_tu_token(token))
         return {"ok": True}
 

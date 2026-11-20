@@ -5107,6 +5107,7 @@ Xác minh mã 2FA dùng ngân sách lỗi chung, tách khỏi bộ đếm đăng
 | `WEB2API_KENH_VAO_BAO_NGUOI_LA` | `1` | Bật/tắt gửi tin cảnh báo khi có người lạ nhắn tin tới bot (mặc định bật = `1`, gửi 1 lần tới đích báo của sổ thiết bị) |
 | `WEB2API_MAY_RAM_MB` | không | Tổng RAM của máy (MB) do người vận hành khai |
 | `WEB2API_MAY_CPU` | không | Số nhân CPU của máy do người vận hành khai |
+| `WEB2API_DO_CHUAN` | không | Đặt `1` để bật `tracemalloc` từ lúc khởi động, dùng làm chuẩn chẩn đoán phép đo tài nguyên; mặc định tắt. Đọc lúc khởi động |
 | `TZ` | không | Biến chuẩn của hệ điều hành: múi giờ của nhà, tên IANA (vd `Asia/Ho_Chi_Minh`). Studio báo giờ hiện tại cho model theo múi giờ này (trường `mui_gio` của `GET /api/tinh-nang`), không theo trình duyệt; chưa đặt hoặc sai → `null`, Studio dùng múi giờ trình duyệt, nhật ký có một cảnh báo |
 | `WEB2API_TEP_TOI_DA_MB` | `25` | Trần tổng thân `multipart/form-data` (MB, mọi tệp + trường) cho các đường `/v1` nhận tệp; vượt là `413` |
 | `WEB2API_THAN_TOI_DA_MB` | `25` | Trần thân JSON (MB) cho mọi đường nhận thân JSON: các đường `/v1` (chat, tạo ảnh, đọc giọng nói, video…) và các đường `POST`/`PUT` của `/api/*` (cấu hình module, module từ xa, nguồn git); vượt là `413`. Đọc mỗi lượt (đổi không cần khởi động lại); đếm byte thật, không tin `Content-Length` |
@@ -5122,6 +5123,7 @@ Xác minh mã 2FA dùng ngân sách lỗi chung, tách khỏi bộ đếm đăng
 | `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` | `16` | Trần số lượt yêu cầu đăng nhập đang chờ và đang băm scrypt đồng thời; vượt trần trả `429` kèm `Retry-After` ngay lập tức để bỏ tải |
 | `WEB2API_SCRYPT_HANG_CHO_TOI_DA` | `16` | Bí danh của `WEB2API_DANG_NHAP_HANG_CHO_TOI_DA` cấu hình trần hàng chờ băm mật khẩu scrypt |
 | `WEB2API_DANG_NHAP_GIAN_CACH_GIAY` | `30` | Giãn cách (giây) giữa hai lần đăng nhập tự động liên tiếp trong lượt đăng nhập hàng loạt (`app/tai_khoan_hang_loat.py`); số thực, kẹp trong `[0, 3600]`, sai → `30`. Đọc mỗi lượt chạy (đổi không cần khởi động lại) |
+| `WEB2API_DANG_NHAP_HONG_LIEN_TIEP_DUNG` | `2` | Số tài khoản hỏng liên tiếp thì dừng cả lượt đăng nhập hàng loạt; giá trị không dương hoặc sai → `2`. Đọc mỗi lần so ngưỡng trong lượt chạy |
 | `WEB2API_TU_LAM_MOI_BAT` | `1` | Tự khôi phục/làm mới phiên nhiều tầng nối vào đường chạy (NV91-P2): `1` = bật, `0` = tắt (đường API thủ công `/api/tai-khoan/khoi-phuc` vẫn chạy). Đọc mỗi lần gọi |
 | `WEB2API_TU_LAM_MOI_KHOANG_GIAY` | `1800` | Chu kỳ (giây) vòng làm mới phiên định kỳ nền; tối thiểu `60` để không thành vòng lặp bận. Đọc mỗi vòng |
 | `WEB2API_TU_LAM_MOI_NGHI_GIAY` | `300` | Thời gian nghỉ (giây) giữa hai lượt tự khôi phục của cùng một tài khoản. Đọc mỗi lần kích hoạt |
@@ -5160,6 +5162,11 @@ Xác minh mã 2FA dùng ngân sách lỗi chung, tách khỏi bộ đếm đăng
 | `WEB2API_COMBO_NGHI_GIAY` | `60` | Giây cầu chì mở trước khi cho MỘT lượt thăm dò (nửa mở); cũng là thời gian hạ bậc bước bị phân xử 400 |
 | `WEB2API_COMBO_DINH_GIAY` | `900` | Giây giữ dính tài khoản (cùng hội thoại → cùng bước); `0` tắt dính |
 | `WEB2API_COMBO_TOI_DA_GIAY` | `300` | Trần thời gian TỔNG của một lượt gọi combo qua các bước tới byte đầu; vượt → `504 combo_timeout` |
+| `WEB2API_COMBO_THU_LAI_NHANH_GIAY` | `10.0` | Khoảng thời gian tối đa (giây) để coi lỗi kết nối là rớt nhanh và thử lại đúng một lần; giá trị âm bị kẹp về `0`. Đọc tại mỗi quyết định thử lại |
+| `WEB2API_JWT_LAM_MOI_BAT` | `1` | Bật vòng nền làm mới JWT; nhận `1/true/yes/on` là bật và `0/false/no/off` là tắt, giá trị lạ dùng mặc định. Đọc mỗi vòng |
+| `WEB2API_JWT_LAM_MOI_KHOANG_GIAY` | `21600.0` | Chu kỳ vòng nền làm mới JWT (giây), tối thiểu `300`; giá trị sai hoặc NaN dùng `21600.0`. Đọc mỗi vòng |
+| `WEB2API_THU_CHAT_TRAN_GIAY` | `60` | Trần thời gian (giây) một lượt thử chat; giá trị không phải số dương hữu hạn dùng `60`. Đọc khi bắt đầu mỗi lượt thử |
+| `WEB2API_THU_CHAT_GIAN_CACH_GIAY` | `5` | Giãn tối thiểu (giây) giữa hai lượt thử chat của cùng module; giá trị âm hoặc không hữu hạn dùng `5`. Đọc khi bắt đầu mỗi lượt thử |
 | `WEB2API_GIT_REPO` | không | Kho git chứa module (`chủ/kho`), dùng khi chưa đặt qua API |
 | `WEB2API_GIT_NHANH` | `main` | Nhánh git |
 | `WEB2API_GIT_THU_MUC` | `modules` | Thư mục module trong kho |

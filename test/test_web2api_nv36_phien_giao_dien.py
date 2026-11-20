@@ -44,11 +44,20 @@ def _gieo():
     phien.luu("mod-nv36", "tk-hai", {"token": BI_MAT_GIA + "-2"}, het_han="2000-01-01T00:00:00+00:00")
 
 
-def _cho_san_sang(trang):
+def _cho_san_sang(trang, *, rong=False):
+    # san-sang có trước didMount; tóm tắt có thể hiện khi GET /api/phien còn đang chờ.
+    da_tai = (
+        "document.getElementById('trang-thai-rong')"
+        " && !document.getElementById('nut-tai-lai').disabled"
+        " && !document.querySelector('.bao-loi[role=alert]')"
+        if rong
+        else "document.querySelector('[data-mo-nhom=\"mod-nv36\"]')"
+    )
     trang.cho(
         "(document.querySelector('x-dc')||{getAttribute(){}}).getAttribute('data-dc') === 'san-sang'"
-        " && document.getElementById('tom-tat-phien')",
-        mo_ta="trang phiên dựng xong",
+        " && document.getElementById('tom-tat-phien')"
+        f" && ({da_tai})",
+        mo_ta="danh sách phiên tải xong",
     )
 
 
@@ -105,7 +114,7 @@ def test_ui_phien_rong_giai_thich(trang, tmp_path, monkeypatch):
     with loi_that(tmp_path, monkeypatch) as w:
         dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Phien.dc.html")
-        _cho_san_sang(trang)
+        _cho_san_sang(trang, rong=True)
         txt = trang.js("document.getElementById('trang-thai-rong').textContent")
         assert "cần đăng nhập" in txt
         # Không nút vô nghĩa khi rỗng
@@ -120,7 +129,6 @@ def test_ui_phien_mobile_khong_cuon_ngang(trang, tmp_path, monkeypatch):
         trang.khung(390, 844, dien_thoai=True)
         trang.di(f"{w.url}/He-thong-Phien.dc.html")
         _cho_san_sang(trang)
-        trang.cho("!!document.querySelector('[data-mo-nhom=\"mod-nv36\"]')", mo_ta="nút mở nhóm")
         trang.bam("document.querySelector('[data-mo-nhom=\"mod-nv36\"]')", mo_ta="mở nhóm")
         trang.cho("document.querySelectorAll('[data-phien]').length === 2")
         assert trang.js("document.documentElement.scrollWidth <= window.innerWidth")

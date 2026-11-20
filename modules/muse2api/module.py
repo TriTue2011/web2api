@@ -811,6 +811,7 @@ class Module:
         cookie_moi = str(cookie_moi or "").strip()
         if not cookie_moi:
             return {"ok": False, "ma_loi": "cookie_moi_rong"}
+        loi = None
         with self._khoa_thay_cookie:
             acc = self._tim_acc(khoa_cu)
             if acc is None or acc.cookies == cookie_moi:
@@ -844,24 +845,26 @@ class Module:
                     {"cookies": {"giu": giu, "them": [cookie_moi]}})
                 kho_loi.luu_cai_dat(MODULE_ID, truong, ghep)
             except Exception as e:
-                log.warning("muse2api: lưu cấu hình sau thay cookie lỗi: %s",
-                            type(e).__name__)
-                return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
-            # Cập nhật bộ nhớ (tìm lại: ai đó có thể đã thay trong lúc lưu).
-            acc = self._tim_acc(khoa_cu)
-            if acc is None:
-                return {"ok": False, "ma_loi": "cookie_da_doi"}
-            sess_cu = _hatch_sess_tu_cookie(cookie_cu)
-            sess_moi = _hatch_sess_tu_cookie(cookie_moi)
-            acc.cookies = cookie_moi
-            acc.bo()  # Gateway cũ giữ cookie cũ — bỏ để dựng lại
-            acc.khoe = True
-            if sess_cu and sess_moi and sess_cu != sess_moi:
-                for tk in self._tai_khoan_nv93:
-                    if tk.hatch_sess == sess_cu:
-                        tk.hatch_sess = sess_moi
-                        tk.trang_thai = "hoat_dong"
-                self._luu_ban_ghi_nv93()
+                loi = type(e).__name__
+            else:
+                # Cập nhật bộ nhớ (tìm lại: ai đó có thể đã thay trong lúc lưu).
+                acc = self._tim_acc(khoa_cu)
+                if acc is None:
+                    return {"ok": False, "ma_loi": "cookie_da_doi"}
+                sess_cu = _hatch_sess_tu_cookie(cookie_cu)
+                sess_moi = _hatch_sess_tu_cookie(cookie_moi)
+                acc.cookies = cookie_moi
+                acc.bo()  # Gateway cũ giữ cookie cũ — bỏ để dựng lại
+                acc.khoe = True
+                if sess_cu and sess_moi and sess_cu != sess_moi:
+                    for tk in self._tai_khoan_nv93:
+                        if tk.hatch_sess == sess_cu:
+                            tk.hatch_sess = sess_moi
+                            tk.trang_thai = "hoat_dong"
+                    self._luu_ban_ghi_nv93()
+        if loi is not None:
+            log.warning("muse2api: lưu cấu hình sau thay cookie lỗi: %s", loi)
+            return {"ok": False, "ma_loi": "loi_luu_cau_hinh"}
         return {"ok": True, "khoa_moi": self._khoa_tu_cookies(cookie_moi)}
 
     # -- sổ trạng thái làm mới cookie (kho riêng, KHÔNG bí mật) -----------

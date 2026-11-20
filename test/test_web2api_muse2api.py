@@ -723,24 +723,19 @@ GOC = Path(__file__).resolve().parents[1]
 
 
 class TestGoiThieu:
-    def test_moi_manifest_goi_thieu_rong(self):
-        """Mọi modules/*/manifest.json phải có yeu_cau_goi đã cài đủ."""
+    def test_moi_manifest_doc_duoc_khong_can_cai_goi(self):
+        """Đọc manifest không đòi cài gói riêng của từng module vào ảnh lõi.
+
+        doc_manifest kiểm schema; nap_ma mới từ chối module thiếu gói (test NV48).
+        """
         thu_muc_modules = GOC / "modules"
         if not thu_muc_modules.is_dir():
             pytest.skip("không có thư mục modules/")
-        co_manifest = False
-        for p in sorted(thu_muc_modules.iterdir()):
-            if not p.is_dir() or p.name.startswith((".", "_")):
-                continue
+        ung_vien = kham_pha.quet(thu_muc_modules)
+        assert ung_vien, "không tìm thấy thư mục module trong modules/"
+        for p in ung_vien:
             manifest, loi = kham_pha.doc_manifest(p)
-            if manifest is None:
-                continue
-            co_manifest = True
-            thieu = kham_pha.goi_thieu(manifest)
-            assert thieu == [], (
-                f"modules/{p.name}/manifest.json: gói thiếu {thieu} "
-                f"(yeu_cau_goi = {manifest.get('yeu_cau_goi')})")
-        assert co_manifest, "không tìm thấy manifest.json nào trong modules/"
+            assert manifest is not None and loi is None, f"{p.name}: {loi}"
 
     def test_nap_ma_muse2api(self):
         """nap_ma nạp được module muse2api."""
