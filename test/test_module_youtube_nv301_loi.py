@@ -14,7 +14,7 @@ Kiểm (đối chiếu hợp đồng dịch vụ cũ trong dich-vu/youtube-phat)
 - pause giữ phiên (paused), play tiếp tục; stop rồi thì next/play
   theo id → 404 (dừng là dừng hẳn, không hồi sinh); sessions trong
   status loại phiên đã dừng (nhưng _phien vẫn giữ bản ghi cho tab).
-- seek nhận cả `giay` lẫn `position`, kẹp theo thời lượng, seek_url None
+- seek nhận cả `giay` lẫn `position`, kẹp theo thời lượng, seek_url None ở cuối
   (không bịa URL — rơ-le vé không có sidx); sai → 400
   invalid_seek_position.
 - search trả cả `results` (NV277) lẫn `items` (dịch vụ cũ) với
@@ -207,18 +207,18 @@ def test_pause_resume_stop_khong_hoi_sinh(tmp_path):
 
 
 def test_seek_giay_position_kep_va_loi(tmp_path, monkeypatch):
-    # NV304c: seek_url không còn None — vé lười ký kèm ?t=<giây đã kẹp>.
+    # NV304d: chỉ ký vé khi sau vị trí tua vẫn còn byte để phát.
     monkeypatch.setenv("WEB2API_DATA", str(tmp_path))
     _, m = _mod(tmp_path)
     _phien_moi(m)
     ma, _, nd = asyncio.run(m.tich_hop("integration/seek", "POST", {},
                                        {"giay": 300}))
     assert ma == 200 and nd["position"] == 213  # kẹp theo thời lượng
-    assert nd["seek_url"] and "/api/stream/" in nd["seek_url"]
-    assert "?t=213" in nd["seek_url"]
+    assert nd["seek_url"] is None
     ma, _, nd = asyncio.run(m.tich_hop("integration/seek", "POST", {},
                                        {"position": 10}))
     assert ma == 200 and nd["position"] == 10
+    assert "/api/stream/" in nd["seek_url"] and "?t=10" in nd["seek_url"]
     ma, _, nd = asyncio.run(m.tich_hop("integration/seek", "POST", {},
                                        {"giay": -1}))
     assert ma == 400 and nd["error"] == "invalid_seek_position"

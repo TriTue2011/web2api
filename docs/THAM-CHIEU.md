@@ -83,7 +83,7 @@ sửa lõi, không dựng lại ảnh, không khởi động lại.
 | Module `tien-ich-doi-song` (Tiện ích đời sống, chuẩn C2 `thiet_bi`, NV165) | Có — bản tin tóm tắt theo nguồn/mốc giờ (chống trùng, mỗi mốc 1 lần/ngày), chỉ đường và tra địa điểm qua Nominatim/OpenStreetMap + OSRM (không khoá; đường cào Google không chính thức của c2a KHÔNG port), vùng khoảng cách tự học từ dữ liệu thu thập (chưa học đủ thì luôn báo có mặt), kiểm tra/chia lô dấu câu lời thoại; địa chỉ không vào log, tắt được gọi mạng (`bat_tim_duong`); kiểm với dịch vụ GIẢ; **chưa kiểm Nominatim/OSRM thật**; KHÔNG port lớp gửi Zalo/Telegram và `trong_xe` (phụ thuộc camera) | 20/10/2026 |
 | Module `tro-ly-giao-vien` (Trợ lý giáo viên, đợt 1 — chuẩn C2 `thiet_bi`) | Có — port thuần từ c2a: ra đề + chấm heuristic (không gọi mô hình), rubric theo môn/lớp, gợi ý bậc thang không đập đáp án, giáo án 6 pha, tiếng Anh theo cấp CEFR, xác định lớp từ năm sinh (chỉ dùng một lần, không lưu hồ sơ), mục lục từ markdown SGK (dữ liệu không tin); kho đề 0600 ghi nguyên tử cách ly theo danh tính (không IDOR), bài làm học sinh không log, trần 100 đề/danh tính; kiểm với dịch vụ giả. **Đợt 2 (20/10/2026):** chấm tự luận bằng model của lõi qua loopback (barem giáo viên tự khai, điểm model là ĐỀ XUẤT cho giáo viên xác nhận; bài làm rào như dữ liệu không tin trong prompt, điểm tổng tự cộng từ barem; kết quả chấm 0600 theo danh tính, không chứa bài làm) — kiểm với model GIẢ trên test | 20/10/2026 |
 | Module `tro-ly` (Trợ lý — dựng prompt theo ngân sách + chọn công cụ theo tầng, NV136) | Có — mảnh prompt theo tầng/ưu tiên/ngân sách (vượt trần bỏ nguyên mảnh, chống trùng, tiền tố ổn định byte-by-byte), prompt nền ≤ 400 token; chọn công cụ nhiều tín hiệu thuần Python + cổng biên (`mo_ho` khi điểm thấp/biên hẹp/đối nghịch/chồng chéo), danh mục chỉ qua `tim_cong_cu`; X-quang chỉ-thêm có lọc bí mật + phân quyền hồ sơ; sổ lỗi tối đa 3 dòng liên quan; **chưa đo trên nhật ký thật, chưa có vòng lặp gọi mô hình (NV135)** | 18/10/2026 |
-| Module `youtube` (Máy phát YouTube/Zing chạy thẳng trong web2api, NV277) + khả năng lõi `/m/<id>/api/...` | Có — đường integration `/m/youtube/api/integration/*` (Bearer bằng khoá tích hợp riêng của module: thiếu → 401, khoá module khác → 403) + đường luồng mở bằng vé ký `app/url_ky` hạn 3600 giây (giả/hết hạn → 404 trống); cả hai nhóm đường chỉ nhận nguồn LAN (giới hạn đã biết: không chặn được qua hầm cloudflared — cần luật ingress); rơ-le nối lại tối đa 5 lần từ đúng byte, dừng là dừng hẳn (phiên chỉ RAM); tìm/giải YouTube bằng yt-dlp, tìm Zing qua endpoint gợi ý công khai; giải luồng Zing/Facebook chưa chuyển (502 rõ); kiểm với nguồn giả cục bộ; **CHƯA kiểm với YouTube/loa/HA thật, chưa đo RSS/kích thước ảnh** (không có docker ở môi trường làm việc) | 02/11/2026 |
+| Module `youtube` (Máy phát YouTube/Zing chạy thẳng trong web2api, NV277) + khả năng lõi `/m/<id>/api/...` | Có — đường integration `/m/youtube/api/integration/*` (Bearer bằng khoá khách phạm vi module, thiếu → 401, khoá sai phạm vi → 403) + đường luồng mở bằng vé ký `app/url_ky` hạn 3600 giây; rơ-le nối lại tối đa 5 lần từ đúng byte, dừng là dừng hẳn; YouTube/Facebook giải bằng yt-dlp; Zing có tìm kiếm, nhập playlist và giải luồng qua API web có ký; kiểm bằng nguồn giả cục bộ; **chưa kiểm YouTube/Facebook/Zing, loa hay HA thật; chưa đo RSS/kích thước ảnh** | 02/11/2026 |
 | Module `lich-ics` (Đọc lịch ICS, chỉ đọc — chuẩn C2 `thiet_bi`) | Có — đọc nhiều lịch qua link ICS bí mật (Google/Outlook/Nextcloud), công cụ `lich_ics.lich` rủi ro `doc` (sự kiện sắp tới + kiểm tra lịch, gắn `nguon_ngoai`); tôn trọng TZID/DST, RRULE có trần 500 mốc, trần tệp 2 MiB/5000 sự kiện; URL bí mật không vào log (bộ lọc mẫu NV116), tải qua kiểm SSRF của lõi kể cả chuyển hướng; kiểm với máy chủ ICS giả; **chưa kiểm với lịch thật** | 20/10/2026 |
 | Module `chitieu` (Sổ chi tiêu theo hũ JARS, NV160) | Có — ghi/xem chi tiêu theo kỳ, tự bù hũ vượt theo thứ tự, cổng xác nhận khi vượt tổng ngân sách, cảnh báo ngưỡng, tạm ứng công ty; mỗi danh tính đăng nhập một sổ riêng; port từ c2a; **chưa kiểm với dữ liệu thật** | 20/10/2026 |
 | Module `rclone` (Cầu nối lưu trữ đám mây qua rclone) + dịch vụ `dich-vu/rclone` | Có — liệt kê/đọc/tải về (`liet_ke`, `doc_chu`, `tai_ve`, rủi ro `doc`, mặc định) và tải lên/xoá/chuyển tệp (`gui_len`, `chuyen_tep` rủi ro `ghi`; `xoa` rủi ro `nguy_hiem`) — hành động GHI mặc định TẮT (bật bằng `ghi_bat`), tắt thì báo `chua_bat_ghi` và không gọi mạng; cấu hình rclone ở dịch vụ (0600, API chỉ trả bản đã che), khoá Bearer dịch vụ ≥ 24 ký tự; dịch vụ HTTP nội bộ gọi rclone v1.75.2 trong hộp cát (tập lệnh đóng 16 op, đường cục bộ `resolve()` dưới thư mục làm việc, không bao giờ qua shell, hết giờ 30/600 s, tải lên/xuống ≤ 25 MB, tên tệp hệ thống sinh); địa chỉ dịch vụ kiểm SSRF; kiểm với nhị phân rclone giả + kiểm tĩnh Dockerfile; **chưa kiểm với dịch vụ đám mây thật** (chưa dựng ảnh Docker thật) | 20/10/2026 |
@@ -3460,7 +3460,7 @@ và `luong(ve, khoang, phuong_thuc) -> (mã, headers, nội dung)`.
   nhiều → 429. Thân POST tối đa 400_000 byte; JSON hỏng → 400.
 - Đường luồng MỞ `/m/<id>/api/stream/<vé>` (GET/HEAD, loa không gửi
   được header): xác thực bằng vé ký có hạn, DÙNG LẠI `app/url_ky.py`
-  của lõi (HMAC phủ GET + đường dẫn + hạn, mặc định 3600 giây — KHÔNG
+   của lõi (HMAC phủ GET + đường dẫn + query chuẩn hoá + hạn, mặc định 3600 giây — KHÔNG
   mang cơ chế HMAC riêng của dịch vụ cũ vào lõi). Vé giả/hết hạn →
   404 TRỐNG, không nêu lý do. HEAD dùng cùng vé GET, chỉ trả header.
   `stream_url` trả cho HA là URL TUYỆT ĐỐI (`<origin>/m/<id>/api/stream/…`,
@@ -3480,13 +3480,36 @@ và `luong(ve, khoang, phuong_thuc) -> (mã, headers, nội dung)`.
   địa chỉ LAN trực tiếp.
 
 **Đường integration của module youtube** (hợp đồng dịch vụ cũ, gốc
-`/api/integration/*` nay nằm dưới `/m/youtube/api/`): `GET health`,
-`GET search` (source youtube/zing/facebook; limit 1–30), `GET status`,
-`GET history`, `POST stop` (thân rỗng = dừng tất cả), `POST session`,
+`/api/integration/*` nay nằm dưới `/m/youtube/api/`): `GET health`
+(`capabilities` có `play`; `sources`: `youtube`, `zing`, `facebook`;
+`playback_sources` có thêm `http`), `GET search`, `GET status`,
+`GET history` (mỗi mục có `id` bằng `target`), `POST stop`, `POST session`
+(`item.artist` lấy từ `channel` nếu chưa có),
 `GET/POST playlists` (action list/create/rename/delete/add/remove/
 move/export/import; mã chia sẻ `TTPL1.`), `POST session/outputs`,
-`POST stream` (trả `stream_url` ký + `expires_in: 3600`), `POST play`,
+`POST stream` (trả `stream_url` ký, `expires_in: 3600` và `media_content_type`
+lấy từ nguồn đã giải, mặc định `audio/mpeg`; nguồn `http` trả `audio/mpeg`),
+`POST play` (có thể chỉ gửi `target` là link YouTube),
 `POST next/prev/seek`. Mọi phản hồi JSON kèm `Cache-Control: no-store`.
+
+- **Lỗi và giới hạn.** `search` nhận `limit` từ 1 đến 30 (mặc định 20), `q` tối đa
+  120 ký tự cho từ khoá, 2048 nếu có `://`; sai `q` hoặc `limit` → 400 `invalid_search_query`.
+  Facebook chỉ tra bằng link. Mục tiêu sai → 400 `invalid_youtube_target`,
+  `invalid_zing_target`, `invalid_facebook_target` hoặc `invalid_http_audio_target`;
+  nguồn không hỗ trợ → 400 `unsupported_session_source` hoặc `unsupported_stream_source`.
+  Danh sách đầu ra hoặc âm lượng sai → 400 `invalid_output_entity_ids` hoặc `invalid_volume_level`.
+- **Tua.** `POST seek` nhận `giay` hoặc `position` (giây hữu hạn, không âm;
+  sai → 400 `invalid_seek_position`). Tại hoặc quá thời lượng, vị trí được kẹp
+  tới cuối và `seek_url` là `null`. Trước cuối bài, module trả `seek_url` với
+  `t` nằm trong query đã ký (sửa/bỏ `t` → 404 trống). Vị trí nằm trong vé RAM;
+  link nguồn chỉ được giải khi mở vé. `Range` của khách được ưu tiên; nếu không
+  có, byte bắt đầu xấp xỉ `round(t / thời_lượng × tổng_byte)` (chưa dùng `sidx`).
+  Module có chữ ký `luong(ve, khoang, phuong_thuc, tua_giay=None)`;
+  lõi vẫn gọi ba đối số, dùng nguyên cơ chế ký và định tuyến sẵn có.
+- Nếu `POST stream` đang giải nguồn và đồng thời có lệnh dừng, việc cấp vé bị
+  hủy và trả 409 `stream_stopped`; không tạo vé mới sau stop.
+- **Dừng.** Thân rỗng dừng tất cả. Nếu chỉ gửi `expected_revision`, so với phiên
+  hiện tại còn sống; lệch revision trả 200 với `stopped: false`.
 
 **«Dừng là dừng hẳn» (giữ nguyên luật dịch vụ cũ).** Phiên chỉ ở RAM
 (không ghi đĩa); `dung()`/stop xoá phiên + vé luồng, đặt cờ dừng;
@@ -3495,7 +3518,8 @@ lên nguồn, không tự phát lại sau restart. Rơ-le: nguồn đứt giữa
 thì nối lại tối đa 5 lần (chờ 0,5/1/2/2/2 giây) từ ĐÚNG byte đã gửi;
 403/404/410 thì quên link cũ, giải lại rồi mới tính lần thử; kiểm
 `Content-Range` (phải cùng tổng cỡ, bắt đầu đúng offset — sai thì tính
-1 lần thất bại, không gửi byte nào); hết lần thì NGẮT (không lấp rác,
+1 lần thất bại, không gửi byte nào). Rơ-le không tự theo chuyển hướng;
+đóng phản hồi `3xx` và tính một lần thất bại. Hết lần thì NGẮT (không lấp rác,
 không chuyển bài — chuyển bài là việc của HA). Trần: tối đa 2 lần
 trích xuất/tìm kiếm cùng lúc (quá 30 giây chờ → 502 `busy`); bộ nhớ
 đệm vé luồng tối đa 256 mục.
@@ -3505,9 +3529,9 @@ qua yt-dlp (format chỉ-âm-thanh tốt nhất, rồi format tốt nhất có �
 thanh), nạp lười — thiếu gói → 502 rõ. Zing: tìm qua endpoint gợi ý
 công khai (giống dịch vụ cũ: chỉ nhận entry type=1, status=1,
 privacy=1, playStatus=2, link `https://...zingmp3.vn/bai-hat/...`),
-trần phản hồi 1 MiB. Giải luồng Zing/Facebook CHƯA chuyển (dịch vụ cũ
-dùng luồng lấy khoá web riêng từng nguồn, chưa kiểm chứng lại) →
-502 rõ, không bịa link, không chuyển nguồn khác. Mọi URL do khách đưa
+trần phản hồi 1 MiB. Bộ giải luồng Zing chưa chuyển → 502 `resolve_source_unavailable`.
+Facebook giải luồng qua yt-dlp, chỉ nhận luồng từ `fbcdn.net`; chưa thử với
+Facebook thật. Mọi URL do khách đưa
 (mục tiêu http) qua `app/tu_xa.kiem_url_lan` (bộ kiểm SSRF chung, không
 viết bộ kiểm thứ hai). KHÔNG có logic vượt/né/giải chống bot: nguồn
 đòi đăng nhập/xác minh → lỗi rõ 502.
@@ -3532,10 +3556,7 @@ dựng; chưa đo kích thước ảnh/RSS ở môi trường làm việc vì kh
 docker). Hạng: `B`.
 
 **Giới hạn.**
-- **CHƯA thử với YouTube thật, loa thật, HA thật** (môi trường làm
-  việc không có Internet ra ngoài, không có docker); test dùng nguồn
-  giả cục bộ (conftest chặn Internet).
-- Giải luồng Zing/Facebook chưa chuyển (502 rõ).
+- **Chưa thử với YouTube/Facebook, loa hay Home Assistant thật**; kiểm thử dùng nguồn giả cục bộ.
 - Chưa đo RSS khi 2 trích xuất cùng lúc, chưa đo kích thước ảnh tăng
   bao nhiêu MB — chủ kho đo khi dựng ảnh thật rồi quyết có tăng
   `mem_limit` 1g / `pids_limit` 100 không.

@@ -53,6 +53,12 @@ YOUTUBE_URL_HOSTS = {
 }
 ZING_SEARCH_URL = "https://ac.zingmp3.vn/v1/web/ac-suggestions"
 SEARCH_RESPONSE_LIMIT = 1_048_576
+_KIEU_AM_THANH = {
+    "mp4": "audio/mp4", "m4a": "audio/mp4", "webm": "audio/webm",
+    "mp3": "audio/mpeg", "ogg": "audio/ogg", "oga": "audio/ogg",
+    "opus": "audio/ogg", "aac": "audio/aac", "flac": "audio/flac",
+    "wav": "audio/wav",
+}
 
 
 class TrichXuatUnavailable(Exception):
@@ -66,9 +72,9 @@ def _validated_query_and_limit(query, limit, *, max_length=500):
     try:
         limit = int(limit)
     except (TypeError, ValueError) as error:
-        raise ValueError("invalid_search_limit") from error
+        raise ValueError("invalid_search_query") from error
     if not 1 <= limit <= 30:
-        raise ValueError("invalid_search_limit")
+        raise ValueError("invalid_search_query")
     return query, limit
 
 
@@ -306,14 +312,21 @@ def resolve_youtube_audio(video_id):
                                 download=False)
     if not isinstance(info, dict):
         raise TrichXuatUnavailable("resolve_failed")
+    chosen = info
     url = info.get("url")
     if not url:
         for fmt in info.get("formats") or []:
             if isinstance(fmt, dict) and fmt.get("url") and fmt.get("acodec") != "none":
+                chosen = fmt
                 url = fmt["url"]
                 break
     if not url:
         raise TrichXuatUnavailable("resolve_failed")
+    # NV304d: khôi phục kiểm host của dịch vụ cũ (YOUTUBE_STREAM_HOSTS)
+    # — bị đánh rơi khi viết lại resolve này ở NV301 (Facebook/Zing
+    # vẫn còn lọc host, YouTube thì không).
+    if not _host_la_cho_phep(url, YOUTUBE_STREAM_HOSTS):
+        raise TrichXuatUnavailable("youtube_host_rejected")
     thumbnails = info.get("thumbnails") or []
     thumbnail = next(
         (str(c.get("url")) for c in reversed(thumbnails)
@@ -322,8 +335,10 @@ def resolve_youtube_audio(video_id):
     )
     if not thumbnail:
         thumbnail = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+    ext = str(chosen.get("ext") or urlsplit(url).path.rsplit(".", 1)[-1]).lower()
     return {
         "url": url,
+        "content_type": _KIEU_AM_THANH.get(ext, "audio/mpeg"),
         "title": str(info.get("title") or ""),
         "duration": info.get("duration"),
         "source": "youtube",
@@ -365,6 +380,7 @@ ZING_HOME_LIMIT = 1_048_576
 ZING_BUNDLE_LIMIT = 8_388_608
 ZING_KEYS_TTL = 3600
 FACEBOOK_STREAM_HOSTS = ("fbcdn.net",)
+YOUTUBE_STREAM_HOSTS = ("googlevideo.com",)
 FACEBOOK_ID = re.compile(r"^[0-9]{5,25}$")
 
 
@@ -601,7 +617,7 @@ def resolve_facebook_audio(video_id):
         by_id = {str(f.get("format_id")): f for f in formats if f.get("url")}
         chosen = by_id.get("sd") or by_id.get("hd")
         if chosen is None and info.get("url"):
-            chosen = {"url": info["url"]}
+            chosen = info
     if not chosen or not chosen.get("url"):
         raise TrichXuatUnavailable("resolve_failed")
     if not _host_la_cho_phep(chosen["url"], FACEBOOK_STREAM_HOSTS):
@@ -609,8 +625,8 @@ def resolve_facebook_audio(video_id):
     headers = chosen.get("http_headers") or info.get("http_headers")
     if not isinstance(headers, dict):
         headers = {"User-Agent": ZING_USER_AGENT}
-    extension = str(chosen.get("ext") or "").lower()
-    content_type = (ZING_CONTENT_TYPES.get(extension, "audio/mp4")
+    extension = str(chosen.get("ext") or urlsplit(chosen["url"]).path.rsplit(".", 1)[-1]).lower()
+    content_type = (_KIEU_AM_THANH.get(extension, "audio/mp4")
                     if audio_only else "video/mp4")
     return {"url": chosen["url"], "title": str(info.get("title") or ""),
             "duration": info.get("duration"), "source": "facebook",

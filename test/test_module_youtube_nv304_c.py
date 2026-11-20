@@ -331,11 +331,11 @@ def test_seek_tra_seek_url_va_re_le_tua_theo_giay(tmp_path, monkeypatch):
 
     async def mo_nguon(url, headers):
         da_nhan.update(headers)
-        # Trả Content-Range khớp đúng Range được hỏi, thân cắt ở cuối tệp.
+        # NV304d yêu cầu probe 0-0 được trả đúng một byte.
         khoang = headers.get("Range", "bytes=0-")
-        dau = int(khoang.split("=")[1].split("-")[0])
-        return BanGia({"content-range": f"bytes {dau}-999/1000"},
-                      khoi=b"y" * (1000 - dau))
+        dau, cuoi = map(int, khoang.removeprefix("bytes=").split("-"))
+        return BanGia({"content-range": f"bytes {dau}-{cuoi}/1000"},
+                      khoi=b"y" * (cuoi - dau + 1))
     m.mo_nguon = mo_nguon
     ma, headers, noi_dung = asyncio.run(m.luong(ve, None, "GET", "30"))
     assert ma == 206, (ma, headers)
