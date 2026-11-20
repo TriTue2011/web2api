@@ -248,16 +248,29 @@
     || ('máy chủ trả HTTP ' + ma);
   function taoLoi(tin, ma, code) { const e = new Error(tin); e.ma = ma; e.code = code || null; return e; }
 
-  // Step-up: máy chủ đòi xác nhận lại (403 step_up_required) → hỏi mật khẩu trong hộp thoại (type=password, chỉ textContent),
-  // gửi api/toi/xac-nhan-lai rồi thử lại đúng MỘT lần. Trả null nếu người dùng bỏ qua.
-  function hoiMatKhauXacNhanLai() {
+  // Step-up: máy chủ đòi xác nhận lại (403 step_up_required) → hỏi bằng chứng trong hộp thoại
+  // (chỉ textContent), gửi api/toi/xac-nhan-lai rồi thử lại đúng MỘT lần. Trả null nếu người dùng bỏ qua.
+  // NV305-bao-mat (a): người hiện tại đã bật 2FA (napToi trả bat_2fa) thì hỏi MÃ 2FA thay cho
+  // mật khẩu — máy chủ từ chối mật khẩu khi đã bật 2FA, nên hỏi mật khẩu ở đây chỉ tổ thêm một
+  // lần thất bại. Mã khôi phục 2FA cũng được chấp nhận ở ô này (16 ký tự, không chỉ 6 số).
+  function hoiBangChungXacNhanLai() {
+    const dung2fa = nguoiDungHienTai?.bat_2fa === true;
     return new Promise((xong) => {
       const hop = document.createElement('dialog');
+      hop.setAttribute('aria-labelledby', 'step-up-hoi-bang-chung');
       hop.style.cssText = 'max-width:min(92vw,360px);padding:16px;border-radius:12px;border:1px solid #8884';
       const td = document.createElement('p');
-      td.textContent = 'Thao tác nguy hiểm cần xác nhận lại. Nhập mật khẩu của bạn để tiếp tục.';
+      td.id = 'step-up-hoi-bang-chung';
+      td.textContent = dung2fa
+        ? 'Thao tác nguy hiểm cần xác nhận lại. Nhập mã 2FA (6 số, hoặc một mã khôi phục) để tiếp tục.'
+        : 'Thao tác nguy hiểm cần xác nhận lại. Nhập mật khẩu của bạn để tiếp tục.';
       const o = document.createElement('input');
-      o.type = 'password'; o.autocomplete = 'current-password'; o.setAttribute('aria-label', 'Mật khẩu');
+      o.setAttribute('aria-describedby', td.id);
+      if (dung2fa) {
+        o.type = 'text'; o.autocomplete = 'one-time-code'; o.setAttribute('aria-label', 'Mã 2FA');
+      } else {
+        o.type = 'password'; o.autocomplete = 'current-password'; o.setAttribute('aria-label', 'Mật khẩu');
+      }
       o.style.cssText = 'width:100%;box-sizing:border-box;min-height:44px;margin:8px 0';
       const hang = document.createElement('div');
       hang.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
@@ -265,9 +278,13 @@
       const dong = document.createElement('button'); dong.type = 'button'; dong.textContent = 'Xác nhận'; dong.style.minHeight = '44px';
       let kq = null;
       huy.onclick = () => hop.close();
-      dong.onclick = () => { kq = o.value || null; hop.close(); };
+      dong.onclick = () => {
+        const v = dung2fa ? o.value.trim() : o.value;
+        kq = v ? (dung2fa ? { ma_2fa: v } : { mat_khau: v }) : null;
+        hop.close();
+      };
       o.onkeydown = (ev) => { if (ev.key === 'Enter') dong.onclick(); };
-      hop.onclose = () => { hop.remove(); xong(kq); };
+      hop.onclose = () => { o.value = ''; hop.remove(); xong(kq); };
       hang.append(huy, dong); hop.append(td, o, hang);
       document.body.appendChild(hop);
       hop.showModal(); o.focus();
@@ -328,12 +345,13 @@
       } catch (_) {}
     }
 
-    // Step-up: hỏi mật khẩu, xác nhận lại rồi thử lại MỘT lần (sai mật khẩu → báo đúng lỗi của máy chủ)
+    // Step-up: hỏi bằng chứng, xác nhận lại rồi thử lại MỘT lần (sai bằng chứng → báo đúng lỗi của máy chủ)
     if (r.status === 403 && code === 'step_up_required' && !tc._daThuLaiStepUp && typeof document !== 'undefined') {
       tc._daThuLaiStepUp = true;
-      const mk = await hoiMatKhauXacNhanLai();
-      if (mk) {
-        await goi('api/toi/xac-nhan-lai', { method: 'POST', json: { mat_khau: mk } });
+      // 2FA có thể đã đổi sau lần tải hồ sơ gần nhất, kể cả từ tab khác.
+      const chung = await napToi() ? await hoiBangChungXacNhanLai() : null;
+      if (chung) {
+        await goi('api/toi/xac-nhan-lai', { method: 'POST', json: chung });
         return await goi(duong, tc);
       }
     }

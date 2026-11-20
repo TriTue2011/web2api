@@ -17,25 +17,23 @@ mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 chmod 0700 /khoa /data 2>/dev/null || true
 
 # noVNC/websockify/x11vnc mặc định KHÔNG chạy.
-# Chỉ khi CAPTCHA_SOLVER_BAT_NOVNC=1 mới chạy supervisord-novnc.conf.
-# Giao thức RFB chỉ dùng 8 ký tự đầu nên sinh đúng 8 ký tự ngẫu nhiên A-Za-z0-9 (~47 bit), không in ra stdout.
-# NV305: tệp mật khẩu ĐÃ CÓ thì GIỮ NGUYÊN — mật khẩu chủ máy đặt qua giao diện (đường PUT /v1/novnc/mat-khau)
-# không bị ghi đè mỗi lần khởi động lại container. Biến CAPTCHA_SOLVER_MAT_KHAU_VNC chỉ dùng làm mật khẩu
-# BAN ĐẦU khi chưa có tệp nào (đường tạm trước NV305); muốn đổi mật khẩu thì đặt qua giao diện, không đổi biến.
-if [ "$CAPTCHA_SOLVER_BAT_NOVNC" = "1" ] || [ "$CAPTCHA_SOLVER_BAT_NOVNC" = "true" ]; then
-    if [ ! -f /khoa/mat-khau-vnc ]; then
-        if [ -n "$CAPTCHA_SOLVER_MAT_KHAU_VNC" ]; then
-            umask 077
-            printf '%s' "$CAPTCHA_SOLVER_MAT_KHAU_VNC" | head -c 8 > /khoa/mat-khau-vnc
-            chmod 0600 /khoa/mat-khau-vnc
-        else
-            umask 077
-            tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 8 > /khoa/mat-khau-vnc
-            chmod 0600 /khoa/mat-khau-vnc
-        fi
-    fi
+# Cờ bền /khoa/novnc-bat thắng biến môi trường sau khi công tắc được dùng.
+# Khi chưa có cờ, CAPTCHA_SOLVER_BAT_NOVNC vẫn là mặc định tương thích.
+# Cờ hỏng/không đọc được phải giữ tắt, cùng quy tắc với bộ quản lý runtime.
+# Mật khẩu VNC CHỈ được đặt qua giao diện; entrypoint không đọc biến mật khẩu,
+# không sinh mật khẩu và không ghi đè tệp cũ. x11vnc đọc /khoa/mat-khau-vnc.
+CO_NOVNC="$(python3 -c '
+from pathlib import Path
+from src.novnc_bat_tat import doc_co
+co = doc_co(Path("/khoa"))
+print("" if co is None else "bat" if co else "tat")
+')" || CO_NOVNC="tat"
+if [ "$CO_NOVNC" = "bat" ]; then
+    exec /usr/bin/supervisord -c /etc/supervisor/supervisord-novnc.conf
+elif [ "$CO_NOVNC" = "tat" ]; then
+    exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+elif [ "$CAPTCHA_SOLVER_BAT_NOVNC" = "1" ] || [ "$CAPTCHA_SOLVER_BAT_NOVNC" = "true" ]; then
     exec /usr/bin/supervisord -c /etc/supervisor/supervisord-novnc.conf
 else
     exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
 fi
-

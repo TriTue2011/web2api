@@ -115,5 +115,8 @@ def test_giao_dien_co_duong_xac_nhan_lai_khong_dung_innerhtml():
     from pathlib import Path
     ma = (Path(__file__).resolve().parents[1] / "web" / "khung.js").read_text(encoding="utf-8")
     assert "step_up_required" in ma and "api/toi/xac-nhan-lai" in ma
-    ham = ma[ma.index("function hoiMatKhauXacNhanLai"):ma.index("async function goi(")]
+    ham = ma[ma.index("function hoiBangChungXacNhanLai"):ma.index("async function goi(")]
     assert "innerHTML" not in ham and "type = 'password'" in ham
+    # NV305-bao-mat: khi người hiện tại đã bật 2FA thì hỏi mã 2FA thay cho mật khẩu
+    # (máy chủ từ chối mật khẩu khi đã bật 2FA).
+    assert "ma_2fa" in ham and "bat_2fa" in ham

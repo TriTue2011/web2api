@@ -17,22 +17,54 @@ import _gia_goi  # noqa: F401  (dữ liệu tạm + mô-đun giả; xem _gia_goi
 
 GOC_DICH_VU = Path(__file__).resolve().parent
 BANG_BAM_PATH = GOC_DICH_VU / "nguon-c2a" / "BANG-BAM-GOC.txt"
+NGUON_C2A = "# NGUỒN: TriTue2011/chatgpt2api@d879b034fa21"
+NGUON_WEB2API_LOCAL = "# NGUỒN: web2api (mã nội bộ, không thuộc nguồn c2a)"
+
+
+def _doc_bang_bam() -> dict[str, str]:
+    bang_bam = {}
+    for line in BANG_BAM_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) == 2:
+            bang_bam[parts[1].strip()] = parts[0].strip()
+    return bang_bam
+
+
+def _dong_nguon(noi_dung_bytes: bytes) -> str:
+    lines = noi_dung_bytes.decode("utf-8", errors="replace").splitlines()
+    if lines and lines[0].startswith("#!"):
+        return lines[1] if len(lines) > 1 else ""
+    return lines[0] if lines else ""
+
+
+def kiem_nguon_tep(rel: str, noi_dung_bytes: bytes, bang_bam: dict[str, str]) -> list[str]:
+    """Phân provenance theo membership trong hash inventory, không theo nhãn tự khai.
+
+    Các đường đã ghi trong bảng phải giữ header c2a; chỉ đường không thuộc bảng
+    được phép dùng marker nội bộ web2api.
+    """
+    dong = _dong_nguon(noi_dung_bytes)
+    if rel in bang_bam:
+        duong_c2a = rel.removeprefix("src/")
+        if not (dong.startswith(NGUON_C2A) and f"captcha-solver/src/{duong_c2a}" in dong):
+            return [f"{rel}: tệp trong hash inventory phải giữ provenance header c2a gốc"]
+        return []
+    if dong != NGUON_WEB2API_LOCAL:
+        return [f"{rel}: tệp ngoài upstream hash inventory phải có marker nội bộ web2api chính xác"]
+    return []
 
 
 def test_dong_nguon_dau_tep():
-    """Mọi tệp .py trong src/ có dòng đầu bắt đầu bằng # NGUỒN: TriTue2011/chatgpt2api@ và chứa captcha-solver/src/."""
+    """Mọi tệp upstream có header c2a; tệp nội bộ có marker local chính xác."""
+    bang_bam = _doc_bang_bam()
     src_dir = GOC_DICH_VU / "src"
     loi = []
     for f in src_dir.rglob("*.py"):
-        lines = f.read_text(encoding="utf-8").splitlines()
-        if not lines:
-            loi.append(f"{f.name}: tệp rỗng")
-            continue
-        first_line = lines[0]
-        if first_line.startswith("#!") and len(lines) > 1:
-            first_line = lines[1]
-        if not (first_line.startswith("# NGUỒN: TriTue2011/chatgpt2api@") and "captcha-solver/src/" in first_line):
-            loi.append(f"{f.name}: dòng đầu không đúng chuẩn nguồn c2a ({first_line[:50]}...)")
+        rel = str(f.relative_to(GOC_DICH_VU))
+        loi.extend(kiem_nguon_tep(rel, f.read_bytes(), bang_bam))
     assert not loi, f"Có tệp thiếu dòng nguồn: {loi}"
 
 
@@ -101,19 +133,9 @@ def kiem_tep(rel: str, noi_dung_bytes: bytes, bang_bam: dict[str, str]) -> list[
 
 
 def test_bang_bam_goc_va_w2a():
-    """Đối chiếu bảng băm gốc: tệp không đổi phải khớp băm; tệp đổi phải có # W2A:."""
+    """Upstream bắt buộc nằm trong bảng/hash; local phải có marker và ngoài bảng."""
     assert BANG_BAM_PATH.is_file(), "Thiếu tệp BANG-BAM-GOC.txt"
-
-    lines = BANG_BAM_PATH.read_text(encoding="utf-8").splitlines()
-    bang_bam = {}
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split(maxsplit=1)
-        if len(parts) == 2:
-            bang_bam[parts[1].strip()] = parts[0].strip()
-
+    bang_bam = _doc_bang_bam()
     assert len(bang_bam) > 0, "Bảng băm gốc rỗng"
 
     tep_trong_src = set()
@@ -121,13 +143,16 @@ def test_bang_bam_goc_va_w2a():
         rel = str(f.relative_to(GOC_DICH_VU))
         tep_trong_src.add(rel)
 
-    # 1. Mọi tệp trong bảng còn tồn tại
+    # 1. Mọi tệp upstream trong bảng còn tồn tại.
     thieu = [t for t in bang_bam if t not in tep_trong_src]
     assert not thieu, f"Có tệp trong bảng băm bị xoá: {thieu}"
 
-    # 2. Không có tệp .py mới trong src ngoài bảng băm
-    moi = [t for t in tep_trong_src if t not in bang_bam]
-    assert not moi, f"Có tệp mới ngoài bảng băm: {moi}"
+    # 2. Mọi tệp phải phân loại được bằng membership trước: upstream có header
+    # c2a, còn bất kỳ tệp local nào phải mang marker chính xác và không vào bảng.
+    loi_nguon = []
+    for rel in tep_trong_src:
+        loi_nguon.extend(kiem_nguon_tep(rel, (GOC_DICH_VU / rel).read_bytes(), bang_bam))
+    assert not loi_nguon, f"Provenance không khớp inventory: {loi_nguon}"
 
     # 3. Kiểm tra sha256 và dấu vết # W2A: qua hàm kiem_tep
     sai_khong_w2a = []
@@ -192,6 +217,23 @@ def test_dot_bien_kiem_tep_w2a():
     than_doi = dong_nguon + b"\nprint('than moi khong co w2a')\n"
     loi_c = kiem_tep("src/vault.py", than_doi, bang_bam)
     assert len(loi_c) > 0, "Chỉ giữ dòng nguồn mà đổi thân không W2A phải trả lỗi"
+
+
+def test_dot_bien_kiem_nguon_phan_biet_upstream_va_local():
+    """Header local không thể đổi nhãn cho upstream; local không marker bị từ chối."""
+    bang_bam = {"src/vault.py": "hash-upstream"}
+    header_upstream = (
+        "# NGUỒN: TriTue2011/chatgpt2api@d879b034fa21 — "
+        "captcha-solver/src/vault.py\n"
+    ).encode()
+    assert not kiem_nguon_tep("src/vault.py", header_upstream, bang_bam)
+
+    doi_nhan = (NGUON_WEB2API_LOCAL + "\n" + "pass\n").encode()
+    assert kiem_nguon_tep("src/vault.py", doi_nhan, bang_bam)
+
+    local_dung = (NGUON_WEB2API_LOCAL + "\n" + "pass\n").encode()
+    assert not kiem_nguon_tep("src/new_local.py", local_dung, bang_bam)
+    assert kiem_nguon_tep("src/new_local.py", b"\"\"\"local file\"\"\"\n", bang_bam)
 
 
 def _lay_cac_tep_duoc_import(goc_src: Path) -> set[Path]:
@@ -284,7 +326,5 @@ def test_anh_chi_chua_tep_duoc_import():
         if p.resolve() not in tap_import and p.name != "__init__.py"
     ]
     assert not khong_thuoc_import, f"Mọi tệp src/**/*.py phải nằm trong tập import từ main.py, phát hiện tệp mồ côi: {khong_thuoc_import}"
-
-
 
 

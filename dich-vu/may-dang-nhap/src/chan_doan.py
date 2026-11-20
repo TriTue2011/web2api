@@ -1,3 +1,4 @@
+# NGUỒN: web2api (mã nội bộ, không thuộc nguồn c2a)
 """Nhật ký chẩn đoán đăng nhập (đề nghị xin quyền 04/11/2026, Q-D).
 
 Vòng đệm nhỏ TRONG BỘ NHỚ ghi các bước dịch vụ đã đi: điều hướng (tên miền + đường dẫn), bấm/điền kèm selector đã thử và kết quả.

@@ -42,7 +42,7 @@ def test_giao_dien_bao_mat_tao_va_quan_ly_khoa_1280(trang, tmp_path, monkeypatch
     """Máy tính 1280x800: Lưu khoá quản trị, tạo khoá khách, bật/tắt và thu hồi."""
     with loi_that(tmp_path, monkeypatch) as w:
         trang.khung(1280, 800)
-        dang_nhap_quan_tri(trang, w.url)
+        _, mat_khau = dang_nhap_quan_tri(trang, w.url)
         trang.di(f"{w.url}/He-thong-Bao-mat.dc.html?tab=nguoi-dung")
 
         # Đã đăng nhập quản trị: hiện form tạo khoá và danh sách
@@ -53,6 +53,12 @@ def test_giao_dien_bao_mat_tao_va_quan_ly_khoa_1280(trang, tmp_path, monkeypatch
         trang.go("#o-nhan-khoa", "Client Test UI")
         # Bấm chọn chip chat (nếu có) hoặc để tất cả
         trang.bam("document.getElementById('nut-tao-khoa')")
+
+        # NV305: chưa xác nhận lại thì chưa được tạo/trả khoá; thao tác qua hộp thoại thật.
+        trang.cho("document.querySelector('dialog[open] input[type=password]') !== null")
+        assert not trang.js("document.getElementById('the-thong-tin-khach') !== null")
+        trang.go("dialog[open] input", mat_khau)
+        trang.bam("document.querySelector('dialog[open] button:last-of-type')")
 
         # 4. Hiện thẻ thông tin gửi cho khách kèm khoá thô một lần
         assert trang.cho("document.getElementById('the-thong-tin-khach') !== null")

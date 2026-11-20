@@ -610,8 +610,9 @@ async def api_xem_trinh_duyet(module: str, request: Request):
 
 
 # ───────────── NV305: mật khẩu xem trình duyệt (VNC) do chủ máy tự đặt ─────────────
-# Ô đặt mật khẩu nằm trong «Bảo mật & người dùng». Lõi tìm module theo phương thức hỗ trợ VNC;
-# mật khẩu chỉ đi qua RAM của lời gọi, không bao giờ đi ra phản hồi/log/nhật ký.
+# Ô nằm trong «Bảo mật & người dùng» vì đây là bí mật do chủ máy đặt để mở màn hình xem của web2api.
+# Chỉ đường hiển thị sau xác thực lại trả mật khẩu;
+# các đường còn lại và log/nhật ký không chứa giá trị này.
 
 #: RFB chỉ dùng 8 ký tự đầu: 1–8 ký tự ASCII in được, không khoảng trắng, không dấu.
 MAU_MAT_KHAU_VNC = re.compile(r"[!-~]{1,8}")
@@ -633,15 +634,18 @@ def _kiem_gioi_han_mk_vnc(nguoi_goi: str) -> None:
         _GIOI_HAN_MK_VNC[nguoi_goi] = ds
 
 
-def _module_mat_khau_vnc(request: Request):
-    """Cùng một tập ứng viên cho đọc/ghi, kể cả module chỉ hỗ trợ một phương thức."""
-    cac = [m for m in _so(request).dang_chay.values()
-           if callable(getattr(m, "dat_mat_khau_vnc", None))
-           or callable(getattr(m, "trang_thai_mat_khau_vnc", None))]
+def _module_quan_ly_man_hinh(request: Request):
+    """Chung tập ứng viên cho cả năm route, kể cả module chỉ hỗ trợ một phương thức."""
+    phuong_thuc = (
+        "dat_mat_khau_vnc", "trang_thai_mat_khau_vnc", "hien_mat_khau_vnc",
+        "bat_tat_novnc", "trang_thai_novnc",
+    )
+    cac = [mod for mod in _so(request).dang_chay.values()
+           if any(callable(getattr(mod, ten, None)) for ten in phuong_thuc)]
     if not cac:
-        raise LoiOpenAI(404, "Chưa có module hỗ trợ mật khẩu xem trình duyệt")
+        raise LoiOpenAI(404, "Không có module đang chạy hỗ trợ quản lý màn hình xem")
     if len(cac) > 1:
-        raise LoiOpenAI(409, "Có nhiều module hỗ trợ mật khẩu xem trình duyệt; cần chỉ bật một module")
+        raise LoiOpenAI(409, "Có nhiều module hỗ trợ quản lý màn hình xem; chỉ được chạy một module")
     return cac[0]
 
 
@@ -673,7 +677,7 @@ async def api_dat_mat_khau_vnc(request: Request):
     if not isinstance(mk, str) or not MAU_MAT_KHAU_VNC.fullmatch(mk):
         raise LoiOpenAI(400, "Mật khẩu xem trình duyệt chỉ dùng 1–8 ký tự "
                              "(chữ, số, ký tự thường; không khoảng trắng, không dấu)")
-    mod = _module_mat_khau_vnc(request)
+    mod = _module_quan_ly_man_hinh(request)
     dat = getattr(mod, "dat_mat_khau_vnc", None)
     if not callable(dat):
         raise LoiOpenAI(501, "Module chưa hỗ trợ đặt mật khẩu xem trình duyệt")
@@ -693,9 +697,9 @@ async def api_dat_mat_khau_vnc(request: Request):
 @api_router.get("/mat-khau-vnc/trang-thai")
 async def api_trang_thai_mat_khau_vnc(request: Request):
     """NV305: đã từng đặt mật khẩu qua giao diện hay chưa. Chỉ quản trị, KHÔNG cần step-up vì chỉ trả
-    một bool, không có bí mật nào đi ra. Chưa đặt thì giao diện vẫn cho đặt, và màn hình xem vẫn dùng
-    mật khẩu ngẫu nhiên cũ của dịch vụ."""
-    mod = _module_mat_khau_vnc(request)
+    một bool, không có bí mật nào đi ra. Chưa đặt thì giao diện vẫn cho đặt; dịch vụ không sinh
+    mật khẩu ngẫu nhiên mới. Tệp cũ nếu còn trên đĩa được giữ tới khi ghi đè qua giao diện."""
+    mod = _module_quan_ly_man_hinh(request)
     lay = getattr(mod, "trang_thai_mat_khau_vnc", None)
     if not callable(lay):
         raise LoiOpenAI(501, "Module chưa hỗ trợ trạng thái mật khẩu xem trình duyệt")
@@ -707,6 +711,152 @@ async def api_trang_thai_mat_khau_vnc(request: Request):
     if not isinstance(kq, dict) or not kq.get("ok"):
         _loi_dich_vu_thanh_502(kq, "Dịch vụ không trả được trạng thái mật khẩu xem trình duyệt")
     return {"da_dat": bool(kq.get("da_dat"))}
+
+
+async def _xac_thuc_bang_chung_hien(request: Request, than: dict) -> None:
+    """NV305-bao-mat (b, chốt 19:26): bằng chứng TƯƠI cho một lần hiển thị bí mật.
+
+    Khác step-up ở hai điểm, có chủ đích:
+    - Không dùng cửa sổ step-up (cửa sổ có thể đã mở từ trước): bằng chứng phải nằm
+      trong CHÍNH lời gọi hiển thị này và được xác minh ngay lúc đó.
+    - Bắt buộc phiên web quản trị thật; Bearer không được hiển thị kể cả kèm bằng
+      chứng đúng trong body («chỉ hiện khi dùng mk admin hoặc 2fa»).
+    Quy tắc: chưa bật 2FA → mật khẩu admin; đã bật 2FA → CHỈ mã 2FA (mật khẩu bị từ
+    chối, không xác minh, không đếm sai đăng nhập). Kho 2FA hỏng → LoiKho2FA (503,
+    fail-closed, như đăng nhập).
+    """
+    from app import nguoi_dung as nguoi_dung_mod
+    from app import xac_thuc_2fa as xac_thuc_2fa_mod
+    phien = getattr(request.state, "phien_web", None)
+    nd = getattr(request.state, "nguoi_dung", None)
+    if not isinstance(phien, dict) or not phien.get("bam") or not isinstance(nd, dict) or not nd.get("id"):
+        raise LoiOpenAI(401, "Hiển thị bí mật cần phiên web và bằng chứng xác thực lại trong lời gọi.",
+                        code="unauthorized")
+    nd_id = str(nd["id"])
+    if xac_thuc_2fa_mod.da_bat_2fa(nd_id):
+        ma_2fa = than.get("ma_2fa")
+        if not isinstance(ma_2fa, str) or not ma_2fa:
+            raise LoiOpenAI(401, "Tài khoản đã bật 2FA: hiển thị bí mật cần mã 2FA.", code="can_ma_2fa")
+        # Cùng ngân sách 2FA với đổi mật khẩu/xác nhận lại trong app.tuyen:
+        # không cho đổi endpoint hay IP để tiếp tục dò mã sau khi bị khoá.
+        bo = gioi_han._bo_2fa()
+        ip_khach = gioi_han.lay_ip_an_toan(request)
+        pham_vi = f"2fa:{nd_id}"
+        bo.kiem_tra(ip_khach, pham_vi)
+        bo.kiem_tra(pham_vi)
+        if not xac_thuc_2fa_mod.xac_thuc_ma(nd_id, ma_2fa):
+            bo.ghi_loi(ip_khach, pham_vi)
+            bo.ghi_loi(pham_vi)
+            raise LoiOpenAI(401, "Mã xác thực hai bước không chính xác.", code="invalid_totp")
+        return
+    mat_khau = than.get("mat_khau")
+    if not isinstance(mat_khau, str) or not mat_khau:
+        raise LoiOpenAI(401, "Hiển thị bí mật cần nhập lại mật khẩu admin.", code="invalid_credentials")
+    ip_khach = gioi_han.lay_ip_an_toan(request)
+    ten = str(nd.get("ten_dang_nhap", ""))
+    try:
+        nguoi_dung_mod.kiem_tra_khoa_ten(ten, ip=ip_khach)
+    except LoiOpenAI:
+        await nguoi_dung_mod.chay_bam_gia()
+        raise LoiOpenAI(401, "Mật khẩu không chính xác.", code="invalid_credentials") from None
+    u = nguoi_dung_mod.tim_theo_id(nd_id)
+    hop_le = False
+    if u:
+        hop_le = await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, str(u.get("bam_mat_khau", "")))
+    if not hop_le:
+        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten, ip=ip_khach)
+        gioi_han.ghi_loi_xac_thuc(request)
+        raise LoiOpenAI(401, "Mật khẩu không chính xác.", code="invalid_credentials")
+    nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten, ip=ip_khach)
+
+
+@api_router.post("/mat-khau-vnc/hien")
+async def api_hien_mat_khau_vnc(request: Request):
+    """NV305-bao-mat (b): hiển thị lại mật khẩu VNC — THAY thiết kế never-return của NV305
+    (chốt 19:26, không ngoại lệ cho mật khẩu noVNC). Chỉ quản trị; bằng chứng tươi trong
+    body theo _xac_thuc_bang_chung_hien; giới hạn tần suất như đường đặt. Đây là phản hồi
+    DUY NHẤT trong lõi chứa mật khẩu VNC; nhật ký chỉ ghi sự kiện, không ghi giá trị."""
+    nguoi_goi = lay_nguoi_dung_id(request) or "quan_tri"
+    _kiem_gioi_han_mk_vnc(nguoi_goi)
+    try:
+        than = json.loads(await doc_het(request, THAN_JSON))
+    except (ValueError, RecursionError):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là JSON hợp lệ") from None
+    if not isinstance(than, dict):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
+    await _xac_thuc_bang_chung_hien(request, than)
+    mod = _module_quan_ly_man_hinh(request)
+    hien = getattr(mod, "hien_mat_khau_vnc", None)
+    if not callable(hien):
+        raise LoiOpenAI(501, "Module chưa hỗ trợ hiển thị mật khẩu xem trình duyệt")
+    try:
+        kq = await hien()
+    except Exception:
+        log.warning("Module quản lý màn hình lỗi khi hiển thị mật khẩu VNC")
+        raise LoiOpenAI(502, "Module lỗi khi hiển thị mật khẩu xem trình duyệt") from None
+    if not isinstance(kq, dict) or not kq.get("ok"):
+        _loi_dich_vu_thanh_502(kq, "Dịch vụ không trả được mật khẩu xem trình duyệt")
+    mat_khau = kq.get("mat_khau")
+    if not isinstance(mat_khau, str) or not mat_khau:
+        raise LoiOpenAI(502, "Dịch vụ không trả được mật khẩu xem trình duyệt")
+    nhat_ky.ghi("trinh_duyet", "thong_tin", "Hiển thị lại mật khẩu xem trình duyệt sau xác thực lại",
+                hanh_dong="hien_mat_khau_vnc", ket_qua="thanh_cong")
+    return JSONResponse({"ok": True, "mat_khau": mat_khau}, headers={"Cache-Control": "no-store"})
+
+
+@api_router.post("/man-hinh/bat-tat")
+async def api_bat_tat_novnc(request: Request):
+    """NV305-bao-mat (c): công tắc noVNC runtime. Chỉ quản trị, bắt buộc step-up (phiên web
+    phải xác nhận lại; Bearer quản trị được miễn như mọi đường chạm bí mật khác), giới hạn
+    tần suất như đường đặt mật khẩu. Chỉ bật/tắt khả năng xem: không đổi mật khẩu, không
+    đặt gì thêm vào container (mật khẩu vẫn chỉ tạo qua giao diện). «bat» phải là bool thật."""
+    kiem_tra_step_up(request)
+    nguoi_goi = lay_nguoi_dung_id(request) or "quan_tri"
+    _kiem_gioi_han_mk_vnc(nguoi_goi)
+    try:
+        than = json.loads(await doc_het(request, THAN_JSON))
+    except (ValueError, RecursionError):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là JSON hợp lệ") from None
+    if not isinstance(than, dict):
+        raise LoiOpenAI(400, "Thân yêu cầu phải là đối tượng JSON")
+    bat = than.get("bat")
+    if not isinstance(bat, bool):
+        raise LoiOpenAI(400, "Trường «bat» phải là true hoặc false (không nhận chuỗi hay số).")
+    mod = _module_quan_ly_man_hinh(request)
+    bat_tat = getattr(mod, "bat_tat_novnc", None)
+    if not callable(bat_tat):
+        raise LoiOpenAI(501, "Module chưa hỗ trợ bật/tắt màn hình xem")
+    try:
+        kq = await bat_tat(bat)
+    except Exception:
+        log.warning("Module quản lý màn hình lỗi khi bật/tắt noVNC")
+        raise LoiOpenAI(502, "Module lỗi khi bật/tắt màn hình xem") from None
+    if not isinstance(kq, dict) or not kq.get("ok"):
+        _loi_dich_vu_thanh_502(kq, "Dịch vụ không bật/tắt được màn hình xem")
+    nhat_ky.ghi("trinh_duyet", "thong_tin", f"{'Bật' if bat else 'Tắt'} màn hình xem noVNC",
+                hanh_dong="bat_tat_novnc", ket_qua="thanh_cong", bat=bool(bat))
+    return {"ok": True, "bat": bool(kq.get("bat", bat)), "dang_chay": bool(kq.get("dang_chay", False)),
+            "da_ap_dung": bool(kq.get("da_ap_dung", False))}
+
+
+@api_router.get("/man-hinh/trang-thai")
+async def api_trang_thai_novnc(request: Request):
+    """NV305-bao-mat (c): trạng thái công tắc + chương trình xem. Chỉ quản trị, KHÔNG cần
+    step-up vì chỉ trả bool (cờ bật, đang chạy, đã đặt mật khẩu), không có bí mật nào đi ra."""
+    mod = _module_quan_ly_man_hinh(request)
+    lay = getattr(mod, "trang_thai_novnc", None)
+    if not callable(lay):
+        raise LoiOpenAI(501, "Module chưa hỗ trợ trạng thái màn hình xem")
+    try:
+        kq = await lay()
+    except Exception:
+        log.warning("Module quản lý màn hình lỗi khi hỏi trạng thái noVNC")
+        raise LoiOpenAI(502, "Module lỗi khi hỏi trạng thái màn hình xem") from None
+    if not isinstance(kq, dict) or not kq.get("ok"):
+        _loi_dich_vu_thanh_502(kq, "Dịch vụ không trả được trạng thái màn hình xem")
+    return {"ok": True, "bat": bool(kq.get("bat", False)), "dang_chay": bool(kq.get("dang_chay", False)),
+            "x11vnc": bool(kq.get("x11vnc", False)), "websockify": bool(kq.get("websockify", False)),
+            "da_dat": bool(kq.get("da_dat", False))}
 
 
 @api_router.post("/{module}/{ho_so}/ve")

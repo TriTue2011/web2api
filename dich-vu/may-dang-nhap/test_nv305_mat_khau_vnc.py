@@ -41,7 +41,7 @@ class ChayGia:
 
 @pytest.mark.parametrize("mk", ["a", "Ab3!x9zQ", "12345678", "z"])
 def test_mat_khau_hop_le(mk):
-    assert kiem_mat_khau_vnc(mk) is None
+    assert kiem_mat_khau_vnc(mk) == ""
 
 
 @pytest.mark.parametrize("mk", ["", "123456789", "ab cd", "mậtkhẩu1", "ab\ncd", "ab\tcd", 123, None, "a b"])

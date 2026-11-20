@@ -789,7 +789,8 @@ async def dat_lai_mat_khau_nguoi_dung(id_: str) -> tuple[dict[str, Any], str]:
     return sach, mat_khau_moi
 
 
-async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str, ip: str | None = None) -> None:
+async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str, ip: str | None = None,
+                                  da_xac_thuc_2fa: bool = False) -> None:
     with _KHOA_LUONG:
         u = tim_theo_id(id_)
         if not u:
@@ -797,18 +798,22 @@ async def doi_mat_khau_chinh_minh(id_: str, mat_khau_cu: str, mat_khau_moi: str,
         ten = str(u.get("ten_dang_nhap", ""))
         bam_cu = str(u.get("bam_mat_khau", ""))
 
-    # Thử mật khẩu cũ đếm chung bộ khoá theo tên với đăng nhập: phiên bị trộm không dò được mật khẩu không giới hạn.
-    try:
-        kiem_tra_khoa_ten(ten, ip=ip)
-    except LoiOpenAI:
-        await chay_bam_gia()
-        raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password") from None
-    dung = await kiem_tra_mat_khau(mat_khau_cu, bam_cu)
-    if not dung:
-        ghi_nhan_dang_nhap_sai(ten, ip=ip)
-        raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password")
+    # NV305-bao-mat: đổi bằng mã 2FA thì bỏ qua xác minh mật khẩu cũ (mã đã được
+    # xác minh ở tầng endpoint trước khi gọi tới đây); chốt đổi đồng thời dưới đây
+    # vẫn giữ (bam_cu đọc ở trên so với lúc ghi).
+    if not da_xac_thuc_2fa:
+        # Thử mật khẩu cũ đếm chung bộ khoá theo tên với đăng nhập: phiên bị trộm không dò được mật khẩu không giới hạn.
+        try:
+            kiem_tra_khoa_ten(ten, ip=ip)
+        except LoiOpenAI:
+            await chay_bam_gia()
+            raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password") from None
+        dung = await kiem_tra_mat_khau(mat_khau_cu, bam_cu)
+        if not dung:
+            ghi_nhan_dang_nhap_sai(ten, ip=ip)
+            raise LoiOpenAI(401, "Mật khẩu cũ không chính xác.", code="incorrect_password")
 
-    ghi_nhan_dang_nhap_dung(ten, ip=ip)
+        ghi_nhan_dang_nhap_dung(ten, ip=ip)
 
     kiem_tra_chinh_sach_mat_khau(mat_khau_moi, ten)
     bam_moi = await bam_mat_khau(mat_khau_moi)

@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+# W2A: Q-D ghi kết quả thao tác chọn vào nhật ký chẩn đoán đã lọc.
 from . import chan_doan
 from .browser_pool import HoSoDangBan, pool
 from .auto_login import click_google_oauth_consent
@@ -1954,4 +1955,3 @@ async def _run_onboard_v2(session, password: str) -> None:
             logger.info("closed browser after chatgpt onboard profile=%s state=%s", session.profile, session.state)
         except Exception:
             logger.debug("close_profile after chatgpt onboard skipped", exc_info=True)
-

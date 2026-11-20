@@ -158,14 +158,28 @@ def kiem_entrypoint(ep: str) -> list[str]:
     loi = []
     if "/tmp/.X11-unix" not in ep or "1777" not in ep:
         loi.append("entrypoint.sh phải tạo /tmp/.X11-unix với quyền 1777")
-    if "head -c 8" not in ep or "A-Za-z0-9" not in ep:
-        loi.append("entrypoint.sh phải sinh mật khẩu VNC 8 ký tự từ bảng chữ-số (A-Za-z0-9) bằng head -c 8")
+    ma = "\n".join(line for line in ep.splitlines() if not line.lstrip().startswith("#"))
+    if "/dev/urandom" in ma or "CAPTCHA_SOLVER_MAT_KHAU_VNC" in ma:
+        loi.append("entrypoint.sh không được sinh mật khẩu VNC hoặc lấy mật khẩu từ biến môi trường")
+    if re.search(r">\s*[\"']?/khoa/mat-khau-vnc\b", ma):
+        loi.append("entrypoint.sh không được ghi mật khẩu VNC; chỉ đặt qua web")
     if "od -tx1" in ep:
         loi.append("entrypoint.sh không được dùng od -tx1 cho mật khẩu VNC")
     for line in ep.splitlines():
         strip = line.strip()
         if (strip.startswith("echo ") or strip.startswith("cat ")) and "mat-khau-vnc" in strip:
             loi.append("entrypoint.sh không được in mật khẩu VNC ra stdout")
+    # NV305-bao-mat (c): cờ bền /khoa/novnc-bat do công tắc web UI ghi phải thắng biến
+    # môi trường; chưa có cờ thì dùng biến môi trường như cũ. Cờ chỉ là «bat»/«tat»,
+    # không phải bí mật, nên đọc cờ không vi phạm quy tắc NV305-bo-sung ở trên.
+    dong = ep.splitlines()
+    co_bat = next((i for i, l in enumerate(dong) if 'CO_NOVNC" = "bat"' in l), None)
+    co_tat = next((i for i, l in enumerate(dong) if 'CO_NOVNC" = "tat"' in l), None)
+    env = next((i for i, l in enumerate(dong) if 'CAPTCHA_SOLVER_BAT_NOVNC" = "1"' in l), None)
+    if co_bat is None or co_tat is None:
+        loi.append("entrypoint.sh phải xét cờ bền /khoa/novnc-bat cả hai nhánh «bat»/«tat»")
+    elif env is None or co_bat > env:
+        loi.append("entrypoint.sh phải xét cờ bền trước biến môi trường CAPTCHA_SOLVER_BAT_NOVNC")
     return loi
 
 
@@ -306,6 +320,12 @@ def test_dot_bien_entrypoint():
     loi_od = kiem_entrypoint(ep_od)
     assert any("od -tx1" in err for err in loi_od), "Phải phát hiện dùng od -tx1"
 
+    ep_sinh = ep_goc + "\nhead -c 8 /dev/urandom > /khoa/mat-khau-vnc\n"
+    assert any("không được sinh" in err for err in kiem_entrypoint(ep_sinh))
+    ep_env = ep_goc + '\nprintf "%s" "$CAPTCHA_SOLVER_MAT_KHAU_VNC" > /khoa/mat-khau-vnc\n'
+    assert any("không được sinh" in err for err in kiem_entrypoint(ep_env))
+    assert any("không được ghi" in err for err in kiem_entrypoint(ep_env))
+
 
 def test_bien_the_du_goi_phu_thuoc_trong_in():
     """Quét AST các import của tập tệp src/ được dùng và kiểm tra đầy đủ gói trong requirements-*.in cho từng biến thể."""
@@ -385,7 +405,7 @@ def test_compose_tach_volume_khoa_va_du_lieu():
     """Kiểm tra:
     (a) Compose có đúng 2 volume tên riêng: web2api_may_dang_nhap_khoa và web2api_may_dang_nhap_du_lieu.
     (b) /data và /khoa là hai điểm gắn riêng biệt.
-    (c) Không tệp khoá nào (vault.key, khoa-dich-vu, mat-khau-vnc) trong entrypoint.sh và supervisord.conf trỏ vào /data.
+    (c) Entrypoint không thao tác tệp mật khẩu; supervisord không lưu bí mật trong /data.
     (d) Dockerfile tạo /khoa với quyền 0700 và khai báo VOLUME có /khoa.
     """
     comp = _doc_compose()
@@ -395,8 +415,9 @@ def test_compose_tach_volume_khoa_va_du_lieu():
     assert ":/khoa" in comp, "Compose thiếu điểm gắn /khoa"
 
     ep = _doc_entrypoint()
-    assert "/data/mat-khau-vnc" not in ep, "entrypoint.sh không được lưu mat-khau-vnc trong /data"
-    assert "/khoa/mat-khau-vnc" in ep, "entrypoint.sh phải lưu mat-khau-vnc trong /khoa"
+    ma_ep = "\n".join(dong for dong in ep.splitlines() if not dong.lstrip().startswith("#"))
+    assert "/data/mat-khau-vnc" not in ma_ep, "entrypoint.sh không được lưu mat-khau-vnc trong /data"
+    assert "/khoa/mat-khau-vnc" not in ma_ep, "entrypoint.sh không được tạo/đọc tệp mật khẩu VNC"
 
     sup = _doc_supervisord()
     assert "/data/mat-khau-vnc" not in sup, "supervisord.conf không được trỏ mat-khau-vnc vào /data"
@@ -474,4 +495,3 @@ def test_e3_dot_bien_1_cloakbrowser_auto_update_false():
     df = _doc_dockerfile()
     assert "CLOAKBROWSER_AUTO_UPDATE=false" in df, "Dockerfile phải có CLOAKBROWSER_AUTO_UPDATE=false"
     assert "CLOAKBROWSER_AUTO_UPDATE=true" not in df, "Dockerfile không được phép đặt CLOAKBROWSER_AUTO_UPDATE=true"
-

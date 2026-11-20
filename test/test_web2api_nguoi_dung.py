@@ -409,7 +409,11 @@ def test_14_csrf_bat_buoc_cho_cookie_va_mien_cho_bearer(moi_truong):
     r_sai = client.post("/api/nguoi-dung", cookies={"w2a_phien": tok}, headers={"X-CSRF-Token": "TokenSaiCsrf123"}, json={"vai": "user"})
     assert r_sai.status_code == 403
 
-    # 3. Cookie + POST đúng header X-CSRF-Token -> 200
+    # 3. Cookie + POST đúng header X-CSRF-Token -> 200 (sau khi xác nhận lại: NV305-bao-mat
+    #    bắt mọi tạo người dùng trong tab Bảo mật đều cần step-up, không chỉ tạo admin)
+    r_step = client.post("/api/toi/xac-nhan-lai", cookies={"w2a_phien": tok},
+                         headers={"X-CSRF-Token": p["csrf"]}, json={"mat_khau": "MatKhauChuan123456"})
+    assert r_step.status_code == 200, r_step.text
     r_dung = client.post("/api/nguoi-dung", cookies={"w2a_phien": tok}, headers={"X-CSRF-Token": p["csrf"]}, json={"vai": "user"})
     assert r_dung.status_code == 200
 

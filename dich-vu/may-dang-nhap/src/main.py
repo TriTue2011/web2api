@@ -44,6 +44,7 @@ from .accounts_db import (
 )
 from . import chan_doan, vault
 from . import mat_khau_vnc  # W2A NV305: mật khẩu xem trình duyệt do chủ máy tự đặt
+from . import novnc_bat_tat  # W2A NV305-bao-mat: công tắc noVNC runtime + hiển thị lại mật khẩu
 from .auto_login import (
     get_session as get_login_session,
     list_sessions as list_login_sessions,
@@ -160,6 +161,15 @@ async def lifespan(_: FastAPI):
     # W2A: Kiểm tra hoặc tự sinh khoá dịch vụ ngay lúc khởi động (fail-fast: khoá sai sẽ ném ngoại lệ dừng dịch vụ).
     lay_khoa_dich_vu()
     await pool.start()
+    # NV305-bao-mat (c): cờ bền nói «bật» thì tự khởi động lại chương trình xem khi dịch vụ
+    # khởi động lại trong container đang chạy (entrypoint không chạy lại lúc này); hỏng thì
+    # chỉ ghi log, không dừng dịch vụ; chưa đặt mật khẩu thì bat() từ chối, cũng chỉ ghi log.
+    try:
+        if novnc_bat_tat.doc_co(settings.key_dir) is True:
+            kq = novnc_bat_tat.bat(settings.key_dir)
+            logger.info("noVNC tự khởi động theo cờ bền: dang_chay=%s", kq.get("dang_chay"))
+    except Exception as exc:  # noqa: BLE001 — khởi động dịch vụ không được chết vì noVNC
+        logger.warning("noVNC không tự khởi động được theo cờ bền: %s", type(exc).__name__)
     yield
     await pool.stop()
 
@@ -195,6 +205,14 @@ app.include_router(workspace_router(pool, require_api_key, can_tinh_nang))
 async def _loi_tinh_nang_handler(request: Request, exc: LoiTinhNangTat):
     return JSONResponse(status_code=403, content={"detail": exc.detail, "ma_loi": exc.ma_loi})
 
+
+@app.exception_handler(RequestValidationError)
+async def _loi_dau_vao_novnc(request: Request, exc: RequestValidationError):
+    # Pydantic có thể chép nguyên input (kể cả bí mật) vào lỗi 422.
+    if request.url.path.startswith("/v1/novnc/"):
+        return JSONResponse(status_code=400, content={"detail": "Dữ liệu màn hình xem không hợp lệ."})
+    return await request_validation_exception_handler(request, exc)
+
 # W2A: Bỏ CORSMiddleware vì dịch vụ chỉ phục vụ giao tiếp server-to-server nội bộ, không từ trình duyệt.
 
 
@@ -229,7 +247,10 @@ def _novnc_url(request: Request | None = None) -> str:
 # noVNC mặc định tắt; chỉ trả URL khi bật biến CAPTCHA_SOLVER_BAT_NOVNC để tránh lộ cổng gỡ rối.
 @app.get("/health")
 async def health(request: Request) -> Any:
-    bat_novnc = os.environ.get("CAPTCHA_SOLVER_BAT_NOVNC", "").strip().lower() in ("1", "true", "yes") or settings.bat_novnc
+    co_novnc = novnc_bat_tat.doc_co(settings.key_dir)
+    bat_novnc = co_novnc if co_novnc is not None else (
+        os.environ.get("CAPTCHA_SOLVER_BAT_NOVNC", "").strip().lower() in ("1", "true", "yes") or settings.bat_novnc
+    )
     ket_ok, ket_msg = vault.trang_thai_ket()
     kq: dict[str, Any] = {
         "status": "ok" if ket_ok else "degraded",
@@ -244,25 +265,12 @@ async def health(request: Request) -> Any:
 
 
 class MatKhauVncReq(BaseModel):
-    mat_khau: str
+    # Any + kiểm tra tường minh để lỗi validation không phản chiếu input có bí mật.
+    mat_khau: Any = None
 
 
-@app.exception_handler(RequestValidationError)
-async def _loi_kiem_du_lieu_vnc(request: Request, exc: RequestValidationError):
-    # W2A NV305: lỗi kiểm kiểu cũng không được phản chiếu mật khẩu/thân yêu cầu.
-    if request.url.path == "/v1/novnc/mat-khau":
-        return JSONResponse(status_code=422, content={
-            "detail": [{"loc": loi["loc"], "msg": loi["msg"], "type": loi["type"]}
-                       for loi in exc.errors()],
-        })
-    return await request_validation_exception_handler(request, exc)
-
-
-# W2A NV305: mật khẩu xem trình duyệt (VNC) do chủ máy tự đặt trong «Bảo mật & người dùng» của lõi.
-# Trước đây mật khẩu do entrypoint sinh ngẫu nhiên vào /khoa/mat-khau-vnc, chủ máy phải docker exec mới đọc
-# được. Đường này ghi đè tệp đó (0600) + tệp đánh dấu «đã đặt», rồi nạp lại x11vnc bằng supervisorctl để
-# mật khẩu mới có hiệu lực ngay mà không dựng lại container. Mật khẩu KHÔNG BAO GIỜ trả về trong phản hồi
-# hay vào log; nhóm tính năng dang_nhap (mặc định bật) vì đây là màn hình của luồng đăng nhập.
+# W2A NV305: the browser owner sets the VNC password in the authenticated UI.
+# Store it with mode 0600 and attempt a reload without logging or returning it.
 @app.put("/v1/novnc/mat-khau", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
 async def api_dat_mat_khau_vnc(req: MatKhauVncReq) -> dict[str, Any]:
     loi = mat_khau_vnc.kiem_mat_khau_vnc(req.mat_khau)
@@ -270,7 +278,7 @@ async def api_dat_mat_khau_vnc(req: MatKhauVncReq) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=loi)
     try:
         return await asyncio.to_thread(
-            mat_khau_vnc.ghi_mat_khau_vnc, req.mat_khau, thu_muc_khoa=settings.key_dir)
+            mat_khau_vnc.ghi_mat_khau_vnc, req.mat_khau, settings.key_dir)
     except (OSError, ValueError) as exc:
         logger.warning("dat mat khau VNC hong: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Không ghi được mật khẩu xem trình duyệt.") from exc
@@ -283,6 +291,55 @@ async def api_trang_thai_mat_khau_vnc() -> dict[str, Any]:
     return {"ok": True, "da_dat": mat_khau_vnc.trang_thai_da_dat(settings.key_dir)}
 
 
+@app.get("/v1/novnc/mat-khau", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_hien_mat_khau_vnc() -> dict[str, Any]:
+    """NV305-bao-mat (b): trả mật khẩu VNC — CHỈ lõi gọi sau khi lõi đã xác thực lại bằng chứng
+    tươi (mật khẩu admin khi chưa bật 2FA, mã 2FA khi đã bật 2FA); dịch vụ tự nó chỉ kiểm khoá
+    dịch vụ + nhóm dang_nhap, không tự xác thực lại người dùng. Không có tệp đánh dấu (chưa đặt
+    qua giao diện) → 400. Mật khẩu KHÔNG BAO GIỜ vào log."""
+    try:
+        mat_khau = await asyncio.to_thread(novnc_bat_tat.doc_mat_khau, settings.key_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=novnc_bat_tat.LOI_CHUA_DAT) from exc
+    except OSError as exc:
+        logger.warning("doc mat khau VNC hong: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Không đọc được mật khẩu xem trình duyệt.") from exc
+    return JSONResponse(content={"ok": True, "mat_khau": mat_khau}, headers={"Cache-Control": "no-store"})
+
+
+class BatTatNovncReq(BaseModel):
+    bat: Any = None  # kiểm bool thật trong handler (pydantic lax sẽ ép "true"/1 thành True)
+
+
+@app.put("/v1/novnc/bat-tat", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_bat_tat_novnc(req: BatTatNovncReq) -> dict[str, Any]:
+    """NV305-bao-mat (c): công tắc noVNC runtime. Chỉ bật/tắt khả năng xem; không đổi mật khẩu,
+    không đặt gì thêm vào container. Bật khi chưa đặt mật khẩu → 400 (không chạy xem không
+    mật khẩu). Cờ bền ghi vào /khoa để lần khởi động sau vẫn giữ trạng thái."""
+    if not isinstance(req.bat, bool):
+        raise HTTPException(status_code=400, detail="Trường «bat» phải là true hoặc false.")
+    try:
+        hanh_dong = novnc_bat_tat.bat if req.bat else novnc_bat_tat.tat
+        kq = await asyncio.to_thread(hanh_dong, settings.key_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=novnc_bat_tat.LOI_CHUA_DAT) from exc
+    except RuntimeError as exc:
+        logger.warning("bat/tat noVNC chua du: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Không bật/tắt đủ các chương trình màn hình xem.") from exc
+    except OSError as exc:
+        logger.warning("bat/tat noVNC hong: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Không bật/tắt được màn hình xem.") from exc
+    return {"ok": True, **kq}
+
+
+@app.get("/v1/novnc/trang-thai", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_trang_thai_novnc() -> dict[str, Any]:
+    """NV305-bao-mat (c): trạng thái công tắc + chương trình xem. Chỉ bool, không mật khẩu.
+    Cờ bền thắng biến môi trường; chưa có cờ thì dùng biến môi trường/cài đặt như cũ."""
+    bat_mac_dinh = os.environ.get("CAPTCHA_SOLVER_BAT_NOVNC", "").strip().lower() in ("1", "true", "yes") or settings.bat_novnc
+    tt = await asyncio.to_thread(
+        novnc_bat_tat.trang_thai, settings.key_dir, bat_mac_dinh=bat_mac_dinh)
+    return {"ok": True, **tt}
 
 class TurnstileReq(BaseModel):
     url: str

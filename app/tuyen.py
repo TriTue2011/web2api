@@ -1959,6 +1959,8 @@ def ds_khoa_khach():
 
 @khoa_khach.post("", dependencies=KHONG_LUU)
 async def tao_khoa_khach(request: Request):
+    # NV305-bao-mat (a): tạo khoá khách trong tab Bảo mật phải xác thực lại.
+    kiem_tra_step_up(request)
     than = await _than_json(request)
     so = _so(request)
     ban_ghi, khoa_tho = khoa_khach_mod.tao_khoa(
@@ -2034,6 +2036,8 @@ async def sua_khoa_khach_khong_path(request: Request):
 
 @khoa_khach.delete("/{id_}")
 def xoa_khoa_khach(id_: str, request: Request):
+    # NV305-bao-mat (a): xoá khoá khách trong tab Bảo mật phải xác thực lại.
+    kiem_tra_step_up(request)
     da_xoa = khoa_khach_mod.xoa_khoa(id_khoa=id_, nguoi_thuc_hien=dinh_danh_nguoi_thuc_hien(request))
     return {"ok": True, "da_xoa": da_xoa}
 
@@ -2853,7 +2857,7 @@ async def dang_nhap_xac_thuc_2fa(request: Request, response: Response):
     if nd.get("vai") == "admin":
         ip_cho_phep_mod.kiem_tra_ip_quan_tri(request)  # cổng IP quản trị áp cả ở bước hai
 
-    if not xac_thuc_2fa_mod.xac_thuc_ma(nd["id"], ma):
+    if not _xac_thuc_ma_2fa_toi(nd["id"], ip_khach, ma):
         nguoi_dung_mod.ghi_nhan_dang_nhap_sai(nd["ten_dang_nhap"], ip=ip_khach)
         gioi_han_mod.ghi_loi_xac_thuc(request)
         nhat_ky_mod.ghi(
@@ -2887,15 +2891,33 @@ def dang_xuat_web(request: Request, response: Response):
 
 # ───────────── TỰ PHỤC VỤ (can_phien_web) ─────────────
 
+def _xac_thuc_ma_2fa_toi(nguoi_dung_id: str, ip_khach: str, ma: str) -> bool:
+    """Đăng nhập và thao tác nhạy cảm dùng chung ngân sách mã theo tài khoản và cặp IP/tài khoản."""
+    bo = gioi_han_mod._bo_2fa()
+    pham_vi = f"2fa:{nguoi_dung_id}"
+    bo.kiem_tra(ip_khach, pham_vi)
+    bo.kiem_tra(pham_vi)
+    hop_le = xac_thuc_2fa_mod.xac_thuc_ma(nguoi_dung_id, ma)
+    if not hop_le:
+        bo.ghi_loi(ip_khach, pham_vi)
+        bo.ghi_loi(pham_vi)
+    return hop_le
+
+
 @toi.get("", dependencies=KHONG_LUU)
 def lay_thong_tin_toi(request: Request):
     nd = getattr(request.state, "nguoi_dung", {})
     phien = getattr(request.state, "phien_web", {})
+    try:
+        bat_2fa = xac_thuc_2fa_mod.da_bat_2fa(str(nd.get("id", "")))
+    except xac_thuc_2fa_mod.LoiKho2FA:
+        bat_2fa = True  # tệp 2FA hỏng: coi là ĐANG bật (fail-closed, như danh sách người dùng)
     return {
         "id": nd.get("id"),
         "ten_dang_nhap": nd.get("ten_dang_nhap"),
         "vai": nd.get("vai"),
         "csrf": phien.get("csrf"),
+        "bat_2fa": bat_2fa,
         "pham_vi_toi_da": list(nd.get("pham_vi_toi_da", ["*"] if nd.get("vai") == "admin" else [])),
     }
 
@@ -2907,12 +2929,25 @@ async def doi_mat_khau_toi(request: Request):
     than = await _than_json(request)
     mat_khau_cu = _chuoi_tuy_chon(than, "mat_khau_cu")
     mat_khau_moi = _chuoi_tuy_chon(than, "mat_khau_moi")
-    if not mat_khau_cu or not mat_khau_moi:
-        raise LoiOpenAI(400, "Cần cung cấp mật khẩu cũ và mật khẩu mới.", code="invalid_input")
-    phien_web_mod.kiem_tra_kho()  # bước thu hồi phiên sau đó phải chạy được, kiểm trước khi đổi
     ip_khach = gioi_han_mod.lay_ip_an_toan(request)
+    # NV305-bao-mat (19:19): đã bật 2FA thì đổi mật khẩu CHỈ cần mã 2FA, không cần
+    # mật khẩu cũ nữa (mật khẩu cũ có gửi kèm cũng bị bỏ qua); chưa bật 2FA giữ nguyên.
+    da_xac_thuc_2fa = False
+    if nd.get("id") and xac_thuc_2fa_mod.da_bat_2fa(nd["id"]):
+        ma_2fa = _chuoi_tuy_chon(than, "ma_2fa")
+        if not ma_2fa:
+            raise LoiOpenAI(400, "Tài khoản đã bật 2FA: đổi mật khẩu cần cung cấp «ma_2fa», không cần mật khẩu cũ.", code="invalid_input")
+        if not _xac_thuc_ma_2fa_toi(nd["id"], ip_khach, ma_2fa):
+            raise LoiOpenAI(401, "Mã xác thực hai bước không chính xác.", code="invalid_totp")
+        da_xac_thuc_2fa = True
+    if not da_xac_thuc_2fa and (not mat_khau_cu or not mat_khau_moi):
+        raise LoiOpenAI(400, "Cần cung cấp mật khẩu cũ và mật khẩu mới.", code="invalid_input")
+    if not mat_khau_moi:
+        raise LoiOpenAI(400, "Cần cung cấp mật khẩu mới.", code="invalid_input")
+    phien_web_mod.kiem_tra_kho()  # bước thu hồi phiên sau đó phải chạy được, kiểm trước khi đổi
 
-    await nguoi_dung_mod.doi_mat_khau_chinh_minh(nd["id"], mat_khau_cu, mat_khau_moi, ip=ip_khach)
+    await nguoi_dung_mod.doi_mat_khau_chinh_minh(nd["id"], mat_khau_cu or "", mat_khau_moi,
+                                                 ip=ip_khach, da_xac_thuc_2fa=da_xac_thuc_2fa)
     phien_web_mod.thu_hoi_phien_nguoi_dung(nd["id"], tru_bam=phien.get("bam"))
     nhat_ky_mod.ghi(
         "quan_tri",
@@ -2990,13 +3025,21 @@ async def xac_nhan_lai_toi(request: Request):
 
     than = await _than_json(request)
     mat_khau = _chuoi_tuy_chon(than, "mat_khau")
+    ma_2fa = _chuoi_tuy_chon(than, "ma_2fa")
     khoa_qt = _chuoi_tuy_chon(than, "khoa_quan_tri")
-    if not mat_khau and not khoa_qt:
-        raise LoiOpenAI(400, "Cần cung cấp «mat_khau» hoặc «khoa_quan_tri» để xác nhận lại.", loai="invalid_request_error")
+    if not mat_khau and not ma_2fa and not khoa_qt:
+        raise LoiOpenAI(400, "Cần cung cấp «mat_khau», «ma_2fa» hoặc «khoa_quan_tri» để xác nhận lại.", loai="invalid_request_error")
 
     ip_khach = gioi_han_mod.lay_ip_an_toan(request)
     hop_le = False
+    da_thu_ma_2fa = False
     if mat_khau:
+        # NV305-bao-mat (19:19 + chốt 19:26): người thao tác đã bật 2FA thì mật khẩu
+        # KHÔNG còn là bằng chứng xác nhận lại — từ chối ngay, không xác minh mật
+        # khẩu, không đếm sai đăng nhập; chỉ mã 2FA (nhánh dưới) mới mở.
+        if nd.get("id") and xac_thuc_2fa_mod.da_bat_2fa(nd["id"]):
+            gioi_han_mod.ghi_loi_xac_thuc(request)
+            raise LoiOpenAI(401, "Tài khoản đã bật 2FA: xác nhận lại bằng mã 2FA, không dùng mật khẩu.", loai="invalid_request_error", code="can_ma_2fa")
         ten = str(nd.get("ten_dang_nhap", ""))
         try:
             nguoi_dung_mod.kiem_tra_khoa_ten(ten, ip=ip_khach)
@@ -3011,12 +3054,19 @@ async def xac_nhan_lai_toi(request: Request):
             nguoi_dung_mod.ghi_nhan_dang_nhap_sai(ten, ip=ip_khach)
         else:
             nguoi_dung_mod.ghi_nhan_dang_nhap_dung(ten, ip=ip_khach)
+    elif ma_2fa:
+        # Chỉ xác minh được khi người thao tác đã bật 2FA (có bí mật để đối chiếu);
+        # chưa bật 2FA mà gửi mã thì coi như bằng chứng không hợp lệ (khối chung dưới).
+        if nd.get("id") and xac_thuc_2fa_mod.da_bat_2fa(nd["id"]):
+            da_thu_ma_2fa = True
+            hop_le = _xac_thuc_ma_2fa_toi(nd["id"], ip_khach, ma_2fa)
     elif khoa_qt:
         from app import xac_thuc
         hop_le = hmac.compare_digest(khoa_qt.encode("utf-8"), xac_thuc.khoa_quan_tri().encode("utf-8"))
 
     if not hop_le:
-        gioi_han_mod.ghi_loi_xac_thuc(request)
+        if not da_thu_ma_2fa:
+            gioi_han_mod.ghi_loi_xac_thuc(request)
         nhat_ky_mod.ghi(
             "quan_tri",
             "canh_bao",
@@ -3045,9 +3095,11 @@ async def _nd_va_mat_khau_dung(request: Request, than: dict) -> dict:
     mat_khau = _chuoi_tuy_chon(than, "mat_khau")
     if not mat_khau:
         raise LoiOpenAI(401, "Cần nhập mật khẩu để thực hiện thao tác 2FA.", code="invalid_credentials")
+    ip_khach = gioi_han_mod.lay_ip_an_toan(request)
+    nguoi_dung_mod.kiem_tra_khoa_ten(nd.get("ten_dang_nhap", ""), ip=ip_khach)
     u = nguoi_dung_mod.tim_theo_id(nd.get("id", "")) or {}
     if not await nguoi_dung_mod.kiem_tra_mat_khau(mat_khau, u.get("bam_mat_khau", "")):
-        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(nd.get("ten_dang_nhap", ""), ip=gioi_han_mod.lay_ip_an_toan(request))
+        nguoi_dung_mod.ghi_nhan_dang_nhap_sai(nd.get("ten_dang_nhap", ""), ip=ip_khach)
         raise LoiOpenAI(401, "Mật khẩu không chính xác.", code="invalid_credentials")
     return nd
 
@@ -3079,8 +3131,15 @@ async def xac_nhan_2fa_toi(request: Request):
     ma = _chuoi_tuy_chon(than, "ma")
     if not ma:
         raise LoiOpenAI(400, "Cần nhập mã xác thực từ ứng dụng.", code="invalid_input")
+    bo = gioi_han_mod._bo_2fa()
+    ip_khach = gioi_han_mod.lay_ip_an_toan(request)
+    pham_vi = f"2fa:{nd['id']}"
+    bo.kiem_tra(ip_khach, pham_vi)
+    bo.kiem_tra(pham_vi)
     hop_le, ma_khoi_phuc = xac_thuc_2fa_mod.xac_nhan_dang_ky(nd["id"], ma)
     if not hop_le:
+        bo.ghi_loi(ip_khach, pham_vi)
+        bo.ghi_loi(pham_vi)
         raise LoiOpenAI(401, "Mã xác thực không chính xác.", code="invalid_totp")
     nhat_ky_mod.ghi("quan_tri", "thong_tin",
                     f"Người dùng «{_nhac_lai(nd.get('ten_dang_nhap', ''))}» đã bật 2FA", id_nguoi_dung=nd["id"])
@@ -3095,7 +3154,7 @@ async def tat_2fa_toi(request: Request):
     ma = _chuoi_tuy_chon(than, "ma")
     if not ma:
         raise LoiOpenAI(400, "Cần nhập mã 2FA (hoặc mã khôi phục) để tắt 2FA.", code="invalid_input")
-    if not xac_thuc_2fa_mod.xac_thuc_ma(nd["id"], ma):
+    if not _xac_thuc_ma_2fa_toi(nd["id"], gioi_han_mod.lay_ip_an_toan(request), ma):
         raise LoiOpenAI(401, "Mã xác thực không chính xác.", code="invalid_totp")
     xac_thuc_2fa_mod.tat_2fa(nd["id"])
     nhat_ky_mod.ghi("quan_tri", "thong_tin",
@@ -3110,7 +3169,7 @@ async def tao_lai_ma_khoi_phuc_toi(request: Request):
     ma = _chuoi_tuy_chon(than, "ma")
     if not ma:
         raise LoiOpenAI(400, "Cần nhập mã 2FA để tạo lại mã khôi phục.", code="invalid_input")
-    if not xac_thuc_2fa_mod.xac_thuc_ma(nd["id"], ma):
+    if not _xac_thuc_ma_2fa_toi(nd["id"], gioi_han_mod.lay_ip_an_toan(request), ma):
         raise LoiOpenAI(401, "Mã xác thực không chính xác.", code="invalid_totp")
     ma_khoi_phuc = xac_thuc_2fa_mod.tao_lai_ma_khoi_phuc(nd["id"])
     nhat_ky_mod.ghi("quan_tri", "thong_tin",
@@ -3136,7 +3195,13 @@ def lay_danh_sach_nguoi_dung():
 
 @nguoi_dung.post("/{id}/tat-2fa", dependencies=KHONG_LUU)
 def quan_tri_tat_2fa_nguoi_dung(id: str):
-    """Quản trị tắt 2FA hộ người dùng mất điện thoại (kèm thu hồi mọi phiên của họ). Chỉ admin (router QT)."""
+    """Quản trị tắt 2FA hộ người dùng mất điện thoại (kèm thu hồi mọi phiên của họ). Chỉ admin (router QT).
+
+    KHÔNG gắn step-up ở đây (NV305-bao-mat giữ phạm vi tạo/xoá): tắt 2FA hộ là đường
+    khôi phục khi kho 2FA hỏng — gắn step-up sẽ khoá chết đường này đúng lúc cần nó nhất
+    (xác nhận lại cũng đọc kho 2FA và sẽ 503 khi kho hỏng). Bảo vệ còn lại: chỉ admin +
+    CSRF (phiên web) hoặc khoá quản trị.
+    """
     nd = nguoi_dung_mod.tim_theo_id(id)
     if not nd:
         raise LoiOpenAI(404, "Không tìm thấy người dùng.", code="not_found")
@@ -3151,8 +3216,9 @@ def quan_tri_tat_2fa_nguoi_dung(id: str):
 async def tao_nguoi_dung_moi(request: Request):
     than = await _than_json(request)
     vai = than.get("vai", "user")  # kiểu kiểm trong tao_nguoi_dung (kiem_vai), trần trong chuan_hoa_pham_vi
-    if vai == "admin":
-        kiem_tra_step_up(request)
+    # NV305-bao-mat (a): MỌI tạo người dùng trong tab Bảo mật đều phải xác thực lại
+    # (trước đây chỉ tạo admin mới cần — tạo user thường cũng là tạo trong tab).
+    kiem_tra_step_up(request)
     ten_dang_nhap = _chuoi_tuy_chon(than, "ten_dang_nhap")
     mat_khau = _chuoi_tuy_chon(than, "mat_khau")
     pham_vi_toi_da = than.get("pham_vi_toi_da")
@@ -3230,6 +3296,8 @@ async def dat_lai_mat_khau(id: str, request: Request):
 
 @nguoi_dung.delete("/{id}")
 def xoa_tai_khoan(id: str, request: Request):
+    # NV305-bao-mat (a): xoá tài khoản trong tab Bảo mật phải xác thực lại.
+    kiem_tra_step_up(request)
     phien_web_mod.kiem_tra_kho()  # kiểm trước khi xoá: không để xoá xong người dùng rồi 503 bỏ dở khoá/phiên
     khoa_khach_mod.kiem_tra_kho()  # cùng lý do: kho khoá hỏng → 503 TRƯỚC khi xoá người dùng
     nguoi_dung_mod.xoa_nguoi_dung(id)

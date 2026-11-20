@@ -2207,6 +2207,39 @@ class Module:
                                                     "loi": "Dịch vụ báo lỗi không rõ"}
         return {"ok": True, "da_dat": bool(kq.get("da_dat"))}
 
+    async def hien_mat_khau_vnc(self) -> dict:
+        """NV305-bao-mat (b): lấy mật khẩu VNC từ dịch vụ (GET /v1/novnc/mat-khau, khoá dịch vụ
+        đã cấu hình) để lõi trả cho giao diện SAU KHI lõi đã xác thực lại bằng chứng tươi.
+        Module chỉ chuyển tiếp giá trị dịch vụ trả; lõi mới là cửa kiểm tra bằng chứng."""
+        kq = await self._goi("GET", "/v1/novnc/mat-khau")
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            return kq if isinstance(kq, dict) else {"ok": False, "ma_loi": "loi_dich_vu",
+                                                    "loi": "Dịch vụ báo lỗi không rõ"}
+        mat_khau = kq.get("mat_khau")
+        if not isinstance(mat_khau, str) or not mat_khau:
+            return {"ok": False, "ma_loi": "loi_dich_vu", "loi": "Dịch vụ không trả mật khẩu"}
+        return {"ok": True, "mat_khau": mat_khau}
+
+    async def bat_tat_novnc(self, bat: bool) -> dict:
+        """NV305-bao-mat (c): bật/tắt màn hình xem qua dịch vụ (PUT /v1/novnc/bat-tat).
+        Chỉ chuyển tiếp cờ; dịch vụ tự từ chối bật khi chưa đặt mật khẩu. Không đổi mật khẩu."""
+        kq = await self._goi("PUT", "/v1/novnc/bat-tat", json_body={"bat": bool(bat)})
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            return kq if isinstance(kq, dict) else {"ok": False, "ma_loi": "loi_dich_vu",
+                                                    "loi": "Dịch vụ báo lỗi không rõ"}
+        return {"ok": True, "bat": bool(kq.get("bat", bat)), "dang_chay": bool(kq.get("dang_chay", False)),
+                "da_ap_dung": bool(kq.get("da_ap_dung", False))}
+
+    async def trang_thai_novnc(self) -> dict:
+        """NV305-bao-mat (c): hỏi dịch vụ trạng thái công tắc + chương trình xem. Chỉ bool, không mật khẩu."""
+        kq = await self._goi("GET", "/v1/novnc/trang-thai")
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            return kq if isinstance(kq, dict) else {"ok": False, "ma_loi": "loi_dich_vu",
+                                                    "loi": "Dịch vụ báo lỗi không rõ"}
+        return {"ok": True, "bat": bool(kq.get("bat", False)), "dang_chay": bool(kq.get("dang_chay", False)),
+                "x11vnc": bool(kq.get("x11vnc", False)), "websockify": bool(kq.get("websockify", False)),
+                "da_dat": bool(kq.get("da_dat", False))}
+
     async def tien_do(self, ho_so: str, module_cua_tai_khoan: str = "") -> dict:
         """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b + NV210).
 

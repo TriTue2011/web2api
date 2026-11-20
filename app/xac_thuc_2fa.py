@@ -254,6 +254,22 @@ def _doc_kho_user(user_id: str) -> dict[str, Any] | None:
         raise LoiKho2FA() from None
     if not isinstance(dl, dict):
         raise LoiKho2FA()
+    if "bat" in dl and not isinstance(dl["bat"], bool):
+        raise LoiKho2FA()
+    if dl.get("bat"):
+        bi_mat = dl.get("bi_mat")
+        if not isinstance(bi_mat, str) or not bi_mat:
+            raise LoiKho2FA()
+        try:
+            if not giai_ma_base32(bi_mat):
+                raise ValueError
+        except ValueError:
+            raise LoiKho2FA() from None
+        buoc = dl.get("moc_buoc_cuoi")
+        ma_bam = dl.get("ma_khoi_phuc_bam")
+        if (type(buoc) is not int or buoc < -1 or not isinstance(ma_bam, list)
+                or any(not isinstance(b, str) or not re.fullmatch(r"[0-9a-f]{64}", b) for b in ma_bam)):
+            raise LoiKho2FA()
     return dl
 
 
@@ -273,7 +289,7 @@ def da_bat_2fa(user_id: str) -> bool:
         dl = _doc_kho_user(user_id)
         if dl is None:
             return False
-        return bool(dl.get("bat", False) and dl.get("bi_mat"))
+        return dl.get("bat", False)
 
 
 def so_ma_khoi_phuc_con_lai(user_id: str) -> int:
@@ -297,6 +313,8 @@ def bat_dau_dang_ky(user_id: str, ten_dang_nhap: str) -> tuple[str, str]:
 
     with _KHOA_LUONG:
         dl = _doc_kho_user(user_id) or {}
+        if dl.get("bat"):
+            raise LoiOpenAI(409, "Tài khoản đã kích hoạt 2FA.", code="totp_already_active")
         dl["cho_xac_nhan"] = {
             "bi_mat": bi_mat,
             "tao_luc": now_ts,
@@ -310,6 +328,8 @@ def xac_nhan_dang_ky(user_id: str, ma: str) -> tuple[bool, list[str]]:
     """Xác nhận mã 6 số với bí mật đang chờ: nếu đúng thì kích hoạt 2FA và cấp 10 mã khôi phục."""
     with _KHOA_LUONG:
         dl = _doc_kho_user(user_id)
+        if dl and dl.get("bat"):
+            return False, []
         if not dl or "cho_xac_nhan" not in dl or not isinstance(dl["cho_xac_nhan"], dict):
             return False, []
 

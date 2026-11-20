@@ -101,15 +101,15 @@ def test_api_vnc_mat_khau_sai_tra_400_khong_echo(api_vnc, tmp_path, caplog, mat_
     nap_lai.assert_not_called()
 
 
-def test_api_vnc_thieu_truong_mat_khau_tra_422(api_vnc, tmp_path):
+def test_api_vnc_thieu_truong_mat_khau_tra_400_chung(api_vnc, tmp_path):
     client, nap_lai = api_vnc
 
     r = client.put(DUONG_DAT, headers=HEADER_AUTH, json={})
 
-    assert r.status_code == 422
-    assert [(loi["loc"], loi["type"]) for loi in r.json()["detail"]] == [
-        (["body", "mat_khau"], "missing"),
-    ]
+    # Hợp đồng NV305-bao-mat chuyển lỗi validation của noVNC sang 400 chung
+    # để không trả cấu trúc Pydantic có thể phản chiếu dữ liệu request.
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Mật khẩu xem trình duyệt chỉ dùng 1–8 ký tự ASCII in được, không khoảng trắng."}
     assert list((tmp_path / "khoa").iterdir()) == []
     nap_lai.assert_not_called()
 
@@ -125,9 +125,9 @@ def test_api_vnc_validation_khong_phan_chieu_bi_mat(api_vnc, tmp_path, caplog, t
     client, nap_lai = api_vnc
     with caplog.at_level(logging.DEBUG):
         r = client.put(DUONG_DAT, headers=HEADER_AUTH, json=than)
-    assert r.status_code == 422
+    assert r.status_code == 400
     assert "Q7!p" not in r.text and "Q7!p" not in caplog.text
-    assert all(set(loi) <= {"loc", "msg", "type"} for loi in r.json()["detail"])
+    assert "detail" in r.json()
     assert list((tmp_path / "khoa").iterdir()) == []
     nap_lai.assert_not_called()
 
@@ -137,9 +137,9 @@ def test_api_vnc_json_hong_khong_phan_chieu_bi_mat(api_vnc, caplog):
     with caplog.at_level(logging.DEBUG):
         r = client.put(DUONG_DAT, headers={**HEADER_AUTH, "Content-Type": "application/json"},
                        content='{"mat_khau":"Q7!p"')
-    assert r.status_code == 422
+    assert r.status_code == 400
     assert "Q7!p" not in r.text and "Q7!p" not in caplog.text
-    assert all(set(loi) <= {"loc", "msg", "type"} for loi in r.json()["detail"])
+    assert r.json() == {"detail": "Dữ liệu màn hình xem không hợp lệ."}
     nap_lai.assert_not_called()
 
 

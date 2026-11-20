@@ -305,6 +305,7 @@ def ip_hieu_luc_phan_loai(client_host: str | None, x_forwarded_for: str | None) 
 
 
 _BO: GioiHanSaiKhoa | None = None
+_BO_2FA: GioiHanSaiKhoa | None = None
 
 
 def la_proxy_tin_cay(client_host: str | None) -> bool:
@@ -327,10 +328,19 @@ def _bo() -> GioiHanSaiKhoa:
     return _BO
 
 
+def _bo_2fa() -> GioiHanSaiKhoa:
+    """Ngân sách mã 2FA độc lập với bỏ chặn IP/Bearer thông thường."""
+    global _BO_2FA
+    if _BO_2FA is None:
+        _BO_2FA = GioiHanSaiKhoa.tu_moi_truong()
+    return _BO_2FA
+
+
 def khoi_dong() -> None:
     """Đọc lại cấu hình từ biến môi trường — gọi một lần lúc khởi động (lifespan)."""
-    global _BO
+    global _BO, _BO_2FA
     _BO = GioiHanSaiKhoa.tu_moi_truong()
+    _BO_2FA = GioiHanSaiKhoa.tu_moi_truong()
 
 
 def liet_ke_ip_bi_khoa() -> list[dict]:

@@ -24,9 +24,12 @@ BANG_NHOM_MONG_MUON = {
 
     # dang_nhap (BẬT mặc định)
     ("PUT", "/v1/novnc/mat-khau"): "dang_nhap",
+    ("GET", "/v1/novnc/mat-khau"): "dang_nhap",
     ("GET", "/v1/novnc/mat-khau/trang-thai"): "dang_nhap",
     ("GET", "/v1/man-hinh"): "dang_nhap",
     ("GET", "/v1/chan-doan"): "dang_nhap",
+    ("PUT", "/v1/novnc/bat-tat"): "dang_nhap",
+    ("GET", "/v1/novnc/trang-thai"): "dang_nhap",
     ("POST", "/v1/session/manual-login"): "dang_nhap",
     ("POST", "/v1/session/auto-login"): "dang_nhap",
     ("POST", "/v1/session/auto-login-saved"): "dang_nhap",
@@ -486,5 +489,3 @@ def test_e3_dot_bien_2_va_3_get_account_khong_ro_password_va_totp(monkeypatch: p
     assert totp_bi_mat not in str(du_lieu), "Hạt giống TOTP bị rò rỉ trong phản hồi!"
     cac_khoa_cam = {"password", "totp_secret", "khoa", "secret", "private_key", "salt"}
     assert not any(k in du_lieu for k in cac_khoa_cam), f"Phát hiện trường nhạy cảm trong phản hồi: {du_lieu}"
-
-
