@@ -23,6 +23,9 @@ import pytest
 #: production; test đơn vị gọi tai_dung_ho_so nhiều lần không được ngủ 25
 #: giây mỗi lượt — test nào muốn kiểm gap thì tự đặt env riêng).
 os.environ.setdefault("WEB2API_KHOA_DANG_NHAP_GIAN_CACH_GIAY", "0")
+# Trần thời gian MỖI test (pytest-timeout, requirements-dev): CI 20/11 treo 20 phút ở ~82% rồi bị huỷ, không biết test nào.
+# Treo quá 180 s → test đó FAIL kèm ngăn xếp (tên test hiện trong nhật ký CI), bộ test chạy tiếp. Đặt PYTEST_TIMEOUT=0 để tắt.
+os.environ.setdefault("PYTEST_TIMEOUT", "180")
 
 GOC_WEB2API = Path(__file__).resolve().parents[1]
 if str(GOC_WEB2API) not in sys.path:

@@ -22,3 +22,6 @@ noiseprotocol==0.3.1
 # test/test_web2api_dang_nhap_tu_dong.py nạp mã dịch vụ dich-vu/may-dang-nhap (src/settings.py dùng pydantic-settings);
 # cùng bản dịch vụ đang ghim ở requirements-nen.in (thuần Python, đã đọc mã 19/10/2026). Thiếu gói này CI dừng ở bước thu thập test.
 pydantic-settings==2.15.0
+# Trần thời gian mỗi test (test/conftest.py đặt PYTEST_TIMEOUT=180): CI 20/11 treo 20 phút không rõ test nào.
+# Plugin MIT, một tệp 558 dòng, đã đọc mã 20/11/2026 (không mạng, không subprocess).
+pytest-timeout==2.4.0
