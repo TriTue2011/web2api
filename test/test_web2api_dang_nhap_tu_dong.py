@@ -43,7 +43,7 @@ os.environ["CAPTCHA_SOLVER_API_KEY"] = KHOA_DICH_VU_GIA
 from src.main import app as c2a_app
 import src.main as c2a_main
 from src.accounts_db import save_account, delete_account, list_accounts
-from test.gia import MayChuThat
+from gia import MayChuThat  # như mọi test khác: thư mục test/ nằm trong sys.path; «test.gia» trùng gói test của CPython trên máy CI
 
 
 
