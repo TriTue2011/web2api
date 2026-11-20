@@ -68,6 +68,7 @@ async function goi(duong, than) {
 /* ── trạng thái trang ─────────────────────────────────────────────── */
 let thucTheXem = '';
 let thucTheDieuKhien = '';
+let ruiRoDieuKhien = '';
 let phienHienTai = null;   // phiên đang hiển thị ở thẻ Đang phát
 let cacPhien = [];
 let phienChon = null;      // id phiên người dùng bấm ở «Nhóm đang phát»
@@ -87,23 +88,71 @@ async function timThucThe() {
   if (!xem || !dk) throw new Error('Chưa thấy thực thể YouTube — module có thể chưa chạy.');
   thucTheXem = xem.id;
   thucTheDieuKhien = dk.id;
+  ruiRoDieuKhien = dk.rui_ro || '';
 }
 
-async function hanhDongDoc(ten, thamSo) {
+function loiTuPhanHoi(kq) {
+  const du = kq.du || {};
+  return (du.error && du.error.message) || du.loi ||
+    'Không thực hiện được (HTTP ' + kq.r.status + ').';
+}
+
+function laCanXacNhan(kq) {
+  const du = kq.du || {};
+  return kq.r.status === 409 && du.error && du.error.code === 'can_xac_nhan';
+}
+
+// Mỗi yêu cầu có một Promise riêng; chỉ gắn handler khi hộp trước đã đóng.
+let hangXacNhan = Promise.resolve();
+function hoiXacNhan(chu) {
+  hangXacNhan = hangXacNhan.then(() => new Promise((giai) => {
+    const hop = $('hoi-xac-nhan');
+    $('hoi-xac-nhan-chu').textContent = chu;
+    hop.hidden = false;
+    const dong = (dongY) => {
+      hop.hidden = true;
+      $('nut-xac-nhan').onclick = null;
+      $('nut-thoi-xac-nhan').onclick = null;
+      giai(dongY);
+    };
+    $('nut-xac-nhan').onclick = () => dong(true);
+    $('nut-thoi-xac-nhan').onclick = () => dong(false);
+  }));
+  return hangXacNhan;
+}
+
+async function hanhDongDoc(ten, thamSo, xacNhan = false, nen = false) {
   await timThucThe();
   const kq = await goi('api/thiet-bi/' + encodeURIComponent(thucTheXem) + '/hanh-dong',
-    { hanh_dong: ten, tham_so: thamSo || {} });
-  if (!kq.r.ok) throw new Error('Không thực hiện được (HTTP ' + kq.r.status + ').');
+    { hanh_dong: ten, tham_so: thamSo || {}, xac_nhan: !!xacNhan });
+  if (!xacNhan && laCanXacNhan(kq)) {
+    // Polling nền không mở hộp và không xếp hàng yêu cầu xác nhận.
+    if (nen) return { ok: true, daHuy: true };
+    const ok = await hoiXacNhan('Máy chủ yêu cầu xác nhận cho «' + ten + '» — bấm «Xác nhận» để thực hiện một lần.');
+    if (!ok) return { ok: true, daHuy: true };
+    return hanhDongDoc(ten, thamSo, true, nen);
+  }
+  if (!kq.r.ok) throw new Error(loiTuPhanHoi(kq));
   const du = kq.du || {};
   if (du.ok === false) throw new Error(du.loi || 'Không thực hiện được.');
   return du;
 }
 
-async function hanhDong(ten, thamSo) {
+async function hanhDong(ten, thamSo, xacNhan = false) {
   await timThucThe();
+  if (!xacNhan && ruiRoDieuKhien === 'nguy_hiem') {
+    const ok = await hoiXacNhan('Hành động «' + ten + '» được đánh dấu nguy hiểm — bấm «Xác nhận» để thực hiện một lần.');
+    if (!ok) return { ok: true, daHuy: true };
+    return hanhDong(ten, thamSo, true);
+  }
   const kq = await goi('api/thiet-bi/' + encodeURIComponent(thucTheDieuKhien) + '/hanh-dong',
-    { hanh_dong: ten, tham_so: thamSo || {} });
-  if (!kq.r.ok) throw new Error('Không thực hiện được (HTTP ' + kq.r.status + ').');
+    { hanh_dong: ten, tham_so: thamSo || {}, xac_nhan: !!xacNhan });
+  if (!xacNhan && laCanXacNhan(kq)) {
+    const ok = await hoiXacNhan('Máy chủ yêu cầu xác nhận cho «' + ten + '» — bấm «Xác nhận» để thực hiện một lần.');
+    if (!ok) return { ok: true, daHuy: true };
+    return hanhDong(ten, thamSo, true);
+  }
+  if (!kq.r.ok) throw new Error(loiTuPhanHoi(kq));
   const du = kq.du || {};
   if (du.ok === false) throw new Error(du.loi || 'Không thực hiện được.');
   return du;
@@ -142,7 +191,10 @@ function veDangPhat() {
     ten.textContent = 'Chưa có dữ liệu.';
     kenh.hidden = true; trenLoa.hidden = true; chip.hidden = true;
     anh.hidden = true;
-    nutPhat.textContent = '▶ Phát'; nutPhat.disabled = true;
+    nutPhat.setAttribute('aria-label', 'Phát');
+    nutPhat.title = 'Phát';
+    $('nut-phat-play').toggleAttribute('hidden', false); $('nut-phat-pause').toggleAttribute('hidden', true);
+    nutPhat.disabled = true;
     nutTruoc.disabled = true; nutSau.disabled = true; nutDung.disabled = true;
     $('thoi-gian').textContent = '';
     $('tien-do').style.width = '0%';
@@ -172,7 +224,10 @@ function veDangPhat() {
   const dangPhat = phien.state === 'playing' || phien.status === 'playing';
   const tamDung = phien.state === 'paused' || phien.status === 'paused';
   nutPhat.disabled = false;
-  nutPhat.textContent = dangPhat ? '⏸ Tạm dừng' : '▶ Phát';
+  nutPhat.setAttribute('aria-label', dangPhat ? 'Tạm dừng' : 'Phát');
+  nutPhat.title = dangPhat ? 'Tạm dừng' : 'Phát';
+  $('nut-phat-play').toggleAttribute('hidden', dangPhat);
+  $('nut-phat-pause').toggleAttribute('hidden', !dangPhat);
   nutTruoc.disabled = false;
   nutSau.disabled = false;
   nutDung.disabled = !(dangPhat || tamDung);
@@ -261,7 +316,8 @@ function veQueue() {
     nutXoa.type = 'button';
     nutXoa.addEventListener('click', async () => {
       try {
-        await hanhDong('xoa_khoi_hang_doi', { phien: phien.session_id, chi_so: i });
+        const du = await hanhDong('xoa_khoi_hang_doi', { phien: phien.session_id, chi_so: i });
+        if (du.daHuy) return;
         await taiTrangThai();
       } catch (e) {
         if (String(e.message) !== 'het_phien') hienLoi('loi-chung', e.message);
@@ -273,7 +329,8 @@ function veQueue() {
       try {
         // Phát từ vị trí này, GIỮ NGUYÊN hàng đợi (hành động riêng của
         // module — không phát bài lẻ làm mất hàng đợi).
-        await hanhDong('phat_tu_hang_doi', { phien: phien.session_id, chi_so: i });
+        const du = await hanhDong('phat_tu_hang_doi', { phien: phien.session_id, chi_so: i });
+        if (du.daHuy) return;
         await taiTrangThai();
       } catch (e) {
         if (String(e.message) !== 'het_phien') hienLoi('loi-chung', e.message);
@@ -286,12 +343,13 @@ function veQueue() {
   });
 }
 
-async function taiTrangThai() {
+async function taiTrangThai(nen = false) {
   try {
     const [tt, nhom] = await Promise.all([
-      hanhDongDoc('trang_thai', {}),
-      hanhDongDoc('cac_phien', {}).catch(() => ({ cac_phien: [] })),
+      hanhDongDoc('trang_thai', {}, false, nen),
+      hanhDongDoc('cac_phien', {}, false, nen),
     ]);
+    if (tt.daHuy || nhom.daHuy) return;
     cacPhien = nhom.cac_phien || [];
     // Phiên đang hiển thị: phiên đã chọn (nếu còn sống), không thì phiên
     // hiện tại của module.
@@ -390,7 +448,8 @@ function nutKetQua(muc) {
       if (loa.length) thamSo.thiet_bi = loa;
       if (muc.title) thamSo.tieu_de = muc.title;
       if (muc.duration) thamSo.thoi_luong = muc.duration;
-      await hanhDong('phat', thamSo);
+      const du = await hanhDong('phat', thamSo);
+      if (du.daHuy) return;
       await taiTrangThai();
     } catch (e) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-tim', e.message);
@@ -402,7 +461,8 @@ function nutKetQua(muc) {
       const thamSo = { muc_tieu: mucTieu, nguon: muc.source };
       if (phienHienTai) thamSo.phien = phienHienTai.session_id;
       if (muc.title) thamSo.tieu_de = muc.title;
-      await hanhDong('them_vao_hang_doi', thamSo);
+      const du = await hanhDong('them_vao_hang_doi', thamSo);
+      if (du.daHuy) return;
       await taiTrangThai();
     } catch (e) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-tim', e.message);
@@ -418,7 +478,8 @@ function nutKetQua(muc) {
       }
       const thamSo = { playlist_id: pid, muc_tieu: mucTieu, nguon: muc.source };
       if (muc.title) thamSo.tieu_de = muc.title;
-      await hanhDong('them_vao_playlist', thamSo);
+      const du = await hanhDong('them_vao_playlist', thamSo);
+      if (du.daHuy) return;
       await taiPlaylist();
       hienLoi('loi-tim', '');
     } catch (e) {
@@ -440,9 +501,11 @@ async function timKiem() {
   hienLoi('loi-tim', '');
   try {
     const du = await hanhDongDoc('tim', { tu_khoa: tuKhoa, nguon: nguonTim, gioi_han: 20 });
+    if (du.daHuy) return;
     const o = $('ds-ket-qua');
     o.replaceChildren();
     const ds = du.ket_qua || [];
+    $('tieu-de-ket-qua').textContent = 'Kết quả (' + ds.length + ' mục)';
     if (!ds.length) o.append(el('li', 'phu', 'Không tìm thấy bài nào.'));
     ds.forEach((muc) => o.append(nutKetQua(muc)));
   } catch (e) {
@@ -454,6 +517,7 @@ async function timKiem() {
 async function taiPlaylist() {
   try {
     const du = await hanhDongDoc('danh_sach_playlist', {});
+    if (du.daHuy) return;
     playlists = du.danh_sach || [];
     $('dem-playlist').textContent = String(playlists.length);
     const chon = $('o-playlist-nhan');
@@ -483,7 +547,8 @@ async function taiPlaylist() {
       nutPhatPl.type = 'button';
       nutPhatPl.addEventListener('click', async () => {
         try {
-          await hanhDong('phat_playlist', { playlist_id: p.id });
+          const du = await hanhDong('phat_playlist', { playlist_id: p.id });
+          if (du.daHuy) return;
           await taiTrangThai();
         } catch (e) {
           if (String(e.message) !== 'het_phien') hienLoi('loi-playlist', e.message);
@@ -494,7 +559,8 @@ async function taiPlaylist() {
       nutXoa.addEventListener('click', async () => {
         if (!window.confirm('Xoá playlist «' + p.name + '»?')) return;
         try {
-          await hanhDong('xoa_playlist', { playlist_id: p.id });
+          const du = await hanhDong('xoa_playlist', { playlist_id: p.id });
+          if (du.daHuy) return;
           await taiPlaylist();
         } catch (e) {
           if (String(e.message) !== 'het_phien') hienLoi('loi-playlist', e.message);
@@ -517,7 +583,8 @@ async function taiPlaylist() {
           nutTuDay.type = 'button';
           nutTuDay.addEventListener('click', async () => {
             try {
-              await hanhDong('phat_playlist', { playlist_id: p.id, chi_so: i });
+              const du = await hanhDong('phat_playlist', { playlist_id: p.id, chi_so: i });
+              if (du.daHuy) return;
               await taiTrangThai();
             } catch (e) {
               if (String(e.message) !== 'het_phien') hienLoi('loi-playlist', e.message);
@@ -610,7 +677,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('nut-truoc').addEventListener('click', async () => {
     try {
-      await hanhDong('bai_truoc', phienHienTai ? { phien: phienHienTai.session_id } : {});
+      const du = await hanhDong('bai_truoc', phienHienTai ? { phien: phienHienTai.session_id } : {});
+      if (du.daHuy) return;
       await taiTrangThai();
     } catch (e) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-chung', e.message);
@@ -618,7 +686,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('nut-sau').addEventListener('click', async () => {
     try {
-      await hanhDong('bai_ke', phienHienTai ? { phien: phienHienTai.session_id } : {});
+      const du = await hanhDong('bai_ke', phienHienTai ? { phien: phienHienTai.session_id } : {});
+      if (du.daHuy) return;
       await taiTrangThai();
     } catch (e) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-chung', e.message);
@@ -628,11 +697,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       if (!phienHienTai) return;
       const dangPhat = phienHienTai.state === 'playing' || phienHienTai.status === 'playing';
-      if (dangPhat) {
-        await hanhDong('tam_dung', { phien: phienHienTai.session_id });
-      } else {
-        await hanhDong('phat', { phien: phienHienTai.session_id });
-      }
+      const du = await hanhDong(dangPhat ? 'tam_dung' : 'phat', { phien: phienHienTai.session_id });
+      if (du.daHuy) return;
       await taiTrangThai();
     } catch (e) {
       if (String(e.message) !== 'het_phien') hienLoi('loi-chung', e.message);
@@ -640,7 +706,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('nut-dung').addEventListener('click', async () => {
     try {
-      await hanhDong('dung', phienHienTai ? { phien: phienHienTai.session_id } : {});
+      const du = await hanhDong('dung', phienHienTai ? { phien: phienHienTai.session_id } : {});
+      if (du.daHuy) return;
       phienChon = null;
       await taiTrangThai();
     } catch (e) {
@@ -655,7 +722,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tong <= 0) return;
       const hcn = e.currentTarget.getBoundingClientRect();
       const tyLe = Math.min(1, Math.max(0, (e.clientX - hcn.left) / hcn.width));
-      await hanhDong('tua', { phien: phien.session_id, giay: Math.floor(tyLe * tong) });
+      const du = await hanhDong('tua', { phien: phien.session_id, giay: Math.floor(tyLe * tong) });
+      if (du.daHuy) return;
       await taiTrangThai();
     } catch (err) {
       if (String(err.message) !== 'het_phien') hienLoi('loi-chung', err.message);
@@ -680,6 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const ten = $('o-nhap-ten').value.trim();
       if (ten) thamSo.ten = ten;
       const du = await hanhDong('nhap_playlist', thamSo);
+      if (du.daHuy) return;
       const bao = $('bao-playlist');
       bao.hidden = false;
       bao.textContent = 'Đã nhập playlist «' + ((du.playlist || {}).name || '') + '».';
@@ -698,7 +767,8 @@ document.addEventListener('DOMContentLoaded', () => {
         hienLoi('loi-playlist', 'Gõ tên playlist mới rồi bấm Tạo.');
         return;
       }
-      await hanhDong('tao_playlist', { ten });
+      const du = await hanhDong('tao_playlist', { ten });
+      if (du.daHuy) return;
       $('o-tao-ten').value = '';
       hienLoi('loi-playlist', '');
       await taiPlaylist();
@@ -713,10 +783,11 @@ document.addEventListener('DOMContentLoaded', () => {
         hienLoi('loi-loa', 'Chọn ít nhất một loa/tivi trước.');
         return;
       }
-      await hanhDong('doi_loa', {
+      const du = await hanhDong('doi_loa', {
         thiet_bi: loa,
         ...(phienHienTai ? { phien: phienHienTai.session_id } : {}),
       });
+      if (du.daHuy) return;
       hienLoi('loi-loa', '');
       await taiTrangThai();
     } catch (e) {
@@ -724,9 +795,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  taiTrangThai();
+  taiTrangThai(true);
   taiPlaylist();
   napLoa();
   batDongHoTick();
-  setInterval(taiTrangThai, 20000);
+  setInterval(() => taiTrangThai(true), 20000);
 });

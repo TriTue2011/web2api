@@ -56,6 +56,21 @@
   .hang-kq .hang-nut { margin: 6px 0 0; }
   .hang-kq .hang-nut .nut { flex: none; }
   .phien-dang-chon { background: #fff8e1; }
+  .nut-tron svg[hidden] { display: none; }
+  .o-tim-tron { border-radius: 999px; background: #f5f5f5; border-color: #e0e0e0; padding: 0 16px; }
+  .nut-tron.nut-xam { background: #888; color: #fff; border-color: #888; }
+  .nut-tron.nut-xam:hover { background: #666; }
+  .nut-tron.nut-lon { width: 56px; height: 56px; }
+  .nut-tron.nut-lon svg { width: 26px; height: 26px; }
+  .nut-vuong-do { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 10px;
+         border: 1px solid #ddd; background: #fff; color: #B42318; cursor: pointer;
+         display: inline-flex; align-items: center; justify-content: center; }
+  .nut-vuong-do:hover { background: #fdf0ef; }
+  .nut-vuong-do:focus-visible { outline: 2px solid #B42318; outline-offset: 2px; }
+  .nut-vuong-do:disabled { opacity: .55; cursor: not-allowed; }
+  .nut-vuong-do svg { width: 18px; height: 18px; display: block; }
+  .thanh-chip-duoi svg { width: 16px; height: 16px; display: block; }
+  .thanh-chip-duoi .nut { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   @media (prefers-color-scheme: dark) {
     .nut-tron { background: #333; border-color: #555; color: #eee; }
     .nut-tron:hover { background: #444; }
@@ -67,6 +82,9 @@
     .thanh-tien-do { background: #444; }
     .thanh-chip-duoi { background: #111; border-top-color: #333; }
     .phien-dang-chon { background: #332f00; }
+    .o-tim-tron { background: #222; border-color: #444; }
+    .nut-vuong-do { background: #333; border-color: #555; }
+    .nut-vuong-do:hover { background: #442222; }
   }
 </style>
 <script>if (new URLSearchParams(location.search).has('nhung')) document.documentElement.classList.add('nhung');</script>
@@ -80,6 +98,13 @@
   <p class="phu">Trình phát YouTube/Zing chạy thẳng trong web2api. Mọi lệnh đi qua
     máy chủ (trình duyệt không giữ khoá nào). Mục nào chưa có thì ẩn — không có nút chết.</p>
   <p class="bao bao-loi" id="loi-chung" role="alert" hidden></p>
+  <div class="bao bao-vang" id="hoi-xac-nhan" hidden>
+    <p id="hoi-xac-nhan-chu"></p>
+    <div class="hang-nut">
+      <button class="nut nut-chinh" id="nut-xac-nhan" type="button">Xác nhận</button>
+      <button class="nut" id="nut-thoi-xac-nhan" type="button">Thôi</button>
+    </div>
+  </div>
 
 <section class="the" aria-labelledby="tieu-de-tim">
     <h2 id="tieu-de-tim">Tìm kiếm</h2>
@@ -90,9 +115,9 @@
     </div>
     <label for="o-tu-khoa">Từ khoá hoặc link bài, link playlist</label>
     <div class="o-va-nut">
-      <input class="o" id="o-tu-khoa" maxlength="2048" autocomplete="off"
+      <input class="o o-tim-tron" id="o-tu-khoa" maxlength="2048" autocomplete="off"
              placeholder="Tên bài, ca sĩ… hoặc dán link YouTube">
-      <button class="nut nut-chinh" id="nut-tim" type="button">Tìm</button>
+      <button class="nut-tron nut-xam" id="nut-tim" type="button" aria-label="Tìm" title="Tìm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3"></path></svg></button>
     </div>
     <p class="phu" id="ghi-chu-nguon">Tìm trên YouTube: gõ từ khoá hoặc dán link bài/playlist.</p>
     <p class="bao bao-loi" id="loi-tim" role="alert" hidden></p>
@@ -115,20 +140,19 @@
     </div>
     <p class="phu" id="thoi-gian" aria-live="off"></p>
     <div class="hang-nut">
-      <button class="nut" id="nut-truoc" type="button" disabled>⏮ Bài trước</button>
-      <button class="nut nut-chinh" id="nut-phat-tam-dung" type="button" disabled>▶ Phát</button>
-      <button class="nut" id="nut-sau" type="button" disabled>Bài kế ⏭</button>
-      <button class="nut" id="nut-dung" type="button" disabled>⏹ Dừng hẳn</button>
+      <button class="nut-tron" id="nut-truoc" type="button" disabled aria-label="Bài trước" title="Bài trước"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5v14 M19 5l-11 7 11 7z"></path></svg></button>
+      <button class="nut-tron nut-chinh nut-lon" id="nut-phat-tam-dung" type="button" disabled aria-label="Phát" title="Phát"><svg id="nut-phat-play" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5l11 7-11 7z"></path></svg><svg id="nut-phat-pause" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><path d="M7 5h4v14H7z M13 5h4v14h-4z"></path></svg></button>
+      <button class="nut-tron" id="nut-sau" type="button" disabled aria-label="Bài kế" title="Bài kế"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 5v14 M5 5l11 7-11 7z"></path></svg></button>
+      <button class="nut-vuong-do" id="nut-dung" type="button" disabled aria-label="Dừng hẳn" title="Dừng hẳn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 6h12v12H6z"></path></svg></button>
     </div>
     <p><button class="nut nut-nho" id="nut-man-hinh" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13A8 8 0 0 1 11 4a8 8 0 1 0 9 9z"></path></svg> Nghe khi tắt màn hình</button></p>
     <p class="bao bao-vang" id="bao-man-hinh" hidden></p>
-  </section>
-
-<section class="the" aria-labelledby="tieu-de-nhom">
-    <h2 id="tieu-de-nhom">Nhóm đang phát — bấm để điều khiển</h2>
-    <p class="phu">Mỗi nhóm loa/tivi đang phát là một phiên riêng. Bấm một nhóm
-      để các nút ở trên điều khiển nhóm đó.</p>
-    <ul class="ds-kq" id="ds-nhom" aria-live="polite"></ul>
+    <section aria-labelledby="tieu-de-nhom">
+      <h2 id="tieu-de-nhom">Nhóm đang phát — bấm để điều khiển</h2>
+      <p class="phu">Mỗi nhóm loa/tivi đang phát là một phiên riêng. Bấm một nhóm
+        để các nút ở trên điều khiển nhóm đó.</p>
+      <ul class="ds-kq" id="ds-nhom" aria-live="polite"></ul>
+    </section>
   </section>
     </div>
     <div class="cot-phai">
@@ -195,11 +219,11 @@
   </section>
 
   <nav class="thanh-chip-duoi" aria-label="Chuyển mục">
-    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-tim">Tìm kiếm</button>
-    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-playlist">Playlist (<span id="dem-playlist">0</span>)</button>
-    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-queue">Queue (<span id="dem-queue">0/0</span>)</button>
-    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-loa">Loa &amp; tivi</button>
-    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-cai-dat">Cài đặt</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-tim"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3"></path></svg>Tìm kiếm</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-playlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13 M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z M21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>Playlist (<span id="dem-playlist">0</span>)</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-queue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18 M3 12h18 M3 18h10"></path></svg>Queue (<span id="dem-queue">0/0</span>)</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-loa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h14v18H5z M12 8h.01 M12 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Loa &amp; tivi</button>
+    <button class="nut nut-nho" type="button" data-cuon-toi="tieu-de-cai-dat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 2v3 M12 19v3 M2 12h3 M19 12h3"></path></svg>Cài đặt</button>
   </nav>
 </main>
 </div>
