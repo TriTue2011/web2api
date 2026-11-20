@@ -202,3 +202,42 @@ def test_5_loc_ma_khong_tin_duoc():
     assert ma_chua_ctrl not in trich
     # Số lượng không vượt quá trần TOI_DA_MODEL
     assert len(trich) <= TOI_DA_MODEL
+
+
+def test_6_khong_co_tai_khoan_khong_phai_loi(monkeypatch):
+    """Không có tài khoản thì làm mới model không có gì để thực hiện."""
+    mod = nap_test_module(monkeypatch, tao_transport_gia(), [])
+
+    chay(mod.lam_moi_model())
+
+
+def test_7_lam_moi_model_loi_xac_thuc_danh_dau_va_kich_khoi_phuc(monkeypatch):
+    """Lỗi 401 khi làm mới model phải đi qua đường đánh dấu phiên hỏng."""
+    transport = httpx.MockTransport(
+        lambda _req: httpx.Response(401, text="unauthorized")
+    )
+    mod = nap_test_module(monkeypatch, transport, ["__Secure-1PSID=psid-hong"])
+    da_bao = []
+    monkeypatch.setattr(
+        mod_module.tu_lam_moi,
+        "bao_loi_phien",
+        lambda module, khoa: da_bao.append((module, khoa)),
+    )
+
+    with pytest.raises(RuntimeError, match="xac_thuc"):
+        chay(mod.lam_moi_model())
+
+    tk = mod._tai_khoan[0]
+    assert tk.khoe is False
+    assert da_bao == [(mod, mod._khoa_tu_chuoi(tk.chuoi_goc))]
+
+
+def test_suc_khoe_khong_nuot_403_tu_danh_muc(monkeypatch):
+    ds = iter([httpx.Response(200, text=tao_html_trang_chu()), httpx.Response(403)])
+    mod = nap_test_module(monkeypatch, httpx.MockTransport(lambda _req: next(ds)),
+                          ["__Secure-1PSID=psid-hong"])
+    da_bao = []
+    monkeypatch.setattr(mod_module.tu_lam_moi, "bao_loi_phien", lambda *args: da_bao.append(args))
+
+    assert chay(mod.suc_khoe())["ok"] is False
+    assert da_bao == [(mod, mod._khoa_tu_chuoi(mod._tai_khoan[0].chuoi_goc))]

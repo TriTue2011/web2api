@@ -279,3 +279,52 @@ def test_6_nap_lai_khoi_phuc_model_that(monkeypatch):
     assert "chatgpt-web/gpt-9-xyz" in ids
     item = next(m for m in danh_sach if m["id"] == "chatgpt-web/gpt-9-xyz")
     assert item["nhan"] == "GPT 9 XYZ"
+
+
+def test_7_lam_moi_model_loi_xac_thuc_danh_dau_va_kich_khoi_phuc(monkeypatch):
+    """Lỗi 401 khi làm mới model phải đi qua đường đánh dấu phiên hỏng."""
+    transport = tao_transport_gia(phan_hoi_models={"token_1": 401})
+    mod = nap_test_module(monkeypatch, transport, ["token_1"])
+    da_bao = []
+    monkeypatch.setattr(
+        mod_module.tu_lam_moi,
+        "bao_loi_phien",
+        lambda module, khoa: da_bao.append((module, khoa)),
+    )
+
+    with pytest.raises(RuntimeError, match="xac_thuc"):
+        chay(mod.lam_moi_model())
+
+    tk = mod._tai_khoan[0]
+    assert tk.khoe is False
+    assert da_bao == [(mod, mod._khoa_tu_token("token_1"))]
+
+
+def test_8_lam_moi_model_loi_mang_khong_danh_dau(monkeypatch):
+    """Lỗi nối mạng khi làm mới model không được coi là lỗi phiên."""
+    def xu_ly(_req):
+        raise httpx.ConnectError("mang gia dut")
+
+    transport = httpx.MockTransport(xu_ly)
+    mod = nap_test_module(monkeypatch, transport, ["token_1"])
+    da_bao = []
+    monkeypatch.setattr(
+        mod_module.tu_lam_moi,
+        "bao_loi_phien",
+        lambda module, khoa: da_bao.append((module, khoa)),
+    )
+
+    with pytest.raises(RuntimeError):
+        chay(mod.lam_moi_model())
+
+    assert mod._tai_khoan[0].khoe is True
+    assert da_bao == []
+
+
+def test_suc_khoe_khong_nuot_401_tu_danh_muc(monkeypatch):
+    mod = nap_test_module(monkeypatch, tao_transport_gia({"token_1": 401}), ["token_1"])
+    da_bao = []
+    monkeypatch.setattr(mod_module.tu_lam_moi, "bao_loi_phien", lambda *args: da_bao.append(args))
+
+    assert chay(mod.suc_khoe())["ok"] is False
+    assert da_bao == [(mod, mod._khoa_tu_token("token_1"))]

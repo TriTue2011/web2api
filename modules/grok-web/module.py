@@ -50,6 +50,7 @@ from app.khoi_phuc_phien import (
     vuot_thu_thach_toi_da,
 )
 from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangNhap
+from app.lam_moi_model import LoiLamMoiModel
 from app.tu_xa import kiem_url_lan
 
 from .client import (
@@ -62,6 +63,7 @@ from .client import (
     LoiHanMucGrokWeb,
     LoiMayChuGrokWeb,
     LoiPhienGrokWeb,
+    LoiSaiKhuonGrokWeb,
     LoiThuThachCloudflare,
     LoiThuThachTruyCap,
     lay_uid_tu_phien,
@@ -1414,7 +1416,8 @@ class Module:
         else:
             log.info("grok-web: tài khoản #%d lỗi %s",
                      idx, type(loi).__name__)
-            if isinstance(loi, LoiPhienGrokWeb):
+            if (isinstance(loi, LoiPhienGrokWeb)
+                    and loi.ma_loi == "xac_thuc"):
                 # NV91-P2: lỗi phiên nhận ra bằng CẤU TRÚC (không dò chữ) → tự
                 # khôi phục MỘT lần cho đúng tài khoản (single-flight).
                 try:
@@ -1619,27 +1622,23 @@ class Module:
         Bước «lấy lại» là kiểm phiên thật của từng tài khoản qua
         /api/auth/session đã có của module (lay_uid_tu_phien): ít nhất một
         phiên còn dùng được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì
-        ném RuntimeError mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và
+        ném LoiLamMoiModel mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và
         KHÔNG xoá hay thay danh sách đang có. Thử thách truy cập (Cloudflare)
         coi là cần người, không vượt: báo mang mã «mang» kèm lý do thử thách
         và dừng. Chưa có tài khoản nào thì trả về im lặng: models() vẫn trả
         4 chế độ.
         """
+        jars = list(self._tai_khoan)
+        if not jars:
+            return
         hien = [m["id"] for m in await self.models()]
         khai = (self._manifest or {}).get("model_tinh")
         if khai is not None:
             if (not isinstance(khai, list) or not khai
                     or not all(isinstance(x, str) and x for x in khai)):
-                raise RuntimeError(
-                    "grok-web: sai_khuon — «model_tinh» trong manifest "
-                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+                raise LoiLamMoiModel("sai_khuon")
             if not set(khai) <= set(hien):
-                raise RuntimeError(
-                    "grok-web: sai_khuon — danh sách hiện tại thiếu model "
-                    "đã khai trong manifest; giữ danh sách cũ")
-        jars = list(self._tai_khoan)
-        if not jars:
-            return
+                raise LoiLamMoiModel("sai_khuon")
         loi_xac_thuc = None
         loi_sai_khuon = None
         loi_mang = None
@@ -1647,32 +1646,28 @@ class Module:
             try:
                 await lay_uid_tu_phien(jar, self._goc_https)
                 return  # ít nhất một phiên còn dùng được → giữ danh sách tĩnh
+            except LoiSaiKhuonGrokWeb as e:
+                loi_sai_khuon = e
             except LoiPhienGrokWeb as e:
-                # Phân loại theo thông điệp của chính client này (client.py):
-                # «không lấy được uid» = lỗi kết nối (mạng), «không chứa
-                # userId» = phản hồi sai khuôn, còn lại = cookie bị từ chối.
-                if "không chứa userId" in str(e):
-                    loi_sai_khuon = e
-                elif "không lấy được uid" in str(e):
-                    loi_mang = e
-                else:
+                if e.ma_loi == "xac_thuc":
+                    khoa = self._khoa_tu_jar(jar)
+                    self.danh_dau_hong(khoa, e.ma_loi)
+                    tu_lam_moi.bao_loi_phien(self, khoa)
                     loi_xac_thuc = e
+                elif e.ma_loi == "sai_khuon":
+                    loi_sai_khuon = e
+                else:
+                    loi_mang = e
             except LoiThuThachTruyCap as e:
                 # Thử thách truy cập: không vượt, báo rõ và dừng.
                 loi_mang = e
             except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
                 loi_mang = e
         if loi_sai_khuon is not None:
-            raise RuntimeError(
-                "grok-web: sai_khuon — grok.com trả phiên không chứa userId; "
-                "giữ danh sách cũ") from loi_sai_khuon
+            raise LoiLamMoiModel("sai_khuon") from loi_sai_khuon
         if loi_xac_thuc is not None:
-            raise RuntimeError(
-                "grok-web: xac_thuc — cookie bị grok.com từ chối; "
-                "giữ danh sách cũ") from loi_xac_thuc
-        raise RuntimeError(
-            "grok-web: mang — không nối được grok.com lúc làm mới (hoặc gặp "
-            "thử thách truy cập, không vượt); giữ danh sách cũ") from loi_mang
+            raise LoiLamMoiModel("xac_thuc") from loi_xac_thuc
+        raise LoiLamMoiModel("mang") from loi_mang
 
     async def suc_khoe(self) -> dict:
         """Tình trạng module — không để lộ cookie."""

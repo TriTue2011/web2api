@@ -277,6 +277,26 @@ def test_4_single_flight_timeout_va_che_log(moi_truong, monkeypatch, caplog):
     assert "RuntimeError" in log_text
 
 
+def test_4b_ghi_ma_loi_cau_truc_an_toan(moi_truong, caplog):
+    from app import lam_moi_model
+
+    class ModLoiCoMa:
+        async def lam_moi_model(self):
+            raise lam_moi_model.LoiLamMoiModel("xac_thuc")
+
+        async def models(self):
+            return []
+
+    vong = lam_moi_model.VongLamMoiModel(lambda: {"mod_ma": ModLoiCoMa()})
+
+    with caplog.at_level(logging.WARNING, logger="web2api.lam_moi_model"):
+        kq = asyncio.run(vong.lam_moi_mot("mod_ma"))
+
+    assert kq["ket_qua"] == "loi"
+    log_text = " ".join(r.getMessage() for r in caplog.records)
+    assert "ma_loi=xac_thuc" in log_text
+
+
 # ── Ca 5: Quy tắc cập nhật sổ ────────────────────────────────────────────────
 
 

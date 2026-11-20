@@ -52,7 +52,9 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
+from app import tu_lam_moi
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
+from app.lam_moi_model import LoiLamMoiModel
 from app.tai_khoan_hang_loat import BiMatTam, DongDaTach, KetQuaDangNhap
 
 from .chat import ChatSession, build_prompt
@@ -338,42 +340,41 @@ class Module:
         Bước «lấy lại» là kiểm cookie thật của từng tài khoản qua
         _kiem_cookie đã có của module (auth/check + session, chạy trong
         luồng riêng như suc_khoe): ít nhất một cookie còn dùng được thì giữ
-        danh sách tĩnh; mọi cookie đều hỏng thì ném RuntimeError mang mã lỗi
+        danh sách tĩnh; mọi cookie đều hỏng thì ném LoiLamMoiModel mang mã lỗi
         rõ (xac_thuc / mang / sai_khuon) và KHÔNG xoá hay thay danh sách
         đang có. Chưa có tài khoản nào thì trả về im lặng: models() vẫn trả
         đúng một model.
         """
+        accs = list(self._accs)
+        if not accs:
+            return
         hien = [m["id"] for m in await self.models()]
         khai = (self.manifest or {}).get("model_tinh")
         if khai is not None:
             if (not isinstance(khai, list) or not khai
                     or not all(isinstance(x, str) and x for x in khai)):
-                raise RuntimeError(
-                    "muse2api: sai_khuon — «model_tinh» trong manifest "
-                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+                raise LoiLamMoiModel("sai_khuon")
             if not set(khai) <= set(hien):
-                raise RuntimeError(
-                    "muse2api: sai_khuon — danh sách hiện tại thiếu model "
-                    "đã khai trong manifest; giữ danh sách cũ")
-        accs = list(self._accs)
-        if not accs:
-            return
+                raise LoiLamMoiModel("sai_khuon")
         ket_qua = await asyncio.gather(
-            *[asyncio.to_thread(self._kiem_cookie, a.cookies) for a in accs])
-        for ok, _loi, bi_tu_choi in ket_qua:
-            if ok:
-                return  # ít nhất một cookie còn dùng được → giữ danh sách
+            *(self._kiem_phien_tai_khoan(a) for a in accs))
+        if any(ok for ok, _loi, _bi_tu_choi in ket_qua):
+            return  # ít nhất một cookie còn dùng được → giữ danh sách
         if any(bi_tu_choi for _ok, _loi, bi_tu_choi in ket_qua):
-            raise RuntimeError(
-                "muse2api: xac_thuc — cookie bị muse.ai từ chối; "
-                "giữ danh sách cũ")
-        raise RuntimeError(
-            "muse2api: mang — kiểm cookie gặp lỗi tạm thời; "
-            "giữ danh sách cũ")
+            raise LoiLamMoiModel("xac_thuc")
+        raise LoiLamMoiModel("mang")
+
+    async def _kiem_phien_tai_khoan(self, acc: _TaiKhoan) -> tuple[bool, str | None, bool]:
+        cookies = acc.cookies
+        ok, loi, bi_tu_choi = await asyncio.to_thread(self._kiem_cookie, cookies)
+        if bi_tu_choi and acc.cookies == cookies:
+            acc.khoe = False
+            tu_lam_moi.bao_loi_phien(self, self._khoa_tu_cookies(cookies))
+        return ok, loi, bi_tu_choi
 
     async def suc_khoe(self) -> dict:
         async def _kiem(acc: _TaiKhoan):
-            ok, loi, _ = await asyncio.to_thread(self._kiem_cookie, acc.cookies)
+            ok, loi, _ = await self._kiem_phien_tai_khoan(acc)
             return {"khoa": _che(acc.cookies), "ok": ok, "loi": loi,
                     "dang_dung": acc._gw is not None}
         ds = await asyncio.gather(*[_kiem(a) for a in self._accs]) if self._accs else []

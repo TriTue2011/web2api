@@ -27,6 +27,7 @@ from app import model_bo_sung
 from app import tu_lam_moi
 from app.kho import che
 from app.khoi_phuc_phien import KetQuaKhoiPhuc, TaiKhoanCanKhoiPhuc
+from app.lam_moi_model import LoiLamMoiModel
 from app.loi_openai import loai_theo_ma, nhac_lai, than_loi
 from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangNhap
 from app.tu_xa import kiem_url_lan
@@ -1105,6 +1106,8 @@ class Module:
         await tk.client.init()
         try:
             models = await tk.client.lay_model_kha_dung()
+        except LoiXacThuc:
+            raise
         except LoiGeminiWeb:
             models = []
         except Exception:
@@ -1500,9 +1503,10 @@ class Module:
         with self._khoa:
             ds = list(self._tai_khoan)
         if not ds:
-            raise RuntimeError("gemini-web chưa có tài khoản nào")
+            return
         co_thanh_cong = False
-        for tk in ds:
+        co_xac_thuc = False
+        for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.psid, tk.psidts)
@@ -1512,13 +1516,16 @@ class Module:
                     if not tk.goi or tk.goi == "khong_ro":
                         tk.goi = self._suy_goi(tk.model)
                     co_thanh_cong = True
+            except LoiXacThuc:
+                co_xac_thuc = True
+                self._danh_dau_loi(tk, "khoa_hong", i)
             except Exception as e:
                 log.warning("gemini-web: không lấy được model cho %s: %s",
                             tk.ten_che(), type(e).__name__)
         if co_thanh_cong:
             self._luu_ban_ghi_tai_khoan()
         else:
-            raise RuntimeError("không lấy được model từ nguồn")
+            raise LoiLamMoiModel("xac_thuc" if co_xac_thuc else "loi_nguon")
 
     def _muc_model(self, ma: str, ds_khoa: list[str], ds_goi: list[str], nhan_ghi_de: str | None = None) -> dict:
         """Một mục /v1/models: id ổn định + nhãn tách riêng + gói/tài khoản."""
@@ -1573,6 +1580,7 @@ class Module:
             try:
                 await self._init_tai_khoan(tk)
             except LoiXacThuc as e:
+                self._danh_dau_loi(tk, "khoa_hong", i - 1)
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
                             "so_model": 0, "loi": str(e), "dang_nghi_den": None})

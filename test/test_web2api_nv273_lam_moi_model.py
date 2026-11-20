@@ -124,6 +124,26 @@ def test_claude_lam_moi_xac_thuc_giu_danh_sach(monkeypatch):
         assert ids(chay(m.models())) == truoc
 
 
+def test_claude_lam_moi_xac_thuc_kich_hoat_khoi_phuc(monkeypatch):
+    with ClaudeGia() as srv:
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+        mod, manifest = nap_goi("nv273_claude_web_khoi_phuc", "claude-web")
+        m = mod.Module(manifest)
+        m.nap({"cookies": ["het-han-401-khoi-phuc"], "base_url": srv.url})
+        da_bao = []
+        monkeypatch.setattr(
+            mod.tu_lam_moi,
+            "bao_loi_phien",
+            lambda module, khoa: da_bao.append((module, khoa)),
+        )
+
+        with pytest.raises(RuntimeError, match="xac_thuc"):
+            chay(m.lam_moi_model())
+
+        assert m._accs[0].khoe is False
+        assert da_bao == [(m, m._khoa_tu_cookie(m._accs[0].cookie))]
+
+
 def test_claude_lam_moi_mang_hong_giu_danh_sach(monkeypatch):
     with ClaudeGia() as srv:
         m = claude_module(srv.url, "loi-500-mmmm", monkeypatch)
@@ -210,6 +230,27 @@ def test_grok_lam_moi_xac_thuc_giu_danh_sach(monkeypatch):
         with pytest.raises(RuntimeError, match="xac_thuc"):
             chay(m.lam_moi_model())
         assert ids(chay(m.models())) == truoc
+
+
+def test_grok_lam_moi_xac_thuc_kich_hoat_khoi_phuc(monkeypatch):
+    with GrokGia() as srv:
+        monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+        mod, manifest = nap_goi("nv273_grok_web_khoi_phuc", "grok-web")
+        m = mod.Module(manifest)
+        ws_url = srv.url.replace("http://", "ws://")
+        chay(m.nap({"tai_khoan": ["sso=het-han; phien=abc123"],
+                    "ws_url": ws_url}))
+        da_bao = []
+        monkeypatch.setattr(
+            mod.tu_lam_moi,
+            "bao_loi_phien",
+            lambda module, khoa: da_bao.append((module, khoa)),
+        )
+
+        with pytest.raises(RuntimeError, match="xac_thuc"):
+            chay(m.lam_moi_model())
+
+        assert da_bao == [(m, m._khoa_tu_jar(m._tai_khoan[0]))]
 
 
 def test_grok_lam_moi_mang_hong_giu_danh_sach(monkeypatch):
@@ -391,6 +432,24 @@ def test_muse_lam_moi_xac_thuc_giu_danh_sach(monkeypatch):
     with pytest.raises(RuntimeError, match="xac_thuc"):
         chay(m.lam_moi_model())
     assert ids(chay(m.models())) == truoc
+
+
+@pytest.mark.parametrize("buoc", ["lam_moi_model", "suc_khoe"])
+def test_muse_kiem_phien_bao_dung_tai_khoan(monkeypatch, buoc):
+    from app import tu_lam_moi
+
+    m = muse_module(monkeypatch, (False, "noi-dung-khong-nen-ghi", True))
+    da_bao = []
+    monkeypatch.setattr(tu_lam_moi, "bao_loi_phien", lambda *args: da_bao.append(args))
+
+    if buoc == "lam_moi_model":
+        with pytest.raises(RuntimeError, match="xac_thuc"):
+            chay(m.lam_moi_model())
+    else:
+        assert chay(m.suc_khoe())["ok"] is False
+
+    assert m._accs[0].khoe is False
+    assert da_bao == [(m, m.khoa_tai_khoan()[0])]
 
 
 def test_muse_lam_moi_mang_hong_giu_danh_sach(monkeypatch):

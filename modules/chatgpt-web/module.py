@@ -36,7 +36,12 @@ from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangN
 from app import tu_lam_moi
 from app.tu_xa import kiem_url_lan
 
-from app.lam_moi_model import TOI_DA_MODEL, chuan_hoa_ma_model, chuan_hoa_nhan
+from app.lam_moi_model import (
+    TOI_DA_MODEL,
+    LoiLamMoiModel,
+    chuan_hoa_ma_model,
+    chuan_hoa_nhan,
+)
 
 from .client import (
     MAY_CHU_MAC_DINH,
@@ -1512,6 +1517,8 @@ class Module:
             kq = await tk.client.lay_model()
             if kq:
                 tk.model_that = kq
+        except LoiXacThuc:
+            raise
         except Exception as e:
             log.warning("chatgpt-web: không lấy được model ở _init_tai_khoan cho %s: %s",
                         tk.ten_che(), type(e).__name__)
@@ -1821,7 +1828,8 @@ class Module:
         if not ds:
             return
         co_thanh_cong = False
-        for tk in ds:
+        co_xac_thuc = False
+        for i, tk in enumerate(ds):
             try:
                 if tk.client is None:
                     tk.client = self._tao_client(tk.token)
@@ -1829,13 +1837,16 @@ class Module:
                 if kq:
                     tk.model_that = kq
                     co_thanh_cong = True
+            except LoiXacThuc:
+                co_xac_thuc = True
+                self._danh_dau_loi(tk, "khoa_hong", i)
             except Exception as e:
                 log.warning("chatgpt-web: không lấy được model cho %s: %s",
                             tk.ten_che(), type(e).__name__)
         if co_thanh_cong:
             self._luu_ban_ghi_tai_khoan()
         else:
-            raise RuntimeError("không lấy được model từ nguồn")
+            raise LoiLamMoiModel("xac_thuc" if co_xac_thuc else "loi_nguon")
 
     async def models(self):
         """HỢP model theo tài khoản: mỗi model có id ổn định «chatgpt-web/<tên>»,
@@ -1908,6 +1919,7 @@ class Module:
             try:
                 await self._init_tai_khoan(tk)
             except LoiXacThuc as e:
+                self._danh_dau_loi(tk, "khoa_hong", i - 1)
                 muc.append({"khoa": tk.ten_che(), "ok": False, "thu_tu": i,
                             "do_tre_ms": int((time.monotonic() - bat_dau) * 1000),
                             "so_model": 0, "loi": str(e)})

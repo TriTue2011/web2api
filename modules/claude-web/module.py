@@ -31,7 +31,9 @@ from app.tai_khoan_hang_loat import BiMatTam, BiMatTotp, DongDaTach, KetQuaDangN
 from app.tu_xa import kiem_url_lan
 
 from . import converter as cv
-from .client import BASE_MAC_DINH, ClaudeWebClient, LoiClaudeWeb, MayKhachClaudeWeb
+from app.lam_moi_model import LoiLamMoiModel
+
+from .client import BASE_MAC_DINH, ClaudeWebClient, LoiClaudeWeb, LoiSaiKhuonClaudeWeb, MayKhachClaudeWeb
 
 LOG = logging.getLogger("web2api.module.claude-web")
 
@@ -1231,26 +1233,22 @@ class Module:
         manifest («model_tinh», khớp bảng của converter). Kết luận của chủ máy ngày 2026-10-28: không có endpoint liệt kê thật → giữ danh sách tĩnh kèm kiểm phiên; lam_moi_model này KHÔNG TỰ LẤY ĐƯỢC model mới.
         Bước «lấy lại» là kiểm phiên thật của từng tài khoản qua
         GET /api/organizations đã có của module: ít nhất một phiên còn dùng
-        được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì ném RuntimeError
+        được thì giữ danh sách tĩnh; mọi phiên đều hỏng thì ném LoiLamMoiModel
         mang mã lỗi rõ (xac_thuc / mang / sai_khuon) và KHÔNG xoá hay thay
         danh sách đang có. Chưa có tài khoản nào thì trả về im lặng (như
         chatgpt-web): models() vẫn trả bảng tĩnh.
         """
+        accs = list(self._accs)
+        if not accs:
+            return
         hien = [m["id"] for m in await self.models()]
         khai = (self.manifest or {}).get("model_tinh")
         if khai is not None:
             if (not isinstance(khai, list) or not khai
                     or not all(isinstance(x, str) and x for x in khai)):
-                raise RuntimeError(
-                    "claude-web: sai_khuon — «model_tinh» trong manifest "
-                    "không phải danh sách chuỗi khác rỗng; giữ danh sách cũ")
+                raise LoiLamMoiModel("sai_khuon")
             if not set(khai) <= set(hien):
-                raise RuntimeError(
-                    "claude-web: sai_khuon — danh sách hiện tại thiếu model "
-                    "đã khai trong manifest; giữ danh sách cũ")
-        accs = list(self._accs)
-        if not accs:
-            return
+                raise LoiLamMoiModel("sai_khuon")
         loi_xac_thuc = None
         loi_sai_khuon = None
         loi_mang = None
@@ -1258,26 +1256,21 @@ class Module:
             try:
                 await acc.may_khach.lay_org_id()
                 return  # ít nhất một phiên còn dùng được → giữ danh sách tĩnh
+            except LoiSaiKhuonClaudeWeb as e:
+                loi_sai_khuon = e
             except LoiClaudeWeb as e:
-                if e.ma in (401, 403):
+                if phan_loai_ma(e.ma) == "xac_thuc":
                     loi_xac_thuc = e
-                elif "JSON hỏng" in (e.thong_bao or ""):
-                    loi_sai_khuon = e
+                    self._bao_loi_phien(acc)
                 else:
                     loi_mang = e
             except Exception as e:  # noqa: BLE001 — mạng lạ: coi là tạm thời
                 loi_mang = e
         if loi_sai_khuon is not None:
-            raise RuntimeError(
-                "claude-web: sai_khuon — claude.ai trả JSON hỏng ở bước lấy "
-                "tổ chức; giữ danh sách cũ") from loi_sai_khuon
+            raise LoiLamMoiModel("sai_khuon") from loi_sai_khuon
         if loi_xac_thuc is not None:
-            raise RuntimeError(
-                "claude-web: xac_thuc — cookie bị claude.ai từ chối; "
-                "giữ danh sách cũ") from loi_xac_thuc
-        raise RuntimeError(
-            "claude-web: mang — không nối được claude.ai lúc làm mới; "
-            "giữ danh sách cũ") from loi_mang
+            raise LoiLamMoiModel("xac_thuc") from loi_xac_thuc
+        raise LoiLamMoiModel("mang") from loi_mang
 
     async def suc_khoe(self) -> dict:
         return {
@@ -1302,6 +1295,10 @@ class Module:
         # Không còn tài khoản khoẻ: cho tài khoản đã đánh dấu hỏng một cơ hội
         # hồi phục (cookie có thể chỉ bị từ chối thoáng qua).
         return con_lai[0] if con_lai else None
+
+    def _bao_loi_phien(self, acc: _TaiKhoan) -> None:
+        acc.khoe = False
+        tu_lam_moi.bao_loi_phien(self, self._khoa_tu_cookie(acc.cookie))
 
     async def chat(self, body: dict, stream: bool):
         body = body or {}
@@ -1331,13 +1328,10 @@ class Module:
             except LoiClaudeWeb as e:
                 loi_cuoi = e
                 nhom = phan_loai_ma(e.ma)
-                if nhom in ("xac_thuc", "han_muc"):
+                if nhom == "xac_thuc":
+                    self._bao_loi_phien(acc)
+                elif nhom == "han_muc":
                     acc.khoe = False
-                    if nhom == "xac_thuc":
-                        # NV91-P2: lỗi phiên nhận ra bằng CẤU TRÚC (mã HTTP, không
-                        # dò chữ) → tự khôi phục MỘT lần cho đúng tài khoản
-                        # (single-flight); vòng lặp vẫn chuyển tài khoản kế ngay.
-                        tu_lam_moi.bao_loi_phien(self, self._khoa_tu_cookie(acc.cookie))
                 LOG.warning("claude-web: tài khoản %s lỗi HTTP %s (%s), chuyển tài khoản",
                             acc.ten_che, e.ma, nhom)
         return self._loi_tong(loi_cuoi)

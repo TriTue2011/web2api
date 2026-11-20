@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import os
+import re
 import unicodedata
 from typing import Any, Callable
 
@@ -33,8 +34,16 @@ TOI_DA_MODEL = 500
 DO_DAI_TOI_DA_MA = 128
 DO_DAI_TOI_DA_NHAN = 80
 SO_CHU_KY_VANG = 2
-
+_MA_LOI_LAM_MOI = re.compile(r"[a-z_]{1,40}")
 _tac_vu_nen: set[asyncio.Task] = set()
+
+
+class LoiLamMoiModel(RuntimeError):
+    """Mã lỗi ngắn do module đặt trong mã nguồn, không lấy từ phản hồi."""
+
+    def __init__(self, ma_loi: str):
+        self.ma_loi = ma_loi
+        super().__init__(ma_loi)
 
 
 def chu_ky_gio() -> float:
@@ -317,7 +326,13 @@ class VongLamMoiModel:
                 log.warning("Làm mới danh sách model module %s: het_gio (%s)", id_module, "TimeoutError")
                 return {"ket_qua": "het_gio", "moi": [], "khong_con": []}
             except Exception as e:
-                log.warning("Làm mới danh sách model module %s: loi (%s)", id_module, type(e).__name__)
+                if (isinstance(e, LoiLamMoiModel) and type(e.ma_loi) is str
+                        and _MA_LOI_LAM_MOI.fullmatch(e.ma_loi)):
+                    log.warning("Làm mới danh sách model module %s: loi (ma_loi=%s)",
+                                id_module, e.ma_loi)
+                else:
+                    log.warning("Làm mới danh sách model module %s: loi (%s)",
+                                id_module, type(e).__name__)
                 return {"ket_qua": "loi", "moi": [], "khong_con": []}
 
             ds_sach = loc_danh_sach_model(raw, tien_to=_tien_to_cua(m))

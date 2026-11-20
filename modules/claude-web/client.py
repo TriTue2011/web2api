@@ -39,6 +39,10 @@ class LoiClaudeWeb(Exception):
         self.thong_bao = thong_bao
 
 
+class LoiSaiKhuonClaudeWeb(LoiClaudeWeb):
+    """Phản hồi không đọc được theo cấu trúc dự kiến."""
+
+
 class MayKhachClaudeWeb:
     """Một phiên claude.ai gắn với đúng một bộ cookie."""
 
@@ -99,7 +103,7 @@ class MayKhachClaudeWeb:
         try:
             ds = r.json()
         except ValueError as e:
-            raise LoiClaudeWeb(502, "claude.ai trả JSON hỏng ở bước lấy tổ chức") from e
+            raise LoiSaiKhuonClaudeWeb(502, "claude.ai trả JSON hỏng ở bước lấy tổ chức") from e
         org_id = ""
         if isinstance(ds, list) and ds:
             co_chat = [o for o in ds

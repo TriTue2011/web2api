@@ -69,7 +69,15 @@ class LoiGrokWeb(Exception):
 
 
 class LoiPhienGrokWeb(LoiGrokWeb):
-    """Lỗi phiên/xác thực — lớp trên nên đổi sang tài khoản khác."""
+    """Lỗi khi kiểm hoặc dùng phiên, phân nhóm theo `ma_loi`."""
+
+    def __init__(self, thong_diep: str, *, ma_loi: str = "xac_thuc"):
+        super().__init__(thong_diep)
+        self.ma_loi = ma_loi
+
+
+class LoiSaiKhuonGrokWeb(LoiGrokWeb):
+    """Phản hồi kiểm phiên không đọc được theo cấu trúc dự kiến."""
 
 
 class LoiHanMucGrokWeb(LoiGrokWeb):
@@ -206,19 +214,23 @@ async def lay_uid_tu_phien(cookies: dict[str, str], goc_https: str) -> str:
             )
     except Exception as e:
         raise LoiPhienGrokWeb(
-            "không lấy được uid (thiếu cookie x-userid và gọi phiên thất bại)"
+            "không lấy được uid (thiếu cookie x-userid và gọi phiên thất bại)",
+            ma_loi="mang",
         ) from e
     if _la_thu_thach_truy_cap(dap):
         raise LoiThuThachTruyCap("grok.com trả thử thách truy cập (Cloudflare)")
     if dap.status_code in (401, 403):
         raise LoiPhienGrokWeb("cookie bị grok.com từ chối khi lấy uid")
+    if dap.status_code != 200:
+        raise LoiPhienGrokWeb("không lấy được uid", ma_loi="mang")
     try:
         du_lieu = dap.json()
         uid = str(du_lieu.get("session", {}).get("userId") or "")
     except Exception as e:
-        raise LoiGrokWeb("phản hồi phiên không phải JSON") from e
+        raise LoiSaiKhuonGrokWeb("phản hồi phiên không phải JSON") from e
     if not uid:
-        raise LoiPhienGrokWeb("phiên không chứa userId (cookie có thể hết hạn)")
+        raise LoiPhienGrokWeb(
+            "phiên không chứa userId (cookie có thể hết hạn)", ma_loi="sai_khuon")
     return uid
 
 
