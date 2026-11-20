@@ -17,19 +17,22 @@ mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 chmod 0700 /khoa /data 2>/dev/null || true
 
 # noVNC/websockify/x11vnc mặc định KHÔNG chạy.
-# Chỉ khi CAPTCHA_SOLVER_BAT_NOVNC=1 mới sinh mật khẩu VNC vào /khoa/mat-khau-vnc và chạy supervisord-novnc.conf.
+# Chỉ khi CAPTCHA_SOLVER_BAT_NOVNC=1 mới chạy supervisord-novnc.conf.
 # Giao thức RFB chỉ dùng 8 ký tự đầu nên sinh đúng 8 ký tự ngẫu nhiên A-Za-z0-9 (~47 bit), không in ra stdout.
+# NV305: tệp mật khẩu ĐÃ CÓ thì GIỮ NGUYÊN — mật khẩu chủ máy đặt qua giao diện (đường PUT /v1/novnc/mat-khau)
+# không bị ghi đè mỗi lần khởi động lại container. Biến CAPTCHA_SOLVER_MAT_KHAU_VNC chỉ dùng làm mật khẩu
+# BAN ĐẦU khi chưa có tệp nào (đường tạm trước NV305); muốn đổi mật khẩu thì đặt qua giao diện, không đổi biến.
 if [ "$CAPTCHA_SOLVER_BAT_NOVNC" = "1" ] || [ "$CAPTCHA_SOLVER_BAT_NOVNC" = "true" ]; then
-    # Chủ máy tự đặt mật khẩu bằng biến CAPTCHA_SOLVER_MAT_KHAU_VNC (tệp ghi đè ngoài repo; RFB chỉ dùng 8 ký tự đầu,
-    # nên cắt còn 8). Có biến thì ghi lại MỖI LẦN khởi động (đổi biến là đổi mật khẩu); không có thì sinh ngẫu nhiên một lần.
-    if [ -n "$CAPTCHA_SOLVER_MAT_KHAU_VNC" ]; then
-        umask 077
-        printf '%s' "$CAPTCHA_SOLVER_MAT_KHAU_VNC" | head -c 8 > /khoa/mat-khau-vnc
-        chmod 0600 /khoa/mat-khau-vnc
-    elif [ ! -f /khoa/mat-khau-vnc ]; then
-        umask 077
-        tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 8 > /khoa/mat-khau-vnc
-        chmod 0600 /khoa/mat-khau-vnc
+    if [ ! -f /khoa/mat-khau-vnc ]; then
+        if [ -n "$CAPTCHA_SOLVER_MAT_KHAU_VNC" ]; then
+            umask 077
+            printf '%s' "$CAPTCHA_SOLVER_MAT_KHAU_VNC" | head -c 8 > /khoa/mat-khau-vnc
+            chmod 0600 /khoa/mat-khau-vnc
+        else
+            umask 077
+            tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 8 > /khoa/mat-khau-vnc
+            chmod 0600 /khoa/mat-khau-vnc
+        fi
     fi
     exec /usr/bin/supervisord -c /etc/supervisor/supervisord-novnc.conf
 else

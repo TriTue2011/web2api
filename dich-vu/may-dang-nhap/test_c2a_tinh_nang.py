@@ -23,6 +23,10 @@ BANG_NHOM_MONG_MUON = {
     ("GET", "/health"): "mo",
 
     # dang_nhap (BẬT mặc định)
+    ("PUT", "/v1/novnc/mat-khau"): "dang_nhap",
+    ("GET", "/v1/novnc/mat-khau/trang-thai"): "dang_nhap",
+    ("GET", "/v1/man-hinh"): "dang_nhap",
+    ("GET", "/v1/chan-doan"): "dang_nhap",
     ("POST", "/v1/session/manual-login"): "dang_nhap",
     ("POST", "/v1/session/auto-login"): "dang_nhap",
     ("POST", "/v1/session/auto-login-saved"): "dang_nhap",

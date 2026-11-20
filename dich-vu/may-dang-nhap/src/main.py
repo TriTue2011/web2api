@@ -25,6 +25,8 @@ from typing import Any, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -41,6 +43,7 @@ from .accounts_db import (
     set_totp,
 )
 from . import chan_doan, vault
+from . import mat_khau_vnc  # W2A NV305: mật khẩu xem trình duyệt do chủ máy tự đặt
 from .auto_login import (
     get_session as get_login_session,
     list_sessions as list_login_sessions,
@@ -238,6 +241,46 @@ async def health(request: Request) -> Any:
         kq["canh_bao"] = ket_msg
         return JSONResponse(status_code=503, content=kq)
     return kq
+
+
+class MatKhauVncReq(BaseModel):
+    mat_khau: str
+
+
+@app.exception_handler(RequestValidationError)
+async def _loi_kiem_du_lieu_vnc(request: Request, exc: RequestValidationError):
+    # W2A NV305: lỗi kiểm kiểu cũng không được phản chiếu mật khẩu/thân yêu cầu.
+    if request.url.path == "/v1/novnc/mat-khau":
+        return JSONResponse(status_code=422, content={
+            "detail": [{"loc": loi["loc"], "msg": loi["msg"], "type": loi["type"]}
+                       for loi in exc.errors()],
+        })
+    return await request_validation_exception_handler(request, exc)
+
+
+# W2A NV305: mật khẩu xem trình duyệt (VNC) do chủ máy tự đặt trong «Bảo mật & người dùng» của lõi.
+# Trước đây mật khẩu do entrypoint sinh ngẫu nhiên vào /khoa/mat-khau-vnc, chủ máy phải docker exec mới đọc
+# được. Đường này ghi đè tệp đó (0600) + tệp đánh dấu «đã đặt», rồi nạp lại x11vnc bằng supervisorctl để
+# mật khẩu mới có hiệu lực ngay mà không dựng lại container. Mật khẩu KHÔNG BAO GIỜ trả về trong phản hồi
+# hay vào log; nhóm tính năng dang_nhap (mặc định bật) vì đây là màn hình của luồng đăng nhập.
+@app.put("/v1/novnc/mat-khau", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_dat_mat_khau_vnc(req: MatKhauVncReq) -> dict[str, Any]:
+    loi = mat_khau_vnc.kiem_mat_khau_vnc(req.mat_khau)
+    if loi:
+        raise HTTPException(status_code=400, detail=loi)
+    try:
+        return await asyncio.to_thread(
+            mat_khau_vnc.ghi_mat_khau_vnc, req.mat_khau, thu_muc_khoa=settings.key_dir)
+    except (OSError, ValueError) as exc:
+        logger.warning("dat mat khau VNC hong: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Không ghi được mật khẩu xem trình duyệt.") from exc
+
+
+@app.get("/v1/novnc/mat-khau/trang-thai", dependencies=[Depends(can_tinh_nang("dang_nhap"))])
+async def api_trang_thai_mat_khau_vnc() -> dict[str, Any]:
+    """Chỉ trả bool «đã từng đặt qua giao diện hay chưa» — không trả mật khẩu, không cần step-up ở lõi
+    vì không có bí mật nào đi ra."""
+    return {"ok": True, "da_dat": mat_khau_vnc.trang_thai_da_dat(settings.key_dir)}
 
 
 

@@ -2190,6 +2190,23 @@ class Module:
             raise RuntimeError("Chưa cấu hình địa chỉ dịch vụ đăng nhập tự động")
         return {"dich": f"http://{host}:6080"}
 
+    async def dat_mat_khau_vnc(self, mat_khau: str) -> dict:
+        """NV305: đặt mật khẩu xem trình duyệt (VNC) qua dịch vụ (PUT /v1/novnc/mat-khau, khoá dịch vụ
+        đã cấu hình). Chỉ trả {ok, da_nap_lai} — dịch vụ không trả mật khẩu, module không tự thêm vào."""
+        kq = await self._goi("PUT", "/v1/novnc/mat-khau", json_body={"mat_khau": mat_khau})
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            return kq if isinstance(kq, dict) else {"ok": False, "ma_loi": "loi_dich_vu",
+                                                    "loi": "Dịch vụ báo lỗi không rõ"}
+        return {"ok": True, "da_nap_lai": bool(kq.get("da_nap_lai"))}
+
+    async def trang_thai_mat_khau_vnc(self) -> dict:
+        """NV305: hỏi dịch vụ đã từng đặt mật khẩu qua giao diện hay chưa. Chỉ trả bool, không mật khẩu."""
+        kq = await self._goi("GET", "/v1/novnc/mat-khau/trang-thai")
+        if not isinstance(kq, dict) or not kq.get("ok"):
+            return kq if isinstance(kq, dict) else {"ok": False, "ma_loi": "loi_dich_vu",
+                                                    "loi": "Dịch vụ báo lỗi không rõ"}
+        return {"ok": True, "da_dat": bool(kq.get("da_dat"))}
+
     async def tien_do(self, ho_so: str, module_cua_tai_khoan: str = "") -> dict:
         """Trạng thái lượt đăng nhập nền cho giao diện hỏi (NV145b + NV210).
 

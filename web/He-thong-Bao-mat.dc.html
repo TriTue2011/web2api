@@ -419,6 +419,28 @@ main.pg{padding:12px 24px 24px 16px}
 </section>
 
 <sc-if value="{{laAdmin}}">
+<!-- ═══ NV305: MẬT KHẨU XEM TRÌNH DUYỆT (VNC) DO CHỦ MÁY TỰ ĐẶT — vị trí theo đặc tả NV305 + quy tắc 2
+     (bí mật do web2api quản để mở màn hình xem của chính nó, không phải kết nối ra ngoài nên không nằm
+     trong chip «Cài đặt» của module) ═══ -->
+<section class="the" aria-labelledby="h-mat-khau-xem" id="mat-khau-xem-trinh-duyet">
+<h2 id="h-mat-khau-xem" class="nhan-muc">Mật khẩu xem trình duyệt đăng nhập</h2>
+<p class="phu" id="huong-dan-vnc">Đặt mật khẩu để mở màn hình xem trình duyệt đang đăng nhập tự động. Khi mở màn hình xem, nhập mật khẩu này vào hộp nhập của noVNC. Dùng 1–8 ký tự ASCII in được (chữ, số hoặc dấu câu), không khoảng trắng, không dấu tiếng Việt. Giới hạn 8 ký tự là của giao thức VNC. Mật khẩu chỉ ghi đè, không xem lại được. Khi bấm «Đặt» hoặc «Đổi», bạn có thể được yêu cầu xác nhận lại mật khẩu tài khoản web2api.</p>
+<sc-if value="{{vncDaDat}}"><p class="phu" id="vnc-da-dat">••••• đã đặt — người đang xem phải nhập mật khẩu này ở hộp nhập của màn hình xem. Muốn đổi thì gõ mật khẩu mới rồi bấm «Đổi».</p></sc-if>
+<sc-if value="{{vncChuaDat}}"><p class="phu" id="vnc-chua-dat">Chưa đặt qua giao diện này. Đặt mật khẩu mới ở dưới để dùng khi mở màn hình xem.</p></sc-if>
+<sc-if value="{{vncTrangThaiLoi}}"><p role="alert" class="bao bao-loi" id="loi-trang-thai-vnc">{{vncTrangThaiLoi}}</p></sc-if>
+<form class="form-mat-khau-vnc" novalidate onSubmit="{{vncDatSubmit}}" style="display:flex;flex-direction:column;gap:12px">
+<div class="truong">
+<label for="o-mat-khau-vnc">Mật khẩu xem trình duyệt (1–8 ký tự)</label>
+<input id="o-mat-khau-vnc" class="o" type="password" autocomplete="off" spellcheck="false" maxlength="8" aria-describedby="huong-dan-vnc" placeholder="Ví dụ: xemnha1" value="{{vncMk}}" onInput="{{vncGoMk}}">
+</div>
+<sc-if value="{{vncLoi}}"><p role="alert" class="bao bao-loi" id="loi-mat-khau-vnc">{{vncLoi}}</p></sc-if>
+<sc-if value="{{vncTin}}"><p role="status" class="bao bao-tot" id="tin-mat-khau-vnc">{{vncTin}}</p></sc-if>
+<div class="dong-nut"><button type="submit" class="nut nut-chinh" id="nut-dat-mat-khau-vnc" disabled="{{vncDangDat}}">{{vncNhanNut}}</button></div>
+</form>
+</section>
+</sc-if>
+
+<sc-if value="{{laAdmin}}">
 <!-- ═══ KHOÁ ĐĂNG NHẬP (ADMIN): bỏ chặn khi người dùng quên mật khẩu ═══ -->
 <section class="bang-tb muc-gap" aria-labelledby="h-khoa-dn" id="khoa-dang-nhap">
 <h2 id="h-khoa-dn" class="muc-gap-tieu"><button type="button" class="muc-gap-nut bang-tb-dau" data-mo-muc="khoa-dang-nhap" aria-expanded="{{m.khoaDn.moChu}}" aria-controls="nd-khoa-dang-nhap" onClick="{{m.khoaDn.bat}}" onKeyDown="{{m.khoaDn.phim}}"><span>Khoá đăng nhập</span><span class="dem-phai" id="dem-khoa-dn">{{kdSo}} đang chặn</span><span class="mui" aria-hidden="true"></span></button></h2>
@@ -723,6 +745,14 @@ class Component extends DCLogic {
       dvnDangXoa: null,
       dvnDangDoi: null,
 
+      // NV305: Mật khẩu xem trình duyệt (VNC) do chủ máy tự đặt (admin; null = chưa tải trạng thái)
+      vncMk: '',
+      vncDaDat: null,
+      vncTrangThaiLoi: '',
+      vncDangDat: false,
+      vncLoi: '',
+      vncTin: '',
+
       // Khoá API của tôi (mọi người dùng)
       dsKhoaToi: [],
       nhanKhoaToiNhap: '',
@@ -828,7 +858,7 @@ class Component extends DCLogic {
     await this.taiKhoaToi();
     await this.tai2fa();
     if (laAdmin) {
-      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa(), this.taiKhoaDn()]);
+      await Promise.allSettled([this.taiDsNguoiDung(), this.taiDsKhoa(), this.taiKhoaDn(), this.taiVncTrangThai()]);
       setTimeout(() => this.cuonToiNeoDvn(), 0);
     }
   }
@@ -1247,6 +1277,50 @@ class Component extends DCLogic {
       this.setState({ dangXoa: null });
       await this.taiDsKhoa();
       if (loi) this.setState({ dsKhoaLoi: loi });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // NV305: MẬT KHẨU XEM TRÌNH DUYỆT (VNC) DO CHỦ MÁY TỰ ĐẶT (ADMIN)
+  // Ghi đè, không đọc lại: giao diện chỉ biết «đã đặt hay chưa» qua GET trạng thái,
+  // không bao giờ nhận mật khẩu về. PUT có step-up: K.goi tự hỏi mật khẩu xác nhận lại
+  // khi máy chủ trả 403 step_up_required rồi thử lại một lần.
+  // ═══════════════════════════════════════════════════════════════
+
+  async taiVncTrangThai() {
+    try {
+      const { j } = await K.goi('api/trinh-duyet/mat-khau-vnc/trang-thai');
+      this.setState({ vncDaDat: !!(j && j.da_dat), vncTrangThaiLoi: '' });
+    } catch (e) {
+      this.setState({ vncDaDat: null, vncTrangThaiLoi: 'Chưa kiểm tra được trạng thái mật khẩu. '
+        + (e.message || 'Lỗi kết nối máy chủ.') + ' Tải lại trang để thử lại.' });
+    }
+  }
+
+  vncGoMk(e) { this.setState({ vncMk: e.target.value, vncLoi: '', vncTin: '' }); }
+
+  async vncDatSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.state.vncDangDat) return;
+    const mk = this.state.vncMk || '';
+    if (!/^[!-~]{1,8}$/.test(mk)) {
+      this.setState({ vncLoi: 'Mật khẩu xem trình duyệt chỉ dùng 1–8 ký tự (chữ, số, ký tự thường; không khoảng trắng, không dấu).' });
+      return;
+    }
+    this.setState({ vncDangDat: true, vncLoi: '', vncTin: '' });
+    try {
+      const { j } = await K.goi('api/trinh-duyet/mat-khau-vnc', { method: 'PUT', json: { mat_khau: mk } });
+      this.setState({
+        vncDangDat: false,
+        vncMk: '',
+        vncDaDat: true,
+        vncTrangThaiLoi: '',
+        vncTin: (j && j.da_nap_lai)
+          ? 'Đã đặt mật khẩu xem trình duyệt. Người đang xem phải nhập lại mật khẩu mới ở hộp nhập của màn hình xem.'
+          : 'Đã ghi mật khẩu xem trình duyệt, nhưng chưa nạp lại được trình duyệt xem — mật khẩu sẽ có hiệu lực khi bật lại màn hình xem.',
+      });
+    } catch (err) {
+      this.setState({ vncDangDat: false, vncLoi: err.message || 'Lỗi khi đặt mật khẩu.' });
     }
   }
 
@@ -1984,6 +2058,18 @@ class Component extends DCLogic {
       tongSoKhoa: dsKhoaHienThi.length,
       dsKhoaHienThi,
 
+
+      // NV305: Mật khẩu xem trình duyệt (VNC) do chủ máy tự đặt
+      vncDaDat: s.vncDaDat === true,
+      vncChuaDat: s.vncDaDat === false,
+      vncTrangThaiLoi: s.vncTrangThaiLoi,
+      vncMk: s.vncMk,
+      vncGoMk: (e) => this.vncGoMk(e),
+      vncDatSubmit: (e) => this.vncDatSubmit(e),
+      vncDangDat: s.vncDangDat,
+      vncNhanNut: s.vncDangDat ? 'Đang đặt…' : (s.vncDaDat ? 'Đổi' : 'Đặt'),
+      vncLoi: s.vncLoi,
+      vncTin: s.vncTin,
 
       // NV289: Khoá cho dịch vụ ngoài gọi vào
       dvn: this.vmDichVuNgoai(s),
