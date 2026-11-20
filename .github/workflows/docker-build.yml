@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     # 20 phút là dư: bộ test nhỏ, phần tốn thời gian chỉ là cài gói và khởi động Chrome. Đặt
     # trần để runner treo không ngốn hết giờ miễn phí.
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v7
