@@ -2184,7 +2184,8 @@ class Module:
         KHÔNG dùng khoá dịch vụ: chỉ suy host từ dich_vu_url đã cấu hình (mặc định là tên container trong
         mạng Docker nội bộ) và đổi cổng API 8010 thành cổng websockify 6080. Lõi ghim đích qua kiểm SSRF
         trước khi cấp vé; mật khẩu VNC vẫn do x11vnc giữ trong container, người xem tự nhập ở hộp nhập
-        của noVNC — module này không biết và không trả mật khẩu đó."""
+        của noVNC — module này không biết và không trả mật khẩu đó. NV305-bo-sung: chưa từng đặt qua
+        giao diện thì lõi chặn ở đường /xem trước khi tới đây, module không cần tự chặn."""
         host = urllib.parse.urlsplit(str(self._url or "")).hostname
         if not host:
             raise RuntimeError("Chưa cấu hình địa chỉ dịch vụ đăng nhập tự động")

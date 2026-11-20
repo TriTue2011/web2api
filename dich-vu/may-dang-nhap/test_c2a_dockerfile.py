@@ -326,6 +326,11 @@ def test_dot_bien_entrypoint():
     assert any("không được sinh" in err for err in kiem_entrypoint(ep_env))
     assert any("không được ghi" in err for err in kiem_entrypoint(ep_env))
 
+    ep_chi_doc_env = ep_goc + '\nif [ -n "$CAPTCHA_SOLVER_MAT_KHAU_VNC" ]; then echo x; fi\n'
+    assert any("không được sinh" in err for err in kiem_entrypoint(ep_chi_doc_env))
+    ep_rand = ep_goc + "\ntr -dc 'A-Za-z0-9' < /dev/urandom | head -c 8 > /khoa/mat-khau-vnc\n"
+    assert any("không được sinh" in err for err in kiem_entrypoint(ep_rand))
+
 
 def test_bien_the_du_goi_phu_thuoc_trong_in():
     """Quét AST các import của tập tệp src/ được dùng và kiểm tra đầy đủ gói trong requirements-*.in cho từng biến thể."""

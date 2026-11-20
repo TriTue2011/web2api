@@ -576,12 +576,28 @@ async def api_xem_trinh_duyet(module: str, request: Request):
     Bearer quản trị được miễn; (2) module chỉ cần phương thức ``trinh_duyet_xem_mo()`` trả ``{"dich": ...}``
     là địa chỉ noVNC nội bộ (websockify của dịch vụ), lõi ghim đích qua kiểm SSRF rồi cấp vé một lần 60 giây
     như mọi vé /novnc khác. Mật khẩu VNC KHÔNG đi qua đường này: x11vnc vẫn bắt mật khẩu, người xem tự nhập
-    một lần ở hộp nhập của noVNC (mật khẩu chỉ chủ máy biết, đọc từ trong container dịch vụ).
+    một lần ở hộp nhập của noVNC (mật khẩu chỉ chủ máy biết vì chính chủ máy đặt qua giao diện).
+
+    NV305-bo-sung: chưa từng đặt mật khẩu qua giao diện thì đường này từ chối mở và báo chưa đặt (xem
+    chặn dưới đây), thay vì cấp vé tới trang noVNC rồi bắt nhập một mật khẩu không ai biết (tệp cũ còn
+    sót) hoặc không mở được (x11vnc chưa có mật khẩu nên chưa chạy).
 
     Hồ sơ ghim ở đây chỉ là khoá phiên xem (ID ngẫu nhiên), không phải hồ sơ trình duyệt riêng: đóng hồ sơ
     (DELETE /phien hoặc thu hồi) chỉ thu hồi vé/phiên xem, KHÔNG đóng trình duyệt đang đăng nhập của dịch vụ."""
     kiem_tra_step_up(request)
     mod = _module_co(request, module, "trinh_duyet_xem_mo", "xem trình duyệt đang đăng nhập")
+    # NV305-bo-sung: chỉ chặn khi module trả lời dứt khoát «chưa từng đặt qua giao diện»
+    # (da_dat is False). Module không hỗ trợ trạng thái, hoặc hỏi trạng thái lỗi, thì đi
+    # đường cũ — lỗi (nếu có) sẽ hiện ở bước mở xem của nó, không chặn oan.
+    lay_trang_thai = getattr(mod, "trang_thai_mat_khau_vnc", None)
+    if callable(lay_trang_thai):
+        try:
+            kq_tt = await lay_trang_thai()
+        except Exception:
+            kq_tt = None
+        if isinstance(kq_tt, dict) and kq_tt.get("ok") and kq_tt.get("da_dat") is False:
+            raise LoiOpenAI(400, "Chưa đặt mật khẩu xem trình duyệt — hãy đặt trong "
+                                 "«Bảo mật & người dùng» trước khi mở màn hình xem.")
     try:
         kq = await mod.trinh_duyet_xem_mo()
     except Exception as e:
@@ -697,8 +713,9 @@ async def api_dat_mat_khau_vnc(request: Request):
 @api_router.get("/mat-khau-vnc/trang-thai")
 async def api_trang_thai_mat_khau_vnc(request: Request):
     """NV305: đã từng đặt mật khẩu qua giao diện hay chưa. Chỉ quản trị, KHÔNG cần step-up vì chỉ trả
-    một bool, không có bí mật nào đi ra. Chưa đặt thì giao diện vẫn cho đặt; dịch vụ không sinh
-    mật khẩu ngẫu nhiên mới. Tệp cũ nếu còn trên đĩa được giữ tới khi ghi đè qua giao diện."""
+    một bool, không có bí mật nào đi ra. Khi module xác nhận chưa đặt, đường /{module}/xem trả 400
+    và giao diện vẫn cho đặt. Dịch vụ không sinh mật khẩu ngẫu nhiên mới. Tệp cũ nếu còn trên đĩa
+    được giữ tới khi ghi đè qua giao diện."""
     mod = _module_quan_ly_man_hinh(request)
     lay = getattr(mod, "trang_thai_mat_khau_vnc", None)
     if not callable(lay):

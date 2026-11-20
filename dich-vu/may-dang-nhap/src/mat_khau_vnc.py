@@ -13,7 +13,8 @@ log = logging.getLogger("may-dang-nhap.mat-khau-vnc")
 
 #: Tên tệp mật khẩu VNC trong thư mục khoá (x11vnc đọc bằng -passwdfile).
 TEN_TEP_MAT_KHAU = "mat-khau-vnc"
-#: Tệp đánh dấu «đã từng đặt qua giao diện» (0600).
+#: Tệp đánh dấu «đã từng đặt qua giao diện» (0600), giúp phân biệt với tệp mật khẩu cũ
+#: có thể do entrypoint của bản trước sinh ra.
 TEN_TEP_DANH_DAU = "mat-khau-vnc-chu-dat"
 DUONG_SUPERVISOR_NOVNC = "/etc/supervisor/supervisord-novnc.conf"
 MAU_MAT_KHAU = re.compile(r"[!-~]{1,8}")

@@ -49,6 +49,20 @@ def test_mat_khau_sai_dinh_dang(mk):
     assert kiem_mat_khau_vnc(mk) is not None
 
 
+# NV305-bo-sung: entrypoint KHÔNG còn tạo mật khẩu trong container — bỏ hẳn biến
+# môi trường CAPTCHA_SOLVER_MAT_KHAU_VNC và cả đường sinh ngẫu nhiên. Mật khẩu chỉ
+# được tạo qua giao diện (PUT /v1/novnc/mat-khau); tệp đã có trên đĩa được giữ nguyên.
+def test_entrypoint_khong_tao_mat_khau_trong_container():
+    ep = (Path(__file__).resolve().parent / "entrypoint.sh").read_text(encoding="utf-8")
+    assert "CAPTCHA_SOLVER_MAT_KHAU_VNC" not in ep
+    assert "urandom" not in ep
+    assert "tr -dc" not in ep
+    # Đường dẫn tệp vẫn được nhắc trong chú thích (để test_c2a_dockerfile biết tệp ở
+    # /khoa, không ở /data), nhưng entrypoint không còn lệnh ghi nào vào tệp đó.
+    assert "/khoa/mat-khau-vnc" in ep
+    assert "> /khoa/mat-khau-vnc" not in ep
+
+
 def test_ghi_tep_0600_va_danh_dau_va_nap_lai(tmp_path):
     chay = ChayGia(ma=0)
     kq = ghi_mat_khau_vnc(MK, thu_muc_khoa=tmp_path, chay_lenh=chay)

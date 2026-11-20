@@ -308,6 +308,75 @@ def test_trang_thai_khong_khoa_bi_401_va_chua_cai_bi_404(moi_truong):
         assert r.status_code == 404, r.text
 
 
+# NV305-bo-sung: màn hình xem từ chối mở khi chưa từng đặt mật khẩu qua giao diện
+# (mật khẩu chỉ tạo trong web UI, không còn sinh trong container). Module giả có thêm
+# trinh_duyet_xem_mo (đích loopback, cần WEB2API_TEST_CHO_PHEP_LOOPBACK=1 như test NV276).
+class ModXemMkVncGia(ModMkVncGia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.da_mo_xem = False
+
+    async def trinh_duyet_xem_mo(self):
+        self.da_mo_xem = True
+        return {"dich": "http://127.0.0.1:6080"}
+
+
+class ModXemKhongTrangThaiGia:
+    async def trinh_duyet_xem_mo(self):
+        return {"dich": "http://127.0.0.1:6080"}
+
+
+class ModXemTrangThaiLoiGia(ModXemMkVncGia):
+    async def trang_thai_mat_khau_vnc(self):
+        raise RuntimeError("Không nối được dịch vụ")
+
+
+def test_xem_bi_chan_khi_chua_dat_mat_khau(moi_truong, monkeypatch):
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    with TestClient(app) as c:
+        mod = ModXemMkVncGia(da_dat=False)
+        c.app.state.so.dang_chay[MODULE] = mod
+        r = c.post(f"/api/trinh-duyet/{MODULE}/xem", json={}, headers=_qt())
+        assert r.status_code == 400, r.text
+        assert "Chưa đặt mật khẩu xem trình duyệt" in r.text
+        assert mod.da_mo_xem is False
+
+
+def test_xem_mo_duoc_khi_da_dat_mat_khau(moi_truong, monkeypatch):
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    with TestClient(app) as c:
+        mod = ModXemMkVncGia(da_dat=True)
+        c.app.state.so.dang_chay[MODULE] = mod
+        r = c.post(f"/api/trinh-duyet/{MODULE}/xem", json={}, headers=_qt())
+        assert r.status_code == 200, r.text
+        assert r.json()["url"].startswith("/novnc/dang-nhap?ve=")
+        assert mod.da_mo_xem is True
+    novnc._VE.clear()
+    novnc._HO_SO.clear()
+
+
+def test_xem_khong_bi_chan_khi_module_khong_co_trang_thai(moi_truong, monkeypatch):
+    """Module không hỗ trợ trạng thái mật khẩu thì xem như cũ (không chặn)."""
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    with TestClient(app) as c:
+        c.app.state.so.dang_chay[MODULE] = ModXemKhongTrangThaiGia()
+        r = c.post(f"/api/trinh-duyet/{MODULE}/xem", json={}, headers=_qt())
+        assert r.status_code == 200, r.text
+    novnc._VE.clear()
+    novnc._HO_SO.clear()
+
+
+def test_xem_van_mo_khi_hoi_trang_thai_loi(moi_truong, monkeypatch):
+    """Hỏi trạng thái lỗi (dịch vụ chập chờn) thì không chặn: xem đi đường cũ và tự báo lỗi của nó."""
+    monkeypatch.setenv("WEB2API_TEST_CHO_PHEP_LOOPBACK", "1")
+    with TestClient(app) as c:
+        c.app.state.so.dang_chay[MODULE] = ModXemTrangThaiLoiGia(da_dat=False)
+        r = c.post(f"/api/trinh-duyet/{MODULE}/xem", json={}, headers=_qt())
+        assert r.status_code == 200, r.text
+    novnc._VE.clear()
+    novnc._HO_SO.clear()
+
+
 def test_giao_dien_co_o_mat_khau_dung_vi_tri():
     """Ô mật khẩu nằm trong trang Bảo mật & người dùng, khu vực chỉ quản trị, kèm ghi chú giới hạn 8 ký tự."""
     i = HTML_BAO_MAT.index('id="mat-khau-xem-trinh-duyet"')
